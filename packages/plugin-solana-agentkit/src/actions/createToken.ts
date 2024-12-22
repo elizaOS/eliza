@@ -22,10 +22,7 @@ export interface CreateTokenContent extends Content {
     initialSupply: number;
 }
 
-function isCreateTokenContent(
-    runtime: IAgentRuntime,
-    content: any
-): content is CreateTokenContent {
+function isCreateTokenContent(content: any): content is CreateTokenContent {
     elizaLogger.log("Content for createToken", content);
     return (
         typeof content.name === "string" &&
@@ -94,7 +91,7 @@ export default {
         });
 
         // Validate transfer content
-        if (!isCreateTokenContent(runtime, content)) {
+        if (!isCreateTokenContent(content)) {
             elizaLogger.error("Invalid content for CREATE_TOKEN action.");
             if (callback) {
                 callback({

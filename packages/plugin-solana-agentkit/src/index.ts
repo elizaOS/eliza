@@ -6,7 +6,7 @@ export const solanaAgentkitPlguin: Plugin = {
     description: "Solana Plugin with solana agent kit for Eliza",
     actions: [createToken],
     evaluators: [],
-    providers: [,],
+    providers: [],
 };
 
 export default solanaAgentkitPlguin;
