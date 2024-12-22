@@ -49,17 +49,13 @@ jobs:
               id: check_api_key
               run: |
                   if [ -z "$OPENAI_API_KEY" ]; then
-                    echo "::set-output name=api_key_present::false"
-                  else
-                    echo "::set-output name=api_key_present::true"
+                      echo "Error: OPENAI_API_KEY is not set."
+                      exit 1
                   fi
+              env:
+                  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
             - name: Run integration tests
-              if: steps.check_api_key.outputs.api_key_present == 'true'
               run: pnpm run integrationTests
-
-            - name: Skip integration tests
-              if: steps.check_api_key.outputs.api_key_present == 'false'
-              run: |
-                  echo "Skipping integration tests due to missing required API keys"
-                  exit 1
+              env:
+                  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
