@@ -56,6 +56,8 @@
     "@ai-sdk/groq": "0.0.3",
     "@ai-sdk/openai": "1.0.5",
     "@anthropic-ai/sdk": "0.30.1",
+    "@aws-sdk/client-secrets-manager": "*",
+    "@aws-sdk/client-sts": "*",
     "@fal-ai/client": "1.2.0",
     "@types/uuid": "10.0.0",
     "ai": "3.4.33",
