@@ -112,19 +112,21 @@ export default {
             openAIKey
         );
         try {
-            const deployedAddress = solanaAgentKit.deployToken(
+            const deployedAddress = await solanaAgentKit.deployToken(
                 content.name,
                 content.uri,
                 content.symbol,
-                content.decimals,
-                content.initialSupply
+                content.decimals
+                // content.initialSupply comment out this cause the sdk has some issue with this parameter
             );
             elizaLogger.log("Create successful: ", deployedAddress);
+            elizaLogger.log(deployedAddress);
             if (callback) {
                 callback({
                     text: `Successfully create token ${content.name}`,
                     content: {
                         success: true,
+                        deployedAddress,
                     },
                 });
             }
