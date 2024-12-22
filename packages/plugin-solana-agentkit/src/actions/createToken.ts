@@ -151,7 +151,7 @@ export default {
             {
                 user: "{{user2}}",
                 content: {
-                    text: "I'll creaete token now...",
+                    text: "I'll create token now...",
                     action: "CREATE_TOKEN",
                 },
             },
