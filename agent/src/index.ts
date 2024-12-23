@@ -51,6 +51,7 @@ import { nearPlugin } from "@elizaos/plugin-near";
 import { nftGenerationPlugin } from "@elizaos/plugin-nft-generation";
 import { createNodePlugin } from "@elizaos/plugin-node";
 import { solanaPlugin } from "@elizaos/plugin-solana";
+import { mplBubblegumPlugin } from "@elizaos/plugin-mpl-bubblegum";
 import { suiPlugin } from "@elizaos/plugin-sui";
 import { TEEMode, teePlugin } from "@elizaos/plugin-tee";
 import { tonPlugin } from "@elizaos/plugin-ton";
@@ -512,6 +513,10 @@ export async function createAgent(
             (getSecret(character, "WALLET_PUBLIC_KEY") &&
                 !getSecret(character, "WALLET_PUBLIC_KEY")?.startsWith("0x"))
                 ? solanaPlugin
+                : null,
+            getSecret(character, "MPL_BUBBLEGUM_PRIVATE_KEY") &&
+            getSecret(character, "MPL_BUBBLEGUM_RPC_URL")
+                ? mplBubblegumPlugin
                 : null,
             (getSecret(character, "NEAR_ADDRESS") ||
                 getSecret(character, "NEAR_WALLET_PUBLIC_KEY")) &&

@@ -1,0 +1,27 @@
+{
+    "name": "@elizaos/plugin-mpl-bubblegum",
+    "version": "0.1.5-alpha.5",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-tee": "workspace:*",
+        "@metaplex-foundation/digital-asset-standard-api": "1.0.4",
+        "@metaplex-foundation/mpl-bubblegum": "4.2.1",
+        "@metaplex-foundation/umi-bundle-defaults": "0.9.2",
+        "@metaplex-foundation/umi-web3js-adapters": "0.9.2",
+        "@metaplex-foundation/umi": "0.9.2",
+        "@solana/web3.js": "1.95.8"
+    },
+    "devDependencies": {
+        "@types/node": "20.0.0",
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache .",
+        "test": "vitest run"
+    }
+}
