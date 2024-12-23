@@ -1,0 +1,20 @@
+{
+    "name": "@ai16z/plugin-cronoszkevm",
+    "version": "0.1.4-alpha.3",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@ai16z/eliza": "workspace:*",
+        "@ai16z/plugin-trustdb": "workspace:*",
+        "tsup": "^8.3.5",
+        "web3": "^4.15.0",
+        "web3-plugin-zksync": "^1.0.8"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
+}
