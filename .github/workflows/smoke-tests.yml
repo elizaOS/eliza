@@ -1,0 +1,26 @@
+name: smoke-test
+on:
+    push:
+        branches:
+            - "*"
+    pull_request:
+        branches:
+            - "*"
+
+jobs:
+    smoke-tests:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: pnpm/action-setup@v3
+              with:
+                  version: 9.4.0
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: "23"
+                  cache: "pnpm"
+
+            - name: Run smoke tests
+              run: pnpm run smokeTests

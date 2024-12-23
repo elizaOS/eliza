@@ -1,28 +1,13 @@
-name: integration-test
+name: Integration Tests
 on:
     push:
         branches:
             - "*"
-    pull_request:
+    pull_request_target:
         branches:
             - "*"
+
 jobs:
-    smoke-tests:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - uses: pnpm/action-setup@v3
-              with:
-                  version: 9.4.0
-
-            - uses: actions/setup-node@v4
-              with:
-                  node-version: "23"
-                  cache: "pnpm"
-
-            - name: Run smoke tests
-              run: pnpm run smokeTests
     integration-tests:
         runs-on: ubuntu-latest
         env:
@@ -46,16 +31,11 @@ jobs:
               run: pnpm build
 
             - name: Check for API key
-              id: check_api_key
               run: |
                   if [ -z "$OPENAI_API_KEY" ]; then
                       echo "Error: OPENAI_API_KEY is not set."
                       exit 1
                   fi
-              env:
-                  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
             - name: Run integration tests
               run: pnpm run integrationTests
-              env:
-                  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
