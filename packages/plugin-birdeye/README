@@ -1,0 +1,25 @@
+# Birdeye plugin for Eliza
+
+Basic API wrapper for <https://birdeye.so> inside our AI agent, almost readonly API only.
+For more information please refer to their [docs](https://docs.birdeye.so/reference/get_defi-tokenlist)
+
+## What you need?
+
+```
+BIRDEYE_API_KEY=zzz-some-secret
+BIRDEYE_WALLET_ADDR=your porfolio profile address
+```
+
+## Integrate with other plugin
+
+```js
+// init your provider with custom support map
+const provider = new BirdeyeProvider(runtime.cacheManager, {
+    'WETH': '0xs0000000001231231',
+    ...
+})
+
+const price = await provider.fetchTokenPriceBySymbol('WETH')
+
+// further action based on this
+```

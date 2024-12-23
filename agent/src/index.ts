@@ -55,6 +55,7 @@ import { suiPlugin } from "@elizaos/plugin-sui";
 import { TEEMode, teePlugin } from "@elizaos/plugin-tee";
 import { tonPlugin } from "@elizaos/plugin-ton";
 import { zksyncEraPlugin } from "@elizaos/plugin-zksync-era";
+import { birdeyePlugin } from "@elizaos/plugin-birdeye";
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
@@ -571,6 +572,7 @@ export async function createAgent(
             getSecret(character, "TON_PRIVATE_KEY") ? tonPlugin : null,
             getSecret(character, "SUI_PRIVATE_KEY") ? suiPlugin : null,
             getSecret(character, "STORY_PRIVATE_KEY") ? storyPlugin : null,
+            getSecret(character, "BIRDEYE_API_KEY") ? birdeyePlugin : null,
         ].filter(Boolean),
         providers: [],
         actions: [],
