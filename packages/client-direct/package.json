@@ -7,6 +7,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-image-generation": "workspace:*",
+    "@elizaos/plugin-tee-verifiable-log": "workspace:*",
     "@types/body-parser": "1.19.5",
     "@types/cors": "2.8.17",
     "@types/express": "5.0.0",

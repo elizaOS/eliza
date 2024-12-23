@@ -22,6 +22,10 @@
             "outputs": ["dist/**"],
             "dependsOn": ["@elizaos/plugin-node#build"]
         },
+        "@ai16z/client-direct#build": {
+            "outputs": ["dist/**"],
+            "dependsOn": ["@ai16z/plugin-tee-verifiable-log#build"]
+        },
         "eliza-docs#build": {
             "outputs": ["build/**"]
         },

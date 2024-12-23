@@ -51,6 +51,7 @@
     "@elizaos/plugin-multiversx": "workspace:*",
     "@elizaos/plugin-near": "workspace:*",
     "@elizaos/plugin-zksync-era": "workspace:*",
+    "@elizaos/plugin-tee-verifiable-log": "workspace:*",
     "readline": "1.3.0",
     "ws": "8.18.0",
     "yargs": "17.7.2"

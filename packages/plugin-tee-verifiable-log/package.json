@@ -1,0 +1,31 @@
+{
+    "name": "@elizaos/plugin-tee-verifiable-log",
+    "version": "0.1.7-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-tee": "workspace:*",
+        "dompurify": "3.2.2",
+        "elliptic": "^6.6.1",
+        "ethereum-cryptography": "^3.0.0",
+        "tsup": "8.3.5",
+        "uuid": "11.0.3",
+        "vitest": "2.1.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "lint": "eslint . --fix"
+    },
+    "devDependencies": {
+        "@types/dompurify": "3.2.0",
+        "ts-node": "^10.9.2"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
+}
+
