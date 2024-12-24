@@ -16,8 +16,17 @@ export const twitterEnvSchema = z.object({
         .default(DEFAULT_MAX_TWEET_LENGTH.toString()),
 });
 
+/**
+ * Represents the configuration for Twitter settings.
+ * This type is inferred from the 'twitterEnvSchema'.
+ */
 export type TwitterConfig = z.infer<typeof twitterEnvSchema>;
 
+/**
+ * Validates the Twitter configuration settings provided by the runtime and environment variables.
+ * @param {IAgentRuntime} runtime - The runtime object containing the settings.
+ * @returns {Promise<TwitterConfig>} - A promise that resolves with the validated Twitter configuration.
+ */
 export async function validateTwitterConfig(
     runtime: IAgentRuntime
 ): Promise<TwitterConfig> {

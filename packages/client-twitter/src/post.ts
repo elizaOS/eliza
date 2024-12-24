@@ -60,7 +60,13 @@ Tweet:
 # Respond with qualifying action tags only.` + postActionResponseFooter;
 
 /**
- * Truncate text to fit within the Twitter character limit, ensuring it ends at a complete sentence.
+ * Truncates a given text to fit within the maximum tweet length while maintaining complete sentences.
+ * If possible, truncates at the last period within the limit. If no period is found, truncates to the
+ * nearest whitespace. If all else fails, hard truncates and adds ellipsis.
+ *
+ * @param {string} text - The input text to be truncated.
+ * @param {number} maxTweetLength - The maximum length allowed for a tweet.
+ * @returns {string} The truncated text that fits within the max tweet length.
  */
 function truncateToCompleteSentence(
     text: string,

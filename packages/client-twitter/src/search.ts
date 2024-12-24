@@ -42,22 +42,36 @@ Your response should not contain any questions. Brief, concise statements only. 
 
 ` + messageCompletionFooter;
 
+/**
+ * Class representing a Twitter search client.
+ */
 export class TwitterSearchClient {
     client: ClientBase;
     runtime: IAgentRuntime;
     twitterUsername: string;
     private respondedTweets: Set<string> = new Set();
 
+/**
+ * Initialize a new instance of the TwitterService class.
+ * @param {ClientBase} client - The client used to communicate with Twitter API.
+ * @param {IAgentRuntime} runtime - The agent runtime environment.
+ */
     constructor(client: ClientBase, runtime: IAgentRuntime) {
         this.client = client;
         this.runtime = runtime;
         this.twitterUsername = runtime.getSetting("TWITTER_USERNAME");
     }
 
+/**
+ * Asynchronously starts the search term engagement loop.
+ */
     async start() {
         this.engageWithSearchTermsLoop();
     }
 
+/**
+ * Continuously engages with search terms at random intervals between 60-120 minutes.
+ */
     private engageWithSearchTermsLoop() {
         this.engageWithSearchTerms();
         setTimeout(
@@ -66,6 +80,15 @@ export class TwitterSearchClient {
         );
     }
 
+/**
+ * Asynchronously engages with search terms to fetch tweets, select the most interesting tweet,
+ * and generate a response to engage with users on Twitter. The process involves fetching recent
+ * tweets based on a random search term, selecting a tweet to reply to, building a conversation
+ * thread, composing a response message, sending the response tweet, updating state and memories,
+ * and caching the tweet and response information. If no suitable tweets are found or if an error
+ * occurs during the process, appropriate error messages are logged. This method utilizes various
+ * helper functions and services to facilitate the engagement process.
+ */
     private async engageWithSearchTerms() {
         console.log("Engaging with search terms");
         try {
