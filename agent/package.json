@@ -38,6 +38,7 @@
         "@elizaos/plugin-evm": "workspace:*",
         "@elizaos/plugin-flow": "workspace:*",
         "@elizaos/plugin-story": "workspace:*",
+        "@elizaos/plugin-gecko": "workspace:*",
         "@elizaos/plugin-goat": "workspace:*",
         "@elizaos/plugin-icp": "workspace:*",
         "@elizaos/plugin-image-generation": "workspace:*",

@@ -42,6 +42,7 @@ import {
     webhookPlugin,
 } from "@elizaos/plugin-coinbase";
 import { confluxPlugin } from "@elizaos/plugin-conflux";
+import { coingeckoPlugin } from "@elizaos/plugin-gecko";
 import { evmPlugin } from "@elizaos/plugin-evm";
 import { storyPlugin } from "@elizaos/plugin-story";
 import { flowPlugin } from "@elizaos/plugin-flow";
@@ -508,6 +509,7 @@ export async function createAgent(
             getSecret(character, "CONFLUX_CORE_PRIVATE_KEY")
                 ? confluxPlugin
                 : null,
+            getSecret(character, "COINGECKO_API_KEY") ? coingeckoPlugin : null,
             nodePlugin,
             getSecret(character, "SOLANA_PUBLIC_KEY") ||
             (getSecret(character, "WALLET_PUBLIC_KEY") &&
