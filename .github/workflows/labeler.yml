@@ -1,0 +1,72 @@
+# .github/labeler.yml
+
+# Label PRs that modify documentation files
+Documentation:
+  - changed-files:
+      - 'docs/**'
+
+# Label PRs with 'feature' if the head branch name starts with 'feature'
+Feature:
+  - head-branch: ['^feature']
+
+# Label PRs that modify files in the agent directory
+Agent:
+  - changed-files:
+      - 'agent/**'
+
+# Label PRs that modify files in the .github directory
+GitHub:
+  - changed-files:
+      - '.github/**'
+
+# Label PRs that modify files in the .turbo directory
+Turbo:
+  - changed-files:
+      - '.turbo/**'
+
+# Label PRs that modify files in the characters directory
+Characters:
+  - changed-files:
+      - 'characters/**'
+
+# Label PRs that modify files in the client directory
+Client:
+  - changed-files:
+      - 'client/**'
+  - changed-files:
+      - 'packages/client-*/**'
+
+# Label PRs that modify files in the packages directory
+Packages:
+  - changed-files:
+      - 'packages/**'
+
+# Label PRs that modify files in the scripts directory
+Scripts:
+  - changed-files:
+      - 'scripts/**'
+
+# Label PRs that modify files in the src directory
+Source:
+  - changed-files:
+      - 'src/**'
+
+# Label PRs that modify files in the tests directory
+Tests:
+  - changed-files:
+      - 'tests/**'
+
+# Label PRs that modify files in the packages/adapter* directories
+Adapter:
+  - changed-files:
+      - 'packages/adapter*/**'
+
+# Label PRs that modify files in the packages/core directory
+Core:
+  - changed-files:
+      - 'packages/core/**'
+
+# Label PRs that modify files in the packages/plugin* directories
+Plugin:
+  - changed-files:
+      - 'packages/plugin*/**'
