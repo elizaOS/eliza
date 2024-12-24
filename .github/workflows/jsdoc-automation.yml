@@ -1,0 +1,81 @@
+name: JSDoc Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull_number:
+        description: 'Pull Request Number (if not provided, scans root_directory) - PR must be merged to develop branch'
+        required: false
+        type: string
+      root_directory:
+        description: 'Only scans files in this directory (relative to repository root, e.g., packages/core/src)'
+        required: true
+        default: 'packages/core/src/test_resources'
+        type: string
+      excluded_directories:
+        description: 'Directories to exclude from scanning (comma-separated, relative to root_directory)'
+        required: true
+        default: 'node_modules,dist,test'
+        type: string
+      reviewers:
+        description: 'Pull Request Reviewers (comma-separated GitHub usernames)'
+        required: true
+        default: ''
+        type: string
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+
+    env:
+      GITHUB_ACCESS_TOKEN: ${{ secrets.GH_PAT }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+          run_install: false
+
+      - name: Update lockfile
+        working-directory: packages/jsdoc-automation
+        run: |
+          echo "Updating lockfile..."
+          pnpm install --no-frozen-lockfile
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git add pnpm-lock.yaml
+          git commit -m "chore: update pnpm lockfile" || echo "No changes to commit"
+          git push || echo "No changes to push"
+
+      - name: Install root dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Install package dependencies
+        working-directory: packages/jsdoc-automation
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Run documentation generator
+        working-directory: packages/jsdoc-automation
+        run: |
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "Directory contents:"
+          ls -la
+          NODE_OPTIONS='--experimental-vm-modules --no-warnings' pnpm start
+        env:
+          INPUT_ROOT_DIRECTORY: ${{ inputs.root_directory }}
+          INPUT_PULL_NUMBER: ${{ inputs.pull_number }}
+          INPUT_EXCLUDED_DIRECTORIES: ${{ inputs.excluded_directories }}
+          INPUT_REVIEWERS: ${{ inputs.reviewers }}
