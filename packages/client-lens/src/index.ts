@@ -3,7 +3,13 @@ import { privateKeyToAccount } from "viem/accounts";
 import { LensClient } from "./client";
 import { LensPostManager } from "./post";
 import { LensInteractionManager } from "./interactions";
-import StorjProvider from "./providers/StorjProvider";
+import {
+    StorageProvider,
+    StorageProviderEnum,
+} from "./providers/StorageProvider";
+import { StorjProvider } from "./providers/StorjProvider";
+import { PinataProvider } from "./providers/PinataProvider";
+import { ArweaveProvider } from "./providers/ArweaveProvider";
 
 export class LensAgentClient implements Client {
     client: LensClient;
@@ -11,7 +17,7 @@ export class LensAgentClient implements Client {
     interactions: LensInteractionManager;
 
     private profileId: `0x${string}`;
-    private ipfs: StorjProvider;
+    private storage: StorageProvider;
 
     constructor(public runtime: IAgentRuntime) {
         const cache = new Map<string, any>();
@@ -37,14 +43,14 @@ export class LensAgentClient implements Client {
 
         elizaLogger.info("Lens client initialized.");
 
-        this.ipfs = new StorjProvider(runtime);
+        this.storage = this.getStorageProvider();
 
         this.posts = new LensPostManager(
             this.client,
             this.runtime,
             this.profileId,
             cache,
-            this.ipfs
+            this.storage
         );
 
         this.interactions = new LensInteractionManager(
@@ -52,11 +58,46 @@ export class LensAgentClient implements Client {
             this.runtime,
             this.profileId,
             cache,
-            this.ipfs
+            this.storage
         );
     }
 
+    private getStorageProvider(): StorageProvider {
+        const storageProvider = this.runtime.getSetting(
+            "LENS_STORAGE_PROVIDER"
+        );
+
+        const storageProviderMap = {
+            [StorageProviderEnum.PINATA]: PinataProvider,
+            [StorageProviderEnum.STORJ]: StorjProvider,
+            [StorageProviderEnum.ARWEAVE]: ArweaveProvider,
+        };
+
+        let SelectedProvider =
+            storageProviderMap[storageProvider as StorageProviderEnum];
+
+        if (!SelectedProvider) {
+            elizaLogger.info(
+                "No valid storage provider specified, defaulting to Storj"
+            );
+
+            // Replace default provider with Lens Storage Nodes when on mainnet https://dev-preview.lens.xyz/docs/storage/using-storage
+            SelectedProvider = StorjProvider;
+        }
+        const selected = new SelectedProvider(this.runtime);
+
+        elizaLogger.info(
+            `Using ${selected.provider} storage provider in Lens Client`
+        );
+
+        return selected;
+    }
+
     async start() {
+        if (this.storage.initialize) {
+            await this.storage.initialize();
+        }
+
         await Promise.all([this.posts.start(), this.interactions.start()]);
     }
 

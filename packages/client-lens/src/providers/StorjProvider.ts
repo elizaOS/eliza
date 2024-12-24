@@ -1,9 +1,15 @@
 import axios, { AxiosInstance } from "axios";
 import FormData from "form-data";
-import type { IAgentRuntime } from "@elizaos/core";
+import { elizaLogger, type IAgentRuntime } from "@elizaos/core";
+import {
+    StorageProvider,
+    StorageProviderEnum,
+    UploadResponse,
+} from "./StorageProvider";
 
 // ipfs pinning service: https://storj.dev/dcs/api/storj-ipfs-pinning
-class StorjProvider {
+export class StorjProvider implements StorageProvider {
+    provider = StorageProviderEnum.STORJ;
     private STORJ_API_URL: string = "https://www.storj-ipfs.com";
     private STORJ_API_USERNAME: string;
     private STORJ_API_PASSWORD: string;
@@ -13,6 +19,11 @@ class StorjProvider {
     constructor(runtime: IAgentRuntime) {
         this.STORJ_API_USERNAME = runtime.getSetting("STORJ_API_USERNAME")!;
         this.STORJ_API_PASSWORD = runtime.getSetting("STORJ_API_PASSWORD")!;
+        if (!this.STORJ_API_USERNAME || !this.STORJ_API_PASSWORD) {
+            elizaLogger.warn(
+                "To use Storj ipfs pinning service you need to set STORJ_API_USERNAME or STORJ_API_PASSWORD in envornment variables. Get your keys at https://storj.io"
+            );
+        }
         this.baseURL = `${this.STORJ_API_URL}/api/v0`;
         this.client = this.createClient();
     }
@@ -37,12 +48,19 @@ class StorjProvider {
         return `${this.STORJ_API_URL}/ipfs/${this.hash(uriOrHash)}`;
     }
 
-    public async pinJson(json: any): Promise<string> {
-        if (typeof json !== "string") {
-            json = JSON.stringify(json);
-        }
+    public async uploadJson(
+        uploadData: Record<string, any> | string
+    ): Promise<UploadResponse> {
+        const stringifiedData =
+            typeof uploadData === "string"
+                ? uploadData
+                : JSON.stringify(uploadData);
         const formData = new FormData();
-        formData.append("path", Buffer.from(json, "utf-8").toString());
+
+        formData.append(
+            "path",
+            Buffer.from(stringifiedData, "utf-8").toString()
+        );
 
         const headers = {
             "Content-Type": "multipart/form-data",
@@ -55,14 +73,17 @@ class StorjProvider {
             { headers }
         );
 
-        return this.gatewayURL(data.Hash);
+        return {
+            url: this.gatewayURL(data.Hash),
+            cid: data.Hash,
+        };
     }
 
-    public async pinFile(file: {
+    public async uploadFile(file: {
         buffer: Buffer;
         originalname: string;
         mimetype: string;
-    }): Promise<string> {
+    }): Promise<UploadResponse> {
         const formData = new FormData();
         formData.append("file", file.buffer, {
             filename: file.originalname,
@@ -77,8 +98,9 @@ class StorjProvider {
             maxBodyLength: Infinity,
         });
 
-        return this.gatewayURL(response.data.Hash);
+        return {
+            url: this.gatewayURL(response.data.Hash),
+            cid: response.data.Hash,
+        };
     }
 }
-
-export default StorjProvider;
