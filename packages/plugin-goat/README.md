@@ -33,6 +33,13 @@ const tools = getOnChainActions({
 })
 ```
 
+## Environment Variables Setup
+
+To set up your environment variables, you will need to provide the following information:
+
+* `EVM_PRIVATE_KEY`: Your EVM wallet private key.
+* `EVM_PROVIDER_URL`: Your RPC provider URL (e.g. Infura, Alchemy, etc.).
+
 ## Wallets
 GOAT supports many different wallets from key pairs to [Crossmint Smart Wallets](https://docs.crossmint.com/wallets/smart-wallets/overview) and Coinbase.
 
