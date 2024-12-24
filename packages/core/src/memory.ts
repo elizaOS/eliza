@@ -197,6 +197,12 @@ export class MemoryManager implements IMemoryManager {
         });
     }
 
+    // needs database adapters to be updated
+    /*
+    async getMemoriesByIds(ids: UUID[]): Promise<Memory | null> {
+    }
+    */
+
     async getMemoryById(id: UUID): Promise<Memory | null> {
         const result = await this.runtime.databaseAdapter.getMemoryById(id);
         if (result && result.agentId !== this.runtime.agentId) return null;
