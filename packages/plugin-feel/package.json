@@ -1,0 +1,17 @@
+{
+  "name": "@ai16z/plugin-feel",
+  "version": "1.0.0",
+  "description": "Life system plugin for emotional and personality management",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@ai16z/eliza": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
