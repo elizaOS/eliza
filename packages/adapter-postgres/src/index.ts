@@ -203,21 +203,11 @@ export class PostgresDatabaseAdapter
                 await client.query("SET app.use_ollama_embedding = 'false'");
             }
 
-            // Check if schema already exists (check for a core table)
-            const { rows } = await client.query(`
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_name = 'rooms'
-                );
-            `);
-
-            if (!rows[0].exists) {
-                const schema = fs.readFileSync(
-                    path.resolve(__dirname, "../schema.sql"),
-                    "utf8"
-                );
-                await client.query(schema);
-            }
+            const schema = fs.readFileSync(
+                path.resolve(__dirname, "../schema.sql"),
+                "utf8"
+            );
+            await client.query(schema);
 
             await client.query("COMMIT");
         } catch (error) {
