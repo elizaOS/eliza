@@ -99,6 +99,7 @@ export class TwitterPostClient {
     private isProcessing: boolean = false;
     private lastProcessTime: number = 0;
     private stopProcessingActions: boolean = false;
+    private isLongTweet: boolean = false;
 
     async start(postImmediately: boolean = false) {
         if (!this.client.profile) {
@@ -194,6 +195,20 @@ export class TwitterPostClient {
         this.client = client;
         this.runtime = runtime;
         this.twitterUsername = runtime.getSetting("TWITTER_USERNAME");
+        this.isLongTweet = (parseInt(runtime.getSetting("MAX_TWEET_LENGTH") ?? DEFAULT_MAX_TWEET_LENGTH.toString()) > 280);
+    }
+
+    private async tweet(content: string, replyToTweetId?: string) {
+        try {
+            if (this.isLongTweet) {
+                return await this.client.twitterClient.sendLongTweet(content, replyToTweetId);
+            } else {
+                return await this.client.twitterClient.sendTweet(content, replyToTweetId);
+            }
+        } catch (error) {
+            elizaLogger.error('Error in tweet():', error);
+            throw error;
+        }
     }
 
     private async generateNewTweet() {
@@ -304,16 +319,21 @@ export class TwitterPostClient {
 
                 const result = await this.client.requestQueue.add(
                     async () =>
-                        await this.client.twitterClient.sendTweet(
-                            cleanedContent
-                        )
+                       await this.tweet(cleanedContent)
                 );
                 const body = await result.json();
-                if (!body?.data?.create_tweet?.tweet_results?.result) {
-                    console.error("Error sending tweet; Bad response:", body);
-                    return;
+                if (this.isLongTweet) {
+                    if (!body?.data?.notetweet_create?.tweet_results?.result) {
+                        console.error("Error sending tweet; Bad response:", body);
+                        return;
+                    }
+                } else {
+                    if (!body?.data?.create_tweet?.tweet_results?.result) {
+                        console.error("Error sending tweet; Bad response:", body);
+                        return;
+                    }
                 }
-                const tweetResult = body.data.create_tweet.tweet_results.result;
+                const tweetResult = this.isLongTweet ? body.data.notetweet_create.tweet_results.result : body.data.create_tweet.tweet_results.result;
 
                 const tweet = {
                     id: tweetResult.rest_id,
@@ -837,15 +857,13 @@ export class TwitterPostClient {
             // Send the tweet through request queue
             const result = await this.client.requestQueue.add(
                 async () =>
-                    await this.client.twitterClient.sendTweet(
-                        replyText,
-                        tweet.id
-                    )
+                    await this.tweet(replyText, tweet.id)
             );
 
             const body = await result.json();
 
-            if (body?.data?.create_tweet?.tweet_results?.result) {
+            const tweetResult = this.isLongTweet ? body?.data?.notetweet_create?.tweet_results?.result : body?.data?.create_tweet?.tweet_results?.result;
+            if (tweetResult) {
                 elizaLogger.log("Successfully posted reply tweet");
                 executedActions.push("reply");
 

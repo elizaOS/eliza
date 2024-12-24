@@ -180,6 +180,8 @@ export async function sendTweet(
     const sentTweets: Tweet[] = [];
     let previousTweetId = inReplyTo;
 
+    const isLongTweet = (parseInt(client.runtime.getSetting("MAX_TWEET_LENGTH") ?? DEFAULT_MAX_TWEET_LENGTH.toString()) > 280);
+
     for (const chunk of tweetChunks) {
         let mediaData: { data: Buffer; mediaType: string }[] | undefined;
 
@@ -216,18 +218,23 @@ export async function sendTweet(
         }
         const result = await client.requestQueue.add(
             async () =>
-                await client.twitterClient.sendTweet(
-                    chunk.trim(),
-                    previousTweetId,
-                    mediaData
-                )
+                isLongTweet ?
+                    await client.twitterClient.sendLongTweet(
+                        chunk.trim(),
+                        previousTweetId,
+                        mediaData
+                    ) :
+                    await client.twitterClient.sendTweet(
+                        chunk.trim(),
+                        previousTweetId,
+                        mediaData
+                    )
         );
         const body = await result.json();
-
+        const tweetResult = this.isLongTweet ? body.data.notetweet_create.tweet_results.result : body.data.create_tweet.tweet_results.result;
         // if we have a response
-        if (body?.data?.create_tweet?.tweet_results?.result) {
+        if (tweetResult) {
             // Parse the response
-            const tweetResult = body.data.create_tweet.tweet_results.result;
             const finalTweet: Tweet = {
                 id: tweetResult.rest_id,
                 text: tweetResult.legacy.full_text,
