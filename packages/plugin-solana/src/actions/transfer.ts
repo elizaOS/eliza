@@ -207,21 +207,43 @@ export default {
             const transaction = new VersionedTransaction(messageV0);
             transaction.sign([senderKeypair]);
 
-            // Send transaction
-            const signature = await connection.sendTransaction(transaction);
-
-            console.log("Transfer successful:", signature);
-
-            if (callback) {
-                callback({
-                    text: `Successfully transferred ${content.amount} tokens to ${content.recipient}\nTransaction: ${signature}`,
-                    content: {
-                        success: true,
-                        signature,
-                        amount: content.amount,
-                        recipient: content.recipient,
-                    },
+            // Send transaction with client retry
+            const timeoutMs = 60000;
+            const startTime = Date.now();
+            while (Date.now() - startTime < timeoutMs) {
+                const transactionStartTime = Date.now();
+                const signature = await connection.sendTransaction(transaction, {
+                    maxRetries: 0,
+                    skipPreflight: true,
                 });
+
+                const statuses = await connection.getSignatureStatuses([signature]);
+                if (statuses.value[0]) {
+                    if (!statuses.value[0].err) {
+                            console.log(`Transaction confirmed: ${signature}`);
+                            if (callback) {
+                                callback({
+                                    text: `Successfully transferred ${content.amount} tokens to ${content.recipient}\nTransaction: ${signature}`,
+                                    content: {
+                                        success: true,
+                                        signature,
+                                        amount: content.amount,
+                                        recipient: content.recipient,
+                                    },
+                                });
+                            }
+                            break;
+                    } else {
+                            console.error(`Transaction failed: ${statuses.value[0].err.toString()}`);
+                            break;
+                    }
+                }
+
+                const elapsedTime = Date.now() - transactionStartTime;
+                const remainingTime = Math.max(0, 1000 - elapsedTime); // Ensure at least 1 second between attempts
+                if (remainingTime > 0) {
+                    await new Promise(resolve => setTimeout(resolve, remainingTime));
+                }
             }
 
             return true;
