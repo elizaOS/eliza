@@ -328,7 +328,37 @@ export function getTokenForProvider(
 }
 
 function initializeDatabase(dataDir: string) {
-    if (process.env.POSTGRES_URL) {
+    if (process.env.MONGODB_CONNECTION_STRING) {
+        elizaLogger.log("Initializing database on MongoDB Atlas");
+        const client = new MongoClient(process.env.MONGODB_CONNECTION_STRING, {
+            maxPoolSize: 100,
+            minPoolSize: 5,
+            maxIdleTimeMS: 60000,
+            connectTimeoutMS: 10000,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+            compressors: ['zlib'],
+            retryWrites: true,
+            retryReads: true
+        });
+
+        const dbName = process.env.MONGODB_DATABASE_NAME || 'CumulusAiAgent'; // Default database name
+        const db = new MongoDBDatabaseAdapter(client, dbName);
+
+        // Test the connection
+        db.init()
+            .then(() => {
+                elizaLogger.success(
+                    "Successfully connected to MongoDB Atlas"
+                );
+            })
+            .catch((error) => {
+                elizaLogger.error("Failed to connect to MongoDB Atlas:", error);
+                throw error; // Re-throw to handle it in the calling code
+            });
+
+        return db;
+    } else if (process.env.POSTGRES_URL) {
         elizaLogger.info("Initializing PostgreSQL connection...");
         const db = new PostgresDatabaseAdapter({
             connectionString: process.env.POSTGRES_URL,
@@ -350,7 +380,6 @@ function initializeDatabase(dataDir: string) {
     } else {
         const filePath =
             process.env.SQLITE_FILE ?? path.resolve(dataDir, "db.sqlite");
-        // ":memory:";
         const db = new SqliteDatabaseAdapter(new Database(filePath));
         return db;
     }

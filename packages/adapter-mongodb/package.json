@@ -1,0 +1,26 @@
+{
+    "name": "@ai16z/adapter-mongodb",
+    "version": "0.1.0",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@ai16z/eliza": "workspace:*",
+        "mongodb": "^6.3.0",
+        "uuid": "^9.0.1"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "@types/uuid": "^10.0.0",
+        "tsup": "8.3.5",
+        "typescript": "^5.0.0"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix --cache ."
+    },
+    "engines": {
+        "node": ">=16.0.0"
+    }
+}
