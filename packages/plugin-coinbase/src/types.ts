@@ -196,3 +196,33 @@ export const ReadContractSchema = z.object({
 export const isReadContractContent = (obj: any): obj is ReadContractContent => {
     return ReadContractSchema.safeParse(obj).success;
 };
+
+// Bridge types
+export interface BridgeContent {
+    sourceWalletId: string;
+    destinationWalletId: string;
+    amount: string;
+    token: string;
+}
+
+export interface BridgeRecord {
+    sourceChain: string;
+    destinationChain: string;
+    amount: string;
+    token: string;
+    status: string;
+    sourceTransactionHash: string;
+    destinationTransactionHash: string;
+    timestamp: string;
+}
+
+export const BridgeSchema = z.object({
+    sourceWalletId: z.string().describe("The ID of the source wallet"),
+    destinationWalletId: z.string().describe("The ID of the destination wallet"),
+    amount: z.string().describe("The amount to bridge"),
+    token: z.string().describe("The token symbol to bridge (e.g., USDC)")
+});
+
+export const isBridgeContent = (obj: any): obj is BridgeContent => {
+    return BridgeSchema.safeParse(obj).success;
+};

@@ -386,3 +386,36 @@ Example for reading the balance of an ERC20 token:
 Here are the recent user messages for context:
 {{recentMessages}}
 `;
+
+export const bridgeTemplate = `
+Extract the following details for bridging tokens between networks using Circle's CCTP:
+- **sourceWalletId** (string): ID of the source wallet on Base
+- **destinationWalletId** (string): ID of the destination wallet on Arbitrum
+- **amount** (string): Amount to bridge (in base units, e.g., 1000000 for 1 USDC)
+- **token** (string): Token symbol to bridge (currently supports USDC)
+
+Provide the details in the following JSON format:
+
+\`\`\`json
+{
+    "sourceWalletId": "<source_wallet_id>",
+    "destinationWalletId": "<destination_wallet_id>",
+    "amount": "<amount_in_base_units>",
+    "token": "<token_symbol>"
+}
+\`\`\`
+
+Example for bridging 1 USDC from Base to Arbitrum:
+
+\`\`\`json
+{
+    "sourceWalletId": "base-wallet-123",
+    "destinationWalletId": "arbitrum-wallet-456",
+    "amount": "1000000",
+    "token": "USDC"
+}
+\`\`\`
+
+Here are the recent user messages for context:
+{{recentMessages}}
+`;
