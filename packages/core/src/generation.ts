@@ -55,11 +55,13 @@ export async function generateText({
     context,
     modelClass,
     stop,
+    customSystemPrompt,
 }: {
     runtime: IAgentRuntime;
     context: string;
     modelClass: string;
     stop?: string[];
+    customSystemPrompt?: string;
 }): Promise<string> {
     if (!context) {
         console.error("generateText context is empty");
@@ -445,6 +447,7 @@ export async function generateText({
                     model: heurist.languageModel(model),
                     prompt: context,
                     system:
+                        customSystemPrompt ??
                         runtime.character.system ??
                         settings.SYSTEM_PROMPT ??
                         undefined,
