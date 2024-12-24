@@ -22,7 +22,10 @@
         "checkJs": false,
         "noEmitOnError": false,
         "moduleDetection": "force",
-        "allowArbitraryExtensions": true
+        "allowArbitraryExtensions": true,
+        "customConditions": [
+            "@ai16z/source"
+        ],
     },
     "include": [
         "src/**/*"
