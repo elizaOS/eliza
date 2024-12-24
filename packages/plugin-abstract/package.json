@@ -1,0 +1,19 @@
+{
+    "name": "@elizaos/plugin-abstract",
+    "version": "0.1.7-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "tsup": "^8.3.5",
+        "web3": "^4.15.0",
+        "viem": "2.21.53"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
+}
