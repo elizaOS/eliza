@@ -40,21 +40,22 @@ import {
     tokenContractPlugin,
     tradePlugin,
     webhookPlugin,
-} from "@elizaos/plugin-coinbase";
-import { confluxPlugin } from "@elizaos/plugin-conflux";
-import { evmPlugin } from "@elizaos/plugin-evm";
-import { storyPlugin } from "@elizaos/plugin-story";
-import { flowPlugin } from "@elizaos/plugin-flow";
-import { imageGenerationPlugin } from "@elizaos/plugin-image-generation";
-import { multiversxPlugin } from "@elizaos/plugin-multiversx";
-import { nearPlugin } from "@elizaos/plugin-near";
-import { nftGenerationPlugin } from "@elizaos/plugin-nft-generation";
-import { createNodePlugin } from "@elizaos/plugin-node";
-import { solanaPlugin } from "@elizaos/plugin-solana";
-import { suiPlugin } from "@elizaos/plugin-sui";
-import { TEEMode, teePlugin } from "@elizaos/plugin-tee";
-import { tonPlugin } from "@elizaos/plugin-ton";
-import { zksyncEraPlugin } from "@elizaos/plugin-zksync-era";
+} from "@ai16z/plugin-coinbase";
+import { confluxPlugin } from "@ai16z/plugin-conflux";
+import { evmPlugin } from "@ai16z/plugin-evm";
+import { storyPlugin } from "@ai16z/plugin-story";
+import { flowPlugin } from "@ai16z/plugin-flow";
+import { imageGenerationPlugin } from "@ai16z/plugin-image-generation";
+import { multiversxPlugin } from "@ai16z/plugin-multiversx";
+import { nearPlugin } from "@ai16z/plugin-near";
+import { nftGenerationPlugin } from "@ai16z/plugin-nft-generation";
+import { createNodePlugin } from "@ai16z/plugin-node";
+import { solanaPlugin } from "@ai16z/plugin-solana";
+import { suiPlugin } from "@ai16z/plugin-sui";
+import { TEEMode, teePlugin } from "@ai16z/plugin-tee";
+import { tonPlugin } from "@ai16z/plugin-ton";
+import { thirdwebPlugin } from "@ai16z/plugin-thirdweb";
+import { zksyncEraPlugin } from "@ai16z/plugin-zksync-era";
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
@@ -570,6 +571,7 @@ export async function createAgent(
             getSecret(character, "MVX_PRIVATE_KEY") ? multiversxPlugin : null,
             getSecret(character, "ZKSYNC_PRIVATE_KEY") ? zksyncEraPlugin : null,
             getSecret(character, "TON_PRIVATE_KEY") ? tonPlugin : null,
+            getSecret(character, "THIRDWEB_SECRET_KEY") ? thirdwebPlugin : null,
             getSecret(character, "SUI_PRIVATE_KEY") ? suiPlugin : null,
             getSecret(character, "STORY_PRIVATE_KEY") ? storyPlugin : null,
         ].filter(Boolean),
