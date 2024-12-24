@@ -1,22 +1,22 @@
 {
-  "name": "@elizaos/adapter-supabase",
-  "version": "0.1.7-alpha.1",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@supabase/supabase-js": "2.46.2"
-  },
-  "devDependencies": {
-    "tsup": "8.3.5"
-  },
-  "scripts": {
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
-    "lint": "eslint --fix  --cache ."
-  },
-  "peerDependencies": {
-    "whatwg-url": "7.1.0"
-  }
+    "name": "@elizaos/adapter-supabase",
+    "version": "0.1.7-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@supabase/supabase-js": "2.46.2"
+    },
+    "devDependencies": {
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache ."
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
 }

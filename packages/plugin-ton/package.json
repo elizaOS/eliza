@@ -1,25 +1,25 @@
 {
-  "name": "@elizaos/plugin-ton",
-  "version": "0.1.7-alpha.1",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-trustdb": "workspace:*",
-    "bignumber": "1.1.0",
-    "bignumber.js": "9.1.2",
-    "node-cache": "5.1.2",
-    "@ton/ton": "15.1.0",
-    "@ton/crypto": "3.3.0",
-    "tsup": "8.3.5"
-  },
-  "scripts": {
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
-    "test": "vitest run"
-  },
-  "peerDependencies": {
-    "whatwg-url": "7.1.0"
-  }
+    "name": "@elizaos/plugin-ton",
+    "version": "0.1.7-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-trustdb": "workspace:*",
+        "bignumber": "1.1.0",
+        "bignumber.js": "9.1.2",
+        "node-cache": "5.1.2",
+        "@ton/ton": "15.1.0",
+        "@ton/crypto": "3.3.0",
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "test": "vitest run"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
 }

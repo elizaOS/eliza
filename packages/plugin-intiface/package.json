@@ -1,21 +1,21 @@
 {
-  "name": "@elizaos/plugin-intiface",
-  "version": "0.1.7-alpha.1",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "buttplug": "3.2.2",
-    "net": "1.0.2",
-    "tsup": "8.3.5"
-  },
-  "scripts": {
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
-    "test-via-bun": "bun test/simulate.ts"
-  },
-  "peerDependencies": {
-    "whatwg-url": "7.1.0"
-  }
+    "name": "@elizaos/plugin-intiface",
+    "version": "0.1.7-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "buttplug": "3.2.2",
+        "net": "1.0.2",
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "test-via-bun": "bun test/simulate.ts"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
 }

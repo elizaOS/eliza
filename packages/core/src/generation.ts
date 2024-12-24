@@ -935,6 +935,8 @@ export const generateImage = async (
         seed?: number;
         modelId?: string;
         jobId?: string;
+        stylePreset?: string;
+        hideWatermark?: boolean;
     },
     runtime: IAgentRuntime
 ): Promise<{
@@ -950,14 +952,30 @@ export const generateImage = async (
     });
 
     const apiKey =
-        runtime.imageModelProvider === runtime.modelProvider
-            ? runtime.token
-            : (runtime.getSetting("HEURIST_API_KEY") ??
-              runtime.getSetting("TOGETHER_API_KEY") ??
-              runtime.getSetting("FAL_API_KEY") ??
-              runtime.getSetting("OPENAI_API_KEY") ??
-              runtime.getSetting("VENICE_API_KEY"));
-
+    runtime.imageModelProvider === runtime.modelProvider
+        ? runtime.token
+        : (() => {
+            // First try to match the specific provider
+            switch (runtime.imageModelProvider) {
+                case ModelProviderName.HEURIST:
+                    return runtime.getSetting("HEURIST_API_KEY");
+                case ModelProviderName.TOGETHER:
+                    return runtime.getSetting("TOGETHER_API_KEY");
+                case ModelProviderName.FAL:
+                    return runtime.getSetting("FAL_API_KEY");
+                case ModelProviderName.OPENAI:
+                    return runtime.getSetting("OPENAI_API_KEY");
+                case ModelProviderName.VENICE:
+                    return runtime.getSetting("VENICE_API_KEY");
+                default:
+                    // If no specific match, try the fallback chain
+                    return (runtime.getSetting("HEURIST_API_KEY") ??
+                           runtime.getSetting("TOGETHER_API_KEY") ??
+                           runtime.getSetting("FAL_API_KEY") ??
+                           runtime.getSetting("OPENAI_API_KEY") ??
+                           runtime.getSetting("VENICE_API_KEY"));
+            }
+        })();
     try {
         if (runtime.imageModelProvider === ModelProviderName.HEURIST) {
             const response = await fetch(
@@ -1121,9 +1139,12 @@ export const generateImage = async (
                         model: data.modelId || "fluently-xl",
                         prompt: data.prompt,
                         negative_prompt: data.negativePrompt,
-                        width: data.width || 1024,
-                        height: data.height || 1024,
-                        steps: data.numIterations || 20,
+                        width: data.width,
+                        height: data.height,
+                        steps: data.numIterations,
+                        seed: data.seed,
+                        style_preset: data.stylePreset,
+                        hide_watermark: data.hideWatermark,
                     }),
                 }
             );

@@ -1,26 +1,26 @@
 {
-  "name": "@elizaos/plugin-aptos",
-  "version": "0.1.7-alpha.1",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@aptos-labs/ts-sdk": "^1.26.0",
-    "bignumber": "1.1.0",
-    "bignumber.js": "9.1.2",
-    "node-cache": "5.1.2",
-    "tsup": "8.3.5",
-    "vitest": "2.1.4"
-  },
-  "scripts": {
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
-    "lint": "eslint --fix  --cache .",
-    "test": "vitest run"
-  },
-  "peerDependencies": {
-    "form-data": "4.0.1",
-    "whatwg-url": "7.1.0"
-  }
+    "name": "@elizaos/plugin-aptos",
+    "version": "0.1.7-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@aptos-labs/ts-sdk": "^1.26.0",
+        "bignumber": "1.1.0",
+        "bignumber.js": "9.1.2",
+        "node-cache": "5.1.2",
+        "tsup": "8.3.5",
+        "vitest": "2.1.4"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache .",
+        "test": "vitest run"
+    },
+    "peerDependencies": {
+        "form-data": "4.0.1",
+        "whatwg-url": "7.1.0"
+    }
 }

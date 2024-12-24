@@ -8,6 +8,7 @@ import {
     State,
     UUID,
     composeContext,
+    composeRandomUser,
     elizaLogger,
     getEmbeddingZeroVector,
     generateMessageResponse,
@@ -840,7 +841,7 @@ export class VoiceManager extends EventEmitter {
                 this.runtime.character.templates
                     ?.discordShouldRespondTemplate ||
                 this.runtime.character.templates?.shouldRespondTemplate ||
-                discordShouldRespondTemplate,
+                composeRandomUser(discordShouldRespondTemplate, 2),
         });
 
         const response = await generateShouldRespond({

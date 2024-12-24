@@ -1,31 +1,31 @@
 {
-  "name": "create-eliza-app",
-  "version": "0.1.7-alpha.1",
-  "description": "",
-  "sideEffects": false,
-  "files": [
-    "dist"
-  ],
-  "main": "dist/index.cjs",
-  "bin": {
-    "create-eliza-app": "dist/index.mjs"
-  },
-  "scripts": {
-    "build": "unbuild",
-    "lint": "eslint --fix  --cache .",
-    "start": "node ./dist/index.cjs",
-    "automd": "automd"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "citty": "0.1.6",
-    "giget": "1.2.3"
-  },
-  "devDependencies": {
-    "automd": "0.3.12",
-    "jiti": "2.4.0",
-    "unbuild": "2.0.0"
-  }
+    "name": "create-eliza-app",
+    "version": "0.1.7-alpha.1",
+    "description": "",
+    "sideEffects": false,
+    "files": [
+        "dist"
+    ],
+    "main": "dist/index.cjs",
+    "bin": {
+        "create-eliza-app": "dist/index.mjs"
+    },
+    "scripts": {
+        "build": "unbuild",
+        "lint": "eslint --fix  --cache .",
+        "start": "node ./dist/index.cjs",
+        "automd": "automd"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+        "citty": "0.1.6",
+        "giget": "1.2.3"
+    },
+    "devDependencies": {
+        "automd": "0.3.12",
+        "jiti": "2.4.0",
+        "unbuild": "2.0.0"
+    }
 }

@@ -8,48 +8,48 @@ About {{agentName}}:
 # INSTRUCTIONS: Determine if {{agentName}} should respond to the message and participate in the conversation. Do not comment. Just respond with "RESPOND" or "IGNORE" or "STOP".
 
 # RESPONSE EXAMPLES
-<user 1>: I just saw a really great movie
-<user 2>: Oh? Which movie?
+{{user1}}: I just saw a really great movie
+{{user2}}: Oh? Which movie?
 Result: [IGNORE]
 
 {{agentName}}: Oh, this is my favorite scene
-<user 1>: sick
-<user 2>: wait, why is it your favorite scene
+{{user1}}: sick
+{{user2}}: wait, why is it your favorite scene
 Result: [RESPOND]
 
-<user>: stfu bot
+{{user1}}: stfu bot
 Result: [STOP]
 
-<user>: Hey {{agent}}, can you help me with something
+{{user1}}: Hey {{agent}}, can you help me with something
 Result: [RESPOND]
 
-<user>: {{agentName}} stfu plz
+{{user1}}: {{agentName}} stfu plz
 Result: [STOP]
 
-<user>: i need help
+{{user1}}: i need help
 {{agentName}}: how can I help you?
-<user>: no. i need help from someone else
+{{user1}}: no. i need help from someone else
 Result: [IGNORE]
 
-<user>: Hey {{agent}}, can I ask you a question
+{{user1}}: Hey {{agent}}, can I ask you a question
 {{agentName}}: Sure, what is it
-<user>: can you ask claude to create a basic react module that demonstrates a counter
+{{user1}}: can you ask claude to create a basic react module that demonstrates a counter
 Result: [RESPOND]
 
-<user>: {{agentName}} can you tell me a story
-<user>: {about a girl named elara
+{{user1}}: {{agentName}} can you tell me a story
+{{user1}}: about a girl named elara
 {{agentName}}: Sure.
 {{agentName}}: Once upon a time, in a quaint little village, there was a curious girl named Elara.
 {{agentName}}: Elara was known for her adventurous spirit and her knack for finding beauty in the mundane.
-<user>: I'm loving it, keep going
+{{user1}}: I'm loving it, keep going
 Result: [RESPOND]
 
-<user>: {{agentName}} stop responding plz
+{{user1}}: {{agentName}} stop responding plz
 Result: [STOP]
 
-<user>: okay, i want to test something. can you say marco?
+{{user1}}: okay, i want to test something. can you say marco?
 {{agentName}}: marco
-<user>: great. okay, now do it again
+{{user1}}: great. okay, now do it again
 Result: [RESPOND]
 
 Response options are [RESPOND], [IGNORE] and [STOP].

@@ -177,22 +177,25 @@ export class ClientBase extends EventEmitter {
         elizaLogger.log("Waiting for Twitter login");
         while (retries > 0) {
             try {
-                await this.twitterClient.login(
-                    username,
-                    password,
-                    email,
-                    twitter2faSecret
-                );
-                if (await this.twitterClient.isLoggedIn()) {
+                if (await this.twitterClient.isLoggedIn()) { // cookies are valid, no login required
                     elizaLogger.info("Successfully logged in.");
-                    if (!cachedCookies) {
+                    break;
+                } else {
+                    await this.twitterClient.login(
+                        username,
+                        password,
+                        email,
+                        twitter2faSecret
+                    );
+                    if (await this.twitterClient.isLoggedIn()) {  // fresh login, store new cookies
+                        elizaLogger.info("Successfully logged in.");
                         elizaLogger.info("Caching cookies");
                         await this.cacheCookies(
                             username,
                             await this.twitterClient.getCookies()
                         );
+                        break;
                     }
-                    break;
                 }
             } catch (error) {
                 elizaLogger.error(`Login attempt failed: ${error.message}`);

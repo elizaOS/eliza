@@ -1,36 +1,36 @@
 {
-  "name": "@elizaos/plugin-flow",
-  "version": "0.1.7-alpha.1",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@onflow/config": "1.5.1",
-    "@onflow/fcl": "1.13.1",
-    "@onflow/typedefs": "1.4.0",
-    "bignumber.js": "9.1.2",
-    "bs58": "6.0.0",
-    "elliptic": "6.6.1",
-    "node-cache": "5.1.2",
-    "sha3": "2.1.4",
-    "uuid": "11.0.3",
-    "zod": "3.23.8"
-  },
-  "devDependencies": {
-    "@types/elliptic": "6.4.18",
-    "@types/uuid": "10.0.0",
-    "tsup": "8.3.5",
-    "vitest": "2.1.4"
-  },
-  "scripts": {
-    "lines": "find . \\( -name '*.cdc' -o -name '*.ts' \\) -not -path '*/node_modules/*' -not -path '*/tests/*' -not -path '*/deps/*' -not -path '*/dist/*' -not -path '*/imports*' | xargs wc -l",
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
-    "lint": "eslint --fix  --cache .",
-    "test": "vitest run"
-  },
-  "peerDependencies": {
-    "whatwg-url": "7.1.0"
-  }
+    "name": "@elizaos/plugin-flow",
+    "version": "0.1.7-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@onflow/config": "1.5.1",
+        "@onflow/fcl": "1.13.1",
+        "@onflow/typedefs": "1.4.0",
+        "bignumber.js": "9.1.2",
+        "bs58": "6.0.0",
+        "elliptic": "6.6.1",
+        "node-cache": "5.1.2",
+        "sha3": "2.1.4",
+        "uuid": "11.0.3",
+        "zod": "3.23.8"
+    },
+    "devDependencies": {
+        "@types/elliptic": "6.4.18",
+        "@types/uuid": "10.0.0",
+        "tsup": "8.3.5",
+        "vitest": "2.1.4"
+    },
+    "scripts": {
+        "lines": "find . \\( -name '*.cdc' -o -name '*.ts' \\) -not -path '*/node_modules/*' -not -path '*/tests/*' -not -path '*/deps/*' -not -path '*/dist/*' -not -path '*/imports*' | xargs wc -l",
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache .",
+        "test": "vitest run"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
 }

@@ -10,14 +10,14 @@ jobs:
 
         steps:
             - name: Check out the repository
-              uses: actions/checkout@v2
+              uses: actions/checkout@v3
 
             - name: Validate PR title
               id: validate
               run: |
                   PR_TITLE=$(jq -r .pull_request.title "$GITHUB_EVENT_PATH")
                   echo "PR Title: $PR_TITLE"
-                  if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|refactor|test|chore):\ .+ ]]; then
+                  if [[ ! "$PR_TITLE" =~ ^(feat|fix|docs|style|refactor|test|chore)(\([a-zA-Z0-9-]+\))?:\ .+ ]]; then
                     echo "PR title does not match the required pattern."
                     exit 1
                   fi
@@ -25,4 +25,6 @@ jobs:
             - name: Set status
               if: failure()
               run: |
-                  gh pr comment ${{ github.event.pull_request.number }} --body "❌ PR title does not match the required pattern. Please use the format: 'type: description' (e.g., 'feat|fix|docs|style|refactor|test|chore: title')."
+                  gh pr comment ${{ github.event.pull_request.number }} --body "❌ PR title does not match the required pattern. Please use one of these formats:
+                  - 'type: description' (e.g., 'feat: add new feature')
+                  - 'type(scope): description' (e.g., 'chore(core): update dependencies')"

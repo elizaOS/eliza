@@ -1,33 +1,33 @@
 {
-  "name": "@elizaos/client-discord",
-  "version": "0.1.7-alpha.1",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-node": "workspace:*",
-    "@discordjs/opus": "github:discordjs/opus",
-    "@discordjs/rest": "2.4.0",
-    "@discordjs/voice": "0.17.0",
-    "discord.js": "14.16.3",
-    "libsodium-wrappers": "0.7.15",
-    "prism-media": "1.3.5",
-    "zod": "3.23.8"
-  },
-  "devDependencies": {
-    "tsup": "8.3.5"
-  },
-  "scripts": {
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
-    "lint": "eslint --fix  --cache ."
-  },
-  "trustedDependencies": {
-    "@discordjs/opus": "github:discordjs/opus",
-    "@discordjs/voice": "0.17.0"
-  },
-  "peerDependencies": {
-    "whatwg-url": "7.1.0"
-  }
+    "name": "@elizaos/client-discord",
+    "version": "0.1.7-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-node": "workspace:*",
+        "@discordjs/opus": "github:discordjs/opus",
+        "@discordjs/rest": "2.4.0",
+        "@discordjs/voice": "0.17.0",
+        "discord.js": "14.16.3",
+        "libsodium-wrappers": "0.7.15",
+        "prism-media": "1.3.5",
+        "zod": "3.23.8"
+    },
+    "devDependencies": {
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache ."
+    },
+    "trustedDependencies": {
+        "@discordjs/opus": "github:discordjs/opus",
+        "@discordjs/voice": "0.17.0"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
 }

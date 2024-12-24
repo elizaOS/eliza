@@ -23,6 +23,7 @@ import {
     elizaLogger,
     getEmbeddingConfig,
     DatabaseAdapter,
+    EmbeddingProvider,
 } from "@elizaos/core";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -188,6 +189,19 @@ export class PostgresDatabaseAdapter
         const client = await this.pool.connect();
         try {
             await client.query("BEGIN");
+
+            // Set application settings for embedding dimension
+            const embeddingConfig = getEmbeddingConfig();
+            if (embeddingConfig.provider === EmbeddingProvider.OpenAI) {
+                await client.query("SET app.use_openai_embedding = 'true'");
+                await client.query("SET app.use_ollama_embedding = 'false'");
+            } else if (embeddingConfig.provider === EmbeddingProvider.Ollama) {
+                await client.query("SET app.use_openai_embedding = 'false'");
+                await client.query("SET app.use_ollama_embedding = 'true'");
+            } else {
+                await client.query("SET app.use_openai_embedding = 'false'");
+                await client.query("SET app.use_ollama_embedding = 'false'");
+            }
 
             // Check if schema already exists (check for a core table)
             const { rows } = await client.query(`

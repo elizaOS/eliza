@@ -1,45 +1,45 @@
 {
-  "name": "@elizaos/client-slack",
-  "version": "0.1.7-alpha.1",
-  "description": "Slack client plugin for Eliza framework",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
-    "test": "jest",
-    "lint": "eslint --fix  --cache .",
-    "clean": "rimraf dist",
-    "dev": "tsup src/index.ts --watch",
-    "example": "ts-node src/examples/standalone-example.ts",
-    "example:attachment": "ts-node src/examples/standalone-attachment.ts",
-    "example:summarize": "ts-node src/examples/standalone-summarize.ts",
-    "example:transcribe": "ts-node src/examples/standalone-transcribe.ts"
-  },
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@slack/events-api": "^3.0.1",
-    "@slack/web-api": "^6.8.1",
-    "body-parser": "^1.20.2",
-    "dotenv": "^16.0.3",
-    "express": "^4.18.2",
-    "fluent-ffmpeg": "^2.1.2",
-    "node-fetch": "^2.6.9"
-  },
-  "devDependencies": {
-    "@types/express": "^4.17.21",
-    "@types/fluent-ffmpeg": "^2.1.24",
-    "@types/jest": "^29.5.0",
-    "@types/node": "^18.15.11",
-    "jest": "^29.5.0",
-    "rimraf": "^5.0.0",
-    "ts-jest": "^29.1.0",
-    "ts-node": "^10.9.1",
-    "tsup": "^8.3.5",
-    "typescript": "^5.0.0"
-  },
-  "engines": {
-    "node": ">=14.0.0"
-  }
+    "name": "@elizaos/client-slack",
+    "version": "0.1.7-alpha.1",
+    "description": "Slack client plugin for Eliza framework",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsup src/index.ts --format esm --dts",
+        "test": "jest",
+        "lint": "eslint --fix  --cache .",
+        "clean": "rimraf dist",
+        "dev": "tsup src/index.ts --watch",
+        "example": "ts-node src/examples/standalone-example.ts",
+        "example:attachment": "ts-node src/examples/standalone-attachment.ts",
+        "example:summarize": "ts-node src/examples/standalone-summarize.ts",
+        "example:transcribe": "ts-node src/examples/standalone-transcribe.ts"
+    },
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@ffmpeg-installer/ffmpeg": "^1.1.0",
+        "@slack/events-api": "^3.0.1",
+        "@slack/web-api": "^6.8.1",
+        "body-parser": "^1.20.2",
+        "dotenv": "^16.0.3",
+        "express": "^4.18.2",
+        "fluent-ffmpeg": "^2.1.2",
+        "node-fetch": "^2.6.9"
+    },
+    "devDependencies": {
+        "@types/express": "^4.17.21",
+        "@types/fluent-ffmpeg": "^2.1.24",
+        "@types/jest": "^29.5.0",
+        "@types/node": "^18.15.11",
+        "jest": "^29.5.0",
+        "rimraf": "^5.0.0",
+        "ts-jest": "^29.1.0",
+        "ts-node": "^10.9.1",
+        "tsup": "^8.3.5",
+        "typescript": "^5.0.0"
+    },
+    "engines": {
+        "node": ">=14.0.0"
+    }
 }

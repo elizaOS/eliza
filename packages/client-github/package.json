@@ -1,23 +1,23 @@
 {
-  "name": "@elizaos/client-github",
-  "version": "0.1.7-alpha.1",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@octokit/rest": "20.1.1",
-    "@octokit/types": "12.6.0",
-    "glob": "10.4.5",
-    "simple-git": "3.27.0"
-  },
-  "devDependencies": {
-    "@types/glob": "8.1.0",
-    "tsup": "8.3.5"
-  },
-  "scripts": {
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
-    "lint": "eslint --fix  --cache ."
-  }
+    "name": "@elizaos/client-github",
+    "version": "0.1.7-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@octokit/rest": "20.1.1",
+        "@octokit/types": "12.6.0",
+        "glob": "10.4.5",
+        "simple-git": "3.27.0"
+    },
+    "devDependencies": {
+        "@types/glob": "8.1.0",
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache ."
+    }
 }
