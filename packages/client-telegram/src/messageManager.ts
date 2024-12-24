@@ -966,6 +966,14 @@ export class MessageManager {
             const userName =
                 ctx.from.username || ctx.from.first_name || "Unknown User";
 
+            if (this.runtime.getSetting("TELEGRAM_WHITELISTED_USERNAMES")) {
+                const whitelist = this.runtime.getSetting("TELEGRAM_WHITELISTED_USERNAMES").split(",");
+                if (!whitelist.includes(userName)) {
+                    elizaLogger.warn(`❌ User ${userName} is not in the whitelist`);
+                    return; // Skip if not in whitelist
+                }
+            }
+
             // Get chat ID
             const chatId = stringToUuid(
                 ctx.chat?.id.toString() + "-" + this.runtime.agentId
