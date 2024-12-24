@@ -37,11 +37,13 @@ export function stringToUuid(target: string | number): UUID {
         hashBuffer[i / 2] = parseInt(hash.slice(i, i + 2), 16);
     }
 
+    hashBuffer[6] = (hashBuffer[6] & 0x0f) | 0x50;
+
     return (_uint8ArrayToHex(hashBuffer.slice(0, 4)) +
         "-" +
         _uint8ArrayToHex(hashBuffer.slice(4, 6)) +
         "-" +
-        _uint8ToHex(hashBuffer[6] & 0x0f) +
+        _uint8ToHex(hashBuffer[6]) +
         _uint8ToHex(hashBuffer[7]) +
         "-" +
         _uint8ToHex((hashBuffer[8] & 0x3f) | 0x80) +
