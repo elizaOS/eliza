@@ -7,9 +7,10 @@ export const defaultCharacter: Character = {
     clients: [
         Clients.TWITTER,
         Clients.TELEGRAM,
-        Clients.FARCASTER
+        Clients.FARCASTER,
+        //Clients.DISCORD
     ],
-    modelProvider: ModelProviderName.ANTHROPIC,
+    modelProvider: ModelProviderName.LLAMACLOUD,
     settings: {
         secrets: {},
         voice: {

@@ -17,15 +17,20 @@ interface EmbeddingOptions {
 // Add the embedding configuration
 export const getEmbeddingConfig = () => ({
     dimensions:
-        settings.USE_OPENAI_EMBEDDING?.toLowerCase() === "true"
+        settings.USE_LLAMACLOUD_EMBEDDING?.toLowerCase() === "true"
+            ? 768 // LocalLLama
+            : settings.USE_OPENAI_EMBEDDING?.toLowerCase() === "true"
             ? 1536 // OpenAI
             : settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true"
               ? 1024 // Ollama mxbai-embed-large
               :settings.USE_GAIANET_EMBEDDING?.toLowerCase() === "true"
                 ? 768 // GaiaNet
                 : 384, // BGE
+
     model:
-        settings.USE_OPENAI_EMBEDDING?.toLowerCase() === "true"
+        settings.USE_LLAMACLOUD_EMBEDDING?.toLowerCase() === "true"
+            ? "togethercomputer/m2-bert-80M-32k-retrieval"
+            : settings.USE_OPENAI_EMBEDDING?.toLowerCase() === "true"
             ? "text-embedding-3-small"
             : settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true"
               ? settings.OLLAMA_EMBEDDING_MODEL || "mxbai-embed-large"
@@ -33,7 +38,9 @@ export const getEmbeddingConfig = () => ({
                 ? settings.GAIANET_EMBEDDING_MODEL || "nomic-embed"
                 : "BGE-small-en-v1.5",
     provider:
-        settings.USE_OPENAI_EMBEDDING?.toLowerCase() === "true"
+        settings.USE_LLAMACLOUD_EMBEDDING?.toLowerCase() === "true"
+            ? "LlamaCloud"
+            : settings.USE_OPENAI_EMBEDDING?.toLowerCase() === "true"
             ? "OpenAI"
             : settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true"
               ? "Ollama"
@@ -67,10 +74,10 @@ async function getRemoteEmbedding(
         body: JSON.stringify({
             input,
             model: options.model,
-            dimensions:
-                options.dimensions ||
-                options.length ||
-                getEmbeddingConfig().dimensions, // Prefer dimensions, fallback to length
+            // dimensions:
+            //     options.dimensions ||
+            //     options.length ||
+            //     getEmbeddingConfig().dimensions, // Prefer dimensions, fallback to length
         }),
     };
 
@@ -108,6 +115,7 @@ export function getEmbeddingType(runtime: IAgentRuntime): "local" | "remote" {
     // - Not forcing OpenAI embeddings
     const isLocal =
         isNode &&
+        runtime.character.modelProvider !== ModelProviderName.LLAMACLOUD &&
         runtime.character.modelProvider !== ModelProviderName.OPENAI &&
         runtime.character.modelProvider !== ModelProviderName.GAIANET &&
         !settings.USE_OPENAI_EMBEDDING;
@@ -122,6 +130,8 @@ export function getEmbeddingZeroVector(): number[] {
         embeddingDimension = 1536; // OpenAI dimension
     } else if (settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true") {
         embeddingDimension = 1024; // Ollama mxbai-embed-large dimension
+    } else if (settings.USE_LLAMACLOUD_EMBEDDING?.toLowerCase() === "true") {
+        embeddingDimension = 768; // LlamaCloud dimension
     }
 
     return Array(embeddingDimension).fill(0);
@@ -146,6 +156,7 @@ export async function embed(runtime: IAgentRuntime, input: string) {
     elizaLogger.debug("Embedding request:", {
         modelProvider: runtime.character.modelProvider,
         useOpenAI: process.env.USE_OPENAI_EMBEDDING,
+        useLlamacloud: process.env.USE_LLAMACLOUD_EMBEDDING,
         input: input?.slice(0, 50) + "...",
         inputType: typeof input,
         inputLength: input?.length,
@@ -169,6 +180,15 @@ export async function embed(runtime: IAgentRuntime, input: string) {
 
     const config = getEmbeddingConfig();
     const isNode = typeof process !== "undefined" && process.versions?.node;
+
+    if (config.provider === "LlamaCloud") {
+        return await getRemoteEmbedding(input, {
+            model: config.model,
+            endpoint: "https://api.together.ai/v1",
+            apiKey: settings.TOGETHER_API_KEY,
+            // dimensions: config.dimensions,
+        });
+    }
 
     // Determine which embedding path to use
     if (config.provider === "OpenAI") {

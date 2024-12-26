@@ -677,7 +677,7 @@ export async function generateShouldRespond({
                 runtime,
                 context,
                 modelClass: ModelClass.SMALL,
-                modelProvider: ModelProviderName.OPENAI,
+                // modelProvider: ModelProviderName.OPENAI,
             });
 
             elizaLogger.debug("Received response from generateText:", response);
@@ -766,7 +766,7 @@ export async function generateTrueOrFalse({
                 runtime,
                 context,
                 modelClass: ModelClass.SMALL,
-                modelProvider: ModelProviderName.OPENAI,
+                //modelProvider: ModelProviderName.OPENAI,
             });
 
             const parsedResponse = parseBooleanFromText(response.trim());

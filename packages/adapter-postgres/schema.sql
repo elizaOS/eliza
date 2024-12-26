@@ -24,6 +24,9 @@ BEGIN
     -- Then check for Ollama
     ELSIF current_setting('app.use_ollama_embedding', TRUE) = 'true' THEN
         RETURN 1024;  -- Ollama mxbai-embed-large dimension
+    -- Then check for LlamaCloud
+    ELSIF current_setting('app.use_llamacloud_embedding', TRUE) = 'true' THEN
+        RETURN 768;  -- LlamaCloud dimension
     ELSE
         RETURN 384;   -- BGE/Other embedding dimension
     END IF;

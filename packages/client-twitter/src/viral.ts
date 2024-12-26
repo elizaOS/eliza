@@ -147,7 +147,7 @@ Notes:
             const mostInterestingTweetResponse = await generateText({
                 runtime: this.runtime,
                 context: prompt,
-                modelClass: ModelClass.MEDIUM,
+                modelClass: ModelClass.LARGE,
             });
 
             const tweetId = mostInterestingTweetResponse.trim();
@@ -277,7 +277,7 @@ Notes:
             const responseContent = await generateMessageResponse({
                 runtime: this.runtime,
                 context,
-                modelClass: ModelClass.MEDIUM,
+                modelClass: ModelClass.LARGE,
             });
 
             responseContent.inReplyTo = message.id;

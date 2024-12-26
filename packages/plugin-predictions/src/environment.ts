@@ -27,7 +27,7 @@ export async function validatePredictionsConfig(
                 runtime.getSetting("BIRDEYE_API_KEY") ||
                 process.env.BIRDEYE_API_KEY,
         };
-        console.log("config", config);
+        
         return predictionsEnvSchema.parse(config);
     } catch (error) {
         if (error instanceof z.ZodError) {
