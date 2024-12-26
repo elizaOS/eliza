@@ -36,7 +36,7 @@ const twitterPostTemplate = `
 {{formattedTweets}}
 
 # Task: Generate a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
-Write a single sentence post or ASCII art that is about whatever you're interested in, feel there is needed discourse on, or want to talk about, from the perspective of {{agentName}}. Write something totally different than previous posts. Do not add commentary or ackwowledge this request, just write the post.
+Write a single sentence post or ASCII art that is about whatever you're interested in, feel there is needed discourse on, or want to talk about, from the perspective of {{agentName}}. Write something totally different than previous posts. Do not start any sentences the same as previous posts. Do not add commentary or ackwowledge this request, just write the post.
 Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than {{maxTweetLength}}. No emojis. Use \\n\\n (double spaces) between statements.`;
 
 export const twitterActionTemplate =
@@ -231,7 +231,7 @@ export class TwitterPostClient {
             const formattedTweets = lastTweets.map(tweet =>
                 `  ID: ${tweet.id}\n  From: ${tweet.name} (@${tweet.username})\n  Text: ${tweet.text}`
             ).join('\n\n');
-
+            console.log("formattedTweets", formattedTweets);
             const state = await this.runtime.composeState(
                 {
                     userId: this.runtime.agentId,
