@@ -159,7 +159,7 @@ export class MemoryManager implements IMemoryManager {
             match_count: count,
             unique: !!unique,
         });
-
+        elizaLogger.info("RAG Memories Unfiltered:", result);
         return result;
     }
 

@@ -7,6 +7,7 @@ import {
     ModelClass,
     stringToUuid,
     parseBooleanFromText,
+    ModelProviderName,
 } from "@ai16z/eliza";
 import { elizaLogger } from "@ai16z/eliza";
 import { ClientBase } from "./base.ts";
@@ -131,7 +132,7 @@ export class TwitterPostClient {
                 // Random number between 0 and 1
                 const random = Math.random();
                 // 0.65 gives regular tweets 65% higher probability
-                if (random < 0.825) {
+                if (random < 0.625) {
                     // (1 + 0.65) / 2 = 0.825
                     await this.generateNewTweet();
                 } else {
@@ -184,7 +185,13 @@ export class TwitterPostClient {
         }
 
         if (postImmediately) {
-            await this.generateNewTweet();
+            const random = Math.random();
+            if (random < 0.625) {
+                // (1 + 0.65) / 2 = 0.825
+                await this.generateNewTweet();
+            } else {
+                await this.generateMediaTweet();
+            }
         }
         generateNewTweetLoop();
 
@@ -990,6 +997,7 @@ export class TwitterPostClient {
                 runtime: this.runtime,
                 context,
                 modelClass: ModelClass.LARGE,
+                modelProvider: ModelProviderName.OPENAI,
             });
 
             // If the response is a string, parse it into an object

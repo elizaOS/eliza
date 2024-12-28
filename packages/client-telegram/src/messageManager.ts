@@ -101,8 +101,14 @@ const telegramMessageHandlerTemplate =
 {{actionExamples}}
 (Action examples are for reference only. Do not use the information from them in your response.)
 
-# Relevant Context
-{{relevantContext}}
+# Relevant Past Conversations
+{{#each relevantMemories}}
+Time: {{this.createdAt}}
+User: {{this.userId}}
+Content: {{this.content.text}}
+Relevance: {{this.similarity}}
+---
+{{/each}}
 
 # Knowledge
 {{knowledge}}
@@ -500,7 +506,6 @@ export class MessageManager {
                 roomId,
                 content,
                 createdAt: message.date * 1000,
-                embedding: getEmbeddingZeroVector(),
             };
 
             // Create memory
@@ -536,7 +541,7 @@ export class MessageManager {
                             ?.messageHandlerTemplate ||
                         telegramMessageHandlerTemplate,
                 });
-
+                //console.log("context for response:", context);
                 const responseContent = await this._generateResponse(
                     memory,
                     state,
@@ -552,7 +557,7 @@ export class MessageManager {
                         content.text,
                         message.message_id
                     );
-                    console.log("content CALLBACK", content);
+
                     if (
                         content.attachments &&
                         Array.isArray(content.attachments) &&
@@ -564,7 +569,7 @@ export class MessageManager {
                         );
                         for (const attachment of content.attachments) {
                             const contentType = attachment.source || "text";
-                            console.log("contentType", contentType);
+
                             await this.sendWithRetry(ctx, {
                                 chat_id: ctx.chat.id,
                                 [contentType]:

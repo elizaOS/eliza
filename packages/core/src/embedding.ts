@@ -18,35 +18,35 @@ interface EmbeddingOptions {
 export const getEmbeddingConfig = () => ({
     dimensions:
         settings.USE_LLAMACLOUD_EMBEDDING?.toLowerCase() === "true"
-            ? 768 // LocalLLama
+            ? 768 // LlamaCloud
             : settings.USE_OPENAI_EMBEDDING?.toLowerCase() === "true"
-            ? 1536 // OpenAI
-            : settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true"
-              ? 1024 // Ollama mxbai-embed-large
-              :settings.USE_GAIANET_EMBEDDING?.toLowerCase() === "true"
-                ? 768 // GaiaNet
-                : 384, // BGE
+              ? 1536 // OpenAI
+              : settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true"
+                ? 1024 // Ollama mxbai-embed-large
+                : settings.USE_GAIANET_EMBEDDING?.toLowerCase() === "true"
+                  ? 768 // GaiaNet
+                  : 384, // BGE
 
     model:
         settings.USE_LLAMACLOUD_EMBEDDING?.toLowerCase() === "true"
             ? "togethercomputer/m2-bert-80M-32k-retrieval"
             : settings.USE_OPENAI_EMBEDDING?.toLowerCase() === "true"
-            ? "text-embedding-3-small"
-            : settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true"
-              ? settings.OLLAMA_EMBEDDING_MODEL || "mxbai-embed-large"
-              : settings.USE_GAIANET_EMBEDDING?.toLowerCase() === "true"
-                ? settings.GAIANET_EMBEDDING_MODEL || "nomic-embed"
-                : "BGE-small-en-v1.5",
+              ? "text-embedding-3-small"
+              : settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true"
+                ? settings.OLLAMA_EMBEDDING_MODEL || "mxbai-embed-large"
+                : settings.USE_GAIANET_EMBEDDING?.toLowerCase() === "true"
+                  ? settings.GAIANET_EMBEDDING_MODEL || "nomic-embed"
+                  : "BGE-small-en-v1.5",
     provider:
         settings.USE_LLAMACLOUD_EMBEDDING?.toLowerCase() === "true"
             ? "LlamaCloud"
             : settings.USE_OPENAI_EMBEDDING?.toLowerCase() === "true"
-            ? "OpenAI"
-            : settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true"
-              ? "Ollama"
-              : settings.USE_GAIANET_EMBEDDING?.toLowerCase() === "true"
-                ? "GaiaNet"
-                : "BGE",
+              ? "OpenAI"
+              : settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true"
+                ? "Ollama"
+                : settings.USE_GAIANET_EMBEDDING?.toLowerCase() === "true"
+                  ? "GaiaNet"
+                  : "BGE",
 });
 
 async function getRemoteEmbedding(
@@ -211,7 +211,7 @@ export async function embed(runtime: IAgentRuntime, input: string) {
         });
     }
 
-    if (config.provider=="GaiaNet") {
+    if (config.provider == "GaiaNet") {
         return await getRemoteEmbedding(input, {
             model: config.model,
             endpoint:
@@ -272,9 +272,11 @@ export async function embed(runtime: IAgentRuntime, input: string) {
                         return await import("fastembed");
                     } catch {
                         elizaLogger.error("Failed to load fastembed.");
-                        throw new Error("fastembed import failed, falling back to remote embedding");
+                        throw new Error(
+                            "fastembed import failed, falling back to remote embedding"
+                        );
                     }
-                })()
+                })(),
             ]);
 
             const [fs, { fileURLToPath }, fastEmbed] = moduleImports;
@@ -406,15 +408,104 @@ export async function embed(runtime: IAgentRuntime, input: string) {
     }
 }
 
-export async function getRelevantContext(runtime: IAgentRuntime, message: string, tableName: string): Promise<Memory[]> {
-    const embedding = await embed(runtime, message);
-    const similarMemories = await runtime.databaseAdapter.searchMemoriesByEmbedding(
-        embedding,
-        {
-            match_threshold: 0.8,
-            count: 5,
-            tableName: tableName
+function chunkText(text: string, maxLength = 768): string[] {
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    const chunks: string[] = [];
+    let currentChunk = "";
+
+    for (const sentence of sentences) {
+        if ((currentChunk + sentence).length <= maxLength) {
+            currentChunk += sentence;
+        } else {
+            if (currentChunk) chunks.push(currentChunk.trim());
+            currentChunk = sentence;
         }
+    }
+
+    if (currentChunk) chunks.push(currentChunk.trim());
+    return chunks;
+}
+
+export async function getRelevantContext(
+    runtime: IAgentRuntime,
+    message: string,
+    tableName: string
+): Promise<Memory[]> {
+    // 1. Chunk the input if needed
+    const chunks = chunkText(message);
+
+    // 2. Get embeddings for each chunk
+    const embeddings = await Promise.all(
+        chunks.map((chunk) => embed(runtime, chunk))
     );
-    return similarMemories;
+    elizaLogger.info("Embeddings RAG:", embeddings);
+
+    // 3. Search with dynamic parameters - use adaptive threshold
+    const initialThreshold = parseFloat(runtime.getSetting("RAG_MATCH_THRESHOLD")) || 0.7;
+    let currentThreshold = initialThreshold;
+    let memories = [];
+
+    // Try progressively lower thresholds until we find some results
+    while (currentThreshold >= 0.3 && memories.flat().length === 0) {
+        memories = await Promise.all(
+            embeddings.map((embedding) =>
+                runtime.databaseAdapter.searchMemoriesByEmbedding(embedding, {
+                    match_threshold: currentThreshold,
+                    count: 10,
+                    tableName: tableName,
+                })
+            )
+        );
+        currentThreshold -= 0.1; // Gradually lower threshold
+    }
+
+    elizaLogger.info("RAG Memories found with threshold:", currentThreshold + 0.1);
+    elizaLogger.info("RAG Memories count:", memories.flat().length);
+
+    // 4. Post-process results (only if we found any)
+    if (memories.flat().length === 0) {
+        elizaLogger.info("No relevant memories found - system is still building history");
+        return [];
+    }
+
+    const processedMemories = memories
+        .flat()
+        // Remove duplicates
+        .filter((m, i, arr) => arr.findIndex((m2) => m2.id === m.id) === i)
+        // Apply time decay
+        .map((memory) => ({
+            ...memory,
+            score: memory.similarity * calculateTimeDecay(memory.createdAt),
+        }))
+        // Sort by adjusted score
+        .sort((a, b) => b.score - a.score)
+        // Take top N diverse results (use smaller N if we have few results)
+        .filter(ensureDiversity)
+        .slice(0, Math.min(5, memories.flat().length));
+
+    return processedMemories;
+}
+
+function calculateTimeDecay(timestamp: number): number {
+    const hoursSince = (Date.now() - timestamp) / (1000 * 60 * 60);
+    return 1 / (1 + Math.log(1 + hoursSince));
+}
+
+function ensureDiversity(
+    memory: Memory,
+    index: number,
+    array: Memory[]
+): boolean {
+    // Skip diversity check for first item
+    if (index === 0) return true;
+
+    // Check if this memory is too similar to any previously selected memory
+    const previousMemories = array.slice(0, index);
+    return !previousMemories.some(
+        (prev) =>
+            // Adjust threshold as needed (0.95 = very similar)
+            memory.similarity > 0.95 &&
+            // Check if from same time period (e.g., within 1 hour)
+            Math.abs(memory.createdAt - prev.createdAt) < 3600000
+    );
 }

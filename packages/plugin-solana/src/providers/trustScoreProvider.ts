@@ -22,6 +22,7 @@ import { settings } from "@ai16z/eliza";
 import { IAgentRuntime, Memory, Provider, State } from "@ai16z/eliza";
 import { v4 as uuidv4 } from "uuid";
 
+
 const Wallet = settings.MAIN_WALLET_ADDRESS;
 interface TradeData {
     buy_amount: number;
@@ -702,9 +703,10 @@ export const trustScoreProvider: Provider = {
         _state?: State
     ): Promise<string> {
         try {
-            const trustScoreDb = new TrustScoreDatabase(
-                runtime.databaseAdapter.db
-            );
+            const module = await import("better-sqlite3");
+            const Database = module.default;
+            const db = new Database(":memory:");
+            const trustScoreDb = new TrustScoreDatabase(db);
 
             // Get the user ID from the message
             const userId = message.userId;
