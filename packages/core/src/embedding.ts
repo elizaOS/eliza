@@ -1,6 +1,6 @@
 import path from "node:path";
 import { models } from "./models.ts";
-import { IAgentRuntime, ModelProviderName } from "./types.ts";
+import { IAgentRuntime, Memory, ModelProviderName } from "./types.ts";
 import settings from "./settings.ts";
 import elizaLogger from "./logger.ts";
 
@@ -404,4 +404,17 @@ export async function embed(runtime: IAgentRuntime, input: string) {
         }
         return null;
     }
+}
+
+export async function getRelevantContext(runtime: IAgentRuntime, message: string, tableName: string): Promise<Memory[]> {
+    const embedding = await embed(runtime, message);
+    const similarMemories = await runtime.databaseAdapter.searchMemoriesByEmbedding(
+        embedding,
+        {
+            match_threshold: 0.8,
+            count: 5,
+            tableName: tableName
+        }
+    );
+    return similarMemories;
 }

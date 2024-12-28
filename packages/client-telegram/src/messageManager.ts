@@ -2,7 +2,7 @@ import { Message } from "@telegraf/types";
 import { Context, Telegraf } from "telegraf";
 
 import { composeContext, elizaLogger, ServiceType } from "@ai16z/eliza";
-import { getEmbeddingZeroVector } from "@ai16z/eliza";
+import { getEmbeddingZeroVector, getRelevantContext } from "@ai16z/eliza";
 import {
     Content,
     HandlerCallback,
@@ -100,6 +100,9 @@ const telegramMessageHandlerTemplate =
     `# Action Examples
 {{actionExamples}}
 (Action examples are for reference only. Do not use the information from them in your response.)
+
+# Relevant Context
+{{relevantContext}}
 
 # Knowledge
 {{knowledge}}
@@ -501,10 +504,22 @@ export class MessageManager {
             };
 
             // Create memory
+            await this.runtime.messageManager.addEmbeddingToMemory(memory);
             await this.runtime.messageManager.createMemory(memory);
+            const relevantMemories = await getRelevantContext(this.runtime, content.text, "memories");
+
+            // Format relevant memories to extract important info
+            const formattedMemories = relevantMemories.map(memory => ({
+                content: memory.content,
+                createdAt: memory.createdAt,
+                userId: memory.userId,
+                similarity: memory.similarity
+            }));
 
             // Update state with the new memory
-            let state = await this.runtime.composeState(memory);
+            let state = await this.runtime.composeState(memory, {
+                relevantMemories: formattedMemories,
+            });
             state = await this.runtime.updateRecentMessageState(state);
 
             // Decide whether to respond
