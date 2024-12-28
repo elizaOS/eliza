@@ -6,6 +6,8 @@
     "types": "dist/index.d.ts",
     "dependencies": {
         "@ai16z/eliza": "workspace:*",
+        "@ai16z/plugin-solana": "workspace:*",
+        "@ai16z/plugin-trustdb": "workspace:*",
         "@types/body-parser": "1.19.5",
         "@types/cors": "2.8.17",
         "@types/express": "5.0.0",

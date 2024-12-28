@@ -605,13 +605,14 @@ export type Plugin = {
  */
 export enum Clients {
     DISCORD = "discord",
-// you can't specify this in characters
-// all characters are registered with this
-//    DIRECT = "direct",
+    // you can't specify this in characters
+    // all characters are registered with this
+    //    DIRECT = "direct",
     TWITTER = "twitter",
     TELEGRAM = "telegram",
     FARCASTER = "farcaster",
     WORDPRESS = "wordpress",
+    AUTO = "auto",
 }
 /**
  * Configuration for an agent character
@@ -995,6 +996,7 @@ export interface IAgentRuntime {
     agentId: UUID;
     serverUrl: string;
     databaseAdapter: IDatabaseAdapter;
+    trustScoreDb: IDatabaseAdapter;
     token: string | null;
     modelProvider: ModelProviderName;
     imageModelProvider: ModelProviderName;
@@ -1141,12 +1143,16 @@ export interface IPdfService extends Service {
 }
 
 export interface IAwsS3Service extends Service {
-    uploadFile(imagePath: string, useSignedUrl: boolean, expiresIn: number ): Promise<{
+    uploadFile(
+        imagePath: string,
+        useSignedUrl: boolean,
+        expiresIn: number
+    ): Promise<{
         success: boolean;
         url?: string;
         error?: string;
     }>;
-    generateSignedUrl(fileName: string, expiresIn: number): Promise<string>
+    generateSignedUrl(fileName: string, expiresIn: number): Promise<string>;
 }
 
 export type SearchResult = {

@@ -1,7 +1,7 @@
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { DeriveKeyProvider, TEEMode } from "@ai16z/plugin-tee";
 import bs58 from "bs58";
-import { IAgentRuntime } from "@ai16z/eliza";
+import { elizaLogger, IAgentRuntime } from "@ai16z/eliza";
 
 export interface KeypairResult {
     keypair?: Keypair;
@@ -18,6 +18,10 @@ export async function getWalletKey(
     runtime: IAgentRuntime,
     requirePrivateKey: boolean = true
 ): Promise<KeypairResult> {
+    if (!runtime) {
+        throw new Error("Runtime is required but was not provided");
+    }
+
     const teeMode = runtime.getSetting("TEE_MODE") || TEEMode.OFF;
 
     if (teeMode !== TEEMode.OFF) {

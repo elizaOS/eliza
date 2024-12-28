@@ -37,6 +37,10 @@ export class SimulationSellingService {
     private runningProcesses: Set<string> = new Set();
 
     constructor(runtime: IAgentRuntime, trustScoreDb: TrustScoreDatabase) {
+        if (!runtime) {
+            throw new Error("Runtime is required but was not provided");
+        }
+        this.runtime = runtime;
         this.trustScoreDb = trustScoreDb;
 
         this.connection = new Connection(runtime.getSetting("RPC_URL"));
@@ -47,10 +51,9 @@ export class SimulationSellingService {
         );
         this.backend = runtime.getSetting("BACKEND_URL");
         this.backendToken = runtime.getSetting("BACKEND_TOKEN");
-        this.initializeRabbitMQ(runtime.getSetting("AMQP_URL"));
-        this.sonarBe = runtime.getSetting("SONAR_BE");
-        this.sonarBeToken = runtime.getSetting("SONAR_BE_TOKEN");
-        this.runtime = runtime;
+        // this.initializeRabbitMQ(runtime.getSetting("AMQP_URL"));
+        // this.sonarBe = runtime.getSetting("SONAR_BE");
+        // this.sonarBeToken = runtime.getSetting("SONAR_BE_TOKEN");
     }
     /**
      * Initializes the RabbitMQ connection and starts consuming messages.

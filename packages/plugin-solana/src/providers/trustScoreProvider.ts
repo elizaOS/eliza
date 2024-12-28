@@ -703,10 +703,9 @@ export const trustScoreProvider: Provider = {
         _state?: State
     ): Promise<string> {
         try {
-            const module = await import("better-sqlite3");
-            const Database = module.default;
-            const db = new Database(":memory:");
-            const trustScoreDb = new TrustScoreDatabase(db);
+            const trustScoreDb = new TrustScoreDatabase(
+                runtime.trustScoreDb.db
+            );
 
             // Get the user ID from the message
             const userId = message.userId;

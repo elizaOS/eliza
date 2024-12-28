@@ -220,7 +220,6 @@ const prediction: Action = {
         try {
             const input = parseInput(message.content.text);
             if (!input) {
-                callback({ text: "Invalid input format..." });
                 return;
             }
 

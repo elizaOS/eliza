@@ -322,8 +322,16 @@ function initializeDatabase(dataDir: string) {
             process.env.SQLITE_FILE ?? path.resolve(dataDir, "db.sqlite");
         // ":memory:";
         const db = new SqliteDatabaseAdapter(new Database(filePath));
+        db.trustScoreDb = initializeTrustScoreDatabase(dataDir);
         return db;
     }
+}
+
+function initializeTrustScoreDatabase(dataDir: string) {
+    const filePath =
+        process.env.SQLITE_FILE ?? path.resolve(dataDir, "trustdb.sqlite");
+    const trustScoreDb = new SqliteDatabaseAdapter(new Database(filePath));
+    return trustScoreDb;
 }
 
 // also adds plugins from character file into the runtime
@@ -334,9 +342,9 @@ export async function initializeClients(
     // each client can only register once
     // and if we want two we can explicitly support it
     const clients: Record<string, any> = {};
-    const clientTypes:string[] =
+    const clientTypes: string[] =
         character.clients?.map((str) => str.toLowerCase()) || [];
-    elizaLogger.log('initializeClients', clientTypes, 'for', character.name)
+    elizaLogger.log("initializeClients", clientTypes, "for", character.name);
 
     if (clientTypes.includes("auto")) {
         const autoClient = await AutoClientInterface.start(runtime);
@@ -354,7 +362,9 @@ export async function initializeClients(
     }
 
     if (clientTypes.includes("twitter")) {
-        TwitterClientInterface.enableSearch = !isFalsish(getSecret(character, "TWITTER_SEARCH_ENABLE"));
+        TwitterClientInterface.enableSearch = !isFalsish(
+            getSecret(character, "TWITTER_SEARCH_ENABLE")
+        );
         const twitterClient = await TwitterClientInterface.start(runtime);
         if (twitterClient) clients.twitter = twitterClient;
     }
@@ -368,12 +378,12 @@ export async function initializeClients(
         // why is this one different :(
         const farcasterClient = new FarcasterAgentClient(runtime);
         if (farcasterClient) {
-          farcasterClient.start();
-          clients.farcaster = farcasterClient;
+            farcasterClient.start();
+            clients.farcaster = farcasterClient;
         }
     }
 
-    elizaLogger.log('client keys', Object.keys(clients));
+    elizaLogger.log("client keys", Object.keys(clients));
 
     if (character.plugins?.length > 0) {
         for (const plugin of character.plugins) {
@@ -396,10 +406,19 @@ function isFalsish(input: any): boolean {
     }
 
     // Convert input to a string if it's not null or undefined
-    const value = input == null ? '' : String(input);
+    const value = input == null ? "" : String(input);
 
     // List of common falsish string representations
-    const falsishValues = ['false', '0', 'no', 'n', 'off', 'null', 'undefined', ''];
+    const falsishValues = [
+        "false",
+        "0",
+        "no",
+        "n",
+        "off",
+        "null",
+        "undefined",
+        "",
+    ];
 
     // Check if the value (trimmed and lowercased) is in the falsish list
     return falsishValues.includes(value.trim().toLowerCase());
@@ -415,8 +434,9 @@ export async function createAgent(
     character: Character,
     db: IDatabaseAdapter,
     cache: ICacheManager,
-    token: string
-):AgentRuntime {
+    token: string,
+    trustScoreDb: IDatabaseAdapter
+): Promise<AgentRuntime> {
     elizaLogger.success(
         elizaLogger.successesTitle,
         "Creating runtime for character",
@@ -445,6 +465,7 @@ export async function createAgent(
 
     return new AgentRuntime({
         databaseAdapter: db,
+        trustScoreDb: trustScoreDb,
         token,
         modelProvider: character.modelProvider,
         evaluators: [],
@@ -498,12 +519,8 @@ export async function createAgent(
                 ? flowPlugin
                 : null,
             getSecret(character, "APTOS_PRIVATE_KEY") ? aptosPlugin : null,
-            getSecret(character, "LUMA_API_KEY")
-                ? videoGenerationPlugin
-                : null,
-            getSecret(character, "BIRDEYE_API_KEY")
-                ? predictionPlugin
-                : null,
+            getSecret(character, "LUMA_API_KEY") ? videoGenerationPlugin : null,
+            getSecret(character, "BIRDEYE_API_KEY") ? predictionPlugin : null,
         ].filter(Boolean),
         providers: [],
         actions: [],
@@ -526,8 +543,12 @@ function initializeDbCache(character: Character, db: IDatabaseCacheAdapter) {
     return cache;
 }
 
-async function startAgent(character: Character, directClient):AgentRuntime {
+async function startAgent(
+    character: Character,
+    directClient
+): Promise<AgentRuntime> {
     let db: IDatabaseAdapter & IDatabaseCacheAdapter;
+    let trustScoreDb: IDatabaseAdapter;
     try {
         character.id ??= stringToUuid(character.name);
         character.username ??= character.name;
@@ -541,11 +562,21 @@ async function startAgent(character: Character, directClient):AgentRuntime {
 
         db = initializeDatabase(dataDir) as IDatabaseAdapter &
             IDatabaseCacheAdapter;
+        trustScoreDb = initializeTrustScoreDatabase(
+            dataDir
+        ) as IDatabaseAdapter;
 
         await db.init();
+        await trustScoreDb.init();
 
         const cache = initializeDbCache(character, db);
-        const runtime:AgentRuntime = await createAgent(character, db, cache, token);
+        const runtime: AgentRuntime = await createAgent(
+            character,
+            db,
+            cache,
+            token,
+            trustScoreDb
+        );
 
         // start services/plugins/process knowledge
         await runtime.initialize();
@@ -557,7 +588,7 @@ async function startAgent(character: Character, directClient):AgentRuntime {
         directClient.registerAgent(runtime);
 
         // report to console
-        elizaLogger.debug(`Started ${character.name} as ${runtime.agentId}`)
+        elizaLogger.debug(`Started ${character.name} as ${runtime.agentId}`);
 
         return runtime;
     } catch (error) {
@@ -568,6 +599,9 @@ async function startAgent(character: Character, directClient):AgentRuntime {
         console.error(error);
         if (db) {
             await db.close();
+        }
+        if (trustScoreDb) {
+            await trustScoreDb.close();
         }
         throw error;
     }

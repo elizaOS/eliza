@@ -72,6 +72,11 @@ export class AgentRuntime implements IAgentRuntime {
     databaseAdapter: IDatabaseAdapter;
 
     /**
+     * The trust score database adapter used for interacting with the trust score database.
+     */
+    trustScoreDb: IDatabaseAdapter;
+
+    /**
      * Authentication token used for securing requests.
      */
     token: string | null;
@@ -221,6 +226,7 @@ export class AgentRuntime implements IAgentRuntime {
         services?: Service[]; // Map of service name to service instance
         managers?: IMemoryManager[]; // Map of table name to memory manager
         databaseAdapter: IDatabaseAdapter; // The database adapter used for interacting with the database
+        trustScoreDb: IDatabaseAdapter; // The trust score database adapter used for interacting with the trust score database
         fetch?: typeof fetch | unknown;
         speechModelPath?: string;
         cacheManager: ICacheManager;
@@ -257,6 +263,11 @@ export class AgentRuntime implements IAgentRuntime {
         this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
         if (!opts.databaseAdapter) {
             throw new Error("No database adapter provided");
+        }
+
+        this.trustScoreDb = opts.trustScoreDb;
+        if (!this.trustScoreDb) {
+            throw new Error("No trust score database adapter provided");
         }
 
         this.cacheManager = opts.cacheManager;
