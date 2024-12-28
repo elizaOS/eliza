@@ -18,6 +18,7 @@
     "author": "",
     "license": "MIT",
     "devDependencies": {
+        "@ai16z/plugin-echochambers": "workspace:*",
         "@eslint/js": "9.16.0",
         "@rollup/plugin-commonjs": "25.0.8",
         "@rollup/plugin-json": "6.1.0",

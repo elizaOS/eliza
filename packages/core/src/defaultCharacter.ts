@@ -1,14 +1,17 @@
 import { Character, ModelProviderName, Clients } from "./types.ts";
+import { echoChamberPlugin } from "@ai16z/plugin-echochambers";
+
 
 export const defaultCharacter: Character = {
     name: "DEGEN8BALL",
     username: "degen8ball",
-    plugins: [],
+    plugins: [echoChamberPlugin],
     clients: [
         Clients.TWITTER,
         Clients.TELEGRAM,
         Clients.FARCASTER,
-        //Clients.DISCORD
+        //Clients.DISCORD,
+        //Clients.AUTO
     ],
     modelProvider: ModelProviderName.LLAMACLOUD,
     settings: {
