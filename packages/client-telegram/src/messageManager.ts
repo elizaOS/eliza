@@ -76,6 +76,7 @@ Response options are [RESPOND], [IGNORE] and [STOP].
 Respond with [RESPOND] to messages that are directed at {{agentName}}, or participate in conversations that are interesting or relevant to their background.
 If a message is not interesting, relevant, or does not directly address {{agentName}}, respond with [IGNORE]
 
+Respond with [IGNORE] to messages that are not directed at {{agentName}}.
 Also, respond with [IGNORE] to messages that are very short or do not contain much information.
 
 If a user asks {{agentName}} to be quiet, respond with [STOP]
