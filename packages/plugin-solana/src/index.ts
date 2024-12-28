@@ -22,7 +22,6 @@ export const solanaPlugin: Plugin = {
     description: "Solana Plugin for Eliza",
     actions: [
         executeSwap,
-        pumpfun,
         transferToken,
         executeSwapForDAO,
         take_order,
