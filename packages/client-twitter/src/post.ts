@@ -2,12 +2,12 @@ import { Tweet } from "agent-twitter-client";
 import {
     composeContext,
     generateText,
-    getEmbeddingZeroVector,
     IAgentRuntime,
     ModelClass,
     stringToUuid,
     parseBooleanFromText,
     ModelProviderName,
+    Memory,
 } from "@ai16z/eliza";
 import { elizaLogger } from "@ai16z/eliza";
 import { ClientBase } from "./base.ts";
@@ -379,8 +379,7 @@ export class TwitterPostClient {
                     this.runtime.agentId,
                     roomId
                 );
-
-                await this.runtime.messageManager.createMemory({
+                const memory = {
                     id: stringToUuid(tweet.id + "-" + this.runtime.agentId),
                     userId: this.runtime.agentId,
                     agentId: this.runtime.agentId,
@@ -390,9 +389,10 @@ export class TwitterPostClient {
                         source: "twitter",
                     },
                     roomId,
-                    embedding: getEmbeddingZeroVector(),
                     createdAt: tweet.timestamp,
-                });
+                } as Memory;
+                await this.runtime.messageManager.addEmbeddingToMemory(memory);
+                await this.runtime.messageManager.createMemory(memory);
             } catch (error) {
                 elizaLogger.error("Error sending tweet:", error);
             }
@@ -743,7 +743,7 @@ export class TwitterPostClient {
                     );
 
                     // Then create the memory
-                    await this.runtime.messageManager.createMemory({
+                    const newMemory = {
                         id: stringToUuid(tweet.id + "-" + this.runtime.agentId),
                         userId: stringToUuid(tweet.userId),
                         content: {
@@ -754,9 +754,10 @@ export class TwitterPostClient {
                         },
                         agentId: this.runtime.agentId,
                         roomId,
-                        embedding: getEmbeddingZeroVector(),
                         createdAt: tweet.timestamp * 1000,
-                    });
+                    } as Memory;
+                    await this.runtime.messageManager.addEmbeddingToMemory(newMemory);
+                    await this.runtime.messageManager.createMemory(newMemory);
 
                     results.push({
                         tweetId: tweet.id,
@@ -1110,8 +1111,7 @@ export class TwitterPostClient {
                     this.runtime.agentId,
                     roomId
                 );
-
-                await this.runtime.messageManager.createMemory({
+                const memory = {
                     id: stringToUuid(tweet.id + "-" + this.runtime.agentId),
                     userId: this.runtime.agentId,
                     agentId: this.runtime.agentId,
@@ -1121,9 +1121,10 @@ export class TwitterPostClient {
                         source: "twitter",
                     },
                     roomId,
-                    embedding: getEmbeddingZeroVector(),
                     createdAt: tweet.timestamp,
-                });
+                } as Memory;
+                await this.runtime.messageManager.addEmbeddingToMemory(memory);
+                await this.runtime.messageManager.createMemory(memory);
             } catch (error) {
                 elizaLogger.error("Error sending tweet:", error);
             }

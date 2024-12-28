@@ -1,6 +1,6 @@
 import { SearchMode } from "agent-twitter-client";
 import fs from "fs";
-import { composeContext } from "@ai16z/eliza";
+import { composeContext, Memory } from "@ai16z/eliza";
 import { generateMessageResponse, generateText } from "@ai16z/eliza";
 import { messageCompletionFooter } from "@ai16z/eliza";
 import {
@@ -334,6 +334,19 @@ Notes:
             } catch (error) {
                 console.error(`Error sending response post: ${error}`);
             }
+
+            const memory = {
+                id: stringToUuid(selectedTweet.id + "-" + this.runtime.agentId),
+                userId: this.runtime.agentId,
+                agentId: this.runtime.agentId,
+                content: {
+                    text: response.text,
+                    url: response.url,
+                    source: "twitter",
+                },
+            } as Memory;
+            await this.runtime.messageManager.addEmbeddingToMemory(memory);
+            await this.runtime.messageManager.createMemory(memory);
         } catch (error) {
             elizaLogger.error("Error in viral tweets loop:", error);
         } finally {

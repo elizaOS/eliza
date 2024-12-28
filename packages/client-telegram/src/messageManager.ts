@@ -604,7 +604,6 @@ export class MessageManager {
                                 inReplyTo: messageId,
                             },
                             createdAt: sentMessage.date * 1000,
-                            embedding: getEmbeddingZeroVector(),
                         };
 
                         // Set action to CONTINUE for all messages except the last one
@@ -613,6 +612,7 @@ export class MessageManager {
                             ? "CONTINUE"
                             : content.action;
 
+                        await this.runtime.messageManager.addEmbeddingToMemory(memory);
                         await this.runtime.messageManager.createMemory(memory);
                         memories.push(memory);
                     }
