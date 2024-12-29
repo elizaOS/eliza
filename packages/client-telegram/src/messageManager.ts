@@ -541,6 +541,7 @@ export class MessageManager {
                         this.runtime.character?.templates
                             ?.messageHandlerTemplate ||
                         telegramMessageHandlerTemplate,
+                    templatingEngine: "handlebars",
                 });
                 //console.log("context for response:", context);
                 const responseContent = await this._generateResponse(

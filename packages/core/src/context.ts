@@ -1,3 +1,4 @@
+import handlebars from "handlebars";
 import { type State } from "./types.ts";
 
 /**
@@ -7,9 +8,12 @@ import { type State } from "./types.ts";
  * It replaces each placeholder with the value from the state object that matches the placeholder's name.
  * If a matching key is not found in the state object for a given placeholder, the placeholder is replaced with an empty string.
  *
+ * By default, this function uses a simple string replacement approach. However, when `templatingEngine` is set to `'handlebars'`, it uses Handlebars templating engine instead, compiling the template into a reusable function and evaluating it with the provided state object.
+ *
  * @param {Object} params - The parameters for composing the context.
  * @param {State} params.state - The state object containing values to replace the placeholders in the template.
  * @param {string} params.template - The template string containing placeholders to be replaced with state values.
+ * @param {"handlebars" | undefined} [params.templatingEngine] - The templating engine to use for compiling and evaluating the template (optional, default: `undefined`).
  * @returns {string} The composed context string with placeholders replaced by corresponding state values.
  *
  * @example
@@ -17,17 +21,24 @@ import { type State } from "./types.ts";
  * const state = { userName: "Alice", userAge: 30 };
  * const template = "Hello, {{userName}}! You are {{userAge}} years old";
  *
- * // Composing the context will result in:
+ * // Composing the context with simple string replacement will result in:
  * // "Hello, Alice! You are 30 years old."
- * const context = composeContext({ state, template });
+ * const contextSimple = composeContext({ state, template });
  */
 export const composeContext = ({
     state,
     template,
+    templatingEngine,
 }: {
     state: State;
     template: string;
+    templatingEngine?: "handlebars";
 }) => {
+    if (templatingEngine === "handlebars") {
+        const templateFunction = handlebars.compile(template);
+        return templateFunction(state);
+    }
+
     // @ts-expect-error match isn't working as expected
     const out = template.replace(/{{\w+}}/g, (match) => {
         const key = match.replace(/{{|}}/g, "");
