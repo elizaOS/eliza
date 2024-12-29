@@ -25,6 +25,7 @@ import {
     stringToUuid,
     validateCharacterConfig,
 } from "@ai16z/eliza";
+import { echoChamberPlugin } from "@ai16z/plugin-echochambers";
 import { zgPlugin } from "@ai16z/plugin-0g";
 import createGoatPlugin from "@ai16z/plugin-goat";
 import { bootstrapPlugin } from "@ai16z/plugin-bootstrap";
@@ -471,6 +472,7 @@ export async function createAgent(
         character,
         // character.plugins are handled when clients are added
         plugins: [
+            echoChamberPlugin,
             bootstrapPlugin,
             getSecret(character, "CONFLUX_CORE_PRIVATE_KEY")
                 ? confluxPlugin
