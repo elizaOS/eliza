@@ -23,8 +23,8 @@ import { v4 as uuidv4 } from "uuid";
 export class AutoClient {
     interval: NodeJS.Timeout;
     runtime: IAgentRuntime;
-    trustScoreProvider: TrustScoreManager;
-    walletProvider: WalletProvider;
+    trustScoreProvider: InstanceType<typeof TrustScoreManager>;
+    walletProvider: InstanceType<typeof WalletProvider>;
 
     constructor(runtime: IAgentRuntime) {
         this.runtime = runtime;

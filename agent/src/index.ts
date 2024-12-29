@@ -1,6 +1,6 @@
 import { PostgresDatabaseAdapter } from "@ai16z/adapter-postgres";
 import { SqliteDatabaseAdapter } from "@ai16z/adapter-sqlite";
-import { AutoClientInterface } from "@ai16z/client-auto";
+//import { AutoClientInterface } from "@ai16z/client-auto";
 import { DirectClientInterface } from "@ai16z/client-direct";
 import { DiscordClientInterface } from "@ai16z/client-discord";
 import { TelegramClientInterface } from "@ai16z/client-telegram";
@@ -346,10 +346,10 @@ export async function initializeClients(
         character.clients?.map((str) => str.toLowerCase()) || [];
     elizaLogger.log("initializeClients", clientTypes, "for", character.name);
 
-    if (clientTypes.includes("auto")) {
-        const autoClient = await AutoClientInterface.start(runtime);
-        if (autoClient) clients.auto = autoClient;
-    }
+    //if (clientTypes.includes("auto")) {
+    //    const autoClient = await AutoClientInterface.start(runtime);
+    //    if (autoClient) clients.auto = autoClient;
+    //}
 
     if (clientTypes.includes("discord")) {
         const discordClient = await DiscordClientInterface.start(runtime);
