@@ -122,7 +122,7 @@ export class AutoClient {
         await this.runtime.messageManager.createMemory(memory);
         const relevantMemories = await getRelevantContext(
             this.runtime,
-            content.text,
+            memory,
             "memories"
         );
 

@@ -442,7 +442,18 @@ export class PostgresDatabaseAdapter
     }
 
     async getMemoryById(id: UUID): Promise<Memory | null> {
+        elizaLogger.debug("getMemoryById called with:", {
+            id,
+            type: typeof id,
+            trace: new Error().stack
+        });
+
         return this.withDatabase(async () => {
+            if (typeof id !== 'string' || !id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+                elizaLogger.error("Invalid UUID format:", { id });
+                return null;
+            }
+
             const { rows } = await this.pool.query(
                 "SELECT * FROM memories WHERE id = $1",
                 [id]
@@ -1066,105 +1077,84 @@ export class PostgresDatabaseAdapter
         }, "log");
     }
 
-    async searchMemoriesByEmbedding(
-        embedding: number[],
-        params: {
-            match_threshold?: number;
-            count?: number;
-            agentId?: UUID;
-            roomId?: UUID;
-            unique?: boolean;
-            tableName: string;
-        }
-    ): Promise<Memory[]> {
+    async searchMemoriesByEmbedding(embedding: number[], params: {
+        match_threshold?: number;
+        count?: number;
+        agentId?: UUID;
+        roomId?: UUID;
+        unique?: boolean;
+        tableName: string;
+    }): Promise<Memory[]> {
         return this.withDatabase(async () => {
-            elizaLogger.debug("Incoming vector:", {
-                length: embedding.length,
-                sample: embedding.slice(0, 5),
-                isArray: Array.isArray(embedding),
-                allNumbers: embedding.every((n) => typeof n === "number"),
+            // Use the requested table type instead of forcing 'messages'
+            const searchType = params.tableName;
+
+            elizaLogger.debug("Searching memories in:", {
+                tableName: searchType,
+                count: params.count,
+                threshold: params.match_threshold
             });
 
-            // Validate embedding dimension
-            if (embedding.length !== getEmbeddingConfig().dimensions) {
-                throw new Error(
-                    `Invalid embedding dimension: expected ${getEmbeddingConfig().dimensions}, got ${embedding.length}`
-                );
-            }
-
-            // Ensure vector is properly formatted
-            const cleanVector = embedding.map((n) => {
-                if (!Number.isFinite(n)) return 0;
-                // Limit precision to avoid floating point issues
-                return Number(n.toFixed(6));
-            });
-
-            // Format for Postgres pgvector
-            const vectorStr = `[${cleanVector.join(",")}]`;
-
-            elizaLogger.debug("Vector debug:", {
-                originalLength: embedding.length,
-                cleanLength: cleanVector.length,
-                sampleStr: vectorStr.slice(0, 100),
-            });
-
-            let sql = `
-                SELECT *,
-                1 - (embedding <-> $1::vector(${getEmbeddingConfig().dimensions})) as similarity
-                FROM memories
-                WHERE type = $2
+            const sql = `
+                SELECT
+                    m.id,
+                    m."agentId",
+                    m."userId",
+                    m."roomId",
+                    m.content,
+                    m."createdAt",
+                    m.embedding,
+                    1 - (m.embedding <-> $1::vector(${embedding.length})) as similarity
+                FROM memories m
+                WHERE m.type = $2
+                AND m.embedding IS NOT NULL
+                AND m.id IS NOT NULL
+                AND m."agentId" IS NOT NULL
+                AND m."userId" IS NOT NULL
+                AND m."roomId" IS NOT NULL
+                ORDER BY m.embedding <-> $1::vector(${embedding.length})
+                LIMIT $3
             `;
 
-            const values: any[] = [vectorStr, params.tableName];
-
-            // Log the query for debugging
-            elizaLogger.debug("Query debug:", {
-                sql: sql.slice(0, 200),
-                paramTypes: values.map((v) => typeof v),
-                vectorStrLength: vectorStr.length,
-            });
-
-            let paramCount = 2;
-
-            if (params.unique) {
-                sql += ` AND "unique" = true`;
-            }
-
-            if (params.agentId) {
-                paramCount++;
-                sql += ` AND "agentId" = $${paramCount}`;
-                values.push(params.agentId);
-            }
-
-            if (params.roomId) {
-                paramCount++;
-                sql += ` AND "roomId" = $${paramCount}::uuid`;
-                values.push(params.roomId);
-            }
-
-            if (params.match_threshold) {
-                paramCount++;
-                sql += ` AND 1 - (embedding <-> $1::vector) >= $${paramCount}`;
-                values.push(params.match_threshold);
-            }
-
-            sql += ` ORDER BY embedding <-> $1::vector`;
-
-            if (params.count) {
-                paramCount++;
-                sql += ` LIMIT $${paramCount}`;
-                values.push(params.count);
-            }
+            const values = [
+                `[${embedding.join(',')}]`,
+                searchType,
+                params.count || 20
+            ];
 
             const { rows } = await this.pool.query(sql, values);
-            return rows.map((row) => ({
-                ...row,
-                content:
-                    typeof row.content === "string"
+
+            elizaLogger.debug("Raw search results:", {
+                found: rows.length,
+                type: searchType,
+                sample: rows.slice(0, 1).map(r => ({
+                    id: r.id,
+                    type: searchType,
+                    similarity: r.similarity
+                }))
+            });
+
+            return rows
+                .filter(row => {
+                    // Ensure all required UUIDs are present and valid
+                    return row.id && row.agentId && row.userId && row.roomId;
+                })
+                .map(row => {
+                    const parsedContent = typeof row.content === 'string'
                         ? JSON.parse(row.content)
-                        : row.content,
-                similarity: row.similarity,
-            }));
+                        : row.content;
+
+                    return {
+                        id: row.id,
+                        agentId: row.agentId,
+                        userId: row.userId,
+                        roomId: row.roomId,
+                        content: parsedContent,
+                        createdAt: row.createdAt,
+                        embedding: row.embedding,
+                        similarity: row.similarity
+                    };
+                });
         }, "searchMemoriesByEmbedding");
     }
 

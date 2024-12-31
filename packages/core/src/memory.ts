@@ -139,7 +139,7 @@ export class MemoryManager implements IMemoryManager {
         opts: {
             match_threshold?: number;
             count?: number;
-            roomId: UUID;
+            roomId?: UUID;
             unique?: boolean;
         }
     ): Promise<Memory[]> {
@@ -159,7 +159,7 @@ export class MemoryManager implements IMemoryManager {
             match_count: count,
             unique: !!unique,
         });
-        elizaLogger.info("RAG Memories Unfiltered:", result);
+        
         return result;
     }
 

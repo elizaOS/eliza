@@ -1,7 +1,7 @@
 import { Message } from "@telegraf/types";
 import { Context, Telegraf } from "telegraf";
 
-import { composeContext, elizaLogger, ServiceType } from "@ai16z/eliza";
+import { composeContext, elizaLogger, embed, ServiceType } from "@ai16z/eliza";
 import { getEmbeddingZeroVector, getRelevantContext } from "@ai16z/eliza";
 import {
     Content,
@@ -391,7 +391,7 @@ export class MessageManager {
         const response = await generateMessageResponse({
             runtime: this.runtime,
             context,
-            modelClass: ModelClass.LARGE,
+            modelClass: ModelClass.SMALL,
         });
 
         if (!response) {
@@ -509,10 +509,8 @@ export class MessageManager {
                 createdAt: message.date * 1000,
             };
 
-            // Create memory
-            await this.runtime.messageManager.addEmbeddingToMemory(memory);
-            await this.runtime.messageManager.createMemory(memory);
-            const relevantMemories = await getRelevantContext(this.runtime, content.text, "memories");
+
+            const relevantMemories = await getRelevantContext(this.runtime, memory, "memories");
 
             // Format relevant memories to extract important info
             const formattedMemories = relevantMemories.map(memory => ({
@@ -543,7 +541,7 @@ export class MessageManager {
                         telegramMessageHandlerTemplate,
                     templatingEngine: "handlebars",
                 });
-                //console.log("context for response:", context);
+                elizaLogger.debug("Context with relevant memories:", context);
                 const responseContent = await this._generateResponse(
                     memory,
                     state,

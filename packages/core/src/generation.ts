@@ -946,8 +946,11 @@ export async function generateMessageResponse({
                 modelClass,
             });
 
+            // clean up actions from the response
+            const cleanedResponse = cleanActionsFromResponse(response);
+
             // try parsing the response as JSON, if null then try again
-            const parsedContent = parseJSONObjectFromText(response) as Content;
+            const parsedContent = parseJSONObjectFromText(cleanedResponse) as Content;
             if (!parsedContent) {
                 elizaLogger.debug("parsedContent is null, retrying");
                 continue;
@@ -962,6 +965,12 @@ export async function generateMessageResponse({
             elizaLogger.debug("Retrying...");
         }
     }
+}
+
+export const cleanActionsFromResponse = (response: string): string => {
+    // Remove any text matching the pattern (UPPERCASE_TEXT)
+    const cleanedResponse = response.replace(/\s*\([A-Z_]+\)\s*$/g, '');
+    return cleanedResponse;
 }
 
 export const generateImage = async (

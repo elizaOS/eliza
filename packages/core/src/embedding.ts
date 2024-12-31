@@ -408,80 +408,68 @@ export async function embed(runtime: IAgentRuntime, input: string) {
     }
 }
 
-function chunkText(text: string, maxLength = 768): string[] {
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-    const chunks: string[] = [];
-    let currentChunk = "";
-
-    for (const sentence of sentences) {
-        if ((currentChunk + sentence).length <= maxLength) {
-            currentChunk += sentence;
-        } else {
-            if (currentChunk) chunks.push(currentChunk.trim());
-            currentChunk = sentence;
-        }
-    }
-
-    if (currentChunk) chunks.push(currentChunk.trim());
-    return chunks;
-}
-
 export async function getRelevantContext(
     runtime: IAgentRuntime,
-    message: string,
+    memory: Memory,
     tableName: string
 ): Promise<Memory[]> {
-    // 1. Chunk the input if needed
-    const chunks = chunkText(message);
+    const embeddings = await embed(runtime, memory.content.text);
 
-    // 2. Get embeddings for each chunk
-    const embeddings = await Promise.all(
-        chunks.map((chunk) => embed(runtime, chunk))
-    );
-    elizaLogger.info("Embeddings RAG:", embeddings);
+    const memories = await runtime.databaseAdapter.searchMemories({
+        tableName: 'messages',
+        roomId: memory.roomId,
+        agentId: runtime.agentId,
+        embedding: embeddings,
+        match_threshold: 0.5,
+        match_count: 20,
+        unique: true,
+    });
 
-    // 3. Search with dynamic parameters - use adaptive threshold
-    const initialThreshold = parseFloat(runtime.getSetting("RAG_MATCH_THRESHOLD")) || 0.7;
-    let currentThreshold = initialThreshold;
-    let memories = [];
-
-    // Try progressively lower thresholds until we find some results
-    while (currentThreshold >= 0.3 && memories.flat().length === 0) {
-        memories = await Promise.all(
-            embeddings.map((embedding) =>
-                runtime.databaseAdapter.searchMemoriesByEmbedding(embedding, {
-                    match_threshold: currentThreshold,
-                    count: 10,
-                    tableName: tableName,
-                })
-            )
-        );
-        currentThreshold -= 0.1; // Gradually lower threshold
-    }
-
-    elizaLogger.info("RAG Memories found with threshold:", currentThreshold + 0.1);
-    elizaLogger.info("RAG Memories count:", memories.flat().length);
-
-    // 4. Post-process results (only if we found any)
-    if (memories.flat().length === 0) {
-        elizaLogger.info("No relevant memories found - system is still building history");
+    if (!memories.length) {
+        elizaLogger.info("No relevant memories found");
         return [];
     }
 
+    // Process and score the memories
     const processedMemories = memories
-        .flat()
-        // Remove duplicates
-        .filter((m, i, arr) => arr.findIndex((m2) => m2.id === m.id) === i)
-        // Apply time decay
-        .map((memory) => ({
-            ...memory,
-            score: memory.similarity * calculateTimeDecay(memory.createdAt),
-        }))
-        // Sort by adjusted score
+        .filter(memory => {
+            // Ensure we have valid memory structure and ignore source field
+            const isValid = memory &&
+                   memory.id &&
+                   memory.content &&
+                   typeof memory.content === 'object' &&
+                   'text' in memory.content;
+
+            if (!isValid) {
+                elizaLogger.warn("Invalid memory structure:", { memory });
+            }
+            return isValid;
+        })
+        .map((memory) => {
+            const { source, ...otherContent } = memory.content; // Explicitly remove source
+            return {
+                id: memory.id,
+                agentId: memory.agentId,
+                userId: memory.userId,
+                roomId: memory.roomId,
+                content: otherContent, // Use content without source
+                createdAt: memory.createdAt,
+                score: memory.similarity * calculateTimeDecay(memory.createdAt),
+                similarity: memory.similarity
+            };
+        })
         .sort((a, b) => b.score - a.score)
-        // Take top N diverse results (use smaller N if we have few results)
         .filter(ensureDiversity)
-        .slice(0, Math.min(5, memories.flat().length));
+        .slice(0, 5);
+
+    elizaLogger.debug("Processed memories:", {
+        finalCount: processedMemories.length,
+        sample: processedMemories.slice(0, 1).map((m) => ({
+            id: m.id,
+            text: m.content.text,
+            score: m.score,
+        })),
+    });
 
     return processedMemories;
 }

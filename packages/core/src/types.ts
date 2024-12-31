@@ -809,7 +809,7 @@ export interface IDatabaseAdapter {
     searchMemories(params: {
         tableName: string;
         agentId: UUID;
-        roomId: UUID;
+        roomId?: UUID;
         embedding: number[];
         match_threshold: number;
         match_count: number;
@@ -826,7 +826,7 @@ export interface IDatabaseAdapter {
         params: {
             match_threshold?: number;
             count?: number;
-            roomId?: UUID;
+            roomId: UUID;
             agentId?: UUID;
             unique?: boolean;
             tableName: string;
