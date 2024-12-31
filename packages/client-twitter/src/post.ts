@@ -998,8 +998,24 @@ export class TwitterPostClient {
                 modelProvider: ModelProviderName.ANTHROPIC,
             });
 
-            // If the response is a string, parse it into an object
-            const parsedResponse = JSON.parse(newMediaTweetContent);
+            // Clean the response before parsing
+            const cleanedContent = newMediaTweetContent
+                .replace(/```json\s*/g, '') // Remove ```json
+                .replace(/```\s*/g, '')     // Remove any remaining ```
+                .trim();
+
+            // Try parsing the cleaned content
+            let parsedResponse;
+            try {
+                parsedResponse = JSON.parse(cleanedContent);
+            } catch (error) {
+                elizaLogger.error("Failed to parse media tweet content:", {
+                    raw: newMediaTweetContent,
+                    cleaned: cleanedContent,
+                    error
+                });
+                throw error;
+            }
 
             // Access the properties
             const tweetText = parsedResponse.text
