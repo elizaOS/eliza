@@ -261,7 +261,7 @@ export async function generateText({
                 elizaLogger.debug("Initializing Anthropic model.");
 
                 const anthropic = createAnthropic({
-                    apiKey,
+                    apiKey: this.runtime.getSetting('ANTHROPIC_API_KEY'),
                     fetch: runtime.fetch,
                 });
 
