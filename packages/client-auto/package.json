@@ -16,6 +16,7 @@
         "multer": "1.4.5-lts.1"
     },
     "devDependencies": {
+        "@solana/web3.js": "1.95.8",
         "tsup": "8.3.5"
     },
     "scripts": {
