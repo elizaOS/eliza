@@ -24,8 +24,9 @@ COPY scripts ./scripts
 COPY characters ./characters
 
 # Install dependencies and build the project
-RUN pnpm install \
-    && pnpm build-docker \
+RUN pnpm install --frozen-lockfile \
+    && pnpm run build --filter=@ai16z/client-auto \
+    && pnpm run build \
     && pnpm prune --prod
 
 # Create a new stage for the final image
