@@ -25,6 +25,7 @@ COPY characters ./characters
 
 # Install dependencies and build the project
 RUN pnpm install \
+    && pnpm build-docker --filter "@ai16z/plugin-solana" --filter "@ai16z/plugin-trustdb" \
     && pnpm build-docker \
     && pnpm prune --prod
 
