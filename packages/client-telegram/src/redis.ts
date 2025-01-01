@@ -9,7 +9,7 @@ export class RedisService {
 
     private constructor() {
         elizaLogger.log("📡 Initializing Redis Service...");
-        this.REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+        this.REDIS_URL = process.env.REDIS_URL;
 
         // Initialize Redis clients
         this.redis = new Redis(this.REDIS_URL + "?family=0");

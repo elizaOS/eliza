@@ -11,7 +11,7 @@ export class BalanceCheckService {
         elizaLogger.log("💰 Initializing Balance Check Service...");
         this.redisService = RedisService.getInstance();
 
-        this.queue = new Bull('balance-checks', this.redisService.REDIS_URL, {
+        this.queue = new Bull('balance-checks', this.redisService.REDIS_URL + "?family=0", {
             defaultJobOptions: {
                 removeOnComplete: true,
                 removeOnFail: true,
