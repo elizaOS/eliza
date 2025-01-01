@@ -17,6 +17,7 @@ import {
     Tweet,
 } from "agent-twitter-client";
 import { EventEmitter } from "events";
+import { TwitterConfig } from "./environment";
 
 export function extractAnswer(text: string): string {
     const startIndex = text.indexOf("Answer: ") + 8;

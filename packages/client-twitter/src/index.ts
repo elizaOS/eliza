@@ -5,13 +5,24 @@ import { TwitterViralClient } from "./viral.ts";
 import { IAgentRuntime, Client, elizaLogger } from "@ai16z/eliza";
 import { validateTwitterConfig } from "./environment.ts";
 import { ClientBase } from "./base.ts";
+import { TwitterSpaceClient } from "./spaces";
 
+/**
+ * A manager that orchestrates all specialized Twitter logic:
+ * - client: base operations (login, timeline caching, etc.)
+ * - post: autonomous posting logic
+ * - search: searching tweets / replying logic
+ * - interaction: handling mentions, replies
+ * - space: launching and managing Twitter Spaces (optional)
+ */
 class TwitterManager {
     client: ClientBase;
     post: TwitterPostClient;
     search: TwitterSearchClient;
     interaction: TwitterInteractionClient;
     viral: TwitterViralClient;
+    space?: TwitterSpaceClient;
+
     constructor(runtime: IAgentRuntime, enableSearch:boolean) {
         this.client = new ClientBase(runtime);
         this.post = new TwitterPostClient(this.client, runtime);
@@ -27,6 +38,9 @@ class TwitterManager {
         }
         this.interaction = new TwitterInteractionClient(this.client, runtime);
         this.viral = new TwitterViralClient(this.client, runtime);
+        if (runtime.getSetting("TWITTER_SPACES_ENABLE")) {
+            this.space = new TwitterSpaceClient(this.client, runtime);
+        }
     }
 }
 
@@ -51,7 +65,11 @@ export const TwitterClientInterface: Client = {
         // await manager.search.start(); // don't run the search by default
 
         await manager.viral.start();
-        
+
+        if (manager.space) {
+            manager.space.startPeriodicSpaceCheck();
+        }
+
         return manager;
     },
     async stop(_runtime: IAgentRuntime) {

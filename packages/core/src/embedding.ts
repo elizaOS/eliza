@@ -408,6 +408,22 @@ export async function embed(runtime: IAgentRuntime, input: string) {
     }
 }
 
+interface MemoryMetrics {
+    similarity: number;
+    timeScore: number;
+    importanceScore: number;
+    semanticDiversity: number;
+}
+
+interface ExtendedMemory extends Memory {
+    reactions?: string[];
+    replies?: Memory[];
+    references?: string[];
+    userReputation?: number;
+    isAnnouncement?: boolean;
+    isPinned?: boolean;
+}
+
 export async function getRelevantContext(
     runtime: IAgentRuntime,
     memory: Memory,
@@ -416,7 +432,7 @@ export async function getRelevantContext(
     const embeddings = await embed(runtime, memory.content.text);
 
     const memories = await runtime.databaseAdapter.searchMemories({
-        tableName: 'messages',
+        tableName: "messages",
         roomId: memory.roomId,
         agentId: runtime.agentId,
         embedding: embeddings,
@@ -430,44 +446,64 @@ export async function getRelevantContext(
         return [];
     }
 
+    // Calculate semantic clusters for diversity scoring
+    const memoryEmbeddings = await Promise.all(
+        memories.map(mem => embed(runtime, mem.content.text))
+    );
+    const semanticClusters = calculateSemanticClusters(memoryEmbeddings);
+
     // Process and score the memories
     const processedMemories = memories
-        .filter(memory => {
-            // Ensure we have valid memory structure and ignore source field
-            const isValid = memory &&
-                   memory.id &&
-                   memory.content &&
-                   typeof memory.content === 'object' &&
-                   'text' in memory.content;
+        .filter((memory): memory is Required<Memory> => {
+            const isValid =
+                memory?.id &&
+                memory?.content &&
+                typeof memory.content === 'object' &&
+                'text' in memory.content &&
+                typeof memory.content.text === 'string';
 
             if (!isValid) {
                 elizaLogger.warn("Invalid memory structure:", { memory });
             }
             return isValid;
         })
-        .map((memory) => {
-            const { source, ...otherContent } = memory.content; // Explicitly remove source
+        .map((memory, index) => {
+            const importanceScore = calculateImportanceScore(memory);
+            const timeScore = calculateTimeDecay(memory.createdAt || Date.now());
+            const semanticDiversity = calculateSemanticDiversity(
+                index,
+                semanticClusters
+            );
+
+            const score = (
+                (memory.similarity || 0) * 0.35 +
+                timeScore * 0.25 +
+                importanceScore * 0.25 +
+                semanticDiversity * 0.15
+            );
+
             return {
-                id: memory.id,
-                agentId: memory.agentId,
-                userId: memory.userId,
-                roomId: memory.roomId,
-                content: otherContent, // Use content without source
-                createdAt: memory.createdAt,
-                score: memory.similarity * calculateTimeDecay(memory.createdAt),
-                similarity: memory.similarity
+                ...memory,
+                score,
+                metrics: {
+                    similarity: memory.similarity || 0,
+                    timeScore,
+                    importanceScore,
+                    semanticDiversity
+                } as MemoryMetrics
             };
         })
-        .sort((a, b) => b.score - a.score)
-        .filter(ensureDiversity)
+        .sort((a, b) => (b.score || 0) - (a.score || 0))
+        .filter(ensureDiverseMemories)
         .slice(0, 5);
 
     elizaLogger.debug("Processed memories:", {
         finalCount: processedMemories.length,
-        sample: processedMemories.slice(0, 1).map((m) => ({
+        sample: processedMemories.slice(0, 2).map(m => ({
             id: m.id,
             text: m.content.text,
             score: m.score,
+            metrics: m.metrics
         })),
     });
 
@@ -479,21 +515,124 @@ function calculateTimeDecay(timestamp: number): number {
     return 1 / (1 + Math.log(1 + hoursSince));
 }
 
-function ensureDiversity(
-    memory: Memory,
+function calculateImportanceScore(memory: Memory): number {
+    const content = memory.content;
+
+    const factors = {
+        // Content quality factors
+        contentLength: Math.min(content.text.length / 500, 1) * 0.2,
+        hasLinks: content.url ? 0.15 : 0,
+        hasAttachments: (content.attachments?.length || 0) > 0 ? 0.15 : 0,
+        isReply: content.inReplyTo ? 0.1 : 0,
+        hasAction: content.action ? 0.15 : 0,
+
+        // Thread depth (if part of conversation)
+        threadDepth: content.inReplyTo ?
+            calculateThreadDepth(memory as ExtendedMemory) * 0.1 : 0,
+
+        // Time relevance (more recent = more important)
+        timeRelevance: memory.createdAt ?
+            Math.min((Date.now() - memory.createdAt) / (24 * 60 * 60 * 1000), 1) * 0.15 : 0,
+
+        // Embedding quality
+        embeddingQuality: memory.embedding ?
+            Math.min(memory.embedding.length / 1000, 1) * 0.1 : 0
+    };
+
+    return Math.min(
+        Object.values(factors).reduce((sum, score) => sum + score, 0),
+        1
+    );
+}
+
+function calculateThreadDepth(memory: ExtendedMemory, depth = 0): number {
+    if (!memory.content.inReplyTo || depth > 5) {
+        return depth;
+    }
+
+    const parentMemory = memory.replies?.find(m => m.id === memory.content.inReplyTo);
+    if (!parentMemory) {
+        return depth;
+    }
+
+    return calculateThreadDepth(parentMemory as ExtendedMemory, depth + 1);
+}
+
+function calculateSemanticClusters(embeddings: number[][]): number[][][] {
+    const k = Math.min(5, Math.floor(embeddings.length / 2));
+    const clusters: number[][][] = [];
+
+    for (let i = 0; i < k; i++) {
+        clusters.push([embeddings[i]]);
+    }
+
+    embeddings.slice(k).forEach(embedding => {
+        let minDistance = Infinity;
+        let nearestCluster = 0;
+
+        clusters.forEach((cluster, index) => {
+            const centroid = cluster[0];  // Use first embedding as centroid
+            const distance = cosineSimilarity(embedding, centroid);
+            if (distance < minDistance) {
+                minDistance = distance;
+                nearestCluster = index;
+            }
+        });
+
+        clusters[nearestCluster].push(embedding);
+    });
+
+    return clusters;
+}
+
+function calculateSemanticDiversity(
     index: number,
-    array: Memory[]
+    clusters: number[][][]
+): number {
+    if (index === 0) return 1;
+
+    const clusterIndex = clusters.findIndex(cluster =>
+        cluster.some(embedding => embedding.includes(index))
+    );
+
+    const previousClusters = new Set();
+    for (let i = 0; i < index; i++) {
+        clusters.forEach((cluster, idx) => {
+            if (cluster.some(embedding => embedding.includes(i))) {
+                previousClusters.add(idx);
+            }
+        });
+    }
+
+    return 1 - (previousClusters.has(clusterIndex) ? 0.5 : 0);
+}
+
+function ensureDiverseMemories(
+    memory: Memory & { metrics: MemoryMetrics },
+    index: number,
+    array: (Memory & { metrics: MemoryMetrics })[]
 ): boolean {
-    // Skip diversity check for first item
     if (index === 0) return true;
 
-    // Check if this memory is too similar to any previously selected memory
     const previousMemories = array.slice(0, index);
-    return !previousMemories.some(
-        (prev) =>
-            // Adjust threshold as needed (0.95 = very similar)
-            memory.similarity > 0.95 &&
-            // Check if from same time period (e.g., within 1 hour)
-            Math.abs(memory.createdAt - prev.createdAt) < 3600000
-    );
+
+    // Check multiple diversity criteria
+    return !previousMemories.some(prev => {
+        const isTooSimilar = memory.metrics.similarity > 0.95;
+        const isCloseinTime = Math.abs(memory.createdAt - prev.createdAt) < 3600000;
+        const hasSimilarImportance = Math.abs(
+            memory.metrics.importanceScore - prev.metrics.importanceScore
+        ) < 0.2;
+        const lowSemanticDiversity = memory.metrics.semanticDiversity < 0.3;
+
+        return (isTooSimilar && isCloseinTime) ||
+               (hasSimilarImportance && lowSemanticDiversity);
+    });
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+    const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
+    const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
+    const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
+    return dotProduct / (magnitudeA * magnitudeB);
 }

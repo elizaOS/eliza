@@ -313,11 +313,11 @@ export class WalletProvider {
     }
 
     formatPortfolio(
-        runtime,
+        runtime: IAgentRuntime,
         portfolio: WalletPortfolio,
         prices: Prices
     ): string {
-        let output = `${runtime.character.description}\n`;
+        let output = `${runtime.character.name}'s Portfolio\n`;
         output += `Wallet Address: ${this.walletPublicKey.toBase58()}\n\n`;
 
         const totalUsdFormatted = new BigNumber(portfolio.totalUsd).toFixed(2);

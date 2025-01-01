@@ -194,7 +194,7 @@ export class WalletProvider {
         }
     }
 
-    formatPortfolio(runtime, portfolio: WalletPortfolio): string {
+    formatPortfolio(runtime: IAgentRuntime, portfolio: WalletPortfolio): string {
         let output = `${runtime.character.name}\n`;
         output += `Wallet Address: ${this.address}\n`;
 
@@ -206,7 +206,7 @@ export class WalletProvider {
         return output;
     }
 
-    async getFormattedPortfolio(runtime): Promise<string> {
+    async getFormattedPortfolio(runtime: IAgentRuntime): Promise<string> {
         try {
             const portfolio = await this.fetchPortfolioValue();
             return this.formatPortfolio(runtime, portfolio);

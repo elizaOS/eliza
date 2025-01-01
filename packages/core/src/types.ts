@@ -639,6 +639,24 @@ export type Character = {
     /** Optional model endpoint override */
     modelEndpointOverride?: string;
 
+    twitterSpaces?: {
+        maxSpeakers: number;
+        topics: string[];
+        businessHoursOnly: boolean;
+        typicalDurationMinutes: number;
+        idleKickTimeoutMs: number;
+        minIntervalBetweenSpacesMinutes: number;
+        speakerMaxDurationMs: number;
+        randomChance: number;
+        enableIdleMonitor: boolean;
+        enableSttTts: boolean;
+        enableRecording: boolean;
+        voiceId: string;
+        sttLanguage: string;
+        gptModel: string;
+        systemPrompt: string;
+    };
+
     /** Optional prompt templates */
     templates?: {
         goalsTemplate?: string;

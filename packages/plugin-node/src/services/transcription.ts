@@ -34,14 +34,34 @@ export class TranscriptionService
     private isCudaAvailable: boolean = false;
     private openai: OpenAI | null = null;
     private deepgram?: DeepgramClient;
+    private preferredProvider?: string;
 
     private queue: { audioBuffer: ArrayBuffer; resolve: Function }[] = [];
     private processing: boolean = false;
 
     async initialize(_runtime: IAgentRuntime): Promise<void> {
         this.runtime = _runtime;
+
+        /**
+         *  We set preferredProvider only if TRANSCRIPTION_PROVIDER is defined.
+         *  The old logic remains in place (Deepgram > OpenAI > Local) for those
+         *  who haven't configured TRANSCRIPTION_PROVIDER yet.
+         *  This way, existing users relying on Deepgram without updating .env
+         *  won't have their workflow broken.
+         */
+        const provider = this.runtime.getSetting("TRANSCRIPTION_PROVIDER");
+        if (provider) {
+            this.preferredProvider = provider; // "deepgram", "openai", "local" ...
+        }
+
         const deepgramKey = this.runtime.getSetting("DEEPGRAM_API_KEY");
         this.deepgram = deepgramKey ? createClient(deepgramKey) : null;
+        const openaiKey = this.runtime.getSetting("OPENAI_API_KEY");
+        this.openai = openaiKey
+            ? new OpenAI({
+                apiKey: openaiKey,
+            })
+            : null;
     }
 
     constructor() {
@@ -192,27 +212,69 @@ export class TranscriptionService
     }
 
     private async processQueue(): Promise<void> {
-        if (this.processing || this.queue.length === 0) {
-            return;
-        }
-
+        // Exit if already processing or if the queue is empty
+        if (this.processing || this.queue.length === 0) return;
         this.processing = true;
 
         while (this.queue.length > 0) {
             const { audioBuffer, resolve } = this.queue.shift()!;
             let result: string | null = null;
-            if (this.deepgram) {
-                result = await this.transcribeWithDeepgram(audioBuffer);
-            } else if (this.openai) {
-                result = await this.transcribeWithOpenAI(audioBuffer);
+
+            /**
+             *  If TRANSCRIPTION_PROVIDER is set, we use the new approach.
+             *  Otherwise, we preserve the original fallback logic (Deepgram > OpenAI > Local).
+             *  This ensures we don't break existing configurations where Deepgram is expected
+             *  but TRANSCRIPTION_PROVIDER isn't set in the .env.
+             */
+            if (this.preferredProvider) {
+                result = await this.transcribeUsingPreferredOrFallback(audioBuffer);
             } else {
-                result = await this.transcribeLocally(audioBuffer);
+                result = await this.transcribeUsingDefaultLogic(audioBuffer);
             }
 
             resolve(result);
         }
 
         this.processing = false;
+    }
+
+    /**
+     * New approach (preferred provider + fallback).
+     * This can still handle a missing provider setting gracefully.
+     */
+    private async transcribeUsingPreferredOrFallback(audioBuffer: ArrayBuffer): Promise<string | null> {
+        let result: string | null = null;
+
+        switch (this.preferredProvider) {
+            case "deepgram":
+                if (this.deepgram) {
+                    result = await this.transcribeWithDeepgram(audioBuffer);
+                    if (result) return result;
+                }
+            // fallback to openai
+            case "openai":
+                if (this.openai) {
+                    result = await this.transcribeWithOpenAI(audioBuffer);
+                    if (result) return result;
+                }
+            // fallback to local
+            case "local":
+            default:
+                return await this.transcribeLocally(audioBuffer);
+        }
+    }
+
+    /**
+     * Original logic: Deepgram -> OpenAI -> Local
+     * We keep it untouched for backward compatibility.
+     */
+    private async transcribeUsingDefaultLogic(audioBuffer: ArrayBuffer): Promise<string | null> {
+        if (this.deepgram) {
+            return await this.transcribeWithDeepgram(audioBuffer);
+        } else if (this.openai) {
+            return await this.transcribeWithOpenAI(audioBuffer);
+        }
+        return await this.transcribeLocally(audioBuffer);
     }
 
     private async transcribeWithDeepgram(
