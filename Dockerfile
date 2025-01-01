@@ -25,8 +25,8 @@ COPY characters ./characters
 
 # Install dependencies and build the project
 RUN pnpm install --frozen-lockfile \
-    && pnpm run build --filter=@ai16z/client-auto \
-    && pnpm run build \
+    && cd packages/client-auto && pnpm run build \
+    && cd ../.. && pnpm build-docker \
     && pnpm prune --prod
 
 # Create a new stage for the final image
