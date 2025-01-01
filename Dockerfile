@@ -8,6 +8,8 @@ RUN npm install -g pnpm@9.4.0 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+RUN pnpm install && pnpm run build --filter @ai16z/plugin-solana && pnpm build-docker
+
 # Set Python 3 as the default python
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
