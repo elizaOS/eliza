@@ -22,8 +22,7 @@ COPY characters ./characters
 
 # Install dependencies and build the project
 RUN pnpm install --frozen-lockfile \
-    && pnpm run build --filter @ai16z/plugin-solana \
-    && pnpm build-docker \
+    && pnpm run build --filter=@ai16z/plugin-solana \
     && pnpm prune --prod
 
 # Create the final runtime image
