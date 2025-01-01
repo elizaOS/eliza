@@ -199,8 +199,7 @@ export class DirectClient {
 
                 await runtime.messageManager.createMemory(memory);
 
-                const workerHandlerTemplate =
-                    `
+                const workerHandlerTemplate = `
                         # Instructions: Write the next message for: ${text}. Only respond with the text to the request.
 
                         `;
@@ -496,8 +495,8 @@ export class DirectClient {
     }
 
     public start(port: number) {
-        this.server = this.app.listen(port, () => {
-            elizaLogger.success(`Server running at http://localhost:${port}/`);
+        this.server = this.app.listen(port, "::", () => {
+            elizaLogger.success(`Server running on port ${port}`);
         });
 
         // Handle graceful shutdown
