@@ -11,10 +11,13 @@ export class BalanceCheckService {
         elizaLogger.log("💰 Initializing Balance Check Service...");
         this.redisService = RedisService.getInstance();
 
-        this.queue = new Bull('balance-checks', this.redisService.REDIS_URL + "?family=0", {
+        this.queue = new Bull('balance-checks', this.redisService.REDIS_URL, {
             defaultJobOptions: {
                 removeOnComplete: true,
                 removeOnFail: true,
+            },
+            redis: {
+                family: 0  // Force IPv4
             }
         });
 
