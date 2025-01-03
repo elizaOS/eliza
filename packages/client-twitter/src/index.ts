@@ -66,9 +66,9 @@ export const TwitterClientInterface: Client = {
 
         await manager.viral.start();
 
-        if (manager.space) {
-            manager.space.startPeriodicSpaceCheck();
-        }
+        // if (manager.space) {
+        //     manager.space.startPeriodicSpaceCheck();
+        // }
 
         return manager;
     },
