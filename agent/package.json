@@ -52,6 +52,7 @@
     "@elizaos/plugin-ton": "workspace:*",
     "@elizaos/plugin-sui": "workspace:*",
     "@elizaos/plugin-tee": "workspace:*",
+    "@elizaos/plugin-tee-marlin": "workspace:*",
     "@elizaos/plugin-multiversx": "workspace:*",
     "@elizaos/plugin-near": "workspace:*",
     "@elizaos/plugin-zksync-era": "workspace:*",

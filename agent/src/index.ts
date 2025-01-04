@@ -57,6 +57,7 @@ import { createNodePlugin } from "@elizaos/plugin-node";
 import { solanaPlugin } from "@elizaos/plugin-solana";
 import { suiPlugin } from "@elizaos/plugin-sui";
 import { TEEMode, teePlugin } from "@elizaos/plugin-tee";
+import { teeMarlinPlugin } from "@elizaos/plugin-tee-marlin";
 import { tonPlugin } from "@elizaos/plugin-ton";
 import { zksyncEraPlugin } from "@elizaos/plugin-zksync-era";
 import { cronosZkEVMPlugin } from "@elizaos/plugin-cronoszkevm";
@@ -598,6 +599,7 @@ export async function createAgent(
             getSecret(character, "CRONOSZKEVM_PRIVATE_KEY")
                 ? cronosZkEVMPlugin
                 : null,
+            getSecret(character, "TEE_MARLIN") ? teeMarlinPlugin : null,
             getSecret(character, "TON_PRIVATE_KEY") ? tonPlugin : null,
             getSecret(character, "SUI_PRIVATE_KEY") ? suiPlugin : null,
             getSecret(character, "STORY_PRIVATE_KEY") ? storyPlugin : null,
