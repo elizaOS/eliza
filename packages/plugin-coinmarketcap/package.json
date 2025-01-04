@@ -1,0 +1,19 @@
+{
+    "name": "@elizaos/plugin-coinmarketcap",
+    "version": "0.1.7-alpha.2",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "axios": "^1.6.7",
+        "zod": "^3.22.4"
+    },
+    "devDependencies": {
+        "tsup": "^8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch"
+    }
+}
