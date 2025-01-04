@@ -1,6 +1,7 @@
 import type { TSESTree } from '@typescript-eslint/types';
 import { TypeScriptParser } from './TypeScriptParser.js';
-import { ASTQueueItem } from './types/index.js';
+import { ASTQueueItem, EnvUsage, TodoItem } from './types/index.js';
+import { ASTQueueItem, EnvUsage, TodoItem } from './types/index.js';
 
 type AST_NODE_TYPES = {
     ClassDeclaration: 'ClassDeclaration';
@@ -156,6 +157,8 @@ export class JsDocAnalyzer {
 
 
     public missingJsDocNodes: TSESTree.Node[] = [];
+    public todoItems: TodoItem[] = [];
+    public envUsages: EnvUsage[] = [];
 
     /**
      * Constructor for initializing a new instance.
@@ -387,4 +390,269 @@ export class JsDocAnalyzer {
 
         return methods;
     }
+
+
+  /**
+     * Finds TODO comments in the code and their associated nodes
+     * @param ast - The AST to analyze
+     * @param comments - Array of comments to search through
+     * @param sourceCode - The original source code
+     */
+  public findTodoComments(ast: TSESTree.Program, comments: TSESTree.Comment[], sourceCode: string): void {
+    this.todoItems = [];
+
+    comments.forEach(comment => {
+        if (!comment.loc) return;
+
+        const commentText = comment.value.toLowerCase();
+        if (commentText.includes('todo')) {
+            try {
+                // Find the nearest node after the comment
+                const nearestNode = this.findNearestNode(ast, comment.loc.end.line);
+                if (nearestNode && nearestNode.loc) {
+                    // Find the containing function/class/block
+                    const containingBlock = this.findContainingBlock(nearestNode);
+
+                    // Extract the actual code associated with the TODO
+                    const code = this.extractNodeCode(sourceCode, nearestNode);
+
+                    // Extract the full context (entire function/class/block)
+                    const fullContext = containingBlock && containingBlock.loc
+                        ? this.extractNodeCode(sourceCode, containingBlock)
+                        : code;
+
+                    this.todoItems.push({
+                        comment: comment.value.trim(),
+                        code,
+                        fullContext,
+                        node: nearestNode,
+                        location: comment.loc,
+                        contextLocation: containingBlock?.loc || comment.loc
+                    });
+                }
+            } catch (error) {
+                console.error('Error processing TODO comment:', error);
+                // Continue processing other comments even if one fails
+            }
+        }
+    });
+}
+
+/**
+ * Finds the containing block (function/class/interface declaration) for a node
+ */
+private findContainingBlock(node: TSESTree.Node): TSESTree.Node | undefined {
+    let current = node;
+    while (current.parent) {
+        if (
+            current.parent.type === 'FunctionDeclaration' ||
+            current.parent.type === 'ClassDeclaration' ||
+            current.parent.type === 'TSInterfaceDeclaration' ||
+            current.parent.type === 'MethodDefinition' ||
+            current.parent.type === 'ArrowFunctionExpression' ||
+            current.parent.type === 'FunctionExpression'
+        ) {
+            return current.parent;
+        }
+        current = current.parent;
+    }
+    return undefined;
+}
+
+/**
+ * Finds environment variable usage in the code
+ * @param ast - The AST to analyze
+ * @param sourceCode - The original source code
+ */
+public findEnvUsages(ast: TSESTree.Program, sourceCode: string): void {
+    this.envUsages = [];
+
+    const findEnvReferences = (node: TSESTree.Node) => {
+        if (!node.loc) return;
+
+        // Check for process.env
+        if (
+            node.type === 'MemberExpression' &&
+            node.object.type === 'Identifier' &&
+            node.object.name === 'process' &&
+            node.property.type === 'Identifier' &&
+            node.property.name === 'env'
+        ) {
+            // Get the parent statement/expression for context
+            const contextNode = this.findParentStatement(node);
+            // Get the containing function/block for full context
+            const containingBlock = this.findContainingBlock(node);
+
+            // Get just the process.env reference
+            const code = this.extractNodeCode(sourceCode, node);
+
+            // Get the full line by using the line number directly
+            const lines = sourceCode.split('\n');
+            const context = lines[node.loc.start.line - 1];
+
+            // Get the entire function/block containing this env usage
+            const fullContext = containingBlock ? this.extractFullContext(sourceCode, containingBlock) : context;
+
+            this.envUsages.push({
+                code,
+                context,
+                fullContext,
+                node,
+                location: node.loc,
+                contextLocation: containingBlock?.loc || node.loc
+            });
+        }
+
+        // Continue traversing
+        Object.keys(node).forEach(key => {
+            const child = node[key as keyof TSESTree.Node];
+            if (child && typeof child === 'object') {
+                if (Array.isArray(child)) {
+                    child.forEach(item => {
+                        if (item && typeof item === 'object') {
+                            findEnvReferences(item as TSESTree.Node);
+                        }
+                    });
+                } else {
+                    findEnvReferences(child as TSESTree.Node);
+                }
+            }
+        });
+    };
+
+    findEnvReferences(ast);
+}
+
+/**
+ * Extracts the actual source code for a given node
+ */
+private extractNodeCode(sourceCode: string, node: TSESTree.Node): string {
+    if (!node.loc) {
+        return '';
+    }
+
+    const lines = sourceCode.split('\n');
+    const startLine = node.loc.start.line - 1;
+    const endLine = node.loc.end.line;
+
+    if (startLine < 0 || endLine > lines.length) {
+        return '';
+    }
+
+    // Handle single-line case
+    if (startLine === endLine - 1) {
+        const line = lines[startLine];
+        return line.slice(node.loc.start.column, node.loc.end.column);
+    }
+
+    // Handle multi-line case
+    const result = [];
+    for (let i = startLine; i < endLine; i++) {
+        let line = lines[i];
+        if (i === startLine) {
+            line = line.slice(node.loc.start.column);
+        } else if (i === endLine - 1) {
+            line = line.slice(0, node.loc.end.column);
+        }
+        result.push(line);
+    }
+    return result.join('\n');
+}
+
+/**
+ * Extracts the full context including any variable declarations and surrounding code
+ */
+private extractFullContext(sourceCode: string, node: TSESTree.Node): string {
+    if (!node.loc) return '';
+
+    const lines = sourceCode.split('\n');
+    const startLine = node.loc.start.line - 1;
+    const endLine = node.loc.end.line;
+
+    if (startLine < 0 || endLine > lines.length) {
+        return '';
+    }
+
+    // Get the complete lines for the entire block/function
+    return lines.slice(startLine, endLine).join('\n');
+}
+
+/**
+ * Finds the parent statement or expression node
+ */
+// prettyr sure this isnt needed, directly access code rather
+private findParentStatement(node: TSESTree.Node): TSESTree.Node | undefined {
+    let current = node;
+    while (current.parent) {
+        // Add more statement types that could contain process.env
+        if (
+            current.parent.type === 'VariableDeclaration' ||
+            current.parent.type === 'ExpressionStatement' ||
+            current.parent.type === 'AssignmentExpression' ||
+            current.parent.type === 'ReturnStatement' ||
+            current.parent.type === 'IfStatement' ||
+            current.parent.type === 'LogicalExpression' ||
+            current.parent.type === 'BinaryExpression' ||
+            current.parent.type === 'Property' ||
+            current.parent.type === 'ObjectExpression' ||
+            current.parent.type === 'MemberExpression'
+        ) {
+            return current.parent;
+        }
+        // Add logging to see what types we're encountering
+        console.log('Parent node type:', current.parent.type);
+        current = current.parent;
+    }
+    return undefined;
+}
+
+/**
+ * Finds the nearest node after a specific line number
+ */
+private findNearestNode(ast: TSESTree.Program, lineNumber: number): TSESTree.Node | undefined {
+    let nearestNode: TSESTree.Node | undefined;
+    let smallestDistance = Infinity;
+
+    const traverse = (node: TSESTree.Node | null) => {
+        if (!node) return;
+
+        // Check if the node has a location
+        if (node.loc) {
+            const distance = node.loc.start.line - lineNumber;
+            if (distance > 0 && distance < smallestDistance) {
+                smallestDistance = distance;
+                nearestNode = node;
+            }
+        }
+
+        // Safely traverse child nodes
+        if ('body' in node) {
+            const body = Array.isArray(node.body) ? node.body : [node.body];
+            body.forEach((child: TSESTree.Node) => {
+                if (child && typeof child === 'object') {
+                    traverse(child as TSESTree.Node);
+                }
+            });
+        }
+
+        // Handle specific node types
+        if ('declarations' in node && Array.isArray(node.declarations)) {
+            node.declarations.forEach((decl: TSESTree.Node) => traverse(decl));
+        }
+
+        if ('declaration' in node && node.declaration) {
+            traverse(node.declaration);
+        }
+
+        // Handle other properties that might contain nodes
+        ['consequent', 'alternate', 'init', 'test', 'update'].forEach(prop => {
+            if (prop in node && node[prop as keyof typeof node]) {
+                traverse(node[prop as keyof typeof node] as TSESTree.Node);
+            }
+        });
+    };
+
+    traverse(ast);
+    return nearestNode;
+}
 }

@@ -64,25 +64,13 @@ export function isPumpContent(object: any): object is PumpContent {
 }
 
 export function isPumpCreateContent(object: any): object is PumpCreateContent {
-    if (PumpCreateSchema.safeParse(object).success) {
-        return true;
-    }
-    console.error("Invalid content: ", object);
-    return false;
+    return PumpCreateSchema.safeParse(object).success;
 }
 
 export function isPumpBuyContent(object: any): object is PumpBuyContent {
-    if (PumpBuySchema.safeParse(object).success) {
-        return true;
-    }
-    console.error("Invalid content: ", object);
-    return false;
+    return PumpBuySchema.safeParse(object).success;
 }
 
 export function isPumpSellContent(object: any): object is PumpSellContent {
-    if (PumpSellSchema.safeParse(object).success) {
-        return true;
-    }
-    console.error("Invalid content: ", object);
-    return false;
+    return PumpSellSchema.safeParse(object).success;
 }

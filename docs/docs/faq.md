@@ -8,7 +8,7 @@
 
 ### Who is behind Eliza?
 
-The Eliza project is led by the developers of elizaos, an AI-driven DAO founded by an AI version of Marc Andreessen. The lead developer is [Shaw](https://x.com/shawmakesmagic), who is also known for his work on projects like [@pmairca](https://x.com/pmairca) and [@degenspartanai](https://x.com/degenspartanai). The project is open source, and its code is available on GitHub: https://github.com/elizaos/eliza
+The Eliza project is led by [Shaw](https://x.com/shawmakesmagic). The project is open source, and its code is available on GitHub: https://github.com/elizaos/eliza
 
 ### How can I get started with Eliza?
 
@@ -28,6 +28,7 @@ Eliza's architecture consists of several interconnected components:
 - **Agents**: These are the core elements that represent individual AI personalities. Agents operate within a runtime environment and interact with various platforms.
 - **Actions**: Actions are predefined behaviors that agents can execute in response to messages, enabling them to perform tasks and interact with external systems.
 - **Clients**: Clients act as interfaces between agents and specific platforms, such as Discord, Twitter, and Telegram. They handle platform-specific message formats and communication protocols.
+- **Plugins**: Plugins are modular way to extend the core functionality with additional features, actions, evaluators, and providers. They are self-contained modules that can be easily added or removed to customize your agent's capabilities
 - **Providers**: Providers supply agents with contextual information, including time awareness, user relationships, and data from external sources.
 - **Evaluators**: These modules assess and extract information from conversations, helping agents track goals, build memory, and maintain context awareness.
 - **Character Files**: These JSON files define the personality, knowledge, and behavior of each AI agent.
@@ -61,66 +62,10 @@ The Eliza project is continuously evolving, with ongoing development and communi
 - **Enhancing the trust engine**: Provide robust and secure recommendations within decentralized networks.
 - **Fostering community growth**: Rewarding contributions to expand the project's reach and impact.
 
----
+### How can I contribute to Eliza?
 
-## elizaos FAQ
-
-### What is elizaos and how is it related to Eliza?
-
-**elizaos is an AI-driven DAO and fund, conceptualized as being led by an AI version of Marc Andreessen.** It aims to outperform the real Marc Andreeson by leveraging artificial intelligence. The developers of Eliza created elizaos to support their work in autonomous AI agents. While elizaos primarily focuses on trading, Eliza is a more general-purpose framework that can be used for various applications beyond finance.
-
-### When will token is mintable be fixed?
-
-Token is controlled by DAO community, no single person can unilaterally mint new tokens. The daos.fun team and dexscreener are both aware of this, we're all working on fixing it.
-
-### Liquidity seems low
-
-The DAOs.fun team is working on a front end to implement voting and liquidity transfer.
-
-### What is the difference between $elizaos and $degenai?
-
-The $elizaos token is the governance token of the elizaos DAO. Holders of the token can participate in governance decisions, propose new initiatives, and influence the direction of the project.
-
-DegenSpartanAI is another AI agent project created by Shaw. The $degenai token is associated with this project. While both projects are led by the same developer and share some technological similarities, they have different goals and strategies.
-
-elizaos is envisioned as a community-driven, PvE (player versus environment) focused fund, while DegenAI is more of a trading agent with a PvP (player versus player), aggressive approach.
-
-### Will the agent launch pump fund coins?
-
-The capability to do so is there, it's ultimately up to the AI agent on whether or not it will.
-
-### Can the agent invest in my project?
-
-Yes, if you make a convincing argument.
-
-### Who runs elizaos?
-
-elizaos is a decentralized autonomous organization (DAO) launched on daos.fun and led by AI agents, specifically AI Marc Andreessen and DegenSpartan AI. Humans will influence these AI agents' decisions to buy and sell memecoins, for now.
-
-### Do all trade suggestions happen in one place?
-
-Initially, AI Marc Andreessen will gather data and make decisions in a private Discord group chat. Eventually, this agent will be invite-only to other groups, but for now, it's mainly on Discord.
-
-### What happens when people copy the GitHub?
-
-Many are already creating their own AI agents using the open-source ELIZA framework, but they won't have access to the pre-trained models used by AI Marc and DegenSpartan AI.
-
-### What are the future plans for elizaos?
-
-We're developing a **"marketplace of trust"** where AI agents can learn from community insights and adjust their trust scores based on the performance of recommendations. Eventually the goal is to create AI agents that can operate autonomously and securely.
-
-### How can I contribute to elizaos?
-
-There are several ways to contribute to the elizaos project:
+There are several ways to contribute to the Eliza project:
 
 - **Participate in community discussions**: Share your memecoin insights, propose new ideas, and engage with other community members.
-- **Contribute to the development of the elizaos platform**: https://github.com/orgs/elizaos/projects/1/views/3
-- **Help build the elizaos ecosystem**: Create applicatoins / tools, resources, and memes. Give feedback, and spread the word
-
-**Other questions:**
-
-- elizaos and a16z are not officially affiliated.
-- ELIZA is an open-source conversational agent framework.
-- AI agents will publish thesis and conviction analysis before executing trades.
-- The fund holds donated tokens, which will be distributed among holders on October 24th, 2025.
-- AI Marc is the "shot caller" with a network of assisting agents (human or AI) that can influence its decisions.
+- **Contribute to the development of the Eliza platform**: https://github.com/orgs/elizaos/projects/1/views/3
+- **Help build the Eliza ecosystem**: Create applicatoins / tools, resources, and memes. Give feedback, and spread the word

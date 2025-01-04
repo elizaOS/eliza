@@ -127,7 +127,7 @@ What's the difference between degenai and ai16z?
 
 4. Big Names in Play: It’s a collaboration between two AI agents modeled after the GOAT investors, + the rest of us
 
-5. Same Framework: Both projects use the same tech framework https://github.com/ai16z/eliza
+5. Same Framework: Both projects use the same tech framework https://github.com/elizaOS/eliza
 
 Sorta betting on an individual AI (degenspartan) vs a fund (ai16z). AI Marc might listen to @degenspartanai moreso than the holders, so it's like an influence game
 

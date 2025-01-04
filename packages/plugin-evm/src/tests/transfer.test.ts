@@ -1,18 +1,32 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Account, Chain } from "viem";
 
 import { TransferAction } from "../actions/transfer";
 import { WalletProvider } from "../providers/wallet";
 
+// Mock the ICacheManager
+const mockCacheManager = {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn(),
+};
+
 describe("Transfer Action", () => {
     let wp: WalletProvider;
 
     beforeEach(async () => {
+        vi.clearAllMocks();
+        mockCacheManager.get.mockResolvedValue(null);
+
         const pk = generatePrivateKey();
         const customChains = prepareChains();
-        wp = new WalletProvider(pk, customChains);
+        wp = new WalletProvider(pk, mockCacheManager as any, customChains);
     });
+
+    afterEach(() => {
+        vi.clearAllTimers();
+    });
+
     describe("Constructor", () => {
         it("should initialize with wallet provider", () => {
             const ta = new TransferAction(wp);

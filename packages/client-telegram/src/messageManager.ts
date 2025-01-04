@@ -18,7 +18,7 @@ import { stringToUuid } from "@elizaos/core";
 import { generateMessageResponse, generateShouldRespond } from "@elizaos/core";
 import { messageCompletionFooter, shouldRespondFooter } from "@elizaos/core";
 
-import { cosineSimilarity } from "./utils";
+import { cosineSimilarity, escapeMarkdown } from "./utils";
 import {
     MESSAGE_CONSTANTS,
     TIMING_CONSTANTS,
@@ -692,7 +692,7 @@ export class MessageManager {
             const sentMessages: Message.TextMessage[] = [];
 
             for (let i = 0; i < chunks.length; i++) {
-                const chunk = chunks[i];
+                const chunk = escapeMarkdown(chunks[i]);
                 const sentMessage = (await ctx.telegram.sendMessage(
                     ctx.chat.id,
                     chunk,

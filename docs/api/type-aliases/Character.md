@@ -44,6 +44,17 @@ Model provider to use
 
 Image model provider to use, if different from modelProvider
 
+
+
+### imageVisionModelProvider?
+
+> `optional` **imageVisionModelProvider**: [`ModelProviderName`](../enumerations/ModelProviderName.md)
+
+Image Vision model provider to use, if different from modelProvider
+
+imageVisionModelProvider
+
+
 ### modelEndpointOverride?
 
 > `optional` **modelEndpointOverride**: `string`

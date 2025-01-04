@@ -4,6 +4,7 @@ import {
     Memory,
     State,
     HandlerCallback,
+    elizaLogger,
 } from "@elizaos/core";
 import { generateObject, composeContext, ModelClass } from "@elizaos/core";
 import {
@@ -38,7 +39,7 @@ async function ensureAllowance(
     memeAddress: `0x${string}`,
     amount: bigint
 ) {
-    console.log(
+    elizaLogger.log(
         `Checking allowance: token: ${tokenAddress} meme: ${memeAddress} amount: ${amount}`
     );
 
@@ -54,10 +55,10 @@ async function ensureAllowance(
         args: [account.address, memeAddress],
     });
 
-    console.log("allowance:", allowance);
+    elizaLogger.log("allowance:", allowance);
 
     if (allowance < amount) {
-        console.log(
+        elizaLogger.log(
             `allowance(${allowance}) is less than amount(${amount}), approving...`
         );
 
@@ -73,11 +74,11 @@ async function ensureAllowance(
             kzg: null,
         });
 
-        console.log(`Approving hash: ${hash}`);
+        elizaLogger.log(`Approving hash: ${hash}`);
         await publicClient.waitForTransactionReceipt({ hash });
-        console.log(`Approving success: ${hash}`);
+        elizaLogger.log(`Approving success: ${hash}`);
     } else {
-        console.log(`No need to approve`);
+        elizaLogger.log(`No need to approve`);
     }
 }
 
@@ -213,9 +214,13 @@ export const confiPump: Action = {
             switch (contentObject.action) {
                 case "CREATE_TOKEN":
                     if (!isPumpCreateContent(contentObject)) {
-                        throw new Error("Invalid content");
+                        elizaLogger.error(
+                            "Invalid PumpCreateContent: ",
+                            contentObject
+                        );
+                        throw new Error("Invalid PumpCreateContent");
                     }
-                    console.log(
+                    elizaLogger.log(
                         "creating: ",
                         contentObject.params.name,
                         contentObject.params.symbol,
@@ -235,13 +240,17 @@ export const confiPump: Action = {
 
                 case "BUY_TOKEN":
                     if (!isPumpBuyContent(contentObject)) {
-                        throw new Error("Invalid content");
+                        elizaLogger.error(
+                            "Invalid PumpBuyContent: ",
+                            contentObject
+                        );
+                        throw new Error("Invalid PumpBuyContent");
                     }
                     value = parseUnits(
                         contentObject.params.value.toString(),
                         18
                     );
-                    console.log(
+                    elizaLogger.log(
                         "buying: ",
                         contentObject.params.tokenAddress,
                         value
@@ -260,12 +269,16 @@ export const confiPump: Action = {
 
                 case "SELL_TOKEN":
                     if (!isPumpSellContent(contentObject)) {
-                        throw new Error("Invalid content");
+                        elizaLogger.error(
+                            "Invalid PumpSellContent: ",
+                            contentObject
+                        );
+                        throw new Error("Invalid PumpSellContent");
                     }
                     const tokenAddress = getAddress(
                         contentObject.params.tokenAddress as `0x${string}`
                     );
-                    console.log(
+                    elizaLogger.log(
                         "selling: ",
                         tokenAddress,
                         account.address,
@@ -312,7 +325,7 @@ export const confiPump: Action = {
                 value,
                 account,
             });
-            console.log("simulate: ", simulate);
+            elizaLogger.log("simulate: ", simulate);
 
             const hash = await walletClient.sendTransaction({
                 account,
@@ -332,7 +345,7 @@ export const confiPump: Action = {
                 });
             }
         } catch (error) {
-            console.error(`Error performing the action: ${error}`);
+            elizaLogger.error(`Error performing the action: ${error}`);
             if (callback) {
                 callback({
                     text: `Failed to perform the action: ${content.object.action}: ${error}`,

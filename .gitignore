@@ -49,6 +49,7 @@ packages/plugin-coinbase/src/plugins/transactions.csv
 tsup.config.bundled_*.mjs
 
 .turbo
+.cursorrules
 
 coverage
 .eslintcache

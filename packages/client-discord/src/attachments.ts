@@ -19,7 +19,7 @@ async function generateSummary(
     text: string
 ): Promise<{ title: string; description: string }> {
     // make sure text is under 128k characters
-    text = trimTokens(text, 100000, "gpt-4o-mini"); // TODO: clean this up
+    text = await trimTokens(text, 100000, runtime);
 
     const prompt = `Please generate a concise summary for the following text:
 

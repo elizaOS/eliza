@@ -261,14 +261,15 @@ const summarizeAction = {
             const chunk = chunks[i];
             state.currentSummary = currentSummary;
             state.currentChunk = chunk;
+            const template = await trimTokens(
+                summarizationTemplate,
+                chunkSize + 500,
+                runtime
+            );
             const context = composeContext({
                 state,
                 // make sure it fits, we can pad the tokens a bit
-                template: trimTokens(
-                    summarizationTemplate,
-                    chunkSize + 500,
-                    "gpt-4o-mini"
-                ),
+                template,
             });
 
             const summary = await generateText({

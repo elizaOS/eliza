@@ -1,23 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import { useGetAgentsQuery } from "@/api";
 import "./App.css";
-
-type Agent = {
-    id: string;
-    name: string;
-};
 
 function Agents() {
     const navigate = useNavigate();
-    const { data: agents, isLoading } = useQuery({
-        queryKey: ["agents"],
-        queryFn: async () => {
-            const res = await fetch("/api/agents");
-            const data = await res.json();
-            return data.agents as Agent[];
-        },
-    });
+    const { data: agents, isLoading } = useGetAgentsQuery()
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-center p-4">

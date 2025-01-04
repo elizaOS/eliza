@@ -24,8 +24,11 @@ jobs:
                   node-version: "23"
                   cache: "pnpm"
 
+            - name: Clean up
+              run: pnpm clean
+
             - name: Install dependencies
-              run: pnpm install -r
+              run: pnpm install -r --no-frozen-lockfile
 
             - name: Build packages
               run: pnpm build

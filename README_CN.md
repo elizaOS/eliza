@@ -104,13 +104,55 @@ pnpm start
 
 ## 配置不同的大模型
 
-### 配置Llama
+您可以使用不同的大模型来驱动您的AI Agent，切换不同大模型需要两步：
 
-您可以通过设置 `XAI_MODEL` 环境变量为 `meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo` 或 `meta-llama/Meta-Llama-3.1-405B-Instruct` 来运行 Llama 70B 或 405B 模型
+1. 确认您在`.env`文件内配置了对应的大模型API Key或对应的访问配置，例如如果您想使用OpenAI，则需要找到`OPENAI_API_KEY`参数，并填入您的OpenAI API Key，并以此类推。
+2. 在您的*Character*文件里找到`modelProvider`，并更改这里的内容，例如如果想要切换到Claude，则需要填入`anthropic`,以此来表明您将使用anthropic大模型作为您的对应Agent的Provider.
+
+在`.env`文件内您可以找到不同大模型的详细配置，包括设定具体想要使用对应提供商的哪个模型，下方我们给出了两个实例：
 
 ### 配置OpenAI
 
-您可以通过设置 `XAI_MODEL` 环境变量为 `gpt-4o-mini` 或 `gpt-4o` 来运行 OpenAI 模型
+首先您需要在Character文件内指定model provider
+
+```json
+    "name": "C-3PO",
+    "clients": [],
+    "modelProvider": "openai"
+    ...
+```
+
+其次请在`env`文件内配置相关参数
+
+```
+# AI Model API Keys
+OPENAI_API_KEY=                 # OpenAI API key, starting with sk-
+SMALL_OPENAI_MODEL=             # Default: gpt-4o-mini
+MEDIUM_OPENAI_MODEL=            # Default: gpt-4o
+LARGE_OPENAI_MODEL=             # Default: gpt-4o
+EMBEDDING_OPENAI_MODEL=         # Default: text-embedding-3-small
+IMAGE_OPENAI_MODEL=             # Default: dall-e-3
+
+```
+
+### 配置Anthorpic
+
+```json
+    "name": "C-3PO",
+    "clients": [],
+    "modelProvider": "anthropic"
+    ...
+```
+
+其次请在`env`文件内配置相关参数
+
+```
+# Anthropic Configuration
+ANTHROPIC_API_KEY=              # For Claude
+SMALL_ANTHROPIC_MODEL=          # Default: claude-3-haiku-20240307
+MEDIUM_ANTHROPIC_MODEL=         # Default: claude-3-5-sonnet-20241022
+LARGE_ANTHROPIC_MODEL=          # Default: claude-3-5-sonnet-20241022
+```
 
 ## 其他要求
 

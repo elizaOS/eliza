@@ -1,16 +1,17 @@
-import { Calendar, Home, Inbox, Search, Settings } from "lucide-react";
+import { Calendar, Inbox } from "lucide-react";
 import { useParams } from "react-router-dom";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 import {
     Sidebar,
     SidebarContent,
+    SidebarFooter,
     SidebarGroup,
     SidebarGroupContent,
     SidebarGroupLabel,
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
-    SidebarTrigger,
 } from "@/components/ui/sidebar";
 
 // Menu items.
@@ -51,6 +52,9 @@ export function AppSidebar() {
                     </SidebarGroupContent>
                 </SidebarGroup>
             </SidebarContent>
+            <SidebarFooter>
+                <ThemeToggle />
+            </SidebarFooter>
         </Sidebar>
     );
 }

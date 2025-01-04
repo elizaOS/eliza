@@ -1,26 +1,25 @@
 import {
-    ProcessedTokenData,
-    TokenSecurityData,
-    // TokenTradeData,
-    // DexScreenerData,
-    // DexScreenerPair,
-    // HolderData,
-} from "../types/token.ts";
-import { Connection, PublicKey } from "@solana/web3.js";
-import { getAssociatedTokenAddress } from "@solana/spl-token";
-import { TokenProvider } from "./token.ts";
-import { WalletProvider } from "./wallet.ts";
-import { SimulationSellingService } from "./simulationSellingService.ts";
+    elizaLogger,
+    IAgentRuntime,
+    Memory,
+    Provider,
+    settings,
+    State,
+} from "@elizaos/core";
 import {
-    TrustScoreDatabase,
     RecommenderMetrics,
     TokenPerformance,
-    TradePerformance,
     TokenRecommendation,
+    TradePerformance,
+    TrustScoreDatabase,
 } from "@elizaos/plugin-trustdb";
-import { settings } from "@elizaos/core";
-import { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { v4 as uuidv4 } from "uuid";
+import { ProcessedTokenData, TokenSecurityData } from "../types/token.ts";
+import { SimulationSellingService } from "./simulationSellingService.ts";
+import { TokenProvider } from "./token.ts";
+import { WalletProvider } from "./wallet.ts";
 
 const Wallet = settings.MAIN_WALLET_ADDRESS;
 interface TradeData {
@@ -702,6 +701,14 @@ export const trustScoreProvider: Provider = {
         _state?: State
     ): Promise<string> {
         try {
+            // if the database type is postgres, we don't want to run this evaluator because it relies on sql queries that are currently specific to sqlite. This check can be removed once the trust score provider is updated to work with postgres.
+            if (runtime.getSetting("POSTGRES_URL")) {
+                elizaLogger.warn(
+                    "skipping trust evaluator because db is postgres"
+                );
+                return "";
+            }
+
             const trustScoreDb = new TrustScoreDatabase(
                 runtime.databaseAdapter.db
             );

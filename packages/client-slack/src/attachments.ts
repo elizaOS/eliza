@@ -21,7 +21,7 @@ async function generateSummary(
     runtime: IAgentRuntime,
     text: string
 ): Promise<{ title: string; description: string }> {
-    text = trimTokens(text, 100000, "gpt-4o-mini");
+    text = await trimTokens(text, 100000, runtime);
 
     const prompt = `Please generate a concise summary for the following text:
 

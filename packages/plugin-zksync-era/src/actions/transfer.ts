@@ -14,12 +14,7 @@ import {
 import { validateZKsyncConfig } from "../enviroment";
 
 import { Web3 } from "web3";
-import {
-    ZKsyncPlugin,
-    ZKsyncWallet,
-    types,
-    Web3ZKsyncL2,
-} from "web3-plugin-zksync";
+import { ZKsyncPlugin, types, Web3ZKsyncL2 } from "web3-plugin-zksync";
 
 export interface TransferContent extends Content {
     tokenAddress: string;
@@ -89,7 +84,7 @@ export default {
         "PAY_ON_ZKSYNC",
         "PAY_ON_ERA",
     ],
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
+    validate: async (runtime: IAgentRuntime, _message: Memory) => {
         await validateZKsyncConfig(runtime);
         return true;
     },

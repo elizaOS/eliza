@@ -103,6 +103,12 @@ export class AgentRuntime implements IAgentRuntime {
      */
     imageModelProvider: ModelProviderName;
 
+
+     /**
+     * The model to use for describing images.
+     */
+    imageVisionModelProvider: ModelProviderName;
+
     /**
      * Fetch function to use
      * Some environments may not have access to the global fetch function and need a custom fetch override.
@@ -323,6 +329,16 @@ export class AgentRuntime implements IAgentRuntime {
             "Selected image model provider:",
             this.imageModelProvider
         );
+
+        this.imageVisionModelProvider =
+        this.character.imageVisionModelProvider ?? this.modelProvider;
+
+        elizaLogger.info("Selected model provider:", this.modelProvider);
+         elizaLogger.info(
+            "Selected image model provider:",
+            this.imageVisionModelProvider
+         );
+
 
         // Validate model provider
         if (!Object.values(ModelProviderName).includes(this.modelProvider)) {

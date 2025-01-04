@@ -162,7 +162,7 @@ None`,
                     },
                 },
             ] as ActionExample[],
-            outcome: `{ "claim": "{{user1}} is from Oakland", "type": "fact", "in_bio": false, "already_known": false },`,
+            outcome: `{ "claim": "{{user2}} is from Oakland", "type": "fact", "in_bio": false, "already_known": false },`,
         },
         {
             context: `Actors in the scene:

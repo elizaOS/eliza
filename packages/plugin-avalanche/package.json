@@ -1,12 +1,25 @@
 {
   "name": "@elizaos/plugin-avalanche",
   "version": "0.1.7-alpha.2",
-  "main": "dist/index.js",
   "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@elizaos/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "viem": "2.21.49"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "8.3.5"

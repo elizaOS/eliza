@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Creating an AI Agent with Your Own Personality
 
-In this tutorial, we'll explore how to create an AI agent that embodies your own personality using data from your Twitter archive, videos, markdown files, and PDFs. We'll leverage the [Characterfile](https://github.com/ai16z/characterfile) repo and [Eliza framework](https://github.com/ai16z/eliza) to generate and integrate the character data.
+In this tutorial, we'll explore how to create an AI agent that embodies your own personality using data from your Twitter archive, videos, markdown files, and PDFs. We'll leverage the [Characterfile](https://github.com/ai16z/characterfile) repo and [Eliza framework](https://github.com/elizaOS/eliza) to generate and integrate the character data.
 
 Video: https://youtu.be/uouSdtcWXTQ?si=cm13L4T7DQUMXd0C
 
@@ -50,7 +50,7 @@ Video: https://youtu.be/uouSdtcWXTQ?si=cm13L4T7DQUMXd0C
 
 1. Clone Eliza repo and check out latest version:
    ```bash
-   git clone https://github.com/ai16z/eliza.git 
+   git clone https://github.com/elizaOS/eliza.git
    git checkout <latest-tag>
    ```
 

@@ -199,7 +199,6 @@ export class DirectClient {
                 if (req.file) {
                     const filePath = path.join(
                         process.cwd(),
-                        "agent",
                         "data",
                         "uploads",
                         req.file.filename

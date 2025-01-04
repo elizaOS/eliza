@@ -61,6 +61,21 @@ CREATE TABLE memories_1024 (
     CONSTRAINT fk_agent FOREIGN KEY ("agentId") REFERENCES accounts("id") ON DELETE CASCADE
 );
 
+CREATE TABLE memories_768 (
+    "id" UUID PRIMARY KEY,
+    "type" TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    "content" JSONB NOT NULL,
+    "embedding" vector(768),  -- Gaianet nomic-embed
+    "userId" UUID REFERENCES accounts("id"),
+    "agentId" UUID REFERENCES accounts("id"),
+    "roomId" UUID REFERENCES rooms("id"),
+    "unique" BOOLEAN DEFAULT true NOT NULL,
+    CONSTRAINT fk_room FOREIGN KEY ("roomId") REFERENCES rooms("id") ON DELETE CASCADE,
+    CONSTRAINT fk_user FOREIGN KEY ("userId") REFERENCES accounts("id") ON DELETE CASCADE,
+    CONSTRAINT fk_agent FOREIGN KEY ("agentId") REFERENCES accounts("id") ON DELETE CASCADE
+);
+
 CREATE TABLE memories_384 (
     "id" UUID PRIMARY KEY,
     "type" TEXT NOT NULL,
@@ -81,6 +96,8 @@ CREATE VIEW memories AS
     SELECT * FROM memories_1536
     UNION ALL
     SELECT * FROM memories_1024
+    UNION ALL
+    SELECT * FROM memories_768
     UNION ALL
     SELECT * FROM memories_384;
 
@@ -136,6 +153,8 @@ CREATE TABLE relationships (
 -- Add index for Ollama table
 CREATE INDEX idx_memories_1024_embedding ON memories_1024 USING hnsw ("embedding" vector_cosine_ops);
 CREATE INDEX idx_memories_1024_type_room ON memories_1024("type", "roomId");
+CREATE INDEX idx_memories_768_embedding ON memories_768 USING hnsw ("embedding" vector_cosine_ops);
+CREATE INDEX idx_memories_768_type_room ON memories_768("type", "roomId");
 CREATE INDEX idx_memories_1536_embedding ON memories_1536 USING hnsw ("embedding" vector_cosine_ops);
 CREATE INDEX idx_memories_384_embedding ON memories_384 USING hnsw ("embedding" vector_cosine_ops);
 CREATE INDEX idx_memories_1536_type_room ON memories_1536("type", "roomId");

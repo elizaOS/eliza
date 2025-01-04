@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1
+
+## Modified version of https://docusaurus.community/knowledge/deployment/docker/
+
+# Stage 1: Base image.
+## Start with a base image containing NodeJS so we can build Docusaurus.
+FROM node:23.3.0-slim AS base
+## Disable colour output from yarn to make logs easier to read.
+
+## https://pnpm.io/docker
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+
+ENV FORCE_COLOR=0
+## Enable corepack.
+RUN corepack enable
+## Set the working directory to `/opt/docusaurus`.
+WORKDIR /opt/docusaurus
+
+## Required by docusaurus: [ERROR] Loading of version failed for version current
+RUN apt-get update && apt-get install -y git 
+
+FROM base AS dev
+## Set the working directory to `/opt/docusaurus`.
+WORKDIR /opt/docusaurus
+## Expose the port that Docusaurus will run on.
+EXPOSE 3000
+## Run the development server.
+CMD [ -d "node_modules" ] && npm run start -- --host 0.0.0.0 --poll 1000 || pnpm install && pnpm run start -- --host 0.0.0.0 --poll 1000
+
+# Stage 2b: Production build mode.
+FROM base AS prod
+## Set the working directory to `/opt/docusaurus`.
+WORKDIR /opt/docusaurus
+
+COPY docs/package.json /opt/docusaurus/package.json
+COPY docs/package-lock.json /opt/docusaurus/package-lock.json
+
+## Install dependencies with `--immutable` to ensure reproducibility.
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install 
+
+## Copy over the source code.
+COPY docs/ /opt/docusaurus/
+COPY packages/ /opt/packages/
+
+## Required buy docusaurus [ERROR] Loading of version failed for version current
+COPY .git/ /opt/.git/
+
+# Build from sources
+RUN pnpm run build
+
+# Stage 3a: Serve with `docusaurus serve`.
+FROM prod AS serve
+## Expose the port that Docusaurus will run on.
+EXPOSE 3000
+## Run the production server.
+CMD ["npm", "run", "serve", "--", "--host", "0.0.0.0", "--no-open"]
+

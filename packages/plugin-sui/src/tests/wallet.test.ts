@@ -49,6 +49,12 @@ describe("WalletProvider", () => {
             "gaze throw also reveal kite load tennis tone club cloth chaos picture"
         );
 
+        const suiAccountx = Ed25519Keypair.fromSecretKey(
+            "suiprivkey1qzuw2uvhqz330pwl94rv39jvk93kuvfd4pvdkw9vl922kum80prqvxtlntr"
+        );
+
+        console.log(suiAccountx.toSuiAddress());
+
         // Create new instance of TokenProvider with mocked dependencies
         walletProvider = new WalletProvider(
             suiClient,

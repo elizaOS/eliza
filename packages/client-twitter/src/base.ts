@@ -288,12 +288,13 @@ export class ClientBase extends EventEmitter {
                     hashtags: tweet.hashtags ?? tweet.legacy?.entities.hashtags,
                     mentions:
                         tweet.mentions ?? tweet.legacy?.entities.user_mentions,
-                    photos:
-                        tweet.photos ??
-                        tweet.legacy?.entities.media?.filter(
+                    photos: tweet.legacy?.entities?.media?.filter(
                             (media) => media.type === "photo"
-                        ) ??
-                        [],
+                        ).map(media => ({
+                            id: media.id_str,
+                            url: media.media_url_https,  // Store media_url_https as url
+                            alt_text: media.alt_text
+                        })) || [],
                     thread: tweet.thread || [],
                     urls: tweet.urls ?? tweet.legacy?.entities.urls,
                     videos:
@@ -331,10 +332,13 @@ export class ClientBase extends EventEmitter {
             permanentUrl: `https://twitter.com/${tweet.core?.user_results?.result?.legacy?.screen_name}/status/${tweet.rest_id}`,
             hashtags: tweet.legacy?.entities?.hashtags || [],
             mentions: tweet.legacy?.entities?.user_mentions || [],
-            photos:
-                tweet.legacy?.entities?.media?.filter(
-                    (media) => media.type === "photo"
-                ) || [],
+            photos: tweet.legacy?.entities?.media?.filter(
+                (media) => media.type === "photo"
+            ).map(media => ({
+                id: media.id_str,
+                url: media.media_url_https,  // Store media_url_https as url
+                alt_text: media.alt_text
+                 })) || [],
             thread: tweet.thread || [],
             urls: tweet.legacy?.entities?.urls || [],
             videos:
@@ -354,7 +358,7 @@ export class ClientBase extends EventEmitter {
             // Sometimes this fails because we are rate limited. in this case, we just need to return an empty array
             // if we dont get a response in 5 seconds, something is wrong
             const timeoutPromise = new Promise((resolve) =>
-                setTimeout(() => resolve({ tweets: [] }), 10000)
+                setTimeout(() => resolve({ tweets: [] }), 15000)
             );
 
             try {

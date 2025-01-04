@@ -137,6 +137,8 @@ export function getEmbeddingZeroVector(): number[] {
         embeddingDimension = 1536; // OpenAI dimension
     } else if (settings.USE_OLLAMA_EMBEDDING?.toLowerCase() === "true") {
         embeddingDimension = 1024; // Ollama mxbai-embed-large dimension
+    } else if (settings.USE_GAIANET_EMBEDDING?.toLowerCase() === "true") {
+        embeddingDimension = 768; // GaiaNet dimension
     }
 
     return Array(embeddingDimension).fill(0);

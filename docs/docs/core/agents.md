@@ -90,7 +90,7 @@ const runtime = new AgentRuntime({
 
 ## State Management
 
-This section should cover how agents manage and update state, with a focus on initial state composition and updating methods. The runtime maintains state through the [State](/api/interfaces/state) interface:
+This section covers how agents manage and update state, with a focus on initial state composition and updating methods. The runtime maintains state through the [State](/api/interfaces/state) interface:
 
 ```typescript
 interface State {

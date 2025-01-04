@@ -12,20 +12,20 @@
 
 ## ✨ 기능
 
-- 🛠 SNS 지원: 디스코드, 트위터, 텔레그램 모두 지원됩니다.
+- 🛠 SNS 지원: 디스코드, 트위터, 텔레그램 연동 지원
 - 🔗 다양한 모델 지원 (Llama, Grok, OpenAI, Anthropic 등)
-- 👥 다중 지원: 다중 에이전트 및 채팅방이 지원됩니다.
-- 📚 높은 유연성: 개발자가 쉽게 데이터를 추가하고, 이를 활용해 다양한 기능을 만들 수 있습니다.
-- 💾 검색 지원: 당신의 데이터와 작업을 쉽게 찾아볼 수 있도록, 검색 기능을 지원합니다.
-- 🚀 높은 확장성: 자신의 동작과 클라이언트를 만들어 기능을 확장할 수 있습니다.
+- 👥 다중 지원: 다중 에이전트 및 채팅방 지원
+- 📚 높은 유연성: 데이터를 쉽게 추가하고 다양한 상호작용 가능
+- 💾 검색 지원: 데이터와 작업을 쉽게 찾아볼 수 있도록 검색 기능 지원
+- 🚀 높은 확장성: 사용자 정의 동작 및 클라이언트 생성 가능
 - ☁️ 다양한 AI 모델 지원: local Llama, OpenAI, Anthropic, Groq 등 다양한 AI 모델을 지원합니다
 - 📦 즐겁게 개발해 봐요!
 
-## 🎯 eliza로 어떤걸 만들 수 있을까요?
+## 🎯 사용 사례
 
-- 🤖 챗봇 개발
-- 🕵 ️AI가 자율적으로 결과를 만들어줘요!
-- 📈 업무처리 자동화
+- 🤖 챗봇
+- 🕵 ️자율 에이전트
+- 📈 자동화 프로세스
 - 🎮 비디오 게임 NPC
 - 🧠 트레이딩
 
@@ -51,10 +51,10 @@ pnpm i && pnpm start
 
 [문서](https://elizaos.github.io/eliza/)를 참고하여 Eliza를 커스마이징 방법을 확인하세요.
 
-### 직접 실행하기 (경험자만 권장)
+### 수동으로 실행 (사용법을 알고 있는 경우에만 권장)
 
 ```bash
-# 리포지토리 클론
+# 저장소 복사
 git clone https://github.com/elizaos/eliza.git
 
 # 최신 릴리스로 체크아웃
@@ -113,12 +113,12 @@ pnpm clean
 pnpm install --include=optional sharp
 ```
 
-### Community & contact
+### 커뮤니티 & 문의
 
 - [Github Issues](https://github.com/elizaos/eliza/issues). 용도: Eliza 사용 중 발견된 버그 리포트, 기능 제안.
 - [Discord](https://discord.gg/ai16z). 용도: 애플리케이션 공유 및 커뮤니티 활동.
 
-## 컨트리뷰터
+## 기여자
 
 <a href="https://github.com/elizaos/eliza/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=elizaos/eliza" />

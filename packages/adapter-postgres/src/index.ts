@@ -195,29 +195,26 @@ export class PostgresDatabaseAdapter
             if (embeddingConfig.provider === EmbeddingProvider.OpenAI) {
                 await client.query("SET app.use_openai_embedding = 'true'");
                 await client.query("SET app.use_ollama_embedding = 'false'");
+                await client.query("SET app.use_gaianet_embedding = 'false'");
             } else if (embeddingConfig.provider === EmbeddingProvider.Ollama) {
                 await client.query("SET app.use_openai_embedding = 'false'");
                 await client.query("SET app.use_ollama_embedding = 'true'");
+                await client.query("SET app.use_gaianet_embedding = 'false'");
+            } else if (embeddingConfig.provider === EmbeddingProvider.GaiaNet){
+                await client.query("SET app.use_openai_embedding = 'false'");
+                await client.query("SET app.use_ollama_embedding = 'false'");
+                await client.query("SET app.use_gaianet_embedding = 'true'");
             } else {
                 await client.query("SET app.use_openai_embedding = 'false'");
                 await client.query("SET app.use_ollama_embedding = 'false'");
+                await client.query("SET app.use_gaianet_embedding = 'false'");
             }
 
-            // Check if schema already exists (check for a core table)
-            const { rows } = await client.query(`
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_name = 'rooms'
-                );
-            `);
-
-            if (!rows[0].exists) {
-                const schema = fs.readFileSync(
-                    path.resolve(__dirname, "../schema.sql"),
-                    "utf8"
-                );
-                await client.query(schema);
-            }
+            const schema = fs.readFileSync(
+                path.resolve(__dirname, "../schema.sql"),
+                "utf8"
+            );
+            await client.query(schema);
 
             await client.query("COMMIT");
         } catch (error) {

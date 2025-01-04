@@ -3,14 +3,24 @@ name: JSDoc Automation
 on:
   workflow_dispatch:
     inputs:
+      jsdoc:
+        description: 'Generate JSDoc comments (T/F)'
+        required: true
+        default: 'T'
+        type: string
+      readme:
+        description: 'Generate README documentation (T/F)'
+        required: true
+        default: 'T'
+        type: string
       pull_number:
-        description: 'Pull Request Number (if not provided, scans root_directory) - PR must be merged to develop branch'
+        description: 'Pull Request Number (if not provided, scans root_directory) - PR must be merged to develop branch. DONT provide if `README documentation` is T from above'
         required: false
         type: string
       root_directory:
         description: 'Only scans files in this directory (relative to repository root, e.g., packages/core/src)'
         required: true
-        default: 'packages/core/src/test_resources'
+        default: 'packages/plugin-near/'
         type: string
       excluded_directories:
         description: 'Directories to exclude from scanning (comma-separated, relative to root_directory)'
@@ -18,9 +28,19 @@ on:
         default: 'node_modules,dist,test'
         type: string
       reviewers:
-        description: 'Pull Request Reviewers (comma-separated GitHub usernames)'
+        description: 'Pull Request Reviewers (Must be collaborator on the repository) comma-separated GitHub usernames'
         required: true
         default: ''
+        type: string
+      branch:
+        description: 'Target branch for PR (defaults to develop)'
+        required: false
+        default: 'develop'
+        type: string
+      language:
+        description: 'Documentation language (e.g., English, Spanish, French)'
+        required: true
+        default: 'English'
         type: string
 
 jobs:
@@ -40,7 +60,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '23'
+          node-version: '20'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -49,7 +69,7 @@ jobs:
           run_install: false
 
       - name: Update lockfile
-        working-directory: packages/jsdoc-automation
+        working-directory: scripts/jsdoc-automation
         run: |
           echo "Updating lockfile..."
           pnpm install --no-frozen-lockfile
@@ -63,19 +83,22 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Install package dependencies
-        working-directory: packages/jsdoc-automation
+        working-directory: scripts/jsdoc-automation
         run: pnpm install --no-frozen-lockfile
 
+      - name: Build TypeScript
+        working-directory: scripts/jsdoc-automation
+        run: pnpm build
+
       - name: Run documentation generator
-        working-directory: packages/jsdoc-automation
-        run: |
-          echo "Node version: $(node --version)"
-          echo "NPM version: $(npm --version)"
-          echo "Directory contents:"
-          ls -la
-          NODE_OPTIONS='--experimental-vm-modules --no-warnings' pnpm start
+        working-directory: scripts/jsdoc-automation
+        run: pnpm start
         env:
           INPUT_ROOT_DIRECTORY: ${{ inputs.root_directory }}
           INPUT_PULL_NUMBER: ${{ inputs.pull_number }}
           INPUT_EXCLUDED_DIRECTORIES: ${{ inputs.excluded_directories }}
           INPUT_REVIEWERS: ${{ inputs.reviewers }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          INPUT_LANGUAGE: ${{ inputs.language }}
+          INPUT_JSDOC: ${{ inputs.jsdoc }}
+          INPUT_README: ${{ inputs.readme }}

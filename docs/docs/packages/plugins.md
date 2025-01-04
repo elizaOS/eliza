@@ -610,12 +610,12 @@ The Fuel plugin provides an interface to the Fuel Ignition blockchain.
 **Actions:**
 
 1. `TRANSFER_FUEL_ETH` - Transfer ETH to a given Fuel address. - **Inputs**: - `toAddress` (string): The Fuel address to transfer ETH to. - `amount` (string): The amount of ETH to transfer. - **Outputs**: Confirmation message with transaction details. - **Example**:
-   `json
-{
+   ```json
+   {
     "toAddress": "0x8F8afB12402C9a4bD9678Bec363E51360142f8443FB171655eEd55dB298828D1",
     "amount": "0.00001"
-}
-`
+   }
+   ```
    **Setup and Configuration:**
 
 1. **Configure the Plugin**

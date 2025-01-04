@@ -207,3 +207,5 @@ export const webSearchPlugin: Plugin = {
     evaluators: [],
     providers: [],
 };
+
+export default webSearchPlugin;

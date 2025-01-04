@@ -1,0 +1,9 @@
+services:
+    docs:
+        build:
+            dockerfile: Dockerfile.docs
+            context: .
+            target: serve
+        ports:
+            - 3000:3000
+

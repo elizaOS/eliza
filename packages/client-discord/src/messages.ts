@@ -389,11 +389,16 @@ export class MessageManager {
                         discordMessageHandlerTemplate,
                 });
 
+                // simulate discord typing while generating a response
+                const stopTyping = this.simulateTyping(message)
+
                 const responseContent = await this._generateResponse(
                     memory,
                     state,
                     context
-                );
+                ).finally(() => {
+                    stopTyping()
+                });
 
                 responseContent.text = responseContent.text?.trim();
                 responseContent.inReplyTo = stringToUuid(
@@ -1306,5 +1311,28 @@ export class MessageManager {
 
         const data = await response.json();
         return data.username;
+    }
+
+    /**
+     * Simulate discord typing while generating a response;
+     * returns a function to interrupt the typing loop
+     *
+     * @param message
+     */
+    private simulateTyping(message: DiscordMessage) {
+        let typing = true;
+
+        const typingLoop = async () => {
+            while (typing) {
+                await message.channel.sendTyping();
+                await new Promise((resolve) => setTimeout(resolve, 3000));
+            }
+        };
+
+        typingLoop();
+
+        return function stopTyping() {
+            typing = false
+        }
     }
 }

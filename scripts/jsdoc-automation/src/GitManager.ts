@@ -57,7 +57,7 @@ export class GitManager {
 
     /**
      * Creates a new branch in the GitHub repository using the given branch name and base branch.
-     * 
+     *
      * @param {string} branchName - The name of the new branch to be created.
      * @param {string} baseBranch - The name of the branch to base the new branch off of.
      * @returns {Promise<void>} - A Promise that resolves when the branch is successfully created.
@@ -77,7 +77,7 @@ export class GitManager {
 
     /**
      * Asynchronously commits a file to a repository using the GitHub API.
-     * 
+     *
      * @param {string} branchName - The name of the branch to commit the file to.
      * @param {string} filePath - The path of the file to commit.
      * @param {string} content - The content of the file to commit.
@@ -104,6 +104,7 @@ export class GitManager {
             });
         } catch (error: any) {
             if (error.status === 404) {
+                console.log('404 - File doesn\'t exist in the target branch, creating a new file');
                 // File doesn't exist in the target branch, create a new file
                 await this.octokit.repos.createOrUpdateFileContents({
                     owner: this.repository.owner,

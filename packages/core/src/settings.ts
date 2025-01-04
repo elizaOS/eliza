@@ -93,7 +93,7 @@ export function loadEnvConfig(): Settings {
     const result = config(envPath ? { path: envPath } : {});
 
     if (!result.error) {
-        console.log(`Loaded .env file from: ${envPath}`);
+        elizaLogger.log(`Loaded .env file from: ${envPath}`);
     }
 
     // Parse namespaced settings
@@ -156,10 +156,10 @@ function parseNamespacedSettings(env: Settings): NamespacedSettings {
     for (const [key, value] of Object.entries(env)) {
         if (!value) continue;
 
-        const [namespace, ...rest] = key.split('.');
+        const [namespace, ...rest] = key.split(".");
         if (!namespace || rest.length === 0) continue;
 
-        const settingKey = rest.join('.');
+        const settingKey = rest.join(".");
         namespaced[namespace] = namespaced[namespace] || {};
         namespaced[namespace][settingKey] = value;
     }

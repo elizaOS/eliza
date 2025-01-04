@@ -1,5 +1,5 @@
 # Codebase Documentation
-- https://github.com/ai16z/eliza/issues/1110
+- https://github.com/elizaOS/eliza/issues/1110
 
 ## Set up
 - Set GH_PAT & OPENAI_API_KEY in github actions as env variables
@@ -38,7 +38,7 @@ The `src/Configuration.ts` handles configuration loading from environment variab
 
 #### Default Values
 
-- **Repository**: ai16z/eliza
+- **Repository**: elizaOS/eliza
 - **Branch**: develop
 - **Commit Message**: "Generated JSDoc comments"
 - **PR Title**: "JSDoc Generation"

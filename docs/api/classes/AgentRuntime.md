@@ -235,6 +235,13 @@ The model to use for generateText.
 
 The model to use for generateImage.
 
+
+### imageVisionModelProvider
+
+> **imageVisionModelProvider**: [`ModelProviderName`](../enumerations/ModelProviderName.md)
+
+The model to use for describing inputImages.
+
 #### Implementation of
 
 [`IAgentRuntime`](../interfaces/IAgentRuntime.md).[`imageModelProvider`](../interfaces/IAgentRuntime.md#imageModelProvider)
