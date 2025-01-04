@@ -29,12 +29,17 @@ EXPOSE 3000
 CMD [ -d "node_modules" ] && npm run start -- --host 0.0.0.0 --poll 1000 || pnpm install && pnpm run start -- --host 0.0.0.0 --poll 1000
 
 # Stage 2b: Production build mode.
-FROM base AS prod
+FROM base AS preprod
 ## Set the working directory to `/opt/docusaurus`.
 WORKDIR /opt/docusaurus
 
+## This is in case someone needs to build the lock file 
+#RUN apt install python-is-python3 g++ make -y
+
 COPY docs/package.json /opt/docusaurus/package.json
 COPY docs/package-lock.json /opt/docusaurus/package-lock.json
+
+FROM preprod AS prod
 
 ## Install dependencies with `--immutable` to ensure reproducibility.
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install 
