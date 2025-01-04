@@ -22,8 +22,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-trustdb": "workspace:*",
     "tsup": "^8.3.5",
-    "web3": "^4.15.0",
-    "web3-plugin-zksync": "^1.0.8"
+    "viem": "2.21.55"
   },
   "scripts": {
     "build": "tsup --format esm --dts"

@@ -1,9 +1,21 @@
 import { IAgentRuntime } from "@elizaos/core";
+import { isAddress } from "viem";
 import { z } from "zod";
 
 export const zksyncEnvSchema = z.object({
-    ZKSYNC_ADDRESS: z.string().min(1, "ZKsync address is required"),
-    ZKSYNC_PRIVATE_KEY: z.string().min(1, "ZKsync private key is required"),
+    ZKSYNC_ADDRESS: z
+        .string()
+        .min(1, "ZKsync Era address is required")
+        .refine((address) => isAddress(address, { strict: false }), {
+            message: "ZKsync Era address must be a valid address",
+        }),
+    ZKSYNC_PRIVATE_KEY: z
+        .string()
+        .min(1, "ZKsync Era private key is required")
+        .refine((key) => /^[a-fA-F0-9]{64}$/.test(key), {
+            message:
+                "ZKsync Era private key must be a 64-character hexadecimal string (32 bytes) without the '0x' prefix",
+        }),
 });
 
 export type ZKsyncConfig = z.infer<typeof zksyncEnvSchema>;

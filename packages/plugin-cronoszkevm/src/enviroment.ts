@@ -1,11 +1,21 @@
-import { IAgentRuntime } from "@elizaos/eliza";
+import { IAgentRuntime } from "@elizaos/core";
+import { isAddress } from "viem";
 import { z } from "zod";
 
 export const CronosZkEVMEnvSchema = z.object({
-    CRONOSZKEVM_ADDRESS: z.string().min(1, "Cronos zkEVM address is required"),
+    CRONOSZKEVM_ADDRESS: z
+        .string()
+        .min(1, "Cronos zkEVM address is required")
+        .refine((address) => isAddress(address, { strict: false }), {
+            message: "Cronos zkEVM address must be a valid address",
+        }),
     CRONOSZKEVM_PRIVATE_KEY: z
         .string()
-        .min(1, "Cronos zkEVM private key is required"),
+        .min(1, "Cronos zkEVM private key is required")
+        .refine((key) => /^[a-fA-F0-9]{64}$/.test(key), {
+            message:
+                "Cronos zkEVM private key must be a 64-character hexadecimal string (32 bytes) without the '0x' prefix",
+        }),
 });
 
 export type CronoszkEVMConfig = z.infer<typeof CronosZkEVMEnvSchema>;

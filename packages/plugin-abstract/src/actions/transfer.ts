@@ -1,3 +1,4 @@
+import type { Action } from "@elizaos/core";
 import {
     ActionExample,
     Content,
@@ -6,14 +7,21 @@ import {
     Memory,
     ModelClass,
     State,
-    type Action,
     elizaLogger,
     composeContext,
     generateObject,
 } from "@elizaos/core";
 import { validateAbstractConfig } from "../environment";
 
-import { Address, createWalletClient, erc20Abi, http, parseEther } from "viem";
+import {
+    Address,
+    createWalletClient,
+    erc20Abi,
+    http,
+    parseEther,
+    isAddress,
+    parseUnits,
+} from "viem";
 import { abstractTestnet } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { eip712WalletActions } from "viem/zksync";
@@ -34,24 +42,22 @@ export interface TransferContent extends Content {
 export function isTransferContent(
     content: TransferContent
 ): content is TransferContent {
+    const { tokenAddress, recipient, amount } = content;
+
     // Validate types
-    const validTypes =
-        typeof content.tokenAddress === "string" &&
-        typeof content.recipient === "string" &&
-        (typeof content.amount === "string" ||
-            typeof content.amount === "number");
-    if (!validTypes) {
+    const areTypesValid =
+        typeof tokenAddress === "string" &&
+        typeof recipient === "string" &&
+        (typeof amount === "string" || typeof amount === "number");
+
+    if (!areTypesValid) {
         return false;
     }
 
     // Validate addresses
-    const validAddresses =
-        content.tokenAddress.startsWith("0x") &&
-        content.tokenAddress.length === 42 &&
-        content.recipient.startsWith("0x") &&
-        content.recipient.length === 42;
-
-    return validAddresses;
+    return [tokenAddress, recipient].every((address) =>
+        isAddress(address, { strict: false })
+    );
 }
 
 const transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
@@ -156,6 +162,8 @@ export default {
             }).extend(eip712WalletActions());
 
             let hash;
+
+            // Check if the token is native
             if (
                 content.tokenAddress.toLowerCase() !== ETH_ADDRESS.toLowerCase()
             ) {
@@ -163,8 +171,10 @@ export default {
                 const tokenInfo =
                     ERC20_OVERRIDE_INFO[content.tokenAddress.toLowerCase()];
                 const decimals = tokenInfo?.decimals ?? 18; // Default to 18 decimals if not specified
-                const tokenAmount =
-                    BigInt(content.amount) * BigInt(10 ** decimals);
+                const tokenAmount = parseUnits(
+                    content.amount.toString(),
+                    decimals
+                );
 
                 // Execute ERC20 transfer
                 hash = await walletClient.writeContract({

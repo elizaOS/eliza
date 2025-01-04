@@ -1,3 +1,4 @@
+import type { Action } from "@elizaos/core";
 import {
     ActionExample,
     Content,
@@ -6,20 +7,31 @@ import {
     Memory,
     ModelClass,
     State,
-    type Action,
     elizaLogger,
     composeContext,
     generateObject,
 } from "@elizaos/core";
 import { validateCronosZkevmConfig } from "../enviroment";
 
-import { Web3 } from "web3";
 import {
-    ZKsyncPlugin,
-    ZKsyncWallet,
-    types,
-    Web3ZKsyncL2,
-} from "web3-plugin-zksync";
+    Address,
+    createWalletClient,
+    erc20Abi,
+    http,
+    parseEther,
+    isAddress,
+    parseUnits,
+} from "viem";
+import { cronoszkEVM } from "viem/chains";
+import { privateKeyToAccount } from "viem/accounts";
+import { eip712WalletActions } from "viem/zksync";
+import { z } from "zod";
+
+const TransferSchema = z.object({
+    tokenAddress: z.string(),
+    recipient: z.string(),
+    amount: z.string(),
+});
 
 export interface TransferContent extends Content {
     tokenAddress: string;
@@ -30,24 +42,22 @@ export interface TransferContent extends Content {
 export function isTransferContent(
     content: TransferContent
 ): content is TransferContent {
+    const { tokenAddress, recipient, amount } = content;
+
     // Validate types
-    const validTypes =
-        typeof content.tokenAddress === "string" &&
-        typeof content.recipient === "string" &&
-        (typeof content.amount === "string" ||
-            typeof content.amount === "number");
-    if (!validTypes) {
+    const areTypesValid =
+        typeof tokenAddress === "string" &&
+        typeof recipient === "string" &&
+        (typeof amount === "string" || typeof amount === "number");
+
+    if (!areTypesValid) {
         return false;
     }
 
     // Validate addresses
-    const validAddresses =
-        content.tokenAddress.startsWith("0x") &&
-        content.tokenAddress.length === 42 &&
-        content.recipient.startsWith("0x") &&
-        content.recipient.length === 42;
-
-    return validAddresses;
+    return [tokenAddress, recipient].every((address) =>
+        isAddress(address, { strict: false })
+    );
 }
 
 const transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
@@ -75,6 +85,14 @@ Given the recent messages, extract the following information about the requested
 
 Respond with a JSON markdown block containing only the extracted values.`;
 
+const ZKCRO_ADDRESS = "0x000000000000000000000000000000000000800A";
+const ERC20_OVERRIDE_INFO = {
+    "0xe4c7fbb0a626ed208021ccaba6be1566905e2dfc": {
+        name: "USDC",
+        decimals: 6,
+    },
+};
+
 export default {
     name: "SEND_TOKEN",
     similes: [
@@ -99,7 +117,7 @@ export default {
         _options: { [key: string]: unknown },
         callback?: HandlerCallback
     ): Promise<boolean> => {
-        elizaLogger.log("Starting SEND_TOKEN handler...");
+        elizaLogger.log("Starting Cronos zkEVM SEND_TOKEN handler...");
 
         // Initialize or update state
         if (!state) {
@@ -115,11 +133,14 @@ export default {
         });
 
         // Generate transfer content
-        const content = await generateObject({
-            runtime,
-            context: transferContext,
-            modelClass: ModelClass.SMALL,
-        });
+        const content = (
+            await generateObject({
+                runtime,
+                context: transferContext,
+                modelClass: ModelClass.SMALL,
+                schema: TransferSchema,
+            })
+        ).object as unknown as TransferContent;
 
         // Validate transfer content
         if (!isTransferContent(content)) {
@@ -134,39 +155,57 @@ export default {
         }
 
         try {
-            const PRIVATE_KEY = runtime.getSetting("CRONOSZKEVM_PRIVATE_KEY")!;
-            const PUBLIC_KEY = runtime.getSetting("CRONOSZKEVM_ADDRESS")!;
+            const PRIVATE_KEY = runtime.getSetting("CRONOSZKEVM_PRIVATE_KEY");
+            const account = privateKeyToAccount(`0x${PRIVATE_KEY}`);
 
-            const web3: Web3 = new Web3(/* optional L1 provider */);
+            const walletClient = createWalletClient({
+                chain: cronoszkEVM,
+                transport: http(),
+            }).extend(eip712WalletActions());
 
-            web3.registerPlugin(
-                new ZKsyncPlugin(
-                    new Web3ZKsyncL2("https://mainnet.zkevm.cronos.org")
-                )
-            );
+            let hash;
 
-            const smartAccount = new web3.ZKsync.SmartAccount({
-                address: PUBLIC_KEY,
-                secret: "0x" + PRIVATE_KEY,
-            });
+            // Check if the token is native
+            if (
+                content.tokenAddress.toLowerCase() !==
+                ZKCRO_ADDRESS.toLowerCase()
+            ) {
+                // Convert amount to proper token decimals
+                const tokenInfo =
+                    ERC20_OVERRIDE_INFO[content.tokenAddress.toLowerCase()];
+                const decimals = tokenInfo?.decimals ?? 18; // Default to 18 decimals if not specified
+                const tokenAmount = parseUnits(
+                    content.amount.toString(),
+                    decimals
+                );
 
-            const transferTx = await smartAccount.transfer({
-                to: content.recipient,
-                token: content.tokenAddress,
-                amount: web3.utils.toWei(content.amount, "ether"),
-            });
-
-            const receipt = await transferTx.wait();
+                // Execute ERC20 transfer
+                hash = await walletClient.writeContract({
+                    account,
+                    chain: cronoszkEVM,
+                    address: content.tokenAddress as Address,
+                    abi: erc20Abi,
+                    functionName: "transfer",
+                    args: [content.recipient as Address, tokenAmount],
+                });
+            } else {
+                hash = await walletClient.sendTransaction({
+                    account: account,
+                    chain: cronoszkEVM,
+                    to: content.recipient as Address,
+                    value: parseEther(content.amount.toString()),
+                    kzg: undefined,
+                });
+            }
 
             elizaLogger.success(
-                "Transfer completed successfully! tx: " +
-                    receipt.transactionHash
+                "Transfer completed successfully! Transaction hash: " + hash
             );
             if (callback) {
                 callback({
                     text:
-                        "Transfer completed successfully! tx: " +
-                        receipt.transactionHash,
+                        "Transfer completed successfully! Transaction hash: " +
+                        hash,
                     content: {},
                 });
             }
