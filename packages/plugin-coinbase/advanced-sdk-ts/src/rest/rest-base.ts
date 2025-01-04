@@ -3,6 +3,7 @@ import fetch, { Headers, RequestInit, Response } from 'node-fetch';
 import { BASE_URL, USER_AGENT } from '../constants';
 import { RequestOptions } from './types/request-types';
 import { handleException } from './errors';
+import { CoinbaseError, CoinbaseErrorType } from './errors';
 
 export class RESTBase {
   private apiKey: string | undefined;
@@ -60,11 +61,33 @@ export class RESTBase {
     requestOptions: RequestInit,
     url: string
   ) {
-    const response: Response = await fetch(url, requestOptions);
-    const responseText = await response.text();
-    handleException(response, responseText, response.statusText);
+    try {
+      const response: Response = await fetch(url, requestOptions);
+      const responseText = await response.text();
 
-    return responseText;
+      // Handle API errors
+      handleException(response, responseText, response.statusText);
+
+      // Parse successful response
+      try {
+        return JSON.parse(responseText);
+      } catch {
+        // If response is not JSON, return raw text
+        return responseText;
+      }
+    } catch (error) {
+      if (error instanceof CoinbaseError) {
+        // Re-throw Coinbase specific errors
+        throw error;
+      }
+      // Handle network or other errors
+      throw new CoinbaseError({
+        type: CoinbaseErrorType.NETWORK_ERROR,
+        message: 'Failed to connect to Coinbase',
+        details: { originalError: error },
+        suggestion: 'Please check your internet connection and try again.'
+      }, 0, new Response());
+    }
   }
 
   setHeaders(httpMethod: string, urlPath: string, isPublic?: boolean) {
