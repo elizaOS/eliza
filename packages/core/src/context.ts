@@ -1,5 +1,5 @@
 import handlebars from "handlebars";
-import { type State } from "./types.ts";
+import { type State, type TemplateType } from "./types.ts";
 import { names, uniqueNamesGenerator } from "unique-names-generator";
 
 /**
@@ -13,7 +13,7 @@ import { names, uniqueNamesGenerator } from "unique-names-generator";
  *
  * @param {Object} params - The parameters for composing the context.
  * @param {State} params.state - The state object containing values to replace the placeholders in the template.
- * @param {string} params.template - The template string containing placeholders to be replaced with state values.
+ * @param {TemplateType} params.template - The template string or function containing placeholders to be replaced with state values.
  * @param {"handlebars" | undefined} [params.templatingEngine] - The templating engine to use for compiling and evaluating the template (optional, default: `undefined`).
  * @returns {string} The composed context string with placeholders replaced by corresponding state values.
  *
@@ -25,23 +25,34 @@ import { names, uniqueNamesGenerator } from "unique-names-generator";
  * // Composing the context with simple string replacement will result in:
  * // "Hello, Alice! You are 30 years old."
  * const contextSimple = composeContext({ state, template });
+ *
+ * // Using composeContext with a template function for dynamic template
+ * const template = ({ state }) => {
+ * const tone = Math.random() > 0.5 ? "kind" : "rude";
+ *   return `Hello, {{userName}}! You are {{userAge}} years old. Be ${tone}`;
+ * };
+ * const contextSimple = composeContext({ state, template });
  */
+
 export const composeContext = ({
     state,
     template,
     templatingEngine,
 }: {
     state: State;
-    template: string;
+    template: TemplateType;
     templatingEngine?: "handlebars";
 }) => {
+    const templateStr =
+        typeof template === "function" ? template({ state }) : template;
+
     if (templatingEngine === "handlebars") {
-        const templateFunction = handlebars.compile(template);
+        const templateFunction = handlebars.compile(templateStr);
         return templateFunction(state);
     }
 
     // @ts-expect-error match isn't working as expected
-    const out = template.replace(/{{\w+}}/g, (match) => {
+    const out = templateStr.replace(/{{\w+}}/g, (match) => {
         const key = match.replace(/{{|}}/g, "");
         return state[key] ?? "";
     });

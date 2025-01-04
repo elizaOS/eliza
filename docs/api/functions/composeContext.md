@@ -2,7 +2,7 @@
 
 # Function: composeContext()
 
-> **composeContext**(`params`): `any`
+> **composeContext**(`params`): `string`
 
 Composes a context string by replacing placeholders in a template with corresponding values from the state.
 
@@ -22,9 +22,9 @@ The parameters for composing the context.
 
 The state object containing values to replace the placeholders in the template.
 
-• **params.template**: `string`
+• **params.template**: `string` | `Function`
 
-The template string containing placeholders to be replaced with state values.
+The template string or function returning a string containing placeholders to be replaced with state values.
 
 • **params.templatingEngine?**: `"handlebars"`
 
@@ -32,7 +32,7 @@ The templating engine to use for compiling and evaluating the template (optional
 
 ## Returns
 
-`any`
+`string`
 
 The composed context string with placeholders replaced by corresponding state values.
 

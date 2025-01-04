@@ -665,6 +665,8 @@ export interface ModelConfiguration {
     experimental_telemetry?: TelemetrySettings;
 }
 
+export type TemplateType = string | ((options: { state: State }) => string);
+
 /**
  * Configuration for an agent character
  */
@@ -695,30 +697,30 @@ export type Character = {
 
     /** Optional prompt templates */
     templates?: {
-        goalsTemplate?: string;
-        factsTemplate?: string;
-        messageHandlerTemplate?: string;
-        shouldRespondTemplate?: string;
-        continueMessageHandlerTemplate?: string;
-        evaluationTemplate?: string;
-        twitterSearchTemplate?: string;
-        twitterActionTemplate?: string;
-        twitterPostTemplate?: string;
-        twitterMessageHandlerTemplate?: string;
-        twitterShouldRespondTemplate?: string;
-        farcasterPostTemplate?: string;
-        lensPostTemplate?: string;
-        farcasterMessageHandlerTemplate?: string;
-        lensMessageHandlerTemplate?: string;
-        farcasterShouldRespondTemplate?: string;
-        lensShouldRespondTemplate?: string;
-        telegramMessageHandlerTemplate?: string;
-        telegramShouldRespondTemplate?: string;
-        discordVoiceHandlerTemplate?: string;
-        discordShouldRespondTemplate?: string;
-        discordMessageHandlerTemplate?: string;
-        slackMessageHandlerTemplate?: string;
-        slackShouldRespondTemplate?: string;
+        goalsTemplate?: TemplateType;
+        factsTemplate?: TemplateType;
+        messageHandlerTemplate?: TemplateType;
+        shouldRespondTemplate?: TemplateType;
+        continueMessageHandlerTemplate?: TemplateType;
+        evaluationTemplate?: TemplateType;
+        twitterSearchTemplate?: TemplateType;
+        twitterActionTemplate?: TemplateType;
+        twitterPostTemplate?: TemplateType;
+        twitterMessageHandlerTemplate?: TemplateType;
+        twitterShouldRespondTemplate?: TemplateType;
+        farcasterPostTemplate?: TemplateType;
+        lensPostTemplate?: TemplateType;
+        farcasterMessageHandlerTemplate?: TemplateType;
+        lensMessageHandlerTemplate?: TemplateType;
+        farcasterShouldRespondTemplate?: TemplateType;
+        lensShouldRespondTemplate?: TemplateType;
+        telegramMessageHandlerTemplate?: TemplateType;
+        telegramShouldRespondTemplate?: TemplateType;
+        discordVoiceHandlerTemplate?: TemplateType;
+        discordShouldRespondTemplate?: TemplateType;
+        discordMessageHandlerTemplate?: TemplateType;
+        slackMessageHandlerTemplate?: TemplateType;
+        slackShouldRespondTemplate?: TemplateType;
     };
 
     /** Character biography */
