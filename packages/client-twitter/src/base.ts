@@ -136,7 +136,7 @@ export class ClientBase extends EventEmitter {
         );
     }
 
-    constructor(runtime: IAgentRuntime, twitterConfig:TwitterConfig) {
+    constructor(runtime: IAgentRuntime, twitterConfig: TwitterConfig) {
         super();
         this.runtime = runtime;
         this.twitterConfig = twitterConfig;
@@ -159,7 +159,7 @@ export class ClientBase extends EventEmitter {
         const username = this.twitterConfig.TWITTER_USERNAME;
         const password = this.twitterConfig.TWITTER_PASSWORD;
         const email = this.twitterConfig.TWITTER_EMAIL;
-        let retries = this.twitterConfig.TWITTER_RETRY_LIMIT
+        let retries = this.twitterConfig.TWITTER_RETRY_LIMIT;
         const twitter2faSecret = this.twitterConfig.TWITTER_2FA_SECRET;
 
         if (!username) {
@@ -176,7 +176,8 @@ export class ClientBase extends EventEmitter {
         elizaLogger.log("Waiting for Twitter login");
         while (retries > 0) {
             try {
-                if (await this.twitterClient.isLoggedIn()) { // cookies are valid, no login required
+                if (await this.twitterClient.isLoggedIn()) {
+                    // cookies are valid, no login required
                     elizaLogger.info("Successfully logged in.");
                     break;
                 } else {
@@ -186,7 +187,8 @@ export class ClientBase extends EventEmitter {
                         email,
                         twitter2faSecret
                     );
-                    if (await this.twitterClient.isLoggedIn()) {  // fresh login, store new cookies
+                    if (await this.twitterClient.isLoggedIn()) {
+                        // fresh login, store new cookies
                         elizaLogger.info("Successfully logged in.");
                         elizaLogger.info("Caching cookies");
                         await this.cacheCookies(
@@ -251,7 +253,10 @@ export class ClientBase extends EventEmitter {
     /**
      * Fetch timeline for twitter account, optionally only from followed accounts
      */
-    async fetchHomeTimeline(count: number, following?: boolean): Promise<Tweet[]> {
+    async fetchHomeTimeline(
+        count: number,
+        following?: boolean
+    ): Promise<Tweet[]> {
         elizaLogger.debug("fetching home timeline");
         const homeTimeline = following
             ? await this.twitterClient.fetchFollowingTimeline(count, [])
@@ -288,13 +293,14 @@ export class ClientBase extends EventEmitter {
                     hashtags: tweet.hashtags ?? tweet.legacy?.entities.hashtags,
                     mentions:
                         tweet.mentions ?? tweet.legacy?.entities.user_mentions,
-                    photos: tweet.legacy?.entities?.media?.filter(
-                            (media) => media.type === "photo"
-                        ).map(media => ({
-                            id: media.id_str,
-                            url: media.media_url_https,  // Store media_url_https as url
-                            alt_text: media.alt_text
-                        })) || [],
+                    photos:
+                        tweet.legacy?.entities?.media
+                            ?.filter((media) => media.type === "photo")
+                            .map((media) => ({
+                                id: media.id_str,
+                                url: media.media_url_https, // Store media_url_https as url
+                                alt_text: media.alt_text,
+                            })) || [],
                     thread: tweet.thread || [],
                     urls: tweet.urls ?? tweet.legacy?.entities.urls,
                     videos:
@@ -314,38 +320,41 @@ export class ClientBase extends EventEmitter {
     async fetchTimelineForActions(count: number): Promise<Tweet[]> {
         elizaLogger.debug("fetching timeline for actions");
 
-        const agentUsername = this.twitterConfig.TWITTER_USERNAME
+        const agentUsername = this.twitterConfig.TWITTER_USERNAME;
         const homeTimeline = await this.twitterClient.fetchHomeTimeline(
             count,
             []
         );
 
-        return homeTimeline.map((tweet) => ({
-            id: tweet.rest_id,
-            name: tweet.core?.user_results?.result?.legacy?.name,
-            username: tweet.core?.user_results?.result?.legacy?.screen_name,
-            text: tweet.legacy?.full_text,
-            inReplyToStatusId: tweet.legacy?.in_reply_to_status_id_str,
-            timestamp: new Date(tweet.legacy?.created_at).getTime() / 1000,
-            userId: tweet.legacy?.user_id_str,
-            conversationId: tweet.legacy?.conversation_id_str,
-            permanentUrl: `https://twitter.com/${tweet.core?.user_results?.result?.legacy?.screen_name}/status/${tweet.rest_id}`,
-            hashtags: tweet.legacy?.entities?.hashtags || [],
-            mentions: tweet.legacy?.entities?.user_mentions || [],
-            photos: tweet.legacy?.entities?.media?.filter(
-                (media) => media.type === "photo"
-            ).map(media => ({
-                id: media.id_str,
-                url: media.media_url_https,  // Store media_url_https as url
-                alt_text: media.alt_text
-                 })) || [],
-            thread: tweet.thread || [],
-            urls: tweet.legacy?.entities?.urls || [],
-            videos:
-                tweet.legacy?.entities?.media?.filter(
-                    (media) => media.type === "video"
-                ) || [],
-        })).filter(tweet => tweet.username !== agentUsername); // do not perform action on self-tweets
+        return homeTimeline
+            .map((tweet) => ({
+                id: tweet.rest_id,
+                name: tweet.core?.user_results?.result?.legacy?.name,
+                username: tweet.core?.user_results?.result?.legacy?.screen_name,
+                text: tweet.legacy?.full_text,
+                inReplyToStatusId: tweet.legacy?.in_reply_to_status_id_str,
+                timestamp: new Date(tweet.legacy?.created_at).getTime() / 1000,
+                userId: tweet.legacy?.user_id_str,
+                conversationId: tweet.legacy?.conversation_id_str,
+                permanentUrl: `https://twitter.com/${tweet.core?.user_results?.result?.legacy?.screen_name}/status/${tweet.rest_id}`,
+                hashtags: tweet.legacy?.entities?.hashtags || [],
+                mentions: tweet.legacy?.entities?.user_mentions || [],
+                photos:
+                    tweet.legacy?.entities?.media
+                        ?.filter((media) => media.type === "photo")
+                        .map((media) => ({
+                            id: media.id_str,
+                            url: media.media_url_https, // Store media_url_https as url
+                            alt_text: media.alt_text,
+                        })) || [],
+                thread: tweet.thread || [],
+                urls: tweet.legacy?.entities?.urls || [],
+                videos:
+                    tweet.legacy?.entities?.media?.filter(
+                        (media) => media.type === "video"
+                    ) || [],
+            }))
+            .filter((tweet) => tweet.username !== agentUsername); // do not perform action on self-tweets
     }
 
     async fetchSearchTweets(
@@ -720,28 +729,10 @@ export class ClientBase extends EventEmitter {
         );
     }
 
-    async getCachedProfile(username: string) {
-        return await this.runtime.cacheManager.get<TwitterProfile>(
-            `twitter/${username}/profile`
-        );
-    }
-
-    async cacheProfile(profile: TwitterProfile) {
-        await this.runtime.cacheManager.set(
-            `twitter/${profile.username}/profile`,
-            profile
-        );
-    }
-
     async fetchProfile(username: string): Promise<TwitterProfile> {
-        const cached = await this.getCachedProfile(username);
-
-        if (cached) return cached;
-
         try {
             const profile = await this.requestQueue.add(async () => {
                 const profile = await this.twitterClient.getProfile(username);
-                // console.log({ profile });
                 return {
                     id: profile.userId,
                     username,
@@ -758,13 +749,10 @@ export class ClientBase extends EventEmitter {
                 } satisfies TwitterProfile;
             });
 
-            this.cacheProfile(profile);
-
             return profile;
         } catch (error) {
             console.error("Error fetching Twitter profile:", error);
-
-            return undefined;
+            throw error;
         }
     }
 }
