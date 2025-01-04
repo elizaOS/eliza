@@ -1125,6 +1125,8 @@ export interface IAgentRuntime {
     // but I think the real solution is forthcoming as a base client interface
     clients: Record<string, any>;
 
+    verifiableInferenceAdapter?: IVerifiableInferenceAdapter | null;
+
     initialize(): Promise<void>;
 
     registerMemoryManager(manager: IMemoryManager): void;
@@ -1327,4 +1329,66 @@ export enum TranscriptionProvider {
     OpenAI = "openai",
     Deepgram = "deepgram",
     Local = "local",
+}
+
+/**
+ * Available verifiable inference providers
+ */
+export enum VerifiableInferenceProvider {
+    OPACITY = "opacity",
+}
+
+/**
+ * Options for verifiable inference
+ */
+export interface VerifiableInferenceOptions {
+    /** Custom endpoint URL */
+    endpoint?: string;
+    /** Custom headers */
+    headers?: Record<string, string>;
+    /** Provider-specific options */
+    providerOptions?: Record<string, unknown>;
+}
+
+/**
+ * Result of a verifiable inference request
+ */
+export interface VerifiableInferenceResult {
+    /** Generated text */
+    text: string;
+    /** Proof id */
+    id: string;
+    /** Provider information */
+    provider: VerifiableInferenceProvider;
+    /** Timestamp */
+    timestamp: number;
+    /** Proof */
+    proof: any;
+}
+
+/**
+ * Interface for verifiable inference adapters
+ */
+export interface IVerifiableInferenceAdapter {
+    options: any;
+    /**
+     * Generate text with verifiable proof
+     * @param context The input text/prompt
+     * @param modelClass The model class/name to use
+     * @param options Additional provider-specific options
+     * @returns Promise containing the generated text and proof data
+     */
+    generateText(
+        context: string,
+        modelClass: string,
+        options?: VerifiableInferenceOptions
+    ): Promise<VerifiableInferenceResult>;
+
+    /**
+     * Verify the proof of a generated response
+     * @param result The result containing response and proof to verify
+     * @returns Promise indicating if the proof is valid
+     */
+    verifyProof(result: VerifiableInferenceResult): Promise<boolean>;
+
 }

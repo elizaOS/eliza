@@ -1,0 +1,21 @@
+{
+    "name": "@elizaos/plugin-opacity",
+    "version": "0.1.7-alpha.2",
+    "description": "Opacity Protocol adapter for ElizaOS",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsup src/index.ts --format esm --dts",
+        "lint": "eslint --fix --cache .",
+        "watch": "tsc --watch",
+        "dev": "tsup src/index.ts --format esm --dts --watch"
+    },
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "dotenv": "^16.4.5"
+    },
+    "devDependencies": {
+        "tsup": "^8.3.5"
+    }
+}
