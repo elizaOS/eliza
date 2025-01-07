@@ -45,6 +45,7 @@
         "@ai16z/plugin-tee": "workspace:*",
         "@ai16z/plugin-predictions": "workspace:*",
         "@ai16z/plugin-echochambers": "workspace:*",
+        "@ai16z/plugin-three-js": "workspace:*",
         "readline": "1.3.0",
         "ws": "8.18.0",
         "yargs": "17.7.2"

@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "outDir": "dist",
+        "rootDir": "src",
+        "types": [
+            "node"
+        ],
+        "moduleResolution": "nodenext",
+        "module": "NodeNext",
+        "esModuleInterop": true
+    },
+    "include": [
+        "src/**/*.ts"
+    ]
+}

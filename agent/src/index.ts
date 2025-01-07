@@ -48,6 +48,7 @@ import { solanaPlugin } from "@ai16z/plugin-solana";
 import { teePlugin, TEEMode } from "@ai16z/plugin-tee";
 import { aptosPlugin, TransferAptosToken } from "@ai16z/plugin-aptos";
 import { flowPlugin } from "@ai16z/plugin-flow";
+import { threeJsPlugin } from "@ai16z/plugin-three-js";
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
