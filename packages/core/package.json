@@ -56,6 +56,7 @@
         "@ai-sdk/groq": "0.0.3",
         "@ai-sdk/openai": "1.0.5",
         "@anthropic-ai/sdk": "0.30.1",
+        "@ai16z/plugin-echochambers": "workspace:*",
         "@fal-ai/client": "1.2.0",
         "@types/uuid": "10.0.0",
         "ai": "3.4.33",
