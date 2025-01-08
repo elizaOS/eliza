@@ -14,25 +14,29 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 # Set the working directory
 WORKDIR /app
 
-# Copy package.json and other configuration files
+# Copy package files first to leverage Docker cache
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc turbo.json ./
+COPY packages/*/package.json ./packages/
+
+# Install dependencies only
+RUN pnpm install --frozen-lockfile
 
 # Copy the rest of the application code
-COPY agent ./agent
-COPY packages ./packages
-COPY scripts ./scripts
-COPY characters ./characters
+COPY . .
 
-# Install dependencies and build the project
-RUN pnpm install \
-    && pnpm build-docker --filter "@ai16z/plugin-solana" --filter "@ai16z/plugin-trustdb" \
-    && pnpm build-docker \
-    && pnpm prune --prod
+# Build in stages with error handling
+RUN set -e; \
+    echo "Building core plugins..." && \
+    pnpm build-docker --filter "@ai16z/plugin-solana" --filter "@ai16z/plugin-trustdb" && \
+    echo "Building remaining packages..." && \
+    pnpm build-docker || (echo "Build failed. Check logs above." && exit 1) && \
+    echo "Pruning development dependencies..." && \
+    pnpm prune --prod
 
 # Create a new stage for the final image
 FROM node:23.3.0-slim
 
-# Install runtime dependencies if needed
+# Install runtime dependencies
 RUN npm install -g pnpm@9.4.0 && \
     apt-get update && \
     apt-get install -y git python3 && \
@@ -41,7 +45,7 @@ RUN npm install -g pnpm@9.4.0 && \
 
 WORKDIR /app
 
-# Copy built artifacts and production dependencies from the builder stage
+# Copy only necessary files from builder
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/pnpm-workspace.yaml ./
 COPY --from=builder /app/.npmrc ./
@@ -51,6 +55,13 @@ COPY --from=builder /app/agent ./agent
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/characters ./characters
+
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD pnpm healthcheck || exit 1
+
+# Set environment variables
+ENV NODE_ENV=production
 
 # Set the command to run the application
 CMD ["pnpm", "start", "--non-interactive"]
