@@ -16,10 +16,13 @@ WORKDIR /app
 
 # Copy package files first to leverage Docker cache
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc turbo.json ./
-COPY packages/*/package.json ./packages/
+COPY packages/ ./packages/
 
-# Install dependencies only
-RUN pnpm install --frozen-lockfile
+# Install dependencies with more resilient settings
+RUN pnpm install --frozen-lockfile --ignore-scripts || \
+    (echo "Initial install failed, retrying with clean install..." && \
+    rm -rf node_modules && \
+    pnpm install --frozen-lockfile --ignore-scripts)
 
 # Copy the rest of the application code
 COPY . .
