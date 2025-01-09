@@ -25,10 +25,7 @@ COPY characters ./characters
 
 # Install dependencies and build the project
 RUN pnpm install \
-    && cd packages/plugin-trustdb && pnpm build \
-    && cd ../plugin-solana && pnpm build \
-    && cd ../.. \
-    && pnpm build-docker \
+    && pnpm build \
     && pnpm prune --prod
 
 # Create a new stage for the final image
