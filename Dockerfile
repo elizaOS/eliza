@@ -29,8 +29,8 @@ COPY . .
 
 # Build in stages with error handling
 RUN set -e; \
-    echo "Building core plugins..." && \
-    pnpm build-docker --filter "@ai16z/plugin-solana" --filter "@ai16z/plugin-trustdb" && \
+    echo "Building core plugins and adapters..." && \
+    pnpm build-docker --filter "@ai16z/adapter-postgres" --filter "@ai16z/plugin-solana" --filter "@ai16z/plugin-trustdb" && \
     echo "Building remaining packages..." && \
     pnpm build-docker || (echo "Build failed. Check logs above." && exit 1) && \
     echo "Pruning development dependencies..." && \
