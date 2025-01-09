@@ -25,7 +25,8 @@ COPY characters ./characters
 
 # Install dependencies and build the project
 RUN pnpm install \
-    && cd packages/plugin-solana && pnpm build \
+    && cd packages/eliza && pnpm build \
+    && cd ../plugin-solana && pnpm build \
     && cd ../.. \
     && pnpm build-docker \
     && pnpm prune --prod
