@@ -25,8 +25,10 @@ COPY characters ./characters
 
 # Install dependencies and build the project
 RUN pnpm install \
-    && pnpm build-docker \
-    && pnpm prune --prod
+    && pnpm build-docker
+
+# Don't prune until after we verify the build works
+RUN pnpm prune --prod
 
 # Create a new stage for the final image
 FROM node:23.3.0-slim
@@ -51,5 +53,5 @@ COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/characters ./characters
 
-# Set the command to run the application
-CMD ["pnpm", "start"]
+# Set the command to run the application with proper signal handling
+CMD ["sh", "-c", "exec pnpm start"]
