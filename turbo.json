@@ -15,6 +15,13 @@
             "outputs": ["dist/**"],
             "dependsOn": ["@ai16z/plugin-trustdb#build"]
         },
+        "@ai16z/client-auto#build": {
+            "outputs": ["dist/**"],
+            "dependsOn": [
+                "@ai16z/plugin-solana#build",
+                "@ai16z/plugin-trustdb#build"
+            ]
+        },
         "eliza-docs#build": {
             "outputs": ["build/**"]
         },
