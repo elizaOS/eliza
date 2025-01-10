@@ -4,8 +4,18 @@ FROM node:23.3.0-slim AS builder
 # Install pnpm globally and install necessary build tools
 RUN npm install -g pnpm@9.4.0 && \
     apt-get update && \
-    apt-get install -y git python3 make g++ tini && \
-    apt-get clean && \
+    apt-get install -y \
+    git \
+    python3 \
+    make \
+    g++ \
+    build-essential \
+    libtool \
+    autoconf \
+    automake \
+    pkg-config \
+    cmake \
+    && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Set Python 3 as the default python
@@ -24,27 +34,43 @@ COPY scripts ./scripts
 COPY characters ./characters
 
 # Install dependencies and build the project
-RUN pnpm install \
-    && pnpm build-docker
+RUN pnpm config set node-linker hoisted && \
+    PYTHON=/usr/bin/python3 pnpm install --no-frozen-lockfile && \
+    NODE_ENV=production
+
+# Build in specific order
+RUN pnpm build-core || exit 1 && \
+    pnpm build-plugins || exit 1 && \
+    pnpm build-adapters || exit 1 && \
+    cd packages/client-discord && pnpm build && cd ../.. && \
+    cd packages/client-auto && pnpm build && cd ../.. && \
+    pnpm build-clients || exit 1
 
 # Prune dev dependencies
 RUN pnpm prune --prod
 
-# Create a non-root user
-RUN adduser --disabled-password --gecos "" appuser
+# Create a new stage for the final image
+FROM node:23.3.0-slim
 
-# Set environment variables for Node.js
-ENV NODE_OPTIONS="--unhandled-rejections=strict --no-warnings --enable-source-maps"
-ENV NODE_NO_WARNINGS=1
+# Install runtime dependencies if needed
+RUN npm install -g pnpm@9.4.0 && \
+    apt-get update && \
+    apt-get install -y git python3 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Switch to non-root user
-USER appuser
+WORKDIR /app
 
-# Use tini for proper signal handling
-ENTRYPOINT ["/usr/bin/tini", "--"]
+# Copy built artifacts and production dependencies from the builder stage
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/pnpm-workspace.yaml ./
+COPY --from=builder /app/.npmrc ./
+COPY --from=builder /app/turbo.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/agent ./agent
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/characters ./characters
 
-# Start the application with the new loader syntax
-CMD ["node", \
-     "--import", "data:text/javascript,import { register } from 'node:module'; import { pathToFileURL } from 'node:url'; register('ts-node/esm', pathToFileURL('./'))", \
-     "/app/agent/src/index.ts", \
-     "--isRoot"]
+# Set the command to run the application
+CMD ["pnpm", "start"]
