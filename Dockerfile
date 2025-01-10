@@ -33,8 +33,9 @@ RUN pnpm prune --prod
 # Create a non-root user
 RUN adduser --disabled-password --gecos "" appuser
 
-# Set environment variable to enable proper Node.js error handling
-ENV NODE_OPTIONS="--unhandled-rejections=strict"
+# Set environment variables for Node.js
+ENV NODE_OPTIONS="--unhandled-rejections=strict --no-warnings --enable-source-maps"
+ENV NODE_NO_WARNINGS=1
 
 # Switch to non-root user
 USER appuser
@@ -42,5 +43,8 @@ USER appuser
 # Use tini for proper signal handling
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
-# Start the application with proper signal handling
-CMD ["node", "--loader", "ts-node/esm", "/app/agent/src/index.ts", "--isRoot"]
+# Start the application with the new loader syntax
+CMD ["node", \
+     "--import", "data:text/javascript,import { register } from 'node:module'; import { pathToFileURL } from 'node:url'; register('ts-node/esm', pathToFileURL('./'))", \
+     "/app/agent/src/index.ts", \
+     "--isRoot"]
