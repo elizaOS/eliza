@@ -4,7 +4,7 @@ FROM node:23.3.0-slim AS builder
 # Install pnpm globally and install necessary build tools
 RUN npm install -g pnpm@9.4.0 && \
     apt-get update && \
-    apt-get install -y git python3 make g++ && \
+    apt-get install -y git python3 make g++ tini && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -32,13 +32,14 @@ RUN pnpm prune --prod
 
 # Create a non-root user
 RUN adduser --disabled-password --gecos "" appuser
-USER appuser
 
 # Set environment variable to enable proper Node.js error handling
 ENV NODE_OPTIONS="--unhandled-rejections=strict"
 
+# Switch to non-root user
+USER appuser
+
 # Use tini for proper signal handling
-RUN apt-get update && apt-get install -y tini
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Start the application with proper signal handling
