@@ -27,31 +27,19 @@ COPY characters ./characters
 RUN pnpm install \
     && pnpm build-docker
 
-# Don't prune until after we verify the build works
+# Prune dev dependencies
 RUN pnpm prune --prod
 
-# Create a new stage for the final image
-FROM node:23.3.0-slim
+# Create a non-root user
+RUN adduser --disabled-password --gecos "" appuser
+USER appuser
 
-# Install runtime dependencies if needed
-RUN npm install -g pnpm@9.4.0 && \
-    apt-get update && \
-    apt-get install -y git python3 && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Set environment variable to enable proper Node.js error handling
+ENV NODE_OPTIONS="--unhandled-rejections=strict"
 
-WORKDIR /app
+# Use tini for proper signal handling
+RUN apt-get update && apt-get install -y tini
+ENTRYPOINT ["/usr/bin/tini", "--"]
 
-# Copy built artifacts and production dependencies from the builder stage
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/pnpm-workspace.yaml ./
-COPY --from=builder /app/.npmrc ./
-COPY --from=builder /app/turbo.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/agent ./agent
-COPY --from=builder /app/packages ./packages
-COPY --from=builder /app/scripts ./scripts
-COPY --from=builder /app/characters ./characters
-
-# Set the command to run the application with proper signal handling
-CMD ["sh", "-c", "exec pnpm start"]
+# Start the application with proper signal handling
+CMD ["node", "--loader", "ts-node/esm", "/app/agent/src/index.ts", "--isRoot"]
