@@ -44,7 +44,8 @@
         "typedoc": "0.26.11",
         "typescript": "5.6.3",
         "vite": "5.4.11",
-        "vitest": "2.1.5"
+        "vitest": "2.1.5",
+        "zx": "^8.2.4"
     },
     "pnpm": {
         "overrides": {
