@@ -27,9 +27,11 @@ import {
     FinancialSummarizationTemplate,
     FinancialMapReduceSummarizationTemplate,
     ExtractNewsBasedonTickerTemplate,
-    CompetitiveAnalysisTemplate
+    CompetitiveAnalysisTemplate,
+    TechnicalAnalysisTemplate
 } from "../templates";
 import { getCompetitors } from "@jawk/utils";
+import TechnicalAnalyzer from './technicalanalysis';
 
 export const createClient = () => {
     const apiKey = process.env.POLYGON_API_KEY;
@@ -336,6 +338,7 @@ type CompetitorAnalysis = {
     financials: string;
     news: string;
     latestPrice: number;
+    technicalAnalysis: string;
 };
 
 export const getCompetitorAnalysis = async (
@@ -353,28 +356,32 @@ export const getCompetitorAnalysis = async (
     const endDate = new Date();
     const startDate = new Date();
     startDate.setFullYear(endDate.getFullYear() - 1);
+
     const mainStockData = await Promise.all([
         getFinancialSummarization(ticker, runtime, state, message, chunkSize),
         getSummarizedNews(ticker, runtime, state),
-        getPriceHistoryByTicker(ticker, startDate.getTime(), endDate.getTime(), "day")
+        getPriceHistoryByTicker(ticker, startDate.getTime(), endDate.getTime(), "day"),
+        getTechnicalAnalysis(ticker, runtime, state, message)
     ]);
 
     const mainStock: CompetitorAnalysis = {
         ticker: ticker,
         financials: mainStockData[0],
         news: mainStockData[1],
-        latestPrice: mainStockData[2][0].history[mainStockData[2][0].history.length - 1].close
+        latestPrice: mainStockData[2][0].history[mainStockData[2][0].history.length - 1].close,
+        technicalAnalysis: mainStockData[3]
     };
 
     elizaLogger.log("mainStock", mainStock);
 
     const competitors = await Promise.all(competitorTickers.map(async (compTicker) => {
-        // review start and end dates later
-        const [financials, news, priceHistory] = await Promise.all([
+        const [financials, news, priceHistory, technicalAnalysis] = await Promise.all([
             getFinancialSummarization(compTicker, runtime, state, message, chunkSize),
             getSummarizedNews(compTicker, runtime, state),
-            getPriceHistoryByTicker(compTicker, startDate.getTime(), endDate.getTime(), "day")
+            getPriceHistoryByTicker(compTicker, startDate.getTime(), endDate.getTime(), "day"),
+            getTechnicalAnalysis(compTicker, runtime, state, message)
         ]);
+
         const pricingData = priceHistory[0].history.map((price) => ({
             date: price.date,
             close: price.close
@@ -384,7 +391,8 @@ export const getCompetitorAnalysis = async (
             ticker: compTicker,
             financials,
             news,
-            latestPrice: pricingData[pricingData.length - 1].close
+            latestPrice: pricingData[pricingData.length - 1].close,
+            technicalAnalysis
         };
     }));
 
@@ -396,7 +404,6 @@ export const getCompetitorAnalysis = async (
     };
 };
 
-
 export const generateCompetitiveAnalysis = async (
     analysisData: {mainStock: CompetitorAnalysis, competitors: CompetitorAnalysis[]},
     runtime: IAgentRuntime,
@@ -404,8 +411,19 @@ export const generateCompetitiveAnalysis = async (
 ): Promise<string> => {
     state.ticker = analysisData.mainStock.ticker;
     state.mainStockFinancials = analysisData.mainStock.financials;
+    state.mainStockTechnicals = analysisData.mainStock.technicalAnalysis;
     state.competitorData = analysisData.competitors.map(comp =>
-        `${comp.ticker}:\n${comp.financials}\n${comp.news}\n${comp.latestPrice}`
+        `${comp.ticker}:
+Financial Analysis:
+${comp.financials}
+
+Technical Analysis:
+${comp.technicalAnalysis}
+
+News:
+${comp.news}
+
+Current Price: ${comp.latestPrice}`
     ).join('\n\n');
 
     const context = composeContext({
@@ -413,13 +431,11 @@ export const generateCompetitiveAnalysis = async (
         template: CompetitiveAnalysisTemplate
     });
 
-
     const analysis = await generateText({
         runtime,
         context,
         modelClass: ModelClass.LARGE
     });
-
 
     return analysis;
 };
@@ -455,4 +471,71 @@ export const analyzeCompetitors = async (
         elizaLogger.error("Error in competitor analysis:", error);
         return `Failed to analyze competitors for ${ticker}: ${error.message}`;
     }
+};
+
+type TechnicalAnalysisResult = {
+    stock: {
+        ticker: string;
+        currentPrice: number;
+        analysisDate: string;
+    };
+    technicalAnalysis: {
+        movingAverages: any;
+        rsi: any;
+        macd: any;
+        bollingerBands: any;
+        supportResistance: any;
+    };
+};
+
+export const getTechnicalAnalysis = async (
+    ticker: string,
+    runtime: IAgentRuntime,
+    state: State,
+    message: Memory
+): Promise<string> => {
+    elizaLogger.log("Getting technical analysis for", ticker);
+
+    try {
+        const analyzer = new TechnicalAnalyzer();
+        const analysis = await analyzer.analyzeTechnical(ticker);
+
+        state.ticker = ticker;
+        state.technicalAnalysis = analysis;
+
+        elizaLogger.log("Generating technical analysis context");
+        const technicalContext = composeContext({
+            state,
+            template: TechnicalAnalysisTemplate,
+        });
+
+        elizaLogger.log("Generating final technical analysis");
+        const technicalSummary = await generateText({
+            runtime,
+            context: technicalContext,
+            modelClass: ModelClass.MEDIUM,
+        });
+
+        return technicalSummary;
+    } catch (error) {
+        elizaLogger.error("Error in technical analysis:", error);
+        return "";
+    }
+};
+
+export const analyzeStock = async (
+    ticker: string,
+    runtime: IAgentRuntime,
+    state: State,
+    message: Memory
+) => {
+    const [technicalAnalysis, financialAnalysis] = await Promise.all([
+        getTechnicalAnalysis(ticker, runtime, state, message),
+        getFinancialSummarization(ticker, runtime, state, message, 126000)
+    ]);
+
+    return {
+        technical: technicalAnalysis,
+        financial: financialAnalysis
+    };
 };

@@ -58,14 +58,14 @@ export const PriceHistoryRangeTemplate = `
 Do not worry about getting the pricing data; just the objective, start, end, and period.
 The "objective" is a detailed description of what the user wants to price history on, if the user wants the current price, set "start" to "0 minutes ago" and "end" to "2 hours ago", and the "period" to "day".
 The "start" and "end" are the range of dates that the user wants to summarize, relative to the current time. The "start" and "end" should be relative to the current time, and measured in seconds, minutes, hours and days. The format is "2 days ago" or "3 hours ago" or "4 minutes ago" or "1 year ago", i.e. "<integer> <unit> ago". If you aren't sure, you can use a default range of "0 minutes ago" to "1 day ago" or more. Better to err on the side of including too much than too little.
-The “period” is the interval in which the pricing data is to be collected. The format can be “minute”, “day”, “year”. If you aren’t sure, please respond with “day”.
+The "period" is the interval in which the pricing data is to be collected. The format can be "minute", "day", "year". If you aren't sure, please respond with "day".
 
 
 Your response must be formatted as a JSON block with this structure:
 \`\`\`json
 {
   "objective": "<What the user wants to summarize>",
-  “period”: “day”,
+  "period": "day",
   "start": "0 minutes ago",
   "end": "2 hours ago"
 }
@@ -104,11 +104,16 @@ Here are the recent user messages for context:
 export const CompetitiveAnalysisTemplate = `
 Analyze {{ticker}} compared to its competitors based on:
 1. Financial performance
-2. News sentiment
-3. Price trends
+2. Technical indicators
+3. News sentiment
+4. Price trends
 
 Main Stock ({{ticker}}):
+Financial Analysis:
 {{mainStockFinancials}}
+
+Technical Analysis:
+{{mainStockTechnicals}}
 
 Competitor Analysis:
 {{competitorData}}
@@ -120,24 +125,56 @@ Analyze {{ticker}} and its competitors to provide a clear, actionable investment
 - Highlight financial strengths/weaknesses vs peers
 - Identify concerning trends
 
-2. Market Position & Strategy
+2. Technical Analysis Comparison
+- Compare trend strengths across companies
+- Identify relative momentum and volatility
+- Compare support/resistance levels
+- Note any divergences in technical indicators
+
+3. Market Position & Strategy
 - Current market share and competitive advantages
 - Product/service differentiation
 - Growth opportunities and expansion plans
 
-3. Risk Assessment
+4. Risk Assessment
 - Industry-specific challenges
 - Company-specific vulnerabilities
+- Technical warning signals
 - Regulatory or market risks ahead
 
-4. Investment Outlook
+5. Investment Outlook
 - Valuation vs competitors
+- Technical setup comparison
 - Growth catalysts and headwinds
-- Buy/hold/sell recommendation rationale based on fundamentals and recent news developments
+- Buy/hold/sell recommendation based on both fundamentals and technicals
 
-Use the data provided to make a recommendation, consider the fundamentals and recent news developments.
+Use both fundamental and technical data to make a comprehensive recommendation.
 
 Format as a concise analysis that emphasizes the most important factors for investment decisions. Use clear language and specific examples to support key points.
 
-Return a balanced perspective that helps retail investors understand the competitive dynamics and make informed decisions.
+Return a balanced perspective that helps retail investors understand both the competitive dynamics and technical setup across the peer group.
+`;
+
+export const TechnicalAnalysisTemplate = `
+Analyze the technical indicators for {{ticker}} and provide a comprehensive analysis.
+
+Technical Analysis Data:
+{{technicalAnalysis}}
+
+Please provide a detailed analysis covering:
+1. Trend Analysis (using Moving Averages)
+2. Momentum Analysis (using RSI and MACD)
+3. Volatility Analysis (using Bollinger Bands)
+4. Support/Resistance Analysis
+5. Overall Technical Outlook
+
+Format the response as a clear, professional market analysis focusing on actionable insights.
+Consider both bullish and bearish signals, and explain their significance.
+
+Key points to address:
+- Current trend direction and strength
+- Momentum characteristics
+- Potential reversal signals
+- Key price levels to watch
+- Risk considerations
 `;

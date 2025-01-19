@@ -156,6 +156,9 @@ Consider:
 #Financials Summary:
 {{financialSummary}}
 
+#Technical Analysis:
+{{technicalAnalysis}}
+
 #Current Stock Price:
 {{currentStockPrice}}
 
