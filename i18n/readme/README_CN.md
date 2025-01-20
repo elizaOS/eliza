@@ -1,7 +1,7 @@
 # Eliza 🤖
 
 <div align="center">
-  <img src="https://github.com/elizaOS/eliza/blob/develop/docs/static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
+  <img src="https://github.com/elizaOS/eliza/blob/main/docs/static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
 </div>
 
 <div align="center">

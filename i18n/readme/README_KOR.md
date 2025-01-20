@@ -1,7 +1,7 @@
 # Eliza 🤖
 
 <div align="center">
-  <img src="https://github.com/elizaOS/eliza/blob/develop/docs/static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
+  <img src="https://github.com/elizaOS/eliza/blob/main/docs/static/img/eliza_banner.jpg" alt="Eliza Banner" width="100%" />
 </div>
 
 <div align="center">
@@ -71,7 +71,7 @@ pnpm i && pnpm build && pnpm start
 
 에이전트가 실행되면, 마지막에 "pnpm start:client" 명령을 실행하라는 메시지를 볼 수 있습니다.
 
-다른 터미널을 열고 같은 디렉터리로 이동한 다음 아래 명령어를 실행하세요. 
+다른 터미널을 열고 같은 디렉터리로 이동한 다음 아래 명령어를 실행하세요.
 
 그리고 제공된 URL을 따라 에이전트와 대화하세요.
 ```bash
