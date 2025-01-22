@@ -1039,8 +1039,9 @@ export async function createAgent(
             getSecret(character, "PYTH_MAINNET_PROGRAM_KEY")
                 ? pythDataPlugin
                 : null,
-            getSecret(character, "ETHSTORAGE_SEED") ? ethstoragePlugin : null,
-            getSecret(character, "ETHSTORAGE_RPC") ? ethstoragePlugin : null,
+            getSecret(character, "ETHSTORAGE_PRIVATE_KEY") ? ethstoragePlugin : null,
+            getSecret(character, "ETHSTORAGE_ADDRESS") ? ethstoragePlugin : null,
+            getSecret(character, "ETHSTORAGE_RPC_URL") ? ethstoragePlugin : null,
         ].filter(Boolean),
         providers: [],
         actions: [],
