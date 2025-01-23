@@ -28,17 +28,15 @@ export function stringToHex(s: string): string {
     return ethers.hexlify(ethers.toUtf8Bytes(s));
 }
 
-const KEY = "data_key";
-
 export async function sendData(
     RPC: string, privateKey: string,
-    address: string, data: Buffer
+    address: string, key: string, data: Buffer
 ): Promise<string> {
     const blobUploader = await BlobUploader.create(RPC, privateKey);
     const provider = new ethers.JsonRpcProvider(RPC);
     const wallet = new ethers.Wallet(privateKey, provider);
     const contract = new ethers.Contract(address, EthStorageAbi, wallet);
-    const hexKey = ethers.keccak256(stringToHex(KEY));
+    const hexKey = ethers.keccak256(stringToHex(key));
     const storageCost = await contract.upfrontPayment();
     const tx = await contract.putBlob.populateTransaction(hexKey, 0, data.length, {
         value: storageCost,
@@ -57,13 +55,15 @@ const submitDataTemplate = `Respond with a JSON markdown block containing only t
 Example response:
 \`\`\`json
 {
-    "data": "Hello World, this is the data I submitted"
+    "key": "data_key"
+    "data": "Hello World, this is the data I submitted",
 }
 \`\`\`
 
 {{recentMessages}}
 
-Given the recent messages, extract the following information about the requested EthStorage token transfer:
+Given the recent messages, extract the following information about the requested EthStorage data submission:
+- Key of the data to be submitted
 - Data to be submitted
 
 Respond with a JSON markdown block containing only the extracted values.`;
@@ -121,7 +121,7 @@ export default {
             modelClass: ModelClass.SMALL,
         });
 
-        if (content.data != null) {
+        if (content.data != null && content.key !== "") {
             try {
                 const RPC = runtime.getSetting("ETHSTORAGE_RPC_URL");
                 const privateKey = runtime.getSetting("ETHSTORAGE_PRIVATE_KEY")!;
@@ -131,7 +131,7 @@ export default {
                 const data = Buffer.from(content.data);
 
                 //submit data
-                const hash= await sendData(RPC, privateKey, address, data);
+                const hash= await sendData(RPC, privateKey, address, content.key, data);
                 if (hash) {
                     elizaLogger.success(
                         `Data submitted! \n Tx Hash: ${hash}`
@@ -165,20 +165,20 @@ export default {
             {
                 user: "{{user1}}",
                 content: {
-                    text: "Submit the following data to EthStorage 'Hello World!'",
+                    text: "Submit the following data using the key 'data_key' to EthStorage 'Hello World!'",
                 },
             },
             {
                 user: "{{agent}}",
                 content: {
-                    text: "Sure, I'll send the data 'Hello World!' to EthStorage now.",
+                    text: "Sure, I'll send the data 'Hello World!' using the key 'data_key' to EthStorage now.",
                     action: "SUBMIT_DATA",
                 },
             },
             {
                 user: "{{agent}}",
                 content: {
-                    text: "Successfully submitted the data 'Hello World!' to EthStorage \nTransaction: 0x748057951ff79cea6de0e13b2ef70a1e9f443e9c83ed90e5601f8b45144a4ed4",
+                    text: "Successfully submitted the data 'Hello World!' using the key 'data_key' to EthStorage \nTransaction: 0x748057951ff79cea6de0e13b2ef70a1e9f443e9c83ed90e5601f8b45144a4ed4",
                 },
             },
         ],
@@ -186,20 +186,20 @@ export default {
             {
                 user: "{{user1}}",
                 content: {
-                    text: "Submit 'Don't Fight, Unite!' to EthStorage",
+                    text: "Submit 'Don't Fight, Unite!' to EthStorage using the key 'my_key'",
                 },
             },
             {
                 user: "{{agent}}",
                 content: {
-                    text: "Sure, I'll send the data 'Don't Fight, Unite!' to EthStorage now.",
+                    text: "Sure, I'll send the data 'Don't Fight, Unite!' to EthStorage using the key 'my_key' now.",
                     action: "SUBMIT_DATA",
                 },
             },
             {
                 user: "{{agent}}",
                 content: {
-                    text: "Successfully submitted the data 'Don't Fight, Unite!' to EthStorage \nTransaction: 0x748057951ff79cea6de0e13b2ef70a1e9f443e9c83ed90e5601f8b45144a4ed4",
+                    text: "Successfully submitted the data 'Don't Fight, Unite!' using the key 'my_key' to EthStorage \nTransaction: 0x748057951ff79cea6de0e13b2ef70a1e9f443e9c83ed90e5601f8b45144a4ed4",
                 },
             },
         ],

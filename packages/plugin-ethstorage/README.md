@@ -1,19 +1,19 @@
 # @elizaos/plugin-ethstorage - Plugin for EthStorage
 
-This is a plugin for interacting with the EthStorage decentralized storage network using Eliza. It defaults to the testnet and can be customized to use other testnets by changing the RPC in the `.env` file at `ETHSTORAGE_RPC_URL`. The mainnet is not yet available.
+This is a plugin for interacting with the EthStorage decentralized storage network using Eliza. It defaults to the beta testnet and can be customized to use other testnets by changing the RPC in the `.env` file at `ETHSTORAGE_RPC_URL`. The mainnet is not yet available.
 
 ## Actions
-- **transfer**: This action enables the transfer of QKC tokens from the agent's wallet (defined by the keyring generated from `ETHSTORAGE_PRIVATE_KEY`) to another wallet. To use, just mention the transfer of tokens to an EthStorage account.
+- **transfer**: This action enables the transfer of QKC tokens from the agent's wallet (defined by `ETHSTORAGE_PRIVATE_KEY`) to another wallet. To use, just mention the transfer of tokens to an EthStorage account.
 
     - Name: `SEND_TOKEN`
 
     - Message sample: `Send 100 QKC to 0x341Cb1a94ef69499F97E93c41707B21326C0Cc87`
 
-- **submitData**: This action enables the submission of any arbitrary data to the EthStorage decentralized storage network. To use, just mention that you need to send "any data" to EthStorage.
+- **submitData**: This action enables the submission of any arbitrary data to the EthStorage decentralized storage network. To use, just mention that you need to send "any data" to EthStorage using the key you specified.
 
     - Name: `SUBMIT_DATA`
 
-    - Message sample: `Submit the following data to EthStorage "Hello World!"`
+    - Message sample: `Submit the following data key 'my_key' to EthStorage "Hello World!"`
 
 ## Usage & Testing
 
@@ -28,7 +28,7 @@ This is a plugin for interacting with the EthStorage decentralized storage netwo
 
 - **Submit Data**
     - To test data submission, you need tokens in your EthStorage account to pay fees. On the testnet, you can use the [EthStorage Faucet](https://qkc-l2-faucet.eth.sep.w3link.io/). If you need more tokens, please ping us on [Discord](https://discord.com/invite/xhCwaMp7ps), and we can send them over.
-    - Run the agent and prompt it with: "Submit the following data to EthStorage <DATA>" - e.g. `Submit the following data to EthStorage "Hello World!"`
+    - Run the agent and prompt it with: "Submit the following data using the key <KEY> to EthStorage <DATA>" - e.g. `Submit the following data using the key 'my_key' to EthStorage "Hello World!"`
     - If the transaction is successful, the agent will return the Tx Hash. The tx hash can be checked on the EthStorage block explorer at [https://explorer.beta.testnet.l2.quarkchain.io](https://explorer.beta.testnet.l2.quarkchain.io).
 
 ## Resources
