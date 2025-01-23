@@ -9,7 +9,7 @@ export const ethstorageEnvSchema = z.object({
 
 export type ethstorageConfig = z.infer<typeof ethstorageEnvSchema>;
 
-export async function ethstorageAvailConfig(
+export async function ethstorageConfig(
     runtime: IAgentRuntime
 ): Promise<ethstorageConfig> {
     try {

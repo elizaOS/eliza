@@ -1156,8 +1156,6 @@ export async function createAgent(
             getSecret(character, "EMAIL_OUTGOING_USER") && getSecret(character, "EMAIL_OUTGOING_PASS") ?
             emailPlugin : null,
             getSecret(character, "ETHSTORAGE_PRIVATE_KEY") ? ethstoragePlugin : null,
-            getSecret(character, "ETHSTORAGE_ADDRESS") ? ethstoragePlugin : null,
-            getSecret(character, "ETHSTORAGE_RPC_URL") ? ethstoragePlugin : null,
         ].filter(Boolean),
         providers: [],
         managers: [],

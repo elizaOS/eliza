@@ -12,7 +12,7 @@ import {
     generateObjectDeprecated,
 } from "@elizaos/core";
 import { ethers } from "ethers";
-import { ethstorageAvailConfig } from "../environment";
+import { ethstorageConfig } from "../environment";
 import { BlobUploader } from "../utils/uploader";
 import { encodeOpBlobs } from "../utils/blobs.ts";
 
@@ -88,7 +88,7 @@ export default {
         "UPLOAD_DATA_TO_ETHSTORAGE_NETWORK",
     ],
     validate: async (runtime: IAgentRuntime, _message: Memory) => {
-        await ethstorageAvailConfig(runtime);
+        await ethstorageConfig(runtime);
         return true;
     },
     description: "Submit data to EthStorage as per user command",
