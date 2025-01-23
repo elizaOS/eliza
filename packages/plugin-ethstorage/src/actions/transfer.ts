@@ -11,7 +11,7 @@ import {
     composeContext,
     generateObjectDeprecated,
 } from "@elizaos/core";
-import { ethstorageAvailConfig } from "../environment";
+import { EthStorageConfig } from "../environment";
 import { ethers } from "ethers";
 
 export interface TransferContent extends Content {
@@ -65,7 +65,7 @@ export default {
         "PAY_ON_ETHSTORAGE",
     ],
     validate: async (runtime: IAgentRuntime, _message: Memory) => {
-        await ethstorageAvailConfig(runtime);
+        await EthStorageConfig(runtime);
         return true;
     },
     description:
