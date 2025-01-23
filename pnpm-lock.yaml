@@ -248,6 +248,9 @@ importers:
       '@elizaos/plugin-email':
         specifier: workspace:*
         version: link:../packages/plugin-email
+      '@elizaos/plugin-ethstorage':
+        specifier: workspace:*
+        version: link:../packages/plugin-ethstorage
       '@elizaos/plugin-evm':
         specifier: workspace:*
         version: link:../packages/plugin-evm
@@ -2062,6 +2065,28 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.6.3
+
+  packages/plugin-ethstorage:
+    dependencies:
+      '@elizaos/core':
+        specifier: workspace:*
+        version: link:../core
+      '@elizaos/plugin-trustdb':
+        specifier: workspace:*
+        version: link:../plugin-trustdb
+      ethers:
+        specifier: ^6.13.5
+        version: 6.13.5(bufferutil@4.0.9)(utf-8-validate@6.0.5)
+      kzg-wasm:
+        specifier: ^0.4.0
+        version: 0.4.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.17.9
+      tsup:
+        specifier: 8.3.5
+        version: 8.3.5(@swc/core@1.10.9(@swc/helpers@0.5.15))(jiti@2.4.2)(postcss@8.5.1)(tsx@4.19.2)(typescript@5.7.3)(yaml@2.7.0)
 
   packages/plugin-evm:
     dependencies:
@@ -18325,6 +18350,9 @@ packages:
   ky@0.33.3:
     resolution: {integrity: sha512-CasD9OCEQSFIam2U8efFK81Yeg8vNMTBUqtMOHlrcWQHqUX3HeCl9Dr31u4toV7emlH8Mymk5+9p0lL6mKb/Xw==}
     engines: {node: '>=14.16'}
+
+  kzg-wasm@0.4.0:
+    resolution: {integrity: sha512-hKEwFbKrY1LZnAH5gY8+PlVWfkGnj2wd2tc83eIgzuC4NoshXqplW9OzGlBDqpAmXxwhiN8fgPG2+NcvUIBSwg==}
 
   labeled-stream-splicer@2.0.2:
     resolution: {integrity: sha512-Ca4LSXFFZUjPScRaqOcFxneA0VpKZr4MMYCljyQr4LIewTLb3Y0IUTIsnBBsVubIeEfxeSZpSjSsRM8APEQaAw==}
@@ -50538,6 +50566,8 @@ snapshots:
       web-streams-polyfill: 3.3.3
 
   ky@0.33.3: {}
+
+  kzg-wasm@0.4.0: {}
 
   labeled-stream-splicer@2.0.2:
     dependencies:
