@@ -19,7 +19,7 @@ like accounts, memories, actors, goals, and rooms.
 
 > **new DatabaseAdapter**\<`DB`\>(`circuitBreakerConfig`?): [`DatabaseAdapter`](DatabaseAdapter.md)\<`DB`\>
 
-Creates a new DatabaseAdapter instance with optional circuit breaker configuration.
+Creates a new DatabaseAdapter instance with an optional circuit breaker configuration.
 
 #### Parameters
 
@@ -69,7 +69,7 @@ The database instance.
 
 > `protected` **circuitBreaker**: `CircuitBreaker`
 
-Circuit breaker instance used to handle fault tolerance and prevent cascading failures.
+Circuit breaker instance are used to handle fault tolerance and prevent cascading failures.
 Implements the Circuit Breaker pattern to temporarily disable operations when a failure threshold is reached.
 
 The circuit breaker has three states:

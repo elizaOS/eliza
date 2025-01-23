@@ -24,7 +24,7 @@ The state object contains values to replace the placeholders in the template.
 
 • **params.template**: `string` | `Function`
 
-The template string or function returning a string containing placeholders to be replaced with state values.
+The template string or function returns a string containing placeholders to be replaced with state values.
 
 • **params.templatingEngine?**: `"handlebars"`
 
@@ -34,7 +34,7 @@ The templating engine to use for compiling and evaluating the template (optional
 
 `string`
 
-The composed context string with placeholders replaced by corresponding state values.
+The composed context string with placeholders is replaced by corresponding state values.
 
 ## Example
 

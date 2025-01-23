@@ -1,0 +1,34 @@
+{
+  "name": "@elizaos/plugin-devin",
+  "description": "Devin API integration plugin for Eliza",
+  "version": "0.1.9-alpha.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@elizaos/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "axios": "^1.0.0"
+  },
+  "devDependencies": {
+    "tsup": "8.3.5",
+    "vitest": "^1.0.0"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --tsconfig ./tsconfig.json",
+    "dev": "tsup src/index.ts --format esm --dts --watch --tsconfig ./tsconfig.json"
+  }
+}

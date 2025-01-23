@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { IBCTransferAction } from "../actions/ibc-transfer/services/ibc-transfer-action-service"; // dostosuj ścieżkę do pliku
+import { IBCTransferAction } from "../actions/ibc-transfer/services/ibc-transfer-action-service";
 import { assets } from "chain-registry";
 import * as CosmosAssetsHelpers from "../shared/helpers/cosmos-assets";
 import { getAssetBySymbol } from "@chain-registry/utils";
@@ -150,6 +150,13 @@ describe("IBCTransferAction", () => {
         getAssetBySymbol.mockReturnValue({
             base: "uatom",
         });
+        const params = {
+            chainName: "test-chain",
+            targetChainName: "target-chain",
+            symbol: "ATOM",
+            amount: "10",
+            toAddress: "cosmos1receiveraddress",
+        };
 
         mockBridgeDenomProvider.mockResolvedValue({ denom: "uatom" });
         mockSkipClient.route.mockResolvedValue({

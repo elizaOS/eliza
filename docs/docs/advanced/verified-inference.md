@@ -6,7 +6,7 @@ sidebar_position: 18
 
 ## Overview
 
-With verified inference, you can turn your Eliza agent fully verifiable on-chain on Solana with an OpenAI compatible TEE API. This proves that your agent’s thoughts and outputs are free from human control thus increasing the trust of the agent. 
+With verified inference, you can turn your Eliza agent fully verifiable on-chain on Solana with an OpenAI-compatible TEE API. This proves that your agent’s thoughts and outputs are free from human control thus increasing the trust of the agent. 
 
 Compared to [fully deploying the agent in a TEE](https://elizaos.github.io/eliza/docs/advanced/eliza-in-tee/), this is a more light-weight solution which only verifies the inference calls and only needs a single line of code change. 
 
@@ -14,7 +14,7 @@ The API supports all OpenAI models out of the box, including your fine-tuned mod
 
 ## Background
 
-The API is built on top of [Sentience Stack](https://github.com/galadriel-ai/Sentience), which cryptographically verifies agent's LLM inferences inside TEEs, posts those proofs on-chain on Solana, and makes the verified inference logs available to read and display to users.
+The API is built on top of [Sentience Stack](https://github.com/galadriel-ai/Sentience), which cryptographically verifies the agent's LLM inferences inside TEEs, posts those proofs on-chain on Solana, and makes the verified inference logs available to read and display to users.
 
 Here’s how it works:
 ![](https://i.imgur.com/SNwSHam.png)
@@ -23,7 +23,7 @@ Here’s how it works:
 2. The TEE securely processes the request by calling the LLM API.  
 3. The TEE sends back the `{Message, Proof}` to the agent.  
 4. The TEE submits the attestation with `{Message, Proof}` to Solana.  
-5. The Proof of Sentience SDK is used to read the attestation from Solana and verify it with `{Message, Proof}`. The proof log can be added to the agent website/app.
+5. The Proof of Sentience SDK is used to read the attestation from Solana and verify it with `{Message, Proof}`. The proof log can be added to the agent's website/app.
 
 To verify the code running inside the TEE, use instructions [from here](https://github.com/galadriel-ai/sentience/tree/main/verified-inference/verify).
 
@@ -48,7 +48,7 @@ To verify the code running inside the TEE, use instructions [from here](https://
     ```
 4. **Run your agent.**
 
-    Reminder how to run an agent is [here](https://elizaos.github.io/eliza/docs/quickstart/#create-your-first-agent).
+    Reminder of how to run an agent is [here](https://elizaos.github.io/eliza/docs/quickstart/#create-your-first-agent).
     ```bash
     pnpm start --character="characters/<your_character>.json"
     pnpm start:client

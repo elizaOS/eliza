@@ -134,7 +134,7 @@ export default {
 
         try {
             const config = await validateCoingeckoConfig(runtime);
-            const { baseUrl, apiKey } = getApiConfig(config);
+            const { baseUrl, apiKey, headerKey } = getApiConfig(config);
 
             // Get categories through the provider
             const categories = await getCategoriesData(runtime);
@@ -186,7 +186,7 @@ export default {
                 {
                     headers: {
                         'accept': 'application/json',
-                        'x-cg-pro-api-key': apiKey
+                        [headerKey]: apiKey
                     },
                     params: {
                         vs_currency: content.vs_currency,

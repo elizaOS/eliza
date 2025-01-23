@@ -1,25 +1,53 @@
 // src/plugins/SttTtsPlugin.ts
 
 import { spawn } from "child_process";
-import { type ITranscriptionService, elizaLogger } from "@elizaos/core";
-import type { Space, JanusClient, AudioDataWithUser } from "agent-twitter-client";
-import type { Plugin } from "@elizaos/core";
+import {
+    type ITranscriptionService,
+    elizaLogger,
+    stringToUuid,
+    composeContext,
+    getEmbeddingZeroVector,
+    generateMessageResponse,
+    ModelClass,
+    Content,
+    IAgentRuntime,
+    Memory,
+    Plugin,
+    UUID,
+    State,
+    composeRandomUser,
+    generateShouldRespond,
+} from "@elizaos/core";
+import type {
+    Space,
+    JanusClient,
+    AudioDataWithUser,
+} from "agent-twitter-client";
+import { ClientBase } from "../base";
+import {
+    twitterVoiceHandlerTemplate,
+    twitterShouldRespondTemplate,
+} from "./templates";
 
 interface PluginConfig {
-    openAiApiKey?: string; // for STT & ChatGPT
+    runtime: IAgentRuntime;
+    client: ClientBase;
+    spaceId: string;
     elevenLabsApiKey?: string; // for TTS
     sttLanguage?: string; // e.g. "en" for Whisper
-    gptModel?: string; // e.g. "gpt-3.5-turbo"
     silenceThreshold?: number; // amplitude threshold for ignoring silence
     voiceId?: string; // specify which ElevenLabs voice to use
     elevenLabsModel?: string; // e.g. "eleven_monolingual_v1"
-    systemPrompt?: string; // ex. "You are a helpful AI assistant"
     chatContext?: Array<{
         role: "system" | "user" | "assistant";
         content: string;
     }>;
     transcriptionService: ITranscriptionService;
 }
+
+const VOLUME_WINDOW_SIZE = 100;
+const SPEAKING_THRESHOLD = 0.05;
+const SILENCE_DETECTION_THRESHOLD_MS = 1000; // 1-second silence threshold
 
 /**
  * MVP plugin for speech-to-text (OpenAI) + conversation + TTS (ElevenLabs)
@@ -30,17 +58,17 @@ interface PluginConfig {
 export class SttTtsPlugin implements Plugin {
     name = "SttTtsPlugin";
     description = "Speech-to-text (OpenAI) + conversation + TTS (ElevenLabs)";
+    private runtime: IAgentRuntime;
+    private client: ClientBase;
+    private spaceId: string;
 
     private space?: Space;
     private janus?: JanusClient;
 
-    private openAiApiKey?: string;
     private elevenLabsApiKey?: string;
 
-    private gptModel = "gpt-3.5-turbo";
     private voiceId = "21m00Tcm4TlvDq8ikWAM";
     private elevenLabsModel = "eleven_monolingual_v1";
-    private systemPrompt = "You are a helpful AI assistant.";
     private chatContext: Array<{
         role: "system" | "user" | "assistant";
         content: string;
@@ -54,11 +82,6 @@ export class SttTtsPlugin implements Plugin {
     private pcmBuffers = new Map<string, Int16Array[]>();
 
     /**
-     * Track mute states: userId => boolean (true=unmuted)
-     */
-    private speakerUnmuted = new Map<string, boolean>();
-
-    /**
      * For ignoring near-silence frames (if amplitude < threshold)
      */
     private silenceThreshold = 50;
@@ -66,6 +89,11 @@ export class SttTtsPlugin implements Plugin {
     // TTS queue for sequentially speaking
     private ttsQueue: string[] = [];
     private isSpeaking = false;
+    private isProcessingAudio = false;
+
+    private userSpeakingTimer: NodeJS.Timeout | null = null;
+    private volumeBuffers: Map<string, number[]>;
+    private ttsAbortController: AbortController | null = null;
 
     onAttach(_space: Space) {
         elizaLogger.log("[SttTtsPlugin] onAttach => space was attached");
@@ -82,10 +110,11 @@ export class SttTtsPlugin implements Plugin {
             | undefined;
 
         const config = params.pluginConfig as PluginConfig;
-        this.openAiApiKey = config?.openAiApiKey;
+        this.runtime = config?.runtime;
+        this.client = config?.client;
+        this.spaceId = config?.spaceId;
         this.elevenLabsApiKey = config?.elevenLabsApiKey;
         this.transcriptionService = config.transcriptionService;
-        if (config?.gptModel) this.gptModel = config.gptModel;
         if (typeof config?.silenceThreshold === "number") {
             this.silenceThreshold = config.silenceThreshold;
         }
@@ -95,45 +124,21 @@ export class SttTtsPlugin implements Plugin {
         if (config?.elevenLabsModel) {
             this.elevenLabsModel = config.elevenLabsModel;
         }
-        if (config?.systemPrompt) {
-            this.systemPrompt = config.systemPrompt;
-        }
         if (config?.chatContext) {
             this.chatContext = config.chatContext;
         }
         elizaLogger.log("[SttTtsPlugin] Plugin config =>", config);
 
-        // Listen for mute events
-        this.space.on(
-            "muteStateChanged",
-            (evt: { userId: string; muted: boolean }) => {
-                elizaLogger.log(
-                    "[SttTtsPlugin] Speaker muteStateChanged =>",
-                    evt
-                );
-                if (evt.muted) {
-                    this.handleMute(evt.userId).catch((err) =>
-                        elizaLogger.error(
-                            "[SttTtsPlugin] handleMute error =>",
-                            err
-                        )
-                    );
-                } else {
-                    this.speakerUnmuted.set(evt.userId, true);
-                    if (!this.pcmBuffers.has(evt.userId)) {
-                        this.pcmBuffers.set(evt.userId, []);
-                    }
-                }
-            }
-        );
+        this.volumeBuffers = new Map<string, number[]>();
     }
 
     /**
      * Called whenever we receive PCM from a speaker
      */
     onAudioData(data: AudioDataWithUser): void {
-        if (!this.speakerUnmuted.get(data.userId)) return;
-
+        if (this.isProcessingAudio) {
+            return;
+        }
         let maxVal = 0;
         for (let i = 0; i < data.samples.length; i++) {
             const val = Math.abs(data.samples[i]);
@@ -143,12 +148,62 @@ export class SttTtsPlugin implements Plugin {
             return;
         }
 
+        if (this.userSpeakingTimer) {
+            clearTimeout(this.userSpeakingTimer);
+        }
+
         let arr = this.pcmBuffers.get(data.userId);
         if (!arr) {
             arr = [];
             this.pcmBuffers.set(data.userId, arr);
         }
         arr.push(data.samples);
+
+        if (!this.isSpeaking) {
+            this.userSpeakingTimer = setTimeout(() => {
+                elizaLogger.log(
+                    "[SttTtsPlugin] start processing audio for user =>",
+                    data.userId
+                );
+                this.userSpeakingTimer = null;
+                this.processAudio(data.userId).catch((err) =>
+                    elizaLogger.error(
+                        "[SttTtsPlugin] handleSilence error =>",
+                        err
+                    )
+                );
+            }, SILENCE_DETECTION_THRESHOLD_MS);
+        } else {
+            // check interruption
+            let volumeBuffer = this.volumeBuffers.get(data.userId);
+            if (!volumeBuffer) {
+                volumeBuffer = [];
+                this.volumeBuffers.set(data.userId, volumeBuffer);
+            }
+            const samples = new Int16Array(
+                data.samples.buffer,
+                data.samples.byteOffset,
+                data.samples.length / 2
+            );
+            const maxAmplitude = Math.max(...samples.map(Math.abs)) / 32768;
+            volumeBuffer.push(maxAmplitude);
+
+            if (volumeBuffer.length > VOLUME_WINDOW_SIZE) {
+                volumeBuffer.shift();
+            }
+            const avgVolume =
+                volumeBuffer.reduce((sum, v) => sum + v, 0) /
+                VOLUME_WINDOW_SIZE;
+
+            if (avgVolume > SPEAKING_THRESHOLD) {
+                volumeBuffer.length = 0;
+                if (this.ttsAbortController) {
+                    this.ttsAbortController.abort();
+                    this.isSpeaking = false;
+                    elizaLogger.log("[SttTtsPlugin] TTS playback interrupted");
+                }
+            }
+        }
     }
 
     // /src/sttTtsPlugin.ts
@@ -203,57 +258,84 @@ export class SttTtsPlugin implements Plugin {
     }
 
     /**
-     * On speaker mute => flush STT => GPT => TTS => push to Janus
+     * On speaker silence => flush STT => GPT => TTS => push to Janus
      */
-    private async handleMute(userId: string): Promise<void> {
-        this.speakerUnmuted.set(userId, false);
-        const chunks = this.pcmBuffers.get(userId) || [];
-        this.pcmBuffers.set(userId, []);
-
-        if (!chunks.length) {
-            elizaLogger.warn(
-                "[SttTtsPlugin] No audio chunks for user =>",
-                userId
-            );
+    private async processAudio(userId: UUID): Promise<void> {
+        if (this.isProcessingAudio) {
             return;
         }
-        elizaLogger.log(
-            `[SttTtsPlugin] Flushing STT buffer for user=${userId}, chunks=${chunks.length}`
-        );
-
-        const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
-        const merged = new Int16Array(totalLen);
-        let offset = 0;
-        for (const c of chunks) {
-            merged.set(c, offset);
-            offset += c.length;
-        }
-
-        // Convert PCM to WAV for STT
-        const wavBuffer = await this.convertPcmToWavInMemory(merged, 48000);
-
-        // Whisper STT
-        const sttText = await this.transcriptionService.transcribe(wavBuffer);
-
-        if (!sttText || !sttText.trim()) {
-            elizaLogger.warn(
-                "[SttTtsPlugin] No speech recognized for user =>",
+        this.isProcessingAudio = true;
+        try {
+            elizaLogger.log(
+                "[SttTtsPlugin] Starting audio processing for user:",
                 userId
             );
-            return;
+            const chunks = this.pcmBuffers.get(userId) || [];
+            this.pcmBuffers.clear();
+
+            if (!chunks.length) {
+                elizaLogger.warn(
+                    "[SttTtsPlugin] No audio chunks for user =>",
+                    userId
+                );
+                return;
+            }
+            elizaLogger.log(
+                `[SttTtsPlugin] Flushing STT buffer for user=${userId}, chunks=${chunks.length}`
+            );
+
+            const totalLen = chunks.reduce((acc, c) => acc + c.length, 0);
+            const merged = new Int16Array(totalLen);
+            let offset = 0;
+            for (const c of chunks) {
+                merged.set(c, offset);
+                offset += c.length;
+            }
+
+            // Convert PCM to WAV for STT
+            const wavBuffer = await this.convertPcmToWavInMemory(merged, 48000);
+
+            // Whisper STT
+            const sttText = await this.transcriptionService.transcribe(
+                wavBuffer
+            );
+
+            elizaLogger.log(
+                `[SttTtsPlugin] Transcription result: "${sttText}"`
+            );
+
+            if (!sttText || !sttText.trim()) {
+                elizaLogger.warn(
+                    "[SttTtsPlugin] No speech recognized for user =>",
+                    userId
+                );
+                return;
+            }
+            elizaLogger.log(
+                `[SttTtsPlugin] STT => user=${userId}, text="${sttText}"`
+            );
+
+            // Get response
+            const replyText = await this.handleUserMessage(sttText, userId);
+            if (!replyText || !replyText.length || !replyText.trim()) {
+                elizaLogger.warn(
+                    "[SttTtsPlugin] No replyText for user =>",
+                    userId
+                );
+                return;
+            }
+            elizaLogger.log(
+                `[SttTtsPlugin] user=${userId}, reply="${replyText}"`
+            );
+            this.isProcessingAudio = false;
+            this.volumeBuffers.clear();
+            // Use the standard speak method with queue
+            await this.speakText(replyText);
+        } catch (error) {
+            elizaLogger.error("[SttTtsPlugin] processAudio error =>", error);
+        } finally {
+            this.isProcessingAudio = false;
         }
-        elizaLogger.log(
-            `[SttTtsPlugin] STT => user=${userId}, text="${sttText}"`
-        );
-
-        // GPT answer
-        const replyText = await this.askChatGPT(sttText);
-        elizaLogger.log(
-            `[SttTtsPlugin] GPT => user=${userId}, reply="${replyText}"`
-        );
-
-        // Use the standard speak method with queue
-        await this.speakText(replyText);
     }
 
     /**
@@ -280,55 +362,246 @@ export class SttTtsPlugin implements Plugin {
             const text = this.ttsQueue.shift();
             if (!text) continue;
 
+            this.ttsAbortController = new AbortController();
+            const { signal } = this.ttsAbortController;
+
             try {
                 const ttsAudio = await this.elevenLabsTts(text);
                 const pcm = await this.convertMp3ToPcm(ttsAudio, 48000);
+                if (signal.aborted) {
+                    elizaLogger.log(
+                        "[SttTtsPlugin] TTS interrupted before streaming"
+                    );
+                    return;
+                }
                 await this.streamToJanus(pcm, 48000);
+                if (signal.aborted) {
+                    elizaLogger.log(
+                        "[SttTtsPlugin] TTS interrupted after streaming"
+                    );
+                    return;
+                }
             } catch (err) {
                 elizaLogger.error("[SttTtsPlugin] TTS streaming error =>", err);
+            } finally {
+                // Clean up the AbortController
+                this.ttsAbortController = null;
             }
         }
         this.isSpeaking = false;
     }
 
     /**
-     * Simple ChatGPT call
+     * Handle User Message
      */
-    private async askChatGPT(userText: string): Promise<string> {
-        if (!this.openAiApiKey) {
-            throw new Error("[SttTtsPlugin] No OpenAI API key for ChatGPT");
-        }
-        const url = "https://api.openai.com/v1/chat/completions";
-        const messages = [
-            { role: "system", content: this.systemPrompt },
-            ...this.chatContext,
-            { role: "user", content: userText },
-        ];
+    private async handleUserMessage(
+        userText: string,
+        userId: UUID
+    ): Promise<string> {
+        await this.runtime.ensureUserExists(
+            this.runtime.agentId,
+            this.client.profile.username,
+            this.runtime.character.name,
+            "twitter"
+        );
 
-        const resp = await fetch(url, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${this.openAiApiKey}`,
-                "Content-Type": "application/json",
+        const roomId = stringToUuid("twitter_generate_room-" + this.spaceId);
+        let state = await this.runtime.composeState(
+            {
+                agentId: this.runtime.agentId,
+                content: { text: userText, source: "twitter" },
+                userId,
+                roomId,
             },
-            body: JSON.stringify({
-                model: this.gptModel,
-                messages,
-            }),
+            {
+                twitterUserName: this.client.profile.username,
+                agentName: this.runtime.character.name,
+            }
+        );
+
+        const memory = {
+            id: stringToUuid(roomId + "-voice-message-" + Date.now()),
+            agentId: this.runtime.agentId,
+            content: {
+                text: userText,
+                source: "twitter",
+            },
+            userId,
+            roomId,
+            embedding: getEmbeddingZeroVector(),
+            createdAt: Date.now(),
+        };
+
+        await this.runtime.messageManager.createMemory(memory);
+
+        state = await this.runtime.updateRecentMessageState(state);
+
+        const shouldIgnore = await this._shouldIgnore(memory);
+
+        if (shouldIgnore) {
+            return "";
+        }
+
+        const shouldRespond = await this._shouldRespond(userText, state);
+
+        if (!shouldRespond) {
+            return "";
+        }
+
+        const context = composeContext({
+            state,
+            template:
+                this.runtime.character.templates?.twitterVoiceHandlerTemplate ||
+                this.runtime.character.templates?.messageHandlerTemplate ||
+                twitterVoiceHandlerTemplate,
         });
 
-        if (!resp.ok) {
-            const errText = await resp.text();
-            throw new Error(
-                `[SttTtsPlugin] ChatGPT error => ${resp.status} ${errText}`
-            );
+        const responseContent = await this._generateResponse(memory, context);
+
+        const responseMemory: Memory = {
+            id: stringToUuid(memory.id + "-voice-response-" + Date.now()),
+            agentId: this.runtime.agentId,
+            userId: this.runtime.agentId,
+            content: {
+                ...responseContent,
+                user: this.runtime.character.name,
+                inReplyTo: memory.id,
+            },
+            roomId,
+            embedding: getEmbeddingZeroVector(),
+        };
+
+        const reply = responseMemory.content.text?.trim();
+        if (reply) {
+            await this.runtime.messageManager.createMemory(responseMemory);
         }
 
-        const json = await resp.json();
-        const reply = json.choices?.[0]?.message?.content || "";
-        this.chatContext.push({ role: "user", content: userText });
-        this.chatContext.push({ role: "assistant", content: reply });
-        return reply.trim();
+        return reply;
+    }
+
+    private async _generateResponse(
+        message: Memory,
+        context: string
+    ): Promise<Content> {
+        const { userId, roomId } = message;
+
+        const response = await generateMessageResponse({
+            runtime: this.runtime,
+            context,
+            modelClass: ModelClass.SMALL,
+        });
+
+        response.source = "discord";
+
+        if (!response) {
+            elizaLogger.error(
+                "[SttTtsPlugin] No response from generateMessageResponse"
+            );
+            return;
+        }
+
+        await this.runtime.databaseAdapter.log({
+            body: { message, context, response },
+            userId: userId,
+            roomId,
+            type: "response",
+        });
+
+        return response;
+    }
+
+    private async _shouldIgnore(message: Memory): Promise<boolean> {
+        elizaLogger.debug("message.content: ", message.content);
+        // if the message is 3 characters or less, ignore it
+        if ((message.content as Content).text.length < 3) {
+            return true;
+        }
+
+        const loseInterestWords = [
+            // telling the bot to stop talking
+            "shut up",
+            "stop",
+            "dont talk",
+            "silence",
+            "stop talking",
+            "be quiet",
+            "hush",
+            "stfu",
+            "stupid bot",
+            "dumb bot",
+
+            // offensive words
+            "fuck",
+            "shit",
+            "damn",
+            "suck",
+            "dick",
+            "cock",
+            "sex",
+            "sexy",
+        ];
+        if (
+            (message.content as Content).text.length < 50 &&
+            loseInterestWords.some((word) =>
+                (message.content as Content).text?.toLowerCase().includes(word)
+            )
+        ) {
+            return true;
+        }
+
+        const ignoreWords = ["k", "ok", "bye", "lol", "nm", "uh"];
+        if (
+            (message.content as Content).text?.length < 8 &&
+            ignoreWords.some((word) =>
+                (message.content as Content).text?.toLowerCase().includes(word)
+            )
+        ) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private async _shouldRespond(
+        message: string,
+        state: State
+    ): Promise<boolean> {
+        const lowerMessage = message.toLowerCase();
+        const characterName = this.runtime.character.name.toLowerCase();
+
+        if (lowerMessage.includes(characterName)) {
+            return true;
+        }
+
+        // If none of the above conditions are met, use the generateText to decide
+        const shouldRespondContext = composeContext({
+            state,
+            template:
+                this.runtime.character.templates
+                    ?.twitterShouldRespondTemplate ||
+                this.runtime.character.templates?.shouldRespondTemplate ||
+                composeRandomUser(twitterShouldRespondTemplate, 2),
+        });
+
+        const response = await generateShouldRespond({
+            runtime: this.runtime,
+            context: shouldRespondContext,
+            modelClass: ModelClass.SMALL,
+        });
+
+        if (response === "RESPOND") {
+            return true;
+        } else if (response === "IGNORE") {
+            return false;
+        } else if (response === "STOP") {
+            return false;
+        } else {
+            elizaLogger.error(
+                "Invalid response from response generateText:",
+                response
+            );
+            return false;
+        }
     }
 
     /**
@@ -422,6 +695,10 @@ export class SttTtsPlugin implements Plugin {
             offset + FRAME_SIZE <= samples.length;
             offset += FRAME_SIZE
         ) {
+            if (this.ttsAbortController?.signal.aborted) {
+                elizaLogger.log("[SttTtsPlugin] streamToJanus interrupted");
+                return;
+            }
             const frame = new Int16Array(FRAME_SIZE);
             frame.set(samples.subarray(offset, offset + FRAME_SIZE));
             this.janus?.pushLocalAudio(frame, sampleRate, 1);
@@ -429,19 +706,6 @@ export class SttTtsPlugin implements Plugin {
             // Short pause so we don't overload
             await new Promise((r) => setTimeout(r, 10));
         }
-    }
-
-    public setSystemPrompt(prompt: string) {
-        this.systemPrompt = prompt;
-        elizaLogger.log("[SttTtsPlugin] setSystemPrompt =>", prompt);
-    }
-
-    /**
-     * Change the GPT model at runtime (e.g. "gpt-4", "gpt-3.5-turbo", etc.).
-     */
-    public setGptModel(model: string) {
-        this.gptModel = model;
-        elizaLogger.log("[SttTtsPlugin] setGptModel =>", model);
     }
 
     /**
@@ -466,8 +730,9 @@ export class SttTtsPlugin implements Plugin {
     cleanup(): void {
         elizaLogger.log("[SttTtsPlugin] cleanup => releasing resources");
         this.pcmBuffers.clear();
-        this.speakerUnmuted.clear();
+        this.userSpeakingTimer = null;
         this.ttsQueue = [];
         this.isSpeaking = false;
+        this.volumeBuffers.clear();
     }
 }

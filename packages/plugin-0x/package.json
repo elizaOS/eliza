@@ -1,0 +1,36 @@
+{
+    "name": "@elizaos/plugin-0x",
+    "version": "0.1.8",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "import": {
+                "@elizaos/source": "./src/index.ts",
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "test": "vitest"
+    },
+    "dependencies": {
+        "@0x/swap-ts-sdk": "2.1.1"
+    },
+    "devDependencies": {
+        "tsup": "^8.0.1"
+    },
+    "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+        "zod": "^3.22.4"
+    }
+}

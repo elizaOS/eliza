@@ -6,6 +6,7 @@ import {
     ModelClass,
     ServiceType,
     type ITranscriptionService,
+    TwitterSpaceDecisionOptions,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import {
@@ -17,24 +18,6 @@ import {
     type SpeakerRequest,
 } from "agent-twitter-client";
 import { SttTtsPlugin } from "./plugins/SttTtsSpacesPlugin.ts";
-
-interface SpaceDecisionOptions {
-    maxSpeakers?: number;
-    topics?: string[];
-    typicalDurationMinutes?: number;
-    idleKickTimeoutMs?: number;
-    minIntervalBetweenSpacesMinutes?: number;
-    businessHoursOnly?: boolean;
-    randomChance?: number;
-    enableIdleMonitor?: boolean;
-    enableSttTts?: boolean;
-    enableRecording?: boolean;
-    voiceId?: string;
-    sttLanguage?: string;
-    gptModel?: string;
-    systemPrompt?: string;
-    speakerMaxDurationMs?: number;
-}
 
 interface CurrentSpeakerState {
     userId: string;
@@ -134,6 +117,7 @@ Example:
  * Main class: manage a Twitter Space with N speakers max, speaker queue, filler messages, etc.
  */
 export class TwitterSpaceClient {
+    private runtime: IAgentRuntime;
     private client: ClientBase;
     private scraper: Scraper;
     private isSpaceRunning = false;
@@ -150,11 +134,12 @@ export class TwitterSpaceClient {
     private activeSpeakers: CurrentSpeakerState[] = [];
     private speakerQueue: SpeakerRequest[] = [];
 
-    private decisionOptions: SpaceDecisionOptions;
+    private decisionOptions: TwitterSpaceDecisionOptions;
 
     constructor(client: ClientBase, runtime: IAgentRuntime) {
         this.client = client;
         this.scraper = client.twitterClient;
+        this.runtime = runtime;
 
         const charSpaces = runtime.character.twitterSpaces || {};
         this.decisionOptions = {
@@ -174,8 +159,6 @@ export class TwitterSpaceClient {
                 runtime.character.settings.voice.model ||
                 "Xb7hH8MSUJpSbSDYk0k2",
             sttLanguage: charSpaces.sttLanguage || "en",
-            gptModel: charSpaces.gptModel,
-            systemPrompt: charSpaces.systemPrompt,
             speakerMaxDurationMs: charSpaces.speakerMaxDurationMs ?? 4 * 60_000,
         };
     }
@@ -307,9 +290,11 @@ export class TwitterSpaceClient {
             this.speakerQueue = [];
 
             // Retrieve keys
-            const openAiKey = process.env.OPENAI_API_KEY || "";
-            const elevenLabsKey = process.env.ELEVENLABS_XI_API_KEY || "";
+            const elevenLabsKey =
+                this.runtime.getSetting("ELEVENLABS_XI_API_KEY") || "";
 
+            const broadcastInfo = await this.currentSpace.initialize(config);
+            this.spaceId = broadcastInfo.room_id;
             // Plugins
             if (this.decisionOptions.enableRecording) {
                 elizaLogger.log("[Space] Using RecordToDiskPlugin");
@@ -321,11 +306,11 @@ export class TwitterSpaceClient {
                 const sttTts = new SttTtsPlugin();
                 this.sttTtsPlugin = sttTts;
                 this.currentSpace.use(sttTts, {
-                    openAiApiKey: openAiKey,
+                    runtime: this.runtime,
+                    client: this.client,
+                    spaceId: this.spaceId,
                     elevenLabsApiKey: elevenLabsKey,
                     voiceId: this.decisionOptions.voiceId,
-                    gptModel: this.decisionOptions.gptModel,
-                    systemPrompt: this.decisionOptions.systemPrompt,
                     sttLanguage: this.decisionOptions.sttLanguage,
                     transcriptionService:
                         this.client.runtime.getService<ITranscriptionService>(
@@ -344,8 +329,6 @@ export class TwitterSpaceClient {
                 );
             }
 
-            const broadcastInfo = await this.currentSpace.initialize(config);
-            this.spaceId = broadcastInfo.room_id;
             this.isSpaceRunning = true;
             await this.scraper.sendTweet(
                 broadcastInfo.share_url.replace("broadcasts", "spaces")

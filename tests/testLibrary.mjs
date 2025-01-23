@@ -21,9 +21,36 @@ function logError(error) {
 
 async function runProcess(command, args = [], directory = projectRoot()) {
     try {
-        throw new Exception("Not implemented yet"); // TODO
-        // const result = await $`cd ${directory} && ${command} ${args}`;
-        return result.stdout.trim();
+        return new Promise((resolve, reject) => {
+            const process = spawn(command, args, {
+                cwd: directory,
+                shell: true,
+                stdio: ['inherit', 'pipe', 'pipe']
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            process.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+
+            process.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            process.on('close', (code) => {
+                if (code === 0) {
+                    resolve(stdout.trim());
+                } else {
+                    reject(new Error(`Command failed with code ${code}: ${stderr}`));
+                }
+            });
+
+            process.on('error', (error) => {
+                reject(new Error(`Failed to start command: ${error.message}`));
+            });
+        });
     } catch (error) {
         throw new Error(`Command failed: ${error.message}`);
     }

@@ -1,0 +1,52 @@
+{
+  "name": "@elizaos/plugin-nvidia-nim",
+  "version": "1.0.0",
+  "description": "NVIDIA NIM API plugin for ElizaOS",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "test": "vitest",
+    "clean": "rimraf dist",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write src"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "openai": "^4.24.1",
+    "ora": "^8.1.1",
+    "zod": "^3.23.8",
+    "axios": "^1.7.7",
+    "chalk": "^5.4.1",
+    "cli-table3": "^0.6.5",
+    "cross-fetch": "^4.0.0"
+
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^6.7.4",
+    "@typescript-eslint/parser": "^6.7.4",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.0",
+    "rimraf": "^5.0.5",
+    "tsup": "^8.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "eliza",
+    "plugin",
+    "nvidia",
+    "nim",
+    "ai"
+  ],
+  "author": "Eliza Team",
+  "license": "MIT"
+}

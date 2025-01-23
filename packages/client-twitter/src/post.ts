@@ -118,16 +118,28 @@ export class TwitterPostClient {
             `- Post Interval: ${this.client.twitterConfig.POST_INTERVAL_MIN}-${this.client.twitterConfig.POST_INTERVAL_MAX} minutes`
         );
         elizaLogger.log(
-            `- Action Processing: ${this.client.twitterConfig.ENABLE_ACTION_PROCESSING ? "enabled" : "disabled"}`
+            `- Action Processing: ${
+                this.client.twitterConfig.ENABLE_ACTION_PROCESSING
+                    ? "enabled"
+                    : "disabled"
+            }`
         );
         elizaLogger.log(
             `- Action Interval: ${this.client.twitterConfig.ACTION_INTERVAL} minutes`
         );
         elizaLogger.log(
-            `- Post Immediately: ${this.client.twitterConfig.POST_IMMEDIATELY ? "enabled" : "disabled"}`
+            `- Post Immediately: ${
+                this.client.twitterConfig.POST_IMMEDIATELY
+                    ? "enabled"
+                    : "disabled"
+            }`
         );
         elizaLogger.log(
-            `- Search Enabled: ${this.client.twitterConfig.TWITTER_SEARCH_ENABLE ? "enabled" : "disabled"}`
+            `- Search Enabled: ${
+                this.client.twitterConfig.TWITTER_SEARCH_ENABLE
+                    ? "enabled"
+                    : "disabled"
+            }`
         );
 
         const targetUsers = this.client.twitterConfig.TWITTER_TARGET_USERS;
@@ -274,7 +286,6 @@ export class TwitterPostClient {
             await this.generateNewTweet();
         }
 
-        // Only start tweet generation loop if not in dry run mode
         generateNewTweetLoop();
         elizaLogger.log("Tweet generation loop started");
 
@@ -874,7 +885,9 @@ export class TwitterPostClient {
                         const formattedConversation = thread
                             .map(
                                 (t) =>
-                                    `@${t.username} (${new Date(t.timestamp * 1000).toLocaleString()}): ${t.text}`
+                                    `@${t.username} (${new Date(
+                                        t.timestamp * 1000
+                                    ).toLocaleString()}): ${t.text}`
                             )
                             .join("\n\n");
 
@@ -934,7 +947,12 @@ export class TwitterPostClient {
                                 formattedConversation,
                                 imageContext:
                                     imageDescriptions.length > 0
-                                        ? `\nImages in Tweet:\n${imageDescriptions.map((desc, i) => `Image ${i + 1}: ${desc}`).join("\n")}`
+                                        ? `\nImages in Tweet:\n${imageDescriptions
+                                              .map(
+                                                  (desc, i) =>
+                                                      `Image ${i + 1}: ${desc}`
+                                              )
+                                              .join("\n")}`
                                         : "",
                                 quotedContent,
                             }
@@ -1082,7 +1100,9 @@ export class TwitterPostClient {
             const formattedConversation = thread
                 .map(
                     (t) =>
-                        `@${t.username} (${new Date(t.timestamp * 1000).toLocaleString()}): ${t.text}`
+                        `@${t.username} (${new Date(
+                            t.timestamp * 1000
+                        ).toLocaleString()}): ${t.text}`
                 )
                 .join("\n\n");
 
@@ -1132,7 +1152,9 @@ export class TwitterPostClient {
                     formattedConversation,
                     imageContext:
                         imageDescriptions.length > 0
-                            ? `\nImages in Tweet:\n${imageDescriptions.map((desc, i) => `Image ${i + 1}: ${desc}`).join("\n")}`
+                            ? `\nImages in Tweet:\n${imageDescriptions
+                                  .map((desc, i) => `Image ${i + 1}: ${desc}`)
+                                  .join("\n")}`
                             : "",
                     quotedContent,
                 }

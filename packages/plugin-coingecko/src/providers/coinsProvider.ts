@@ -14,7 +14,7 @@ const MAX_RETRIES = 3;
 
 async function fetchCoins(runtime: IAgentRuntime, includePlatform = false): Promise<CoinItem[]> {
     const config = await validateCoingeckoConfig(runtime);
-    const { baseUrl, apiKey } = getApiConfig(config);
+    const { baseUrl, apiKey, headerKey } = getApiConfig(config);
 
     const response = await axios.get<CoinItem[]>(
         `${baseUrl}/coins/list`,
@@ -24,7 +24,7 @@ async function fetchCoins(runtime: IAgentRuntime, includePlatform = false): Prom
             },
             headers: {
                 'accept': 'application/json',
-                'x-cg-pro-api-key': apiKey
+                [headerKey]: apiKey
             },
             timeout: 5000 // 5 second timeout
         }

@@ -1,0 +1,38 @@
+{
+    "name": "@elizaos/plugin-initia",
+    "version": "0.1.9-alpha.1",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "import": {
+                "@elizaos/source": "./src/index.ts",
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "test": "vitest run"
+    },
+    "author": "boosik",
+    "license": "ISC",
+    "description": "",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-trustdb": "workspace:*",
+        "@elizaos/plugin-tee": "workspace:*",
+        "@initia/initia.js": "0.2.26"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.1"
+    }
+}
