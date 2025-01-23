@@ -1,8 +1,8 @@
-import { IAgentRuntime} from "@elizaos/core";
+import type { IAgentRuntime} from "@elizaos/core";
 import { z } from "zod";
 
 // Environment Variables
-let ENV: string = "mainnet";
+let ENV = "mainnet";
 
 // Pyth Network Configuration
 const PYTH_NETWORKS = {

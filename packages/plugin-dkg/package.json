@@ -27,5 +27,11 @@
         "build": "tsup --format esm --dts",
         "dev": "tsup --format esm --dts --watch",
         "lint": "eslint --fix  --cache ."
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    },
+    "devDependencies": {
+        "typescript": "4.9"
     }
 }

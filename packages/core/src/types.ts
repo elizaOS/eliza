@@ -654,6 +654,7 @@ export enum Clients {
     SLACK = "slack",
     GITHUB = "github",
     INSTAGRAM = "instagram",
+    SIMSAI = "simsai"
 }
 
 export interface IAgentConfig {
@@ -761,6 +762,11 @@ export type Character = {
         discordMessageHandlerTemplate?: TemplateType;
         slackMessageHandlerTemplate?: TemplateType;
         slackShouldRespondTemplate?: TemplateType;
+        jeeterPostTemplate?: string;
+        jeeterSearchTemplate?: string;
+        jeeterInteractionTemplate?: string;
+        jeeterMessageHandlerTemplate?: string;
+        jeeterShouldRespondTemplate?: string;
     };
 
     /** Character biography */
@@ -910,6 +916,14 @@ export type Character = {
         username: string;
         bio: string;
         nicknames?: string[];
+    };
+
+    /** Optional SimsAI profile */
+    simsaiProfile?: {
+        id: string;
+        username: string;
+        screenName: string;
+        bio: string;
     };
 
     /** Optional NFT prompt */

@@ -290,7 +290,9 @@ export const initWalletProvider = async (runtime: IAgentRuntime) => {
 export const nativeWalletProvider: Provider = {
     async get(
         runtime: IAgentRuntime,
+        // eslint-disable-next-line
         message: Memory,
+        // eslint-disable-next-line
         state?: State
     ): Promise<string | null> {
         try {

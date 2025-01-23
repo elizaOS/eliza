@@ -188,6 +188,7 @@ export default {
         }
     },
     template: transferTemplate,
+    // eslint-disable-next-line
     validate: async (runtime: IAgentRuntime) => {
         //console.log("Validating TON transfer from user:", message.userId);
         return true;

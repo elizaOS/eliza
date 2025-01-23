@@ -1,4 +1,4 @@
-import { type Plugin } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
 import { startSessionAction } from "./actions/startSession";
 import { devinProvider } from "./providers/devinProvider";
 import { validateDevinConfig } from "./environment";

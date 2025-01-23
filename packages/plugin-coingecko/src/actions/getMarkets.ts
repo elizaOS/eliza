@@ -111,6 +111,7 @@ export default {
         "BEST_PERFORMING_COINS",
         "TOP_MARKET_CAPS"
     ],
+    // eslint-disable-next-line
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         await validateCoingeckoConfig(runtime);
         return true;

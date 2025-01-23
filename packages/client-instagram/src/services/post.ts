@@ -250,14 +250,55 @@ export class InstagramPostService {
             await fs.writeFile(tempFile, Buffer.from(imageData, "base64"));
 
             return tempFile;
-        } catch (error) {
-            elizaLogger.error("Error generating image:", {
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-                phase: "getOrGenerateImage",
-            });
-            throw error;
+        } catch {
+            // If not JSON, clean the raw content
+            cleanedContent = content
+              .replace(/^\s*{?\s*"text":\s*"|"\s*}?\s*$/g, "") // Remove JSON-like wrapper
+              .replace(/^['"](.*)['"]$/g, "$1") // Remove quotes
+              .replace(/\\"/g, '"') // Unescape quotes
+              .replace(/\\n/g, "\n\n") // Unescape newlines
+              .trim();
         }
+
+      if (!cleanedContent) {
+        elizaLogger.error("Failed to extract valid content from response:", {
+          rawResponse: content,
+          attempted: "JSON parsing",
+        });
+        return;
+      }
+
+      // For Instagram, we need to generate or get an image
+      const mediaUrl = await this.getOrGenerateImage(cleanedContent);
+
+      await this.createPost({
+        media: [{
+          type: 'IMAGE',
+          url: mediaUrl
+        }],
+        caption: cleanedContent
+      });
+
+      // Create memory of the post
+      await this.runtime.messageManager.createMemory({
+        id: stringToUuid(`instagram-post-${Date.now()}`),
+        userId: this.runtime.agentId,
+        agentId: this.runtime.agentId,
+        content: {
+          text: cleanedContent,
+          source: "instagram",
+        },
+        roomId,
+        embedding: getEmbeddingZeroVector(),
+        createdAt: Date.now(),
+      });
+
+    } catch (error) {
+      elizaLogger.error("Error generating Instagram post:", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        phase: 'generateNewPost'
+      });
     }
 
     async createPost(options: PostOptions) {

@@ -1,4 +1,4 @@
-import { Plugin } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
 import createToken from "./actions/createToken.ts";
 import swap from "./actions/swap.ts";
 import lend from "./actions/lend.ts";

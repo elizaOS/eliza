@@ -14,7 +14,8 @@
     },
     "scripts": {
         "build": "tsup --format esm --dts",
-        "test": "vitest"
+        "test": "vitest",
+        "lint": "eslint --fix  --cache ."
     },
     "peerDependencies": {
         "whatwg-url": "7.1.0"

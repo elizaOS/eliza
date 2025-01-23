@@ -249,7 +249,7 @@ export async function executeTrade(
 
 export async function getChainWalletBalance(
     runtime: IAgentRuntime,
-    tokenAddress: string
+    _tokenAddress: string
 ): Promise<number> {
     // Get Solana balance
     return await getWalletBalance(runtime);

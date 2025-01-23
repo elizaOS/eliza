@@ -81,6 +81,11 @@ export async function validateNodeConfig(
                 AWS_REGION: runtime.getSetting("AWS_REGION"),
                 AWS_S3_BUCKET: runtime.getSetting("AWS_S3_BUCKET"),
                 AWS_S3_UPLOAD_PATH: runtime.getSetting("AWS_S3_UPLOAD_PATH"),
+                AWS_S3_ENDPOINT: runtime.getSetting("AWS_S3_ENDPOINT"),
+                AWS_S3_SSL_ENABLED: runtime.getSetting("AWS_S3_SSL_ENABLED"),
+                AWS_S3_FORCE_PATH_STYLE: runtime.getSetting(
+                    "AWS_S3_FORCE_PATH_STYLE"
+                ),
             }),
         };
 

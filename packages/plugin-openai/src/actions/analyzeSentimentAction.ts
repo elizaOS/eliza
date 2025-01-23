@@ -1,4 +1,4 @@
-import { Action } from "@elizaos/core";
+import type { Action } from "@elizaos/core";
 import {
     validatePrompt,
     validateApiKey,

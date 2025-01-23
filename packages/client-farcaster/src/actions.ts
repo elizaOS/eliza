@@ -40,8 +40,8 @@ export async function sendCast({
             sent.push(cast!);
 
             parentCastId = {
-                fid: neynarCast?.authorFid!,
-                hash: neynarCast?.hash!,
+                fid: neynarCast.authorFid!,
+                hash: neynarCast.hash!,
             };
         }
     }

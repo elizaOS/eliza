@@ -161,7 +161,7 @@ export class LensClient {
 
     async getMentions(): Promise<{
         mentions: AnyPublicationFragment[];
-        next?: () => {};
+        next?: () => object;
     }> {
         if (!this.authenticated) {
             await this.authenticate();
@@ -181,8 +181,14 @@ export class LensClient {
         const { items, next } = result.unwrap();
 
         items.map((notification) => {
-            // @ts-ignore NotificationFragment
-            const item = notification.publication || notification.comment;
+            let item;
+            if ('publication' in notification) {
+                item = notification.publication;
+            } else if ('comment' in notification) {
+                item = notification.comment;
+            } else {
+                return; // Skip notifications without the relevant properties
+            }
             if (!item.isEncrypted) {
                 mentions.push(item);
                 this.cache.set(`lens/publication/${item.id}`, item);

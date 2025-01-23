@@ -24,7 +24,7 @@ export const createResourceAction: Action = {
         runtime: IAgentRuntime,
         _message: Memory,
         state: State,
-        _options: any,
+        _options: object,
         callback: HandlerCallback
     ) => {
         try {

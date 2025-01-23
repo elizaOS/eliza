@@ -32,17 +32,17 @@ export type UpdateResourceContent = z.infer<typeof UpdateResourceSchema>;
 
 // Type guards
 export const isCreateResourceContent = (
-    obj: any
+    obj: object
 ): obj is CreateResourceContent => {
     return CreateResourceSchema.safeParse(obj).success;
 };
 
-export const isReadResourceContent = (obj: any): obj is ReadResourceContent => {
+export const isReadResourceContent = (obj: object): obj is ReadResourceContent => {
     return ReadResourceSchema.safeParse(obj).success;
 };
 
 export const isUpdateResourceContent = (
-    obj: any
+    obj: object
 ): obj is UpdateResourceContent => {
     return UpdateResourceSchema.safeParse(obj).success;
 };

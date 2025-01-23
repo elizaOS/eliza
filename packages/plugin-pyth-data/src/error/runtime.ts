@@ -1,4 +1,4 @@
-import { PythError, ErrorSeverity, PythErrorCode, ErrorDetails } from './base';
+import { PythError, ErrorSeverity, PythErrorCode, type ErrorDetails } from './base';
 
 export class RuntimeError extends PythError {
     public readonly name: string = 'RuntimeError';

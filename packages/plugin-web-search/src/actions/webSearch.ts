@@ -47,6 +47,7 @@ export const webSearch: Action = {
     suppressInitialMessage: true,
     description:
         "Perform a web search to find information related to the message.",
+    // eslint-disable-next-line
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         const tavilyApiKeyOk = !!runtime.getSetting("TAVILY_API_KEY");
 

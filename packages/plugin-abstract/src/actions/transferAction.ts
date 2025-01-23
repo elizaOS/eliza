@@ -81,6 +81,7 @@ s
 Respond with a JSON markdown block containing only the extracted values.`;
 
 export const transferAction: Action = {
+
 	name: "SEND_TOKEN",
 	similes: [
 		"TRANSFER_TOKEN_ON_ABSTRACT",
@@ -91,6 +92,7 @@ export const transferAction: Action = {
 		"MOVE_TOKENS_ON_ABSTRACT",
 		"MOVE_ETH_ON_ABSTRACT",
 	],
+	// eslint-disable-next-line
 	validate: async (runtime: IAgentRuntime) => {
 		await validateAbstractConfig(runtime);
 		return true;
