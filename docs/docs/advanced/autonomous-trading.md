@@ -245,7 +245,7 @@ async function executeSwap(
     },
 ): Promise<string> {
     // Prepare transaction
-    const { swapTransaction } = await getSwapTransaction(input);
+    const { swapTransaction: transaction } = await getSwapTransaction(input);
 
     // Sign transaction
     const keypair = getKeypairFromPrivateKey(

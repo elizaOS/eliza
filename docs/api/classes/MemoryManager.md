@@ -110,13 +110,13 @@ Error if the memory content is empty
 
 > **getMemories**(`opts`): `Promise`\<[`Memory`](../interfaces/Memory.md)[]\>
 
-Retrieves a list of memories by user IDs, with optional deduplication.
+Retrieves a list of memories by room IDs, with optional deduplication.
 
 #### Parameters
 
 • **opts**
 
-Options including user IDs, count, and uniqueness.
+Options including room IDs, count, and uniqueness.
 
 • **opts.roomId**: \`$\{string\}-$\{string\}-$\{string\}-$\{string\}-$\{string\}\`
 

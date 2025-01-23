@@ -57,6 +57,10 @@
                 "@elizaos/plugin-trustdb#build"
             ]
         },
+        "@elizaos/plugin-lightning#build": {
+            "outputs": ["dist/**"],
+            "dependsOn": ["@elizaos/plugin-tee#build"]
+        },
         "eliza-docs#build": {
             "outputs": ["build/**"]
         },

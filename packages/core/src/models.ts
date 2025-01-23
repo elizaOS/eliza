@@ -862,6 +862,32 @@ export const models: Models = {
             },
         },
     },
+    [ModelProviderName.NVIDIA]: {
+        endpoint: "https://integrate.api.nvidia.com/v1",
+        model: {
+            [ModelClass.SMALL]: {
+                name: settings.SMALL_NVIDIA_MODEL || "meta/llama-3.2-3b-instruct",
+                stop: [],
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                temperature: 0.6,
+            },
+            [ModelClass.MEDIUM]: {
+                name: settings.MEDIUM_NVIDIA_MODEL || "meta/llama-3.3-70b-instruct",
+                stop: [],
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                temperature: 0.6,
+            },
+            [ModelClass.LARGE]: {
+                name: settings.LARGE_NVIDIA_MODEL || "meta/llama-3.1-405b-instruct",
+                stop: [],
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                temperature: 0.6,
+            },
+        },
+    },
     [ModelProviderName.NINETEEN_AI]: {
         endpoint: "https://api.nineteen.ai/v1",
         model: {

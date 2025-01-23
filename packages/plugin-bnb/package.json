@@ -1,0 +1,29 @@
+{
+    "name": "@elizaos/plugin-bnb",
+    "version": "0.1.0-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@lifi/data-types": "5.15.5",
+        "@lifi/sdk": "3.4.1",
+        "@lifi/types": "16.3.0",
+        "@web3-name-sdk/core": "^0.3.2",
+        "@openzeppelin/contracts": "^5.1.0",
+        "@types/node": "^22.10.5",
+        "solc": "^0.8.28",
+        "tsup": "8.3.5",
+        "viem": "2.21.53",
+        "ws": "^8.18.0"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "test": "vitest run",
+        "lint": "eslint --fix  --cache ."
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
+}

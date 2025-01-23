@@ -1,0 +1,35 @@
+{
+    "name": "@elizaos/plugin-router-nitro",
+    "version": "0.1.8+build.1",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "import": {
+                "@elizaos/source": "./src/index.ts",
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "axios": "^1.7.9",
+        "ethers": "^6.13.5",
+        "tsup": "8.3.5",
+        "viem": "2.21.58"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "lint": "eslint --fix  --cache ."
+    }
+}

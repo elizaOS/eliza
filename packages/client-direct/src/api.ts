@@ -1,6 +1,8 @@
 import express from "express";
 import bodyParser from "body-parser";
 import cors from "cors";
+import path from "path";
+import fs from "fs";
 
 import {
     type AgentRuntime,
@@ -80,6 +82,16 @@ export function createApiRouter(
         res.json({ agents: agentsList });
     });
 
+    router.get('/storage', async (req, res) => {
+        try {
+            const uploadDir = path.join(process.cwd(), "data", "characters");
+            const files = await fs.promises.readdir(uploadDir);
+            res.json({ files });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     router.get("/agents/:agentId", (req, res) => {
         const { agentId } = validateUUIDParams(req.params, res) ?? {
             agentId: null,
@@ -127,7 +139,7 @@ export function createApiRouter(
         };
         if (!agentId) return;
 
-        const agent: AgentRuntime = agents.get(agentId);
+        let agent: AgentRuntime = agents.get(agentId);
 
         // update character
         if (agent) {
@@ -136,6 +148,9 @@ export function createApiRouter(
             directClient.unregisterAgent(agent);
             // if it has a different name, the agentId will change
         }
+
+        // stores the json data before it is modified with added data
+        const characterJson = { ...req.body };
 
         // load character from body
         const character = req.body;
@@ -152,7 +167,7 @@ export function createApiRouter(
 
         // start it up (and register it)
         try {
-            await directClient.startAgent(character);
+            agent = await directClient.startAgent(character);
             elizaLogger.log(`${character.name} started`);
         } catch (e) {
             elizaLogger.error(`Error starting agent: ${e}`);
@@ -162,6 +177,35 @@ export function createApiRouter(
             });
             return;
         }
+
+        if (process.env.USE_CHARACTER_STORAGE === "true") {
+            try {
+                const filename = `${agent.agentId}.json`;
+                const uploadDir = path.join(
+                    process.cwd(),
+                    "data",
+                    "characters"
+                );
+                const filepath = path.join(uploadDir, filename);
+                await fs.promises.mkdir(uploadDir, { recursive: true });
+                await fs.promises.writeFile(
+                    filepath,
+                    JSON.stringify(
+                        { ...characterJson, id: agent.agentId },
+                        null,
+                        2
+                    )
+                );
+                elizaLogger.info(
+                    `Character stored successfully at ${filepath}`
+                );
+            } catch (error) {
+                elizaLogger.error(
+                    `Failed to store character: ${error.message}`
+                );
+            }
+        }
+
         res.json({
             id: character.id,
             character: character,

@@ -44,8 +44,9 @@ export async function getAgentKitActions({
                 const client = await getClient();
                 let currentState =
                     state ?? (await runtime.composeState(message));
-                currentState =
-                    await runtime.updateRecentMessageState(currentState);
+                currentState = await runtime.updateRecentMessageState(
+                    currentState
+                );
 
                 const parameterContext = composeParameterContext(
                     tool,

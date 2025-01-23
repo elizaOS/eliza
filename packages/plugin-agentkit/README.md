@@ -15,18 +15,18 @@ pnpm install
 ```env
 CDP_API_KEY_NAME=your_key_name
 CDP_API_KEY_PRIVATE_KEY=your_private_key
+CDP_AGENT_KIT_NETWORK=base-sepolia # Optional: Defaults to base-sepolia
 ```
 
 3. Add the plugin to your character configuration:
 
 ```json
 {
-    "plugins": ["@ai16z/plugin-agentkit"],
+    "plugins": ["@elizaos/plugin-agentkit"],
     "settings": {
         "secrets": {
             "CDP_API_KEY_NAME": "your_key_name",
-            "CDP_API_KEY_PRIVATE_KEY": "your_private_key",
-            "networkId": "base-sepolia"
+            "CDP_API_KEY_PRIVATE_KEY": "your_private_key"
         }
     }
 }
@@ -36,18 +36,18 @@ CDP_API_KEY_PRIVATE_KEY=your_private_key
 
 The plugin provides access to the following CDP AgentKit tools:
 
-- `GET_WALLET_DETAILS`: Get wallet information
-- `DEPLOY_NFT`: Deploy a new NFT collection
-- `DEPLOY_TOKEN`: Deploy a new token
-- `GET_BALANCE`: Check token or NFT balance
-- `MINT_NFT`: Mint NFTs from a collection
-- `REGISTER_BASENAME`: Register a basename for NFTs
-- `REQUEST_FAUCET_FUNDS`: Request testnet funds
-- `TRADE`: Execute trades
-- `TRANSFER`: Transfer tokens or NFTs
-- `WOW_BUY_TOKEN`: Buy WOW tokens
-- `WOW_SELL_TOKEN`: Sell WOW tokens
-- `WOW_CREATE_TOKEN`: Create new WOW tokens
+-   `GET_WALLET_DETAILS`: Get wallet information
+-   `DEPLOY_NFT`: Deploy a new NFT collection
+-   `DEPLOY_TOKEN`: Deploy a new token
+-   `GET_BALANCE`: Check token or NFT balance
+-   `MINT_NFT`: Mint NFTs from a collection
+-   `REGISTER_BASENAME`: Register a basename for NFTs
+-   `REQUEST_FAUCET_FUNDS`: Request testnet funds
+-   `TRADE`: Execute trades
+-   `TRANSFER`: Transfer tokens or NFTs
+-   `WOW_BUY_TOKEN`: Buy WOW tokens
+-   `WOW_SELL_TOKEN`: Sell WOW tokens
+-   `WOW_CREATE_TOKEN`: Create new WOW tokens
 
 ## Usage Examples
 
@@ -91,19 +91,19 @@ pnpm dev
 
 ## Dependencies
 
-- @elizaos/core
-- @coinbase/cdp-agentkit-core
-- @coinbase/cdp-langchain
-- @langchain/core
+-   @elizaos/core
+-   @coinbase/cdp-agentkit-core
+-   @coinbase/cdp-langchain
+-   @langchain/core
 
 ## Network Support
 
-The plugin currently supports the following networks:
+The plugin supports the following networks:
 
-- Base Sepolia (default)
-- Base Mainnet
+-   Base Sepolia (default)
+-   Base Mainnet
 
-Configure the network using the `networkId` setting in your character configuration.
+Configure the network using the `CDP_AGENT_KIT_NETWORK` environment variable.
 
 ## Troubleshooting
 

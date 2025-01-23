@@ -17,8 +17,8 @@ import {
     initialize,
     getKeyringFromSeed,
 } from "avail-js-sdk";
-import type { ISubmittableResult } from "@polkadot/types/types/extrinsic";
 import type { H256 } from "@polkadot/types/interfaces/runtime";
+import { ISubmittableResult } from "@polkadot/types/types";
 
 export interface DataContent extends Content {
     data: string;
@@ -134,19 +134,19 @@ export default {
           `);
 
                 //submit data
-                const txResult = await new Promise<ISubmittableResult>(
+                const txResult:ISubmittableResult = await new Promise(
                     (res) => {
                         api.tx.dataAvailability
                             .submitData(data)
                             .signAndSend(
                                 keyring,
                                 options,
-                                (result: ISubmittableResult) => {
+                                (result) => {
                                     elizaLogger.log(
                                         `Tx status: ${result.status}`
                                     );
                                     if (result.isFinalized || result.isError) {
-                                        res(result);
+                                        res(result as any);
                                     }
                                 }
                             );

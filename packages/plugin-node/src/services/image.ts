@@ -145,6 +145,56 @@ class LocalImageProvider implements ImageProvider {
     }
 }
 
+class AnthropicImageProvider implements ImageProvider {
+    constructor(private runtime: IAgentRuntime) {
+    }
+
+    async initialize(): Promise<void> {
+    }
+
+    async describeImage(
+        imageData: Buffer,
+        mimeType: string,
+    ): Promise<{ title: string; description: string }> {
+        const endpoint = getEndpoint(ModelProviderName.ANTHROPIC);
+        const apiKey = this.runtime.getSetting("ANTHROPIC_API_KEY");
+
+        const content = [
+            {type: "text", text: IMAGE_DESCRIPTION_PROMPT},
+            {
+                type: "image",
+                source: {
+                    type: "base64",
+                    media_type: mimeType,
+                    data: imageData.toString("base64"),
+                },
+            },
+        ];
+
+        const response = await fetch(`${endpoint}/messages`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-api-key": apiKey,
+                "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify(
+                {
+                    model: "claude-3-haiku-20240307",
+                    max_tokens: 1024,
+                    messages: [{role: "user", content}],
+                }),
+        });
+
+        if (!response.ok) {
+            await handleApiError(response, "Anthropic");
+        }
+
+        const data = await response.json();
+        return parseImageResponse(data.content[0].text);
+    }
+}
+
 class OpenAIImageProvider implements ImageProvider {
     constructor(private runtime: IAgentRuntime) {}
 
@@ -303,6 +353,7 @@ export class ImageDescriptionService
 
         const availableModels = [
             ModelProviderName.LLAMALOCAL,
+            ModelProviderName.ANTHROPIC,
             ModelProviderName.GOOGLE,
             ModelProviderName.OPENAI,
             ModelProviderName.GROQ,
@@ -313,12 +364,18 @@ export class ImageDescriptionService
         if (this.runtime.imageVisionModelProvider) {
             if (
                 this.runtime.imageVisionModelProvider ===
-                    ModelProviderName.LLAMALOCAL ||
+                ModelProviderName.LLAMALOCAL ||
                 this.runtime.imageVisionModelProvider ===
-                    ModelProviderName.OLLAMA
+                ModelProviderName.OLLAMA
             ) {
                 this.provider = new LocalImageProvider();
                 elizaLogger.debug("Using local provider for vision model");
+            } else if (
+                this.runtime.imageVisionModelProvider ===
+                ModelProviderName.ANTHROPIC
+            ) {
+                this.provider = new AnthropicImageProvider(this.runtime);
+                elizaLogger.debug("Using anthropic for vision model");
             } else if (
                 this.runtime.imageVisionModelProvider ===
                 ModelProviderName.GOOGLE
@@ -339,8 +396,8 @@ export class ImageDescriptionService
             } else {
                 elizaLogger.warn(
                     `Unsupported image vision model provider: ${this.runtime.imageVisionModelProvider}. ` +
-                        `Please use one of the following: ${availableModels}. ` +
-                        `Update the 'imageVisionModelProvider' field in the character file.`
+                    `Please use one of the following: ${availableModels}. ` +
+                    `Update the 'imageVisionModelProvider' field in the character file.`
                 );
                 return false;
             }
@@ -350,6 +407,9 @@ export class ImageDescriptionService
         ) {
             this.provider = new LocalImageProvider();
             elizaLogger.debug("Using local provider for vision model");
+        } else if (model === models[ModelProviderName.ANTHROPIC]) {
+            this.provider = new AnthropicImageProvider(this.runtime);
+            elizaLogger.debug("Using anthropic for vision model");
         } else if (model === models[ModelProviderName.GOOGLE]) {
             this.provider = new GoogleImageProvider(this.runtime);
             elizaLogger.debug("Using google for vision model");
