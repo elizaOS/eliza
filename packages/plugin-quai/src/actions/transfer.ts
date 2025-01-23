@@ -45,6 +45,7 @@ export default {
         "SEND_QUAI",
         "PAY_ON_QUAI",
     ],
+    // eslint-disable-next-line
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         return validateSettings(runtime);
     },

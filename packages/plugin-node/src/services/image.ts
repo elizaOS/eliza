@@ -19,7 +19,7 @@ import {
     RawImage,
     type Tensor,
 } from "@huggingface/transformers";
-import sharp, { AvailableFormatInfo, FormatEnum } from "sharp";
+import sharp, { type AvailableFormatInfo, type FormatEnum } from "sharp";
 import fs from "fs";
 import os from "os";
 import path from "path";

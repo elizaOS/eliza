@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { InstagramClientInterface } from '../src';
-import { IAgentRuntime, elizaLogger } from '@elizaos/core';
+import { type IAgentRuntime, elizaLogger } from '@elizaos/core';
 import { InstagramInteractionService } from '../src/services/interaction';
 import { InstagramPostService } from '../src/services/post';
 

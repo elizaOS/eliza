@@ -1,4 +1,4 @@
-import {
+import type {
     Action,
     Evaluator,
     HandlerCallback,
@@ -8,8 +8,8 @@ import {
     Provider,
     State,
 } from "@elizaos/core";
-import { ContentClass } from "./decorators";
-import { z } from "zod";
+import type { ContentClass } from "./decorators";
+import type { z } from "zod";
 
 // ----------- Interfaces for Injectable Providers and Actions, etc -----------
 

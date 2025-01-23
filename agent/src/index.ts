@@ -1,5 +1,6 @@
 import { PGLiteDatabaseAdapter } from "@elizaos/adapter-pglite";
 import { PostgresDatabaseAdapter } from "@elizaos/adapter-postgres";
+import { QdrantDatabaseAdapter } from "@elizaos/adapter-qdrant";
 import { RedisClient } from "@elizaos/adapter-redis";
 import { SqliteDatabaseAdapter } from "@elizaos/adapter-sqlite";
 import { SupabaseDatabaseAdapter } from "@elizaos/adapter-supabase";
@@ -11,9 +12,11 @@ import { SlackClientInterface } from "@elizaos/client-slack";
 import { TelegramClientInterface } from "@elizaos/client-telegram";
 import { TwitterClientInterface } from "@elizaos/client-twitter";
 import { FarcasterClientInterface } from "@elizaos/client-farcaster";
+import { JeeterClientInterface } from "@elizaos/client-simsai";
+
 import { DirectClient } from "@elizaos/client-direct";
 import { agentKitPlugin } from "@elizaos/plugin-agentkit";
-// import { ReclaimAdapter } from "@elizaos/plugin-reclaim";
+
 import { PrimusAdapter } from "@elizaos/plugin-primus";
 import { lightningPlugin } from "@elizaos/plugin-lightning";
 import { elizaCodeinPlugin, onchainJson } from "@elizaos/plugin-iq6900";
@@ -699,7 +702,20 @@ function initializeDatabase(dataDir: string) {
             dataDir: process.env.PGLITE_DATA_DIR,
         });
         return db;
-    } else {
+    } else if (process.env.QDRANT_URL
+        && process.env.QDRANT_KEY
+        && process.env.QDRANT_PORT
+        && process.env.QDRANT_VECTOR_SIZE
+    ) {
+        elizaLogger.info("Initializing Qdrant adapter...");
+        const db = new QdrantDatabaseAdapter(
+            process.env.QDRANT_URL,
+            process.env.QDRANT_KEY,
+            Number(process.env.QDRANT_PORT),
+            Number(process.env.QDRANT_VECTOR_SIZE)
+        );
+        return db;
+    }else {
         const filePath =
             process.env.SQLITE_FILE ?? path.resolve(dataDir, "db.sqlite");
         elizaLogger.info(`Initializing SQLite database at ${filePath}...`);
@@ -768,10 +784,16 @@ export async function initializeClients(
             clients.farcaster = farcasterClient;
         }
     }
+
     if (clientTypes.includes("lens")) {
         const lensClient = new LensAgentClient(runtime);
         lensClient.start();
         clients.lens = lensClient;
+    }
+
+    if (clientTypes.includes(Clients.SIMSAI)) {
+        const simsaiClient = await JeeterClientInterface.start(runtime);
+        if (simsaiClient) clients.simsai = simsaiClient;
     }
 
     elizaLogger.log("client keys", Object.keys(clients));
@@ -918,7 +940,9 @@ export async function createAgent(
                 ? elizaCodeinPlugin
                 : null,
             bootstrapPlugin,
-            getSecret(character, "CDP_API_KEY_NAME") && getSecret(character, "CDP_API_KEY_PRIVATE_KEY") && getSecret(character, "CDP_AGENT_KIT_NETWORK")
+            getSecret(character, "CDP_API_KEY_NAME") &&
+            getSecret(character, "CDP_API_KEY_PRIVATE_KEY") &&
+            getSecret(character, "CDP_AGENT_KIT_NETWORK")
                 ? agentKitPlugin
                 : null,
             getSecret(character, "DEXSCREENER_API_KEY")
@@ -1119,7 +1143,6 @@ export async function createAgent(
                 ? devinPlugin
                 : null,
             getSecret(character, "INITIA_PRIVATE_KEY") ? initiaPlugin : null,
-
             getSecret(character, "NVIDIA_NIM_API_KEY") ||
             getSecret(character, "NVIDIA_NGC_API_KEY")
                 ? nvidiaNimPlugin
@@ -1136,8 +1159,6 @@ export async function createAgent(
             getSecret(character, "ETHSTORAGE_PRIVATE_KEY") ? ethstoragePlugin : null,
         ].filter(Boolean),
         providers: [],
-        actions: [],
-        services: [],
         managers: [],
         cacheManager: cache,
         fetch: logFetch,

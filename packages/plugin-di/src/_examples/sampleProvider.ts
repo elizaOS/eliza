@@ -1,12 +1,12 @@
 import { inject, injectable } from "inversify";
 import {
-    Provider,
-    IAgentRuntime,
-    Memory,
-    State,
+    type Provider,
+    type IAgentRuntime,
+    type Memory,
+    type State,
     elizaLogger,
 } from "@elizaos/core";
-import { InjectableProvider } from "../types";
+import type { InjectableProvider } from "../types";
 import { globalContainer } from "../di";
 
 // Dynamic Data Provider

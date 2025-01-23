@@ -79,10 +79,12 @@ export function canTweet(tweetType: "trade" | "market_search" | "shabbat" | "hol
   return true;
 }
 
+/*
 interface TweetOptions {
   skipRateLimit?: boolean;
   type?: 'trade' | 'market_search' | 'shabbat' | 'holiday';
 }
+*/
 
 export class TwitterService {
   private client: any;

@@ -518,7 +518,7 @@ const batteryAction: Action = {
             callback({
                 text: `Device battery level is at ${Math.round(batteryLevel * 100)}%`,
             });
-        } catch (err) {
+        } catch {
             callback({
                 text: "Unable to get battery level. Device might not support this feature.",
             });

@@ -1,5 +1,10 @@
-import { Action } from "@elizaos/core";
-import { validatePrompt, validateApiKey, callOpenAiApi } from "./action";
+import type { Action } from "@elizaos/core";
+import {
+    validatePrompt,
+    validateApiKey,
+    callOpenAiApi,
+    buildRequestData,
+} from "./action";
 
 export const generateEmbeddingAction: Action = {
     name: "generateEmbedding",

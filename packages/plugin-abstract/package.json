@@ -22,14 +22,16 @@
         "@elizaos/core": "workspace:*",
         "@abstract-foundation/agw-client": "1.0.1"
     },
-    "devDependencies": {
-        "tsup": "8.3.5"
-    },
     "scripts": {
+        "lint": "eslint --fix  --cache .",
         "build": "tsup --format esm --no-dts",
         "dev": "tsup --format esm --no-dts --watch"
     },
     "peerDependencies": {
         "whatwg-url": "7.1.0"
+    },
+    "devDependencies": {
+        "tsup": "8.3.5",
+        "typescript": "4.9"
     }
 }

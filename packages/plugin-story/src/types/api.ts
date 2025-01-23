@@ -163,7 +163,7 @@ export type QueryHeaders =
           "x-chain": string;
           "x-extend-asset"?: string;
       }
-    | {};
+    | object;
 
 export enum QUERY_ORDER_BY {
     BLOCK_TIMESTAMP = "blockTimestamp",
@@ -557,19 +557,3 @@ export type LicenseTerms = {
     blockNumber: string;
     blockTime: string;
 };
-
-export interface AssetMetadata {
-    id: Address;
-    metadataHash: string;
-    metadataUri: string;
-    metadataJson: IPMetadata;
-    nftMetadataHash: string;
-    nftTokenUri: string;
-    registrationDate: string;
-}
-
-export interface Trait {
-    trait_type: string;
-    value: string | number;
-    max_value?: number;
-}

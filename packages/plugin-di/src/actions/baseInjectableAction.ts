@@ -1,15 +1,15 @@
 import { injectable, unmanaged } from "inversify";
-import { z } from "zod";
+import type { z } from "zod";
 import {
-    ActionExample,
+    type ActionExample,
     composeContext,
     elizaLogger,
     generateObject,
-    HandlerCallback,
-    IAgentRuntime,
-    Memory,
+    type HandlerCallback,
+    type IAgentRuntime,
+    type Memory,
     ModelClass,
-    State,
+    type State,
 } from "@elizaos/core";
 import {
     type ContentClass,

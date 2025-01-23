@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { z } from "zod";
-import { ContentPropertyDescription } from "../types";
+import type { ContentPropertyDescription } from "../types";
 
 const CONTENT_METADATA_KEY = "content:properties";
 
@@ -14,7 +14,7 @@ interface ContentPropertyConfig extends ContentPropertyDescription {
 }
 
 export function property(config: ContentPropertyConfig) {
-    return function (target: any, propertyKey: string) {
+    return (target: any, propertyKey: string) => {
         const properties =
             Reflect.getMetadata(CONTENT_METADATA_KEY, target) || {};
         properties[propertyKey] = config;

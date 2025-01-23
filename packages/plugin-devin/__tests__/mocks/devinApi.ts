@@ -1,6 +1,6 @@
 import { vi, type MockInstance } from "vitest";
 import type { DevinSession } from "../../src/providers/devinRequests";
-import * as devinRequests from "../../src/providers/devinRequests";
+import type * as devinRequests from "../../src/providers/devinRequests";
 
 type CreateSessionFn = typeof devinRequests.createSession;
 type GetSessionDetailsFn = typeof devinRequests.getSessionDetails;

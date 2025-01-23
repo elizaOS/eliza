@@ -8,10 +8,10 @@ import {
 
 import {
     initLightningProvider,
-    LightningProvider,
+    type LightningProvider,
 } from "../providers/lightning";
-import { PayResult } from "astra-lightning";
-import { PayArgs } from "../types";
+import type { PayResult } from "astra-lightning";
+import type { PayArgs } from "../types";
 import { payInvoiceTemplate } from "../templates";
 
 export { payInvoiceTemplate };

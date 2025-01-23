@@ -55,7 +55,7 @@ export async function createSwapInstruction(
 export async function getTokenAccount(
   connection: Connection,
   walletPubkey: PublicKey,
-  mint: PublicKey,
+  _mint: PublicKey,
 ): Promise<PublicKey> {
   // For SOL transfers, just return the wallet pubkey
   return walletPubkey;

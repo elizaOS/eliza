@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { validateInstagramConfig, instagramEnvSchema } from '../src/environment';
-import { IAgentRuntime } from '@elizaos/core';
+import type { IAgentRuntime } from '@elizaos/core';
 
 describe('Instagram Environment Configuration', () => {
   const mockRuntime: IAgentRuntime = {

@@ -10,21 +10,21 @@ import {
     executeRoute,
     type ExtendedChain,
     getRoutes,
-    Route,
+    type Route,
 } from "@lifi/sdk";
 
 import { initWalletProvider, type WalletProvider } from "../providers/wallet";
 import { swapTemplate } from "../templates";
 import type { SwapParams, SwapQuote, Transaction } from "../types";
 import {
-    Address,
-    ByteArray,
+    type Address,
+    type ByteArray,
     encodeFunctionData,
-    Hex,
+    type Hex,
     parseAbi,
     parseUnits,
 } from "viem";
-import { BebopRoute } from "../types/index";
+import type { BebopRoute } from "../types/index";
 
 export { swapTemplate };
 
@@ -292,15 +292,15 @@ export class SwapAction {
                         value: 0n,
                         data: approvalData,
                         kzg: {
-                            blobToKzgCommitment: function (
+                            blobToKzgCommitment: (
                                 _: ByteArray
-                            ): ByteArray {
+                            ): ByteArray => {
                                 throw new Error("Function not implemented.");
                             },
-                            computeBlobKzgProof: function (
+                            computeBlobKzgProof: (
                                 _blob: ByteArray,
                                 _commitment: ByteArray
-                            ): ByteArray {
+                            ): ByteArray => {
                                 throw new Error("Function not implemented.");
                             },
                         },
@@ -316,15 +316,15 @@ export class SwapAction {
                     value: BigInt(bebopRoute.value),
                     data: bebopRoute.data as Hex,
                     kzg: {
-                        blobToKzgCommitment: function (
+                        blobToKzgCommitment: (
                             _: ByteArray
-                        ): ByteArray {
+                        ): ByteArray => {
                             throw new Error("Function not implemented.");
                         },
-                        computeBlobKzgProof: function (
+                        computeBlobKzgProof: (
                             _blob: ByteArray,
                             _commitment: ByteArray
-                        ): ByteArray {
+                        ): ByteArray => {
                             throw new Error("Function not implemented.");
                         },
                     },

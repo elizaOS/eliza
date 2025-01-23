@@ -37,7 +37,7 @@ const connection = new Connection(NETWORK, "confirmed");
 
 async function convertTextToEmoji(text: string): Promise<string> {
     return text.replace(/\/u([0-9A-Fa-f]{4,6})/g, (_, code) =>
-        String.fromCodePoint(parseInt(code, 16))
+        String.fromCodePoint(Number.parseInt(code, 16))
     );
 }
 

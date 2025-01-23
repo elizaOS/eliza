@@ -1,7 +1,7 @@
-import { IAgentRuntime, Memory, elizaLogger } from "@elizaos/core";
+import { type IAgentRuntime, type Memory, elizaLogger } from "@elizaos/core";
 import { injectable } from "inversify";
 import { BaseInjectableEvaluator } from "../evaluators";
-import { EvaluatorOptions } from "../types";
+import type { EvaluatorOptions } from "../types";
 import { globalContainer } from "../di";
 
 const options: EvaluatorOptions = {

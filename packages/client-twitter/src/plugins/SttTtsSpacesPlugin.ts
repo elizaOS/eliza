@@ -9,12 +9,12 @@ import {
     getEmbeddingZeroVector,
     generateMessageResponse,
     ModelClass,
-    Content,
-    IAgentRuntime,
-    Memory,
-    Plugin,
-    UUID,
-    State,
+    type Content,
+    type IAgentRuntime,
+    type Memory,
+    type Plugin,
+    type UUID,
+    type State,
     composeRandomUser,
     generateShouldRespond,
 } from "@elizaos/core";
@@ -23,7 +23,7 @@ import type {
     JanusClient,
     AudioDataWithUser,
 } from "agent-twitter-client";
-import { ClientBase } from "../base";
+import type { ClientBase } from "../base";
 import {
     twitterVoiceHandlerTemplate,
     twitterShouldRespondTemplate,

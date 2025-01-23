@@ -1,4 +1,4 @@
-import { PythError, ErrorSeverity, PythErrorCode, ErrorDetails } from './base';
+import { PythError, ErrorSeverity, type PythErrorCode, type ErrorDetails } from './base';
 
 // Data Error Codes
 export enum DataErrorCode {
