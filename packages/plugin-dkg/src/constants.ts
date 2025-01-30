@@ -179,3 +179,30 @@ export const DKG_EXPLORER_LINKS = {
     testnet: "https://dkg-testnet.origintrail.io/explore?ual=",
     mainnet: "https://dkg.origintrail.io/explore?ual=",
 };
+
+export function isSentimentAnalysisQueryPrompt(query: string) {
+    return `Given the following query, determine if it is related to sentiment analysis of a stock, cryptocurrency, token, or financial asset.
+    A query is considered relevant if it involves analyzing emotions, trends, market mood, social media sentiment, news sentiment, or investor confidence regarding a financial asset.
+
+    Example 1 (Yes):
+    Query: "What is the current sentiment on Bitcoin based on recent news and social media?"
+    Response: "Yes"
+
+    Example 2 (No):
+    Query: "What is the market cap of Ethereum?"
+    Response: "No"
+
+    Example 3 (Yes):
+    Query: "What do you think about $TSLA recently?"
+    Response: "Yes"
+
+    Example 4 (No):
+    Query: "What's the best way to bake a chocolate cake?"
+    Response: "No"
+
+    Input:
+    Provided query: ${query}
+
+    Task:
+    Return 'Yes' if the provided query is about sentiment analysis in finance, otherwise return 'No'. Make sure to reply only with 'Yes' or 'No', do not give any other comments or remarks.`;
+}

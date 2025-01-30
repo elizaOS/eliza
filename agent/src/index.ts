@@ -913,8 +913,10 @@ export async function createAgent(
             getSecret(character, "IQSOlRPC")
                 ? elizaCodeinPlugin
                 : null,
-            bootstrapPlugin,
-            getSecret(character, "CDP_API_KEY_NAME") && getSecret(character, "CDP_API_KEY_PRIVATE_KEY") && getSecret(character, "CDP_AGENT_KIT_NETWORK")
+            // bootstrapPlugin,
+            getSecret(character, "CDP_API_KEY_NAME") &&
+            getSecret(character, "CDP_API_KEY_PRIVATE_KEY") &&
+            getSecret(character, "CDP_AGENT_KIT_NETWORK")
                 ? agentKitPlugin
                 : null,
             getSecret(character, "DEXSCREENER_API_KEY")
@@ -1110,16 +1112,17 @@ export async function createAgent(
             )
                 ? openaiPlugin
                 : null,
-            getSecret(character, "DEVIN_API_TOKEN")
-                ? devinPlugin
-                : null,
+            getSecret(character, "DEVIN_API_TOKEN") ? devinPlugin : null,
             getSecret(character, "INITIA_PRIVATE_KEY") ? initiaPlugin : null,
 
             getSecret(character, "NVIDIA_NIM_API_KEY") ||
             getSecret(character, "NVIDIA_NGC_API_KEY")
                 ? nvidiaNimPlugin
                 : null,
-            getSecret(character, "INITIA_PRIVATE_KEY") && getSecret(character, "INITIA_NODE_URL") ? initiaPlugin : null,
+            getSecret(character, "INITIA_PRIVATE_KEY") &&
+            getSecret(character, "INITIA_NODE_URL")
+                ? initiaPlugin
+                : null,
             getSecret(character, "BNB_PRIVATE_KEY") ||
             getSecret(character, "BNB_PUBLIC_KEY")?.startsWith("0x")
                 ? bnbPlugin

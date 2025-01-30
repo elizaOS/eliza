@@ -34,12 +34,12 @@ export const dkgInsert: Action = {
         ];
 
         const missingVars = requiredEnvVars.filter(
-            (varName) => !runtime.getSetting(varName)
+            (varName) => !runtime.getSetting(varName),
         );
 
         if (missingVars.length > 0) {
             elizaLogger.error(
-                `Missing required environment variables: ${missingVars.join(", ")}`
+                `Missing required environment variables: ${missingVars.join(", ")}`,
             );
             return false;
         }
@@ -53,7 +53,7 @@ export const dkgInsert: Action = {
         _message: Memory,
         state: State,
         _options: { [key: string]: unknown },
-        callback: HandlerCallback
+        callback: HandlerCallback,
     ): Promise<boolean> => {
         DkgClient = new DKG({
             environment: runtime.getSetting("DKG_ENVIRONMENT"),
@@ -71,8 +71,7 @@ export const dkgInsert: Action = {
         });
 
         const currentPost = String(state.currentPost);
-        elizaLogger.log("currentPost");
-        elizaLogger.log(currentPost);
+        elizaLogger.log(`currentPost: ${currentPost}`);
 
         const userRegex = /From:.*\(@(\w+)\)/;
         let match = currentPost.match(userRegex);
@@ -124,7 +123,7 @@ export const dkgInsert: Action = {
                 {
                     public: memoryKnowledgeGraph.object,
                 },
-                { epochsNum: 12 }
+                { epochsNum: 12 },
             );
 
             elizaLogger.log("======================== ASSET CREATED");
@@ -132,7 +131,7 @@ export const dkgInsert: Action = {
         } catch (error) {
             elizaLogger.error(
                 "Error occurred while publishing message to DKG:",
-                error.message
+                error.message,
             );
 
             if (error.stack) {
@@ -141,7 +140,7 @@ export const dkgInsert: Action = {
             if (error.response) {
                 elizaLogger.error(
                     "Response data:",
-                    JSON.stringify(error.response.data, null, 2)
+                    JSON.stringify(error.response.data, null, 2),
                 );
             }
         }
