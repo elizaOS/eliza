@@ -1,0 +1,24 @@
+{
+    "extends": "../core/tsconfig.json",
+    "compilerOptions": {
+        "module": "ESNext",
+        "outDir": "dist",
+        "rootDir": "src",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "lib": ["ES2021", "DOM"],
+        "target": "ES2021"
+    },
+    "include": [
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}

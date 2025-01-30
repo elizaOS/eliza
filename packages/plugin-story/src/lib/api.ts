@@ -19,7 +19,8 @@ export const API_KEY = process.env.STORY_API_KEY || "";
 export async function getResource(
     resourceName: ResourceType,
     resourceId: string,
-    options?: QueryOptions
+    // eslint-disable-next-line
+    _options?: QueryOptions
 ) {
     try {
         elizaLogger.log(
@@ -36,15 +37,15 @@ export async function getResource(
         if (res.ok) {
             elizaLogger.log("Response is ok");
             return res.json();
-        } else {
-            elizaLogger.log("Response is not ok");
-            elizaLogger.log(JSON.stringify(res));
-            throw new Error(`HTTP error! status: ${res.status}`);
         }
+        elizaLogger.log("Response is not ok");
+        elizaLogger.log(JSON.stringify(res));
+        throw new Error(`HTTP error! status: ${res.status}`);
     } catch (error) {
         console.error(error);
     }
 }
+
 
 export async function listResource(
     resourceName: ResourceType,
@@ -79,11 +80,10 @@ export async function listResource(
             elizaLogger.log("Response is ok");
             elizaLogger.log(res.ok);
             return res.json();
-        } else {
-            elizaLogger.log("Response is not ok");
-            elizaLogger.log(res);
-            return res;
         }
+        elizaLogger.log("Response is not ok");
+        elizaLogger.log(res);
+        return res;
     } catch (error) {
         elizaLogger.log("List resource Error");
         console.error(error);
@@ -118,7 +118,7 @@ export function convertLicenseTermObject(licenseTerms: Trait[]): LicenseTerms {
                 ? true
                 : option.value === "false"
                   ? false
-                  : (option.value as any);
+                  : option.value as string | number;  // Replaced any with string | number
         return acc as LicenseTerms;
     }, {});
 }

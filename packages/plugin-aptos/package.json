@@ -1,38 +1,38 @@
 {
-    "name": "@elizaos/plugin-aptos",
-    "version": "0.1.9-alpha.1",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@aptos-labs/ts-sdk": "^1.26.0",
-        "bignumber.js": "9.1.2",
-        "node-cache": "5.1.2",
-        "tsup": "8.3.5",
-        "vitest": "2.1.4"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run"
-    },
-    "peerDependencies": {
-        "form-data": "4.0.1",
-        "whatwg-url": "7.1.0"
-    }
+	"name": "@elizaos/plugin-aptos",
+	"version": "0.1.9",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@aptos-labs/ts-sdk": "^1.26.0",
+		"@elizaos/core": "workspace:*",
+		"bignumber.js": "9.1.2",
+		"node-cache": "5.1.2",
+		"tsup": "8.3.5",
+		"vitest": "2.1.4"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run"
+	},
+	"peerDependencies": {
+		"form-data": "4.0.1",
+		"whatwg-url": "7.1.0"
+	}
 }

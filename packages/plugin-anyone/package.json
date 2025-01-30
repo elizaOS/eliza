@@ -1,20 +1,27 @@
 {
-    "name": "@elizaos/plugin-anyone",
-    "version": "0.1.9-alpha.1",
-    "main": "dist/index.js",
-    "type": "module",
-    "types": "dist/index.d.ts",
-    "dependencies": {
-        "@anyone-protocol/anyone-client": "^0.4.3",
-        "@elizaos/core": "workspace:*",
-        "axios": "^1.7.9",
-        "tsup": "8.3.5"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch"
-    },
-    "peerDependencies": {
-        "whatwg-url": "7.1.0"
-    }
+	"name": "@elizaos/plugin-anyone",
+	"version": "0.1.9",
+	"main": "dist/index.js",
+	"type": "module",
+	"types": "dist/index.d.ts",
+	"dependencies": {
+		"@anyone-protocol/anyone-client": "^0.4.3",
+		"@elizaos/core": "workspace:*",
+		"axios": "^1.7.9",
+		"tsup": "8.3.5"
+	},
+	"devDependencies": {
+		"vitest": "^1.2.1",
+		"@vitest/coverage-v8": "^1.2.1"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
+	},
+	"peerDependencies": {
+		"whatwg-url": "7.1.0"
+	}
 }

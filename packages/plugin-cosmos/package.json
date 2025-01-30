@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-cosmos",
-    "version": "0.1.9-alpha.1",
+    "version": "0.1.9",
     "main": "dist/index.js",
     "type": "module",
     "types": "dist/index.d.ts",
@@ -14,9 +14,9 @@
         "axios": "^1.7.9",
         "bignumber.js": "9.1.2",
         "chain-registry": "^1.69.68",
+        "interchain": "^1.10.4",
         "tsup": "8.3.5",
-        "zod": "3.23.8",
-        "interchain": "^1.10.4"
+        "zod": "3.23.8"
     },
     "scripts": {
         "build": "tsup --format esm --dts",

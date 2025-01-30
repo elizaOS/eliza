@@ -1,39 +1,41 @@
 {
-    "name": "@elizaos/plugin-multiversx",
-    "version": "0.1.9-alpha.1",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@multiversx/sdk-core": "13.15.0",
-        "bignumber.js": "9.1.2",
-        "browserify": "^17.0.1",
-        "esbuild-plugin-polyfill-node": "^0.3.0",
-        "esmify": "^2.1.1",
-        "tsup": "8.3.5",
-        "vitest": "2.1.5"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "test": "vitest run",
-        "test:watch": "vitest"
-    },
-    "peerDependencies": {
-        "whatwg-url": "7.1.0"
-    }
+	"name": "@elizaos/plugin-multiversx",
+	"version": "0.1.9",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"@multiversx/sdk-core": "13.15.0",
+		"@multiversx/sdk-native-auth-client": "1.0.9",
+		"bignumber.js": "9.1.2",
+		"browserify": "^17.0.1",
+		"esbuild-plugin-polyfill-node": "^0.3.0",
+		"esmify": "^2.1.1",
+		"tsup": "8.3.5",
+		"vitest": "2.1.5",
+		"graphql-request": "7.1.2"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"peerDependencies": {
+		"whatwg-url": "7.1.0"
+	}
 }

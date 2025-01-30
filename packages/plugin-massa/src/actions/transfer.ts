@@ -33,7 +33,13 @@ export interface TransferContent extends Content {
     amount: string;
 }
 
-export function isTransferContent(content: any): content is TransferContent {
+interface TransferContentInput {
+    tokenAddress?: string | unknown;
+    recipient?: string | unknown;
+    amount?: string | number | unknown;
+}
+
+export function isTransferContent(content: TransferContentInput): content is TransferContent {
     elizaLogger.log("Starting SEND_TOKEN content", content);
 
     // Validate types
@@ -47,15 +53,16 @@ export function isTransferContent(content: any): content is TransferContent {
         return false;
     }
 
-    const tokenAddr = validateAddress(content.tokenAddress);
+    // Now TypeScript knows these are strings after validTypes check
+    const tokenAddr = validateAddress(content.tokenAddress as string);
     if (!tokenAddr || tokenAddr.isEOA) {
         return false;
     }
 
-    const recipient: string = content.recipient;
+    const recipient = content.recipient as string;
     // Additional checks based on whether recipient or mns is defined
     if (recipient && !recipient.endsWith(".massa")) {
-        Address.fromString(content.recipient);
+        Address.fromString(recipient);
     }
 
     return true;
@@ -120,10 +127,11 @@ export default {
         elizaLogger.log("Starting SEND_TOKEN handler...");
 
         // Initialize or update state
+        let currentState: State;
         if (!state) {
-            state = (await runtime.composeState(message)) as State;
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(state);
         }
 
         const secretKey = runtime.getSetting("MASSA_PRIVATE_KEY");
@@ -141,7 +149,7 @@ export default {
         const { chainId } = await provider.networkInfos();
         // Compose transfer context
         const transferContext = composeContext({
-            state,
+            state: currentState,
             template: transferTemplate(
                 chainId === CHAIN_ID.Mainnet ? MAINNET_TOKENS : BUILDNET_TOKENS
             ),
@@ -176,14 +184,15 @@ export default {
             try {
                 recipientAddress = await getMnsTarget(provider, content.recipient.substring(0, content.recipient.length - ".massa".length));
                 Address.fromString(recipientAddress);
-            } catch (error: any) {
+            } catch (error: unknown) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
                 elizaLogger.error(
                     "Error resolving MNS target:",
-                    error?.message
+                    errorMessage
                 );
                 if (callback) {
                     callback({
-                        text: `Error resolving MNS target: ${error?.message}`,
+                        text: `Error resolving MNS target: ${errorMessage}`,
                         content: { error: error },
                     });
                 }
@@ -212,7 +221,7 @@ export default {
             await operation.waitSpeculativeExecution();
 
             elizaLogger.success(
-                "Transfer completed successfully! Operation id: " + operation.id
+                `Successfully transferred ${content.amount} tokens to ${content.recipient}\nOperationId: ${operation.id}`,
             );
             if (callback) {
                 callback({
@@ -228,12 +237,12 @@ export default {
             }
 
             return true;
-        } catch (error: any) {
-            elizaLogger.error("Error during token transfer:", error?.message);
+        } catch (error: unknown) {
+            elizaLogger.error("Error during token transfer:", error);
             if (callback) {
                 callback({
-                    text: `Error transferring tokens: ${error?.message}`,
-                    content: { error: error },
+                    text: `Error transferring tokens: ${error instanceof Error ? error.message : String(error)}`,
+                    content: { error },
                 });
             }
             return false;

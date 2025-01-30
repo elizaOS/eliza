@@ -1,5 +1,5 @@
 import type { NoteContent, ResultNoteApi, ResultNoteSearchApi, ServerInfo } from "../types";
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
 import {
     elizaLogger,
     type AgentRuntime,
@@ -189,6 +189,7 @@ export class ObsidianProvider {
         }
 
         try {
+            const createDirsString = createDirectories.toString();
             const response = await fetch(
                 `${this.host_url}/vault/${encodeURIComponent(path)}`,
                 {
@@ -196,7 +197,7 @@ export class ObsidianProvider {
                     headers: {
                         Authorization: `Bearer ${this.token}`,
                         "Content-Type": "text/markdown",
-                        "X-Create-Directories": createDirectories.toString(),
+                        "X-Create-Directories": createDirsString,
                     },
                     body: content,
                 }
@@ -362,6 +363,7 @@ export class ObsidianProvider {
         }
 
         try {
+            const createDirsString = createDirectories.toString();
             const response = await fetch(
                 `${this.host_url}/vault/${encodeURIComponent(path)}`,
                 {
@@ -369,7 +371,7 @@ export class ObsidianProvider {
                     headers: {
                         Authorization: `Bearer ${this.token}`,
                         "Content-Type": "text/markdown",
-                        "X-Create-Directories": createDirectories.toString(),
+                        "X-Create-Directories": createDirsString,
                     },
                     body: content,
                 }
@@ -529,7 +531,6 @@ export class ObsidianProvider {
                 }
                 body = JSON.stringify(query);
                 break;
-            case 'plaintext':
             default:
                 contentType = 'application/json';
                 if (typeof query !== 'string') {
@@ -547,25 +548,23 @@ export class ObsidianProvider {
             );
 
             if (queryFormat === 'dataview' || queryFormat === 'jsonlogic') {
+                const response = await fetch(`${this.host_url}/search`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${this.token}`,
+                        'Content-Type': contentType,
+                        Accept: 'application/json',
+                    },
+                    body: body,
+                });
 
-            const response = await fetch(`${this.host_url}/search`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${this.token}`,
-                    'Content-Type': contentType,
-                    Accept: 'application/json',
-                },
-                body: body,
-            });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const results: ResultNoteSearchApi[] = await response.json();
+                return results;
             }
-
-            const results: ResultNoteSearchApi[] = await response.json();
-            return results;
-
-        } else {
 
             const response = await fetch(`${this.host_url}/search/simple?query=${encodeURIComponent(body)}&contextLength=${contextLength}`, {
                 method: 'POST',
@@ -582,8 +581,6 @@ export class ObsidianProvider {
 
             const results: ResultNoteApi[] = await response.json();
             return results;
-        }
-
         } catch (error) {
             elizaLogger.error('Search failed:', error.message);
             throw error;
@@ -610,7 +607,7 @@ export class ObsidianProvider {
         const orQueries = query.split(/\s+OR\s+/).map((q) => q.trim());
 
         elizaLogger.log(
-            `Processing search query with OR operator:`,
+            'Processing search query with OR operator:',
             orQueries
         );
 
@@ -666,14 +663,15 @@ export class ObsidianProvider {
         const processedDirs = new Set<string>();
 
         while (dirsToProcess.length > 0) {
-            const currentDir = dirsToProcess.shift()!;
+            const currentDir = dirsToProcess.shift();
+            if (currentDir === undefined) continue;
 
             if (processedDirs.has(currentDir)) {
                 continue;
             }
 
             try {
-                elizaLogger.debug(`Scanning directory: ${currentDir}`);
+                elizaLogger.debug("Scanning directory:", currentDir);
                 const items = await this.listDirectoryFiles(currentDir);
 
                 for (const item of items) {
@@ -729,7 +727,7 @@ export class ObsidianProvider {
             elizaLogger.info(`Completed scanning. Found ${allFiles.length} files in vault`);
 
             // Remove any duplicates
-            const uniqueFiles = [...new Set(allFiles)];
+            const uniqueFiles = Array.from(new Set(allFiles));
 
             return uniqueFiles;
         } catch (error) {
@@ -753,63 +751,59 @@ export class ObsidianProvider {
 
             for (const file of allFiles) {
                 try {
-                    // Only process markdown files
-                    if (!file.endsWith('.md')) {
-                        continue;
-                    }
+                    if (file.endsWith('.md')) {
+                        // Get the file content
+                        const content = await this.getNote(file);
+                        if (!content) {
+                            elizaLogger.warn(`No content found for file: ${file}`);
+                            continue;
+                        }
 
-                    // Get the file content
-                    const content = await this.getNote(file);
-                    if (!content) {
-                        elizaLogger.warn(`No content found for file: ${file}`);
-                        continue;
-                    }
+                        const contentHash = createHash("sha256")
+                            .update(JSON.stringify(content))
+                            .digest("hex");
 
-                    const contentHash = createHash("sha256")
-                        .update(JSON.stringify(content))
-                        .digest("hex");
+                        const knowledgeId = stringToUuid(
+                            `obsidian-${file}`
+                        );
 
-                    const knowledgeId = stringToUuid(
-                        `obsidian-${file}`
-                    );
+                        const existingDocument =
+                            await this.runtime.documentsManager.getMemoryById(knowledgeId);
 
-                    const existingDocument =
-                        await this.runtime.documentsManager.getMemoryById(knowledgeId);
+                        if (
+                            existingDocument &&
+                            existingDocument.content.hash === contentHash
+                        ) {
+                            elizaLogger.debug(`Skipping unchanged file: ${file}`);
+                            continue;
+                        }
 
-                    if (
-                        existingDocument &&
-                        existingDocument.content["hash"] === contentHash
-                    ) {
-                        elizaLogger.debug(`Skipping unchanged file: ${file}`);
-                        continue;
-                    }
+                        elizaLogger.info(
+                            `Processing knowledge for ${this.runtime.character.name} - ${file}`
+                        );
 
-                    elizaLogger.info(
-                        `Processing knowledge for ${this.runtime.character.name} - ${file}`
-                    );
-
-                    await knowledge.set(this.runtime, {
-                        id: knowledgeId,
-                        content: {
-                            text: content.content,
-                            hash: contentHash,
-                            source: "obsidian",
-                            attachments: [],
-                            metadata: {
-                                path: file,
-                                tags: content.tags,
-                                frontmatter: content.frontmatter,
-                                stats: content.stat
+                        await knowledge.set(this.runtime, {
+                            id: knowledgeId,
+                            content: {
+                                text: content.content,
+                                hash: contentHash,
+                                source: "obsidian",
+                                attachments: [],
+                                metadata: {
+                                    path: file,
+                                    tags: content.tags,
+                                    frontmatter: content.frontmatter,
+                                    stats: content.stat
+                                },
                             },
-                        },
-                    });
+                        });
 
-                    // delay to avoid throttling
-                    await new Promise(resolve => setTimeout(resolve, 100));
-
+                        // delay to avoid throttling
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
                 } catch (error) {
                     elizaLogger.error(`Error processing file ${file}:`, error);
-                    continue;
+                    // continue;
                 }
             }
 

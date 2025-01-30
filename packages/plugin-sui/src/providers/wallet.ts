@@ -5,13 +5,14 @@ import type {
     Provider,
     State,
 } from "@elizaos/core";
+import axios from "axios";
 
 import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
 
 import { MIST_PER_SUI } from "@mysten/sui/utils";
 import BigNumber from "bignumber.js";
 import NodeCache from "node-cache";
-import * as path from "path";
+import * as path from "node:path";
 import { parseAccount } from "../utils";
 
 // Provider configuration
@@ -89,26 +90,24 @@ export class WalletProvider {
             try {
                 const cetusSuiUsdcPoolAddr =
                     "0x51e883ba7c0b566a26cbc8a94cd33eb0abd418a77cc1e60ad22fd9b1f29cd2ab";
-                const response = await fetch(
-                    `https://api.dexscreener.com/latest/dex/pairs/sui/${cetusSuiUsdcPoolAddr}`
-                );
+                const url = `https://api.dexscreener.com/latest/dex/pairs/sui/${cetusSuiUsdcPoolAddr}`;
+                const response = await axios.get(url);
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(
-                        `HTTP error! status: ${response.status}, message: ${errorText}`
-                    );
-                }
+                // if (!response.ok) {
+                //     const errorText = await response.text();
+                //     throw new Error(
+                //         `HTTP error! status: ${response.status}, message: ${errorText}`
+                //     );
+                // }
 
-                const data = await response.json();
-                return data;
+                // const data = await response.json();
+                return response.data;
             } catch (error) {
                 console.error(`Attempt ${i + 1} failed:`, error);
                 lastError = error;
                 if (i < PROVIDER_CONFIG.MAX_RETRIES - 1) {
-                    const delay = PROVIDER_CONFIG.RETRY_DELAY * Math.pow(2, i);
+                    const delay = PROVIDER_CONFIG.RETRY_DELAY * (2 ** i);  // Replaced Math.pow with **
                     await new Promise((resolve) => setTimeout(resolve, delay));
-                    continue;
                 }
             }
         }

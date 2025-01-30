@@ -1,6 +1,6 @@
 import { elizaLogger } from "@elizaos/core";
 import { DataError, PythErrorCode, ErrorSeverity } from "../error";
-import Ajv, { ErrorObject } from "ajv";
+import Ajv, { type ErrorObject } from "ajv";
 
 const ajv = new Ajv({
     allErrors: true,

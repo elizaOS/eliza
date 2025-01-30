@@ -43,7 +43,7 @@ export const getTransactionAction: Action = {
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        _options: any,
+        _options: Record<string, unknown>,
         callback: HandlerCallback
     ) => {
         elizaLogger.info("Starting get transaction action");

@@ -154,7 +154,7 @@ importers:
                 version: 4.3.2(typescript@5.6.3)(vite@6.0.7(@types/node@22.10.5)(jiti@1.21.7)(yaml@2.7.0))
 
 packages:
-    "@ai-sdk/provider@1.0.4":
+    "@ai-sdk/provider@1.0.6":
         resolution:
             {
                 integrity: sha512-lJi5zwDosvvZER3e/pB8lj1MN3o3S7zJliQq56BRr4e9V3fcRyFtwP0JRxaRS5vHYX3OJ154VezVoQNrk0eaKw==,
@@ -7314,7 +7314,7 @@ packages:
             }
 
 snapshots:
-    "@ai-sdk/provider@1.0.4":
+    "@ai-sdk/provider@1.0.6":
         dependencies:
             json-schema: 0.4.0
 
@@ -7327,7 +7327,7 @@ snapshots:
 
     "@assistant-ui/react@0.7.33(@types/react-dom@18.3.5(@types/react@18.3.18))(@types/react@18.3.18)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.17)":
         dependencies:
-            "@ai-sdk/provider": 1.0.4
+            "@ai-sdk/provider": 1.0.6
             "@radix-ui/primitive": 1.1.1
             "@radix-ui/react-avatar": 1.1.2(@types/react-dom@18.3.5(@types/react@18.3.18))(@types/react@18.3.18)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
             "@radix-ui/react-compose-refs": 1.1.1(@types/react@18.3.18)(react@18.3.1)

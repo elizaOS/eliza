@@ -1,42 +1,43 @@
 {
-    "name": "@elizaos/client-lens",
-    "version": "0.1.9-alpha.1",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
-        "test:watch": "vitest watch",
-        "test:coverage": "vitest run --coverage"
-    },
-    "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@lens-protocol/client": "2.2.0",
-        "@lens-protocol/metadata": "1.2.0",
-        "axios": "^1.7.9"
-    },
-    "devDependencies": {
-        "tsup": "^8.3.5",
-        "vitest": "^1.2.1",
-        "@vitest/coverage-v8": "^1.2.1"
-    },
-    "peerDependencies": {
-        "@elizaos/core": "workspace:*"
-    }
+	"name": "@elizaos/client-lens",
+	"version": "0.1.9",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"lint": "eslint --fix  --cache .",
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"@lens-protocol/client": "2.2.0",
+		"@lens-protocol/metadata": "1.2.0",
+		"axios": "^1.7.9"
+	},
+	"devDependencies": {
+		"tsup": "^8.3.5",
+		"vitest": "^1.2.1",
+		"@vitest/coverage-v8": "^1.2.1"
+	},
+	"peerDependencies": {
+		"@elizaos/core": "workspace:*"
+	}
 }

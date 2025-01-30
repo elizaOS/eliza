@@ -26,6 +26,7 @@ export default {
         "GET_TOKEN_PRICE",
         "CHECK_TOKEN_PRICE",
     ],
+    // eslint-disable-next-line
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         await validateCoinMarketCapConfig(runtime);
         return true;

@@ -85,44 +85,45 @@ export class SQLite3VerifiableDAO extends VerifiableDAO<Database> {
         pageSize: number
     ): Promise<PageQuery<VerifiableLog[]>> {
         const conditions: string[] = [];
-        const params: any[] = [];
+        const params: (string | number)[] = [];
 
         if (query.idEq) {
-            conditions.push(`id = ?`);
+            conditions.push('id = ?');
             params.push(query.idEq);
         }
         if (query.agentIdEq) {
-            conditions.push(`agent_id = ?`);
+            conditions.push('agent_id = ?');
             params.push(query.agentIdEq);
         }
         if (query.roomIdEq) {
-            conditions.push(`room_id = ?`);
+            conditions.push('room_id = ?');
             params.push(query.roomIdEq);
         }
         if (query.userIdEq) {
-            conditions.push(`user_id = ?`);
+            conditions.push('user_id = ?');
             params.push(query.userIdEq);
         }
         if (query.typeEq) {
-            conditions.push(`type = ?`);
+            conditions.push('type = ?');
             params.push(query.typeEq);
         }
         if (query.contLike) {
-            conditions.push(`content LIKE ?`);
+            conditions.push('content LIKE ?');
             params.push(`%${query.contLike}%`);
         }
         if (query.signatureEq) {
-            conditions.push(`signature = ?`);
+            conditions.push('signature = ?');
             params.push(query.signatureEq);
         }
 
         const whereClause =
             conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-        if (page < 1) {
-            page = 1;
+        let currentPage = page;  // Create a new variable instead of reassigning parameter
+        if (currentPage < 1) {
+            currentPage = 1;
         }
-        const offset = (page - 1) * pageSize;
+        const offset = (currentPage - 1) * pageSize;
         const limit = pageSize;
 
 
@@ -130,7 +131,7 @@ export class SQLite3VerifiableDAO extends VerifiableDAO<Database> {
             const totalQuery = `SELECT COUNT(*) AS total
                                 FROM tee_verifiable_logs ${whereClause}`;
             const stmt = this.db.prepare(totalQuery);
-            const totalResult = stmt.get(params);
+            const totalResult = stmt.get(params) as { total: number };
             const total = totalResult.total;
 
             const dataQuery = `
@@ -186,9 +187,8 @@ export class SQLite3VerifiableDAO extends VerifiableDAO<Database> {
             const agent = this.db.prepare(sql).get(agentId);
             if (agent) {
                 return agent as VerifiableAgent;
-            } else {
-                return null;
             }
+            return null;
         } catch (error) {
             console.error("SQLite3 Error getting agent:", error);
             throw error;

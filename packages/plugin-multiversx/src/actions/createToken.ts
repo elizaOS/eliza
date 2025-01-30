@@ -20,14 +20,7 @@ export interface CreateTokenContent extends Content {
     decimals: string;
     amount: string;
 }
-
-function isCreateTokenContent(
-    runtime: IAgentRuntime,
-    content: CreateTokenContent
-) {
-    console.log("Content for create token", content);
-    return content.tokenName && content.tokenName && content.tokenName;
-}
+import { isUserAuthorized } from "../utils/accessTokenManagement";
 
 const createTokenTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
 
@@ -55,7 +48,7 @@ export default {
     name: "CREATE_TOKEN",
     similes: ["DEPLOY_TOKEN"],
     validate: async (runtime: IAgentRuntime, message: Memory) => {
-        console.log("Validating config for user:", message.userId);
+        elizaLogger.log("Validating config for user:", message.userId);
         await validateMultiversxConfig(runtime);
         return true;
     },
@@ -69,16 +62,40 @@ export default {
     ) => {
         elizaLogger.log("Starting CREATE_TOKEN handler...");
 
+        elizaLogger.log("Handler initialized. Checking user authorization...");
+
+        if (!isUserAuthorized(message.userId, runtime)) {
+            elizaLogger.error(
+                "Unauthorized user attempted to create a token:",
+                message.userId
+            );
+            if (callback) {
+                callback({
+                    text: "You do not have permission to create a token.",
+                    content: { error: "Unauthorized user" },
+                });
+            }
+            return false;
+        }
+
         // Initialize or update state
+        // if (!state) {
+        //     state = (await runtime.composeState(message)) as State;
+        // } else {
+        //     state = await runtime.updateRecentMessageState(state);
+        // }
+
+        // Initialize or update state
+        let currentState: State;
         if (!state) {
-            state = (await runtime.composeState(message)) as State;
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(state);
         }
 
         // Compose transfer context
         const transferContext = composeContext({
-            state,
+            state: currentState,
             template: createTokenTemplate,
         });
 
@@ -91,10 +108,12 @@ export default {
         });
 
         const payload = content.object as CreateTokenContent;
+        const isCreateTokenContent =
+            payload.tokenName && payload.tokenName && payload.tokenName;
 
         // Validate transfer content
-        if (!isCreateTokenContent(runtime, payload)) {
-            console.error("Invalid content for CREATE_TOKEN action.");
+        if (!isCreateTokenContent) {
+            elizaLogger.error("Invalid content for CREATE_TOKEN action.");
             if (callback) {
                 callback({
                     text: "Unable to process transfer request. Invalid content provided.",
@@ -110,15 +129,20 @@ export default {
 
             const walletProvider = new WalletProvider(privateKey, network);
 
-            await walletProvider.createESDT({
+            const txHash = await walletProvider.createESDT({
                 tokenName: payload.tokenName,
                 amount: payload.amount,
                 decimals: Number(payload.decimals) || 18,
                 tokenTicker: payload.tokenTicker,
             });
+
+            const txURL = walletProvider.getTransactionURL(txHash);
+            callback?.({
+                text: `Transaction sent successfully! You can view it here: ${txURL}.`,
+            });
             return true;
         } catch (error) {
-            console.error("Error during creating token:", error);
+            elizaLogger.error("Error during creating token:", error);
             if (callback) {
                 callback({
                     text: `Error creating token: ${error.message}`,
@@ -141,7 +165,7 @@ export default {
             {
                 user: "{{user2}}",
                 content: {
-                    text: "Succesfully created token.",
+                    text: "Successfully created token.",
                 },
             },
         ],
@@ -156,7 +180,7 @@ export default {
             {
                 user: "{{user2}}",
                 content: {
-                    text: "Succesfully created token.",
+                    text: "Successfully created token.",
                 },
             },
         ],

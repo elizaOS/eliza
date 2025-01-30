@@ -1,17 +1,24 @@
 {
-    "name": "@elizaos/plugin-genlayer",
-    "version": "0.1.9-alpha.1",
-    "main": "dist/index.js",
-    "type": "module",
-    "types": "dist/index.d.ts",
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run"
-    },
-    "dependencies": {
-        "genlayer-js": "0.4.7",
-        "@elizaos/core": "workspace:*",
-        "tsup": "8.3.5"
-    }
+	"name": "@elizaos/plugin-genlayer",
+	"version": "0.1.9",
+	"main": "dist/index.js",
+	"type": "module",
+	"types": "dist/index.d.ts",
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run",
+		"lint": "biome lint .",
+		"lint:fix": "biome check --apply .",
+		"format": "biome format .",
+		"format:fix": "biome format --write ."
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"genlayer-js": "0.4.7",
+		"tsup": "8.3.5"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "1.9.4"
+	}
 }

@@ -426,7 +426,7 @@ Contract invocation has been logged to the CSV file.`,
             {
                 user: "{{user1}}",
                 content: {
-                    text: "Call the 'transfer' method on my ERC20 token contract at 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 with amount 100 to recepient 0xbcF7C64B880FA89a015970dC104E848d485f99A3",
+                    text: "Call the 'transfer' method on my ERC20 token contract at 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 with amount 100 to recipient 0xbcF7C64B880FA89a015970dC104E848d485f99A3",
                 },
             },
             {

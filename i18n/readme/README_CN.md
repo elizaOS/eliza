@@ -136,6 +136,17 @@ pnpm start
 pnpm clean
 ```
 
+## 一键部署 Eliza
+
+使用 [Fleek](https://fleek.xyz/eliza/) 一键部署 Eliza。这让那些非开发人员也能使用 Eliza，并提供以下选项来构建智能助手：
+
+1. 从模板开始
+2. 从头开始构建角色文件
+3. 上传预制的角色文件
+
+点击[这里](https://fleek.xyz/eliza/)开始！
+
+
 #### 其他要求
 
 您可能需要安装 Sharp.如果在启动时看到错误，请尝试使用以下命令安装:

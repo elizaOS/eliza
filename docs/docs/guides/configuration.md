@@ -193,6 +193,24 @@ pnpm start --characters="characters/your-character.json"
 pnpm start --characters="characters/char1.json,characters/char2.json"
 ```
 
+### Secrets for Multiple Characters
+
+If you don't want to have secrets in your character files because you would
+like to utilize source control for collaborative development on multiple
+characters, then you can put all character secrets in `.env` by prepending
+`CHARACTER.NAME.` before the key name and value. For example:
+
+```bash
+# C3PO
+CHARACTER.C3PO.DISCORD_APPLICATION_ID=abc
+CHARACTER.C3PO.DISCORD_API_TOKEN=xyz
+
+# DOBBY
+CHARACTER.DOBBY.DISCORD_APPLICATION_ID=123
+CHARACTER.DOBBY.DISCORD_API_TOKEN=369
+
+```
+
 ## Custom Actions
 
 ### Adding Custom Actions

@@ -34,7 +34,7 @@
 
 ### Uredite datoteku karaktera
 
-- Pregledajte datoteku `src/core/defaultCharacter.ts` - možete je modifikovati
+- Pregledajte datoteku `packages/core/src/defaultCharacter.ts` - možete je modifikovati
 - Takođe možete učitati karaktere sa komandom `pnpm start --characters="path/to/your/character.json"` i pokrenuti više botova istovremeno.
 
 Nakon što konfigurišete .env datoteku i datoteku karaktera, možete pokrenuti bota sa:

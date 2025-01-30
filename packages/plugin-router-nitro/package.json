@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-router-nitro",
-    "version": "0.1.8+build.1",
+    "version": "0.1.9",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",

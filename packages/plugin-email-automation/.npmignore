@@ -1,0 +1,11 @@
+*
+
+!dist/**
+!package.json
+!readme.md
+!tsup.config.ts
+
+src/
+tsconfig.json
+.eslintrc.js
+.prettierrc

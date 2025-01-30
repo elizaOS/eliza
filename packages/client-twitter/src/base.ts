@@ -137,6 +137,100 @@ export class ClientBase extends EventEmitter {
         );
     }
 
+    /**
+     * Parse the raw tweet data into a standardized Tweet object.
+     */
+    private parseTweet(raw: any, depth = 0, maxDepth = 3): Tweet {
+        // If we've reached maxDepth, don't parse nested quotes/retweets further
+        const canRecurse = depth < maxDepth;
+
+        const quotedStatus = raw.quoted_status_result?.result && canRecurse
+            ? this.parseTweet(raw.quoted_status_result.result, depth + 1, maxDepth)
+            : undefined;
+
+        const retweetedStatus = raw.retweeted_status_result?.result && canRecurse
+            ? this.parseTweet(raw.retweeted_status_result.result, depth + 1, maxDepth)
+            : undefined;
+
+        const t: Tweet = {
+            bookmarkCount:
+                raw.bookmarkCount ?? raw.legacy?.bookmark_count ?? undefined,
+            conversationId:
+                raw.conversationId ?? raw.legacy?.conversation_id_str,
+            hashtags: raw.hashtags ?? raw.legacy?.entities?.hashtags ?? [],
+            html: raw.html,
+            id: raw.id ?? raw.rest_id ?? raw.id_str ?? undefined,
+            inReplyToStatus: raw.inReplyToStatus,
+            inReplyToStatusId:
+                raw.inReplyToStatusId ??
+                raw.legacy?.in_reply_to_status_id_str ??
+                undefined,
+            isQuoted: raw.legacy?.is_quote_status === true,
+            isPin: raw.isPin,
+            isReply: raw.isReply,
+            isRetweet: raw.legacy?.retweeted === true,
+            isSelfThread: raw.isSelfThread,
+            language: raw.legacy?.lang,
+            likes: raw.legacy?.favorite_count ?? 0,
+            name:
+                raw.name ??
+                raw?.user_results?.result?.legacy?.name ??
+                raw.core?.user_results?.result?.legacy?.name,
+            mentions: raw.mentions ?? raw.legacy?.entities?.user_mentions ?? [],
+            permanentUrl:
+                raw.permanentUrl ??
+                (raw.core?.user_results?.result?.legacy?.screen_name &&
+                 raw.rest_id
+                    ? `https://x.com/${raw.core?.user_results?.result?.legacy?.screen_name}/status/${raw.rest_id}`
+                    : undefined),
+            photos:
+                raw.photos ??
+                (raw.legacy?.entities?.media
+                    ?.filter((media: any) => media.type === "photo")
+                    .map((media: any) => ({
+                        id: media.id_str,
+                        url: media.media_url_https,
+                        alt_text: media.alt_text,
+                    })) || []),
+            place: raw.place,
+            poll: raw.poll ?? null,
+            quotedStatus,
+            quotedStatusId:
+                raw.quotedStatusId ?? raw.legacy?.quoted_status_id_str ?? undefined,
+            quotes: raw.legacy?.quote_count ?? 0,
+            replies: raw.legacy?.reply_count ?? 0,
+            retweets: raw.legacy?.retweet_count ?? 0,
+            retweetedStatus,
+            retweetedStatusId: raw.legacy?.retweeted_status_id_str ?? undefined,
+            text: raw.text ?? raw.legacy?.full_text ?? undefined,
+            thread: raw.thread || [],
+            timeParsed: raw.timeParsed
+                ? new Date(raw.timeParsed)
+                : raw.legacy?.created_at
+                ? new Date(raw.legacy?.created_at)
+                : undefined,
+            timestamp:
+                raw.timestamp ??
+                (raw.legacy?.created_at
+                    ? new Date(raw.legacy.created_at).getTime() / 1000
+                    : undefined),
+            urls: raw.urls ?? raw.legacy?.entities?.urls ?? [],
+            userId: raw.userId ?? raw.legacy?.user_id_str ?? undefined,
+            username:
+                raw.username ??
+                raw.core?.user_results?.result?.legacy?.screen_name ??
+                undefined,
+            videos:
+                raw.videos ??
+                (raw.legacy?.entities?.media
+                    ?.filter((media: any) => media.type === "video") ?? []),
+            views: raw.views?.count ? Number(raw.views.count) : 0,
+            sensitiveContent: raw.sensitiveContent,
+        };
+
+        return t;
+    }
+
     constructor(runtime: IAgentRuntime, twitterConfig: TwitterConfig) {
         super();
         this.runtime = runtime;
@@ -248,7 +342,8 @@ export class ClientBase extends EventEmitter {
             this.profile.id,
             count
         );
-        return homeTimeline.tweets;
+        // Use parseTweet on each tweet
+        return homeTimeline.tweets.map((t) => this.parseTweet(t));
     }
 
     /**
@@ -266,54 +361,8 @@ export class ClientBase extends EventEmitter {
         elizaLogger.debug(homeTimeline, { depth: Number.POSITIVE_INFINITY });
         const processedTimeline = homeTimeline
             .filter((t) => t.__typename !== "TweetWithVisibilityResults") // what's this about?
-            .map((tweet) => {
-                //console.log("tweet is", tweet);
-                const obj = {
-                    id: tweet.id,
-                    name:
-                        tweet.name ?? tweet?.user_results?.result?.legacy.name,
-                    username:
-                        tweet.username ??
-                        tweet.core?.user_results?.result?.legacy.screen_name,
-                    text: tweet.text ?? tweet.legacy?.full_text,
-                    inReplyToStatusId:
-                        tweet.inReplyToStatusId ??
-                        tweet.legacy?.in_reply_to_status_id_str ??
-                        null,
-                    timestamp:
-                        new Date(tweet.legacy?.created_at).getTime() / 1000,
-                    createdAt:
-                        tweet.createdAt ??
-                        tweet.legacy?.created_at ??
-                        tweet.core?.user_results?.result?.legacy.created_at,
-                    userId: tweet.userId ?? tweet.legacy?.user_id_str,
-                    conversationId:
-                        tweet.conversationId ??
-                        tweet.legacy?.conversation_id_str,
-                    permanentUrl: `https://x.com/${tweet.core?.user_results?.result?.legacy?.screen_name}/status/${tweet.rest_id}`,
-                    hashtags: tweet.hashtags ?? tweet.legacy?.entities.hashtags,
-                    mentions:
-                        tweet.mentions ?? tweet.legacy?.entities.user_mentions,
-                    photos:
-                        tweet.legacy?.entities?.media
-                            ?.filter((media) => media.type === "photo")
-                            .map((media) => ({
-                                id: media.id_str,
-                                url: media.media_url_https, // Store media_url_https as url
-                                alt_text: media.alt_text,
-                            })) || [],
-                    thread: tweet.thread || [],
-                    urls: tweet.urls ?? tweet.legacy?.entities.urls,
-                    videos:
-                        tweet.videos ??
-                        tweet.legacy?.entities.media?.filter(
-                            (media) => media.type === "video"
-                        ) ??
-                        [],
-                };
-                //console.log("obj is", obj);
-                return obj;
-            });
+            .map((tweet) => this.parseTweet(tweet));
+
         //elizaLogger.debug("process homeTimeline", processedTimeline);
         return processedTimeline;
     }
@@ -329,34 +378,9 @@ export class ClientBase extends EventEmitter {
                 ? await this.twitterClient.fetchFollowingTimeline(count, [])
                 : await this.twitterClient.fetchHomeTimeline(count, []);
 
+        // Parse, filter out self-tweets, limit to count
         return homeTimeline
-            .map((tweet) => ({
-                id: tweet.rest_id,
-                name: tweet.core?.user_results?.result?.legacy?.name,
-                username: tweet.core?.user_results?.result?.legacy?.screen_name,
-                text: tweet.legacy?.full_text,
-                inReplyToStatusId: tweet.legacy?.in_reply_to_status_id_str,
-                timestamp: new Date(tweet.legacy?.created_at).getTime() / 1000,
-                userId: tweet.legacy?.user_id_str,
-                conversationId: tweet.legacy?.conversation_id_str,
-                permanentUrl: `https://twitter.com/${tweet.core?.user_results?.result?.legacy?.screen_name}/status/${tweet.rest_id}`,
-                hashtags: tweet.legacy?.entities?.hashtags || [],
-                mentions: tweet.legacy?.entities?.user_mentions || [],
-                photos:
-                    tweet.legacy?.entities?.media
-                        ?.filter((media) => media.type === "photo")
-                        .map((media) => ({
-                            id: media.id_str,
-                            url: media.media_url_https, // Store media_url_https as url
-                            alt_text: media.alt_text,
-                        })) || [],
-                thread: tweet.thread || [],
-                urls: tweet.legacy?.entities?.urls || [],
-                videos:
-                    tweet.legacy?.entities?.media?.filter(
-                        (media) => media.type === "video"
-                    ) || [],
-            }))
+            .map((tweet) => this.parseTweet(tweet))
             .filter((tweet) => tweet.username !== agentUsername) // do not perform action on self-tweets
             .slice(0, count);
         // TODO: Once the 'count' parameter is fixed in the 'fetchTimeline' method of the 'agent-twitter-client',

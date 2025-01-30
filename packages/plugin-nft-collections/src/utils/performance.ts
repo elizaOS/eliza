@@ -1,4 +1,4 @@
-import { EventEmitter } from "events";
+import { EventEmitter } from "node:events";
 
 interface PerformanceMetric {
     operation: string;
@@ -109,7 +109,11 @@ export class PerformanceMonitor extends EventEmitter {
         }
     > {
         const operations = new Set(this.metrics.map((m) => m.operation));
-        const summary: Record<string, any> = {};
+        const summary: Record<string, {
+            averageLatency: number;
+            errorRate: number;
+            throughput: number;
+        }> = {};
 
         for (const operation of operations) {
             summary[operation] = {

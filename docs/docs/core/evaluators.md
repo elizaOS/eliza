@@ -173,7 +173,7 @@ try {
 }
 ```
 
-Source: https://github.com/elizaos/eliza/blob/main/packages/core/src/tests/memory.test.ts
+Source: https://github.com/elizaos/eliza/blob/main/packages/core/__tests__/memory.test.ts
 
 ### Memory Usage
 

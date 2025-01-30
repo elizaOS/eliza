@@ -29,7 +29,7 @@ _Utilisée dans [@DegenSpartanAI](https://x.com/degenspartanai) et [@MarcAIndree
 
 ### Modifier les fichiers personnage
 
-1. Ouvrir le document `src/core/defaultCharacter.ts` afin de modifier le personnage par défaut
+1. Ouvrir le document `packages/core/src/defaultCharacter.ts` afin de modifier le personnage par défaut
 
 2. Pour ajouter des personnages personnalisés :
     - Lancer la commande `pnpm start --characters="path/to/your/character.json"`

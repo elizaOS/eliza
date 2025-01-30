@@ -3,6 +3,41 @@ import type { ReservoirService } from "../services/reservoir";
 import type { MarketIntelligenceService } from "../services/market-intelligence";
 import type { SocialAnalyticsService } from "../services/social-analytics";
 
+interface MarketIntelligenceResponse {
+    washTradingMetrics: {
+        washTradingScore: number;
+        suspiciousVolume24h: number;
+    };
+    liquidityMetrics: {
+        bestBid: number;
+        bestAsk: number;
+    };
+    floorPrice?: number;
+    volume24h?: number;
+    marketCap?: number;
+    holders?: number;
+}
+
+interface SocialMetricsResponse {
+    twitterMetrics: {
+        followers: number;
+        engagement: {
+            likes: number;
+            retweets: number;
+            replies: number;
+        };
+        trending: boolean;
+    };
+    communityMetrics: {
+        totalMembers: number;
+        growthRate: number;
+        engagement: {
+            activeUsers: number;
+            messagesPerDay: number;
+        };
+    };
+}
+
 export const createNftCollectionProvider = (
     nftService: ReservoirService,
     marketIntelligenceService: MarketIntelligenceService,
@@ -42,54 +77,45 @@ export const createNftCollectionProvider = (
             if (collection) {
                 response += `\nDetailed information for ${collection.name}:\n\n`;
 
-                // Market intelligence data (optional)
                 if (marketIntelligenceService) {
                     try {
-                        const marketIntelligence =
-                            await marketIntelligenceService.getMarketIntelligence(
-                                collection.address
-                            );
+                        const marketIntelligence = await marketIntelligenceService.getMarketIntelligence(
+                            collection.address
+                        ) as MarketIntelligenceResponse;
+                        
                         response += "Market Intelligence:\n";
                         response += `• Wash Trading Score: ${marketIntelligence.washTradingMetrics.washTradingScore}\n`;
                         response += `• Suspicious Volume (24h): ${marketIntelligence.washTradingMetrics.suspiciousVolume24h} ETH\n`;
                         response += `• Best Bid: ${marketIntelligence.liquidityMetrics.bestBid} ETH\n`;
                         response += `• Best Ask: ${marketIntelligence.liquidityMetrics.bestAsk} ETH\n\n`;
                     } catch (error) {
-                        console.error(
-                            "Failed to fetch market intelligence:",
-                            error
-                        );
+                        console.error("Failed to fetch market intelligence:", error);
                     }
                 }
 
-                // Social analytics data (optional)
                 if (socialAnalyticsService) {
                     try {
-                        const [socialMetrics, communityMetrics] =
-                            await Promise.all([
-                                socialAnalyticsService.getSocialMetrics(
-                                    collection.address
-                                ),
-                                socialAnalyticsService.getCommunityMetrics(
-                                    collection.address
-                                ),
-                            ]);
+                        const [socialMetrics, communityMetrics] = await Promise.all([
+                            socialAnalyticsService.getSocialMetrics(collection.address),
+                            socialAnalyticsService.getCommunityMetrics(collection.address)
+                        ]) as [SocialMetricsResponse, SocialMetricsResponse];
 
                         response += "Social Metrics:\n";
-                        response += `• Twitter Followers: ${socialMetrics.twitter.followers}\n`;
-                        response += `• Twitter Engagement: ${socialMetrics.twitter.engagement.likes + socialMetrics.twitter.engagement.retweets + socialMetrics.twitter.engagement.replies} interactions\n`;
-                        response += `• Trending: ${socialMetrics.trending ? "Yes" : "No"}\n\n`;
+                        response += `• Twitter Followers: ${socialMetrics.twitterMetrics.followers}\n`;
+                        response += `• Twitter Engagement: ${
+                            socialMetrics.twitterMetrics.engagement.likes + 
+                            socialMetrics.twitterMetrics.engagement.retweets + 
+                            socialMetrics.twitterMetrics.engagement.replies
+                        } interactions\n`;
+                        response += `• Trending: ${socialMetrics.twitterMetrics.trending ? "Yes" : "No"}\n\n`;
 
                         response += "Community Metrics:\n";
-                        response += `• Total Members: ${communityMetrics.totalMembers}\n`;
-                        response += `• Growth Rate: ${communityMetrics.growthRate}%\n`;
-                        response += `• Active Users: ${communityMetrics.engagement.activeUsers}\n`;
-                        response += `• Messages per Day: ${communityMetrics.engagement.messagesPerDay}\n`;
+                        response += `• Total Members: ${communityMetrics.communityMetrics.totalMembers}\n`;
+                        response += `• Growth Rate: ${communityMetrics.communityMetrics.growthRate}%\n`;
+                        response += `• Active Users: ${communityMetrics.communityMetrics.engagement.activeUsers}\n`;
+                        response += `• Messages per Day: ${communityMetrics.communityMetrics.engagement.messagesPerDay}\n`;
                     } catch (error) {
-                        console.error(
-                            "Failed to fetch social analytics:",
-                            error
-                        );
+                        console.error("Failed to fetch social analytics:", error);
                     }
                 }
             }

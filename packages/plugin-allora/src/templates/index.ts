@@ -17,7 +17,7 @@ Given the recent messages and the Allora Network Topics above, extract the follo
 - Topic ID of the topic that best matches the user's request. The topic should be active, otherwise return null.
 - Topic Name of the topic that best matches the user's request. The topic should be active, otherwise return null.
 
-If the topic is not active or the prediction timeframe is not matching the user's request, return null for both topicId and topicName.
+If the topic is not active or the inference timeframe is not matching the user's request, return null for both topicId and topicName.
 
 Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined. The result should be a valid JSON object with the following schema:
 \`\`\`json

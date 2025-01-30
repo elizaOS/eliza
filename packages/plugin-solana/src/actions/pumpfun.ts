@@ -1,7 +1,7 @@
 import { generateImage, elizaLogger } from "@elizaos/core";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Connection, Keypair, type PublicKey } from "@solana/web3.js";
 import { VersionedTransaction } from "@solana/web3.js";
-import { Fomo, PurchaseCurrency } from "fomo-sdk-solana";
+import { Fomo, type PurchaseCurrency } from "fomo-sdk-solana";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import bs58 from "bs58";
 import {
@@ -12,7 +12,7 @@ import {
     type IAgentRuntime,
     type Memory,
     ModelClass,
-    State,
+    type State,
     generateObject,
     composeContext,
     type Action,

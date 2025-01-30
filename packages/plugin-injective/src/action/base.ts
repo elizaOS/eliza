@@ -62,15 +62,18 @@ export function createGenericAction({
         ): Promise<boolean> => {
             elizaLogger.debug(`create action: ${name}`);
             // 1. Compose or update the state
-            if (!state) {
-                state = (await runtime.composeState(message)) as State;
-            } else {
-                state = await runtime.updateRecentMessageState(state);
-            }
 
+            let currentState = state;
+            if (!currentState) {
+                currentState = (await runtime.composeState(message)) as State;
+            } else {
+                currentState = await runtime.updateRecentMessageState(currentState);
+            }
+    
+            
             // 2. Compose a context from the given template
             const context = composeContext({
-                state,
+                state: currentState,
                 template,
             });
 
@@ -121,7 +124,7 @@ export function createGenericAction({
                 );
 
                 // 6. Dynamically call the specified functionName on the Injective client
-                const method = (client as any)[functionName];
+                const method = ((client as unknown) as { [key: string]: (params: unknown) => Promise<{ success: boolean; result: { code: number } }> })[functionName];
                 if (typeof method !== "function") {
                     throw new Error(
                         `Method "${functionName}" does not exist on InjectiveGrpcClient`
@@ -138,7 +141,7 @@ export function createGenericAction({
                 // Lets convert the result of the response into something that can be read
                 if (response.success) {
                     console.log("Cleaning up the response");
-                    const additionalTemplate = `Extract the response from the following data, also make sure that you format the response into human readable format, make it the prettiest thing anyone can read basically a very nice comprehensive summary in a string format.`;
+                    const additionalTemplate = 'Extract the response from the following data, also make sure that you format the response into human readable format, make it the prettiest thing anyone can read basically a very nice comprehensive summary in a string format.';
                     const responseResult = JSON.stringify(response.result);
                     const newContext = `${additionalTemplate}\n${responseResult}`;
                     const totalContext = `Previous chat context:${context} \n New information : ${newContext}`;

@@ -1,22 +1,22 @@
 {
-    "name": "@elizaos/plugin-obsidian",
-    "version": "0.1.9-alpha.1",
-    "main": "dist/index.js",
-    "type": "module",
-    "types": "dist/index.d.ts",
-    "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "file-type-checker": "^1.1.2",
-        "mrmime": "^2.0.0",
-        "tsup": "8.3.5"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
-        "test:watch": "vitest"
-    },
-    "peerDependencies": {
-        "whatwg-url": "7.1.0"
-    }
+	"name": "@elizaos/plugin-obsidian",
+	"version": "0.1.9",
+	"main": "dist/index.js",
+	"type": "module",
+	"types": "dist/index.d.ts",
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"file-type-checker": "^1.1.2",
+		"mrmime": "^2.0.0",
+		"tsup": "8.3.5"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"peerDependencies": {
+		"whatwg-url": "7.1.0"
+	}
 }

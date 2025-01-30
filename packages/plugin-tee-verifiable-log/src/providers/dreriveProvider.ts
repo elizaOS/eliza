@@ -1,5 +1,5 @@
 import { DeriveKeyProvider } from "@elizaos/plugin-tee";
-import * as crypto from "crypto";
+import * as crypto from "node:crypto";  // Added node: protocol
 
 export class DeriveProvider {
     private provider: DeriveKeyProvider;
@@ -50,7 +50,7 @@ export class DeriveProvider {
         } catch (error) {
             return {
                 success: true,
-                errorMsg: "encryptAgentData failed:" + error,
+                errorMsg: `encryptAgentData failed: ${error}`,  // Changed to template literal
                 ivHex: "",
                 encryptedData: "",
             };
@@ -80,7 +80,7 @@ export class DeriveProvider {
         } catch (error) {
             return {
                 success: false,
-                errorMsg: "decryptAgentData failed: " + error,
+                errorMsg: `decryptAgentData failed: ${error}`,  // Changed to template literal
                 plainText: "",
             };
         }

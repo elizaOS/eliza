@@ -1,0 +1,49 @@
+[tool.poetry]
+name = "elizaos-bug-hunter"
+version = "0.1.0"
+description = "Bug hunting and code quality analysis tools for ElizaOS plugins"
+authors = ["AIFlow_ML <mlstudio@aiflow.ml>"]
+package-mode = false  # Disable package mode
+
+[tool.poetry.dependencies]
+python = "^3.11"
+rich = "^13.7.0"
+termcolor = "^2.4.0"
+typer = "^0.9.0"
+pydantic = "^2.5.3"
+aiofiles = "^23.2.1"
+asyncio = "^3.4.3"
+textual = "^0.47.1"
+nodeenv = "^1.8.0"  # For Node.js environment management
+esprima = "^4.0.1"  # Python port of Esprima JavaScript parser
+lizard = "^1.17.10"  # Code complexity analyzer
+radon = "^6.0.1"  # Various code metrics
+semgrep = "^1.65.0"  # Pattern-based bug finder
+jschema-to-python = "^1.2.3"  # JSON Schema support
+graphviz = "^0.20.1"  # For call graphs visualization
+phidata = "^2.7.9"
+openai = "^1.60.0"
+deepseek = "^1.0.0"
+anthropic = "^0.45.0"
+markdown = "^3.7"
+markitdown = "^0.0.1a3"
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.12.1"
+isort = "^5.13.2"
+mypy = "^1.8.0"
+pytest = "^7.4.4"
+pytest-asyncio = "^0.23.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3

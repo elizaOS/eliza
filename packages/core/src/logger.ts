@@ -1,5 +1,8 @@
-import pino, { LogFn } from "pino";
+import pino, { type LogFn } from "pino";
 import pretty from "pino-pretty";
+
+import { parseBooleanFromText } from "./parsing.ts";
+
 
 const customLevels: Record<string, number> = {
     fatal: 60,
@@ -13,7 +16,7 @@ const customLevels: Record<string, number> = {
     trace: 10,
 };
 
-const raw = process?.env?.LOG_JSON_FORMAT || false;
+const raw = parseBooleanFromText(process?.env?.LOG_JSON_FORMAT) || false;
 
 const createStream = () => {
     if (raw) {
@@ -43,7 +46,7 @@ const options = {
                     typeof arg === "string" ? arg : JSON.stringify(arg)
                 );
                 const message = messageParts.join(" ");
-                return method.apply(this, [arg1, message]);
+                method.apply(this, [arg1, message]);
             } else {
                 const context = {};
                 const messageParts = [arg1, ...rest].map((arg) =>
@@ -58,7 +61,7 @@ const options = {
 
                 Object.assign(context, ...jsonParts);
 
-                return method.apply(this, [context, message]);
+                method.apply(this, [context, message]);
             }
         },
     },

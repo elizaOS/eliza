@@ -1,10 +1,49 @@
-import { type IAgentRuntime, type AgentRuntime, ModelClass, type Memory, MemoryManager } from "@elizaos/core";
+import { type IAgentRuntime, type AgentRuntime, ModelClass, type Memory, MemoryManager, type State } from "@elizaos/core";
 import { elizaLogger, composeContext, generateObject, stringToUuid } from "@elizaos/core";
 //import fileTypeChecker from "file-type-checker";
 import { lookup } from 'mrmime';
 import { ObsidianProvider } from "./providers/obsidianClient";
 import { validateObsidianConfig } from "./enviroment";
 import { searchQuerySchema, type NoteHierarchy, type NoteContent } from "./types";
+
+
+// Update SearchState interface to make properties optional
+interface SearchState extends State {
+    bio: string;                  // Required from State
+    lore: string;                 // Required from State
+    messageDirections: string;    // Required from State
+    postDirections: string;       // Required from State
+    // Search-specific properties
+    query?: string | SearchQuery;
+    options?: SearchOptions;
+}
+
+interface SearchOptions {
+    contextLength?: number;
+    searchIn?: string[];
+}
+
+interface SearchQuery {
+    options?: {
+        searchIn?: string[];
+        contextLength?: number;
+        ignoreCase?: boolean;
+    };
+    query?: string | Record<string, unknown>;
+    queryFormat?: "plaintext" | "jsonlogic" | "dataview";
+    and?: Array<SearchCondition>;
+    or?: Array<SearchCondition>;
+}
+
+interface SearchContextResponse {
+    object: SearchQuery;
+}
+
+interface SearchCondition {
+    in?: [string, { var: string }];
+    regexp?: [string, { var: string }];
+}
+
 
 let obsidianInstance: ObsidianProvider | undefined;
 
@@ -28,7 +67,10 @@ export function extractLinks(noteContent: NoteContent): string[] {
     const linkRegex = /\[\[(.*?)\]\]/g;
     const links: string[] = [];
     let match: RegExpExecArray | null;
-    while ((match = linkRegex.exec(noteContent.content)) !== null) {
+    while (true) {
+        match = linkRegex.exec(noteContent.content);
+        if (match === null) break;
+        
         if (match[1] && !lookup(match[1])) {
             links.push(`${noteContent.path.split("/")[0]}/${match[1]}.md`);
         } else {
@@ -148,7 +190,7 @@ export function markdownToPlaintext(markdown: string): string {
     text = text.replace(/^\s*\d+\.\s+/gm, '');     // Ordered lists
 
     // Clean up excessive whitespace
-    text = text.replace(/\n\s*\n\s*\n/g, '\n\n');  // Multiple blank lines to double
+    text = text.replace(/\n\s*\n\n/g, '\n\n');  // Multiple blank lines to double
     text = text.trim();
 
     return text;
@@ -311,61 +353,112 @@ Respond ONLY with a JSON block containing only the extracted values.`;
  * @param prompt - The formatted prompt string
  * @returns A Promise resolving to the JSON string response
  */
-async function genereteSearchParameters(prompt: string, state: any, runtime: IAgentRuntime): Promise<string> {
-    try {
 
+// Update the generateSearchParameters function
+async function genereteSearchParameters(
+    prompt: string, 
+    state: SearchState, 
+    runtime: IAgentRuntime
+): Promise<string> {
+    try {
         const context = composeContext({
             state,
             template: prompt,
         });
 
-        //TODO: temperature: 0.2 - Make this dynamic
         const searchContext = await generateObject({
             runtime,
             context,
             modelClass: ModelClass.MEDIUM,
             schema: searchQuerySchema,
             stop: ["\n\n"]
-        }) as any;
+        }) as SearchContextResponse;
 
-        /*if (!isSearchQuery(searchContext.object)) {
-            elizaLogger.error(
-                "Invalid search query:",
-                searchContext.object
-            );
-            return null;
-        }*/
-
-        // Attempt to parse the completion as JSON to verify structure
-        const parsedCompletion = searchContext.object; //JSON.parse(JSON.stringify(searchContext.object, null, 2));
-        elizaLogger.info("Parsed completion:", JSON.stringify(parsedCompletion , null, 2));
+        // Now we can safely access .object
+        const parsedCompletion = searchContext.object;
+        elizaLogger.info("Parsed completion:", JSON.stringify(parsedCompletion, null, 2));
         return JSON.stringify(parsedCompletion);
 
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Error calling LLM API:', error);
-        // Return a basic fallback response that matches the schema
         return "**No matching notes found**";
     }
 }
+// async function genereteSearchParameters(prompt: string, state: any, runtime: IAgentRuntime): Promise<string> {
+//     try {
 
-// Function to process user input
-export async function processUserInput(userInput: string, state: any, runtime: IAgentRuntime): Promise<any> {
-    // Construct the prompt for the LLM
+//         const context = composeContext({
+//             state,
+//             template: prompt,
+//         });
+
+//         //TODO: temperature: 0.2 - Make this dynamic
+//         const searchContext = await generateObject({
+//             runtime,
+//             context,
+//             modelClass: ModelClass.MEDIUM,
+//             schema: searchQuerySchema,
+//             stop: ["\n\n"]
+//         }) as SearchQuery;
+
+//         /*if (!isSearchQuery(searchContext.object)) {
+//             elizaLogger.error(
+//                 "Invalid search query:",
+//                 searchContext.object
+//             );
+//             return null;
+//         }*/
+
+//         // Attempt to parse the completion as JSON to verify structure
+//         const parsedCompletion = searchContext.object; //JSON.parse(JSON.stringify(searchContext.object, null, 2));
+//         elizaLogger.info("Parsed completion:", JSON.stringify(parsedCompletion , null, 2));
+//         return JSON.stringify(parsedCompletion);
+
+//     } catch (error) {
+//         console.error('Error calling LLM API:', error);
+//         // Return a basic fallback response that matches the schema
+//         return "**No matching notes found**";
+//     }
+// }
+
+// Update processUserInput to use proper types
+// export async function processUserInput(
+//     userInput: string, 
+//     state: SearchState, 
+//     runtime: IAgentRuntime
+// ): Promise<SearchQuery | null> {
+//     const prompt = constructSearchPrompt(userInput);
+//     const llmResponse = await genereteSearchParameters(prompt, state, runtime);
+
+//     try {
+//         const parsedResponse = JSON.parse(llmResponse) as SearchQuery;
+//         const validatedResponse = searchQuerySchema.parse(parsedResponse);
+//         return validatedResponse;
+//     } catch (error: unknown) {
+//         console.error('Failed to parse or validate LLM response:', error);
+//         return null;
+//     }
+// }
+export async function processUserInput(
+    userInput: string, 
+    state: State,  // Accept base State type
+    runtime: IAgentRuntime
+): Promise<SearchQuery | null> {
+    // Cast state to SearchState since we'll be adding search-specific properties
+    const searchState: SearchState = {
+        ...state,
+        query: userInput  // Add the query from userInput
+    };
+
     const prompt = constructSearchPrompt(userInput);
+    const llmResponse = await genereteSearchParameters(prompt, searchState, runtime);
 
-    // Call the LLM API (this is a placeholder; replace with actual API call)
-    const llmResponse = await genereteSearchParameters(prompt, state, runtime);
-
-    // Attempt to parse the LLM's response as JSON
     try {
-      const parsedResponse = JSON.parse(llmResponse);
-
-      // Validate the parsed response against the schema
-      const validatedResponse = searchQuerySchema.parse(parsedResponse);
-
-      return validatedResponse;
-    } catch (error) {
-      console.error('Failed to parse or validate LLM response:', error);
-      return null;
+        const parsedResponse = JSON.parse(llmResponse) as SearchQuery;
+        const validatedResponse = searchQuerySchema.parse(parsedResponse);
+        return validatedResponse;
+    } catch (error: unknown) {
+        console.error('Failed to parse or validate LLM response:', error);
+        return null;
     }
-  }
+}

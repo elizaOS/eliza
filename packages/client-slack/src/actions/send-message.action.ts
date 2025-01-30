@@ -1,4 +1,5 @@
 import type { SlackClientContext, SlackMessage } from "../types/slack-types";
+import { elizaLogger } from "@elizaos/core";
 
 // Cache to store recently sent messages
 const recentMessages = new Map<string, { text: string; timestamp: number }>();
@@ -41,7 +42,7 @@ export class SendMessageAction {
         try {
             // Skip duplicate messages
             if (this.isDuplicate(message)) {
-                console.debug("Skipping duplicate message:", message.text);
+                elizaLogger.debug("Skipping duplicate message:", message.text);
                 return true; // Return true to indicate "success" since we're intentionally skipping
             }
 

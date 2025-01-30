@@ -1,5 +1,5 @@
 import { SolanaAgentKit } from "solana-agent-kit";
-import { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { getWalletKey } from "./keypairUtils";
 import bs58 from "bs58";
 

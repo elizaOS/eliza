@@ -6,7 +6,7 @@ export const isPrincipalText = (text: string | undefined): boolean => {
     try {
         Principal.fromText(text);
         return true;
-    } catch (e) {
+    } catch {
         return false;
     }
 };

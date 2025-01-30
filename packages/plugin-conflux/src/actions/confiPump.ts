@@ -159,7 +159,7 @@ export const confiPump: Action = {
             },
         ],
     ],
-
+    // eslint-disable-next-line
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         return true; // No extra validation needed
     },
@@ -268,7 +268,7 @@ export const confiPump: Action = {
                     });
                     break;
 
-                case "SELL_TOKEN":
+                case "SELL_TOKEN": {
                     if (!isPumpSellContent(contentObject)) {
                         elizaLogger.error(
                             "Invalid PumpSellContent: ",
@@ -308,6 +308,7 @@ export const confiPump: Action = {
                     });
                     value = 0n;
                     break;
+                }
             }
 
             // Simulate and execute transaction

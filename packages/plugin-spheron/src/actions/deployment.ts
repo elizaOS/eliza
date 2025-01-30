@@ -21,33 +21,71 @@ import type { DeploymentContent } from "../types/index.ts";
 import { AVAILABLE_GPU_MODELS } from "../utils/constants.ts";
 import { DEPLOYMENT_TEMPLATES } from "../utils/template.ts";
 
-function isDeploymentContent(content: any): content is DeploymentContent {
+function isDeploymentContent(content: unknown): content is DeploymentContent {
     elizaLogger.debug("Content for deployment operation:", content);
+
+    // First, check if content is an object
+    if (typeof content !== 'object' || content === null) {
+        return false;
+    }
+
+    // Type assertion to access properties safely
+    const contentObj = content as Record<string, unknown>;
+
+    // Check operation property
     if (
-        typeof content.operation !== "string" ||
-        !["create", "update", "close"].includes(content.operation)
+        typeof contentObj.operation !== "string" ||
+        !["create", "update", "close"].includes(contentObj.operation)
     ) {
         return false;
     }
 
-    switch (content.operation) {
+    // Check properties based on operation
+    switch (contentObj.operation) {
         case "create":
             return (
-                typeof content.template === "string" &&
-                typeof content.customizations === "object"
+                typeof contentObj.template === "string" &&
+                typeof contentObj.customizations === "object"
             );
         case "update":
             return (
-                typeof content.leaseId === "string" &&
-                typeof content.template === "string" &&
-                typeof content.customizations === "object"
+                typeof contentObj.leaseId === "string" &&
+                typeof contentObj.template === "string" &&
+                typeof contentObj.customizations === "object"
             );
         case "close":
-            return typeof content.leaseId === "string";
+            return typeof contentObj.leaseId === "string";
         default:
             return false;
     }
 }
+// function isDeploymentContent(content: any): content is DeploymentContent {
+//     elizaLogger.debug("Content for deployment operation:", content);
+//     if (
+//         typeof content.operation !== "string" ||
+//         !["create", "update", "close"].includes(content.operation)
+//     ) {
+//         return false;
+//     }
+
+//     switch (content.operation) {
+//         case "create":
+//             return (
+//                 typeof content.template === "string" &&
+//                 typeof content.customizations === "object"
+//             );
+//         case "update":
+//             return (
+//                 typeof content.leaseId === "string" &&
+//                 typeof content.template === "string" &&
+//                 typeof content.customizations === "object"
+//             );
+//         case "close":
+//             return typeof content.leaseId === "string";
+//         default:
+//             return false;
+//     }
+// }
 
 // Generate template descriptions dynamically
 const templateDescriptions = Object.entries(DEPLOYMENT_TEMPLATES)
@@ -157,11 +195,12 @@ export default {
     ) => {
         elizaLogger.log("Starting DEPLOYMENT_OPERATION handler...");
 
-        // Initialize or update state
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
+        // Create local variable for state manipulation
+        let currentState = state;
+        if (!currentState) {
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(currentState);
         }
 
         // Filter only "just now" and last couple of user messages
@@ -175,7 +214,7 @@ export default {
 
         // Compose deployment context
         const deploymentContext = composeContext({
-            state,
+            state: currentState,
             template: deploymentTemplate,
         });
 

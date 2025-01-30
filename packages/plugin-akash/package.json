@@ -1,50 +1,53 @@
 {
-    "name": "@elizaos/plugin-akash",
-    "version": "0.1.9-alpha.1",
-    "description": "Akash Network Plugin for Eliza",
-    "main": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "type": "module",
-    "scripts": {
-        "build": "tsup",
-        "dev": "tsup --watch",
-        "clean": "rm -rf dist",
-        "lint:fix": "eslint . --fix",
-        "test": "vitest",
-        "test:watch": "vitest watch",
-        "test:coverage": "vitest run --coverage",
-        "test:ui": "vitest --ui"
-    },
-    "dependencies": {
-        "@akashnetwork/akash-api": "^1.4.0",
-        "@akashnetwork/akashjs": "0.10.1",
-        "@cosmjs/proto-signing": "^0.31.3",
-        "@cosmjs/stargate": "0.31.3",
-        "@elizaos/core": "workspace:*",
-        "@types/js-yaml": "^4.0.9",
-        "axios": "^1.7.9",
-        "dotenv": "^16.4.1",
-        "jsrsasign": "^11.1.0",
-        "node-fetch": "^2.7.0",
-        "zod": "^3.22.4"
-    },
-    "devDependencies": {
-        "@types/dotenv": "^8.2.0",
-        "@types/jest": "^29.5.11",
-        "@types/js-yaml": "^4.0.9",
-        "@types/node": "^20.10.5",
-        "@typescript-eslint/eslint-plugin": "^6.15.0",
-        "@typescript-eslint/parser": "^6.15.0",
-        "@vitest/coverage-v8": "^0.34.6",
-        "@vitest/ui": "^0.34.6",
-        "eslint": "^9.16.0",
-        "tsup": "^8.0.1",
-        "typescript": "^5.3.3",
-        "vite": "^5.0.10",
-        "vite-tsconfig-paths": "^4.2.2",
-        "vitest": "^0.34.6"
-    },
-    "peerDependencies": {
-        "@elizaos/core": "workspace:*"
-    }
+	"name": "@elizaos/plugin-akash",
+	"version": "0.1.9",
+	"description": "Akash Network Plugin for Eliza",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"scripts": {
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"clean": "rm -rf dist",
+		"lint:fix": "eslint . --fix",
+		"test": "vitest",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
+		"test:ui": "vitest --ui"
+	},
+	"dependencies": {
+		"@akashnetwork/akash-api": "^1.4.0",
+		"@akashnetwork/akashjs": "0.10.1",
+		"@cosmjs/proto-signing": "^0.31.3",
+		"@cosmjs/stargate": "0.31.3",
+		"@elizaos/core": "workspace:*",
+		"@types/js-yaml": "^4.0.9",
+		"zod": "^3.22.4",
+		"axios": "^1.7.9",
+		"dotenv": "^16.4.1",
+		"jsrsasign": "^11.1.0",
+		"node-fetch": "^2.7.0",
+		"chalk": "^5.3.0",
+		"cli-table3": "^0.6.3",
+		"ora": "^8.0.1"
+	},
+	"devDependencies": {
+		"@types/dotenv": "^8.2.0",
+		"@types/jest": "^29.5.11",
+		"@types/js-yaml": "^4.0.9",
+		"@types/node": "^20.10.5",
+		"@typescript-eslint/eslint-plugin": "^6.15.0",
+		"@typescript-eslint/parser": "^6.15.0",
+		"@vitest/coverage-v8": "^0.34.6",
+		"@vitest/ui": "^0.34.6",
+		"eslint": "^9.16.0",
+		"tsup": "^8.0.1",
+		"typescript": "^5.3.3",
+		"vite": "^5.0.10",
+		"vite-tsconfig-paths": "^4.2.2",
+		"vitest": "^0.34.6"
+	},
+	"peerDependencies": {
+		"@elizaos/core": "workspace:*"
+	}
 }

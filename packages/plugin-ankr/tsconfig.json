@@ -1,0 +1,40 @@
+{
+    "extends": "../../tsconfig.json",
+    "compilerOptions": {
+        "outDir": "dist",
+        "rootDir": "src",
+        "module": "ESNext",
+        "target": "ESNext",
+        "lib": [
+            "ESNext",
+            "DOM"
+        ],
+        "moduleResolution": "Bundler",
+        "allowImportingTsExtensions": true,
+        "isolatedModules": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "declaration": true,
+        "sourceMap": true,
+        "types": [
+            "vitest/globals",
+            "node"
+        ],
+        "baseUrl": ".",
+        "preserveSymlinks": true,
+        "allowSyntheticDefaultImports": true
+    },
+    "include": [
+        "src/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "test",
+        "../../packages/core/**/*",
+        "src/examples/**/*",
+        "extra/**/*",
+        "extra/hyperbolic_agentkit_TS/**/*"
+    ]
+}

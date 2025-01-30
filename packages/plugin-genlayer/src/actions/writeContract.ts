@@ -41,8 +41,8 @@ export const writeContractAction: Action = {
     handler: async (
         runtime: IAgentRuntime,
         message: Memory,
-        state: State,
-        _options: any,
+        _state: State,
+        _options: Record<string, unknown>,
         callback: HandlerCallback
     ) => {
         elizaLogger.info("Starting write contract action");

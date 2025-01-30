@@ -1,45 +1,48 @@
 {
-    "name": "@elizaos/plugin-asterai",
-    "version": "0.1.9-alpha.1",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@asterai/client": "0.1.6",
-        "@elizaos/core": "workspace:*",
-        "bignumber.js": "9.1.2",
-        "bs58": "6.0.0",
-        "elliptic": "6.6.1",
-        "node-cache": "5.1.2",
-        "sha3": "2.1.4",
-        "uuid": "11.0.3",
-        "zod": "3.23.8"
-    },
-    "devDependencies": {
-        "@types/elliptic": "6.4.18",
-        "@types/uuid": "10.0.0",
-        "tsup": "8.3.5"
-    },
-    "scripts": {
-        "lines": "find . \\( -name '*.cdc' -o -name '*.ts' \\) -not -path '*/node_modules/*' -not -path '*/tests/*' -not -path '*/deps/*' -not -path '*/dist/*' -not -path '*/imports*' | xargs wc -l",
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch"
-    },
-    "peerDependencies": {
-        "whatwg-url": "7.1.0"
-    }
+	"name": "@elizaos/plugin-asterai",
+	"version": "0.1.9",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@asterai/client": "0.1.6",
+		"@elizaos/core": "workspace:*",
+		"bignumber.js": "9.1.2",
+		"bs58": "6.0.0",
+		"elliptic": "6.6.1",
+		"node-cache": "5.1.2",
+		"sha3": "2.1.4",
+		"uuid": "11.0.3",
+		"zod": "3.23.8"
+	},
+	"devDependencies": {
+		"@types/elliptic": "6.4.18",
+		"@types/uuid": "10.0.0",
+		"tsup": "8.3.5",
+		"vitest": "^1.2.1"
+	},
+	"scripts": {
+		"lines": "find . \\( -name '*.cdc' -o -name '*.ts' \\) -not -path '*/node_modules/*' -not -path '*/tests/*' -not -path '*/deps/*' -not -path '*/dist/*' -not -path '*/imports*' | xargs wc -l",
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"peerDependencies": {
+		"whatwg-url": "7.1.0"
+	}
 }

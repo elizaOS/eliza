@@ -12,7 +12,7 @@ import type {
     ICosmosWalletChains,
 } from "../../../shared/interfaces.ts";
 import { getAvailableAssets } from "../../../shared/helpers/cosmos-assets.ts";
-import { IBCTransferActionParams } from "../types.ts";
+import type { IBCTransferActionParams } from "../types.ts";
 
 export class IBCTransferAction implements ICosmosActionService {
     constructor(private cosmosWalletChains: ICosmosWalletChains) {

@@ -35,7 +35,7 @@ eliza로 뭘 할 수 있나요?
 
 ## 캐릭터 파일 편집
 
-- 파일 `src/core/defaultcharacter.ts ` - 그것을 수정 할 수 있다
+- 파일 `packages/core/src/defaultCharacter.ts ` - 그것을 수정 할 수 있다
 - 사용하셔도됩니다 `node --loader ts-node/esm src/index.ts --characters="path/to/your/character.json"` 여러 로봇을 동시에 실행하여 캐릭터를 불러옵니다.
 
 아이디와 캐릭터 파일 설정이 완료되었다면, 다음 명령줄을 입력하여 로봇을 실행시키십시오:

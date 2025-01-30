@@ -26,7 +26,7 @@ export class WalletProvider {
                 throw new Error("Invalid private key length");
             }
             return Ed25519KeyIdentity.fromSecretKey(privateKeyBytes);
-        } catch (error) {
+        } catch {
             throw new Error("Failed to create ICP identity");
         }
     };
@@ -66,8 +66,8 @@ export class WalletProvider {
 export const icpWalletProvider: Provider = {
     async get(
         runtime: IAgentRuntime,
-        message: Memory,
-        state?: State
+        _message: Memory,
+        _state?: State
     ): Promise<any> {
         try {
             const privateKey = runtime.getSetting(

@@ -8,6 +8,7 @@ import {
     type Action,
     composeContext,
     generateObject,
+    elizaLogger,
 } from "@elizaos/core";
 import {
     getQuaiAccount,
@@ -45,7 +46,8 @@ export default {
         "SEND_QUAI",
         "PAY_ON_QUAI",
     ],
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
+    // eslint-disable-next-line
+    validate: async (runtime: IAgentRuntime, _message: Memory) => {
         return validateSettings(runtime);
     },
     description:
@@ -57,18 +59,16 @@ export default {
         _options: { [key: string]: unknown },
         callback?: HandlerCallback
     ): Promise<boolean> => {
-        console.log("Starting TRANSFER_TOKEN handler...");
+        elizaLogger.log("Starting TRANSFER_TOKEN handler...");
 
         // Initialize or update state
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
-        } else {
-            state = await runtime.updateRecentMessageState(state);
-        }
+        const currentState = !state 
+            ? await runtime.composeState(message) 
+            : await runtime.updateRecentMessageState(state);
 
         // Compose transfer context
         const transferContext = composeContext({
-            state,
+            state: currentState,
             template: transferTemplate,
         });
 
@@ -79,11 +79,11 @@ export default {
             modelClass: ModelClass.MEDIUM,
         });
 
-        console.log("Transfer content:", content);
+        elizaLogger.debug("Transfer content:", content);
 
         // Validate transfer content
         if (!isTransferContent(content)) {
-            console.error("Invalid content for TRANSFER_TOKEN action.");
+            elizaLogger.error("Invalid content for TRANSFER_TOKEN action.");
             if (callback) {
                 callback({
                     text: "Not enough information to transfer tokens. Please respond with token address, recipient, and amount.",
@@ -95,44 +95,38 @@ export default {
 
         try {
             const account = getQuaiAccount(runtime);
-            const amount =  formatUnits(content.amount, "wei");
+            const amount = formatUnits(content.amount, "wei");
 
-            var txObj: TransactionRequest = {};
-            if (content.tokenAddress) {
-                // TODO: transfer QRC20s
-            } else {
-                txObj = {
-                    to:  content.recipient,
+            // Declare transaction object at function scope
+            const txObj: TransactionRequest = content.tokenAddress 
+                ? {} // TODO: transfer QRC20s
+                : {
+                    to: content.recipient,
                     value: amount,
                     from: account.address,
                 };
 
-                console.log(
-                    "Transferring",
-                    amount,
-                    "QUAI",
-                    "to",
-                    content.recipient
-                );
-            }
-
-            const tx = await account.sendTransaction(txObj)
-
-            console.log(
-                "Transfer completed successfully! tx: " + tx.hash
+            elizaLogger.log(
+                "Transferring",
+                amount,
+                "QUAI",
+                "to",
+                content.recipient
             );
+
+            const tx = await account.sendTransaction(txObj);
+
+            elizaLogger.success(`Transfer completed successfully! tx: ${tx.hash}`);
             if (callback) {
                 callback({
-                    text:
-                        "Transfer completed successfully! tx: " +
-                        tx.hash,
+                    text: `Transfer completed successfully! tx: ${tx.hash}`,
                     content: {},
                 });
             }
 
             return true;
         } catch (error) {
-            console.error("Error during token transfer:", error);
+            elizaLogger.error("Error during token transfer:", error);
             if (callback) {
                 callback({
                     text: `Error transferring tokens: ${error.message}`,

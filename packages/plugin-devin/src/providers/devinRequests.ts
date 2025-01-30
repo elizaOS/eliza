@@ -1,4 +1,4 @@
-import { IAgentRuntime, elizaLogger } from "@elizaos/core";
+import { type IAgentRuntime, elizaLogger } from "@elizaos/core";
 import fetch from "node-fetch";
 
 const API_BASE = "https://api.devin.ai/v1";

@@ -34,7 +34,7 @@
 
 ### Edite o arquivo de personagem
 
-- Confira o arquivo `src/core/defaultCharacter.ts` - você pode modificá-lo
+- Confira o arquivo `packages/core/src/defaultCharacter.ts` - você pode modificá-lo
 - Você também pode carregar personagens com o comando `pnpm start --characters="path/to/your/character.json"` e executar múltiplos bots ao mesmo tempo.
 
 Após configurar o arquivo .env e o arquivo de personagem, você pode iniciar o bot com o seguinte comando:

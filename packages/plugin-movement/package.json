@@ -1,29 +1,29 @@
 {
-    "name": "@elizaos/plugin-movement",
-    "version": "0.1.9-alpha.1",
-    "main": "dist/index.js",
-    "type": "module",
-    "types": "dist/index.d.ts",
-    "description": "Movement Network Plugin for Eliza",
-    "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@aptos-labs/ts-sdk": "^1.26.0",
-        "bignumber": "1.1.0",
-        "bignumber.js": "9.1.2",
-        "node-cache": "5.1.2"
-    },
-    "devDependencies": {
-        "tsup": "8.3.5",
-        "vitest": "2.1.4",
-        "typescript": "^5.0.0"
-    },
-    "scripts": {
-        "build": "tsup",
-        "dev": "tsup --watch",
-        "test": "vitest run"
-    },
-    "peerDependencies": {
-        "form-data": "4.0.1",
-        "whatwg-url": "7.1.0"
-    }
+	"name": "@elizaos/plugin-movement",
+	"version": "0.1.9",
+	"main": "dist/index.js",
+	"type": "module",
+	"types": "dist/index.d.ts",
+	"description": "Movement Network Plugin for Eliza",
+	"dependencies": {
+		"@aptos-labs/ts-sdk": "^1.26.0",
+		"@elizaos/core": "workspace:*",
+		"bignumber": "1.1.0",
+		"bignumber.js": "9.1.2",
+		"node-cache": "5.1.2"
+	},
+	"devDependencies": {
+		"tsup": "8.3.5",
+		"typescript": "^5.0.0",
+		"vitest": "2.1.4"
+	},
+	"scripts": {
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"test": "vitest run"
+	},
+	"peerDependencies": {
+		"form-data": "4.0.1",
+		"whatwg-url": "7.1.0"
+	}
 }

@@ -34,7 +34,7 @@
 
 ### Edite fișierul de personaj
 
--   Verificați fișierul `src/core/defaultCharacter.ts` – îl puteți modifica
+-   Verificați fișierul `packages/core/src/defaultCharacter.ts` – îl puteți modifica
 -   De asemenea, puteți încărca personaje cu comanda `pnpm start --characters="path/to/your/character.json"` și rula mai mulți boți în același timp.
 
 După ce ați configurat fișierul .env și fișierul de personaj, puteți porni botul cu următoarea comandă:

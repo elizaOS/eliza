@@ -1,0 +1,20 @@
+{
+    "name": "elizaos-bug-hunter",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "lint": "biome lint .",
+        "lint:fix": "biome check --apply .",
+        "format": "biome format .",
+        "format:fix": "biome format --write .",
+        "check": "biome check"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "1.9.4",
+        "@types/node": "^20.11.5"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}

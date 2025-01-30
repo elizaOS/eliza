@@ -67,6 +67,33 @@ describe("Parsing Module", () => {
             ]);
         });
 
+        it("should handle single quote", () => {
+            let input = "```json\n['item1', 'item2', 'item3']\n```";
+            expect(parseJsonArrayFromText(input)).toEqual([
+                "item1",
+                "item2",
+                "item3",
+            ]);
+            input = '```json\n["A\'s item", "B\'s item", "C\'s item"]\n```';
+            expect(parseJsonArrayFromText(input)).toEqual([
+                "A's item",
+                "B's item",
+                "C's item",
+            ]);
+            input = '["A\'s item", "B\'s item", "C\'s item"]';
+            expect(parseJsonArrayFromText(input)).toEqual([
+                "A's item",
+                "B's item",
+                "C's item",
+            ]);
+            input = `[
+                'MANAGE_POSITIONS_RETRIGGER_EVALUATOR'
+              ]`;
+            expect(parseJsonArrayFromText(input)).toEqual([
+                "MANAGE_POSITIONS_RETRIGGER_EVALUATOR",
+            ]);
+        });
+
         it("should handle empty arrays", () => {
             expect(parseJsonArrayFromText("```json\n[]\n```")).toEqual([]);
             expect(parseJsonArrayFromText("[]")).toEqual(null);

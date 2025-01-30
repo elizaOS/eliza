@@ -53,10 +53,8 @@ export class WalletProvider {
         this.address = account.address;
 
         const config: StoryConfig = {
-            // @ts-ignore
             account: account as Account,
-            // @ts-ignore
-            transport: hwttp(DEFAULT_CHAIN_CONFIGS.odyssey.rpcUrl) as Transport,
+            transport: http(DEFAULT_CHAIN_CONFIGS.odyssey.rpcUrl) as Transport,
             chainId: "odyssey",
         };
         this.storyClient = StoryClient.newClient(config);
@@ -114,8 +112,10 @@ export class WalletProvider {
 export const storyWalletProvider: Provider = {
     async get(
         runtime: IAgentRuntime,
-        message: Memory,
-        state?: State
+// eslint-disable-next-line
+        _message: Memory,
+// eslint-disable-next-line
+        _state?: State
     ): Promise<string | null> {
         // Check if the user has a Story wallet
         if (!runtime.getSetting("STORY_PRIVATE_KEY")) {

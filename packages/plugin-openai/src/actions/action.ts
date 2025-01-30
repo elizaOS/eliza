@@ -1,8 +1,8 @@
-import axios, { AxiosRequestConfig } from "axios";
+import axios, { type AxiosRequestConfig } from "axios";
 
 export const DEFAULT_MODEL = process.env.OPENAI_DEFAULT_MODEL || "text-davinci-003";
-export const DEFAULT_MAX_TOKENS = parseInt(process.env.OPENAI_MAX_TOKENS || "200", 10);
-export const DEFAULT_TEMPERATURE = parseFloat(process.env.OPENAI_TEMPERATURE || "0.7");
+export const DEFAULT_MAX_TOKENS = Number.parseInt(process.env.OPENAI_MAX_TOKENS || "200", 10);
+export const DEFAULT_TEMPERATURE = Number.parseFloat(process.env.OPENAI_TEMPERATURE || "0.7");
 export const DEFAULT_TIMEOUT = 30000; // 30 seconds
 
 /**
@@ -39,9 +39,27 @@ export function validateApiKey(): string {
  * @returns The response data.
  * @throws Will throw an error for request failures or rate limits.
  */
+
+export interface OpenAIRequestData {
+    model: string;
+    prompt: string;
+    max_tokens: number;
+    temperature: number;
+    [key: string]: unknown;
+}
+
+export interface OpenAIEditRequestData {
+    model: string;
+    input: string;
+    instruction: string;
+    max_tokens: number;
+    temperature: number;
+    [key: string]: unknown;
+}
+
 export async function callOpenAiApi<T>(
     url: string,
-    data: any,
+    data: OpenAIRequestData | OpenAIEditRequestData,
     apiKey: string,
 ): Promise<T> {
     try {
@@ -55,7 +73,7 @@ export async function callOpenAiApi<T>(
         const response = await axios.post<T>(url, data, config);
         return response.data;
     } catch (error) {
-        console.error("Error communicating with OpenAI API:", error.message);
+        console.error("Error communicating with OpenAI API:", error instanceof Error ? error.message : String(error));
         if (axios.isAxiosError(error)) {
             if (error.response?.status === 429) {
                 throw new Error("Rate limit exceeded. Please try again later.");
@@ -73,12 +91,13 @@ export async function callOpenAiApi<T>(
  * @param temperature - The sampling temperature.
  * @returns The request payload for OpenAI completions.
  */
+
 export function buildRequestData(
     prompt: string,
     model: string = DEFAULT_MODEL,
     maxTokens: number = DEFAULT_MAX_TOKENS,
     temperature: number = DEFAULT_TEMPERATURE,
-): Record<string, any> {
+): OpenAIRequestData {
     return {
         model,
         prompt,

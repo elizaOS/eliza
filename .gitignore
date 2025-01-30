@@ -12,6 +12,8 @@ packages/plugin-buttplug/intiface-engine
 node-compile-cache
 
 .idea
+.vscode
+.zed
 .DS_Store
 
 dist/
@@ -42,7 +44,11 @@ timeline_cache.json
 
 *.sqlite
 
-characters/
+# Character configurations
+characters/**/secrets.json
+characters/**/*.env
+characters/**/*.key
+characters/**/private/
 
 packages/core/src/providers/cache
 packages/core/src/providers/cache/*
@@ -65,6 +71,23 @@ agent/content
 eliza.manifest
 eliza.manifest.sgx
 eliza.sig
+
 packages/plugin-nvidia-nim/extra
 packages/plugin-nvidia-nim/old_code
 packages/plugin-nvidia-nim/docs
+
+# Edriziai specific ignores
+characters/edriziai-info/secrets.json
+
+# Bug Hunter logs and checkpoints
+scripts/bug_hunt/logs/
+scripts/bug_hunt/logs/*.log
+scripts/bug_hunt/checkpoints/
+scripts/bug_hunt/checkpoints/*.json
+scripts/bug_hunt/reports/
+scripts/bug_hunt/reports/*.md
+
+lit-config.json
+
+# Configuration to exclude the extra and local_docs directories
+extra

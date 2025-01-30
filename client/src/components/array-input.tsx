@@ -13,8 +13,8 @@ export default function ArrayInput({
             <Label>{title}</Label>
             <div className="p-2 bg-card rounded-md border">
                 <div className="space-y-2">
-                    {data?.map((b: string, idx: number) => (
-                        <Input value={b} key={idx} className="bg-background" />
+                    {data?.map((b: string, _idx: number) => (
+                        <Input value={b} key={b} className="bg-background" />
                     ))}
                 </div>
             </div>

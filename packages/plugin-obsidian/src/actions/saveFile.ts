@@ -42,7 +42,7 @@ export const saveFileAction: Action = {
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        options: any,
+        _options: any,
         callback?: HandlerCallback
     ) => {
         elizaLogger.info("Starting save file handler");
@@ -50,16 +50,23 @@ export const saveFileAction: Action = {
 
         try {
             // Initialize or update state for context generation
+            // if (!state) {
+            //     state = (await runtime.composeState(message)) as State;
+            // } else {
+            //     state = await runtime.updateRecentMessageState(state);
+            // }
+            let currentState: State;
             if (!state) {
-                state = (await runtime.composeState(message)) as State;
+                currentState = (await runtime.composeState(message)) as State;
             } else {
-                state = await runtime.updateRecentMessageState(state);
+                currentState = await runtime.updateRecentMessageState(state);
             }
 
             const context = composeContext({
-                state,
+                state: currentState,
                 template: fileTemplate(message.content.text),
             });
+
 
             const fileContext = await generateObject({
                 runtime,

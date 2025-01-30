@@ -10,7 +10,7 @@ import {
 } from "@elizaos/core";
 import pinataSDK from "@pinata/sdk";
 import type { RegisterIpResponse } from "@story-protocol/core-sdk";
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";  // Added node: protocol
 import { uploadJSONToIPFS } from "../functions/uploadJSONToIPFS";
 import { WalletProvider } from "../providers/wallet";
 import { registerIPTemplate } from "../templates";
@@ -79,20 +79,21 @@ export const registerIPAction = {
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        options: any,
+        _options: Record<string, unknown>,
         callback?: HandlerCallback
     ): Promise<boolean> => {
         elizaLogger.log("Starting REGISTER_IP handler...");
 
         // initialize or update state
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
+        let currentState = state;
+        if (!currentState) {
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(currentState);
         }
 
         const registerIPContext = composeContext({
-            state,
+            state: currentState,
             template: registerIPTemplate,
         });
 

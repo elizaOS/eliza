@@ -1,0 +1,19 @@
+{
+    "name": "@elizaos/plugin-sample-with-di",
+    "version": "0.1.9-alpha.1",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-di": "workspace:*"
+    },
+    "devDependencies": {
+        "tsup": "8.3.5",
+        "@types/node": "^20.0.0"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch"
+    }
+}

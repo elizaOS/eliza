@@ -1,41 +1,41 @@
 {
-    "name": "@elizaos/plugin-starknet",
-    "version": "0.1.9-alpha.1",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-trustdb": "workspace:*",
-        "@avnu/avnu-sdk": "2.1.1",
-        "@uniswap/sdk-core": "6.0.0",
-        "unruggable-sdk": "1.4.0",
-        "@unruggable_starknet/core": "0.1.0",
-        "starknet": "6.18.0",
-        "tsup": "8.3.5",
-        "vitest": "2.1.5"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
-        "test:watch": "vitest"
-    },
-    "peerDependencies": {
-        "whatwg-url": "7.1.0"
-    }
+	"name": "@elizaos/plugin-starknet",
+	"version": "0.1.9",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@avnu/avnu-sdk": "2.1.1",
+		"@elizaos/core": "workspace:*",
+		"@elizaos/plugin-trustdb": "workspace:*",
+		"@uniswap/sdk-core": "6.0.0",
+		"@unruggable_starknet/core": "0.1.0",
+		"starknet": "6.18.0",
+		"tsup": "8.3.5",
+		"unruggable-sdk": "1.4.0",
+		"vitest": "2.1.5"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"peerDependencies": {
+		"whatwg-url": "7.1.0"
+	}
 }

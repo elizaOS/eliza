@@ -1,5 +1,3 @@
-
-
 export const GoPlusType = {
     EVMTOKEN_SECURITY_CHECK: "EVMTOKEN_SECURITY_CHECK",
     SOLTOKEN_SECURITY_CHECK: "SOLTOKEN_SECURITY_CHECK",
@@ -15,10 +13,10 @@ export const GoPlusType = {
     URL_SECURITY_CHECK: "URL_SECURITY_CHECK",
 } as const;
 
-export type GoPlusTypeType = (typeof GoPlusTypeEnum)[keyof typeof GoPlusType];
+export type GoPlusTypeType = (typeof GoPlusType)[keyof typeof GoPlusType];
 
 export type GoPlusParamType = {
-    "type": GoPlusType,
+    "type": (typeof GoPlusType)[keyof typeof GoPlusType],
     "network"?: string,
     "token"?: string,
     "contract"?: string,

@@ -1,0 +1,21 @@
+{
+    "name": "@elizaos/plugin-udio",
+    "version": "0.1.9",
+    "description": "Suno AI Music Generation Plugin for Eliza",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsup",
+        "test": "jest"
+    },
+    "dependencies": {
+        "@elizaos/core": "^0.1.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0",
+        "@types/node": "^16.0.0",
+        "jest": "^27.0.0",
+        "@types/jest": "^27.0.0",
+        "tsup": "^7.2.0"
+    }
+}

@@ -1,0 +1,30 @@
+{
+    "name": "@elizaos/plugin-solana-v2",
+    "version": "0.1.9",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-tee": "workspace:*",
+        "@orca-so/whirlpools": "^1.0.2",
+        "@orca-so/whirlpools-core": "^1.0.2",
+        "@orca-so/whirlpools-client": "1.0.2",
+        "@solana-program/compute-budget": "^0.6.1",
+        "@solana-program/system": "^0.6.2",
+        "@solana-program/token-2022": "^0.3.1",
+        "@solana/codecs": "^2.0.0",
+        "@solana/web3.js": "^2.0.0",
+        "@types/bs58": "^4.0.4",
+        "bs58": "^6.0.0"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch"
+    },
+    "devDependencies": {
+        "@types/node": "^22.8.7",
+        "tsup": "8.3.5",
+        "vitest": "2.1.4"
+    }
+}

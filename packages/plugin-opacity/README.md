@@ -66,7 +66,7 @@ console.log("Proof is valid:", isValid);
 ## Features
 
 - Implements `IVerifiableInferenceAdapter` interface for standardized verifiable inference
-- Support for multiple AI model provider, in the future may be expanded to accomdate for all gateways [supported by CloudFlare](https://developers.cloudflare.com/ai-gateway/providers/)
+- Support for multiple AI model provider, in the future may be expanded to accommodate for all gateways [supported by CloudFlare](https://developers.cloudflare.com/ai-gateway/providers/)
 - Customizable options for each request
 - Built-in proof verification
 

@@ -1,7 +1,6 @@
 // src/actions/sendGif.ts
 
 import {
-    ActionExample,
     composeContext,
     type Content,
     elizaLogger,
@@ -17,9 +16,7 @@ import axios from "axios";
 import { debugLog } from "../utils/debug";
 import { validateGiphyConfig } from "../environment";
 import type { GifResponse, Gif } from "../types";
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
+import crypto from "node:crypto";
 
 const sendGifTemplate = `Given the message, determine if a gif should be sent based on the content.
 If yes, extract relevant keywords or phrases to use as search terms for the gif.
@@ -51,7 +48,7 @@ export interface SendGifContent extends Content {
 export default {
     name: "SEND_GIF",
     similes: ["REPLY_WITH_GIF", "GIF_RESPONSE"],
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
+    validate: async (runtime: IAgentRuntime, _message: Memory) => {
         elizaLogger.log("🔄 Validating Giphy configuration...");
         try {
             const config = await validateGiphyConfig(runtime);
@@ -72,18 +69,19 @@ export default {
     ): Promise<boolean> => {
         elizaLogger.log("🚀 Starting Giphy SEND_GIF handler...");
 
-        if (!state) {
+        // Initialize or update state
+        let currentState = state;
+        if (!currentState) {
             elizaLogger.log("Creating new state...");
-            state = (await runtime.composeState(message)) as State;
+            currentState = (await runtime.composeState(message)) as State;
         } else {
             elizaLogger.log("Updating existing state...");
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(currentState);
         }
-
         try {
             elizaLogger.log("Composing gif trigger context...");
             const gifContext = composeContext({
-                state,
+                state: currentState,
                 template: sendGifTemplate,
             });
 

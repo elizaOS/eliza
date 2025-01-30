@@ -1,15 +1,15 @@
 import { injectable, unmanaged } from "inversify";
-import { z } from "zod";
+import type { z } from "zod";
 import {
-    ActionExample,
+    type ActionExample,
     composeContext,
     elizaLogger,
     generateObject,
-    HandlerCallback,
-    IAgentRuntime,
-    Memory,
+    type HandlerCallback,
+    type IAgentRuntime,
+    type Memory,
     ModelClass,
-    State,
+    type State,
 } from "@elizaos/core";
 import {
     type ContentClass,
@@ -47,7 +47,7 @@ export abstract class BaseInjectableAction<T> implements InjectableAction<T> {
     /**
      * Constructor for the base injectable action
      */
-    constructor(@unmanaged() opts: ActionOptions<T>) {
+    constructor(opts: ActionOptions<T>) {
         // Set the action properties
         this.name = opts.name;
         this.similes = opts.similes;

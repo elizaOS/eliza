@@ -1,0 +1,32 @@
+{
+    "name": "@elizaos/plugin-bittensor",
+    "version": "0.1.9",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist"
+    ],
+    "dependencies": {
+        "@elizaos/client-twitter": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache ."
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
+}

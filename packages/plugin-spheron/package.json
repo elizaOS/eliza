@@ -1,20 +1,20 @@
 {
-    "name": "@elizaos/plugin-spheron",
-    "version": "0.1.9-alpha.1",
-    "description": "Spheron Protocol Plugin for Eliza",
-    "main": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "test": "jest"
-    },
-    "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@spheron/protocol-sdk": "^1.0.0",
-        "zod": "^3.22.4"
-    },
-    "devDependencies": {
-        "@types/node": "^20.0.0",
-        "typescript": "^5.0.0"
-    }
+	"name": "@elizaos/plugin-spheron",
+	"version": "0.1.9",
+	"description": "Spheron Protocol Plugin for Eliza",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"test": "jest"
+	},
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"@spheron/protocol-sdk": "^1.0.0",
+		"zod": "^3.22.4"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"typescript": "^5.0.0"
+	}
 }

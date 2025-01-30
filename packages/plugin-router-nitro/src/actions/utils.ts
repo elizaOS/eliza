@@ -1,7 +1,24 @@
 import axios from "axios";
+interface ChainData {
+    name: string;
+    chainId: string;
+    type: string;
+    isLive: boolean;
+    gasToken?: {
+        symbol: string;
+        address: string;
+    };
+}
+
+interface TokenData {
+    address: string;
+    name: string;
+    decimals: number;
+    chainId: number;
+}
 
 export class ChainUtils {
-    private chainData: any[] = [];
+    private chainData: ChainData[] = [];
     private chainNameMappings: { [key: string]: string[] } = {
         'arbitrum': ['arbitrum', 'arbitrum one', 'arb', 'arbitrum mainnet'],
         'ethereum': ['ethereum', 'eth', 'ethereum mainnet', 'ether'],
@@ -39,7 +56,7 @@ export class ChainUtils {
         'arthera': ['arthera', 'arthera mainnet']
     };
 
-    constructor(apiResponse: any) {
+    constructor(apiResponse: { data: ChainData[] }) {
         this.chainData = apiResponse.data;
     }
 
@@ -184,7 +201,7 @@ export class ChainUtils {
     }
 }
 
-export async function fetchChains(): Promise<any> {
+export async function fetchChains(): Promise<{ data: ChainData[] }> {
     const url = 'https://api.nitroswap.routernitro.com/chain?page=0&limit=10000';
 
     try {
@@ -196,9 +213,9 @@ export async function fetchChains(): Promise<any> {
     }
 }
 
-const tokenCache: { [key: string]: any } = {};
+const tokenCache: { [key: string]: TokenData } = {};
 
-export async function fetchTokenConfig(chainId: number, token: string): Promise<any> {
+export async function fetchTokenConfig(chainId: number, token: string): Promise<TokenData> {
     const cacheKey = `${chainId}-${token.toLowerCase()}`;
 
     // Check if the token config is already cached
@@ -225,8 +242,11 @@ export async function fetchTokenConfig(chainId: number, token: string): Promise<
                 };
                 return tokenCache[cacheKey];
             }
-        } catch (error: any) {
-            console.warn(`Error with token symbol "${tokenSymbol}": ${error.message}`);
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error 
+                ? error.message 
+                : 'Unknown error occurred';
+            console.warn(`Error with token symbol "${tokenSymbol}": ${errorMessage}`);
         }
     }
 
@@ -242,22 +262,37 @@ interface PathfinderQuoteParams {
     partnerId: number;
 }
 
-export async function fetchPathfinderQuote(params: PathfinderQuoteParams): Promise<any> {
+export async function fetchPathfinderQuote(params: PathfinderQuoteParams): Promise<unknown> {
     const { fromTokenAddress, toTokenAddress, amount, fromTokenChainId, toTokenChainId, partnerId } = params;
 
-    const pathfinderUrl = `https://api-beta.pathfinder.routerprotocol.com/api/v2/quote` +
-        `?fromTokenAddress=${fromTokenAddress}` +
-        `&toTokenAddress=${toTokenAddress}` +
-        `&amount=${amount}` +
-        `&fromTokenChainId=${fromTokenChainId}` +
-        `&toTokenChainId=${toTokenChainId}` +
-        `&partnerId=${partnerId}`;
+    const pathfinderUrl = `https://api-beta.pathfinder.routerprotocol.com/api/v2/quote?fromTokenAddress=${fromTokenAddress}&toTokenAddress=${toTokenAddress}&amount=${amount}&fromTokenChainId=${fromTokenChainId}&toTokenChainId=${toTokenChainId}&partnerId=${partnerId}`;
 
     try {
         const response = await axios.get(pathfinderUrl);
         return response.data;
     } catch (error) {
-        console.error("Error fetching Pathfinder quote:", error.message);
-        throw new Error(`Pathfinder API call failed: ${error.message}`);
+        console.error("Error fetching Pathfinder quote:", error instanceof Error ? error.message : String(error));
+        throw new Error(`Pathfinder API call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
+
+
+// export async function fetchPathfinderQuote(params: PathfinderQuoteParams): Promise<any> {
+//     const { fromTokenAddress, toTokenAddress, amount, fromTokenChainId, toTokenChainId, partnerId } = params;
+
+//     const pathfinderUrl = `https://api-beta.pathfinder.routerprotocol.com/api/v2/quote` +
+//         `?fromTokenAddress=${fromTokenAddress}` +
+//         `&toTokenAddress=${toTokenAddress}` +
+//         `&amount=${amount}` +
+//         `&fromTokenChainId=${fromTokenChainId}` +
+//         `&toTokenChainId=${toTokenChainId}` +
+//         `&partnerId=${partnerId}`;
+
+//     try {
+//         const response = await axios.get(pathfinderUrl);
+//         return response.data;
+//     } catch (error) {
+//         console.error("Error fetching Pathfinder quote:", error.message);
+//         throw new Error(`Pathfinder API call failed: ${error.message}`);
+//     }
+// }

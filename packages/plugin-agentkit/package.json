@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-agentkit",
-    "version": "0.0.1",
+    "version": "0.1.9",
     "main": "dist/index.js",
     "type": "module",
     "types": "dist/index.d.ts",

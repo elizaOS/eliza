@@ -8,7 +8,17 @@ Dependency Injection is a design pattern that allows you to inject dependencies 
 
 ## Examples of How to build a Plugin using Dependency Injection
 
-Check the [example](./src/_examples/) folder for a simple example of how to create a plugin using Dependency Injection.
+Check the [example](../_examples/plugin-with-di/) folder for a simple example of how to create a plugin using Dependency Injection.
+
+### Where can I use Dependency Injection?
+
+You can use Dependency Injection in any part of your Eliza plugin, including actions, evaluators, providers, services, and clients.
+
+- Actions: Inject services or providers to interact with external APIs or services. [Example](../_examples/plugin-with-di/src/actions/sampleAction.ts)
+- Evaluators: Inject services or providers to evaluate conditions or perform calculations. [Example](../_examples/plugin-with-di/src/evaluators/sampleEvaluator.ts)
+- Providers: Inject services or providers to provide data or resources. [Example](../_examples/plugin-with-di/src/providers/sampleProvider.ts)
+- Services: Inject other services to perform business logic. [Example](../_examples/plugin-with-di/src/services/sampleService.ts)
+- Clients: Inject services to interact with external APIs or services. Lack of examples, but you can refer to the services example.
 
 ## Decorators for Dependency Injection
 
@@ -62,9 +72,9 @@ class SampleClass {
 }
 ```
 
-### From di plugin
+### From di plugin (used for BaseInjectableAction)
 
-DI plugin provides abstract classes that you can extend to create Injectable actions or evaluators.
+DI plugin provides abstract classes that you can extend to create Injectable actions.
 And that provides the following decorators to improve the readability of the code.
 
 #### `@property`
@@ -86,9 +96,14 @@ class SampleActionContent {
 }
 ```
 
-## Abstract Classes for Injaectable Actions and Evaluators
+## Abstract Classes provided by this plugin
 
-This plugin provides abstract classes that you can extend to create Injectable actions or evaluators.
+This plugin provides the following abstract classes that you can extend to create Injectable classes:
+
+- `BaseInjectableAction`
+- `BaseInjectableEvaluator`
+
+Note: This is optional, you can create your own classes to create injectable actions.
 
 ### `BaseInjectableAction`
 
@@ -131,9 +146,3 @@ class SampleAction extends BaseInjectableAction<SampleActionContent> {
     }
 }
 ```
-
-### `BaseInjectableEvaluator`
-
-This abstract class simplify the creation of injectable evaluators.
-
-Please refer to the [sampleEvaluator](./src/_examples/sampleEvaluator.ts) for an example of how to create an evaluator.

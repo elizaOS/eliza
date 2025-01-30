@@ -1,41 +1,41 @@
 {
-    "name": "@elizaos/adapter-sqlite",
-    "version": "0.1.9-alpha.1",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "@types/better-sqlite3": "7.6.12",
-        "better-sqlite3": "11.6.0",
-        "sqlite-vec": "0.1.6"
-    },
-    "devDependencies": {
-        "tsup": "8.3.5",
-        "vitest": "^3.0.2",
-        "@vitest/coverage-v8": "^3.0.2"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
-        "test:coverage": "vitest run --coverage"
-    },
-    "peerDependencies": {
-        "whatwg-url": "7.1.0"
-    }
+	"name": "@elizaos/adapter-sqlite",
+	"version": "0.1.9",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"@types/better-sqlite3": "7.6.12",
+		"better-sqlite3": "11.6.0",
+		"sqlite-vec": "0.1.6"
+	},
+	"devDependencies": {
+		"tsup": "8.3.5",
+		"vitest": "^3.0.2",
+		"@vitest/coverage-v8": "^3.0.2"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage"
+	},
+	"peerDependencies": {
+		"whatwg-url": "7.1.0"
+	}
 }

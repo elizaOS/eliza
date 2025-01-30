@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'node:fs';
 
 const biomePath = './biome.json';
 const content = fs.readFileSync(biomePath, 'utf8');

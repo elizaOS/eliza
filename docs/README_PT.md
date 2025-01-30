@@ -39,7 +39,7 @@ _Como visto dando funcionamento em [@DegenSpartanAI](https://x.com/degenspartana
 
 ### Edite o arquivo de personagem (character file)
 
-- Verifique o arquivo `src/core/defaultCharacter.ts` - você pode modificá-lo
+- Verifique o arquivo `packages/core/src/defaultCharacter.ts` - você pode modificá-lo
 - Você também pode carregar personagens com o comando  `pnpm start --characters="path/to/your/character.json"` e executar vários bots ao mesmo tempo.
 
 Após configurar o arquivo .env e o arquivo de personagem (character file), você pode iniciar o bot com o seguinte comando:
@@ -144,7 +144,7 @@ Certifique-se de que você instalou o CUDA Toolkit, incluindo o cuDNN e cuBLAS.
 ### Rodando localmente
 
 Add XAI_MODEL e defina-o para uma das opções mencionadas em [Run with
-Llama](#run-with-llama) - você pode deixar X_SERVER_URL e XAI_API_KEY em branco, 
+Llama](#run-with-llama) - você pode deixar X_SERVER_URL e XAI_API_KEY em branco,
 pois o modelo será baixado do Hugging Face e consultado localmente.
 
 # Clientes

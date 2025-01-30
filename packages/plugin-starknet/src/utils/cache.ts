@@ -1,6 +1,6 @@
 import NodeCache from "node-cache";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 
 export class Cache {
     private cache: NodeCache;
@@ -24,6 +24,34 @@ export class Cache {
         }
     }
 
+    // private readCacheFromFile<T>(cacheKey: string): T | null {
+    //     const filePath = path.join(this.cacheDir, `${cacheKey}.json`);
+    //     if (fs.existsSync(filePath)) {
+    //         try {
+    //             const fileContent = fs.readFileSync(filePath, "utf-8");
+    //             const parsed = JSON.parse(fileContent);
+    //             const now = Date.now();
+    //             if (now < parsed.expiry) {
+    //                 return parsed.data as T;
+    //             } else {
+    //                 fs.unlinkSync(filePath);
+    //             }
+    //         } catch (error) {
+    //             console.error(
+    //                 `Error reading cache file for key ${cacheKey}:`,
+    //                 error
+    //             );
+    //             // Delete corrupted cache file
+    //             try {
+    //                 fs.unlinkSync(filePath);
+    //             } catch (e) {
+    //                 console.error(`Error deleting corrupted cache file:`, e);
+    //             }
+    //         }
+    //     }
+    //     return null;
+    // }
+
     private readCacheFromFile<T>(cacheKey: string): T | null {
         const filePath = path.join(this.cacheDir, `${cacheKey}.json`);
         if (fs.existsSync(filePath)) {
@@ -33,19 +61,20 @@ export class Cache {
                 const now = Date.now();
                 if (now < parsed.expiry) {
                     return parsed.data as T;
-                } else {
-                    fs.unlinkSync(filePath);
                 }
+                // Fix: Remove unnecessary else clause
+                fs.unlinkSync(filePath);
             } catch (error) {
                 console.error(
                     `Error reading cache file for key ${cacheKey}:`,
                     error
                 );
+                
                 // Delete corrupted cache file
                 try {
                     fs.unlinkSync(filePath);
                 } catch (e) {
-                    console.error(`Error deleting corrupted cache file:`, e);
+                    console.error("Error deleting corrupted cache file:", e);
                 }
             }
         }

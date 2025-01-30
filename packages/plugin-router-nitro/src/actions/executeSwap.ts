@@ -2,11 +2,11 @@ import {
     composeContext,
     elizaLogger,
     generateObjectDeprecated,
-    HandlerCallback,
-    IAgentRuntime,
-    Memory,
+    type HandlerCallback,
+    type IAgentRuntime,
+    type Memory,
     ModelClass,
-    State
+    type State
 } from "@elizaos/core";
 import { swapTemplate } from "./swapTemplate.ts";
 import { ChainUtils, fetchChains, fetchPathfinderQuote, fetchTokenConfig } from "./utils.ts";
@@ -15,13 +15,82 @@ import { checkAndSetAllowance, checkNativeTokenBalance, checkUserBalance, getSwa
 import { ethers } from "ethers";
 import { getBlockExplorerFromChainId, getRpcUrlFromChainId } from "./chains.ts";
 
-export { swapTemplate };
+// Types
+interface PathfinderDestinationAsset {
+    decimals: number;
+}
+
+interface PathfinderDestination {
+    tokenAmount: string;
+    asset: PathfinderDestinationAsset;
+}
+
+interface PathfinderResponse {
+    destination: PathfinderDestination;
+    allowanceTo: string;
+}
+
+interface SwapContent {
+    fromChain: string;
+    toChain: string;
+    fromToken: string;
+    toToken: string;
+    amount: string;
+    toAddress: string;
+}
+
+// Helper functions
+const validateAddress = (address: string): boolean => 
+    typeof address === "string" && address.startsWith("0x") && address.length === 42;
+
+const initializeWallet = async (runtime: IAgentRuntime, rpc: string) => {
+    const privateKey = runtime.getSetting("ROUTER_NITRO_EVM_PRIVATE_KEY");
+    if (!privateKey) {
+        throw new Error("Private key is missing. Please set ROUTER_NITRO_EVM_PRIVATE_KEY in the environment settings.");
+    }
+    const provider = new ethers.JsonRpcProvider(rpc);
+    return new ethers.Wallet(privateKey, provider);
+};
+
+const checkBalances = async (wallet: ethers.Wallet, tokenConfig: any, amountIn: bigint) => {
+    const isNativeToken = tokenConfig.address.toLowerCase() === "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    
+    if (isNativeToken) {
+        const nativeBalance = await checkNativeTokenBalance(wallet, tokenConfig.decimals);
+        if (BigInt(nativeBalance) < amountIn) {
+            throw new Error("Insufficient native token balance");
+        }
+    }
+    
+    const tokenBalance = await checkUserBalance(wallet, tokenConfig.address, tokenConfig.decimals);
+    if (BigInt(tokenBalance) < amountIn) {
+        throw new Error("Insufficient token balance");
+    }
+};
+
+const handleTransaction = async (
+    wallet: ethers.Wallet, 
+    txResponse: any, 
+    blockExplorer: string,
+    callback?: HandlerCallback
+) => {
+    const tx = await wallet.sendTransaction(txResponse.txn);
+    const receipt = await tx.wait();
+    
+    if (!receipt?.status) {
+        throw new Error("Transaction failed");
+    }
+    
+    const txExplorerUrl = blockExplorer ? `${blockExplorer}/tx/${tx.hash}` : tx.hash;
+    const successMessage = `Swap completed successfully! Txn: ${txExplorerUrl}`;
+    
+    callback?.({ text: successMessage });
+    return true;
+};
 
 export const executeSwapAction = {
     name: "ROUTER_NITRO_SWAP",
-    description: "Swaps tokens across chains from the agent's wallet to a recipient wallet. \n" +
-        "By default the senders configured wallets will be used to send the assets to on the destination chains, unless clearly defined otherwise by providing a recipient address.\n" +
-        "The system supports bridging, cross chain swaps and normal swaps.",
+    description: "Swaps tokens across chains from the agent's wallet to a recipient wallet.",
     handler: async (
         runtime: IAgentRuntime,
         message: Memory,
@@ -29,136 +98,82 @@ export const executeSwapAction = {
         _options: { [key: string]: unknown } = {},
         callback?: HandlerCallback
     ): Promise<boolean> => {
-        console.log("Starting ROUTER_NITRO_SWAP handler...");
         elizaLogger.log("Starting ROUTER_NITRO_SWAP handler...");
 
-        // Initialize or update state
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
-        } else {
-            state = await runtime.updateRecentMessageState(state);
-        }
-
-        const swapContext = composeContext({
-            state,
-            template: swapTemplate,
-        });
-
-        const content = await generateObjectDeprecated({
-            runtime,
-            context: swapContext,
-            modelClass: ModelClass.LARGE,
-        });
-        console.log("content: ", content);
-        elizaLogger.log("swap content: ", JSON.stringify(content));
-
-        if (content.toAddress === null || !(typeof content.toAddress === "string" && content.toAddress.startsWith("0x") && content.toAddress.length === 42)) {
-            content.toAddress = runtime.getSetting("ROUTER_NITRO_EVM_ADDRESS");
-        }
-
-        const { fromChain, toChain, fromToken, toToken, amount, toAddress } = content;
-
         try {
-            const apiResponse = await fetchChains();
-            const chainUtils = new ChainUtils(apiResponse);
-            const swapDetails = chainUtils.processChainSwap(fromChain, toChain);
-            elizaLogger.log(`Chain Data Details: ${JSON.stringify(swapDetails)}`);
+            // State initialization
+            const updatedState = state ? 
+                await runtime.updateRecentMessageState(state) : 
+                await runtime.composeState(message);
 
-            let privateKey = runtime.getSetting("ROUTER_NITRO_EVM_PRIVATE_KEY");
-            if (!privateKey) {
-                throw new Error("Private key is missing. Please set ROUTER_NITRO_EVM_PRIVATE_KEY in the environment settings.");
+            // Generate swap content
+            const swapContext = composeContext({ state: updatedState, template: swapTemplate });
+            const content = await generateObjectDeprecated({
+                runtime,
+                context: swapContext,
+                modelClass: ModelClass.LARGE,
+            }) as SwapContent;
+
+            // Validate and set address
+            if (!validateAddress(content.toAddress)) {
+                content.toAddress = runtime.getSetting("ROUTER_NITRO_EVM_ADDRESS");
             }
-            let rpc = getRpcUrlFromChainId(swapDetails.fromChainId);
-            let provider = new ethers.JsonRpcProvider(rpc);
-            let wallet = new ethers.Wallet(privateKey, provider);
-            let address = await wallet.getAddress();
 
+            // Initialize chain data
+            const chainUtils = new ChainUtils(await fetchChains());
+            const swapDetails = chainUtils.processChainSwap(content.fromChain, content.toChain);
+            
             if (!swapDetails.fromChainId || !swapDetails.toChainId) {
-                elizaLogger.log("Invalid chain data details");
-                return false;
+                throw new Error("Invalid chain data details");
             }
-            else {
-                const fromTokenConfig = await fetchTokenConfig(Number(swapDetails.fromChainId), fromToken);
-                const toTokenConfig = await fetchTokenConfig(Number(swapDetails.toChainId), toToken);
-                let amountIn = BigInt(Math.floor(Number(amount) * Math.pow(10, fromTokenConfig.decimals)));
-                console.log(`Amount to swap: ${amountIn}`);
 
-                if (fromTokenConfig.address.toLowerCase() == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee") {
-                    const userBalance = await checkNativeTokenBalance(wallet, fromTokenConfig.decimals);
-           if (BigInt(userBalance) < amountIn) {
-                        elizaLogger.log("Insufficient balance to perform the swap");
-                        callback?.({ text: `Insufficient balance to perform the swap` });
-                        return false;
-                    }
-                }
-                else {
-                    const userBalance = await checkUserBalance(wallet, fromTokenConfig.address, fromTokenConfig.decimals);
-           if (BigInt(userBalance) < amountIn) {
-                        elizaLogger.log("Insufficient balance to perform the swap");
-                        callback?.({ text: `Insufficient balance to perform the swap` });
-                        return false;
-                    }
-                }
+            // Initialize wallet
+            const rpc = getRpcUrlFromChainId(swapDetails.fromChainId);
+            const wallet = await initializeWallet(runtime, rpc);
+            const address = await wallet.getAddress();
 
-                const pathfinderParams = {
-                    fromTokenAddress: fromTokenConfig.address,
-                    toTokenAddress: toTokenConfig.address,
-                    amount: (amountIn).toString(), 
-                    fromTokenChainId: Number(swapDetails.fromChainId),
-                    toTokenChainId: Number(swapDetails.toChainId),
-                    partnerId: 127,
-                };
-                // console.log("Pathfinder Params: ", pathfinderParams);
-       const pathfinderResponse = await fetchPathfinderQuote(pathfinderParams);
-                if (pathfinderResponse) {
-                    let destinationData = pathfinderResponse.destination;
-                    const amountOut = BigInt(destinationData.tokenAmount);
-                    const decimals = Math.pow(10, destinationData.asset.decimals);
-                    const normalizedAmountOut = Number(amountOut) / decimals;
-                    elizaLogger.log(`Quote: ${normalizedAmountOut}`);
+            // Fetch token configurations
+            const [fromTokenConfig, toTokenConfig] = await Promise.all([
+                fetchTokenConfig(Number(swapDetails.fromChainId), content.fromToken),
+                fetchTokenConfig(Number(swapDetails.toChainId), content.toToken)
+            ]);
 
-                     await checkAndSetAllowance(
-                         wallet,
-                         fromTokenConfig.address,
-                         pathfinderResponse.allowanceTo,
-                         amountIn
-                     );
-                    const txResponse = await getSwapTransaction(pathfinderResponse, address, toAddress);
+            // Calculate amount and check balances
+            const amountIn = BigInt(Math.floor(Number(content.amount) * 10 ** fromTokenConfig.decimals));
+            await checkBalances(wallet, fromTokenConfig, amountIn);
 
-                    const tx = await wallet.sendTransaction(txResponse.txn)
-                    try {
-                        await tx.wait();
-                        const blockExplorerUrl = getBlockExplorerFromChainId(swapDetails.fromChainId).url;
-                        if (blockExplorerUrl) {
-                            const txExplorerUrl = `${blockExplorerUrl}/tx/${tx.hash}`;
-                            elizaLogger.log(`Transaction Explorer URL: ${txExplorerUrl}`);
-                            callback?.({
-                                text:
-                                    "Swap completed successfully! Txn: " +
-                                    txExplorerUrl,
-                            });
-                            return true;
+            // Get pathfinder quote and process swap
+            const pathfinderResponse = await fetchPathfinderQuote({
+                fromTokenAddress: fromTokenConfig.address,
+                toTokenAddress: toTokenConfig.address,
+                amount: amountIn.toString(),
+                fromTokenChainId: Number(swapDetails.fromChainId),
+                toTokenChainId: Number(swapDetails.toChainId),
+                partnerId: 127,
+            }) as PathfinderResponse;
 
-                        } else {
-                            callback?.({
-                                text:
-                                    "Swap completed successfully! Txn: " +
-                                    tx.hash,
-                            });
-                        }
-                    }
-                    catch (error) {
-                        console.log(`Transaction failed with error: ${error}`)
-                    }
-                }
+            if (pathfinderResponse) {
+                await checkAndSetAllowance(
+                    wallet,
+                    fromTokenConfig.address,
+                    pathfinderResponse.allowanceTo,
+                    amountIn
+                );
+
+                const txResponse = await getSwapTransaction(pathfinderResponse, address, content.toAddress);
+                const blockExplorer = getBlockExplorerFromChainId(swapDetails.fromChainId).url;
+                
+                return await handleTransaction(wallet, txResponse, blockExplorer, callback);
             }
+
+            return false;
         } catch (error) {
             elizaLogger.log(`Error during executing swap: ${error.message}`);
             callback?.({ text: `Error during swap: ${error.message}` });
             return false;
         }
-        return true;
     },
+
     template: swapTemplate,
     validate: async (runtime: IAgentRuntime) => {
         await validateRouterNitroConfig(runtime);
@@ -273,4 +288,3 @@ export const executeSwapAction = {
     ],
     similes: ["CROSS_CHAIN_SWAP", "CROSS_CHAIN_BRIDGE", "NITRO_BRIDGE", "SWAP", "BRIDGE", "TRANSFER"],
 };
-

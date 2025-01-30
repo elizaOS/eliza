@@ -1,4 +1,11 @@
 import { encodeAbiParameters } from "viem";
+import type { 
+    Address, 
+    WalletClient, 
+    PublicClient, 
+    Hash,
+    Abi 
+} from 'viem';
 import { compileWithImports } from "./generateERC721ContractCode.ts";
 import CustomERC721 from "../contract/CustomERC721.sol"
 
@@ -39,6 +46,7 @@ export async function deployContract({
 }
 
 // 调用 mint 方法
+
 export async function mintNFT({
     walletClient,
     publicClient,
@@ -46,11 +54,12 @@ export async function mintNFT({
     abi,
     recipient,
 }: {
-    contractAddress: any;
+    contractAddress: string;
     abi: any;
     recipient: any;
     walletClient: any;
     publicClient: any;
+
 }) {
     console.log("Minting NFT...");
     const txHash = await walletClient.writeContract({

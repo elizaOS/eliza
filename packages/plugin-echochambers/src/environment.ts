@@ -23,7 +23,7 @@ export async function validateEchoChamberConfig(
     // Validate API URL format
     try {
         new URL(apiUrl);
-    } catch (error) {
+    } catch {
         elizaLogger.error(
             `Invalid ECHOCHAMBERS_API_URL format: ${apiUrl}. Please provide a valid URL.`
         );

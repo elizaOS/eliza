@@ -28,7 +28,7 @@ export const depositBalance = async (
     runtime: IAgentRuntime,
     token: string,
     amount: number
-): Promise<any> => {
+): Promise<unknown> => { // Replace any with unknown
     const sdk = await getSDKInstance(runtime);
     return await sdk.escrow.depositBalance({
         token,
@@ -44,7 +44,7 @@ export const withdrawBalance = async (
     runtime: IAgentRuntime,
     token: string,
     amount: number
-): Promise<any> => {
+): Promise<unknown> => { // Replace any with unknown
     const sdk = await getSDKInstance(runtime);
     return await sdk.escrow.withdrawBalance({
         token,
@@ -229,7 +229,7 @@ export const getDeployment = async (
 export const closeDeployment = async (
     runtime: IAgentRuntime,
     leaseId: string
-): Promise<any> => {
+): Promise<unknown> => { // Replace any with unknown
     const sdk = await getSDKInstance(runtime);
     return await sdk.deployment.closeDeployment(leaseId);
 };

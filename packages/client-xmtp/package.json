@@ -1,0 +1,19 @@
+{
+    "name": "@elizaos/client-xmtp",
+    "version": "0.1.9",
+    "main": "dist/index.js",
+    "type": "module",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@xmtp/agent-starter": "^0.0.6"
+    },
+    "devDependencies": {
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache ."
+    }
+}

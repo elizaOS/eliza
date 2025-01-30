@@ -50,7 +50,7 @@ export function splitPostContent(
 }
 
 export function splitParagraph(paragraph: string, maxLength: number): string[] {
-    const sentences = paragraph.match(/[^\.!\?]+[\.!\?]+|[^\.!\?]+$/g) || [
+    const sentences = paragraph.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [
         paragraph,
     ];
     const chunks: string[] = [];

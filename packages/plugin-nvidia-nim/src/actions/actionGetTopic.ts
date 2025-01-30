@@ -104,8 +104,8 @@ export const getTopicAction: Action = {
             // Parse the prompt using our helper
             const { systemContent, userContent } = parseOffTopicPrompt(
                 messageContent.text,
-                config.NVIDIA_TOPIC_SYSTEM || "",
-                messageContent.userMessage || config.NVIDIA_TOPIC_USER || ""
+                config.NVIDIA_OFFTOPIC_SYSTEM || "",
+                messageContent.userMessage || config.NVIDIA_OFFTOPIC_USER || ""
             );
 
             console.log("Debug - Parsed content:", {

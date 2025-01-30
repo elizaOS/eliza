@@ -7,7 +7,7 @@ import Database from "better-sqlite3";
 import path from "path";
 
 export class TeeLogService extends Service implements ITeeLogService {
-    private readonly dbPath = path.resolve("agent/data/tee_log.sqlite");
+    private dbPath: string;
 
     private initialized = false;
     private enableTeeLog = false;
@@ -61,6 +61,9 @@ export class TeeLogService extends Service implements ITeeLogService {
         } else {
             throw new Error("Invalid TEE configuration.");
         }
+
+        const dbPathSetting = runtime.getSetting("TEE_LOG_DB_PATH");
+        this.dbPath = dbPathSetting || path.resolve("data/tee_log.sqlite");
 
         const db = new Database(this.dbPath);
         this.teeLogDAO = new SqliteTeeLogDAO(db);

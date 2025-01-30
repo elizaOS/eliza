@@ -15,19 +15,35 @@ import {
     shutdownIntifaceEngine,
 } from "./utils";
 
+// Define the Device interface based on Buttplug device properties
+interface Device {
+    name: string;
+    index: number;
+    vibrate?: (strength: number) => Promise<void>;
+    rotate?: (strength: number) => Promise<void>;
+    stop?: () => Promise<void>;
+    battery?: () => Promise<number>;
+    id?: number;
+}
+
+interface ActionOptions {
+    intensity?: number;
+    duration?: number;
+}
+
 export interface IIntifaceService extends Service {
     vibrate(strength: number, duration: number): Promise<void>;
     rotate?(strength: number, duration: number): Promise<void>;
     getBatteryLevel?(): Promise<number>;
     isConnected(): boolean;
-    getDevices(): any[];
+    getDevices(): Device[];
 }
 
 export class IntifaceService extends Service implements IIntifaceService {
     static serviceType: ServiceType = ServiceType.INTIFACE;
     private client: ButtplugClient;
     private connected = false;
-    private devices: Map<string, any> = new Map();
+    private devices: Map<string, Device> = new Map();
     private vibrateQueue: VibrateEvent[] = [];
     private isProcessingQueue = false;
     private config: IntifaceConfig | null = null;
@@ -132,10 +148,10 @@ export class IntifaceService extends Service implements IIntifaceService {
         console.log("Scanning for devices...");
         await new Promise((r) => setTimeout(r, 2000));
 
-        this.client.devices.forEach((device) => {
+        for (const device of this.client.devices) {
             this.devices.set(device.name, device);
             console.log(`- ${device.name} (${device.index})`);
-        });
+        }
 
         if (this.devices.size === 0) {
             console.log("No devices found");
@@ -179,12 +195,12 @@ export class IntifaceService extends Service implements IIntifaceService {
         this.devices.clear();
     }
 
-    private handleDeviceAdded(device: any) {
+    private handleDeviceAdded(device: Device) {
         this.devices.set(device.name, device);
         console.log(`Device connected: ${device.name}`);
     }
 
-    private handleDeviceRemoved(device: any) {
+    private handleDeviceRemoved(device: Device) {
         this.devices.delete(device.name);
         console.log(`Device disconnected: ${device.name}`);
     }
@@ -292,10 +308,14 @@ export class IntifaceService extends Service implements IIntifaceService {
     }
 
     private async rampedRotate(
-        device: any,
+        device: Device,
         targetStrength: number,
         duration: number
     ) {
+        if (!device.rotate || !device.stop) {
+            throw new Error("Device does not support rotation");
+        }
+
         const stepTime = (duration * 0.2) / this.rampSteps;
 
         // Ramp up
@@ -333,9 +353,9 @@ const vibrateAction: Action = {
     },
     handler: async (
         runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
+        _message: Memory,
+        _state: State,
+        options: ActionOptions,
         callback: HandlerCallback
     ) => {
         const service = runtime.getService<IIntifaceService>(
@@ -443,9 +463,9 @@ const rotateAction: Action = {
     },
     handler: async (
         runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
+        _message: Memory,
+        _state: State,
+        options: ActionOptions,
         callback: HandlerCallback
     ) => {
         const service = runtime.getService<IIntifaceService>(
@@ -501,9 +521,9 @@ const batteryAction: Action = {
     },
     handler: async (
         runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
+        _message: Memory,
+        _state: State,
+        _options: ActionOptions,
         callback: HandlerCallback
     ) => {
         const service = runtime.getService<IIntifaceService>(
@@ -518,7 +538,7 @@ const batteryAction: Action = {
             callback({
                 text: `Device battery level is at ${Math.round(batteryLevel * 100)}%`,
             });
-        } catch (err) {
+        } catch {
             callback({
                 text: "Unable to get battery level. Device might not support this feature.",
             });

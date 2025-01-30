@@ -1,4 +1,4 @@
-import assert from "assert";
+import assert from "node:assert";
 import { send, log, logError, runIntegrationTest } from "./testLibrary.mjs";
 
 async function helloTrump() {
@@ -86,7 +86,7 @@ async function coinbaseCommerceChargeTest() {
     assert(charges.length > 0, "Should have at least one charge");
 
     // Verify each charge has required properties
-    charges.forEach((charge) => {
+    for (const charge of charges) {
         assert(charge.id, "Each charge should have an id");
         assert(charge.hosted_url, "Each charge should have a hosted_url");
         assert(
@@ -94,7 +94,7 @@ async function coinbaseCommerceChargeTest() {
             "hosted_url should be a valid Coinbase URL"
         );
         assert(charge.web3_data, "Each charge should have web3_data object");
-    });
+    }
 
     // Verify the previously created charge exists in the list
     const foundCharge = charges.find((charge) => charge.id === createdChargeId);

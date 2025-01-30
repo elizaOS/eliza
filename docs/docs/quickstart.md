@@ -8,55 +8,40 @@ sidebar_position: 2
 
 Before getting started with Eliza, ensure you have:
 
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) (using [nvm](https://github.com/nvm-sh/nvm) is recommended)
 - [pnpm 9+](https://pnpm.io/installation)
 - Git for version control
-- A code editor ([VS Code](https://code.visualstudio.com/) or [VSCodium](https://vscodium.com) recommended)
+- A code editor ([VS Code](https://code.visualstudio.com/), [Cursor](https://cursor.com/) or [VSCodium](https://vscodium.com) recommended)
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (optional, for GPU acceleration)
 
 ## Installation
 
-1. **Clone and Install**
+Clone the repository
 
-    Please be sure to check what the [latest available stable version tag](https://github.com/elizaos/eliza/tags) is.
+```bash
+git clone https://github.com/elizaOS/eliza.git
+```
 
-    Clone the repository
+Enter directory
 
-    ```bash
-    git clone https://github.com/elizaos/eliza.git
-    ```
+```bash
+cd eliza
+```
 
-    Enter directory
+Switch to latest [stable version tag](https://github.com/elizaOS/eliza/tags)
 
-    ```bash
-    cd eliza
-    ```
+```bash
+# This project moves quickly, check out the latest release known to work
+git checkout $(git describe --tags --abbrev=0)
+```
 
-    Switch to latest tagged release
-
-    ```bash
-     # Checkout the latest release
-     # This project iterates fast, so we recommend checking out the latest release
-     git checkout $(git describe --tags --abbrev=0)
-    ```
-
-    Install dependencies (on initial run)
-
-    ```bash
-    pnpm install --no-frozen-lockfile
-    ```
-
-    # Quickstart Guide Update
-
-**Important Note on pnpm Lockfile Management**
-
-By default, the `pnpm` lockfile will not be updated during installations based off of .npmrc frozen-lockfile=true. To update the lockfile, you need to run the command:
+Install dependencies
 
 ```bash
 pnpm install --no-frozen-lockfile
 ```
 
-Please only use this command when you initially instantiating the repo or are bumping the version of a package or adding a new package to your package.json. This practice helps maintain consistency in your project's dependencies and prevents unintended changes to the lockfile.
+**Note:** Please only use the `--no-frozen-lockfile` option when you're initially instantiating the repo or are bumping the version of a package or adding a new package to your package.json. This practice helps maintain consistency in your project's dependencies and prevents unintended changes to the lockfile.
 
 Build the local libraries
 
@@ -64,34 +49,34 @@ Build the local libraries
 pnpm build
 ```
 
-2. **Configure Environment**
+## **Configure Environment**
 
-    Copy example environment file
+Copy example environment file
 
-    ```bash
-    cp .env.example .env
-    ```
+```bash
+cp .env.example .env
+```
 
-    Edit `.env` and add your values:
+Edit `.env` and add your values. Do NOT add this file to version control.
 
-    ```bash
-    # Suggested quickstart environment variables
-    DISCORD_APPLICATION_ID=  # For Discord integration
-    DISCORD_API_TOKEN=      # Bot token
-    HEURIST_API_KEY=       # Heurist API key for LLM and image generation
-    OPENAI_API_KEY=        # OpenAI API key
-    GROK_API_KEY=          # Grok API key
-    ELEVENLABS_XI_API_KEY= # API key from elevenlabs (for voice)
-    LIVEPEER_GATEWAY_URL=  # Livepeer gateway URL
-    ```
+```bash
+# Suggested quickstart environment variables
+DISCORD_APPLICATION_ID=  # For Discord integration
+DISCORD_API_TOKEN=      # Bot token
+HEURIST_API_KEY=       # Heurist API key for LLM and image generation
+OPENAI_API_KEY=        # OpenAI API key
+GROK_API_KEY=          # Grok API key
+ELEVENLABS_XI_API_KEY= # API key from elevenlabs (for voice)
+LIVEPEER_GATEWAY_URL=  # Livepeer gateway URL
+```
 
 ## Choose Your Model
 
-Eliza supports multiple AI models:
+Eliza supports multiple AI models and you set which model to use inside the character JSON file.
 
 - **Heurist**: Set `modelProvider: "heurist"` in your character file. Most models are uncensored.
-    - LLM: Select available LLMs [here](https://docs.heurist.ai/dev-guide/supported-models#large-language-models-llms) and configure `SMALL_HEURIST_MODEL`,`MEDIUM_HEURIST_MODEL`,`LARGE_HEURIST_MODEL`
-    - Image Generation: Select available Stable Diffusion or Flux models [here](https://docs.heurist.ai/dev-guide/supported-models#image-generation-models) and configure `HEURIST_IMAGE_MODEL` (default is FLUX.1-dev)
+- LLM: Select available LLMs [here](https://docs.heurist.ai/dev-guide/supported-models#large-language-models-llms) and configure `SMALL_HEURIST_MODEL`,`MEDIUM_HEURIST_MODEL`,`LARGE_HEURIST_MODEL`
+- Image Generation: Select available Stable Diffusion or Flux models [here](https://docs.heurist.ai/dev-guide/supported-models#image-generation-models) and configure `HEURIST_IMAGE_MODEL` (default is FLUX.1-dev)
 - **Llama**: Set `OLLAMA_MODEL` to your chosen model
 - **Grok**: Set `GROK_API_KEY` to your Grok API key and set `modelProvider: "grok"` in your character file
 - **OpenAI**: Set `OPENAI_API_KEY` to your OpenAI API key and set `modelProvider: "openai"` in your character file
@@ -102,56 +87,59 @@ Eliza supports multiple AI models:
 - **OpenAI**: Set `XAI_MODEL=gpt-4o-mini` or `gpt-4o`
 - **Livepeer**: Set `SMALL_LIVEPEER_MODEL`,`MEDIUM_LIVEPEER_MODEL`,`LARGE_LIVEPEER_MODEL` and `IMAGE_LIVEPEER_MODEL` to your desired models listed [here](https://livepeer-eliza.com/).
 
+## Local inference
 
-You set which model to use inside the character JSON file
+### For llama_local inference:
 
-### Local inference
+- The system will automatically download the model from Hugging Face
+- `LOCAL_LLAMA_PROVIDER` can be blank
 
-    #### For llama_local inference:
+Note: llama_local requires a GPU, it currently will not work with CPU inference
 
-      3. The system will automatically download the model from Hugging Face
-      4. `LOCAL_LLAMA_PROVIDER` can be blank
+### For Ollama inference:
 
-      Note: llama_local requires a GPU, it currently will not work with CPU inference
-
-    #### For Ollama inference:
-
-      - If `OLLAMA_SERVER_URL` is left blank, it defaults to `localhost:11434`
-      - If `OLLAMA_EMBEDDING_MODE` is left blank, it defaults to `mxbai-embed-large`
+- If `OLLAMA_SERVER_URL` is left blank, it defaults to `localhost:11434`
+- If `OLLAMA_EMBEDDING_MODE` is left blank, it defaults to `mxbai-embed-large`
 
 ## Create Your First Agent
 
-1. **Create a Character File**
+**Create a Character File**
 
-    Check out `characters/trump.character.json` or `characters/tate.character.json` as a template you can use to copy and customize your agent's personality and behavior.
-    Additionally you can read `core/src/core/defaultCharacter.ts` (in 0.0.10 but post-refactor will be in `packages/core/src/defaultCharacter.ts`)
+Check out the `characters/` directory for a number of character files to try out.
+Additionally you can read `packages/core/src/defaultCharacter.ts`.
 
-    📝 [Character Documentation](./core/characterfile.md)
+Copy one of the example character files and make it your own
 
-2. **Start the Agent**
+```bash
+cp characters/sbf.character.json characters/deep-thought.character.json
+```
+📝 [Character Documentation](./core/characterfile.md)
 
-    Inform it which character you want to run:
+**Start the Agent**
 
-    ```bash
-    pnpm start --character="characters/trump.character.json"
-    ```
+Inform it which character you want to run:
 
-    You can also load multiple characters with the characters option with a comma-separated list:
+```bash
+pnpm start --character="characters/deep-thought.character.json"
+```
 
-    ```bash
-    pnpm start --characters="characters/trump.character.json,characters/tate.character.json"
-    ```
+You can load multiple characters with a comma-separated list:
 
-3. **Interact with the Agent**
+```bash
+pnpm start --characters="characters/deep-thought.character.json, characters/sbf.character.json"
+```
 
-    Now you're ready to start a conversation with your agent!
-    Open a new terminal window
+**Interact with the Agent**
 
-    ```bash
-    pnpm start:client
-    ```
+Now you're ready to start a conversation with your agent.
 
-    Once the client is running, you'll see a message like this:
+Open a new terminal window and run the client's http server.
+
+```bash
+pnpm start:client
+```
+
+Once the client is running, you'll see a message like this:
 
 ```
 ➜  Local:   http://localhost:5173/
@@ -219,94 +207,94 @@ pnpm start --characters="characters/trump.character.json,characters/tate.charact
 
 1. **Node.js Version**
 
-    - Ensure Node.js 23.3.0 is installed
-    - Use `node -v` to check version
-    - Consider using [nvm](https://github.com/nvm-sh/nvm) to manage Node versions
+- Ensure Node.js 23.3.0 is installed
+- Use `node -v` to check version
+- Consider using [nvm](https://github.com/nvm-sh/nvm) to manage Node versions
 
-    NOTE: pnpm may be bundled with a different node version, ignoring nvm. If this is the case, you can use
+NOTE: pnpm may be bundled with a different node version, ignoring nvm. If this is the case, you can use
 
-    ```bash
-    pnpm env use --global 23.3.0
-    ```
+```bash
+pnpm env use --global 23.3.0
+```
 
-    to force it to use the correct one.
+to force it to use the correct one.
 
 2. **Sharp Installation**
-   If you see Sharp-related errors:
+If you see Sharp-related errors:
 
-    ```bash
-    pnpm install --include=optional sharp
-    ```
+```bash
+pnpm install --include=optional sharp
+```
 
 3. **CUDA Setup**
 
-    - Verify CUDA Toolkit installation
-    - Check GPU compatibility with toolkit
-    - Ensure proper environment variables are set
+- Verify CUDA Toolkit installation
+- Check GPU compatibility with toolkit
+- Ensure proper environment variables are set
 
 4. **Exit Status 1**
-   If you see
+If you see
 
-    ```
-    triggerUncaughtException(
-    ^
-    [Object: null prototype] {
-    [Symbol(nodejs.util.inspect.custom)]: [Function: [nodejs.util.inspect.custom]]
-    }
-    ```
+```
+triggerUncaughtException(
+^
+[Object: null prototype] {
+[Symbol(nodejs.util.inspect.custom)]: [Function: [nodejs.util.inspect.custom]]
+}
+```
 
-    You can try these steps, which aim to add `@types/node` to various parts of the project
+You can try these steps, which aim to add `@types/node` to various parts of the project
 
-    ```
-    # Add dependencies to workspace root
-    pnpm add -w -D ts-node typescript @types/node
+```
+# Add dependencies to workspace root
+pnpm add -w -D ts-node typescript @types/node
 
-    # Add dependencies to the agent package specifically
-    pnpm add -D ts-node typescript @types/node --filter "@elizaos/agent"
+# Add dependencies to the agent package specifically
+pnpm add -D ts-node typescript @types/node --filter "@elizaos/agent"
 
-    # Also add to the core package since it's needed there too
-    pnpm add -D ts-node typescript @types/node --filter "@elizaos/core"
+# Also add to the core package since it's needed there too
+pnpm add -D ts-node typescript @types/node --filter "@elizaos/core"
 
-    # First clean everything
-    pnpm clean
+# First clean everything
+pnpm clean
 
-    # Install all dependencies recursively
-    pnpm install -r
+# Install all dependencies recursively
+pnpm install -r
 
-    # Build the project
-    pnpm build
+# Build the project
+pnpm build
 
-    # Then try to start
-    pnpm start
-    ```
+# Then try to start
+pnpm start
+```
 
 5. **Better sqlite3 was compiled against a different Node.js version**
-   If you see
+If you see
 
-    ```
-    Error starting agents: Error: The module '.../eliza-agents/dv/eliza/node_modules/better-sqlite3/build/Release/better_sqlite3.node'
-    was compiled against a different Node.js version using
-    NODE_MODULE_VERSION 131. This version of Node.js requires
-    NODE_MODULE_VERSION 127. Please try re-compiling or re-installing
-    ```
+```
+Error starting agents: Error: The module '.../eliza-agents/dv/eliza/node_modules/better-sqlite3/build/Release/better_sqlite3.node'
+was compiled against a different Node.js version using
+NODE_MODULE_VERSION 131. This version of Node.js requires
+NODE_MODULE_VERSION 127. Please try re-compiling or re-installing
+```
 
-    You can try this, which will attempt to rebuild better-sqlite3.
+You can try this, which will attempt to rebuild better-sqlite3.
 
-    ```bash
-    pnpm rebuild better-sqlite3
-    ```
+```bash
+pnpm rebuild better-sqlite3
+```
 
-    If that doesn't work, try clearing your node_modules in the root folder
+If that doesn't work, try clearing your node_modules in the root folder
 
-    ```bash
-    rm -fr node_modules; pnpm store prune
-    ```
+```bash
+rm -fr node_modules; pnpm store prune
+```
 
-    Then reinstall the requirements
+Then reinstall the requirements
 
-    ```bash
-    pnpm i
-    ```
+```bash
+pnpm i
+```
 
 ## Next Steps
 

@@ -13,7 +13,7 @@ interface UseAutoScrollOptions {
 }
 
 export function useAutoScroll(options: UseAutoScrollOptions = {}) {
-    const { offset = 20, smooth = false, content } = options;
+    const { offset = 20, smooth = false } = options;
     const scrollRef = useRef<HTMLDivElement>(null);
     const lastContentHeight = useRef(0);
     const userHasScrolled = useRef(false);
@@ -94,7 +94,7 @@ export function useAutoScroll(options: UseAutoScrollOptions = {}) {
             }
             lastContentHeight.current = currentHeight;
         }
-    }, [content, scrollState.autoScrollEnabled, scrollToBottom]);
+    }, [scrollState.autoScrollEnabled, scrollToBottom]);
 
     useEffect(() => {
         const element = scrollRef.current;

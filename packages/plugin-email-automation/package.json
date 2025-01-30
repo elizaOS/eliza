@@ -1,0 +1,58 @@
+{
+    "name": "@elizaos/plugin-email-automation",
+    "version": "0.1.9",
+    "description": "AI-powered email automation plugin for Eliza",
+    "type": "module",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc --declaration --emitDeclarationOnly false --noEmit false --allowImportingTsExtensions false",
+        "clean": "rimraf dist",
+        "dev": "tsc -w",
+        "lint": "eslint src --ext .ts",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage"
+    },
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "handlebars": "^4.7.8",
+        "resend": "^2.0.0",
+        "zod": "^3.22.4"
+    },
+    "devDependencies": {
+        "@types/jest": "^29.0.0",
+        "@types/node": "^20.0.0",
+        "jest": "^29.0.0",
+        "rimraf": "^5.0.0",
+        "ts-jest": "^29.0.0",
+        "typescript": "^5.0.0",
+        "vitest": "^2.1.8"
+    },
+    "jest": {
+        "preset": "ts-jest",
+        "testEnvironment": "node",
+        "moduleNameMapper": {
+            "^(\\.{1,2}/.*)\\.js$": "$1",
+            "^@elizaos/core$": "<rootDir>/../core/dist"
+        },
+        "transform": {
+            "^.+\\.(ts|tsx)$": "ts-jest"
+        },
+        "testMatch": [
+            "**/__tests__/**/*.test.(ts|js)"
+        ],
+        "moduleFileExtensions": [
+            "ts",
+            "tsx",
+            "js",
+            "jsx",
+            "json",
+            "node"
+        ]
+    }
+}

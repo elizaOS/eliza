@@ -17,9 +17,11 @@ export interface TransferContent extends Content {
     amount: string;
 }
 
-function isTransferContent(runtime: IAgentRuntime, content: any): content is TransferContent {
+function isTransferContent(_runtime: IAgentRuntime, content: unknown): content is TransferContent {
     return (
-        typeof content.sender === "string" && typeof content.recipient === "string" && typeof content.amount === "number"
+        typeof (content as TransferContent).sender === "string" && 
+        typeof (content as TransferContent).recipient === "string" && 
+        typeof (content as TransferContent).amount === "string"
     );
 }
 
@@ -53,7 +55,7 @@ export default {
         "PAY_ON_INITIA"
     ],
     description: "",
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
+    validate: async (runtime: IAgentRuntime, _message: Memory) => {
         const privateKey = runtime.getSetting("INITIA_PRIVATE_KEY");
         return typeof privateKey === "string" && privateKey.startsWith("0x");
     },
@@ -64,14 +66,17 @@ export default {
         _options: { [key: string]: unknown },
         callback?: HandlerCallback
     ): Promise<boolean> => {
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
+        // Initialize or update state
+        let currentState = state;
+        if (!currentState) {
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(currentState);
         }
 
+
         const transferContext = composeContext({
-            state,
+            state: currentState,
             template: transferTemplate,
         });
 
@@ -108,11 +113,11 @@ export default {
             const txResult = await walletProvider.sendTransaction(signedTx);
             if (callback) {
                 callback({
-                    text: `Successfully transferred INITIA.\n` +
-                        `Transaction Hash: ${txResult.txhash}\n` +
-                        `Sender: ${content.sender}\n` +
-                        `Recipient: ${content.recipient}\n` +
-                        `Amount: ${content.amount}`
+                    text: `Successfully transferred INITIA.
+Transaction Hash: ${txResult.txhash}
+Sender: ${content.sender}
+Recipient: ${content.recipient}
+Amount: ${content.amount}`
                 });
             }
             return true;

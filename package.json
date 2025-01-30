@@ -1,5 +1,4 @@
 {
-
   "name": "eliza",
   "scripts": {
     "format": "biome format --write .",
@@ -9,10 +8,10 @@
     "build": "turbo run build --filter=!eliza-docs",
     "build-docker": "turbo run build",
     "cleanstart": "if [ -f agent/data/db.sqlite ]; then rm agent/data/db.sqlite; fi && pnpm --filter \"@elizaos/agent\" start --isRoot",
-    "cleanstart:debug": "if [ -f agent/data/db.sqlite ]; then rm agent/data/db.sqlite; fi && cross-env NODE_ENV=development VERBOSE=true DEBUG=eliza:* pnpm --filter \"@elizaos/agent\" start --isRoot",
+    "cleanstart:debug": "if [ -f agent/data/db.sqlite ]; then rm agent/data/db.sqlite; fi && cross-env NODE_ENV=development VERBOSE=true DEFAULT_LOG_LEVEL=debug DEBUG=eliza:* pnpm --filter \"@elizaos/agent\" start --isRoot",
     "start": "pnpm --filter \"@elizaos/agent\" start --isRoot",
     "start:client": "pnpm --dir client dev",
-    "start:debug": "cross-env NODE_ENV=development VERBOSE=true DEBUG=eliza:* pnpm --filter \"@elizaos/agent\" start --isRoot",
+    "start:debug": "cross-env NODE_ENV=development VERBOSE=true DEFAULT_LOG_LEVEL=debug DEBUG=eliza:* pnpm --filter \"@elizaos/agent\" start --isRoot",
     "dev": "bash ./scripts/dev.sh",
     "release": "pnpm build && pnpm format && npx lerna publish --no-private --force-publish",
     "clean": "bash ./scripts/clean.sh",
@@ -46,11 +45,23 @@
   "pnpm": {
     "overrides": {
       "onnxruntime-node": "1.20.1",
+      "@solana/web3.js@1.95.5": "npm:@solana/web3.js@1.95.5",
+      "@solana/web3.js@1.95.8": "npm:@solana/web3.js@1.95.8",
+      "@solana/web3.js@2": "npm:@solana/web3.js@2.0.0",
       "viem": "2.21.58",
       "@polkadot/util": "12.6.2",
       "@polkadot/util-crypto": "12.6.2",
       "@polkadot/types-create": "10.13.1",
-      "@polkadot/types-codec": "10.13.1"
+      "@polkadot/types-codec": "10.13.1",
+      "@polkadot/keyring": "12.6.2",
+      "@ai-sdk/provider": "1.0.6",
+      "@ai-sdk/provider-utils": "2.1.2",
+      "cookie": "0.7.0",
+      "bs58": "5.0.0",
+      "@coral-xyz/anchor": "0.28.0"
+    },
+    "patchedDependencies": {
+      "@solana-developers/helpers": "patches/@solana-developers__helpers.patch"
     }
   },
   "engines": {
@@ -63,16 +74,15 @@
     "@injectivelabs/sdk-ts": "^1.14.33",
     "@vitest/eslint-plugin": "1.0.1",
     "amqplib": "0.10.5",
+    "bs58": "4.0.0",
     "csv-parse": "5.6.0",
     "langdetect": "^0.2.1",
     "ollama-ai-provider": "0.16.1",
     "optional": "0.1.4",
-    "pnpm": "9.14.4",
-    "sharp": "0.33.5",
-    "tslog": "4.9.3",
-    "bs58": "4.0.0"
+    "pnpm": "9.15.0",
+    "sharp": "0.33.5"
   },
-  "packageManager": "pnpm@9.12.3+sha512.cce0f9de9c5a7c95bef944169cc5dfe8741abfb145078c0d508b868056848a87c81e626246cb60967cbd7fd29a6c062ef73ff840d96b3c86c40ac92cf4a813ee",
+  "packageManager": "pnpm@9.15.0",
   "workspaces": [
     "packages/*"
   ]

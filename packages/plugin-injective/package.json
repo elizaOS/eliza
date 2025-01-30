@@ -1,26 +1,26 @@
 {
     "name": "@elizaos/plugin-injective",
-    "version": "0.1.7",
+    "version": "0.1.9",
     "description": "",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "type": "module",
     "scripts": {
-      "build": "tsup --format esm --dts",
-      "dev": "tsup --format esm --dts --watch",
-      "test": "jest",
-      "test:watch": "jest --watch",
-      "format": "prettier --write \"src/**/*.ts\"",
-      "test:coverage": "jest --coverage"
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "test": "jest",
+        "test:watch": "jest --watch",
+        "format": "prettier --write \"src/**/*.ts\"",
+        "test:coverage": "jest --coverage"
     },
     "exports": {
-          "./package.json": "./package.json",
-          ".": {
+        "./package.json": "./package.json",
+        ".": {
+            "types": "./dist/index.d.ts",
             "require": "./dist/index.cjs",
-              "import": "./dist/index.js",
-            "types": "./dist/index.d.ts"
-          }
-      },
+            "import": "./dist/index.js"
+        }
+    },
     "files": [
         "dist"
     ],
@@ -28,23 +28,23 @@
     "author": "hrishikesh@injectivelabs.org",
     "license": "ISC",
     "devDependencies": {
-      "@types/chai": "^5.0.1",
-      "@types/jest": "^29.5.14",
-      "@types/node": "^22.10.3",
-      "@types/sinon": "^17.0.3",
-      "@typescript-eslint/eslint-plugin": "8.16.0",
-      "@typescript-eslint/parser": "8.16.0",
-      "chai": "^5.1.2",
-      "eslint": "9.16.0",
-      "jest": "^29.7.0",
-      "prettier": "3.4.1",
-      "sinon": "^19.0.2",
-      "ts-jest": "^29.2.5",
-      "typescript": "^5.7.2"
+        "@types/chai": "^5.0.1",
+        "@types/jest": "^29.5.14",
+        "@types/node": "^22.10.3",
+        "@types/sinon": "^17.0.3",
+        "@typescript-eslint/eslint-plugin": "8.16.0",
+        "@typescript-eslint/parser": "8.16.0",
+        "chai": "^5.1.2",
+        "eslint": "9.16.0",
+        "jest": "^29.7.0",
+        "prettier": "3.4.1",
+        "sinon": "^19.0.2",
+        "ts-jest": "^29.2.5",
+        "typescript": "^5.7.2"
     },
     "dependencies": {
-      "@elizaos/adapter-sqlite": "0.1.7-alpha.2",
-      "@elizaos/core": "workspace:*",
-      "injective-sdk-client-ts": "file:../../packages/plugin-injective/injective-sdk-client-ts"
+        "@elizaos/adapter-sqlite": "0.1.7-alpha.2",
+        "@elizaos/core": "workspace:*",
+        "injective-sdk-client-ts": "file:../../packages/plugin-injective/injective-sdk-client-ts"
     }
-  }
+}

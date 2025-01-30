@@ -1,10 +1,7 @@
-import { interfaces } from "inversify";
+import type { interfaces } from "inversify";
 import {
-    Action,
     elizaLogger,
-    Evaluator,
-    Plugin,
-    Provider,
+    type Plugin,
 } from "@elizaos/core";
 import type { PluginFactory, PluginOptions } from "../types";
 
@@ -52,7 +49,7 @@ export function createPlugin(ctx: interfaces.Context): PluginFactory {
             plugin.providers = (
                 await Promise.all(
                     opts.providers.map((provider) =>
-                        getInstanceFromContainer<Provider>(
+                        getInstanceFromContainer(
                             ctx,
                             provider,
                             "provider"
@@ -69,7 +66,7 @@ export function createPlugin(ctx: interfaces.Context): PluginFactory {
             plugin.actions = (
                 await Promise.all(
                     opts.actions.map((action) =>
-                        getInstanceFromContainer<Action>(ctx, action, "action")
+                        getInstanceFromContainer(ctx, action, "action")
                     )
                 )
             ).filter(Boolean); // Filter out undefined actions
@@ -82,7 +79,7 @@ export function createPlugin(ctx: interfaces.Context): PluginFactory {
             plugin.evaluators = (
                 await Promise.all(
                     opts.evaluators.map((evaluator) =>
-                        getInstanceFromContainer<Evaluator>(
+                        getInstanceFromContainer(
                             ctx,
                             evaluator,
                             "evaluator"
@@ -94,12 +91,24 @@ export function createPlugin(ctx: interfaces.Context): PluginFactory {
 
         // Handle services - if provided, assign directly
         if (typeof opts.services !== "undefined") {
-            plugin.services = opts.services;
+            plugin.services = (
+                await Promise.all(
+                    opts.services.map((service) =>
+                        getInstanceFromContainer(ctx, service, "service")
+                    )
+                )
+            )
         }
 
         // Handle clients - if provided, assign directly
         if (typeof opts.clients !== "undefined") {
-            plugin.clients = opts.clients;
+            plugin.clients = (
+                await Promise.all(
+                    opts.clients.map((client) =>
+                        getInstanceFromContainer(ctx, client, "client")
+                    )
+                )
+            )
         }
         return plugin;
     };

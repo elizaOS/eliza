@@ -1,0 +1,42 @@
+{
+    "name": "@elizaos/client-telegram-account",
+    "version": "0.1.9",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "import": {
+                "@elizaos/source": "./src/index.ts",
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "glob": "11.0.0",
+        "input": "^1.0.1",
+        "telegram": "2.17.4"
+    },
+    "devDependencies": {
+        "tsup": "8.3.5",
+        "vitest": "1.1.3",
+        "@vitest/coverage-v8": "1.1.3"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache .",
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
+}

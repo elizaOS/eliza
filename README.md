@@ -152,6 +152,17 @@ pnpm install --include=optional sharp
 
 ---
 
+### Deploy Eliza in one click 
+
+Use [Fleek](https://fleek.xyz/eliza/) to deploy Eliza in one click. This opens Eliza to non-developers and provides the following options to build your agent:
+1. Start with a template
+2. Build characterfile from scratch
+3. Upload pre-made characterfile
+
+Click [here](https://fleek.xyz/eliza/) to get started!
+
+---
+
 ### Community & contact
 
 - [GitHub Issues](https://github.com/elizaos/eliza/issues). Best for: bugs you encounter using Eliza, and feature proposals.

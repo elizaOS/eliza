@@ -71,7 +71,7 @@ export async function generateSummary(
 
     const parsedResponse = parseJSONObjectFromText(response);
 
-    if (parsedResponse) {
+    if (parsedResponse?.title && parsedResponse?.summary) {
         return {
             title: parsedResponse.title,
             description: parsedResponse.summary,
@@ -132,16 +132,15 @@ function splitMessage(content: string): string[] {
 
     const rawLines = content?.split("\n") || [];
     // split all lines into MAX_MESSAGE_LENGTH chunks so any long lines are split
-    const lines = rawLines
-        .flatMap((line) => {
-            const chunks = [];
-            while (line.length > MAX_MESSAGE_LENGTH) {
-                chunks.push(line.slice(0, MAX_MESSAGE_LENGTH));
-                line = line.slice(MAX_MESSAGE_LENGTH);
-            }
-            chunks.push(line);
-            return chunks;
-        });
+    const lines = rawLines.flatMap((line) => {
+        const chunks = [];
+        while (line.length > MAX_MESSAGE_LENGTH) {
+            chunks.push(line.slice(0, MAX_MESSAGE_LENGTH));
+            line = line.slice(MAX_MESSAGE_LENGTH);
+        }
+        chunks.push(line);
+        return chunks;
+    });
 
     for (const line of lines) {
         if (currentMessage.length + line.length + 1 > MAX_MESSAGE_LENGTH) {
@@ -216,7 +215,9 @@ export function canSendMessage(channel) {
         missingPermissions: missingPermissions,
         reason:
             missingPermissions.length > 0
-                ? `Missing permissions: ${missingPermissions.map((p) => String(p)).join(", ")}`
+                ? `Missing permissions: ${missingPermissions
+                      .map((p) => String(p))
+                      .join(", ")}`
                 : null,
     };
 }

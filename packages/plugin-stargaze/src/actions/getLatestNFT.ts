@@ -1,5 +1,4 @@
 import {
-    ActionExample,
     composeContext,
     type Content,
     elizaLogger,
@@ -78,7 +77,7 @@ query MarketplaceTokens($collectionAddr: String!, $limit: Int) {
 export default {
     name: "GET_LATEST_NFT",
     similes: ["SHOW_LATEST_NFT", "FETCH_LATEST_NFT"],
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
+    validate: async (runtime: IAgentRuntime, _message: Memory) => {
         elizaLogger.log("🔄 Validating Stargaze configuration...");
         try {
             const config = await validateStargazeConfig(runtime);

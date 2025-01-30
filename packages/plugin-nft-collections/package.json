@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-nft-collections",
-    "version": "0.1.9-alpha.1",
+    "version": "0.1.9",
     "description": "NFT collections plugin for Eliza",
     "type": "module",
     "main": "dist/index.js",

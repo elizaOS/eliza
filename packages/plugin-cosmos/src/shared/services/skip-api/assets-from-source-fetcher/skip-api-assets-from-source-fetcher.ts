@@ -1,6 +1,6 @@
 import axios from "axios";
 import { skipApiAssetsFromSourceResponseSchema } from "./schema";
-import {
+import type {
     SkipApiAssetsFromSourceParams,
     SkipApiAssetsFromSourceResponse,
 } from "./interfaces";

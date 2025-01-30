@@ -26,7 +26,7 @@ export const listNFTAction = (nftService: ReservoirService): Action => {
         description:
             "Lists an NFT for sale on ikigailabs.xyz marketplace at double the purchase price.",
 
-        validate: async (runtime: IAgentRuntime, message: Memory) => {
+        validate: async (_runtime: IAgentRuntime, message: Memory) => {
             const content = message.content.text.toLowerCase();
             return (
                 (content.includes("list") || content.includes("sell")) &&
@@ -40,8 +40,8 @@ export const listNFTAction = (nftService: ReservoirService): Action => {
         handler: async (
             runtime: IAgentRuntime,
             message: Memory,
-            state: State,
-            options: any,
+            _state: State,
+            _options: { [key: string]: unknown },
             callback: HandlerCallback
         ) => {
             try {
@@ -84,16 +84,13 @@ export const listNFTAction = (nftService: ReservoirService): Action => {
                         Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days
                 });
 
-                const response =
-                    `Successfully created listing on ikigailabs.xyz:\n` +
-                    `• Collection: ${collectionAddress}\n` +
-                    `• Token ID: ${tokenId}\n` +
-                    `• Listing Price: ${userSpecifiedPrice} ETH\n` +
-                    `• Status: ${listing.status}\n` +
-                    `• Listing URL: ${listing.marketplaceUrl}\n` +
-                    (listing.transactionHash
-                        ? `• Transaction: ${listing.transactionHash}\n`
-                        : "");
+                const response = `Successfully created listing on ikigailabs.xyz:
+• Collection: ${collectionAddress}
+• Token ID: ${tokenId}
+• Listing Price: ${userSpecifiedPrice} ETH
+• Status: ${listing.status}
+• Listing URL: ${listing.marketplaceUrl}
+${listing.transactionHash ? `• Transaction: ${listing.transactionHash}` : ''}`;
 
                 callback({
                     text: response,

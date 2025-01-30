@@ -100,9 +100,10 @@ const walletProvider: Provider = {
                 if (rawBalance === undefined) return null;
 
                 const decimalBalance =
-                    Number(rawBalance) / Math.pow(10, token.decimals);
+                    Number(rawBalance) / (10 ** token.decimals);  // Fix: Use exponentiation operator instead of Math.pow
                 const price = tokenUsdValues[token.coingeckoId]?.usd ?? 0;
                 const usdValue = decimalBalance * price;
+
 
                 if (decimalBalance === 0 && usdValue === 0) return null;
 

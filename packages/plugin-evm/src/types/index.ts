@@ -7,6 +7,7 @@ import type {
     HttpTransport,
     PublicClient,
     WalletClient,
+    Log,
 } from "viem";
 import * as viemChains from "viem/chains";
 
@@ -23,6 +24,7 @@ export interface Transaction {
     value: bigint;
     data?: `0x${string}`;
     chainId?: number;
+    logs?: Log[];
 }
 
 // Token types

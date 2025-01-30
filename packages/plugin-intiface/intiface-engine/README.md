@@ -54,7 +54,7 @@ For example, to run the server on websockets at port 12345 with bluetooth device
 ## Compiling
 
 Linux will have extra compilation dependency requirements via
-[buttplug-rs](https://github.com/buttplugio/buttplug-rs). For pacakges required,
+[buttplug-rs](https://github.com/buttplugio/buttplug-rs). For packages required,
 please check there.
 
 ## Contributing

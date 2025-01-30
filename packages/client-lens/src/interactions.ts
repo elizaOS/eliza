@@ -97,13 +97,29 @@ export class LensInteractionManager {
                 publication: mention,
             });
 
-            const memory: Memory = {
-                // @ts-ignore Metadata
-                content: { text: mention.metadata.content, hash: mention.id },
-                agentId: this.runtime.agentId,
-                userId,
-                roomId,
-            };
+            function hasContent(metadata: any): metadata is { content: string } {
+                return metadata && typeof metadata.content === 'string';
+            }
+
+            let memory: Memory;
+            if (
+                (mention.__typename === 'Post' || mention.__typename === 'Comment' || mention.__typename === 'Quote') &&
+                hasContent(mention.metadata)
+            ) {
+                memory = {
+                    content: { text: mention.metadata.content, hash: mention.id },
+                    agentId: this.runtime.agentId,
+                    userId,
+                    roomId,
+                };
+            } else {
+                memory = {
+                    content: { text: '[No Content]', hash: mention.id },
+                    agentId: this.runtime.agentId,
+                    userId,
+                    roomId,
+                };
+            }
 
             await this.handlePublication({
                 agent,
@@ -146,10 +162,24 @@ export class LensInteractionManager {
             timeline
         );
 
+        function hasContent(metadata: any): metadata is { content: string } {
+            return metadata && typeof metadata.content === 'string';
+        }
+
         const formattedConversation = thread
             .map((pub) => {
-                // @ts-ignore Metadata
-                const content = pub.metadata.content;
+                if ('metadata' in pub && hasContent(pub.metadata)) {
+                    const content = pub.metadata.content;
+                    return `@${pub.by.handle?.localName} (${new Date(
+                        pub.createdAt
+                    ).toLocaleString("en-US", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        month: "short",
+                        day: "numeric",
+                    })}):
+                    ${content}`;
+                }
                 return `@${pub.by.handle?.localName} (${new Date(
                     pub.createdAt
                 ).toLocaleString("en-US", {
@@ -158,7 +188,7 @@ export class LensInteractionManager {
                     month: "short",
                     day: "numeric",
                 })}):
-                ${content}`;
+                [No Content Available]`;
             })
             .join("\n\n");
 
@@ -238,7 +268,7 @@ export class LensInteractionManager {
 
         const callback: HandlerCallback = async (
             content: Content,
-            files: any[]
+            _files: any[]
         ) => {
             try {
                 if (memoryId && !content.inReplyTo) {

@@ -1,0 +1,60 @@
+{
+    "name": "@elizaos/plugin-lit",
+    "version": "0.1.9",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "import": {
+                "@elizaos/source": "./src/index.ts",
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-tee": "workspace:*",
+        "@lifi/data-types": "5.15.5",
+        "@lifi/sdk": "3.4.1",
+        "@lifi/types": "16.3.0",
+        "tsup": "8.3.5",
+        "@lit-protocol/lit-node-client": "^7.0.4",
+        "@lit-protocol/constants": "^7.0.4",
+        "@lit-protocol/auth-helpers": "^7.0.4",
+        "@lit-protocol/aw-tool": "*",
+        "@ethersproject/abstract-provider": "^5.0.0",
+        "@lit-protocol/contracts-sdk": "^7.0.2",
+        "@lit-protocol/lit-auth-client": "^7.0.2",
+        "@lit-protocol/pkp-client": "6.11.3",
+        "@lit-protocol/pkp-ethers": "^7.0.2",
+        "@lit-protocol/types": "^6.11.3",
+        "@lit-protocol/wrapped-keys": "^7.0.2",
+        "@solana/web3.js": "^1.95.8",
+        "ethers": "^5.7.2",
+        "siwe": "^2.0.0",
+        "zod": "3.22.4"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "typescript": "^5.0.0"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "test": "vitest run",
+        "start": "node dist/index.js --isRoot --character=characters/trump.character.json",
+        "lint": "eslint --fix  --cache .",
+        "clean": "rm -rf dist",
+        "typecheck": "tsc --noEmit"
+    },
+    "peerDependencies": {
+        "whatwg-url": "7.1.0"
+    }
+}

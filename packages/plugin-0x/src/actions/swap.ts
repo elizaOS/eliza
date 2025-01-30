@@ -75,13 +75,13 @@ export const swap: Action = {
             const txHash = await client.sendTransaction({
                 account: client.account,
                 chain: client.chain,
-                gas: !!quote?.transaction.gas
+                gas: quote?.transaction.gas
                     ? BigInt(quote?.transaction.gas)
                     : undefined,
                 to: quote?.transaction.to as `0x${string}`,
                 data: quote.transaction.data as `0x${string}`,
                 value: BigInt(quote.transaction.value),
-                gasPrice: !!quote?.transaction.gasPrice
+                gasPrice: quote?.transaction.gasPrice
                     ? BigInt(quote?.transaction.gasPrice)
                     : undefined,
                 nonce: nonce,

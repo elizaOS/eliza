@@ -43,8 +43,7 @@ export const AudioRecorder = ({
     const { toast } = useToast();
     // States
     const [isRecording, setIsRecording] = useState<boolean>(false);
-    // @ts-expect-error - isRecordingFinished is unused, but would break the 2D array if removed
-    const [isRecordingFinished, setIsRecordingFinished] =
+    const [_, setIsRecordingFinished] =
         useState<boolean>(false);
     const [timer, setTimer] = useState<number>(0);
     const [currentRecord, setCurrentRecord] = useState<Record>({
@@ -96,7 +95,7 @@ export const AudioRecorder = ({
     });
 
     function startRecording() {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        if (navigator.mediaDevices?.getUserMedia) {
             navigator.mediaDevices
                 .getUserMedia({
                     audio: true,
@@ -182,7 +181,9 @@ export const AudioRecorder = ({
             analyser.disconnect();
         }
         if (stream) {
-            stream.getTracks().forEach((track) => track.stop());
+            for (const track of stream.getTracks()) {
+                track.stop();
+            }
         }
         if (audioContext) {
             audioContext.close();

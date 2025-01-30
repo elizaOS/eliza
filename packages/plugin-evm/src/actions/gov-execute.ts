@@ -1,11 +1,12 @@
-import type { IAgentRuntime, Memory, State } from "@ai16z/eliza";
+import type { IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
 import { WalletProvider } from "../providers/wallet";
 import { executeProposalTemplate } from "../templates";
-import type { ExecuteProposalParams, Transaction } from "../types";
+import type { ExecuteProposalParams, SupportedChain, Transaction } from "../types";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
 import {
     type ByteArray,
     type Hex,
+    type Address,
     encodeFunctionData,
     keccak256,
     stringToHex,
@@ -87,20 +88,40 @@ export const executeAction = {
     description: "Execute a DAO governance proposal",
     handler: async (
         runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
-        callback?: any
+        _message: Memory,
+        _state: State,
+        options: Record<string, unknown>,
+        callback?: HandlerCallback
     ) => {
         try {
+            // Validate required fields
+            if (!options.chain || !options.governor || !options.proposalId || 
+                !options.targets || !options.values || !options.calldatas || !options.description) {
+                throw new Error("Missing required parameters for execute proposal");
+            }
+
+            // Convert options to ExecuteProposalParams
+            const executeParams: ExecuteProposalParams = {
+                chain: options.chain as SupportedChain,
+                governor: options.governor as Address,
+                proposalId: String(options.proposalId),
+                targets: options.targets as Address[],
+                values: (options.values as string[]).map(v => BigInt(v)),
+                calldatas: options.calldatas as `0x${string}`[],
+                description: String(options.description)
+            };
+
             const privateKey = runtime.getSetting(
                 "EVM_PRIVATE_KEY"
             ) as `0x${string}`;
-            const walletProvider = new WalletProvider(privateKey);
+            const walletProvider = new WalletProvider(
+                privateKey,
+                runtime.cacheManager
+            );
             const action = new ExecuteAction(walletProvider);
-            return await action.execute(options);
+            return await action.execute(executeParams);
         } catch (error) {
-            console.error("Error in vote handler:", error.message);
+            console.error("Error in execute handler:", error.message);
             if (callback) {
                 callback({ text: `Error: ${error.message}` });
             }

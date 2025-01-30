@@ -63,7 +63,7 @@ export default {
         "SEND_SUI",
         "PAY",
     ],
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
+    validate: async (_runtime: IAgentRuntime, message: Memory) => {
         console.log("Validating sui transfer from user:", message.userId);
         //add custom validate logic here
         /*
@@ -98,10 +98,11 @@ export default {
         state.walletInfo = walletInfo;
 
         // Initialize or update state
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
+        let currentState = state;
+        if (!currentState) {
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(currentState);
         }
 
         // Define the schema for the expected output
@@ -112,7 +113,7 @@ export default {
 
         // Compose transfer context
         const transferContext = composeContext({
-            state,
+            state: currentState,
             template: transferTemplate,
         });
 
@@ -146,7 +147,7 @@ export default {
             });
 
             const adjustedAmount = BigInt(
-                Number(transferContent.amount) * Math.pow(10, SUI_DECIMALS)
+                Number(transferContent.amount) * (10 ** SUI_DECIMALS)
             );
             console.log(
                 `Transferring: ${transferContent.amount} tokens (${adjustedAmount} base units)`

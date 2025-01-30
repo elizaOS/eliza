@@ -12,8 +12,8 @@ const baseConfigSchema = z.object({
 
 // Action-specific schemas
 const topicControlSchema = baseConfigSchema.extend({
-    NVIDIA_TOPIC_SYSTEM: z.string(),
-    NVIDIA_TOPIC_USER: z.string()
+    NVIDIA_OFFTOPIC_SYSTEM: z.string(),
+    NVIDIA_OFFTOPIC_USER: z.string()
 });
 
 const safetySchema = baseConfigSchema.extend({

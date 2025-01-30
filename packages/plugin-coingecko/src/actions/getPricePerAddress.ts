@@ -52,6 +52,7 @@ export default {
         "CHECK_TOKEN_PRICE_BY_ADDRESS",
         "LOOKUP_TOKEN_BY_ADDRESS",
     ],
+    // eslint-disable-next-line
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         await validateCoingeckoConfig(runtime);
         return true;

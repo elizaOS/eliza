@@ -1,38 +1,39 @@
 {
-    "name": "@elizaos/plugin-binance",
-    "version": "0.1.9-alpha.1",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@binance/connector": "^3.6.0",
-        "@elizaos/core": "workspace:*",
-        "zod": "^3.22.4"
-    },
-    "devDependencies": {
-        "@types/node": "^20.0.0",
-        "tsup": "8.3.5",
-        "vite-tsconfig-paths": "^5.1.4",
-        "vitest": "^3.0.2"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
-        "test:watch": "vitest"
-    }
+	"name": "@elizaos/plugin-binance",
+	"version": "0.1.9",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@binance/connector": "^3.6.0",
+		"@binance/connector": "^3.6.0",
+		"@elizaos/core": "workspace:*",
+		"zod": "^3.22.4"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"tsup": "8.3.5",
+		"vite-tsconfig-paths": "^5.1.4",
+		"vitest": "^3.0.2"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	}
 }

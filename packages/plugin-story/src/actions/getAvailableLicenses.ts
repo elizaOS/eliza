@@ -89,8 +89,7 @@ const formatLicenseTerms = (license: IPLicenseDetails): string => {
   • Derivatives: ${terms.derivativesAllowed ? "Allowed" : "Not Allowed"}
   • Derivatives Attribution: ${terms.derivativesAttribution ? "Required" : "Not Required"}
   • Derivatives Approval: ${terms.derivativesApproval ? "Required" : "Not Required"}
-  • Revenue Share: ${terms.commercialRevenueShare ? terms.commercialRevenueShare + "%" : "Not Required"}
-`;
+  • Revenue Share: ${terms.commercialRevenueShare ? `${terms.commercialRevenueShare}%` : "Not Required"}`; 
 };
 
 /**
@@ -103,21 +102,24 @@ export const getAvailableLicensesAction = {
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        options: any,
+        _options: Record<string, unknown>,
         callback?: HandlerCallback
     ): Promise<boolean> => {
         elizaLogger.log("Starting GET_AVAILABLE_LICENSES handler...");
 
         // Initialize or update state
-        state = !state
-            ? ((await runtime.composeState(message)) as State)
-            : await runtime.updateRecentMessageState(state);
+        let currentState = state;  // Create a new variable instead of reassigning parameter
+        if (!currentState) {
+            currentState = (await runtime.composeState(message)) as State;
+        } else {
+            currentState = await runtime.updateRecentMessageState(currentState);
+        }
 
         // Generate parameters from context
         const content = await generateObjectDeprecated({
             runtime,
             context: composeContext({
-                state,
+                state: currentState,
                 template: getAvailableLicensesTemplate,
             }),
             modelClass: ModelClass.SMALL,

@@ -83,3 +83,14 @@ Available client platforms
 #### Defined in
 
 [packages/core/src/types.ts:627](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L627)
+
+---
+
+### DEVA
+
+> **DEVA**: `"deva"`
+
+#### Defined in
+
+[packages/core/src/types.ts:643](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L643)
+

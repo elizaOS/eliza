@@ -9,11 +9,11 @@ const parseAccount = (
     const privateKey = runtime.getSetting("SUI_PRIVATE_KEY");
     if (!privateKey) {
         throw new Error("SUI_PRIVATE_KEY is not set");
-    } else if (privateKey.startsWith("suiprivkey")) {
-        return loadFromSecretKey(privateKey);
-    } else {
-        return loadFromMnemonics(privateKey);
     }
+    if (privateKey.startsWith("suiprivkey")) {
+        return loadFromSecretKey(privateKey);
+    }
+    return loadFromMnemonics(privateKey);
 };
 
 const loadFromSecretKey = (privateKey: string) => {
@@ -22,7 +22,7 @@ const loadFromSecretKey = (privateKey: string) => {
         try {
             return KeypairClass.fromSecretKey(privateKey);
         } catch {
-            continue;
+            // Removed unnecessary continue
         }
     }
     throw new Error("Failed to initialize keypair from secret key");
@@ -38,7 +38,7 @@ const loadFromMnemonics = (mnemonics: string) => {
         try {
             return Class[method](mnemonics);
         } catch {
-            continue;
+            // Removed unnecessary continue
         }
     }
     throw new Error("Failed to derive keypair from mnemonics");

@@ -115,7 +115,7 @@ export class FileSecurityValidator {
             }
 
             const normalizedPath = path.normalize(filePath);
-            
+
             // Check for directory traversal attempts
             if (normalizedPath.includes('..')) {
                 return {
@@ -131,14 +131,14 @@ export class FileSecurityValidator {
 
             // For production files, ensure they're in the upload directory
             const uploadDir = path.normalize(this.config.uploadDirectory);
-            
+
             // Check if upload directory exists and is accessible
             try {
                 await fs.access(uploadDir, fs.constants.W_OK);
             } catch (error) {
                 return {
                     isValid: false,
-                    error: `Upload directory is not accessible: ${error.code === 'ENOENT' ? 'Directory does not exist' : 
+                    error: `Upload directory is not accessible: ${error.code === 'ENOENT' ? 'Directory does not exist' :
                            error.code === 'EACCES' ? 'Permission denied' : error.message}`
                 };
             }
@@ -166,17 +166,17 @@ export class FileSecurityValidator {
             }
 
             // Remove any directory traversal attempts
-            const normalizedPath = path.normalize(filePath).replace(/^(\.\.[\/\\])+/, '');
-            
+            const normalizedPath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, '');
+
             // If it's a test path, preserve it
             if (normalizedPath.includes('__test_files__') || !normalizedPath.startsWith(this.config.uploadDirectory)) {
                 return normalizedPath;
             }
-            
+
             // For production paths, ensure they're in the upload directory
             return path.join(this.config.uploadDirectory, path.basename(normalizedPath));
         } catch (error) {
             throw new Error(`Error sanitizing file path: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
-} 
+}

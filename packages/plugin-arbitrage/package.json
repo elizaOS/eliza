@@ -1,0 +1,54 @@
+{
+    "name": "@elizaos/plugin-arbitrage",
+    "version": "0.1.9",
+    "description": "Arbitrage trading plugin for Eliza",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js",
+            "default": "./dist/index.js"
+        }
+    },
+    "scripts": {
+        "clean": "rm -rf dist",
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage"
+    },
+    "dependencies": {
+        "@elizaos/adapter-sqlite": "^0.1.8",
+        "@elizaos/core": "workspace:*",
+        "@ethersproject/abi": "^5.7.0",
+        "@ethersproject/abstract-provider": "^5.7.0",
+        "@ethersproject/address": "^5.7.0",
+        "@ethersproject/bignumber": "^5.7.0",
+        "@ethersproject/contracts": "^5.7.0",
+        "@ethersproject/providers": "^5.7.2",
+        "@ethersproject/units": "^5.7.0",
+        "@ethersproject/wallet": "^5.7.0",
+        "@flashbots/ethers-provider-bundle": "0.6.2",
+        "dotenv": "^16.4.7",
+        "ethers": "5.7.2",
+        "lodash": "^4.17.21",
+        "ws": "^8.18.0"
+    },
+    "devDependencies": {
+        "@types/lodash": "^4.17.14",
+        "@types/node": "^22.10.9",
+        "@types/ws": "^8.5.13",
+        "rimraf": "^5.0.5",
+        "typescript": "^5.7.3",
+        "@types/dotenv": "^8.2.0",
+        "tsup": "^8.0.2",
+        "vitest": "^2.1.4",
+        "@vitest/coverage-v8": "^2.1.4"
+    },
+    "peerDependencies": {
+        "@elizaos/core": "workspace:*"
+    }
+}

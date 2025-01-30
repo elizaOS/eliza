@@ -36,7 +36,7 @@
 
 ### Edit the character file
 
-- Check out the file `src/core/defaultCharacter.ts` - you can modify this
+- Check out the file `packages/core/src/defaultCharacter.ts` - you can modify this
 - You can also load characters with the `pnpm start --characters="path/to/your/character.json"` and run multiple bots at the same time.
 
 After setting up the .env file and character file, you can start the bot with the following command:

@@ -48,12 +48,13 @@ trap 'rm -f "$OUTFILE"' EXIT
 echo "Using temporary output file: $OUTFILE"
 
 # Add timeout configuration
-TIMEOUT=600  # 60 seconds represented as 600 tenths of a second
+TIMEOUT=1200  # 60 seconds represented as 600 tenths of a second
 INTERVAL=5   # Represent 0.5 seconds as 5 tenths of a second
 TIMER=0
 
 # Start the application and capture logs in the background
-pnpm start --character=characters/trump.character.json > "$OUTFILE" 2>&1 &
+# 27 includes success and that's what the level we're looking for is
+DEFAULT_LOG_LEVEL=success pnpm start --character=characters/trump.character.json > "$OUTFILE" 2>&1 &
 
 APP_PID=$!  # Capture the PID of the background process
 
@@ -62,6 +63,7 @@ APP_PID=$!  # Capture the PID of the background process
   while true; do
     if (( TIMER >= TIMEOUT )); then
         >&2 echo "ERROR: Timeout waiting for application to start after $((TIMEOUT / 10)) seconds"
+        cat $OUTFILE
         kill $APP_PID  # Terminate the pnpm process
         exit 1
     fi

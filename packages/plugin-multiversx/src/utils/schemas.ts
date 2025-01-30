@@ -24,3 +24,9 @@ export const transferSchema = z.object({
         .nullable()
         .optional(),
 });
+
+export const swapSchema = z.object({
+    tokenIn: z.string().min(1, { message: "First token is required." }),
+    amountIn: z.string().min(1, { message: "Amount is required." }),
+    tokenOut: z.string().min(1, { message: "Second token is required." }),
+});

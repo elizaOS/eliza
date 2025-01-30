@@ -61,7 +61,7 @@ cp .env.example .env
 
 ### Редактирование файла персонажа
 
-1. Откройте `src/core/defaultCharacter.ts`, чтобы изменить персонажа по умолчанию.
+1. Откройте `packages/core/src/defaultCharacter.ts`, чтобы изменить персонажа по умолчанию.
 
 2. Для загрузки пользовательских персонажей:
     - Используйте команду `pnpm start --characters="path/to/your/character.json"`

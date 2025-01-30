@@ -6,7 +6,12 @@ import { type IAgentRuntime, ModelClass, ServiceType } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import { PlaywrightBlocker } from "@cliqz/adblocker-playwright";
 import CaptchaSolver from "capsolver-npm";
-import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
+import {
+    type Browser,
+    type BrowserContext,
+    chromium,
+    type Page,
+} from "playwright";
 import { elizaLogger } from "@elizaos/core";
 
 async function generateSummary(
@@ -38,7 +43,7 @@ async function generateSummary(
 
     const parsedResponse = parseJSONObjectFromText(response);
 
-    if (parsedResponse) {
+    if (parsedResponse?.title && parsedResponse?.summary) {
         return {
             title: parsedResponse.title,
             description: parsedResponse.summary,
@@ -124,8 +129,9 @@ export class BrowserService extends Service implements IBrowserService {
                 acceptDownloads: false,
             });
 
-            this.blocker =
-                await PlaywrightBlocker.fromPrebuiltAdsAndTracking(fetch);
+            this.blocker = await PlaywrightBlocker.fromPrebuiltAdsAndTracking(
+                fetch
+            );
         }
     }
 
@@ -317,7 +323,9 @@ export class BrowserService extends Service implements IBrowserService {
         }
 
         // Try Google Search as a last resort
-        const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(url)}`;
+        const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(
+            url
+        )}`;
         try {
             return await this.fetchPageContent(googleSearchUrl, runtime);
         } catch (error) {

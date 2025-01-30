@@ -1,12 +1,13 @@
-import type { IAgentRuntime, Memory, State } from "@ai16z/eliza";
+import type { IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
 import { WalletProvider } from "../providers/wallet";
 import { proposeTemplate } from "../templates";
-import type { ProposeProposalParams, Transaction } from "../types";
+import type { ProposeProposalParams, SupportedChain, Transaction } from "../types";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
 import {
     type ByteArray,
     type Hex,
     encodeFunctionData,
+    type Address,
 } from "viem";
 
 export { proposeTemplate };
@@ -83,20 +84,37 @@ export const proposeAction = {
     description: "Execute a DAO governance proposal",
     handler: async (
         runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
-        callback?: any
+        _message: Memory,
+        _state: State,
+        options: Record<string, unknown>,
+        callback?: HandlerCallback
     ) => {
         try {
+            // Validate required fields
+            if (!options.chain || !options.governor || 
+                !options.targets || !options.values || 
+                !options.calldatas || !options.description) {
+                throw new Error("Missing required parameters for proposal");
+            }
+
+            // Convert options to ProposeProposalParams
+            const proposeParams: ProposeProposalParams = {
+                chain: options.chain as SupportedChain,
+                governor: options.governor as Address,
+                targets: options.targets as Address[],
+                values: (options.values as string[]).map(v => BigInt(v)),
+                calldatas: options.calldatas as `0x${string}`[],
+                description: String(options.description)
+            };
+
             const privateKey = runtime.getSetting(
                 "EVM_PRIVATE_KEY"
             ) as `0x${string}`;
-            const walletProvider = new WalletProvider(privateKey);
+            const walletProvider = new WalletProvider(privateKey, runtime.cacheManager);
             const action = new ProposeAction(walletProvider);
-            return await action.propose(options);
+            return await action.propose(proposeParams);
         } catch (error) {
-            console.error("Error in vote handler:", error.message);
+            console.error("Error in propose handler:", error.message);
             if (callback) {
                 callback({ text: `Error: ${error.message}` });
             }

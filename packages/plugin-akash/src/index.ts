@@ -1,4 +1,8 @@
-import type { Plugin} from "@elizaos/core";
+import { Plugin} from "@elizaos/core";
+import chalk from 'chalk';
+import Table from 'cli-table3';
+import ora from 'ora';
+import { getConfig } from "./environment";
 import { createDeploymentAction } from "./actions/createDeployment";
 import { closeDeploymentAction } from "./actions/closeDeployment";
 import { getProviderInfoAction } from "./actions/getProviderInfo";
@@ -8,6 +12,14 @@ import { getDeploymentApiAction } from "./actions/getDeploymentApi";
 import { getGPUPricingAction } from "./actions/getGPUPricing";
 import { getManifestAction } from "./actions/getManifest";
 import { getProvidersListAction } from "./actions/getProvidersList";
+
+
+// Start the loader
+const spinner = ora({
+  text: chalk.cyan('Initializing Akash Network Plugin...'),
+  spinner: 'dots12',
+  color: 'cyan'
+}).start();
 
 const actions = [
   createDeploymentAction,
@@ -21,48 +33,77 @@ const actions = [
   getProvidersListAction,
 ];
 
+const AKASH_SPASH = getConfig().AKASH_WALLET_ADDRESS;
+
 // Initial banner
-console.log("\n┌════════════════════════════════════════┐");
-console.log("│          AKASH NETWORK PLUGIN          │");
-console.log("├────────────────────────────────────────┤");
-console.log("│  Initializing Akash Network Plugin...  │");
-console.log("│  Version: 0.1.0                        │");
-console.log("└════════════════════════════════════════┘");
+// Only show splash screen if AKASH_SPASH is true
+if (AKASH_SPASH) {
+    // Initial banner with chalk styling
+    console.log(`\n${chalk.cyan('┌────────────────────────────────────────┐')}`);
+    console.log(chalk.cyan('│') + chalk.yellow.bold('          AKASH NETWORK PLUGIN           ') + chalk.cyan(' │'));
+    console.log(chalk.cyan('├────────────────────────────────────────┤'));
+    console.log(chalk.cyan('│') + chalk.white('  Initializing Akash Network Plugin...   ') + chalk.cyan('│'));
+    console.log(chalk.cyan('│') + chalk.white('  Version: 0.1.1                         ') + chalk.cyan('│'));
+    console.log(chalk.cyan('└────────────────────────────────────────┘'));
 
-// Format action registration message
-const formatActionInfo = (action: any) => {
-  const name = action.name.padEnd(25);
-  const similes = (action.similes?.join(", ") || "none").padEnd(60);
-  const hasHandler = action.handler ? "✓" : "✗";
-  const hasValidator = action.validate ? "✓" : "✗";
-  const hasExamples = action.examples?.length > 0 ? "✓" : "✗";
+    // Stop the loader
+    spinner.succeed(chalk.green('Akash Network Plugin initialized successfully!'));
 
-  return `│ ${name} │ ${hasHandler} │ ${hasValidator} │ ${hasExamples} │ ${similes} │`;
-};
+    // Create a beautiful table for actions
+    const actionTable = new Table({
+      head: [
+        chalk.cyan('Action'),
+        chalk.cyan('H'),
+        chalk.cyan('V'),
+        chalk.cyan('E'),
+        chalk.cyan('Similes')
+      ],
+      style: {
+        head: [],
+        border: ['cyan']
+      }
+    });
 
-// Log registered actions
-console.log("\n┌───────────────────────────┬───┬───┬───┬───────────────────────────────────────────────────────────┐");
-console.log("│ Action                    │ H │ V │ E │ Similes                                                   │");
-console.log("├───────────────────────────┼───┼───┼───┼────────────────────────────────────────────────────────────┤");
-actions.forEach(action => {
-  console.log(formatActionInfo(action));
-});
-console.log("└───────────────────────────┴───┴───┴───┴──────────────────────────────────────────────────────────┘");
+    // Format and add action information
+    for (const action of actions) {
+        actionTable.push([
+            chalk.white(action.name),
+            typeof action.handler === 'function' ? chalk.green('✓') : chalk.red('✗'),
+            typeof action.validate === 'function' ? chalk.green('✓') : chalk.red('✗'),
+            action.examples?.length > 0 ? chalk.green('✓') : chalk.red('✗'),
+            chalk.gray(action.similes?.join(', ') || 'none')
+        ]);
+    }
 
-// Plugin status
-console.log("\n┌─────────────────────────────────────┐");
-console.log("│           Plugin Status             │");
-console.log("├─────────────────────────────────────┤");
-console.log(`│ Name    : akash                     │`);
-console.log(`│ Actions : ${actions.length.toString().padEnd(24)}  │`);
-console.log(`│ Status  : Loaded & Ready            │`);
-console.log("└─────────────────────────────────────┘\n");
+    // Display the action table
+    console.log(`\n${actionTable.toString()}`);
 
-export const akashPlugin: Plugin = {
-  name: "akash",
-  description: "Akash Network Plugin for deploying and managing cloud compute",
-  actions: actions,
-  evaluators: []
-};
+    // Plugin status with a nice table
+    const statusTable = new Table({
+      style: {
+        border: ['cyan']
+      }
+    });
 
+    statusTable.push(
+      [chalk.cyan('Plugin Status')],
+      [chalk.white('Name    : ') + chalk.yellow('plugin-akash')],
+      [chalk.white('Actions : ') + chalk.green(actions.length.toString())],
+      [chalk.white('Status  : ') + chalk.green('Loaded & Ready')]
+    );
+
+    console.log(`\n${statusTable.toString()}\n`);
+  } else {
+    // Stop the loader silently if splash is disabled
+    spinner.stop();
+  }
+
+  const akashPlugin: Plugin = {
+    name: "plugin-akash",
+    description: "Akash Network Plugin for deploying and managing cloud compute",
+    actions: actions,
+    evaluators: []
+  };
+
+export { akashPlugin };
 export default akashPlugin;

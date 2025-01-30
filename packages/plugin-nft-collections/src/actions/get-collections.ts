@@ -10,7 +10,7 @@ export const getCollectionsAction = (
         similes: ["LIST_NFT_COLLECTIONS", "SHOW_NFT_COLLECTIONS"],
         description:
             "Fetches information about curated NFT collections on Ethereum",
-        validate: async (runtime: IAgentRuntime, message: Memory) => {
+        validate: async (_runtime: IAgentRuntime, message: Memory) => {
             return message.content.text
                 .toLowerCase()
                 .includes("nft collections");
@@ -18,8 +18,8 @@ export const getCollectionsAction = (
         handler: async (
             runtime: IAgentRuntime,
             message: Memory,
-            state: State,
-            options: any,
+            _state: State,
+            _options: { [key: string]: unknown },
             callback: HandlerCallback
         ) => {
             try {

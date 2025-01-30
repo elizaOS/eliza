@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { stringToUuid } from "../packages/core/dist/index.js";
-import path from "path";
+import path from "node:path";
 
 export const DEFAULT_CHARACTER = "trump";
 export const DEFAULT_AGENT_ID = stringToUuid(DEFAULT_CHARACTER ?? uuidv4());
@@ -15,7 +15,7 @@ function log(message) {
 }
 
 function logError(error) {
-    log("ERROR: " + error.message);
+    log(`Error: ${message}`);
     log(error); // Print stack trace
 }
 
@@ -98,11 +98,9 @@ async function startAgent(character = DEFAULT_CHARACTER) {
                 method: "GET",
             });
             if (response.ok) break;
-        } catch (error) {}
+        } catch (_error) {}
         if (Date.now() - startTime > 120000) {
             throw new Error("Timeout waiting for process to start");
-        } else {
-            await sleep(1000);
         }
     }
     await sleep(1000);
@@ -110,7 +108,7 @@ async function startAgent(character = DEFAULT_CHARACTER) {
 }
 
 async function stopAgent(proc) {
-    log("Stopping agent..." + JSON.stringify(proc.pid));
+    log(`Stopping agent... + ${JSON.stringify(proc.pid)}`);
     proc.kill();
     const startTime = Date.now();
     while (true) {
@@ -154,7 +152,7 @@ async function send(message) {
 
 async function runIntegrationTest(fn) {
     log(fn);
-    const skip = fn.hasOwnProperty("skipIf") ? fn.skipIf : false;
+    const skip = Object.prototype.hasOwnProperty.call(fn, "skipIf") ? fn.skipIf : false;
     if (skip) {
         log(
             fn.description

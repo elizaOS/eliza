@@ -38,8 +38,8 @@ export const readContractAction: Action = {
     handler: async (
         runtime: IAgentRuntime,
         message: Memory,
-        state: State,
-        _options: any,
+        _state: State,
+        _options: Record<string, unknown>,
         callback: HandlerCallback
     ) => {
         const clientProvider = new ClientProvider(runtime);

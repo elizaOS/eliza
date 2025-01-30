@@ -35,27 +35,62 @@ export interface TransferContent extends Content {
 }
 
 export function isTransferContent(
-    content: any
+    content: unknown
 ): content is TransferContent {
+    if (!content || typeof content !== 'object') {
+        return false;
+    }
+    
+    const contentObj = content as { tokenAddress?: unknown; recipient?: unknown; amount?: unknown };
+    
     // Validate types
     const validTypes =
-        (content.tokenAddress === null || typeof content.tokenAddress === "string") &&
-        typeof content.recipient === "string" &&
-        (typeof content.amount === "string" ||
-            typeof content.amount === "number");
+        (contentObj.tokenAddress === null || typeof contentObj.tokenAddress === "string") &&
+        typeof contentObj.recipient === "string" &&
+        (typeof contentObj.amount === "string" ||
+            typeof contentObj.amount === "number");
     if (!validTypes) {
         return false;
     }
 
     // Validate addresses (20-bytes with 0x prefix)
+    const recipient = contentObj.recipient as string;
+    const tokenAddress = contentObj.tokenAddress as string | null;
+
     const validRecipient =
-        content.recipient.startsWith("0x") &&
-        content.recipient.length === 42;
+        recipient.startsWith("0x") &&
+        recipient.length === 42;
 
     // If tokenAddress is provided, validate it
-    const validTokenAddress = content.tokenAddress === null ||
-        (content.tokenAddress.startsWith("0x") &&
-        content.tokenAddress.length === 42);
+    const validTokenAddress = tokenAddress === null ||
+        (tokenAddress.startsWith("0x") &&
+        tokenAddress.length === 42);
 
     return validRecipient && validTokenAddress;
 }
+
+// export function isTransferContent(
+//     content: any
+// ): content is TransferContent {
+//     // Validate types
+//     const validTypes =
+//         (content.tokenAddress === null || typeof content.tokenAddress === "string") &&
+//         typeof content.recipient === "string" &&
+//         (typeof content.amount === "string" ||
+//             typeof content.amount === "number");
+//     if (!validTypes) {
+//         return false;
+//     }
+
+//     // Validate addresses (20-bytes with 0x prefix)
+//     const validRecipient =
+//         content.recipient.startsWith("0x") &&
+//         content.recipient.length === 42;
+
+//     // If tokenAddress is provided, validate it
+//     const validTokenAddress = content.tokenAddress === null ||
+//         (content.tokenAddress.startsWith("0x") &&
+//         content.tokenAddress.length === 42);
+
+//     return validRecipient && validTokenAddress;
+

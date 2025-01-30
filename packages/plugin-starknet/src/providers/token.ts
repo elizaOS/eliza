@@ -119,7 +119,7 @@ export class TokenProvider {
                 lastError = error as Error;
 
                 if (i < PROVIDER_CONFIG.MAX_RETRIES - 1) {
-                    const delay = PROVIDER_CONFIG.RETRY_DELAY * Math.pow(2, i);
+                    const delay = PROVIDER_CONFIG.RETRY_DELAY * (2 ** i);  // Fix: Use exponentiation operator instead of Math.pow
                     await new Promise((resolve) => setTimeout(resolve, delay));
                 }
             }
@@ -156,10 +156,10 @@ export class TokenProvider {
             // Check if the tokenAddress exists in the TokenBalances
             if (items[tokenAddress]) {
                 return tokenAddress;
-            } else {
-                console.warn(`Token with address ${tokenAddress} not found in wallet`);
-                return null;
             }
+            
+            console.warn(`Token with address ${tokenAddress} not found in wallet`);
+            return null;
         } catch (error) {
             console.error("Error checking token in wallet:", error);
             return null;
@@ -401,7 +401,7 @@ export class TokenProvider {
 
             return dexData;
         } catch (error) {
-            console.error(`Error fetching DexScreener data:`, error);
+            console.error("Error fetching DexScreener data:", error);
             return {
                 schemaVersion: "1.0.0",
                 pairs: [],
@@ -444,7 +444,7 @@ export class TokenProvider {
             // Return the pair with the highest liquidity and market cap
             return this.getHighestLiquidityPair(dexData);
         } catch (error) {
-            console.error(`Error fetching DexScreener data:`, error);
+            console.error("Error fetching DexScreener data:", error);
             return null;
         }
     }
@@ -504,11 +504,11 @@ export class TokenProvider {
 
         if (averageChange > increaseThreshold) {
             return "increasing";
-        } else if (averageChange < decreaseThreshold) {
-            return "decreasing";
-        } else {
-            return "stable";
         }
+        if (averageChange < decreaseThreshold) {
+            return "decreasing";
+        }
+        return "stable";
     }
 
     // TODO: Update to Starknet
@@ -523,7 +523,10 @@ export class TokenProvider {
         const allHoldersMap = new Map<string, number>();
         let page = 1;
         const limit = 1000;
-        let cursor;
+        // let cursor;
+        // Fix: Add type annotation to prevent implicit any
+        let cursor: string | undefined;
+
         //HELIOUS_API_KEY needs to be added
         const url = `https://mainnet.helius-rpc.com/?api-key=${
             settings.HELIUS_API_KEY || ""
@@ -538,7 +541,8 @@ export class TokenProvider {
                     mint: this.tokenAddress,
                     cursor: cursor,
                 };
-                if (cursor != undefined) {
+                // Fix: Replace != with !==
+                if (cursor !== undefined) {
                     params.cursor = cursor;
                 }
                 console.log(`Fetching holders - Page ${page}`);

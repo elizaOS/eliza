@@ -343,7 +343,7 @@ export class TranscriptionService
             }
         );
         const result =
-            response.result.results.channels[0].alternatives[0].transcript;
+            response?.result?.results?.channels[0]?.alternatives[0]?.transcript;
         return result;
     }
 

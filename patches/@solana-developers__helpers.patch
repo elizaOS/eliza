@@ -1,0 +1,13 @@
+diff --git a/dist/esm/lib/transaction.js b/dist/esm/lib/transaction.js
+index c86ccd726fb0bef6e82cd37a6d7c7fc9edef8344..0ec2bfe2463e998b5ad68b618f4d216fec28a0f7 100644
+--- a/dist/esm/lib/transaction.js
++++ b/dist/esm/lib/transaction.js
+@@ -1,6 +1,7 @@
+ import { ComputeBudgetProgram, PublicKey, TransactionMessage, VersionedTransaction, } from "@solana/web3.js";
+ import { getErrorFromRPCResponse } from "./logs.js";
+-import { Program, AnchorProvider, EventParser, BorshAccountsCoder, BorshInstructionCoder, BN, } from "@coral-xyz/anchor";
++import pkg from '@coral-xyz/anchor';
++const { Program, AnchorProvider, EventParser, BorshAccountsCoder, BorshInstructionCoder, BN, } = pkg;
+ import * as fs from "fs";
+ import * as path from "path";
+ export const confirmTransaction = async (connection, signature, commitment = "confirmed") => {

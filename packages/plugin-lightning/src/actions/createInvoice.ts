@@ -8,12 +8,12 @@ import {
 
 import {
     initLightningProvider,
-    LightningProvider,
+    type LightningProvider,
 } from "../providers/lightning";
 
 import { createInvoiceTemplate } from "../templates";
-import { CreateInvoiceResult } from "astra-lightning";
-import { CreateInvoiceArgs } from "../types";
+import type { CreateInvoiceResult } from "astra-lightning";
+import type { CreateInvoiceArgs } from "../types";
 export { createInvoiceTemplate };
 
 export class CreateInvoiceAction {
@@ -40,7 +40,7 @@ export const createInvoiceAction = {
         runtime: IAgentRuntime,
         _message: Memory,
         state: State,
-        _options: any,
+        _options: Record<string, unknown>,
         callback?: (response: {
             text: string;
             content?: { success: boolean; invoice?: string };

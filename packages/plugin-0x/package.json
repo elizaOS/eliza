@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-0x",
-    "version": "0.1.8",
+    "version": "0.1.9",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",
@@ -21,7 +21,7 @@
     "scripts": {
         "build": "tsup --format esm --dts",
         "dev": "tsup --format esm --dts --watch",
-        "test": "vitest"
+        "test": "vitest run"
     },
     "dependencies": {
         "@0x/swap-ts-sdk": "2.1.1"

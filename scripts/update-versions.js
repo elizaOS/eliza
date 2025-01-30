@@ -1,7 +1,7 @@
-const fs = require("fs");
-const path = require("path");
-const readline = require("readline");
-const { execSync } = require("child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+const readline = require("node:readline");
+const { execSync } = require("node:child_process");
 
 const packagesDir = path.join(__dirname, "../packages");
 const externalDirs = ["../agent", "../client", "../docs"];
@@ -69,7 +69,7 @@ async function updateVersions() {
                 packageJson.version = NEW_VERSION;
                 fs.writeFileSync(
                     packagePath,
-                    JSON.stringify(packageJson, null, 2) + "\n"
+                    `${JSON.stringify(packageJson, null, 2)}\n`
                 );
                 log(
                     "info",
@@ -93,15 +93,15 @@ async function updateVersions() {
     // Update packages folder
     if (fs.existsSync(packagesDir)) {
         const packageDirs = fs.readdirSync(packagesDir);
-        packageDirs.forEach((dir) =>
-            updateDirectory(path.join(packagesDir, dir))
-        );
+        for (const dir of packageDirs) {
+            updateDirectory(path.join(packagesDir, dir));
+        }
     } else {
         log("warn", `Packages directory not found at ${packagesDir}`);
     }
 
     // Update external folders
-    externalDirs.forEach((dir) => {
+    for (const dir of externalDirs) {
         const fullPath = path.join(__dirname, dir);
         if (fs.existsSync(fullPath)) {
             updateDirectory(fullPath);
@@ -111,7 +111,7 @@ async function updateVersions() {
                 `External directory not found: ${simplifyPath(fullPath)}`
             );
         }
-    });
+    };
 
     // Update lerna.json
     if (fs.existsSync(lernaPath)) {
@@ -122,7 +122,7 @@ async function updateVersions() {
             lernaJson.version = NEW_VERSION;
             fs.writeFileSync(
                 lernaPath,
-                JSON.stringify(lernaJson, null, 2) + "\n"
+                `${JSON.stringify(lernaJson, null, 2)}\n`
             );
             log(
                 "info",

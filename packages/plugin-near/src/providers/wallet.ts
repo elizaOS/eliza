@@ -97,8 +97,8 @@ export class WalletProvider implements Provider {
     private async fetchWithRetry(
         url: string,
         options: RequestInit = {}
-    ): Promise<any> {
-        let lastError: Error;
+    ): Promise<unknown> {
+        let lastError = new Error('Failed to fetch after all retries');
 
         for (let i = 0; i < PROVIDER_CONFIG.MAX_RETRIES; i++) {
             try {
@@ -114,13 +114,13 @@ export class WalletProvider implements Provider {
                     await new Promise((resolve) =>
                         setTimeout(
                             resolve,
-                            PROVIDER_CONFIG.RETRY_DELAY * Math.pow(2, i)
+                            PROVIDER_CONFIG.RETRY_DELAY * (2 ** i)
                         )
                     );
                 }
             }
         }
-        throw lastError!;
+        throw lastError;
     }
 
     async fetchPortfolioValue(
@@ -182,7 +182,8 @@ export class WalletProvider implements Provider {
         try {
             const response = await this.fetchWithRetry(
                 "https://api.coingecko.com/api/v3/simple/price?ids=near&vs_currencies=usd"
-            );
+            ) as { near: { usd: number } };
+            
             const price = response.near.usd;
             this.cache.set(cacheKey, price);
             return price;

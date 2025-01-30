@@ -1,5 +1,7 @@
-import { IAgentRuntime, Provider, Memory, State } from "@elizaos/core";
+import type { IAgentRuntime, Provider, Memory, State } from "@elizaos/core";
 
+// Add type imports for Initia.js
+import type { Wallet, RESTClient, Tx } from '@initia/initia.js';
 
 interface WalletProviderOptions {
     chainId: string;
@@ -12,8 +14,8 @@ const DEFAULT_INITIA_TESTNET_CONFIGS: WalletProviderOptions = {
 }
 
 export class WalletProvider {
-    private wallet: any = null;
-    private restClient: any = null;
+    private wallet: Wallet | null = null;
+    private restClient: RESTClient | null = null;
     private runtime: IAgentRuntime;
 
     async initialize(runtime: IAgentRuntime, options: WalletProviderOptions = DEFAULT_INITIA_TESTNET_CONFIGS) {
@@ -59,13 +61,13 @@ export class WalletProvider {
         return this.wallet.rest.bank.balance(this.getAddress());
     }
 
-    async sendTransaction(signedTx: any) {
+    async sendTransaction(signedTx: Tx | string) {
         return await this.restClient.tx.broadcast(signedTx);
     }
 }
 
 export const initiaWalletProvider: Provider = {
-    async get(runtime: IAgentRuntime, message: Memory, state?: State): Promise<string | null> {
+    async get(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<string | null> {
         if (!runtime.getSetting("INITIA_PRIVATE_KEY")) {
             return null;
         }

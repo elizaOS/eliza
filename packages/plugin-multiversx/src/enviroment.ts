@@ -11,7 +11,7 @@ export const multiversxEnvSchema = z.object({
 export type MultiversxConfig = z.infer<typeof multiversxEnvSchema>;
 
 export async function validateMultiversxConfig(
-    runtime: IAgentRuntime
+    runtime: IAgentRuntime,
 ): Promise<MultiversxConfig> {
     try {
         const config = {
@@ -29,7 +29,7 @@ export async function validateMultiversxConfig(
                 .map((err) => `${err.path.join(".")}: ${err.message}`)
                 .join("\n");
             throw new Error(
-                `MultiversX configuration validation failed:\n${errorMessages}`
+                `MultiversX configuration validation failed:\n${errorMessages}`,
             );
         }
         throw error;

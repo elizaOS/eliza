@@ -99,14 +99,16 @@ export const deployToken: Action = {
         elizaLogger.log(
             "Starting DEPLOY_STARKNET_UNRUGGABLE_MEME_TOKEN handler..."
         );
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
+        // Fix: Create new variable instead of reassigning parameter
+        let currentState = state;
+        if (!currentState) {
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(currentState);
         }
 
         const deployContext = composeContext({
-            state,
+            state: currentState,
             template: deployTemplate,
         });
 
@@ -116,7 +118,7 @@ export const deployToken: Action = {
             modelClass: ModelClass.MEDIUM,
         });
 
-        elizaLogger.log("init supply." + response.initialSupply);
+        elizaLogger.log(`init supply. ${response.initialSupply}`);
         elizaLogger.log(response);
 
         if (!isDeployTokenContent(response)) {
@@ -148,10 +150,7 @@ export const deployToken: Action = {
             );
 
             elizaLogger.log(
-                "Token deployment initiated for: " +
-                    response.name +
-                    " at address: " +
-                    tokenAddress
+                `Token deployment initiated for: ${response.name} at address: ${tokenAddress}`
             );
 
             await launchOnEkubo(config, {
@@ -181,11 +180,7 @@ export const deployToken: Action = {
             });
 
             callback?.({
-                text:
-                    "Token Deployment completed successfully!" +
-                    response.symbol +
-                    " deployed in tx: " +
-                    transactionHash,
+                text: `Token Deployment completed successfully! ${response.symbol} deployed in tx: ${transactionHash}`,
             });
 
             return true;

@@ -4,8 +4,8 @@ import { describe, it, expect } from "@jest/globals";
 // Helper function to identify client types
 function determineClientType(client: Client): string {
     // Check if client has a direct type identifier
-    if ("type" in client) {
-        return (client as any).type;
+    if ("type" in client && typeof client.type === "string") {
+        return client.type;
     }
 
     // Check constructor name

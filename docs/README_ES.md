@@ -39,7 +39,7 @@ _Respaldado por [@DegenSpartanAI](https://x.com/degenspartanai) y [@MarcAIndrees
 
 ### Edita el archivo del character
 
-- Mira el archivo `src/core/defaultCharacter.ts` - tú puedes modificarlo
+- Mira el archivo `packages/core/src/defaultCharacter.ts` - tú puedes modificarlo
 - También puede cargar caracteres con el comando `pnpm start --characters="path/to/your/character.json"` y ejecutar múltiples bots al mismo tiempo.
 
 Después de configurar el archivo .env y el archivo de caracteres, puedes iniciar el bot con el siguiente comando:

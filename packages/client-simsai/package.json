@@ -1,0 +1,37 @@
+{
+    "name": "@elizaos/client-simsai",
+    "version": "0.1.9",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "import": {
+                "@elizaos/source": "./src/index.ts",
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "glob": "11.0.0",
+        "zod": "3.23.8"
+    },
+    "devDependencies": {
+        "tsup": "8.3.5"
+    },
+    "peerDependencies": {
+        "@elizaos/core": "workspace:*"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix"
+    }
+}

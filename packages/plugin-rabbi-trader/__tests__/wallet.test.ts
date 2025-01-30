@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getWalletKeypair, getWalletBalance } from '../src/wallet';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
-import { IAgentRuntime } from '@elizaos/core';
+import type { IAgentRuntime } from '@elizaos/core';
 
 // Mock dependencies
 vi.mock('@solana/web3.js', () => {

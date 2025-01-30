@@ -1,0 +1,37 @@
+{
+	"name": "@elizaos/plugin-lens-network",
+	"version": "0.1.9",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"tsup": "^8.3.5",
+		"web3": "^4.15.0",
+		"@lens-network/sdk": "^0.0.0-canary-20241203140504",
+		"dotenv": "^16.0.3",
+		"ethers": "^6.0.0",
+		"zksync-ethers": "^6.0.0"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"lint": "eslint --fix  --cache ."
+	},
+	"peerDependencies": {
+		"whatwg-url": "7.1.0"
+	}
+}

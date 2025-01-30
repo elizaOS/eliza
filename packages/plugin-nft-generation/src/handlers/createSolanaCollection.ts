@@ -30,7 +30,8 @@ export async function createCollectionMetadata({
     elizaLogger.log("User ID:", userId);
     const awsS3Service: AwsS3Service = runtime.getService(ServiceType.AWS_S3);
     const agentName = runtime.character.name;
-    const roomId = stringToUuid("nft_generate_room-" + agentName);
+    // const roomId = stringToUuid("nft_generate_room-" + agentName);
+    const roomId = stringToUuid(`nft_generate_room-${agentName}`);
     // Create memory for the message
     const memory: Memory = {
         agentId: userId,
@@ -61,7 +62,7 @@ export async function createCollectionMetadata({
     );
     if (images.success && images.data && images.data.length > 0) {
         const image = images.data[0];
-        const filename = `collection-image`;
+        const filename = 'collection-image';
         if (image.startsWith("http")) {
             elizaLogger.log("Generating image url:", image);
         }

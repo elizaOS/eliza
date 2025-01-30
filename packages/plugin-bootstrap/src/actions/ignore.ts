@@ -15,7 +15,7 @@ export const ignoreAction: Action = {
         "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong an you need to tell them. Only ignore if the user should be ignored.",
     handler: async (
         _runtime: IAgentRuntime,
-        _message: Memory
+        _message: Memory,
     ): Promise<boolean> => {
         return true;
     },
@@ -121,16 +121,6 @@ export const ignoreAction: Action = {
                 content: { text: "PLEASE shut up" },
             },
             { user: "{{user2}}", content: { text: "", action: "IGNORE" } },
-        ],
-        [
-            {
-                user: "{{user1}}",
-                content: { text: "I want to have sex with you" },
-            },
-            {
-                user: "{{user2}}",
-                content: { text: "That is not appropriate", action: "IGNORE" },
-            },
         ],
         [
             {

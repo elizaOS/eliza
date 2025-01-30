@@ -1,0 +1,23 @@
+{
+    "name": "@elizaos/plugin-dcap",
+    "version": "0.1.9",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-sgx": "workspace:*",
+        "@elizaos/plugin-tee": "workspace:*",
+        "ethers": "^6.13.5"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "tsup": "8.3.5"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "eslint --fix  --cache ."
+    }
+}

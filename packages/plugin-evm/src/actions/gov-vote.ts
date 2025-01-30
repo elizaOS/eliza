@@ -1,9 +1,9 @@
-import type { IAgentRuntime, Memory, State } from "@ai16z/eliza";
+import type { IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
 import { WalletProvider } from "../providers/wallet";
 import { voteTemplate } from "../templates";
-import type { Transaction, VoteParams } from "../types";
+import type { VoteParams, SupportedChain, Transaction } from "../types";
 import governorArtifacts from "../contracts/artifacts/OZGovernor.json";
-import { type ByteArray, type Hex, encodeFunctionData } from "viem";
+import { type ByteArray, type Hex, encodeFunctionData, type Address } from "viem";
 
 export { voteTemplate };
 
@@ -77,18 +77,32 @@ export const voteAction = {
     description: "Vote for a DAO governance proposal",
     handler: async (
         runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
-        callback?: any
+        _message: Memory,
+        _state: State,
+        options: Record<string, unknown>,
+        callback?: HandlerCallback
     ) => {
         try {
+            // Validate required fields
+            if (!options.chain || !options.governor || 
+                !options.proposalId || !options.support) {
+                throw new Error("Missing required parameters for vote");
+            }
+
+            // Convert options to VoteParams
+            const voteParams: VoteParams = {
+                chain: options.chain as SupportedChain,
+                governor: options.governor as Address,
+                proposalId: String(options.proposalId),
+                support: Number(options.support)
+            };
+
             const privateKey = runtime.getSetting(
                 "EVM_PRIVATE_KEY"
             ) as `0x${string}`;
-            const walletProvider = new WalletProvider(privateKey);
+            const walletProvider = new WalletProvider(privateKey, runtime.cacheManager);
             const action = new VoteAction(walletProvider);
-            return await action.vote(options);
+            return await action.vote(voteParams);
         } catch (error) {
             console.error("Error in vote handler:", error.message);
             if (callback) {

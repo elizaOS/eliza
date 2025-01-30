@@ -1,11 +1,12 @@
 {
-    "version": "0.1.9-alpha.1",
-    "packages": [
-        "packages/*",
-        "docs",
-        "agent",
-        "client",
-        "!packages/_examples"
-    ],
-    "npmClient": "pnpm"
+	"version": "0.1.9",
+	"packages": ["packages/*", "docs", "agent", "client", "!packages/_examples"],
+	"npmClient": "pnpm",
+	"command": {
+		"publish": {
+			"registry": "https://registry.npmjs.org/",
+			"access": "public",
+			"allowBranch": "main"
+		}
+	}
 }

@@ -24,6 +24,7 @@ const _SupportedChainList = Object.keys(viemChains) as Array<
     keyof typeof viemChains
 >;
 
+
 function isMintNFTContent(content: any): content is MintNFTContent {
     return typeof content.collectionAddress === "string" && typeof content.collectionAddress === "string";
 }
@@ -68,19 +69,27 @@ const mintNFTAction: Action = {
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        options: { [key: string]: unknown },
+        _options: { [key: string]: unknown },
         callback: HandlerCallback
     ) => {
         try {
             elizaLogger.log("Composing state for message:", message);
-            if (!state) {
-                state = (await runtime.composeState(message)) as State;
-            } else {
-                state = await runtime.updateRecentMessageState(state);
-            }
 
+            // if (!state) {
+            //     state = (await runtime.composeState(message)) as State;
+            // } else {
+            //     state = await runtime.updateRecentMessageState(state);
+            // }
+
+            let currentState: State;
+            if (!state) {
+                currentState = (await runtime.composeState(message)) as State;
+            } else {
+                currentState = await runtime.updateRecentMessageState(state);
+            }
+            
             const context = composeContext({
-                state,
+                state: currentState,
                 template: mintNFTTemplate,
             });
 
@@ -229,7 +238,7 @@ const mintNFTAction: Action = {
                 }
             }
             return [];
-        } catch (e: any) {
+        } catch (e: unknown) {
             elizaLogger.log(e);
             throw e;
         }

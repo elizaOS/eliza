@@ -1,40 +1,40 @@
 {
-    "name": "@elizaos/plugin-coinbase",
-    "version": "0.1.9-alpha.1",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "coinbase-api": "1.0.5",
-        "coinbase-advanced-sdk": "file:../../packages/plugin-coinbase/advanced-sdk-ts",
-        "jsonwebtoken": "^9.0.2",
-        "@types/jsonwebtoken": "^9.0.7",
-        "node-fetch": "^2.6.1"
-    },
-    "devDependencies": {
-        "tsup": "8.3.5",
-        "@types/node": "^20.0.0",
-        "vitest": "^1.0.0"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
-        "test:watch": "vitest"
-    }
+	"name": "@elizaos/plugin-coinbase",
+	"version": "0.1.9",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"@types/jsonwebtoken": "^9.0.7",
+		"coinbase-advanced-sdk": "file:../../packages/plugin-coinbase/advanced-sdk-ts",
+		"coinbase-api": "1.0.5",
+		"jsonwebtoken": "^9.0.2",
+		"node-fetch": "^2.6.1"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"tsup": "8.3.5",
+		"vitest": "^1.0.0"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	}
 }

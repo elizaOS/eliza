@@ -1,4 +1,4 @@
-import { IDenomProvider } from "../../../shared/interfaces";
+import type { IDenomProvider } from "../../../shared/interfaces";
 import { SkipApiAssetsFromSourceFetcher } from "../../../shared/services/skip-api/assets-from-source-fetcher/skip-api-assets-from-source-fetcher";
 
 export const bridgeDenomProvider: IDenomProvider = async (

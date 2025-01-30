@@ -26,11 +26,6 @@ export interface Token {
     };
 }
 
-
-export interface StargazeConfig {
-    endpoint: string;
-}
-
 // Collection Types
 export interface CollectionStats {
     floor: {
@@ -44,10 +39,6 @@ export interface CollectionStats {
     owners: number;
     listed: number;
     totalSupply: number;
-}
-
-export interface StargazeConfig {
-    endpoint: string;
 }
 
 export interface TokenSale {

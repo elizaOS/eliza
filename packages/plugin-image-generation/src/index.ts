@@ -9,8 +9,8 @@ import {
     ModelClass,
 } from "@elizaos/core";
 import { generateImage } from "@elizaos/core";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import { validateImageGenConfig } from "./environment";
 
 export function saveBase64Image(base64Data: string, filename: string): string {

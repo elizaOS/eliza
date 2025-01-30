@@ -12,6 +12,7 @@ import {
 import { type NoteContent, type NoteHierarchy, isValidNoteHierarchy, noteHierarchySchema } from "../types";
 import { getObsidian, extractLinks, storeHierarchyInMemory, retrieveHierarchyFromMemory } from "../helper";
 import { traversalTemplate } from "../templates/traversal";
+import { fileTemplate } from "../templates/file";
 
 export const noteTraversalAction: Action = {
     name: "TRAVERSE_NOTE",
@@ -44,7 +45,7 @@ export const noteTraversalAction: Action = {
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        options: any,
+        _options: any,
         callback?: HandlerCallback
     ) => {
         elizaLogger.info("Starting note traversal handler");
@@ -63,15 +64,22 @@ export const noteTraversalAction: Action = {
             }*/
 
             // Initialize or update state for context generation
+            // if (!state) {
+            //     state = (await runtime.composeState(message)) as State;
+            // } else {
+            //     state = await runtime.updateRecentMessageState(state);
+            // }
+
+            let currentState: State;
             if (!state) {
-                state = (await runtime.composeState(message)) as State;
+                currentState = (await runtime.composeState(message)) as State;
             } else {
-                state = await runtime.updateRecentMessageState(state);
+                currentState = await runtime.updateRecentMessageState(state);
             }
 
             const context = composeContext({
-                state,
-                template: traversalTemplate(message.content.text),
+                state: currentState,
+                template: fileTemplate(message.content.text),
             });
 
             const noteContext = await generateObject({

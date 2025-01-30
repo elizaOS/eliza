@@ -13,7 +13,7 @@ export const sentientAI: Action = {
         "NEWS",
         "WEATHER"
     ],
-    description: "Provde realtime information for Weather, News.",
+    description: "Provide realtime information for Weather, News.",
     examples: [
         [
             {

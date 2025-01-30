@@ -13,3 +13,7 @@ export const denominateAmount = ({ amount, decimals }: PayloadType) => {
         .decimalPlaces(0)
         .toFixed(0);
 };
+
+export const getRawAmount = ({ amount, decimals }: PayloadType) => {
+    return new BigNumber(amount).shiftedBy(-decimals).toFixed(4);
+};

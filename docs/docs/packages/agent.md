@@ -151,6 +151,10 @@ export async function initializeClients(
     if (clientTypes.includes(Clients.DIRECT)) {
         clients.push(await AutoClientInterface.start(runtime));
     }
+    if (clientTypes.includes(Clients.XMTP)) {
+        const xmtpClient = await XmtpClientInterface.start(runtime);
+        if (xmtpClient) clients.xmtp = xmtpClient;
+    }
 
     return clients;
 }

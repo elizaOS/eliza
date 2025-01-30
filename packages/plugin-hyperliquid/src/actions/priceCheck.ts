@@ -23,17 +23,17 @@ export const priceCheck: Action = {
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        options: Record<string, unknown>,
+        _options: Record<string, unknown>,
         callback?: HandlerCallback
     ) => {
         try {
             // Initialize or update state
-            state = !state
+            const currentState = !state
                 ? await runtime.composeState(message)
                 : await runtime.updateRecentMessageState(state);
 
             const context = composeContext({
-                state,
+                state: currentState,
                 template: priceCheckTemplate,
             });
 

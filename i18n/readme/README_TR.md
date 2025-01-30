@@ -49,7 +49,7 @@ cp .env.example .env
 
 ### Karakter Dosyasını Düzenleyin
 
-1. Varsayılan karakteri değiştirmek için `src/core/defaultCharacter.ts` dosyasını açın
+1. Varsayılan karakteri değiştirmek için `packages/core/src/defaultCharacter.ts` dosyasını açın
 
 2. Özel karakterleri yüklemek için:
     - `pnpm start --characters="path/to/your/character.json"` komutunu kullanın

@@ -84,13 +84,25 @@ export class SquidRouterProvider {
             if(chain.chainType === ChainType.EVM) {
                 const provider = new ethers.JsonRpcProvider(chain.rpc);
                 return new ethers.Wallet(runtime.getSetting("SQUID_EVM_PRIVATE_KEY"), provider);
-            } else {
-                throw Error("Cannot instantiate EVM signer for non-EVM chain");
             }
+            throw new Error('Cannot instantiate EVM signer for non-EVM chain'); // Fix: Use template literal and remove else
         } catch (error) {
-            throw Error("Cannot instantiate EVM signer: "+error);
+            throw new Error(`Cannot instantiate EVM signer: ${error}`); // Fix: Use template literal
         }
     }
+
+    // async getEVMSignerForChain(chain: ChainData, runtime): Promise<ethers.Signer> {
+    //     try {
+    //         if(chain.chainType === ChainType.EVM) {
+    //             const provider = new ethers.JsonRpcProvider(chain.rpc);
+    //             return new ethers.Wallet(runtime.getSetting("SQUID_EVM_PRIVATE_KEY"), provider);
+    //         } else {
+    //             throw Error("Cannot instantiate EVM signer for non-EVM chain");
+    //         }
+    //     } catch (error) {
+    //         throw Error("Cannot instantiate EVM signer: "+error);
+    //     }
+    // }
 }
 
 export const initSquidRouterProvider = (runtime: IAgentRuntime) => {

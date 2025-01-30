@@ -1,6 +1,6 @@
 
 
-export async function verifyProof(baseUrl: string, textID: string, proof: string) {
+export async function verifyProof(baseUrl: string, _textID: string, proof: string) {
     const response = await fetch(`${baseUrl}/api/verify`, {
         headers: {
             "Content-Type": "application/json",

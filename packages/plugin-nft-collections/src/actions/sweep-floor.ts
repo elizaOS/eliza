@@ -23,7 +23,7 @@ export const sweepFloorAction = (nftService: ReservoirService): Action => {
         description:
             "Sweeps the floor of a specified EVM NFT collection by purchasing the lowest-priced available NFTs.",
 
-        validate: async (runtime: IAgentRuntime, message: Memory) => {
+        validate: async (_runtime: IAgentRuntime, message: Memory) => {
             const content = message.content.text.toLowerCase();
             return (
                 (content.includes("sweep") || content.includes("buy")) &&
@@ -35,8 +35,8 @@ export const sweepFloorAction = (nftService: ReservoirService): Action => {
         handler: async (
             runtime: IAgentRuntime,
             message: Memory,
-            state: State,
-            options: any,
+            _state: State,
+            _options: { [key: string]: unknown },
             callback: HandlerCallback
         ) => {
             try {

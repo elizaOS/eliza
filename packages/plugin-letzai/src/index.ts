@@ -20,7 +20,7 @@ else
 async function pollLetzAiImageStatus(
     id: string,
     letzAiApiKey: string,
-    callback: any,
+    callback: (response: { text: string; attachments?: Array<{ id: string; url: string; title: string; source: string; description: string; contentType: string; text: string; }> }) => void,
     maxPolls = 40,
     pollIntervalMs = 3000 // 3 seconds
 ) {
@@ -63,13 +63,13 @@ async function pollLetzAiImageStatus(
 
                 if (!finalUrl) {
                     callback({
-                        text: `Image is ready, but no final URL found.`,
+                        text: 'Image is ready, but no final URL found.',
                     });
                     return;
                 }
 
                 callback({
-                    text: `Your image is ready!`,
+                    text: 'Your image is ready!',
                     attachments: [
                         {
                             id,
@@ -83,9 +83,9 @@ async function pollLetzAiImageStatus(
                     ],
                 });
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             callback({
-                text: `Error while polling LetzAI: ${err.message}`,
+                text: `Error while polling LetzAI: ${err instanceof Error ? err.message : "Unknown error"}`,
             });
             return;
         }
@@ -104,7 +104,7 @@ export const letzAiImageGeneration = {
     description: "Generate an image via LetzAI API (with polling).",
     suppressInitialMessage: true,
 
-    validate: async (_runtime: any, _message: any, _state: any) => {
+    validate: async (_runtime: IAgentRuntime, _message: Memory, _state: State) => {
         // Provide a default validate() that simply returns true
         return true;
     },
@@ -164,10 +164,10 @@ export const letzAiImageGeneration = {
                 customSystemPrompt: IMAGE_SYSTEM_PROMPT,
             });*/
 
-            let imagePrompt = `${userPrompt}`.trim();
+            let imagePrompt = userPrompt.trim();
 
             //Prepend our Models from the .env config to make sure characters, styles and objects are respected
-            imagePrompt = letzAiModels + ", " + imagePrompt;
+            imagePrompt = `${letzAiModels}, ${imagePrompt}`;
             const prompt = imagePrompt;
 
             elizaLogger.log("Image prompt received:", imagePrompt);
@@ -201,7 +201,7 @@ export const letzAiImageGeneration = {
 
 
 
-            // 3) Let the user know we’ve started generating
+            // 3) Let the user know we've started generating
             const { id, status, progress } = createData;
             callback({
                 text: `Started generating your image. (ID: ${id}, status: ${status}, progress: ${progress}%)`,
@@ -209,9 +209,9 @@ export const letzAiImageGeneration = {
 
             // 4) Begin polling every 5s
             await pollLetzAiImageStatus(id, letzAiApiKey, callback, /* maxPolls */ 20, /* pollIntervalMs */ 5000);
-        } catch (error: any) {
+        } catch (error: unknown) {
             callback({
-                text: `Error while requesting LetzAI: ${error.message}`,
+                text: `Error while requesting LetzAI: ${error instanceof Error ? error.message : "Unknown error"}`,
             });
         }
     },

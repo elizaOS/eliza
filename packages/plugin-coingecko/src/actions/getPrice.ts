@@ -66,6 +66,7 @@ export default {
         "PRICE_DETAILS",
         "COIN_PRICE_DATA"
     ],
+    // eslint-disable-next-line
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         await validateCoingeckoConfig(runtime);
         return true;
@@ -263,7 +264,6 @@ export default {
                 errorMessage = "This endpoint requires a CoinGecko Pro API key. Please upgrade your plan to access this data.";
             } else if (error.response?.status === 400) {
                 errorMessage = "Invalid request parameters. Please check your input.";
-            } else {
             }
 
             if (callback) {

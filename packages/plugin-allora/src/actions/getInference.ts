@@ -127,7 +127,7 @@ export const getInferenceAction: Action = {
             {
                 user: "{{user2}}",
                 content: {
-                    text: "Inference provided by Allora Network on topic ETH 5min Prediction (ID: 13): 3393.364326646801085508",
+                    text: "Inference provided by Allora Network on topic ETH 5min (ID: 13): 3393.364326646801085508",
                 },
             },
         ],

@@ -1,10 +1,9 @@
 import type { LensClient } from "./client";
-import {
-    elizaLogger,
-    type Content,
-    type IAgentRuntime,
-    type Memory,
-    type UUID,
+import type {
+    Content,
+    IAgentRuntime,
+    Memory,
+    UUID,
 } from "@elizaos/core";
 import { textOnly } from "@lens-protocol/metadata";
 import { createPublicationMemory } from "./memory";

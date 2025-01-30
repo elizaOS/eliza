@@ -93,16 +93,17 @@ export default {
     ): Promise<boolean> => {
         elizaLogger.log("Starting CREATE_SUBDOMAIN handler...");
 
-        // Initialize or update state
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
+        // Fix: Create new variable instead of reassigning parameter
+        let currentState = state;
+        if (!currentState) {
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(currentState);
         }
 
         // Compose transfer context
         const transferContext = composeContext({
-            state,
+            state: currentState,
             template: transferTemplate,
         });
 
@@ -146,13 +147,11 @@ export default {
             const tx = await account.execute(transferCall);
 
             elizaLogger.success(
-                "Transfer completed successfully! tx: " + tx.transaction_hash
+                `Transfer completed successfully! tx: ${tx.transaction_hash}`
             );
             if (callback) {
                 callback({
-                    text:
-                        "Transfer completed successfully! tx: " +
-                        tx.transaction_hash,
+                    text: `Transfer completed successfully! tx: ${tx.transaction_hash}`,
                     content: {},
                 });
             }
