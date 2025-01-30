@@ -81,18 +81,7 @@ export const dkgInsert: Action = {
             twitterUser = match[1];
             elizaLogger.log(`Extracted user: @${twitterUser}`);
         } else {
-            elizaLogger.error("No user mention found or invalid input.");
-        }
-
-        const idRegex = /ID:\s(\d+)/;
-        match = currentPost.match(idRegex);
-        let postId = "";
-
-        if (match && match[1]) {
-            postId = match[1];
-            elizaLogger.log(`Extracted ID: ${postId}`);
-        } else {
-            elizaLogger.log("No ID found.");
+            elizaLogger.log("No user mention found or invalid input.");
         }
 
         const createDKGMemoryContext = composeContext({

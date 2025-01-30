@@ -124,33 +124,39 @@ export const dkgInsert: Action = {
             {
                 user: "{{user1}}",
                 content: {
-                    text: "execute action DKG_INSERT",
-                    action: "DKG_INSERT",
+                    text: "execute action DKG_ANALYZE_SENTIMENT",
+                    action: "DKG_ANALYZE_SENTIMENT",
                 },
             },
             {
                 user: "{{user2}}",
-                content: { text: "DKG INSERT" },
+                content: { text: "DKG_ANALYZE_SENTIMENT" },
             },
         ],
         [
             {
                 user: "{{user1}}",
-                content: { text: "add to dkg", action: "DKG_INSERT" },
+                content: {
+                    text: "Can you analyze $TICKER",
+                    action: "DKG_ANALYZE_SENTIMENT",
+                },
             },
             {
                 user: "{{user2}}",
-                content: { text: "DKG INSERT" },
+                content: { text: "DKG_ANALYZE_SENTIMENT" },
             },
         ],
         [
             {
                 user: "{{user1}}",
-                content: { text: "store in dkg", action: "DKG_INSERT" },
+                content: {
+                    text: "What's the sentiment for #TICKER",
+                    action: "DKG_ANALYZE_SENTIMENT",
+                },
             },
             {
                 user: "{{user2}}",
-                content: { text: "DKG INSERT" },
+                content: { text: "DKG_ANALYZE_SENTIMENT" },
             },
         ],
     ] as ActionExample[][],

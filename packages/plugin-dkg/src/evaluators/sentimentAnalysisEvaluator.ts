@@ -1,14 +1,17 @@
 import type { Evaluator, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { ModelClass } from "@elizaos/core";
-import { generateText } from "@elizaos/core";
-import { isSentimentAnalysisQueryPrompt } from "../constants";
+import { generateText, elizaLogger } from "@elizaos/core";
+import { isSentimentAnalysisQueryPrompt } from "../constants.ts";
 
-export class SentimentAnalysisEvalutor implements Evaluator {
+export class SentimentAnalysisEvaluator implements Evaluator {
     name = "SENTIMENT_ANALYSIS_EVALUATOR";
     similes = ["sentiment", "evaluate sentiment", "check sentiment"];
     description = "Evaluates messages for sentiment analysis requests";
+    alwaysRun = true;
 
     async validate(runtime: IAgentRuntime, message: Memory): Promise<boolean> {
+        elizaLogger.log("Entering sentiment analysis evaluator!");
+
         const content =
             typeof message.content === "string"
                 ? message.content
@@ -24,6 +27,10 @@ export class SentimentAnalysisEvalutor implements Evaluator {
             modelClass: ModelClass.MEDIUM,
         });
 
+        elizaLogger.log(
+            `Evaluated user query for sentiment analysis, decision: ${isSentimentQuery}`,
+        );
+
         return isSentimentQuery.toLowerCase() === "yes";
     }
 
@@ -32,6 +39,8 @@ export class SentimentAnalysisEvalutor implements Evaluator {
         _message: Memory,
         _state?: State,
     ): Promise<string> {
+        elizaLogger.log("Evaluated query, action is DKG_ANALYZE_SENTIMENT");
+
         return "DKG_ANALYZE_SENTIMENT";
     }
 
@@ -78,4 +87,4 @@ export class SentimentAnalysisEvalutor implements Evaluator {
     ];
 }
 
-export const sentimentAnalysisEvalutor = new SentimentAnalysisEvalutor();
+export const sentimentAnalysisEvaluator = new SentimentAnalysisEvaluator();
