@@ -7,7 +7,7 @@ import {
     State,
     elizaLogger,
     ModelClass,
-    generateObject,
+    generateText,
 } from "@elizaos/core";
 import {
     combinedSparqlExample,
@@ -53,7 +53,7 @@ interface DKGClientConfig {
 
 async function constructSparqlQuery(
     runtime: IAgentRuntime,
-    userQuery: string
+    userQuery: string,
 ): Promise<string> {
     const context = `
     You are tasked with generating a SPARQL query to retrieve information from a Decentralized Knowledge Graph (DKG).
@@ -81,19 +81,17 @@ async function constructSparqlQuery(
     Provide only the SPARQL query, wrapped in a sparql code block for clarity.
   `;
 
-    const sparqlQueryResult = await generateObject({
+    const sparqlTextResult = await generateText({
         runtime,
         context,
         modelClass: ModelClass.LARGE,
-        schema: DKGSelectQuerySchema,
     });
 
-    if (!isDKGSelectQuery(sparqlQueryResult.object)) {
-        elizaLogger.error("Invalid SELECT SPARQL query generated.");
-        throw new Error("Invalid SELECT SPARQL query generated.");
-    }
+    const sparqlQueryMatch = sparqlTextResult.match(/```sparql([\s\S]*?)```/);
 
-    return sparqlQueryResult.object.query;
+    const sparqlQuery = sparqlQueryMatch ? sparqlQueryMatch[1].trim() : null;
+
+    return sparqlQuery;
 }
 
 export class DKGProvider {
@@ -108,20 +106,20 @@ export class DKGProvider {
         for (const field of requiredStringFields) {
             if (typeof config[field as keyof DKGClientConfig] !== "string") {
                 elizaLogger.error(
-                    `Invalid configuration: Missing or invalid value for '${field}'`
+                    `Invalid configuration: Missing or invalid value for '${field}'`,
                 );
                 throw new Error(
-                    `Invalid configuration: Missing or invalid value for '${field}'`
+                    `Invalid configuration: Missing or invalid value for '${field}'`,
                 );
             }
         }
 
         if (!config.blockchain || typeof config.blockchain !== "object") {
             elizaLogger.error(
-                "Invalid configuration: 'blockchain' must be an object"
+                "Invalid configuration: 'blockchain' must be an object",
             );
             throw new Error(
-                "Invalid configuration: 'blockchain' must be an object"
+                "Invalid configuration: 'blockchain' must be an object",
             );
         }
 
@@ -133,10 +131,10 @@ export class DKGProvider {
                 "string"
             ) {
                 elizaLogger.error(
-                    `Invalid configuration: Missing or invalid value for 'blockchain.${field}'`
+                    `Invalid configuration: Missing or invalid value for 'blockchain.${field}'`,
                 );
                 throw new Error(
-                    `Invalid configuration: Missing or invalid value for 'blockchain.${field}'`
+                    `Invalid configuration: Missing or invalid value for 'blockchain.${field}'`,
                 );
             }
         }
@@ -156,28 +154,28 @@ export class DKGProvider {
 
         let queryOperationResult = await this.client.graph.query(
             query,
-            "SELECT"
+            "SELECT",
         );
 
         if (!queryOperationResult || !queryOperationResult.data?.length) {
             elizaLogger.info(
-                `LLM-generated SPARQL query failed, defaulting to basic query.`
+                `LLM-generated SPARQL query failed, defaulting to basic query.`,
             );
 
             queryOperationResult = await this.client.graph.query(
                 generalSparqlQuery,
-                "SELECT"
+                "SELECT",
             );
         }
 
         elizaLogger.info(
-            `Got ${queryOperationResult.data.length} results from the DKG`
+            `Got ${queryOperationResult.data.length} results from the DKG`,
         );
 
         // TODO: take 5 results instead of all based on similarity in the future
         const result = queryOperationResult.data.map((entry: any) => {
             const formattedParts = Object.keys(entry).map(
-                (key) => `${key}: ${entry[key]}`
+                (key) => `${key}: ${entry[key]}`,
             );
             return formattedParts.join(", ");
         });
@@ -190,7 +188,7 @@ export const graphSearch: Provider = {
     get: async (
         runtime: IAgentRuntime,
         _message: Memory,
-        _state?: State
+        _state?: State,
     ): Promise<string | null> => {
         try {
             const provider = new DKGProvider(PROVIDER_CONFIG);
