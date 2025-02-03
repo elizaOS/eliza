@@ -17,6 +17,18 @@ import vader from "vader-sentiment";
 
 let DkgClient: any = null;
 
+function formatCookiesFromArray(cookiesArray: any[]) {
+    const cookieStrings = cookiesArray.map(
+        (cookie) =>
+            `${cookie.key}=${cookie.value}; Domain=${cookie.domain}; Path=${cookie.path}; ${
+                cookie.secure ? "Secure" : ""
+            }; ${cookie.httpOnly ? "HttpOnly" : ""}; SameSite=${
+                cookie.sameSite || "Lax"
+            }`,
+    );
+    return cookieStrings;
+}
+
 function calculateVaderScore(statement) {
     return vader.SentimentIntensityAnalyzer.polarity_scores(statement).compound;
 }
@@ -34,9 +46,9 @@ function getMostInfluentialAuthors(tweets: Tweet[], maxNumberOfAuthors = 5) {
     return distinctAuthors;
 }
 
-export const dkgInsert: Action = {
+export const dkgAnalyzeSentiment: Action = {
     name: "DKG_ANALYZE_SENTIMENT",
-    similes: ["ANALYZE_SENTIMENT", "SENTIMENT"], // we want to always run this action
+    similes: ["ANALYZE_SENTIMENT", "SENTIMENT"],
     validate: async (runtime: IAgentRuntime, _message: Memory) => {
         const requiredEnvVars = [
             "DKG_ENVIRONMENT",
@@ -61,7 +73,7 @@ export const dkgInsert: Action = {
         return true;
     },
     description:
-        "Analyze a stock, cryptocurrency, token or a financial asset's sentiment on X.",
+        "Analyze a stock, cryptocurrency, token or a financial asset's sentiment on X. You should run this action whenever the message asks about your thoughts/analysis/sentiment on a stock, cryptocurrency, token or a financial asset.",
     handler: async (
         runtime: IAgentRuntime,
         _message: Memory,
@@ -90,15 +102,38 @@ export const dkgInsert: Action = {
         const topic = "$NVDA"; // todo actually extract topic
         elizaLogger.log(`Extracted topic to analyze sentiment: ${topic}`);
 
-        const twitterScraper = new Scraper();
-        const scraper = twitterScraper.searchTweets(
+        const scraper = new Scraper();
+
+        const username = process.env.TWITTER_USERNAME;
+        const password = process.env.TWITTER_PASSWORD;
+        const email = process.env.TWITTER_EMAIL;
+        const twitter2faSecret = process.env.TWITTER_2FA_SECRET;
+        if (!username || !password) {
+            elizaLogger.error(
+                "Twitter credentials not configured in environment",
+            );
+            return false;
+        }
+        await scraper.login(username, password, email, twitter2faSecret);
+        if (!(await scraper.isLoggedIn())) {
+            // Login with cookies
+            await scraper.setCookies(
+                formatCookiesFromArray(JSON.parse(process.env.TWITTER_COOKIES)),
+            );
+            if (!(await scraper.isLoggedIn())) {
+                elizaLogger.error("Failed to login to Twitter");
+                return false;
+            }
+        }
+
+        const scrapedTweets = scraper.searchTweets(
             `"${topic}" is:verified`,
             100,
         );
 
         let tweets = [];
 
-        for await (const tweet of scraper) {
+        for await (const tweet of scrapedTweets) {
             tweets.push(tweet);
         }
         elizaLogger.log(`Successfully fetched ${tweets.length} tweets.`);
@@ -112,10 +147,33 @@ export const dkgInsert: Action = {
         const topAuthors = getMostInfluentialAuthors(tweets);
         elizaLogger.log("Got most influential authors");
 
+        const totalSentiment = tweets.reduce(
+            (sum, t) => sum + t.vaderSentimentScore,
+            0,
+        );
+        const averageSentiment = tweets.length
+            ? totalSentiment / tweets.length
+            : 0;
+
+        const sentiment =
+            averageSentiment <= 0.1
+                ? "Neutral ⚪️"
+                : averageSentiment > 0
+                  ? "Positive 🟢"
+                  : "Negative 🔴";
+
         // Reply
-        // callback({
-        //     text: `Created a new memory!\n\nRead my mind on @origin_trail Decentralized Knowledge Graph ${DKG_EXPLORER_LINKS[runtime.getSetting("DKG_ENVIRONMENT")]}${createAssetResult.UAL} @${twitterUser}`,
-        // });
+        callback({
+            text: `${topic} sentiment based on top ${tweets.length} posts: ${sentiment}
+
+            Top 5 most influential accounts analyzed for ${topic}:
+            ${topAuthors
+                .slice(0, 5)
+                .map((a) => `@${a}`)
+                .join(", ")}
+
+            This is not financial advice.`,
+        });
 
         return true;
     },
