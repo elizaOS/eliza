@@ -12,7 +12,7 @@ import {
 } from "@elizaos/core";
 // @ts-ignore
 import DKG from "dkg.js";
-import { Scraper, Tweet } from "agent-twitter-client";
+import { Scraper, Tweet, SearchMode } from "agent-twitter-client";
 import vader from "vader-sentiment";
 
 let DkgClient: any = null;
@@ -127,8 +127,9 @@ export const dkgAnalyzeSentiment: Action = {
         }
 
         const scrapedTweets = scraper.searchTweets(
-            `"${topic}" is:verified`,
-            100,
+            topic,
+            200,
+            SearchMode.Latest,
         );
 
         let tweets = [];
