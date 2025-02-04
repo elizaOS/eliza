@@ -154,7 +154,7 @@ async function structureKA(
 
     const ka = {
         "@context": "http://schema.org",
-        "@id": `https://x.com/search?q=${topic}&src=typed_query&f=top&date=${todayISOString}`,
+        "@id": `https://x.com/search?q=${encodeURIComponent(topic)}&src=typed_query&f=top&date=${todayISOString}`,
         "@type": "Dataset",
         name: `Sentiment analysis on recent ${topic} X posts - ${todayISOString}`,
         url: `https://x.com/search?q=${encodeURIComponent(topic)}&src=typed_query&f=top`,
@@ -317,7 +317,7 @@ export const dkgAnalyzeSentiment: Action = {
 
         // Reply
         callback({
-            text: `${topic} sentiment based on top ${tweets.length} latest posts and ${numOfTotalTweets - tweets.length} existing analysis Knowledge Assets: ${sentiment}
+            text: `${topic} sentiment based on top ${tweets.length} latest posts and ${numOfTotalTweets - tweets.length} existing analysis Knowledge Assets from the past 48 hours: ${sentiment}
 
 Top 5 most influential accounts analyzed for ${topic}:
 ${topAuthors
