@@ -9,11 +9,18 @@ import {
     HandlerCallback,
     ActionExample,
     type Action,
+    generateText,
 } from "@elizaos/core";
 // @ts-ignore
 import DKG from "dkg.js";
 import { Scraper, Tweet, SearchMode } from "agent-twitter-client";
 import vader from "vader-sentiment";
+import {
+    getRelatedDatasetsQuery,
+    getSentimentAnalysisQuery,
+    DKG_EXPLORER_LINKS,
+    extractSentimentAnalysisTopic,
+} from "../constants";
 
 let DkgClient: any = null;
 
@@ -44,6 +51,126 @@ function getMostInfluentialAuthors(tweets: Tweet[], maxNumberOfAuthors = 5) {
     );
 
     return distinctAuthors;
+}
+
+function extractUsernameFromUrl(url: string) {
+    const match = url.match(/https:\/\/x\.com\/([^\/]+)\/status\/\d+/);
+    return match ? match[1] : "unknown";
+}
+
+type StructureKAOptions = {
+    dkgClient: any;
+    environment: string;
+};
+
+async function structureKA(
+    tweets: (Tweet & { vaderSentimentScore: number })[],
+    topic: string,
+    tweetCreator: string,
+    options: StructureKAOptions,
+) {
+    const { dkgClient, environment } = options;
+
+    const observations = tweets.map((t) => ({
+        "@context": "http://schema.org",
+        "@type": "Observation",
+        "@id": `https://x.com/${t.username}/status/${t.id}`,
+        observationDate: new Date(t.timestamp * 1000).toISOString(),
+        value: t.vaderSentimentScore,
+        variableMeasured: "VADER sentiment",
+        impressions: t.views ?? 0,
+        author: t.username,
+    }));
+
+    const todayISOString = new Date().toISOString();
+
+    let previousAnalyses: any = [];
+
+    try {
+        const getPreviousAnalysesQuery = getSentimentAnalysisQuery(topic);
+        previousAnalyses = await dkgClient.graph.query(
+            getPreviousAnalysesQuery,
+            "SELECT",
+        );
+    } catch (error) {
+        console.error("Failed to fetch previous analyses:", error);
+        previousAnalyses = [];
+    }
+
+    const allTweets: (Tweet & { vaderSentimentScore: number })[] =
+        previousAnalyses.data?.length
+            ? [
+                  ...tweets.map((t) => ({
+                      ...t,
+                      id: `https://x.com/${t.username}/status/${t.id}`,
+                  })),
+                  ...previousAnalyses.data.map((a) => ({
+                      id: a.observation,
+                      views: a.impressions ?? 0,
+                      vaderSentimentScore: a.score ?? 0,
+                      author: extractUsernameFromUrl(a.observation),
+                  })),
+              ]
+            : tweets.map((t) => ({
+                  ...t,
+                  id: `https://x.com/${t.username}/status/${t.id}`,
+              }));
+
+    const uniqueTweets = Array.from(
+        new Map(allTweets.map((tweet) => [tweet.id, tweet])).values(),
+    );
+
+    const weightedAverageSentimentScore = uniqueTweets.reduce(
+        (acc, tweet) => {
+            const weight = tweet.views ?? 0;
+            const sentiment = tweet.vaderSentimentScore ?? 0;
+
+            return {
+                totalWeightedScore: acc.totalWeightedScore + sentiment * weight,
+                totalImpressions: acc.totalImpressions + weight,
+            };
+        },
+        { totalWeightedScore: 0, totalImpressions: 0 },
+    );
+
+    const averageScore =
+        weightedAverageSentimentScore.totalImpressions > 0
+            ? weightedAverageSentimentScore.totalWeightedScore /
+              weightedAverageSentimentScore.totalImpressions
+            : 0;
+
+    let relatedDatasets: any = [];
+
+    try {
+        const relatedDatasetsQuery = getRelatedDatasetsQuery(topic);
+        relatedDatasets = await dkgClient.graph.query(
+            relatedDatasetsQuery,
+            "SELECT",
+        );
+    } catch (error) {
+        console.error("Failed to fetch related datasets:", error);
+        relatedDatasets = [];
+    }
+
+    const ka = {
+        "@context": "http://schema.org",
+        "@id": `https://x.com/search?q=${topic}&src=typed_query&f=top&date=${todayISOString}`,
+        "@type": "Dataset",
+        name: `Sentiment analysis on recent ${topic} X posts - ${todayISOString}`,
+        url: `https://x.com/search?q=${encodeURIComponent(topic)}&src=typed_query&f=top`,
+        author: tweetCreator,
+        dateCreated: todayISOString,
+        averageScore: averageScore,
+        variableMeasured: "VADER sentiment",
+        observation: observations,
+        about: topic,
+        relatedAnalysis: (relatedDatasets.data ?? []).map((rd) => ({
+            isPartOf: rd.ual,
+            "@id": rd.dataset,
+        })),
+    };
+
+    return { ka, averageScore, numOfTotalTweets: allTweets.length };
 }
 
 export const dkgAnalyzeSentiment: Action = {
@@ -99,7 +226,23 @@ export const dkgAnalyzeSentiment: Action = {
         const currentPost = String(state.currentPost);
         elizaLogger.log(`currentPost: ${currentPost}`);
 
-        const topic = "$NVDA"; // todo actually extract topic
+        const userRegex = /From:.*\(@(\w+)\)/;
+        let match = currentPost.match(userRegex);
+        let twitterUser = "";
+
+        if (match && match[1]) {
+            twitterUser = match[1];
+            elizaLogger.log(`Extracted user: @${twitterUser}`);
+        } else {
+            elizaLogger.log("No user mention found or invalid input.");
+        }
+
+        const topic = await generateText({
+            runtime,
+            context: extractSentimentAnalysisTopic(currentPost),
+            modelClass: ModelClass.LARGE,
+        });
+
         elizaLogger.log(`Extracted topic to analyze sentiment: ${topic}`);
 
         const scraper = new Scraper();
@@ -128,7 +271,7 @@ export const dkgAnalyzeSentiment: Action = {
 
         const scrapedTweets = scraper.searchTweets(
             topic,
-            200,
+            100,
             SearchMode.Latest,
         );
 
@@ -148,30 +291,41 @@ export const dkgAnalyzeSentiment: Action = {
         const topAuthors = getMostInfluentialAuthors(tweets);
         elizaLogger.log("Got most influential authors");
 
-        const totalSentiment = tweets.reduce(
-            (sum, t) => sum + t.vaderSentimentScore,
-            0,
+        const { ka, averageScore, numOfTotalTweets } = await structureKA(
+            tweets,
+            topic,
+            twitterUser,
+            {
+                dkgClient: DkgClient,
+                environment: runtime.getSetting("DKG_ENVIRONMENT"),
+            },
         );
-        const averageSentiment = tweets.length
-            ? totalSentiment / tweets.length
-            : 0;
 
         const sentiment =
-            averageSentiment <= 0.1
+            averageScore <= 0.1
                 ? "Neutral ⚪️"
-                : averageSentiment > 0
+                : averageScore > 0
                   ? "Positive 🟢"
                   : "Negative 🔴";
 
+        const createAssetResult = await DkgClient.asset.create(
+            {
+                public: ka,
+            },
+            { epochsNum: 12 },
+        );
+
         // Reply
         callback({
-            text: `${topic} sentiment based on top ${tweets.length} posts: ${sentiment}
+            text: `${topic} sentiment based on top ${tweets.length} latest posts and ${numOfTotalTweets - tweets.length} existing analysis Knowledge Assets: ${sentiment}
 
             Top 5 most influential accounts analyzed for ${topic}:
             ${topAuthors
                 .slice(0, 5)
                 .map((a) => `@${a}`)
                 .join(", ")}
+
+            Analysis memorized on @origin_trail Decentralized Knowledge Graph ${DKG_EXPLORER_LINKS[runtime.getSetting("DKG_ENVIRONMENT")]}${createAssetResult.UAL} @${twitterUser}
 
             This is not financial advice.`,
         });

@@ -206,3 +206,83 @@ export function isSentimentAnalysisQueryPrompt(query: string) {
     Task:
     Return 'Yes' if the provided query is about sentiment analysis in finance, otherwise return 'No'. Make sure to reply only with 'Yes' or 'No', do not give any other comments or remarks.`;
 }
+
+function getStartTime48HoursAgo() {
+    const now = new Date();
+    const past48Hours = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    return past48Hours.toISOString();
+}
+
+export function getSentimentAnalysisQuery(topic: string) {
+    return `PREFIX schema: <http://schema.org/>
+
+    SELECT ?observation ?score ?impressions ?tweetText
+    WHERE {
+      BIND('${topic}' AS ?topic)
+
+      ?dataset a schema:Dataset ;
+                  schema:about ?topic ;
+                  schema:observation ?observation .
+      ?observation a schema:Observation ;
+                     schema:observationDate ?observationDate ;
+                     schema:value ?score ;
+                     schema:impressions ?impressions ;
+      FILTER (?observationDate >= "${getStartTime48HoursAgo()}")
+    }`;
+}
+
+export function getRelatedDatasetsQuery(topic: string) {
+    return `
+    PREFIX schema: <http://schema.org/>
+
+  SELECT ?dataset ?ual ?dateCreated
+    WHERE {
+
+      ?dataset a schema:Dataset .
+      GRAPH ?ual {
+            ?dataset schema:about '${topic}' .
+            ?dataset schema:dateCreated ?dateCreated
+      }
+    }`;
+}
+
+export function extractSentimentAnalysisTopic(post: string) {
+    return `You are an AI assistant that extracts the main financial topic from a given social media post. Your task is to identify and return only a **stock ticker (cashtag, e.g., $AAPL, $BTC), a hashtag (e.g., #Ethereum, #SP500), a financial asset name (e.g., Bitcoin, Nvidia, Tesla), or an index (e.g., S&P 500, Nasdaq 100)** mentioned in the post.
+
+### **Instructions:**
+1. **Extract only one relevant financial entity** (cashtag, hashtag, company name, cryptocurrency, stock, or index).
+2. **Do not include** general words, opinions, news sources, or irrelevant content.
+3. **Do not modify the extracted entity**. Preserve its exact format as in the post (e.g., "$TSLA", "#Bitcoin", "Ethereum").
+
+### **Example Inputs & Outputs:**
+
+**Input:**
+"The market is crazy today! $BTC is pumping, what's your opinion on the sentiment?"
+**Output:**
+"$BTC"
+
+**Input:**
+"Ethereum is gaining momentum, what do you think about it?"
+**Output:**
+"Ethereum"
+
+**Input:**
+"Is Nvidia ($NVDA) still a good buy after the earnings call?"
+**Output:**
+"$NVDA"
+
+**Input:**
+"Tech stocks are looking strong this quarter!"
+**Output:**
+"None"
+
+**Input:**
+"Is Tesla the most shorted stock right now?."
+**Output:**
+"Tesla"
+
+** Actual input: ${post} **
+
+Return the main financial topic which is to be extracted. Make sure to return only the financial topic and no other comments or remarks.
+`;
+}
