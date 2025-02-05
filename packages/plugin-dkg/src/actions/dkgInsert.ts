@@ -22,7 +22,7 @@ let DkgClient: any = null;
 
 export const dkgInsert: Action = {
     name: "INSERT_MEMORY_ACTION",
-    similes: ["NO_ACTION", "NO_RESPONSE", "NO_REACTION", "NONE", "CONTINUE"], // we want to always run this action
+    similes: ["NO_ACTION", "NO_RESPONSE", "NO_REACTION", "NONE"], // we want to always run this action
     validate: async (runtime: IAgentRuntime, _message: Memory) => {
         const requiredEnvVars = [
             "DKG_ENVIRONMENT",

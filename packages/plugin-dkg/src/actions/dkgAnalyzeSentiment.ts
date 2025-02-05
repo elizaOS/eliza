@@ -21,8 +21,55 @@ import {
     DKG_EXPLORER_LINKS,
     extractSentimentAnalysisTopic,
 } from "../constants";
+import { fetchFileFromUrl, getSentimentChart } from "../http-helper";
 
 let DkgClient: any = null;
+
+export async function postTweet(
+    content: string,
+    scraper: Scraper,
+    postId?: string,
+    media?: Buffer,
+): Promise<boolean> {
+    try {
+        elizaLogger.log("Attempting to send tweet:", content);
+
+        const result = await scraper.sendNoteTweet(content, postId, [
+            {
+                data: media,
+                mediaType: "image/png",
+            },
+        ]);
+
+        const body = await result.json();
+        elizaLogger.log("Tweet response:", body);
+
+        if (body.errors) {
+            const error = body.errors[0];
+            elizaLogger.error(
+                `Twitter API error (${error.code}): ${error.message}`,
+            );
+            return false;
+        }
+
+        if (!body?.data?.create_tweet?.tweet_results?.result) {
+            elizaLogger.error(
+                "Failed to post tweet: No tweet result in response",
+            );
+            return false;
+        }
+
+        return true;
+    } catch (error) {
+        elizaLogger.error("Error posting tweet:", {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+            cause: error.cause,
+        });
+        return false;
+    }
+}
 
 function formatCookiesFromArray(cookiesArray: any[]) {
     const cookieStrings = cookiesArray.map(
@@ -226,8 +273,18 @@ export const dkgAnalyzeSentiment: Action = {
         const currentPost = String(state.currentPost);
         elizaLogger.log(`currentPost: ${currentPost}`);
 
+        const idRegex = /ID:\s(\d+)/;
+        let match = currentPost.match(idRegex);
+        let postId = "";
+        if (match && match[1]) {
+            postId = match[1];
+            elizaLogger.log(`Extracted ID: ${postId}`);
+        } else {
+            elizaLogger.log("No ID found.");
+        }
+
         const userRegex = /From:.*\(@(\w+)\)/;
-        let match = currentPost.match(userRegex);
+        match = currentPost.match(userRegex);
         let twitterUser = "";
 
         if (match && match[1]) {
@@ -240,7 +297,7 @@ export const dkgAnalyzeSentiment: Action = {
         const topic = await generateText({
             runtime,
             context: extractSentimentAnalysisTopic(currentPost),
-            modelClass: ModelClass.LARGE,
+            modelClass: ModelClass.SMALL,
         });
 
         elizaLogger.log(`Extracted topic to analyze sentiment: ${topic}`);
@@ -315,9 +372,12 @@ export const dkgAnalyzeSentiment: Action = {
             { epochsNum: 12 },
         );
 
-        // Reply
-        callback({
-            text: `${topic} sentiment based on top ${tweets.length} latest posts and ${numOfTotalTweets - tweets.length} existing analysis Knowledge Assets from the past 48 hours: ${sentiment}
+        const sentimentData = await getSentimentChart(averageScore, topic);
+
+        const file = await fetchFileFromUrl(sentimentData.url);
+
+        await postTweet(
+            `${topic} sentiment based on top ${tweets.length} latest posts and ${numOfTotalTweets - tweets.length} existing analysis Knowledge Assets from the past 48 hours: ${sentiment}
 
 Top 5 most influential accounts analyzed for ${topic}:
 ${topAuthors
@@ -328,7 +388,10 @@ ${topAuthors
 Analysis memorized on @origin_trail Decentralized Knowledge Graph ${DKG_EXPLORER_LINKS[runtime.getSetting("DKG_ENVIRONMENT")]}${createAssetResult.UAL} @${twitterUser}
 
 This is not financial advice.`,
-        });
+            scraper,
+            postId,
+            file.data,
+        );
 
         return true;
     },
@@ -337,7 +400,7 @@ This is not financial advice.`,
             {
                 user: "{{user1}}",
                 content: {
-                    text: "execute action DKG_ANALYZE_SENTIMENT",
+                    text: "How is Tesla doing right now?",
                     action: "DKG_ANALYZE_SENTIMENT",
                 },
             },
