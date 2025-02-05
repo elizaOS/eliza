@@ -144,6 +144,9 @@ import net from "net";
 import path from "path";
 import { fileURLToPath } from "url";
 import yargs from "yargs";
+import { Plugin } from "@elizaos/core";
+import { dominosPlugin } from "@elizaos/plugin-dominos";
+import createNFTCollectionsPlugin from "@elizaos/plugin-nft-collections";
 import { emailPlugin } from "@elizaos/plugin-email";
 import { emailAutomationPlugin } from "@elizaos/plugin-email-automation";
 import { seiPlugin } from "@elizaos/plugin-sei";
@@ -175,6 +178,10 @@ const logFetch = async (url: string, options: any) => {
     // elizaLogger.debug(JSON.stringify(options, null, 2));
     return fetch(url, options);
 };
+
+function isAllStrings(arr: unknown[]): boolean {
+    return Array.isArray(arr) && arr.every((item) => typeof item === "string");
+}
 
 export function parseArguments(): {
     character?: string;
@@ -462,7 +469,93 @@ export async function loadCharacters(
             try {
                 const character: Character = await loadCharacterTryPath(
                     characterPath
-                );
+                );                
+                validateCharacterConfig(character);
+
+                // .id isn't really valid
+                const characterId = character.id || character.name;
+                const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/ /g, "_")}.`;
+
+                const characterSettings = Object.entries(process.env)
+                    .filter(([key]) => key.startsWith(characterPrefix))
+                    .reduce((settings, [key, value]) => {
+                        const settingKey = key.slice(characterPrefix.length);
+                        return { ...settings, [settingKey]: value };
+                    }, {});
+
+                if (Object.keys(characterSettings).length > 0) {
+                    character.settings = character.settings || {};
+                    character.settings.secrets = {
+                        ...characterSettings,
+                        ...character.settings.secrets,
+                    };
+                }
+
+                function isPlugin(value: any): value is Plugin {
+                    return (
+                        typeof value === "object" &&
+                        value !== null &&
+                        typeof value.name === "string" &&
+                        typeof value.description === "string" &&
+                        (value.actions === undefined ||
+                            Array.isArray(value.actions)) &&
+                        (value.providers === undefined ||
+                            Array.isArray(value.providers)) &&
+                        (value.evaluators === undefined ||
+                            Array.isArray(value.evaluators)) &&
+                        (value.services === undefined ||
+                            Array.isArray(value.services)) &&
+                        (value.clients === undefined ||
+                            Array.isArray(value.clients))
+                    );
+                }
+
+                // Handle plugins
+                if (isAllStrings(character.plugins)) {
+                    elizaLogger.info("Plugins are: ", character.plugins);
+
+                    const importedPlugins = await Promise.all(
+                        character.plugins.map(async (plugin) => {
+                            try {
+                                // Dynamically import the plugin
+                                const importedPlugin = await import(plugin);
+
+                                // Check if there's a default export
+                                if (importedPlugin.default) {
+                                    return importedPlugin.default;
+                                }
+
+                                // Check other exports for potential plugins
+                                const possiblePlugins = [];
+                                for (const [key, value] of Object.entries(
+                                    importedPlugin
+                                )) {
+                                    // Check if the export matches the plugin type
+                                    if (isPlugin(value)) {
+                                        possiblePlugins.push(value);
+                                    }
+                                }
+
+                                return possiblePlugins.length > 0
+                                    ? possiblePlugins
+                                    : null;
+                            } catch (error) {
+                                elizaLogger.error(
+                                    `Failed to import plugin "${plugin}":`,
+                                    error
+                                );
+                                return null; // Return null for failed imports
+                            }
+                        })
+                    );
+
+                    // Flatten and filter out null or empty plugin arrays
+                    character.plugins = importedPlugins.flat().filter(Boolean);
+                }
+
+                loadedCharacters.push(character);
+                elizaLogger.info(
+                    `Successfully loaded character from: ${resolvedPath}`)
                 loadedCharacters.push(character);
             } catch (e) {
                 process.exit(1);
