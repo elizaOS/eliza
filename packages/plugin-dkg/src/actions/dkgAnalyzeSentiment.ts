@@ -316,13 +316,30 @@ export const dkgAnalyzeSentiment: Action = {
         }
         await scraper.login(username, password, email, twitter2faSecret);
         if (!(await scraper.isLoggedIn())) {
-            // Login with cookies
-            await scraper.setCookies(
-                formatCookiesFromArray(JSON.parse(process.env.TWITTER_COOKIES)),
-            );
-            if (!(await scraper.isLoggedIn())) {
-                elizaLogger.error("Failed to login to Twitter");
-                return false;
+            let attempts = 0;
+            const maxAttempts = 5;
+
+            while (attempts < maxAttempts) {
+                attempts++;
+                elizaLogger.warn(`Login attempt ${attempts} with cookies...`);
+
+                await scraper.setCookies(
+                    formatCookiesFromArray(
+                        JSON.parse(process.env.TWITTER_COOKIES),
+                    ),
+                );
+
+                if (await scraper.isLoggedIn()) {
+                    elizaLogger.info("Successfully logged in with cookies.");
+                    break;
+                }
+
+                if (attempts === maxAttempts) {
+                    elizaLogger.error(
+                        "Failed to login to Twitter after multiple attempts.",
+                    );
+                    return false;
+                }
             }
         }
 
