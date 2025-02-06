@@ -3,7 +3,7 @@ export * from "./dedust";
 export * from "./rainbowSwap";
 export * from "./stonFi";
 export * from "./tonco";
-export * from "./pool";
+export * from "./dex";
 
 export const SUPPORTED_DEXES = [
     "TORCH_FINANCE",
