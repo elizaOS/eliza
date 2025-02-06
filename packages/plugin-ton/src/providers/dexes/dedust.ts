@@ -8,8 +8,21 @@ import {
     ReadinessStatus,
     VaultJetton,
 } from "@dedust/sdk";
-import { Address, Contract, JettonMaster, toNano, TonClient, TonClient4 } from "@ton/ton";
+import {
+    Address,
+    Contract,
+    JettonMaster,
+    Sender,
+    SenderArguments,
+    toNano,
+    TonClient,
+    TonClient4,
+    WalletContractV3R2,
+} from "@ton/ton";
 import { Asset } from "@dedust/sdk";
+import { mnemonicToPrivateKey } from "@ton/crypto";
+import { IAgentRuntime } from "@elizaos/core";
+import { CONFIG_KEYS } from "../../enviroment";
 
 const SCALE_ADDR = Address.parse(
     "EQBlqsm144Dq6SjbPI4jjZvA1hqTIP3CvHovbIfW_t-SCALE"
@@ -23,11 +36,30 @@ const factory = tonClient.open(Factory.createFromAddress(MAINNET_FACTORY_ADDR));
 const scale = tonClient.open(JettonRoot.createFromAddress(SCALE_ADDR));
 
 export class Dedust implements DEX {
+    sender: Sender;
+
+    async init(runtime: IAgentRuntime) {
+        const privateKey = runtime.getSetting(CONFIG_KEYS.TON_PRIVATE_KEY);
+        if (!privateKey) {
+            throw new Error(`${CONFIG_KEYS.TON_PRIVATE_KEY} is missing`);
+        }
+        const mnemonic = privateKey.split(" ");
+
+        const keys = await mnemonicToPrivateKey(mnemonic);
+        const wallet = tonClient.open(
+            WalletContractV3R2.create({
+                workchain: 0,
+                publicKey: keys.publicKey,
+            })
+        );
+
+        this.sender = wallet.sender(keys.secretKey);
+    }
 
     async createPool(params: { isTon: boolean; jettons: JettonMaster[] }) {
         const { isTon, jettons } = params;
         jettons.map(async (jetton) => {
-            await factory.sendCreateVault(sender, {
+            await factory.sendCreateVault(this.sender, {
                 asset: Asset.jetton(jetton.address),
             });
         });
@@ -46,7 +78,7 @@ export class Dedust implements DEX {
         const poolReadiness = await pool.getReadinessStatus();
 
         if (poolReadiness === ReadinessStatus.NOT_DEPLOYED) {
-            await factory.sendCreateVolatilePool(sender, {
+            await factory.sendCreateVolatilePool(this.sender, {
                 assets,
             });
         }
@@ -68,11 +100,16 @@ export class Dedust implements DEX {
             Asset.jetton(jettonDeposits[isTon ? 0 : 1].jetton.address),
         ];
 
+        const targetBalances: [bigint, bigint] = [
+            toNano(isTon ? tonAmount : jettonDeposits[0].amount),
+            toNano(jettonDeposits[isTon ? 0 : 1].amount),
+        ];
+
         if (isTon) {
             const TON = Asset.native();
             const tonVault = tonClient.open(await factory.getNativeVault());
 
-            await tonVault.sendDepositLiquidity(sender, {
+            await tonVault.sendDepositLiquidity(this.sender, {
                 poolType: PoolType.VOLATILE,
                 assets,
                 targetBalances,
@@ -88,13 +125,13 @@ export class Dedust implements DEX {
                     await factory.getJettonVault(asset.address)
                 );
                 const assetWallet = tonClient.open(
-                    await scale.getWallet(sender.address)
+                    await scale.getWallet(this.sender.address)
                 );
 
-                await assetWallet.sendTransfer(sender, toNano("0.5"), {
+                await assetWallet.sendTransfer(this.sender, toNano("0.5"), {
                     amount: toNano(jettonDeposit.amount),
                     destination: assetVault.address,
-                    responseAddress: this.wallet.address,
+                    responseAddress: this.sender.address,
                     forwardAmount: toNano("0.4"),
                     forwardPayload: VaultJetton.createDepositLiquidityPayload({
                         poolType: PoolType.VOLATILE,
@@ -122,9 +159,11 @@ export class Dedust implements DEX {
         const pool = tonClient.open(
             await factory.getPool(PoolType.VOLATILE, assets)
         );
-        const lpWallet = tonClient.open(await pool.getWallet(sender.address));
+        const lpWallet = tonClient.open(
+            await pool.getWallet(this.sender.address)
+        );
 
-        await lpWallet.sendBurn(sender, toNano(amount), {
+        await lpWallet.sendBurn(this.sender, toNano(amount), {
             amount: await lpWallet.getBalance(),
         });
     }
