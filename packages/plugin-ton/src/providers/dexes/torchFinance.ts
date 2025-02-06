@@ -1,4 +1,4 @@
-import { JettonDeposit, LiquidityPool, Token } from "./pool";
+import { JettonDeposit, DEX, Token, JettonWithdrawal } from "./dex";
 import {
     TorchSDK,
     generateQueryId,
@@ -21,12 +21,10 @@ import { KeyPair, mnemonicToWalletKey } from "@ton/crypto";
 const sdk = new TorchSDK();
 
 const TON_ASSET = Asset.ton();
-const TSTON_ASSET = Asset.jetton(
-    "EQC98_qAmNEptUtPc7W6xdHh_ZHrBUFpw5Ft_IzNU20QAJav"
-);
-const STTON_ASSET = Asset.jetton(
-    "EQDNhy-nxYFgUqzfUzImBEP67JqsyMIcyk2S5_RwNNEYku0k"
-);
+const TSTON_ADDRESS = "EQC98_qAmNEptUtPc7W6xdHh_ZHrBUFpw5Ft_IzNU20QAJav";
+const TSTON_ASSET = Asset.jetton(TSTON_ADDRESS);
+const STTON_ADDRESS = "EQDNhy-nxYFgUqzfUzImBEP67JqsyMIcyk2S5_RwNNEYku0k";
+const STTON_ASSET = Asset.jetton(STTON_ADDRESS);
 
 const SUPPORTED_TOKENS = [
     "EQC98_qAmNEptUtPc7W6xdHh_ZHrBUFpw5Ft_IzNU20QAJav",
@@ -36,7 +34,11 @@ const SUPPORTED_TOKENS = [
 
 const TriTONPoolAddress = "EQDTvrxTLp9yKHpsAtcXkJGno_d9HYw62yaWpghlFhDUNQPJ";
 
-export class TorchFinance implements LiquidityPool {
+// TODO
+// Get pool data
+// leveraged farming(tsTON/USDT) a pool?
+
+export class TorchFinance implements DEX {
     private wallet: OpenedContract<WalletContractV5R1>;
     private keyPair: KeyPair;
 
@@ -79,7 +81,7 @@ export class TorchFinance implements LiquidityPool {
     }
 
     // Not supported
-    async createPool(tokenA: Token, tokenB: Token, initialLiquidity: number) {
+    async createPool() {
         throw new Error("Not Supported");
     }
 
@@ -87,16 +89,19 @@ export class TorchFinance implements LiquidityPool {
         return SUPPORTED_TOKENS.push("TON");
     }
 
-    async deposit(
-        jettonDeposits: JettonDeposit[],
-        isTon: boolean,
-        tonAmount: number,
-        slippageTolerance?: number,
-        pool?: string
-    ) {
+    async deposit(params: {
+        jettonDeposits: JettonDeposit[];
+        isTon: boolean;
+        tonAmount: number;
+        slippageTolerance?: number;
+        pool?: string;
+    }) {
+        const { jettonDeposits, isTon, tonAmount, slippageTolerance, pool } =
+            params;
+
         const queryId = await generateQueryId();
         jettonDeposits.forEach((asset) => {
-            if (!SUPPORTED_TOKENS.includes(asset.jetton.address)) {
+            if (!SUPPORTED_TOKENS.includes(asset.jetton.address.toString())) {
                 throw new Error("Unsupported asset");
             }
         });
@@ -113,7 +118,7 @@ export class TorchFinance implements LiquidityPool {
         jettonDeposits.map((asset) => {
             depositAmounts.push({
                 asset:
-                    asset.jetton.name === "STTON_TOKEN"
+                    asset.jetton.address.toString() === STTON_ADDRESS
                         ? STTON_ASSET
                         : TSTON_ASSET,
                 value: toUnit(asset.amount, 9),
@@ -142,12 +147,14 @@ export class TorchFinance implements LiquidityPool {
         console.log(`Transaction sent with msghash: ${msgHash}`);
     }
 
-    async withdraw(
-        jettonDeposits: JettonDeposit[],
-        isTon: boolean,
-        tonAmount: number,
-        tritonAmount?: number
-    ) {
+    async withdraw(params: {
+        jettonWithdrawals: JettonWithdrawal[];
+        isTon: boolean;
+        amount: number;
+    }) {
+        const { isTon, jettonWithdrawals, amount} =
+            params;
+
         const queryId = await generateQueryId();
         const LpDecimals = 18;
         // If you want to speed up the swap process, you can set the blockNumber to reduce the number of queries
@@ -155,22 +162,22 @@ export class TorchFinance implements LiquidityPool {
 
         let withdrawParams: WithdrawParams;
 
-        if (isTon && !jettonDeposits) {
+        if (isTon && !jettonWithdrawals) {
             withdrawParams = {
                 mode: "Single", // Single Mode: Withdraw one specific asset
                 queryId,
                 pool: TriTONPoolAddress, // Base Pool address
-                burnLpAmount: toUnit(tonAmount, LpDecimals), // Amount of Base Pool LP tokens (TriTon) to remove
+                burnLpAmount: toUnit(amount, LpDecimals), // Amount of Base Pool LP tokens (TriTon) to remove
                 withdrawAsset: TON_ASSET, // Specify the asset to withdraw (TON)
             };
         }
 
-        if (isTon && jettonDeposits.length === 2 && tritonAmount) {
+        if (isTon && jettonWithdrawals.length === 2) {
             withdrawParams = {
                 mode: "Balanced", // Balanced Mode: Withdraw all assets proportionally
                 queryId,
                 pool: TriTONPoolAddress, // Base Pool address
-                burnLpAmount: toUnit(tritonAmount, LpDecimals), // Amount of Base Pool LP tokens (TriTon) to remove
+                burnLpAmount: toUnit(amount, LpDecimals), // Amount of Base Pool LP tokens (TriTon) to remove
             };
         }
 
