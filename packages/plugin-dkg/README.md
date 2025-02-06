@@ -79,6 +79,12 @@ pnpm run lint
 ### 3. Create a Character and Run the Agent
 
 - Create a character file in the `characters` folder.
+- Make sure to include the dkg plugin
+
+```bash
+"plugins": ["@elizaos/plugin-dkg"],
+```
+
 - Run the character using the following command:
     ```bash
     pnpm start --characters="characters/chatdkg.character.json"
