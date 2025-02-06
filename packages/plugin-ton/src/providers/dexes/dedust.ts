@@ -15,11 +15,6 @@ const SCALE_ADDR = Address.parse(
     "EQBlqsm144Dq6SjbPI4jjZvA1hqTIP3CvHovbIfW_t-SCALE"
 );
 
-// TODO
-// What is a Vault vs. a Pool?
-// Pool -> Native Vault, Jetton Vault
-// Pool: Volatile Pool & Stable-Swap Pool
-
 const tonClient = new TonClient4({
     endpoint: "https://mainnet-v4.tonhubapi.com",
 });
