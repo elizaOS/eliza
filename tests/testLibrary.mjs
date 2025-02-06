@@ -15,7 +15,7 @@ function log(message) {
 }
 
 function logError(error) {
-    log(`Error: ${message}`);
+    log(`Error: ${error}`);
     log(error); // Print stack trace
 }
 

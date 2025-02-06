@@ -9,7 +9,7 @@ async function get(
     runtime: AgentRuntime,
     message: Memory
 ): Promise<KnowledgeItem[]> {
-    // Add validation for message
+    // Add validation for message    
     if (!message?.content?.text) {
         elizaLogger.warn("Invalid message for knowledge query:", {
             message,
@@ -27,7 +27,7 @@ async function get(
     });
 
     // Validate processed text
-    if (!processed || processed.trim().length === 0) {
+    if (!processed || typeof processed !== "string" || processed.trim().length === 0) {
         elizaLogger.warn("Empty processed text for knowledge query");
         return [];
     }
@@ -84,21 +84,27 @@ async function set(
     const fragments = await splitChunks(preprocessed, chunkSize, bleed);
 
     for (const fragment of fragments) {
-        const embedding = await embed(runtime, fragment);
-        await runtime.knowledgeManager.createMemory({
-            // We namespace the knowledge base uuid to avoid id
-            // collision with the document above.
-            id: stringToUuid(item.id + fragment),
-            roomId: runtime.agentId,
-            agentId: runtime.agentId,
-            userId: runtime.agentId,
-            createdAt: Date.now(),
-            content: {
-                source: item.id,
-                text: fragment,
-            },
-            embedding,
-        });
+
+        // Validate fragment
+        if (!fragment || typeof fragment !== "string" ||  fragment.trim().length === 0) {
+            elizaLogger.warn("Cannot generate embedding: fragment content is empty");
+        } else {
+            const embedding = await embed(runtime, fragment);
+            await runtime.knowledgeManager.createMemory({
+                // We namespace the knowledge base uuid to avoid id
+                // collision with the document above.
+                id: stringToUuid(item.id + fragment),
+                roomId: runtime.agentId,
+                agentId: runtime.agentId,
+                userId: runtime.agentId,
+                createdAt: Date.now(),
+                content: {
+                    source: item.id,
+                    text: fragment,
+                },
+                embedding,
+            });
+        }
     }
 }
 

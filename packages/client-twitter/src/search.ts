@@ -269,7 +269,7 @@ export class TwitterSearchClient {
 
             const response = responseContent;
 
-            if (!response.text) {
+            if (!response.text || response.text.trim().length === 0) {
                 elizaLogger.warn("Returning: No response text found");
                 return;
             }

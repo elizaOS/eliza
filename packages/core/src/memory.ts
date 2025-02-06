@@ -58,7 +58,7 @@ export class MemoryManager implements IMemoryManager {
         const memoryText = memory.content.text;
 
         // Validate memory has text content
-        if (!memoryText) {
+        if (!memoryText || typeof memoryText !== "string"  || memoryText.trim().length === 0) {
             throw new Error(
                 "Cannot generate embedding: Memory content is empty"
             );

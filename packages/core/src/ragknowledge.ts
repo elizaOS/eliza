@@ -213,6 +213,12 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                     searchText = `${relevantContext} ${processedQuery}`;
                 }
 
+                // Validate searchText
+                if (!searchText || typeof searchText !== "string" || searchText.trim().length === 0) {
+                    elizaLogger.warn("Cannot search knowledge: searchText content is empty");
+                    return [];
+                }
+
                 const embeddingArray = await embed(this.runtime, searchText);
 
                 const embedding = new Float32Array(embeddingArray);
@@ -295,51 +301,63 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
         try {
             // Process main document
             const processedContent = this.preprocess(item.content.text);
-            const mainEmbeddingArray = await embed(
-                this.runtime,
-                processedContent
-            );
 
-            const mainEmbedding = new Float32Array(mainEmbeddingArray);
+            // Validate processedContent
+            if (!processedContent || typeof processedContent !== "string" || processedContent.trim().length === 0) {
+                elizaLogger.warn("Cannot create knowledge: processedContent is empty");
+            } else {
+                const mainEmbeddingArray = await embed(
+                    this.runtime,
+                    processedContent
+                );
 
-            // Create main document
-            await this.runtime.databaseAdapter.createKnowledge({
-                id: item.id,
-                agentId: this.runtime.agentId,
-                content: {
-                    text: item.content.text,
-                    metadata: {
-                        ...item.content.metadata,
-                        isMain: true,
-                    },
-                },
-                embedding: mainEmbedding,
-                createdAt: Date.now(),
-            });
+                const mainEmbedding = new Float32Array(mainEmbeddingArray);
 
-            // Generate and store chunks
-            const chunks = await splitChunks(processedContent, 512, 20);
-
-            for (const [index, chunk] of chunks.entries()) {
-                const chunkEmbeddingArray = await embed(this.runtime, chunk);
-                const chunkEmbedding = new Float32Array(chunkEmbeddingArray);
-                const chunkId = `${item.id}-chunk-${index}` as UUID;
-
+                // Create main document
                 await this.runtime.databaseAdapter.createKnowledge({
-                    id: chunkId,
+                    id: item.id,
                     agentId: this.runtime.agentId,
                     content: {
-                        text: chunk,
+                        text: item.content.text,
                         metadata: {
                             ...item.content.metadata,
-                            isChunk: true,
-                            originalId: item.id,
-                            chunkIndex: index,
+                            isMain: true,
                         },
                     },
-                    embedding: chunkEmbedding,
+                    embedding: mainEmbedding,
                     createdAt: Date.now(),
                 });
+
+                // Generate and store chunks
+                const chunks = await splitChunks(processedContent, 512, 20);
+
+                for (const [index, chunk] of chunks.entries()) {
+
+                    // Validate chunk
+                    if (!chunk || typeof chunk !== "string" || chunk.trim().length === 0) {
+                        elizaLogger.warn("Cannot create knowledge: chunk content is empty");
+                    } else {
+                        const chunkEmbeddingArray = await embed(this.runtime, chunk);
+                        const chunkEmbedding = new Float32Array(chunkEmbeddingArray);
+                        const chunkId = `${item.id}-chunk-${index}` as UUID;
+
+                        await this.runtime.databaseAdapter.createKnowledge({
+                            id: chunkId,
+                            agentId: this.runtime.agentId,
+                            content: {
+                                text: chunk,
+                                metadata: {
+                                    ...item.content.metadata,
+                                    isChunk: true,
+                                    originalId: item.id,
+                                    chunkIndex: index,
+                                },
+                            },
+                            embedding: chunkEmbedding,
+                            createdAt: Date.now(),
+                        });
+                    }
+                }
             }
         } catch (error) {
             elizaLogger.error(`Error processing knowledge ${item.id}:`, error);
@@ -479,10 +497,10 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
                             `[Cleanup] Error during deletion process for ${filePath}:`,
                             deleteError instanceof Error
                                 ? {
-                                      message: deleteError.message,
-                                      stack: deleteError.stack,
-                                      name: deleteError.name,
-                                  }
+                                    message: deleteError.message,
+                                    stack: deleteError.stack,
+                                    name: deleteError.name,
+                                }
                                 : deleteError
                         );
                     }
@@ -536,92 +554,107 @@ export class RAGKnowledgeManager implements IRAGKnowledgeManager {
             const processedContent = this.preprocess(content);
             timeMarker("Preprocessing");
 
-            // Step 2: Main document embedding
-            const mainEmbeddingArray = await embed(
-                this.runtime,
-                processedContent
-            );
-            const mainEmbedding = new Float32Array(mainEmbeddingArray);
-            timeMarker("Main embedding");
+            // Validate processedContent
+            if (!processedContent || typeof processedContent !== "string" || processedContent.trim().length === 0) {
+                elizaLogger.warn("Cannot create knowledge: processedContent is empty");
+            } else {
+                // Step 2: Main document embedding
+                const mainEmbeddingArray = await embed(
+                    this.runtime,
+                    processedContent
+                );
+                const mainEmbedding = new Float32Array(mainEmbeddingArray);
+                timeMarker("Main embedding");
 
-            // Step 3: Create main document
-            await this.runtime.databaseAdapter.createKnowledge({
-                id: scopedId,
-                agentId: this.runtime.agentId,
-                content: {
-                    text: content,
-                    metadata: {
-                        source: file.path,
-                        type: file.type,
-                        isShared: file.isShared || false,
+                // Step 3: Create main document
+                await this.runtime.databaseAdapter.createKnowledge({
+                    id: scopedId,
+                    agentId: this.runtime.agentId,
+                    content: {
+                        text: content,
+                        metadata: {
+                            source: file.path,
+                            type: file.type,
+                            isShared: file.isShared || false,
+                        },
                     },
-                },
-                embedding: mainEmbedding,
-                createdAt: Date.now(),
-            });
-            timeMarker("Main document storage");
+                    embedding: mainEmbedding,
+                    createdAt: Date.now(),
+                });
+                timeMarker("Main document storage");
 
-            // Step 4: Generate chunks
-            const chunks = await splitChunks(processedContent, 512, 20);
-            const totalChunks = chunks.length;
-            elizaLogger.info(`Generated ${totalChunks} chunks`);
-            timeMarker("Chunk generation");
+                // Step 4: Generate chunks
+                const chunks = await splitChunks(processedContent, 512, 20);
+                const totalChunks = chunks.length;
+                elizaLogger.info(`Generated ${totalChunks} chunks`);
+                timeMarker("Chunk generation");
 
-            // Step 5: Process chunks with larger batches
-            const BATCH_SIZE = 10; // Increased batch size
-            let processedChunks = 0;
+                // Step 5: Process chunks with larger batches
+                const BATCH_SIZE = 10; // Increased batch size
+                let processedChunks = 0;
 
-            for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-                const batchStart = Date.now();
-                const batch = chunks.slice(
-                    i,
-                    Math.min(i + BATCH_SIZE, chunks.length)
-                );
+                for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+                    const batchStart = Date.now();
+                    const batch = chunks.slice(
+                        i,
+                        Math.min(i + BATCH_SIZE, chunks.length)
+                    );
 
-                // Process embeddings in parallel
-                const embeddings = await Promise.all(
-                    batch.map((chunk) => embed(this.runtime, chunk))
-                );
+                    // Filter out empty or null chunks while keeping track of indices
+                    const validChunks: { chunk: string; index: number }[] = batch
+                        .map((chunk, index) => {
+                            if (!chunk || typeof chunk !== "string" || !chunk.trim()) {
+                                return null;
+                            }
+                            return { chunk, index };
+                        })
+                        .filter((item): item is { chunk: string; index: number } => item !== null);
 
-                // Batch database operations
-                await Promise.all(
-                    embeddings.map(async (embeddingArray, index) => {
-                        const chunkId =
-                            `${scopedId}-chunk-${i + index}` as UUID;
-                        const chunkEmbedding = new Float32Array(embeddingArray);
+                    // Process embeddings in parallel only for valid chunks
+                    const embeddings = await Promise.all(
+                        validChunks.map(({ chunk }) => embed(this.runtime, chunk))
+                    );
 
-                        await this.runtime.databaseAdapter.createKnowledge({
-                            id: chunkId,
-                            agentId: this.runtime.agentId,
-                            content: {
-                                text: batch[index],
-                                metadata: {
-                                    source: file.path,
-                                    type: file.type,
-                                    isShared: file.isShared || false,
-                                    isChunk: true,
-                                    originalId: scopedId,
-                                    chunkIndex: i + index,
-                                    originalPath: file.path,
+                    // Batch database operations
+                    await Promise.all(
+                        embeddings.map(async (embeddingArray, index) => {
+                            const chunkId =
+                                `${scopedId}-chunk-${i + index}` as UUID;
+                            const chunkEmbedding = new Float32Array(embeddingArray);
+
+                            await this.runtime.databaseAdapter.createKnowledge({
+                                id: chunkId,
+                                agentId: this.runtime.agentId,
+                                content: {
+                                    text: batch[index],
+                                    metadata: {
+                                        source: file.path,
+                                        type: file.type,
+                                        isShared: file.isShared || false,
+                                        isChunk: true,
+                                        originalId: scopedId,
+                                        chunkIndex: i + index,
+                                        originalPath: file.path,
+                                    },
                                 },
-                            },
-                            embedding: chunkEmbedding,
-                            createdAt: Date.now(),
-                        });
-                    })
-                );
+                                embedding: chunkEmbedding,
+                                createdAt: Date.now(),
+                            });
+                        })
+                    );
 
-                processedChunks += batch.length;
-                const batchTime = (Date.now() - batchStart) / 1000;
+                    processedChunks += batch.length;
+                    const batchTime = (Date.now() - batchStart) / 1000;
+                    elizaLogger.info(
+                        `[Batch Progress] ${file.path}: Processed ${processedChunks}/${totalChunks} chunks (${batchTime.toFixed(2)}s for batch)`
+                    );
+                }
+
+                const totalTime = (Date.now() - startTime) / 1000;
                 elizaLogger.info(
-                    `[Batch Progress] ${file.path}: Processed ${processedChunks}/${totalChunks} chunks (${batchTime.toFixed(2)}s for batch)`
+                    `[Complete] Processed ${file.path} in ${totalTime.toFixed(2)}s`
                 );
             }
-
-            const totalTime = (Date.now() - startTime) / 1000;
-            elizaLogger.info(
-                `[Complete] Processed ${file.path} in ${totalTime.toFixed(2)}s`
-            );
         } catch (error) {
             if (
                 file.isShared &&
