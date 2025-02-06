@@ -393,28 +393,25 @@ export const dkgAnalyzeSentiment: Action = {
 
         const file = await fetchFileFromUrl(sentimentData.url);
 
-        await postTweet(
-            `${topic} sentiment based on top ${tweets.length} latest posts${
-                numOfTotalTweets - tweets.length > 0
-                    ? ` and ${numOfTotalTweets - tweets.length} existing analysis Knowledge Assets`
-                    : ""
-            } from the past 48 hours: ${sentiment}
+        let tweetContent = `${topic} sentiment based on top ${tweets.length} latest posts`;
+        if (numOfTotalTweets - tweets.length > 0) {
+            tweetContent += ` and ${numOfTotalTweets - tweets.length} existing analysis Knowledge Assets`;
+        }
+        tweetContent += ` from the past 48 hours: ${sentiment}\n\n`;
 
-Top 5 most influential accounts analyzed for ${topic}:
-${topAuthors
-    .slice(0, 5)
-    .map((a) => `@${a}`)
-    .join(", ")}
+        tweetContent += `Top 5 most influential accounts analyzed for ${topic}:\n`;
+        tweetContent +=
+            topAuthors
+                .slice(0, 5)
+                .map((a) => `@${a}`)
+                .join(", ") + "\n\n";
 
-Analysis memorized on @origin_trail Decentralized Knowledge Graph ${
-                DKG_EXPLORER_LINKS[runtime.getSetting("DKG_ENVIRONMENT")]
-            }${createAssetResult.UAL} @${twitterUser}
+        tweetContent += `Analysis memorized on @origin_trail Decentralized Knowledge Graph `;
+        tweetContent += `${DKG_EXPLORER_LINKS[runtime.getSetting("DKG_ENVIRONMENT")]}${createAssetResult.UAL} @${twitterUser}\n\n`;
 
-This is not financial advice.`,
-            scraper,
-            postId,
-            file.data,
-        );
+        tweetContent += `This is not financial advice.`;
+
+        await postTweet(tweetContent.trim(), scraper, postId, file.data);
 
         return true;
     },
