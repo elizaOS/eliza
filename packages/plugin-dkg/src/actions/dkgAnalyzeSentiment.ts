@@ -377,17 +377,23 @@ export const dkgAnalyzeSentiment: Action = {
         const file = await fetchFileFromUrl(sentimentData.url);
 
         await postTweet(
-            `${topic} sentiment based on top ${tweets.length} latest posts and ${numOfTotalTweets - tweets.length} existing analysis Knowledge Assets from the past 48 hours: ${sentiment}
+            `${topic} sentiment based on top ${tweets.length} latest posts${
+                numOfTotalTweets - tweets.length > 0
+                    ? ` and ${numOfTotalTweets - tweets.length} existing analysis Knowledge Assets`
+                    : ""
+            } from the past 48 hours: ${sentiment}
 
-Top 5 most influential accounts analyzed for ${topic}:
-${topAuthors
-    .slice(0, 5)
-    .map((a) => `@${a}`)
-    .join(", ")}
+        Top 5 most influential accounts analyzed for ${topic}:
+        ${topAuthors
+            .slice(0, 5)
+            .map((a) => `@${a}`)
+            .join(", ")}
 
-Analysis memorized on @origin_trail Decentralized Knowledge Graph ${DKG_EXPLORER_LINKS[runtime.getSetting("DKG_ENVIRONMENT")]}${createAssetResult.UAL} @${twitterUser}
+        Analysis memorized on @origin_trail Decentralized Knowledge Graph ${
+            DKG_EXPLORER_LINKS[runtime.getSetting("DKG_ENVIRONMENT")]
+        }${createAssetResult.UAL} @${twitterUser}
 
-This is not financial advice.`,
+        This is not financial advice.`,
             scraper,
             postId,
             file.data,
