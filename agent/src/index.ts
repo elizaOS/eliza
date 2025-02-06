@@ -12,11 +12,12 @@ import { TelegramClientInterface } from "@elizaos/client-telegram";
 import { TwitterClientInterface } from "@elizaos/client-twitter";
 import { FarcasterClientInterface } from "@elizaos/client-farcaster";
 import { DirectClient } from "@elizaos/client-direct";
-import { agentKitPlugin } from "@elizaos/plugin-agentkit";
+// import { agentKitPlugin } from "@elizaos/plugin-agentkit";
 // import { ReclaimAdapter } from "@elizaos/plugin-reclaim";
-import { PrimusAdapter } from "@elizaos/plugin-primus";
-import { lightningPlugin } from "@elizaos/plugin-lightning";
-import { elizaCodeinPlugin, onchainJson } from "@elizaos/plugin-iq6900";
+// import { PrimusAdapter } from "@elizaos/plugin-primus";
+// import { lightningPlugin } from "@elizaos/plugin-lightning";
+// import { elizaCodeinPlugin, onchainJson } from "@elizaos/plugin-iq6900";
+import { onchainJson } from "@elizaos/plugin-iq6900";
 
 import {
     AgentRuntime,
@@ -39,87 +40,87 @@ import {
     stringToUuid,
     validateCharacterConfig,
 } from "@elizaos/core";
-import { zgPlugin } from "@elizaos/plugin-0g";
+// import { zgPlugin } from "@elizaos/plugin-0g";
 
 import { bootstrapPlugin } from "@elizaos/plugin-bootstrap";
 import { normalizeCharacter } from "@elizaos/plugin-di";
-import createGoatPlugin from "@elizaos/plugin-goat";
+// import createGoatPlugin from "@elizaos/plugin-goat";
 // import { intifacePlugin } from "@elizaos/plugin-intiface";
-import { ThreeDGenerationPlugin } from "@elizaos/plugin-3d-generation";
-import { abstractPlugin } from "@elizaos/plugin-abstract";
-import { akashPlugin } from "@elizaos/plugin-akash";
-import { alloraPlugin } from "@elizaos/plugin-allora";
-import { aptosPlugin } from "@elizaos/plugin-aptos";
-import { artheraPlugin } from "@elizaos/plugin-arthera";
-import { autonomePlugin } from "@elizaos/plugin-autonome";
-import { availPlugin } from "@elizaos/plugin-avail";
-import { avalanchePlugin } from "@elizaos/plugin-avalanche";
-import { b2Plugin } from "@elizaos/plugin-b2";
-import { binancePlugin } from "@elizaos/plugin-binance";
-import { birdeyePlugin } from "@elizaos/plugin-birdeye";
-import { bnbPlugin } from "@elizaos/plugin-bnb";
-import {
-    advancedTradePlugin,
-    coinbaseCommercePlugin,
-    coinbaseMassPaymentsPlugin,
-    tokenContractPlugin,
-    tradePlugin,
-    webhookPlugin,
-} from "@elizaos/plugin-coinbase";
-import { coingeckoPlugin } from "@elizaos/plugin-coingecko";
-import { coinmarketcapPlugin } from "@elizaos/plugin-coinmarketcap";
-import { confluxPlugin } from "@elizaos/plugin-conflux";
-import { createCosmosPlugin } from "@elizaos/plugin-cosmos";
-import { cronosZkEVMPlugin } from "@elizaos/plugin-cronoszkevm";
-import { evmPlugin } from "@elizaos/plugin-evm";
-import { flowPlugin } from "@elizaos/plugin-flow";
-import { fuelPlugin } from "@elizaos/plugin-fuel";
-import { genLayerPlugin } from "@elizaos/plugin-genlayer";
-import { gitcoinPassportPlugin } from "@elizaos/plugin-gitcoin-passport";
-import { initiaPlugin } from "@elizaos/plugin-initia";
-import { imageGenerationPlugin } from "@elizaos/plugin-image-generation";
-import { lensPlugin } from "@elizaos/plugin-lensNetwork";
-import { multiversxPlugin } from "@elizaos/plugin-multiversx";
-import { nearPlugin } from "@elizaos/plugin-near";
-import createNFTCollectionsPlugin from "@elizaos/plugin-nft-collections";
-import { nftGenerationPlugin } from "@elizaos/plugin-nft-generation";
-import { createNodePlugin } from "@elizaos/plugin-node";
-import { obsidianPlugin } from "@elizaos/plugin-obsidian";
-import { OpacityAdapter } from "@elizaos/plugin-opacity";
-import { openWeatherPlugin } from "@elizaos/plugin-open-weather";
-import { quaiPlugin } from "@elizaos/plugin-quai";
-import { sgxPlugin } from "@elizaos/plugin-sgx";
-import { solanaPlugin } from "@elizaos/plugin-solana";
-import { solanaAgentkitPlugin } from "@elizaos/plugin-solana-agent-kit";
-import { squidRouterPlugin } from "@elizaos/plugin-squid-router";
-import { stargazePlugin } from "@elizaos/plugin-stargaze";
-import { storyPlugin } from "@elizaos/plugin-story";
-import { suiPlugin } from "@elizaos/plugin-sui";
-import { TEEMode, teePlugin } from "@elizaos/plugin-tee";
-import { teeLogPlugin } from "@elizaos/plugin-tee-log";
-import { teeMarlinPlugin } from "@elizaos/plugin-tee-marlin";
-import { verifiableLogPlugin } from "@elizaos/plugin-tee-verifiable-log";
-import { tonPlugin } from "@elizaos/plugin-ton";
-import { webSearchPlugin } from "@elizaos/plugin-web-search";
+// import { ThreeDGenerationPlugin } from "@elizaos/plugin-3d-generation";
+// import { abstractPlugin } from "@elizaos/plugin-abstract";
+// import { akashPlugin } from "@elizaos/plugin-akash";
+// import { alloraPlugin } from "@elizaos/plugin-allora";
+// import { aptosPlugin } from "@elizaos/plugin-aptos";
+// import { artheraPlugin } from "@elizaos/plugin-arthera";
+// import { autonomePlugin } from "@elizaos/plugin-autonome";
+// import { availPlugin } from "@elizaos/plugin-avail";
+// import { avalanchePlugin } from "@elizaos/plugin-avalanche";
+// import { b2Plugin } from "@elizaos/plugin-b2";
+// import { binancePlugin } from "@elizaos/plugin-binance";
+// import { birdeyePlugin } from "@elizaos/plugin-birdeye";
+// import { bnbPlugin } from "@elizaos/plugin-bnb";
+// import {
+//     advancedTradePlugin,
+//     coinbaseCommercePlugin,
+//     coinbaseMassPaymentsPlugin,
+//     tokenContractPlugin,
+//     tradePlugin,
+//     webhookPlugin,
+// } from "@elizaos/plugin-coinbase";
+// import { coingeckoPlugin } from "@elizaos/plugin-coingecko";
+// import { coinmarketcapPlugin } from "@elizaos/plugin-coinmarketcap";
+// import { confluxPlugin } from "@elizaos/plugin-conflux";
+// import { createCosmosPlugin } from "@elizaos/plugin-cosmos";
+// import { cronosZkEVMPlugin } from "@elizaos/plugin-cronoszkevm";
+// import { evmPlugin } from "@elizaos/plugin-evm";
+// import { flowPlugin } from "@elizaos/plugin-flow";
+// import { fuelPlugin } from "@elizaos/plugin-fuel";
+// import { genLayerPlugin } from "@elizaos/plugin-genlayer";
+// import { gitcoinPassportPlugin } from "@elizaos/plugin-gitcoin-passport";
+// import { initiaPlugin } from "@elizaos/plugin-initia";
+// import { imageGenerationPlugin } from "@elizaos/plugin-image-generation";
+// import { lensPlugin } from "@elizaos/plugin-lensNetwork";
+// import { multiversxPlugin } from "@elizaos/plugin-multiversx";
+// import { nearPlugin } from "@elizaos/plugin-near";
+// import createNFTCollectionsPlugin from "@elizaos/plugin-nft-collections";
+// import { nftGenerationPlugin } from "@elizaos/plugin-nft-generation";
+// import { createNodePlugin } from "@elizaos/plugin-node";
+// import { obsidianPlugin } from "@elizaos/plugin-obsidian";
+// import { OpacityAdapter } from "@elizaos/plugin-opacity";
+// import { openWeatherPlugin } from "@elizaos/plugin-open-weather";
+// import { quaiPlugin } from "@elizaos/plugin-quai";
+// import { sgxPlugin } from "@elizaos/plugin-sgx";
+// import { solanaPlugin } from "@elizaos/plugin-solana";
+// import { solanaAgentkitPlugin } from "@elizaos/plugin-solana-agent-kit";
+// import { squidRouterPlugin } from "@elizaos/plugin-squid-router";
+// import { stargazePlugin } from "@elizaos/plugin-stargaze";
+// import { storyPlugin } from "@elizaos/plugin-story";
+// import { suiPlugin } from "@elizaos/plugin-sui";
+// import { TEEMode, teePlugin } from "@elizaos/plugin-tee";
+// import { teeLogPlugin } from "@elizaos/plugin-tee-log";
+// import { teeMarlinPlugin } from "@elizaos/plugin-tee-marlin";
+// import { verifiableLogPlugin } from "@elizaos/plugin-tee-verifiable-log";
+// import { tonPlugin } from "@elizaos/plugin-ton";
+// import { webSearchPlugin } from "@elizaos/plugin-web-search";
 import { dkgPlugin } from "@elizaos/plugin-dkg";
-import { injectivePlugin } from "@elizaos/plugin-injective";
-import { giphyPlugin } from "@elizaos/plugin-giphy";
-import { letzAIPlugin } from "@elizaos/plugin-letzai";
-import { thirdwebPlugin } from "@elizaos/plugin-thirdweb";
-import { hyperliquidPlugin } from "@elizaos/plugin-hyperliquid";
-import { echoChambersPlugin } from "@elizaos/plugin-echochambers";
-import { dexScreenerPlugin } from "@elizaos/plugin-dexscreener";
-import { pythDataPlugin } from "@elizaos/plugin-pyth-data";
+// import { injectivePlugin } from "@elizaos/plugin-injective";
+// import { giphyPlugin } from "@elizaos/plugin-giphy";
+// import { letzAIPlugin } from "@elizaos/plugin-letzai";
+// import { thirdwebPlugin } from "@elizaos/plugin-thirdweb";
+// import { hyperliquidPlugin } from "@elizaos/plugin-hyperliquid";
+// import { echoChambersPlugin } from "@elizaos/plugin-echochambers";
+// import { dexScreenerPlugin } from "@elizaos/plugin-dexscreener";
+// import { pythDataPlugin } from "@elizaos/plugin-pyth-data";
 
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import nitroPlugin from "@elizaos/plugin-router-nitro";
-import { devinPlugin } from "@elizaos/plugin-devin";
+// import { openaiPlugin } from "@elizaos/plugin-openai";
+// import nitroPlugin from "@elizaos/plugin-router-nitro";
+// import { devinPlugin } from "@elizaos/plugin-devin";
 
-import { zksyncEraPlugin } from "@elizaos/plugin-zksync-era";
+// import { zksyncEraPlugin } from "@elizaos/plugin-zksync-era";
 
-import { nvidiaNimPlugin } from "@elizaos/plugin-nvidia-nim";
+// import { nvidiaNimPlugin } from "@elizaos/plugin-nvidia-nim";
 
-import { zxPlugin } from "@elizaos/plugin-0x";
+// import { zxPlugin } from "@elizaos/plugin-0x";
 import Database from "better-sqlite3";
 import fs from "fs";
 import net from "net";
@@ -828,26 +829,26 @@ export async function createAgent(
 ): Promise<AgentRuntime> {
     elizaLogger.log(`Creating runtime for character ${character.name}`);
 
-    nodePlugin ??= createNodePlugin();
+    // nodePlugin ??= createNodePlugin();
 
-    const teeMode = getSecret(character, "TEE_MODE") || "OFF";
-    const walletSecretSalt = getSecret(character, "WALLET_SECRET_SALT");
+    // const teeMode = getSecret(character, "TEE_MODE") || "OFF";
+    // const walletSecretSalt = getSecret(character, "WALLET_SECRET_SALT");
 
     // Validate TEE configuration
-    if (teeMode !== TEEMode.OFF && !walletSecretSalt) {
-        elizaLogger.error(
-            "A WALLET_SECRET_SALT required when TEE_MODE is enabled",
-        );
-        throw new Error("Invalid TEE configuration");
-    }
+    // if (teeMode !== TEEMode.OFF && !walletSecretSalt) {
+    //     elizaLogger.error(
+    //         "A WALLET_SECRET_SALT required when TEE_MODE is enabled",
+    //     );
+    //     throw new Error("Invalid TEE configuration");
+    // }
 
-    let goatPlugin: any | undefined;
+    // let goatPlugin: any | undefined;
 
-    if (getSecret(character, "EVM_PRIVATE_KEY")) {
-        goatPlugin = await createGoatPlugin((secret) =>
-            getSecret(character, secret),
-        );
-    }
+    // if (getSecret(character, "EVM_PRIVATE_KEY")) {
+    //     goatPlugin = await createGoatPlugin((secret) =>
+    //         getSecret(character, secret),
+    //     );
+    // }
 
     // Initialize Reclaim adapter if environment variables are present
     // let verifiableInferenceAdapter;
@@ -865,41 +866,41 @@ export async function createAgent(
     //     elizaLogger.log("Verifiable inference adapter initialized");
     // }
     // Initialize Opacity adapter if environment variables are present
-    let verifiableInferenceAdapter;
-    if (
-        process.env.OPACITY_TEAM_ID &&
-        process.env.OPACITY_CLOUDFLARE_NAME &&
-        process.env.OPACITY_PROVER_URL &&
-        process.env.VERIFIABLE_INFERENCE_ENABLED === "true"
-    ) {
-        verifiableInferenceAdapter = new OpacityAdapter({
-            teamId: process.env.OPACITY_TEAM_ID,
-            teamName: process.env.OPACITY_CLOUDFLARE_NAME,
-            opacityProverUrl: process.env.OPACITY_PROVER_URL,
-            modelProvider: character.modelProvider,
-            token: token,
-        });
-        elizaLogger.log("Verifiable inference adapter initialized");
-        elizaLogger.log("teamId", process.env.OPACITY_TEAM_ID);
-        elizaLogger.log("teamName", process.env.OPACITY_CLOUDFLARE_NAME);
-        elizaLogger.log("opacityProverUrl", process.env.OPACITY_PROVER_URL);
-        elizaLogger.log("modelProvider", character.modelProvider);
-        elizaLogger.log("token", token);
-    }
-    if (
-        process.env.PRIMUS_APP_ID &&
-        process.env.PRIMUS_APP_SECRET &&
-        process.env.VERIFIABLE_INFERENCE_ENABLED === "true"
-    ) {
-        verifiableInferenceAdapter = new PrimusAdapter({
-            appId: process.env.PRIMUS_APP_ID,
-            appSecret: process.env.PRIMUS_APP_SECRET,
-            attMode: "proxytls",
-            modelProvider: character.modelProvider,
-            token,
-        });
-        elizaLogger.log("Verifiable inference primus adapter initialized");
-    }
+    // let verifiableInferenceAdapter;
+    // if (
+    //     process.env.OPACITY_TEAM_ID &&
+    //     process.env.OPACITY_CLOUDFLARE_NAME &&
+    //     process.env.OPACITY_PROVER_URL &&
+    //     process.env.VERIFIABLE_INFERENCE_ENABLED === "true"
+    // ) {
+    //     verifiableInferenceAdapter = new OpacityAdapter({
+    //         teamId: process.env.OPACITY_TEAM_ID,
+    //         teamName: process.env.OPACITY_CLOUDFLARE_NAME,
+    //         opacityProverUrl: process.env.OPACITY_PROVER_URL,
+    //         modelProvider: character.modelProvider,
+    //         token: token,
+    //     });
+    //     elizaLogger.log("Verifiable inference adapter initialized");
+    //     elizaLogger.log("teamId", process.env.OPACITY_TEAM_ID);
+    //     elizaLogger.log("teamName", process.env.OPACITY_CLOUDFLARE_NAME);
+    //     elizaLogger.log("opacityProverUrl", process.env.OPACITY_PROVER_URL);
+    //     elizaLogger.log("modelProvider", character.modelProvider);
+    //     elizaLogger.log("token", token);
+    // }
+    // if (
+    //     process.env.PRIMUS_APP_ID &&
+    //     process.env.PRIMUS_APP_SECRET &&
+    //     process.env.VERIFIABLE_INFERENCE_ENABLED === "true"
+    // ) {
+    //     verifiableInferenceAdapter = new PrimusAdapter({
+    //         appId: process.env.PRIMUS_APP_ID,
+    //         appSecret: process.env.PRIMUS_APP_SECRET,
+    //         attMode: "proxytls",
+    //         modelProvider: character.modelProvider,
+    //         token,
+    //     });
+    //     elizaLogger.log("Verifiable inference primus adapter initialized");
+    // }
 
     const plugins = [
         // getSecret(character, "IQ_WALLET_ADDRESS") &&
@@ -1121,7 +1122,7 @@ export async function createAgent(
         managers: [],
         cacheManager: cache,
         fetch: logFetch,
-        verifiableInferenceAdapter,
+        verifiableInferenceAdapter: null, // verifiableInferenceAdapter
     });
 }
 
