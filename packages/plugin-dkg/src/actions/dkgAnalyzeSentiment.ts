@@ -400,17 +400,17 @@ export const dkgAnalyzeSentiment: Action = {
                     : ""
             } from the past 48 hours: ${sentiment}
 
-        Top 5 most influential accounts analyzed for ${topic}:
-        ${topAuthors
-            .slice(0, 5)
-            .map((a) => `@${a}`)
-            .join(", ")}
+Top 5 most influential accounts analyzed for ${topic}:
+${topAuthors
+    .slice(0, 5)
+    .map((a) => `@${a}`)
+    .join(", ")}
 
-        Analysis memorized on @origin_trail Decentralized Knowledge Graph ${
-            DKG_EXPLORER_LINKS[runtime.getSetting("DKG_ENVIRONMENT")]
-        }${createAssetResult.UAL} @${twitterUser}
+Analysis memorized on @origin_trail Decentralized Knowledge Graph ${
+                DKG_EXPLORER_LINKS[runtime.getSetting("DKG_ENVIRONMENT")]
+            }${createAssetResult.UAL} @${twitterUser}
 
-        This is not financial advice.`,
+This is not financial advice.`,
             scraper,
             postId,
             file.data,
