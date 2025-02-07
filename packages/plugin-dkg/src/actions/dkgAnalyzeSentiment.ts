@@ -317,7 +317,7 @@ export const dkgAnalyzeSentiment: Action = {
         await scraper.login(username, password, email, twitter2faSecret);
         if (!(await scraper.isLoggedIn())) {
             let attempts = 0;
-            const maxAttempts = 5;
+            const maxAttempts = 10;
 
             while (attempts < maxAttempts) {
                 attempts++;
@@ -341,6 +341,16 @@ export const dkgAnalyzeSentiment: Action = {
                     return false;
                 }
             }
+        }
+
+        if (!topic || topic.toLowerCase() === "none") {
+            await postTweet(
+                `Didn't recognize a ticker of a financial asset in your post. Please post again while clearly stating which stock or cryptocurrency you want to analyze.`,
+                scraper,
+                postId,
+            );
+
+            return true;
         }
 
         const scrapedTweets = scraper.searchTweets(
