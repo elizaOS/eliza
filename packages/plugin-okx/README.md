@@ -1,4 +1,4 @@
-# @elizaos/plugin-okx
+# @elizaos-plugins/plugin-okx
 
 A plugin for integrating OKX DEX capabilities within the ElizaOS ecosystem, currently supporting Solana network trading.
 
@@ -13,7 +13,7 @@ OKX DEX is a trading aggregator that this plugin integrates with Eliza. Currentl
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-okx
+pnpm install @elizaos-plugins/plugin-okx
 ```
 
 ## Configuration

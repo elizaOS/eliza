@@ -1,5 +1,5 @@
 {
-    "name": "@elizaos/plugin-okx",
+    "name": "@elizaos-plugins/plugin-okx",
     "version": "0.0.1",
     "type": "module",
     "main": "dist/index.js",
