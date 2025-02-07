@@ -38,7 +38,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **لمتسخدمي الويندوز يجب أن يكون لديك نظام ويندوز الفرعي للينكس:** [WSL 2](https://learn.microsoft.com/de-de/windows/wsl/install-manual).
 
@@ -49,7 +49,7 @@ git clone https://github.com/elizaos/eliza-starter.git
 
 cp .env.example .env
 
-pnpm i && pnpm start
+bun i && bun start
 ```
 
 تعلم أكثر عن كيفية تخصيص إليزا من هنا [التعليمات](https://elizaos.github.io/eliza/)
@@ -93,7 +93,7 @@ sh scripts/start.sh
 
 لتحميل شخصيات مخصصة
 
-- استخدم الأمر "pnpm start --characters="path/to/your/character.json
+- استخدم الأمر "bun start --characters="path/to/your/character.json
 - يُمكنك تحميل عدة ملفات للشخصيات في نفس الوقت.
 
 الاتصال بـ X (تويتر):
@@ -103,12 +103,12 @@ sh scripts/start.sh
 ### لتشغيل إليزا يدويًا
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # المشروع يتطور سريعًا. لذا قد تحتاج إلى تنظيف المشروع إذا قمت بالرجوع إليه بعد فترة.
-pnpm clean
+bun clean
 ```
 
 #### المتطلبات الإضافية
@@ -116,7 +116,7 @@ pnpm clean
 قد تحتاج إلى تثبيت Sharp. إذا واجهت خطأ أثناء بدء التشغيل، جرب استخدام الأمر التالي:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### المجتمع والدعم

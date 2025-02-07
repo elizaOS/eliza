@@ -1,6 +1,6 @@
 import { config } from "dotenv";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import elizaLogger from "./logger.ts";
 
 elizaLogger.info("Loading embedding settings:", {

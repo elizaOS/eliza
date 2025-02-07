@@ -150,7 +150,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     getRelationships(_params: { userId: UUID }): Promise<Relationship[]> {
         throw new Error("Method not implemented.");
     }
-    db: any = {};
+    db: Record<string, unknown> = {};
 
     // Mock method for getting memories by room IDs
     async getMemoriesByRoomIds(params: {
@@ -177,11 +177,14 @@ class MockDatabaseAdapter extends DatabaseAdapter {
         query_field_name: string;
         query_field_sub_name: string;
         query_match_count: number;
-    }): Promise<any[]> {
+    }): Promise<{
+        embedding: number[];
+        levenshtein_score: number;
+    }[]> {
         return [
             {
                 embedding: [0.1, 0.2, 0.3],
-                levenshtein_distance: 0.4,
+                levenshtein_score: 0.4,
             },
         ];
     }
@@ -317,7 +320,7 @@ describe("DatabaseAdapter Tests", () => {
     it("should get an account by user ID", async () => {
         const account = await adapter.getAccountById("test-user-id" as UUID);
         expect(account).not.toBeNull();
-        expect(account.username).toBe("testuser");
+        expect(account?.username).toBe("testuser");
     });
 
     it("should create a new account", async () => {

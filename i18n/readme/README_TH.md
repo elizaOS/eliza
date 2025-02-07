@@ -35,7 +35,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **หมายเหตุสำหรับผู้ใช้ Windows:** จำเป็นต้องมี [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual)
 
@@ -46,7 +46,7 @@ git clone https://github.com/elizaos/eliza-starter.git
 
 cp .env.example .env
 
-pnpm i && pnpm start
+bun i && bun start
 ```
 
 จากนั้นอ่าน [คู่มือ](https://elizaos.github.io/eliza/) เพื่อศึกษาวิธีการปรับแต่ง Eliza
@@ -89,7 +89,7 @@ sh scripts/start.sh
 1. เปิด `agent/src/character.ts` เพื่อแก้ไขตัวละครเริ่มต้น นำคอมเม้นออกและเริ่มแก้ไข
 
 2. การโหลดตัวละคร custom:
-    - ใช้ `pnpm start --characters="path/to/your/character.json"`
+    - ใช้ `bun start --characters="path/to/your/character.json"`
     - สามารถโหลดหลายๆตัวละครพร้อมกันได้
 3. เชื่อมต่อกับ X (Twitter)
     - เปลี่ยน `"clients": []` เป็น `"clients": ["twitter"]` ในไฟล์ตัวละครเพื่อเชื่อมต่อกับ X (Twitter)
@@ -97,12 +97,12 @@ sh scripts/start.sh
 ### เริ่มใช้งาน Eliza ด้วยตนเอง
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # โปรเจกต์นี้มีการอัปเดตอยู่บ่อยครั้ง บางครั้งอาจต้องทำการ clean โปรเจกต์ถ้าหากกลับมาทำใหม่
-pnpm clean
+bun clean
 ```
 
 #### สิ่งที่จำเป็นเพิ่มเติม
@@ -110,7 +110,7 @@ pnpm clean
 คุณอาจต้องติดตั้ง Sharp ถ้าหากคุณเห็นข้อความ error เมื่อเริ่มต้น สามารถลองติดตั้งด้วยคำสั่งต่อไปนี้:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### ชุมชนและข้อมูลการติดต่อ

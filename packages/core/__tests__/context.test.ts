@@ -98,7 +98,7 @@ describe("composeContext", () => {
                     return "Hello, {{userName}}! You are {{userAge}} years old... whatever";
                 }
 
-                return `Hello, {{userName}}! You are {{userAge}} years old`;
+                return "Hello, {{userName}}! You are {{userAge}} years old";
             };
 
             const result = composeContext({ state, template });
@@ -111,10 +111,10 @@ describe("composeContext", () => {
         it("should handle function templates with conditional logic depending on state", () => {
             const template = ({ state }: { state: State }) => {
                 if (state.userName) {
-                    return `Hello, {{userName}}! You are {{userAge}} years old.`;
+                    return "Hello, {{userName}}! You are {{userAge}} years old.";
                 }
 
-                return `Hello, anon! You are {{userAge}} years old.`;
+                return "Hello, anon! You are {{userAge}} years old.";
             };
 
             const result = composeContext({
@@ -147,7 +147,7 @@ describe("composeContext", () => {
                 userAge: 30,
             };
             const template = () => {
-                return `{{#if userAge}}Hello, {{userName}}!{{else}}Hi there!{{/if}}`;
+                return "{{#if userAge}}Hello, {{userName}}!{{else}}Hi there!{{/if}}";
             };
 
             const result = composeContext({

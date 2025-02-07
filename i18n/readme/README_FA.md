@@ -45,7 +45,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **توجه برای کاربران ویندوز:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) لازم است.
 
@@ -55,14 +55,14 @@
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun run build && bun start
 ```
 
-پس از اجرای عامل، باید پیامی برای اجرای "pnpm start:client" دریافت کنید.
+پس از اجرای عامل، باید پیامی برای اجرای "bun start:client" دریافت کنید.
 یک ترمینال جدید باز کنید و به همان دایرکتوری رفته و دستور زیر را اجرا کنید تا با عامل خود گفتگو کنید:
 
 ```bash
-pnpm start:client
+bun start:client
 ```
 
 سپس [مستندات](https://elizaos.github.io/eliza/) را مطالعه کنید تا بیاموزید چگونه الیزا را سفارشی کنید.
@@ -106,7 +106,7 @@ sh scripts/start.sh
 
 1. فایل `packages/core/src/defaultCharacter.ts` را باز کنید تا شخصیت پیش‌فرض را تغییر دهید. تغییرات لازم را انجام دهید.
 2. برای بارگذاری شخصیت‌های سفارشی:
-    - از دستور `pnpm start --characters="path/to/your/character.json"` استفاده کنید.
+    - از دستور `bun start --characters="path/to/your/character.json"` استفاده کنید.
     - چندین فایل شخصیت می‌توانند همزمان بارگذاری شوند.
 3. اتصال به توییتر (X):
     - مقدار `"clients": []` را به `"clients": ["twitter"]` در فایل شخصیت تغییر دهید.
@@ -114,12 +114,12 @@ sh scripts/start.sh
 ### اجرای دستی الیزا
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # اگر پروژه به دلیل تغییرات سریع نیاز به پاکسازی داشت، دستور زیر را اجرا کنید:
-pnpm clean
+bun clean
 ```
 
 #### نیازمندی‌های اضافی
@@ -127,7 +127,7 @@ pnpm clean
 ممکن است نیاز به نصب Sharp باشد. اگر هنگام راه‌اندازی خطایی دیدید، دستور زیر را اجرا کنید:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### انجمن و تماس

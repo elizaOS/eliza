@@ -34,7 +34,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Hinweis für Windows-Benutzer:** [WSL 2](https://learn.microsoft.com/de-de/windows/wsl/install-manual) ist erforderlich.
 
@@ -45,7 +45,7 @@ git clone https://github.com/elizaos/eliza-starter.git
 
 cp .env.example .env
 
-pnpm i && pnpm start
+bun i && bun start
 ```
 
 Lies dann die [Dokumentation](https://elizaos.github.io/eliza/), um zu erfahren, wie du Eliza anpassen kannst.
@@ -88,7 +88,7 @@ sh scripts/start.sh
 1. Öffne `agent/src/character.ts`, um den Standardcharakter zu bearbeiten. Kommentiere und bearbeite ihn.
 
 2. Um benutzerdefinierte Charaktere zu laden:
-    - Verwende `pnpm start --characters="path/to/your/character.json"`
+    - Verwende `bun start --characters="path/to/your/character.json"`
     - Mehrere Charakterdateien können gleichzeitig geladen werden.
 3. Verbinde mit X (Twitter)
     - Ändere `"clients": []` zu `"clients": ["twitter"]` in der Charakterdatei, um eine Verbindung mit X herzustellen.
@@ -96,12 +96,12 @@ sh scripts/start.sh
 ### Eliza manuell starten
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # Das Projekt entwickelt sich schnell weiter. Manchmal musst du das Projekt bereinigen, wenn du es nach einiger Zeit erneut aufrufst.
-pnpm clean
+bun clean
 ```
 
 #### Zusätzliche Anforderungen
@@ -109,7 +109,7 @@ pnpm clean
 Möglicherweise musst du Sharp installieren. Wenn beim Starten ein Fehler auftritt, versuche es mit folgendem Befehl:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### Community & Kontakt

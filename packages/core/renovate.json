@@ -16,10 +16,6 @@
             ]
         },
         {
-            "groupName": "Testing frameworks",
-            "matchPackageNames": ["/^jest$/", "/^@types/jest$/"]
-        },
-        {
             "groupName": "Rollup and plugins",
             "matchPackageNames": ["/^@rollup//", "/^rollup/"]
         },

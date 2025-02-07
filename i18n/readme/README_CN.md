@@ -60,7 +60,7 @@ Eliza 是 GitHub 上排名第一的开源项目，我们正在推动下一代人
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 
 > **Windows 用户注意：** 需要安装 [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
@@ -71,14 +71,14 @@ Eliza 是 GitHub 上排名第一的开源项目，我们正在推动下一代人
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun run build && bun start
 ```
 
-当代理运行时，您应该会在最后看到运行 pnpm start:client 的消息.
+当代理运行时，您应该会在最后看到运行 bun start:client 的消息.
 打开另一个终端并移动到同一目录，然后运行以下命令并按照 URL 与您的代理聊天.
 
 ```bash
-pnpm start:client
+bun start:client
 ```
 然后阅读 [文档](https://elizaos.github.io/eliza/) 以了解如何自定义您的 Eliza
 
@@ -120,7 +120,7 @@ sh scripts/start.sh
 1. 打开 `packages/core/src/defaultCharacter.ts` 修改默认角色.取消注释并编辑.
 
 2. 加载自定义角色：
-    - 使用 `pnpm start --characters="path/to/your/character.json"`
+    - 使用 `bun start --characters="path/to/your/character.json"`
     - 可以同时加载多个角色文件
 3. 连接 X (Twitter)
     - 在角色文件中将 `"clients": []` 更改为 `"clients": ["twitter"]` 以连接 X
@@ -128,12 +128,12 @@ sh scripts/start.sh
 ### 手动启动 Eliza
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # 该项目迭代速度很快，有时如果您回到项目，需要清理项目
-pnpm clean
+bun clean
 ```
 
 ## 一键部署 Eliza
@@ -152,7 +152,7 @@ pnpm clean
 您可能需要安装 Sharp.如果在启动时看到错误，请尝试使用以下命令安装:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### 社区与联系

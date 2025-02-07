@@ -1,7 +1,7 @@
 import {
     SqliteDatabaseAdapter,
     loadVecExtensions,
-} from "@elizaos/adapter-sqlite";
+} from "@elizaos/plugin-sqlite";
 import { SqlJsDatabaseAdapter } from "@elizaos/adapter-sqljs";
 import { SupabaseDatabaseAdapter } from "@elizaos/adapter-supabase";
 import { PGLiteDatabaseAdapter } from "@elizaos/adapter-pglite";

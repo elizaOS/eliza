@@ -35,7 +35,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Chú ý cho người dùng Windows:** [WSL 2](https://learn.microsoft.com/de-de/windows/wsl/install-manual) là bắt buộc.
 
@@ -46,7 +46,7 @@ git clone https://github.com/elizaos/eliza-starter.git
 
 cp .env.example .env
 
-pnpm i && pnpm start
+bun i && bun start
 ```
 
 Sau đó hãy đọc [Tài liệu](https://elizaos.github.io/eliza/), để học cách để tùy chỉnh Eliza của bạn.
@@ -89,7 +89,7 @@ sh scripts/start.sh
 1. Mở `agent/src/character.ts`, để chỉnh sửa tính cách mặc định. Bỏ chú thích và chỉnh sửa.
 
 2. Để chạy các tính cách tùy chỉnh:
-    - Sử dụng `pnpm start --characters="path/to/your/character.json"`
+    - Sử dụng `bun start --characters="path/to/your/character.json"`
     - Nhiều tính cách có thể được chạy cùng lúc với nhau
 3. Kết nối với X (Twitter)
     - Thay đổi `"clients": []` thành `"clients": ["twitter"]` ở trong tập tính cách (character) để kết nối với X.
@@ -97,12 +97,12 @@ sh scripts/start.sh
 ### Bắt đầu Eliza theo cách thủ công
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # Dự án cải tiến rất nhanh, đôi khi bạn cần phải dọn dẹp dự án nếu bạn quay lại dự án
-pnpm clean
+bun clean
 ```
 
 #### Yêu cầu bổ sung
@@ -110,7 +110,7 @@ pnpm clean
 Bạn có thể cần cài đặt Sharp. Nếu bạn thấy lỗi khi khởi động, hãy thử cài đặt bằng lệnh sau:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### Cộng đồng & Liên hệ

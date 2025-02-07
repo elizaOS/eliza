@@ -56,7 +56,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23.3+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Windows 사용자 참고:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) 필요.
 
@@ -66,16 +66,16 @@
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun run build && bun start
 ```
 
-에이전트가 실행되면, 마지막에 "pnpm start:client" 명령을 실행하라는 메시지를 볼 수 있습니다.
+에이전트가 실행되면, 마지막에 "bun start:client" 명령을 실행하라는 메시지를 볼 수 있습니다.
 
 다른 터미널을 열고 같은 디렉터리로 이동한 다음 아래 명령어를 실행하세요. 
 
 그리고 제공된 URL을 따라 에이전트와 대화하세요.
 ```bash
-pnpm start:client
+bun start:client
 ```
 
 [문서](https://elizaos.github.io/eliza/)를 참고하여 Eliza를 커스마이징 방법을 확인하세요.
@@ -118,7 +118,7 @@ sh scripts/start.sh
 1. `packages/core/src/defaultCharacter.ts`를 열어 기본 캐릭터를 수정하세요. 주석을 해제하고 수정하시면 됩니다.
 
 2. 커스텀 캐릭터 로드하기:
-    - `pnpm start --characters="path/to/your/character.json"`을 사용합니다.
+    - `bun start --characters="path/to/your/character.json"`을 사용합니다.
     - 여러 캐릭터 파일을 동시에 로드할 수 있습니다.
 3. X (Twitter) 연결:
     - 캐릭터 파일에서 `"clients": []`를 `"clients": ["twitter"]`로 변경합니다.
@@ -126,12 +126,12 @@ sh scripts/start.sh
 ### Eliza 수동 시작
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # 프로젝트가 빠르게 변경되기 때문에, 다시 작업을 시작할 때는 clean 명령어 입력이 필요할 수도 있습니다.
-pnpm clean
+bun clean
 ```
 
 #### 추가 요구 사항
@@ -139,7 +139,7 @@ pnpm clean
 시작 시 에러가 발생하면 Sharp를 설치해야 할 수 있습니다. 아래 명령어를 사용하여 설치하세요:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### 커뮤니티 & 문의

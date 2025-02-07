@@ -48,7 +48,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23.3+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
     > **Для Windows пользователей:** требуется WSL
 
 ### Редактирование файла .env
@@ -64,7 +64,7 @@ cp .env.example .env
 1. Откройте `packages/core/src/defaultCharacter.ts`, чтобы изменить персонажа по умолчанию.
 
 2. Для загрузки пользовательских персонажей:
-    - Используйте команду `pnpm start --characters="path/to/your/character.json"`
+    - Используйте команду `bun start --characters="path/to/your/character.json"`
     - Можно загружать несколько файлов персонажей одновременно.
 
 ### Запуск Eliza
@@ -72,12 +72,12 @@ cp .env.example .env
 После настройки файла `.env` и файла персонажа вы можете запустить бота с помощью следующей команды:
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # Проект быстро развивается, иногда нужно очищать проект, если вы возвращаетесь к нему спустя время
-pnpm clean
+bun clean
 ```
 
 #### Дополнительные требования
@@ -85,7 +85,7 @@ pnpm clean
 Возможно, потребуется установить Sharp. Если при запуске возникнет ошибка, попробуйте установить его с помощью следующей команды:
 
 ```bash
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 # Настройка окружения
@@ -155,7 +155,7 @@ TOGETHER_API_KEY=
 Если у вас есть NVIDIA GPU, вы можете установить CUDA для значительного ускорения локального инференса.
 
 ```bash
-pnpm install
+bun install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 

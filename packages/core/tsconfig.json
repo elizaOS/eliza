@@ -19,8 +19,7 @@
         "checkJs": false,
         "noEmitOnError": false,
         "moduleDetection": "force",
-        "allowArbitraryExtensions": true,
-        "customConditions": ["@elizaos/source"]
+        "allowArbitraryExtensions": true
     },
     "include": ["src/**/*"],
     "exclude": ["node_modules", "dist", "src/**/*.d.ts", "types/**/*.test.ts"]

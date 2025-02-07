@@ -18,14 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 9.15.0
+      - uses: oven-sh/setup-bun@v2
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "23.3"
-          cache: "pnpm"
+          node-version: "23"
 
       - name: Run smoke tests
-        run: pnpm run smokeTests
+        run: bun run smokeTests

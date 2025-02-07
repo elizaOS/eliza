@@ -39,7 +39,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Notka dla użytkowników Windowsa:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) jest wymagane!.
 
@@ -49,14 +49,14 @@
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun run build && bun start
 ```
 
-Gdy agent się uruchomi, powinien pojawić się komunikat aby uruchomić komendę "pnpm start:client".
+Gdy agent się uruchomi, powinien pojawić się komunikat aby uruchomić komendę "bun start:client".
 Wtedy trzeba odpalić drugi terminal, przejść do tego samego folderu, w którym mamy sklonowany kod z Githuba i odpalić tą komendę, aby być w stanie rozpocząć konwersację z naszym botem.
 
 ```bash
-pnpm start:client
+bun start:client
 ```
 
 Następnie zapoznaj się z [Dokumentacją](https://elizaos.github.io/eliza/). Tam jest szcegółowo opisane, jak modyfikować i dopasować Elizę do własnych potrzeb.
@@ -99,7 +99,7 @@ sh scripts/start.sh
 1. Otwórz `packages/core/src/defaultCharacter.ts` aby zmodyfikować postać. Odkomentuj i edytuj.
 
 2. Aby załadować niestandardowe osobowości:
-    - Uzyj komendy `pnpm start --characters="path/to/your/character.json"`
+    - Uzyj komendy `bun start --characters="path/to/your/character.json"`
     - Wiele plików z osobowościami może być załadowana jednocześnie
 3. Połącz z platformą X (niegdyś Twitter)
     - zamień `"clients": []` na `"clients": ["twitter"]` w pliku osobowości aby połączyć z X
@@ -107,12 +107,12 @@ sh scripts/start.sh
 ### Manualny Start Elizy
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # Projekt rozwija się bardzo szybko, dlatego jeżeli robisz sobie przerwę na jakiś czas i wejdzie w międzyczasie dużo zmian, dobrze jest użyć tej komendy:
-pnpm clean
+bun clean
 ```
 
 #### Dodatkowe wymagania
@@ -120,7 +120,7 @@ pnpm clean
 Możesz musieć zainstalować pakiet Sharp. Jeżeli przy odpalaniu projektu wyskakuje błąd, spróbuj go zainstalować tą komendą:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### Społeczność i kontakt

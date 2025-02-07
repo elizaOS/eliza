@@ -1,25 +1,10 @@
 {
-    "$schema": "https://turbo.build/schema.json",
+    "$schema": "https://turborepo.org/schema.json",
     "tasks": {
-        "check-types": {
-            "dependsOn": ["build"]
-        },
-        "@elizaos/agent#check-types": {
-            "dependsOn": [
-                "@elizaos/plugin-solana#build",
-                "@elizaos/plugin-direct#build"
-            ]
-        },
-        "build": {
-            "outputs": ["dist/**"],
-            "dependsOn": ["^@elizaos/core#build"]
-        },
-        "eliza-docs#build": {
-            "outputs": ["build/**"]
-        },
-        "dev": {
-            "persistent": true,
-            "cache": false
-        }
+      "build": {
+        "dependsOn": ["^build"],
+        "outputs": ["dist/**"],
+        "cache": false
+      }
     }
-}
+  }

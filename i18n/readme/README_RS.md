@@ -25,7 +25,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23.3+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 ### Uredite .env datoteku
 
@@ -35,13 +35,13 @@
 ### Uredite datoteku karaktera
 
 - Pregledajte datoteku `packages/core/src/defaultCharacter.ts` - možete je modifikovati
-- Takođe možete učitati karaktere sa komandom `pnpm start --characters="path/to/your/character.json"` i pokrenuti više botova istovremeno.
+- Takođe možete učitati karaktere sa komandom `bun start --characters="path/to/your/character.json"` i pokrenuti više botova istovremeno.
 
 Nakon što konfigurišete .env datoteku i datoteku karaktera, možete pokrenuti bota sa:
 
 ```
-pnpm i
-pnpm start
+bun i
+bun start
 ```
 
 # Personalizacija Elize
@@ -69,7 +69,7 @@ Možete pokrenuti OpenAI modele podešavanjem promenljive okruženja `XAI_MODEL`
 Možda će biti potrebno instalirati Sharp. Ako naiđete na grešku prilikom pokretanja, pokušajte da ga instalirate sa:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 # Konfiguracija Okruženja
@@ -136,7 +136,7 @@ TOGETHER_API_KEY=
 Ako imate NVIDIA GPU, možete instalirati CUDA da značajno ubrzate lokalnu inferencu.
 
 ```
-pnpm install
+bun install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 
@@ -159,15 +159,15 @@ Za pomoć sa konfiguracijom vašeg Discord Bota, pogledajte: https://discordjs.g
 Za pokretanje test suite-a:
 
 ```bash
-pnpm test           # Pokreni testove jednom
-pnpm test:watch    # Pokreni testove u režimu posmatranja
+bun test           # Pokreni testove jednom
+bun test:watch    # Pokreni testove u režimu posmatranja
 ```
 
 Za specifične testove baze podataka:
 
 ```bash
-pnpm test:sqlite   # Pokreni testove sa SQLite
-pnpm test:sqljs    # Pokreni testove sa SQL.js
+bun test:sqlite   # Pokreni testove sa SQLite
+bun test:sqljs    # Pokreni testove sa SQL.js
 ```
 
 Testovi su napisani sa Jest i mogu se naći u datotekama `src/**/*.test.ts`. Testno okruženje je konfigurisano za:

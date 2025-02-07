@@ -48,7 +48,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
 
@@ -58,7 +58,7 @@
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun run build && bun start
 ```
 
 ### Manually Start Eliza (Only recommended if you know what you are doing)
@@ -87,23 +87,23 @@ Note: .env is optional. If you're planning to run multiple distinct agents, you 
 
 #### Start Eliza
 
-```bash
-pnpm i
-pnpm build
-pnpm start
+Important! We now use Bun. If you are using npm, you will need to install Bun:
+https://bun.sh/docs/installation
 
-# The project iterates fast, sometimes you need to clean the project if you are coming back to the project
-pnpm clean
+```bash
+bun install
+bun run build # npm will work too
+bun start # npm will work too
 ```
 
 ### Interact via Browser
 
-Once the agent is running, you should see the message to run "pnpm start:client" at the end.
+Once the agent is running, you should see the message to run "bun start:client" at the end.
 
 Open another terminal, move to the same directory, run the command below, then follow the URL to chat with your agent.
 
 ```bash
-pnpm start:client
+bun start:client
 ```
 
 Then read the [Documentation](https://elizaos.github.io/eliza/) to learn how to customize your Eliza.
@@ -129,7 +129,7 @@ For detailed instructions on using the start script, including character managem
 1. Open `packages/core/src/defaultCharacter.ts` to modify the default character. Uncomment and edit.
 
 2. To load custom characters:
-    - Use `pnpm start --characters="path/to/your/character.json"`
+    - Use `bun start --characters="path/to/your/character.json"`
     - Multiple character files can be loaded simultaneously
 3. Connect with X (Twitter)
     - change `"clients": []` to `"clients": ["twitter"]` in the character file to connect with X
@@ -141,7 +141,7 @@ For detailed instructions on using the start script, including character managem
 You may need to install Sharp. If you see an error when starting up, try installing it with the following command:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ---

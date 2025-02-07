@@ -35,7 +35,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Megjegyzés Windows-felhasználóknak:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) szükséges.
 
@@ -45,14 +45,14 @@
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun run build && bun start
 ```
 
-Miután az ügynök elindult, a folyamat végén egy üzenetet kell látnod, amely arra utal, hogy futtasd a "pnpm start:client" parancsot.
+Miután az ügynök elindult, a folyamat végén egy üzenetet kell látnod, amely arra utal, hogy futtasd a "bun start:client" parancsot.
 Nyiss egy másik terminált, navigálj ugyanabba a könyvtárba, és futtasd az alábbi parancsot, majd kövesd az URL-t, hogy kommunikálhass az ügynököddel:
 
 ```bash
-pnpm start:client
+bun start:client
 ```
 
 Ezután olvasd el a [Dokumentációt](https://elizaos.github.io/eliza/) hogy megtanuld, hogyan testreszabhatod Elizát.
@@ -97,7 +97,7 @@ sh scripts/start.sh
 1. Nyisd meg a `packages/core/src/defaultCharacter.ts` fájlt, hogy módosítsd az alapértelmezett karaktert. Kommentezd ki és szerkeszd.
 
 2. Egyedi karakterek betöltése:
-    - Használhatod a következőt: `pnpm start --characters="path/to/your/character.json"`
+    - Használhatod a következőt: `bun start --characters="path/to/your/character.json"`
     - Több karakterfájl is betölthető egyszerre.
 3. Kapcsolódás X-hez (Twitter)
     - Módosítsd a `"clients": []` részt `"clients": ["twitter"]` -re a karakterfájlban, hogy csatlakozz az X-hez
@@ -105,12 +105,12 @@ sh scripts/start.sh
 ### Eliza manuális indítása
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # A projekt gyorsan fejlődik. Néha meg kell tisztítania a projektet, amikor egy idő után újra visszatérsz.
-pnpm clean
+bun clean
 ```
 
 #### További követelmények
@@ -118,7 +118,7 @@ pnpm clean
 Előfordulhat, hogy telepítened kell a Sharpot. Ha hibát látsz az indításkor, próbáld meg telepíteni az alábbi paranccsal:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### Közösség és kapcsolattartás

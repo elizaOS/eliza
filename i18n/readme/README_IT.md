@@ -29,7 +29,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Nota per gli utenti Windows:** È richiesto WSL
 
@@ -54,18 +54,18 @@ sh scripts/start.sh
 1. Apri `packages/agent/src/character.ts` per modificare il personaggio predefinito. Decommenta e modifica.
 
 2. Per caricare personaggi personalizzati:
-    - Usa `pnpm start --characters="percorso/del/tuo/personaggio.json"`
+    - Usa `bun start --characters="percorso/del/tuo/personaggio.json"`
     - È possibile caricare più file di personaggi contemporaneamente
 
 ### Avvia Eliza Manualmente
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # Il progetto evolve rapidamente; a volte è necessario pulire il progetto se si ritorna sul progetto dopo un po' di tempo
-pnpm clean
+bun clean
 ```
 
 #### Requisiti Aggiuntivi
@@ -73,7 +73,7 @@ pnpm clean
 Potrebbe essere necessario installare Sharp. Se vedi un errore all'avvio, prova a installarlo con il seguente comando:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### Comunità e contatti

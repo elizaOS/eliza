@@ -3,7 +3,6 @@
 
 # ignore lock files
 **/*-lock.yaml
-package-lock.json
 dev-dist
 
 **/CHANGELOG.md

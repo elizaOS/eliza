@@ -47,7 +47,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Σημείωση για χρήστες Windows:** Απαιτείται [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
 
@@ -57,14 +57,14 @@
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun run build && bun start
 ```
 
-Μόλις ο πράκτορας ξεκινήσει, θα δείτε ένα μήνυμα να εκτελέσετε ```pnpm start:client```.
+Μόλις ο πράκτορας ξεκινήσει, θα δείτε ένα μήνυμα να εκτελέσετε ```bun start:client```.
 Ανοίξτε ένα νέο τερματικό, μεταβείτε στον ίδιο κατάλογο και εκτελέστε την παρακάτω εντολή:
 
 ```bash
-pnpm start:client
+bun start:client
 ```
 
 Έπειτα διαβάστε την [Τεκμηρίωση]((https://elizaos.github.io/eliza/)) για να μάθετε πώς να προσαρμόσετε το Eliza.
@@ -108,7 +108,7 @@ sh scripts/start.sh
 1. Ανοίξτε το `packages/core/src/defaultCharacter.ts` για να τροποποιήσετε τον προεπιλεγμένο χαρακτήρα. Αποσχολιάστε και επεξεργαστείτε.  
 
 2. Για να φορτώσετε προσαρμοσμένους χαρακτήρες:  
-   - Χρησιμοποιήστε `pnpm start --characters="path/to/your/character.json"`
+   - Χρησιμοποιήστε `bun start --characters="path/to/your/character.json"`
    - Πολλά αρχεία χαρακτήρων μπορούν να φορτωθούν ταυτόχρονα
 
 3. Σύνδεση με το X (Twitter)
@@ -117,9 +117,9 @@ sh scripts/start.sh
 ### Χειροκίνητη Εκκίνηση του Eliza
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # Το έργο εξελίσσεται γρήγορα, μερικές φορές πρέπει να καθαρίσετε το έργο, εαν επιστρέφετε στο έργο
 ```
@@ -129,7 +129,7 @@ pnpm start
 Μπορεί να χρειαστεί να εγκαταστήσετε το Sharp. Αν αντιμετωπίζετε προβλήματα, προσπαθήστε να το εγκαταστήσετε, εκτελώντας την παρακάτω εντολή:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### Κοινότητα & Επικοινωνία

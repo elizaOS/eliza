@@ -847,7 +847,7 @@ export type Character = {
             solana?: any[];
             [key: string]: any[];
         };
-        transcription?: TranscriptionProvider;
+        transcription?: string;
         ragKnowledge?: boolean;
     };
 
@@ -1563,105 +1563,4 @@ export interface ActionResponse {
     retweet: boolean;
     quote?: boolean;
     reply?: boolean;
-}
-
-export interface ISlackService extends Service {
-    client: any;
-}
-
-// /**
-//  * Available verifiable inference providers
-//  */
-// export enum VerifiableInferenceProvider {
-//     RECLAIM = "reclaim",
-//     OPACITY = "opacity",
-//     PRIMUS = "primus",
-// }
-
-// /**
-//  * Options for verifiable inference
-//  */
-// export interface VerifiableInferenceOptions {
-//     /** Custom endpoint URL */
-//     endpoint?: string;
-//     /** Custom headers */
-//     headers?: Record<string, string>;
-//     /** Provider-specific options */
-//     providerOptions?: Record<string, unknown>;
-// }
-
-// /**
-//  * Result of a verifiable inference request
-//  */
-// export interface VerifiableInferenceResult {
-//     /** Generated text */
-//     text: string;
-//     /** Proof */
-//     proof: any;
-//     /** Proof id */
-//     id?: string;
-//     /** Provider information */
-//     provider: VerifiableInferenceProvider;
-//     /** Timestamp */
-//     timestamp: number;
-// }
-
-// /**
-//  * Interface for verifiable inference adapters
-//  */
-// export interface IVerifiableInferenceAdapter {
-//     options: any;
-//     /**
-//      * Generate text with verifiable proof
-//      * @param context The input text/prompt
-//      * @param modelClass The model class/name to use
-//      * @param options Additional provider-specific options
-//      * @returns Promise containing the generated text and proof data
-//      */
-//     generateText(
-//         context: string,
-//         modelClass: string,
-//         options?: VerifiableInferenceOptions,
-//     ): Promise<VerifiableInferenceResult>;
-
-//     /**
-//      * Verify the proof of a generated response
-//      * @param result The result containing response and proof to verify
-//      * @returns Promise indicating if the proof is valid
-//      */
-//     verifyProof(result: VerifiableInferenceResult): Promise<boolean>;
-// }
-
-export enum TokenizerType {
-    Auto = "auto",
-    TikToken = "tiktoken",
-}
-
-export enum TranscriptionProvider {
-    OpenAI = "openai",
-    Deepgram = "deepgram",
-    Local = "local",
-}
-
-export enum ActionTimelineType {
-    ForYou = "foryou",
-    Following = "following",
-}
-export enum KnowledgeScope {
-    SHARED = "shared",
-    PRIVATE = "private",
-}
-
-export enum CacheKeyPrefix {
-    KNOWLEDGE = "knowledge",
-}
-
-export interface DirectoryItem {
-    directory: string;
-    shared?: boolean;
-}
-
-export interface ChunkRow {
-    id: string;
-    // Add other properties if needed
 }

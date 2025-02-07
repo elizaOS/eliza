@@ -18,11 +18,9 @@ jobs:
 
             - uses: actions/setup-node@v4
               with:
-                  node-version: 22
+                  node-version: "23"
 
-            - uses: pnpm/action-setup@v3
-              with:
-                  version: 9.15.0
+            - uses: oven-sh/setup-bun@v2
 
             - name: Configure Git
               run: |
@@ -38,10 +36,10 @@ jobs:
               run: sudo apt-get install -y protobuf-compiler
 
             - name: Install dependencies
-              run: pnpm install
+              run: bun install
 
             - name: Build packages
-              run: pnpm run build
+              run: bun run build
 
             - name: Tag and Publish Packages
               id: tag_publish
@@ -67,7 +65,6 @@ jobs:
               uses: actions/create-release@v1
               env:
                   GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-                  PNPM_HOME: /home/runner/setup-pnpm/node_modules/.bin
               with:
                   tag_name: ${{ steps.get_tag.outputs.TAG }}
                   release_name: Release

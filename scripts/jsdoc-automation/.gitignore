@@ -1,6 +1,6 @@
 # Dependencies
 node_modules
-.pnpm-store
+.bun-store
 
 # Build outputs
 dist
@@ -14,7 +14,7 @@ build
 # Logs
 *.log
 npm-debug.log*
-pnpm-debug.log*
+bun-debug.log*
 
 # Editor directories
 .idea

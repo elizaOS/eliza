@@ -5,7 +5,7 @@
     "build": {
         "args": {
             "NODE_VER": "23.5.0",
-            "PNPM_VER": "9.15.2"
+            "BUN_VER": "1.2.2"
         }
     },
     "privileged": true,

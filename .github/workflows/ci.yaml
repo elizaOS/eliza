@@ -14,18 +14,14 @@ jobs:
             TURBO_REMOTE_ONLY: true
         steps:
             - uses: actions/checkout@v4
-
-            - uses: pnpm/action-setup@v3
-              with:
-                  version: 9.15.0
+            - uses: oven-sh/setup-bun@v2
 
             - uses: actions/setup-node@v4
               with:
                   node-version: "23"
-                  cache: "pnpm"
 
             - name: Install dependencies
-              run: pnpm install -r --no-frozen-lockfile
+              run: bun install
 
             - name: Setup Biome CLI
               uses: biomejs/setup-biome@v2
@@ -41,10 +37,10 @@ jobs:
                   echo "NODE_ENV=test" >> packages/core/.env.test
 
             - name: Run tests
-              run: cd packages/core && pnpm test:coverage
+              run: cd packages/core && bun test:coverage
 
             - name: Build packages
-              run: pnpm run build
+              run: bun run build
 
             - name: Upload coverage reports to Codecov
               uses: codecov/codecov-action@v5

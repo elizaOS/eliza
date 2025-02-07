@@ -1,5 +1,5 @@
 import { readFile } from "fs/promises";
-import { join } from "path";
+import { join } from "node:path";
 import { names, uniqueNamesGenerator } from "unique-names-generator";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -51,18 +51,17 @@ import {
     type Actor,
     type Evaluator,
     type Memory,
-    type DirectoryItem,
     type ClientInstance,
 } from "./types.ts";
 import { stringToUuid } from "./uuid.ts";
 import { glob } from "glob";
-import { existsSync } from "fs";
+import { existsSync } from "node:fs";
 /**
  * Represents the runtime environment for an agent, handling message processing,
  * action registration, and interaction with external services like OpenAI and Supabase.
  */
 
-function isDirectoryItem(item: any): item is DirectoryItem {
+function isDirectoryItem(item: any) {
     return (
         typeof item === "object" &&
         item !== null &&
@@ -508,7 +507,7 @@ export class AgentRuntime implements IAgentRuntime {
                                     elizaLogger.debug(
                                         `[RAG Filter] Found directory item: ${JSON.stringify(item)}`,
                                     );
-                                    acc[0].push(item);
+                                    acc[0].push(item as any); // any is probably a bug
                                 } else if ("path" in item) {
                                     elizaLogger.debug(
                                         `[RAG Filter] Found path item: ${JSON.stringify(item)}`,
@@ -1189,8 +1188,14 @@ export class AgentRuntime implements IAgentRuntime {
                 id: userId,
                 name: name || this.character.name || "Unknown User",
                 username: userName || this.character.username || "Unknown",
-                email: email || this.character.email || userId, // Temporary
-                details: this.character || { summary: "" },
+                // TODO: We might not need these account pieces
+                email: email || this.character.email || userId,
+                // When invoke ensureUserExists and saving account.details
+                // Performing a complete JSON.stringify on character will cause a TypeError: Converting circular structure to JSON error in some more complex plugins.
+                details: this.character ? Object.assign({}, this.character, {
+                    source,
+                    plugins: this.character?.plugins?.map((plugin) => plugin.name),
+                }) : { summary: "" },
             });
             elizaLogger.success(`User ${userName} created successfully.`);
         }
@@ -1731,7 +1736,7 @@ Text: ${attachment.text}
             actors: state.actorsData ?? [],
             messages: recentMessagesData.map((memory: Memory) => {
                 const newMemory = { ...memory };
-                delete newMemory.embedding;
+                newMemory.embedding = undefined;
                 return newMemory;
             }),
         });

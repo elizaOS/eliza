@@ -41,14 +41,14 @@ describe("Environment Configuration", () => {
     });
 
     it("should throw error for missing required keys", () => {
-        delete process.env.REDPILL_API_KEY;
+        process.env.REDPILL_API_KEY = undefined;
         expect(() => validateEnv()).toThrow("REDPILL_API_KEY: Required");
     });
 
     it("should throw error for multiple missing required keys", () => {
-        delete process.env.REDPILL_API_KEY;
-        delete process.env.GROK_API_KEY;
-        delete process.env.OPENROUTER_API_KEY;
+        process.env.REDPILL_API_KEY = undefined;
+        process.env.GROK_API_KEY = undefined;
+        process.env.OPENROUTER_API_KEY = undefined;
         expect(() => validateEnv()).toThrow(
             "Environment validation failed:\n" +
                 "REDPILL_API_KEY: Required\n" +
@@ -118,7 +118,7 @@ describe("Character Configuration", () => {
 
     it("should throw error for missing required fields", () => {
         const invalidConfig = { ...validCharacterConfig };
-        delete (invalidConfig as any).name;
+        (invalidConfig as any).name = undefined;
         expect(() => validateCharacterConfig(invalidConfig)).toThrow();
     });
 

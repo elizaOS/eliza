@@ -36,11 +36,11 @@ cd "$PROJECT_DIR"
 
 cp .env.example .env
 
-pnpm clean
+bun clean
 
-pnpm install -r --no-frozen-lockfile
+bun install
 
-pnpm build
+bun run build
 
 # Create temp file and ensure cleanup
 OUTFILE="$(mktemp)"
@@ -54,7 +54,7 @@ TIMER=0
 
 # Start the application and capture logs in the background
 # 27 includes success and that's what the level we're looking for is
-DEFAULT_LOG_LEVEL=success pnpm start --character=characters/trump.character.json > "$OUTFILE" 2>&1 &
+DEFAULT_LOG_LEVEL=success bun start --character=characters/trump.character.json > "$OUTFILE" 2>&1 &
 
 APP_PID=$!  # Capture the PID of the background process
 
@@ -64,7 +64,7 @@ APP_PID=$!  # Capture the PID of the background process
     if (( TIMER >= TIMEOUT )); then
         >&2 echo "ERROR: Timeout waiting for application to start after $((TIMEOUT / 10)) seconds"
         cat $OUTFILE
-        kill $APP_PID  # Terminate the pnpm process
+        kill $APP_PID  # Terminate the bun process
         exit 1
     fi
 
@@ -91,7 +91,7 @@ echo "----- OUTPUT END -----"
 
 # Check the application exit code
 if [[ $RESULT -ne 0 ]]; then
-    echo "Error: 'pnpm start' command exited with an error (code: $RESULT)"
+    echo "Error: 'bun start' command exited with an error (code: $RESULT)"
     exit 1
 fi
 

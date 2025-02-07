@@ -7,14 +7,14 @@ This directory contains smoke and integration tests for Eliza project.
 - Should always be run on a freshly cloned project (i.e. no local changes)
 - Building and installing is part of the test
 - No configuration required
-- To run: `pnpm run smokeTests`
+- To run: `bun run smokeTests`
 
 ## Integration tests
 
 - You need to configure your .env file before running (currently at least `OPENAI_API_KEY` is required)
 - How to use:
     1. Install project dependencies and build the project as described in top-level `README`
-    2. To run all the tests: `pnpm run integrationTests`
+    2. To run all the tests: `bun run test`
 
 ## Integration test library
 

@@ -4,15 +4,7 @@
         "packages/*",
         "docs",
         "agent",
-        "client",
-        "!packages/_examples"
+        "client"
     ],
-    "npmClient": "pnpm",
-    "command": {
-        "publish": {
-            "registry": "https://registry.npmjs.org/",
-            "access": "public",
-            "allowBranch": "main"
-        }
-    }
+    "npmClient": "bun"
 }

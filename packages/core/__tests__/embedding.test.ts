@@ -38,7 +38,7 @@ vi.mock("fastembed", () => ({
 
 // Mock global fetch for remote embedding requests
 const mockFetch = vi.fn();
-(global as any).fetch = mockFetch;
+global.fetch = mockFetch;
 
 describe("Embedding Module", () => {
     let mockRuntime: IAgentRuntime;

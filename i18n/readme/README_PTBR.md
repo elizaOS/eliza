@@ -25,7 +25,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23.3+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 ### Edite o arquivo .env
 
@@ -35,13 +35,13 @@
 ### Edite o arquivo de personagem
 
 - Confira o arquivo `packages/core/src/defaultCharacter.ts` - você pode modificá-lo
-- Você também pode carregar personagens com o comando `pnpm start --characters="path/to/your/character.json"` e executar múltiplos bots ao mesmo tempo.
+- Você também pode carregar personagens com o comando `bun start --characters="path/to/your/character.json"` e executar múltiplos bots ao mesmo tempo.
 
 Após configurar o arquivo .env e o arquivo de personagem, você pode iniciar o bot com o seguinte comando:
 
 ```
-pnpm i
-pnpm start
+bun i
+bun start
 ```
 
 # Personalizando Eliza
@@ -69,7 +69,7 @@ Você pode executar modelos OpenAI configurando a variável de ambiente `XAI_MOD
 Pode ser necessário instalar o Sharp. Se você encontrar um erro ao iniciar, tente instalá-lo com o seguinte comando:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 # Configuração do Ambiente
@@ -138,7 +138,7 @@ TOGETHER_API_KEY=
 Se você tiver uma GPU NVIDIA, pode instalar o CUDA para acelerar dramaticamente a inferência local.
 
 ```
-pnpm install
+bun install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 
@@ -161,15 +161,15 @@ Para ajuda com a configuração do seu Bot do Discord, confira aqui: https://dis
 Para executar a suíte de testes:
 
 ```bash
-pnpm test           # Executar testes uma vez
-pnpm test:watch    # Executar testes no modo watch
+bun test           # Executar testes uma vez
+bun test:watch    # Executar testes no modo watch
 ```
 
 Para testes específicos de banco de dados:
 
 ```bash
-pnpm test:sqlite   # Executar testes com SQLite
-pnpm test:sqljs    # Executar testes com SQL.js
+bun test:sqlite   # Executar testes com SQLite
+bun test:sqljs    # Executar testes com SQL.js
 ```
 
 Os testes são escritos usando Jest e podem ser encontrados em arquivos `src/**/*.test.ts`. O ambiente de teste está configurado para:

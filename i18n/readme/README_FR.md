@@ -46,9 +46,9 @@
 
 **Pré-requis (obligatoire) :**
 
--   [Python 2.7+](https://www.python.org/downloads/)
--   [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
--   [pnpm](https://pnpm.io/installation)
+- [Python 2.7+](https://www.python.org/downloads/)
+- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [bun](https://bun.io/installation)
 
 > **Note pour Windows :** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) est requis
 
@@ -58,7 +58,7 @@
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun build && bun start
 ```
 
 ### Démarrer manuellement Eliza (recommandé uniquement si vous savez ce que vous faites)
@@ -88,7 +88,7 @@ cp .env.example .env
 1. Ouvrir le document `packages/core/src/defaultCharacter.ts` afin de modifier le personnage par défaut
 
 2. Pour ajouter des personnages personnalisés :
-    - Lancer la commande `pnpm start --characters="path/to/your/character.json"`
+    - Lancer la commande `bun start --characters="path/to/your/character.json"`
     - Plusieurs fichiers personnages peuvent être ajoutés en même temps
 
 ### Lancer Eliza
@@ -96,12 +96,12 @@ cp .env.example .env
 Après avoir terminé la configuration et les fichiers personnage, lancer le bot en tapant la ligne de commande suivante:
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # Le projet étant régulièrement mis à jour, il vous faudra parfois le nettoyer avant de recommencer à travailler dessus
-pnpm clean
+bun clean
 ```
 
 ---
@@ -111,7 +111,7 @@ pnpm clean
 -   Ouvrez un autre terminal, allez dans le même répertoire, exécutez la commande ci-dessous, puis cliquer sur l'URL pour discuter avec votre agent.
 
 ```bash
-pnpm start:client
+bun start:client
 ```
 
 > Lisez ensuite la [Documentation](https://elizaos.github.io/eliza/) pour savoir comment personnaliser votre Eliza.
@@ -137,8 +137,8 @@ Pour des instructions détaillées sur l'utilisation du script de démarrage, y 
 Il vous faudra peut-être installer Sharp.
 S'il y a une erreur lors du lancement du bot, essayez d'installer Sharp comme ceci :
 
-```bash
-pnpm install --include=optional sharp
+```
+bun install --include=optional sharp
 ```
 
 ---
@@ -148,7 +148,7 @@ pnpm install --include=optional sharp
 1. Ouvrez `packages/core/src/defaultCharacter.ts` pour modifier le caractère par défaut. Décommentez et éditez.
 
 2. Pour charger des caractères personnalisés :
-    - Utilisez `pnpm start --characters="path/to/your/character.json"`.
+    - Utilisez `bun start --characters="path/to/your/character.json"`.
     - Plusieurs fichiers de caractères peuvent être chargés simultanément
 3. Se connecter avec X (Twitter)
     - changez `"clients" : []` en `"clients" : ["twitter"]` dans le fichier de caractères pour se connecter à X
@@ -160,7 +160,7 @@ pnpm install --include=optional sharp
 Il se peut que vous deviez installer Sharp. Si vous voyez une erreur au démarrage, essayez de l'installer avec la commande suivante :
 
 ```bash
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ---

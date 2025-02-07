@@ -25,7 +25,7 @@
 
 -   [Python 2.7+](https://www.python.org/downloads/)
 -   [Node.js 23.3+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
--   [pnpm](https://pnpm.io/installation)
+-   [bun](https://bun.io/installation)
 
 ### Edite fișierul .env
 
@@ -35,13 +35,13 @@
 ### Edite fișierul de personaj
 
 -   Verificați fișierul `packages/core/src/defaultCharacter.ts` – îl puteți modifica
--   De asemenea, puteți încărca personaje cu comanda `pnpm start --characters="path/to/your/character.json"` și rula mai mulți boți în același timp.
+-   De asemenea, puteți încărca personaje cu comanda `bun start --characters="path/to/your/character.json"` și rula mai mulți boți în același timp.
 
 După ce ați configurat fișierul .env și fișierul de personaj, puteți porni botul cu următoarea comandă:
 
 ```
-pnpm i
-pnpm start
+bun i
+bun start
 ```
 
 # Personalizarea Eliza
@@ -69,7 +69,7 @@ Puteți rula modele OpenAI setând variabila de mediu `XAI_MODEL` la `gpt-4o-min
 Este posibil să fie necesară instalarea Sharp. Dacă întâmpinați o eroare la pornire, încercați să îl instalați cu următoarea comandă:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 # Configurarea mediului
@@ -138,7 +138,7 @@ TOGETHER_API_KEY=
 Dacă aveți un GPU NVIDIA, puteți instala CUDA pentru a accelera dramatic inferența locală.
 
 ```
-pnpm install
+bun install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 
@@ -161,15 +161,15 @@ Pentru ajutor la configurarea Bot-ului Discord, consultați: https://discordjs.g
 Pentru a rula suita de teste:
 
 ```bash
-pnpm test           # Execută testele o dată
-pnpm test:watch    # Execută testele în modul watch
+bun test           # Execută testele o dată
+bun test:watch    # Execută testele în modul watch
 ```
 
 Pentru teste specifice bazei de date:
 
 ```bash
-pnpm test:sqlite   # Execută testele cu SQLite
-pnpm test:sqljs    # Execută testele cu SQL.js
+bun test:sqlite   # Execută testele cu SQLite
+bun test:sqljs    # Execută testele cu SQL.js
 ```
 
 Testele sunt scrise folosind Jest și pot fi găsite în fișierele `src/**/*.test.ts`. Mediul de testare este configurat pentru:

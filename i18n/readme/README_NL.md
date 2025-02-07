@@ -60,7 +60,7 @@ Alle bijdragen worden publiekelijk bijgehouden op de blockchain en worden uitslu
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Opmerking voor Windows-gebruikers:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is vereist.
 
@@ -70,14 +70,14 @@ Alle bijdragen worden publiekelijk bijgehouden op de blockchain en worden uitslu
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun run build && bun start
 ```
 
-Zodra de agent draait, zou je het bericht moeten zien om "pnpm start:client" uit te voeren.
+Zodra de agent draait, zou je het bericht moeten zien om "bun start:client" uit te voeren.
 Open een nieuwe terminal in dezelfde map en voer onderstaand commando uit. Volg daarna de URL om met je agent te chatten.
 
 ```bash
-pnpm start:client
+bun start:client
 ```
 
 Lees vervolgens de [Documentatie](https://elizaos.github.io/eliza/) om te leren hoe je je Eliza kunt aanpassen.
@@ -120,7 +120,7 @@ sh scripts/start.sh
 1. Open `packages/core/src/defaultCharacter.ts` om het standaard karakter aan te passen. Verwijder // om de code actief te maken en bewerk het karakter.
 
 2. Om aangepaste karakters te laden:
-    - Gebruik `pnpm start --characters="pad/naar/jouw/karakter.json"`
+    - Gebruik `bun start --characters="pad/naar/jouw/karakter.json"`
     - Meerdere karakterbestanden kunnen tegelijk worden geladen
 3. Verbinden met X (Twitter)
     - verander `"clients": []` naar `"clients": ["twitter"]` in het karakterbestand om te verbinden met X
@@ -128,12 +128,12 @@ sh scripts/start.sh
 ### Eliza Handmatig Starten
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # Het project ontwikkelt snel, soms moet je het project opschonen als je terugkomt bij het project
-pnpm clean
+bun clean
 ```
 
 #### Aanvullende Vereisten
@@ -141,7 +141,7 @@ pnpm clean
 Mogelijk moet je Sharp installeren. Als je een fout ziet bij het opstarten, probeer het dan te installeren met het volgende commando:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### Community & contact

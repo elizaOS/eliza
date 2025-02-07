@@ -39,7 +39,7 @@
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 > **Paalala para sa mga Gumagamit ng Windows:** Kailangan ang [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual).
 
@@ -49,7 +49,7 @@
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
 cp .env.example .env
-pnpm i && pnpm build && pnpm start
+bun i && bun run build && bun start
 ```
 
 Basahin ang [Dokumentasyon](https://elizaos.github.io/eliza/) upang matutunan kung paano ipasadya ang Eliza.
@@ -88,7 +88,7 @@ sh scripts/start.sh
 
 1. Buksan ang `packages/core/src/defaultCharacter.ts` para baguhin ang kusang mapagpipilian na karakter.
 2. Mag-load ng pasadya na mga karakter:
-    - Gamitin ang `pnpm start --characters="landas/sa/inyong/character.json"`
+    - Gamitin ang `bun start --characters="landas/sa/inyong/character.json"`
     - Puwedeng mag-load ng maraming karakter file sabay-sabay.
 3. Ikonekta ang Twitter (X):
     - Baguhin ang `"clients": []` sa `"clients": ["twitter"]` sa karakter file upang ikonekta ang Twitter.
@@ -96,12 +96,12 @@ sh scripts/start.sh
 ### Manwal na Pag-simula ng Eliza
 
 ```bash
-pnpm i
-pnpm build
-pnpm start
+bun i
+bun run build
+bun start
 
 # Linisin ang proyekto kung bumalik ka dito matapos ang mahabang panahon
-pnpm clean
+bun clean
 ```
 
 #### Karagdagang Mga Kinakailangan
@@ -109,7 +109,7 @@ pnpm clean
 Puwede mong kailangang mag-install ng [Sharp](https://sharp.pixelplumbing.com/). Kung may pagkakamali, subukang i-install ito gamit ang:
 
 ```bash
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 ### Komunidad at Kontak
