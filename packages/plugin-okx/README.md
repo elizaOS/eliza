@@ -58,73 +58,6 @@ OKX_WS_ENDPOINT=<Your WebSocket endpoint>
 
 ## Usage
 
-### Basic Swap Example
-
-```typescript
-// Get a quote for Solana tokens
-const quote = await okx.getQuote({
-    chainId: "solana",
-    amount: "1000000000", // Amount in lamports
-    fromTokenAddress: "So11111111111111111111111111111111111111112", // SOL
-    toTokenAddress: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", // USDC
-});
-
-// Execute the swap
-const swap = await okx.swap({
-    ...quote,
-    slippage: "0.005", // 0.5% slippage
-    userWalletAddress: "your_solana_address",
-    directRoute: true, // Use single pool routing
-});
-```
-
-### Advanced Features
-
-- **Price Impact Protection**: Set `priceImpactProtectionPercentage` to limit maximum price impact
-- **Direct Routing**: Enable `directRoute` for single-pool routing (recommended for Solana)
-- **Compute Units**: Control transaction priority with `computeUnitPrice` and `computeUnitLimit`
-
-## Common Issues & Troubleshooting
-
-1. **API Authentication Errors**
-
-    - Verify API key and credentials are correct
-    - Check timestamp synchronization
-    - Ensure proper signature generation
-    - Confirm passphrase matches the one used during API key creation
-
-2. **Transaction Failures**
-
-    - Verify sufficient SOL balance for fees
-    - Check slippage settings
-    - Confirm token account exists
-
-## Security Best Practices
-
-1. **API Security**
-
-    - Store credentials securely
-    - Use environment variables
-    - Rotate keys regularly
-    - Never share your secret key or passphrase
-
-2. **Transaction Safety**
-    - Set reasonable slippage limits
-    - Use price impact protection
-    - Validate all parameters
-
-## License
-
-This plugin is part of the Eliza project. See the main project repository for license information.
-
-## Resources
-
-- [OKX DEX Documentation](https://www.okx.com/web3/build/docs/waas/dex-introduction)
-- [Developer Portal](https://www.okx.com/developers)
-
-
-## Detailed Usage Steps
-
 Prerequisites:
 - Get OKX API credentials from: https://www.okx.com/web3/build/dev-portal
 - Have Solana wallet keys ready
@@ -199,3 +132,48 @@ pnpm start:client
   ```
 
 - Swap works with most token pairs
+
+
+### Features
+
+- **Price Impact Protection**: Set `priceImpactProtectionPercentage` to limit maximum price impact
+- **Direct Routing**: Enable `directRoute` for single-pool routing (recommended for Solana)
+- **Compute Units**: Control transaction priority with `computeUnitPrice` and `computeUnitLimit`
+
+## Common Issues & Troubleshooting
+
+1. **API Authentication Errors**
+
+    - Verify API key and credentials are correct
+    - Check timestamp synchronization
+    - Ensure proper signature generation
+    - Confirm passphrase matches the one used during API key creation
+
+2. **Transaction Failures**
+
+    - Verify sufficient SOL balance for fees
+    - Check slippage settings
+    - Confirm token account exists
+
+## Security Best Practices
+
+1. **API Security**
+
+    - Store credentials securely
+    - Use environment variables
+    - Rotate keys regularly
+    - Never share your secret key or passphrase
+
+2. **Transaction Safety**
+    - Set reasonable slippage limits
+    - Use price impact protection
+    - Validate all parameters
+
+## License
+
+This plugin is part of the Eliza project. See the main project repository for license information.
+
+## Resources
+
+- [OKX DEX Documentation](https://www.okx.com/web3/build/docs/waas/dex-introduction)
+- [Developer Portal](https://www.okx.com/developers)
