@@ -121,3 +121,81 @@ This plugin is part of the Eliza project. See the main project repository for li
 
 - [OKX DEX Documentation](https://www.okx.com/web3/build/docs/waas/dex-introduction)
 - [Developer Portal](https://www.okx.com/developers)
+
+
+## Detailed Usage Steps
+
+Prerequisites:
+- Get OKX API credentials from: https://www.okx.com/web3/build/dev-portal
+- Have Solana wallet keys ready
+- Have OpenAI or Anthropic API Keys ready ( This project uses OpenAi )
+
+1. Set up OKX API credentials in environment:
+```env
+OKX_API_KEY=<your_api_key>
+OKX_SECRET_KEY=<your_secret_key>
+OKX_API_PASSPHRASE=<your_passphrase>
+OKX_PROJECT_ID=<your_project_id>
+OKX_SOLANA_RPC_URL=<your_rpc_url>
+OKX_WALLET_ADDRESS=<your_solana_wallet_public_key>
+OKX_WALLET_PRIVATE_KEY=<your_solana_wallet_private_key>
+```
+
+2. Add OpenAI API credential in environment:
+```env
+OPENAI_API_KEY=<your_openai_api_key>
+```
+
+3. Install plugin dependencies:
+```bash
+pnpm install --no-frozen-lockfile
+```
+
+4. Build the plugin:
+```bash
+pnpm build
+```
+
+5. Deploy the agent by running:
+```bash
+pnpm start --characters="characters/trump.character.json"
+```
+
+6. Deploy the FE locally by running:
+```bash
+pnpm start:client
+```
+
+7. In the UI Test functions:
+
+- Test quote functionality:
+  ```
+  get swap quote for 300 EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v for 6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN
+  ```
+
+- Test chain data retrieval:
+  ```
+  get chain data
+  ```
+
+- Test liquidity providers:
+  ```
+  get liquidity providers
+  ```
+
+- Test getting transaction data:
+  ```
+  swap transaction data for 300 EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v for 6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN
+  ```
+
+- Test available tokens:
+  ```
+  get available tokens
+  ```
+
+- Test swap execution:
+  ```
+  execute swap for .01 EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v for 6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN
+  ```
+
+- Swap works with most token pairs
