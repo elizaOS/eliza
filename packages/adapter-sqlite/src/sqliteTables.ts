@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS "accounts" (
     "username" TEXT,
     "email" TEXT NOT NULL,
     "avatarUrl" TEXT,
-    "details" TEXT DEFAULT '{}' CHECK(json_valid("details")) -- Ensuring details is a valid JSON field
+    "details" TEXT DEFAULT '{}' CHECK(json_valid("details")), -- Ensuring details is a valid JSON field
+    "status" TEXT
 );
 
 -- Table: memories

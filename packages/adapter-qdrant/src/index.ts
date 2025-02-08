@@ -13,6 +13,8 @@ import {
     type Memory,
     type Goal,
     type Relationship,
+    type PaginationParams,
+    type PaginationResult,
 } from "@elizaos/core";
 
 
@@ -201,6 +203,10 @@ export class QdrantDatabaseAdapter  extends DatabaseAdapter<QdrantClient>  imple
 
     async createAccount(account: Account): Promise<boolean> {
         return Promise.resolve(false);
+    }
+
+    async updateAccount(account: Account): Promise<void> {
+        return Promise.resolve(undefined);
     }
 
     async createGoal(goal: Goal): Promise<void> {
@@ -400,6 +406,16 @@ export class QdrantDatabaseAdapter  extends DatabaseAdapter<QdrantClient>  imple
 
     private buildQdrantID(id: string): string{
        return v5(id,this.qdrantV5UUIDNamespace);
+    }
+
+    async paginate(table: string, params: PaginationParams): Promise<PaginationResult> {
+        return Promise.resolve({
+            list: [],
+            total: 0,
+            page: 1,
+            pageSize: 10,
+            totalPages: 1
+        });
     }
 }
 

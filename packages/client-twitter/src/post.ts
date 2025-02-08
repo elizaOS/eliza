@@ -105,6 +105,7 @@ export class TwitterPostClient {
     private approvalRequired = false;
     private discordApprovalChannelId: string;
     private approvalCheckInterval: number;
+    private pendingTweetCheckInterval: NodeJS.Timeout | null = null;
 
     constructor(client: ClientBase, runtime: IAgentRuntime) {
         this.client = client;
@@ -237,6 +238,8 @@ export class TwitterPostClient {
         }
 
         const generateNewTweetLoop = async () => {
+            if(!this.client.active) return;
+
             const lastPost = await this.runtime.cacheManager.get<{
                 timestamp: number;
             }>("twitter/" + this.twitterUsername + "/lastPost");
@@ -261,9 +264,11 @@ export class TwitterPostClient {
         };
 
         const processActionsLoop = async () => {
+            if(!this.client.active) return;
+            
             const actionInterval = this.client.twitterConfig.ACTION_INTERVAL; // Defaults to 5 minutes
 
-            while (!this.stopProcessingActions) {
+            while (!this.stopProcessingActions && this.client.active) {
                 try {
                     const results = await this.processTweetActions();
                     if (results) {
@@ -311,7 +316,7 @@ export class TwitterPostClient {
     }
 
     private runPendingTweetCheckLoop() {
-        setInterval(async () => {
+        this.pendingTweetCheckInterval = setInterval(async () => {
             await this.handlePendingTweet();
         }, this.approvalCheckInterval);
     }
@@ -498,8 +503,9 @@ export class TwitterPostClient {
      * Generates and posts a new tweet. If isDryRun is true, only logs what would have been posted.
      */
     async generateNewTweet() {
+        if (!this.client.active) return;
         elizaLogger.log("Generating new tweet");
-
+        
         try {
             const roomId = stringToUuid(
                 "twitter_generate_room-" + this.client.profile.username
@@ -718,8 +724,8 @@ export class TwitterPostClient {
      * only simulates and logs actions without making API calls.
      */
     private async processTweetActions() {
-        if (this.isProcessing) {
-            elizaLogger.log("Already processing tweet actions, skipping");
+        if (!this.client.active || this.isProcessing) {
+            elizaLogger.log("Already processing tweet actions or client inactive, skipping");
             return null;
         }
 
@@ -1134,6 +1140,8 @@ export class TwitterPostClient {
         tweetState: any,
         executedActions: string[]
     ) {
+        if (!this.client.active) return;
+        
         try {
             // Build conversation thread for context
             const thread = await buildConversationThread(tweet, this.client);
@@ -1258,6 +1266,12 @@ export class TwitterPostClient {
 
     async stop() {
         this.stopProcessingActions = true;
+        
+        // Clear the pending tweet check interval if it exists
+        if (this.pendingTweetCheckInterval) {
+            clearInterval(this.pendingTweetCheckInterval);
+            this.pendingTweetCheckInterval = null;
+        }
     }
 
     private async sendForApproval(
@@ -1265,6 +1279,8 @@ export class TwitterPostClient {
         roomId: UUID,
         rawTweetContent: string
     ): Promise<string | null> {
+        if (!this.client.active) return null;
+        
         try {
             const embed = {
                 title: "New Tweet Pending Approval",
@@ -1332,6 +1348,8 @@ export class TwitterPostClient {
     private async checkApprovalStatus(
         discordMessageId: string
     ): Promise<PendingTweetApprovalStatus> {
+        if (!this.client.active) return "PENDING";
+        
         try {
             // Fetch message and its replies from Discord
             const channel = await this.discordClientForApproval.channels.fetch(
@@ -1406,7 +1424,9 @@ export class TwitterPostClient {
     }
 
     private async handlePendingTweet() {
+        if (!this.client.active) return;
         elizaLogger.log("Checking Pending Tweets...");
+        
         const pendingTweetsKey = `twitter/${this.client.profile.username}/pendingTweet`;
         const pendingTweets =
             (await this.runtime.cacheManager.get<PendingTweet[]>(

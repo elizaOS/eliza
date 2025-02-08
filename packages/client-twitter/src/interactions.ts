@@ -97,6 +97,8 @@ export class TwitterInteractionClient {
     client: ClientBase;
     runtime: IAgentRuntime;
     private isDryRun: boolean;
+    private interactionInterval: NodeJS.Timeout | null = null;
+
     constructor(client: ClientBase, runtime: IAgentRuntime) {
         this.client = client;
         this.runtime = runtime;
@@ -105,8 +107,10 @@ export class TwitterInteractionClient {
 
     async start() {
         const handleTwitterInteractionsLoop = () => {
+            if (!this.client.active) return;
+            
             this.handleTwitterInteractions();
-            setTimeout(
+            this.interactionInterval = setTimeout(
                 handleTwitterInteractionsLoop,
                 // Defaults to 2 minutes
                 this.client.twitterConfig.TWITTER_POLL_INTERVAL * 1000
@@ -115,7 +119,16 @@ export class TwitterInteractionClient {
         handleTwitterInteractionsLoop();
     }
 
+    async stop() {
+        if (this.interactionInterval) {
+            clearTimeout(this.interactionInterval);
+            this.interactionInterval = null;
+        }
+    }
+
     async handleTwitterInteractions() {
+        if (!this.client.active) return;
+        
         elizaLogger.log("Checking Twitter interactions");
 
         const twitterUsername = this.client.profile.username;
@@ -315,6 +328,8 @@ export class TwitterInteractionClient {
         message: Memory;
         thread: Tweet[];
     }) {
+        if (!this.client.active) return;
+        
         // Only skip if tweet is from self AND not from a target user
         if (tweet.userId === this.client.profile.id &&
             !this.client.twitterConfig.TWITTER_TARGET_USERS.includes(tweet.username)) {
@@ -564,6 +579,8 @@ export class TwitterInteractionClient {
         tweet: Tweet,
         maxReplies = 10
     ): Promise<Tweet[]> {
+        if (!this.client.active) return [];
+        
         const thread: Tweet[] = [];
         const visited: Set<string> = new Set();
 

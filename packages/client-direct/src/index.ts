@@ -21,11 +21,16 @@ import {
     stringToUuid,
     settings,
     type IAgentRuntime,
+    type TypeDatabaseAdapter,
+    type UUID,
+    validateUuid,
 } from "@elizaos/core";
 import { createApiRouter } from "./api.ts";
 import * as fs from "fs";
 import * as path from "path";
 import { createVerifiableLogApiRouter } from "./verifiable-log-api.ts";
+import { createManageApiRouter } from "./manage-api.ts";
+import { verifyToken } from "./auth.ts";
 import OpenAI from "openai";
 
 const storage = multer.diskStorage({
@@ -108,6 +113,64 @@ Response format should be formatted in a JSON block like this:
 \`\`\`
 `;
 
+async function verifyTokenMiddleware(req: any, res: any, next) {
+    // if JWT is not enabled, skip verification
+    if (!(settings.JWT_ENABLED && settings.JWT_ENABLED.toLowerCase() === 'true')) {
+        next();
+        return;
+    }
+
+    const url: string = req.url.split('?')[0];
+    if (url.indexOf('/manage/') !== 0) {
+    next();
+    } else {
+        try {
+            const { authorization } = req.headers;
+            if (!authorization) throw new Error('no token');
+            const token = await verifyToken(authorization.split(' ')[1]);
+            if (token) {
+                next();
+            } else {
+                throw new Error('fail to verify token');
+            }
+        } catch (err: any) {
+            res.status(401).json({ error: err.message });
+            return;
+        }
+    }
+};
+
+interface UUIDParams {
+    agentId: UUID;
+    roomId?: UUID;
+}
+
+export function validateUUIDParams(
+    params: { agentId: string; roomId?: string },
+    res: express.Response
+): UUIDParams | null {
+    const agentId = validateUuid(params.agentId);
+    if (!agentId) {
+        res.status(400).json({
+            error: "Invalid AgentId format. Expected to be a UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        });
+        return null;
+    }
+
+    if (params.roomId) {
+        const roomId = validateUuid(params.roomId);
+        if (!roomId) {
+            res.status(400).json({
+                error: "Invalid RoomId format. Expected to be a UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+            });
+            return null;
+        }
+        return { agentId, roomId };
+    }
+
+    return { agentId };
+}
+
 export class DirectClient {
     public app: express.Application;
     private agents: Map<string, AgentRuntime>; // container management
@@ -115,6 +178,7 @@ export class DirectClient {
     public startAgent: Function; // Store startAgent functor
     public loadCharacterTryPath: Function; // Store loadCharacterTryPath functor
     public jsonToCharacter: Function; // Store jsonToCharacter functor
+    public db: TypeDatabaseAdapter;
 
     constructor() {
         elizaLogger.log("DirectClient constructor");
@@ -124,6 +188,17 @@ export class DirectClient {
 
         this.app.use(bodyParser.json());
         this.app.use(bodyParser.urlencoded({ extended: true }));
+
+        this.app.use(verifyTokenMiddleware);
+
+
+        this.app.get("/", (req, res) => {
+            res.send("Welcome, this is the REST API!");
+        });
+
+        this.app.get("/hello", (req, res) => {
+            res.json({ message: "Hello World!" });
+        });
 
         // Serve both uploads and generated images
         this.app.use(
@@ -140,6 +215,9 @@ export class DirectClient {
 
         const apiLogRouter = createVerifiableLogApiRouter(this.agents);
         this.app.use(apiLogRouter);
+
+        const manageApiRouter = createManageApiRouter(this.agents, this);
+        this.app.use('/manage', manageApiRouter);
 
         // Define an interface that extends the Express Request interface
         interface CustomRequest extends ExpressRequest {

@@ -9,6 +9,8 @@ import type {
     RAGKnowledgeItem,
     Participant,
     IDatabaseAdapter,
+    PaginationParams,
+    PaginationResult,
 } from "./types.ts";
 import { CircuitBreaker } from "./database/CircuitBreaker";
 import { elizaLogger } from "./logger";
@@ -77,6 +79,13 @@ export abstract class DatabaseAdapter<DB = any> implements IDatabaseAdapter {
      * @returns A Promise that resolves when the account creation is complete.
      */
     abstract createAccount(account: Account): Promise<boolean>;
+
+    /**
+     * Updates a specific account in the database.
+     * @param account The account object with updated properties.
+     * @returns A Promise that resolves when the account has been updated.
+     */
+    abstract updateAccount(account: Account): Promise<void>;
 
     /**
      * Retrieves memories based on the specified parameters.
@@ -457,4 +466,12 @@ export abstract class DatabaseAdapter<DB = any> implements IDatabaseAdapter {
             throw error;
         }
     }
+
+    /**
+     * Paginate a table
+     * @param table The table to paginate
+     * @param params The pagination parameters
+     * @returns A Promise that resolves to the paginated results
+     */
+    abstract paginate(table: string, params: PaginationParams): Promise<PaginationResult>;
 }

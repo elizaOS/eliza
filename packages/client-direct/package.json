@@ -21,8 +21,8 @@
     "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-image-generation": "workspace:*",
-        "@elizaos/plugin-tee-verifiable-log": "workspace:*",
         "@elizaos/plugin-tee-log": "workspace:*",
+        "@elizaos/plugin-tee-verifiable-log": "workspace:*",
         "@types/body-parser": "1.19.5",
         "@types/cors": "2.8.17",
         "@types/express": "5.0.0",
@@ -30,6 +30,7 @@
         "cors": "2.8.5",
         "discord.js": "14.16.3",
         "express": "4.21.1",
+        "jsonwebtoken": "^9.0.2",
         "multer": "1.4.5-lts.1",
         "openai": "4.73.0"
     },

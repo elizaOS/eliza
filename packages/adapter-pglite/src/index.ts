@@ -15,6 +15,8 @@ import {
     DatabaseAdapter,
     EmbeddingProvider,
     type RAGKnowledgeItem,
+    type PaginationParams,
+    type PaginationResult,
 } from "@elizaos/core";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -241,8 +243,8 @@ export class PGLiteDatabaseAdapter
             try {
                 const accountId = account.id ?? v4();
                 await this.query(
-                    `INSERT INTO accounts (id, name, username, email, "avatarUrl", details)
-                    VALUES ($1, $2, $3, $4, $5, $6)`,
+                    `INSERT INTO accounts (id, name, username, email, "avatarUrl", details, status)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [
                         accountId,
                         account.name,
@@ -250,6 +252,7 @@ export class PGLiteDatabaseAdapter
                         account.email || "",
                         account.avatarUrl || "",
                         JSON.stringify(account.details),
+                        account.status || "paused",
                     ]
                 );
                 elizaLogger.debug("Account created successfully:", {
@@ -266,6 +269,33 @@ export class PGLiteDatabaseAdapter
                 return false; // Return false instead of throwing to maintain existing behavior
             }
         }, "createAccount");
+    }
+
+    async updateAccount(account: Account): Promise<void> {
+        return this.withDatabase(async () => {
+            try {
+                await this.query(
+                    `UPDATE accounts SET name = $1, username = $2, email = $3, "avatarUrl" = $4, status = $5, details = $6 WHERE id = $7`,
+                    [
+                        account.name,
+                        account.username,
+                        account.email,
+                        account.avatarUrl,
+                        account.status,
+                        JSON.stringify(account.details),
+                        account.id,
+                    ]
+                );
+            } catch (error) {
+                elizaLogger.error("Failed to update accounts:", {
+                    account: account.id,
+                    error:
+                        error instanceof Error ? error.message : String(error),
+                    status: account.status,
+                });
+                throw error;
+            }
+        }, "updateAccount");
     }
 
     async getActorById(params: { roomId: UUID }): Promise<Actor[]> {
@@ -1557,6 +1587,95 @@ export class PGLiteDatabaseAdapter
                 });
             }
         }, "clearKnowledge");
+    }
+
+    async paginate(table: string, params: PaginationParams): Promise<PaginationResult> {
+        return this.withDatabase(async () => {
+            const {
+                page = 1,
+                pageSize = 10,
+                where = {},
+                order = { createdAt: 'DESC' }
+            } = params;
+
+            const offset = (page - 1) * pageSize;
+            const whereClause: string[] = [];
+            const values: any[] = [];
+            let paramCount = 0;
+
+            // Build where clause with proper parameter indexing
+            // biome-ignore lint/complexity/noForEach: <explanation>
+            Object.entries(where).forEach(([key, value]) => {
+                if (value === null || value === undefined) return;
+
+                if (typeof value === 'object') {
+                    if (key === 'createdAt') {
+                        if (value.gte) {
+                            paramCount++;
+                            whereClause.push(`"${key}" >= $${paramCount}`);
+                            values.push(value.gte);
+                        }
+                        if (value.lte) {
+                            paramCount++;
+                            whereClause.push(`"${key}" <= $${paramCount}`);
+                            values.push(value.lte);
+                        }
+                    }
+                } else {
+                    paramCount++;
+                    whereClause.push(`"${key}" = $${paramCount}`);
+                    values.push(value);
+                }
+            });
+
+            const whereStr = whereClause.length > 0
+                ? `WHERE ${whereClause.join(' AND ')}`
+                : '';
+
+            const orderClause = Object.entries(order)
+                .map(([key, direction]) => `"${key}" ${direction}`)
+                .join(', ');
+
+            // Count total records
+            const countQuery = `
+                SELECT COUNT(*) as total 
+                FROM "${table}" 
+                ${whereStr}
+            `;
+
+            const { rows: countRows } = await this.query<{ total: number }>(
+                countQuery,
+                values
+            );
+            const total = Number(countRows[0]?.total || 0);
+
+            // Get paginated data
+            paramCount++;
+            const limitParam = `$${paramCount}`;
+            paramCount++;
+            const offsetParam = `$${paramCount}`;
+
+            const dataQuery = `
+                SELECT * 
+                FROM "${table}" 
+                ${whereStr}
+                ORDER BY ${orderClause}
+                LIMIT ${limitParam} OFFSET ${offsetParam}
+            `;
+
+            const { rows: list } = await this.query(
+                dataQuery,
+                [...values, pageSize, offset]
+            );
+
+            return {
+                list,
+                total,
+                page,
+                pageSize,
+                totalPages: Math.ceil(total / pageSize),
+            };
+        }, "paginate");
     }
 }
 

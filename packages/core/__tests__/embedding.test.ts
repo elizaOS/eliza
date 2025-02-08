@@ -5,7 +5,7 @@ import {
     getEmbeddingType,
     getEmbeddingZeroVector,
 } from "../src/embedding.ts";
-import { type IAgentRuntime, ModelProviderName } from "../types.ts";
+import { type IAgentRuntime, ModelProviderName } from "../src/types.ts";
 import settings from "../src/settings.ts";
 
 // Mock environment-related settings

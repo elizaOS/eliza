@@ -216,6 +216,7 @@ export class TwitterSpaceClient {
     }
 
     private async shouldLaunchSpace(): Promise<boolean> {
+        if (!this.client.active) return false;
         // Random chance
         const r = Math.random();
         if (r > (this.decisionOptions.randomChance ?? 0.3)) {
@@ -247,6 +248,12 @@ export class TwitterSpaceClient {
     }
 
     private async generateSpaceConfig(): Promise<SpaceConfig> {
+        if (!this.client.active) return {
+            mode: "INTERACTIVE",
+            title: "Random Tech Chat",
+            description: "Discussion about Random Tech Chat",
+            languages: ["en"],
+        };
         if (
             !this.decisionOptions.topics ||
             this.decisionOptions.topics.length === 0
@@ -277,6 +284,7 @@ export class TwitterSpaceClient {
     }
 
     public async startSpace(config: SpaceConfig) {
+        if (!this.client.active) return;
         elizaLogger.log("[Space] Starting a new Twitter Space...");
 
         try {
@@ -397,7 +405,7 @@ export class TwitterSpaceClient {
      * Periodic management: check durations, remove extras, maybe accept new from queue
      */
     private async manageCurrentSpace() {
-        if (!this.spaceId || !this.currentSpace) return;
+        if (!this.client.active || !this.spaceId || !this.currentSpace) return;
         try {
             const audioSpace = await this.scraper.getAudioSpaceById(
                 this.spaceId
@@ -469,6 +477,7 @@ export class TwitterSpaceClient {
      * If we have available slots, accept new speakers from the queue
      */
     private async acceptSpeakersFromQueueIfNeeded() {
+        if (!this.client.active) return;
         // while queue not empty and activeSpeakers < maxSpeakers, accept next
         const ms = this.decisionOptions.maxSpeakers ?? 1;
         while (
@@ -488,7 +497,7 @@ export class TwitterSpaceClient {
     }
 
     private async handleSpeakerRequest(req: SpeakerRequest) {
-        if (!this.spaceId || !this.currentSpace) return;
+        if (!this.client.active || !this.spaceId || !this.currentSpace) return;
 
         const audioSpace = await this.scraper.getAudioSpaceById(this.spaceId);
         const janusSpeakers = audioSpace?.participants?.speakers || [];
@@ -511,7 +520,7 @@ export class TwitterSpaceClient {
     }
 
     private async acceptSpeaker(req: SpeakerRequest) {
-        if (!this.currentSpace) return;
+        if (!this.client.active || !this.currentSpace) return;
         try {
             await this.currentSpace.approveSpeaker(req.userId, req.sessionUUID);
             this.activeSpeakers.push({
@@ -530,7 +539,7 @@ export class TwitterSpaceClient {
     }
 
     private async removeSpeaker(userId: string) {
-        if (!this.currentSpace) return;
+        if (!this.client.active || !this.currentSpace) return;
         try {
             await this.currentSpace.removeSpeaker(userId);
             elizaLogger.log(`[Space] Removed speaker userId=${userId}`);
@@ -547,7 +556,7 @@ export class TwitterSpaceClient {
      * Also update activeSpeakers array
      */
     private async kickExtraSpeakers(speakers: any[]) {
-        if (!this.currentSpace) return;
+        if (!this.client.active || !this.currentSpace) return;
         const ms = this.decisionOptions.maxSpeakers ?? 1;
 
         // sort by who joined first if needed, or just slice
@@ -584,5 +593,24 @@ export class TwitterSpaceClient {
             this.activeSpeakers = [];
             this.speakerQueue = [];
         }
+    }
+
+    /**
+     * Stop all space activities and clean up
+     */
+    public async stop() {
+        // Stop periodic check
+        this.stopPeriodicCheck();
+
+        await this.stopSpace();
+
+        // Clear all states
+        this.activeSpeakers = [];
+        this.speakerQueue = [];
+        this.sttTtsPlugin = undefined;
+        this.currentSpace = undefined;
+        this.spaceId = undefined;
+        this.startedAt = undefined;
+        this.isSpaceRunning = false;
     }
 }

@@ -11,9 +11,12 @@ import {
     type Room,
     type RAGKnowledgeItem,
     elizaLogger,
+    type PaginationParams,
+    type PaginationResult,
 } from "@elizaos/core";
 import { DatabaseAdapter } from "@elizaos/core";
 import { v4 as uuid } from "uuid";
+
 export class SupabaseDatabaseAdapter extends DatabaseAdapter {
     async getRoom(roomId: UUID): Promise<UUID | null> {
         const { data, error } = await this.supabase
@@ -165,6 +168,13 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
             return false;
         }
         return true;
+    }
+
+    async updateAccount(account: Account): Promise<void> {
+        await this.supabase
+            .from("accounts")
+            .update(account)
+            .eq("id", account.id);
     }
 
     async getActorDetails(params: { roomId: UUID }): Promise<Actor[]> {
@@ -953,5 +963,60 @@ export class SupabaseDatabaseAdapter extends DatabaseAdapter {
                 throw error;
             }
         }
+    }
+
+    async paginate(table: string, params: PaginationParams): Promise<PaginationResult> {
+        const {
+            page = 1,
+            pageSize = 10,
+            where = {},
+            order = { createdAt: 'desc' }
+        } = params;
+
+        // Start building the query
+        let query = this.supabase.from(table).select('*', { count: 'exact' });
+
+        // Add where conditions
+        // biome-ignore lint/complexity/noForEach: <explanation>
+        Object.entries(where).forEach(([key, value]) => {
+            if (value === null || value === undefined) return;
+
+            if (typeof value === 'object') {
+                if (key === 'createdAt') {
+                    query = query.gte(key, value.gte);
+                }
+                if (value.lte) {
+                    query = query.lte(key, value.lte);
+                }
+            } else {
+                query = query.eq(key, value);
+            }
+        });
+
+        // Add ordering
+        // biome-ignore lint/complexity/noForEach: <explanation>
+        Object.entries(order).forEach(([key, direction]) => {
+            query = query.order(key, { ascending: direction.toLowerCase() === 'asc' });
+        });
+
+        // Add pagination
+        const from = (page - 1) * pageSize;
+        const to = from + pageSize - 1;
+        query = query.range(from, to);
+
+        // Execute query
+        const { data, error, count } = await query;
+
+        if (error) {
+            throw new Error(`Error paginating ${table}: ${error.message}`);
+        }
+
+        return {
+            list: data || [],
+            total: count || 0,
+            page,
+            pageSize,
+            totalPages: count ? Math.ceil(count / pageSize) : 0,
+        };
     }
 }

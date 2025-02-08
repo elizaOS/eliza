@@ -9,9 +9,34 @@ import {
     type Participant,
     type Relationship,
     type UUID,
+    AccountStatus,
+    type PaginationParams,
+    type PaginationResult,
+    RAGKnowledgeItem,
 } from "../src/types.ts";
 
 class MockDatabaseAdapter extends DatabaseAdapter {
+    getKnowledge(params: { id?: UUID; agentId: UUID; limit?: number; query?: string; conversationContext?: string; }): Promise<RAGKnowledgeItem[]> {
+        return Promise.resolve([]);
+    }
+    searchKnowledge(params: { agentId: UUID; embedding: Float32Array; match_threshold: number; match_count: number; searchText?: string; }): Promise<RAGKnowledgeItem[]> {
+            throw new Error("Method not implemented.");
+        }
+    createKnowledge(knowledge: RAGKnowledgeItem): Promise<void> {
+        return Promise.resolve();
+    }
+    removeKnowledge(id: UUID): Promise<void> {
+        return Promise.resolve();
+    }
+    clearKnowledge(agentId: UUID, shared?: boolean): Promise<void> {
+        return Promise.resolve();
+    }
+    init(): Promise<void> {
+        return Promise.resolve();
+    }
+    close(): Promise<void> {
+        return Promise.resolve();   
+    }
     getMemoryById(_id: UUID): Promise<Memory | null> {
         throw new Error("Method not implemented.");
     }
@@ -212,12 +237,20 @@ class MockDatabaseAdapter extends DatabaseAdapter {
             id: userId,
             username: "testuser",
             name: "Test Account",
+            status: AccountStatus.ACTIVE,
+            details: { summary: "Test Account" },
+            email: "test@example.com",
+            avatarUrl: "https://example.com/avatar.jpg",
         } as Account;
     }
 
     // Other methods stay the same...
     async createAccount(_account: Account): Promise<boolean> {
         return true;
+    }
+
+    async updateAccount(_account: Account): Promise<void> {
+        return Promise.resolve();
     }
 
     async getMemories(params: {
@@ -264,6 +297,16 @@ class MockDatabaseAdapter extends DatabaseAdapter {
             name: "Test Goal",
             objectives: [],
         } as Goal;
+    }
+
+    async paginate(table: string, params: PaginationParams): Promise<PaginationResult> {
+        return Promise.resolve({
+            list: [],
+            total: 0,
+            page: 1,
+            pageSize: 10,
+            totalPages: 1
+        });
     }
 }
 

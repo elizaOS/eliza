@@ -42,6 +42,7 @@ import {
     type ICacheManager,
     type IDatabaseAdapter,
     type IDatabaseCacheAdapter,
+    type TypeDatabaseAdapter,
     ModelProviderName,
     parseBooleanFromText,
     settings,
@@ -1389,24 +1390,14 @@ function initializeCache(
 
 async function startAgent(
     character: Character,
-    directClient: DirectClient
+    directClient: DirectClient,
+    db: TypeDatabaseAdapter
 ): Promise<AgentRuntime> {
-    let db: IDatabaseAdapter & IDatabaseCacheAdapter;
     try {
         character.id ??= stringToUuid(character.name);
         character.username ??= character.name;
 
         const token = getTokenForProvider(character.modelProvider, character);
-        const dataDir = path.join(__dirname, "../data");
-
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-
-        db = initializeDatabase(dataDir) as IDatabaseAdapter &
-            IDatabaseCacheAdapter;
-
-        await db.init();
 
         const cache = initializeCache(
             process.env.CACHE_STORE ?? CacheStore.DATABASE,
@@ -1440,9 +1431,6 @@ async function startAgent(
             error
         );
         elizaLogger.error(error);
-        if (db) {
-            await db.close();
-        }
         throw error;
     }
 }
@@ -1476,6 +1464,16 @@ const startAgents = async () => {
     let serverPort = Number.parseInt(settings.SERVER_PORT || "3000");
     const args = parseArguments();
     const charactersArg = args.characters || args.character;
+    const dataDir = path.join(__dirname, "../data");
+
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    const db = initializeDatabase(dataDir) as TypeDatabaseAdapter;
+
+    await db.init();
+
     let characters = [defaultCharacter];
 
     if (process.env.IQ_WALLET_ADDRESS && process.env.IQSOlRPC) {
@@ -1493,7 +1491,7 @@ const startAgents = async () => {
 
     try {
         for (const character of characters) {
-            await startAgent(character, directClient);
+            await startAgent(character, directClient, db);
         }
     } catch (error) {
         elizaLogger.error("Error starting agents:", error);
@@ -1513,11 +1511,12 @@ const startAgents = async () => {
         character.plugins = await handlePluginImporting(character.plugins);
 
         // wrap it so we don't have to inject directClient later
-        return startAgent(character, directClient);
+        return startAgent(character, directClient, db);
     };
 
     directClient.loadCharacterTryPath = loadCharacterTryPath;
     directClient.jsonToCharacter = jsonToCharacter;
+    directClient.db = db;
 
     directClient.start(serverPort);
 

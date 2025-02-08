@@ -92,10 +92,15 @@ export class ClientBase extends EventEmitter {
     lastCheckedTweetId: bigint | null = null;
     imageDescriptionService: IImageDescriptionService;
     temperature = 0.5;
+    active = true;
 
     requestQueue: RequestQueue = new RequestQueue();
 
     profile: TwitterProfile | null;
+
+    stop() {
+        this.active = false;
+    }
 
     async cacheTweet(tweet: Tweet): Promise<void> {
         if (!tweet) {
@@ -344,6 +349,8 @@ export class ClientBase extends EventEmitter {
         } else {
             throw new Error("Failed to load profile");
         }
+
+        this.active = true;
 
         await this.loadLatestCheckedTweetId();
         await this.populateTimeline();

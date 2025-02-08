@@ -14,6 +14,8 @@ import {
     type UUID,
     type RAGKnowledgeItem,
     elizaLogger,
+    type PaginationParams,
+    type PaginationResult,
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { sqliteTables } from "./sqliteTables.ts";
@@ -160,8 +162,8 @@ export class SqlJsDatabaseAdapter
     async createAccount(account: Account): Promise<boolean> {
         try {
             const sql = `
-      INSERT INTO accounts (id, name, username, email, avatarUrl, details)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO accounts (id, name, username, email, avatarUrl, details, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       `;
             const stmt = this.db.prepare(sql);
             stmt.run([
@@ -171,6 +173,7 @@ export class SqlJsDatabaseAdapter
                 account.email || "",
                 account.avatarUrl || "",
                 JSON.stringify(account.details),
+                account.status || "paused",
             ]);
             stmt.free();
             return true;
@@ -178,6 +181,21 @@ export class SqlJsDatabaseAdapter
             elizaLogger.error("Error creating account", error);
             return false;
         }
+    }
+
+    async updateAccount(account: Account): Promise<void> {
+        const sql = "UPDATE accounts SET name = ?, username = ?, email = ?, avatarUrl = ?, status = ?, details = ? WHERE id = ?";
+        const stmt = this.db.prepare(sql);
+        stmt.run([
+            account.name ?? "",
+            account.username ?? "",
+            account.email ?? "",
+            account.avatarUrl ?? "",
+            account.status ?? "paused",
+            JSON.stringify(account.details ?? {}),
+            account.id ?? "",
+        ]);
+        stmt.free();
     }
 
     async getActorById(params: { roomId: UUID }): Promise<Actor[]> {
@@ -1044,5 +1062,88 @@ export class SqlJsDatabaseAdapter
         const stmt = this.db.prepare(sql);
         stmt.run([agentId]);
         stmt.free();
+    }
+
+    async paginate(table: string, params: PaginationParams): Promise<PaginationResult> {
+        const {
+            page = 1,
+            pageSize = 10,
+            where = {},
+            order = { createdAt: 'DESC' }
+        } = params;
+
+        const offset = (page - 1) * pageSize;
+        const whereClause: string[] = [];
+        const queryParams: any[] = [];
+
+        // Build where clause and params
+        // biome-ignore lint/complexity/noForEach: <explanation>
+        Object.entries(where).forEach(([key, value]) => {
+            if (value === null || value === undefined) return;
+
+            if (typeof value === 'object') {
+                if (key === 'createdAt') {
+                    if (value.gte) {
+                        whereClause.push(`${key} >= ?`);
+                        queryParams.push(value.gte);
+                    }
+                    if (value.lte) {
+                        whereClause.push(`${key} <= ?`);
+                        queryParams.push(value.lte);
+                    }
+                }
+            } else {
+                whereClause.push(`${key} = ?`);
+                queryParams.push(value);
+            }
+        });
+
+        const orderClause = Object.entries(order)
+            .map(([key, direction]) => `${key} ${direction}`)
+            .join(', ');
+
+        const whereStr = whereClause.length > 0
+            ? `WHERE ${whereClause.join(' AND ')}`
+            : '';
+
+        // Count total records
+        const countQuery = `
+            SELECT COUNT(*) as total 
+            FROM ${table} 
+            ${whereStr}
+        `;
+        const countStmt = this.db.prepare(countQuery);
+        countStmt.bind(queryParams);
+        let total = 0;
+        if (countStmt.step()) {
+            const result = countStmt.getAsObject() as { total: number };
+            total = result.total;
+        }
+        countStmt.free();
+
+        // Get paginated data
+        const dataQuery = `
+            SELECT * 
+            FROM ${table} 
+            ${whereStr}
+            ORDER BY ${orderClause}
+            LIMIT ? OFFSET ?
+        `;
+        const dataStmt = this.db.prepare(dataQuery);
+        dataStmt.bind([...queryParams, pageSize, offset]);
+        
+        const list: any[] = [];
+        while (dataStmt.step()) {
+            list.push(dataStmt.getAsObject());
+        }
+        dataStmt.free();
+
+        return {
+            list,
+            total,
+            page,
+            pageSize,
+            totalPages: Math.ceil(total / pageSize),
+        };
     }
 }

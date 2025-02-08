@@ -46,6 +46,16 @@ class TwitterManager {
             this.space = new TwitterSpaceClient(this.client, runtime);
         }
     }
+
+    stop() {
+        elizaLogger.log('client-twitter stopping, agentId:', this.client.runtime.agentId);
+        this.client.stop();
+        this.post.stop();
+        if(this.search) this.search.stop();
+        this.interaction.stop();
+        if(this.space) this.space.stop();
+        elizaLogger.log('client-twitter stopped, agentId:', this.client.runtime.agentId);
+    }
 }
 
 export const TwitterClientInterface: Client = {
@@ -55,32 +65,33 @@ export const TwitterClientInterface: Client = {
 
         elizaLogger.log("Twitter client started");
 
-        const manager = new TwitterManager(runtime, twitterConfig);
+        this.manager = new TwitterManager(runtime, twitterConfig);
 
         // Initialize login/session
-        await manager.client.init();
+        await this.manager.client.init();
 
         // Start the posting loop
-        await manager.post.start();
+        await this.manager.post.start();
 
         // Start the search logic if it exists
-        if (manager.search) {
-            await manager.search.start();
+        if (this.manager.search) {
+            await this.manager.search.start();
         }
 
         // Start interactions (mentions, replies)
-        await manager.interaction.start();
+        await this.manager.interaction.start();
 
         // If Spaces are enabled, start the periodic check
-        if (manager.space) {
-            manager.space.startPeriodicSpaceCheck();
+        if (this.manager.space) {
+            this.manager.space.startPeriodicSpaceCheck();
         }
 
-        return manager;
+        return this.manager;
     },
 
     async stop(_runtime: IAgentRuntime) {
-        elizaLogger.warn("Twitter client does not support stopping yet");
+        elizaLogger.warn("Twitter client stop..., agentId:", _runtime.agentId);
+        this.manager.stop();
     },
 };
 

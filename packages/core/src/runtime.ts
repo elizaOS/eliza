@@ -52,6 +52,7 @@ import {
     type Evaluator,
     type Memory,
     type DirectoryItem,
+    AccountStatus,
 } from "./types.ts";
 import { stringToUuid } from "./uuid.ts";
 import { glob } from "glob";
@@ -580,7 +581,12 @@ export class AgentRuntime implements IAgentRuntime {
                 "client stop for",
                 this.character.name,
             );
-            c.stop();
+            // it doesn't have a strict interface specification, and some don't have STOP methods
+            if (c && typeof c === "object" && "stop" in c) {
+                c.stop();
+            } else {
+                elizaLogger.log("client stop skip,", cStr, this.character.name);
+            }
         }
         // we don't need to unregister with directClient
         // don't need to worry about knowledge
@@ -1169,6 +1175,7 @@ export class AgentRuntime implements IAgentRuntime {
                 username: userName || this.character.username || "Unknown",
                 email: email || this.character.email || userId, // Temporary
                 details: this.character || { summary: "" },
+                status: AccountStatus.ACTIVE,
             });
             elizaLogger.success(`User ${userName} created successfully.`);
         }

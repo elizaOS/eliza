@@ -11,6 +11,8 @@ import {
     type Memory,
     type Relationship,
     type UUID, elizaLogger,
+    type PaginationParams,
+    type PaginationResult,
 } from "@elizaos/core";
 import { v4 } from "uuid";
 
@@ -320,6 +322,11 @@ export class MongoDBDatabaseAdapter
             console.error("Error creating account:", error);
             return false;
         }
+    }
+
+    async updateAccount(account: Account): Promise<void> {
+        await this.ensureConnection();
+        await this.database.collection('accounts').updateOne({ id: account.id }, { $set: account });
     }
 
     async getActorDetails(params: { roomId: UUID }): Promise<Actor[]> {
@@ -1440,6 +1447,61 @@ export class MongoDBDatabaseAdapter
             return [];
         }
     }
+    async paginate(collectionName: string, params: PaginationParams): Promise<PaginationResult> {
+        await this.ensureConnection();
+        
+        const {
+            page = 1,
+            pageSize = 10,
+            where = {},
+            order = { createdAt: -1 } // MongoDB uses 1 for ASC, -1 for DESC
+        } = params;
 
+        const skip = (page - 1) * pageSize;
+
+        // Convert where conditions for MongoDB
+        const whereQuery: any = {};
+        // biome-ignore lint/complexity/noForEach: <explanation>
+        Object.entries(where).forEach(([key, value]) => {
+            if (value === null || value === undefined) return;
+
+            if (typeof value === 'object') {
+                if (key === 'createdAt') {
+                    whereQuery[key] = {};
+                    if (value.gte) whereQuery[key].$gte = new Date(value.gte);
+                    if (value.lte) whereQuery[key].$lte = new Date(value.lte);
+                } else {
+                    whereQuery[key] = value;
+                }
+            } else {
+                whereQuery[key] = value;
+            }
+        });
+
+        try {
+            // Get total count
+            const total = await this.database.collection(collectionName)
+                .countDocuments(whereQuery);
+
+            // Get paginated data
+            const list = await this.database.collection(collectionName)
+                .find(whereQuery)
+                .sort(order)
+                .skip(skip)
+                .limit(pageSize)
+                .toArray();
+
+            return {
+                list,
+                total,
+                page,
+                pageSize,
+                totalPages: Math.ceil(total / pageSize),
+            };
+        } catch (error) {
+            elizaLogger.error(`Error in paginate for collection ${collectionName}:`, error);
+            throw error;
+        }
+    }
 }
 

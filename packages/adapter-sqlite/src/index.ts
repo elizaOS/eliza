@@ -5,6 +5,8 @@ import {
     DatabaseAdapter,
     elizaLogger,
     type IDatabaseCacheAdapter,
+    type PaginationParams,
+    type PaginationResult,
 } from "@elizaos/core";
 import type {
     Account,
@@ -106,7 +108,7 @@ export class SqliteDatabaseAdapter
     async createAccount(account: Account): Promise<boolean> {
         try {
             const sql =
-                "INSERT INTO accounts (id, name, username, email, avatarUrl, details) VALUES (?, ?, ?, ?, ?, ?)";
+                "INSERT INTO accounts (id, name, username, email, avatarUrl, details, status) VALUES (?, ?, ?, ?, ?, ?, ?)";
             this.db
                 .prepare(sql)
                 .run(
@@ -115,13 +117,27 @@ export class SqliteDatabaseAdapter
                     account.username,
                     account.email,
                     account.avatarUrl,
-                    JSON.stringify(account.details)
+                    JSON.stringify(account.details),
+                    account.status || "paused"
                 );
             return true;
         } catch (error) {
             console.log("Error creating account", error);
             return false;
         }
+    }
+
+    async updateAccount(account: Account): Promise<void> {
+        const sql = "UPDATE accounts SET name = ?, username = ?, email = ?, avatarUrl = ?, status = ?, details = ? WHERE id = ?";
+        this.db.prepare(sql).run(
+            account.name, 
+            account.username, 
+            account.email, 
+            account.avatarUrl, 
+            account.status, 
+            JSON.stringify(account.details), 
+            account.id
+        );
     }
 
     async getActorDetails(params: { roomId: UUID }): Promise<Actor[]> {
@@ -1082,5 +1098,74 @@ export class SqliteDatabaseAdapter
             );
             throw error;
         }
+    }
+
+    async paginate(table: string, params: PaginationParams): Promise<PaginationResult> {
+        const {
+          page = 1,
+          pageSize = 10,
+          where = {},
+          order = { createdAt: 'DESC' }
+        } = params;
+      
+        const offset = (page - 1) * pageSize;
+      
+        const whereClause: string[] = [];
+        
+        // biome-ignore lint/complexity/noForEach: <explanation>
+        Object.entries(where).forEach(([key, value]) => {
+          if (value === null || value === undefined) return;
+          
+          if (typeof value === 'object') {
+            if (key === 'createdAt') {
+              if (value.gte) {
+                whereClause.push(`${key} >= ?`);
+              }
+              if (value.lte) {
+                whereClause.push(`${key} <= ?`);
+              }
+            }
+          } else {
+            whereClause.push(`${key} = ?`);
+          }
+        });
+      
+        const orderClause = Object.entries(order)
+          .map(([key, direction]) => `${key} ${direction}`)
+          .join(', ');
+      
+        const whereStr = whereClause.length > 0 
+          ? `WHERE ${whereClause.join(' AND ')}` 
+          : '';
+
+        const countQuery = `
+          SELECT COUNT(*) as total 
+          FROM ${table} 
+          ${whereStr}
+        `;
+
+        const dataQuery = `
+          SELECT * 
+          FROM ${table} 
+          ${whereStr}
+          ORDER BY ${orderClause}
+          LIMIT ? OFFSET ?
+        `;
+
+        const totalResult = await this.db.prepare(countQuery).get();
+        console.log("totalResult", totalResult);
+        const list = await this.db.prepare(dataQuery).all(
+          [pageSize, offset]
+        );
+
+        const total = (totalResult && typeof totalResult === 'object' && 'total' in totalResult) ? Number(totalResult.total) : 0;
+      
+        return {
+            list,
+            total,
+            page,
+            pageSize,
+            totalPages: Math.ceil(total / pageSize),
+        };
     }
 }

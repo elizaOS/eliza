@@ -557,6 +557,9 @@ export interface Account {
 
     /** Optional avatar URL */
     avatarUrl?: string;
+
+    /** Optional status of the account */
+    status?: AccountStatus;
 }
 
 /**
@@ -963,6 +966,34 @@ export interface TwitterSpaceDecisionOptions {
     speakerMaxDurationMs?: number;
 }
 
+export interface PaginationParams {
+    page: number;          // current page
+    pageSize: number;      // page size
+    where?: WhereOptions;  // query conditions
+    order?: OrderOptions;  // sort order
+}
+  
+export interface WhereOptions {
+    createdAt?: {
+      gte?: Date;    // greater than or equal to
+      lte?: Date;    // less than or equal to
+    };
+    [key: string]: any;
+}
+  
+export interface OrderOptions {
+    field: string;        // sort field
+    direction: 'ASC' | 'DESC';  // sort direction
+}
+
+export interface PaginationResult {
+    list: any[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+}
+
 /**
  * Interface for database operations
  */
@@ -981,6 +1012,9 @@ export interface IDatabaseAdapter {
 
     /** Create new account */
     createAccount(account: Account): Promise<boolean>;
+
+    /** Update account */
+    updateAccount(account: Account): Promise<void>;
 
     /** Get memories matching criteria */
     getMemories(params: {
@@ -1138,6 +1172,7 @@ export interface IDatabaseAdapter {
     createKnowledge(knowledge: RAGKnowledgeItem): Promise<void>;
     removeKnowledge(id: UUID): Promise<void>;
     clearKnowledge(agentId: UUID, shared?: boolean): Promise<void>;
+    paginate(table: string, params: PaginationParams): Promise<PaginationResult>;
 }
 
 export interface IDatabaseCacheAdapter {
@@ -1154,6 +1189,8 @@ export interface IDatabaseCacheAdapter {
 
     deleteCache(params: { agentId: UUID; key: string }): Promise<boolean>;
 }
+
+export type TypeDatabaseAdapter = IDatabaseAdapter & IDatabaseCacheAdapter;
 
 export interface IMemoryManager {
     runtime: IAgentRuntime;
@@ -1665,4 +1702,10 @@ export interface DirectoryItem {
 export interface ChunkRow {
     id: string;
     // Add other properties if needed
+}
+
+export enum AccountStatus {
+    PAUSED = "paused",
+    ACTIVE = "active",
+    DISABLED = "disabled",
 }

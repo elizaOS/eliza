@@ -16,6 +16,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
     close: vi.fn().mockResolvedValue(undefined),
     getAccountById: vi.fn().mockResolvedValue(null),
     createAccount: vi.fn().mockResolvedValue(true),
+    updateAccount: vi.fn().mockResolvedValue(undefined),
     getMemories: vi.fn().mockResolvedValue([]),
     getMemoryById: vi.fn().mockResolvedValue(null),
     getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
@@ -48,6 +49,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
     createRelationship: vi.fn().mockResolvedValue(true),
     getRelationship: vi.fn().mockResolvedValue(null),
     getRelationships: vi.fn().mockResolvedValue([]),
+    paginate: vi.fn().mockResolvedValue({} as any),
 };
 
 const mockCacheManager = {

@@ -19,6 +19,7 @@ import {
     type Memory,
     type Relationship,
     type UUID,
+    type PaginationParams,
 } from "@elizaos/core";
 import fs from "fs";
 import path from "path";
@@ -420,8 +421,8 @@ export class PostgresDatabaseAdapter
             try {
                 const accountId = account.id ?? v4();
                 await this.pool.query(
-                    `INSERT INTO accounts (id, name, username, email, "avatarUrl", details)
-                    VALUES ($1, $2, $3, $4, $5, $6)`,
+                    `INSERT INTO accounts (id, name, username, email, "avatarUrl", details, status)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [
                         accountId,
                         account.name,
@@ -429,6 +430,7 @@ export class PostgresDatabaseAdapter
                         account.email || "",
                         account.avatarUrl || "",
                         JSON.stringify(account.details),
+                        account.status || "paused",
                     ]
                 );
                 elizaLogger.debug("Account created successfully:", {
@@ -445,6 +447,15 @@ export class PostgresDatabaseAdapter
                 return false; // Return false instead of throwing to maintain existing behavior
             }
         }, "createAccount");
+    }
+
+    async updateAccount(account: Account): Promise<void> {
+        return this.withDatabase(async () => {
+            await this.pool.query(
+                `UPDATE accounts SET name = $1, username = $2, email = $3, "avatarUrl" = $4, status = $5, details = $6 WHERE id = $7`,
+                [account.name, account.username, account.email, account.avatarUrl, account.status, JSON.stringify(account.details), account.id]
+            );
+        }, "updateAccount");
     }
 
     async getActorById(params: { roomId: UUID }): Promise<Actor[]> {
@@ -1808,6 +1819,95 @@ export class PostgresDatabaseAdapter
                 params.isShared,
             ]
         );
+    }
+
+    async paginate(table: string, params: PaginationParams): Promise<any> {
+        return this.withDatabase(async () => {
+            const {
+                page = 1,
+                pageSize = 10,
+                where = {},
+                order = { createdAt: 'DESC' }
+            } = params;
+
+            const offset = (page - 1) * pageSize;
+            const whereClause: string[] = [];
+            const values: any[] = [];
+            let paramCount = 0;
+
+            // Build WHERE clause with proper parameter indexing
+            // biome-ignore lint/complexity/noForEach: <explanation>
+            Object.entries(where).forEach(([key, value]) => {
+                if (value === null || value === undefined) return;
+
+                if (typeof value === 'object') {
+                    if (key === 'createdAt') {
+                        if (value.gte) {
+                            paramCount++;
+                            whereClause.push(`"${key}" >= $${paramCount}`);
+                            values.push(value.gte);
+                        }
+                        if (value.lte) {
+                            paramCount++;
+                            whereClause.push(`"${key}" <= $${paramCount}`);
+                            values.push(value.lte);
+                        }
+                    }
+                } else {
+                    paramCount++;
+                    whereClause.push(`"${key}" = $${paramCount}`);
+                    values.push(value);
+                }
+            });
+
+            const whereStr = whereClause.length > 0
+                ? `WHERE ${whereClause.join(' AND ')}`
+                : '';
+
+            const orderClause = Object.entries(order)
+                .map(([key, direction]) => `"${key}" ${direction}`)
+                .join(', ');
+
+            // Add LIMIT and OFFSET parameters
+            paramCount++;
+            const limitParam = `$${paramCount}`;
+            values.push(pageSize);
+
+            paramCount++;
+            const offsetParam = `$${paramCount}`;
+            values.push(offset);
+
+            // Count total records
+            const countQuery = `
+                SELECT COUNT(*) as total 
+                FROM "${table}" 
+                ${whereStr}
+            `;
+
+            // Get paginated data
+            const dataQuery = `
+                SELECT * 
+                FROM "${table}" 
+                ${whereStr}
+                ORDER BY ${orderClause}
+                LIMIT ${limitParam} OFFSET ${offsetParam}
+            `;
+
+            const [countResult, dataResult] = await Promise.all([
+                this.pool.query(countQuery, values.slice(0, -2)), // Exclude LIMIT/OFFSET params
+                this.pool.query(dataQuery, values)
+            ]);
+
+            const total = Number(countResult.rows[0].total);
+
+            return {
+                list: dataResult.rows,
+                total,
+                page,
+                pageSize,
+                totalPages: Math.ceil(total / pageSize),
+            };
+        }, "paginate");
     }
 }
 
