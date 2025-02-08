@@ -133,7 +133,7 @@ export class CreateResourceAction extends BaseInjectableAction<CreateResourceCon
             if (!result) {
                 elizaLogger.warn("Provider did not return a result.");
             } else {
-                elizaLogger.info("Privder result:", result);
+                elizaLogger.info("Provider result:", result);
             }
             // Use result in callback
         } catch (error) {
