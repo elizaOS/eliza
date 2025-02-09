@@ -25,17 +25,59 @@ export class ReputationDB {
 
     private initializeSqliteSchema() {
         if (!this.sqliteDb) return;
+
         this.sqliteDb.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+            user_id TEXT PRIMARY KEY
+        );
+
+        CREATE TABLE IF NOT EXISTS provider_mappings (
+            provider TEXT NOT NULL,
+            identifier TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            UNIQUE(provider, identifier),
+            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS scores (
             id TEXT PRIMARY KEY,
-            identifier TEXT NOT NULL,
+            user_id TEXT NOT NULL,
             provider TEXT NOT NULL,
             score REAL NOT NULL,
             last_updated TEXT DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(identifier, provider)
+            UNIQUE(user_id, provider),
+            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
         );
     `);
     }
+
+    private async getOrCreateUserId(provider: string, identifier: string): Promise<string> {
+        // Step 1: Check if the user already exists
+        const result = await this.query(
+            `SELECT user_id FROM provider_mappings WHERE provider = $1 AND identifier = $2`,
+            [provider, identifier]
+        );
+        console.log('getOrCreateUserId result', result)
+
+        if (result.rows.length > 0) {
+            return result.rows[0].user_id;
+        }
+
+        // Step 2: If no existing user, create a new user_id
+        await this.query(`INSERT INTO users (user_id) VALUES ($1)`, [identifier]);
+
+        // Step 3: Store the new provider mapping
+        await this.query(
+            `INSERT INTO provider_mappings (provider, identifier, user_id) VALUES ($1, $2, $3)`,
+            [provider, identifier, identifier]
+        );
+        console.log('getOrCreateUserId step 3', 'after adding record on provider_mappings table')
+
+
+        return identifier;
+    }
+
+
 
     public async query(sql: string, params: any[] = []) {
         if (this.pool) {
@@ -56,55 +98,104 @@ export class ReputationDB {
         if (!this.adapters.has(provider)) {
             throw new Error(`Provider ${provider} not registered`);
         }
+
+        // Get or create a user_id
+        const userId = await this.getOrCreateUserId(provider, identifier);
+
         if (!refresh) {
-            console.log('getScore step 3')
-
             const result = await this.query(
-                `SELECT score FROM scores WHERE identifier = $1 AND provider = $2`,
-                [identifier, provider]
+                `SELECT score FROM scores WHERE user_id = $1 AND provider = $2`,
+                [userId, provider]
             );
-
-            console.log('getScore step 4',result)
 
             if (result.rows.length > 0) {
                 return result.rows[0].score; // ✅ Use cached score if available
             }
         }
 
-        // If refresh is true or score is not found, fetch from adapter
+        // Fetch new score from provider
         const adapter = this.adapters.get(provider)!;
         const score = await adapter.getScore(identifier, refresh);
+        console.log('getScore', {
+            score,
+            provider,
+            identifier
+        })
 
-        const id = require("uuid").v4();
-
-
+        // Store new score
         await this.query(
-            `
-                    INSERT INTO scores (identifier, provider, score, last_updated)
-                    VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-                    ON CONFLICT (identifier, provider) DO UPDATE
-                    SET score = EXCLUDED.score, last_updated = CURRENT_TIMESTAMP`,
-            [identifier, provider, score]
+            `INSERT INTO scores (user_id, provider, score, last_updated)
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id, provider) DO UPDATE
+        SET score = EXCLUDED.score, last_updated = CURRENT_TIMESTAMP`,
+            [userId, provider, score]
         );
+
         return score;
     }
+
 
     /**
      * Refresh scores for a specific user across multiple providers.
      */
-    async refreshScoresForUser(providers: string[], user: { twitterHandle?: string; walletAddress?: string }) {
-        for (const provider of providers) {
-            let identifier: string | undefined;
+    /**
+     * Refresh scores for all linked providers of a user.
+     */
+    /**
+     * Refresh scores for a specific user across multiple providers.
+     * If no providers are specified, it refreshes scores for all linked providers.
+     */
+    async refreshScoresForUser(identifier: string, provider: string, providersToRefresh: string[] = []) {
+        // Step 1: Get the user_id associated with this provider and identifier
+        const userId = await this.getOrCreateUserId(provider, identifier);
+        console.log('refreshScoresForUser userId', userId)
 
-            if (provider === "twitter" && user.twitterHandle) {
-                identifier = user.twitterHandle;
-            } else if (provider === "givPower" && user.walletAddress) {
-                identifier = user.walletAddress;
-            }
+        // Step 2: Find all linked providers and identifiers for this user
+        const result = await this.query(
+            `SELECT provider, identifier FROM provider_mappings WHERE user_id = $1`,
+            [userId]
+        );
+        console.log('refreshScoresForUser result', result)
 
-            if (identifier) {
-                await this.getScore(provider, identifier, true);
-            }
+        if (result.rows.length === 0) {
+            console.warn(`No linked providers found for user ${userId}`);
+            return;
+        }
+
+        // Step 3: Filter providers to refresh (default = all providers)
+        const providersToUpdate = providersToRefresh.length > 0
+            ? result.rows.filter(row => providersToRefresh.includes(row.provider))
+            : result.rows; // Default: refresh all linked providers
+
+        // Step 4: Refresh the score for each selected provider
+        for (const row of providersToUpdate) {
+            console.log(`Refreshing score for provider: ${row.provider}, identifier: ${row.identifier}`);
+            await this.getScore(row.provider, row.identifier, true);
+        }
+    }
+
+
+
+
+    /**
+     *
+     * @param providerA
+     * @param identifierA
+     * @param providerB
+     * @param identifierB
+     */
+    async linkUserAccounts(providerA: string, identifierA: string, providerB: string, identifierB: string) {
+        // Get user IDs for both identifiers
+        const userIdA = await this.getOrCreateUserId(providerA, identifierA);
+        const userIdB = await this.getOrCreateUserId(providerB, identifierB);
+
+        // If both have different user_ids, merge them
+        if (userIdA !== userIdB) {
+            // Update all provider mappings to use the same `userIdA`
+            await this.query(`UPDATE provider_mappings SET user_id = $1 WHERE user_id = $2`, [userIdA, userIdB]);
+
+            // Delete old user_id to keep the table clean
+            await this.query(`DELETE FROM users WHERE user_id = $1`, [userIdB]);
         }
     }
 
