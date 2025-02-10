@@ -20,7 +20,7 @@
     ],
     "dependencies": {
         "@elizaos/core": "workspace:*",
-        "dkg.js": "^8.0.4",
+        "dkg.js": "^8.0.6",
         "tsup": "8.3.5",
         "agent-twitter-client": "0.0.18",
         "vader-sentiment": "^1.1.3",

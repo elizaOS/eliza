@@ -119,6 +119,10 @@ export const dkgInsert: Action = {
         try {
             elizaLogger.log("Publishing message to DKG");
 
+            elizaLogger.log(
+                `KA: ${JSON.stringify(memoryKnowledgeGraph, null, 2)}`,
+            );
+
             createAssetResult = await DkgClient.asset.create(
                 {
                     public: memoryKnowledgeGraph,
