@@ -6,8 +6,8 @@ export const defaultCharacter: Character = {
     plugins: [],
     clients: [
         Clients.TWITTER,
-        //Clients.TELEGRAM,
-        Clients.FARCASTER,
+        Clients.TELEGRAM,
+        //Clients.FARCASTER,
         //Clients.DISCORD,
         //Clients.AUTO
     ],
