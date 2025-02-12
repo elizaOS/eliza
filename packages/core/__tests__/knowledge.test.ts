@@ -1,15 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import knowledge from "../src/knowledge";
 import type { AgentRuntime } from "../src/runtime";
-import { KnowledgeItem, type Memory } from "../src/types";
-
-// Mock dependencies
-vi.mock("../embedding", () => ({
-    embed: vi.fn().mockResolvedValue(new Float32Array(1536).fill(0)),
-    getEmbeddingZeroVector: vi
-        .fn()
-        .mockReturnValue(new Float32Array(1536).fill(0)),
-}));
+import type { Memory } from "../src/types";
 
 vi.mock("../generation", () => ({
     splitChunks: vi.fn().mockImplementation(async (text) => [text]),
@@ -72,14 +64,11 @@ describe("Knowledge Module", () => {
         beforeEach(() => {
             mockRuntime = {
                 agentId: "test-agent",
-                character: {
-                    modelProvider: "openai",
-                },
                 messageManager: {
                     getCachedEmbeddings: vi.fn().mockResolvedValue([]),
                 },
                 knowledgeManager: {
-                    searchMemoriesByEmbedding: vi.fn().mockResolvedValue([
+                    searchMemories: vi.fn().mockResolvedValue([
                         {
                             content: {
                                 text: "test fragment",

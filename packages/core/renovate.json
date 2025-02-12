@@ -16,10 +16,6 @@
             ]
         },
         {
-            "groupName": "Testing frameworks",
-            "matchPackageNames": ["/^jest$/", "/^@types/jest$/"]
-        },
-        {
             "groupName": "Rollup and plugins",
             "matchPackageNames": ["/^@rollup//", "/^rollup/"]
         },
@@ -34,29 +30,6 @@
                 "/^@types/better-sqlite3/",
                 "/^@types/sql.js/"
             ]
-        },
-        {
-            "groupName": "AI/ML packages",
-            "matchPackageNames": [
-                "/^@anthropic-ai//",
-                "/^@huggingface//",
-                "/^openai$/",
-                "/^tiktoken$/"
-            ]
-        },
-        {
-            "groupName": "Audio processing",
-            "matchPackageNames": [
-                "/^wav/",
-                "/^@discordjs/opus/",
-                "/^fluent-ffmpeg/",
-                "/^ffmpeg/",
-                "/^@types/wav/"
-            ]
-        },
-        {
-            "groupName": "Solana packages",
-            "matchPackageNames": ["/^@solana//"]
         }
     ],
     "timezone": "UTC",

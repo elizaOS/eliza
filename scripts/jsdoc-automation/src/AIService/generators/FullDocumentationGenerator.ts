@@ -3,11 +3,11 @@ import type { Configuration } from "../../Configuration.js";
 import { TypeScriptParser } from "../../TypeScriptParser.js";
 import { CodeFormatter } from "../utils/CodeFormatter.js";
 import { DocumentOrganizer } from "../utils/DocumentOrganizer.js";
-import path from "path";
+import path from "node:path";
 import { PROMPT_TEMPLATES } from "../../utils/prompts";
 import type { FileDocsGroup, OrganizedDocs } from "../types";
 import { AIService } from "../AIService.js";
-import { promises as fs } from "fs";
+import { promises as fs } from "node:fs";
 
 interface FAQ {
     question: string;
@@ -203,8 +203,8 @@ export class FullDocumentationGenerator {
                  \`\`\`
                - Then, explain they need to:
                  1. cd into the agent/ directory
-                 2. Run pnpm install to install the new dependency
-                 3. Run pnpm build to build the project with the new plugin
+                 2. Run bun install to install the new dependency
+                 3. Run bun run build to build the project with the new plugin
 
             2. After installation, show how to import and use the plugin:
                - Import syntax using: import { ${exportName} } from "${packageJson.name}";

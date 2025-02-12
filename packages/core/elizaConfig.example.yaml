@@ -1,9 +1,0 @@
-# Load custom actions from the actions directory
-
-# Clone this into a elizaConfig.yaml file that is ignored by git
-
-# Paths are relative to the core/src directory
-
-actions:
-    - name: epicAction
-      path: ./custom_actions/epicAction.ts

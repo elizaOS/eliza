@@ -1,17 +1,17 @@
+import { splitChunks } from "./parsing.ts";
+import logger from "./logger.ts";
 import type { AgentRuntime } from "./runtime.ts";
-import { embed, getEmbeddingZeroVector } from "./embedding.ts";
-import type { KnowledgeItem, UUID, Memory } from "./types.ts";
+import { type KnowledgeItem, type Memory, ModelClass, type UUID } from "./types.ts";
 import { stringToUuid } from "./uuid.ts";
-import { splitChunks } from "./generation.ts";
-import elizaLogger from "./logger.ts";
 
 async function get(
     runtime: AgentRuntime,
     message: Memory
 ): Promise<KnowledgeItem[]> {
+    console.log("get", message);
     // Add validation for message
     if (!message?.content?.text) {
-        elizaLogger.warn("Invalid message for knowledge query:", {
+        logger.warn("Invalid message for knowledge query:", {
             message,
             content: message?.content,
             text: message?.content?.text,
@@ -20,7 +20,7 @@ async function get(
     }
 
     const processed = preprocess(message.content.text);
-    elizaLogger.debug("Knowledge query:", {
+    logger.debug("Knowledge query:", {
         original: message.content.text,
         processed,
         length: processed?.length,
@@ -28,14 +28,14 @@ async function get(
 
     // Validate processed text
     if (!processed || processed.trim().length === 0) {
-        elizaLogger.warn("Empty processed text for knowledge query");
+        logger.warn("Empty processed text for knowledge query");
         return [];
     }
 
-    const embedding = await embed(runtime, processed);
-    const fragments = await runtime.knowledgeManager.searchMemoriesByEmbedding(
-        embedding,
+    const embedding = await runtime.useModel(ModelClass.TEXT_EMBEDDING, processed);
+    const fragments = await runtime.knowledgeManager.searchMemories(
         {
+            embedding,
             roomId: message.agentId,
             count: 5,
             match_threshold: 0.1,
@@ -45,7 +45,7 @@ async function get(
     const uniqueSources = [
         ...new Set(
             fragments.map((memory) => {
-                elizaLogger.log(
+                logger.log(
                     `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
                 );
                 return memory.content.source;
@@ -70,6 +70,8 @@ async function set(
     chunkSize = 512,
     bleed = 20
 ) {
+    console.log("set", item);
+    const embedding = await runtime.useModel(ModelClass.TEXT_EMBEDDING, null);
     await runtime.documentsManager.createMemory({
         id: item.id,
         agentId: runtime.agentId,
@@ -77,14 +79,14 @@ async function set(
         userId: runtime.agentId,
         createdAt: Date.now(),
         content: item.content,
-        embedding: getEmbeddingZeroVector(),
+        embedding: embedding,
     });
 
     const preprocessed = preprocess(item.content.text);
     const fragments = await splitChunks(preprocessed, chunkSize, bleed);
 
     for (const fragment of fragments) {
-        const embedding = await embed(runtime, fragment);
+        const embedding = await runtime.useModel(ModelClass.TEXT_EMBEDDING, fragment);
         await runtime.knowledgeManager.createMemory({
             // We namespace the knowledge base uuid to avoid id
             // collision with the document above.
@@ -103,13 +105,13 @@ async function set(
 }
 
 export function preprocess(content: string): string {
-    elizaLogger.debug("Preprocessing text:", {
+    logger.debug("Preprocessing text:", {
         input: content,
         length: content?.length,
     });
 
     if (!content || typeof content !== "string") {
-        elizaLogger.warn("Invalid input for preprocessing");
+        logger.warn("Invalid input for preprocessing");
         return "";
     }
 

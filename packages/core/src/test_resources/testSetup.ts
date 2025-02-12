@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import path from "path";
+import path from "node:path";
 
 // Load test environment variables
 const envPath = path.resolve(__dirname, "../../.env.test");

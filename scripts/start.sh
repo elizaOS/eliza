@@ -125,14 +125,14 @@ setup_early_nvm() {
         exit 1
     fi
 
-    # Install pnpm
-    if ! command -v pnpm &> /dev/null; then
-        early_log "Installing pnpm..."
-        if ! npm install -g pnpm; then
-            early_error "Failed to install pnpm"
+    # Install bun
+    if ! command -v bun &> /dev/null; then
+        early_log "Installing bun..."
+        if ! npm install -g bun; then
+            early_error "Failed to install bun"
             exit 1
         fi
-        early_success "pnpm installed successfully"
+        early_success "bun installed successfully"
     fi
 }
 
@@ -245,7 +245,6 @@ create_character_template() {
 {
     "name": "$name",
     "clients": [],
-    "modelProvider": "anthropic",
     "settings": {
         "voice": {
             "model": "en_GB-alan-medium"
@@ -508,7 +507,7 @@ start_eliza() {
     log_info "Starting Eliza..."
     
     # Start server with selected character(s)
-    pnpm start --characters="$selected_character_path" &
+    bun start --characters="$selected_character_path" &
     SERVER_PID=$!
     sleep 2
     
@@ -519,7 +518,7 @@ start_eliza() {
     fi
     
     # Start client
-    pnpm start:client &
+    bun start:client &
     CLIENT_PID=$!
     sleep 3
     
@@ -564,29 +563,22 @@ build_and_start() {
         exit 1
     fi
 
-    # Check for pnpm
-    if ! command -v pnpm &> /dev/null; then
-        log_error "pnpm is not installed. Please install pnpm before running the script."
+    # Check for bun
+    if ! command -v bun &> /dev/null; then
+        log_error "bun is not installed. Please install bun before running the script."
         exit 1
     fi
 
-    # Clean and install
-    log_verbose "Cleaning project..."
-    if ! pnpm clean; then
-        log_error "Failed to clean project"
-        exit 1
-    fi
-    log_success "Project cleaned"
-
+    # INSTALL
     log_verbose "Installing dependencies..."
-    if ! pnpm install --no-frozen-lockfile; then
+    if ! bun install; then
         log_error "Failed to install dependencies"
         exit 1
     fi
     log_success "Dependencies installed"
 
     log_verbose "Building project..."
-    if ! pnpm build; then
+    if ! bun run build; then
         log_error "Failed to build project"
         exit 1
     fi
@@ -605,7 +597,7 @@ check_existing_installation() {
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         
         # Check for required commands
-        if command -v node &> /dev/null && command -v pnpm &> /dev/null; then
+        if command -v node &> /dev/null && command -v bun &> /dev/null; then
             # Verify Node.js version
             REQUIRED_NODE_VERSION=22
             CURRENT_NODE_VERSION=$(node -v | cut -d'.' -f1 | sed 's/v//')
@@ -655,13 +647,13 @@ check_existing_installation() {
                         fi
                         
                         # Install any new dependencies
-                        if ! pnpm install --no-frozen-lockfile; then
+                        if ! bun install; then
                             log_error "Failed to update dependencies"
                             return 1
                         fi
                         
                         # Rebuild
-                        if ! pnpm build; then
+                        if ! bun run build; then
                             log_error "Failed to rebuild after update"
                             return 1
                         fi
@@ -739,21 +731,21 @@ setup_node() {
         exit 1
     fi
     
-    # Install pnpm if not present
-    if ! command -v pnpm &> /dev/null; then
-        log_info "Installing pnpm..."
-        if ! npm install -g pnpm; then
-            log_error "Failed to install pnpm"
+    # Install bun if not present
+    if ! command -v bun &> /dev/null; then
+        log_info "Installing bun..."
+        if ! curl -fsSL https://bun.sh/install | bash; then
+            log_error "Failed to install bun"
             exit 1
         fi
-        log_success "pnpm installed"
+        log_success "bun installed"
     fi
     
     # Verify versions
     if [ "$VERBOSE" = true ]; then
         log_verbose "Node version: $(node -v)"
-        log_verbose "NPM version: $(npm -v)"
-        log_verbose "PNPM version: $(pnpm -v)"
+        log_verbose "npm version: $(npm -v)"
+        log_verbose "bun version: $(bun -v)"
     fi
     
     log_success "Node.js environment setup complete"

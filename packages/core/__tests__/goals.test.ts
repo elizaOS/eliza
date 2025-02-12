@@ -31,8 +31,6 @@ export const mockRuntime: IAgentRuntime = {
     databaseAdapter: mockDatabaseAdapter as any,
     cacheManager: new CacheManager(new MemoryCacheAdapter()),
     agentId: "qweqew-qweqwe-qweqwe-qweqwe-qweeqw",
-    serverUrl: "",
-    token: null,
     messageManager: {
         addEmbeddingToMemory: (_memory: Memory): Promise<Memory> => {
             throw new Error("Function not implemented.");
@@ -59,18 +57,6 @@ export const mockRuntime: IAgentRuntime = {
             roomIds: UUID[];
             agentId?: UUID;
         }): Promise<Memory[]> => {
-            throw new Error("Function not implemented.");
-        },
-        searchMemoriesByEmbedding: (
-            _embedding: number[],
-            _opts: {
-                match_threshold?: number;
-                count?: number;
-                roomId: UUID;
-                unique?: boolean;
-                agentId?: UUID;
-            }
-        ): Promise<Memory[]> => {
             throw new Error("Function not implemented.");
         },
         createMemory: (
@@ -120,18 +106,6 @@ export const mockRuntime: IAgentRuntime = {
         }): Promise<Memory[]> => {
             throw new Error("Function not implemented.");
         },
-        searchMemoriesByEmbedding: (
-            _embedding: number[],
-            _opts: {
-                match_threshold?: number;
-                count?: number;
-                roomId: UUID;
-                unique?: boolean;
-                agentId?: UUID;
-            }
-        ): Promise<Memory[]> => {
-            throw new Error("Function not implemented.");
-        },
         createMemory: (
             _memory: Memory,
             _unique?: boolean
@@ -177,18 +151,6 @@ export const mockRuntime: IAgentRuntime = {
             roomIds: UUID[];
             agentId?: UUID;
         }): Promise<Memory[]> => {
-            throw new Error("Function not implemented.");
-        },
-        searchMemoriesByEmbedding: (
-            _embedding: number[],
-            _opts: {
-                match_threshold?: number;
-                count?: number;
-                roomId: UUID;
-                unique?: boolean;
-                agentId?: UUID;
-            }
-        ): Promise<Memory[]> => {
             throw new Error("Function not implemented.");
         },
         createMemory: (

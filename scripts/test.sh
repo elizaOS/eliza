@@ -15,7 +15,7 @@ cd "$(dirname "$0")"/..
 # If specific test file provided, run just that
 if [[ "$1" == *".ts" ]]; then
     echo -e "\033[1mRunning specific test: $1\033[0m"
-    node --experimental-vm-modules $(which jest) "$1"
+    node --experimental-vm-modules $(which vitest) "$1"
     exit $?
 fi
 
@@ -30,7 +30,7 @@ if [ ! -z "$1" ]; then
     fi
 
     echo -e "\033[1mTesting package: $package\033[0m"
-    # Use find to get all test files and pass them explicitly to jest
+    # Use find to get all test files and pass them explicitly to vitest
     test_files=$(find "packages/$package/src" -name "*.test.ts" -type f)
     if [ -z "$test_files" ]; then
         echo "No test files found"
@@ -38,7 +38,7 @@ if [ ! -z "$1" ]; then
     fi
     echo "Found test files:"
     echo "$test_files"
-    node --experimental-vm-modules $(which jest) $test_files
+    node --experimental-vm-modules $(which vitest) $test_files
     exit $?
 fi
 

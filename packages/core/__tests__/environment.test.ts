@@ -1,67 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { validateEnv, validateCharacterConfig } from "../src/environment";
-import { ModelProviderName } from "../src/types";
-
-describe("Environment Configuration", () => {
-    const originalEnv = process.env;
-
-    beforeEach(() => {
-        process.env = {
-            ...originalEnv,
-            OPENAI_API_KEY: "sk-test123",
-            REDPILL_API_KEY: "test-key",
-            GROK_API_KEY: "test-key",
-            GROQ_API_KEY: "gsk_test123",
-            OPENROUTER_API_KEY: "test-key",
-            GOOGLE_GENERATIVE_AI_API_KEY: "test-key",
-            ELEVENLABS_XI_API_KEY: "test-key",
-        };
-    });
-
-    afterEach(() => {
-        process.env = originalEnv;
-    });
-
-    it("should validate correct environment variables", () => {
-        expect(() => validateEnv()).not.toThrow();
-    });
-
-    it("should throw error for invalid OpenAI API key format", () => {
-        process.env.OPENAI_API_KEY = "invalid-key";
-        expect(() => validateEnv()).toThrow(
-            "OpenAI API key must start with 'sk-'"
-        );
-    });
-
-    it("should throw error for invalid GROQ API key format", () => {
-        process.env.GROQ_API_KEY = "invalid-key";
-        expect(() => validateEnv()).toThrow(
-            "GROQ API key must start with 'gsk_'"
-        );
-    });
-
-    it("should throw error for missing required keys", () => {
-        delete process.env.REDPILL_API_KEY;
-        expect(() => validateEnv()).toThrow("REDPILL_API_KEY: Required");
-    });
-
-    it("should throw error for multiple missing required keys", () => {
-        delete process.env.REDPILL_API_KEY;
-        delete process.env.GROK_API_KEY;
-        delete process.env.OPENROUTER_API_KEY;
-        expect(() => validateEnv()).toThrow(
-            "Environment validation failed:\n" +
-                "REDPILL_API_KEY: Required\n" +
-                "GROK_API_KEY: Required\n" +
-                "OPENROUTER_API_KEY: Required"
-        );
-    });
-});
+import { describe, expect, it } from "vitest";
+import { validateCharacterConfig } from "../src/environment";
 
 describe("Character Configuration", () => {
     const validCharacterConfig = {
         name: "Test Character",
-        modelProvider: ModelProviderName.OPENAI,
         bio: "Test bio",
         lore: ["Test lore"],
         messageExamples: [
@@ -135,46 +77,6 @@ describe("Character Configuration", () => {
         expect(() =>
             validateCharacterConfig(configWithPluginObjects)
         ).not.toThrow();
-    });
-
-    it("should validate client-specific configurations", () => {
-        const configWithClientConfig = {
-            ...validCharacterConfig,
-            clientConfig: {
-                discord: {
-                    shouldIgnoreBotMessages: true,
-                    shouldIgnoreDirectMessages: false,
-                },
-                telegram: {
-                    shouldIgnoreBotMessages: true,
-                    shouldIgnoreDirectMessages: true,
-                },
-            },
-        };
-        expect(() =>
-            validateCharacterConfig(configWithClientConfig)
-        ).not.toThrow();
-    });
-
-    it("should validate twitter profile configuration", () => {
-        const configWithTwitter = {
-            ...validCharacterConfig,
-            twitterProfile: {
-                username: "testuser",
-                screenName: "Test User",
-                bio: "Test bio",
-                nicknames: ["test"],
-            },
-        };
-        expect(() => validateCharacterConfig(configWithTwitter)).not.toThrow();
-    });
-
-    it("should validate model endpoint override", () => {
-        const configWithEndpoint = {
-            ...validCharacterConfig,
-            modelEndpointOverride: "custom-endpoint",
-        };
-        expect(() => validateCharacterConfig(configWithEndpoint)).not.toThrow();
     });
 
     it("should validate message examples with additional properties", () => {

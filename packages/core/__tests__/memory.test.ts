@@ -66,54 +66,6 @@ describe("MemoryManager", () => {
         });
     });
 
-    describe("searchMemoriesByEmbedding", () => {
-        it("should use default threshold and count when not provided", async () => {
-            const embedding = [0.1, 0.2, 0.3];
-            const roomId = "test-room" as UUID;
-
-            mockDatabaseAdapter.searchMemories = vi.fn().mockResolvedValue([]);
-
-            await memoryManager.searchMemoriesByEmbedding(embedding, {
-                roomId,
-            });
-
-            expect(mockDatabaseAdapter.searchMemories).toHaveBeenCalledWith({
-                embedding,
-                match_threshold: 0.1,
-                match_count: 10,
-                roomId,
-                tableName: "test_memories",
-                agentId: "test-agent-id",
-                unique: false,
-            });
-        });
-
-        it("should respect custom threshold and count", async () => {
-            const embedding = [0.1, 0.2, 0.3];
-            const roomId = "test-room" as UUID;
-            const match_threshold = 0.5;
-            const count = 5;
-
-            mockDatabaseAdapter.searchMemories = vi.fn().mockResolvedValue([]);
-
-            await memoryManager.searchMemoriesByEmbedding(embedding, {
-                roomId,
-                match_threshold,
-                count,
-            });
-
-            expect(mockDatabaseAdapter.searchMemories).toHaveBeenCalledWith({
-                embedding,
-                match_threshold,
-                match_count: count,
-                roomId,
-                tableName: "test_memories",
-                agentId: "test-agent-id",
-                unique: false,
-            });
-        });
-    });
-
     describe("getMemories", () => {
         it("should handle pagination parameters", async () => {
             const roomId = "test-room" as UUID;

@@ -6,7 +6,6 @@ import {
     type IAgentRuntime,
     type Memory,
     ModelClass,
-    type Objective,
     type Goal,
     type State,
     type Evaluator,
@@ -65,7 +64,7 @@ async function handler(
     const response = await generateText({
         runtime,
         context,
-        modelClass: ModelClass.LARGE,
+        modelClass: ModelClass.TEXT_LARGE,
     });
 
     // Parse the JSON response to extract goal updates
@@ -101,7 +100,7 @@ async function handler(
     for (const goal of updatedGoals) {
         const id = goal.id;
         // delete id from goal
-        if (goal.id) delete goal.id;
+        if (goal.id) goal.id = undefined;
         await runtime.databaseAdapter.updateGoal({ ...goal, id });
     }
 

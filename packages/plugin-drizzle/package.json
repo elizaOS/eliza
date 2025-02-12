@@ -1,0 +1,41 @@
+{
+  "name": "@elizaos/plugin-drizzle",
+  "version": "1.0.0-alpha.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@elizaos/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "schema.sql",
+    "seed.sql"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@types/pg": "8.11.10",
+    "drizzle-kit": "^0.30.4",
+    "drizzle-orm": "^0.39.1",
+    "pg": "8.13.1"
+  },
+  "devDependencies": {
+    "dockerode": "^4.0.4",
+    "tsup": "8.3.5"
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

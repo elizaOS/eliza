@@ -62,7 +62,7 @@ jobs:
                             "content_path": "README.md"
                           }
                         ],
-                        save_path: "i18n/readme/README_${{ matrix.language.code }}.md",
+                        save_path: "packages/docs/packages/docs/i18n/readme/README_${{ matrix.language.code }}.md",
                         "model": "gpt-4o"
                       }
 

@@ -6,7 +6,7 @@ vi.mock('@elizaos/core', () => ({
     composeContext: vi.fn(),
     generateMessageResponse: vi.fn(),
     generateTrueOrFalse: vi.fn(),
-    elizaLogger: {
+    logger: {
         info: vi.fn(),
         error: vi.fn(),
         debug: vi.fn(),

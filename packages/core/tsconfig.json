@@ -19,9 +19,8 @@
         "checkJs": false,
         "noEmitOnError": false,
         "moduleDetection": "force",
-        "allowArbitraryExtensions": true,
-        "customConditions": ["@elizaos/source"]
+        "allowArbitraryExtensions": true
     },
-    "include": ["src/**/*"],
+    "include": ["src/**/*", "../plugin-bootstrap/src/relationships.ts", "../plugin-bootstrap/src/goals.ts", "../plugin-bootstrap/src/knowledge.ts"],
     "exclude": ["node_modules", "dist", "src/**/*.d.ts", "types/**/*.test.ts"]
 }

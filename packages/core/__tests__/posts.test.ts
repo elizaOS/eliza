@@ -7,31 +7,16 @@ const mockActors: Actor[] = [
         id: "f9c8b107-953b-473d-8c87-2894c6e3fe25",
         name: "Alice",
         username: "alice123",
-        details: {
-            tagline: "The quick brown fox",
-            summary: "Lorem ipsum dolor sit amet.",
-            quote: "To be or not to be.",
-        },
     },
     {
         id: "e4928cd1-8007-40b1-93ff-7c5da3c39e36",
         name: "Bob",
         username: "bob456",
-        details: {
-            tagline: "A journey of a thousand miles",
-            summary: "Sed ut perspiciatis unde omnis iste.",
-            quote: "Knowledge is power.",
-        },
     },
     {
         id: "b62e64da-5699-4c8e-b58c-8d447b2f2014",
         name: "Charlie",
         username: "charlie789",
-        details: {
-            tagline: "Hello, world!",
-            summary: "Lorem ipsum dolor sit.",
-            quote: "Live and let live.",
-        },
     },
 ];
 

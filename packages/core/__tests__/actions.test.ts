@@ -152,7 +152,7 @@ describe("Actions", () => {
 
     describe("Action Structure", () => {
         it("should validate action structure", () => {
-            mockActions.forEach((action) => {
+            for (const action of mockActions) {
                 expect(action).toHaveProperty("name");
                 expect(action).toHaveProperty("description");
                 expect(action).toHaveProperty("examples");
@@ -161,19 +161,19 @@ describe("Actions", () => {
                 expect(action).toHaveProperty("validate");
                 expect(Array.isArray(action.examples)).toBe(true);
                 expect(Array.isArray(action.similes)).toBe(true);
-            });
+            }
         });
 
         it("should validate example structure", () => {
-            mockActions.forEach((action) => {
-                action.examples.forEach((example) => {
-                    example.forEach((message) => {
+            for (const action of mockActions) {
+                for (const example of action.examples) {
+                    for (const message of example) {
                         expect(message).toHaveProperty("user");
                         expect(message).toHaveProperty("content");
                         expect(message.content).toHaveProperty("text");
-                    });
-                });
-            });
+                    }
+                }
+            }
         });
 
         it("should have unique action names", () => {

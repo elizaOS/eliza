@@ -30,23 +30,10 @@ case "$1" in
 
         # Define package directories to mount
         PACKAGES=(
-            "adapter-postgres"
-            "adapter-sqlite"
-            "adapter-sqljs"
-            "adapter-supabase"
-            "client-auto"
+            "plugin-sqlite"
             "client-direct"
-            "client-discord"
-            "client-farcaster"
-            "client-telegram"
-            "client-twitter"
             "core"
             "plugin-bootstrap"
-            "plugin-image-generation"
-            "plugin-node"
-            "plugin-solana"
-            "plugin-evm"
-            "plugin-tee"
         )
 
         # Start building the docker run command

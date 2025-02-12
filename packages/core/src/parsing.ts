@@ -1,4 +1,6 @@
-import type { ActionResponse } from "./types.ts";
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import logger from "./logger.ts";
+
 const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
 
 export const messageCompletionFooter = `\nResponse format should be formatted in a valid JSON block like this:
@@ -6,7 +8,7 @@ export const messageCompletionFooter = `\nResponse format should be formatted in
 { "user": "{{agentName}}", "text": "<string>", "action": "<string>" }
 \`\`\`
 
-The “action” field should be one of the options in [Available Actions] and the "text" field should be the response you want to send.
+The "action" field should be one of the options in [Available Actions] and the "text" field should be the response you want to send.
 `;
 
 export const shouldRespondFooter = `The available options are [RESPOND], [IGNORE], or [STOP]. Choose the most appropriate option.
@@ -56,7 +58,7 @@ export const parseBooleanFromText = (text: string) => {
 
     if (affirmative.includes(normalizedText)) {
         return true;
-    } else if (negative.includes(normalizedText)) {
+    }if (negative.includes(normalizedText)) {
         return false;
     }
 
@@ -86,7 +88,7 @@ export function parseJsonArrayFromText(text: string) {
     let jsonData = null;
 
     // First try to parse with the original JSON format
-    const jsonBlockMatch = text.match(jsonBlockPattern);
+    const jsonBlockMatch = text?.match(jsonBlockPattern);
 
     if (jsonBlockMatch) {
         try {
@@ -145,44 +147,25 @@ export function parseJSONObjectFromText(
     let jsonData = null;
     const jsonBlockMatch = text.match(jsonBlockPattern);
 
-    if (jsonBlockMatch) {
-        text = cleanJsonResponse(text);
-        const parsingText = normalizeJsonString(text);
-        try {
-            jsonData = JSON.parse(parsingText);
-        } catch (e) {
-            console.error("Error parsing JSON:", e);
-            console.error("Text is not JSON", text);
-            return extractAttributes(text);
+    try {
+        if (jsonBlockMatch) {
+            // Parse the JSON from inside the code block
+            jsonData = JSON.parse(jsonBlockMatch[1].trim());
+        } else {
+            // Try to parse the text directly if it's not in a code block
+            jsonData = JSON.parse(text.trim());
         }
-    } else {
-        const objectPattern = /{[\s\S]*?}?/;
-        const objectMatch = text.match(objectPattern);
-
-        if (objectMatch) {
-            text = cleanJsonResponse(text);
-            const parsingText = normalizeJsonString(text);
-            try {
-                jsonData = JSON.parse(parsingText);
-            } catch (e) {
-                console.error("Error parsing JSON:", e);
-                console.error("Text is not JSON", text);
-                return extractAttributes(text);
-            }
-        }
-    }
-
-    if (
-        typeof jsonData === "object" &&
-        jsonData !== null &&
-        !Array.isArray(jsonData)
-    ) {
-        return jsonData;
-    } else if (typeof jsonData === "object" && Array.isArray(jsonData)) {
-        return parseJsonArrayFromText(text);
-    } else {
+    } catch (e) {
+        console.error("Error parsing JSON:", e);
         return null;
     }
+
+    // Ensure we have a non-null object that's not an array
+    if (jsonData && typeof jsonData === "object" && !Array.isArray(jsonData)) {
+        return jsonData;
+    }
+
+    return null;
 }
 
 /**
@@ -195,28 +178,27 @@ export function extractAttributes(
     response: string,
     attributesToExtract?: string[]
 ): { [key: string]: string | undefined } {
-    response = response.trim();
     const attributes: { [key: string]: string | undefined } = {};
 
     if (!attributesToExtract || attributesToExtract.length === 0) {
         // Extract all attributes if no specific attributes are provided
-        const matches = response.matchAll(/"([^"]+)"\s*:\s*"([^"]*)"?/g);
+        const matches = response.matchAll(/"([^"]+)"\s*:\s*"([^"]*)"/g);
         for (const match of matches) {
             attributes[match[1]] = match[2];
         }
     } else {
         // Extract only specified attributes
-        attributesToExtract.forEach((attribute) => {
+        for (const attribute of attributesToExtract) {
             const match = response.match(
-                new RegExp(`"${attribute}"\\s*:\\s*"([^"]*)"?`, "i")
+                new RegExp(`"${attribute}"\\s*:\\s*"([^"]*)"`, "i")
             );
             if (match) {
                 attributes[attribute] = match[1];
             }
-        });
+        }
     }
 
-    return Object.entries(attributes).length > 0 ? attributes : null;
+    return attributes;
 }
 
 /**
@@ -274,7 +256,14 @@ export function cleanJsonResponse(response: string): string {
         .trim();
 }
 
-export const postActionResponseFooter = `Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.`;
+export const postActionResponseFooter = "Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.";
+
+type ActionResponse = {
+    like: boolean;
+    retweet: boolean;
+    quote?: boolean;
+    reply?: boolean;
+}
 
 export const parseActionResponseFromText = (
     text: string
@@ -336,11 +325,32 @@ export function truncateToCompleteSentence(
     if (lastSpaceIndex !== -1) {
         const truncatedAtSpace = text.slice(0, lastSpaceIndex).trim();
         if (truncatedAtSpace.length > 0) {
-            return truncatedAtSpace + "...";
+            return `${truncatedAtSpace}...`;
         }
     }
 
     // Fallback: Hard truncate and add ellipsis
     const hardTruncated = text.slice(0, maxLength - 3).trim();
-    return hardTruncated + "...";
+    return `${hardTruncated}...`;
+}
+
+export async function splitChunks(
+    content: string,
+    chunkSize = 512,
+    bleed = 20
+): Promise<string[]> {
+    logger.debug("[splitChunks] Starting text split");
+
+    const textSplitter = new RecursiveCharacterTextSplitter({
+        chunkSize: Number(chunkSize),
+        chunkOverlap: Number(bleed),
+    });
+
+    const chunks = await textSplitter.splitText(content);
+    logger.debug("[splitChunks] Split complete:", {
+        numberOfChunks: chunks.length,
+        averageChunkSize: chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
+    });
+
+    return chunks;
 }

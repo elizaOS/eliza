@@ -11,9 +11,9 @@ import type {
     TodoItem,
 } from "./types/index.js";
 import type { GitManager } from "./GitManager.js";
-import fs from "fs";
+import fs from "node:fs";
 import type { Configuration } from "./Configuration.js";
-import path from "path";
+import path from "node:path";
 import type { AIService } from "./AIService/AIService.js";
 import { PluginDocumentationGenerator } from "./PluginDocumentationGenerator.js";
 import { JSDocValidator } from "./JSDocValidator.js";

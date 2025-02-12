@@ -1,5 +1,3 @@
-import path from "path";
-import fs from "fs/promises";
 import type {
     CacheOptions,
     ICacheManager,
@@ -30,39 +28,6 @@ export class MemoryCacheAdapter implements ICacheAdapter {
 
     async delete(key: string): Promise<void> {
         this.data.delete(key);
-    }
-}
-
-export class FsCacheAdapter implements ICacheAdapter {
-    constructor(private dataDir: string) {}
-
-    async get(key: string): Promise<string | undefined> {
-        try {
-            return await fs.readFile(path.join(this.dataDir, key), "utf8");
-        } catch {
-            // console.error(error);
-            return undefined;
-        }
-    }
-
-    async set(key: string, value: string): Promise<void> {
-        try {
-            const filePath = path.join(this.dataDir, key);
-            // Ensure the directory exists
-            await fs.mkdir(path.dirname(filePath), { recursive: true });
-            await fs.writeFile(filePath, value, "utf8");
-        } catch (error) {
-            console.error(error);
-        }
-    }
-
-    async delete(key: string): Promise<void> {
-        try {
-            const filePath = path.join(this.dataDir, key);
-            await fs.unlink(filePath);
-        } catch {
-            // console.error(error);
-        }
     }
 }
 

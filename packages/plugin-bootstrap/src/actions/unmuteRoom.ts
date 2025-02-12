@@ -52,7 +52,7 @@ export const unmuteRoomAction: Action = {
             const response = generateTrueOrFalse({
                 context: shouldUnmuteContext,
                 runtime,
-                modelClass: ModelClass.LARGE,
+                modelClass: ModelClass.TEXT_LARGE,
             });
 
             return response;

@@ -1,10 +1,9 @@
-import { Character, ModelProviderName } from "@elizaos/core";
+import type { Character } from "@elizaos/core";
 
 export const mockCharacter: Character = {
     name: "Eliza",
     username: "eliza",
     plugins: [],
-    modelProvider: ModelProviderName.LLAMALOCAL,
     settings: {
         secrets: {},
         voice: {

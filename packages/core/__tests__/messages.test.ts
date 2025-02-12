@@ -29,11 +29,6 @@ describe("Messages Library", () => {
                 id: userId,
                 name: "Test User",
                 username: "testuser",
-                details: {
-                    tagline: "A test user",
-                    summary: "This is a test user for the system.",
-                    quote: "",
-                },
             },
         ];
     });
@@ -49,17 +44,12 @@ describe("Messages Library", () => {
             id: userId,
             name: "Test User",
             username: "testuser",
-            details: {
-                tagline: "A test user",
-                summary: "This is a test user for the system.",
-            },
         });
 
         const result = await getActorDetails({ runtime, roomId });
 
         expect(result.length).toBeGreaterThan(0);
         expect(result[0].name).toBe("Test User");
-        expect(result[0].details?.tagline).toBe("A test user");
     });
 
     test("formatActors should format actors into a readable string", () => {
@@ -152,21 +142,11 @@ describe("Messages", () => {
             id: "123e4567-e89b-12d3-a456-426614174006" as UUID,
             name: "Alice",
             username: "alice",
-            details: {
-                tagline: "Software Engineer",
-                summary: "Full-stack developer with 5 years experience",
-                quote: "",
-            },
         },
         {
             id: "123e4567-e89b-12d3-a456-426614174007" as UUID,
             name: "Bob",
             username: "bob",
-            details: {
-                tagline: "Product Manager",
-                summary: "Experienced in agile methodologies",
-                quote: "",
-            },
         },
     ];
 
@@ -272,11 +252,6 @@ describe("Messages", () => {
                     id: "123e4567-e89b-12d3-a456-426614174013" as UUID,
                     name: "Charlie",
                     username: "charlie",
-                    details: {
-                        tagline: "Tag",
-                        summary: "Summary",
-                        quote: "Quote",
-                    },
                 },
             ];
             const formatted = formatActors({ actors: actorsWithoutDetails });

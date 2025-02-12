@@ -7,7 +7,7 @@ services:
         tty: true
         volumes:
             - /var/run/tappd.sock:/var/run/tappd.sock
-            - eliza:/app/packages/client-twitter/src/tweetcache
+            - eliza:/app/packages/plugin-twitter/src/tweetcache
             - eliza:/app/db.sqlite
         environment:
             - OPENAI_API_KEY=

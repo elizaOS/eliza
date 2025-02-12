@@ -4,7 +4,7 @@ FROM $BASE_IMAGE
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install pnpm globally and install necessary build tools
+# Install bun globally and install necessary build tools
 RUN apt-get update \
     && apt-get install -y \
     git \
@@ -16,8 +16,7 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-ARG PNPM_VER=9.15.2
-RUN npm install -g pnpm@${PNPM_VER}
+RUN npm install -g bun@$1.2.2
 
 # Set Python 3 as the default python
 RUN ln -s /usr/bin/python3 /usr/bin/python

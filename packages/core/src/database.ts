@@ -1,17 +1,14 @@
 import type {
     Account,
     Actor,
-    GoalStatus,
     Goal,
+    GoalStatus,
+    IDatabaseAdapter,
     Memory,
+    Participant,
     Relationship,
     UUID,
-    RAGKnowledgeItem,
-    Participant,
-    IDatabaseAdapter,
 } from "./types.ts";
-import { CircuitBreaker } from "./database/CircuitBreaker";
-import { elizaLogger } from "./logger";
 
 /**
  * An abstract class representing a database adapter for managing various entities
@@ -22,35 +19,6 @@ export abstract class DatabaseAdapter<DB = any> implements IDatabaseAdapter {
      * The database instance.
      */
     db: DB;
-
-    /**
-     * Circuit breaker instance used to handle fault tolerance and prevent cascading failures.
-     * Implements the Circuit Breaker pattern to temporarily disable operations when a failure threshold is reached.
-     *
-     * The circuit breaker has three states:
-     * - CLOSED: Normal operation, requests pass through
-     * - OPEN: Failure threshold exceeded, requests are blocked
-     * - HALF_OPEN: Testing if service has recovered
-     *
-     * @protected
-     */
-    protected circuitBreaker: CircuitBreaker;
-
-    /**
-     * Creates a new DatabaseAdapter instance with optional circuit breaker configuration.
-     *
-     * @param circuitBreakerConfig - Configuration options for the circuit breaker
-     * @param circuitBreakerConfig.failureThreshold - Number of failures before circuit opens (defaults to 5)
-     * @param circuitBreakerConfig.resetTimeout - Time in ms before attempting to close circuit (defaults to 60000)
-     * @param circuitBreakerConfig.halfOpenMaxAttempts - Number of successful attempts needed to close circuit (defaults to 3)
-     */
-    constructor(circuitBreakerConfig?: {
-        failureThreshold?: number;
-        resetTimeout?: number;
-        halfOpenMaxAttempts?: number;
-    }) {
-        this.circuitBreaker = new CircuitBreaker(circuitBreakerConfig);
-    }
 
     /**
      * Optional initialization method for the database adapter.
@@ -167,7 +135,7 @@ export abstract class DatabaseAdapter<DB = any> implements IDatabaseAdapter {
         roomId: UUID;
         embedding: number[];
         match_threshold: number;
-        match_count: number;
+        count: number;
         unique: boolean;
     }): Promise<Memory[]>;
 
@@ -180,24 +148,6 @@ export abstract class DatabaseAdapter<DB = any> implements IDatabaseAdapter {
         goalId: UUID;
         status: GoalStatus;
     }): Promise<void>;
-
-    /**
-     * Searches for memories by embedding and other specified parameters.
-     * @param embedding The embedding vector to search with.
-     * @param params Additional parameters for the search.
-     * @returns A Promise that resolves to an array of Memory objects.
-     */
-    abstract searchMemoriesByEmbedding(
-        embedding: number[],
-        params: {
-            match_threshold?: number;
-            count?: number;
-            roomId?: UUID;
-            agentId?: UUID;
-            unique?: boolean;
-            tableName: string;
-        }
-    ): Promise<Memory[]>;
 
     /**
      * Creates a new memory in the database.
@@ -358,6 +308,7 @@ export abstract class DatabaseAdapter<DB = any> implements IDatabaseAdapter {
         roomId: UUID,
         userId: UUID
     ): Promise<"FOLLOWED" | "MUTED" | null>;
+
     abstract setParticipantUserState(
         roomId: UUID,
         userId: UUID,
@@ -392,69 +343,4 @@ export abstract class DatabaseAdapter<DB = any> implements IDatabaseAdapter {
     abstract getRelationships(params: {
         userId: UUID;
     }): Promise<Relationship[]>;
-
-    /**
-     * Retrieves knowledge items based on specified parameters.
-     * @param params Object containing search parameters
-     * @returns Promise resolving to array of knowledge items
-     */
-    abstract getKnowledge(params: {
-        id?: UUID;
-        agentId: UUID;
-        limit?: number;
-        query?: string;
-        conversationContext?: string;
-    }): Promise<RAGKnowledgeItem[]>;
-
-    abstract searchKnowledge(params: {
-        agentId: UUID;
-        embedding: Float32Array;
-        match_threshold: number;
-        match_count: number;
-        searchText?: string;
-    }): Promise<RAGKnowledgeItem[]>;
-
-    /**
-     * Creates a new knowledge item in the database.
-     * @param knowledge The knowledge item to create
-     * @returns Promise resolving when creation is complete
-     */
-    abstract createKnowledge(knowledge: RAGKnowledgeItem): Promise<void>;
-
-    /**
-     * Removes a knowledge item and its associated chunks from the database.
-     * @param id The ID of the knowledge item to remove
-     * @returns Promise resolving when removal is complete
-     */
-    abstract removeKnowledge(id: UUID): Promise<void>;
-
-    /**
-     * Removes an agents full knowledge database and its associated chunks from the database.
-     * @param agentId The Agent ID of the knowledge items to remove
-     * @returns Promise resolving when removal is complete
-     */
-    abstract clearKnowledge(agentId: UUID, shared?: boolean): Promise<void>;
-
-    /**
-     * Executes an operation with circuit breaker protection.
-     * @param operation A function that returns a Promise to be executed with circuit breaker protection
-     * @param context A string describing the context/operation being performed for logging purposes
-     * @returns A Promise that resolves to the result of the operation
-     * @throws Will throw an error if the circuit breaker is open or if the operation fails
-     * @protected
-     */
-    protected async withCircuitBreaker<T>(
-        operation: () => Promise<T>,
-        context: string
-    ): Promise<T> {
-        try {
-            return await this.circuitBreaker.execute(operation);
-        } catch (error) {
-            elizaLogger.error(`Circuit breaker error in ${context}:`, {
-                error: error instanceof Error ? error.message : String(error),
-                state: this.circuitBreaker.getState(),
-            });
-            throw error;
-        }
-    }
 }

@@ -8,8 +8,8 @@ import type { AIService } from "./AIService/AIService.js";
 import type { GitManager } from "./GitManager.js";
 import type { Configuration } from "./Configuration.js";
 import { FullDocumentationGenerator } from "./AIService/generators/FullDocumentationGenerator.js";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 
 /**
  * Generates comprehensive plugin documentation based on existing JSDoc comments

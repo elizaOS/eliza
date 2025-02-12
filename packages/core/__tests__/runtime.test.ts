@@ -1,13 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, test, vi } from "vitest";
 import { AgentRuntime } from "../src/runtime";
-import {
-    type IDatabaseAdapter,
-    ModelProviderName,
-    type Action,
-    type Memory,
-    type UUID,
+import type {
+    Action,
+    IDatabaseAdapter,
+    IMemoryManager,
+    Memory,
+    UUID
 } from "../src/types";
-import { mockCharacter } from "./mockCharacter.ts";
 
 // Mock dependencies with minimal implementations
 const mockDatabaseAdapter: IDatabaseAdapter = {
@@ -19,12 +18,12 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
     getMemories: vi.fn().mockResolvedValue([]),
     getMemoryById: vi.fn().mockResolvedValue(null),
     getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
+    getMemoriesByIds: vi.fn().mockResolvedValue([]),
     getCachedEmbeddings: vi.fn().mockResolvedValue([]),
     log: vi.fn().mockResolvedValue(undefined),
     getActorDetails: vi.fn().mockResolvedValue([]),
     searchMemories: vi.fn().mockResolvedValue([]),
     updateGoalStatus: vi.fn().mockResolvedValue(undefined),
-    searchMemoriesByEmbedding: vi.fn().mockResolvedValue([]),
     createMemory: vi.fn().mockResolvedValue(undefined),
     removeMemory: vi.fn().mockResolvedValue(undefined),
     removeAllMemories: vi.fn().mockResolvedValue(undefined),
@@ -53,7 +52,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
 const mockCacheManager = {
     get: vi.fn().mockResolvedValue(null),
     set: vi.fn().mockResolvedValue(undefined),
-    delete: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined)
 };
 
 // Mock action creator
@@ -71,12 +70,83 @@ describe("AgentRuntime", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        
         runtime = new AgentRuntime({
-            token: "test-token",
-            character: mockCharacter,
+            character: {
+                name: "Test Character",
+                username: "test",
+                bio: ["Test bio"],
+                lore: ["Test lore"],
+                messageExamples: [],
+                postExamples: [],
+                topics: [],
+                adjectives: [],
+                style: {
+                    all: [],
+                    chat: [],
+                    post: []
+                },
+            },
             databaseAdapter: mockDatabaseAdapter,
             cacheManager: mockCacheManager,
-            modelProvider: ModelProviderName.OPENAI,
+        });
+    });
+
+    describe("memory manager service", () => {
+        it("should provide access to different memory managers", () => {
+            expect(runtime.messageManager).toBeDefined();
+            expect(runtime.descriptionManager).toBeDefined();
+            expect(runtime.loreManager).toBeDefined();
+            expect(runtime.documentsManager).toBeDefined();
+            expect(runtime.knowledgeManager).toBeDefined();
+        });
+
+        it("should allow registering custom memory managers", () => {
+            const customManager: IMemoryManager = {
+                runtime: runtime,
+                tableName: "custom",
+                getMemories: vi.fn(),
+                searchMemories: vi.fn(),
+                getCachedEmbeddings: vi.fn(),
+                getMemoryById: vi.fn(),
+                getMemoriesByRoomIds: vi.fn(),
+                createMemory: vi.fn(),
+                removeMemory: vi.fn(),
+                removeAllMemories: vi.fn(),
+                countMemories: vi.fn(),
+                addEmbeddingToMemory: vi.fn(),
+            };
+            runtime.registerMemoryManager(customManager);
+            expect(runtime.getMemoryManager("custom")).toBe(customManager);
+        });
+    });
+
+    describe("model provider management", () => {
+        it("should provide access to the configured model provider", () => {
+            const provider = runtime;
+            expect(provider).toBeDefined();
+        });
+    });
+
+    describe("state management", () => {
+        it("should compose state with additional keys", async () => {
+            const message: Memory = {
+                id: "123e4567-e89b-12d3-a456-426614174003",
+                userId: "123e4567-e89b-12d3-a456-426614174004",
+                agentId: "123e4567-e89b-12d3-a456-426614174005",
+                roomId: "123e4567-e89b-12d3-a456-426614174003",
+                content: { type: "text", text: "test message" },
+            };
+
+            const additionalKeys = {
+                customKey: "customValue"
+            };
+
+            const state = await runtime.composeState(message, additionalKeys);
+            expect(state).toHaveProperty("customKey", "customValue");
+            expect(state).toHaveProperty("roomId");
+            expect(state).toHaveProperty("actors");
+            expect(state).toHaveProperty("recentMessages");
         });
     });
 
@@ -95,49 +165,45 @@ describe("AgentRuntime", () => {
             expect(runtime.actions).toContain(action1);
             expect(runtime.actions).toContain(action2);
         });
+    });
+});
 
-        it("should process registered actions", async () => {
-            const action = createMockAction("testAction");
-            runtime.registerAction(action);
-
-            const message: Memory = {
-                id: "123e4567-e89b-12d3-a456-426614174003",
-                userId: "123e4567-e89b-12d3-a456-426614174004",
-                agentId: "123e4567-e89b-12d3-a456-426614174005",
-                roomId: "123e4567-e89b-12d3-a456-426614174003",
-                content: { type: "text", text: "test message" },
-            };
-
-            const response: Memory = {
-                id: "123e4567-e89b-12d3-a456-426614174006",
-                userId: "123e4567-e89b-12d3-a456-426614174005",
-                agentId: "123e4567-e89b-12d3-a456-426614174005",
-                roomId: "123e4567-e89b-12d3-a456-426614174003",
-                content: {
-                    type: "text",
-                    text: "test response",
-                    action: "testAction",
-                },
-            };
-
-            await runtime.processActions(message, [response], {
-                bio: "Test agent bio",
-                lore: "Test agent lore and background",
-                messageDirections: "How to respond to messages",
-                postDirections: "How to create posts",
-                roomId: "123e4567-e89b-12d3-a456-426614174003",
-                actors: "List of actors in conversation",
-                recentMessages: "Recent conversation history",
-                recentMessagesData: [],
-                goals: "Current conversation goals",
-                goalsData: [],
-                actionsData: [],
-                knowledgeData: [],
-                recentInteractionsData: [],
-            });
-
-            expect(action.handler).toBeDefined();
-            expect(action.validate).toBeDefined();
+describe("MemoryManagerService", () => {
+    test("should provide access to different memory managers", async () => {
+        const runtime = new AgentRuntime({
+            databaseAdapter: mockDatabaseAdapter,
+            cacheManager: mockCacheManager
         });
+
+        expect(runtime.messageManager).toBeDefined();
+        expect(runtime.descriptionManager).toBeDefined();
+        expect(runtime.loreManager).toBeDefined();
+        expect(runtime.documentsManager).toBeDefined();
+        expect(runtime.knowledgeManager).toBeDefined();
+    });
+
+    test("should allow registering custom memory managers", async () => {
+        const runtime = new AgentRuntime({
+            databaseAdapter: mockDatabaseAdapter,
+            cacheManager: mockCacheManager
+        });
+
+        const customManager: IMemoryManager = {
+            runtime: runtime,
+            tableName: "custom",
+            getMemories: vi.fn(),
+            searchMemories: vi.fn(),
+            getCachedEmbeddings: vi.fn(),
+            getMemoryById: vi.fn(),
+            getMemoriesByRoomIds: vi.fn(),
+            createMemory: vi.fn(),
+            removeMemory: vi.fn(),
+            removeAllMemories: vi.fn(),
+            countMemories: vi.fn(),
+            addEmbeddingToMemory: vi.fn()
+        };
+
+        runtime.registerMemoryManager(customManager);
+        expect(runtime.getMemoryManager("custom")).toBe(customManager);
     });
 });

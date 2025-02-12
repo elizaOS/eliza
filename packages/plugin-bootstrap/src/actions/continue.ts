@@ -1,4 +1,4 @@
-import { composeContext, elizaLogger } from "@elizaos/core";
+import { composeContext, logger } from "@elizaos/core";
 import { generateMessageResponse, generateTrueOrFalse } from "@elizaos/core";
 import { booleanFooter, messageCompletionFooter } from "@elizaos/core";
 import {
@@ -118,14 +118,14 @@ export const continueAction: Action = {
                 .filter((m: Memory) => m.content?.action === "CONTINUE").length;
 
             if (continueCount >= maxContinuesInARow) {
-                elizaLogger.log(
+                logger.log(
                     `[CONTINUE] Max continues (${maxContinuesInARow}) reached for this message chain`
                 );
                 return;
             }
 
             if (lastAgentMessage.content?.action !== "CONTINUE") {
-                elizaLogger.log(
+                logger.log(
                     `[CONTINUE] Last message wasn't a CONTINUE, preventing double response`
                 );
                 return;
@@ -141,7 +141,7 @@ export const continueAction: Action = {
             message.content.text.endsWith("?") ||
             message.content.text.endsWith("!")
         ) {
-            elizaLogger.log(
+            logger.log(
                 `[CONTINUE] Last message had question/exclamation. Not proceeding.`
             );
             return;
@@ -167,7 +167,7 @@ export const continueAction: Action = {
 
             const response = await generateTrueOrFalse({
                 context: shouldRespondContext,
-                modelClass: ModelClass.SMALL,
+                modelClass: ModelClass.TEXT_SMALL,
                 runtime,
             });
 
@@ -177,7 +177,7 @@ export const continueAction: Action = {
         // Use AI to determine if we should continue
         const shouldContinue = await _shouldContinue(state);
         if (!shouldContinue) {
-            elizaLogger.log("[CONTINUE] Not elaborating, returning");
+            logger.log("[CONTINUE] Not elaborating, returning");
             return;
         }
 
@@ -194,7 +194,7 @@ export const continueAction: Action = {
         const response = await generateMessageResponse({
             runtime,
             context,
-            modelClass: ModelClass.LARGE,
+            modelClass: ModelClass.TEXT_LARGE,
         });
 
         response.inReplyTo = message.id;

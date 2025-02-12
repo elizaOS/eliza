@@ -9,7 +9,7 @@ The Bootstrap plugin enables fundamental agent behaviors including conversation 
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-bootstrap
+bun install @elizaos/plugin-bootstrap
 ```
 
 ## Features
@@ -74,19 +74,19 @@ pnpm install @elizaos/plugin-bootstrap
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run linting:
 
 ```bash
-pnpm run lint
+bun run lint
 ```
 
 ## Dependencies

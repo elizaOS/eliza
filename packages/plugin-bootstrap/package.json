@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-bootstrap",
-    "version": "0.25.6-alpha.1",
+    "version": "1.0.0-alpha.0",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",
@@ -9,7 +9,6 @@
         "./package.json": "./package.json",
         ".": {
             "import": {
-                "@elizaos/source": "./src/index.ts",
                 "types": "./dist/index.d.ts",
                 "default": "./dist/index.js"
             }
@@ -20,6 +19,8 @@
     ],
     "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@ai-sdk/ui-utils": "1.1.9",
+        "zod": "3.21.4",
         "tsup": "8.3.5"
     },
     "scripts": {
@@ -32,5 +33,8 @@
     },
     "publishConfig": {
         "access": "public"
+    },
+    "resolutions": {
+        "zod": "3.24.1"
     }
 }

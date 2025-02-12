@@ -1,4 +1,4 @@
-import * as fs from "fs";
+import * as fs from "node:fs";
 import { parse, type ParserOptions } from "@typescript-eslint/parser";
 import { type ActionBounds, ActionMetadata } from "./types";
 
