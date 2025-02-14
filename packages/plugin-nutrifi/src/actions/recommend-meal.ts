@@ -36,8 +36,10 @@ export const recommendMealAction: Action = {
     similes: ["SUGGEST_FOOD", "MEAL_PLAN", "FOOD_RECOMMENDATION"],
     
     validate: async (runtime: IAgentRuntime, message: Memory) => {
+        elizaLogger.debug("[RECOMMEND_MEAL] Validating action for message:", message.content);
         try {
-            // Get user preferences from memories
+            // Get user preferences from memories with more detailed logging
+            elizaLogger.debug("[RECOMMEND_MEAL] Attempting to fetch preferences");
             const userPrefs = await runtime.databaseAdapter.getMemories({
                 roomId: message.roomId,
                 tableName: USER_PREFS_TABLE,
@@ -45,15 +47,21 @@ export const recommendMealAction: Action = {
                 count: 1
             });
             
-            if (!userPrefs || userPrefs.length === 0) {
-                elizaLogger.log("[RECOMMEND_MEAL] No user preferences found");
-                return false;
-            }
+            elizaLogger.debug("[RECOMMEND_MEAL] Raw user preferences result:", userPrefs);
+    
+            // Modified check: look for preferences in the content structure
+            const hasPreferences = userPrefs && 
+                                 userPrefs.length > 0 && 
+                                 userPrefs[0].content &&
+                                 (userPrefs[0].content.preferences || 
+                                  userPrefs[0].content.text);
+    
+            elizaLogger.debug("[RECOMMEND_MEAL] Has preferences:", hasPreferences);
             
-            return true;
+            return true;  // Always return true to allow the handler to manage the flow
         } catch (error) {
             elizaLogger.error("[RECOMMEND_MEAL] Validation error:", error);
-            return false;
+            return true;  // Still return true to allow handler to manage
         }
     },
     description: "Recommend meals based on user's fitness goals, dietary preferences, and restrictions. Use when user asks for food suggestions or meal planning advice.",
@@ -77,6 +85,9 @@ export const recommendMealAction: Action = {
                 state = await runtime.composeState(message);
             }
 
+            // Add a small delay to ensure preferences are stored
+        await new Promise(resolve => setTimeout(resolve, 1000))
+
             // Get user preferences from memories
             elizaLogger.debug("[RECOMMEND_MEAL] Fetching user preferences");
             const userPrefs = await runtime.databaseAdapter.getMemories({
@@ -85,23 +96,22 @@ export const recommendMealAction: Action = {
                 agentId: runtime.agentId,
                 count: 1
             });
+            
             elizaLogger.debug("[RECOMMEND_MEAL] User preferences found:", userPrefs);
-
-            // Handle missing preferences
-        if (!userPrefs || userPrefs.length === 0) {
-            const responseContent: Content = {
-                text: "I don't have your dietary preferences yet. Could you tell me about your fitness goals and any dietary restrictions you have?",
-                action: "RECOMMEND_MEAL",
-                inReplyTo: message.id
-            };
-            await callback(responseContent);
-            return responseContent;
-        }
-
+            
+            // Modified preference check and handling
+            if (!userPrefs || userPrefs.length === 0) {
+                return null;  // Return null instead of sending the preferences message
+            }
+            
+            // Extract preferences from the stored content
+            const preferences = userPrefs[0].content.preferences || 
+                               JSON.parse(userPrefs[0].content.text || '{}');
+            
             // Update state with user preferences
             state = {
                 ...state,
-                userPreferences: userPrefs[0]?.content || {}
+                userPreferences: preferences
             };
             elizaLogger.debug("[RECOMMEND_MEAL] Updated state:", state);
 

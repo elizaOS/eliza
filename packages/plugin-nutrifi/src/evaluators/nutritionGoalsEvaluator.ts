@@ -63,6 +63,7 @@ async function handler(
     message: Memory,
     state: State | undefined
 ): Promise<boolean> {
+    console.log("[UPDATE_NUTRITION] Handler started");
     try {
         state = (await runtime.composeState(message)) as State;
         const context = composeContext({
@@ -77,27 +78,48 @@ async function handler(
             modelClass: ModelClass.LARGE,
         });
 
-        // Parse the JSON response
-        const updates = parseJsonArrayFromText(response);
+        // Add debug logging
+        console.log("[UPDATE_NUTRITION] Generated response:", response);
+
+        // Parse the JSON response - Modified to handle string better
+        let updates;
+        try {
+            // Look for JSON structure in the response
+            const jsonMatch = response.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                updates = JSON.parse(jsonMatch[0]);
+            }
+        } catch (parseError) {
+            console.error("[UPDATE_NUTRITION] JSON parse error:", parseError);
+        }
 
         if (updates) {
-            // Update preferences in database
+            // Store preferences with proper structure
             await runtime.databaseAdapter.createMemory({
-                id: message.id,            // optional UUID
-                userId: message.userId,    // required UUID
-                agentId: runtime.agentId, // required UUID
-                roomId: message.roomId,   // required UUID
-                content: {                // required Content
-                    text: JSON.stringify(updates)
+                id: message.id,
+                userId: message.userId,
+                agentId: runtime.agentId,
+                roomId: message.roomId,
+                content: {
+                    text: JSON.stringify(updates),
+                    preferences: updates  // Add structured data
                 }
             }, 'user_preferences');
 
+            console.log("[UPDATE_NUTRITION] Attempting to verify storage...");
+            const storedPrefs = await runtime.databaseAdapter.getMemories({
+                roomId: message.roomId,
+                tableName: 'user_preferences',
+                agentId: runtime.agentId,
+                count: 1
+            });
+            console.log("[UPDATE_NUTRITION] Stored preferences found:", storedPrefs);
             return true;
         }
 
         return false;
     } catch (error) {
-        console.error("Error in nutrition goals evaluator:", error);
+        console.error("[UPDATE_NUTRITION] Error:", error);
         return false;
     }
 }
@@ -111,15 +133,25 @@ export const nutritionGoalsEvaluator: Evaluator = {
         "UPDATE_FITNESS_GOALS"
     ],
     validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+        console.log("[UPDATE_NUTRITION] Validating message:", message.content.text);
+        
         // Check if message contains nutrition-related content
         const content = message.content.text.toLowerCase();
         const nutritionKeywords = [
             'diet', 'food', 'eat', 'meal', 'calories',
             'protein', 'carbs', 'weight', 'allergic',
-            'vegan', 'vegetarian', 'gluten', 'dairy'
+            'vegan', 'vegetarian', 'gluten', 'dairy',
+            'fitness', 'goals', 'endurance', 'marathon',
+            'activity', 'restriction'  // Added more relevant keywords
         ];
         
-        return nutritionKeywords.some(keyword => content.includes(keyword));
+        const foundKeywords = nutritionKeywords.filter(keyword => content.includes(keyword));
+        console.log("[UPDATE_NUTRITION] Found keywords:", foundKeywords);
+        
+        const shouldProcess = foundKeywords.length > 0;
+        console.log("[UPDATE_NUTRITION] Should process:", shouldProcess);
+        
+        return shouldProcess;
     },
     description: "Analyze conversation for nutrition-related preferences and goals and update user profile accordingly.",
     handler,
