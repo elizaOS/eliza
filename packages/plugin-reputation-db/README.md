@@ -161,6 +161,63 @@ This plugin integrates and builds upon several key technologies:
 - `better-sqlite3`: SQLite database driver
 - `uuid`: UUID generation library
 
+
+# Sample Data for ReputationDB
+
+## `users` Table
+This table stores unique internal user IDs.
+
+| user_id                              | created_at           |
+|--------------------------------------|----------------------|
+| `123e4567-e89b-12d3-a456-426614174000` | `2025-02-16 12:00:00` |
+
+---
+
+## `user_provider_identifiers` Table
+This table links users to their provider-specific identifiers.
+
+| identifier    | user_id                              | provider    |
+|---------------|--------------------------------------|-------------|
+| `@exampleuser`| `123e4567-e89b-12d3-a456-426614174000` | `twitter`   |
+| `example123`  | `123e4567-e89b-12d3-a456-426614174000` | `github`    |
+
+---
+
+## `scores` Table
+This table stores scores for each user-provider combination.
+
+| id                                   | user_id                              | provider    | score | last_updated          |
+|--------------------------------------|--------------------------------------|-------------|-------|-----------------------|
+| `789e4567-e89b-12d3-a456-426614174001` | `123e4567-e89b-12d3-a456-426614174000` | `twitter`   | 85.5  | `2025-02-16 12:30:00` |
+| `891e4567-e89b-12d3-a456-426614174002` | `123e4567-e89b-12d3-a456-426614174000` | `github`    | 92.3  | `2025-02-16 13:00:00` |
+
+---
+
+## Explanation of Tables
+
+### `users` Table
+- **user_id**: Unique internal identifier for the user (e.g., UUID).
+- **created_at**: Timestamp of when the user was created in the database.
+
+### `user_provider_identifiers` Table
+- **identifier**: Provider-specific identifier (e.g., Twitter username or GitHub username).
+- **user_id**: Internal user ID (foreign key to `users` table).
+- **provider**: Name of the provider (e.g., `twitter`, `github`).
+
+### `scores` Table
+- **id**: Unique identifier for the score entry (e.g., UUID).
+- **user_id**: Internal user ID (foreign key to `users` table).
+- **provider**: Name of the provider (e.g., `twitter`, `github`).
+- **score**: Numeric score value assigned to the user.
+- **last_updated**: Timestamp of the last update to the score.
+
+---
+
+## Usage Example
+- A single user (`user_id = 123e4567-e89b-12d3-a456-426614174000`) is linked to both `twitter` (`@exampleuser`) and `github` (`example123`).
+- Scores are stored for each provider, with separate entries for `twitter` and `github`.
+
+
 Special thanks to the developers and the community for their contributions and feedback.
 
 For more information about database management and security:

@@ -28,58 +28,60 @@ export class ReputationDB {
 
         console.log("Initializing SQLite schema...");
         this.sqliteDb.exec(`
+        -- Users table: Stores unique internal user IDs
         CREATE TABLE IF NOT EXISTS users (
-            user_id TEXT PRIMARY KEY
+            user_id TEXT PRIMARY KEY, -- Internal unique user identifier (UUID)
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP -- Timestamp of user creation
         );
 
-        CREATE TABLE IF NOT EXISTS provider_mappings (
-            provider TEXT NOT NULL,
-            identifier TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            UNIQUE(provider, identifier),
-            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+        -- User-provider mappings table: Links users to provider-specific identifiers
+        CREATE TABLE IF NOT EXISTS user_provider_identifiers (
+            identifier TEXT NOT NULL, -- Provider-specific identifier (e.g., Twitter username)
+            user_id TEXT NOT NULL, -- Internal user ID (foreign key to users table)
+            provider TEXT NOT NULL, -- Name of the provider (e.g., 'twitter', 'github')
+            PRIMARY KEY(user_id, provider), -- Ensure unique mapping for each user-provider pair
+            UNIQUE(provider, identifier), -- Ensure unique provider-identifier pair
+            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE -- Cascade delete on user removal
         );
 
+        -- Scores table: Stores scores for each user-provider combination
         CREATE TABLE IF NOT EXISTS scores (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            provider TEXT NOT NULL,
-            score REAL NOT NULL,
-            last_updated TEXT DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(user_id, provider),
-            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+            id TEXT PRIMARY KEY, -- Unique score entry ID
+            user_id TEXT NOT NULL, -- Internal user ID (foreign key to users table)
+            provider TEXT NOT NULL, -- Provider name
+            score REAL NOT NULL, -- Numeric score value
+            last_updated TEXT DEFAULT CURRENT_TIMESTAMP, -- Timestamp of the last score update
+            UNIQUE(user_id, provider), -- Ensure only one score per user-provider pair
+            FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE -- Cascade delete on user removal
         );
     `);
         console.log("Schema initialized.");
     }
 
-
+    // Get or create a user ID for a given provider and identifier
     private async getOrCreateUserId(provider: string, identifier: string): Promise<string> {
-        // Step 1: Check if the user already exists
+        // Step 1: Check if the user already exists in user_provider_identifiers
         const result = await this.query(
-            `SELECT user_id FROM provider_mappings WHERE provider = ? AND identifier = ?`,
+            `SELECT user_id FROM user_provider_identifiers WHERE provider = ? AND identifier = ?`,
             [provider, identifier]
         );
-        console.log("getOrCreateUserId result", result);
 
         if (result.rows.length > 0) {
-            return result.rows[0].user_id;
+            console.log("User exists:", result.rows);
+            return result.rows[0].user_id; // User exists, return the user ID
         }
 
-        // Step 2: If no existing user, create a new user_id
-        await this.query(`INSERT INTO users (user_id) VALUES (?)`, [identifier]);
+        // Step 2: Create a new user
+        const userId = uuidv4(); // Generate a new unique user ID
+        await this.query(`INSERT INTO users (user_id) VALUES (?)`, [userId]);
 
-        // Step 3: Store the new provider mapping
+        // Step 3: Link the new user to the provider and identifier
         await this.query(
-            `INSERT INTO provider_mappings (provider, identifier, user_id) VALUES (?, ?, ?)`,
-            [provider, identifier, identifier]
-        );
-        console.log(
-            "getOrCreateUserId step 3",
-            "after adding record on provider_mappings table"
+            `INSERT INTO user_provider_identifiers (identifier, user_id, provider) VALUES (?, ?, ?)`,
+            [identifier, userId, provider]
         );
 
-        return identifier;
+        return userId;
     }
 
     public async query(sql: string, params: any[] = []) {
@@ -102,15 +104,16 @@ export class ReputationDB {
 
     async getScore(provider: string, identifier: string, refresh = false): Promise<number> {
         if (!this.adapters.has(provider)) {
-            console.log('getScore()' , {
-                adapters: this.adapters,
-                provider,
-            })
             throw new Error(`Provider ${provider} not registered`);
         }
 
         // Get or create a user_id
         const userId = await this.getOrCreateUserId(provider, identifier);
+        console.log('getScore()', {
+            userId,
+            identifier,
+            provider
+        })
 
         if (!refresh) {
             const result = await this.query(
@@ -119,25 +122,25 @@ export class ReputationDB {
             );
 
             if (result.rows.length > 0) {
-                return result.rows[0].score; // ✅ Use cached score if available
+                return result.rows[0].score; // Use cached score if available
             }
         }
 
-        // Fetch new score from provider
+        // Fetch new score from the provider adapter
         const adapter = this.adapters.get(provider)!;
         const score = await adapter.getScore(identifier, refresh);
-        console.log("getScore", {
+
+        console.log('getScore() before insertion', {
             score,
             provider,
-            identifier,
-        });
-
-        // Store new score
+            identifier
+        })
+        // Store the new score in the database
         await this.query(
             `INSERT INTO scores (user_id, provider, score, last_updated)
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT (user_id, provider) DO UPDATE
-        SET score = EXCLUDED.score, last_updated = CURRENT_TIMESTAMP`,
+             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+             ON CONFLICT (user_id, provider) DO UPDATE
+             SET score = EXCLUDED.score, last_updated = CURRENT_TIMESTAMP`,
             [userId, provider, score]
         );
 
@@ -150,28 +153,23 @@ export class ReputationDB {
         providersToRefresh: string[] = []
     ) {
         const userId = await this.getOrCreateUserId(provider, identifier);
-        console.log("refreshScoresForUser userId", userId);
 
         const result = await this.query(
-            `SELECT provider, identifier FROM provider_mappings WHERE user_id = ?`,
+            `SELECT provider, identifier FROM user_provider_identifiers WHERE user_id = ?`,
             [userId]
         );
-        console.log("refreshScoresForUser result", result);
 
         if (result.rows.length === 0) {
             console.warn(`No linked providers found for user ${userId}`);
             return;
         }
-
         const providersToUpdate =
             providersToRefresh.length > 0
                 ? result.rows.filter((row) => providersToRefresh.includes(row.provider))
                 : result.rows;
 
+        console.log(`Refreshing scores for user ${userId}:`, providersToUpdate)
         for (const row of providersToUpdate) {
-            console.log(
-                `Refreshing score for provider: ${row.provider}, identifier: ${row.identifier}`
-            );
             await this.getScore(row.provider, row.identifier, true);
         }
     }
@@ -187,7 +185,7 @@ export class ReputationDB {
 
         if (userIdA !== userIdB) {
             await this.query(
-                `UPDATE provider_mappings SET user_id = ? WHERE user_id = ?`,
+                `UPDATE user_provider_identifiers SET user_id = ? WHERE user_id = ?`,
                 [userIdA, userIdB]
             );
 
