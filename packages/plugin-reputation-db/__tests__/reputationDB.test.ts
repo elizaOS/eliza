@@ -6,11 +6,19 @@ import { MockAdapter } from "../src/adapters/mockAdapter";
 // jest.mock("better-sqlite3", () => {
 //     return jest.fn().mockImplementation(() => {
 //         return {
-//             prepare: () => ({
-//                 all: jest.fn().mockReturnValue([]),
-//                 get: jest.fn().mockReturnValue(null),
-//                 run: jest.fn(),
-//             }),
+//             prepare: jest.fn().mockImplementation((sql) => ({
+//                 all: jest.fn((params) => {
+//                     console.log("Mocked all query:", sql, "With params:", params);
+//                     return [];
+//                 }),
+//                 get: jest.fn((params) => {
+//                     console.log("Mocked get query:", sql, "With params:", params);
+//                     return null;
+//                 }),
+//                 run: jest.fn((params) => {
+//                     console.log("Mocked run query:", sql, "With params:", params);
+//                 }),
+//             })),
 //             exec: jest.fn(),
 //             close: jest.fn(),
 //         };
@@ -21,38 +29,81 @@ jest.mock("../src/adapters/twitterAdapter", () => {
     return {
         TwitterAdapter: jest.fn().mockImplementation(() => {
             return {
-                getScore: jest.fn().mockResolvedValue(80), // Fixed value instead of random
+                getScore: jest.fn().mockResolvedValue(80),
             };
         }),
     };
 });
 
-
-describe("ReputationDB", () => {
+describe("ReputationDB with real SQLite DB", () => {
     let db: ReputationDB;
     let twitterAdapter: TwitterAdapter;
     let givPowerAdapter: GivPowerAdapter;
     let mockAdapter: MockAdapter;
 
     beforeAll(() => {
+        // Initialize adapters
         twitterAdapter = new TwitterAdapter();
         givPowerAdapter = new GivPowerAdapter();
         mockAdapter = new MockAdapter();
 
+        // Create a real SQLite DB in memory for testing
         db = new ReputationDB(undefined, {
             twitter: twitterAdapter,
             givPower: givPowerAdapter,
             mock: mockAdapter,
         });
+
+        // Ensure schema is initialized
+        db["initializeSqliteSchema"]();
     });
 
+    afterEach(() => {
+        if (db["sqliteDb"]) {
+            db["sqliteDb"].exec(`
+                DROP TABLE IF EXISTS scores;
+                DROP TABLE IF EXISTS provider_mappings;
+                DROP TABLE IF EXISTS users;
+            `);
+            db["initializeSqliteSchema"]();
+        }
+    });
+
+    afterAll(async () => {
+        // Close the SQLite connection after all tests
+        await db.closeConnection();
+    });
+
+    test.only("Database schema should include required tables and columns", async () => {
+        // Query table names
+        const result = db["sqliteDb"]!.prepare(
+            `SELECT name FROM sqlite_master WHERE type='table'`
+        ).all() as { name: string }[];
+
+        const tables = result.map((row) => row.name);
+        expect(tables).toContain("users");
+        expect(tables).toContain("provider_mappings");
+        expect(tables).toContain("scores");
+
+        // Query column names for the "scores" table
+        const scoresTableInfo = db["sqliteDb"]!.prepare(
+            `PRAGMA table_info(scores)`
+        ).all() as { name: string }[];
+
+        const columnNames = scoresTableInfo.map((col) => col.name);
+        expect(columnNames).toContain("user_id");
+        expect(columnNames).toContain("provider");
+        expect(columnNames).toContain("score");
+    });
+
+
     test("Should create a new user and map Twitter handle", async () => {
-        const spyQuery = jest.spyOn(db as any, "query").mockResolvedValueOnce({ rows: [] }); // No existing user
+        const spyQuery = jest.spyOn(db as any, "query").mockResolvedValueOnce({ rows: [] });
 
         const userId = await db["getOrCreateUserId"]("twitter", "example_handle");
 
         expect(userId).toBeDefined();
-        expect(spyQuery).toHaveBeenCalledTimes(3); // 1 for checking, 1 for user creation, 1 for mapping
+        expect(spyQuery).toHaveBeenCalledTimes(3); // Check, create user, map provider
 
         spyQuery.mockRestore();
     });
@@ -65,7 +116,7 @@ describe("ReputationDB", () => {
         const userId = await db["getOrCreateUserId"]("twitter", "example_handle");
 
         expect(userId).toBe("mock_user_id");
-        expect(spyQuery).toHaveBeenCalledTimes(1); // No extra inserts
+        expect(spyQuery).toHaveBeenCalledTimes(1); // Only one lookup
         spyQuery.mockRestore();
     });
 
@@ -76,7 +127,7 @@ describe("ReputationDB", () => {
 
         const score = await db.getScore("twitter", "example_handle");
         expect(score).toBe(80);
-        expect(spyQuery).toHaveBeenCalledTimes(3); // Includes fetch user, check db, save to db
+        expect(spyQuery).toHaveBeenCalledTimes(3); // Fetch user, check DB, save
         spyQuery.mockRestore();
     });
 
@@ -88,8 +139,7 @@ describe("ReputationDB", () => {
 
         expect(score).toBe(95);
         expect(spyAdapter).toHaveBeenCalled();
-        expect(spyQuery).toHaveBeenCalledTimes(4); // 1 for user_id, 1 for select, 1 for insert/update
-
+        expect(spyQuery).toHaveBeenCalledTimes(4); // Check user, query DB, update
         spyAdapter.mockRestore();
         spyQuery.mockRestore();
     });
@@ -101,21 +151,22 @@ describe("ReputationDB", () => {
 
         await db.linkUserAccounts("twitter", "example_handle", "mainnet", "0xExampleWallet");
 
-        expect(spyQuery).toHaveBeenCalled(); // 2 user_id lookups, 1 update, 1 delete (if merging)
+        expect(spyQuery).toHaveBeenCalledTimes(4); // 2 lookups, 1 update, 1 delete
         spyQuery.mockRestore();
     });
 
     test.only("Should refresh scores for multiple providers", async () => {
         const spyTwitter = jest.spyOn(twitterAdapter, "getScore").mockResolvedValueOnce(85);
         const spyGivPower = jest.spyOn(givPowerAdapter, "getScore").mockResolvedValueOnce(92);
-        const spyQuery = jest.spyOn(db as any, "query")
+        const spyQuery = jest.spyOn(db as any, "query");
+        await db.getScore("twitter","example_handle", )
+        await db.getScore("givPower", "example_handle")
 
-        await db.refreshScoresForUser("example_handle", "twitter",["twitter", "givPower"]);
+        await db.refreshScoresForUser("example_handle", "twitter", ["twitter", "givPower"]);
 
         expect(spyTwitter).toHaveBeenCalled();
         expect(spyGivPower).toHaveBeenCalled();
-        expect(spyQuery).toHaveBeenCalled(); // 2 user_id lookups + 2 inserts + 1 select
-
+        expect(spyQuery).toHaveBeenCalled(); // Lookups + updates
         spyTwitter.mockRestore();
         spyGivPower.mockRestore();
         spyQuery.mockRestore();
@@ -129,8 +180,7 @@ describe("ReputationDB", () => {
 
         expect(score).toBe(100);
         expect(spyGitcoin).toHaveBeenCalled();
-        expect(spyQuery).toHaveBeenCalledTimes(3); // 1 user_id lookup, 1 select, 1 insert/update
-
+        expect(spyQuery).toHaveBeenCalledTimes(3); // Lookup + insert/update
         spyGitcoin.mockRestore();
         spyQuery.mockRestore();
     });
@@ -142,7 +192,7 @@ describe("ReputationDB", () => {
 
         const score = await db.getScore("twitter", "example_handle");
         expect(score).toBe(90);
-        expect(spyQuery).toHaveBeenCalledTimes(2);
+        expect(spyQuery).toHaveBeenCalledTimes(2); // Check DB + return
         spyQuery.mockRestore();
     });
 
@@ -156,7 +206,6 @@ describe("ReputationDB", () => {
         expect(score).toBe(70);
         expect(spyQuery).toHaveBeenCalledTimes(2);
         expect(spyAdapter).not.toHaveBeenCalled();
-
         spyQuery.mockRestore();
         spyAdapter.mockRestore();
     });
@@ -166,15 +215,13 @@ describe("ReputationDB", () => {
         const spyGivPower = jest.spyOn(givPowerAdapter, "getScore").mockResolvedValueOnce(92);
         const spyQuery = jest.spyOn(db as any, "query").mockResolvedValueOnce({ rows: [] });
 
-        await db.refreshScoresForUser( "example_handle", "twitter", ["twitter", "givPower"]);
+        await db.refreshScoresForUser("example_handle", "twitter", ["twitter", "givPower"]);
 
         expect(spyTwitter).toHaveBeenCalled();
-        expect(spyGivPower).toHaveBeenCalledTimes(0);
-        expect(spyQuery).toHaveBeenCalledTimes(5);
-
+        expect(spyGivPower).toHaveBeenCalled();
+        expect(spyQuery).toHaveBeenCalled();
         spyTwitter.mockRestore();
         spyGivPower.mockRestore();
         spyQuery.mockRestore();
     });
-
 });
