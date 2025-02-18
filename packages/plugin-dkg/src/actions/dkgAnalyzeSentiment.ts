@@ -355,7 +355,7 @@ export const dkgAnalyzeSentiment: Action = {
 
         const scrapedTweets = scraper.searchTweets(
             topic,
-            100,
+            100, // bump to higher number?
             SearchMode.Latest,
         );
 
@@ -386,9 +386,9 @@ export const dkgAnalyzeSentiment: Action = {
         );
 
         const sentiment =
-            averageScore <= 0.1
+            averageScore >= -0.1 && averageScore <= 0.1
                 ? "Neutral ⚪️"
-                : averageScore > 0
+                : averageScore > 0.1
                   ? "Positive 🟢"
                   : "Negative 🔴";
 
