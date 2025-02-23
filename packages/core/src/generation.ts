@@ -1143,10 +1143,30 @@ export async function generateText({
 
             case ModelProviderName.VENICE: {
                 elizaLogger.debug("Initializing Venice model.");
-                const venice = createOpenAI({
+                
+                const bypass = parseBooleanFromText(
+                    runtime.getSetting("BYPASS_VENICE_SYSTEM_PROMPT")
+                )
+                    ? async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+                        const options: RequestInit = { ...init };
+                        if (options?.body) {
+                            const body = JSON.parse(options.body as string);
+                            body.venice_parameters = {
+                                include_venice_system_prompt: false
+                            };
+                            options.body = JSON.stringify(body);
+                        }
+                        return runtime.fetch(input, options);
+                    }
+                    : undefined;
+
+                const veniceConfig = {
                     apiKey: apiKey,
                     baseURL: endpoint,
-                });
+                    ...(bypass ? { fetch: bypass } : {})
+                };
+
+                const venice = createOpenAI(veniceConfig);
 
                 const { text: veniceResponse } = await aiGenerateText({
                     model: venice.languageModel(model),
@@ -1161,15 +1181,11 @@ export async function generateText({
                     maxSteps: maxSteps,
                     maxTokens: max_response_length,
                 });
-
-                // console.warn("veniceResponse:")
-                // console.warn(veniceResponse)
+            
                 //rferrari: remove all text from <think> to </think>\n\n
                 response = veniceResponse
                     .replace(/<think>[\s\S]*?<\/think>\s*\n*/g, '');
-                // console.warn(response)
-
-                // response = veniceResponse;
+            
                 elizaLogger.debug("Received response from Venice model.");
                 break;
             }
@@ -1662,33 +1678,33 @@ export const generateImage = async (
         runtime.imageModelProvider === runtime.modelProvider
             ? runtime.token
             : (() => {
-                  // First try to match the specific provider
-                  switch (runtime.imageModelProvider) {
-                      case ModelProviderName.HEURIST:
-                          return runtime.getSetting("HEURIST_API_KEY");
-                      case ModelProviderName.TOGETHER:
-                          return runtime.getSetting("TOGETHER_API_KEY");
-                      case ModelProviderName.FAL:
-                          return runtime.getSetting("FAL_API_KEY");
-                      case ModelProviderName.OPENAI:
-                          return runtime.getSetting("OPENAI_API_KEY");
-                      case ModelProviderName.VENICE:
-                          return runtime.getSetting("VENICE_API_KEY");
-                      case ModelProviderName.LIVEPEER:
-                          return runtime.getSetting("LIVEPEER_GATEWAY_URL");
-                      default:
-                          // If no specific match, try the fallback chain
-                          return (
-                              runtime.getSetting("HEURIST_API_KEY") ??
-                              runtime.getSetting("NINETEEN_AI_API_KEY") ??
-                              runtime.getSetting("TOGETHER_API_KEY") ??
-                              runtime.getSetting("FAL_API_KEY") ??
-                              runtime.getSetting("OPENAI_API_KEY") ??
-                              runtime.getSetting("VENICE_API_KEY") ??
-                              runtime.getSetting("LIVEPEER_GATEWAY_URL")
-                          );
-                  }
-              })();
+                // First try to match the specific provider
+                switch (runtime.imageModelProvider) {
+                    case ModelProviderName.HEURIST:
+                        return runtime.getSetting("HEURIST_API_KEY");
+                    case ModelProviderName.TOGETHER:
+                        return runtime.getSetting("TOGETHER_API_KEY");
+                    case ModelProviderName.FAL:
+                        return runtime.getSetting("FAL_API_KEY");
+                    case ModelProviderName.OPENAI:
+                        return runtime.getSetting("OPENAI_API_KEY");
+                    case ModelProviderName.VENICE:
+                        return runtime.getSetting("VENICE_API_KEY");
+                    case ModelProviderName.LIVEPEER:
+                        return runtime.getSetting("LIVEPEER_GATEWAY_URL");
+                    default:
+                        // If no specific match, try the fallback chain
+                        return (
+                            runtime.getSetting("HEURIST_API_KEY") ??
+                            runtime.getSetting("NINETEEN_AI_API_KEY") ??
+                            runtime.getSetting("TOGETHER_API_KEY") ??
+                            runtime.getSetting("FAL_API_KEY") ??
+                            runtime.getSetting("OPENAI_API_KEY") ??
+                            runtime.getSetting("VENICE_API_KEY") ??
+                            runtime.getSetting("LIVEPEER_GATEWAY_URL")
+                        );
+                }
+            })();
     try {
         if (runtime.imageModelProvider === ModelProviderName.HEURIST) {
             const response = await fetch(
@@ -1807,13 +1823,13 @@ export const generateImage = async (
                 seed: data.seed ?? 6252023,
                 ...(runtime.getSetting("FAL_AI_LORA_PATH")
                     ? {
-                          loras: [
-                              {
-                                  path: runtime.getSetting("FAL_AI_LORA_PATH"),
-                                  scale: 1,
-                              },
-                          ],
-                      }
+                        loras: [
+                            {
+                                path: runtime.getSetting("FAL_AI_LORA_PATH"),
+                                scale: 1,
+                            },
+                        ],
+                    }
                     : {}),
             };
 
