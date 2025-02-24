@@ -58,6 +58,13 @@ export async function getOnChainActions(wallet: WalletClientBase) {
             similes: [],
             validate: async () => true,
             examples: [],
+        },
+        {
+            name: "hyperlane_read_warp_route",
+            description: "Get config for warp route",
+            similes: [],
+            validate: async () => true,
+            examples: [],
         }
         // 1. Add your actions here
     ];
@@ -103,9 +110,9 @@ function getActionHandler(
                 tools,
                 maxSteps: 10,
                 // Uncomment to see the log each tool call when debugging
-                // onStepFinish: (step) => {
-                //     console.log(step.toolResults);
-                // },
+                onStepFinish: (step) => {
+                    console.log(step.toolResults);
+                },
                 modelClass: ModelClass.LARGE,
             });
 
