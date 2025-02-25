@@ -57,6 +57,21 @@ pnpm install @elizaos/plugin-storacha
     - Then set the `OPENROUTER_API_KEY` env var.
     - The default agent character is already configured to use OpenRouter.
 
+
+## Build & Run
+
+1. Build and start the agent from the project root folder
+```bash
+pnpm install --no-frozen-lockfile && pnpm build && pnpm start
+```
+
+2. In another terminal start the Web Client to interact with the agent
+```bash
+pnpm start:client
+```
+
+3. Open http://localhost:5173 in browser and have fun
+
 ## Features
 
 ### 1. File Upload
