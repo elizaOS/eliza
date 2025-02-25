@@ -51,6 +51,12 @@ pnpm install @elizaos/plugin-storacha
    ```
    - Copy the base64 encoded content and set it to the `STORACHA_AGENT_DELEGATION` env var.
 
+5. Set the model 
+    - If you are starting from scratch you may want to use OpenRouter API to provide the LLM Model for the Agent.
+    - Just create an account and API key at: https://openrouter.ai
+    - Then set the `OPENROUTER_API_KEY` env var.
+    - The default agent character is already configured to use OpenRouter.
+
 ## Features
 
 ### 1. File Upload
