@@ -1,6 +1,6 @@
 {
     "name": "@elizaos/plugin-storacha",
-    "version": "0.25.8",
+    "version": "0.0.1",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",
@@ -34,5 +34,26 @@
         "build": "tsup --format esm --dts",
         "dev": "tsup --format esm --dts --watch",
         "test": "vitest run"
+    },
+    "agentConfig": {
+        "pluginType": "elizaos:plugin:1.0.0",
+        "pluginParameters": {
+            "STORACHA_AGENT_PRIVATE_KEY": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The private key of the agent that is used to sign data before uploading to the Storacha network. This is the base64 encoded private key string. You can install and sign up for a Storacha account using the CLI https://docs.storacha.network/w3cli and then create a private key for your agent: https://github.com/storacha/upload-service/blob/main/packages/cli/README.md#storacha-agent-create-private-key"
+            },
+            "STORACHA_AGENT_DELEGATION": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The delegation that authorizes the Agent to upload data to the Storacha network. This is the base64 encoded delegation string. You can install and sign up for a Storacha account using the CLI https://docs.storacha.network/w3cli and then create a delegation for your agent: https://docs.storacha.network/concepts/ucan/#delegate-across-apps-and-services https://github.com/storacha/upload-service/blob/main/packages/cli/README.md#storacha-delegation-create-audience-did"
+            },
+            "GATEWAY_URL": {
+                "type": "string",
+                "nullable": true,
+                "default": "https://w3s.link",
+                "description": "The gateway URL to use for fetching data from the network. Defaults to https://w3s.link"
+            }
+        }
     }
 }
