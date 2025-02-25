@@ -1,9 +1,10 @@
 import { Character, ModelProviderName } from "@elizaos/core";
+import { storagePlugin } from "@elizaos/plugin-storacha";
 
 export const defaultCharacter: Character = {
     name: "Eliza",
     username: "eliza",
-    plugins: [],
+    plugins: [storagePlugin],
     modelProvider: ModelProviderName.OPENROUTER,
     settings: {
         secrets: {},

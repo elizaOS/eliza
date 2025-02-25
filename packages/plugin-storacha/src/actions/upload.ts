@@ -9,6 +9,8 @@ import {
     type Memory,
     type State,
 } from "@elizaos/core";
+import { validateStorageClientConfig } from "../environments";
+import { getStorageClient } from "../lib/storage";
 
 
 export const messageHandlerTemplate =
@@ -27,11 +29,14 @@ You are helping the user interact with Storacha decentralized storage. You can:
 # Instructions: Write a response explaining what storage operation you'll perform.
 ` + messageCompletionFooter;
 
-export const uploadFileAction: Action = {
-    name: "UPLOAD_FILE",
+export const uploadAction: Action = {
+    name: "STORAGE_UPLOAD",
     similes: ["UPLOAD", "STORE", "SAVE", "PUT", "PIN"],
-    description: "Use this action when the user wants to upload a file to Storacha storage.",
-
+    description: "Use this action when the user wants to upload a file to Storacha distributed storage network.",
+    validate: async (runtime: IAgentRuntime) => {
+        await validateStorageClientConfig(runtime);
+        return true;
+    },
     handler: async (
         runtime: IAgentRuntime,
         message: Memory,
@@ -39,11 +44,14 @@ export const uploadFileAction: Action = {
         options: any,
         callback: HandlerCallback
     ) => {
-        // Extract command from message
-        const text = message.content.text.toLowerCase();
+        elizaLogger.debug("Starting file upload to Storacha...");
+        try {
+            const config = await validateStorageClientConfig(runtime);
+            const storageClient = await getStorageClient(config);
 
-        if (text.includes("upload")) {
-            // Handle upload request
+            // Extract command from message
+            const text = message.content.text.toLowerCase();
+
             elizaLogger.info("Starting file upload to Storacha...");
             const attachments = message.content.attachments;
             if (attachments.length === 0) {
@@ -51,23 +59,38 @@ export const uploadFileAction: Action = {
                     text: "No file to upload. Please attach a file to upload to Storacha.",
                     action: null
                 });
-                return;
+                return false;
             }
             elizaLogger.info("Uploading file(s) to Storacha...");
-            //TODO: Implement upload logic
-            elizaLogger.info("File(s) uploaded to Storacha.");
+            // const encodedFiles = attachments.map(attached => {
+            //     const memoryBlob = new Blob([attached.text], {
+            //         type: attached.contentType,
+            //     });
+            //     const memoryFile = new File([memoryBlob], attached.title, { type: attached.contentType });
+            //     return memoryFile;
+            // })
+            // const directoryLink = await storageClient.uploadDirectory(encodedFiles, {
+            //     retries: 3,
+            //     concurrentRequests: 5,
+            //     pieceHasher: null, // Indicates to not store data in Filecoin
+            //     onUploadProgress: (progress) => {
+            //         elizaLogger.info(`Uploading file(s) to Storacha... ${progress}%`);
+            //     }
+            // })
+            // const link = `${config.GATEWAY_URL}/ipfs/${directoryLink.link().toString() }`;
+
+            elizaLogger.success("File(s) uploaded to Storacha");
             //TODO: print CIDs of the uploaded files
-            return;
+            return true;
+        } catch (error) {
+            elizaLogger.error("Error uploading file(s) to Storacha", error);
+            await callback({
+                text: "Error uploading file(s) to Storacha",
+                content: { error: error.message },
+            });
+            return false;
         }
-
-        // Default response if no specific command matched
-        await callback({
-            text: "I can help you with Storacha storage. You can ask me to:\n" +
-                "- Upload files to a distributed storage",
-            action: 'UPLOAD_FILE'
-        });
     },
-
     examples: [
         [
             {
