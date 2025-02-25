@@ -68,10 +68,12 @@ export const uploadAction: Action = {
             return false;
         }
 
-        callback?.({
-            text: "Sure thing! I'll upload the file(s) to Storacha.",
-            action: null
-        });
+        if (callback) {
+            await callback({
+                text: "Sure thing! Starting the engines, hold on tight. Uploading file(s) to Storacha...",
+                action: null
+            });
+        }
 
         try {
             elizaLogger.info("Uploading file(s) to Storacha...");
@@ -100,12 +102,12 @@ export const uploadAction: Action = {
                     elizaLogger.info(`Uploading file(s) to Storacha... ${progress}%`);
                 }
             })
-            elizaLogger.info(`Uploaded file(s) to Storacha. Link: ${directoryLink.link().toString()}`);
             const gatewayUrl = config.GATEWAY_URL || defaultGatewayUrl;
             const link = `${gatewayUrl}/ipfs/${directoryLink.link().toString()}`;
+            elizaLogger.info(`Uploaded file(s) to Storacha. Link: ${link}`);
             callback?.({
-                text: `The file(s) have been uploaded to Storacha. You can access them at the following link: ${link}`,
-                action: null
+                text: `Here you go! You can access the file(s) at the following link: ${link}`,
+                action: null,
             });
 
             elizaLogger.success("File(s) uploaded to Storacha");

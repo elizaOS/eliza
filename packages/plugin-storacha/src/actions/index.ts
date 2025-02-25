@@ -1,2 +1,2 @@
 export * from "./upload.ts";
-export * from "./test.ts";
+export * from "./retrieve.ts";
