@@ -28,7 +28,7 @@
 
 ### get()
 
-> **get**(`key`): `Promise`\<`string`\>
+> **get**(`key`): `Promise`<`string`>
 
 #### Parameters
 
@@ -36,7 +36,7 @@
 
 #### Returns
 
-`Promise`\<`string`\>
+`Promise`<`string`>
 
 #### Implementation of
 
@@ -50,7 +50,7 @@
 
 ### set()
 
-> **set**(`key`, `value`): `Promise`\<`void`\>
+> **set**(`key`, `value`): `Promise`<`void`>
 
 #### Parameters
 
@@ -60,7 +60,7 @@
 
 #### Returns
 
-`Promise`\<`void`\>
+`Promise`<`void`>
 
 #### Implementation of
 

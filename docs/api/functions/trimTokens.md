@@ -38,8 +38,7 @@ trimTokens
 
 ## Throws
 
-Throws an error if the runtime settings are invalid or missing required fields.
-
+Throws an error if runtime settings are invalid or missing fields.
 ## Example
 
 ```ts

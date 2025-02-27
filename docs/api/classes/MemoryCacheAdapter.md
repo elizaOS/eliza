@@ -14,7 +14,7 @@
 
 #### Parameters
 
-• **initalData?**: `Map`\<`string`, `string`\>
+• **initialData?**: `Map`\<`string`, `string`\>
 
 #### Returns
 
