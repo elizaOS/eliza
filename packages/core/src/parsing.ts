@@ -259,19 +259,37 @@ export const normalizeJsonString = (str: string) => {
 };
 
 /**
- * Cleans a JSON-like response string by removing unnecessary markers, line breaks, and extra whitespace.
- * This is useful for handling improperly formatted JSON responses from external sources.
- *
- * @param response - The raw JSON-like string response to clean.
- * @returns The cleaned string, ready for parsing or further processing.
+ * Cleans a response string by removing unnecessary markers, special characters, and formatting artifacts.
+ * Handles JSON code blocks, newlines, Unicode sequences, and non-printable characters.
+ * 
+ * @param response - The raw string response that needs cleaning
+ * @returns A cleaned string with only printable ASCII characters, single spaces between words
+ * 
+ * @example
+ * ```typescript
+ * const dirty = '\n\nHello\\n\\nWorld \ud83d\ude00';
+ * const clean = cleanJsonResponse(dirty);
+ * console.log(clean); // "Hello World"
+ * ```
+ * 
+ * @remarks
+ * - Removes Markdown code block markers (```json, ```)
+ * - Converts both escaped (\n) and actual newlines to spaces
+ * - Removes Unicode escape sequences (\uXXXX)
+ * - Removes non-printable ASCII characters
+ * - Normalizes multiple spaces to single spaces
  */
 
 export function cleanJsonResponse(response: string): string {
     return response
         .replace(/```json\s*/g, "") // Remove ```json
         .replace(/```\s*/g, "") // Remove any remaining ```
-        .replace(/(\r\n|\n|\r)/g, "") // Remove line breaks
-        .trim();
+        .replace(/\\n/g, " ") // Replace escaped newlines with space
+        .replace(/\n/g, " ") // Replace actual newlines with space
+        .replace(/\s+/g, " ") // Replace multiple spaces with single space
+        .replace(/\\u[\dA-Fa-f]{4}/g, "") // Remove Unicode escape sequences
+        .replace(/[^\x20-\x7E]/g, "") // Remove non-printable ASCII characters
+        .trim();    
 }
 
 export const postActionResponseFooter = `Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.`;
