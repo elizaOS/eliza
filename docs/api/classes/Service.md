@@ -40,7 +40,7 @@
 
 #### Defined in
 
-[packages/core/src/types.ts:1259](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1259)
+[packages/core/src/types.ts:1268](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1268)
 
 ***
 
@@ -56,7 +56,7 @@
 
 #### Defined in
 
-[packages/core/src/types.ts:1270](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1270)
+[packages/core/src/types.ts:1279](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1279)
 
 ## Methods
 
@@ -74,7 +74,7 @@
 
 #### Defined in
 
-[packages/core/src/types.ts:1263](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1263)
+[packages/core/src/types.ts:1272](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1272)
 
 ***
 
@@ -94,4 +94,4 @@ Add abstract initialize method that must be implemented by derived classes
 
 #### Defined in
 
-[packages/core/src/types.ts:1275](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1275)
+[packages/core/src/types.ts:1284](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1284)

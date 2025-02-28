@@ -22,7 +22,7 @@ export default function ShowcaseCards({users}: {users: User[]}): JSX.Element {
   return (
     <section className="container margin-top--lg margin-bottom--xl">
       <div className={clsx('margin-bottom--md')}>
-        <h2>{uniqueUsers.length} {uniqueUsers.length === 1 ? 'Site' : 'Sites'}</h2>
+        <h2>{uniqueUsers.length} {uniqueUsers.length === 1 ? 'Site' : 'Packages'}</h2>
       </div>
       <ul className={clsx('clean-list', styles.showcaseList)}>
         {uniqueUsers.map((user) => (

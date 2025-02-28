@@ -38,4 +38,4 @@ Identifier for this function. Used to group telemetry data by function.
 
 ## Defined in
 
-[packages/core/src/types.ts:683](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L683)
+[packages/core/src/types.ts:689](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L689)

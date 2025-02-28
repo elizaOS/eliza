@@ -19,15 +19,33 @@ function TagIcon({label, color}: {label: string; color: string}) {
   );
 }
 
+function getShortLabel(label: string): string {
+  // Convert longer tag names to shorter versions for display consistency
+  switch (label.toLowerCase()) {
+    case 'favorite':
+      return 'favorite';
+    case 'adapter':
+      return 'adapter';
+    case 'client':
+      return 'client';
+    case 'plugin':
+      return 'plugin';
+    default:
+      return label;
+  }
+}
+
 function ShowcaseCardTag({tags}: {tags: TagType[]}) {
   return (
     <>
       {tags.map((tag) => {
         const {label, color} = Tags[tag];
+        const displayLabel = getShortLabel(label);
+        
         return (
           <li key={tag} className={styles.tag} title={label}>
             <TagIcon label={label} color={color} />
-            <span className={styles.textLabel}>{label.toLowerCase()}</span>
+            <span className={styles.textLabel}>{displayLabel.toLowerCase()}</span>
           </li>
         );
       })}
@@ -69,7 +87,7 @@ export default function ShowcaseCard({user}: {user: User}) {
         <p className={styles.showcaseCardBody}>{user.description}</p>
       </div>
       <ul className={clsx('card__footer', styles.cardFooter)}>
-        <ShowcaseCardTag tags={user.tags.filter(tag => tag !== 'opensource')} />
+        <ShowcaseCardTag tags={user.tags.filter(tag => tag)} />
       </ul>
     </li>
   );

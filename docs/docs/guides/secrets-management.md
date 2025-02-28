@@ -4,408 +4,252 @@ sidebar_position: 11
 
 # 🔐 Secrets Management
 
-A comprehensive guide for managing secrets, API keys, and sensitive configuration in Eliza.
+A comprehensive guide for managing API keys, credentials, and other sensitive configuration in Eliza.
 
 ## Core Concepts
 
-### Environment Variables
+### Environment Variable Hierarchy
 
-Eliza uses a hierarchical environment variable system:
+Eliza uses a hierarchical environment variable system that retrieves settings in this order:
 
-1. Character-specific namespaced environment variables (highest priority)
-2. Character-specific secrets
-3. Environment variables
+1. Character-specific secrets (highest priority)
+2. Character-specific settings 
+3. Global environment variables
 4. Default values (lowest priority)
 
-### Secret Types
+This allows you to override global settings for specific characters when needed.
 
-Common secrets you'll need to manage:
+### Common Secret Types
 
 ```bash
-# API Keys
-OPENAI_API_KEY=sk-*
-ANTHROPIC_API_KEY=your-key
-ELEVENLABS_XI_API_KEY=your-key
-GOOGLE_GENERATIVE_AI_API_KEY=your-key
+# API Keys for Model Providers
+OPENAI_API_KEY=sk-*               # OpenAI API key
+ANTHROPIC_API_KEY=your-key        # Anthropic/Claude API key
+GOOGLE_GENERATIVE_AI_API_KEY=     # Gemini API key
+GROQ_API_KEY=gsk-*                # Groq API key
 
 # Client Authentication
-DISCORD_API_TOKEN=your-token
-TELEGRAM_BOT_TOKEN=your-token
+DISCORD_API_TOKEN=                # Discord bot token
+TELEGRAM_BOT_TOKEN=               # Telegram bot token
+TWITTER_USERNAME=                 # Twitter/X username
+TWITTER_PASSWORD=                 # Twitter/X password
 
 # Database Credentials
-SUPABASE_URL=your-url
-SUPABASE_SERVICE_API_KEY=your-key
+SUPABASE_URL=                     # Supabase URL
+SUPABASE_ANON_KEY=                # Supabase anonymous key
+MONGODB_CONNECTION_STRING=        # MongoDB connection string
 
-# EVM
-EVM_PRIVATE_KEY=EXAMPLE_WALLET_PRIVATE_KEY
-
-# Solana
-SOLANA_PRIVATE_KEY=EXAMPLE_WALLET_PRIVATE_KEY
-SOLANA_PUBLIC_KEY=EXAMPLE_WALLET_PUBLIC_KEY
-
-# Fallback Wallet Configuration (deprecated)
-WALLET_PRIVATE_KEY=EXAMPLE_WALLET_PRIVATE_KEY
-WALLET_PUBLIC_KEY=EXAMPLE_WALLET_PUBLIC_KEY
+# Blockchain Related
+EVM_PRIVATE_KEY=                  # EVM private key with "0x" prefix
+SOLANA_PRIVATE_KEY=               # Solana wallet private key
+SOLANA_PUBLIC_KEY=                # Solana wallet public key
 ```
 
-## Implementation Guide
+For a complete list of supported environment variables, see the [`.env.example`](https://github.com/elizaos/eliza/blob/main/.env.example) file in the project repository.
 
-### Basic Setup
+## Implementation
 
-1. Create a `.env` file from template:
+### Setting Up Environment Variables
 
-```bash
-cp .env.example .env
-```
+1. Create a `.env` file in your project root directory:
 
-2. Configure environment discovery:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Add your secrets to this file:
+
+   ```bash
+   # Model Provider
+   OPENAI_API_KEY=sk-xxxxxxxxxxxxx
+   
+   # Clients
+   DISCORD_API_TOKEN=xxxxxxxxxxxxxxxx
+   ```
+
+3. The `.env` file is automatically excluded from Git via `.gitignore` to prevent accidental exposure.
+
+### Accessing Secrets in Code
+
+Use the `runtime.getSetting()` method to access configuration values:
 
 ```typescript
-import { config } from "dotenv";
-import path from "path";
-
-export function findNearestEnvFile(startDir = process.cwd()) {
-    let currentDir = startDir;
-
-    while (currentDir !== path.parse(currentDir).root) {
-        const envPath = path.join(currentDir, ".env");
-
-        if (fs.existsSync(envPath)) {
-            return envPath;
-        }
-
-        currentDir = path.dirname(currentDir);
-    }
-
-    return null;
+// In a plugin, action, or service
+const apiKey = runtime.getSetting("OPENAI_API_KEY");
+if (!apiKey) {
+  throw new Error("OpenAI API key not configured");
 }
+
+// With a fallback value
+const temperature = runtime.getSetting("TEMPERATURE") || "0.7";
 ```
+
+This method automatically handles the environment variable hierarchy, checking character-specific secrets first, then character settings, and finally global environment variables.
 
 ### Character-Specific Secrets
 
-Define secrets in character files:
+Define secrets for individual characters in their character file:
 
 ```json
 {
-    "name": "TradingBot",
+    "name": "FinancialAssistant",
     "settings": {
         "secrets": {
-            "OPENAI_API_KEY": "character-specific-key",
-            "WALLET_PRIVATE_KEY": "character-specific-wallet"
+            "OPENAI_API_KEY": "sk-character-specific-key",
+            "ALPHA_VANTAGE_API_KEY": "financial-data-api-key"
         }
     }
 }
 ```
 
-Alternatively, you can use the `CHARACTER.YOUR_CHARACTER_NAME.SECRET_NAME` format inside your `.env` file.
+Alternatively, use namespaced environment variables with this format:
 
-Access secrets in code:
-
-```typescript
-const apiKey = runtime.getSetting("OPENAI_API_KEY");
+```
+CHARACTER.<CHARACTER_NAME>.<SECRET_NAME>=value
 ```
 
-### Secure Storage
-
-#### Database Secrets
-
-Use encrypted connection strings:
-
-```typescript
-class SecureDatabase {
-    private connection: Connection;
-
-    constructor(encryptedConfig: string) {
-        const config = this.decryptConfig(encryptedConfig);
-        this.connection = new Connection(config);
-    }
-
-    private decryptConfig(encrypted: string): DatabaseConfig {
-        // Implement decryption logic
-        return JSON.parse(decrypted);
-    }
-}
+For example:
 ```
-
-#### Wallet Management
-
-Secure handling of blockchain credentials:
-
-```typescript
-class WalletManager {
-    private async initializeWallet(runtime: IAgentRuntime) {
-        const privateKey =
-            runtime.getSetting("SOLANA_PRIVATE_KEY") ??
-            runtime.getSetting("WALLET_PRIVATE_KEY");
-
-        if (!privateKey) {
-            throw new Error("Wallet private key not configured");
-        }
-
-        // Validate key format
-        try {
-            const keyBuffer = Buffer.from(privateKey, "base64");
-            if (keyBuffer.length !== 64) {
-                throw new Error("Invalid key length");
-            }
-        } catch (error) {
-            throw new Error("Invalid private key format");
-        }
-
-        // Initialize wallet securely
-        return new Wallet(privateKey);
-    }
-}
-```
-
-### Secret Rotation
-
-Implement automatic secret rotation:
-
-```typescript
-class SecretRotation {
-    private static readonly SECRET_LIFETIME = 90 * 24 * 60 * 60 * 1000; // 90 days
-
-    async shouldRotateSecret(secretName: string): Promise<boolean> {
-        const lastRotation = await this.getLastRotation(secretName);
-        return Date.now() - lastRotation > SecretRotation.SECRET_LIFETIME;
-    }
-
-    async rotateSecret(secretName: string): Promise<void> {
-        // Implement rotation logic
-        const newSecret = await this.generateNewSecret();
-        await this.updateSecret(secretName, newSecret);
-        await this.recordRotation(secretName);
-    }
-}
-```
-
-### Access Control
-
-Implement proper access controls:
-
-```typescript
-class SecretAccess {
-    private static readonly ALLOWED_KEYS = [
-        "OPENAI_API_KEY",
-        "DISCORD_TOKEN",
-        // ... other allowed keys
-    ];
-
-    static validateAccess(key: string): boolean {
-        return this.ALLOWED_KEYS.includes(key);
-    }
-
-    static async getSecret(
-        runtime: IAgentRuntime,
-        key: string,
-    ): Promise<string | null> {
-        if (!this.validateAccess(key)) {
-            throw new Error(`Unauthorized access to secret: ${key}`);
-        }
-
-        return runtime.getSetting(key);
-    }
-}
-```
-
-### Encryption at Rest
-
-Implement encryption for stored secrets:
-
-```typescript
-import { createCipheriv, createDecipheriv } from "crypto";
-
-class SecretEncryption {
-    static async encrypt(value: string, key: Buffer): Promise<string> {
-        const iv = crypto.randomBytes(16);
-        const cipher = createCipheriv("aes-256-gcm", key, iv);
-
-        let encrypted = cipher.update(value, "utf8", "hex");
-        encrypted += cipher.final("hex");
-
-        return JSON.stringify({
-            iv: iv.toString("hex"),
-            encrypted,
-            tag: cipher.getAuthTag().toString("hex"),
-        });
-    }
-
-    static async decrypt(encrypted: string, key: Buffer): Promise<string> {
-        const { iv, encrypted: encryptedData, tag } = JSON.parse(encrypted);
-
-        const decipher = createDecipheriv(
-            "aes-256-gcm",
-            key,
-            Buffer.from(iv, "hex"),
-        );
-
-        decipher.setAuthTag(Buffer.from(tag, "hex"));
-
-        let decrypted = decipher.update(encryptedData, "hex", "utf8");
-        decrypted += decipher.final("utf8");
-
-        return decrypted;
-    }
-}
+CHARACTER.TraderAgent.OPENAI_API_KEY=sk-character-specific-key
 ```
 
 ## Best Practices
 
 ### 1. Environment Segregation
 
-Maintain separate environment files:
+Keep separate environment files for different deployment contexts:
 
 ```bash
 .env.development    # Local development settings
-.env.staging       # Staging environment
-.env.production    # Production settings
+.env.staging        # Testing environment
+.env.production     # Production settings
 ```
 
-### 2. Git Security
+Load the appropriate file based on your `NODE_ENV` or custom environment flag.
 
-Exclude sensitive files:
+### 2. Secret Validation
 
-```gitignore
-# .gitignore
-.env
-.env.*
-characters/**/secrets.json
-**/serviceAccount.json
-```
-
-### 3. Secret Validation
-
-Validate secrets before use:
+Validate required secrets before using them:
 
 ```typescript
-async function validateSecrets(character: Character): Promise<void> {
-    const required = ["OPENAI_API_KEY"];
-    const missing = required.filter((key) => !character.settings.secrets[key]);
-
-    if (missing.length > 0) {
-        throw new Error(`Missing required secrets: ${missing.join(", ")}`);
-    }
+function validateRequiredSecrets(runtime) {
+  const required = ["OPENAI_API_KEY", "DATABASE_URL"];
+  
+  const missing = required.filter(key => !runtime.getSetting(key));
+  
+  if (missing.length > 0) {
+    throw new Error(`Missing required secrets: ${missing.join(", ")}`);
+  }
 }
 ```
 
-### 4. Error Handling
+### 3. Secure Error Handling
 
-Secure error messages:
+Avoid exposing secrets in error messages or logs:
 
 ```typescript
 try {
-    await loadSecrets();
+  const apiKey = runtime.getSetting("API_KEY");
+  // Use API key...
 } catch (error) {
-    if (error.code === "ENOENT") {
-        console.error("Environment file not found");
-    } else if (error instanceof ValidationError) {
-        console.error("Invalid secret format");
-    } else {
-        // Log securely without exposing secret values
-        console.error("Error loading secrets");
-    }
+  // Log without exposing the secret
+  console.error("Error using API:", error.message);
+  // Don't log the actual API key!
 }
+```
+
+### 4. API Key Validation
+
+Validate API key formats before use:
+
+```typescript
+// OpenAI API key validation
+const apiKey = runtime.getSetting("OPENAI_API_KEY");
+if (apiKey && !apiKey.startsWith("sk-")) {
+  throw new Error("Invalid OpenAI API key format");
+}
+
+// Mask before logging
+const maskedKey = apiKey ? `${apiKey.substring(0, 5)}...` : "not set";
+console.log("Using API key:", maskedKey);
 ```
 
 ## Security Considerations
 
-### 1. Handling API Keys
+### Private Key Handling
+
+Take extra care with blockchain private keys:
 
 ```typescript
-class APIKeyManager {
-    private validateAPIKey(key: string): boolean {
-        if (key.startsWith("sk-")) {
-            return key.length > 20;
-        }
-        return false;
-    }
+// Retrieve private key from settings
+const privateKey = runtime.getSetting("WALLET_PRIVATE_KEY");
 
-    async rotateAPIKey(provider: string): Promise<void> {
-        // Implement key rotation logic
-    }
+// Validate private key format (example for EVM)
+if (privateKey && !privateKey.match(/^(0x)?[0-9a-fA-F]{64}$/)) {
+  throw new Error("Invalid private key format");
 }
+
+// Use private key securely - NEVER log the actual key
+console.log("Using wallet with address:", getAddressFromPrivateKey(privateKey));
 ```
 
-### 2. Secure Configuration Loading
+### Secret Rotation
 
-```typescript
-class ConfigLoader {
-    private static sanitizePath(path: string): boolean {
-        return !path.includes("../") && !path.startsWith("/");
-    }
+Implement periodic key rotation for production deployments:
 
-    async loadConfig(path: string): Promise<Config> {
-        if (!this.sanitizePath(path)) {
-            throw new Error("Invalid config path");
-        }
-        // Load configuration
-    }
-}
-```
+1. Generate new API keys/credentials
+2. Update environment variables or character secrets
+3. Verify functionality with new credentials
+4. Revoke old credentials
 
-### 3. Memory Security
+### Cloud Deployment Security
 
-```typescript
-class SecureMemory {
-    private secrets: Map<string, WeakRef<string>> = new Map();
+When deploying to cloud environments:
 
-    set(key: string, value: string): void {
-        this.secrets.set(key, new WeakRef(value));
-    }
+1. Use the platform's secrets management service:
+   - AWS: Secrets Manager or Parameter Store
+   - Google Cloud: Secret Manager
+   - Azure: Key Vault
+   - Vercel/Netlify: Environment Variables UI
 
-    get(key: string): string | null {
-        const ref = this.secrets.get(key);
-        return ref?.deref() ?? null;
-    }
-}
-```
+2. Minimize secret access:
+   - Restrict which services can access which secrets
+   - Use short-lived credentials when possible
+   - Configure proper IAM roles and permissions
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. Missing Secrets
+#### 1. Missing Environment Variables
+
+If settings aren't being found:
+
+- Check that the `.env` file exists in the project root
+- Verify variable names match exactly (they're case-sensitive)
+- Ensure the file is properly formatted with no spaces around equals signs
+
+#### 2. Character-Specific Secrets Not Working
+
+If character-specific secrets aren't being applied:
+
+- Verify the character name in your namespaced variable matches exactly
+- Check JSON syntax in the character file's `settings.secrets` object
+- Restart the application after changes to environment variables
+
+#### 3. Environment File Not Loading
+
+If your entire `.env` file isn't being loaded:
 
 ```typescript
-if (!process.env.OPENAI_API_KEY) {
-    throw new Error(
-        "OpenAI API key not found in environment or character settings",
-    );
-}
-```
-
-2. Invalid Secret Format
-
-```typescript
-function validateApiKey(key: string): boolean {
-    // OpenAI keys start with 'sk-'
-    if (key.startsWith("sk-")) {
-        return key.length > 20;
-    }
-    return false;
-}
-```
-
-3. Secret Loading Errors
-
-```typescript
-try {
-    await loadSecrets();
-} catch (error) {
-    if (error.response) {
-        console.error("Response data:", error.response.data);
-        console.error("Response status:", error.response.status);
-    } else if (error.request) {
-        console.error("No response received:", error.request);
-    } else {
-        console.error("Error setting up request:", error.message);
-    }
-}
+// Add this near the start of your application
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.development' }); // Specify exact path if needed
 ```
 
 ## Related Resources
 
-- [Configuration Guide](./configuration.md) for general setup
-- [Local Development](./local-development.md) for development environment
-- [Infrastructure Guide](../advanced/infrastructure.md) for deployment security
+- [Configuration Guide](/docs/guides/configuration) - General application configuration
+- [Character Files](/docs/core/characterfile) - Character-specific configuration
+- [Local Development](/docs/guides/local-development) - Development environment setup
+- [Deployment Guide](/docs/guides/remote-deployment) - Secure production deployment

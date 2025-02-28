@@ -20,4 +20,4 @@
 
 ## Defined in
 
-[packages/core/src/generation.ts:1596](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L1596)
+[packages/core/src/generation.ts:1613](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L1613)

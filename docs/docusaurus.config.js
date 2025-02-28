@@ -128,6 +128,17 @@ const config = {
         [
             "classic",
             {
+                blog: {
+                    showReadingTime: true,
+                    editUrl: "https://github.com/elizaos/eliza/tree/main/docs/blog/",
+                    blogSidebarTitle: 'Recent posts',
+                    blogSidebarCount: 10,
+                    feedOptions: {
+                        type: 'all',
+                        title: 'ElizaOS Updates',
+                        description: 'Stay up to date with the latest from ElizaOS',
+                    },
+                },
                 docs: {
                     sidebarPath: "./sidebars.js",
                     editUrl: "https://github.com/elizaos/eliza/tree/main/docs/",
@@ -191,16 +202,21 @@ const config = {
                     docId: "index",
                 },
                 {
+                  to: 'showcase',
+                  label: 'Packages',
+                  position: 'left'
+                },
+                {
+                  to: 'blog',
+                  label: 'Blog',
+                  position: 'left'
+                },
+                {
                     type: "doc",
                     docsPluginId: "community",
                     position: "left",
                     label: "Community",
                     docId: "index",
-                },
-                {
-                  to: 'showcase',
-                  label: 'Showcase',
-                  position: 'left'
                 },
                 {
                     href: "https://github.com/elizaos/eliza",

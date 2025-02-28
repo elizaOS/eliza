@@ -258,7 +258,7 @@ Character traits
 
 ### knowledge?
 
-> `optional` **knowledge**: (`string` \| `object`)[]
+> `optional` **knowledge**: (`string` \| `object` \| `object`)[]
 
 Optional knowledge base
 
@@ -267,6 +267,12 @@ Optional knowledge base
 > **plugins**: [`Plugin`](Plugin.md)[]
 
 Available plugins
+
+### postProcessors?
+
+> `optional` **postProcessors**: `Pick`\<[`Plugin`](Plugin.md), `"name"` \| `"description"` \| `"handlePostCharacterLoaded"`\>[]
+
+Character Processor Plugins
 
 ### settings?
 
@@ -712,4 +718,4 @@ Optinal Parent characters to inherit information from
 
 ## Defined in
 
-[packages/core/src/types.ts:722](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L722)
+[packages/core/src/types.ts:728](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L728)

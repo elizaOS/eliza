@@ -4,39 +4,86 @@ const https = require('https');
 
 const REGISTRY_URL = 'https://raw.githubusercontent.com/elizaos-plugins/registry/refs/heads/main/index.json';
 const OUTPUT_FILE = path.join(__dirname, '../src/data/registry-users.tsx');
+const DESCRIPTIONS_FILE = path.join(__dirname, '../src/data/plugin-descriptions.json');
 
+/**
+ * Get GitHub preview URL for repository
+ */
 function getGithubPreviewUrl(repoPath) {
   return `https://opengraph.githubassets.com/1/${repoPath}`;
 }
 
-function transformRegistryToUsers(registryData) {
-  return Object.entries(registryData).map(([name, repoUrl]) => {
-    const repoPath = repoUrl.replace('github:', '');
-    
-    const displayName = name
-      .replace('@elizaos-plugins/plugin-', '')
-      .replace('@elizaos-plugins/client-', '')
-      .replace('@elizaos-plugins/adapter-', '')
-      .replace(/-/g, ' ')
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-
-    const type = name.includes('client-') ? 'client' :
-                 name.includes('adapter-') ? 'adapter' :
-                 'plugin';
-
-    return {
-      title: displayName,
-      description: `${type.charAt(0).toUpperCase() + type.slice(1)} for ${displayName}`,
-      preview: getGithubPreviewUrl(repoPath),
-      website: `https://github.com/${repoPath}`,
-      source: `https://github.com/${repoPath}`,
-      tags: [type]
-    };
-  });
+/**
+ * Transform a registry entry to extract plugin information
+ */
+function processRegistryEntry(name, repoUrl) {
+  const repoPath = repoUrl.replace('github:', '');
+  
+  const displayName = name
+    .replace('@elizaos-plugins/plugin-', '')
+    .replace('@elizaos-plugins/client-', '')
+    .replace('@elizaos-plugins/adapter-', '')
+    .replace(/-/g, ' ')
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+  
+  const type = name.includes('client-') ? 'client' :
+               name.includes('adapter-') ? 'adapter' :
+               'plugin';
+  
+  return {
+    id: name,
+    name: name,
+    repo_url: repoUrl,
+    repo_path: repoPath,
+    display_name: displayName,
+    type: type
+  };
 }
 
+/**
+ * Load custom descriptions from JSON file
+ */
+function loadCustomDescriptions() {
+  try {
+    if (fs.existsSync(DESCRIPTIONS_FILE)) {
+      const data = fs.readFileSync(DESCRIPTIONS_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.warn('Failed to load custom descriptions:', error);
+  }
+  
+  return {};
+}
+
+/**
+ * Create initial descriptions JSON if it doesn't exist
+ */
+function createInitialDescriptionsJSON(plugins) {
+  // If file already exists, don't overwrite it
+  if (fs.existsSync(DESCRIPTIONS_FILE)) {
+    return;
+  }
+
+  const descriptions = {};
+  
+  plugins.forEach(plugin => {
+    const defaultDescription = `${plugin.type.charAt(0).toUpperCase() + plugin.type.slice(1)} for ${plugin.display_name}`;
+    descriptions[plugin.id] = {
+      description: defaultDescription,
+      custom_preview: null
+    };
+  });
+  
+  fs.writeFileSync(DESCRIPTIONS_FILE, JSON.stringify(descriptions, null, 2));
+  console.log(`Created initial descriptions file at ${DESCRIPTIONS_FILE}`);
+}
+
+/**
+ * Fetch registry data from GitHub
+ */
 function fetchRegistry() {
   return new Promise((resolve, reject) => {
     https.get(REGISTRY_URL, (res) => {
@@ -53,23 +100,76 @@ function fetchRegistry() {
   });
 }
 
-async function generateUsersFile() {
-  try {
-    const registryData = await fetchRegistry();
-    const users = transformRegistryToUsers(registryData);
+/**
+ * Generate the TypeScript file with registry users
+ */
+function generateUsersFile(plugins, customData) {
+  const users = plugins.map(plugin => {
+    const pluginData = customData[plugin.id] || {};
     
-    const fileContent = `// This file is auto-generated. Do not edit directly.
+    const description = pluginData.description || 
+      `${plugin.type.charAt(0).toUpperCase() + plugin.type.slice(1)} for ${plugin.display_name}`;
+    
+    const previewUrl = pluginData.custom_preview || 
+      getGithubPreviewUrl(plugin.repo_path);
+    
+    // Check if this plugin is marked as featured
+    const tags = [plugin.type];
+    if (pluginData.featured) {
+      tags.push('favorite');
+    }
+    
+    // Check if this plugin is marked as open source
+    if (pluginData.opensource) {
+      tags.push('opensource');
+    }
+    
+    return {
+      title: plugin.display_name,
+      description: description,
+      preview: previewUrl,
+      website: `https://github.com/${plugin.repo_path}`,
+      source: `https://github.com/${plugin.repo_path}`,
+      tags: tags
+    };
+  });
+  
+  const fileContent = `// This file is auto-generated. Do not edit directly.
 import {type User} from './users';
 
 export const registryUsers: User[] = ${JSON.stringify(users, null, 2)};
 `;
 
-    fs.writeFileSync(OUTPUT_FILE, fileContent);
-    console.log('Successfully updated registry users data!');
+  fs.writeFileSync(OUTPUT_FILE, fileContent);
+  console.log('Successfully updated registry users data!');
+}
+
+/**
+ * Main function to run the script
+ */
+async function main() {
+  try {
+    // Fetch registry data from GitHub
+    const registryData = await fetchRegistry();
+    
+    // Process registry entries
+    const plugins = Object.entries(registryData).map(([name, repoUrl]) => 
+      processRegistryEntry(name, repoUrl)
+    );
+    
+    // Create initial descriptions file if it doesn't exist
+    createInitialDescriptionsJSON(plugins);
+    
+    // Load custom descriptions from JSON
+    const customData = loadCustomDescriptions();
+    
+    // Generate the TypeScript file
+    generateUsersFile(plugins, customData);
+    
   } catch (error) {
     console.error('Failed to update registry:', error);
     process.exit(1);
   }
 }
 
-generateUsersFile();
+main();

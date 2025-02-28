@@ -56,4 +56,4 @@
 
 ## Defined in
 
-[packages/core/src/generation.ts:1687](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L1687)
+[packages/core/src/generation.ts:1704](https://github.com/elizaOS/eliza/blob/main/packages/core/src/generation.ts#L1704)

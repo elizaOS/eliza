@@ -1,38 +1,34 @@
-# ElizaOS Plugins
+# Plugins
 
-ElizaOS plugins are modular extensions that enhance the capabilities of ElizaOS agents. They provide a flexible way to add new functionality, integrate external services, and customize agent behavior across different platforms.
+Plugins (or packages) are modular extensions that enhance the capabilities of ElizaOS agents. They provide a flexible way to add new functionality, integrate external services, and customize agent behavior across different platforms.
 
-## Overview
+> elizaOS maintains an official package registry at [github.com/elizaos-plugins/registry](https://github.com/elizaos-plugins/registry).
 
-Plugins in ElizaOS can provide various components:
+---
 
-- **Actions**: Custom behaviors and responses
-- **Providers**: Data sources and context providers
-- **Evaluators**: Analysis and learning systems
-- **Services**: Background processes and integrations
-- **Clients**: Platform-specific communication interfaces
-- **Adapters**: Database and storage implementations
-
-## Using Plugins
 
 ### Installation
 
-1. Add the plugin to your project's dependencies:
+Eliza now supports dynamic plugin loading directly from the package registry. Here's a couple ways you can add plugins on eliza:
+
+1. Add the plugin to your project's dependencies (`package.json`):
 
 ```json
 {
   "dependencies": {
-    "@elizaos/plugin-example": "github:elizaos-plugins/plugin-example"
+    "@elizaos/plugin-solana": "github:elizaos-plugins/plugin-solana",
+    "@elizaos/plugin-twitter": "github:elizaos-plugins/plugin-twitter"
   }
 }
 ```
 
 2. Configure the plugin in your character file:
 
-```json
+```typescript
 {
   "name": "MyAgent",
   "plugins": [
+    "@elizaos/plugin-twitter",
     "@elizaos/plugin-example"
   ],
   "settings": {
@@ -43,131 +39,228 @@ Plugins in ElizaOS can provide various components:
 }
 ```
 
-### Available Plugins
+3. Use the new CLI tool:
 
-ElizaOS maintains an official plugin registry at [github.com/elizaos-plugins/registry](https://github.com/elizaos-plugins/registry). Some key categories include:
+You can list available plugins, install new ones, and remove them when needed.  
 
-#### Database Adapters
-- `@elizaos-plugins/adapter-mongodb`: MongoDB integration
-- `@elizaos-plugins/adapter-postgres`: PostgreSQL with vector support
-- `@elizaos-plugins/adapter-sqlite`: Lightweight SQLite storage
-- `@elizaos-plugins/adapter-qdrant`: Vector-focused storage
-- `@elizaos-plugins/adapter-supabase`: Cloud-hosted vector database
+Go into the eliza directory you cloned and type `npx elizaos plugins` to use it.
 
-#### Platform Clients
-- `@elizaos-plugins/client-discord`: Discord bot integration
-- `@elizaos-plugins/client-twitter`: Twitter/X integration
-- `@elizaos-plugins/client-telegram`: Telegram messaging
-- `@elizaos-plugins/client-slack`: Slack workspace integration
-- `@elizaos-plugins/client-farcaster`: Web3 social networking
+```bash
+Usage: elizaos plugins [options] [command]
 
-#### Utility Plugins
-- `@elizaos-plugins/plugin-browser`: Web scraping capabilities
-- `@elizaos-plugins/plugin-pdf`: PDF processing
-- `@elizaos-plugins/plugin-image`: Image analysis and generation
-- `@elizaos-plugins/plugin-video`: Video processing
-- `@elizaos-plugins/plugin-llama`: Local LLaMA model integration
+manage elizaOS plugins
 
-## Creating Plugins
+Options:
+  -h, --help              display help for command
 
-### Project Structure
-
-```
-plugin-name/
-├── package.json
-├── tsconfig.json
-├── src/
-│   ├── index.ts        # Main plugin entry
-│   ├── actions/        # Custom actions
-│   ├── providers/      # Data providers
-│   ├── types.ts        # Type definitions
-│   └── environment.ts  # Configuration
-├── README.md
-└── LICENSE
+Commands:
+  list|l [options]        list available plugins
+  add|install <plugin>    add a plugin
+  remove|delete <plugin>  remove a plugin
+  help [command]          display help for command
 ```
 
-### Basic Plugin Implementation
+---
+
+## Architecture
+
+Eliza uses a unified plugin architecture where everything is a plugin - including clients, adapters, actions, evaluators, and services. This approach ensures consistent behavior and better extensibility. Here's how the architecture works:
+
+1. **Plugin Types**: Each plugin can provide one or more of the following:
+   - Clients (e.g., Discord, Twitter, WhatsApp integrations)
+   - Adapters (e.g., database adapters, caching systems)
+   - Actions (custom behavior and responses functionality)
+   - Evaluators (analysis, learning, decision-making components)
+   - Services (background processes and integrations)
+   - Providers (data or functionality providers)
+
+2. **Plugin Interface**: All plugins implement the core Plugin interface:
+   ```typescript
+   type Plugin = {
+       name: string;
+       description: string;
+       config?: { [key: string]: any };
+       actions?: Action[];
+       providers?: Provider[];
+       evaluators?: Evaluator[];
+       services?: Service[];
+       clients?: Client[];
+       adapters?: Adapter[];
+   };
+   ```
+
+3. **Independent Repositories**: Each plugin lives in its own repository under the [elizaos-plugins](https://github.com/elizaos-plugins/) organization, allowing:
+   - Independent versioning and releases
+   - Focused issue tracking and documentation
+   - Easier maintenance and contribution
+   - Separate CI/CD pipelines
+
+4. **Plugin Structure**: Each plugin repository should follow this structure:
+   ```
+   plugin-name/
+   ├── images/
+   │   ├── logo.jpg        # Plugin branding logo
+   │   ├── banner.jpg      # Plugin banner image
+   ├── src/
+   │   ├── index.ts        # Main plugin entry point
+   │   ├── actions/        # Plugin-specific actions
+   │   ├── clients/        # Client implementations
+   │   ├── adapters/       # Adapter implementations
+   │   └── types.ts        # Type definitions
+   │   └── environment.ts  # runtime.getSetting, zod validation
+   ├── package.json        # Plugin dependencies
+   └── README.md          # Plugin documentation
+   ```
+
+5. **Package Configuration**: Your plugin's `package.json` must include an `agentConfig` section:
+   ```json
+   {
+     "name": "@elizaos/plugin-example",
+     "version": "1.0.0",
+     "agentConfig": {
+       "pluginType": "elizaos:plugin:1.0.0",
+       "pluginParameters": {
+         "API_KEY": {
+           "type": "string",
+           "description": "API key for the service"
+         }
+       }
+     }
+   }
+   ```
+
+6. **Plugin Loading**: Plugins are dynamically loaded at runtime through the `handlePluginImporting` function, which:
+   - Imports the plugin module
+   - Reads the plugin configuration
+   - Validates plugin parameters
+   - Registers the plugin's components (clients, adapters, actions, etc.)
+
+7. **Client and Adapter Implementation**: When implementing clients or adapters:
 
 ```typescript
-import { Plugin, Action, Provider } from "@elizaos/core";
+   // Client example
+   const discordPlugin: Plugin = {
+     name: "discord",
+     description: "Discord client plugin",
+     clients: [DiscordClientInterface]
+   };
 
-const exampleAction: Action = {
-    name: "EXAMPLE_ACTION",
-    similes: ["ALTERNATE_NAME"],
-    description: "Description of what this action does",
-    validate: async (runtime, message) => {
-        // Validation logic
-        return true;
-    },
-    handler: async (runtime, message) => {
-        // Implementation logic
-        return true;
-    }
-};
-
-const exampleProvider: Provider = {
-    get: async (runtime, message) => {
-        // Provider implementation
-        return "Context string";
-    }
-};
-
-export const examplePlugin: Plugin = {
-    name: "example-plugin",
-    description: "Plugin description",
-    actions: [exampleAction],
-    providers: [exampleProvider]
-};
+   // Adapter example
+   const postgresPlugin: Plugin = {
+     name: "postgres",
+     description: "PostgreSQL database adapter",
+     adapters: [PostgresDatabaseAdapter]
+   };
+   
+   // Adapter example
+   export const browserPlugin = {
+    name: "default",
+    description: "Pdf",
+    services: [PdfService],
+    actions: [],
+  };
 ```
 
-### Package Configuration
+### Environment Variables and Secrets
 
-Your `package.json` must include:
+Plugins can access environment variables and secrets in two ways:
 
-```json
-{
-  "name": "@elizaos/plugin-example",
-  "version": "1.0.0",
-  "agentConfig": {
-    "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "API_KEY": {
-        "type": "string",
-        "description": "API key for the service"
-      }
-    }
-  }
-}
-```
+1. **Character Configuration**: Through `agent.json.secret` or character settings:
+   ```json
+   {
+     "name": "MyAgent",
+     "settings": {
+       "secrets": {
+         "PLUGIN_API_KEY": "your-api-key",
+         "PLUGIN_SECRET": "your-secret"
+       }
+     }
+   }
+   ```
 
+2. **Runtime Access**: Plugins can access their configuration through the runtime:
+   ```typescript
+   class MyPlugin implements Plugin {
+     async initialize(runtime: AgentRuntime) {
+       const apiKey = runtime.getSetting("PLUGIN_API_KEY");
+       const secret = runtime.getSetting("PLUGIN_SECRET");
+     }
+   }
+   ```
 
+The `getSetting` method follows this precedence:
+1. Character settings secrets
+2. Character settings
+3. Global settings
 
-## Best Practices
+---
 
-1. **Minimal Dependencies**
-   - Only include necessary dependencies
-   - Use peer dependencies when possible
-   - Document all required dependencies
+### Pull Request Requirements
 
-2. **Error Handling**
-   - Validate configuration before use
-   - Provide meaningful error messages
-   - Implement proper error recovery
+When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), your PR must include:
 
-3. **Type Safety**
-   - Use TypeScript throughout
-   - Define clear interfaces
-   - Document type constraints
+1. **Working Demo Evidence:**
+   - Screenshots or video demonstrations of the plugin working with ElizaOS
+   - Test results showing successful integration
+   - Example agent configuration using your plugin
+   - Documentation of any specific setup requirements
 
-4. **Documentation**
-   - Include clear README
-   - Document all configuration options
-   - Provide usage examples
+2. **Integration Testing:**
+   - Proof of successful dynamic loading with ElizaOS
+   - Test cases covering main functionality
+   - Error handling demonstrations
+   - Performance metrics (if applicable)
 
-5. **Testing**
-   - Include unit tests
-   - Provide integration tests
-   - Document testing procedures
+3. **Configuration Examples:**
+   ```json
+   {
+     "name": "MyAgent",
+     "plugins": ["@elizaos/your-plugin"],
+     "settings": {
+       "your-plugin": {
+         // Your plugin's configuration
+       }
+     }
+   }
+   ```
+
+4. **Quality Checklist:**
+   - [ ] Plugin follows the standard structure
+   - [ ] All required branding assets are included
+   - [ ] Documentation is complete and clear
+   - [ ] GitHub topics are properly set
+   - [ ] Tests are passing
+   - [ ] Demo evidence is provided
+
+Visit the [Elizaos Plugin Development Guide]([https://github.com/elizaos-plugins/plugin-image](https://github.com/elizaOS/eliza/blob/main/docs/docs/packages/plugins.md) for detailed information on creating new plugins.
+
+### Plugin Branding and Images
+
+To maintain a consistent and professional appearance across the ElizaOS ecosystem, we recommend including the following assets in your plugin repository:
+
+1. **Required Images:**
+   - `logo.png` (400x400px) - Your plugin's square logo
+   - `banner.png` (1280x640px) - A banner image for your plugin
+   - `screenshot.png` - At least one screenshot demonstrating your plugin's functionality
+
+2. **Image Location:**
+   ```
+   plugin-name/
+   ├── assets/
+   │   ├── logo.png
+   │   ├── banner.png
+   │   └── screenshots/
+   │       ├── screenshot1.png
+   │       └── screenshot2.png
+   ```
+   
+3. **Image Guidelines:**
+   - Use clear, high-resolution images
+   - Keep file sizes optimized (< 500KB for logos, < 1MB for banners)
+   - [Image example](https://github.com/elizaos-plugins/client-twitter/blob/main/images/banner.jpg)
+   - Include alt text for accessibility
+
+---
 
 ## FAQ
 

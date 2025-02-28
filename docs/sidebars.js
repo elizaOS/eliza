@@ -151,11 +151,6 @@ const sidebars = {
                 },
                 {
                     type: "doc",
-                    id: "guides/advanced",
-                    label: "Advanced Usage",
-                },
-                {
-                    type: "doc",
                     id: "guides/secrets-management",
                     label: "Secrets Management",
                 },
@@ -163,11 +158,6 @@ const sidebars = {
                     type: "doc",
                     id: "guides/memory-management",
                     label: "Memory Management",
-                },
-                {
-                    type: "doc",
-                    id: "guides/local-development",
-                    label: "Local Development",
                 },
                 {
                     type: "doc",

@@ -1,0 +1,457 @@
+{
+  "@elizaos-plugins/plugin-0g": {
+    "description": "Provides decentralized file storage capabilities using the Zero Gravity (0G) protocol.",
+    "custom_preview": "/eliza/logos/0g.jpg"
+  },
+  "@elizaos-plugins/plugin-3d-generation": {
+    "description": "Generates 3D models from text descriptions using FAL.ai's API services.",
+    "custom_preview": "/eliza/logos/falai.png"
+  },
+  "@elizaos-plugins/plugin-abstract": {
+    "description": "Enables token transfers and operations on the Abstract blockchain network.",
+    "custom_preview": "/eliza/logos/abstract.jpg"
+  },
+  "@elizaos-plugins/plugin-akash": {
+    "description": "Manages deployments and cloud compute operations on the Akash Network.",
+    "custom_preview": "/eliza/logos/akash.jpg"
+  },
+  "@elizaos-plugins/plugin-allora": {
+    "description": "Provides real-time AI inferences from the Allora Network for market predictions and analysis.",
+    "custom_preview": "/eliza/logos/allora.jpg"
+  },
+  "@elizaos-plugins/plugin-anyone": {
+    "description": "Enables SOCKS proxy configuration for the Anyone protocol proxy services.",
+    "custom_preview": "/eliza/logos/anyone.jpg"
+  },
+  "@elizaos-plugins/plugin-aptos": {
+    "description": "Handles token transfers and wallet management on the Aptos blockchain.",
+    "custom_preview": "/eliza/logos/aptos.jpg"
+  },
+  "@elizaos-plugins/plugin-arthera": {
+    "description": "Facilitates transactions and token operations on the Arthera network.",
+    "custom_preview": "/eliza/logos/arthera.jpg"
+  },
+  "@elizaos-plugins/plugin-asterai": {
+    "description": "Integrates with asterai.io plugins and agents for enhanced AI capabilities.",
+    "custom_preview": "/eliza/logos/asterai.jpg"
+  },
+  "@elizaos-plugins/plugin-ATTPs": {
+    "description": "Enables verification of agent activities using proof generation and validation.",
+    "custom_preview": "/eliza/logos/appro.jpg"
+  },
+  "@elizaos-plugins/plugin-autonome": {
+    "description": "Launches and manages new Eliza agents through the Autonome platform.",
+    "custom_preview": "/eliza/logos/autonome.jpg"
+  },
+  "@elizaos-plugins/plugin-avail": {
+    "description": "Interacts with Avail DA network for data availability and token transfers.",
+    "custom_preview": "/eliza/logos/avail.png"
+  },
+  "@elizaos-plugins/plugin-avalanche": {
+    "description": "Enables DeFi operations and token management on the Avalanche blockchain.",
+    "custom_preview": "/eliza/logos/avalanche.jpg"
+  },
+  "@elizaos-plugins/plugin-binance": {
+    "description": "Provides cryptocurrency trading and price checking capabilities through Binance's API.",
+    "custom_preview": "/eliza/logos/binance.jpg"
+  },
+  "@elizaos-plugins/plugin-ccxt": {
+    "description": "Enables cryptocurrency trading and arbitrage across multiple exchanges using CCXT.",
+    "custom_preview": "/eliza/logos/ccxt.png"
+  },
+  "@elizaos-plugins/plugin-coinbase": {
+    "description": "Provides comprehensive integration with Coinbase's various APIs and trading services.",
+    "custom_preview": "/eliza/logos/coinbase.png"
+  },
+  "@elizaos-plugins/plugin-coingecko": {
+    "description": "Fetches cryptocurrency price data and market information from CoinGecko's API.",
+    "custom_preview": "/eliza/logos/coingecko.jpg"
+  },
+  "@elizaos-plugins/plugin-coinmarketcap": {
+    "description": "Enables cryptocurrency price checking using CoinMarketCap's API services.",
+    "custom_preview": "/eliza/logos/coinmarketcap.jpg"
+  },
+  "@elizaos-plugins/plugin-compass": {
+    "description": "Integrates with Compass API for executing operations on DeFi protocols.",
+    "custom_preview": "/eliza/logos/compass.jpg"
+  },
+  "@elizaos-plugins/plugin-conflux": {
+    "description": "Manages token transfers and interactions on the Conflux blockchain network.",
+    "custom_preview": "/eliza/logos/conflux.png"
+  },
+  "@elizaos-plugins/plugin-cosmos": {
+    "description": "Handles token management and transfers using Cosmos-compatible blockchains.",
+    "custom_preview": "/eliza/logos/cosmos.jpg"
+  },
+  "@elizaos-plugins/plugin-cronoszkevm": {
+    "description": "Enables token transfers and interactions on the Cronos zkEVM network.",
+    "custom_preview": "/eliza/logos/cronos.png"
+  },
+  "@elizaos-plugins/plugin-d.a.t.a": {
+    "description": "Processes and analyzes data from various sources with authentication and trust scoring.",
+    "custom_preview": "/eliza/logos/carv.jpg"
+  },
+  "@elizaos-plugins/plugin-depin": {
+    "description": "Connects AI agents to physical infrastructure through Decentralized Physical Infrastructure Networks.",
+    "custom_preview": "/eliza/logos/depin.jpg"
+  },
+  "@elizaos-plugins/plugin-di": {
+    "description": "Provides dependency injection system for Eliza plugins.",
+    "custom_preview": "/eliza/logos/di-logo.jpg"
+  },
+  "@elizaos-plugins/plugin-echochambers": {
+    "description": "Enables chat room interactions with dynamic conversation handling and monitoring.",
+    "custom_preview": "/eliza/logos/echochambers.png"
+  },
+  "@elizaos-plugins/plugin-edwin": {
+    "description": "Enables interaction with Edwin tools for DeFi operations.",
+    "custom_preview": "/eliza/logos/edwin.jpg"
+  },
+  "@elizaos-plugins/plugin-evm": {
+    "description": "Provides comprehensive functionality for interacting with EVM-compatible chains.",
+    "custom_preview": "/eliza/logos/evm.png",
+    "featured": true
+  },
+  "@elizaos-plugins/plugin-ferePro": {
+    "description": "Enables WebSocket communication with FerePro API for AI-driven market insights.",
+    "custom_preview": "/eliza/logos/ferepro.png"
+  },
+  "@elizaos-plugins/plugin-firecrawl": {
+    "description": "Provides web scraping and crawling capabilities through the Firecrawl API.",
+    "custom_preview": "/eliza/logos/firecrawl.jpg"
+  },
+  "@elizaos-plugins/plugin-flow": {
+    "description": "Manages Flow blockchain interactions including token transfers and smart contracts.",
+    "custom_preview": "/eliza/logos/flowchain.png"
+  },
+  "@elizaos-plugins/plugin-flow-advanced": {
+    "description": "The advanced Eliza plugin for Flow Blockchain",
+    "custom_preview": "/eliza/logos/flowchain.png"
+  },
+  "@elizaos-plugins/plugin-fuel": {
+    "description": "Enables ETH transfers and interactions on the Fuel Ignition network.",
+    "custom_preview": "/eliza/logos/fuel.jpg"
+  },
+  "@elizaos-plugins/plugin-genlayer": {
+    "description": "Facilitates contract deployment and interactions on the GenLayer protocol.",
+    "custom_preview": "/eliza/logos/genlayer.jpg"
+  },
+  "@elizaos-plugins/plugin-giphy": {
+    "description": "Enables sending GIFs in response to user messages using the Giphy API.",
+    "custom_preview": "/eliza/logos/giphy.jpg"
+  },
+  "@elizaos-plugins/plugin-gitbook": {
+    "description": "Enables querying and retrieving information from GitBook documentation.",
+    "custom_preview": "/eliza/logos/gitbook.jpg"
+  },
+  "@elizaos-plugins/plugin-goat": {
+    "description": "Integrates blockchain capabilities through the GOAT (Great Onchain Agent Toolkit) framework.",
+    "custom_preview": "/eliza/logos/goat.jpg"
+  },
+  "@elizaos-plugins/plugin-goplus": {
+    "description": "Enables on-chain security checks through the GoPlus API integration.",
+    "custom_preview": "/eliza/logos/goplus.jpg"
+  },
+  "@elizaos-plugins/plugin-grix": {
+    "description": "Enables DeFi options data fetching and price analysis through Grix Finance API.",
+    "custom_preview": "/eliza/logos/grix.png"
+  },
+  "@elizaos-plugins/plugin-hyperliquid": {
+    "description": "Provides spot trading capabilities on the Hyperliquid DEX.",
+    "custom_preview": "/eliza/logos/hyperliquid.png"
+  },
+  "@elizaos-plugins/plugin-icp": {
+    "description": "Enables interaction with Internet Computer Protocol for token and smart contract operations.",
+    "custom_preview": "/eliza/logos/ICP.jpg"
+  },
+  "@elizaos-plugins/plugin-image-generation": {
+    "description": "Generates and manages images with storage integration and optimization features.",
+    "custom_preview": "/eliza/logos/imagegen.jpg"
+  },
+  "@elizaos-plugins/plugin-intiface": {
+    "description": "Controls intimate hardware devices through the Buttplug.io protocol.",
+    "custom_preview": "/eliza/logos/intiface.png"
+  },
+  "@elizaos-plugins/plugin-irys": {
+    "description": "Enables decentralized data storage and retrieval using the Irys datachain platform.",
+    "custom_preview": "/eliza/logos/irys.jpg"
+  },
+  "@elizaos-plugins/plugin-lensNetwork": {
+    "description": "Integrates with Lens Protocol for social networking features.",
+    "custom_preview": "/eliza/logos/lens.jpg"
+  },
+  "@elizaos-plugins/plugin-letzai": {
+    "description": "Enables image generation using LetzAI's API and models.",
+    "custom_preview": "/eliza/logos/letzai.jpg"
+  },
+  "@elizaos-plugins/plugin-massa": {
+    "description": "Enables interactions with the Massa blockchain ecosystem.",
+    "custom_preview": "/eliza/logos/massa.jpg"
+  },
+  "@elizaos-plugins/plugin-merkle": {
+    "description": "Integrates MerkleTrade platform for trading operations with API-based price tracking and order management.",
+    "custom_preview": "/eliza/logos/merkle.jpg"
+  },
+  "@elizaos-plugins/plugin-messari-ai-toolkit": {
+    "description": "Provides crypto market research capabilities using Messari's AI Toolkit.",
+    "custom_preview": "/eliza/logos/messari.jpg"
+  },
+  "@elizaos-plugins/plugin-movement": {
+    "description": "Enables Movement Network blockchain functionality for token operations.",
+    "custom_preview": "/eliza/logos/movement.jpg"
+  },
+  "@elizaos-plugins/plugin-multiversx": {
+    "description": "Manages token operations and transfers on the MultiversX blockchain.",
+    "custom_preview": "/eliza/logos/multiversx.jpg"
+  },
+  "@elizaos-plugins/plugin-near": {
+    "description": "Enables token management and transfers on the NEAR Protocol blockchain.",
+    "custom_preview": "/eliza/logos/NEAR.jpg"
+  },
+  "@elizaos-plugins/plugin-nft-generation": {
+    "description": "Creates NFT collections with AI-generated artwork on the Solana blockchain.",
+    "custom_preview": "/eliza/logos/nftgen.png"
+  },
+  "@elizaos-plugins/plugin-node": {
+    "description": "Provides core Node.js services for file operations and media processing.",
+    "custom_preview": "/eliza/logos/nodejs.jpg"
+  },
+  "@elizaos-plugins/plugin-nkn": {
+    "description": "Enables communication between multiple AI agents using the NKN protocol for decentralized messaging.",
+    "custom_preview": "/eliza/logos/nkn.jpg"
+  },
+  "@elizaos-plugins/plugin-obsidian": {
+    "description": "Enables seamless integration with Obsidian vaults for note management.",
+    "custom_preview": "/eliza/logos/obsidian.jpg"
+  },
+  "@elizaos-plugins/plugin-omniflix": {
+    "description": "Facilitates interactions with the OmniFlix Network blockchain.",
+    "custom_preview": "/eliza/logos/omniflix.jpg"
+  },
+  "@elizaos-plugins/plugin-opacity": {
+    "description": "Implements verifiable inference results from various AI model providers.",
+    "custom_preview": "/eliza/logos/opacity.jpg"
+  },
+  "@elizaos-plugins/plugin-open-weather": {
+    "description": "Fetches weather data using the OpenWeather API.",
+    "custom_preview": "/eliza/logos/openweather.jpg"
+  },
+  "@elizaos-plugins/plugin-primus": {
+    "description": "Verifies agent activities using Primus' zkTLS protocol.",
+    "custom_preview": "/eliza/logos/primus.png"
+  },
+  "@elizaos-plugins/plugin-quai": {
+    "description": "Enables token transfers and blockchain interactions on Quai Network.",
+    "custom_preview": "/eliza/logos/quai.jpg"
+  },
+  "@elizaos-plugins/plugin-rabbi-trader": {
+    "description": "Provides automated cryptocurrency trading on Solana with trust scoring.",
+    "custom_preview": "/eliza/logos/rabbitrader.jpg"
+  },
+  "@elizaos-plugins/plugin-sei": {
+    "description": "Enables token transfers and operations on the Sei blockchain network.",
+    "custom_preview": "/eliza/logos/sei.jpg"
+  },
+  "@elizaos-plugins/plugin-sgx": {
+    "description": "Provides Intel SGX attestation capabilities for secure execution.",
+    "custom_preview": "/eliza/logos/intelsgx.png"
+  },
+  "@elizaos-plugins/plugin-solana": {
+    "description": "Enables comprehensive DeFi operations on the Solana blockchain.",
+    "custom_preview": "/eliza/logos/solana.jpg"
+  },
+  "@elizaos-plugins/plugin-solana-agent-kit": {
+    "description": "Provides token operations and NFT functionality on Solana.",
+    "custom_preview": "/eliza/logos/sendai.png",
+    "featured": true
+  },
+  "@elizaos-plugins/plugin-spheron": {
+    "description": "Manages deployments and operations using the Spheron Protocol.",
+    "custom_preview": "/eliza/logos/spheron.jpg"
+  },
+  "@elizaos-plugins/plugin-stargaze": {
+    "description": "Fetches NFT data from Stargaze collections.",
+    "custom_preview": "/eliza/logos/stargaze.png"
+  },
+  "@elizaos-plugins/plugin-starknet": {
+    "description": "Enables token and DeFi operations on the Starknet blockchain.",
+    "custom_preview": "/eliza/logos/starknet.png"
+  },
+  "@elizaos-plugins/plugin-story": {
+    "description": "Generates and manages interactive storytelling experiences with branching narratives.",
+    "custom_preview": "/eliza/logos/story.jpg",
+    "featured": true
+  },
+  "@elizaos-plugins/plugin-sui": {
+    "description": "Manages token transfers and wallet operations on the Sui blockchain.",
+    "custom_preview": "/eliza/logos/sui.jpg"
+  },
+  "@elizaos-plugins/plugin-tee": {
+    "description": "Handles Trusted Execution Environment operations and key management.",
+    "custom_preview": "/eliza/logos/phalatee.jpg"
+  },
+  "@elizaos-plugins/plugin-tee-log": {
+    "description": "Provides secure logging capabilities within Trusted Execution Environments.",
+    "custom_preview": "/eliza/logos/tee.png"
+  },
+  "@elizaos-plugins/plugin-tee-marlin": {
+    "description": "Enables TEE verification through Marlin Oyster platform.",
+    "custom_preview": "/eliza/logos/marlin.jpg"
+  },
+  "@elizaos-plugins/plugin-thirdweb": {
+    "description": "Provides access to thirdweb's Nebula AI interface.",
+    "custom_preview": "/eliza/logos/thirdweb.jpg"
+  },
+  "@elizaos-plugins/plugin-ton": {
+    "description": "Manages TON blockchain operations and wallet functionality.",
+    "custom_preview": "/eliza/logos/ton.png"
+  },
+  "@elizaos-plugins/plugin-trustgo": {
+    "description": "Enables fetching EVM account information and MEDIA score attestations from TrustGo.",
+    "custom_preview": "/eliza/logos/trusta.jpg"
+  },
+  "@elizaos-plugins/plugin-tts": {
+    "description": "Generates speech from text using FAL.ai's API.",
+    "custom_preview": "/eliza/logos/fal.jpg"
+  },
+  "@elizaos-plugins/plugin-twitter": {
+    "description": "Enables automated tweet posting with character-aware content generation.",
+    "custom_preview": "/eliza/logos/x.jpg"
+  },
+  "@elizaos-plugins/plugin-viction": {
+    "description": "Services and actions for token operations, trading, and DeFi integrations using Viction.",
+    "custom_preview": "/eliza/logos/viction.jpg"
+  },
+  "@elizaos-plugins/plugin-video-generation": {
+    "description": "Generates videos using Luma AI's API services.",
+    "custom_preview": "/eliza/logos/LUMA.jpg"
+  },
+  "@elizaos-plugins/plugin-web-search": {
+    "description": "Provides powerful web search capabilities with customizable API interface.",
+    "custom_preview": "/eliza/logos/websearch.jpg"
+  },
+  "@elizaos-plugins/plugin-whatsapp": {
+    "description": "Enables WhatsApp messaging through the Cloud API with comprehensive features.",
+    "custom_preview": "/eliza/logos/whatsapp.png"
+  },
+  "@elizaos-plugins/plugin-youtube-to-text": {
+    "description": "Converts YouTube videos to text transcripts.",
+    "custom_preview": "/eliza/logos/youtube.png"
+  },
+  "@elizaos-plugins/plugin-zerion": {
+    "description": "Fetches wallet portfolio and position data using the Zerion API.",
+    "custom_preview": "/eliza/logos/zerion.jpg"
+  },
+  "@elizaos-plugins/plugin-zksync-era": {
+    "description": "Enables token transfers and operations on the zkSync Era network.",
+    "custom_preview": "/eliza/logos/zksync.jpg"
+  },
+  "@elizaos-plugins/adapter-mongodb": {
+    "description": "Database adapter for MongoDB enabling document storage with query capabilities.",
+    "custom_preview": "/eliza/logos/mongodb.png"
+  },
+  "@elizaos-plugins/adapter-postgres": {
+    "description": "Database adapter for PostgreSQL with full relational database capabilities.",
+    "custom_preview": "/eliza/logos/postgres.jpg"
+  },
+  "@elizaos-plugins/adapter-pglite": {
+    "description": "Lightweight PostgreSQL adapter for embedded database applications.",
+    "custom_preview": "/eliza/logos/pglite.png"
+  },
+  "@elizaos-plugins/adapter-qdrant": {
+    "description": "Vector database adapter for Qdrant with similarity search capabilities.",
+    "custom_preview": "/eliza/logos/qdrant.png"
+  },
+  "@elizaos-plugins/adapter-sqljs": {
+    "description": "In-memory SQL database adapter for browser-based applications.",
+    "custom_preview": "/eliza/logos/sqljs.png"
+  },
+  "@elizaos-plugins/adapter-sqlite": {
+    "description": "File-based SQL database adapter for lightweight local storage.",
+    "custom_preview": "/eliza/logos/sqlite.png"
+  },
+  "@elizaos-plugins/adapter-supabase": {
+    "description": "Database adapter for Supabase with PostgreSQL and realtime capabilities.",
+    "custom_preview": "/eliza/logos/supabase.jpg"
+  },
+  "@elizaos-plugins/client-auto": {
+    "description": "Auto-detection client for determining optimal communication channels.",
+    "custom_preview": "/eliza/logos/auto.jpg"
+  },
+  "@elizaos-plugins/client-discord": {
+    "description": "Discord integration client with messaging and community interaction capabilities.",
+    "custom_preview": "/eliza/logos/discord.jpg",
+    "featured": true
+  },
+  "@elizaos-plugins/client-farcaster": {
+    "description": "Client for Farcaster decentralized social media protocol.",
+    "custom_preview": "/eliza/logos/farcaster.jpg"
+  },
+  "@elizaos-plugins/client-github": {
+    "description": "GitHub client for repository management and code integration.",
+    "custom_preview": "/eliza/logos/github.png",
+    "featured": true
+  },
+  "@elizaos-plugins/client-lens": {
+    "description": "Client for Lens Protocol decentralized social networking.",
+    "custom_preview": "/eliza/logos/lens.jpg"
+  },
+  "@elizaos-plugins/client-slack": {
+    "description": "Slack integration client with messaging and workspace collaboration features.",
+    "custom_preview": "/eliza/logos/slack.jpg"
+  },
+  "@elizaos-plugins/client-telegram": {
+    "description": "Telegram messaging client with bot and channel integration capabilities.",
+    "custom_preview": "/eliza/logos/telegram.jpg",
+    "featured": true
+  },
+  "@elizaos-plugins/client-twitter": {
+    "description": "Twitter/X client for posting and monitoring social media activity.",
+    "custom_preview": "/eliza/logos/x.jpg",
+    "featured": true
+  },
+  "@elizaos-plugins/client-tako": {
+    "description": "Client for the Tako protocol enabling cross-platform social engagement.",
+    "custom_preview": "/eliza/logos/tako.png"
+  },
+  "@elizaos-plugins/plugin-dcap": {
+    "description": "Provides Intel Data Center Attestation Primitives for secure cloud environments.",
+    "custom_preview": "/eliza/logos/dcap.png"
+  },
+  "@elizaos-plugins/plugin-gigbot": {
+    "description": "AI-powered freelance work management and automation toolkit.",
+    "custom_preview": "/eliza/logos/gigbot.png"
+  },
+  "@elizaos-plugins/plugin-isaacx": {
+    "description": "Advanced AI reasoning and cognitive modeling plugin.",
+    "custom_preview": "/eliza/logos/isaac.jpg"
+  },
+  "@elizaos-plugins/plugin-lightlink": {
+    "description": "Enables Ethereum layer 2 operations on the Lightlink blockchain network.",
+    "custom_preview": "/eliza/logos/lightlink.jpg"
+  },
+  "@elizaos-plugins/plugin-multichain": {
+    "description": "Cross-chain interaction capabilities for multiple blockchain networks.",
+    "custom_preview": "/eliza/logos/nearai.png"
+  },
+  "@elizaos-plugins/plugin-okto": {
+    "description": "Self-custody wallet operations and transaction management.",
+    "custom_preview": "/eliza/logos/okto.png"
+  },
+  "@elizaos-plugins/plugin-okx": {
+    "description": "Trading and asset management through OKX exchange API.",
+    "custom_preview": "/eliza/logos/okx.png"
+  },
+  "@elizaos-plugins/plugin-para": {
+    "description": "NFT and digital collectible management platform integration.",
+    "custom_preview": "/eliza/logos/para.png"
+  },
+  "@elizaos-plugins/plugin-twilio": {
+    "description": "SMS, voice, and communication capabilities through Twilio API.",
+    "custom_preview": "/eliza/logos/twilio.png"
+  },
+  "@elizaos-plugins/plugin-zapper": {
+    "description": "Portfolio tracking and DeFi position management across multiple chains.",
+    "custom_preview": "/eliza/logos/zapper.jpg"
+  }
+}

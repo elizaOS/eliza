@@ -16,4 +16,4 @@
 
 ## Defined in
 
-[packages/core/src/types.ts:1542](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1542)
+[packages/core/src/types.ts:1551](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L1551)

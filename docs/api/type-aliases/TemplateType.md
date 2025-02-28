@@ -6,4 +6,4 @@
 
 ## Defined in
 
-[packages/core/src/types.ts:717](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L717)
+[packages/core/src/types.ts:723](https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts#L723)

@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { debounce } from 'lodash';
+import { Search } from 'lucide-react';
 import styles from './styles.module.css';
 
 export default function ShowcaseSearchBar({
@@ -19,13 +20,26 @@ export default function ShowcaseSearchBar({
 
   return (
     <div className={styles.searchContainer}>
-      <input
-        type="text"
-        placeholder="Search plugins..."
-        className={styles.searchInput}
-        defaultValue={value}
-        onChange={(e) => debouncedOnChange(e.target.value)}
-      />
+      <div className={styles.searchInputWrapper}>
+        <Search size={18} className={styles.searchIcon} />
+        <input
+          type="text"
+          placeholder="Search packages..."
+          className={styles.searchInput}
+          defaultValue={value}
+          onChange={(e) => debouncedOnChange(e.target.value)}
+          aria-label="Search packages"
+        />
+        {value && (
+          <button 
+            className={styles.clearButton}
+            onClick={() => onChange('')}
+            aria-label="Clear search"
+          >
+            ×
+          </button>
+        )}
+      </div>
     </div>
   );
 }

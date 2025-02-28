@@ -14,6 +14,12 @@ Plugin for extending agent functionality
 
 Plugin name
 
+### npmName?
+
+> `optional` **npmName**: `string`
+
+Plugin npm name
+
 ### config?
 
 > `optional` **config**: `object`
@@ -65,6 +71,20 @@ Optional clients
 > `optional` **adapters**: [`Adapter`](Adapter.md)[]
 
 Optional adapters
+
+### handlePostCharacterLoaded()?
+
+> `optional` **handlePostCharacterLoaded**: (`char`) => `Promise`\<[`Character`](Character.md)\>
+
+Optional post charactor processor handler
+
+#### Parameters
+
+• **char**: [`Character`](Character.md)
+
+#### Returns
+
+`Promise`\<[`Character`](Character.md)\>
 
 ## Defined in
 
