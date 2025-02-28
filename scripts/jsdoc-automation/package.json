@@ -10,23 +10,30 @@
         "build": "tsup",
         "dev": "tsup --watch",
         "start": "node dist/index.js",
+        "start_ts": "node --loader ts-node/esm src/index.ts",
         "clean": "rm -rf node_modules dist"
     },
     "keywords": [],
     "author": "",
     "license": "MIT",
     "dependencies": {
-        "@langchain/openai": "^0.3.16",
+        "@hapi/shot": "^6.0.1",
         "@octokit/rest": "^21.0.2",
-        "@types/node": "^20.11.0",
         "@typescript-eslint/parser": "6.18.1",
         "@typescript-eslint/types": "6.18.1",
         "@typescript-eslint/typescript-estree": "6.18.1",
+        "agentkeepalive": "^4.6.0",
         "dotenv": "^16.4.7",
+        "http": "0.0.1-security",
         "langchain": "^0.3.7",
+        "langsmith": "^0.3.11",
+        "punycode": "^2.3.1",
+        "whatwg-url": "^14.1.1",
         "yaml": "^2.3.4"
     },
     "devDependencies": {
+        "@types/hapi": "^18.0.14",
+        "@types/node": "^20.17.10",
         "ts-node": "^10.9.2",
         "tsup": "^8.3.5",
         "typescript": "5.3.3"
