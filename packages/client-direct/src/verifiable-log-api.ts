@@ -98,7 +98,7 @@ export function createVerifiableLogApiRouter(
                     .getService<VerifiableLogService>(
                         ServiceType.VERIFIABLE_LOGGING
                     )
-                    .pageQueryLogs(verifiableLogQuery, page, pageSize);
+                    ?.pageQueryLogs(verifiableLogQuery, page, pageSize);
 
                 res.json({
                     success: true,

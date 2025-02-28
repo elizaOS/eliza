@@ -87,7 +87,7 @@ pluginsCmd
     }
     // repo type
     if (repoData[0] !== 'github') {
-      console.error('Plugin', plugin, 'uses', repoData[0], ' but this utility only currently support github')
+      console.error('Plugin', plugin, 'uses', repoData[0], ' but this utility currently only support github')
       return
     }
     const parts = repoData[1].split('/')
