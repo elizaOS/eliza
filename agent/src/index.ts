@@ -214,7 +214,16 @@ async function jsonToCharacter(
         };
     }
     // Handle plugins
-    character.plugins = await handlePluginImporting(character.plugins);
+    elizaLogger.debug(
+        `Constructing plugins for ${character.name} character ` +
+        `(count=${character.plugins.length})`,
+    );
+    const pluginConstructors = await handlePluginImporting(character.plugins);
+    const getSetting = (key: string) => settings[key];
+    character.plugins = [];
+    for (const pluginConstructor of pluginConstructors) {
+        character.plugins.push(await pluginConstructor(getSetting));
+    }
     elizaLogger.info(character.name, 'loaded plugins:', "[\n    " + character.plugins.map(p => `"${p.npmName}"`).join(", \n    ") + "\n]");
 
     // Handle Post Processors plugins
