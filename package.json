@@ -12,6 +12,7 @@
     "start": "pnpm --filter \"@elizaos/agent\" start --isRoot",
     "start:client": "pnpm --dir client dev",
     "start:debug": "cross-env NODE_ENV=development VERBOSE=true DEFAULT_LOG_LEVEL=debug DEBUG=eliza:* pnpm --filter \"@elizaos/agent\" start --isRoot",
+    "reload": "bash ./scripts/reload.sh",
     "dev": "bash ./scripts/dev.sh",
     "release": "pnpm build && pnpm format && npx lerna publish --no-private --force-publish",
     "clean": "bash ./scripts/clean.sh",
