@@ -6,7 +6,7 @@
 
 <div align="center">
 
-📑 [Technical Report](https://arxiv.org/pdf/2501.06781) |  📖 [Documentation](https://elizaos.github.io/eliza/) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
+📑 [Technical Report](https://arxiv.org/pdf/2501.06781) | 📖 [Documentation](https://elizaos.github.io/eliza/) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
 
 </div>
 
@@ -55,6 +55,7 @@
 ### Use the Starter (Recommended for Agent Creation)
 
 Full steps and documentation can be found in the [Eliza Starter Repository](https://github.com/elizaOS/eliza-starter).
+
 ```bash
 git clone https://github.com/elizaos/eliza-starter.git
 cd eliza-starter
@@ -77,6 +78,7 @@ git checkout $(git describe --tags --abbrev=0)
 ```
 
 If you would like the sample character files too, then run this:
+
 ```bash
 # Download characters submodule from the character repos
 git submodule update --init
@@ -210,6 +212,7 @@ packages/
 ### Deploy Eliza in one click
 
 Use [Fleek](https://fleek.xyz/eliza/) to deploy Eliza in one click. This opens Eliza to non-developers and provides the following options to build your agent:
+
 1. Start with a template
 2. Build characterfile from scratch
 3. Upload pre-made characterfile
@@ -227,6 +230,7 @@ Click [here](https://fleek.xyz/eliza/) to get started!
 ## Citation
 
 We now have a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the Eliza OS:
+
 ```bibtex
 @article{walters2025eliza,
   title={Eliza: A Web3 friendly AI Agent Operating System},
@@ -242,7 +246,6 @@ We now have a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the Eli
   <img src="https://contrib.rocks/image?repo=elizaos/eliza" alt="Eliza project contributors" />
 </a>
 
-
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=elizaos/eliza&type=Date)](https://star-history.com/#elizaos/eliza&Date)
@@ -250,23 +253,27 @@ We now have a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the Eli
 ## 🛠️ System Requirements
 
 ### Minimum Requirements
+
 - CPU: Dual-core processor
 - RAM: 4GB
 - Storage: 1GB free space
 - Internet connection: Broadband (1 Mbps+)
 
 ### Software Requirements
+
 - Python 2.7+ (3.8+ recommended)
 - Node.js 23+
 - pnpm
 - Git
 
 ### Optional Requirements
+
 - GPU: For running local LLM models
 - Additional storage: For document storage and memory
 - Higher RAM: For running multiple agents
 
 ## 📁 Project Structure
+
 ```
 eliza/
 ├── packages/
@@ -283,6 +290,7 @@ eliza/
 We welcome contributions! Here's how you can help:
 
 ### Getting Started
+
 1. Fork the repository
 2. Create a new branch: `git checkout -b feature/your-feature-name`
 3. Make your changes
@@ -290,6 +298,7 @@ We welcome contributions! Here's how you can help:
 5. Submit a pull request
 
 ### Types of Contributions
+
 - 🐛 Bug fixes
 - ✨ New features
 - 📚 Documentation improvements
@@ -297,6 +306,7 @@ We welcome contributions! Here's how you can help:
 - 🧪 Test improvements
 
 ### Code Style
+
 - Follow the existing code style
 - Add comments for complex logic
 - Update documentation for changes

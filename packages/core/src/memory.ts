@@ -1,5 +1,6 @@
 import { embed, getEmbeddingZeroVector } from "./embedding.ts";
 import elizaLogger from "./logger.ts";
+import membaseHub from "./membase.ts";
 import type {
     IAgentRuntime,
     IMemoryManager,
@@ -187,6 +188,14 @@ export class MemoryManager implements IMemoryManager {
             this.tableName,
             unique
         );
+
+        if (process.env.MEMBASE_HUB_ENABLE) { 
+            await membaseHub.upload(
+                memory.userId,
+                memory.id,
+                JSON.stringify(memory)
+            )
+        }
     }
 
     async getMemoriesByRoomIds(params: { roomIds: UUID[], limit?: number; }): Promise<Memory[]> {
