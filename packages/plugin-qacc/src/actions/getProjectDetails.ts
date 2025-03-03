@@ -73,8 +73,21 @@ export const getProjectDetail: Action = {
             return;
         }
         try {
-            const qaccData = await fetchProjectByName(content?.project_name);
+            // const qaccData = await fetchProjectByName(content?.project_name);
+
+            const allProjects = await runtime.cacheManager.get(
+                "currentCSVData"
+            );
+            let qaccData;
+            if (Array.isArray(allProjects)) {
+                qaccData = allProjects.find(
+                    (project) =>
+                        project["Project name"] === content?.project_name
+                );
+            }
+
             elizaLogger.success(`Successfully fetched qacc project data`);
+            console.log(allProjects);
 
             const summaryResponse = await generateSummary(runtime, state, {
                 data: qaccData,
