@@ -17,6 +17,8 @@ async function main() {
     try {
         const configuration = new Configuration();
 
+        console.log("owner", configuration.repository.owner);
+
         const gitManager = new GitManager({
             owner: configuration.repository.owner,
             name: configuration.repository.name,

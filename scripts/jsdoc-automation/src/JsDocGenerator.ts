@@ -46,7 +46,6 @@ export class JsDocGenerator {
     private buildPrompt(queueItem: ASTQueueItem): string {
         return `Generate JSDoc comment for the following code:
 
-
         \`\`\`typescript
         ${queueItem.code}
         \`\`\`
@@ -57,7 +56,6 @@ export class JsDocGenerator {
 
     private buildClassPrompt(queueItem: ASTQueueItem): string {
         return `Generate JSDoc comment for the following Class:
-
         Class name: ${queueItem.code.match(/class (\w+)/)?.[1]}
 
         Only return the JSDoc for the Class itself, not the methods or anything in the class.

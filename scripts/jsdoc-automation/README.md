@@ -107,3 +107,20 @@ The `main` function is the entry point of the documentation generation process. 
 
 - DocumentationGenerator
 - JsDocGenerator
+
+
+
+## Debug
+
+```
+	export GITHUB_ACCESS_TOKEN=`cat ~/.github`
+
+	export OPENAI_API_KEY="sk-..."  # your OpenRouter API key
+	export OPENAI_API_BASE="https://openrouter.ai/api/v1"
+
+	export GITHUB_REPOSITORY=cloud-deployment-eliza
+	export GITHUB_ACTOR=meta-introspector
+	export INPUT_PULL_NUMBER=28
+```
+	
+` pnpm start`

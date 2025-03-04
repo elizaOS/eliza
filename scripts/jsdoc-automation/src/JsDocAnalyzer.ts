@@ -757,6 +757,13 @@ export class JsDocAnalyzer {
         let nearestNode: TSESTree.Node | undefined;
         let smallestDistance = Number.POSITIVE_INFINITY;
 
+        function applyBody(child:any ) {
+            //TSESTree.Node
+            if (child && typeof child === "object") {
+                traverse(child as TSESTree.Node);
+            }
+        }
+
         const traverse = (node: TSESTree.Node | null) => {
             if (!node) return;
 
@@ -772,11 +779,7 @@ export class JsDocAnalyzer {
             // Safely traverse child nodes
             if ("body" in node) {
                 const body = Array.isArray(node.body) ? node.body : [node.body];
-                body.forEach((child: TSESTree.Node) => {
-                    if (child && typeof child === "object") {
-                        traverse(child as TSESTree.Node);
-                    }
-                });
+                body.forEach(applyBody);
             }
 
             // Handle specific node types
