@@ -30,3 +30,10 @@ jobs:
 
       - name: Run smoke tests
         run: pnpm run smokeTests
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{env.MODIFIED_BRANCH_NAME}}
+          path: ${{env.OUTPUT_TEST_DIR}}
