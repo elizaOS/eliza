@@ -11,4 +11,7 @@ export default defineConfig({
   minify: false,
   target: "esnext",
   outDir: "dist",
+  esbuildOptions(options) {
+    options.version = '0.21.5'
+  }
 })
