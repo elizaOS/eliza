@@ -1458,6 +1458,10 @@ export interface UploadIrysResult {
     data?: any;
 }
 
+export interface IMembaseService extends Service {
+    upload(owner: string, filename: string, msg: string): Promise<any>;
+}
+
 export interface DataIrysFetchedFromGQL {
     success: boolean;
     data: any;
@@ -1541,6 +1545,7 @@ export enum ServiceType {
     WEB_SEARCH = "web_search",
     EMAIL_AUTOMATION = "email_automation",
     NKN_CLIENT_SERVICE = "nkn_client_service",
+    MEMBASE = "membase",
 }
 
 export enum LoggingLevel {

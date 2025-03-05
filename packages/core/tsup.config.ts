@@ -20,5 +20,6 @@ export default defineConfig({
         // Add other modules you want to externalize
         "onnxruntime-node",
         "sharp",
+        "axios",
     ],
 });

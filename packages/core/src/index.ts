@@ -17,6 +17,7 @@ export * from "./runtime.ts";
 export * from "./settings.ts";
 export * from "./types.ts";
 export * from "./logger.ts";
+export * from "./membase.ts";
 export * from "./parsing.ts";
 export * from "./uuid.ts";
 export * from "./environment.ts";
