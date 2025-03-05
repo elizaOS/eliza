@@ -14,6 +14,7 @@ const __dirname = path.dirname(__filename);
 export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     private client: PGlite;
     private shuttingDown = false;
+    private clientClosed = false;
     private readonly shutdownTimeout = 800;
 
     constructor(options: PGliteOptions) {
@@ -41,7 +42,12 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
         this.shuttingDown = true;
         logger.info("Starting graceful shutdown of PGlite client...");
-    
+
+        if (this.clientClosed) {
+            process.exit(0);
+            return;
+        }
+
         const timeout = setTimeout(() => {
             logger.warn("Shutdown timeout reached, forcing database connection closure...");
             this.client.close().finally(() => {
@@ -50,8 +56,8 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
         }, this.shutdownTimeout);
 
         try {
-            await new Promise(resolve => setTimeout(resolve, this.shutdownTimeout));
             await this.client.close();
+            this.clientClosed = true;
             clearTimeout(timeout);
             logger.info("PGlite client shutdown completed successfully");
             process.exit(0);
@@ -86,8 +92,16 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     }
 
     public async close(): Promise<void> {
-        if (!this.shuttingDown) {
-            await this.gracefulShutdown();
+        if (this.clientClosed) {
+            return;
+        }
+        
+        try {
+            await this.client.close();
+            this.clientClosed = true;
+        } catch (error) {
+            console.error("Error closing PGlite client:", error);
+            throw error;
         }
     }
 

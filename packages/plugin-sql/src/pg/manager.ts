@@ -13,7 +13,6 @@ const __dirname = path.dirname(__filename);
 
 export class PostgresConnectionManager implements IDatabaseClientManager<PgPool> {
     private pool: PgPool;
-    private isShuttingDown = false;
     private readonly connectionTimeout: number = 5000;
 
     constructor(
@@ -101,19 +100,6 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
         });
     }
 
-    public getConnection(): PgPool {
-        if (this.isShuttingDown) {
-            throw new Error('Connection manager is shutting down');
-        }
-
-        try {
-            return this.pool;
-        } catch (error) {
-            logger.error('Failed to get connection from pool:', error);
-            throw error;
-        }
-    }
-
     public async getClient(): Promise<pkg.PoolClient> {
         try {
             return await this.pool.connect();
@@ -147,8 +133,10 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
     }
 
     async runMigrations(): Promise<void> {
+        let client;
         try {
-            const db = drizzle(this.pool);
+            client = await this.getClient();
+            const db = drizzle(client);
             await migrate(db, {
                 migrationsFolder: path.resolve(__dirname, "../drizzle/migrations"),
             });
@@ -156,6 +144,10 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
         } catch (error) {
             logger.error("Failed to run database migrations:", error);
             // throw error;
+        } finally {
+            if (client) {
+                client.release();
+            }
         }
     }
 }
