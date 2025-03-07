@@ -1,5 +1,6 @@
 import { existsSync, promises as fs } from "node:fs"
 import path from "node:path"
+import os from "node:os"
 import { getConfig, rawConfigSchema } from "@/src/utils/get-config"
 import { handleError } from "@/src/utils/handle-error"
 import { logger } from "@/src/utils/logger"
@@ -13,6 +14,7 @@ import { Command } from "commander"
 import { execa } from "execa"
 import prompts from "prompts"
 import { z } from "zod"
+import { getPackageVersion } from "@/src/utils/get-package-info"
 
 const initOptionsSchema = z.object({
   dir: z.string().default("."),
@@ -29,6 +31,19 @@ async function setupEnvironment(targetDir: string, database: string) {
   if (!existsSync(envPath)) {
     await fs.copyFile(envExamplePath, envPath)
     logger.info("Created .env file")
+  }
+
+  // Also set up a global .env file in the user's home directory if we're not in a project
+  const homeEnvDir = path.join(os.homedir(), '.eliza');
+  const homeEnvPath = path.join(homeEnvDir, '.env');
+
+  if (!existsSync(homeEnvDir)) {
+    await fs.mkdir(homeEnvDir, { recursive: true });
+  }
+
+  if (!existsSync(homeEnvPath)) {
+    await fs.writeFile(homeEnvPath, createEnvTemplate(database));
+    logger.info("Created global .env file in ~/.eliza");
   }
 }
 
@@ -65,18 +80,52 @@ async function installDependencies(targetDir: string, database: string, selected
   logger.info("Installing dependencies...")
 
   // Install bun if not already installed
-  await execa("npm", ["install", "-g", "bun"], {
-    stdio: "inherit"
-  })
+  try {
+    await execa("npm", ["install", "-g", "bun"], {
+      stdio: "inherit"
+    })
+  } catch (error) {
+    logger.warn("Failed to install bun globally. Continuing with installation...")
+  }
 
-  // Use bun for installation
-  await runBunCommand(["install", "--no-frozen-lockfile"], targetDir);
-  await runBunCommand(["add", `@elizaos/adapter-${database}`, "--workspace-root"], targetDir);
+  // First just install basic dependencies 
+  try {
+    await runBunCommand(["install"], targetDir);
+    logger.success("Installed base dependencies");
+  } catch (error) {
+    logger.warn(`Initial dependency installation error: ${error.message}`);
+  }
+  
+  // Install core package with latest version
+  logger.info("Installing @elizaos/core using latest version...")
+  try {
+    await runBunCommand(["add", "@elizaos/core@latest"], targetDir);
+    logger.success("Successfully installed @elizaos/core@latest");
+  } catch (error) {
+    logger.error(`Failed to install @elizaos/core@latest: ${error.message}`);
+    // Continue with the process despite the error
+  }
+  
+  // Install database adapter
+  logger.info(`Installing database adapter for ${database}...`);
+  try {
+    await runBunCommand(["add", `@elizaos/adapter-${database}@latest`], targetDir);
+    logger.success(`Successfully installed @elizaos/adapter-${database}@latest`);
+  } catch (error) {
+    logger.error(`Failed to install @elizaos/adapter-${database}: ${error.message}`);
+    // Continue with the process despite the error
+  }
 
+  // Install selected plugins
   if (selectedPlugins.length > 0) {
-    console.log(selectedPlugins)
+    logger.info(`Installing selected plugins: ${selectedPlugins.join(", ")}`)
     for (const plugin of selectedPlugins) {
-      await installPlugin(plugin, targetDir)
+      try {
+        await installPlugin(plugin, targetDir)
+      } catch (pluginError) {
+        logger.error(`Failed to install plugin ${plugin}: ${pluginError.message}`);
+        // Continue with other plugins despite the error
+      }
     }
   }
 }
@@ -145,7 +194,7 @@ export const init = new Command()
         
         logger.success("Plugin initialized successfully!")
         logger.info(`\nNext steps:
-1. ${chalk.cyan(`cd ${name}`)} to navigate to your plugin directory
+1. ${chalk.cyan(`run \`cd ${name}\``)} to navigate to your plugin directory
 2. Update the plugin code in ${chalk.cyan("src/index.ts")} 
 3. Run ${chalk.cyan("bun dev")} to start development
 4. Run ${chalk.cyan("bun build")} to build your plugin`)
@@ -245,6 +294,9 @@ export const init = new Command()
 2. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
 3. Run ${chalk.cyan("eliza agent import")} to import an agent`)
       }
+
+      // exit
+      process.exit(0)
 
     } catch (error) {
       handleError(error)

@@ -3,6 +3,7 @@ import path from "node:path";
 import { logger } from "@/src/utils/logger";
 import { runBunCommand } from "@/src/utils/run-bun";
 import { promises as fs } from "node:fs";
+import { getBestBranch } from "@/src/utils/registry";
 
 export async function installPlugin(
   pluginName: string,
@@ -18,9 +19,23 @@ export async function installPlugin(
     //installed = true;
     // Set the directory to clone into the packages folder (each plugin gets its own subfolder)
     const cloneDir = path.join(cwd, "packages", cleanedName.replace(/\S+\//, ""));
-    logger.info(`Cloning ${pluginName} from https://github.com/${cleanedName}.git to ${cloneDir}`);
-    await execa("git",["clone", `https://github.com/${cleanedName}.git`, cloneDir],{ cwd, stdio: "inherit" });
-    logger.success(`Successfully cloned repository for ${cleanedName}.`);
+    
+    // Get repository URL
+    const repoUrl = `https://github.com/${cleanedName}.git`;
+    
+    // Determine the best branch to use
+    const branch = await getBestBranch(repoUrl);
+    
+    // Clone with the specific branch if not main
+    if (branch === 'main') {
+      logger.info(`Cloning ${pluginName} from ${repoUrl} to ${cloneDir}`);
+      await execa("git",["clone", repoUrl, cloneDir],{ cwd, stdio: "inherit" });
+    } else {
+      logger.info(`Cloning ${pluginName} from ${repoUrl} (branch: ${branch}) to ${cloneDir}`);
+      await execa("git",["clone", "-b", branch, repoUrl, cloneDir],{ cwd, stdio: "inherit" });
+    }
+    
+    logger.success(`Successfully cloned repository for ${cleanedName} (${branch} branch).`);
     installed = true;
   } catch (error: any) {
     logger.warn(

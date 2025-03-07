@@ -21,7 +21,10 @@
   ],
   "keywords": [],
   "type": "module",
-  "exports": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "elizaos": "./dist/index.js"
   },
@@ -31,7 +34,8 @@
     "watch": "tsc --watch",
     "dev": "tsup --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
-    "start": "bun run build && node dist/index.js",
+    "start": "bun run build && node dist/index.js start",
+    "init": "bun run build && node dist/index.js init",
     "start:cli": "bun run build && node dist/index.js",
     "format:write": "prettier --write \"**/*.{ts,tsx,mdx}\" --cache",
     "format:check": "prettier --check \"**/*.{ts,tsx,mdx}\" --cache",
@@ -54,6 +58,7 @@
     "commander": "^10.0.0",
     "cosmiconfig": "^8.1.3",
     "diff": "^5.1.0",
+    "dotenv": "^16.4.5",
     "@elizaos/core": "^0.25.9",
     "@elizaos/plugin-sql": "^0.25.6",
     "execa": "^7.0.0",

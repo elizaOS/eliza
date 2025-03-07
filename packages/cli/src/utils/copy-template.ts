@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { logger } from './logger';
+import { getPackageVersion } from './get-package-info';
 
 /**
  * Copy a directory recursively
@@ -66,13 +67,38 @@ export async function copyTemplate(templateType: 'project' | 'plugin', targetDir
   // Copy template files
   await copyDir(templateDir, targetDir);
   
-  // Update package.json with new name
+  // Update package.json with new name and dependency versions
   const packageJsonPath = path.join(targetDir, 'package.json');
   
   try {
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
+    
+    // Set project name
     packageJson.name = name;
+    
+    // Process dependencies - set all @elizaos/* packages to use "latest"
+    if (packageJson.dependencies) {
+      for (const depName of Object.keys(packageJson.dependencies)) {
+        if (depName.startsWith('@elizaos/')) {
+          logger.info(`Setting ${depName} to use latest version dynamically`);
+          packageJson.dependencies[depName] = 'latest';
+        }
+      }
+    }
+    
+    // Process devDependencies if they exist
+    if (packageJson.devDependencies) {
+      for (const depName of Object.keys(packageJson.devDependencies)) {
+        if (depName.startsWith('@elizaos/')) {
+          logger.info(`Setting dev dependency ${depName} to use latest version dynamically`);
+          packageJson.devDependencies[depName] = 'latest';
+        }
+      }
+    }
+    
+    // Write the updated package.json
     await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+    logger.success(`Updated package.json with project name and latest dependencies`);
   } catch (error) {
     logger.error(`Error updating package.json: ${error}`);
   }
