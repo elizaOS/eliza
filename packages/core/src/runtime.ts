@@ -106,16 +106,104 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
 
+    // Initialize adapters from options or empty array if not provided
+    this.adapters = opts.adapters ?? [];
+    
+    // Register plugins from options or empty array
     const plugins = opts?.plugins ?? [];
-
+    
+    // Add bootstrap plugin if not explicitly ignored
     if (!opts?.ignoreBootstrap) {
       plugins.push(bootstrapPlugin);
     }
-
+    
+    // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
+  }
 
-    // Initialize adapters from options or empty array if not provided
-    this.adapters = opts.adapters ?? [];
+  /**
+   * Registers a plugin with the runtime and initializes its components
+   * @param plugin The plugin to register
+   */
+  async registerPlugin(plugin: Plugin): Promise<void> {
+    if (!plugin) {
+      return;
+    }
+
+    // Add to plugins array if not already present - but only if it was not passed there initially
+    // (otherwise we can't add to readonly array)
+    if (!this.plugins.some(p => p.name === plugin.name)) {
+      // Push to plugins array - this works because we're modifying the array, not reassigning it
+      this.plugins.push(plugin);
+    }
+
+    // Register plugin adapters
+    if (plugin.adapters) {
+      for (const adapter of plugin.adapters) {
+        this.adapters.push(adapter);
+      }
+    }
+
+    // Register plugin actions
+    if (plugin.actions) {
+      for (const action of plugin.actions) {
+        this.registerAction(action);
+      }
+    }
+
+    // Register plugin evaluators
+    if (plugin.evaluators) {
+      for (const evaluator of plugin.evaluators) {
+        this.registerEvaluator(evaluator);
+      }
+    }
+
+    // Register plugin providers
+    if (plugin.providers) {
+      for (const provider of plugin.providers) {
+        this.registerContextProvider(provider);
+      }
+    }
+
+    // Register plugin models
+    if (plugin.models) {
+      for (const [modelType, handler] of Object.entries(plugin.models)) {
+        this.registerModel(
+          modelType as ModelType,
+          handler as (params: any) => Promise<any>
+        );
+      }
+    }
+
+    // Register plugin routes
+    if (plugin.routes) {
+      for (const route of plugin.routes) {
+        this.routes.push(route);
+      }
+    }
+
+    // Register plugin events
+    if (plugin.events) {
+      for (const [eventName, eventHandlers] of Object.entries(
+        plugin.events
+      )) {
+        for (const eventHandler of eventHandlers) {
+          this.registerEvent(eventName, eventHandler);
+        }
+      }
+    }
+
+    // Register plugin services
+    if (plugin.services) {
+      await Promise.all(
+        plugin.services.map((service) => this.registerService(service))
+      );
+    }
+
+    // Initialize plugin if it has an init function
+    if (plugin.init) {
+      await plugin.init(plugin.config, this);
+    }
   }
 
   getAllServices(): Map<ServiceType, Service> {
@@ -171,90 +259,48 @@ export class AgentRuntime implements IAgentRuntime {
       throw error;
     }
 
-    // Load plugins before trying to access models or services
+    // Track registered plugins to avoid duplicates
+    const registeredPluginNames = new Set<string>();
+    
+    // Load and register plugins from character configuration
+    const pluginRegistrationPromises = [];
+
     if (this.character.plugins) {
       const characterPlugins = (await handlePluginImporting(
         this.character.plugins
       )) as Plugin[];
-      // push character plugins to this.plugins
-      this.plugins.push(...characterPlugins);
-    }
-
-    if (this.plugins?.length > 0) {
-      for (const plugin of this.plugins) {
-        if (!plugin) {
-          continue;
-        }
-        if (plugin.adapters) {
-          for (const adapter of plugin.adapters) {
-            this.adapters.push(adapter);
-          }
-        }
-
-        if (plugin.actions) {
-          for (const action of plugin.actions) {
-            this.registerAction(action);
-          }
-        }
-
-        if (plugin.evaluators) {
-          for (const evaluator of plugin.evaluators) {
-            this.registerEvaluator(evaluator);
-          }
-        }
-
-        if (plugin.providers) {
-          for (const provider of plugin.providers) {
-            this.registerContextProvider(provider);
-          }
-        }
-
-        if (plugin.models) {
-          for (const [modelType, handler] of Object.entries(plugin.models)) {
-            this.registerModel(
-              modelType as ModelType,
-              handler as (params: any) => Promise<any>
-            );
-          }
-        }
-        if (plugin.routes) {
-          for (const route of plugin.routes) {
-            this.routes.push(route);
-          }
-        }
-
-        if (plugin.events) {
-          for (const [eventName, eventHandlers] of Object.entries(
-            plugin.events
-          )) {
-            for (const eventHandler of eventHandlers) {
-              this.registerEvent(eventName, eventHandler);
-            }
-          }
-        }
-        if (plugin.services) {
-          await Promise.all(
-            plugin.services.map((service) => this.registerService(service))
-          );
-        }
-
-        if (plugin.init) {
-          await plugin.init(plugin.config, this);
+      
+      // Register each character plugin
+      for (const plugin of characterPlugins) {
+        if (plugin && !registeredPluginNames.has(plugin.name)) {
+          registeredPluginNames.add(plugin.name);
+          pluginRegistrationPromises.push(this.registerPlugin(plugin));
         }
       }
     }
 
-    // Create room for the agent
+    // Register plugins that were provided in the constructor 
+    for (const plugin of [...this.plugins]) {
+      if (plugin && !registeredPluginNames.has(plugin.name)) {
+        registeredPluginNames.add(plugin.name);
+        pluginRegistrationPromises.push(this.registerPlugin(plugin));
+      }
+    }
+
+    // Create room for the agent and register all plugins in parallel
     try {
-      await this.ensureRoomExists({
-        id: this.agentId,
-        name: this.character.name,
-        source: "self",
-        type: ChannelType.SELF,
-      });
+      await Promise.all([
+        this.ensureRoomExists({
+          id: this.agentId,
+          name: this.character.name,
+          source: "self", 
+          type: ChannelType.SELF,
+        }),
+        ...pluginRegistrationPromises
+      ]);
     } catch (error) {
       logger.error(
-        `Failed to create room: ${
+        `Failed to initialize: ${
           error instanceof Error ? error.message : String(error)
         }`
       );
@@ -582,7 +628,7 @@ export class AgentRuntime implements IAgentRuntime {
         if (!action) {
           logger.info("Attempting to find action in similes.");
           for (const _action of this.actions) {
-            const simileAction = _action.similes.find(
+            const simileAction = _action.similes?.find(
               (simile) =>
                 simile
                   .toLowerCase()

@@ -176,7 +176,7 @@ export async function findEntityByName(
     });
 
     // Use LLM to analyze and resolve the entity
-    const result = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+    const result = await runtime.useModel(ModelTypes.TEXT_SMALL, {
       prompt,
       stopSequences: []
     });

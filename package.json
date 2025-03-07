@@ -4,7 +4,7 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "cli": "bun --filter=@elizaos/cli cli",
     "lint": "biome ci --config-path=./biome.json",
-	"format": "biome format --write --config-path=./biome.json",
+	  "format": "biome format --write --config-path=./biome.json",
     "preinstall": "npx only-allow bun",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql",
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
@@ -16,7 +16,7 @@
     "build:cli": "turbo run build --filter=./packages/cli && cd packages/cli && bun link",
     "build:docker": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/* --filter=!./packages/docs",
     "start": "turbo run start --filter=!./packages/docs",
-    "agent": "turbo run start --filter=@elizaos/agent",
+    "agent": "turbo run start --filter=@elizaos/the-org",
     "dev": "turbo run build --filter=./packages/core && turbo run dev --filter=!./packages/core --filter=!./packages/docs --concurrency=20",
     "release": "bun run build && bun format && npx lerna publish --no-private --force-publish",
     "docker:build": "bash ./scripts/docker.sh build",
@@ -24,7 +24,7 @@
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --filter=@elizaos/agent"
+    "test": "turbo run test --filter=@elizaos/the-org"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

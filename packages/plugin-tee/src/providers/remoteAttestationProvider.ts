@@ -201,10 +201,7 @@ class SgxAttestationProvider extends RemoteAttestationProvider {
 
 const sgxAttestationProvider: Provider = {
     name: 'sgx-gramine-remote-attestation',
-    get: async (
-        runtime: IAgentRuntime,
-        _message: Memory,
-    ): Promise<ProviderResult> => {
+    get: async (runtime: IAgentRuntime, _message: Memory): Promise<ProviderResult> => {
         const provider = new SgxAttestationProvider();
         const agentId = runtime.agentId;
 

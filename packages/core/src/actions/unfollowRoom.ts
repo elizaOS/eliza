@@ -55,7 +55,7 @@ export const unfollowRoomAction: Action = {
         template: shouldUnfollowTemplate, // Define this template separately
       });
 
-      const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+      const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
         prompt: shouldUnfollowPrompt,
       });
 

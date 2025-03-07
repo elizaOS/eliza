@@ -111,7 +111,7 @@ export const sendMessageAction: Action = {
         template: targetExtractionTemplate,
       });
 
-      const targetResult = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+      const targetResult = await runtime.useModel(ModelTypes.TEXT_SMALL, {
         prompt: targetPrompt,
         stopSequences: []
       });

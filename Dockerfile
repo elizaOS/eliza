@@ -69,4 +69,4 @@ ENV NODE_ENV=production
 EXPOSE 3000 5173
 
 # Start the application
-CMD ["bun", "run", "swarm"] 
+CMD ["bun", "run", "start"] 

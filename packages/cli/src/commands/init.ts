@@ -1,5 +1,6 @@
 import { existsSync, promises as fs } from "node:fs"
 import path from "node:path"
+import os from "node:os"
 import { getConfig, rawConfigSchema } from "@/src/utils/get-config"
 import { handleError } from "@/src/utils/handle-error"
 import { logger } from "@/src/utils/logger"
@@ -7,24 +8,19 @@ import { getAvailableDatabases, getRegistryIndex, listPluginsByType } from "@/sr
 import { createDatabaseTemplate, createPluginsTemplate, createEnvTemplate } from "@/src/utils/templates"
 import { runBunCommand } from "@/src/utils/run-bun"
 import { installPlugin } from "@/src/utils/install-plugin"
+import { copyTemplate } from "@/src/utils/copy-template"
 import chalk from "chalk"
 import { Command } from "commander"
 import { execa } from "execa"
 import prompts from "prompts"
 import { z } from "zod"
+import { getPackageVersion } from "@/src/utils/get-package-info"
 
 const initOptionsSchema = z.object({
   dir: z.string().default("."),
-  yes: z.boolean().default(false)
+  yes: z.boolean().default(false),
+  type: z.enum(["project", "plugin"]).default("project")
 })
-
-async function cloneStarterRepo(targetDir: string) {
-  logger.info("Setting up project structure...")
-  await execa("git", ["clone", "-b", process.env.ELIZA_BRANCH || "v2-develop", "https://github.com/elizaos/eliza", "."], {
-    cwd: targetDir,
-    stdio: "inherit",
-  })
-}
 
 async function setupEnvironment(targetDir: string, database: string) {
   const envPath = path.join(targetDir, ".env")
@@ -35,6 +31,19 @@ async function setupEnvironment(targetDir: string, database: string) {
   if (!existsSync(envPath)) {
     await fs.copyFile(envExamplePath, envPath)
     logger.info("Created .env file")
+  }
+
+  // Also set up a global .env file in the user's home directory if we're not in a project
+  const homeEnvDir = path.join(os.homedir(), '.eliza');
+  const homeEnvPath = path.join(homeEnvDir, '.env');
+
+  if (!existsSync(homeEnvDir)) {
+    await fs.mkdir(homeEnvDir, { recursive: true });
+  }
+
+  if (!existsSync(homeEnvPath)) {
+    await fs.writeFile(homeEnvPath, createEnvTemplate(database));
+    logger.info("Created global .env file in ~/.eliza");
   }
 }
 
@@ -71,37 +80,72 @@ async function installDependencies(targetDir: string, database: string, selected
   logger.info("Installing dependencies...")
 
   // Install bun if not already installed
-  await execa("npm", ["install", "-g", "bun"], {
-    stdio: "inherit"
-  })
+  try {
+    await execa("npm", ["install", "-g", "bun"], {
+      stdio: "inherit"
+    })
+  } catch (error) {
+    logger.warn("Failed to install bun globally. Continuing with installation...")
+  }
 
-  // Use bun for installation
-  await runBunCommand(["install", "--no-frozen-lockfile"], targetDir);
-  await runBunCommand(["add", `@elizaos/adapter-${database}`, "--workspace-root"], targetDir);
+  // First just install basic dependencies 
+  try {
+    await runBunCommand(["install"], targetDir);
+    logger.success("Installed base dependencies");
+  } catch (error) {
+    logger.warn(`Initial dependency installation error: ${error.message}`);
+  }
+  
+  // Install core package with latest version
+  logger.info("Installing @elizaos/core using latest version...")
+  try {
+    await runBunCommand(["add", "@elizaos/core@latest"], targetDir);
+    logger.success("Successfully installed @elizaos/core@latest");
+  } catch (error) {
+    logger.error(`Failed to install @elizaos/core@latest: ${error.message}`);
+    // Continue with the process despite the error
+  }
+  
+  // Install database adapter
+  logger.info(`Installing database adapter for ${database}...`);
+  try {
+    await runBunCommand(["add", `@elizaos/adapter-${database}@latest`], targetDir);
+    logger.success(`Successfully installed @elizaos/adapter-${database}@latest`);
+  } catch (error) {
+    logger.error(`Failed to install @elizaos/adapter-${database}: ${error.message}`);
+    // Continue with the process despite the error
+  }
 
+  // Install selected plugins
   if (selectedPlugins.length > 0) {
-    console.log(selectedPlugins)
+    logger.info(`Installing selected plugins: ${selectedPlugins.join(", ")}`)
     for (const plugin of selectedPlugins) {
-      await installPlugin(plugin, targetDir)
+      try {
+        await installPlugin(plugin, targetDir)
+      } catch (pluginError) {
+        logger.error(`Failed to install plugin ${plugin}: ${pluginError.message}`);
+        // Continue with other plugins despite the error
+      }
     }
   }
 }
 
 export const init = new Command()
   .name("init")
-  .description("Initialize a new project")
+  .description("Initialize a new project or plugin")
   .option("-d, --dir <dir>", "installation directory", ".")
   .option("-y, --yes", "skip confirmation", false)
+  .option("-t, --type <type>", "type of template to use (project or plugin)", "project")
   .action(async (opts) => {
     try {
       const options = initOptionsSchema.parse(opts)
 
-      // Prompt for project name
+      // Prompt for project/plugin name
       const { name } = await prompts({
         type: "text",
         name: "name",
-        message: "What would you like to name your project?",
-        validate: value => value.length > 0 || "Project name is required"
+        message: `What would you like to name your ${options.type}?`,
+        validate: value => value.length > 0 || `${options.type} name is required`
       })
 
       if (!name) {
@@ -134,6 +178,30 @@ export const init = new Command()
         }
       }
 
+      // For plugin initialization, we can simplify the process
+      if (options.type === "plugin") {
+        // Copy plugin template
+        await copyTemplate("plugin", targetDir, name)
+        
+        // Change directory and install dependencies
+        logger.info("Installing dependencies...")
+        try {
+          await runBunCommand(["install"], targetDir);
+          logger.success("Dependencies installed successfully!");
+        } catch (_error) {
+          logger.warn("Failed to install dependencies automatically. Please run 'bun install' manually.");
+        }
+        
+        logger.success("Plugin initialized successfully!")
+        logger.info(`\nNext steps:
+1. ${chalk.cyan(`run \`cd ${name}\``)} to navigate to your plugin directory
+2. Update the plugin code in ${chalk.cyan("src/index.ts")} 
+3. Run ${chalk.cyan("bun dev")} to start development
+4. Run ${chalk.cyan("bun build")} to build your plugin`)
+        return
+      }
+
+      // For project initialization, continue with the regular flow
       // Get available databases and select one
       const availableDatabases = await getAvailableDatabases()
       
@@ -156,8 +224,8 @@ export const init = new Command()
       // Select plugins
       const selectedPlugins = await selectPlugins()
 
-      // Clone starter repository
-      await cloneStarterRepo(targetDir)
+      // Copy project template
+      await copyTemplate("project", targetDir, name)
 
       // Create project configuration
       const config = rawConfigSchema.parse({
@@ -205,25 +273,30 @@ export const init = new Command()
       // Set up environment
       await setupEnvironment(targetDir, database)
 
-      // Install dependencies
-      await installDependencies(targetDir, database, selectedPlugins)
-
       // Create knowledge directory
       await fs.mkdir(path.join(targetDir, "knowledge"), { recursive: true })
+
+      // Install dependencies
+      await installDependencies(targetDir, database, selectedPlugins)
 
       logger.success("Project initialized successfully!")
 
       // Show next steps
       if (database !== "postgres") {
         logger.info(`\nNext steps:
-1. Update ${chalk.cyan(".env")} with your database credentials
-2. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
-3. Run ${chalk.cyan("eliza agent import")} to import an agent`)
+1. ${chalk.cyan(`cd ${name}`)} to navigate to your project directory
+2. Update ${chalk.cyan(".env")} with your database credentials
+3. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
+4. Run ${chalk.cyan("eliza agent import")} to import an agent`)
       } else {
         logger.info(`\nNext steps:
-1. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
-2. Run ${chalk.cyan("eliza agent import")} to import an agent`)
+1. ${chalk.cyan(`cd ${name}`)} to navigate to your project directory
+2. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
+3. Run ${chalk.cyan("eliza agent import")} to import an agent`)
       }
+
+      // exit
+      process.exit(0)
 
     } catch (error) {
       handleError(error)

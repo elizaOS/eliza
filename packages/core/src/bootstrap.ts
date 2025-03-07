@@ -38,7 +38,7 @@ import { relationshipsProvider } from "./providers/relationships.ts";
 import { roleProvider } from "./providers/roles.ts";
 import { settingsProvider } from "./providers/settings.ts";
 import { timeProvider } from "./providers/time.ts";
-import { TaskService } from "./services/taskService.ts";
+import { TaskService } from "./services/task.ts";
 import {
   type ChannelType,
   type Content,
@@ -51,6 +51,7 @@ import {
   type Room,
   type World,
 } from "./types.ts";
+import { ScenarioService } from "./services/scenario.ts";
 
 type ServerJoinedParams = {
   runtime: IAgentRuntime;
@@ -148,18 +149,12 @@ const messageReceivedHandler = async ({
     prompt: shouldRespondPrompt,
   });
 
-  console.log("*** shouldRespondPrompt ****", shouldRespondPrompt);
-
   const responseObject = parseJSONObjectFromText(response);
-
-  console.log("*** responseObject ****", responseObject);
 
   const providers = responseObject.providers;
 
   const shouldRespond =
     responseObject?.action && responseObject.action === "RESPOND";
-
-  console.log("*** shouldRespond? ", shouldRespond);
 
   state = await runtime.composeState(message, null, providers);
 
@@ -173,20 +168,18 @@ const messageReceivedHandler = async ({
         messageHandlerTemplate,
     });
 
-    console.log("*** prompt ****", prompt);
-
     let responseContent = null
 
     // Retry if missing required fields
     let retries = 0;
     const maxRetries = 3;
     while (retries < maxRetries && (!responseContent?.thought || !responseContent?.plan || !responseContent?.actions)) {
-      const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+      const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
         prompt,
       });
-      console.log("*** response ****", response);
+
       responseContent = parseJSONObjectFromText(response) as Content;
-      console.log("*** responseContent ****", responseContent);
+
       retries++;
       if (!responseContent?.thought || !responseContent?.plan || !responseContent?.actions) {
         console.log("*** Missing required fields, retrying... ***");
@@ -489,7 +482,7 @@ export const bootstrapPlugin: Plugin = {
     actionsProvider,
     recentMessagesProvider,
   ],
-  services: [TaskService],
+  services: [TaskService, ScenarioService],
 };
 
 export default bootstrapPlugin;

@@ -28,9 +28,6 @@
       "persistent": true,
       "cache": false
     },
-    "swarm": {
-      "dependsOn": ["@elizaos/core#build"]
-    },
     "migrate": {
       "dependsOn": ["@elizaos/core#build"]
     },

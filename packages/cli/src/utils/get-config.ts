@@ -1,6 +1,10 @@
 import path from "node:path"
 import { cosmiconfig } from "cosmiconfig"
 import { z } from "zod"
+import { existsSync } from 'node:fs';
+import os from 'node:os';
+import { promises as fs } from 'node:fs';
+import dotenv from 'dotenv';
 
 const explorer = cosmiconfig("eliza", {
   searchPlaces: ["project.json"],
@@ -79,5 +83,36 @@ export async function getRawConfig(cwd: string): Promise<RawConfig | null> {
     return rawConfigSchema.parse(configResult.config)
   } catch (_error) {
     throw new Error(`Invalid configuration found in ${cwd}/project.json.`)
+  }
+}
+
+/**
+ * Load environment variables, trying project .env first, then global ~/.eliza/.env
+ */
+export async function loadEnvironment(projectDir: string = process.cwd()): Promise<void> {
+  const projectEnvPath = path.join(projectDir, '.env');
+  const globalEnvDir = path.join(os.homedir(), '.eliza');
+  const globalEnvPath = path.join(globalEnvDir, '.env');
+  
+  // First try loading from project directory
+  if (existsSync(projectEnvPath)) {
+    dotenv.config({ path: projectEnvPath });
+    return;
+  }
+  
+  // If not found, try loading from global config
+  if (existsSync(globalEnvPath)) {
+    dotenv.config({ path: globalEnvPath });
+    return;
+  }
+  
+  // If neither exists, create the global .env
+  if (!existsSync(globalEnvDir)) {
+    await fs.mkdir(globalEnvDir, { recursive: true });
+  }
+  
+  // Create an empty .env file
+  if (!existsSync(globalEnvPath)) {
+    await fs.writeFile(globalEnvPath, '# Global environment variables for Eliza\n');
   }
 }

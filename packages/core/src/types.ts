@@ -331,7 +331,7 @@ export interface Evaluator {
   description: string;
 
   /** Similar evaluator descriptions */
-  similes: string[];
+  similes?: string[];
 
   /** Example evaluations */
   examples: EvaluationExample[];
@@ -603,6 +603,16 @@ export interface Plugin {
   };
   routes?: Route[];
   tests?: TestSuite[];
+}
+
+export interface ProjectAgent {
+  character: Character;
+  init?: (runtime: IAgentRuntime) => Promise<void>;
+  plugins?: Plugin[];
+}
+
+export interface Project {
+  agents: ProjectAgent[];
 }
 
 export interface ModelConfiguration {
@@ -974,6 +984,7 @@ export interface IAgentRuntime {
   events: Map<string, ((params: any) => void)[]>;
   fetch?: typeof fetch | null;
   routes: Route[];
+  registerPlugin(plugin: Plugin): Promise<void>;
 
   initialize(): Promise<void>;
 
