@@ -132,10 +132,10 @@ export async function copyClientDist() {
 	logger.info("Copying client dist files to CLI package");
 
 	// Determine source and destination paths
-	const srcClientDist = path.resolve(process.cwd(), "packages/client/dist");
+	const srcClientDist = path.resolve(process.cwd(), "../client/dist");
 	const destClientDist = path.resolve(
 		process.cwd(),
-		"packages/cli/dist/client",
+		"./dist/client",
 	);
 
 	// Create destination directory

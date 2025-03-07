@@ -92,3 +92,5 @@ packages/*/dist/*
 **/docs/build/**
 
 **lock**
+
+lerna-debug.log

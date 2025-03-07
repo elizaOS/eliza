@@ -102,12 +102,9 @@ export class AgentServer {
 
 			// Serve client application
 			// First try to find it in the CLI package dist/client directory
-			let clientPath = path.join(__dirname, "../client");
+			const clientPath = path.join(__dirname, "./client");
 
-			// If not found, fall back to the old relative path for development
-			if (!fs.existsSync(clientPath)) {
-				clientPath = path.join(__dirname, "../../..", "packages/client/dist");
-			}
+			console.log("clientPath", clientPath);
 
 			if (fs.existsSync(clientPath)) {
 				logger.debug(
@@ -132,10 +129,10 @@ export class AgentServer {
 				this.app.use(express.static(clientPath, staticOptions));
 
 				// Serve the same files at /client path for consistency
-				this.app.use("/client", express.static(clientPath, staticOptions));
+				this.app.use("/", express.static(clientPath, staticOptions));
 
 				// Serve index.html for client root path
-				this.app.get("/client", (_req, res) => {
+				this.app.get("/", (_req, res) => {
 					res.setHeader("Content-Type", "text/html");
 					res.sendFile(path.join(clientPath, "index.html"));
 				});
