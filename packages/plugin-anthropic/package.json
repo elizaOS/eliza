@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-anthropic",
-	"version": "1.0.0-alpha.1",
+	"version": "1.0.0-alpha.2",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -19,7 +19,7 @@
 	],
 	"dependencies": {
 		"@ai-sdk/anthropic": "^1.1.6",
-		"@elizaos/core": "^1.0.0-alpha.1",
+		"@elizaos/core": "^1.0.0-alpha.2",
 		"fastembed": "^1.0.0",
 		"tsup": "8.4.0",
 		"zod": "3.21.4"
