@@ -77,9 +77,85 @@ export class AgentServer {
             this.app.use("/media/uploads", express.static(uploadsPath));
             this.app.use("/media/generated", express.static(generatedPath));
 
+            // Serve client application from packages/client/dist
+            const clientPath = path.join(__dirname, "../../../..", "packages/client/dist");
+            if (fs.existsSync(clientPath)) {
+                logger.debug(`Found client build at ${clientPath}, serving it at /client and root path`);
+                
+                // Set up proper MIME types
+                const staticOptions = {
+                    setHeaders: (res: express.Response, path: string) => {
+                        // Set the correct content type for different file extensions
+                        if (path.endsWith('.css')) {
+                            res.setHeader('Content-Type', 'text/css');
+                        } else if (path.endsWith('.js')) {
+                            res.setHeader('Content-Type', 'application/javascript');
+                        } else if (path.endsWith('.html')) {
+                            res.setHeader('Content-Type', 'text/html');
+                        }
+                    }
+                };
+                
+                // Serve all static assets from client/dist at root level 
+                this.app.use(express.static(clientPath, staticOptions));
+                
+                // Serve the same files at /client path for consistency
+                this.app.use("/client", express.static(clientPath, staticOptions));
+                
+                // Serve index.html for client root path
+                this.app.get("/client", (req, res) => {
+                    res.setHeader('Content-Type', 'text/html');
+                    res.sendFile(path.join(clientPath, "index.html"));
+                });
+            } else {
+                logger.warn(`Client build not found at ${clientPath}`);
+            }
+
             // API Router setup
             const apiRouter = createApiRouter(this.agents, this);
             this.app.use(apiRouter);
+            
+            // Add client fallback AFTER API routes
+            if (fs.existsSync(clientPath)) {
+                // Fallback route for SPA - handle all non-API routes
+                this.app.use((req, res, next) => {
+                    // Skip for API routes and known static files
+                    if (req.path.startsWith('/api') || req.path.startsWith('/media')) {
+                        return next();
+                    }
+                    
+                    // Check if this looks like an asset request
+                    if (req.path.includes('.')) {
+                        // Try to serve the file from the client dist directory
+                        const filePath = path.join(clientPath, req.path);
+                        if (fs.existsSync(filePath)) {
+                            // Set proper content type based on file extension
+                            if (req.path.endsWith('.css')) {
+                                res.setHeader('Content-Type', 'text/css');
+                            } else if (req.path.endsWith('.js')) {
+                                res.setHeader('Content-Type', 'application/javascript');
+                            } else if (req.path.endsWith('.html')) {
+                                res.setHeader('Content-Type', 'text/html');
+                            } else if (req.path.endsWith('.png')) {
+                                res.setHeader('Content-Type', 'image/png');
+                            } else if (req.path.endsWith('.jpg') || req.path.endsWith('.jpeg')) {
+                                res.setHeader('Content-Type', 'image/jpeg');
+                            } else if (req.path.endsWith('.ico')) {
+                                res.setHeader('Content-Type', 'image/x-icon');
+                            } else if (req.path.endsWith('.svg')) {
+                                res.setHeader('Content-Type', 'image/svg+xml');
+                            } else if (req.path.endsWith('.webp')) {
+                                res.setHeader('Content-Type', 'image/webp');
+                            }
+                            return res.sendFile(filePath);
+                        }
+                    }
+                    
+                    // For all other routes, serve the index.html
+                    res.setHeader('Content-Type', 'text/html');
+                    res.sendFile(path.join(clientPath, "index.html"));
+                });
+            }
 
             logger.success("AgentServer initialization complete");
         } catch (error) {

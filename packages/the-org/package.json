@@ -1,7 +1,9 @@
 {
     "name": "@elizaos/the-org",
     "version": "1.0.0-alpha.0",
-    "main": "src/index.ts",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
     "type": "module",
     "scripts": {
         "start": "npx elizaos start",

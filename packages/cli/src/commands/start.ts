@@ -127,11 +127,7 @@ const startAgents = async () => {
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
 
-  // (this is just to prevent squiggles)
-  const args = {} as any
-
   let serverPort = Number.parseInt(settings.SERVER_PORT || "3000");
-  const charactersArg = args.characters || args.character;
   
   // Add this before creating the AgentServer
   const dataDir = path.join(process.cwd(), "data");
@@ -158,19 +154,16 @@ const startAgents = async () => {
       // Read and parse package.json to check if it's a project or plugin
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
       
+      const mainEntry = packageJson.main;
       // Check if this is a plugin
       isPlugin = false; // Reset to be sure
       const name = packageJson.name || '';
       const description = packageJson.description || '';
       
       // First check for exact match with plugin-starter
-      if (name === '@elizaos/plugin-starter') {
-        isPlugin = true;
-        logger.info('Found @elizaos/plugin-starter package, loading as plugin');
-      } 
-      // Then check more general cases
-      else if (
+      if (
         (name.includes('plugin') || name.includes('adapter')) && 
+        packageJson.main &&
         packageJson.dependencies && 
         packageJson.dependencies["@elizaos/core"]) {
         isPlugin = true;
@@ -179,17 +172,21 @@ const startAgents = async () => {
       // Last resort check description
       else if (
         description.toLowerCase().includes('plugin') && 
+        packageJson.main &&
         packageJson.dependencies && 
         packageJson.dependencies["@elizaos/core"]) {
         isPlugin = true;
         logger.info(`Found plugin from description: ${description}`);
       }
       
-      if (!isPlugin) {
+      if (mainEntry && !isPlugin) {
         isProject = true;
         logger.info('Package is not detected as a plugin, treating as project');
-      } else {
+      } else if (isPlugin) {
         logger.info('Plugin detected - will load onto default character');
+      } else {
+        logger.info('No main entry point found for project, loading default character');
+        useDefaultCharacter = true;
       }
       
       // 2. Read and parse package.json to get main entry point and check for build script
@@ -200,7 +197,7 @@ const startAgents = async () => {
       const distExists = fs.existsSync(distDir);
       
       // If no build script or no dist directory exists
-      if (!hasBuildScript && !distExists) {
+      if (mainEntry && !hasBuildScript && !distExists) {
         if (isPlugin) {
           logger.info('No build script and no dist directory found for plugin, building...');
           try {
@@ -234,7 +231,7 @@ const startAgents = async () => {
         }
       }
       // If there's a build script but no dist, run the build
-      else if (hasBuildScript && !distExists) {
+      else if (mainEntry && hasBuildScript && !distExists) {
         if (isPlugin) {
           logger.info('Build script found but no dist directory for plugin, running bun build...');
           try {
@@ -262,7 +259,9 @@ const startAgents = async () => {
             logger.error(`Failed to build plugin: ${buildError}`);
             // Don't change isPlugin to false here, just try to load from src directly
           }
-        } else {
+        } else if(packageJson.main) {
+          console.log("main is");
+
           logger.info('Build script found but no dist directory, running build...');
           try {
             // Execute build command
@@ -294,28 +293,7 @@ const startAgents = async () => {
       
       // If we're not using the default character, try to import the project or plugin
       if (!useDefaultCharacter || isPlugin) {
-        // Load the compiled project or plugin from package.json's 'main' path entry
-        let mainEntry = packageJson.main;
-        
-        if (!mainEntry && isPlugin) {
-          // If no main entry point but it's a plugin, try common plugin entry points
-          const possibleEntryPoints = [
-            'dist/index.js',
-            'src/index.ts',
-            'src/index.js',
-            'index.js',
-            'index.ts'
-          ];
-          
-          for (const entry of possibleEntryPoints) {
-            if (fs.existsSync(path.join(process.cwd(), entry))) {
-              mainEntry = entry;
-              logger.info(`No main entry in package.json, using ${entry}`);
-              break;
-            }
-          }
-        }
-        
+        // Load the compiled project or plugin from package.json's 'main' path entry        
         if (mainEntry) {
           projectPath = path.resolve(process.cwd(), mainEntry);
           
@@ -396,23 +374,8 @@ const startAgents = async () => {
             }
           }
         } else {
-          if (isPlugin) {
-            logger.error('No main entry point found for plugin');
-            // Try to load the plugin directly from source
-            const srcPath = path.join(process.cwd(), 'src', 'index.ts');
-            if (fs.existsSync(srcPath)) {
-              // Similar approach as above, try to compile and load
-              // This is a simplified approach - might not work for all setups
-              isPlugin = false;
-              useDefaultCharacter = true;
-            } else {
-              isPlugin = false;
-              useDefaultCharacter = true;
-            }
-          } else {
             logger.error('No "main" field found in package.json');
             useDefaultCharacter = true;
-          }
         }
       }
     } else {
@@ -436,13 +399,13 @@ const startAgents = async () => {
         [pluginModule]
       );
       logger.info(`Default character started with plugin successfully`);
-    } else if (isProject && !useDefaultCharacter && projectModule?.default?.agents && Array.isArray(projectModule.default.agents)) {
+    } else if (isProject) {
       // Load all project agents, call their init and register their plugins
       const project = projectModule.default as import('@elizaos/core').Project;
       logger.info(`Found ${project.agents.length} agents in project`);
       
       const startedAgents = [];
-      for (const agent of project.agents) {
+      for (const agent of project.agents ?? []) {
         try {
           logger.info(`Starting agent: ${agent.character.name}`);
           const runtime = await startAgent(
@@ -463,31 +426,9 @@ const startAgents = async () => {
       } else {
         logger.info(`Successfully started ${startedAgents.length} agents from project`);
       }
-    } else if (args.swarm && Array.isArray(args.swarm) && args.swarm.length > 0) {
-      // Keep legacy swarm support for backward compatibility
-      const members = [];
-      for (const swarmMember of args.swarm) {
-        const runtime = await startAgent(
-          swarmMember.character,
-          server,
-          swarmMember.init,
-          swarmMember.plugins
-        );
-        members.push(runtime);
-      }
-      logger.info("Loaded characters from swarm configuration");
     } else {
-      // Default behavior: load characters from arguments or use default
-      let characters = [];
-      if (charactersArg || hasValidRemoteUrls()) {
-        characters = await loadCharacters(charactersArg);
-      } else {
-        characters = [defaultCharacter];
-      }
-
-      for (const character of characters) {
-        await startAgent(character, server);
-      }
+      logger.info('No project or plugin found, starting default character');
+      await startAgent(defaultCharacter, server);
     }
   } catch (error) {
     logger.error("Error starting agents:", error);
@@ -505,9 +446,21 @@ const startAgents = async () => {
     logger.log(`Server started on alternate port ${serverPort}`);
   }
 
-  logger.info(
-    "Run `bun start:client` to start the client and visit the outputted URL (http://localhost:5173) to chat with your agents. When running multiple agents, use client with different port `SERVER_PORT=3001 bun start:client`"
-  );
+  // Display link to the client UI
+  const clientPath = path.join(__dirname, "../../../..", "packages/client/dist");
+  if (fs.existsSync(clientPath)) {
+    logger.success(
+      `Client UI is available at http://localhost:${serverPort}/client`
+    );
+  } else {
+    const clientSrcPath = path.join(__dirname, "../../../..", "packages/client");
+    if (fs.existsSync(clientSrcPath)) {
+      logger.info("Client build not found. You can build it with: cd packages/client && npm run build");
+    }
+    logger.info(
+      "Run `bun start:client` to start the client and visit the outputted URL (http://localhost:5173) to chat with your agents. When running multiple agents, use client with different port `SERVER_PORT=3001 bun start:client`"
+    );
+  }
 };
 
 // Convert this into a command
