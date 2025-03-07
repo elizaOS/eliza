@@ -1,15 +1,15 @@
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSkeleton,
+	Sidebar,
+	SidebarContent,
+	SidebarFooter,
+	SidebarGroup,
+	SidebarGroupContent,
+	SidebarGroupLabel,
+	SidebarHeader,
+	SidebarMenu,
+	SidebarMenuButton,
+	SidebarMenuItem,
+	SidebarMenuSkeleton,
 } from "@/components/ui/sidebar";
 import { useAgents } from "@/hooks/use-query-hooks";
 import info from "@/lib/info.json";
@@ -17,161 +17,179 @@ import type { Agent } from "@elizaos/core";
 import { Book, Cog, User, Scroll } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 import ConnectionStatus from "./connection-status";
-  
+
 export function AppSidebar() {
-  const location = useLocation();
-  const { data: { data: agentsData } = {}, isPending: isAgentsPending } = useAgents();
-  return (
-    <Sidebar className="bg-background">
-      <SidebarHeader className="pb-4">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <NavLink to="/" className="px-6 py-4">
-                <img
-                  alt="elizaos-icon"
-                  src="/elizaos-icon.png"
-                  width="100%"
-                  height="100%"
-                  className="size-9"
-                />
+	const location = useLocation();
+	const {
+		data: { data: agentsData } = {},
+		isPending: isAgentsPending,
+	} = useAgents();
+	return (
+		<Sidebar className="bg-background">
+			<SidebarHeader className="pb-4">
+				<SidebarMenu>
+					<SidebarMenuItem>
+						<SidebarMenuButton size="lg" asChild>
+							<NavLink to="/" className="px-6 py-4">
+								<img
+									alt="elizaos-icon"
+									src="/elizaos-icon.png"
+									width="100%"
+									height="100%"
+									className="size-9"
+								/>
 
-                <div className="flex flex-col leading-none ">
-                  <span className="font-semibold text-lg">ElizaOS</span>
-                  <span className="text-sm -mt-0.5 text-muted-foreground">v{info?.version}</span>
-                </div>
-              </NavLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="px-6 py-2 text-sm font-medium text-muted-foreground">
-            <NavLink to={"/"}>
-              AGENTS
-            </NavLink>
-          </SidebarGroupLabel>
-          <SidebarGroupContent className="px-2">
-            <SidebarMenu>
-              {isAgentsPending ? (
-                <div>
-                  {Array.from({ length: 5 }).map((_, _index) => (
-                    <SidebarMenuItem key={`skeleton-item-${_index}`}>
-                      <SidebarMenuSkeleton />
-                    </SidebarMenuItem>
-                  ))}
-                </div>
-              ) : (
-                <div>
-                  {(() => {
-                    // Sort agents: enabled first, then disabled
-                    const sortedAgents = [...(agentsData?.agents || [])].sort((a, b) => {
-                      // Sort by enabled status (enabled agents first)
-                      if (a.enabled && !b.enabled) return -1;
-                      if (!a.enabled && b.enabled) return 1;
-                      // If both have same enabled status, sort alphabetically by name
-                      return a.name.localeCompare(b.name);
-                    });
-                    
-                    // Split into enabled and disabled groups
-                    const activeAgents = sortedAgents.filter((agent: Partial<Agent & { status: string }>) => agent.status === 'active');
-                    const inactiveAgents = sortedAgents.filter((agent: Partial<Agent & { status: string }>) => agent.status === 'inactive');
-                    
-                    return (
-                      <>
-                        {/* Render active section */}
-                        {activeAgents.length > 0 && (
-                          <div className="px-4 py-2 mt-4">
-                            <div className="flex items-center space-x-2">
-                              <div className="size-2.5 rounded-full bg-green-500" />
-                              <span className="text-sm font-medium text-muted-foreground">Active</span>
-                            </div>
-                          </div>
-                        )}
+								<div className="flex flex-col leading-none ">
+									<span className="font-semibold text-lg">ElizaOS</span>
+									<span className="text-sm -mt-0.5 text-muted-foreground">
+										v{info?.version}
+									</span>
+								</div>
+							</NavLink>
+						</SidebarMenuButton>
+					</SidebarMenuItem>
+				</SidebarMenu>
+			</SidebarHeader>
+			<SidebarContent>
+				<SidebarGroup>
+					<SidebarGroupLabel className="px-6 py-2 text-sm font-medium text-muted-foreground">
+						<NavLink to={"/"}>AGENTS</NavLink>
+					</SidebarGroupLabel>
+					<SidebarGroupContent className="px-2">
+						<SidebarMenu>
+							{isAgentsPending ? (
+								<div>
+									{Array.from({ length: 5 }).map((_, _index) => (
+										<SidebarMenuItem key={`skeleton-item-${_index}`}>
+											<SidebarMenuSkeleton />
+										</SidebarMenuItem>
+									))}
+								</div>
+							) : (
+								<div>
+									{(() => {
+										// Sort agents: enabled first, then disabled
+										const sortedAgents = [...(agentsData?.agents || [])].sort(
+											(a, b) => {
+												// Sort by enabled status (enabled agents first)
+												if (a.enabled && !b.enabled) return -1;
+												if (!a.enabled && b.enabled) return 1;
+												// If both have same enabled status, sort alphabetically by name
+												return a.name.localeCompare(b.name);
+											},
+										);
 
-                        {/* Render enabled agents */}
-                        {activeAgents.map((agent) => (
-                          <SidebarMenuItem key={agent.id}>
-                            <NavLink to={`/chat/${agent.id}`}>
-                              <SidebarMenuButton
-                                isActive={location.pathname.includes(agent.id as string)}
-                                className="transition-colors px-4 py-2 my-1 rounded-md"
-                              >
-                                <div className="flex items-center gap-2">
-                                  
-                                  <User className="size-5" />
-                                  
-                                  <span className="text-base">{agent.name}</span>
-                                </div>
-                              </SidebarMenuButton>
-                            </NavLink>
-                          </SidebarMenuItem>
-                        ))}
-                        
-                        {/* Render inactive section */}
-                        {inactiveAgents.length > 0 && (
-                          <div className="px-4 py-2 mt-4">
-                            <div className="flex items-center space-x-2">
-                              <div className="size-2.5 rounded-full bg-muted-foreground/50" />
-                              <span className="text-sm font-medium text-muted-foreground">Inactive</span>
-                            </div>
-                          </div>
-                        )}
+										// Split into enabled and disabled groups
+										const activeAgents = sortedAgents.filter(
+											(agent: Partial<Agent & { status: string }>) =>
+												agent.status === "active",
+										);
+										const inactiveAgents = sortedAgents.filter(
+											(agent: Partial<Agent & { status: string }>) =>
+												agent.status === "inactive",
+										);
 
-                        {/* Render disabled agents */}
-                        {inactiveAgents.map((agent) => (
-                          <SidebarMenuItem key={agent.id}>
-                            <div
-                              className="px-4 py-2 my-1 rounded-md"
-                            >
-                              <div className="flex items-center gap-2">
-                                <User className="size-5" />
-                                <span className="text-base">{agent.name}</span>
-                              </div>
-                            </div>
-                          </SidebarMenuItem>
-                        ))}
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter className="px-4 py-4">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <NavLink
-              to="https://elizaos.github.io/eliza/docs/intro/"
-              target="_blank"
-            >
-              <SidebarMenuButton className="text-muted-foreground rounded-md">
-                <Book className="size-5" /> 
-                <span>Documentation</span>
-              </SidebarMenuButton>
-            </NavLink>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <NavLink to="/logs">
-              <SidebarMenuButton className="text-muted-foreground rounded-md">
-                <Scroll className="size-5" /> 
-                <span>Logs</span>
-              </SidebarMenuButton>
-            </NavLink>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton disabled className="text-muted-foreground/50 rounded-md">
-              <Cog className="size-5" /> 
-              <span>Settings</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <ConnectionStatus />
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
-  );
+										return (
+											<>
+												{/* Render active section */}
+												{activeAgents.length > 0 && (
+													<div className="px-4 py-2 mt-4">
+														<div className="flex items-center space-x-2">
+															<div className="size-2.5 rounded-full bg-green-500" />
+															<span className="text-sm font-medium text-muted-foreground">
+																Active
+															</span>
+														</div>
+													</div>
+												)}
+
+												{/* Render enabled agents */}
+												{activeAgents.map((agent) => (
+													<SidebarMenuItem key={agent.id}>
+														<NavLink to={`/chat/${agent.id}`}>
+															<SidebarMenuButton
+																isActive={location.pathname.includes(
+																	agent.id as string,
+																)}
+																className="transition-colors px-4 py-2 my-1 rounded-md"
+															>
+																<div className="flex items-center gap-2">
+																	<User className="size-5" />
+
+																	<span className="text-base">
+																		{agent.name}
+																	</span>
+																</div>
+															</SidebarMenuButton>
+														</NavLink>
+													</SidebarMenuItem>
+												))}
+
+												{/* Render inactive section */}
+												{inactiveAgents.length > 0 && (
+													<div className="px-4 py-2 mt-4">
+														<div className="flex items-center space-x-2">
+															<div className="size-2.5 rounded-full bg-muted-foreground/50" />
+															<span className="text-sm font-medium text-muted-foreground">
+																Inactive
+															</span>
+														</div>
+													</div>
+												)}
+
+												{/* Render disabled agents */}
+												{inactiveAgents.map((agent) => (
+													<SidebarMenuItem key={agent.id}>
+														<div className="px-4 py-2 my-1 rounded-md">
+															<div className="flex items-center gap-2">
+																<User className="size-5" />
+																<span className="text-base">{agent.name}</span>
+															</div>
+														</div>
+													</SidebarMenuItem>
+												))}
+											</>
+										);
+									})()}
+								</div>
+							)}
+						</SidebarMenu>
+					</SidebarGroupContent>
+				</SidebarGroup>
+			</SidebarContent>
+			<SidebarFooter className="px-4 py-4">
+				<SidebarMenu>
+					<SidebarMenuItem>
+						<NavLink
+							to="https://elizaos.github.io/eliza/docs/intro/"
+							target="_blank"
+						>
+							<SidebarMenuButton className="text-muted-foreground rounded-md">
+								<Book className="size-5" />
+								<span>Documentation</span>
+							</SidebarMenuButton>
+						</NavLink>
+					</SidebarMenuItem>
+					<SidebarMenuItem>
+						<NavLink to="/logs">
+							<SidebarMenuButton className="text-muted-foreground rounded-md">
+								<Scroll className="size-5" />
+								<span>Logs</span>
+							</SidebarMenuButton>
+						</NavLink>
+					</SidebarMenuItem>
+					<SidebarMenuItem>
+						<SidebarMenuButton
+							disabled
+							className="text-muted-foreground/50 rounded-md"
+						>
+							<Cog className="size-5" />
+							<span>Settings</span>
+						</SidebarMenuButton>
+					</SidebarMenuItem>
+					<ConnectionStatus />
+				</SidebarMenu>
+			</SidebarFooter>
+		</Sidebar>
+	);
 }
-  

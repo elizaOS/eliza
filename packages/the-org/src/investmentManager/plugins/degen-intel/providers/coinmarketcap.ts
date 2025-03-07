@@ -11,10 +11,16 @@ export default class CoinmarketCap {
 	async syncTokens(): Promise<boolean> {
 		const options = {
 			method: "GET",
-			headers: { accept: "application/json", "X-CMC_PRO_API_KEY": this.runtime.getSetting("COINMARKETCAP_API_KEY") },
+			headers: {
+				accept: "application/json",
+				"X-CMC_PRO_API_KEY": this.runtime.getSetting("COINMARKETCAP_API_KEY"),
+			},
 		};
 
-		const res = await fetch("https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest", options);
+		const res = await fetch(
+			"https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest",
+			options,
+		);
 
 		const resp = await res.json();
 		const data = resp?.data;

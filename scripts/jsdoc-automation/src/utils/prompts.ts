@@ -1,7 +1,7 @@
 import type { OrganizedDocs } from "../AIService/types";
 
 export const PROMPT_TEMPLATES = {
-    overview: (packageJson: any, docs: OrganizedDocs) => `
+	overview: (packageJson: any, docs: OrganizedDocs) => `
     Using the provided JSDoc as context, create a comprehensive documentation overview, FAQ, and Troubleshooting section for ${packageJson.name}. Return the response in the following JSON structure:
     {
         "overview": {
@@ -35,25 +35,45 @@ export const PROMPT_TEMPLATES = {
     - Description: ${packageJson.description || "N/A"}
 
     Code Components:
-    ${docs.classes.length > 0 ? `
+    ${
+			docs.classes.length > 0
+				? `
     Classes:
-    ${docs.classes.map((c) => `- ${c.name}: ${c.jsDoc}`).join("\n")}` : ""}
+    ${docs.classes.map((c) => `- ${c.name}: ${c.jsDoc}`).join("\n")}`
+				: ""
+		}
 
-    ${docs.interfaces.length > 0 ? `
+    ${
+			docs.interfaces.length > 0
+				? `
     Interfaces:
-    ${docs.interfaces.map((i) => `- ${i.name}: ${i.jsDoc}`).join("\n")}` : ""}
+    ${docs.interfaces.map((i) => `- ${i.name}: ${i.jsDoc}`).join("\n")}`
+				: ""
+		}
 
-    ${docs.types.length > 0 ? `
+    ${
+			docs.types.length > 0
+				? `
     Types:
-    ${docs.types.map((t) => `- ${t.name}: ${t.jsDoc}`).join("\n")}` : ""}
+    ${docs.types.map((t) => `- ${t.name}: ${t.jsDoc}`).join("\n")}`
+				: ""
+		}
 
-    ${docs.functions.length > 0 ? `
+    ${
+			docs.functions.length > 0
+				? `
     Functions:
-    ${docs.functions.map((f) => `- ${f.name}: ${f.jsDoc}`).join("\n")}` : ""}
+    ${docs.functions.map((f) => `- ${f.name}: ${f.jsDoc}`).join("\n")}`
+				: ""
+		}
 
-    ${docs.variables.length > 0 ? `
+    ${
+			docs.variables.length > 0
+				? `
     Variables:
-    ${docs.variables.map((v) => `- ${v.name}: ${v.jsDoc}`).join("\n")}` : ""}
+    ${docs.variables.map((v) => `- ${v.name}: ${v.jsDoc}`).join("\n")}`
+				: ""
+		}
 
     Based on the above components, generate:
     1. A comprehensive overview that explains the plugin's purpose and key features
@@ -103,7 +123,7 @@ export const PROMPT_TEMPLATES = {
     IMPORTANT: Return only the raw JSON object without any markdown formatting or code blocks.
     `,
 
-    installation: `Create installation instructions with the following structure:
+	installation: `Create installation instructions with the following structure:
 
 ### Prerequisites
 [List any prerequisites]
@@ -118,7 +138,7 @@ export const PROMPT_TEMPLATES = {
 
 Format in markdown without adding any additional headers.`,
 
-    configuration: `Create configuration documentation with the following structure:
+	configuration: `Create configuration documentation with the following structure:
 
 ### Environment Variables
 [Table or list of all environment variables with descriptions]
@@ -133,7 +153,7 @@ Format in markdown without adding any additional headers.`,
 
 Format in markdown without adding any additional headers.`,
 
-    actionDoc: `Generate documentation for this action with the following structure:
+	actionDoc: `Generate documentation for this action with the following structure:
 
 ### [action name]
 [Brief description of the action]
@@ -150,7 +170,7 @@ Format in markdown without adding any additional headers.`,
 
 Format in markdown without adding any additional headers.`,
 
-    providerDoc: `Generate documentation for this provider with the following structure:
+	providerDoc: `Generate documentation for this provider with the following structure:
 
 ### [Provider Name]
 [Brief description of the provider]
@@ -160,7 +180,7 @@ Format in markdown without adding any additional headers.`,
 
 Format in markdown without adding any additional headers.`,
 
-    fileUsageDoc: `Determine multiple use cases for the provided code, and give examples of how to use the code:
+	fileUsageDoc: `Determine multiple use cases for the provided code, and give examples of how to use the code:
 
 ### Common Use Cases
 1. [First use case with code example]
@@ -172,7 +192,7 @@ Format in markdown without adding any additional headers.`,
 
 Format in markdown without adding any additional headers.`,
 
-    fileApiDoc: `Generate API reference documentation with the following structure:
+	fileApiDoc: `Generate API reference documentation with the following structure:
 
 ### Classes
 \`\`\`typescript
@@ -204,7 +224,7 @@ Create a comprehensive API reference including:
 
 Format the response in markdown with proper headings and code blocks.`,
 
-    todos: `Generate TODO documentation with the following structure, DO NOT return the context/code rather a description of the code and how the todo is related to the code, if no todos are provided return "No todos found in the code":
+	todos: `Generate TODO documentation with the following structure, DO NOT return the context/code rather a description of the code and how the todo is related to the code, if no todos are provided return "No todos found in the code":
 
 ### Items
 1. [First TODO item]
@@ -216,7 +236,7 @@ Format the response in markdown with proper headings and code blocks.`,
 
 Format in markdown without adding any additional headers.`,
 
-    troubleshooting: `Generate troubleshooting guide with the following structure:
+	troubleshooting: `Generate troubleshooting guide with the following structure:
 
 ### Common Issues
 1. [First issue]

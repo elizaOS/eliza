@@ -3,12 +3,12 @@ import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { names, uniqueNamesGenerator } from "unique-names-generator";
 import logger from "./logger.ts";
 import type {
-  Content,
-  Entity,
-  IAgentRuntime,
-  Memory,
-  State,
-  TemplateType,
+	Content,
+	Entity,
+	IAgentRuntime,
+	Memory,
+	State,
+	TemplateType,
 } from "./types.ts";
 import { ModelTypes } from "./types.ts";
 
@@ -42,17 +42,17 @@ import { ModelTypes } from "./types.ts";
  */
 
 export const composePrompt = ({
-  state,
-  template,
+	state,
+	template,
 }: {
-  state: State;
-  template: TemplateType;
+	state: State;
+	template: TemplateType;
 }) => {
-  const templateStr =
-    typeof template === "function" ? template({ state }) : template;
-  const templateFunction = handlebars.compile(templateStr);
-  const output = composeRandomUser(templateFunction(state.values), 10);
-  return output;
+	const templateStr =
+		typeof template === "function" ? template({ state }) : template;
+	const templateFunction = handlebars.compile(templateStr);
+	const output = composeRandomUser(templateFunction(state.values), 10);
+	return output;
 };
 
 /**
@@ -75,7 +75,7 @@ export const composePrompt = ({
  * const text = addHeader(header, body);
  */
 export const addHeader = (header: string, body: string) => {
-  return body.length > 0 ? `${header ? `${header}\n` : header}${body}\n` : "";
+	return body.length > 0 ? `${header ? `${header}\n` : header}${body}\n` : "";
 };
 
 /**
@@ -99,78 +99,78 @@ export const addHeader = (header: string, body: string) => {
  * const result = composeRandomUser(template, length);
  */
 export const composeRandomUser = (template: string, length: number) => {
-  const exampleNames = Array.from({ length }, () =>
-    uniqueNamesGenerator({ dictionaries: [names] })
-  );
-  let result = template;
-  for (let i = 0; i < exampleNames.length; i++) {
-    result = result.replaceAll(`{{user${i + 1}}}`, exampleNames[i]);
-  }
+	const exampleNames = Array.from({ length }, () =>
+		uniqueNamesGenerator({ dictionaries: [names] }),
+	);
+	let result = template;
+	for (let i = 0; i < exampleNames.length; i++) {
+		result = result.replaceAll(`{{user${i + 1}}}`, exampleNames[i]);
+	}
 
-  return result;
+	return result;
 };
 
 export const formatPosts = ({
-  messages,
-  entities,
-  conversationHeader = true,
+	messages,
+	entities,
+	conversationHeader = true,
 }: {
-  messages: Memory[];
-  entities: Entity[];
-  conversationHeader?: boolean;
+	messages: Memory[];
+	entities: Entity[];
+	conversationHeader?: boolean;
 }) => {
-  // Group messages by roomId
-  const groupedMessages: { [roomId: string]: Memory[] } = {};
-  messages.forEach((message) => {
-    if (message.roomId) {
-      if (!groupedMessages[message.roomId]) {
-        groupedMessages[message.roomId] = [];
-      }
-      groupedMessages[message.roomId].push(message);
-    }
-  });
+	// Group messages by roomId
+	const groupedMessages: { [roomId: string]: Memory[] } = {};
+	messages.forEach((message) => {
+		if (message.roomId) {
+			if (!groupedMessages[message.roomId]) {
+				groupedMessages[message.roomId] = [];
+			}
+			groupedMessages[message.roomId].push(message);
+		}
+	});
 
-  // Sort messages within each roomId by createdAt (oldest to newest)
-  Object.values(groupedMessages).forEach((roomMessages) => {
-    roomMessages.sort((a, b) => a.createdAt - b.createdAt);
-  });
+	// Sort messages within each roomId by createdAt (oldest to newest)
+	Object.values(groupedMessages).forEach((roomMessages) => {
+		roomMessages.sort((a, b) => a.createdAt - b.createdAt);
+	});
 
-  // Sort rooms by the newest message's createdAt
-  const sortedRooms = Object.entries(groupedMessages).sort(
-    ([, messagesA], [, messagesB]) =>
-      messagesB[messagesB.length - 1].createdAt -
-      messagesA[messagesA.length - 1].createdAt
-  );
+	// Sort rooms by the newest message's createdAt
+	const sortedRooms = Object.entries(groupedMessages).sort(
+		([, messagesA], [, messagesB]) =>
+			messagesB[messagesB.length - 1].createdAt -
+			messagesA[messagesA.length - 1].createdAt,
+	);
 
-  const formattedPosts = sortedRooms.map(([roomId, roomMessages]) => {
-    const messageStrings = roomMessages
-      .filter((message: Memory) => message.entityId)
-      .map((message: Memory) => {
-        const entity = entities.find(
-          (entity: Entity) => entity.id === message.entityId
-        );
-        // TODO: These are okay but not great
-        const userName = entity?.names[0] || "Unknown User";
-        const displayName = entity?.names[0] || "unknown";
+	const formattedPosts = sortedRooms.map(([roomId, roomMessages]) => {
+		const messageStrings = roomMessages
+			.filter((message: Memory) => message.entityId)
+			.map((message: Memory) => {
+				const entity = entities.find(
+					(entity: Entity) => entity.id === message.entityId,
+				);
+				// TODO: These are okay but not great
+				const userName = entity?.names[0] || "Unknown User";
+				const displayName = entity?.names[0] || "unknown";
 
-        return `Name: ${userName} (@${displayName})
+				return `Name: ${userName} (@${displayName})
 ID: ${message.id}${
-          message.content.inReplyTo
-            ? `\nIn reply to: ${message.content.inReplyTo}`
-            : ""
-        }
+					message.content.inReplyTo
+						? `\nIn reply to: ${message.content.inReplyTo}`
+						: ""
+				}
 Date: ${formatTimestamp(message.createdAt)}
 Text:
 ${message.content.text}`;
-      });
+			});
 
-    const header = conversationHeader
-      ? `Conversation: ${roomId.slice(-5)}\n`
-      : "";
-    return `${header}${messageStrings.join("\n\n")}`;
-  });
+		const header = conversationHeader
+			? `Conversation: ${roomId.slice(-5)}\n`
+			: "";
+		return `${header}${messageStrings.join("\n\n")}`;
+	});
 
-  return formattedPosts.join("\n\n");
+	return formattedPosts.join("\n\n");
 };
 
 /**
@@ -181,102 +181,102 @@ ${message.content.text}`;
  * @returns {string} Formatted message string with timestamps and user information
  */
 export const formatMessages = ({
-  messages,
-  entities,
+	messages,
+	entities,
 }: {
-  messages: Memory[];
-  entities: Entity[];
+	messages: Memory[];
+	entities: Entity[];
 }) => {
-  const newestMessageWithContentPlan = messages.find(
-    (message: Memory) => (message.content as Content).plan
-  );
-  const messageStrings = messages
-    .reverse()
-    .filter((message: Memory) => message.entityId)
-    .map((message: Memory) => {
-      const messageText = (message.content as Content).text;
+	const newestMessageWithContentPlan = messages.find(
+		(message: Memory) => (message.content as Content).plan,
+	);
+	const messageStrings = messages
+		.reverse()
+		.filter((message: Memory) => message.entityId)
+		.map((message: Memory) => {
+			const messageText = (message.content as Content).text;
 
-      const messageActions = (message.content as Content).actions;
-      const messageThought = (message.content as Content).thought;
-      const formattedName =
-        entities.find((entity: Entity) => entity.id === message.entityId)
-          ?.names[0] || "Unknown User";
+			const messageActions = (message.content as Content).actions;
+			const messageThought = (message.content as Content).thought;
+			const formattedName =
+				entities.find((entity: Entity) => entity.id === message.entityId)
+					?.names[0] || "Unknown User";
 
-      const attachments = (message.content as Content).attachments;
+			const attachments = (message.content as Content).attachments;
 
-      const attachmentString =
-        attachments && attachments.length > 0
-          ? ` (Attachments: ${attachments
-              .map((media) => `[${media.id} - ${media.title} (${media.url})]`)
-              .join(", ")})`
-          : null;
+			const attachmentString =
+				attachments && attachments.length > 0
+					? ` (Attachments: ${attachments
+							.map((media) => `[${media.id} - ${media.title} (${media.url})]`)
+							.join(", ")})`
+					: null;
 
-      const messageTime = new Date(message.createdAt);
-      const hours = messageTime.getHours().toString().padStart(2, "0");
-      const minutes = messageTime.getMinutes().toString().padStart(2, "0");
-      const timeString = `${hours}:${minutes}`;
+			const messageTime = new Date(message.createdAt);
+			const hours = messageTime.getHours().toString().padStart(2, "0");
+			const minutes = messageTime.getMinutes().toString().padStart(2, "0");
+			const timeString = `${hours}:${minutes}`;
 
-      const timestamp = formatTimestamp(message.createdAt);
+			const timestamp = formatTimestamp(message.createdAt);
 
-      const shortId = message.entityId.slice(-5);
+			const shortId = message.entityId.slice(-5);
 
-      const thoughtString = messageThought
-        ? `(${formattedName}'s internal thought: ${messageThought})`
-        : null;
+			const thoughtString = messageThought
+				? `(${formattedName}'s internal thought: ${messageThought})`
+				: null;
 
-      const timestampString = `${timeString} (${timestamp}) [${shortId}]`;
-      const textString = messageText
-        ? `${timestampString} ${formattedName}: ${messageText}`
-        : null;
-      const actionString =
-        messageActions && messageActions.length > 0
-          ? `${
-              textString ? "" : timestampString
-            } (${formattedName}'s actions: ${messageActions.join(", ")})`
-          : null;
+			const timestampString = `${timeString} (${timestamp}) [${shortId}]`;
+			const textString = messageText
+				? `${timestampString} ${formattedName}: ${messageText}`
+				: null;
+			const actionString =
+				messageActions && messageActions.length > 0
+					? `${
+							textString ? "" : timestampString
+						} (${formattedName}'s actions: ${messageActions.join(", ")})`
+					: null;
 
-      const planString =
-        newestMessageWithContentPlan?.id === message.id
-          ? `(${formattedName}'s plan: ${newestMessageWithContentPlan.content.plan})`
-          : null;
+			const planString =
+				newestMessageWithContentPlan?.id === message.id
+					? `(${formattedName}'s plan: ${newestMessageWithContentPlan.content.plan})`
+					: null;
 
-      // for each thought, action, text or attachment, add a new line, with text first, then thought, then action, then attachment
-      const messageString = [
-        textString,
-        thoughtString,
-        planString,
-        actionString,
-        attachmentString,
-      ]
-        .filter(Boolean)
-        .join("\n");
+			// for each thought, action, text or attachment, add a new line, with text first, then thought, then action, then attachment
+			const messageString = [
+				textString,
+				thoughtString,
+				planString,
+				actionString,
+				attachmentString,
+			]
+				.filter(Boolean)
+				.join("\n");
 
-      return messageString;
-    })
-    .join("\n");
-  return messageStrings;
+			return messageString;
+		})
+		.join("\n");
+	return messageStrings;
 };
 
 export const formatTimestamp = (messageDate: number) => {
-  const now = new Date();
-  const diff = now.getTime() - messageDate;
+	const now = new Date();
+	const diff = now.getTime() - messageDate;
 
-  const absDiff = Math.abs(diff);
-  const seconds = Math.floor(absDiff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
+	const absDiff = Math.abs(diff);
+	const seconds = Math.floor(absDiff / 1000);
+	const minutes = Math.floor(seconds / 60);
+	const hours = Math.floor(minutes / 60);
+	const days = Math.floor(hours / 24);
 
-  if (absDiff < 60000) {
-    return "just now";
-  }
-  if (minutes < 60) {
-    return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
-  }
-  if (hours < 24) {
-    return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
-  }
-  return `${days} day${days !== 1 ? "s" : ""} ago`;
+	if (absDiff < 60000) {
+		return "just now";
+	}
+	if (minutes < 60) {
+		return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
+	}
+	if (hours < 24) {
+		return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+	}
+	return `${days} day${days !== 1 ? "s" : ""} ago`;
 };
 
 const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
@@ -333,24 +333,24 @@ export const booleanFooter = "Respond with only a YES or a NO.";
  * @returns {boolean} - Returns `true` for affirmative inputs, `false` for negative or unrecognized inputs
  */
 export function parseBooleanFromText(
-  value: string | undefined | null
+	value: string | undefined | null,
 ): boolean {
-  if (!value) return false;
+	if (!value) return false;
 
-  const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
-  const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
+	const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
+	const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
 
-  const normalizedText = value.trim().toUpperCase();
+	const normalizedText = value.trim().toUpperCase();
 
-  if (affirmative.includes(normalizedText)) {
-    return true;
-  }
-  if (negative.includes(normalizedText)) {
-    return false;
-  }
+	if (affirmative.includes(normalizedText)) {
+		return true;
+	}
+	if (negative.includes(normalizedText)) {
+		return false;
+	}
 
-  // For environment variables, we'll treat unrecognized values as false
-  return false;
+	// For environment variables, we'll treat unrecognized values as false
+	return false;
 }
 
 export const stringArrayFooter = `Respond with a JSON array containing the values in a valid JSON block formatted for markdown with this structure:
@@ -373,48 +373,48 @@ Your response must include the valid JSON block.`;
  * @returns An array parsed from the JSON string if successful; otherwise, null.
  */
 export function parseJsonArrayFromText(text: string) {
-  let jsonData = null;
+	let jsonData = null;
 
-  // First try to parse with the original JSON format
-  const jsonBlockMatch = text?.match(jsonBlockPattern);
+	// First try to parse with the original JSON format
+	const jsonBlockMatch = text?.match(jsonBlockPattern);
 
-  if (jsonBlockMatch) {
-    try {
-      // Only replace quotes that are actually being used for string delimitation
-      const normalizedJson = jsonBlockMatch[1].replace(
-        /(?<!\\)'([^']*)'(?=\s*[,}\]])/g,
-        '"$1"'
-      );
-      jsonData = JSON.parse(normalizeJsonString(normalizedJson));
-    } catch (_e) {
-      logger.warn("Could not parse text as JSON, will try pattern matching");
-    }
-  }
+	if (jsonBlockMatch) {
+		try {
+			// Only replace quotes that are actually being used for string delimitation
+			const normalizedJson = jsonBlockMatch[1].replace(
+				/(?<!\\)'([^']*)'(?=\s*[,}\]])/g,
+				'"$1"',
+			);
+			jsonData = JSON.parse(normalizeJsonString(normalizedJson));
+		} catch (_e) {
+			logger.warn("Could not parse text as JSON, will try pattern matching");
+		}
+	}
 
-  // If that fails, try to find an array pattern
-  if (!jsonData) {
-    const arrayPattern = /\[\s*(['"])(.*?)\1\s*\]/;
-    const arrayMatch = text.match(arrayPattern);
+	// If that fails, try to find an array pattern
+	if (!jsonData) {
+		const arrayPattern = /\[\s*(['"])(.*?)\1\s*\]/;
+		const arrayMatch = text.match(arrayPattern);
 
-    if (arrayMatch) {
-      try {
-        // Only replace quotes that are actually being used for string delimitation
-        const normalizedJson = arrayMatch[0].replace(
-          /(?<!\\)'([^']*)'(?=\s*[,}\]])/g,
-          '"$1"'
-        );
-        jsonData = JSON.parse(normalizeJsonString(normalizedJson));
-      } catch (_e) {
-        logger.warn("Could not parse text as JSON, returning null");
-      }
-    }
-  }
+		if (arrayMatch) {
+			try {
+				// Only replace quotes that are actually being used for string delimitation
+				const normalizedJson = arrayMatch[0].replace(
+					/(?<!\\)'([^']*)'(?=\s*[,}\]])/g,
+					'"$1"',
+				);
+				jsonData = JSON.parse(normalizeJsonString(normalizedJson));
+			} catch (_e) {
+				logger.warn("Could not parse text as JSON, returning null");
+			}
+		}
+	}
 
-  if (Array.isArray(jsonData)) {
-    return jsonData;
-  }
+	if (Array.isArray(jsonData)) {
+		return jsonData;
+	}
 
-  return null;
+	return null;
 }
 
 /**
@@ -428,32 +428,32 @@ export function parseJsonArrayFromText(text: string) {
  * @returns An object parsed from the JSON string if successful; otherwise, null or the result of parsing an array.
  */
 export function parseJSONObjectFromText(
-  text: string
+	text: string,
 ): Record<string, any> | null {
-  let jsonData = null;
-  const jsonBlockMatch = text.match(jsonBlockPattern);
+	let jsonData = null;
+	const jsonBlockMatch = text.match(jsonBlockPattern);
 
-  try {
-    if (jsonBlockMatch) {
-      // Parse the JSON from inside the code block
-      jsonData = JSON.parse(jsonBlockMatch[1].trim());
-    } else {
-      // Try to parse the text directly if it's not in a code block
-      jsonData = JSON.parse(normalizeJsonString(text.trim()));
-    }
-  } catch (_e) {
-    logger.warn("Could not parse text as JSON, returning null");
-    return null;
-  }
+	try {
+		if (jsonBlockMatch) {
+			// Parse the JSON from inside the code block
+			jsonData = JSON.parse(jsonBlockMatch[1].trim());
+		} else {
+			// Try to parse the text directly if it's not in a code block
+			jsonData = JSON.parse(normalizeJsonString(text.trim()));
+		}
+	} catch (_e) {
+		logger.warn("Could not parse text as JSON, returning null");
+		return null;
+	}
 
-  // Ensure we have a non-null object that's not an array
-  if (jsonData && typeof jsonData === "object" && !Array.isArray(jsonData)) {
-    return jsonData;
-  }
+	// Ensure we have a non-null object that's not an array
+	if (jsonData && typeof jsonData === "object" && !Array.isArray(jsonData)) {
+		return jsonData;
+	}
 
-  logger.warn("Could not parse text as JSON, returning null");
+	logger.warn("Could not parse text as JSON, returning null");
 
-  return null;
+	return null;
 }
 
 /**
@@ -463,30 +463,30 @@ export function parseJSONObjectFromText(
  * @returns An object containing the extracted attributes.
  */
 export function extractAttributes(
-  response: string,
-  attributesToExtract?: string[]
+	response: string,
+	attributesToExtract?: string[],
 ): { [key: string]: string | undefined } {
-  const attributes: { [key: string]: string | undefined } = {};
+	const attributes: { [key: string]: string | undefined } = {};
 
-  if (!attributesToExtract || attributesToExtract.length === 0) {
-    // Extract all attributes if no specific attributes are provided
-    const matches = response.matchAll(/"([^"]+)"\s*:\s*"([^"]*)"/g);
-    for (const match of matches) {
-      attributes[match[1]] = match[2];
-    }
-  } else {
-    // Extract only specified attributes
-    for (const attribute of attributesToExtract) {
-      const match = response.match(
-        new RegExp(`"${attribute}"\\s*:\\s*"([^"]*)"`, "i")
-      );
-      if (match) {
-        attributes[attribute] = match[1];
-      }
-    }
-  }
+	if (!attributesToExtract || attributesToExtract.length === 0) {
+		// Extract all attributes if no specific attributes are provided
+		const matches = response.matchAll(/"([^"]+)"\s*:\s*"([^"]*)"/g);
+		for (const match of matches) {
+			attributes[match[1]] = match[2];
+		}
+	} else {
+		// Extract only specified attributes
+		for (const attribute of attributesToExtract) {
+			const match = response.match(
+				new RegExp(`"${attribute}"\\s*:\\s*"([^"]*)"`, "i"),
+			);
+			if (match) {
+				attributes[attribute] = match[1];
+			}
+		}
+	}
 
-  return attributes;
+	return attributes;
 }
 
 /**
@@ -505,27 +505,27 @@ export function extractAttributes(
  */
 
 export const normalizeJsonString = (str: string) => {
-  // Remove extra spaces after '{' and before '}'
-  str = str.replace(/\{\s+/, "{").replace(/\s+\}/, "}").trim();
+	// Remove extra spaces after '{' and before '}'
+	str = str.replace(/\{\s+/, "{").replace(/\s+\}/, "}").trim();
 
-  // "key": unquotedValue → "key": "unquotedValue"
-  str = str.replace(
-    /("[\w\d_-]+")\s*: \s*(?!"|\[)([\s\S]+?)(?=(,\s*"|\}$))/g,
-    '$1: "$2"'
-  );
+	// "key": unquotedValue → "key": "unquotedValue"
+	str = str.replace(
+		/("[\w\d_-]+")\s*: \s*(?!"|\[)([\s\S]+?)(?=(,\s*"|\}$))/g,
+		'$1: "$2"',
+	);
 
-  // "key": 'value' → "key": "value"
-  str = str.replace(
-    /"([^"]+)"\s*:\s*'([^']*)'/g,
-    (_, key, value) => `"${key}": "${value}"`
-  );
+	// "key": 'value' → "key": "value"
+	str = str.replace(
+		/"([^"]+)"\s*:\s*'([^']*)'/g,
+		(_, key, value) => `"${key}": "${value}"`,
+	);
 
-  // "key": someWord → "key": "someWord"
-  str = str.replace(/("[\w\d_-]+")\s*:\s*([A-Za-z_]+)(?!["\w])/g, '$1: "$2"');
+	// "key": someWord → "key": "someWord"
+	str = str.replace(/("[\w\d_-]+")\s*:\s*([A-Za-z_]+)(?!["\w])/g, '$1: "$2"');
 
-  // Replace adjacent quote pairs with a single double quote
-  str = str.replace(/(?:"')|(?:'")/g, '"');
-  return str;
+	// Replace adjacent quote pairs with a single double quote
+	str = str.replace(/(?:"')|(?:'")/g, '"');
+	return str;
 };
 
 /**
@@ -537,90 +537,90 @@ export const normalizeJsonString = (str: string) => {
  */
 
 export function cleanJsonResponse(response: string): string {
-  return response
-    .replace(/```json\s*/g, "") // Remove ```json
-    .replace(/```\s*/g, "") // Remove any remaining ```
-    .replace(/(\r\n|\n|\r)/g, "") // Remove line breaks
-    .trim();
+	return response
+		.replace(/```json\s*/g, "") // Remove ```json
+		.replace(/```\s*/g, "") // Remove any remaining ```
+		.replace(/(\r\n|\n|\r)/g, "") // Remove line breaks
+		.trim();
 }
 
 export const postActionResponseFooter =
-  "Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.";
+	"Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.";
 
 type ActionResponse = {
-  like: boolean;
-  retweet: boolean;
-  quote?: boolean;
-  reply?: boolean;
+	like: boolean;
+	retweet: boolean;
+	quote?: boolean;
+	reply?: boolean;
 };
 
 export const parseActionResponseFromText = (
-  text: string
+	text: string,
 ): { actions: ActionResponse } => {
-  const actions: ActionResponse = {
-    like: false,
-    retweet: false,
-    quote: false,
-    reply: false,
-  };
+	const actions: ActionResponse = {
+		like: false,
+		retweet: false,
+		quote: false,
+		reply: false,
+	};
 
-  // Regex patterns
-  const likePattern = /\[LIKE\]/i;
-  const retweetPattern = /\[RETWEET\]/i;
-  const quotePattern = /\[QUOTE\]/i;
-  const replyPattern = /\[REPLY\]/i;
+	// Regex patterns
+	const likePattern = /\[LIKE\]/i;
+	const retweetPattern = /\[RETWEET\]/i;
+	const quotePattern = /\[QUOTE\]/i;
+	const replyPattern = /\[REPLY\]/i;
 
-  // Check with regex
-  actions.like = likePattern.test(text);
-  actions.retweet = retweetPattern.test(text);
-  actions.quote = quotePattern.test(text);
-  actions.reply = replyPattern.test(text);
+	// Check with regex
+	actions.like = likePattern.test(text);
+	actions.retweet = retweetPattern.test(text);
+	actions.quote = quotePattern.test(text);
+	actions.reply = replyPattern.test(text);
 
-  // Also do line by line parsing as backup
-  const lines = text.split("\n");
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed === "[LIKE]") actions.like = true;
-    if (trimmed === "[RETWEET]") actions.retweet = true;
-    if (trimmed === "[QUOTE]") actions.quote = true;
-    if (trimmed === "[REPLY]") actions.reply = true;
-  }
+	// Also do line by line parsing as backup
+	const lines = text.split("\n");
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (trimmed === "[LIKE]") actions.like = true;
+		if (trimmed === "[RETWEET]") actions.retweet = true;
+		if (trimmed === "[QUOTE]") actions.quote = true;
+		if (trimmed === "[REPLY]") actions.reply = true;
+	}
 
-  return { actions };
+	return { actions };
 };
 
 /**
  * Truncate text to fit within the character limit, ensuring it ends at a complete sentence.
  */
 export function truncateToCompleteSentence(
-  text: string,
-  maxLength: number
+	text: string,
+	maxLength: number,
 ): string {
-  if (text.length <= maxLength) {
-    return text;
-  }
+	if (text.length <= maxLength) {
+		return text;
+	}
 
-  // Attempt to truncate at the last period within the limit
-  const lastPeriodIndex = text.lastIndexOf(".", maxLength - 1);
-  if (lastPeriodIndex !== -1) {
-    const truncatedAtPeriod = text.slice(0, lastPeriodIndex + 1).trim();
-    if (truncatedAtPeriod.length > 0) {
-      return truncatedAtPeriod;
-    }
-  }
+	// Attempt to truncate at the last period within the limit
+	const lastPeriodIndex = text.lastIndexOf(".", maxLength - 1);
+	if (lastPeriodIndex !== -1) {
+		const truncatedAtPeriod = text.slice(0, lastPeriodIndex + 1).trim();
+		if (truncatedAtPeriod.length > 0) {
+			return truncatedAtPeriod;
+		}
+	}
 
-  // If no period, truncate to the nearest whitespace within the limit
-  const lastSpaceIndex = text.lastIndexOf(" ", maxLength - 1);
-  if (lastSpaceIndex !== -1) {
-    const truncatedAtSpace = text.slice(0, lastSpaceIndex).trim();
-    if (truncatedAtSpace.length > 0) {
-      return `${truncatedAtSpace}...`;
-    }
-  }
+	// If no period, truncate to the nearest whitespace within the limit
+	const lastSpaceIndex = text.lastIndexOf(" ", maxLength - 1);
+	if (lastSpaceIndex !== -1) {
+		const truncatedAtSpace = text.slice(0, lastSpaceIndex).trim();
+		if (truncatedAtSpace.length > 0) {
+			return `${truncatedAtSpace}...`;
+		}
+	}
 
-  // Fallback: Hard truncate and add ellipsis
-  const hardTruncated = text.slice(0, maxLength - 3).trim();
-  return `${hardTruncated}...`;
+	// Fallback: Hard truncate and add ellipsis
+	const hardTruncated = text.slice(0, maxLength - 3).trim();
+	return `${hardTruncated}...`;
 }
 
 // Assuming ~4 tokens per character on average
@@ -629,62 +629,62 @@ const TARGET_TOKENS = 3000;
 const _TARGET_CHARS = Math.floor(TARGET_TOKENS / TOKENS_PER_CHAR); // ~750 chars
 
 export async function splitChunks(
-  content: string,
-  chunkSize = 512,
-  bleed = 20
+	content: string,
+	chunkSize = 512,
+	bleed = 20,
 ): Promise<string[]> {
-  logger.debug("[splitChunks] Starting text split");
+	logger.debug("[splitChunks] Starting text split");
 
-  const textSplitter = new RecursiveCharacterTextSplitter({
-    chunkSize: Number(chunkSize),
-    chunkOverlap: Number(bleed),
-  });
+	const textSplitter = new RecursiveCharacterTextSplitter({
+		chunkSize: Number(chunkSize),
+		chunkOverlap: Number(bleed),
+	});
 
-  const chunks = await textSplitter.splitText(content);
-  logger.debug("[splitChunks] Split complete:", {
-    numberOfChunks: chunks.length,
-    averageChunkSize:
-      chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
-  });
+	const chunks = await textSplitter.splitText(content);
+	logger.debug("[splitChunks] Split complete:", {
+		numberOfChunks: chunks.length,
+		averageChunkSize:
+			chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
+	});
 
-  return chunks;
+	return chunks;
 }
 
 /**
  * Trims the provided text prompt to a specified token limit using a tokenizer model and type.
  */
 export async function trimTokens(
-  prompt: string,
-  maxTokens: number,
-  runtime: IAgentRuntime
+	prompt: string,
+	maxTokens: number,
+	runtime: IAgentRuntime,
 ) {
-  if (!prompt) throw new Error("Trim tokens received a null prompt");
+	if (!prompt) throw new Error("Trim tokens received a null prompt");
 
-  // if prompt is less than of maxtokens / 5, skip
-  if (prompt.length < maxTokens / 5) return prompt;
+	// if prompt is less than of maxtokens / 5, skip
+	if (prompt.length < maxTokens / 5) return prompt;
 
-  if (maxTokens <= 0) throw new Error("maxTokens must be positive");
+	if (maxTokens <= 0) throw new Error("maxTokens must be positive");
 
-  try {
-    const tokens = await runtime.useModel(ModelTypes.TEXT_TOKENIZER_ENCODE, {
-      prompt,
-    });
+	try {
+		const tokens = await runtime.useModel(ModelTypes.TEXT_TOKENIZER_ENCODE, {
+			prompt,
+		});
 
-    // If already within limits, return unchanged
-    if (tokens.length <= maxTokens) {
-      return prompt;
-    }
+		// If already within limits, return unchanged
+		if (tokens.length <= maxTokens) {
+			return prompt;
+		}
 
-    // Keep the most recent tokens by slicing from the end
-    const truncatedTokens = tokens.slice(-maxTokens);
+		// Keep the most recent tokens by slicing from the end
+		const truncatedTokens = tokens.slice(-maxTokens);
 
-    // Decode back to text
-    return await runtime.useModel(ModelTypes.TEXT_TOKENIZER_DECODE, {
-      tokens: truncatedTokens,
-    });
-  } catch (error) {
-    logger.error("Error in trimTokens:", error);
-    // Return truncated string if tokenization fails
-    return prompt.slice(-maxTokens * 4); // Rough estimate of 4 chars per token
-  }
+		// Decode back to text
+		return await runtime.useModel(ModelTypes.TEXT_TOKENIZER_DECODE, {
+			tokens: truncatedTokens,
+		});
+	} catch (error) {
+		logger.error("Error in trimTokens:", error);
+		// Return truncated string if tokenization fails
+		return prompt.slice(-maxTokens * 4); // Rough estimate of 4 chars per token
+	}
 }

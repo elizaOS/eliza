@@ -1,4 +1,12 @@
-import { type IAgentRuntime, logger, ModelTypes, createUniqueUuid, type UUID, type Memory, type Content } from "@elizaos/core";
+import {
+	type IAgentRuntime,
+	logger,
+	ModelTypes,
+	createUniqueUuid,
+	type UUID,
+	type Memory,
+	type Content,
+} from "@elizaos/core";
 import type { IToken } from "../types";
 
 export interface TransactionHistory {
@@ -26,7 +34,8 @@ export interface SentimentContent extends Content {
 	};
 }
 
-const rolePrompt = "You are a sentiment analyzer for cryptocurrency and market data.";
+const rolePrompt =
+	"You are a sentiment analyzer for cryptocurrency and market data.";
 
 const template = `Write a summary of what is happening in the tweets. The main topic is the cryptocurrency market.
 You will also be analyzing the tokens that occur in the tweet and tell us whether their sentiment is positive or negative.
@@ -60,7 +69,9 @@ export default class Birdeye {
 	constructor(runtime: IAgentRuntime) {
 		const apiKey = runtime.getSetting("BIRDEYE_API_KEY");
 		if (!apiKey) {
-			throw new Error("Failed to initialize Birdeye provider due to missing API key.");
+			throw new Error(
+				"Failed to initialize Birdeye provider due to missing API key.",
+			);
 		}
 		this.apiKey = apiKey;
 		this.sentimentRoomId = createUniqueUuid(runtime, "sentiment-analysis");
@@ -72,27 +83,40 @@ export default class Birdeye {
 		/** Get entire transaction history */
 		const options = {
 			method: "GET",
-			headers: { accept: "application/json", "x-chain": "solana", "X-API-KEY": this.apiKey },
+			headers: {
+				accept: "application/json",
+				"x-chain": "solana",
+				"X-API-KEY": this.apiKey,
+			},
 		};
 
-		const publicKey = this.runtime.getSetting("SOLANA_PUBLIC_KEY") || "BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq";
+		const publicKey =
+			this.runtime.getSetting("SOLANA_PUBLIC_KEY") ||
+			"BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq";
 
-		const res = await fetch(`https://public-api.birdeye.so/v1/wallet/tx_list?wallet=${publicKey}&limit=100`, options);
+		const res = await fetch(
+			`https://public-api.birdeye.so/v1/wallet/tx_list?wallet=${publicKey}&limit=100`,
+			options,
+		);
 
 		const resp = await res.json();
 		const data = resp?.data?.solana;
 
 		// Get existing transactions
-		const cachedTxs = await this.runtime.getDatabaseAdapter().getCache<TransactionHistory[]>("transaction_history");
+		const cachedTxs = await this.runtime
+			.getDatabaseAdapter()
+			.getCache<TransactionHistory[]>("transaction_history");
 		const transactions: TransactionHistory[] = cachedTxs ? cachedTxs : [];
 
 		// Update transactions
 		for (const tx of data) {
-			const existingIndex = transactions.findIndex(t => t.txHash === tx.txHash);
+			const existingIndex = transactions.findIndex(
+				(t) => t.txHash === tx.txHash,
+			);
 			const newTx = {
 				txHash: tx.txHash,
 				blockTime: new Date(tx.blockTime),
-				data: tx
+				data: tx,
 			};
 
 			if (existingIndex >= 0) {
@@ -102,26 +126,41 @@ export default class Birdeye {
 			}
 		}
 
-		await this.runtime.getDatabaseAdapter().setCache<TransactionHistory[]>("transaction_history", transactions);
+		await this.runtime
+			.getDatabaseAdapter()
+			.setCache<TransactionHistory[]>("transaction_history", transactions);
 
-		logger.debug(`Updated transaction history with ${data.length} transactions`);
+		logger.debug(
+			`Updated transaction history with ${data.length} transactions`,
+		);
 	}
 
 	private async syncWalletPortfolio() {
 		/** Get entire portfolio */
 		const options = {
 			method: "GET",
-			headers: { accept: "application/json", "x-chain": "solana", "X-API-KEY": this.apiKey },
+			headers: {
+				accept: "application/json",
+				"x-chain": "solana",
+				"X-API-KEY": this.apiKey,
+			},
 		};
 
-		const publicKey = this.runtime.getSetting("SOLANA_PUBLIC_KEY") || "BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq";
+		const publicKey =
+			this.runtime.getSetting("SOLANA_PUBLIC_KEY") ||
+			"BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq";
 
-		const res = await fetch(`https://public-api.birdeye.so/v1/wallet/token_list?wallet=${publicKey}`, options);
+		const res = await fetch(
+			`https://public-api.birdeye.so/v1/wallet/token_list?wallet=${publicKey}`,
+			options,
+		);
 
 		const resp = await res.json();
 		const data = resp?.data;
 
-		await this.runtime.getDatabaseAdapter().setCache<Portfolio>("portfolio", { key: "PORTFOLIO", data });
+		await this.runtime
+			.getDatabaseAdapter()
+			.setCache<Portfolio>("portfolio", { key: "PORTFOLIO", data });
 	}
 
 	async syncWallet() {
@@ -134,11 +173,17 @@ export default class Birdeye {
 	async syncTrendingTokens(chain: "solana" | "base"): Promise<boolean> {
 		const options = {
 			method: "GET",
-			headers: { accept: "application/json", "x-chain": chain, "X-API-KEY": this.apiKey },
+			headers: {
+				accept: "application/json",
+				"x-chain": chain,
+				"X-API-KEY": this.apiKey,
+			},
 		};
 
 		// Get existing tokens
-		const cachedTokens = await this.runtime.getDatabaseAdapter().getCache<IToken[]>(`tokens_${chain}`);
+		const cachedTokens = await this.runtime
+			.getDatabaseAdapter()
+			.getCache<IToken[]>(`tokens_${chain}`);
 		const tokens: IToken[] = cachedTokens ? cachedTokens : [];
 
 		/** Fetch top 100 in batches of 20 (which is the limit) */
@@ -171,7 +216,12 @@ export default class Birdeye {
 					last_updated,
 				};
 
-				const existingIndex = tokens.findIndex(t => t.provider === "birdeye" && t.rank === token.rank && t.chain === chain);
+				const existingIndex = tokens.findIndex(
+					(t) =>
+						t.provider === "birdeye" &&
+						t.rank === token.rank &&
+						t.chain === chain,
+				);
 				if (existingIndex >= 0) {
 					tokens[existingIndex] = tokenData;
 				} else {
@@ -183,7 +233,9 @@ export default class Birdeye {
 			await new Promise((resolve) => setTimeout(resolve, 250));
 		}
 
-		await this.runtime.getDatabaseAdapter().setCache<IToken[]>(`tokens_${chain}`, tokens);
+		await this.runtime
+			.getDatabaseAdapter()
+			.setCache<IToken[]>(`tokens_${chain}`, tokens);
 
 		logger.debug(`Updated ${chain} tokens cache with ${tokens.length} tokens`);
 
@@ -192,28 +244,32 @@ export default class Birdeye {
 
 	async fillTimeframe() {
 		// Get the latest sentiment analysis
-		const memories = await this.runtime.getMemoryManager("messages").getMemories({
-			roomId: this.sentimentRoomId,
-			end: Date.now(),
-			count: 1
-		});
+		const memories = await this.runtime
+			.getMemoryManager("messages")
+			.getMemories({
+				roomId: this.sentimentRoomId,
+				end: Date.now(),
+				count: 1,
+			});
 
 		const lastMemory = memories[0] as Memory & { content: SentimentContent };
 		const lookUpDate = lastMemory?.content?.metadata?.timeslot;
-		
+
 		const start = new Date(lookUpDate || "2025-01-01T00:00:00.000Z");
 		start.setUTCHours(0, 0, 0, 0);
 
 		const today = new Date();
 		today.setUTCHours(23, 59, 59, 999);
 
-		const diff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+		const diff = Math.floor(
+			(today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+		);
 
 		// Create memories for each timeslot
 		for (let day = 0; day <= diff; day++) {
 			const now = new Date(start);
 			now.setUTCDate(start.getUTCDate() + day);
-			
+
 			for (let hour = 0; hour <= 23; hour++) {
 				const timeslot = new Date(now);
 				timeslot.setUTCHours(hour, 0, 0, 0);
@@ -226,7 +282,10 @@ export default class Birdeye {
 
 				// Create memory for this timeslot
 				await this.runtime.getMemoryManager("messages").createMemory({
-					id: createUniqueUuid(this.runtime, `sentiment-${timeslot.toISOString()}`),
+					id: createUniqueUuid(
+						this.runtime,
+						`sentiment-${timeslot.toISOString()}`,
+					),
 					entityId: this.runtime.agentId,
 					agentId: this.runtime.agentId,
 					content: {
@@ -234,11 +293,11 @@ export default class Birdeye {
 						source: "sentiment-analysis",
 						metadata: {
 							timeslot: timeslot.toISOString(),
-							processed: false
-						}
+							processed: false,
+						},
 					},
 					roomId: this.sentimentRoomId,
-					createdAt: timeslot.getTime()
+					createdAt: timeslot.getTime(),
 				});
 			}
 		}
@@ -254,13 +313,17 @@ export default class Birdeye {
 		const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 		const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
 
-		const memories = await this.runtime.getMemoryManager("messages").getMemories({
-			roomId: this.sentimentRoomId,
-			start: twoDaysAgo.getTime(),
-			end: oneHourAgo.getTime()
-		});
+		const memories = await this.runtime
+			.getMemoryManager("messages")
+			.getMemories({
+				roomId: this.sentimentRoomId,
+				start: twoDaysAgo.getTime(),
+				end: oneHourAgo.getTime(),
+			});
 
-		const sentiment = (memories as Array<Memory & { content: SentimentContent }>).find(m => !m.content.metadata.processed);
+		const sentiment = (
+			memories as Array<Memory & { content: SentimentContent }>
+		).find((m) => !m.content.metadata.processed);
 
 		if (!sentiment) {
 			logger.debug("No unprocessed timeslots available.");
@@ -277,11 +340,13 @@ export default class Birdeye {
 		const tweets = await this.runtime.getMemoryManager("messages").getMemories({
 			roomId: this.twitterFeedRoomId,
 			start: fromDate.getTime(),
-			end: toDate.getTime()
+			end: toDate.getTime(),
 		});
 
 		if (!tweets || tweets.length === 0) {
-			logger.info(`No tweets to process for timeslot ${timeslot.toISOString()}`);
+			logger.info(
+				`No tweets to process for timeslot ${timeslot.toISOString()}`,
+			);
 
 			// Mark as processed even if no tweets
 			await this.runtime.getMemoryManager("messages").createMemory({
@@ -292,18 +357,20 @@ export default class Birdeye {
 					...sentiment.content,
 					metadata: {
 						...sentiment.content.metadata,
-						processed: true
-					}
+						processed: true,
+					},
 				},
 				roomId: sentiment.roomId,
-				createdAt: sentiment.createdAt
+				createdAt: sentiment.createdAt,
 			});
 			return true;
 		}
 
 		const tweetArray = tweets.map((tweet) => {
-			const content = tweet.content as Content & { tweet?: { username: string; likes?: number; retweets?: number; }; };
-			return `username: ${content.tweet?.username || 'unknown'} tweeted: ${content.text}${content.tweet?.likes ? ` with ${content.tweet.likes} likes` : ''}${content.tweet?.retweets ? ` and ${content.tweet.retweets} retweets` : ''}.`;
+			const content = tweet.content as Content & {
+				tweet?: { username: string; likes?: number; retweets?: number };
+			};
+			return `username: ${content.tweet?.username || "unknown"} tweeted: ${content.text}${content.tweet?.likes ? ` with ${content.tweet.likes} likes` : ""}${content.tweet?.retweets ? ` and ${content.tweet.retweets} retweets` : ""}.`;
 		});
 
 		const bulletpointTweets = makeBulletpointList(tweetArray);
@@ -314,7 +381,7 @@ export default class Birdeye {
 			system: rolePrompt,
 			temperature: 0.2,
 			maxTokens: 4096,
-			object: true
+			object: true,
 		});
 
 		// Parse the JSON response
@@ -331,14 +398,16 @@ export default class Birdeye {
 				metadata: {
 					...sentiment.content.metadata,
 					occuringTokens: json.occuringTokens,
-					processed: true
-				}
+					processed: true,
+				},
 			},
 			roomId: sentiment.roomId,
-			createdAt: sentiment.createdAt
+			createdAt: sentiment.createdAt,
 		});
 
-		logger.info(`Successfully processed timeslot ${sentiment.content.metadata.timeslot}`);
+		logger.info(
+			`Successfully processed timeslot ${sentiment.content.metadata.timeslot}`,
+		);
 		return true;
 	}
 }

@@ -1,73 +1,71 @@
 {
-  "name": "@elizaos/plugin-elevenlabs",
-  "version": "1.0.0-alpha.0",
-  "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    "./package.json": "./package.json",
-    ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "tsup": "8.4.0"
-  },
-  "scripts": {
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
-    "test": "vitest run"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "agentConfig": {
-    "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "ELEVENLABS_XI_API_KEY": {
-        "type": "string",
-        "description": "API key for ElevenLabs."
-      },
-      "ELEVENLABS_VOICE_ID": {
-        "type": "string",
-        "description": "Optional. Voice selection ID."
-      },
-      "ELEVENLABS_MODEL_ID": {
-        "type": "string",
-        "description": "Optional. Speech model ID."
-      },
-      "ELEVENLABS_VOICE_STABILITY": {
-        "type": "string",
-        "description": "Optional. Controls voice stability."
-      },
-      "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY": {
-        "type": "string",
-        "description": "Optional. Adjusts streaming latency."
-      },
-      "ELEVENLABS_OUTPUT_FORMAT": {
-        "type": "string",
-        "description": "Optional. Output format (e.g., pcm_16000)."
-      },
-      "ELEVENLABS_VOICE_SIMILARITY_BOOST": {
-        "type": "string",
-        "description": "Optional. Adjusts similarity to the reference voice (0-1)."
-      },
-      "ELEVENLABS_VOICE_STYLE": {
-        "type": "string",
-        "description": "Optional. Controls voice style intensity (0-1)."
-      },
-      "ELEVENLABS_VOICE_USE_SPEAKER_BOOST": {
-        "type": "string",
-        "description": "Optional. Enhances speaker presence (true/false)."
-      }
-    }
-  }
+	"name": "@elizaos/plugin-elevenlabs",
+	"version": "1.0.0-alpha.0",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": ["dist"],
+	"dependencies": {
+		"@elizaos/core": "workspace:*",
+		"tsup": "8.4.0"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"agentConfig": {
+		"pluginType": "elizaos:plugin:1.0.0",
+		"pluginParameters": {
+			"ELEVENLABS_XI_API_KEY": {
+				"type": "string",
+				"description": "API key for ElevenLabs."
+			},
+			"ELEVENLABS_VOICE_ID": {
+				"type": "string",
+				"description": "Optional. Voice selection ID."
+			},
+			"ELEVENLABS_MODEL_ID": {
+				"type": "string",
+				"description": "Optional. Speech model ID."
+			},
+			"ELEVENLABS_VOICE_STABILITY": {
+				"type": "string",
+				"description": "Optional. Controls voice stability."
+			},
+			"ELEVENLABS_OPTIMIZE_STREAMING_LATENCY": {
+				"type": "string",
+				"description": "Optional. Adjusts streaming latency."
+			},
+			"ELEVENLABS_OUTPUT_FORMAT": {
+				"type": "string",
+				"description": "Optional. Output format (e.g., pcm_16000)."
+			},
+			"ELEVENLABS_VOICE_SIMILARITY_BOOST": {
+				"type": "string",
+				"description": "Optional. Adjusts similarity to the reference voice (0-1)."
+			},
+			"ELEVENLABS_VOICE_STYLE": {
+				"type": "string",
+				"description": "Optional. Controls voice style intensity (0-1)."
+			},
+			"ELEVENLABS_VOICE_USE_SPEAKER_BOOST": {
+				"type": "string",
+				"description": "Optional. Enhances speaker presence (true/false)."
+			}
+		}
+	}
 }

@@ -46,9 +46,11 @@ export default class BuySignal {
 	async generateSignal(): Promise<boolean> {
 		logger.debug("Updating latest buy signal");
 		try {
-			
 			/** Get all sentiments */
-			const sentimentsData = await this.runtime.getDatabaseAdapter().getCache<Sentiment[]>("sentiments") || [];
+			const sentimentsData =
+				(await this.runtime
+					.getDatabaseAdapter()
+					.getCache<Sentiment[]>("sentiments")) || [];
 			let sentiments = "";
 
 			let idx = 1;
@@ -62,9 +64,12 @@ export default class BuySignal {
 				sentiments += "\n-------------------\n";
 				idx++;
 			}
-			
+
 			/** Get all trending tokens */
-			const trendingData = await this.runtime.getDatabaseAdapter().getCache<IToken[]>("tokens") || [];
+			const trendingData =
+				(await this.runtime
+					.getDatabaseAdapter()
+					.getCache<IToken[]>("tokens")) || [];
 			let tokens = "";
 			let index = 1;
 			for (const token of trendingData) {
@@ -74,7 +79,7 @@ export default class BuySignal {
 			}
 
 			const solanaBalance = await this.getBalance();
-			
+
 			// Construct prompt with all the data
 			const prompt = `
 			Based on sentiment analysis and trending token data, recommend a Solana token to buy.
@@ -99,15 +104,20 @@ export default class BuySignal {
 			// Use the runtime model service instead of direct API calls
 			const responseText = await this.runtime.useModel(ModelTypes.TEXT_LARGE, {
 				prompt,
-				system: "You are a token recommender bot for a trading bot. Only respond with valid JSON.",
+				system:
+					"You are a token recommender bot for a trading bot. Only respond with valid JSON.",
 				temperature: 0.2,
 				maxTokens: 4096,
-				object: true
+				object: true,
 			});
 
 			// Parse the JSON response
 			const json = JSON.parse(responseText || "{}");
-			if (!json.recommended_buy || !json.recommend_buy_address || !json.reason) {
+			if (
+				!json.recommended_buy ||
+				!json.recommend_buy_address ||
+				!json.reason
+			) {
 				throw new Error("Invalid JSON from model");
 			}
 
@@ -121,8 +131,12 @@ export default class BuySignal {
 				},
 			};
 
-			const birdeyeResponse = await fetch(`https://public-api.birdeye.so/defi/token_overview?address=${json.recommend_buy_address}`, options);
-			if (!birdeyeResponse.ok) throw new Error("Birdeye marketcap request failed");
+			const birdeyeResponse = await fetch(
+				`https://public-api.birdeye.so/defi/token_overview?address=${json.recommend_buy_address}`,
+				options,
+			);
+			if (!birdeyeResponse.ok)
+				throw new Error("Birdeye marketcap request failed");
 
 			const birdeyeData = await birdeyeResponse.json();
 			const marketcap = birdeyeData?.data?.realMc;
@@ -135,13 +149,13 @@ export default class BuySignal {
 			// Store in cache
 			await this.runtime.getDatabaseAdapter().setCache<any>("buy_signals", {
 				key: "BUY_SIGNAL",
-				data
+				data,
 			});
 
 			// Create a buy task to execute the trade
 			const { v4: uuidv4 } = require("uuid");
 			const { ServiceTypes } = require("../../../plugins/degen-trader/types");
-			
+
 			await this.runtime.getDatabaseAdapter().createTask({
 				id: uuidv4(),
 				roomId: this.runtime.agentId,
@@ -152,11 +166,11 @@ export default class BuySignal {
 					signal: {
 						positionId: uuidv4(),
 						tokenAddress: data.recommend_buy_address,
-						entityId: "default"
+						entityId: "default",
 					},
 					tradeAmount: Number(data.buy_amount) || 0.1,
 					reason: data.reason,
-					updatedAt: Date.now()
+					updatedAt: Date.now(),
 				},
 			});
 

@@ -1,7 +1,15 @@
 // TODO: Replace anthropic with runtime.useModel
 // replace moment with helper functions
 
-import { type IAgentRuntime, logger, ModelTypes, type Memory, type UUID, createUniqueUuid, type Content } from "@elizaos/core";
+import {
+	type IAgentRuntime,
+	logger,
+	ModelTypes,
+	type Memory,
+	type UUID,
+	createUniqueUuid,
+	type Content,
+} from "@elizaos/core";
 
 const makeBulletpointList = (array: string[]) => {
 	return array.map((a) => ` - ${a}`).join("\n");
@@ -117,17 +125,23 @@ export default class TwitterParser {
 	constructor(runtime: IAgentRuntime) {
 		this.runtime = runtime;
 		// Create a consistent room ID for all sentiment analysis
-		this.roomId = createUniqueUuid(runtime, 'twitter-sentiment-analysis');
+		this.roomId = createUniqueUuid(runtime, "twitter-sentiment-analysis");
 	}
 
 	async fillTimeframe() {
 		/** Each timeframe is always 1 hour. */
-		const cachedSentiments = await this.runtime.getDatabaseAdapter().getCache<Sentiment[]>("sentiments");
+		const cachedSentiments = await this.runtime
+			.getDatabaseAdapter()
+			.getCache<Sentiment[]>("sentiments");
 		const sentiments: Sentiment[] = cachedSentiments ? cachedSentiments : [];
-		
-		const lookUpDate = sentiments.length > 0 ? 
-			sentiments.sort((a, b) => new Date(b.timeslot).getTime() - new Date(a.timeslot).getTime())[0].timeslot : 
-			null;
+
+		const lookUpDate =
+			sentiments.length > 0
+				? sentiments.sort(
+						(a, b) =>
+							new Date(b.timeslot).getTime() - new Date(a.timeslot).getTime(),
+					)[0].timeslot
+				: null;
 
 		const start = new Date(lookUpDate || "2025-01-01T00:00:00.000Z");
 		start.setUTCHours(0, 0, 0, 0);
@@ -135,13 +149,15 @@ export default class TwitterParser {
 		const today = new Date();
 		today.setUTCHours(23, 59, 59, 999);
 
-		const diff = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+		const diff = Math.floor(
+			(today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+		);
 		const timeSlots: Sentiment[] = [];
 
 		for (let day = 0; day <= diff; day++) {
 			const now = new Date(start);
 			now.setUTCDate(start.getUTCDate() + day);
-			
+
 			for (let hour = 0; hour <= 23; hour++) {
 				const timeslotDate = new Date(now);
 				timeslotDate.setUTCHours(hour, 0, 0, 0);
@@ -155,11 +171,13 @@ export default class TwitterParser {
 				}
 
 				// Check if this timeslot already exists
-				const exists = sentiments.some(s => new Date(s.timeslot).getTime() === timeslotDate.getTime());
+				const exists = sentiments.some(
+					(s) => new Date(s.timeslot).getTime() === timeslotDate.getTime(),
+				);
 				if (!exists) {
 					timeSlots.push({
 						timeslot,
-						processed: false
+						processed: false,
 					});
 				}
 			}
@@ -167,7 +185,9 @@ export default class TwitterParser {
 
 		if (timeSlots.length > 0) {
 			const updatedSentiments = [...sentiments, ...timeSlots];
-			await this.runtime.getDatabaseAdapter().setCache<Sentiment[]>("sentiments", updatedSentiments);
+			await this.runtime
+				.getDatabaseAdapter()
+				.setCache<Sentiment[]>("sentiments", updatedSentiments);
 		}
 
 		logger.debug(`Updated timeframes, added ${timeSlots.length} new slots`);
@@ -177,20 +197,23 @@ export default class TwitterParser {
 		await this.fillTimeframe();
 
 		// Get sentiments
-		const cachedSentiments = await this.runtime.getDatabaseAdapter().getCache<Sentiment[]>("sentiments");
+		const cachedSentiments = await this.runtime
+			.getDatabaseAdapter()
+			.getCache<Sentiment[]>("sentiments");
 		const sentiments: Sentiment[] = cachedSentiments ? cachedSentiments : [];
-		
+
 		const now = new Date();
 		const oneHourAgo = new Date(now);
 		oneHourAgo.setUTCHours(now.getUTCHours() - 1);
-		
+
 		const twoDaysAgo = new Date(now);
 		twoDaysAgo.setUTCDate(now.getUTCDate() - 2);
 
-		const unprocessedSentiment = sentiments.find(s => 
-			!s.processed && 
-			new Date(s.timeslot) <= oneHourAgo &&
-			new Date(s.timeslot) >= twoDaysAgo
+		const unprocessedSentiment = sentiments.find(
+			(s) =>
+				!s.processed &&
+				new Date(s.timeslot) <= oneHourAgo &&
+				new Date(s.timeslot) >= twoDaysAgo,
 		);
 
 		if (!unprocessedSentiment) {
@@ -198,7 +221,9 @@ export default class TwitterParser {
 			return true;
 		}
 
-		logger.debug(`Trying to process ${new Date(unprocessedSentiment.timeslot).toISOString()}`);
+		logger.debug(
+			`Trying to process ${new Date(unprocessedSentiment.timeslot).toISOString()}`,
+		);
 
 		const timeslot = new Date(unprocessedSentiment.timeslot);
 		const fromDate = new Date(timeslot);
@@ -206,33 +231,42 @@ export default class TwitterParser {
 		fromDate.setUTCSeconds(fromDate.getUTCSeconds() + 1);
 
 		/** Retrieve tweets from message manager */
-		const memories = await this.runtime.getMemoryManager("messages").getMemories({
-			roomId: this.roomId,
-			start: fromDate.getTime(),
-			end: timeslot.getTime()
-		});
+		const memories = await this.runtime
+			.getMemoryManager("messages")
+			.getMemories({
+				roomId: this.roomId,
+				start: fromDate.getTime(),
+				end: timeslot.getTime(),
+			});
 
 		// Filter for twitter messages only
 		const tweets = memories
-			.filter((memory): memory is Memory & { content: TwitterContent } => 
-				memory.content.source === "twitter"
+			.filter(
+				(memory): memory is Memory & { content: TwitterContent } =>
+					memory.content.source === "twitter",
 			)
 			.sort((a, b) => b.createdAt - a.createdAt);
 
 		if (!tweets || tweets.length === 0) {
-			logger.info(`No tweets to process for timeslot ${timeslot.toISOString()}`);
+			logger.info(
+				`No tweets to process for timeslot ${timeslot.toISOString()}`,
+			);
 
 			// Mark as processed
-			const updatedSentiments = sentiments.map(s => 
-				s.timeslot === unprocessedSentiment.timeslot ? { ...s, processed: true } : s
+			const updatedSentiments = sentiments.map((s) =>
+				s.timeslot === unprocessedSentiment.timeslot
+					? { ...s, processed: true }
+					: s,
 			);
-			await this.runtime.getDatabaseAdapter().setCache<Sentiment[]>("sentiments", updatedSentiments);
+			await this.runtime
+				.getDatabaseAdapter()
+				.setCache<Sentiment[]>("sentiments", updatedSentiments);
 			return true;
 		}
 
-		const tweetArray = tweets.map(memory => {
+		const tweetArray = tweets.map((memory) => {
 			const tweet = memory.content;
-			return `username: ${tweet.tweet?.username || 'unknown'} tweeted: ${tweet.text}${tweet.tweet?.likes ? ` with ${tweet.tweet.likes} likes` : ''}${tweet.tweet?.retweets ? ` and ${tweet.tweet.retweets} retweets` : ''}.`;
+			return `username: ${tweet.tweet?.username || "unknown"} tweeted: ${tweet.text}${tweet.tweet?.likes ? ` with ${tweet.tweet.likes} likes` : ""}${tweet.tweet?.retweets ? ` and ${tweet.tweet.retweets} retweets` : ""}.`;
 		});
 
 		const bulletpointTweets = makeBulletpointList(tweetArray);
@@ -243,25 +277,30 @@ export default class TwitterParser {
 			system: rolePrompt,
 			temperature: 0.2,
 			maxTokens: 4096,
-			object: true
+			object: true,
 		});
 
 		// Parse the JSON response
 		const json = JSON.parse(response || "{}");
 
 		// Update sentiment with analysis results
-		const updatedSentiments = sentiments.map(s => 
-			s.timeslot === unprocessedSentiment.timeslot ? 
-			{ 
-				...s, 
-				text: json.text,
-				occuringTokens: json.occuringTokens,
-				processed: true 
-			} : s
+		const updatedSentiments = sentiments.map((s) =>
+			s.timeslot === unprocessedSentiment.timeslot
+				? {
+						...s,
+						text: json.text,
+						occuringTokens: json.occuringTokens,
+						processed: true,
+					}
+				: s,
 		);
-		await this.runtime.getDatabaseAdapter().setCache<Sentiment[]>("sentiments", updatedSentiments);
+		await this.runtime
+			.getDatabaseAdapter()
+			.setCache<Sentiment[]>("sentiments", updatedSentiments);
 
-		logger.info(`Successfully processed timeslot ${new Date(unprocessedSentiment.timeslot).toISOString()}`);
+		logger.info(
+			`Successfully processed timeslot ${new Date(unprocessedSentiment.timeslot).toISOString()}`,
+		);
 		return true;
 	}
 }

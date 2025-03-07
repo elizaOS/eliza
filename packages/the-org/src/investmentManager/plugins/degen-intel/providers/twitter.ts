@@ -3,7 +3,13 @@
 // This action should be able to run on a schedule
 // store tweets as memories in db, no reason really to get twitter here
 
-import { type IAgentRuntime, logger, createUniqueUuid, type UUID, ChannelType } from "@elizaos/core";
+import {
+	type IAgentRuntime,
+	logger,
+	createUniqueUuid,
+	type UUID,
+	ChannelType,
+} from "@elizaos/core";
 
 export default class Twitter {
 	runtime: IAgentRuntime;
@@ -24,7 +30,7 @@ export default class Twitter {
 				id: this.feedRoomId,
 				name: "Twitter Feed",
 				source: "twitter",
-				type: ChannelType.FEED
+				type: ChannelType.FEED,
 			});
 
 			// get the twitterClient from runtime
@@ -40,9 +46,11 @@ export default class Twitter {
 			for await (const item of list) {
 				if (item?.text && !item?.isRetweet) {
 					const tweetId = createUniqueUuid(this.runtime, item.id);
-					
+
 					// Check if we already have this tweet
-					const existingTweet = await this.runtime.getMemoryManager("messages").getMemoryById(tweetId);
+					const existingTweet = await this.runtime
+						.getMemoryManager("messages")
+						.getMemoryById(tweetId);
 					if (existingTweet) {
 						continue;
 					}
@@ -59,21 +67,23 @@ export default class Twitter {
 								likes: item.likes ?? 0,
 								retweets: item.retweets ?? 0,
 								username: item.username,
-								timestamp: new Date(item.timestamp * 1000).toISOString()
-							}
+								timestamp: new Date(item.timestamp * 1000).toISOString(),
+							},
 						},
 						roomId: this.feedRoomId,
-						createdAt: item.timestamp * 1000
+						createdAt: item.timestamp * 1000,
 					});
 
 					syncCount++;
 				}
 			}
 
-			logger.info(`Raw tweet sync [username: ${username}] synced ${syncCount} new tweets`);
+			logger.info(
+				`Raw tweet sync [username: ${username}] synced ${syncCount} new tweets`,
+			);
 
 			/** Sleep 10 seconds */
-			await new Promise(resolve => setTimeout(resolve, 10_000));
+			await new Promise((resolve) => setTimeout(resolve, 10_000));
 
 			return true;
 		} catch (error) {

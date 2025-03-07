@@ -1,16 +1,16 @@
 import {
-    composePrompt,
-    type IAgentRuntime,
-    logger,
-    type Memory,
-    ModelTypes,
-    type State,
-    type UUID
+	composePrompt,
+	type IAgentRuntime,
+	logger,
+	type Memory,
+	ModelTypes,
+	type State,
+	type UUID,
 } from "@elizaos/core";
 import {
-    extractXMLFromResponse,
-    parseConfirmationResponse,
-    parseTokenResponse
+	extractXMLFromResponse,
+	parseConfirmationResponse,
+	parseTokenResponse,
 } from "../utils.js";
 import type { CommunityInvestorService } from "../tradingService.js";
 import { ServiceTypes } from "../types.js";
@@ -96,7 +96,7 @@ Creator Information:
 
 </message>
 
-Now based on the user_message, recommendation, and token_overview, write your message.`
+Now based on the user_message, recommendation, and token_overview, write your message.`;
 
 const extractLatestTicketTemplate = `You are an expert crypto analyst and trader, that specializes in extracting tickers or token addresses from a group of messages.
 
@@ -144,154 +144,151 @@ Respond in the following format:
     <tokenAddress></tokenAddress>
 </token>
 
-Now, based on the messages provided, please respond with the most recent ticker or token address mentioned from the user.`
-
+Now, based on the messages provided, please respond with the most recent ticker or token address mentioned from the user.`;
 
 export const getTokenDetails: any = {
-    name: "GET_TOKEN_DETAILS",
-    description: "Gets the detailed analysis of a token",
-    examples: [
-        [
-            {
-                name: "{{name1}}",
-                content: {
-                    text: "Are you just looking for details, or are you recommending this token?",
-                },
-            },
-            {
-                name: "{{name2}}",
-                content: {
-                    text: "I am just looking for details",
-                },
-            },
-            {
-                name: "{{name1}}",
-                content: {
-                    text: "Ok, here are the details...",
-                    actions: ["GET_TOKEN_DETAILS"],
-                },
-            },
-        ],
-    ],
-    similes: ["TOKEN_DETAILS"],
+	name: "GET_TOKEN_DETAILS",
+	description: "Gets the detailed analysis of a token",
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Are you just looking for details, or are you recommending this token?",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "I am just looking for details",
+				},
+			},
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Ok, here are the details...",
+					actions: ["GET_TOKEN_DETAILS"],
+				},
+			},
+		],
+	],
+	similes: ["TOKEN_DETAILS"],
 
-    async handler(runtime: IAgentRuntime, message: Memory, _state: State, _options, callback: any) {
-        if (!runtime.getService(ServiceTypes.COMMUNITY_INVESTOR)) {
-            console.log("no trading service");
-            return;
-        }
+	async handler(
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state: State,
+		_options,
+		callback: any,
+	) {
+		if (!runtime.getService(ServiceTypes.COMMUNITY_INVESTOR)) {
+			console.log("no trading service");
+			return;
+		}
 
-        const tradingService = runtime.getService<CommunityInvestorService>(ServiceTypes.COMMUNITY_INVESTOR);
+		const tradingService = runtime.getService<CommunityInvestorService>(
+			ServiceTypes.COMMUNITY_INVESTOR,
+		);
 
-        if(!tradingService) {
-            throw new Error("No trading service found");
-        }
+		if (!tradingService) {
+			throw new Error("No trading service found");
+		}
 
-        // Get a users most recent message containing a token
-        const rawMessages = await runtime.getMemoryManager("messages").getMemories({
-            roomId: message.roomId,
-            count: 10,
-            unique: true,
-        });
+		// Get a users most recent message containing a token
+		const rawMessages = await runtime.getMemoryManager("messages").getMemories({
+			roomId: message.roomId,
+			count: 10,
+			unique: true,
+		});
 
-        if (!rawMessages.length) {
-            logger.error(`No messages found for user ${message.entityId}`);
-            return;
-        }
+		if (!rawMessages.length) {
+			logger.error(`No messages found for user ${message.entityId}`);
+			return;
+		}
 
-        const messages = rawMessages.map((m) => {
-            const content =
-                typeof m.content === "string"
-                    ? JSON.parse(m.content)
-                    : m.content;
-            return `
+		const messages = rawMessages.map((m) => {
+			const content =
+				typeof m.content === "string" ? JSON.parse(m.content) : m.content;
+			return `
             <message>
                 <createdAt>${new Date(m.createdAt as number).toISOString()}</createdAt>
                 <content>${JSON.stringify(content.text)}</content>
             </message>`;
-        });
+		});
 
-        const prompt = composePrompt({
-            state: {
-                messages: messages,
-            } as unknown as State,
-            template: extractLatestTicketTemplate,
-        });
-        
+		const prompt = composePrompt({
+			state: {
+				messages: messages,
+			} as unknown as State,
+			template: extractLatestTicketTemplate,
+		});
 
-        const text = await runtime.useModel(ModelTypes.TEXT_SMALL, {
-            prompt,
-        });
+		const text = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			prompt,
+		});
 
-        const extractXML = extractXMLFromResponse(text, "token");
+		const extractXML = extractXMLFromResponse(text, "token");
 
-        const results = parseTokenResponse(extractXML);
+		const results = parseTokenResponse(extractXML);
 
-        if (!results.tokenAddress) {
-            results.tokenAddress =
-                await tradingService.resolveTicker(
-                    "solana", // todo: extract from recommendation?
-                    results.ticker
-                );
-        }
+		if (!results.tokenAddress) {
+			results.tokenAddress = await tradingService.resolveTicker(
+				"solana", // todo: extract from recommendation?
+				results.ticker,
+			);
+		}
 
-        if (!results.tokenAddress) {
-            logger.error(`No token address found for ${results.ticker}`);
-            return;
-        }
+		if (!results.tokenAddress) {
+			logger.error(`No token address found for ${results.ticker}`);
+			return;
+		}
 
-        const tokenOverview =
-            await tradingService.getTokenOverview(
-                "solana",
-                results.tokenAddress
-            );
+		const tokenOverview = await tradingService.getTokenOverview(
+			"solana",
+			results.tokenAddress,
+		);
 
-        const tokenOverviewString = JSON.stringify(tokenOverview, (_, v) => {
-            if (typeof v === "bigint") return v.toString();
-            return v;
-        });
+		const tokenOverviewString = JSON.stringify(tokenOverview, (_, v) => {
+			if (typeof v === "bigint") return v.toString();
+			return v;
+		});
 
-        const tokenDetailsPrompt = composePrompt({
-            state: {
-                ticker: results.ticker,
-                tokenOverview: tokenOverviewString,
-            } as unknown as State,
-            template: tokenDetailsTemplate,
-        });
+		const tokenDetailsPrompt = composePrompt({
+			state: {
+				ticker: results.ticker,
+				tokenOverview: tokenOverviewString,
+			} as unknown as State,
+			template: tokenDetailsTemplate,
+		});
 
-        const tokenDetails = await runtime.useModel(ModelTypes.TEXT_LARGE, {
-            prompt: tokenDetailsPrompt,
-        });
+		const tokenDetails = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+			prompt: tokenDetailsPrompt,
+		});
 
-        // Do we want to store memory here?
-        const agentResponseMsg = extractXMLFromResponse(
-            tokenDetails,
-            "message"
-        );
+		// Do we want to store memory here?
+		const agentResponseMsg = extractXMLFromResponse(tokenDetails, "message");
 
-        const finalResponse = parseConfirmationResponse(agentResponseMsg);
-        if (callback) {
-            const responseMemory: Memory = {
-                content: {
-                    text: finalResponse,
-                    inReplyTo: message.id
-                        ? message.id
-                        : undefined,
-                        actions: ["GET_TOKEN_DETAILS"],
-                },
-                entityId: message.entityId,
-                agentId: message.agentId,
-                roomId: message.roomId,
-                metadata: message.metadata,
-                createdAt: Date.now() * 1000,
-            };
-            await callback(responseMemory);
-        }
+		const finalResponse = parseConfirmationResponse(agentResponseMsg);
+		if (callback) {
+			const responseMemory: Memory = {
+				content: {
+					text: finalResponse,
+					inReplyTo: message.id ? message.id : undefined,
+					actions: ["GET_TOKEN_DETAILS"],
+				},
+				entityId: message.entityId,
+				agentId: message.agentId,
+				roomId: message.roomId,
+				metadata: message.metadata,
+				createdAt: Date.now() * 1000,
+			};
+			await callback(responseMemory);
+		}
 
-        return true;
-    },
-    async validate(_, message) {
-        if (message.agentId === message.entityId) return false;
-        return true;
-    },
+		return true;
+	},
+	async validate(_, message) {
+		if (message.agentId === message.entityId) return false;
+		return true;
+	},
 };

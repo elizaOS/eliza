@@ -1,13 +1,13 @@
 import { composePrompt, parseJSONObjectFromText } from "../prompts";
 import {
-    type Action,
-    type ActionExample,
-    type Content,
-    type HandlerCallback,
-    type IAgentRuntime,
-    type Memory,
-    ModelTypes,
-    type State,
+	type Action,
+	type ActionExample,
+	type Content,
+	type HandlerCallback,
+	type IAgentRuntime,
+	type Memory,
+	ModelTypes,
+	type State,
 } from "../types";
 
 const replyTemplate = `# Task: Generate dialog and actions for the character {{agentName}}.
@@ -30,109 +30,109 @@ Response format should be formatted in a valid JSON block like this:
 Your response should include the valid JSON block and nothing else.`;
 
 export const replyAction = {
-  name: "REPLY",
-  similes: ["REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND"],
-  description:
-    "Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
-  validate: async (_runtime: IAgentRuntime) => {
-    return true;
-  },
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback
-  ) => {
-    state = await runtime.composeState(message, [
-      ...(message.content.providers ?? []),
-      "RECENT_MESSAGES",
-    ]);
+	name: "REPLY",
+	similes: ["REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND"],
+	description:
+		"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
+	validate: async (_runtime: IAgentRuntime) => {
+		return true;
+	},
+	handler: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+		_options: any,
+		callback: HandlerCallback,
+	) => {
+		state = await runtime.composeState(message, [
+			...(message.content.providers ?? []),
+			"RECENT_MESSAGES",
+		]);
 
-    const prompt = composePrompt({
-      state,
-      template: replyTemplate,
-    });
-    console.log("*** replyAction prompt ****");
-    console.log(prompt);
+		const prompt = composePrompt({
+			state,
+			template: replyTemplate,
+		});
+		console.log("*** replyAction prompt ****");
+		console.log(prompt);
 
-    const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
-      prompt,
-    });
+		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			prompt,
+		});
 
-    console.log("*** replyAction response ****");
-    console.log(response);
+		console.log("*** replyAction response ****");
+		console.log(response);
 
-    const responseContentObj = parseJSONObjectFromText(response) as Content;
+		const responseContentObj = parseJSONObjectFromText(response) as Content;
 
-    const responseContent = {
-      thought: responseContentObj.thought,
-      text: (responseContentObj.message as string) || "",
-      actions: ["REPLY_SENT"],
-    };
+		const responseContent = {
+			thought: responseContentObj.thought,
+			text: (responseContentObj.message as string) || "",
+			actions: ["REPLY_SENT"],
+		};
 
-    await callback(responseContent);
-  },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Hello there!",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Hi! How can I help you today?",
-          actions: ["REPLY"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "What's your favorite color?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I really like deep shades of blue. They remind me of the ocean and the night sky.",
-          actions: ["REPLY"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can you explain how neural networks work?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Let me break that down for you in simple terms...",
-          actions: ["REPLY"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Could you help me solve this math problem?",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Of course! Let's work through it step by step.",
-          actions: ["REPLY"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+		await callback(responseContent);
+	},
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Hello there!",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "Hi! How can I help you today?",
+					actions: ["REPLY"],
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "What's your favorite color?",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "I really like deep shades of blue. They remind me of the ocean and the night sky.",
+					actions: ["REPLY"],
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Can you explain how neural networks work?",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "Let me break that down for you in simple terms...",
+					actions: ["REPLY"],
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Could you help me solve this math problem?",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "Of course! Let's work through it step by step.",
+					actions: ["REPLY"],
+				},
+			},
+		],
+	] as ActionExample[][],
 } as Action;

@@ -5,16 +5,15 @@
 // import { clientgithub } from "@elizaos/client-github"
 // import { pluginbinance } from "@elizaos/plugin-binance"
 // import { plugincoinbase } from "@elizaos/plugin-coinbase"
-  
-  export const availablePlugins = {
-  //   "@elizaos/client-auto": clientauto,
-  // "@elizaos/client-discord": clientdiscord,
-  // "@elizaos/client-farcaster": clientfarcaster,
-  // "@elizaos/client-github": clientgithub,
-  // "@elizaos/plugin-binance": pluginbinance,
-  // "@elizaos/plugin-coinbase": plugincoinbase,
-  }
-  
-  // Helper type
-  export type PluginName = keyof typeof availablePlugins
-  
+
+export const availablePlugins = {
+	//   "@elizaos/client-auto": clientauto,
+	// "@elizaos/client-discord": clientdiscord,
+	// "@elizaos/client-farcaster": clientfarcaster,
+	// "@elizaos/client-github": clientgithub,
+	// "@elizaos/plugin-binance": pluginbinance,
+	// "@elizaos/plugin-coinbase": plugincoinbase,
+};
+
+// Helper type
+export type PluginName = keyof typeof availablePlugins;

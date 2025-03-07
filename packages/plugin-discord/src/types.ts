@@ -1,16 +1,11 @@
-import type {
-    Character,
-    IAgentRuntime
-} from "@elizaos/core";
-import type {
-    Client
-} from "discord.js";
+import type { Character, IAgentRuntime } from "@elizaos/core";
+import type { Client } from "discord.js";
 
 export interface IDiscordService {
-    client: Client;
-    character: Character;
+	client: Client;
+	character: Character;
 }
 
 export const ServiceTypes = {
-    DISCORD: "discord",
+	DISCORD: "discord",
 } as const;

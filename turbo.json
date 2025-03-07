@@ -1,41 +1,41 @@
 {
-  "$schema": "https://turborepo.org/schema.json",
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"],
-      "cache": false
-    },
-    "lint": {
-      "dependsOn": ["^lint"],
-      "outputs": ["dist/**"],
-      "cache": false
-    },
-    "start": {
-      "dependsOn": ["@elizaos/core#build"],
-      "env": ["LOG_LEVEL"],
-      "persistent": true,
-      "cache": false
-    },
-    "dev": {
-      "dependsOn": ["@elizaos/core#build"],
-      "persistent": true,
-      "cache": false
-    },
-    "test": {
-      "dependsOn": ["@elizaos/core#build"],
-      "persistent": true,
-      "cache": false
-    },
-    "migrate": {
-      "dependsOn": ["@elizaos/core#build"]
-    },
-    "migrate:generate": {
-      "dependsOn": ["@elizaos/core#build"]
-    },
-    "clean": {
-      "cache": false
-    }
-  }
+	"$schema": "https://turborepo.org/schema.json",
+	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"env": ["LOG_LEVEL"],
+			"outputs": ["dist/**"],
+			"cache": false
+		},
+		"lint": {
+			"dependsOn": ["^lint"],
+			"outputs": ["dist/**"],
+			"cache": false
+		},
+		"start": {
+			"dependsOn": ["@elizaos/core#build"],
+			"env": ["LOG_LEVEL"],
+			"persistent": true,
+			"cache": false
+		},
+		"dev": {
+			"dependsOn": ["@elizaos/core#build"],
+			"persistent": true,
+			"cache": false
+		},
+		"test": {
+			"dependsOn": ["@elizaos/core#build"],
+			"persistent": true,
+			"cache": false
+		},
+		"migrate": {
+			"dependsOn": ["@elizaos/core#build"]
+		},
+		"migrate:generate": {
+			"dependsOn": ["@elizaos/core#build"]
+		},
+		"clean": {
+			"cache": false
+		}
+	}
 }

@@ -49,7 +49,7 @@ const SentimentSchema = z.object({
 			token: z.string(),
 			sentiment: z.number(),
 			reason: z.string(),
-		})
+		}),
 	),
 	processed: z.boolean(),
 	updatedAt: z.string().datetime(),
@@ -74,7 +74,7 @@ const WalletSchema = z.object({
 			logoURI: z.string().url(),
 			priceUsd: z.number(),
 			valueUsd: z.number(),
-		})
+		}),
 	),
 });
 

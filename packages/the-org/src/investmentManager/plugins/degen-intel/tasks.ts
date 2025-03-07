@@ -11,7 +11,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 
 	// first, get all tasks with tags "queue", "repeat", "degen_intel" and delete them
 	const tasks = await runtime.getDatabaseAdapter().getTasks({
-		tags: ["queue", "repeat", "degen_intel"]
+		tags: ["queue", "repeat", "degen_intel"],
 	});
 
 	for (const task of tasks) {
@@ -26,7 +26,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		execute: async (runtime, _options) => {
 			const birdeye = new Birdeye(runtime);
 			await birdeye.syncTrendingTokens("solana");
-		}
+		},
 	});
 
 	runtime.getDatabaseAdapter().createTask({
@@ -40,7 +40,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		tags: ["queue", "repeat", "degen_intel"],
 	});
 
-	runtime.registerTaskWorker({	
+	runtime.registerTaskWorker({
 		name: "INTEL_COINMARKETCAP_SYNC",
 		validate: async (_runtime, _message, _state) => {
 			return true; // TODO: validate after certain time
@@ -48,7 +48,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		execute: async (runtime, _options) => {
 			const cmc = new CoinmarketCap(runtime);
 			await cmc.syncTokens();
-		}
+		},
 	});
 
 	runtime.getDatabaseAdapter().createTask({
@@ -70,7 +70,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		execute: async (runtime, _options) => {
 			const twitter = new Twitter(runtime);
 			await twitter.syncRawTweets();
-		}
+		},
 	});
 
 	runtime.getDatabaseAdapter().createTask({
@@ -92,7 +92,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		execute: async (runtime, _options) => {
 			const birdeye = new Birdeye(runtime);
 			await birdeye.syncWallet();
-		}
+		},
 	});
 
 	runtime.getDatabaseAdapter().createTask({
@@ -114,7 +114,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		execute: async (runtime, _options) => {
 			const signal = new BuySignal(runtime);
 			await signal.generateSignal();
-		}
+		},
 	});
 
 	runtime.getDatabaseAdapter().createTask({
@@ -136,7 +136,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		execute: async (runtime, _options) => {
 			const twitterParser = new TwitterParser(runtime);
 			await twitterParser.parseTweets();
-		}
+		},
 	});
 
 	runtime.getDatabaseAdapter().createTask({

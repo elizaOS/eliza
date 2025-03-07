@@ -9,17 +9,17 @@ import { getSimulatedPositions } from "./recommendations/simulatedPositions";
 import { CommunityInvestorService } from "./tradingService";
 
 export const communityInvestorPlugin: Plugin = {
-    name: "community-investor",
-    description: "Community Investor Plugin for Eliza",
-    evaluators: [recommendationEvaluator],
-    providers: [],
-    actions: [
-        confirmRecommendation,
-        getTokenDetails,
-        getRecommenderReport,
-        getPositions,
-        getAgentPositions,
-        getSimulatedPositions,
-    ],
-    services: [CommunityInvestorService],
+	name: "community-investor",
+	description: "Community Investor Plugin for Eliza",
+	evaluators: [recommendationEvaluator],
+	providers: [],
+	actions: [
+		confirmRecommendation,
+		getTokenDetails,
+		getRecommenderReport,
+		getPositions,
+		getAgentPositions,
+		getSimulatedPositions,
+	],
+	services: [CommunityInvestorService],
 };
