@@ -59,10 +59,13 @@ export class AgentServer {
 			);
 
 			// Initialize the database
-			this.database.init();
-
-			// Initialize server components - will handle agent disabling
-			this.initializeServer(options);
+			this.database.init().then(() => {
+				logger.success("Database initialized successfully");
+				this.initializeServer(options);
+			}).catch((error) => {
+				logger.error("Failed to initialize database:", error);
+				throw error;
+			});
 		} catch (error) {
 			logger.error("Failed to initialize AgentServer:", error);
 			throw error;
