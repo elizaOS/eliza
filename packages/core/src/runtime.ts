@@ -722,9 +722,7 @@ export class AgentRuntime implements IAgentRuntime {
 			return [];
 		}
 
-		console.log("**** updating state ****");
 		state = await this.composeState(message, ["RECENT_MESSAGES", "EVALUATORS"]);
-		console.log("**** state updated ****");
 
 		await Promise.all(
 			evaluators.map(async (evaluator) => {
@@ -957,8 +955,6 @@ export class AgentRuntime implements IAgentRuntime {
 			data: {},
 			text: "",
 		};
-
-		console.log("**** cachedState ****", cachedState);
 
 		// Get existing provider names from cache (if any)
 		const existingProviderNames = cachedState.data.providers

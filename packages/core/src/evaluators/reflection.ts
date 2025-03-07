@@ -247,9 +247,6 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 		}),
 	]);
 
-	console.log("***** entities");
-	console.log(entities);
-
 	const prompt = composePrompt({
 		state: {
 			...state,
@@ -263,9 +260,6 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 			runtime.character.templates?.reflectionTemplate || reflectionTemplate,
 	});
 
-	console.log("**** prompt");
-	console.log(prompt);
-
 	const reflection = await generateObject({
 		runtime,
 		prompt,
@@ -277,9 +271,6 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 		logger.warn("generateObject failed", prompt);
 		return;
 	}
-
-	console.log("**** reflection");
-	console.log(reflection);
 
 	// Store new facts
 	const newFacts =
@@ -318,23 +309,9 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 			continue; // Skip this relationship if we can't resolve the IDs
 		}
 
-		console.log("*** existingRelationships");
-		console.log(existingRelationships);
-
 		const existingRelationship = existingRelationships.find((r) => {
-			console.log("*** r.sourceEntityId");
-			console.log(r.sourceEntityId);
-			console.log("*** r.targetEntityId");
-			console.log(r.targetEntityId);
-			console.log("*** sourceId");
-			console.log(sourceId);
-			console.log("*** targetId");
-			console.log(targetId);
 			return r.sourceEntityId === sourceId && r.targetEntityId === targetId;
 		});
-
-		console.log("*** existingRelationship");
-		console.log(existingRelationship);
 
 		if (existingRelationship) {
 			const updatedMetadata = {
