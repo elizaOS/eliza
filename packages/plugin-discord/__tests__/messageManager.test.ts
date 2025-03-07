@@ -51,12 +51,10 @@ describe("Discord MessageManager", () => {
 			.mockResolvedValueOnce(ChannelType.GuildText);
 
 		const guild = {
-			fetch: vi
-				.fn()
-				.mockReturnValue({
-					type: ChannelType.GuildText,
-					serverId: "mock-server-id",
-				}),
+			fetch: vi.fn().mockReturnValue({
+				type: ChannelType.GuildText,
+				serverId: "mock-server-id",
+			}),
 			members: {
 				cache: {
 					get: vi.fn().mockReturnValue({ nickname: "MockBotNickname" }),
