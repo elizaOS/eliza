@@ -1,7 +1,5 @@
 {
-    "version": "1.0.0-alpha.0",
-    "packages": [
-        "packages/*"
-    ],
-    "npmClient": "bun"
+	"version": "1.0.0-alpha.0",
+	"packages": ["packages/*"],
+	"npmClient": "bun"
 }

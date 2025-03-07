@@ -5,13 +5,13 @@ import { findEntityByName } from "../entities";
 import { logger } from "../logger";
 import { composePrompt, parseJSONObjectFromText } from "../prompts";
 import {
-  type Action,
-  type ActionExample,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  ModelTypes,
-  type State
+	type Action,
+	type ActionExample,
+	type HandlerCallback,
+	type IAgentRuntime,
+	type Memory,
+	ModelTypes,
+	type State,
 } from "../types";
 
 const targetExtractionTemplate = `# Task: Extract Target and Source Information
@@ -61,247 +61,251 @@ Example outputs:
 
 Make sure to include the \`\`\`json\`\`\` tags around the JSON object.`;
 export const sendMessageAction: Action = {
-  name: "SEND_MESSAGE",
-  similes: ["DM", "MESSAGE", "SEND_DM", "POST_MESSAGE"],
-  description: "Send a message to a user or room (other than the current one)",
-  
-  validate: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state: State
-  ): Promise<boolean> => {
-    // Check if we have permission to send messages
-    const worldId = message.roomId;
-    const agentId = runtime.agentId;
-    
-    // Get all components for the current room to understand available sources
-    const roomComponents = await runtime.databaseAdapter.getComponents(message.roomId, worldId, agentId);
-    
-    // Get source types from room components
-    const availableSources = new Set(roomComponents.map(c => c.type));
-    
-    // TODO: Add ability for plugins to register their sources
-    // const registeredSources = runtime.getRegisteredSources?.() || [];
-    // availableSources.add(...registeredSources);
-    
-    return availableSources.size > 0;
-  },
-  
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback,
-    responses: Memory[]
-  ): Promise<void> => {
-    try {
-      // Handle initial responses
-      for (const response of responses) {
-        await callback(response.content);
-      }
+	name: "SEND_MESSAGE",
+	similes: ["DM", "MESSAGE", "SEND_DM", "POST_MESSAGE"],
+	description: "Send a message to a user or room (other than the current one)",
 
-      const sourceEntityId = message.entityId;
-      const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
-      const worldId = room.worldId;
+	validate: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state: State,
+	): Promise<boolean> => {
+		// Check if we have permission to send messages
+		const worldId = message.roomId;
+		const agentId = runtime.agentId;
 
-      // Extract target and source information
-      const targetPrompt = composePrompt({
-        state,
-        template: targetExtractionTemplate,
-      });
+		// Get all components for the current room to understand available sources
+		const roomComponents = await runtime
+			.getDatabaseAdapter()
+			.getComponents(message.roomId, worldId, agentId);
 
-      const targetResult = await runtime.useModel(ModelTypes.TEXT_LARGE, {
-        prompt: targetPrompt,
-        stopSequences: []
-      });
+		// Get source types from room components
+		const availableSources = new Set(roomComponents.map((c) => c.type));
 
-      const targetData = parseJSONObjectFromText(targetResult);
-      if (!targetData?.targetType || !targetData?.source) {
-        await callback({
-          text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",
-          actions: ["SEND_MESSAGE_ERROR"],
-          source: message.content.source,
-        });
-        return;
-      }
+		// TODO: Add ability for plugins to register their sources
+		// const registeredSources = runtime.getRegisteredSources?.() || [];
+		// availableSources.add(...registeredSources);
 
-      const source = targetData.source.toLowerCase();
+		return availableSources.size > 0;
+	},
 
-      if (targetData.targetType === "user") {
-        // Try to find the target user entity
-        const targetEntity = await findEntityByName(runtime, message, state);
-        
-        if (!targetEntity) {
-          await callback({
-            text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
-            actions: ["SEND_MESSAGE_ERROR"],
-            source: message.content.source,
-          });
-          return;
-        }
+	handler: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+		_options: any,
+		callback: HandlerCallback,
+		responses: Memory[],
+	): Promise<void> => {
+		try {
+			// Handle initial responses
+			for (const response of responses) {
+				await callback(response.content);
+			}
 
-        // Get the component for the specified source
-        const userComponent = await runtime.databaseAdapter.getComponent(
-          targetEntity.id!,
-          source,
-          worldId,
-          sourceEntityId
-        );
+			const sourceEntityId = message.entityId;
+			const room =
+				state.data.room ??
+				(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+			const worldId = room.worldId;
 
-        if (!userComponent) {
-          await callback({
-            text: `I couldn't find ${source} information for that user. Could you please provide their ${source} details?`,
-            actions: ["SEND_MESSAGE_ERROR"],
-            source: message.content.source,
-          });
-          return;
-        }
+			// Extract target and source information
+			const targetPrompt = composePrompt({
+				state,
+				template: targetExtractionTemplate,
+			});
 
-        const sendDirectMessage = (runtime.getService(source) as any)?.sendDirectMessage;
+			const targetResult = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+				prompt: targetPrompt,
+				stopSequences: [],
+			});
 
-        if (!sendDirectMessage) {
-          await callback({
-            text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
-            actions: ["SEND_MESSAGE_ERROR"],
-            source: message.content.source,
-          });
-          return;
-        }
-        // Send the message using the appropriate client
-        try {
-          await sendDirectMessage(
-            runtime,
-            targetEntity.id!,
-            source,
-            message.content.text,
-            worldId
-          );
+			const targetData = parseJSONObjectFromText(targetResult);
+			if (!targetData?.targetType || !targetData?.source) {
+				await callback({
+					text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",
+					actions: ["SEND_MESSAGE_ERROR"],
+					source: message.content.source,
+				});
+				return;
+			}
 
-          await callback({
-            text: `Message sent to ${targetEntity.names[0]} on ${source}.`,
-            actions: ["SEND_MESSAGE"],
-            source: message.content.source,
-          });
-        } catch (error) {
-          logger.error(`Failed to send direct message: ${error.message}`);
-          await callback({
-            text: "I encountered an error trying to send the message. Please try again.",
-            actions: ["SEND_MESSAGE_ERROR"],
-            source: message.content.source,
-          });
-        }
+			const source = targetData.source.toLowerCase();
 
-      } else if (targetData.targetType === "room") {
-        // Try to find the target room
-        const rooms = await runtime.databaseAdapter.getRooms(worldId);
-        const targetRoom = rooms.find(r => {
-          // Match room name from identifiers
-          return r.name.toLowerCase() === targetData.identifiers.roomName?.toLowerCase();
-        });
+			if (targetData.targetType === "user") {
+				// Try to find the target user entity
+				const targetEntity = await findEntityByName(runtime, message, state);
 
-        if (!targetRoom) {
-          await callback({
-            text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
-            actions: ["SEND_MESSAGE_ERROR"],
-            source: message.content.source,
-          });
-          return;
-        }
+				if (!targetEntity) {
+					await callback({
+						text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
+						actions: ["SEND_MESSAGE_ERROR"],
+						source: message.content.source,
+					});
+					return;
+				}
 
-        const sendRoomMessage = (runtime.getService(source) as any)?.sendRoomMessage;
+				// Get the component for the specified source
+				const userComponent = await runtime
+					.getDatabaseAdapter()
+					.getComponent(targetEntity.id!, source, worldId, sourceEntityId);
 
-        if (!sendRoomMessage) {
-          await callback({
-            text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
-            actions: ["SEND_MESSAGE_ERROR"],
-            source: message.content.source,
-          });
-          return;
-        }
-          
-        // Send the message to the room
-        try {
-          await sendRoomMessage(
-            runtime,
-            targetRoom.id,
-            source,
-            message.content.text,
-            worldId
-          );
+				if (!userComponent) {
+					await callback({
+						text: `I couldn't find ${source} information for that user. Could you please provide their ${source} details?`,
+						actions: ["SEND_MESSAGE_ERROR"],
+						source: message.content.source,
+					});
+					return;
+				}
 
-          await callback({
-            text: `Message sent to ${targetRoom.name} on ${source}.`,
-            actions: ["SEND_MESSAGE"],
-            source: message.content.source,
-          });
-        } catch (error) {
-          logger.error(`Failed to send room message: ${error.message}`);
-          await callback({
-            text: "I encountered an error trying to send the message to the room. Please try again.",
-            actions: ["SEND_MESSAGE_ERROR"],
-            source: message.content.source,
-          });
-        }
-      }
+				const sendDirectMessage = (runtime.getService(source) as any)
+					?.sendDirectMessage;
 
-    } catch (error) {
-      logger.error(`Error in sendMessage handler: ${error}`);
-      await callback({
-        text: "There was an error processing your message request.",
-        actions: ["SEND_MESSAGE_ERROR"],
-        source: message.content.source,
-      });
-    }
-  },
+				if (!sendDirectMessage) {
+					await callback({
+						text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
+						actions: ["SEND_MESSAGE_ERROR"],
+						source: message.content.source,
+					});
+					return;
+				}
+				// Send the message using the appropriate client
+				try {
+					await sendDirectMessage(
+						runtime,
+						targetEntity.id!,
+						source,
+						message.content.text,
+						worldId,
+					);
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Send a message to @dev_guru on telegram saying 'Hello!'",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Message sent to dev_guru on telegram.",
-          actions: ["SEND_MESSAGE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Post 'Important announcement!' in #announcements",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Message sent to announcements.",
-          actions: ["SEND_MESSAGE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "DM Jimmy and tell him 'Meeting at 3pm'",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "Message sent to Jimmy.",
-          actions: ["SEND_MESSAGE"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+					await callback({
+						text: `Message sent to ${targetEntity.names[0]} on ${source}.`,
+						actions: ["SEND_MESSAGE"],
+						source: message.content.source,
+					});
+				} catch (error) {
+					logger.error(`Failed to send direct message: ${error.message}`);
+					await callback({
+						text: "I encountered an error trying to send the message. Please try again.",
+						actions: ["SEND_MESSAGE_ERROR"],
+						source: message.content.source,
+					});
+				}
+			} else if (targetData.targetType === "room") {
+				// Try to find the target room
+				const rooms = await runtime.getDatabaseAdapter().getRooms(worldId);
+				const targetRoom = rooms.find((r) => {
+					// Match room name from identifiers
+					return (
+						r.name.toLowerCase() ===
+						targetData.identifiers.roomName?.toLowerCase()
+					);
+				});
+
+				if (!targetRoom) {
+					await callback({
+						text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
+						actions: ["SEND_MESSAGE_ERROR"],
+						source: message.content.source,
+					});
+					return;
+				}
+
+				const sendRoomMessage = (runtime.getService(source) as any)
+					?.sendRoomMessage;
+
+				if (!sendRoomMessage) {
+					await callback({
+						text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
+						actions: ["SEND_MESSAGE_ERROR"],
+						source: message.content.source,
+					});
+					return;
+				}
+
+				// Send the message to the room
+				try {
+					await sendRoomMessage(
+						runtime,
+						targetRoom.id,
+						source,
+						message.content.text,
+						worldId,
+					);
+
+					await callback({
+						text: `Message sent to ${targetRoom.name} on ${source}.`,
+						actions: ["SEND_MESSAGE"],
+						source: message.content.source,
+					});
+				} catch (error) {
+					logger.error(`Failed to send room message: ${error.message}`);
+					await callback({
+						text: "I encountered an error trying to send the message to the room. Please try again.",
+						actions: ["SEND_MESSAGE_ERROR"],
+						source: message.content.source,
+					});
+				}
+			}
+		} catch (error) {
+			logger.error(`Error in sendMessage handler: ${error}`);
+			await callback({
+				text: "There was an error processing your message request.",
+				actions: ["SEND_MESSAGE_ERROR"],
+				source: message.content.source,
+			});
+		}
+	},
+
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Send a message to @dev_guru on telegram saying 'Hello!'",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "Message sent to dev_guru on telegram.",
+					actions: ["SEND_MESSAGE"],
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Post 'Important announcement!' in #announcements",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "Message sent to announcements.",
+					actions: ["SEND_MESSAGE"],
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "DM Jimmy and tell him 'Meeting at 3pm'",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "Message sent to Jimmy.",
+					actions: ["SEND_MESSAGE"],
+				},
+			},
+		],
+	] as ActionExample[][],
 };
 
 export default sendMessageAction;

@@ -1,38 +1,36 @@
 {
-    "name": "@elizaos/plugin-telegram",
-    "version": "1.0.0-alpha.0",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@telegraf/types": "7.1.0",
-        "telegraf": "4.16.3"
-    },
-    "devDependencies": {
-        "tsup": "8.4.0",
-        "vitest": "1.6.1"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
-        "test:watch": "vitest"
-    },
-    "publishConfig": {
-        "access": "public"
-    }
+	"name": "@elizaos/plugin-telegram",
+	"version": "1.0.0-alpha.0",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"@elizaos/source": "./src/index.ts",
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": ["dist"],
+	"dependencies": {
+		"@telegraf/types": "7.1.0",
+		"telegraf": "4.16.3"
+	},
+	"devDependencies": {
+		"tsup": "8.4.0",
+		"vitest": "1.6.1"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
 }

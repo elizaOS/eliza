@@ -1,52 +1,50 @@
 {
-    "name": "@elizaos/plugin-openai",
-    "version": "1.0.0-alpha.0",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@ai-sdk/openai": "^1.1.9",
-        "@ai-sdk/ui-utils": "1.1.9",
-        "@elizaos/core": "workspace:*",
-        "ai": "^4.1.25",
-        "js-tiktoken": "^1.0.18",
-        "tsup": "8.4.0",
-        "zod": "3.21.4"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run"
-    },
-    "peerDependencies": {
-        "whatwg-url": "7.1.0"
-    },
-    "publishConfig": {
-        "access": "public"
-    },
-    "resolutions": {
-        "zod": "3.24.1"
-    },
-    "agentConfig": {
-        "pluginType": "elizaos:plugin:1.0.0",
-        "pluginParameters": {
-            "OPENAI_API_KEY": {
-                "type": "string",
-                "description": "API key for the service"
-            }
-        }
-    }
+	"name": "@elizaos/plugin-openai",
+	"version": "1.0.0-alpha.0",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": ["dist"],
+	"dependencies": {
+		"@ai-sdk/openai": "^1.1.9",
+		"@ai-sdk/ui-utils": "1.1.9",
+		"@elizaos/core": "workspace:*",
+		"ai": "^4.1.25",
+		"js-tiktoken": "^1.0.18",
+		"tsup": "8.4.0",
+		"zod": "3.21.4"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run"
+	},
+	"peerDependencies": {
+		"whatwg-url": "7.1.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"resolutions": {
+		"zod": "3.24.1"
+	},
+	"agentConfig": {
+		"pluginType": "elizaos:plugin:1.0.0",
+		"pluginParameters": {
+			"OPENAI_API_KEY": {
+				"type": "string",
+				"description": "API key for the service"
+			}
+		}
+	}
 }

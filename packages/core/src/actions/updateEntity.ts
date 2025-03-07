@@ -6,19 +6,19 @@
 // We should include the prior component data if it exists, and have the LLM output an update to the component.
 // sourceEntityId represents who is making the update, entityId is who they are talking about
 
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
 import { findEntityByName } from "../entities";
 import { logger } from "../logger";
 import { composePrompt } from "../prompts";
 import {
-  type Action,
-  type ActionExample,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  ModelTypes,
-  type State,
-  type UUID
+	type Action,
+	type ActionExample,
+	type HandlerCallback,
+	type IAgentRuntime,
+	type Memory,
+	ModelTypes,
+	type State,
+	type UUID,
 } from "../types";
 
 const componentTemplate = `# Task: Extract Source and Update Component Data
@@ -78,200 +78,206 @@ Example outputs:
 Make sure to include the \`\`\`json\`\`\` tags around the JSON object.`;
 
 export const updateEntityAction: Action = {
-  name: "UPDATE_ENTITY",
-  similes: ["CREATE_ENTITY", "UPDATE_USER", "EDIT_ENTITY", "UPDATE_COMPONENT", "CREATE_COMPONENT"],
-  description: "Add or edit contact details for a user entity (like twitter, discord, email address, etc.)",
-  
-  validate: async (
-    _runtime: IAgentRuntime,
-    _message: Memory,
-    _state: State
-  ): Promise<boolean> => {
-    // Check if we have any registered sources or existing components that could be updated
-    // const worldId = message.roomId;
-    // const agentId = runtime.agentId;
-    
-    // // Get all components for the current room to understand available sources
-    // const roomComponents = await runtime.databaseAdapter.getComponents(message.roomId, worldId, agentId);
-    
-    // // Get source types from room components
-    // const availableSources = new Set(roomComponents.map(c => c.type));
-      return true; // availableSources.size > 0;
-  },
-  
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback,
-    responses: Memory[]
-  ): Promise<void> => {
-    try {
-      // Handle initial responses
-      for (const response of responses) {
-        await callback(response.content);
-      }
+	name: "UPDATE_ENTITY",
+	similes: [
+		"CREATE_ENTITY",
+		"UPDATE_USER",
+		"EDIT_ENTITY",
+		"UPDATE_COMPONENT",
+		"CREATE_COMPONENT",
+	],
+	description:
+		"Add or edit contact details for a user entity (like twitter, discord, email address, etc.)",
 
-      const sourceEntityId = message.entityId;
-      const roomId = message.roomId;
-      const agentId = runtime.agentId;
-      const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
-      const worldId = room.worldId;
+	validate: async (
+		_runtime: IAgentRuntime,
+		_message: Memory,
+		_state: State,
+	): Promise<boolean> => {
+		// Check if we have any registered sources or existing components that could be updated
+		// const worldId = message.roomId;
+		// const agentId = runtime.agentId;
 
-      // First, find the entity being referenced
-      const entity = await findEntityByName(runtime, message, state);
-      
-      if (!entity) {
-        await callback({
-          text: "I'm not sure which entity you're trying to update. Could you please specify who you're talking about?",
-          actions: ["UPDATE_ENTITY_ERROR"],
-          source: message.content.source,
-        });
-        return;
-      }
+		// // Get all components for the current room to understand available sources
+		// const roomComponents = await runtime.getDatabaseAdapter().getComponents(message.roomId, worldId, agentId);
 
-      // Get existing component if it exists - we'll get this after the LLM identifies the source
-      let existingComponent = null;
+		// // Get source types from room components
+		// const availableSources = new Set(roomComponents.map(c => c.type));
+		return true; // availableSources.size > 0;
+	},
 
-      // Generate component data using the combined template
-      const prompt = composePrompt({
-        state,
-        template: componentTemplate,
-      });
+	handler: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+		_options: any,
+		callback: HandlerCallback,
+		responses: Memory[],
+	): Promise<void> => {
+		try {
+			// Handle initial responses
+			for (const response of responses) {
+				await callback(response.content);
+			}
 
-      const result = await runtime.useModel(ModelTypes.TEXT_LARGE, {
-        prompt,
-        stopSequences: []
-      });
+			const sourceEntityId = message.entityId;
+			const _roomId = message.roomId;
+			const agentId = runtime.agentId;
+			const room =
+				state.data.room ??
+				(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+			const worldId = room.worldId;
 
-      // Parse the generated data
-      let parsedResult: any;
-      try {
-        const jsonMatch = result.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error("No valid JSON found in the LLM response");
-        }
-        
-        parsedResult = JSON.parse(jsonMatch[0]);
-        
-        if (!parsedResult.source || !parsedResult.data) {
-          throw new Error("Invalid response format - missing source or data");
-        }
-      } catch (error) {
-        logger.error(`Failed to parse component data: ${error.message}`);
-        await callback({
-          text: "I couldn't properly understand the component information. Please try again with more specific information.",
-          actions: ["UPDATE_ENTITY_ERROR"],
-          source: message.content.source,
-        });
-        return;
-      }
+			// First, find the entity being referenced
+			const entity = await findEntityByName(runtime, message, state);
 
-      const componentType = parsedResult.source.toLowerCase();
-      const componentData = parsedResult.data;
+			if (!entity) {
+				await callback({
+					text: "I'm not sure which entity you're trying to update. Could you please specify who you're talking about?",
+					actions: ["UPDATE_ENTITY_ERROR"],
+					source: message.content.source,
+				});
+				return;
+			}
 
-      // Now that we know the component type, get the existing component if it exists
-      existingComponent = await runtime.databaseAdapter.getComponent(
-        entity.id!,
-        componentType,
-        worldId,
-        sourceEntityId
-      );
-      
-      // Create or update the component
-      if (existingComponent) {
-        await runtime.databaseAdapter.updateComponent({
-          id: existingComponent.id,
-          entityId: entity.id!,
-          worldId,
-          type: componentType,
-          data: componentData,
-          agentId,
-          roomId: message.roomId,
-          sourceEntityId
-        });
+			// Get existing component if it exists - we'll get this after the LLM identifies the source
+			let existingComponent = null;
 
-        await callback({
-          text: `I've updated the ${componentType} information for ${entity.names[0]}.`,
-          actions: ["UPDATE_ENTITY"],
-          source: message.content.source,
-        });
-      } else {
-        await runtime.databaseAdapter.createComponent({
-          id: uuidv4() as UUID,
-          entityId: entity.id!,
-          worldId,
-          type: componentType,
-          data: componentData,
-          agentId,
-          roomId: message.roomId,
-          sourceEntityId
-        });
+			// Generate component data using the combined template
+			const prompt = composePrompt({
+				state,
+				template: componentTemplate,
+			});
 
-        await callback({
-          text: `I've added new ${componentType} information for ${entity.names[0]}.`,
-          actions: ["UPDATE_ENTITY"],
-          source: message.content.source,
-        });
-      }
-    } catch (error) {
-      logger.error(`Error in updateEntity handler: ${error}`);
-      await callback({
-        text: "There was an error processing the entity information.",
-        actions: ["UPDATE_ENTITY_ERROR"],
-        source: message.content.source,
-      });
-    }
-  },
-  
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Please update my telegram username to @dev_guru",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I've updated your telegram information.",
-          actions: ["UPDATE_ENTITY"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Set Jimmy's twitter username to @jimmy_codes",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I've updated Jimmy's twitter information.",
-          actions: ["UPDATE_ENTITY"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Update my discord username to dev_guru#1234",
-        },
-      },
-      {
-        name: "{{name2}}",
-        content: {
-          text: "I've updated your discord information.",
-          actions: ["UPDATE_ENTITY"],
-        },
-      },
-    ],
-  ] as ActionExample[][],
+			const result = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+				prompt,
+				stopSequences: [],
+			});
+
+			// Parse the generated data
+			let parsedResult: any;
+			try {
+				const jsonMatch = result.match(/\{[\s\S]*\}/);
+				if (!jsonMatch) {
+					throw new Error("No valid JSON found in the LLM response");
+				}
+
+				parsedResult = JSON.parse(jsonMatch[0]);
+
+				if (!parsedResult.source || !parsedResult.data) {
+					throw new Error("Invalid response format - missing source or data");
+				}
+			} catch (error) {
+				logger.error(`Failed to parse component data: ${error.message}`);
+				await callback({
+					text: "I couldn't properly understand the component information. Please try again with more specific information.",
+					actions: ["UPDATE_ENTITY_ERROR"],
+					source: message.content.source,
+				});
+				return;
+			}
+
+			const componentType = parsedResult.source.toLowerCase();
+			const componentData = parsedResult.data;
+
+			// Now that we know the component type, get the existing component if it exists
+			existingComponent = await runtime
+				.getDatabaseAdapter()
+				.getComponent(entity.id!, componentType, worldId, sourceEntityId);
+
+			// Create or update the component
+			if (existingComponent) {
+				await runtime.getDatabaseAdapter().updateComponent({
+					id: existingComponent.id,
+					entityId: entity.id!,
+					worldId,
+					type: componentType,
+					data: componentData,
+					agentId,
+					roomId: message.roomId,
+					sourceEntityId,
+				});
+
+				await callback({
+					text: `I've updated the ${componentType} information for ${entity.names[0]}.`,
+					actions: ["UPDATE_ENTITY"],
+					source: message.content.source,
+				});
+			} else {
+				await runtime.getDatabaseAdapter().createComponent({
+					id: uuidv4() as UUID,
+					entityId: entity.id!,
+					worldId,
+					type: componentType,
+					data: componentData,
+					agentId,
+					roomId: message.roomId,
+					sourceEntityId,
+				});
+
+				await callback({
+					text: `I've added new ${componentType} information for ${entity.names[0]}.`,
+					actions: ["UPDATE_ENTITY"],
+					source: message.content.source,
+				});
+			}
+		} catch (error) {
+			logger.error(`Error in updateEntity handler: ${error}`);
+			await callback({
+				text: "There was an error processing the entity information.",
+				actions: ["UPDATE_ENTITY_ERROR"],
+				source: message.content.source,
+			});
+		}
+	},
+
+	examples: [
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Please update my telegram username to @dev_guru",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "I've updated your telegram information.",
+					actions: ["UPDATE_ENTITY"],
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Set Jimmy's twitter username to @jimmy_codes",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "I've updated Jimmy's twitter information.",
+					actions: ["UPDATE_ENTITY"],
+				},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Update my discord username to dev_guru#1234",
+				},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "I've updated your discord information.",
+					actions: ["UPDATE_ENTITY"],
+				},
+			},
+		],
+	] as ActionExample[][],
 };
 
 export default updateEntityAction;

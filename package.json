@@ -1,75 +1,72 @@
 {
-  "name": "eliza",
-  "scripts": {
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "cli": "bun --filter=@elizaos/cli cli",
-    "lint": "biome ci --config-path=./biome.json",
-    "format": "biome format --write --config-path=./biome.json",
-    "preinstall": "npx only-allow bun",
-    "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
-    "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
-    "swarm": "LOG_LEVEL=trace turbo run build --filter=./packages/core && LOG_LEVEL=trace concurrently \"turbo run start --filter=@elizaos/agent -- --swarm \" \"turbo run start --filter=!@elizaos/agent --filter=!@elizaos/docs --filter=!@elizaos/core\"",
-    "swarm:scenario": "turbo run build --filter=./packages/core && concurrently \"turbo run start --filter=@elizaos/agent -- --swarm --scenario \" \"turbo run start --filter=!@elizaos/agent --filter=!@elizaos/docs --filter=!@elizaos/core\"",
-    "build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs",
-    "build:docs": "turbo run build --filter=./packages/docs",
-    "build:core": "turbo run build --filter=./packages/core",
-    "build:cli": "turbo run build --filter=./packages/cli && cd packages/cli && bun link",
-    "build:docker": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/* --filter=!./packages/docs",
-    "start": "turbo run start --filter=!./packages/docs",
-    "agent": "turbo run start --filter=@elizaos/agent",
-    "dev": "turbo run build --filter=./packages/core && turbo run dev --filter=!./packages/core --filter=!./packages/docs --concurrency=20",
-    "release": "bun run build && bun format && npx lerna publish --no-private --force-publish",
-    "docker:build": "bash ./scripts/docker.sh build",
-    "docker:run": "bash ./scripts/docker.sh run",
-    "docker:bash": "bash ./scripts/docker.sh bash",
-    "docker:start": "bash ./scripts/docker.sh start",
-    "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --filter=@elizaos/agent"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@types/bun": "latest",
-    "@types/node": "^22.13.9",
-    "@vitest/eslint-plugin": "1.0.1",
-    "bun": "1.2.2",
-    "concurrently": "9.1.0",
-    "cross-env": "7.0.3",
-    "husky": "9.1.7",
-    "lerna": "8.1.5",
-    "only-allow": "^1.2.1",
-    "turbo": "2.3.3",
-    "typedoc": "0.26.11",
-    "typescript": "5.8.2",
-    "vite": "5.4.12",
-    "vitest": "3.0.5"
-  },
-  "bun": {
-    "overrides": {
-      "onnxruntime-node": "1.20.1",
-      "@ai-sdk/provider": "1.0.6",
-      "@ai-sdk/provider-utils": "2.1.6",
-      "cookie": "0.7.0",
-      "bs58": "5.0.0",
-      "secp256k1": "5.0.1",
-      "minipass": "7.1.2"
-    }
-  },
-  "engines": {
-    "node": "23.3.0"
-  },
-  "dependencies": {
-    "@playwright/test": "^1.51.0",
-    "zod": "3.24.1"
-  },
-  "packageManager": "bun@1.2.2",
-  "workspaces": [
-    "packages/*"
-  ],
-  "module": "index.ts",
-  "type": "module",
-  "resolutions": {
-    "@nrwl/devkit": "19.8.13",
-    "@nrwl/tao": "19.8.13",
-    "zod": "3.24.1"
-  }
+	"name": "eliza",
+	"scripts": {
+		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+		"cli": "bun --filter=@elizaos/cli cli",
+		"lint": "biome ci --config-path=./biome.json",
+		"format": "biome format --write --config-path=./biome.json",
+		"preinstall": "npx only-allow bun",
+		"migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
+		"migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
+		"swarm": "LOG_LEVEL=trace turbo run build --filter=./packages/core && LOG_LEVEL=trace concurrently \"turbo run start --filter=@elizaos/agent -- --swarm \" \"turbo run start --filter=!@elizaos/agent --filter=!@elizaos/docs --filter=!@elizaos/core\"",
+		"swarm:scenario": "turbo run build --filter=./packages/core && concurrently \"turbo run start --filter=@elizaos/agent -- --swarm --scenario \" \"turbo run start --filter=!@elizaos/agent --filter=!@elizaos/docs --filter=!@elizaos/core\"",
+		"build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs",
+		"build:docs": "turbo run build --filter=./packages/docs",
+		"build:core": "turbo run build --filter=./packages/core",
+		"build:cli": "turbo run build --filter=./packages/cli && cd packages/cli && bun link",
+		"build:docker": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/* --filter=!./packages/docs",
+		"start": "turbo run start --filter=!./packages/docs",
+		"agent": "turbo run start --filter=@elizaos/the-org",
+		"dev": "turbo run build --filter=./packages/core && turbo run dev --filter=!./packages/core --filter=!./packages/docs --concurrency=20",
+		"release": "bun run build && bun format && npx lerna publish --no-private --force-publish",
+		"docker:build": "bash ./scripts/docker.sh build",
+		"docker:run": "bash ./scripts/docker.sh run",
+		"docker:bash": "bash ./scripts/docker.sh bash",
+		"docker:start": "bash ./scripts/docker.sh start",
+		"docker": "bun docker:build && bun docker:run && bun docker:bash",
+		"test": "turbo run test --filter=@elizaos/the-org"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
+		"@types/bun": "latest",
+		"@types/node": "^22.13.9",
+		"@vitest/eslint-plugin": "1.0.1",
+		"bun": "1.2.2",
+		"concurrently": "9.1.0",
+		"cross-env": "7.0.3",
+		"husky": "9.1.7",
+		"lerna": "8.1.5",
+		"only-allow": "^1.2.1",
+		"turbo": "2.3.3",
+		"typedoc": "0.26.11",
+		"typescript": "5.8.2",
+		"vite": "5.4.12",
+		"vitest": "3.0.5"
+	},
+	"bun": {
+		"overrides": {
+			"onnxruntime-node": "1.20.1",
+			"@ai-sdk/provider": "1.0.6",
+			"@ai-sdk/provider-utils": "2.1.6",
+			"cookie": "0.7.0",
+			"bs58": "5.0.0",
+			"secp256k1": "5.0.1",
+			"minipass": "7.1.2"
+		}
+	},
+	"engines": {
+		"node": "23.3.0"
+	},
+	"dependencies": {
+		"zod": "3.24.1"
+	},
+	"packageManager": "bun@1.2.2",
+	"workspaces": ["packages/*"],
+	"module": "index.ts",
+	"type": "module",
+	"resolutions": {
+		"@nrwl/devkit": "19.8.13",
+		"@nrwl/tao": "19.8.13",
+		"zod": "3.24.1"
+	}
 }

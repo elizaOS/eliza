@@ -1,25 +1,25 @@
 {
-    "compilerOptions": {
-        "target": "ESNext",
-        "module": "ESNext",
-        "lib": ["ESNext", "dom"],
-        "moduleResolution": "Bundler",
-        "outDir": "dist",
-        "rootDir": "src",
-        "strict": true,
-        "esModuleInterop": true,
-        "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": false,
-        "allowImportingTsExtensions": true,
-        "declaration": true,
-        "emitDeclarationOnly": true,
-        "resolveJsonModule": true,
-        "noImplicitAny": false,
-        "allowJs": true,
-        "checkJs": false,
-        "noEmitOnError": false,
-        "moduleDetection": "force",
-        "allowArbitraryExtensions": true
-    },
-    "include": ["src/**/*.ts"]
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"lib": ["ESNext", "dom"],
+		"moduleResolution": "Bundler",
+		"outDir": "dist",
+		"rootDir": "src",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": false,
+		"allowImportingTsExtensions": true,
+		"declaration": true,
+		"emitDeclarationOnly": true,
+		"resolveJsonModule": true,
+		"noImplicitAny": false,
+		"allowJs": true,
+		"checkJs": false,
+		"noEmitOnError": false,
+		"moduleDetection": "force",
+		"allowArbitraryExtensions": true
+	},
+	"include": ["src/**/*.ts"]
 }

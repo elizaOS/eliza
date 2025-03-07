@@ -1,233 +1,219 @@
 import type { FileDocsGroup } from "../types";
 
 export class CodeFormatter {
+	public ensureTypeScriptExtension(filePath: string): string {
+		// If the path already ends with .ts, return it as is
+		if (filePath.endsWith(".ts")) {
+			return filePath;
+		}
+		// Otherwise, append .ts
+		return `${filePath}.ts`;
+	}
 
-    public ensureTypeScriptExtension(filePath: string): string {
-        // If the path already ends with .ts, return it as is
-        if (filePath.endsWith('.ts')) {
-            return filePath;
-        }
-        // Otherwise, append .ts
-        return `${filePath}.ts`;
-    }
+	public formatApiComponents(fileGroup: FileDocsGroup): string {
+		const sections: string[] = [];
 
-    public formatApiComponents(fileGroup: FileDocsGroup): string {
-        const sections: string[] = [];
+		// Classes
+		if (fileGroup.classes.length > 0) {
+			sections.push("#### Classes");
+			fileGroup.classes.forEach((c) => {
+				sections.push(`##### \`${c.name}\``);
+				if (c.jsDoc) sections.push(this.formatJSDoc(c.jsDoc, c.code));
 
-        // Classes
-        if (fileGroup.classes.length > 0) {
-            sections.push("#### Classes");
-            fileGroup.classes.forEach((c) => {
-                sections.push(`##### \`${c.name}\``);
-                if (c.jsDoc) sections.push(this.formatJSDoc(c.jsDoc, c.code));
+				// Add any methods belonging to this class
+				const classMethods = fileGroup.methods.filter(
+					(m) => m.className === c.name,
+				);
+				if (classMethods.length > 0) {
+					sections.push("**Methods:**");
+					classMethods.forEach((m) => {
+						sections.push(
+							`###### \`${m.name}\`${m.jsDoc ? `\n${this.formatJSDoc(m.jsDoc, m.code)}` : ""}`,
+						);
+					});
+				}
+			});
+		}
 
-                // Add any methods belonging to this class
-                const classMethods = fileGroup.methods.filter(
-                    (m) => m.className === c.name
-                );
-                if (classMethods.length > 0) {
-                    sections.push("**Methods:**");
-                    classMethods.forEach((m) => {
-                        sections.push(
-                            `###### \`${m.name}\`${m.jsDoc ? `\n${this.formatJSDoc(m.jsDoc, m.code)}` : ""}`
-                        );
-                    });
-                }
-            });
-        }
+		// Interfaces
+		if (fileGroup.interfaces.length > 0) {
+			sections.push("#### Interfaces");
+			fileGroup.interfaces.forEach((i) => {
+				sections.push(`##### \`${i.name}\``);
+				if (i.jsDoc) sections.push(this.formatJSDoc(i.jsDoc, i.code));
+			});
+		}
 
-        // Interfaces
-        if (fileGroup.interfaces.length > 0) {
-            sections.push("#### Interfaces");
-            fileGroup.interfaces.forEach((i) => {
-                sections.push(`##### \`${i.name}\``);
-                if (i.jsDoc) sections.push(this.formatJSDoc(i.jsDoc, i.code));
-            });
-        }
+		// Types
+		if (fileGroup.types.length > 0) {
+			sections.push("#### Types");
+			fileGroup.types.forEach((t) => {
+				sections.push(`##### \`${t.name}\``);
+				if (t.jsDoc) sections.push(this.formatJSDoc(t.jsDoc, t.code));
+			});
+		}
 
-        // Types
-        if (fileGroup.types.length > 0) {
-            sections.push("#### Types");
-            fileGroup.types.forEach((t) => {
-                sections.push(`##### \`${t.name}\``);
-                if (t.jsDoc) sections.push(this.formatJSDoc(t.jsDoc, t.code));
-            });
-        }
+		// Standalone Functions
+		if (fileGroup.functions.length > 0) {
+			sections.push("#### Functions");
+			fileGroup.functions.forEach((f) => {
+				sections.push(`##### \`${f.name}\``);
+				if (f.jsDoc) sections.push(this.formatJSDoc(f.jsDoc, f.code));
+			});
+		}
 
-        // Standalone Functions
-        if (fileGroup.functions.length > 0) {
-            sections.push("#### Functions");
-            fileGroup.functions.forEach((f) => {
-                sections.push(`##### \`${f.name}\``);
-                if (f.jsDoc) sections.push(this.formatJSDoc(f.jsDoc, f.code));
-            });
-        }
+		// Standalone Methods
+		const standaloneMethods = fileGroup.methods.filter((m) => !m.className);
+		if (standaloneMethods.length > 0) {
+			sections.push("#### Methods");
+			standaloneMethods.forEach((m) => {
+				sections.push(`##### \`${m.name}\``);
+				if (m.jsDoc) sections.push(this.formatJSDoc(m.jsDoc, m.code));
+			});
+		}
 
-        // Standalone Methods
-        const standaloneMethods = fileGroup.methods.filter((m) => !m.className);
-        if (standaloneMethods.length > 0) {
-            sections.push("#### Methods");
-            standaloneMethods.forEach((m) => {
-                sections.push(`##### \`${m.name}\``);
-                if (m.jsDoc) sections.push(this.formatJSDoc(m.jsDoc, m.code));
-            });
-        }
+		return sections.join("\n\n");
+	}
 
-        return sections.join("\n\n");
-    }
+	public formatComponents(fileGroup: FileDocsGroup): string {
+		const sections: string[] = [];
 
-    public formatComponents(fileGroup: FileDocsGroup): string {
-        const sections: string[] = [];
+		if (fileGroup.classes.length > 0) {
+			sections.push(
+				"Classes:",
+				fileGroup.classes.map((c) => `- ${c.name}: ${c.jsDoc}`).join("\n"),
+			);
+		}
 
-        if (fileGroup.classes.length > 0) {
-            sections.push(
-                "Classes:",
-                fileGroup.classes
-                    .map((c) => `- ${c.name}: ${c.jsDoc}`)
-                    .join("\n")
-            );
-        }
+		if (fileGroup.methods.length > 0) {
+			sections.push(
+				"Methods:",
+				fileGroup.methods.map((m) => `- ${m.name}: ${m.jsDoc}`).join("\n"),
+			);
+		}
 
-        if (fileGroup.methods.length > 0) {
-            sections.push(
-                "Methods:",
-                fileGroup.methods
-                    .map((m) => `- ${m.name}: ${m.jsDoc}`)
-                    .join("\n")
-            );
-        }
+		if (fileGroup.interfaces.length > 0) {
+			sections.push(
+				"Interfaces:",
+				fileGroup.interfaces.map((i) => `- ${i.name}: ${i.jsDoc}`).join("\n"),
+			);
+		}
 
-        if (fileGroup.interfaces.length > 0) {
-            sections.push(
-                "Interfaces:",
-                fileGroup.interfaces
-                    .map((i) => `- ${i.name}: ${i.jsDoc}`)
-                    .join("\n")
-            );
-        }
+		if (fileGroup.types.length > 0) {
+			sections.push(
+				"Types:",
+				fileGroup.types.map((t) => `- ${t.name}: ${t.jsDoc}`).join("\n"),
+			);
+		}
 
-        if (fileGroup.types.length > 0) {
-            sections.push(
-                "Types:",
-                fileGroup.types.map((t) => `- ${t.name}: ${t.jsDoc}`).join("\n")
-            );
-        }
+		if (fileGroup.functions.length > 0) {
+			sections.push(
+				"Functions:",
+				fileGroup.functions.map((f) => `- ${f.name}: ${f.jsDoc}`).join("\n"),
+			);
+		}
 
-        if (fileGroup.functions.length > 0) {
-            sections.push(
-                "Functions:",
-                fileGroup.functions
-                    .map((f) => `- ${f.name}: ${f.jsDoc}`)
-                    .join("\n")
-            );
-        }
+		return sections.join("\n\n");
+	}
 
-        return sections.join("\n\n");
-    }
+	public formatFilePath(filePath: string): string {
+		// Get relative path from src directory
+		const srcIndex = filePath.indexOf("/src/");
+		if (srcIndex === -1) return filePath;
 
+		const relativePath = filePath.slice(srcIndex + 5); // +5 to skip '/src/'
+		return relativePath;
+	}
 
-    public formatFilePath(filePath: string): string {
-        // Get relative path from src directory
-        const srcIndex = filePath.indexOf("/src/");
-        if (srcIndex === -1) return filePath;
+	public formatJSDoc(jsDoc: string, _code?: string): string {
+		// Clean up the JSDoc
+		let cleanDoc = jsDoc
+			.replace(/^```\s*\n?/gm, "")
+			.replace(/\n?```\s*$/gm, "");
+		cleanDoc = cleanDoc.trim().replace(/\n{3,}/g, "\n\n");
 
-        const relativePath = filePath.slice(srcIndex + 5); // +5 to skip '/src/'
-        return relativePath;
-    }
+		// Format JSDoc with typescript declaration
+		const docSection = `\`\`\`typescript\n${cleanDoc}\n\`\`\``;
 
-    public formatJSDoc(jsDoc: string, _code?: string): string {
-        // Clean up the JSDoc
-        let cleanDoc = jsDoc
-            .replace(/^```\s*\n?/gm, "")
-            .replace(/\n?```\s*$/gm, "");
-        cleanDoc = cleanDoc.trim().replace(/\n{3,}/g, "\n\n");
+		// If we have the actual code, include it after the JSDoc
+		// if (code) {
+		//     const cleanCode = code.trim().replace(/^```\s*\n?/gm, '').replace(/\n?```\s*$/gm, '');
+		//     return `${docSection}\n\n**Implementation:**\n\n\`\`\`typescript\n${cleanCode}\n\`\`\``;
+		// }
 
-        // Format JSDoc with typescript declaration
-        const docSection = `\`\`\`typescript\n${cleanDoc}\n\`\`\``;
+		return docSection;
+	}
 
-        // If we have the actual code, include it after the JSDoc
-        // if (code) {
-        //     const cleanCode = code.trim().replace(/^```\s*\n?/gm, '').replace(/\n?```\s*$/gm, '');
-        //     return `${docSection}\n\n**Implementation:**\n\n\`\`\`typescript\n${cleanCode}\n\`\`\``;
-        // }
+	public truncateCodeBlock(code: string, maxLength = 8000): string {
+		if (code.length <= maxLength) return code;
 
-        return docSection;
-    }
+		// Extract code blocks
+		const codeBlockRegex = /```[\s\S]*?```/g;
+		const codeBlocks = code.match(codeBlockRegex) || [];
 
-    public truncateCodeBlock(code: string, maxLength = 8000): string {
-        if (code.length <= maxLength) return code;
+		// If no code blocks found, truncate the text directly
+		if (codeBlocks.length === 0) {
+			return `${code.slice(0, maxLength)}... (truncated)`;
+		}
 
-        // Extract code blocks
-        const codeBlockRegex = /```[\s\S]*?```/g;
-        const codeBlocks = code.match(codeBlockRegex) || [];
+		// Calculate maximum length per block to stay under total limit
+		const nonCodeLength = code.replace(codeBlockRegex, "").length;
+		const maxLengthPerBlock = Math.floor(
+			(maxLength - nonCodeLength) / codeBlocks.length,
+		);
 
-        // If no code blocks found, truncate the text directly
-        if (codeBlocks.length === 0) {
-            return `${code.slice(0, maxLength)}... (truncated)`;
-        }
+		for (let i = 0; i < codeBlocks.length; i++) {
+			const block = codeBlocks[i];
+			if (block.length > maxLengthPerBlock) {
+				const lines = block.split("\n");
+				const header = lines[0]; // Keep the ```typescript or similar
+				const footer = lines[lines.length - 1]; // Keep the closing ```
 
-        // Calculate maximum length per block to stay under total limit
-        const nonCodeLength = code.replace(codeBlockRegex, "").length;
-        const maxLengthPerBlock = Math.floor(
-            (maxLength - nonCodeLength) / codeBlocks.length
-        );
+				// Calculate how many lines we can keep
+				const maxLinesPerSection = Math.floor(
+					(maxLengthPerBlock - header.length - footer.length) / 3,
+				);
 
-        for (let i = 0; i < codeBlocks.length; i++) {
-            const block = codeBlocks[i];
-            if (block.length > maxLengthPerBlock) {
-                const lines = block.split("\n");
-                const header = lines[0]; // Keep the ```typescript or similar
-                const footer = lines[lines.length - 1]; // Keep the closing ```
+				// Take fewer lines but ensure we get the most important parts
+				const codeStart = lines.slice(1, maxLinesPerSection).join("\n");
 
-                // Calculate how many lines we can keep
-                const maxLinesPerSection = Math.floor(
-                    (maxLengthPerBlock - header.length - footer.length) / 3
-                );
+				// For the middle section, focus on the important parts
+				const middleIndex = Math.floor(lines.length / 2);
+				const middleStart = Math.max(
+					maxLinesPerSection,
+					middleIndex - Math.floor(maxLinesPerSection / 2),
+				);
+				const middleEnd = Math.min(
+					lines.length - maxLinesPerSection,
+					middleIndex + Math.floor(maxLinesPerSection / 2),
+				);
+				const codeMiddle = lines.slice(middleStart, middleEnd).join("\n");
 
-                // Take fewer lines but ensure we get the most important parts
-                const codeStart = lines.slice(1, maxLinesPerSection).join("\n");
+				// Take the end section
+				const codeEnd = lines
+					.slice(lines.length - maxLinesPerSection, -1)
+					.join("\n");
 
-                // For the middle section, focus on the important parts
-                const middleIndex = Math.floor(lines.length / 2);
-                const middleStart = Math.max(
-                    maxLinesPerSection,
-                    middleIndex - Math.floor(maxLinesPerSection / 2)
-                );
-                const middleEnd = Math.min(
-                    lines.length - maxLinesPerSection,
-                    middleIndex + Math.floor(maxLinesPerSection / 2)
-                );
-                const codeMiddle = lines
-                    .slice(middleStart, middleEnd)
-                    .join("\n");
+				const truncatedBlock = `${header}\n${codeStart}\n// ... truncated [${lines.length - maxLinesPerSection * 2} lines] ...\n${codeMiddle}\n// ... truncated ...\n${codeEnd}\n${footer}`;
+				code = code.replace(block, truncatedBlock);
+			}
+		}
 
-                // Take the end section
-                const codeEnd = lines
-                    .slice(lines.length - maxLinesPerSection, -1)
-                    .join("\n");
+		// Final safety check - if still too long, do a hard truncate
+		if (code.length > maxLength) {
+			const blocks = code.split("```");
+			const truncatedBlocks = blocks.map((block, index) => {
+				// Every odd index is a code block
+				if (index % 2 === 1) {
+					const lines = block.split("\n");
+					const maxLines = 10; // Keep only first few lines of each block
+					return `${lines.slice(0, maxLines).join("\n")}\n// ... remaining code truncated ...\n`;
+				}
+				return block.slice(0, 500); // Limit non-code text
+			});
+			code = truncatedBlocks.join("```");
+		}
 
-                const truncatedBlock = `${header}\n${codeStart}\n// ... truncated [${lines.length - maxLinesPerSection * 2} lines] ...\n${codeMiddle}\n// ... truncated ...\n${codeEnd}\n${footer}`;
-                code = code.replace(block, truncatedBlock);
-            }
-        }
-
-        // Final safety check - if still too long, do a hard truncate
-        if (code.length > maxLength) {
-            const blocks = code.split("```");
-            const truncatedBlocks = blocks.map((block, index) => {
-                // Every odd index is a code block
-                if (index % 2 === 1) {
-                    const lines = block.split("\n");
-                    const maxLines = 10; // Keep only first few lines of each block
-                    return (
-                        `${lines.slice(0, maxLines).join("\n")}\n// ... remaining code truncated ...\n`
-                    );
-                }
-                return block.slice(0, 500); // Limit non-code text
-            });
-            code = truncatedBlocks.join("```");
-        }
-
-        return code;
-    }
+		return code;
+	}
 }

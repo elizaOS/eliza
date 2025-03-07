@@ -1,6 +1,4 @@
-
-export const twitterShouldRespondTemplate =
-    `# Task: Decide if {{agentName}} should respond.
+export const twitterShouldRespondTemplate = `# Task: Decide if {{agentName}} should respond.
 About {{agentName}}:
 {{bio}}
 

@@ -12,7 +12,7 @@ services:
     command: >
       bash -c "turbo run build --filter=./packages/core 
       && turbo run build --filter=./packages/*
-      && turbo run start --env-mode=loose --filter=@elizaos/agent"
+      && turbo run start --env-mode=loose --filter=@elizaos/the-org"
     stdin_open: true
     tty: true
     volumes:

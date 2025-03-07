@@ -1,50 +1,48 @@
 {
-    "name": "@elizaos/plugin-anthropic",
-    "version": "1.0.0-alpha.0",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
-    },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@ai-sdk/anthropic": "^1.1.6",
-        "fastembed": "^1.0.0",
-        "@elizaos/core": "workspace:*",
-        "tsup": "8.4.0",
-        "zod": "3.21.4"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run"
-    },
-    "peerDependencies": {
-        "whatwg-url": "7.1.0"
-    },
-    "publishConfig": {
-        "access": "public"
-    },
-    "resolutions": {
-        "zod": "3.24.1"
-    },
-    "agentConfig": {
-        "pluginType": "elizaos:plugin:1.0.0",
-        "pluginParameters": {
-            "ANTHROPIC_API_KEY": {
-                "type": "string",
-                "description": "API key for the service"
-            }
-        }
-    }
+	"name": "@elizaos/plugin-anthropic",
+	"version": "1.0.0-alpha.0",
+	"type": "module",
+	"main": "dist/index.js",
+	"module": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			}
+		}
+	},
+	"files": ["dist"],
+	"dependencies": {
+		"@ai-sdk/anthropic": "^1.1.6",
+		"fastembed": "^1.0.0",
+		"@elizaos/core": "workspace:*",
+		"tsup": "8.4.0",
+		"zod": "3.21.4"
+	},
+	"scripts": {
+		"build": "tsup --format esm --dts",
+		"dev": "tsup --format esm --dts --watch",
+		"test": "vitest run"
+	},
+	"peerDependencies": {
+		"whatwg-url": "7.1.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"resolutions": {
+		"zod": "3.24.1"
+	},
+	"agentConfig": {
+		"pluginType": "elizaos:plugin:1.0.0",
+		"pluginParameters": {
+			"ANTHROPIC_API_KEY": {
+				"type": "string",
+				"description": "API key for the service"
+			}
+		}
+	}
 }

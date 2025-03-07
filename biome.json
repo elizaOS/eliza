@@ -1,73 +1,73 @@
 {
-    "$schema": "https://biomejs.dev/schemas/1.5.3/schema.json",
-    "organizeImports": {
-        "enabled": false
-    },
-    "formatter": {
-        "enabled": true
-    },
-    "javascript": {
-        "parser": {
-            "unsafeParameterDecoratorsEnabled": true
-        },
-        "formatter": {
-            "quoteStyle": "double",
-            "semicolons": "always"
-        }
-    },
-    "linter": {
-        "enabled": true,
-        "rules": {
-            "recommended": true,
-            "suspicious": {
-                "noArrayIndexKey": "warn",
-                "noPrototypeBuiltins": "warn",
-                "noDuplicateObjectKeys": "warn",
-                "noGlobalIsNan": "warn",
-                "noSelfCompare": "warn",
-                "noDoubleEquals": "warn",
-                "noAssignInExpressions": "warn",
-                "noConstEnum": "warn",
-                "noEmptyInterface": "warn"
-            },
-            "correctness": {
-                "noUnusedVariables": "warn",
-                "noUnreachable": "warn",
-                "useExhaustiveDependencies": "warn",
-                "noSwitchDeclarations": "warn",
-                "noUnnecessaryContinue": "warn",
-                "noInnerDeclarations": "warn"
-            },
-            "complexity": {
-                "noForEach": "warn",
-                "useOptionalChain": "warn",
-                "useArrowFunction": "warn",
-                "useFlatMap": "warn",
-                "noBannedTypes": "warn",
-                "noStaticOnlyClass": "warn",
-                "noThisInStatic": "warn",
-                "noUselessConstructor": "warn",
-                "noUselessSwitchCase": "warn",
-                "noUselessCatch": "warn"
-            },
-            "performance": {
-                "noDelete": "warn",
-                "noAccumulatingSpread": "warn"
-            }
-        },
-        "ignore": [
-            "**/dist/**",
-            "**/node_modules/**",
-            "**/coverage/**",
-            "**/*.md",
-            "**/.docusaurus/**",
-            "**/build/**",
-            "**/*.json",
-            "**/.turbo/**",
-            "**/.git/**",
-            "**/local_cache/**",
-            "**/cache/**",
-            "**/tmp/**"
-        ]
-    }
+	"$schema": "https://biomejs.dev/schemas/1.5.3/schema.json",
+	"organizeImports": {
+		"enabled": false
+	},
+	"formatter": {
+		"enabled": true
+	},
+	"javascript": {
+		"parser": {
+			"unsafeParameterDecoratorsEnabled": true
+		},
+		"formatter": {
+			"quoteStyle": "double",
+			"semicolons": "always"
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": true,
+			"suspicious": {
+				"noArrayIndexKey": "warn",
+				"noPrototypeBuiltins": "warn",
+				"noDuplicateObjectKeys": "warn",
+				"noGlobalIsNan": "warn",
+				"noSelfCompare": "warn",
+				"noDoubleEquals": "warn",
+				"noAssignInExpressions": "warn",
+				"noConstEnum": "warn",
+				"noEmptyInterface": "warn"
+			},
+			"correctness": {
+				"noUnusedVariables": "warn",
+				"noUnreachable": "warn",
+				"useExhaustiveDependencies": "warn",
+				"noSwitchDeclarations": "warn",
+				"noUnnecessaryContinue": "warn",
+				"noInnerDeclarations": "warn"
+			},
+			"complexity": {
+				"noForEach": "warn",
+				"useOptionalChain": "warn",
+				"useArrowFunction": "warn",
+				"useFlatMap": "warn",
+				"noBannedTypes": "warn",
+				"noStaticOnlyClass": "warn",
+				"noThisInStatic": "warn",
+				"noUselessConstructor": "warn",
+				"noUselessSwitchCase": "warn",
+				"noUselessCatch": "warn"
+			},
+			"performance": {
+				"noDelete": "warn",
+				"noAccumulatingSpread": "warn"
+			}
+		},
+		"ignore": [
+			"**/dist/**",
+			"**/node_modules/**",
+			"**/coverage/**",
+			"**/*.md",
+			"**/.docusaurus/**",
+			"**/build/**",
+			"**/*.json",
+			"**/.turbo/**",
+			"**/.git/**",
+			"**/local_cache/**",
+			"**/cache/**",
+			"**/tmp/**"
+		]
+	}
 }

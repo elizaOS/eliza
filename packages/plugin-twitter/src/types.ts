@@ -5,25 +5,25 @@ import type { TwitterPostClient } from "./post";
 import type { TwitterSpaceClient } from "./spaces";
 
 export type MediaData = {
-    data: Buffer;
-    mediaType: string;
+	data: Buffer;
+	mediaType: string;
 };
 
 export interface ActionResponse {
-    like: boolean;
-    retweet: boolean;
-    quote?: boolean;
-    reply?: boolean;
+	like: boolean;
+	retweet: boolean;
+	quote?: boolean;
+	reply?: boolean;
 }
 
 export interface ITwitterClient {
-    client: ClientBase;
-    post: TwitterPostClient;
-    interaction: TwitterInteractionClient;
-    space?: TwitterSpaceClient;
-    service: TwitterService;
+	client: ClientBase;
+	post: TwitterPostClient;
+	interaction: TwitterInteractionClient;
+	space?: TwitterSpaceClient;
+	service: TwitterService;
 }
 
 export const ServiceTypes = {
-    TWITTER: "twitter",
+	TWITTER: "twitter",
 } as const;

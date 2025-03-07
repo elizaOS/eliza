@@ -1,17 +1,17 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "../core/tsconfig.json",
-  "compilerOptions": {
-    "isolatedModules": false,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
-    },
-    "rootDir": "src",
-    "moduleResolution": "Node",
-    "module": "CommonJS",
-    "outDir": "./dist"
-  },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"extends": "../core/tsconfig.json",
+	"compilerOptions": {
+		"isolatedModules": false,
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["./*"]
+		},
+		"rootDir": "src",
+		"moduleResolution": "Node",
+		"module": "ESNext",
+		"outDir": "./dist"
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules"]
 }

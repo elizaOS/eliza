@@ -6,76 +6,75 @@ import { logger } from "./logger";
 import { Role, type IAgentRuntime, type World } from "./types";
 
 export interface ServerOwnershipState {
-  servers: {
-    [serverId: string]: World;
-  };
+	servers: {
+		[serverId: string]: World;
+	};
 }
-
 
 /**
  * Gets a user's role from world metadata
  */
 export async function getUserServerRole(
-  runtime: IAgentRuntime,
-  entityId: string,
-  serverId: string
+	runtime: IAgentRuntime,
+	entityId: string,
+	serverId: string,
 ): Promise<Role> {
-  try {
-    const worldId = createUniqueUuid(runtime, serverId);
-    const world = await runtime.databaseAdapter.getWorld(worldId);
+	try {
+		const worldId = createUniqueUuid(runtime, serverId);
+		const world = await runtime.getDatabaseAdapter().getWorld(worldId);
 
-    if (!world || !world.metadata?.roles) {
-      return Role.NONE;
-    }
+		if (!world || !world.metadata?.roles) {
+			return Role.NONE;
+		}
 
-    if (world.metadata.roles[entityId]?.role) {
-      return world.metadata.roles[entityId].role as Role;
-    }
+		if (world.metadata.roles[entityId]?.role) {
+			return world.metadata.roles[entityId].role as Role;
+		}
 
-    // Also check original ID format
-    if (world.metadata.roles[entityId]?.role) {
-      return world.metadata.roles[entityId].role as Role;
-    }
+		// Also check original ID format
+		if (world.metadata.roles[entityId]?.role) {
+			return world.metadata.roles[entityId].role as Role;
+		}
 
-    return Role.NONE;
-  } catch (error) {
-    logger.error(`Error getting user role: ${error}`);
-    return Role.NONE;
-  }
+		return Role.NONE;
+	} catch (error) {
+		logger.error(`Error getting user role: ${error}`);
+		return Role.NONE;
+	}
 }
 
 /**
  * Finds a server where the given user is the owner
  */
 export async function findWorldForOwner(
-  runtime: IAgentRuntime,
-  entityId: string
+	runtime: IAgentRuntime,
+	entityId: string,
 ): Promise<World | null> {
-  try {
-    if (!entityId) {
-      logger.error("User ID is required to find server");
-      return null;
-    }
+	try {
+		if (!entityId) {
+			logger.error("User ID is required to find server");
+			return null;
+		}
 
-    // Get all worlds for this agent
-    const worlds = await runtime.databaseAdapter.getAllWorlds();
+		// Get all worlds for this agent
+		const worlds = await runtime.getDatabaseAdapter().getAllWorlds();
 
-    if (!worlds || worlds.length === 0) {
-      logger.info("No worlds found for this agent");
-      return null;
-    }
+		if (!worlds || worlds.length === 0) {
+			logger.info("No worlds found for this agent");
+			return null;
+		}
 
-    // Find world where the user is the owner
-    for (const world of worlds) {
-      if (world.metadata?.ownership?.ownerId === entityId) {
-        return world;
-      }
-    }
+		// Find world where the user is the owner
+		for (const world of worlds) {
+			if (world.metadata?.ownership?.ownerId === entityId) {
+				return world;
+			}
+		}
 
-    logger.info(`No server found for owner ${entityId}`);
-    return null;
-  } catch (error) {
-    logger.error(`Error finding server for owner: ${error}`);
-    return null;
-  }
+		logger.info(`No server found for owner ${entityId}`);
+		return null;
+	} catch (error) {
+		logger.error(`Error finding server for owner: ${error}`);
+		return null;
+	}
 }
