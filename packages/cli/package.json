@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/cli",
-	"version": "1.0.0-alpha.0",
+	"version": "1.0.0-alpha.1",
 	"description": "elizaOS CLI - Manage your AI agents and plugins",
 	"publishConfig": {
 		"access": "public"
@@ -15,7 +15,10 @@
 		"url": "https://github.com/elizaOS/eliza.git",
 		"directory": "packages/cli"
 	},
-	"files": ["dist", "templates"],
+	"files": [
+		"dist",
+		"templates"
+	],
 	"keywords": [],
 	"type": "module",
 	"exports": {
@@ -44,16 +47,16 @@
 		"@babel/core": "^7.22.1",
 		"@babel/parser": "^7.22.6",
 		"@babel/plugin-transform-typescript": "^7.22.5",
+		"@elizaos/core": "workspace:*",
+		"@elizaos/plugin-sql": "workspace:*",
 		"@noble/curves": "^1.8.1",
 		"axios": "^1.7.9",
-		"crypto": "^1.0.1",
 		"chalk": "5.2.0",
 		"commander": "^10.0.0",
 		"cosmiconfig": "^8.1.3",
+		"crypto": "^1.0.1",
 		"diff": "^5.1.0",
 		"dotenv": "^16.4.5",
-		"@elizaos/core": "^0.25.9",
-		"@elizaos/plugin-sql": "^0.25.6",
 		"execa": "^7.0.0",
 		"fast-glob": "^3.3.2",
 		"fs-extra": "^11.1.0",
@@ -79,5 +82,6 @@
 		"tsup": "8.4.0",
 		"type-fest": "^3.8.0",
 		"typescript": "5.8.2"
-	}
+	},
+	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
 }

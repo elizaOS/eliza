@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-elevenlabs",
-	"version": "1.0.0-alpha.0",
+	"version": "1.0.0-alpha.1",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -14,9 +14,11 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "^1.0.0-alpha.1",
 		"tsup": "8.4.0"
 	},
 	"scripts": {
@@ -67,5 +69,6 @@
 				"description": "Optional. Enhances speaker presence (true/false)."
 			}
 		}
-	}
+	},
+	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
 }

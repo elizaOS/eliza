@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-telegram",
-	"version": "1.0.0-alpha.0",
+	"version": "1.0.0-alpha.1",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -15,7 +15,9 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"dependencies": {
 		"@telegraf/types": "7.1.0",
 		"telegraf": "4.16.3"
@@ -32,5 +34,6 @@
 	},
 	"publishConfig": {
 		"access": "public"
-	}
+	},
+	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
 }

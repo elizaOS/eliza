@@ -53,15 +53,10 @@ export const replyAction = {
 			state,
 			template: replyTemplate,
 		});
-		console.log("*** replyAction prompt ****");
-		console.log(prompt);
 
 		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
 			prompt,
 		});
-
-		console.log("*** replyAction response ****");
-		console.log(response);
 
 		const responseContentObj = parseJSONObjectFromText(response) as Content;
 

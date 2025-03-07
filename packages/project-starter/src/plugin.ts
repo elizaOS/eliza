@@ -123,13 +123,13 @@ export class StarterService extends Service {
 	}
 
 	static async start(runtime: IAgentRuntime) {
-		console.log("*** Starting starter service ***");
+		logger.info("*** Starting starter service ***");
 		const service = new StarterService(runtime);
 		return service;
 	}
 
 	static async stop(runtime: IAgentRuntime) {
-		console.log("*** Stopping starter service ***");
+		logger.info("*** Stopping starter service ***");
 		// get the service from the runtime
 		const service = runtime.getService(StarterService.serviceType);
 		if (!service) {
@@ -139,7 +139,7 @@ export class StarterService extends Service {
 	}
 
 	async stop() {
-		console.log("*** Stopping starter service instance ***");
+		logger.info("*** Stopping starter service instance ***");
 	}
 }
 
@@ -150,7 +150,7 @@ export const starterPlugin: Plugin = {
 		PLUGIN_NAME: process.env.PLUGIN_NAME,
 	},
 	async init(config: Record<string, string>) {
-		console.log("*** Initializing starter plugin ***");
+		logger.info("*** Initializing starter plugin ***");
 		try {
 			const validatedConfig = await configSchema.parseAsync(config);
 

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/core",
-	"version": "1.0.0-alpha.0",
+	"version": "1.0.0-alpha.1",
 	"description": "",
 	"type": "module",
 	"main": "dist/index.js",
@@ -16,7 +16,9 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"scripts": {
 		"build": "tsup --format esm --dts",
 		"watch": "tsc --watch",
@@ -66,5 +68,6 @@
 	},
 	"publishConfig": {
 		"access": "public"
-	}
+	},
+	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
 }

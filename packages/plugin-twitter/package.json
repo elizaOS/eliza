@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-twitter",
-	"version": "1.0.0-alpha.0",
+	"version": "1.0.0-alpha.1",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -15,12 +15,14 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
-		"glob": "11.0.0",
+		"@elizaos/core": "^1.0.0-alpha.1",
 		"@roamhq/wrtc": "^0.8.0",
 		"@sinclair/typebox": "^0.32.20",
+		"glob": "11.0.0",
 		"headers-polyfill": "^3.1.2",
 		"json-stable-stringify": "^1.0.2",
 		"otpauth": "^9.2.2",
@@ -47,5 +49,6 @@
 	},
 	"publishConfig": {
 		"access": "public"
-	}
+	},
+	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
 }

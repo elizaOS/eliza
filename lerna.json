@@ -1,5 +1,15 @@
 {
-	"version": "1.0.0-alpha.0",
-	"packages": ["packages/*"],
-	"npmClient": "bun"
+  "version": "1.0.0-alpha.1",
+  "packages": [
+    "packages/*"
+  ],
+  "npmClient": "bun",
+  "command": {
+    "publish": {
+      "ignoreChanges": [
+        "packages/docs",
+        "packages/client"
+      ]
+    }
+  }
 }

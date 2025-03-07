@@ -91,7 +91,6 @@ const messageReceivedHandler = async ({
 	message,
 	callback,
 }: MessageReceivedHandlerParams) => {
-	console.log("*** messageReceivedHandler ****");
 	// Generate a new response ID
 	const responseId = v4();
 	// Get or create the agent-specific map
@@ -112,8 +111,6 @@ const messageReceivedHandler = async ({
 		runtime.getMemoryManager("messages").addEmbeddingToMemory(message),
 		runtime.getMemoryManager("messages").createMemory(message),
 	]);
-
-	console.log("*** messageReceivedHandler 2 ****");
 
 	const agentUserState = await runtime
 		.getDatabaseAdapter()
@@ -190,7 +187,7 @@ const messageReceivedHandler = async ({
 				!responseContent?.plan ||
 				!responseContent?.actions
 			) {
-				console.log("*** Missing required fields, retrying... ***");
+				logger.warn("*** Missing required fields, retrying... ***");
 			}
 		}
 
@@ -238,7 +235,6 @@ const messageReceivedHandler = async ({
 		}
 
 		await runtime.processActions(message, responseMessages, state, callback);
-		console.log("*** processedActions ****");
 	}
 
 	await runtime.evaluate(
