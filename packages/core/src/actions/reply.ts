@@ -68,7 +68,7 @@ export const replyAction = {
 		const responseContent = {
 			thought: responseContentObj.thought,
 			text: (responseContentObj.message as string) || "",
-			actions: ["REPLY_SENT"],
+			actions: ["REPLY"],
 		};
 
 		await callback(responseContent);
