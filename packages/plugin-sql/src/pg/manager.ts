@@ -66,7 +66,7 @@ export class PostgresConnectionManager
 	}
 
 	async testConnection(): Promise<boolean> {
-		let client;
+		let client: pkg.PoolClient;
 		try {
 			client = await this.pool.connect();
 			const result = await client.query("SELECT NOW()");

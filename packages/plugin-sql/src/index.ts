@@ -11,7 +11,9 @@ import { PGliteClientManager } from "./pg-lite/manager";
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 
+// Singleton connection managers
 let pgLiteClientManager: PGliteClientManager;
+let postgresConnectionManager: PostgresConnectionManager;
 
 export function createDatabaseAdapter(
 	config: {
@@ -21,8 +23,12 @@ export function createDatabaseAdapter(
 	agentId: UUID,
 ): IDatabaseAdapter {
 	if (config.postgresUrl) {
-		const manager = new PostgresConnectionManager(config.postgresUrl);
-		return new PgDatabaseAdapter(agentId, manager);
+		if (!postgresConnectionManager) {
+			postgresConnectionManager = new PostgresConnectionManager(
+				config.postgresUrl,
+			);
+		}
+		return new PgDatabaseAdapter(agentId, postgresConnectionManager);
 	}
 
 	const dataDir = config.dataDir ?? "../../pgLite";
