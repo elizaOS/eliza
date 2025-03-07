@@ -115,7 +115,7 @@ const messageReceivedHandler = async ({
 
   console.log("*** messageReceivedHandler 2 ****");
 
-  const agentUserState = await runtime.databaseAdapter.getParticipantUserState(
+  const agentUserState = await runtime.getDatabaseAdapter().getParticipantUserState(
     message.roomId,
     runtime.agentId
   );

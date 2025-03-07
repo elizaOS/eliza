@@ -38,9 +38,9 @@ describe("Messages Library", () => {
 
         // Using vi.mocked() type assertion instead of jest.Mock casting
         vi.mocked(
-            runtime.databaseAdapter.getParticipantsForRoom
+            runtime.getDatabaseAdapter().getParticipantsForRoom
         ).mockResolvedValue([userId]);
-        vi.mocked(runtime.databaseAdapter.getEntityById).mockResolvedValue({
+        vi.mocked(runtime.getDatabaseAdapter().getEntityById).mockResolvedValue({
             id: userId,
             name: "Test User",
             username: "testuser",
@@ -207,7 +207,7 @@ describe("Messages", () => {
             expect(actors[0].name).toBe("Alice");
             expect(actors[1].name).toBe("Bob");
             expect(
-                mockRuntime.databaseAdapter.getParticipantsForRoom
+                mockRuntime.getDatabaseAdapter().getParticipantsForRoom
             ).toHaveBeenCalled();
         });
 

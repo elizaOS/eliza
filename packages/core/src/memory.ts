@@ -118,7 +118,7 @@ export class MemoryManager implements IMemoryManager {
         end?: number;
         agentId?: UUID;
     }): Promise<Memory[]> {
-        return await this.runtime.databaseAdapter.getMemories({
+        return await this.runtime.getDatabaseAdapter().getMemories({
             roomId: opts.roomId,
             count: opts.count,
             unique: opts.unique,
@@ -134,7 +134,7 @@ export class MemoryManager implements IMemoryManager {
             levenshtein_score: number;
         }[]
     > {
-        return await this.runtime.databaseAdapter.getCachedEmbeddings({
+        return await this.runtime.getDatabaseAdapter().getCachedEmbeddings({
             query_table_name: this.tableName,
             query_threshold: 2,
             query_input: content,
@@ -173,7 +173,7 @@ export class MemoryManager implements IMemoryManager {
             unique = true,
         } = opts;
 
-        return await this.runtime.databaseAdapter.searchMemories({
+        return await this.runtime.getDatabaseAdapter().searchMemories({
             tableName: this.tableName,
             roomId,
             embedding,
@@ -194,7 +194,7 @@ export class MemoryManager implements IMemoryManager {
             this.validateMetadata(memory.metadata);  // This will check type first
             this.validateMetadataRequirements(memory.metadata);
         }
-        const existingMessage = await this.runtime.databaseAdapter.getMemoryById(memory.id);
+        const existingMessage = await this.runtime.getDatabaseAdapter().getMemoryById(memory.id);
 
         if (existingMessage) {
             logger.debug("Memory already exists, skipping");
@@ -231,7 +231,7 @@ export class MemoryManager implements IMemoryManager {
             memory.embedding = await this.runtime.useModel(ModelTypes.TEXT_EMBEDDING, null);
         }
 
-        const memoryId = await this.runtime.databaseAdapter.createMemory(
+        const memoryId = await this.runtime.getDatabaseAdapter().createMemory(
             memory,
             this.tableName,
             unique
@@ -241,7 +241,7 @@ export class MemoryManager implements IMemoryManager {
     }
 
     async getMemoriesByRoomIds(params: { roomIds: UUID[], limit?: number; agentId?: UUID }): Promise<Memory[]> {
-        return await this.runtime.databaseAdapter.getMemoriesByRoomIds({
+        return await this.runtime.getDatabaseAdapter().getMemoriesByRoomIds({
             tableName: this.tableName,
             roomIds: params.roomIds,
             limit: params.limit
@@ -249,7 +249,7 @@ export class MemoryManager implements IMemoryManager {
     }
 
     async getMemoryById(id: UUID): Promise<Memory | null> {
-        const result = await this.runtime.databaseAdapter.getMemoryById(id);
+        const result = await this.runtime.getDatabaseAdapter().getMemoryById(id);
         if (result && result.agentId !== this.runtime.agentId) return null;
         return result;
     }
@@ -260,7 +260,7 @@ export class MemoryManager implements IMemoryManager {
      * @returns A Promise that resolves when the operation completes.
      */
     async removeMemory(memoryId: UUID): Promise<void> {
-        await this.runtime.databaseAdapter.removeMemory(
+        await this.runtime.getDatabaseAdapter().removeMemory(
             memoryId,
             this.tableName
         );
@@ -272,7 +272,7 @@ export class MemoryManager implements IMemoryManager {
      * @returns A Promise that resolves when the operation completes.
      */
     async removeAllMemories(roomId: UUID): Promise<void> {
-        await this.runtime.databaseAdapter.removeAllMemories(
+        await this.runtime.getDatabaseAdapter().removeAllMemories(
             roomId,
             this.tableName
         );
@@ -285,7 +285,7 @@ export class MemoryManager implements IMemoryManager {
      * @returns A Promise resolving to the count of memories.
      */
     async countMemories(roomId: UUID, unique = true): Promise<number> {
-        return await this.runtime.databaseAdapter.countMemories(
+        return await this.runtime.getDatabaseAdapter().countMemories(
             roomId,
             unique,
             this.tableName

@@ -52,13 +52,13 @@ export class TaskService extends Service {
     });
 
     // check if the task exists
-    const tasks = await this.runtime.databaseAdapter.getTasksByName(
+    const tasks = await this.runtime.getDatabaseAdapter().getTasksByName(
       "REPEATING_TEST_TASK"
     );
 
     if (tasks.length === 0) {
       // Create repeating task
-      await this.runtime.databaseAdapter.createTask({
+      await this.runtime.getDatabaseAdapter().createTask({
         name: "REPEATING_TEST_TASK",
         description: "A test task that repeats every minute",
         metadata: {
@@ -70,7 +70,7 @@ export class TaskService extends Service {
     }
 
     // Create one-time task
-    await this.runtime.databaseAdapter.createTask({
+    await this.runtime.getDatabaseAdapter().createTask({
       name: "ONETIME_TEST_TASK",
       description: "A test task that runs once",
       metadata: {
@@ -133,7 +133,7 @@ export class TaskService extends Service {
   private async checkTasks() {
     try {
       // Get all tasks with "queue" tag
-      const allTasks = await this.runtime.databaseAdapter.getTasks({
+      const allTasks = await this.runtime.getDatabaseAdapter().getTasks({
         tags: ["queue"],
       });
 
@@ -190,7 +190,7 @@ export class TaskService extends Service {
       // Handle repeating vs non-repeating tasks
       if (task.tags?.includes("repeat")) {
         // For repeating tasks, update the updatedAt timestamp
-        await this.runtime.databaseAdapter.updateTask(task.id, {
+        await this.runtime.getDatabaseAdapter().updateTask(task.id, {
           metadata: {
             ...task.metadata,
             updatedAt: Date.now(),
@@ -201,7 +201,7 @@ export class TaskService extends Service {
         );
       } else {
         // For non-repeating tasks, delete the task after execution
-        await this.runtime.databaseAdapter.deleteTask(task.id);
+        await this.runtime.getDatabaseAdapter().deleteTask(task.id);
         logger.debug(
           `Deleted non-repeating task ${task.name} (${task.id}) after execution`
         );

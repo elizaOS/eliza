@@ -104,16 +104,16 @@ export async function findEntityByName(
   state: State,
 ): Promise<Entity | null> {
   try {
-    const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
+    const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
     if (!room) {
       logger.warn("Room not found for entity search");
       return null;
     }
 
-    const world = room.worldId ? await runtime.databaseAdapter.getWorld(room.worldId) : null;
+    const world = room.worldId ? await runtime.getDatabaseAdapter().getWorld(room.worldId) : null;
 
     // Get all entities in the room with their components
-    const entitiesInRoom = await runtime.databaseAdapter.getEntitiesForRoom(room.id, true);
+    const entitiesInRoom = await runtime.getDatabaseAdapter().getEntitiesForRoom(room.id, true);
 
     // Filter components for each entity based on permissions
     const filteredEntities = await Promise.all(entitiesInRoom.map(async entity => {
@@ -144,7 +144,7 @@ export async function findEntityByName(
     }));
 
     // Get relationships for the message sender
-    const relationships = await runtime.databaseAdapter.getRelationships({
+    const relationships = await runtime.getDatabaseAdapter().getRelationships({
       entityId: message.entityId,
     });
 
@@ -152,7 +152,7 @@ export async function findEntityByName(
     const relationshipEntities = await Promise.all(
       relationships.map(async rel => {
         const entityId = rel.sourceEntityId === message.entityId ? rel.targetEntityId : rel.sourceEntityId;
-        return runtime.databaseAdapter.getEntityById(entityId);
+        return runtime.getDatabaseAdapter().getEntityById(entityId);
       })
     );
 
@@ -190,7 +190,7 @@ export async function findEntityByName(
 
     // If we got an exact entity ID match
     if (resolution.type === "EXACT_MATCH" && resolution.entityId) {
-      const entity = await runtime.databaseAdapter.getEntityById(resolution.entityId as UUID);
+      const entity = await runtime.getDatabaseAdapter().getEntityById(resolution.entityId as UUID);
       if (entity) {
         // Filter components again for the returned entity
         if (entity.components) {
@@ -271,8 +271,8 @@ export async function getEntityDetails({
 }) {
   // Parallelize the two async operations
   const [room, roomEntities] = await Promise.all([
-    runtime.databaseAdapter.getRoom(roomId),
-    runtime.databaseAdapter.getEntitiesForRoom(roomId, true)
+    runtime.getDatabaseAdapter().getRoom(roomId),
+    runtime.getDatabaseAdapter().getEntitiesForRoom(roomId, true)
   ]);
 
   // Use a Map for uniqueness checking while processing entities

@@ -54,7 +54,7 @@ export const getRecommenderReport: Action = {
             return;
         }
 
-        const entity = await runtime.databaseAdapter.getEntityById(
+        const entity = await runtime.getDatabaseAdapter().getEntityById(
             message.entityId
         );
 

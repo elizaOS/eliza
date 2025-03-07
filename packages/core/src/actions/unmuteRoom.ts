@@ -36,7 +36,7 @@ export const unmuteRoomAction: Action = {
     "Unmutes a room, allowing the agent to consider responding to messages again.",
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     const roomId = message.roomId;
-    const roomState = await runtime.databaseAdapter.getParticipantUserState(
+    const roomState = await runtime.getDatabaseAdapter().getParticipantUserState(
       roomId,
       runtime.agentId
     );
@@ -119,14 +119,14 @@ export const unmuteRoomAction: Action = {
     }
 
     if (await _shouldUnmute(state)) {
-      await runtime.databaseAdapter.setParticipantUserState(
+      await runtime.getDatabaseAdapter().setParticipantUserState(
         message.roomId,
         runtime.agentId,
         null
       );
     }
 
-    const room = await runtime.databaseAdapter.getRoom(message.roomId);
+    const room = await runtime.getDatabaseAdapter().getRoom(message.roomId);
 
     await runtime.getMemoryManager("messages").createMemory({
       entityId: message.entityId,

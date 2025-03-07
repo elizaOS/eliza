@@ -133,7 +133,7 @@ describe('goalEvaluator', () => {
             expect(getGoals).toHaveBeenCalled();
             expect(generateText).toHaveBeenCalled();
             expect(parseJsonArrayFromText).toHaveBeenCalled();
-            expect(mockRuntime.databaseAdapter.updateGoal).toHaveBeenCalled();
+            expect(mockRuntime.getDatabaseAdapter().updateGoal).toHaveBeenCalled();
             expect(result).toBeDefined();
         });
     });

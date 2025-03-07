@@ -16,7 +16,7 @@ export const routes: Route[] = [
     path: "/trending",
     handler: async (_req: any, res: any, runtime) => {
       try {
-        const cachedTokens = await runtime.databaseAdapter.getCache<IToken[]>("tokens_solana");
+        const cachedTokens = await runtime.getDatabaseAdapter().getCache<IToken[]>("tokens_solana");
         const tokens: IToken[] = cachedTokens ? cachedTokens : [];
         const sortedTokens = tokens.sort((a, b) => (a.rank || 0) - (b.rank || 0));
         res.json(sortedTokens);
@@ -31,7 +31,7 @@ export const routes: Route[] = [
     handler: async (_req: any, res: any, runtime: IAgentRuntime) => {
       try {
         // Get transaction history
-        const cachedTxs = await runtime.databaseAdapter.getCache<TransactionHistory[]>("transaction_history");
+        const cachedTxs = await runtime.getDatabaseAdapter().getCache<TransactionHistory[]>("transaction_history");
         const transactions: TransactionHistory[] = cachedTxs ? cachedTxs : [];
         const history = transactions
           .filter(tx => tx.data.mainAction === "received")
@@ -39,7 +39,7 @@ export const routes: Route[] = [
           .slice(0, 100);
 
         // Get portfolio
-        const cachedPortfolio = await runtime.databaseAdapter.getCache<Portfolio>("portfolio");
+        const cachedPortfolio = await runtime.getDatabaseAdapter().getCache<Portfolio>("portfolio");
         const portfolio: Portfolio = cachedPortfolio ? cachedPortfolio : { key: "PORTFOLIO", data: null };
 
         res.json({ history, portfolio: portfolio.data });
@@ -120,7 +120,7 @@ export const routes: Route[] = [
     path: "/signal",
     handler: async (_req: any, res: any, runtime: IAgentRuntime) => {
       try {
-        const cachedSignal = await runtime.databaseAdapter.getCache<any>("BUY_SIGNAL");
+        const cachedSignal = await runtime.getDatabaseAdapter().getCache<any>("BUY_SIGNAL");
         const signal = cachedSignal ? cachedSignal : {};
         res.json(signal?.data || {});
       } catch (_error) {

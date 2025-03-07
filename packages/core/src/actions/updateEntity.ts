@@ -92,7 +92,7 @@ export const updateEntityAction: Action = {
     // const agentId = runtime.agentId;
     
     // // Get all components for the current room to understand available sources
-    // const roomComponents = await runtime.databaseAdapter.getComponents(message.roomId, worldId, agentId);
+    // const roomComponents = await runtime.getDatabaseAdapter().getComponents(message.roomId, worldId, agentId);
     
     // // Get source types from room components
     // const availableSources = new Set(roomComponents.map(c => c.type));
@@ -116,7 +116,7 @@ export const updateEntityAction: Action = {
       const sourceEntityId = message.entityId;
       const _roomId = message.roomId;
       const agentId = runtime.agentId;
-      const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
+      const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
       const worldId = room.worldId;
 
       // First, find the entity being referenced
@@ -172,7 +172,7 @@ export const updateEntityAction: Action = {
       const componentData = parsedResult.data;
 
       // Now that we know the component type, get the existing component if it exists
-      existingComponent = await runtime.databaseAdapter.getComponent(
+      existingComponent = await runtime.getDatabaseAdapter().getComponent(
         entity.id!,
         componentType,
         worldId,
@@ -181,7 +181,7 @@ export const updateEntityAction: Action = {
       
       // Create or update the component
       if (existingComponent) {
-        await runtime.databaseAdapter.updateComponent({
+        await runtime.getDatabaseAdapter().updateComponent({
           id: existingComponent.id,
           entityId: entity.id!,
           worldId,
@@ -198,7 +198,7 @@ export const updateEntityAction: Action = {
           source: message.content.source,
         });
       } else {
-        await runtime.databaseAdapter.createComponent({
+        await runtime.getDatabaseAdapter().createComponent({
           id: uuidv4() as UUID,
           entityId: entity.id!,
           worldId,

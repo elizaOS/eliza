@@ -6,7 +6,7 @@ import {
   type Character,
   type IAgentRuntime,
   type IDatabaseAdapter,
-  type Plugin
+  type Plugin,
 } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import * as fs from "node:fs";
@@ -14,10 +14,7 @@ import net from "node:net";
 import * as path from "node:path";
 import { character as defaultCharacter } from "../characters/eliza";
 import { AgentServer } from "../server/index.ts";
-import {
-  jsonToCharacter,
-  loadCharacterTryPath
-} from "../server/loader.ts";
+import { jsonToCharacter, loadCharacterTryPath } from "../server/loader.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,74 +38,73 @@ async function startAgent(
   plugins: Plugin[] = []
 ): Promise<IAgentRuntime> {
   let db: IDatabaseAdapter;
-    character.id ??= stringToUuid(character.name);
+  character.id ??= stringToUuid(character.name);
 
-    const runtime = new AgentRuntime({
-      character,
-      plugins,
-    });
+  const runtime = new AgentRuntime({
+    character,
+    plugins,
+  });
 
-    if (init) {
-      await init(runtime);
-    }
+  if (init) {
+    await init(runtime);
+  }
 
-    // try to read a file in the current directory titled .env
-    let postgresUrl = null;
-    // Try to find .env file by recursively checking parent directories
-    let currentPath = envPath;
-    let depth = 0;
-    const maxDepth = 10;
+  // try to read a file in the current directory titled .env
+  let postgresUrl = null;
+  // Try to find .env file by recursively checking parent directories
+  let currentPath = envPath;
+  let depth = 0;
+  const maxDepth = 10;
 
-    while (depth < maxDepth && currentPath.includes(path.sep)) {
-      if (fs.existsSync(currentPath)) {
-        const env = fs.readFileSync(currentPath, "utf8");
-        const envVars = env.split("\n").filter((line) => line.trim() !== "");
-        const postgresUrlLine = envVars.find((line) =>
-          line.startsWith("POSTGRES_URL=")
-        );
-        if (postgresUrlLine) {
-          postgresUrl = postgresUrlLine.split("=")[1].trim();
-          break;
-        }
+  while (depth < maxDepth && currentPath.includes(path.sep)) {
+    if (fs.existsSync(currentPath)) {
+      const env = fs.readFileSync(currentPath, "utf8");
+      const envVars = env.split("\n").filter((line) => line.trim() !== "");
+      const postgresUrlLine = envVars.find((line) =>
+        line.startsWith("POSTGRES_URL=")
+      );
+      if (postgresUrlLine) {
+        postgresUrl = postgresUrlLine.split("=")[1].trim();
+        break;
       }
-      
-      // Move up one directory by getting the parent directory path
-      // First get the directory containing the current .env file
-      const currentDir = path.dirname(currentPath);
-      // Then move up one directory from there
-      const parentDir = path.dirname(currentDir);
-      currentPath = path.join(parentDir, ".env");
-      depth++;
     }
 
-    // find a db from the plugins
-    db = await createDatabaseAdapter(
-      {
-        dataDir: path.join(process.cwd(), "data"),
-        postgresUrl,
-      },
-      runtime.agentId
-    );
-    runtime.databaseAdapter = db;
+    // Move up one directory by getting the parent directory path
+    // First get the directory containing the current .env file
+    const currentDir = path.dirname(currentPath);
+    // Then move up one directory from there
+    const parentDir = path.dirname(currentDir);
+    currentPath = path.join(parentDir, ".env");
+    depth++;
+  }
 
-    // Make sure character exists in database
-    await runtime.databaseAdapter.ensureAgentExists(character);
+  // find a db from the plugins
+  db = await createDatabaseAdapter(
+    {
+      dataDir: path.join(process.cwd(), "data"),
+      postgresUrl,
+    },
+    runtime.agentId
+  );
+  runtime.registerDatabaseAdapter(db);
 
-    // start services/plugins/process knowledge
-    await runtime.initialize();
+  // Make sure character exists in database
+  await runtime.getDatabaseAdapter().ensureAgentExists(character);
 
-    // add to container
-    server.registerAgent(runtime);
+  // start services/plugins/process knowledge
+  await runtime.initialize();
 
-    // report to console
-    logger.debug(`Started ${runtime.character.name} as ${runtime.agentId}`);
+  // add to container
+  server.registerAgent(runtime);
 
-    return runtime;
+  // report to console
+  logger.debug(`Started ${runtime.character.name} as ${runtime.agentId}`);
 
+  return runtime;
 }
 
 async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
-  await runtime.databaseAdapter.close();
+  await runtime.getDatabaseAdapter().close();
   server.unregisterAgent(runtime.agentId);
 }
 
@@ -437,52 +433,52 @@ const startAgents = async () => {
   }
 
   // Start agents based on project, plugin, or default configuration
-    if (isPlugin && pluginModule) {
-      // Load the default character and add the plugin to it
-      logger.info(
-        `Starting default character with plugin: ${
-          pluginModule.name || "unnamed plugin"
-        }`
-      );
-      await startAgent(defaultCharacter, server, undefined, [pluginModule]);
-      logger.info("Default character started with plugin successfully");
-    } else if (isProject) {
-      // Load all project agents, call their init and register their plugins
-      const project = projectModule.default as import("@elizaos/core").Project;
-      logger.info(`Found ${project.agents.length} agents in project`);
+  if (isPlugin && pluginModule) {
+    // Load the default character and add the plugin to it
+    logger.info(
+      `Starting default character with plugin: ${
+        pluginModule.name || "unnamed plugin"
+      }`
+    );
+    await startAgent(defaultCharacter, server, undefined, [pluginModule]);
+    logger.info("Default character started with plugin successfully");
+  } else if (isProject) {
+    // Load all project agents, call their init and register their plugins
+    const project = projectModule.default as import("@elizaos/core").Project;
+    logger.info(`Found ${project.agents.length} agents in project`);
 
-      const startedAgents = [];
-      for (const agent of project.agents ?? []) {
-        try {
-          logger.info(`Starting agent: ${agent.character.name}`);
-          const runtime = await startAgent(
-            agent.character,
-            server,
-            agent.init,
-            agent.plugins || []
-          );
-          startedAgents.push(runtime);
-        } catch (agentError) {
-          logger.error(
-            `Error starting agent ${agent.character.name}: ${agentError}`
-          );
-        }
-      }
-
-      if (startedAgents.length === 0) {
-        logger.warn(
-          "Failed to start any agents from project, falling back to default character"
+    const startedAgents = [];
+    for (const agent of project.agents ?? []) {
+      try {
+        logger.info(`Starting agent: ${agent.character.name}`);
+        const runtime = await startAgent(
+          agent.character,
+          server,
+          agent.init,
+          agent.plugins || []
         );
-        await startAgent(defaultCharacter, server);
-      } else {
-        logger.info(
-          `Successfully started ${startedAgents.length} agents from project`
+        startedAgents.push(runtime);
+      } catch (agentError) {
+        logger.error(
+          `Error starting agent ${agent.character.name}: ${agentError}`
         );
       }
-    } else {
-      logger.info("No project or plugin found, starting default character");
-      await startAgent(defaultCharacter, server);
     }
+
+    if (startedAgents.length === 0) {
+      logger.warn(
+        "Failed to start any agents from project, falling back to default character"
+      );
+      await startAgent(defaultCharacter, server);
+    } else {
+      logger.info(
+        `Successfully started ${startedAgents.length} agents from project`
+      );
+    }
+  } else {
+    logger.info("No project or plugin found, starting default character");
+    await startAgent(defaultCharacter, server);
+  }
 
   // Rest of the function remains the same...
   while (!(await checkPortAvailable(serverPort))) {

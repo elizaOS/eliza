@@ -291,7 +291,7 @@ export class DegenTradingService extends Service {
     try {
       // Get trending tokens from cache (updated by degen-intel service)
       const trendingTokens =
-        (await this.runtime.databaseAdapter.getCache<any[]>(
+        (await this.runtime.getDatabaseAdapter().getCache<any[]>(
           "birdeye_trending_tokens"
         )) || [];
 
@@ -326,7 +326,7 @@ export class DegenTradingService extends Service {
     try {
       // Get parsed Twitter signals from cache (updated by degen-intel service)
       const twitterSignals =
-        (await this.runtime.databaseAdapter.getCache<any[]>(
+        (await this.runtime.getDatabaseAdapter().getCache<any[]>(
           "twitter_parsed_signals"
         )) || [];
 
@@ -358,7 +358,7 @@ export class DegenTradingService extends Service {
     try {
       // Get CMC data from cache (updated by degen-intel service)
       const cmcTokens =
-        (await this.runtime.databaseAdapter.getCache<any[]>(
+        (await this.runtime.getDatabaseAdapter().getCache<any[]>(
           "cmc_trending_tokens"
         )) || [];
 
@@ -719,7 +719,7 @@ export class DegenTradingService extends Service {
     });
 
     // Store price update in cache or state if needed
-    await this.runtime.databaseAdapter.setCache<any>(
+    await this.runtime.getDatabaseAdapter().setCache<any>(
       `price:${signal.tokenAddress}`,
       {
         initialPrice: signal.initialPrice,
@@ -1128,7 +1128,7 @@ export class DegenTradingService extends Service {
       logger.info("Wallet balance synced", { balance: walletBalance });
 
       // Store wallet balance in cache
-      await this.runtime.databaseAdapter.setCache<any>("wallet_balance", {
+      await this.runtime.getDatabaseAdapter().setCache<any>("wallet_balance", {
         balance: walletBalance,
         timestamp: new Date().toISOString(),
       });
@@ -1248,12 +1248,12 @@ export class DegenTradingService extends Service {
   private async createScheduledTasks() {
     logger.info("Creating scheduled tasks...");
 
-    const tasks = await this.runtime.databaseAdapter.getTasks({
+    const tasks = await this.runtime.getDatabaseAdapter().getTasks({
       tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
     });
 
     if (!tasks.find((task) => task.name === "BUY_SIGNAL")) {
-      await this.runtime.databaseAdapter.createTask({
+      await this.runtime.getDatabaseAdapter().createTask({
         id: uuidv4() as UUID,
         roomId: this.runtime.agentId,
         name: "BUY_SIGNAL",
@@ -1268,7 +1268,7 @@ export class DegenTradingService extends Service {
     }
 
     if (!tasks.find((task) => task.name === "VALIDATE_DATA_SOURCES")) {
-      await this.runtime.databaseAdapter.createTask({
+      await this.runtime.getDatabaseAdapter().createTask({
         id: uuidv4() as UUID,
         roomId: this.runtime.agentId,
         name: "VALIDATE_DATA_SOURCES",
@@ -1283,7 +1283,7 @@ export class DegenTradingService extends Service {
     }
 
     if (!tasks.find((task) => task.name === "CIRCUIT_BREAKER_CHECK")) {
-      await this.runtime.databaseAdapter.createTask({
+      await this.runtime.getDatabaseAdapter().createTask({
         id: uuidv4() as UUID,
         roomId: this.runtime.agentId,
         name: "CIRCUIT_BREAKER_CHECK",
@@ -1428,12 +1428,12 @@ export class DegenTradingService extends Service {
       this.isRunning = false;
 
       // Clean up scheduled tasks
-      const tasks = await this.runtime.databaseAdapter.getTasks({
+      const tasks = await this.runtime.getDatabaseAdapter().getTasks({
         tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
       });
 
       for (const task of tasks) {
-        await this.runtime.databaseAdapter.deleteTask(task.id!);
+        await this.runtime.getDatabaseAdapter().deleteTask(task.id!);
       }
 
       // Close any open positions if emergency stop
@@ -1561,7 +1561,7 @@ export class DegenTradingService extends Service {
         (1 + this.tradingConfig.riskLimits.takeProfitPercentage / 100);
 
       // Store monitoring data
-      await this.runtime.databaseAdapter.setCache(
+      await this.runtime.getDatabaseAdapter().setCache(
         `token_monitor:${data.tokenAddress}`,
         {
           id: data.id,
@@ -1576,7 +1576,7 @@ export class DegenTradingService extends Service {
       );
 
       // Schedule monitoring task
-      await this.runtime.databaseAdapter.createTask({
+      await this.runtime.getDatabaseAdapter().createTask({
         id: uuidv4() as UUID,
         roomId: this.runtime.agentId,
         name: "MONITOR_TOKEN",
@@ -1616,13 +1616,13 @@ export class DegenTradingService extends Service {
   async stopDegenProcess(processId: string): Promise<void> {
     try {
       // Find monitoring tasks for this process
-      const tasks = await this.runtime.databaseAdapter.getTasks({
+      const tasks = await this.runtime.getDatabaseAdapter().getTasks({
         tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
       });
 
       // Delete all related monitoring tasks
       for (const task of tasks) {
-        await this.runtime.databaseAdapter.deleteTask(task.id!);
+        await this.runtime.getDatabaseAdapter().deleteTask(task.id!);
       }
 
       logger.info("Token monitoring process stopped", { processId });
@@ -1857,7 +1857,7 @@ export class DegenTradingService extends Service {
       const trailingStopPercentage = 5; // 5% trailing stop
 
       // Store trailing stop data
-      await this.runtime.databaseAdapter.setCache(
+      await this.runtime.getDatabaseAdapter().setCache(
         `trailing_stop:${tokenAddress}`,
         {
           tokenAddress,
@@ -1870,7 +1870,7 @@ export class DegenTradingService extends Service {
       );
 
       // Create a monitoring task
-      await this.runtime.databaseAdapter.createTask({
+      await this.runtime.getDatabaseAdapter().createTask({
         id: uuidv4() as UUID,
         roomId: this.runtime.agentId,
         name: "MONITOR_TRAILING_STOP",
@@ -1906,7 +1906,7 @@ export class DegenTradingService extends Service {
       const { tokenAddress } = options;
 
       // Get trailing stop data
-      const trailingStop = await this.runtime.databaseAdapter.getCache<{
+      const trailingStop = await this.runtime.getDatabaseAdapter().getCache<{
         tokenAddress: string;
         highestPrice: number;
         activationPrice: number;
@@ -1926,7 +1926,7 @@ export class DegenTradingService extends Service {
       // Skip if no position
       if (!currentBalance || BigInt(currentBalance.toString()) <= BigInt(0)) {
         logger.info("No position, removing trailing stop", { tokenAddress });
-        await this.runtime.databaseAdapter.deleteCache(
+        await this.runtime.getDatabaseAdapter().deleteCache(
           `trailing_stop:${tokenAddress}`
         );
         return;
@@ -1945,7 +1945,7 @@ export class DegenTradingService extends Service {
       // Update highest price if current price is higher
       if (marketData.price > trailingStop.highestPrice) {
         trailingStop.highestPrice = marketData.price;
-        await this.runtime.databaseAdapter.setCache(
+        await this.runtime.getDatabaseAdapter().setCache(
           `trailing_stop:${tokenAddress}`,
           trailingStop
         );
@@ -1977,7 +1977,7 @@ export class DegenTradingService extends Service {
         );
 
         // Remove trailing stop
-        await this.runtime.databaseAdapter.deleteCache(
+        await this.runtime.getDatabaseAdapter().deleteCache(
           `trailing_stop:${tokenAddress}`
         );
       }
@@ -2173,14 +2173,14 @@ export class DegenTradingService extends Service {
       };
 
       // Store snapshot in database
-      await this.runtime.databaseAdapter.setCache(
+      await this.runtime.getDatabaseAdapter().setCache(
         `performance_snapshot:${snapshot.timestamp}`,
         snapshot
       );
 
       // Update snapshot index
       const snapshotIndex =
-        (await this.runtime.databaseAdapter.getCache<string[]>(
+        (await this.runtime.getDatabaseAdapter().getCache<string[]>(
           "performance_snapshot_index"
         )) || [];
       snapshotIndex.push(snapshot.timestamp);
@@ -2190,7 +2190,7 @@ export class DegenTradingService extends Service {
         snapshotIndex.shift();
       }
 
-      await this.runtime.databaseAdapter.setCache(
+      await this.runtime.getDatabaseAdapter().setCache(
         "performance_snapshot_index",
         snapshotIndex
       );
@@ -2214,7 +2214,7 @@ export class DegenTradingService extends Service {
       const value = amount * marketData.price;
 
       // Store updated position data
-      await this.runtime.databaseAdapter.setCache(`position:${tokenAddress}`, {
+      await this.runtime.getDatabaseAdapter().setCache(`position:${tokenAddress}`, {
         tokenAddress,
         amount,
         price: marketData.price,
@@ -2226,7 +2226,7 @@ export class DegenTradingService extends Service {
       });
 
       // Create monitoring task for this token if it doesn't exist
-      const existingTasks = await this.runtime.databaseAdapter.getTasks({
+      const existingTasks = await this.runtime.getDatabaseAdapter().getTasks({
         tags: ["monitor", tokenAddress],
       });
 
@@ -2236,7 +2236,7 @@ export class DegenTradingService extends Service {
         const buyPrice =
           trades.length > 0 ? trades[0].buy_price : marketData.price;
 
-        await this.runtime.databaseAdapter.createTask({
+        await this.runtime.getDatabaseAdapter().createTask({
           id: uuidv4() as UUID,
           roomId: this.runtime.agentId,
           name: "MONITOR_TOKEN",
@@ -2265,14 +2265,14 @@ export class DegenTradingService extends Service {
       // Get all trades
       const allTradesKey = "all_trades";
       const allTrades =
-        (await this.runtime.databaseAdapter.getCache<string[]>(allTradesKey)) ||
+        (await this.runtime.getDatabaseAdapter().getCache<string[]>(allTradesKey)) ||
         [];
 
       // Filter trades for this token
       const tokenTrades = [];
       for (const tradeKey of allTrades) {
         if (tradeKey.startsWith(tokenAddress)) {
-          const trade = await this.runtime.databaseAdapter.getCache<any>(
+          const trade = await this.runtime.getDatabaseAdapter().getCache<any>(
             `trade_performance:${tradeKey}`
           );
           if (trade) {
@@ -2332,7 +2332,7 @@ export class DegenTradingService extends Service {
       };
 
       // Store in database
-      await this.runtime.databaseAdapter.setCache(
+      await this.runtime.getDatabaseAdapter().setCache(
         `trade_performance:${data.token_address}:${data.buy_timeStamp}`,
         tradeData
       );
@@ -2342,12 +2342,12 @@ export class DegenTradingService extends Service {
         ? "all_simulation_trades"
         : "all_trades";
       const allTrades =
-        (await this.runtime.databaseAdapter.getCache<string[]>(allTradesKey)) ||
+        (await this.runtime.getDatabaseAdapter().getCache<string[]>(allTradesKey)) ||
         [];
 
       allTrades.push(`${data.token_address}:${data.buy_timeStamp}`);
 
-      await this.runtime.databaseAdapter.setCache(allTradesKey, allTrades);
+      await this.runtime.getDatabaseAdapter().setCache(allTradesKey, allTrades);
 
       // Update token statistics
       await this.updateTokenStatistics(data.token_address, {
@@ -2379,7 +2379,7 @@ export class DegenTradingService extends Service {
   ): Promise<void> {
     try {
       // Get existing statistics
-      const stats = (await this.runtime.databaseAdapter.getCache<any>(
+      const stats = (await this.runtime.getDatabaseAdapter().getCache<any>(
         `token_stats:${tokenAddress}`
       )) || {
         trades: 0,
@@ -2401,7 +2401,7 @@ export class DegenTradingService extends Service {
       }
 
       // Store updated statistics
-      await this.runtime.databaseAdapter.setCache(
+      await this.runtime.getDatabaseAdapter().setCache(
         `token_stats:${tokenAddress}`,
         stats
       );
@@ -2434,7 +2434,7 @@ export class DegenTradingService extends Service {
     try {
       // Get the existing trade performance record
       const tradeKey = `trade_performance:${tokenAddress}:${buyTimestamp}`;
-      const existingTrade = await this.runtime.databaseAdapter.getCache<any>(
+      const existingTrade = await this.runtime.getDatabaseAdapter().getCache<any>(
         tradeKey
       );
 
@@ -2454,7 +2454,7 @@ export class DegenTradingService extends Service {
       };
 
       // Store the updated record
-      await this.runtime.databaseAdapter.setCache(tradeKey, updatedTrade);
+      await this.runtime.getDatabaseAdapter().setCache(tradeKey, updatedTrade);
 
       // Update token statistics
       await this.updateTokenStatistics(tokenAddress, {
@@ -2921,16 +2921,16 @@ export class DegenTradingService extends Service {
       };
 
       // Store transaction in cache
-      this.runtime.databaseAdapter.setCache<any>(data.id, transactionData);
+      this.runtime.getDatabaseAdapter().setCache<any>(data.id, transactionData);
 
       // Store in the runtime cache
-      await this.runtime.databaseAdapter.setCache<any>(
+      await this.runtime.getDatabaseAdapter().setCache<any>(
         `transaction:${data.id}`,
         transactionData
       );
 
       // Create a memory for transaction tracking
-      await this.runtime.databaseAdapter.createMemory(
+      await this.runtime.getDatabaseAdapter().createMemory(
         {
           content: {
             data: transactionData,
@@ -2969,8 +2969,8 @@ export class DegenTradingService extends Service {
     try {
       // Check local cache first
       const cacheKey = `${tokenAddress}:${recommenderId}`;
-      if (this.runtime.databaseAdapter.getCache<any>(cacheKey)) {
-        const cached = await this.runtime.databaseAdapter.getCache<any>(
+      if (this.runtime.getDatabaseAdapter().getCache<any>(cacheKey)) {
+        const cached = await this.runtime.getDatabaseAdapter().getCache<any>(
           cacheKey
         );
         if (cached.isSimulation === isSimulation) {
@@ -2980,7 +2980,7 @@ export class DegenTradingService extends Service {
 
       // Get performance index from cache
       const performanceIndex =
-        (await this.runtime.databaseAdapter.getCache<any[]>(
+        (await this.runtime.getDatabaseAdapter().getCache<any[]>(
           "trade_performance_index"
         )) || [];
 
@@ -3000,13 +3000,13 @@ export class DegenTradingService extends Service {
       if (filtered.length > 0) {
         // Get full record from cache for the most recent entry
         const latestEntry = filtered[0];
-        const fullRecord = await this.runtime.databaseAdapter.getCache<any>(
+        const fullRecord = await this.runtime.getDatabaseAdapter().getCache<any>(
           `trade_performance:${latestEntry.id}`
         );
 
         if (fullRecord) {
           // Update local cache
-          this.runtime.databaseAdapter.setCache<any>(cacheKey, fullRecord);
+          this.runtime.getDatabaseAdapter().setCache<any>(cacheKey, fullRecord);
           return fullRecord;
         }
       }
@@ -3029,13 +3029,13 @@ export class DegenTradingService extends Service {
     try {
       // Get high water mark from cache
       const hwm =
-        (await this.runtime.databaseAdapter.getCache<number>(
+        (await this.runtime.getDatabaseAdapter().getCache<number>(
           "portfolio_hwm"
         )) || portfolio.totalValue;
 
       // Update high water mark if current value is higher
       if (portfolio.totalValue > hwm) {
-        await this.runtime.databaseAdapter.setCache(
+        await this.runtime.getDatabaseAdapter().setCache(
           "portfolio_hwm",
           portfolio.totalValue
         );
@@ -3440,7 +3440,7 @@ export class DegenTradingService extends Service {
           ? "good"
           : "degraded";
 
-      await this.runtime.databaseAdapter.setCache("data_quality", {
+      await this.runtime.getDatabaseAdapter().setCache("data_quality", {
         status: dataQuality,
         birdeye: birdeyeStatus,
         twitter: twitterStatus,
@@ -3525,7 +3525,7 @@ export class DegenTradingService extends Service {
     try {
       // Get Twitter signals from cache
       const twitterSignals =
-        (await this.runtime.databaseAdapter.getCache<any[]>(
+        (await this.runtime.getDatabaseAdapter().getCache<any[]>(
           "twitter_parsed_signals"
         )) || [];
 
@@ -3537,7 +3537,7 @@ export class DegenTradingService extends Service {
       }
 
       // Check data freshness
-      const cacheMetadata = await this.runtime.databaseAdapter.getCache<any>(
+      const cacheMetadata = await this.runtime.getDatabaseAdapter().getCache<any>(
         "twitter_signals_metadata"
       );
       if (!cacheMetadata || !cacheMetadata.updatedAt) {
@@ -3573,7 +3573,7 @@ export class DegenTradingService extends Service {
     try {
       // Get CMC tokens from cache
       const cmcTokens =
-        (await this.runtime.databaseAdapter.getCache<any[]>(
+        (await this.runtime.getDatabaseAdapter().getCache<any[]>(
           "cmc_trending_tokens"
         )) || [];
 
@@ -3585,7 +3585,7 @@ export class DegenTradingService extends Service {
       }
 
       // Check data freshness
-      const cacheMetadata = await this.runtime.databaseAdapter.getCache<any>(
+      const cacheMetadata = await this.runtime.getDatabaseAdapter().getCache<any>(
         "cmc_tokens_metadata"
       );
       if (!cacheMetadata || !cacheMetadata.updatedAt) {
@@ -3628,7 +3628,7 @@ export class DegenTradingService extends Service {
       // If price data (Birdeye) is unreliable, pause new trades
       if (!status.birdeye.valid) {
         logger.warn("Pausing new trades due to Birdeye API issues");
-        await this.runtime.databaseAdapter.setCache("trading_paused", {
+        await this.runtime.getDatabaseAdapter().setCache("trading_paused", {
           paused: true,
           reason: "Birdeye API issues",
           issues: status.birdeye.issues,
@@ -3643,7 +3643,7 @@ export class DegenTradingService extends Service {
       // If Twitter data is stale, adjust scoring weights
       if (!status.twitter.valid) {
         logger.warn("Reducing social metrics weight due to stale Twitter data");
-        await this.runtime.databaseAdapter.setCache("scoring_weights", {
+        await this.runtime.getDatabaseAdapter().setCache("scoring_weights", {
           market: 0.6,
           technical: 0.35,
           social: 0.05, // Reduce social weight significantly
@@ -3653,7 +3653,7 @@ export class DegenTradingService extends Service {
       // If CMC data is missing, focus on technical analysis
       if (!status.cmc.valid) {
         logger.warn("CMC data issues detected, focusing on technical analysis");
-        await this.runtime.databaseAdapter.setCache("cmc_data_valid", false);
+        await this.runtime.getDatabaseAdapter().setCache("cmc_data_valid", false);
       }
     } catch (error) {
       logger.error("Error handling degraded data quality:", error);
@@ -3706,7 +3706,7 @@ export class DegenTradingService extends Service {
         });
 
         // Pause trading
-        await this.runtime.databaseAdapter.setCache("circuit_breaker", {
+        await this.runtime.getDatabaseAdapter().setCache("circuit_breaker", {
           triggered: true,
           reason:
             Math.abs(priceChangePercent) > 15
@@ -3720,7 +3720,7 @@ export class DegenTradingService extends Service {
         });
 
         // Update trading status
-        await this.runtime.databaseAdapter.setCache("trading_paused", {
+        await this.runtime.getDatabaseAdapter().setCache("trading_paused", {
           paused: true,
           reason: "Circuit breaker triggered",
           timestamp: new Date().toISOString(),
@@ -3833,7 +3833,7 @@ export class DegenTradingService extends Service {
    */
   private async hasSpecialSlippageRequirement(tokenAddress: string): Promise<boolean> {
     // Check cache for known special tokens
-    const specialTokens = await this.runtime.databaseAdapter.getCache<string[]>('special_slippage_tokens') || [];
+    const specialTokens = await this.runtime.getDatabaseAdapter().getCache<string[]>('special_slippage_tokens') || [];
     return specialTokens.includes(tokenAddress);
   }
   
@@ -3843,7 +3843,7 @@ export class DegenTradingService extends Service {
   private async getSpecialSlippageAdjustment(tokenAddress: string): Promise<number> {
     try {
       // Get token-specific data from cache
-      const tokenData = await this.runtime.databaseAdapter.getCache<{
+      const tokenData = await this.runtime.getDatabaseAdapter().getCache<{
         slippageAdjustment: number;
         reason: string;
       }>(`token_slippage:${tokenAddress}`);
@@ -3880,7 +3880,7 @@ export class DegenTradingService extends Service {
       // This would typically call an external API or service that tracks token taxes
       // For now, we'll implement a simple cache-based approach
       
-      const cachedInfo = await this.runtime.databaseAdapter.getCache<{
+      const cachedInfo = await this.runtime.getDatabaseAdapter().getCache<{
         hasTax: boolean;
         taxPercentage: number;
       }>(`token_tax:${tokenAddress}`);
@@ -3934,7 +3934,7 @@ export class DegenTradingService extends Service {
       const tokenData = await this.getTokenPrice(tokenAddress);
       
       // Store slippage data for this trade
-      await this.runtime.databaseAdapter.setCache(`slippage_impact:${tokenAddress}:${Date.now()}`, {
+      await this.runtime.getDatabaseAdapter().setCache(`slippage_impact:${tokenAddress}:${Date.now()}`, {
         tokenAddress,
         timestamp: new Date().toISOString(),
         expectedAmount,
@@ -3972,7 +3972,7 @@ export class DegenTradingService extends Service {
   private async maybeOptimizeSlippageParameters(): Promise<void> {
     try {
       // Only run this occasionally to avoid excessive processing
-      const lastOptimizationTime = await this.runtime.databaseAdapter.getCache<number>('last_slippage_optimization');
+      const lastOptimizationTime = await this.runtime.getDatabaseAdapter().getCache<number>('last_slippage_optimization');
       const now = Date.now();
       
       if (lastOptimizationTime && now - lastOptimizationTime < 24 * 60 * 60 * 1000) {
@@ -3986,12 +3986,12 @@ export class DegenTradingService extends Service {
       // Get all keys with the slippage_impact prefix
       // Note: This assumes the database adapter has a method to get keys by prefix
       // If not available, we can use a different approach like storing an index of all slippage records
-      const slippageKeys = await this.runtime.databaseAdapter.getCache<string[]>('slippage_impact_keys') || [];
+      const slippageKeys = await this.runtime.getDatabaseAdapter().getCache<string[]>('slippage_impact_keys') || [];
       
       // Get all records
       const allRecords: Array<{key: string, value: any}> = [];
       for (const key of slippageKeys) {
-        const value = await this.runtime.databaseAdapter.getCache<any>(key);
+        const value = await this.runtime.getDatabaseAdapter().getCache<any>(key);
         if (value) {
           allRecords.push({ key, value });
         }
@@ -4079,7 +4079,7 @@ export class DegenTradingService extends Service {
         this.tradingConfig.slippageSettings = optimizedSettings;
         
         // Store updated settings
-        await this.runtime.databaseAdapter.setCache('slippage_settings', optimizedSettings);
+        await this.runtime.getDatabaseAdapter().setCache('slippage_settings', optimizedSettings);
         
         logger.info('Optimized slippage parameters', {
           previousSettings: {
@@ -4091,7 +4091,7 @@ export class DegenTradingService extends Service {
       }
       
       // Update last optimization time
-      await this.runtime.databaseAdapter.setCache('last_slippage_optimization', now);
+      await this.runtime.getDatabaseAdapter().setCache('last_slippage_optimization', now);
     } catch (error) {
       logger.error('Error optimizing slippage parameters', {
         error: error instanceof Error ? error.message : String(error)
@@ -4197,7 +4197,7 @@ export class DegenTradingService extends Service {
   }) {
     try {
       // Store position in database for tracking
-      await this.runtime.databaseAdapter.createMemory(
+      await this.runtime.getDatabaseAdapter().createMemory(
         {
           content: {
             data: position
@@ -4375,7 +4375,7 @@ export class DegenTradingService extends Service {
         }
       }
 
-      await this.runtime.databaseAdapter.createTask({
+      await this.runtime.getDatabaseAdapter().createTask({
         id: uuidv4() as UUID,
         roomId: this.runtime.agentId,
         name: "BUY_SIGNAL",
@@ -4403,7 +4403,7 @@ export class DegenTradingService extends Service {
       logger.debug("Executing buy task");
 
       // Fetch pending buy tasks
-      const pendingTasks = await this.runtime.databaseAdapter.getTasks({
+      const pendingTasks = await this.runtime.getDatabaseAdapter().getTasks({
         roomId: this.runtime.agentId,
         tags: [ServiceTypes.DEGEN_TRADING, "queue"],
         // We can't filter by name in the getTasks query, so we'll filter manually
@@ -4527,7 +4527,7 @@ export class DegenTradingService extends Service {
       const slippage = await this.calculateDynamicSlippage(signal.tokenAddress, Number(signal.amount));
       
       const taskId = uuidv4() as UUID;
-      await this.runtime.databaseAdapter.createTask({
+      await this.runtime.getDatabaseAdapter().createTask({
         id: taskId,
         name: "EXECUTE_SELL",
         description: `Execute sell for ${signal.tokenAddress}`,

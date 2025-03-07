@@ -212,7 +212,7 @@ const updateRoleAction: Action = {
       return false;
     }
 
-    const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
+    const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
     if (!room) {
       throw new Error("No room found");
     }
@@ -230,7 +230,7 @@ const updateRoleAction: Action = {
     try {
       // Get world data instead of ownership state from cache
       const worldId = createUniqueUuid(runtime, serverId);
-      const world = await runtime.databaseAdapter.getWorld(worldId);
+      const world = await runtime.getDatabaseAdapter().getWorld(worldId);
 
       // Get requester ID and convert to UUID for consistent lookup
       const requesterId = message.entityId;
@@ -278,8 +278,8 @@ const updateRoleAction: Action = {
       await callback(response.content);
     }
 
-    const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
-    const world = await runtime.databaseAdapter.getWorld(room.worldId);
+    const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
+    const world = await runtime.getDatabaseAdapter().getWorld(room.worldId);
 
     if (!room) {
       throw new Error("No room found");
@@ -308,7 +308,7 @@ const updateRoleAction: Action = {
       (world.metadata.roles[requesterId] as Role) || Role.NONE;
 
     // Get all entities in the room
-    const entities = await runtime.databaseAdapter.getEntitiesForRoom(room.id, true);
+    const entities = await runtime.getDatabaseAdapter().getEntitiesForRoom(room.id, true);
 
     // Build server members prompt from entities
     const serverMembersContext = entities
@@ -385,7 +385,7 @@ const updateRoleAction: Action = {
 
     // Save updated world metadata if any changes were made
     if (worldUpdated) {
-      await runtime.databaseAdapter.updateWorld(world);
+      await runtime.getDatabaseAdapter().updateWorld(world);
       logger.info(`Updated roles in world metadata for server ${serverId}`);
     }
   },

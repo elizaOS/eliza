@@ -55,7 +55,7 @@ export const getSimulatedPositions: Action = {
         try {
             const [positions, user] = await Promise.all([
                 tradingService.getOpenPositionsWithBalance(),
-                runtime.databaseAdapter.getEntityById(message.entityId),
+                runtime.getDatabaseAdapter().getEntityById(message.entityId),
             ]);
 
             if (!user) {
@@ -65,7 +65,7 @@ export const getSimulatedPositions: Action = {
                 return;
             }
 
-            const entity = await runtime.databaseAdapter.getEntityById(user.id);
+            const entity = await runtime.getDatabaseAdapter().getEntityById(user.id);
 
             const filteredPositions = positions.filter(
                 (pos) =>

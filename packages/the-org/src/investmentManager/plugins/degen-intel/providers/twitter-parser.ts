@@ -122,7 +122,7 @@ export default class TwitterParser {
 
 	async fillTimeframe() {
 		/** Each timeframe is always 1 hour. */
-		const cachedSentiments = await this.runtime.databaseAdapter.getCache<Sentiment[]>("sentiments");
+		const cachedSentiments = await this.runtime.getDatabaseAdapter().getCache<Sentiment[]>("sentiments");
 		const sentiments: Sentiment[] = cachedSentiments ? cachedSentiments : [];
 		
 		const lookUpDate = sentiments.length > 0 ? 
@@ -167,7 +167,7 @@ export default class TwitterParser {
 
 		if (timeSlots.length > 0) {
 			const updatedSentiments = [...sentiments, ...timeSlots];
-			await this.runtime.databaseAdapter.setCache<Sentiment[]>("sentiments", updatedSentiments);
+			await this.runtime.getDatabaseAdapter().setCache<Sentiment[]>("sentiments", updatedSentiments);
 		}
 
 		logger.debug(`Updated timeframes, added ${timeSlots.length} new slots`);
@@ -177,7 +177,7 @@ export default class TwitterParser {
 		await this.fillTimeframe();
 
 		// Get sentiments
-		const cachedSentiments = await this.runtime.databaseAdapter.getCache<Sentiment[]>("sentiments");
+		const cachedSentiments = await this.runtime.getDatabaseAdapter().getCache<Sentiment[]>("sentiments");
 		const sentiments: Sentiment[] = cachedSentiments ? cachedSentiments : [];
 		
 		const now = new Date();
@@ -226,7 +226,7 @@ export default class TwitterParser {
 			const updatedSentiments = sentiments.map(s => 
 				s.timeslot === unprocessedSentiment.timeslot ? { ...s, processed: true } : s
 			);
-			await this.runtime.databaseAdapter.setCache<Sentiment[]>("sentiments", updatedSentiments);
+			await this.runtime.getDatabaseAdapter().setCache<Sentiment[]>("sentiments", updatedSentiments);
 			return true;
 		}
 
@@ -259,7 +259,7 @@ export default class TwitterParser {
 				processed: true 
 			} : s
 		);
-		await this.runtime.databaseAdapter.setCache<Sentiment[]>("sentiments", updatedSentiments);
+		await this.runtime.getDatabaseAdapter().setCache<Sentiment[]>("sentiments", updatedSentiments);
 
 		logger.info(`Successfully processed timeslot ${new Date(unprocessedSentiment.timeslot).toISOString()}`);
 		return true;

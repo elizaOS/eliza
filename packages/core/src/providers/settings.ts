@@ -119,7 +119,7 @@ export const settingsProvider: Provider = {
       // Parallelize the initial database operations to improve performance
       // These operations can run simultaneously as they don't depend on each other
       const [room, userWorld] = await Promise.all([
-        runtime.databaseAdapter.getRoom(message.roomId),
+        runtime.getDatabaseAdapter().getRoom(message.roomId),
         findWorldForOwner(runtime, message.entityId)
       ]).catch(error => {
         logger.error(`Error fetching initial data: ${error}`);
@@ -167,7 +167,7 @@ export const settingsProvider: Provider = {
       } else {
         // For non-onboarding, we need to get the world associated with the room
         try {
-          world = await runtime.databaseAdapter.getWorld(room.worldId);
+          world = await runtime.getDatabaseAdapter().getWorld(room.worldId);
           serverId = world.serverId;
           
           // Once we have the serverId, get the settings

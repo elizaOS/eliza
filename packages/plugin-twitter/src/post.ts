@@ -67,7 +67,7 @@ export class TwitterPostClient {
         }
 
         const generateNewTweetLoop = async () => {
-            let lastPost = await this.runtime.databaseAdapter.getCache<any>(`twitter/${this.twitterUsername}/lastPost`);
+            let lastPost = await this.runtime.getDatabaseAdapter().getCache<any>(`twitter/${this.twitterUsername}/lastPost`);
 
             if(!lastPost) {
                 lastPost = JSON.stringify({
@@ -140,7 +140,7 @@ export class TwitterPostClient {
         rawTweetContent: string
     ) {
         // Cache the last post details
-        await runtime.databaseAdapter.setCache<any>(
+        await runtime.getDatabaseAdapter().setCache<any>(
             `twitter/${client.profile.username}/lastPost`,
             {
                 id: tweet.id,

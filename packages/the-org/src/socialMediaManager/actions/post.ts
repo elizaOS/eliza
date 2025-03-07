@@ -116,7 +116,7 @@ const twitterPostAction: Action = {
     message: Memory,
     state: State
   ): Promise<boolean> => {
-    const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
+    const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
     if (!room) {
       throw new Error("No room found");
     }
@@ -133,7 +133,7 @@ const twitterPostAction: Action = {
     }
 
     // Check if there are any pending Twitter posts awaiting confirmation
-    const pendingTasks = await runtime.databaseAdapter.getTasks({
+    const pendingTasks = await runtime.getDatabaseAdapter().getTasks({
       roomId: message.roomId,
       tags: ["TWITTER_POST"],
     });
@@ -161,7 +161,7 @@ const twitterPostAction: Action = {
     _responses: Memory[]
   ) => {
     try {
-      const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
+      const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
       if (!room) {
         throw new Error("No room found");
       }
@@ -235,9 +235,9 @@ const twitterPostAction: Action = {
       };
 
       // if a task already exists, we need to cancel it
-      const existingTask = await runtime.databaseAdapter.getTask(message.roomId);
+      const existingTask = await runtime.getDatabaseAdapter().getTask(message.roomId);
       if (existingTask) {
-        await runtime.databaseAdapter.deleteTask(existingTask.id);
+        await runtime.getDatabaseAdapter().deleteTask(existingTask.id);
       }
 
       const worker = {
@@ -311,7 +311,7 @@ const twitterPostAction: Action = {
       }
 
       // Register approval task
-      runtime.databaseAdapter.createTask({
+      runtime.getDatabaseAdapter().createTask({
         roomId: message.roomId,
         name: "Confirm Twitter Post",
         description: "Confirm the tweet to be posted.",
@@ -339,7 +339,7 @@ const twitterPostAction: Action = {
         actions: ["TWITTER_POST_TASK_NEEDS_CONFIRM"],
       });
 
-      logger.info("TWITTER_POST_TASK_NEEDS_CONFIRM", runtime.databaseAdapter.getTasks({roomId: message.roomId, tags: ["TWITTER_POST"]}));
+      logger.info("TWITTER_POST_TASK_NEEDS_CONFIRM", runtime.getDatabaseAdapter().getTasks({roomId: message.roomId, tags: ["TWITTER_POST"]}));
       
       return responseContent;
     } catch (error) {

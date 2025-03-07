@@ -35,7 +35,7 @@ export const unfollowRoomAction: Action = {
     "Stop following this channel. You can still respond if explicitly mentioned, but you won't automatically chime in anymore. Unfollow if you're annoying people or have been asked to.",
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     const roomId = message.roomId;
-    const roomState = await runtime.databaseAdapter.getParticipantUserState(
+    const roomState = await runtime.getDatabaseAdapter().getParticipantUserState(
       roomId,
       runtime.agentId
     );
@@ -65,13 +65,13 @@ export const unfollowRoomAction: Action = {
     }
 
     if (await _shouldUnfollow(state)) {
-      await runtime.databaseAdapter.setParticipantUserState(
+      await runtime.getDatabaseAdapter().setParticipantUserState(
         message.roomId,
         runtime.agentId,
         null
       );
 
-      const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
+      const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
 
       await runtime.getMemoryManager("messages").createMemory({
         entityId: message.entityId,

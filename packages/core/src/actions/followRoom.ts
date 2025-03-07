@@ -51,7 +51,7 @@ export const followRoomAction: Action = {
       return false;
     }
     const roomId = message.roomId;
-    const roomState = await runtime.databaseAdapter.getParticipantUserState(
+    const roomState = await runtime.getDatabaseAdapter().getParticipantUserState(
       roomId,
       runtime.agentId
     );
@@ -133,14 +133,14 @@ export const followRoomAction: Action = {
     }
 
     if (await _shouldFollow(state)) {
-      await runtime.databaseAdapter.setParticipantUserState(
+      await runtime.getDatabaseAdapter().setParticipantUserState(
         message.roomId,
         runtime.agentId,
         "FOLLOWED"
       );
     }
 
-    const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
+    const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
 
     await runtime.getMemoryManager("messages").createMemory({
       entityId: message.entityId,

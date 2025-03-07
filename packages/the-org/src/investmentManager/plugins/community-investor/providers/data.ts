@@ -246,7 +246,7 @@ export const dataProvider: Provider = {
 
             // Get entity info if message is from a user
             const clientUserId = message.entityId === message.agentId ? "" : message.entityId;
-            const entity = await runtime.databaseAdapter.getEntityById(clientUserId as UUID);
+            const entity = await runtime.getDatabaseAdapter().getEntityById(clientUserId as UUID);
             const tradingService = runtime.getService<CommunityInvestorService>(ServiceTypes.COMMUNITY_INVESTOR);
 
             // Add updatedAt to RecommenderMetrics to make it compatible

@@ -75,7 +75,7 @@ export const sendMessageAction: Action = {
     const agentId = runtime.agentId;
     
     // Get all components for the current room to understand available sources
-    const roomComponents = await runtime.databaseAdapter.getComponents(message.roomId, worldId, agentId);
+    const roomComponents = await runtime.getDatabaseAdapter().getComponents(message.roomId, worldId, agentId);
     
     // Get source types from room components
     const availableSources = new Set(roomComponents.map(c => c.type));
@@ -102,7 +102,7 @@ export const sendMessageAction: Action = {
       }
 
       const sourceEntityId = message.entityId;
-      const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
+      const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
       const worldId = room.worldId;
 
       // Extract target and source information
@@ -142,7 +142,7 @@ export const sendMessageAction: Action = {
         }
 
         // Get the component for the specified source
-        const userComponent = await runtime.databaseAdapter.getComponent(
+        const userComponent = await runtime.getDatabaseAdapter().getComponent(
           targetEntity.id!,
           source,
           worldId,
@@ -194,7 +194,7 @@ export const sendMessageAction: Action = {
 
       } else if (targetData.targetType === "room") {
         // Try to find the target room
-        const rooms = await runtime.databaseAdapter.getRooms(worldId);
+        const rooms = await runtime.getDatabaseAdapter().getRooms(worldId);
         const targetRoom = rooms.find(r => {
           // Match room name from identifiers
           return r.name.toLowerCase() === targetData.identifiers.roomName?.toLowerCase();

@@ -99,7 +99,7 @@ export class AgentRuntime implements IAgentRuntime {
       opts.conversationLength ?? this.#conversationLength;
 
     if (opts.databaseAdapter) {
-      this.databaseAdapter = opts.databaseAdapter;
+      this.registerDatabaseAdapter(opts.databaseAdapter);
     }
 
     logger.success(`Agent ID: ${this.agentId}`);
@@ -223,17 +223,17 @@ export class AgentRuntime implements IAgentRuntime {
   async initialize() {
     // First create the agent entity directly
     try {
-      await this.databaseAdapter.ensureAgentExists(
+      await this.getDatabaseAdapter().ensureAgentExists(
         this.character as Partial<Agent>
       );
 
       // No need to transform agent's own ID
-      const agentEntity = await this.databaseAdapter.getEntityById(
+      const agentEntity = await this.getDatabaseAdapter().getEntityById(
         this.agentId
       );
 
       if (!agentEntity) {
-        const created = await this.databaseAdapter.createEntity({
+        const created = await this.getDatabaseAdapter().createEntity({
           id: this.agentId,
           agentId: this.agentId,
           names: Array.from(
@@ -310,11 +310,11 @@ export class AgentRuntime implements IAgentRuntime {
     // Add agent as participant in its own room
     try {
       // No need to transform agent ID
-      const participants = await this.databaseAdapter.getParticipantsForRoom(
+      const participants = await this.getDatabaseAdapter().getParticipantsForRoom(
         this.agentId
       );
       if (!participants.includes(this.agentId)) {
-        const added = await this.databaseAdapter.addParticipant(
+        const added = await this.getDatabaseAdapter().addParticipant(
           this.agentId,
           this.agentId
         );
@@ -664,7 +664,7 @@ export class AgentRuntime implements IAgentRuntime {
           await action.handler(this, message, state, {}, callback, responses);
 
           // log to database
-          await this.databaseAdapter.log({
+          await this.getDatabaseAdapter().log({
             entityId: message.entityId,
             roomId: message.roomId,
             type: "action",
@@ -742,7 +742,7 @@ export class AgentRuntime implements IAgentRuntime {
             responses
           );
           // log to database
-          await this.databaseAdapter.log({
+          await this.getDatabaseAdapter().log({
             entityId: message.entityId,
             roomId: message.roomId,
             type: "evaluator",
@@ -762,19 +762,19 @@ export class AgentRuntime implements IAgentRuntime {
 
   async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
     // Make sure entity exists in database before adding as participant
-    const entity = await this.databaseAdapter.getEntityById(entityId);
+    const entity = await this.getDatabaseAdapter().getEntityById(entityId);
     if (!entity) {
       throw new Error(`User ${entityId} not found`);
     }
     // Get current participants
-    const participants = await this.databaseAdapter.getParticipantsForRoom(
+    const participants = await this.getDatabaseAdapter().getParticipantsForRoom(
       roomId
     );
 
     // Only add if not already a participant
     if (!participants.includes(entityId)) {
       // Add participant using the tenant-specific ID that now exists in the entities table
-      const added = await this.databaseAdapter.addParticipant(entityId, roomId);
+      const added = await this.getDatabaseAdapter().addParticipant(entityId, roomId);
 
       if (!added) {
         throw new Error(
@@ -829,10 +829,10 @@ export class AgentRuntime implements IAgentRuntime {
       },
     };
 
-    const entity = await this.databaseAdapter.getEntityById(entityId);
+    const entity = await this.getDatabaseAdapter().getEntityById(entityId);
 
     if (!entity) {
-      await this.databaseAdapter.createEntity({
+      await this.getDatabaseAdapter().createEntity({
         id: entityId,
         names,
         metadata,
@@ -882,7 +882,7 @@ export class AgentRuntime implements IAgentRuntime {
    */
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
     try {
-      const world = await this.databaseAdapter.getWorld(id);
+      const world = await this.getDatabaseAdapter().getWorld(id);
       if (!world) {
         logger.info("Creating world:", {
           id,
@@ -890,7 +890,7 @@ export class AgentRuntime implements IAgentRuntime {
           serverId,
           agentId: this.agentId,
         });
-        await this.databaseAdapter.createWorld({
+        await this.getDatabaseAdapter().createWorld({
           id,
           name,
           agentId: this.agentId,
@@ -925,9 +925,9 @@ export class AgentRuntime implements IAgentRuntime {
     serverId,
     worldId,
   }: Room) {
-    const room = await this.databaseAdapter.getRoom(id);
+    const room = await this.getDatabaseAdapter().getRoom(id);
     if (!room) {
-      await this.databaseAdapter.createRoom({
+      await this.getDatabaseAdapter().createRoom({
         id,
         name,
         agentId: this.agentId,
@@ -1140,7 +1140,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Call the model
     const response = await model(this, params);
 
-    await this.databaseAdapter.log({
+    await this.getDatabaseAdapter().log({
       entityId: this.agentId,
       roomId: this.agentId,
       body: {
@@ -1191,7 +1191,7 @@ export class AgentRuntime implements IAgentRuntime {
       `[AgentRuntime][${this.character.name}] Starting ensureEmbeddingDimension`
     );
 
-    if (!this.databaseAdapter) {
+    if (!this.getDatabaseAdapter()) {
       throw new Error(
         `[AgentRuntime][${this.character.name}] Database adapter not initialized before ensureEmbeddingDimension`
       );
@@ -1219,7 +1219,7 @@ export class AgentRuntime implements IAgentRuntime {
       logger.debug(
         `[AgentRuntime][${this.character.name}] Setting embedding dimension: ${embedding.length}`
       );
-      await this.databaseAdapter.ensureEmbeddingDimension(embedding.length);
+      await this.getDatabaseAdapter().ensureEmbeddingDimension(embedding.length);
       logger.debug(
         `[AgentRuntime][${this.character.name}] Successfully set embedding dimension`
       );

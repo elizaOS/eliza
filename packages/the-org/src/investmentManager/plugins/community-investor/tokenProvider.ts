@@ -44,14 +44,14 @@ export class SolanaTokenProvider {
     }
 
     private async readFromCache<T>(key: string): Promise<T | null> {
-        const cached = await this.runtime.databaseAdapter.getCache<T>(
+        const cached = await this.runtime.getDatabaseAdapter().getCache<T>(
             path.join(this.cacheKey, key)
         );
         return cached ? cached : null as T | null;
     }
 
     private async writeToCache<T>(key: string, data: T): Promise<void> {
-        await this.runtime.databaseAdapter.setCache<T>(path.join(this.cacheKey, key), data);
+        await this.runtime.getDatabaseAdapter().setCache<T>(path.join(this.cacheKey, key), data);
     }
 
     private async fetchWithRetry(

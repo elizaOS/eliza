@@ -18,7 +18,7 @@ export const roleProvider: Provider = {
     message: Memory,
     state: State
   ): Promise<ProviderResult> => {
-    const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
+    const room = state.data.room ?? await runtime.getDatabaseAdapter().getRoom(message.roomId);
     if (!room) {
       throw new Error("No room found");
     }
@@ -47,7 +47,7 @@ export const roleProvider: Provider = {
 
       // Get world data instead of using cache
       const worldId = createUniqueUuid(runtime, serverId);
-      const world = await runtime.databaseAdapter.getWorld(worldId);
+      const world = await runtime.getDatabaseAdapter().getWorld(worldId);
 
       if (!world || !world.metadata?.ownership?.ownerId) {
         logger.info(
@@ -90,7 +90,7 @@ export const roleProvider: Provider = {
         const userRole = roles[entityId];
 
         // get the user from the database
-        const user = await runtime.databaseAdapter.getEntityById(
+        const user = await runtime.getDatabaseAdapter().getEntityById(
           entityId
         );
 

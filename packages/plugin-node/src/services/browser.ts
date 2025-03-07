@@ -153,7 +153,7 @@ export class BrowserService extends Service implements IBrowserService {
         runtime: IAgentRuntime
     ): Promise<PageContent> {
         const cacheKey = this.getCacheKey(url);
-        const cached = await runtime.databaseAdapter.getCache<any>(`${this.cacheKey}/${cacheKey}`);
+        const cached = await runtime.getDatabaseAdapter().getCache<any>(`${this.cacheKey}/${cacheKey}`);
 
         if (cached) {
             return cached.content;
@@ -199,7 +199,7 @@ export class BrowserService extends Service implements IBrowserService {
                 `${documentTitle}\n${bodyContent}`
             );
             const content = { title: parsedTitle, description, bodyContent };
-            await runtime.databaseAdapter.setCache<any>(`${this.cacheKey}/${cacheKey}`, {
+            await runtime.getDatabaseAdapter().setCache<any>(`${this.cacheKey}/${cacheKey}`, {
                 url,
                 content,
             });

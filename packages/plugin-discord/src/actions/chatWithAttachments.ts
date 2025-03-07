@@ -87,7 +87,7 @@ const summarizeAction = {
         message: Memory,
         _state: State
     ) => {
-        const room = await _runtime.databaseAdapter.getRoom(message.roomId);
+        const room = await _runtime.getDatabaseAdapter().getRoom(message.roomId);
         if (room?.type !== ChannelType.GROUP) {
             return false;
         }
@@ -258,7 +258,7 @@ ${currentSummary.trim()}
                 console.log("File written successfully");
 
                 // Then cache it
-                await runtime.databaseAdapter.setCache<string>(summaryFilename, currentSummary);
+                await runtime.getDatabaseAdapter().setCache<string>(summaryFilename, currentSummary);
                 console.log("Cache set operation completed");
 
                 await callback(

@@ -125,7 +125,7 @@ import { embed } from "@elizaos/core";
 async function storeMemory(runtime: IAgentRuntime, content: string) {
     const embedding = await embed(runtime, message.content.text);
 
-    await runtime.databaseAdapter.createMemory({
+    await runtime.getDatabaseAdapter().createMemory({
         type: "message",
         content: { text: content },
         embedding,
@@ -143,7 +143,7 @@ import { embed } from "@elizaos/core";
 async function searchMemories(runtime: IAgentRuntime, query: string) {
     const embedding = await embed(runtime, query);
 
-    return runtime.databaseAdapter.searchMemoriesByEmbedding(embedding, {
+    return runtime.getDatabaseAdapter().searchMemoriesByEmbedding(embedding, {
         match_threshold: 0.8,
         count: 10,
         tableName: "memories",

@@ -333,7 +333,7 @@ export class DexscreenerClient {
             .join("/");
 
         if (options?.expires) {
-            const cached = await this.runtime.databaseAdapter.getCache<T>(cacheKey);
+            const cached = await this.runtime.getDatabaseAdapter().getCache<T>(cacheKey);
             if (cached) return cached;
         }
 
@@ -345,7 +345,7 @@ export class DexscreenerClient {
         );
 
         if (options?.expires) {
-            await this.runtime.databaseAdapter.setCache<T>(cacheKey, res);
+            await this.runtime.getDatabaseAdapter().setCache<T>(cacheKey, res);
         }
 
         return res;
@@ -425,7 +425,7 @@ export class HeliusClient {
         options?: { expires?: string | CacheOptions["expires"] }
     ): Promise<HolderData[]> {
         if (options?.expires) {
-            const cached = await this.runtime.databaseAdapter.getCache<HolderData[]>(
+            const cached = await this.runtime.getDatabaseAdapter().getCache<HolderData[]>(
                 `helius/token-holders/${address}`
             );
 
@@ -509,7 +509,7 @@ export class HeliusClient {
             console.log(`Total unique holders fetched: ${holders.length}`);
 
             if (options?.expires)
-                await this.runtime.databaseAdapter.setCache<HolderData[]>(
+                await this.runtime.getDatabaseAdapter().setCache<HolderData[]>(
                     `helius/token-holders/${address}`,
                     holders
                 );
@@ -552,7 +552,7 @@ export class CoingeckoClient {
             .join("/");
 
         if (options?.expires) {
-            const cached = await this.runtime.databaseAdapter.getCache<T>(cacheKey);
+            const cached = await this.runtime.getDatabaseAdapter().getCache<T>(cacheKey);
             if (cached) return cached;
         }
 
@@ -572,7 +572,7 @@ export class CoingeckoClient {
         );
 
         if (options?.expires) {
-            await this.runtime.databaseAdapter.setCache<T>(cacheKey, res);
+            await this.runtime.getDatabaseAdapter().setCache<T>(cacheKey, res);
         }
 
         return res;
@@ -696,7 +696,7 @@ export class BirdeyeClient {
             .join("/");
 
         if (options?.expires && !forceRefresh) {
-            const cached = await this.runtime.databaseAdapter.getCache<T>(cacheKey);
+            const cached = await this.runtime.getDatabaseAdapter().getCache<T>(cacheKey);
             if (cached) return cached;
         }
 
@@ -717,7 +717,7 @@ export class BirdeyeClient {
         );
 
         if (options?.expires) {
-            await this.runtime.databaseAdapter.setCache<T>(cacheKey, response);
+            await this.runtime.getDatabaseAdapter().setCache<T>(cacheKey, response);
         }
 
         return response;

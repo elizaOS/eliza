@@ -412,7 +412,7 @@ export class CommunityInvestorService extends Service {
             // Check cache first unless force refresh is requested
             if (!forceRefresh) {
                 const cacheKey = `token:${chain}:${tokenAddress}:overview`;
-                const cachedData = await this.runtime.databaseAdapter.getCache<TokenMetadata & TokenMarketData>(cacheKey);
+                const cachedData = await this.runtime.getDatabaseAdapter().getCache<TokenMetadata & TokenMarketData>(cacheKey);
                 
                 if (cachedData) {
                     return cachedData;
@@ -443,7 +443,7 @@ export class CommunityInvestorService extends Service {
                     };
                     
                     // Cache the token data
-                    await this.runtime.databaseAdapter.setCache<TokenMetadata & TokenMarketData>(cacheKey, tokenData); // Cache for 5 minutes
+                    await this.runtime.getDatabaseAdapter().setCache<TokenMetadata & TokenMarketData>(cacheKey, tokenData); // Cache for 5 minutes
                     
                     return tokenData;
                 }
@@ -484,7 +484,7 @@ export class CommunityInvestorService extends Service {
                 
                 // Cache the token data
                 const cacheKey = `token:${chain}:${tokenAddress}:overview`;
-                await this.runtime.databaseAdapter.setCache<TokenMetadata & TokenMarketData>(cacheKey, tokenData); // Cache for 5 minutes
+                await this.runtime.getDatabaseAdapter().setCache<TokenMetadata & TokenMarketData>(cacheKey, tokenData); // Cache for 5 minutes
                 
                 return tokenData;
             }
@@ -502,7 +502,7 @@ export class CommunityInvestorService extends Service {
         logger.debug("resolving ticker", chain, ticker);
         // Check cache first
         const cacheKey = `ticker:${chain}:${ticker}`;
-        const cachedAddress = await this.runtime.databaseAdapter.getCache<string>(cacheKey);
+        const cachedAddress = await this.runtime.getDatabaseAdapter().getCache<string>(cacheKey);
         
         if (cachedAddress) {
             return cachedAddress;
@@ -517,7 +517,7 @@ export class CommunityInvestorService extends Service {
             
             // Cache the result if found
             if (address) {
-                await this.runtime.databaseAdapter.setCache<string>(cacheKey, address); // Cache for 1 hour
+                await this.runtime.getDatabaseAdapter().setCache<string>(cacheKey, address); // Cache for 1 hour
             }
             
             return address;
@@ -533,7 +533,7 @@ export class CommunityInvestorService extends Service {
         try {
             // Check cache first
             const cacheKey = `token:${chain}:${tokenAddress}:price`;
-            const cachedPrice = await this.runtime.databaseAdapter.getCache<string>(cacheKey);
+            const cachedPrice = await this.runtime.getDatabaseAdapter().getCache<string>(cacheKey);
             
             if (cachedPrice) {
                 return Number.parseFloat(cachedPrice);
@@ -543,7 +543,7 @@ export class CommunityInvestorService extends Service {
             const token = await this.getTokenPerformance(tokenAddress, chain);
             if (token?.price) {
                 // Cache the price
-                await this.runtime.databaseAdapter.setCache<string>(cacheKey, token.price.toString()); // Cache for 1 minute
+                await this.runtime.getDatabaseAdapter().setCache<string>(cacheKey, token.price.toString()); // Cache for 1 minute
                 return token.price;
             }
             
@@ -554,7 +554,7 @@ export class CommunityInvestorService extends Service {
                 });
                 
                 // Cache the price
-                await this.runtime.databaseAdapter.setCache<string>(cacheKey, price.toString()); // Cache for 1 minute
+                await this.runtime.getDatabaseAdapter().setCache<string>(cacheKey, price.toString()); // Cache for 1 minute
                 
                 return price;
             }
@@ -619,7 +619,7 @@ export class CommunityInvestorService extends Service {
         try {
             // Check cache first
             const cacheKey = `token:${chain}:${tokenAddress}:processed`;
-            const cachedData = await this.runtime.databaseAdapter.getCache<ProcessedTokenData>(cacheKey);
+            const cachedData = await this.runtime.getDatabaseAdapter().getCache<ProcessedTokenData>(cacheKey);
             
             if (cachedData) {
                 return cachedData;
@@ -720,7 +720,7 @@ export class CommunityInvestorService extends Service {
                 };
                 
                 // Cache the processed data
-                await this.runtime.databaseAdapter.setCache<ProcessedTokenData>(cacheKey, processedData); // Cache for 5 minutes
+                await this.runtime.getDatabaseAdapter().setCache<ProcessedTokenData>(cacheKey, processedData); // Cache for 5 minutes
                 
                 return processedData;
             }
@@ -1283,7 +1283,7 @@ export class CommunityInvestorService extends Service {
         try {
             // Check cache first
             const cacheKey = `position:${positionId}`;
-            const cachedPosition = await this.runtime.databaseAdapter.getCache<Position>(cacheKey);
+            const cachedPosition = await this.runtime.getDatabaseAdapter().getCache<Position>(cacheKey);
             
             if (cachedPosition) {
                 return cachedPosition;
@@ -1303,7 +1303,7 @@ export class CommunityInvestorService extends Service {
                 const position = memories[0].content.position as Position;
                 
                 // Cache the position
-                await this.runtime.databaseAdapter.setCache<Position>(cacheKey, position); // Cache for 5 minutes
+                await this.runtime.getDatabaseAdapter().setCache<Position>(cacheKey, position); // Cache for 5 minutes
                 
                 return position;
             }
@@ -1435,7 +1435,7 @@ export class CommunityInvestorService extends Service {
             
             // Also cache for quick access
             const cacheKey = `token:${token.chain}:${token.address}:performance`;
-            await this.runtime.databaseAdapter.setCache<TokenPerformance>(cacheKey, token); // Cache for 5 minutes
+            await this.runtime.getDatabaseAdapter().setCache<TokenPerformance>(cacheKey, token); // Cache for 5 minutes
         } catch (error) {
             logger.error(`Error storing token performance for ${token.address}:`, error);
         }
@@ -1468,7 +1468,7 @@ export class CommunityInvestorService extends Service {
             
             // Also cache for quick access
             const cacheKey = `position:${position.id}`;
-            await this.runtime.databaseAdapter.setCache<Position>(cacheKey, position); 
+            await this.runtime.getDatabaseAdapter().setCache<Position>(cacheKey, position); 
         } catch (error) {
             logger.error(`Error storing position for ${position.tokenAddress}:`, error);
         }
@@ -1501,14 +1501,14 @@ export class CommunityInvestorService extends Service {
             
             // Also cache transaction list for position
             const cacheKey = `position:${transaction.positionId}:transactions`;
-            const cachedTxs = await this.runtime.databaseAdapter.getCache<Transaction[]>(cacheKey);
+            const cachedTxs = await this.runtime.getDatabaseAdapter().getCache<Transaction[]>(cacheKey);
             
             if (cachedTxs) {
                 const txs = cachedTxs as Transaction[];
                 txs.push(transaction);
-                await this.runtime.databaseAdapter.setCache<Transaction[]>(cacheKey, txs); // Cache for 5 minutes
+                await this.runtime.getDatabaseAdapter().setCache<Transaction[]>(cacheKey, txs); // Cache for 5 minutes
             } else {
-                await this.runtime.databaseAdapter.setCache<Transaction[]>(cacheKey, [transaction]); // Cache for 5 minutes
+                await this.runtime.getDatabaseAdapter().setCache<Transaction[]>(cacheKey, [transaction]); // Cache for 5 minutes
             }
         } catch (error) {
             logger.error(`Error storing transaction for position ${transaction.positionId}:`, error);
@@ -1542,7 +1542,7 @@ export class CommunityInvestorService extends Service {
             
             // Also cache for quick access
             const cacheKey = `recommendation:${recommendation.id}`;
-            await this.runtime.databaseAdapter.setCache<TokenRecommendation>(cacheKey, recommendation); // Cache for 5 minutes
+            await this.runtime.getDatabaseAdapter().setCache<TokenRecommendation>(cacheKey, recommendation); // Cache for 5 minutes
         } catch (error) {
             logger.error(`Error storing recommendation for ${recommendation.tokenAddress}:`, error);
         }
@@ -1575,7 +1575,7 @@ export class CommunityInvestorService extends Service {
             
             // Also cache for quick access
             const cacheKey = `entity:${metrics.entityId}:metrics`;
-            await this.runtime.databaseAdapter.setCache<RecommenderMetrics>(cacheKey, metrics); // Cache for 5 minutes
+            await this.runtime.getDatabaseAdapter().setCache<RecommenderMetrics>(cacheKey, metrics); // Cache for 5 minutes
         } catch (error) {
             logger.error(`Error storing entity metrics for ${metrics.entityId}:`, error);
         }
@@ -1608,7 +1608,7 @@ export class CommunityInvestorService extends Service {
             
             // Also update history list in cache
             const cacheKey = `entity:${history.entityId}:history`;
-            const cachedHistory = await this.runtime.databaseAdapter.getCache<RecommenderMetricsHistory[]>(cacheKey);
+            const cachedHistory = await this.runtime.getDatabaseAdapter().getCache<RecommenderMetricsHistory[]>(cacheKey);
             
             if (cachedHistory) {
                 const histories = cachedHistory as RecommenderMetricsHistory[];
@@ -1617,9 +1617,9 @@ export class CommunityInvestorService extends Service {
                 const recentHistories = histories.sort((a, b) => 
                     b.timestamp.getTime() - a.timestamp.getTime()
                 ).slice(0, 10);
-                await this.runtime.databaseAdapter.setCache<RecommenderMetricsHistory[]>(cacheKey, recentHistories); // Cache for 1 hour
+                await this.runtime.getDatabaseAdapter().setCache<RecommenderMetricsHistory[]>(cacheKey, recentHistories); // Cache for 1 hour
             } else {
-                await this.runtime.databaseAdapter.setCache<RecommenderMetricsHistory[]>(cacheKey, [history]); // Cache for 1 hour
+                await this.runtime.getDatabaseAdapter().setCache<RecommenderMetricsHistory[]>(cacheKey, [history]); // Cache for 1 hour
             }
         } catch (error) {
             logger.error(`Error storing entity metrics history for ${history.entityId}:`, error);
@@ -1634,7 +1634,7 @@ export class CommunityInvestorService extends Service {
         try {
             // Check cache first
             const cacheKey = `entity:${entityId}:metrics`;
-            const cachedMetrics = await this.runtime.databaseAdapter.getCache<RecommenderMetrics>(cacheKey);
+            const cachedMetrics = await this.runtime.getDatabaseAdapter().getCache<RecommenderMetrics>(cacheKey);
             
             if (cachedMetrics) {
                 return cachedMetrics as RecommenderMetrics;
@@ -1654,7 +1654,7 @@ export class CommunityInvestorService extends Service {
                 const metrics = memories[0].content.metrics as RecommenderMetrics;
                 
                 // Cache the metrics
-                await this.runtime.databaseAdapter.setCache<RecommenderMetrics>(cacheKey, metrics); // Cache for 5 minutes
+                await this.runtime.getDatabaseAdapter().setCache<RecommenderMetrics>(cacheKey, metrics); // Cache for 5 minutes
                 
                 return metrics;
             }
@@ -1674,7 +1674,7 @@ export class CommunityInvestorService extends Service {
         try {
             // Check cache first
             const cacheKey = `entity:${entityId}:history`;
-            const cachedHistory = await this.runtime.databaseAdapter.getCache<RecommenderMetricsHistory[]>(cacheKey);
+            const cachedHistory = await this.runtime.getDatabaseAdapter().getCache<RecommenderMetricsHistory[]>(cacheKey);
             
             if (cachedHistory) {
                 return cachedHistory as RecommenderMetricsHistory[];
@@ -1705,7 +1705,7 @@ export class CommunityInvestorService extends Service {
             );
             
             // Cache the history
-            await this.runtime.databaseAdapter.setCache<RecommenderMetricsHistory[]>(cacheKey, sortedEntries); // Cache for 1 hour
+            await this.runtime.getDatabaseAdapter().setCache<RecommenderMetricsHistory[]>(cacheKey, sortedEntries); // Cache for 1 hour
             
             return sortedEntries;
         } catch (error) {
@@ -1757,7 +1757,7 @@ export class CommunityInvestorService extends Service {
         try {
             // Check cache first
             const cacheKey = `token:${chain}:${tokenAddress}:performance`;
-            const cachedToken = await this.runtime.databaseAdapter.getCache<TokenPerformance>(cacheKey);
+            const cachedToken = await this.runtime.getDatabaseAdapter().getCache<TokenPerformance>(cacheKey);
             
             if (cachedToken) {
                 return cachedToken as TokenPerformance;
@@ -1777,7 +1777,7 @@ export class CommunityInvestorService extends Service {
                 const token = memories[0].content.token as TokenPerformance;
                 
                 // Cache the token
-                await this.runtime.databaseAdapter.setCache<TokenPerformance>(cacheKey, token); // Cache for 5 minutes
+                await this.runtime.getDatabaseAdapter().setCache<TokenPerformance>(cacheKey, token); // Cache for 5 minutes
                 
                 return token;
             }
@@ -1797,7 +1797,7 @@ export class CommunityInvestorService extends Service {
         try {
             // Check cache first
             const cacheKey = "positions:open:with-balance";
-            const cachedPositions = await this.runtime.databaseAdapter.getCache<PositionWithBalance[]>(cacheKey);
+            const cachedPositions = await this.runtime.getDatabaseAdapter().getCache<PositionWithBalance[]>(cacheKey);
             
             if (cachedPositions) {
                 return cachedPositions as PositionWithBalance[];
@@ -1831,7 +1831,7 @@ export class CommunityInvestorService extends Service {
             }
             
             // Cache the positions
-            await this.runtime.databaseAdapter.setCache<PositionWithBalance[]>(cacheKey, positions); // Cache for 5 minutes
+            await this.runtime.getDatabaseAdapter().setCache<PositionWithBalance[]>(cacheKey, positions); // Cache for 5 minutes
             
             return positions;
         } catch (error) {

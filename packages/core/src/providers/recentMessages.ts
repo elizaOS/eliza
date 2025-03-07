@@ -10,7 +10,7 @@ const getRecentInteractions = async (
   excludeRoomId: UUID
 ): Promise<Memory[]> => {
   // Find all rooms where sourceEntityId and targetEntityId are participants
-  const rooms = await runtime.databaseAdapter.getRoomsForParticipants([
+  const rooms = await runtime.getDatabaseAdapter().getRoomsForParticipants([
     sourceEntityId,
     targetEntityId,
   ]);
@@ -37,7 +37,7 @@ export const recentMessagesProvider: Provider = {
     // Parallelize initial data fetching operations including recentInteractions
     const [entitiesData, room, recentMessagesData, recentInteractionsData] = await Promise.all([
       getEntityDetails({ runtime, roomId }),
-      runtime.databaseAdapter.getRoom(roomId),
+      runtime.getDatabaseAdapter().getRoom(roomId),
       runtime.getMemoryManager("messages").getMemories({
         roomId,
         count: conversationLength,
@@ -106,7 +106,7 @@ export const recentMessagesProvider: Provider = {
       if (remainingEntityIds.length > 0) {
         const entities = await Promise.all(
           remainingEntityIds.map(entityId => 
-            runtime.databaseAdapter.getEntityById(entityId)
+            runtime.getDatabaseAdapter().getEntityById(entityId)
           )
         );
         

@@ -59,7 +59,7 @@ async function handler(
     const updates = parseJsonArrayFromText(response);
 
     // get goals
-    const goalsData = await runtime.databaseAdapter.getGoals({
+    const goalsData = await runtime.getDatabaseAdapter().getGoals({
         roomId: message.roomId,
         onlyInProgress: options.onlyInProgress as boolean,
     });
@@ -88,7 +88,7 @@ async function handler(
         const id = goal.id;
         // delete id from goal
         if (goal.id) goal.id = undefined;
-        await runtime.databaseAdapter.updateGoal({ ...goal, id });
+        await runtime.getDatabaseAdapter().updateGoal({ ...goal, id });
     }
 
     return updatedGoals; // Return updated goals for further processing or logging
@@ -107,7 +107,7 @@ export const goalEvaluator: Evaluator = {
         message: Memory
     ): Promise<boolean> => {
         // Check if there are active goals that could potentially be updated
-        const goals = await runtime.databaseAdapter.getGoals({
+        const goals = await runtime.getDatabaseAdapter().getGoals({
             count: 1,
             onlyInProgress: true,
             roomId: message.roomId,

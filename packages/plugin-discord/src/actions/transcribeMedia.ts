@@ -184,7 +184,7 @@ ${mediaTranscript.trim()}
             const transcriptFilename = `content/transcript_${Date.now()}`;
 
             // save the transcript to a file
-            await runtime.databaseAdapter.setCache<string>(
+            await runtime.getDatabaseAdapter().setCache<string>(
                 transcriptFilename,
                 callbackData.text
             );

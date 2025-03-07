@@ -256,7 +256,7 @@ describe("getGoals", () => {
 
         await getGoals({ runtime: mockRuntime, roomId });
 
-        expect(mockRuntime.databaseAdapter.getGoals).toHaveBeenCalledWith({
+        expect(mockRuntime.getDatabaseAdapter().getGoals).toHaveBeenCalledWith({
             agentId: "test-agent-id",
             roomId,
             onlyInProgress: true,
@@ -389,7 +389,7 @@ describe("updateGoal", () => {
             goal: updatedGoal,
         });
 
-        expect(mockRuntime.databaseAdapter.updateGoal).toHaveBeenCalledWith(
+        expect(mockRuntime.getDatabaseAdapter().updateGoal).toHaveBeenCalledWith(
             updatedGoal
         );
     });
@@ -424,7 +424,7 @@ describe("updateGoal", () => {
             goal: updatedGoal,
         });
 
-        expect(mockRuntime.databaseAdapter.updateGoal).toHaveBeenCalledWith(
+        expect(mockRuntime.getDatabaseAdapter().updateGoal).toHaveBeenCalledWith(
             updatedGoal
         );
     });
@@ -459,7 +459,7 @@ describe("updateGoal", () => {
             goal: updatedGoal,
         });
 
-        expect(mockRuntime.databaseAdapter.updateGoal).toHaveBeenCalledWith(
+        expect(mockRuntime.getDatabaseAdapter().updateGoal).toHaveBeenCalledWith(
             updatedGoal
         );
     });
@@ -494,7 +494,7 @@ describe("updateGoal", () => {
             goal: updatedGoal,
         });
 
-        expect(mockRuntime.databaseAdapter.updateGoal).toHaveBeenCalledWith(
+        expect(mockRuntime.getDatabaseAdapter().updateGoal).toHaveBeenCalledWith(
             updatedGoal
         );
     });
@@ -546,7 +546,7 @@ describe("createGoal", () => {
             goal: newGoal,
         });
 
-        expect(mockRuntime.databaseAdapter.createGoal).toHaveBeenCalledWith(
+        expect(mockRuntime.getDatabaseAdapter().createGoal).toHaveBeenCalledWith(
             expect.objectContaining({
                 name: "New Goal",
                 roomId: "room-id",
@@ -577,7 +577,7 @@ describe("createGoal", () => {
             goal: newGoal,
         });
 
-        expect(mockRuntime.databaseAdapter.createGoal).toHaveBeenCalledWith(
+        expect(mockRuntime.getDatabaseAdapter().createGoal).toHaveBeenCalledWith(
             newGoal
         );
     });

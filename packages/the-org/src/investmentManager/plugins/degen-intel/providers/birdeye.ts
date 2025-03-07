@@ -83,7 +83,7 @@ export default class Birdeye {
 		const data = resp?.data?.solana;
 
 		// Get existing transactions
-		const cachedTxs = await this.runtime.databaseAdapter.getCache<TransactionHistory[]>("transaction_history");
+		const cachedTxs = await this.runtime.getDatabaseAdapter().getCache<TransactionHistory[]>("transaction_history");
 		const transactions: TransactionHistory[] = cachedTxs ? cachedTxs : [];
 
 		// Update transactions
@@ -102,7 +102,7 @@ export default class Birdeye {
 			}
 		}
 
-		await this.runtime.databaseAdapter.setCache<TransactionHistory[]>("transaction_history", transactions);
+		await this.runtime.getDatabaseAdapter().setCache<TransactionHistory[]>("transaction_history", transactions);
 
 		logger.debug(`Updated transaction history with ${data.length} transactions`);
 	}
@@ -121,7 +121,7 @@ export default class Birdeye {
 		const resp = await res.json();
 		const data = resp?.data;
 
-		await this.runtime.databaseAdapter.setCache<Portfolio>("portfolio", { key: "PORTFOLIO", data });
+		await this.runtime.getDatabaseAdapter().setCache<Portfolio>("portfolio", { key: "PORTFOLIO", data });
 	}
 
 	async syncWallet() {
@@ -138,7 +138,7 @@ export default class Birdeye {
 		};
 
 		// Get existing tokens
-		const cachedTokens = await this.runtime.databaseAdapter.getCache<IToken[]>(`tokens_${chain}`);
+		const cachedTokens = await this.runtime.getDatabaseAdapter().getCache<IToken[]>(`tokens_${chain}`);
 		const tokens: IToken[] = cachedTokens ? cachedTokens : [];
 
 		/** Fetch top 100 in batches of 20 (which is the limit) */
@@ -183,7 +183,7 @@ export default class Birdeye {
 			await new Promise((resolve) => setTimeout(resolve, 250));
 		}
 
-		await this.runtime.databaseAdapter.setCache<IToken[]>(`tokens_${chain}`, tokens);
+		await this.runtime.getDatabaseAdapter().setCache<IToken[]>(`tokens_${chain}`, tokens);
 
 		logger.debug(`Updated ${chain} tokens cache with ${tokens.length} tokens`);
 

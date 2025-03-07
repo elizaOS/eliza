@@ -483,7 +483,7 @@ async function handler(
             prompt,
             stopSequences: [],
         }),
-        runtime.databaseAdapter.getParticipantsForRoom(message.roomId),
+        runtime.getDatabaseAdapter().getParticipantsForRoom(message.roomId),
     ]);
 
     console.log("Participants", participants);
@@ -528,7 +528,7 @@ async function handler(
 
     // TODO: getAccounts in database
     const users = await Promise.all(
-        participants.map((id) => runtime.databaseAdapter.getEntityById(id))
+        participants.map((id) => runtime.getDatabaseAdapter().getEntityById(id))
     ).then((users) => users.filter((user) => !!user));
 
     // Only Reply to first recommendation

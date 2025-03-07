@@ -22,7 +22,7 @@ export async function getUserServerRole(
 ): Promise<Role> {
   try {
     const worldId = createUniqueUuid(runtime, serverId);
-    const world = await runtime.databaseAdapter.getWorld(worldId);
+    const world = await runtime.getDatabaseAdapter().getWorld(worldId);
 
     if (!world || !world.metadata?.roles) {
       return Role.NONE;
@@ -58,7 +58,7 @@ export async function findWorldForOwner(
     }
 
     // Get all worlds for this agent
-    const worlds = await runtime.databaseAdapter.getAllWorlds();
+    const worlds = await runtime.getDatabaseAdapter().getAllWorlds();
 
     if (!worlds || worlds.length === 0) {
       logger.info("No worlds found for this agent");

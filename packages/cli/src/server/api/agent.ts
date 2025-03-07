@@ -448,7 +448,7 @@ export function agentRouter(
       console.log("runtime.agentId", runtime.agentId);
 
       const existingRelationship =
-        await runtime.databaseAdapter.getRelationship({
+        await runtime.getDatabaseAdapter().getRelationship({
           sourceEntityId: entityId,
           targetEntityId: runtime.agentId,
         });
@@ -457,7 +457,7 @@ export function agentRouter(
 
       if (!existingRelationship && entityId !== runtime.agentId) {
         const createdRelationship =
-          await runtime.databaseAdapter.createRelationship({
+          await runtime.getDatabaseAdapter().createRelationship({
             sourceEntityId: entityId,
             targetEntityId: runtime.agentId,
             tags: ["message_interaction"],
@@ -1101,21 +1101,21 @@ export function agentRouter(
 
     try {
       const worldId = req.query.worldId as string;
-      const rooms = await runtime.databaseAdapter.getRoomsForParticipant(
+      const rooms = await runtime.getDatabaseAdapter().getRoomsForParticipant(
         agentId
       );
 
       const roomDetails = await Promise.all(
         rooms.map(async (roomId) => {
           try {
-            const roomData = await runtime.databaseAdapter.getRoom(roomId);
+            const roomData = await runtime.getDatabaseAdapter().getRoom(roomId);
             if (!roomData) return null;
 
             if (worldId && roomData.worldId !== worldId) {
               return null;
             }
 
-            const entities = await runtime.databaseAdapter.getEntitiesForRoom(
+            const entities = await runtime.getDatabaseAdapter().getEntitiesForRoom(
               roomId,
               true
             );
@@ -1197,9 +1197,9 @@ export function agentRouter(
         worldId,
       });
 
-      await runtime.databaseAdapter.addParticipant(runtime.agentId, roomName);
+      await runtime.getDatabaseAdapter().addParticipant(runtime.agentId, roomName);
       await runtime.ensureParticipantInRoom(entityId, roomId);
-      await runtime.databaseAdapter.setParticipantUserState(
+      await runtime.getDatabaseAdapter().setParticipantUserState(
         roomId,
         entityId,
         "FOLLOWED"
@@ -1260,7 +1260,7 @@ export function agentRouter(
     }
 
     try {
-      const room = await runtime.databaseAdapter.getRoom(roomId);
+      const room = await runtime.getDatabaseAdapter().getRoom(roomId);
       if (!room) {
         res.status(404).json({
           success: false,
@@ -1272,7 +1272,7 @@ export function agentRouter(
         return;
       }
 
-      const entities = await runtime.databaseAdapter.getEntitiesForRoom(
+      const entities = await runtime.getDatabaseAdapter().getEntitiesForRoom(
         roomId,
         true
       );
@@ -1329,7 +1329,7 @@ export function agentRouter(
     }
 
     try {
-      const room = await runtime.databaseAdapter.getRoom(roomId);
+      const room = await runtime.getDatabaseAdapter().getRoom(roomId);
       if (!room) {
         res.status(404).json({
           success: false,
@@ -1342,9 +1342,9 @@ export function agentRouter(
       }
 
       const updates = req.body;
-      await runtime.databaseAdapter.updateRoom({ ...updates, roomId });
+      await runtime.getDatabaseAdapter().updateRoom({ ...updates, roomId });
 
-      const updatedRoom = await runtime.databaseAdapter.getRoom(roomId);
+      const updatedRoom = await runtime.getDatabaseAdapter().getRoom(roomId);
       res.json({
         success: true,
         data: updatedRoom,
@@ -1391,7 +1391,7 @@ export function agentRouter(
     }
 
     try {
-      await runtime.databaseAdapter.deleteRoom(roomId);
+      await runtime.getDatabaseAdapter().deleteRoom(roomId);
       res.status(204).send();
     } catch (error) {
       logger.error(`[ROOM DELETE] Error deleting room ${roomId}:`, error);

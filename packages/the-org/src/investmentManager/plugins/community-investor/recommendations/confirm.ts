@@ -165,13 +165,13 @@ export const confirmRecommendation: Action = {
 
         try {
             const participants =
-                await runtime.databaseAdapter.getParticipantsForRoom(
+                await runtime.getDatabaseAdapter().getParticipantsForRoom(
                     message.roomId
                 );
 
             const entities = await Promise.all(
                 participants.map((id) =>
-                    runtime.databaseAdapter.getEntityById(id)
+                    runtime.getDatabaseAdapter().getEntityById(id)
                 )
             ).then((entities) => entities.filter((participant) => !!participant));
 
@@ -203,7 +203,7 @@ export const confirmRecommendation: Action = {
                     continue;
                 }
 
-                const entity = await runtime.databaseAdapter.getEntityById(participant.id);
+                const entity = await runtime.getDatabaseAdapter().getEntityById(participant.id);
 
                 const result = await tradingService.handleRecommendation(
                     entity,
