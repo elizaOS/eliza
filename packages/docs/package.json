@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/docs",
-	"version": "1.0.0-alpha.0",
+	"version": "1.0.0-alpha.1",
 	"private": true,
 	"packageManager": "bun@9.4.0",
 	"scripts": {
@@ -21,13 +21,13 @@
 		"@docusaurus/plugin-content-docs": "3.7.0",
 		"@docusaurus/plugin-ideal-image": "3.7.0",
 		"@docusaurus/preset-classic": "3.7.0",
-		"@docusaurus/theme-mermaid": "3.7.0",
 		"@docusaurus/theme-common": "3.7.0",
+		"@docusaurus/theme-mermaid": "3.7.0",
 		"@mdx-js/react": "3.0.1",
 		"clsx": "2.1.1",
 		"docusaurus-lunr-search": "3.5.0",
-		"lunr": "2.3.9",
 		"dotenv": "^16.4.7",
+		"lunr": "2.3.9",
 		"prism-react-renderer": "2.3.1",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0"
@@ -47,7 +47,11 @@
 		"util": "^0.12.5"
 	},
 	"browserslist": {
-		"production": [">0.5%", "not dead", "not op_mini all"],
+		"production": [
+			">0.5%",
+			"not dead",
+			"not op_mini all"
+		],
 		"development": [
 			"last 3 chrome version",
 			"last 3 firefox version",
