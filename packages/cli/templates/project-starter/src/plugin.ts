@@ -39,7 +39,7 @@ const helloWorldAction: Action = {
   },
 
   handler: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     message: Memory,
     _state: State,
     _options: any,
@@ -159,13 +159,13 @@ export const starterPlugin: Plugin = {
   },
   models: {
     [ModelTypes.TEXT_SMALL]: async (
-      runtime,
+      _runtime,
       { prompt, stopSequences = [] }: GenerateTextParams
     ) => {
       return "Never gonna give you up, never gonna let you down, never gonna run around and desert you...";
     },
     [ModelTypes.TEXT_LARGE]: async (
-      runtime,
+      _runtime,
       {
         prompt,
         stopSequences = [],

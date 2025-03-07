@@ -211,7 +211,7 @@ const startAgents = async () => {
       }
 
       // 2. Read and parse package.json to get main entry point and check for build script
-      const hasBuildScript = packageJson.scripts && packageJson.scripts.build;
+      const hasBuildScript = packageJson.scripts?.build;
 
       // Check if dist directory exists
       const distDir = path.join(process.cwd(), "dist");
@@ -225,8 +225,8 @@ const startAgents = async () => {
           );
           try {
             // Execute build command - use bun directly for plugins
-            const { exec } = require("child_process");
-            await new Promise<void>((resolve, reject) => {
+            const { exec } = require("node:child_process");
+            await new Promise<void>((resolve, _reject) => {
               // Use bun build for plugins directly
               exec("bun run build", (error: Error | null) => {
                 if (error) {
@@ -267,8 +267,8 @@ const startAgents = async () => {
           );
           try {
             // Execute build command - use bun directly for plugins
-            const { exec } = require("child_process");
-            await new Promise<void>((resolve, reject) => {
+            const { exec } = require("node:child_process");
+            await new Promise<void>((resolve, _reject) => {
               // Use bun build for plugins directly
               exec("bun run build", (error: Error | null) => {
                 if (error) {
@@ -300,8 +300,8 @@ const startAgents = async () => {
           );
           try {
             // Execute build command
-            const { exec } = require("child_process");
-            await new Promise<void>((resolve, reject) => {
+            const { exec } = require("node:child_process");
+            await new Promise<void>((resolve, _reject) => {
               exec("npm run build", (error: Error | null) => {
                 if (error) {
                   logger.error(`Error building project: ${error.message}`);
@@ -394,7 +394,7 @@ const startAgents = async () => {
                 logger.info(`Trying to load plugin from src: ${srcPath}`);
                 try {
                   // For TypeScript files, we need to transpile or use ts-node/esm
-                  const { exec } = require("child_process");
+                  const { exec } = require("node:child_process");
                   exec("npx tsc", async (error: Error | null) => {
                     if (!error) {
                       try {
@@ -403,7 +403,7 @@ const startAgents = async () => {
                         );
                         pluginModule = srcModule.default;
                         logger.info(
-                          `Successfully loaded plugin from transpiled source`
+                          "Successfully loaded plugin from transpiled source"
                         );
                       } catch (e) {
                         logger.error(`Failed to load transpiled plugin: ${e}`);
@@ -445,7 +445,7 @@ const startAgents = async () => {
         }`
       );
       await startAgent(defaultCharacter, server, undefined, [pluginModule]);
-      logger.info(`Default character started with plugin successfully`);
+      logger.info("Default character started with plugin successfully");
     } else if (isProject) {
       // Load all project agents, call their init and register their plugins
       const project = projectModule.default as import("@elizaos/core").Project;

@@ -4,8 +4,8 @@
 // Because we bundle all dependencies in the final output, we don't need them
 // in the published package.json
 
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 // Read the package.json
 const pkgPath = path.join(process.cwd(), 'package.json');

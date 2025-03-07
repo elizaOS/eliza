@@ -110,7 +110,7 @@ export class AgentServer {
                 this.app.use("/client", express.static(clientPath, staticOptions));
                 
                 // Serve index.html for client root path
-                this.app.get("/client", (req, res) => {
+                this.app.get("/client", (_req, res) => {
                     res.setHeader('Content-Type', 'text/html');
                     res.sendFile(path.join(clientPath, "index.html"));
                 });

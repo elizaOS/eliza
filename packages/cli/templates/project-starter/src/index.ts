@@ -1,4 +1,4 @@
-import { type Project, type ProjectAgent, type Character, type IAgentRuntime } from "@elizaos/core";
+import type { Project, ProjectAgent, Character, IAgentRuntime } from "@elizaos/core";
 import dotenv from "dotenv";
 import starterPlugin from "./plugin";
 dotenv.config({ path: '../../.env' });

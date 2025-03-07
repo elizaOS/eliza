@@ -174,10 +174,7 @@ interface ProviderResult {
 
 const phalaDeriveKeyProvider: Provider = {
     name: 'phala-derive-key',
-    get: async (
-        runtime: IAgentRuntime,
-        _message?: Memory,
-    ): Promise<ProviderResult> => {
+    get: async (runtime: IAgentRuntime, _message?: Memory): Promise<ProviderResult> => {
         const teeMode = runtime.getSetting('TEE_MODE');
         const provider = new PhalaDeriveKeyProvider(teeMode);
         const agentId = runtime.agentId;
@@ -255,10 +252,7 @@ class SgxGramineDeriveKeyProvider extends DeriveKeyProvider {}
 
 const sgxGramineDeriveKeyProvider: Provider = {
     name: 'sgx-gramine-derive-key',
-    get: async (
-        _runtime: IAgentRuntime,
-        _message?: Memory,
-    ): Promise<ProviderResult> => {
+    get: async (_runtime: IAgentRuntime, _message?: Memory): Promise<ProviderResult> => {
         return {
             data: { provider: 'sgx-gramine' },
             values: { provider_name: 'SGX Gramine' },

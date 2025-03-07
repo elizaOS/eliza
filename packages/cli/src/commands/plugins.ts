@@ -199,7 +199,7 @@ plugins
       try {
         await runBunCommand(["install"], targetDir);
         logger.success("Dependencies installed successfully!");
-      } catch (error) {
+      } catch (_error) {
         logger.warn("Failed to install dependencies automatically. Please run 'bun install' manually.");
       }
       

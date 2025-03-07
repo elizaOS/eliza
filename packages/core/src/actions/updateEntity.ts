@@ -114,7 +114,7 @@ export const updateEntityAction: Action = {
       }
 
       const sourceEntityId = message.entityId;
-      const roomId = message.roomId;
+      const _roomId = message.roomId;
       const agentId = runtime.agentId;
       const room = state.data.room ?? await runtime.databaseAdapter.getRoom(message.roomId);
       const worldId = room.worldId;

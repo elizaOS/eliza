@@ -1,4 +1,4 @@
-import { Character } from "@elizaos/core";
+import type { Character } from "@elizaos/core";
 
 export const character: Character = {
     name: "Eliza",
