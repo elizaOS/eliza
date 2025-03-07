@@ -59,13 +59,16 @@ export class AgentServer {
 			);
 
 			// Initialize the database
-			this.database.init().then(() => {
-				logger.success("Database initialized successfully");
-				this.initializeServer(options);
-			}).catch((error) => {
-				logger.error("Failed to initialize database:", error);
-				throw error;
-			});
+			this.database
+				.init()
+				.then(() => {
+					logger.success("Database initialized successfully");
+					this.initializeServer(options);
+				})
+				.catch((error) => {
+					logger.error("Failed to initialize database:", error);
+					throw error;
+				});
 		} catch (error) {
 			logger.error("Failed to initialize AgentServer:", error);
 			throw error;
@@ -97,12 +100,15 @@ export class AgentServer {
 			this.app.use("/media/uploads", express.static(uploadsPath));
 			this.app.use("/media/generated", express.static(generatedPath));
 
-			// Serve client application from packages/client/dist
-			const clientPath = path.join(
-				__dirname,
-				"../../..",
-				"packages/client/dist",
-			);
+			// Serve client application
+			// First try to find it in the CLI package dist/client directory
+			let clientPath = path.join(__dirname, "../client");
+
+			// If not found, fall back to the old relative path for development
+			if (!fs.existsSync(clientPath)) {
+				clientPath = path.join(__dirname, "../../..", "packages/client/dist");
+			}
+
 			if (fs.existsSync(clientPath)) {
 				logger.debug(
 					`Found client build at ${clientPath}, serving it at /client and root path`,

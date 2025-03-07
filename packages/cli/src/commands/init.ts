@@ -256,6 +256,37 @@ export const init = new Command()
 			// Copy project template
 			await copyTemplate("project", targetDir, name);
 
+			// Create a database directory in the user's home folder, similar to start.ts
+			let dbPath = "../../pglite"; // Default fallback path
+			try {
+				// Get the user's home directory
+				const homeDir = os.homedir();
+				const elizaDir = path.join(homeDir, ".eliza");
+				const elizaDbDir = path.join(elizaDir, "db");
+
+				// Check if .eliza directory exists, create if not
+				if (!existsSync(elizaDir)) {
+					logger.info(`Creating .eliza directory at: ${elizaDir}`);
+					await fs.mkdir(elizaDir, { recursive: true });
+				}
+
+				// Check if db directory exists in .eliza, create if not
+				if (!existsSync(elizaDbDir)) {
+					logger.info(`Creating db directory at: ${elizaDbDir}`);
+					await fs.mkdir(elizaDbDir, { recursive: true });
+				}
+
+				// Use the db directory path
+				dbPath = elizaDbDir;
+				logger.info(`Using database directory: ${dbPath}`);
+			} catch (error) {
+				logger.warn(
+					"Failed to create database directory in home directory, using fallback location:",
+					error,
+				);
+				// On failure, use the fallback path
+			}
+
 			// Create project configuration
 			const config = rawConfigSchema.parse({
 				$schema: "https://elizaos.com/schema.json",
@@ -267,7 +298,7 @@ export const init = new Command()
 									url: process.env.POSTGRES_URL || "",
 								}
 							: {
-									path: "../../pglite",
+									path: dbPath,
 								},
 				},
 				plugins: {

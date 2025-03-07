@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import path from "node:path";
 import { logger } from "./logger";
 import { getPackageVersion } from "./get-package-info";
@@ -26,10 +26,9 @@ export async function copyDir(
 			continue;
 		}
 
-		// Skip node_modules, dist directories and .git directories
+		// Skip node_modules, .git directories and other build artifacts
 		if (
 			entry.name === "node_modules" ||
-			entry.name === "dist" ||
 			entry.name === ".git" ||
 			entry.name === "content_cache" ||
 			entry.name === "data" ||
@@ -124,4 +123,32 @@ export async function copyTemplate(
 	}
 
 	logger.success(`${templateType} template copied successfully`);
+}
+
+/**
+ * Copy client dist files to the CLI package dist directory
+ */
+export async function copyClientDist() {
+	logger.info("Copying client dist files to CLI package");
+
+	// Determine source and destination paths
+	const srcClientDist = path.resolve(process.cwd(), "packages/client/dist");
+	const destClientDist = path.resolve(
+		process.cwd(),
+		"packages/cli/dist/client",
+	);
+
+	// Create destination directory
+	await fs.mkdir(destClientDist, { recursive: true });
+
+	// Check if source exists
+	if (!existsSync(srcClientDist)) {
+		logger.error(`Client dist not found at ${srcClientDist}`);
+		return;
+	}
+
+	// Copy client dist files
+	await copyDir(srcClientDist, destClientDist);
+
+	logger.success("Client dist files copied successfully");
 }

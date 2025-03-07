@@ -519,11 +519,14 @@ const startAgents = async () => {
 	}
 
 	// Display link to the client UI
-	const clientPath = path.join(
-		__dirname,
-		"../../../..",
-		"packages/client/dist",
-	);
+	// First try to find it in the CLI package dist/client directory
+	let clientPath = path.join(__dirname, "../../client");
+
+	// If not found, fall back to the old relative path for development
+	if (!fs.existsSync(clientPath)) {
+		clientPath = path.join(__dirname, "../../../..", "packages/client/dist");
+	}
+
 	if (fs.existsSync(clientPath)) {
 		logger.success(
 			`Client UI is available at http://localhost:${serverPort}/client`,
