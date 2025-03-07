@@ -178,7 +178,7 @@ const config: OnboardingConfig = {
 };
 
 export const investmentManager: ProjectAgent = {
-	plugins: [degenIntelPlugin, degenTraderPlugin, communityInvestorPlugin],
+	// plugins: [degenIntelPlugin, degenTraderPlugin, communityInvestorPlugin],
 	character,
 	init: async (runtime: IAgentRuntime) =>
 		await initCharacter({ runtime, config }),
