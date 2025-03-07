@@ -10,8 +10,8 @@ import express from "express";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createApiRouter } from "./api/index.ts";
-import { adapter } from "./database.ts";
 import { fileURLToPath } from "node:url";
+import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +24,8 @@ export type ServerMiddleware = (
 
 export interface ServerOptions {
 	middlewares?: ServerMiddleware[];
+	dataDir?: string;
+	postgresUrl?: string;
 }
 const AGENT_RUNTIME_URL =
 	process.env.AGENT_RUNTIME_URL?.replace(/\/$/, "") || "http://localhost:3000";
@@ -44,7 +46,16 @@ export class AgentServer {
 			logger.log("Initializing AgentServer...");
 			this.app = express();
 			this.agents = new Map();
-			this.database = adapter;
+
+			const dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? "./elizadb";
+
+			this.database = createDatabaseAdapter(
+				{
+					dataDir,
+					postgresUrl: options?.postgresUrl,
+				},
+				"00000000-0000-0000-0000-000000000002",
+			);
 
 			// Initialize the database
 			this.database.init();

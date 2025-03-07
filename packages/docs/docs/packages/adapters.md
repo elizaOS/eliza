@@ -188,7 +188,7 @@ import { SqliteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import Database from "better-sqlite3";
 
 const db = new SqliteDatabaseAdapter(
-    new Database("./db.sqlite", {
+    new Database("./elizadb.sqlite", {
         // SQLite options
         memory: false,
         readonly: false,
@@ -213,7 +213,7 @@ import { SqliteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import Database from "better-sqlite3";
 
 const db = new SqliteDatabaseAdapter(
-    new Database("./db.sqlite", {
+    new Database("./elizadb.sqlite", {
         // SQLite options
         memory: false,
         readonly: false,
@@ -229,7 +229,7 @@ import { PGLiteDatabaseAdapter } from "@elizaos/adapter-pglite";
 
 const db = new PGLiteDatabaseAdapter(
     new PGLite({
-        dataDir: "./db"
+        dataDir: "./elizadb"
     })
 );
 ```

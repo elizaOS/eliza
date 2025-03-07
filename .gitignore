@@ -18,7 +18,7 @@ node-compile-cache
 dist/
 # Allow models directory but ignore model files
 models/*.gguf
-pgLite/
+db/
 
 cookies.json
 
