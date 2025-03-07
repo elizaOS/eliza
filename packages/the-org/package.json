@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/the-org",
-	"version": "1.0.0-alpha.3",
+	"version": "1.0.0-alpha.4",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -16,13 +16,16 @@
 		"test": "vitest --run"
 	},
 	"nodemonConfig": {
-		"watch": ["src", "../core/dist"],
+		"watch": [
+			"src",
+			"../core/dist"
+		],
 		"ext": "ts,json",
 		"exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
 	},
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
 		"@elizaos/cli": "workspace:*",
+		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-tee": "workspace:*",
 		"@elizaos/plugin-twitter": "workspace:*",
 		"@solana/web3.js": "^1.87.6",

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-elevenlabs",
-	"version": "1.0.0-alpha.3",
+	"version": "1.0.0-alpha.4",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -14,7 +14,9 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
 		"tsup": "8.4.0"

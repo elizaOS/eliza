@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-twitter",
-	"version": "1.0.0-alpha.3",
+	"version": "1.0.0-alpha.4",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -15,7 +15,9 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
 		"@roamhq/wrtc": "^0.8.0",
