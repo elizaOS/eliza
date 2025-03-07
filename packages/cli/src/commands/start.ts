@@ -114,10 +114,6 @@ const checkPortAvailable = (port: number): Promise<boolean> => {
 };
 
 const startAgents = async () => {
-  // Add debugging at the beginning 
-  console.log("=== Starting ElizaOS Agents ===");
-  console.log("Current directory:", process.cwd());
-  
   const server = new AgentServer();
   
   // Assign the required functions first
