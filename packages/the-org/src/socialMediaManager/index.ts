@@ -1,8 +1,7 @@
-import type { Character, IAgentRuntime, OnboardingConfig } from "@elizaos/core";
-import type { Guild } from 'discord.js';
+import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from "@elizaos/core";
 import dotenv from "dotenv";
+import { initCharacter } from "../init";
 import twitterPostAction from "./actions/post";
-import { initCharacter, initializeAllSystems } from "../init";
 dotenv.config({ path: '../../.env' });
 
 const character: Character = {
@@ -256,7 +255,9 @@ export const config: OnboardingConfig = {
       }
   }
 };
-export default {
+export const socialMediaManager: ProjectAgent = {
   character,
-  init: (runtime: IAgentRuntime) => initCharacter({runtime, config, actions: [twitterPostAction]}),
+  init: async (runtime: IAgentRuntime) => await initCharacter({runtime, config, actions: [twitterPostAction]}),
 };
+
+export default socialMediaManager;

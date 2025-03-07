@@ -9,7 +9,7 @@
     },
     "rootDir": "src",
     "moduleResolution": "Node",
-    "module": "CommonJS",
+    "module": "ESNext",
     "outDir": "./dist"
   },
   "include": ["src/**/*.ts"],

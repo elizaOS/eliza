@@ -1,11 +1,12 @@
 {
-    "name": "@elizaos/agent",
+    "name": "@elizaos/the-org",
     "version": "1.0.0-alpha.0",
     "main": "src/index.ts",
     "type": "module",
     "scripts": {
-        "start": "node --loader ts-node/esm src/index.ts",
-        "swarm": "LOG_LEVEL=trace node --loader ts-node/esm src/index.ts --swarm",
+        "start": "npx elizaos start",
+        "swarm": "LOG_LEVEL=trace npx elizaos start",
+        "build": "tsup --format esm --dts",
         "dev": "node --loader ts-node/esm src/index.ts",
         "check-types": "tsc --noEmit",
         "test": "vitest --run"

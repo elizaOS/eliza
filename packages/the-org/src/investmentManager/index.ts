@@ -1,4 +1,4 @@
-import type { Character, IAgentRuntime, OnboardingConfig } from "@elizaos/core";
+import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from "@elizaos/core";
 import dotenv from "dotenv";
 import { initCharacter } from "../init";
 import { degenIntelPlugin } from "./plugins/degen-intel";
@@ -171,12 +171,14 @@ const config: OnboardingConfig = {
   },
 };
 
-export default {
+export const investmentManager: ProjectAgent = {
   plugins: [
     degenIntelPlugin,
     degenTraderPlugin,
     communityInvestorPlugin,
   ],
   character,
-  init: (runtime: IAgentRuntime) => initCharacter({ runtime, config }),
+  init: async (runtime: IAgentRuntime) => await initCharacter({ runtime, config }),
 };
+
+export default investmentManager;

@@ -607,8 +607,8 @@ export interface Plugin {
 
 export interface ProjectAgent {
   character: Character;
-  init: (runtime: IAgentRuntime) => Promise<void>;
-  plugins: Plugin[];
+  init?: (runtime: IAgentRuntime) => Promise<void>;
+  plugins?: Plugin[];
 }
 
 export interface Project {

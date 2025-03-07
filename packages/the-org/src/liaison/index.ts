@@ -1,4 +1,4 @@
-import type { Character, IAgentRuntime, OnboardingConfig } from "@elizaos/core";
+import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from "@elizaos/core";
 import dotenv from "dotenv";
 import { initCharacter } from "../init";
 dotenv.config({ path: "../../.env" });
@@ -324,7 +324,9 @@ const config: OnboardingConfig = {
   },
 };
 
-export default {
+export const liaison: ProjectAgent = {
   character,
-  init: (runtime: IAgentRuntime) => initCharacter({ runtime, config }),
+  init: async (runtime: IAgentRuntime) => await initCharacter({ runtime, config }),
 };
+
+export default liaison;

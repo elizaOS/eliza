@@ -1,13 +1,12 @@
 import {
     logger,
-    type UUID,
     type Character,
-    type IAgentRuntime
+    type IAgentRuntime,
+    type UUID
 } from "@elizaos/core";
 import bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
-
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createApiRouter } from "./api/index.ts";

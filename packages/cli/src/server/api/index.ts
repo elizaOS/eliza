@@ -58,7 +58,7 @@ export function createApiRouter(
 
 
     // Logs endpoint
-    router.get('/logs', (req, res) => {
+    const logsHandler = (req, res) => {
         const since = req.query.since ? Number(req.query.since) : Date.now() - 3600000; // Default 1 hour
         const requestedLevel = (req.query.level?.toString().toLowerCase() || 'info') as LogLevel;
         const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
@@ -98,7 +98,9 @@ export function createApiRouter(
                 message: error instanceof Error ? error.message : 'Unknown error'
             });
         }
-    });
+    };
+    
+    router.get('/logs', logsHandler);
 
     // Health check endpoints
     router.get('/health', (_req, res) => {

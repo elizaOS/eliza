@@ -2,7 +2,7 @@ import { type Character, logger, validateCharacterConfig } from "@elizaos/core";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { character as defaultCharacter } from "../swarm/communityManager";
+import { character as defaultCharacter } from "../characters/eliza";
 import multer from "multer";
 
 const __filename = fileURLToPath(import.meta.url);

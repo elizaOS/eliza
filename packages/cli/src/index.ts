@@ -5,7 +5,7 @@ import { Command } from "commander"
 import { logger } from "@/src/utils/logger"
 import { teeCommand as tee } from "@/src/commands/tee"
 import { agent } from "@/src/commands/agent"
-
+import { start } from "@/src/commands/start"
 process.on("SIGINT", () => process.exit(0))
 process.on("SIGTERM", () => process.exit(0))
 
@@ -20,6 +20,7 @@ async function main() {
     .addCommand(plugins)
     .addCommand(agent)
     .addCommand(tee)
+    .addCommand(start)
   program.parse(process.argv)
 }
 

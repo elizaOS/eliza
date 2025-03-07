@@ -1,5 +1,5 @@
 {
-    "extends": "../../packages/core/tsconfig.json",
+    "extends": "../core/tsconfig.json",
     "compilerOptions": {
         "outDir": "dist",
         "rootDir": ".",
@@ -13,5 +13,5 @@
         "transpileOnly": true,
         "esm": true
     },
-    "include": ["src", "../core/src/services/scenario.ts"]
+    "include": ["src"]
 }
