@@ -141,9 +141,27 @@ export async function copyClientDist() {
 	// Create destination directory
 	await fs.mkdir(destClientDist, { recursive: true });
 
-	// Check if source exists
+	// Wait for source directory to exist and have files
+	let retries = 0;
+	const maxRetries = 10;
+	const retryDelay = 1000; // 1 second
+
+	while (retries < maxRetries) {
+		if (existsSync(srcClientDist)) {
+			const files = await fs.readdir(srcClientDist);
+			if (files.length > 0) {
+				break;
+			}
+		}
+		
+		logger.info(`Waiting for client dist files to be built (attempt ${retries + 1}/${maxRetries})...`);
+		await new Promise(resolve => setTimeout(resolve, retryDelay));
+		retries++;
+	}
+
+	// Check if source exists after retries
 	if (!existsSync(srcClientDist)) {
-		logger.error(`Client dist not found at ${srcClientDist}`);
+		logger.error(`Client dist not found at ${srcClientDist} after ${maxRetries} attempts`);
 		return;
 	}
 
