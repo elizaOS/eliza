@@ -19,6 +19,7 @@
 		"agent": "turbo run start --filter=@elizaos/the-org",
 		"dev": "turbo run build --filter=./packages/core && turbo run dev --filter=!./packages/core --filter=!./packages/docs --concurrency=20",
 		"release": "bun run build && bun format && npx lerna publish --no-private --force-publish",
+		"release:alpha": "bun run build && bun format && npx lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish",
 		"docker:build": "bash ./scripts/docker.sh build",
 		"docker:run": "bash ./scripts/docker.sh run",
 		"docker:bash": "bash ./scripts/docker.sh bash",
