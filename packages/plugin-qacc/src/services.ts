@@ -108,54 +108,56 @@ const DB_FIELD_MAPPINGS = {
     monthly_burn: "What is your monthly burn rate?",
 };
 
-export const fetchProjectsByConditions = async (conditions: any[]) => {
+export const fetchProjectsByConditions = async (
+    conditions: any[],
+    allProjects: any
+) => {
     try {
-        const db = await connectToDatabase();
-        const collection = db.collection(COLLECTION_NAME);
+        // Filter projects based on conditions
+        const filteredProjects = allProjects.filter((project) => {
+            return conditions.every((condition) => {
+                const dbField = DB_FIELD_MAPPINGS[condition.field];
+                if (!dbField) return false;
 
-        // Build MongoDB query object
-        const query = conditions.reduce((acc, condition) => {
-            const dbField = DB_FIELD_MAPPINGS[condition.field];
-            if (!dbField) return acc;
+                const projectValue = project[dbField];
 
-            switch (condition.operator) {
-                case "equals":
-                    acc[dbField] = condition.value;
-                    break;
+                switch (condition.operator) {
+                    case "equals":
+                        return projectValue === condition.value;
 
-                case "greater_than":
-                    acc[dbField] = { $gt: condition.value };
-                    break;
+                    case "greater_than":
+                        return projectValue > condition.value;
 
-                case "less_than":
-                    acc[dbField] = { $lt: condition.value };
-                    break;
+                    case "less_than":
+                        return projectValue < condition.value;
 
-                case "contains":
-                    acc[dbField] = { $regex: condition.value, $options: "i" };
-                    break;
+                    case "contains":
+                        return (
+                            typeof projectValue === "string" &&
+                            projectValue
+                                .toLowerCase()
+                                .includes(condition.value.toLowerCase())
+                        );
 
-                case "before":
-                    acc[dbField] = { $lt: new Date(condition.value as string) };
-                    break;
+                    case "before":
+                        return (
+                            new Date(projectValue) < new Date(condition.value)
+                        );
 
-                case "after":
-                    acc[dbField] = { $gt: new Date(condition.value as string) };
-                    break;
+                    case "after":
+                        return (
+                            new Date(projectValue) > new Date(condition.value)
+                        );
 
-                default:
-                    // Default to equals if no operator specified
-                    acc[dbField] = condition.value;
-            }
+                    default:
+                        return projectValue === condition.value;
+                }
+            });
+        });
 
-            return acc;
-        }, {});
-
-        // Execute query
-        const projects = await collection.find(query).toArray();
-
-        // Transform the results back to our expected format
-        const transformedProjects = projects.map((project) => ({
+        // Transform the results back to the expected format
+        const transformedProjects = filteredProjects.map((project, index) => ({
+            index: index + 1,
             project_name: project["Project name"],
             token_status: project[DB_FIELD_MAPPINGS.token_status],
             project_stage: project[DB_FIELD_MAPPINGS.project_stage],
@@ -173,7 +175,10 @@ export const fetchProjectsByConditions = async (conditions: any[]) => {
         }));
 
         if (!transformedProjects.length) {
-            console.log("No projects found matching the conditions:", query);
+            console.log(
+                "No projects found matching the conditions:",
+                conditions
+            );
         }
 
         return transformedProjects;

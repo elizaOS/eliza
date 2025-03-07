@@ -41,7 +41,7 @@ Extract filter conditions from the user's message and format them appropriately.
 
 Valid filter fields and their values:
 - token_status: "Yes, provide details", "No, we have not launched a token", in_progress
-- project_stage: idea, mvp, beta, live, scaling
+- project_stage: "MVP without revenue","Live product ready to scale", "MVP with active users and revenue","Product concept with a high-level roadmap"
 - project_category: defi, nft, gaming, infrastructure, dao, social, other
 - polygon_deployment: deployed, not_deployed, in_progress
 - team_size: number (use greater_than, less_than, equals operators)
