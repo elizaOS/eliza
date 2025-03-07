@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/cli",
-	"version": "1.0.0-alpha.2",
+	"version": "1.0.0-alpha.3",
 	"description": "elizaOS CLI - Manage your AI agents and plugins",
 	"publishConfig": {
 		"access": "public"
@@ -15,7 +15,10 @@
 		"url": "https://github.com/elizaOS/eliza.git",
 		"directory": "packages/cli"
 	},
-	"files": ["dist", "templates"],
+	"files": [
+		"dist",
+		"templates"
+	],
 	"keywords": [],
 	"type": "module",
 	"exports": {
