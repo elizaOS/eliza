@@ -4,13 +4,17 @@ import {
     type IAgentRuntime,
     type UUID
 } from "@elizaos/core";
-import bodyParser from "body-parser";
+import * as bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createApiRouter } from "./api/index.ts";
 import { adapter } from "./database.ts";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export type ServerMiddleware = (
     req: express.Request,
@@ -21,6 +25,7 @@ export type ServerMiddleware = (
 export interface ServerOptions {
   middlewares?: ServerMiddleware[];
 }
+const AGENT_RUNTIME_URL = process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') || 'http://localhost:3000'
 
 export class AgentServer {
     public app: express.Application;
@@ -50,6 +55,8 @@ export class AgentServer {
             logger.error("Failed to initialize AgentServer:", error);
             throw error;
         }
+
+        logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
     }
 
     private async initializeServer(options?: ServerOptions) {
@@ -78,7 +85,7 @@ export class AgentServer {
             this.app.use("/media/generated", express.static(generatedPath));
 
             // Serve client application from packages/client/dist
-            const clientPath = path.join(__dirname, "../../../..", "packages/client/dist");
+            const clientPath = path.join(__dirname, "../../..", "packages/client/dist");
             if (fs.existsSync(clientPath)) {
                 logger.debug(`Found client build at ${clientPath}, serving it at /client and root path`);
                 

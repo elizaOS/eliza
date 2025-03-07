@@ -56,7 +56,7 @@ export const replyAction = {
     console.log("*** replyAction prompt ****");
     console.log(prompt);
 
-    const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+    const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
       prompt,
     });
 

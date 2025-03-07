@@ -149,18 +149,12 @@ const messageReceivedHandler = async ({
     prompt: shouldRespondPrompt,
   });
 
-  console.log("*** shouldRespondPrompt ****", shouldRespondPrompt);
-
   const responseObject = parseJSONObjectFromText(response);
-
-  console.log("*** responseObject ****", responseObject);
 
   const providers = responseObject.providers;
 
   const shouldRespond =
     responseObject?.action && responseObject.action === "RESPOND";
-
-  console.log("*** shouldRespond? ", shouldRespond);
 
   state = await runtime.composeState(message, null, providers);
 
@@ -174,20 +168,18 @@ const messageReceivedHandler = async ({
         messageHandlerTemplate,
     });
 
-    console.log("*** prompt ****", prompt);
-
     let responseContent = null
 
     // Retry if missing required fields
     let retries = 0;
     const maxRetries = 3;
     while (retries < maxRetries && (!responseContent?.thought || !responseContent?.plan || !responseContent?.actions)) {
-      const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+      const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
         prompt,
       });
-      console.log("*** response ****", response);
+
       responseContent = parseJSONObjectFromText(response) as Content;
-      console.log("*** responseContent ****", responseContent);
+
       retries++;
       if (!responseContent?.thought || !responseContent?.plan || !responseContent?.actions) {
         console.log("*** Missing required fields, retrying... ***");

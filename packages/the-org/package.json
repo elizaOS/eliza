@@ -6,8 +6,7 @@
     "types": "dist/index.d.ts",
     "type": "module",
     "scripts": {
-        "start": "npx elizaos start",
-        "swarm": "LOG_LEVEL=trace npx elizaos start",
+        "start": "bun run build && npx elizaos start",
         "build": "tsup --format esm --dts",
         "dev": "node --loader ts-node/esm src/index.ts",
         "check-types": "tsc --noEmit",

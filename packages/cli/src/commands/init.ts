@@ -7,6 +7,7 @@ import { getAvailableDatabases, getRegistryIndex, listPluginsByType } from "@/sr
 import { createDatabaseTemplate, createPluginsTemplate, createEnvTemplate } from "@/src/utils/templates"
 import { runBunCommand } from "@/src/utils/run-bun"
 import { installPlugin } from "@/src/utils/install-plugin"
+import { copyTemplate } from "@/src/utils/copy-template"
 import chalk from "chalk"
 import { Command } from "commander"
 import { execa } from "execa"
@@ -15,16 +16,9 @@ import { z } from "zod"
 
 const initOptionsSchema = z.object({
   dir: z.string().default("."),
-  yes: z.boolean().default(false)
+  yes: z.boolean().default(false),
+  type: z.enum(["project", "plugin"]).default("project")
 })
-
-async function cloneStarterRepo(targetDir: string) {
-  logger.info("Setting up project structure...")
-  await execa("git", ["clone", "-b", process.env.ELIZA_BRANCH || "v2-develop", "https://github.com/elizaos/eliza", "."], {
-    cwd: targetDir,
-    stdio: "inherit",
-  })
-}
 
 async function setupEnvironment(targetDir: string, database: string) {
   const envPath = path.join(targetDir, ".env")
@@ -89,19 +83,20 @@ async function installDependencies(targetDir: string, database: string, selected
 
 export const init = new Command()
   .name("init")
-  .description("Initialize a new project")
+  .description("Initialize a new project or plugin")
   .option("-d, --dir <dir>", "installation directory", ".")
   .option("-y, --yes", "skip confirmation", false)
+  .option("-t, --type <type>", "type of template to use (project or plugin)", "project")
   .action(async (opts) => {
     try {
       const options = initOptionsSchema.parse(opts)
 
-      // Prompt for project name
+      // Prompt for project/plugin name
       const { name } = await prompts({
         type: "text",
         name: "name",
-        message: "What would you like to name your project?",
-        validate: value => value.length > 0 || "Project name is required"
+        message: `What would you like to name your ${options.type}?`,
+        validate: value => value.length > 0 || `${options.type} name is required`
       })
 
       if (!name) {
@@ -134,6 +129,30 @@ export const init = new Command()
         }
       }
 
+      // For plugin initialization, we can simplify the process
+      if (options.type === "plugin") {
+        // Copy plugin template
+        await copyTemplate("plugin", targetDir, name)
+        
+        // Change directory and install dependencies
+        logger.info("Installing dependencies...")
+        try {
+          await runBunCommand(["install"], targetDir);
+          logger.success("Dependencies installed successfully!");
+        } catch (error) {
+          logger.warn("Failed to install dependencies automatically. Please run 'bun install' manually.");
+        }
+        
+        logger.success("Plugin initialized successfully!")
+        logger.info(`\nNext steps:
+1. ${chalk.cyan(`cd ${name}`)} to navigate to your plugin directory
+2. Update the plugin code in ${chalk.cyan("src/index.ts")} 
+3. Run ${chalk.cyan("bun dev")} to start development
+4. Run ${chalk.cyan("bun build")} to build your plugin`)
+        return
+      }
+
+      // For project initialization, continue with the regular flow
       // Get available databases and select one
       const availableDatabases = await getAvailableDatabases()
       
@@ -156,8 +175,8 @@ export const init = new Command()
       // Select plugins
       const selectedPlugins = await selectPlugins()
 
-      // Clone starter repository
-      await cloneStarterRepo(targetDir)
+      // Copy project template
+      await copyTemplate("project", targetDir, name)
 
       // Create project configuration
       const config = rawConfigSchema.parse({
@@ -205,24 +224,26 @@ export const init = new Command()
       // Set up environment
       await setupEnvironment(targetDir, database)
 
-      // Install dependencies
-      await installDependencies(targetDir, database, selectedPlugins)
-
       // Create knowledge directory
       await fs.mkdir(path.join(targetDir, "knowledge"), { recursive: true })
+
+      // Install dependencies
+      await installDependencies(targetDir, database, selectedPlugins)
 
       logger.success("Project initialized successfully!")
 
       // Show next steps
       if (database !== "postgres") {
         logger.info(`\nNext steps:
-1. Update ${chalk.cyan(".env")} with your database credentials
-2. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
-3. Run ${chalk.cyan("eliza agent import")} to import an agent`)
+1. ${chalk.cyan(`cd ${name}`)} to navigate to your project directory
+2. Update ${chalk.cyan(".env")} with your database credentials
+3. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
+4. Run ${chalk.cyan("eliza agent import")} to import an agent`)
       } else {
         logger.info(`\nNext steps:
-1. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
-2. Run ${chalk.cyan("eliza agent import")} to import an agent`)
+1. ${chalk.cyan(`cd ${name}`)} to navigate to your project directory
+2. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
+3. Run ${chalk.cyan("eliza agent import")} to import an agent`)
       }
 
     } catch (error) {

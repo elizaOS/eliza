@@ -9,8 +9,6 @@
     "preinstall": "npx only-allow bun",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql",
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
-    "swarm": "LOG_LEVEL=trace turbo run build --filter=./packages/core && LOG_LEVEL=trace concurrently \"turbo run start --filter=@elizaos/the-org -- --swarm \" \"turbo run start --filter=!@elizaos/the-org --filter=!@elizaos/docs --filter=!@elizaos/core\"",
-    "swarm:scenario": "turbo run build --filter=./packages/core && concurrently \"turbo run start --filter=@elizaos/the-org -- --swarm --scenario \" \"turbo run start --filter=!@elizaos/the-org --filter=!@elizaos/docs --filter=!@elizaos/core\"",
     "build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/*",
     "build:core": "turbo run build --filter=./packages/core",
     "build:cli": "turbo run build --filter=./packages/cli && cd packages/cli && bun link",

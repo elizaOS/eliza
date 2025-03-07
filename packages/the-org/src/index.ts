@@ -13,11 +13,11 @@ export const project: Project =
 {
   agents: [
     devRel,
-    communityManager,
-    investmentManager,
-    liaison,
-    projectManager,
-    socialMediaManager,
+    // communityManager,
+    // investmentManager,
+    // liaison,
+    // projectManager,
+    // socialMediaManager,
   ]  
 };
 

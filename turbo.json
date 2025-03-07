@@ -23,9 +23,6 @@
     "lint:fix": {
       "dependsOn": ["build"]
     },
-    "swarm": {
-      "dependsOn": ["build"]
-    },
     "migrate": {
       "dependsOn": ["build"]
     },

@@ -50,7 +50,7 @@ async function handler(
         template: runtime.character.templates?.goalsTemplate || goalsTemplate,
     });
 
-    const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+    const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
         runtime,
         prompt,
       });

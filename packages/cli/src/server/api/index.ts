@@ -1,6 +1,6 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { getEnvVariable, logger } from '@elizaos/core';
-import bodyParser from 'body-parser';
+import * as bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
 import type { AgentServer } from '..';

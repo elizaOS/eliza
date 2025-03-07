@@ -16,7 +16,8 @@
     "directory": "packages/cli"
   },
   "files": [
-    "dist"
+    "dist",
+    "templates"
   ],
   "keywords": [],
   "type": "module",
@@ -26,15 +27,18 @@
   },
   "scripts": {
     "cli": "bun build src/index.ts --outdir dist --watch",
-    "build": "bun build src/index.ts --outdir dist --target node --format esm --external nothing",
+    "build": "tsup --format esm --dts",
+    "watch": "tsc --watch",
+    "dev": "tsup --format esm --dts --watch",
     "typecheck": "tsc --noEmit",
-    "start:cli": "node dist/index.js",
+    "start": "bun run build && node dist/index.js",
+    "start:cli": "bun run build && node dist/index.js",
     "format:write": "prettier --write \"**/*.{ts,tsx,mdx}\" --cache",
     "format:check": "prettier --check \"**/*.{ts,tsx,mdx}\" --cache",
     "release": "changeset version",
-    "pub:beta": "bun build src/index.ts --outdir dist --target node --format esm --external nothing && bun publish --no-git-checks --access public --tag beta",
-    "pub:next": "bun build src/index.ts --outdir dist --target node --format esm --external nothing && bun publish --no-git-checks --access public --tag next",
-    "pub:release": "bun build src/index.ts --outdir dist --target node --format esm --external nothing && bun publish --access public",
+    "pub:beta": "tsup --format esm && bun publish --no-git-checks --access public --tag beta",
+    "pub:next": "tsup --format esm && bun publish --no-git-checks --access public --tag next",
+    "pub:release": "tsup --format esm && bun publish --access public",
     "test": "vitest run",
     "test:dev": "REGISTRY_URL=http://localhost:3333 vitest run"
   },
