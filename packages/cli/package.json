@@ -15,10 +15,7 @@
 		"url": "https://github.com/elizaOS/eliza.git",
 		"directory": "packages/cli"
 	},
-	"files": [
-		"dist",
-		"templates"
-	],
+	"files": ["dist", "templates"],
 	"keywords": [],
 	"type": "module",
 	"exports": {

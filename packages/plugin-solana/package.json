@@ -15,9 +15,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@coral-xyz/anchor": "0.30.1",
 		"@elizaos/core": "workspace:*",

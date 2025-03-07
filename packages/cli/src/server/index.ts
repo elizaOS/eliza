@@ -47,7 +47,8 @@ export class AgentServer {
 			this.app = express();
 			this.agents = new Map();
 
-			const dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? "./elizadb";
+			const dataDir =
+				options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? "./elizadb";
 
 			this.database = createDatabaseAdapter(
 				{
