@@ -6,6 +6,17 @@ import {
 	type Transaction,
 } from "../types";
 
+/**
+ * Method to retrieve and format position data for the agent's portfolio.
+ * 
+ * @type {Object}
+ * @property {string} name - The name of the action.
+ * @property {string} description - Description of the action.
+ * @property {Array<Array<Object>>} examples - Examples of how the action can be used.
+ * @property {Array<string>} similes - Related actions to this action.
+ * @property {Function} handler - Handles the process of retrieving positions data and formatting it for display.
+ * @property {Function} validate - Validates the message before processing.
+ */
 export const getAgentPositions: any = {
 	name: "GET_AGENT_POSITIONS",
 	description: "Retrieves and formats position data for the agent's portfolio",
