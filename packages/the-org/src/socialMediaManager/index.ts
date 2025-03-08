@@ -9,6 +9,20 @@ import { initCharacter } from "../init";
 import twitterPostAction from "./actions/post";
 dotenv.config({ path: "../../.env" });
 
+/**
+ * Represents a character with specific attributes and behaviors for social media management.
+ *
+ * @typedef {Object} Character
+ * @property {string} name - The name of the character.
+ * @property {string[]} plugins - The list of plugins used by the character.
+ * @property {Object} secrets - Object containing sensitive information like application ID and API token.
+ * @property {Object} settings - Object containing various settings for the character.
+ * @property {string} system - Description of the character's role and approach in social media management.
+ * @property {string[]} bio - List of characteristics and beliefs of the character.
+ * @property {Object[]} messageExamples - Examples of interactions with other individuals for messaging guidance.
+ * @property {string[]} postExamples - Examples of post messages that the character would use.
+ * @property {Object} style - Object containing guidelines for communication style in different scenarios.
+ */
 const character: Character = {
 	name: "Laura",
 	plugins: [
@@ -178,6 +192,19 @@ const character: Character = {
 	},
 };
 
+/**
+ * Configuration object for onboarding process.
+ * @typedef {Object} OnboardingConfig
+ * @property {Object} settings - Settings for onboarding process.
+ * @property {string} settings.ORG_NAME - Organization Name setting.
+ * @property {string} settings.ORG_DESCRIPTION - Organization Description setting.
+ * @property {string} settings.ORG_STYLE - Brand Style setting.
+ * @property {string} settings.TWITTER_USERNAME - Twitter Username setting.
+ * @property {string} settings.TWITTER_EMAIL - Twitter Email setting.
+ * @property {string} settings.TWITTER_PASSWORD - Twitter Password setting.
+ * @property {string} settings.TWITTER_2FA_SECRET - Twitter 2FA Secret setting.
+ * @property {string} settings.ANNOUNCEMENTS_CHANNELS - Announcements Channels setting.
+ */
 export const config: OnboardingConfig = {
 	settings: {
 		ORG_NAME: {

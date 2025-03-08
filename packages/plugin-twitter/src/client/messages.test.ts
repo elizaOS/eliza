@@ -1,8 +1,19 @@
 import { getClient } from "./test-utils";
 import { jest } from "@jest/globals";
 
+/**
+ * Flag to determine if V2 tests should be skipped.
+ * Default is false.
+ */
 let shouldSkipV2Tests = false;
+/**
+ * Variable to store the user ID for testing purposes.
+ * @type {string}
+ */
 let testUserId: string;
+/**
+ * Variable representing the conversation ID used for testing purposes.
+ */
 let testConversationId: string;
 
 beforeAll(async () => {

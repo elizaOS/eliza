@@ -11,6 +11,10 @@ import {
 	type State,
 } from "../types";
 
+/**
+ * Template for determining if an agent should unmute a previously muted room.
+ * * @type { string }
+ */
 export const shouldUnmuteTemplate = `# Task: Decide if {{agentName}} should unmute this previously muted room and start considering it for responses again.
 
 {{recentMessages}}
@@ -24,6 +28,17 @@ Respond with YES if:
 Otherwise, respond with NO.
 ${booleanFooter}`;
 
+/**
+ * Action to unmute a room, allowing the agent to consider responding to messages again.
+ *
+ * @name UNMUTE_ROOM
+ * @similes ["UNMUTE_CHAT", "UNMUTE_CONVERSATION", "UNMUTE_ROOM", "UNMUTE_THREAD"]
+ * @description Unmutes a room, allowing the agent to consider responding to messages again.
+ *
+ * @param {IAgentRuntime} runtime - The agent runtime to access runtime functionalities.
+ * @param {Memory} message - The message containing information about the room.
+ * @returns {Promise<boolean>} A boolean value indicating if the room was successfully unmuted.
+ */
 export const unmuteRoomAction: Action = {
 	name: "UNMUTE_ROOM",
 	similes: [

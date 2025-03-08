@@ -1,3 +1,22 @@
+/**
+ * Template for trade analysis for a trading assistant managing SOL wallet balances and trade sizes.
+ * Provides core rules, market analysis factors, data to analyze, and expected JSON response format.
+ * Analyzes factors like volume, price action, market structure, and risk assessment.
+ * @typedef {{
+ *    shouldTrade: boolean,
+ *    recommendedAction: "BUY" | "SELL" | "HOLD" | "SKIP",
+ *    suggestedAmount: number,
+ *    confidence: "low" | "medium" | "high",
+ *    reason: string,
+ *    riskScore: number,
+ *    technicalFactors: {
+ *        trend: "bullish" | "bearish" | "neutral",
+ *        momentum: number,
+ *        volumeProfile: "increasing" | "decreasing" | "stable",
+ *        liquidityScore: number
+ *    }
+ * }} TradeAnalysisResponse
+ */
 export const tradeAnalysisTemplate = `
 You are a trading assistant focused on managing SOL wallet balances and trade sizes. Your primary goal is to suggest appropriate trade amounts while maintaining safe reserves.
 

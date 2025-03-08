@@ -1,5 +1,9 @@
 import type { ActionExample } from "@elizaos/core";
 
+/**
+ * Array of examples containing conversations between different entities in the scene.
+ * Each example includes prompts, messages exchanged, and the outcome of the conversation.
+ */
 export const examples = [
 	{
 		prompt: `People in the scene:

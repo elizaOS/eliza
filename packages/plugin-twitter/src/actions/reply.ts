@@ -8,6 +8,17 @@ import {
 	logger,
 } from "@elizaos/core";
 
+/**
+ * Action for replying to a tweet on Twitter with the text from a generated message.
+ * Default action when the agent is responding with a message and no other action specified.
+ * @type {Action}
+ * @property {string} name - The name of the action.
+ * @property {string[]} similes - Related terms or actions.
+ * @property {string} description - Description of the action.
+ * @property {function} validate - Asynchronous function to validate the action based on message content.
+ * @property {function} handler - Asynchronous function to handle the action and process responses.
+ * @property {ActionExample[][]} examples - Examples demonstrating how the action can be used.
+ */
 const twitterReplyAction = {
 	name: "REPLY",
 	similes: ["REPLY_TO_TWEET", "SEND_REPLY", "RESPOND", "ANSWER_TWEET"],

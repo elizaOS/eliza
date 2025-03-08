@@ -7,6 +7,17 @@ import { JanusAudioSink, JanusAudioSource } from "./JanusAudio";
 import type { AudioDataWithUser, TurnServersInfo } from "../types";
 import type { Logger } from "../logger";
 
+/**
+ * Interface representing the configuration settings for the Janus gateway.
+ * @typedef {Object} JanusConfig
+ * @property {string} webrtcUrl - The base URL for the Janus gateway.
+ * @property {string} roomId - The unique room ID.
+ * @property {string} credential - The token/credential used to authorize requests to Janus.
+ * @property {string} userId - The user identifier (host or speaker).
+ * @property {string} streamName - The name of the stream.
+ * @property {TurnServersInfo} turnServers - ICE/TURN server information returned by Twitter's /turnServers endpoint.
+ * @property {Logger} logger - Logger instance for consistent debug/info/error logs.
+ */
 interface JanusConfig {
 	/**
 	 * The base URL for the Janus gateway (e.g. "https://gw-prod-hydra-eu-west-3.pscp.tv/s=prod:XX/v1/gateway")

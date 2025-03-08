@@ -14,6 +14,11 @@ import {
 } from "@elizaos/core";
 import type { TwitterService } from "@elizaos/plugin-twitter";
 
+/**
+ * Template for generating a tweet in the style and voice of a given agent.
+ *
+ * @type {string}
+ */
 const tweetGenerationTemplate = `# Task: Create a post in the style and voice of {{agentName}}.
 {{system}}
 
@@ -45,6 +50,12 @@ const REQUIRED_TWITTER_FIELDS = [
 
 /**
  * Validates that all required Twitter configuration fields are present and non-null
+ */
+/**
+ * Validates the Twitter configuration for a specific server.
+ * @param {IAgentRuntime} runtime - The Agent runtime.
+ * @param {string} serverId - The ID of the server to validate.
+ * @returns {Promise<{ isValid: boolean; error?: string }>} An object indicating whether the configuration is valid or not, along with an optional error message.
  */
 async function validateTwitterConfig(
 	runtime: IAgentRuntime,

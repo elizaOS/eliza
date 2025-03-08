@@ -3,6 +3,16 @@ import { ChannelType } from "@elizaos/core";
 import { ServiceTypes } from "../types.ts";
 import type { DiscordService } from "../index.ts";
 
+/**
+ * Represents a provider for retrieving channel state information.
+ * @type {Provider}
+ * @property {string} name - The name of the channel state provider.
+ * @property {Function} get - Asynchronous function that retrieves channel state information based on the provided runtime, message, and optional state parameters.
+ * @param {IAgentRuntime} runtime - The agent runtime.
+ * @param {Memory} message - The message object.
+ * @param {State} [state] - Optional state object.
+ * @returns {Promise<Object>} A promise that resolves to an object containing channel state data, values, and text.
+ */
 const channelStateProvider: Provider = {
 	name: "channelState",
 	get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {

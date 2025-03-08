@@ -5,10 +5,20 @@ import type { FetchTransformOptions } from "./api";
 import { TwitterApi } from "twitter-api-v2";
 import type { Profile } from "./profile";
 
+/**
+ * Represents the TwitterAuthOptions interface that defines the properties required for Twitter authentication.
+ * @property {typeof fetch} fetch - The fetch function to use for making HTTP requests.
+ * @property {Partial<FetchTransformOptions>} transform - The partial options for transforming fetch requests.
+ */
 export interface TwitterAuthOptions {
 	fetch: typeof fetch;
 	transform: Partial<FetchTransformOptions>;
 }
+
+/**
+ * Interface for Twitter authentication functionality.
+ * @interface
+ */
 
 export interface TwitterAuth {
 	fetch: typeof fetch;

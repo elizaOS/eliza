@@ -11,6 +11,12 @@ const packageJsonPath = path.join("package.json");
 /**
  * Get the current version of a package from the monorepo
  */
+/**
+ * Retrieves the version of a specified package.
+ *
+ * @param {string} packageName - The name of the package to retrieve the version for.
+ * @returns {Promise<string>} A promise that resolves with the version of the package.
+ */
 export async function getPackageVersion(packageName: string): Promise<string> {
 	try {
 		// Try to find the package in the monorepo first

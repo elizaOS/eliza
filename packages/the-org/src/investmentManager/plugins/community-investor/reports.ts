@@ -8,6 +8,25 @@ import type {
 	Transaction,
 } from "./types";
 
+/**
+ * Represents the metrics of a trade including total bought quantity, total bought value, total sold quantity,
+ * total sold value, total transfer in quantity, total transfer out quantity, average entry price, average exit price,
+ * realized profit and loss, realized profit and loss percentage, volume in USD, first trade time, and last trade time.
+ * @typedef {Object} TradeMetrics
+ * @property {number} totalBought - The total quantity bought
+ * @property {number} totalBoughtValue - The total value of items bought
+ * @property {number} totalSold - The total quantity sold
+ * @property {number} totalSoldValue - The total value of items sold
+ * @property {number} totalTransferIn - The total quantity transferred in
+ * @property {number} totalTransferOut - The total quantity transferred out
+ * @property {number} averageEntryPrice - The average price at which items were bought
+ * @property {number} averageExitPrice - The average price at which items were sold
+ * @property {number} realizedPnL - The realized profit and loss
+ * @property {number} realizedPnLPercent - The realized profit and loss percentage
+ * @property {number} volumeUsd - The volume in USD
+ * @property {Date} firstTradeTime - The timestamp of the first trade
+ * @property {Date} lastTradeTime - The timestamp of the last trade
+ */
 type TradeMetrics = {
 	totalBought: number;
 	totalBoughtValue: number;
@@ -24,6 +43,12 @@ type TradeMetrics = {
 	lastTradeTime: Date;
 };
 
+/**
+ * Type for position performance statistics.
+ * Includes information about the position such as token, current value, initial value, profit/loss, profit/loss percentage,
+ * price change, price change percentage, normalized balance, trade metrics, unrealized profit/loss, unrealized profit/loss percentage,
+ * total profit/loss, and total profit/loss percentage.
+ */
 type PositionPerformance = Pretty<
 	PositionWithBalance & {
 		token: TokenPerformance;
@@ -42,6 +67,12 @@ type PositionPerformance = Pretty<
 	}
 >;
 
+/**
+ * Formats a price into a currency format.
+ *
+ * @param {number} price - The price to be formatted.
+ * @returns {string} The price formatted as a currency.
+ */
 function formatPrice(price: number): string {
 	return new Intl.NumberFormat("en-US", {
 		style: "currency",
@@ -51,19 +82,42 @@ function formatPrice(price: number): string {
 	}).format(price);
 }
 
+/**
+ * Formats a number as a percentage string with two decimal places.
+ * @param {number} value - The number to be formatted as a percentage.
+ * @returns {string} The formatted percentage string.
+ */
 function formatPercent(value: number): string {
 	return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
+/**
+ * Formats a given number into a string representation using the "en-US" number format.
+ *
+ * @param {number} value - The number to be formatted.
+ * @returns {string} The formatted number as a string.
+ */
 function formatNumber(value: number): string {
 	return new Intl.NumberFormat("en-US").format(value);
 }
 
+/**
+ * Formats a given date string or Date object into a locale-specific string representation.
+ *
+ * @param {string | Date} dateString - The date string to be formatted or a Date object.
+ * @returns {string} The formatted date string.
+ */
 function formatDate(dateString: string | Date): string {
 	const date = dateString instanceof Date ? dateString : new Date(dateString);
 	return date.toLocaleString();
 }
 
+/**
+ * Function to normalize the balance based on the decimals provided.
+ * @param {string | bigint} balanceStr - The balance to normalize, can be a string or bigint.
+ * @param {number} decimals - The number of decimal places to normalize to.
+ * @returns {number} The normalized balance as a number.
+ */
 function normalizeBalance(
 	balanceStr: string | bigint,
 	decimals: number,
@@ -73,6 +127,13 @@ function normalizeBalance(
 	return Number(balance) / 10 ** decimals;
 }
 
+/**
+ * Calculate various trade metrics based on transactions and token performance.
+ *
+ * @param {Transaction[]} transactions - Array of transactions to calculate metrics for.
+ * @param {TokenPerformance} token - Token performance object.
+ * @returns {TradeMetrics} Object containing calculated trade metrics.
+ */
 function calculateTradeMetrics(
 	transactions: Transaction[],
 	token: TokenPerformance,
@@ -143,6 +204,17 @@ function calculateTradeMetrics(
 	};
 }
 
+/**
+ * Calculate the performance metrics of a given position.
+ *
+ * @param {PositionWithBalance} position The position with balance information.
+ * @param {TokenPerformance} token The performance metrics of the token.
+ * @param {Transaction[]} transactions The list of transactions related to the position.
+ * @returns {PositionPerformance} The performance metrics of the position including current value, initial value,
+ * profit/loss, profit/loss percentage, price change, price change percentage, normalized balance, trade metrics,
+ * unrealized profit/loss, unrealized profit/loss percentage, total profit/loss, and total profit/loss percentage.
+ */
+
 function calculatePositionPerformance(
 	position: PositionWithBalance,
 	token: TokenPerformance,
@@ -194,6 +266,11 @@ function calculatePositionPerformance(
 	};
 }
 
+/**
+ * Formats the token performance information into a readable string.
+ * @param {TokenPerformance} token - The token performance object to format.
+ * @returns {string} The formatted token performance information.
+ */
 function formatTokenPerformance(token: TokenPerformance): string {
 	return `
   Token: ${token.name} (${token.symbol})
@@ -214,6 +291,12 @@ function formatTokenPerformance(token: TokenPerformance): string {
       `.trim();
 }
 
+/**
+ * Formats transaction history data into an array of strings for display.
+ * @param {Transaction[]} transactions - The list of transactions to format.
+ * @param {TokenPerformance} token - The token performance data used for formatting.
+ * @returns {string[]} - An array of formatted strings representing each transaction.
+ */
 function formatTransactionHistory(
 	transactions: Transaction[],
 	token: TokenPerformance,
@@ -242,6 +325,14 @@ function formatTransactionHistory(
 		});
 }
 
+/**
+ * Format the performance metrics and details of a position.
+ *
+ * @param {PositionWithBalance} position The position object containing balance information.
+ * @param {TokenPerformance} token The token performance object.
+ * @param {Transaction[]} transactions The list of transactions associated with the position.
+ * @returns {string} The formatted performance details of the position.
+ */
 function formatPositionPerformance(
 	position: PositionWithBalance,
 	token: TokenPerformance,
@@ -285,6 +376,22 @@ function formatPositionPerformance(
       `.trim();
 }
 
+/**
+ * Formats a full report based on the provided data.
+ *
+ * @param {TokenPerformance[]} tokens - Array of token performance data.
+ * @param {PositionWithBalance[]} positions - Array of positions with balance data.
+ * @param {Transaction[]} transactions - Array of transactions data.
+ * @returns {{
+ *   tokenReports: Object[],
+ *   positionReports: Object[],
+ *   totalCurrentValue: string,
+ *   totalRealizedPnL: string,
+ *   totalUnrealizedPnL: string,
+ *   totalPnL: string,
+ *   positionsWithBalance: Object[],
+ * }} Formatted full report containing token reports, position reports, total values, and positions with balance.
+ */
 export function formatFullReport(
 	tokens: TokenPerformance[],
 	positions: PositionWithBalance[],
@@ -360,20 +467,47 @@ export function formatFullReport(
 	};
 }
 
+/**
+ * Formats a numerical score to have exactly two decimal places.
+ *
+ * @param {number} score - The numerical score to be formatted.
+ * @returns {string} The formatted score with two decimal places.
+ */
+
 function formatScore(score: number): string {
 	return score.toFixed(2);
 }
 
+/**
+ * Formats a numeric value into a percentage string with one decimal place.
+ *
+ * @param {number} value - The numeric value to be formatted as a percentage.
+ * @returns {string} The formatted percentage string.
+ */
 function formatPercentMetric(value: number): string {
 	return `${(value * 100).toFixed(1)}%`;
 }
 
+/**
+ * TypeScript type to retrieve the keys of a given object `T` that have numeric values.
+ */
 type NumericKeys<T> = {
 	[K in keyof T]: T[K] extends number ? K : never;
 }[keyof T];
 
+/**
+ * Represents the numeric keys from the `RecommenderMetrics` type.
+ */
 type RecommenderNumericMetrics = NumericKeys<RecommenderMetrics>;
 
+/**
+ * Calculate the trend of a specific metric based on historical data.
+ * @template Metric - The type of metric to calculate trend for.
+ * @param {RecommenderMetrics} current - The current metrics values.
+ * @param {Metric} metric - The specific metric to calculate trend for.
+ * @param {RecommenderMetricsHistory[]} history - Array of historical metrics data.
+ * @returns {{ trend: number; description: string }} - Object containing trend value and description.
+ */
 function calculateMetricTrend<Metric extends RecommenderNumericMetrics>(
 	current: RecommenderMetrics,
 	metric: Metric,
@@ -399,23 +533,59 @@ function calculateMetricTrend<Metric extends RecommenderNumericMetrics>(
 	return { trend, description };
 }
 
+/**
+ * Calculate the percentage trend between the current value and the first value in the historical values array.
+ *
+ * @param {number} current - The current value.
+ * @param {number[]} historicalValues - An array of historical values.
+ * @returns {number} The calculated trend percentage.
+ */
 function calculateTrend(current: number, historicalValues: number[]): number {
 	if (historicalValues.length === 0) return 0;
 	const previousValue = historicalValues[0];
 	return ((current - previousValue) / previousValue) * 100;
 }
 
+/**
+ * Formats the trend arrow based on the trend value.
+ * An arrow pointing upwards ("↑") is returned if the trend is greater than 5.
+ * An arrow pointing downwards ("↓") is returned if the trend is less than -5.
+ * A horizontal arrow ("→") is returned if the trend is between -5 and 5 (inclusive).
+ *
+ * @param trend The value representing the trend
+ * @returns The formatted arrow representing the trend direction
+ */
 function formatTrendArrow(trend: number): string {
 	if (trend > 5) return "↑";
 	if (trend < -5) return "↓";
 	return "→";
 }
 
+/**
+ * Represents a time period with a label and number of days.
+ * @typedef {Object} TimePeriod
+ * @property {string} label - The label for the time period.
+ * @property {number} days - The number of days in the time period.
+ */
 type TimePeriod = {
 	label: string;
 	days: number;
 };
 
+/**
+ * Calculates and returns trends for a given history of recommended metrics.
+ * If a specific period is provided, trends are calculated for that period.
+ * If no period is provided, monthly trends are calculated.
+ *
+ * @param {RecommenderMetricsHistory[]} history - The history of recommended metrics.
+ * @param {TimePeriod} period - The time period for which trends should be calculated. If not provided, monthly trends are calculated.
+ * @returns {Array<{
+ * 	period: string;
+ * 	avgPerformance: number;
+ * 	successRate: number;
+ * 	recommendations: number;
+ * }>} An array of objects containing period, average performance, success rate, and total recommendations.
+ */
 function calculatePeriodTrends(
 	history: RecommenderMetricsHistory[],
 	period: TimePeriod | null = null,
@@ -513,6 +683,12 @@ function calculatePeriodTrends(
 	];
 }
 
+/**
+ * Formats an array of trends into a string representation.
+ *
+ * @param {Array<{ period: string; avgPerformance: number; successRate: number; recommendations: number; }>} trends The array of trends to format.
+ * @returns {string} The formatted trends as a string with each trend separated by two new lines.
+ */
 function formatTrends(
 	trends: Array<{
 		period: string;
@@ -532,6 +708,13 @@ ${trend.period}:
 		.join("\n\n");
 }
 
+/**
+ * Formats the recommender profile for a given entity based on the provided metrics and history.
+ * @param {Entity} entity - The entity for which the profile is being formatted.
+ * @param {RecommenderMetrics} metrics - The metrics related to the recommendations for the entity.
+ * @param {RecommenderMetricsHistory[]} history - The history of metrics for the entity.
+ * @returns {string} The formatted recommender profile string.
+ */
 export function formatRecommenderProfile(
 	entity: Entity,
 	metrics: RecommenderMetrics,
@@ -564,6 +747,13 @@ Activity:
     `.trim();
 }
 
+/**
+ * Formats a recommender report for an entity with provided metrics and history.
+ * @param {Entity} entity - The entity for which the report is being generated.
+ * @param {RecommenderMetrics} metrics - The metrics for the entity's recommendations.
+ * @param {RecommenderMetricsHistory[]} history - The historical metrics for the entity's recommendations.
+ * @returns {string} The formatted recommender report.
+ */
 export function formatRecommenderReport(
 	entity: Entity,
 	metrics: RecommenderMetrics,
@@ -624,6 +814,14 @@ Monthly Average Performance:
 ${formatTrends(monthlyTrends)}`.trim();
 }
 
+/**
+ * Formats the top recommenders overview based on the provided data.
+ *
+ * @param {Entity[]} recommenders - The list of recommenders to be formatted
+ * @param {Map<string, RecommenderMetrics>} metrics - The map of recommender metrics
+ * @param {Map<string, RecommenderMetricsHistory[]>} history - The map of historical metrics data
+ * @returns {string} The formatted top recommenders overview in XML format
+ */
 export function formatTopRecommendersOverview(
 	recommenders: Entity[],
 	metrics: Map<string, RecommenderMetrics>,

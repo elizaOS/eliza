@@ -8,6 +8,13 @@ import multer from "multer";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Attempts to load a file from the given file path.
+ *
+ * @param {string} filePath - The path to the file to load.
+ * @returns {string | null} The contents of the file as a string, or null if an error occurred.
+ * @throws {Error} If an error occurs while loading the file.
+ */
 export function tryLoadFile(filePath: string): string | null {
 	try {
 		return fs.readFileSync(filePath, "utf8");
@@ -16,6 +23,11 @@ export function tryLoadFile(filePath: string): string | null {
 	}
 }
 
+/**
+ * Load characters from a specified URL and return them as an array of Character objects.
+ * @param {string} url - The URL from which to load character data.
+ * @returns {Promise<Character[]>} - A promise that resolves with an array of Character objects.
+ */
 export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
 	try {
 		const response = await fetch(url);
@@ -37,6 +49,12 @@ export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
 	}
 }
 
+/**
+ * Converts a JSON object representing a character into a Character object with additional settings and secrets.
+ *
+ * @param {any} character - The input JSON object representing a character.
+ * @returns {Promise<Character>} - A Promise that resolves to a Character object.
+ */
 export async function jsonToCharacter(character: any): Promise<Character> {
 	validateCharacterConfig(character);
 
@@ -63,6 +81,13 @@ export async function jsonToCharacter(character: any): Promise<Character> {
 	return character;
 }
 
+/**
+ * Loads a character from the specified file path.
+ *
+ * @param {string} filePath - The path to the character file.
+ * @returns {Promise<Character>} A Promise that resolves to the loaded Character object.
+ * @throws {Error} If the character file is not found.
+ */
 export async function loadCharacter(filePath: string): Promise<Character> {
 	const content = tryLoadFile(filePath);
 	if (!content) {
@@ -72,11 +97,24 @@ export async function loadCharacter(filePath: string): Promise<Character> {
 	return jsonToCharacter(character);
 }
 
+/**
+ * Handles errors when loading a character from a specific path.
+ *
+ * @param {string} path - The path from which the character is being loaded.
+ * @param {unknown} error - The error that occurred during the loading process.
+ * @returns {never}
+ */
 function handleCharacterLoadError(path: string, error: unknown): never {
 	logger.error(`Error loading character from ${path}: ${error}`);
 	throw new Error(`Error loading character from ${path}: ${error}`);
 }
 
+/**
+ * Asynchronously loads a character from the specified path while handling any potential errors.
+ *
+ * @param {string} path - The path to load the character from.
+ * @returns {Promise<Character>} A promise that resolves to the loaded character.
+ */
 async function safeLoadCharacter(path: string): Promise<Character> {
 	try {
 		const character = await loadCharacter(path);
@@ -87,6 +125,15 @@ async function safeLoadCharacter(path: string): Promise<Character> {
 	}
 }
 
+/**
+ * Asynchronously loads a character from the specified path.
+ * If the path is a URL, it loads the character from the URL.
+ * If the path is a local file path, it tries multiple possible locations and
+ * loads the character from the first valid location found.
+ *
+ * @param {string} characterPath - The path to load the character from.
+ * @returns {Promise<Character>} A Promise that resolves to the loaded character.
+ */
 export async function loadCharacterTryPath(
 	characterPath: string,
 ): Promise<Character> {
@@ -119,10 +166,21 @@ export async function loadCharacterTryPath(
 	);
 }
 
+/**
+ * Converts a comma-separated string to an array of strings.
+ *
+ * @param {string} commaSeparated - The input comma-separated string.
+ * @returns {string[]} An array of strings after splitting the input string by commas and trimming each value.
+ */
 function commaSeparatedStringToArray(commaSeparated: string): string[] {
 	return commaSeparated?.split(",").map((value) => value.trim());
 }
 
+/**
+ * Asynchronously reads character files from the storage directory and pushes their paths to the characterPaths array.
+ * @param {string[]} characterPaths - An array of paths where the character files will be stored.
+ * @returns {Promise<string[]>} - A promise that resolves with an updated array of characterPaths.
+ */
 async function readCharactersFromStorage(
 	characterPaths: string[],
 ): Promise<string[]> {
@@ -145,6 +203,11 @@ export const hasValidRemoteUrls = () =>
 	process.env.REMOTE_CHARACTER_URLS !== "" &&
 	process.env.REMOTE_CHARACTER_URLS.startsWith("http");
 
+/**
+ * Load characters from local paths or remote URLs based on configuration.
+ * @param charactersArg - A comma-separated list of local file paths or remote URLs to load characters from.
+ * @returns A promise that resolves to an array of loaded characters.
+ */
 export async function loadCharacters(
 	charactersArg: string,
 ): Promise<Character[]> {
@@ -181,6 +244,13 @@ export async function loadCharacters(
 	return loadedCharacters;
 }
 
+/**
+ * Configuration for multer disk storage.
+ *
+ * @type {multer.diskStorage}
+ * @property {Function} destination - Callback function to determine the destination directory for file uploads
+ * @property {Function} filename - Callback function to generate a unique filename for uploaded files
+ */
 export const storage = multer.diskStorage({
 	destination: (_req, _file, cb) => {
 		const uploadDir = path.join(process.cwd(), "data", "uploads");

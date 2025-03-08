@@ -10,6 +10,11 @@ import {
 	type State,
 } from "../types";
 
+/**
+ * Template for deciding if an agent should stop closely following a previously followed room
+ *
+ * @type {string}
+ */
 const shouldUnfollowTemplate = `# Task: Decide if {{agentName}} should stop closely following this previously followed room and only respond when mentioned.
 
 {{recentMessages}}
@@ -23,6 +28,16 @@ Respond with YES if:
 Otherwise, respond with NO.
 ${booleanFooter}`;
 
+/**
+ * Action for unfollowing a room.
+ *
+ * - Name: UNFOLLOW_ROOM
+ * - Similes: ["UNFOLLOW_CHAT", "UNFOLLOW_CONVERSATION", "UNFOLLOW_ROOM", "UNFOLLOW_THREAD"]
+ * - Description: Stop following this channel. You can still respond if explicitly mentioned, but you won't automatically chime in anymore. Unfollow if you're annoying people or have been asked to.
+ * - Validate function checks if the room state is "FOLLOWED".
+ * - Handler function handles the unfollowing logic based on user input.
+ * - Examples provide sample interactions for unfollowing a room.
+ */
 export const unfollowRoomAction: Action = {
 	name: "UNFOLLOW_ROOM",
 	similes: [

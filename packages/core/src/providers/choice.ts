@@ -8,11 +8,24 @@ import type {
 } from "../types";
 
 // Define an interface for option objects
+/**
+ * Interface for an object representing an option.
+ * @typedef {Object} OptionObject
+ * @property {string} name - The name of the option.
+ * @property {string} [description] - The description of the option (optional).
+ */
 interface OptionObject {
 	name: string;
 	description?: string;
 }
 
+/**
+ * Choice provider function that retrieves all pending tasks with options for a specific room
+ *
+ * @param {IAgentRuntime} runtime - The runtime object for the agent
+ * @param {Memory} message - The message memory object
+ * @returns {Promise<ProviderResult>} A promise that resolves with the provider result containing the pending tasks with options
+ */
 export const choiceProvider: Provider = {
 	name: "CHOICE",
 	get: async (

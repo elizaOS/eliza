@@ -4,12 +4,26 @@ import type { WalletPortfolio } from "../types";
 import { SOLANA_WALLET_DATA_CACHE_KEY } from "../constants";
 
 // Define the ProviderResult interface if not already imported
+/**
+ * Represents the result returned by a provider.
+ * @typedef {Object} ProviderResult
+ * @property {any} [data] - The data associated with the result.
+ * @property {Record<string, string>} [values] - The values stored in key-value pairs.
+ * @property {string} [text] - The text content of the result.
+ */
 interface ProviderResult {
 	data?: any;
 	values?: Record<string, string>;
 	text?: string;
 }
 
+/**
+ * Wallet provider for Solana.
+ * @param {IAgentRuntime} runtime - The agent runtime.
+ * @param {Memory} _message - The memory message.
+ * @param {State} [state] - Optional state parameter.
+ * @returns {Promise<ProviderResult>} The result of the wallet provider.
+ */
 export const walletProvider: Provider = {
 	name: "solana-wallet",
 	get: async (

@@ -5,6 +5,13 @@ import { runBunCommand } from "@/src/utils/run-bun";
 import { promises as fs } from "node:fs";
 import { getBestBranch } from "@/src/utils/registry";
 
+/**
+ * Asynchronously installs a plugin to a specified directory.
+ *
+ * @param {string} pluginName - The name of the plugin to install.
+ * @param {string} cwd - The current working directory where the plugin will be installed.
+ * @returns {Promise<void>} - A Promise that resolves once the plugin is successfully installed.
+ */
 export async function installPlugin(
 	pluginName: string,
 	cwd: string,

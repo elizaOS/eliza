@@ -8,16 +8,34 @@ import {
 } from "../types.ts";
 import { sqliteTables } from "./sqliteTables.ts";
 
+/**
+ * Represents a data access object for interacting with SQLite database to perform operations related to TeeLog and TeeAgent.
+ * @extends TeeLogDAO
+ */
 export class SqliteTeeLogDAO extends TeeLogDAO<Database> {
+	/**
+	 * Constructor for creating a new instance of the class.
+	 * @param {Database} db - The database object to be used by the instance
+	 */
 	constructor(db: Database) {
 		super();
 		this.db = db;
 	}
 
+	/**
+	 * Asynchronously initializes the database by executing the provided SQLite table creation SQL.
+	 * @returns A Promise that resolves to void once the initialization is complete.
+	 */
 	async initialize(): Promise<void> {
 		this.db.exec(sqliteTables);
 	}
 
+	/**
+	 * Add a log to the database.
+	 *
+	 * @param {TeeLog} log - The log object to be added.
+	 * @returns {Promise<boolean>} - Indicates if the log was successfully added or not.
+	 */
 	async addLog(log: TeeLog): Promise<boolean> {
 		const stmt = this.db.prepare(
 			"INSERT INTO tee_logs (id, agentId, roomId, entityId, type, content, timestamp, signature) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -40,6 +58,14 @@ export class SqliteTeeLogDAO extends TeeLogDAO<Database> {
 		}
 	}
 
+	/**
+	 * Retrieves paged logs based on the provided query criteria.
+	 *
+	 * @param {TeeLogQuery} query - The query criteria to filter the logs.
+	 * @param {number} page - The page number to retrieve.
+	 * @param {number} pageSize - The number of logs per page.
+	 * @returns {Promise<TeePageQuery<TeeLog[]>>} The paged logs data along with page information.
+	 */
 	async getPagedLogs(
 		query: TeeLogQuery,
 		page: number,
@@ -109,6 +135,12 @@ export class SqliteTeeLogDAO extends TeeLogDAO<Database> {
 		}
 	}
 
+	/**
+	 * Add an agent to the database.
+	 *
+	 * @param {TeeAgent} agent - The TeeAgent object to be added.
+	 * @returns {Promise<boolean>} - A Promise that resolves to true if the agent was successfully added, and false otherwise.
+	 */
 	async addAgent(agent: TeeAgent): Promise<boolean> {
 		const stmt = this.db.prepare(
 			"INSERT INTO tee_agents (id, agentId, agentName, createdAt, publicKey, attestation) VALUES (?, ?, ?, ?, ?, ?)",
@@ -129,6 +161,12 @@ export class SqliteTeeLogDAO extends TeeLogDAO<Database> {
 		}
 	}
 
+	/**
+	 * Retrieves a TeeAgent from the database based on the provided agentId.
+	 *
+	 * @param {string} agentId - The unique identifier of the agent to retrieve.
+	 * @returns {Promise<TeeAgent | null>} A promise that resolves with the retrieved TeeAgent, or null if not found.
+	 */
 	async getAgent(agentId: string): Promise<TeeAgent | null> {
 		const stmt = this.db.prepare(
 			"SELECT * FROM tee_agents WHERE agentId = ? ORDER BY createdAt DESC LIMIT 1",
@@ -141,6 +179,11 @@ export class SqliteTeeLogDAO extends TeeLogDAO<Database> {
 		}
 	}
 
+	/**
+	 * Retrieves all agents from the database.
+	 *
+	 * @returns {Promise<TeeAgent[]>} All agents
+	 */
 	async getAllAgents(): Promise<TeeAgent[]> {
 		const stmt = this.db.prepare("SELECT * FROM tee_agents");
 		try {

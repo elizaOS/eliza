@@ -31,6 +31,16 @@ import type {
 	UserV2,
 } from "twitter-api-v2";
 
+/**
+ * Default options for Twitter API v2 request parameters.
+ * @typedef {Object} defaultOptions
+ * @property {TTweetv2Expansion[]} expansions - List of expansions to include in the request.
+ * @property {TTweetv2TweetField[]} tweetFields - List of tweet fields to include in the request.
+ * @property {TTweetv2PollField[]} pollFields - List of poll fields to include in the request.
+ * @property {TTweetv2MediaField[]} mediaFields - List of media fields to include in the request.
+ * @property {TTweetv2UserField[]} userFields - List of user fields to include in the request.
+ * @property {TTweetv2PlaceField[]} placeFields - List of place fields to include in the request.
+ */
 export const defaultOptions = {
 	expansions: [
 		"attachments.poll_ids",
@@ -109,17 +119,39 @@ export const defaultOptions = {
 		"place_type",
 	] as TTweetv2PlaceField[],
 };
+/**
+ * Interface representing a mention.
+ * @typedef {Object} Mention
+ * @property {string} id - The unique identifier for the mention.
+ * @property {string} [username] - The username associated with the mention.
+ * @property {string} [name] - The name associated with the mention.
+ */
 export interface Mention {
 	id: string;
 	username?: string;
 	name?: string;
 }
 
+/**
+ * Interface representing a photo object.
+ * @interface
+ * @property {string} id - The unique identifier for the photo.
+ * @property {string} url - The URL for the photo image.
+ * @property {string} [alt_text] - The alternative text for the photo image. Optional.
+ */
 export interface Photo {
 	id: string;
 	url: string;
 	alt_text: string | undefined;
 }
+
+/**
+ * Interface representing a video object.
+ * @typedef {Object} Video
+ * @property {string} id - The unique identifier for the video.
+ * @property {string} preview - The URL for the preview image of the video.
+ * @property {string} [url] - The optional URL for the video.
+ */
 
 export interface Video {
 	id: string;
@@ -127,6 +159,19 @@ export interface Video {
 	url?: string;
 }
 
+/**
+ * Interface representing a raw place object.
+ * @typedef {Object} PlaceRaw
+ * @property {string} [id] - The unique identifier of the place.
+ * @property {string} [place_type] - The type of the place.
+ * @property {string} [name] - The name of the place.
+ * @property {string} [full_name] - The full name of the place.
+ * @property {string} [country_code] - The country code of the place.
+ * @property {string} [country] - The country name of the place.
+ * @property {Object} [bounding_box] - The bounding box coordinates of the place.
+ * @property {string} [bounding_box.type] - The type of the bounding box.
+ * @property {number[][][]} [bounding_box.coordinates] - The coordinates of the bounding box in an array format.
+ */
 export interface PlaceRaw {
 	id?: string;
 	place_type?: string;
@@ -140,6 +185,15 @@ export interface PlaceRaw {
 	};
 }
 
+/**
+ * Interface representing poll data.
+ *
+ * @property {string} [id] - The unique identifier for the poll.
+ * @property {string} [end_datetime] - The end date and time for the poll.
+ * @property {string} [voting_status] - The status of the voting process.
+ * @property {number} duration_minutes - The duration of the poll in minutes.
+ * @property {PollOption[]} options - An array of poll options.
+ */
 export interface PollData {
 	id?: string;
 	end_datetime?: string;
@@ -148,6 +202,13 @@ export interface PollData {
 	options: PollOption[];
 }
 
+/**
+ * Interface representing a poll option.
+ * @typedef {Object} PollOption
+ * @property {number} [position] - The position of the option.
+ * @property {string} label - The label of the option.
+ * @property {number} [votes] - The number of votes for the option.
+ */
 export interface PollOption {
 	position?: number;
 	label: string;
@@ -156,6 +217,47 @@ export interface PollOption {
 
 /**
  * A parsed Tweet object.
+ */
+/**
+ * Represents a Tweet on Twitter.
+ * @typedef { Object } Tweet
+ * @property { number } [bookmarkCount] - The number of times this Tweet has been bookmarked.
+ * @property { string } [conversationId] - The ID of the conversation this Tweet is a part of.
+ * @property {string[]} hashtags - An array of hashtags mentioned in the Tweet.
+ * @property { string } [html] - The HTML content of the Tweet.
+ * @property { string } [id] - The unique ID of the Tweet.
+ * @property { Tweet } [inReplyToStatus] - The Tweet that this Tweet is in reply to.
+ * @property { string } [inReplyToStatusId] - The ID of the Tweet that this Tweet is in reply to.
+ * @property { boolean } [isQuoted] - Indicates if this Tweet is a quote of another Tweet.
+ * @property { boolean } [isPin] - Indicates if this Tweet is pinned.
+ * @property { boolean } [isReply] - Indicates if this Tweet is a reply to another Tweet.
+ * @property { boolean } [isRetweet] - Indicates if this Tweet is a retweet.
+ * @property { boolean } [isSelfThread] - Indicates if this Tweet is part of a self thread.
+ * @property { string } [language] - The language of the Tweet.
+ * @property { number } [likes] - The number of likes on the Tweet.
+ * @property { string } [name] - The name associated with the Tweet.
+ * @property {Mention[]} mentions - An array of mentions in the Tweet.
+ * @property { string } [permanentUrl] - The permanent URL of the Tweet.
+ * @property {Photo[]} photos - An array of photos attached to the Tweet.
+ * @property { PlaceRaw } [place] - The place associated with the Tweet.
+ * @property { Tweet } [quotedStatus] - The quoted Tweet.
+ * @property { string } [quotedStatusId] - The ID of the quoted Tweet.
+ * @property { number } [quotes] - The number of times this Tweet has been quoted.
+ * @property { number } [replies] - The number of replies to the Tweet.
+ * @property { number } [retweets] - The number of retweets on the Tweet.
+ * @property { Tweet } [retweetedStatus] - The status that was retweeted.
+ * @property { string } [retweetedStatusId] - The ID of the retweeted status.
+ * @property { string } [text] - The text content of the Tweet.
+ * @property {Tweet[]} thread - An array representing a Twitter thread.
+ * @property { Date } [timeParsed] - The parsed timestamp of the Tweet.
+ * @property { number } [timestamp] - The timestamp of the Tweet.
+ * @property {string[]} urls - An array of URLs mentioned in the Tweet.
+ * @property { string } [userId] - The ID of the user who posted the Tweet.
+ * @property { string } [username] - The username of the user who posted the Tweet.
+ * @property {Video[]} videos - An array of videos attached to the Tweet.
+ * @property { number } [views] - The number of views on the Tweet.
+ * @property { boolean } [sensitiveContent] - Indicates if the Tweet contains sensitive content.
+ * @property {PollV2 | null} [poll] - The poll attached to the Tweet, if any.
  */
 export interface Tweet {
 	bookmarkCount?: number;

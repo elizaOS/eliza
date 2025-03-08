@@ -2,6 +2,22 @@ import type { TSESTree } from "@typescript-eslint/types";
 import type { TypeScriptParser } from "./TypeScriptParser.js";
 import type { ASTQueueItem, EnvUsage, TodoItem } from "./types/index.js";
 
+/**
+ * Defines a type representing various AST node types in a JavaScript abstract syntax tree.
+ * @typedef {Object} AST_NODE_TYPES
+ * @property {string} ClassDeclaration - Represents a class declaration node.
+ * @property {string} FunctionDeclaration - Represents a function declaration node.
+ * @property {string} TSTypeAliasDeclaration - Represents a TypeScript type alias declaration node.
+ * @property {string} TSEnumDeclaration - Represents a TypeScript enum declaration node.
+ * @property {string} MethodDefinition - Represents a method definition node.
+ * @property {string} TSMethodSignature - Represents a TypeScript method signature node.
+ * @property {string} TSInterfaceDeclaration - Represents a TypeScript interface declaration node.
+ * @property {string} TSPropertySignature - Represents a TypeScript property signature node.
+ * @property {string} ExportNamedDeclaration - Represents an export named declaration node.
+ * @property {string} Identifier - Represents an identifier node.
+ * @property {string} VariableDeclaration - Represents a variable declaration node.
+ */
+
 type AST_NODE_TYPES = {
 	ClassDeclaration: "ClassDeclaration";
 	FunctionDeclaration: "FunctionDeclaration";
@@ -16,6 +32,23 @@ type AST_NODE_TYPES = {
 	VariableDeclaration: "VariableDeclaration";
 };
 
+/**
+ * Constant object representing AST node types.
+ * @constant
+ * @readonly
+ * @type {Object}
+ * @property {string} ClassDeclaration - Represents a class declaration.
+ * @property {string} FunctionDeclaration - Represents a function declaration.
+ * @property {string} TSTypeAliasDeclaration - Represents a type alias declaration in TypeScript.
+ * @property {string} TSEnumDeclaration - Represents an enum declaration in TypeScript.
+ * @property {string} MethodDefinition - Represents a method definition.
+ * @property {string} TSMethodSignature - Represents a method signature in TypeScript.
+ * @property {string} TSInterfaceDeclaration - Represents an interface declaration in TypeScript.
+ * @property {string} TSPropertySignature - Represents a property signature in TypeScript.
+ * @property {string} ExportNamedDeclaration - Represents an export named declaration.
+ * @property {string} Identifier - Represents an identifier.
+ * @property {string} VariableDeclaration - Represents a variable declaration.
+ */
 const AST_NODE_TYPES = {
 	ClassDeclaration: "ClassDeclaration",
 	FunctionDeclaration: "FunctionDeclaration",
@@ -30,6 +63,10 @@ const AST_NODE_TYPES = {
 	VariableDeclaration: "VariableDeclaration",
 } as const;
 
+/**
+ * Represents types of nodes that are documentable.
+ * @typedef {("ClassDeclaration" | "FunctionDeclaration" | "TSTypeAliasDeclaration" | "TSEnumDeclaration" | "MethodDefinition" | "TSMethodSignature" | "TSInterfaceDeclaration" | "TSPropertySignature" | "VariableDeclaration")} DocumentableNodeType
+ */
 type DocumentableNodeType =
 	| "ClassDeclaration"
 	| "FunctionDeclaration"
@@ -41,6 +78,12 @@ type DocumentableNodeType =
 	| "TSPropertySignature"
 	| "VariableDeclaration";
 
+/**
+ * Represents a location within a data structure, specified by a start and end index.
+ * @typedef {Object} Location
+ * @property {number} start - The starting index of the location.
+ * @property {number} end - The ending index of the location.
+ */
 interface Location {
 	start: number;
 	end: number;
@@ -48,6 +91,10 @@ interface Location {
 
 /**
  * Class to analyze JSDoc comments in TypeScript code.
+ */
+/**
+ * Class representing a JsDocAnalyzer.
+ * @property {Set<DocumentableNodeType>} documentableTypes - Set containing various documentable node types.
  */
 export class JsDocAnalyzer {
 	private documentableTypes: Set<DocumentableNodeType> = new Set([

@@ -1,5 +1,10 @@
 import type { Character } from "@elizaos/core";
 
+/**
+ * Mock character object representing a character in the system.
+ *
+ * @type {Character}
+ */
 export const mockCharacter: Character = {
 	name: "Eliza",
 	username: "eliza",

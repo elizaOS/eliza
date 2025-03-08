@@ -10,6 +10,13 @@ import type { EventEmitter } from "node:events";
  * Authorizes a token for guest access, using the provided Periscope cookie.
  * Returns an authorization token (bearer/JWT-like).
  */
+/**
+ * Authorizes a token for a specified cookie.
+ *
+ * @param {string} cookie - The cookie to use for authorization.
+ * @returns {Promise<string>} The authorized token.
+ * @throws {Error} If the request fails or if the authorization_token is missing in the response.
+ */
 export async function authorizeToken(cookie: string): Promise<string> {
 	const headers = new Headers({
 		"X-Periscope-User-Agent": "Twitter/m5",

@@ -5,6 +5,12 @@ import chalk from "chalk";
 /**
  * Format message examples into readable conversation format
  */
+/**
+ * Formats an array of message examples into a string representation of conversations.
+ * If no examples are provided, returns "No message examples".
+ * @param {MessageExample[][]} examples - The array of message examples to format.
+ * @returns {string} The formatted string representation of conversations from the message examples.
+ */
 export function formatMessageExamples(examples: MessageExample[][]): string {
 	if (!examples || examples.length === 0) return "No message examples";
 

@@ -12,8 +12,19 @@ const LOG_LEVELS = {
 	...logger.levels.values,
 } as const;
 
+/**
+ * Defines a type `LogLevel` as the keys of the `LOG_LEVELS` object.
+ */
 type LogLevel = keyof typeof LOG_LEVELS;
 
+/**
+ * Represents a log entry with specific properties.
+ * @typedef {Object} LogEntry
+ * @property {number} level - The level of the log entry.
+ * @property {number} time - The time the log entry was created.
+ * @property {string} msg - The message of the log entry.
+ * @property {string | number | boolean | null | undefined} [key] - Additional key-value pairs for the log entry.
+ */
 interface LogEntry {
 	level: number;
 	time: number;
@@ -21,6 +32,12 @@ interface LogEntry {
 	[key: string]: string | number | boolean | null | undefined;
 }
 
+/**
+ * Creates an API router with various endpoints and middleware.
+ * @param {Map<UUID, IAgentRuntime>} agents - Map of agents with UUID as key and IAgentRuntime as value.
+ * @param {AgentServer} [server] - Optional AgentServer instance.
+ * @returns {express.Router} The configured API router.
+ */
 export function createApiRouter(
 	agents: Map<UUID, IAgentRuntime>,
 	server?: AgentServer,

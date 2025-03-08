@@ -3,6 +3,10 @@ import { jsonb, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 import { numberTimestamp } from "./types";
 
+/**
+ * Represents an entity table in the database.
+ * Includes columns for id, agentId, createdAt, names, and metadata.
+ */
 export const entityTable = pgTable(
 	"entities",
 	{

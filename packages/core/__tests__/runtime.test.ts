@@ -10,6 +10,10 @@ import {
 } from "../src/types";
 
 // Mock dependencies with minimal implementations
+/**
+ * Mock database adapter for testing purposes.
+ * @type {IDatabaseAdapter}
+ */
 const mockDatabaseAdapter: IDatabaseAdapter = {
 	db: {},
 	init: vi.fn().mockResolvedValue(undefined),

@@ -19,6 +19,12 @@ import {
 } from "../types";
 // Create a simple formatter module inline if it doesn't exist
 // This will be used until a proper formatters.ts file is created
+/**
+ * Format a Token Performance object into a string with specific details.
+ *
+ * @param {TypesTokenPerformance} token - The token performance object to format.
+ * @returns {string} A formatted string containing the token's chain, address, symbol, price, liquidity, and 24h change.
+ */
 const formatters = {
 	formatTokenPerformance: (token: TypesTokenPerformance): string => {
 		return `
@@ -37,6 +43,16 @@ const formatters = {
 // Use local formatters until a proper module is created
 const { formatTokenPerformance } = formatters;
 
+/**
+ * Template for generating a data provider report in HTML format.
+ * Includes instructions on how to write the report, links for token addresses, accounts, transactions, and trading pairs.
+ * @typedef {string} dataProviderTemplate
+ * @property {string} instructions Instructions on writing the report
+ * @property {string} token_reports Placeholder for token reports
+ * @property {string} positions_summary Summary of positions including current value, realized and unrealized P&L
+ * @property {string} entity Entity data placeholder
+ * @property {string} global_market_data Global market data placeholder
+ */
 const dataProviderTemplate = `<data_provider>
 
 <instructions>
@@ -74,6 +90,17 @@ Total P&L: {{totalPnL}}
 
 </data_provider>`;
 
+/**
+ * Represents the state of data actions including runtime, message, trading service, tokens, positions, and transactions.
+ *
+ * @typedef {Object} DataActionState
+ * @property {IAgentRuntime} runtime - The agent runtime object.
+ * @property {Memory} message - The memory message object.
+ * @property {CommunityInvestorService} tradingService - The trading service object used by the community investor.
+ * @property {TypesTokenPerformance[]} tokens - Array of token performance types.
+ * @property {PositionWithBalance[]} positions - Array of positions with balance information.
+ * @property {TypesTransaction[]} transactions - Array of transaction types.
+ */
 type DataActionState = {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -83,12 +110,28 @@ type DataActionState = {
 	transactions: TypesTransaction[];
 };
 
+/**
+ * Represents a data action that can be dispatched.
+ * @template Params the type of parameters that the action accepts
+ * @property {string} name - The name of the action
+ * @property {string} description - The description of the action
+ * @property {Params} params - The parameters that the action accepts
+ * @property {function(state: DataActionState, params: z.infer<Params>): Promise<void>} handler - The function that handles the action and the state
+ */
 type DataAction<Params extends z.AnyZodObject = z.AnyZodObject> = {
 	name: string;
 	description: string;
 	params: Params;
 	handler: (state: DataActionState, params: z.infer<Params>) => Promise<void>;
 };
+
+/**
+ * Creates an action with the specified parameters.
+ *
+ * @template Params The type of parameters for the action. Defaults to AnyZodObject.
+ * @param {DataAction<Params>} action The data action to create.
+ * @returns {DataAction<Params>} The created data action.
+ */
 
 function createAction<Params extends z.AnyZodObject = z.AnyZodObject>(
 	action: DataAction<Params>,
@@ -97,6 +140,11 @@ function createAction<Params extends z.AnyZodObject = z.AnyZodObject>(
 }
 
 // Available actions
+/**
+ * Array of actions to perform various tasks related to trading and positions.
+ * Each action has a name, description, parameters, and an async handler function that executes the action.
+ * @type {Array<Object>}
+ */
 const _actions = [
 	createAction({
 		name: "refresh_token",
@@ -184,6 +232,12 @@ const _actions = [
 	}),
 ];
 
+/**
+ * Extracts actions from a given text that is formatted with <action name="...">...</action> tags.
+ *
+ * @param {string} text - The text containing the actions to extract.
+ * @returns {Array<{ name: string, params: object }>} The array of extracted actions, each containing a name and parameters.
+ */
 function extractActions(text: string) {
 	const regex = /<action name="([^"]+)">([^<]+)<\/action>/g;
 	const actions = [];
@@ -202,10 +256,29 @@ function extractActions(text: string) {
 	return actions;
 }
 
+/**
+ * A function that formats a value as JSON, converting Date objects to ISO strings.
+ *
+ * @param {any} _key - The key of the JSON property.
+ * @param {any} value - The value of the JSON property.
+ * @returns {any} The formatted value.
+ */
 function jsonFormatter(_key: any, value: any) {
 	if (value instanceof Date) return value.toISOString();
 	return value;
 }
+
+/**
+ * Runs a series of actions asynchronously.
+ *
+ * @param {any[]} actions - The list of actions to run.
+ * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+ * @param {Memory} message - The memory object for storing data.
+ * @param {TypesTokenPerformance[]} tokens - The list of tokens for performance tracking.
+ * @param {PositionWithBalance[]} positions - The list of positions with balance information.
+ * @param {TypesTransaction[]} transactions - The list of transactions.
+ * @returns {Promise<any[]>} A promise that resolves to an array of results from running the actions.
+ */
 
 async function runActions(
 	actions: any[],
@@ -233,6 +306,12 @@ async function runActions(
 	);
 }
 
+/**
+ * Retrieves data based on the provided runtime and message.
+ * @param {IAgentRuntime} runtime - The agent runtime.
+ * @param {Memory} message - The message containing the data.
+ * @returns {Object} The data, values, and rendered text based on the retrieved information.
+ */
 export const dataProvider: Provider = {
 	name: "data",
 	async get(runtime: IAgentRuntime, message: Memory) {

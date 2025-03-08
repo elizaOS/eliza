@@ -16,6 +16,22 @@ import { x25519 } from "@noble/curves/ed25519";
 import { hexToUint8Array, uint8ArrayToHex } from "./lib";
 import prompts from "prompts";
 
+/**
+ * Interface for defining deployment options.
+ * @typedef {Object} DeployOptions
+ * @property {boolean} [debug] - Optional flag for enabling debug mode.
+ * @property {string} [type] - Optional type of deployment.
+ * @property {string} [mode] - Optional mode of deployment.
+ * @property {string} name - Name of the deployment.
+ * @property {number} [vcpu] - Optional number of virtual CPUs.
+ * @property {number} [memory] - Optional amount of memory in MB.
+ * @property {number} [diskSize] - Optional disk size in GB.
+ * @property {string} [compose] - Optional compose file for deployment.
+ * @property {string[]} [env] - Optional array of environment variables.
+ * @property {string} [envFile] - Optional path to a file containing environment variables.
+ * @property {Env[]} envs - Array of environment objects.
+ */
+
 interface DeployOptions {
 	debug?: boolean;
 	type?: string;
@@ -30,6 +46,17 @@ interface DeployOptions {
 	envs: Env[];
 }
 
+/**
+ * Interface representing options for upgrading an application.
+ * @typedef {Object} UpgradeOptions
+ * @property {string} type - The type of upgrade.
+ * @property {string} mode - The mode of upgrade.
+ * @property {string} appId - The ID of the application.
+ * @property {string} compose - The composition.
+ * @property {string[]} [env] - Additional environment variables.
+ * @property {string} [envFile] - The file containing environment variables.
+ * @property {Env[]} envs - The list of environment variables.
+ */
 interface UpgradeOptions {
 	type: string;
 	mode: string;
@@ -40,12 +67,25 @@ interface UpgradeOptions {
 	envs: Env[];
 }
 
+/**
+ * Interface representing environment variables with key-value pairs.
+ * @interface
+ * @property {string} key - The key for the environment variable.
+ * @property {string} value - The value associated with the key.
+ */
 interface Env {
 	key: string;
 	value: string;
 }
 
 // Helper function to encrypt secrets
+/**
+ * Asynchronously encrypts the provided secrets using AES-GCM encryption with a shared key derived from the provided public key.
+ *
+ * @param {Env[]} secrets - The array of environment variables to be encrypted.
+ * @param {string} pubkey - The public key used to derive the shared key for encryption.
+ * @returns {Promise<string>} The encrypted data as a hexadecimal string.
+ */
 async function encryptSecrets(secrets: Env[], pubkey: string): Promise<string> {
 	const envsJson = JSON.stringify({ env: secrets });
 
@@ -87,6 +127,12 @@ async function encryptSecrets(secrets: Env[], pubkey: string): Promise<string> {
 }
 
 // Function to handle deployment
+/**
+ * Deploy function to deploy a CVM with specified options
+ *
+ * @param {DeployOptions} options - The deployment options including name, compose file, environment variables, and debug flag
+ * @returns {Promise<void>} - A Promise that resolves with no data upon successful deployment
+ */
 async function deploy(options: DeployOptions): Promise<void> {
 	console.log("Deploying CVM ...");
 
@@ -228,6 +274,11 @@ async function deploy(options: DeployOptions): Promise<void> {
 	process.exit(0);
 }
 
+/**
+ * Asynchronous function to query and display information about teepods.
+ * Requires a valid API key. If no API key is found, an error message is displayed and the process exits.
+ * @returns {void}
+ */
 async function teepods() {
 	console.log("Querying teepods...");
 	const apiKey = getApiKey();
@@ -243,6 +294,12 @@ async function teepods() {
 	process.exit(0);
 }
 
+/**
+ * Query images for a given teepod.
+ *
+ * @param {string} teepodId - The ID of the teepod to query images for.
+ * @returns {Promise<void>} - The promise that resolves once images are queried and logged.
+ */
 async function images(teepodId: string) {
 	console.log("Querying images for teepod:", teepodId);
 
@@ -257,6 +314,11 @@ async function images(teepodId: string) {
 	process.exit(0);
 }
 
+/**
+ * Upgrade the specified app with the given options.
+ * @param {UpgradeOptions} options - The options for the upgrade process.
+ * @returns {void}
+ */
 async function upgrade(options: UpgradeOptions) {
 	console.log("Upgrading app:", options.appId);
 	const cvm = await getCvmByAppId(options.appId);

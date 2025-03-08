@@ -15,6 +15,10 @@ export const MESSAGE_LENGTH_THRESHOLDS = {
 	IGNORE_RESPONSE: 4,
 } as const;
 
+/**
+ * An array of words or phrases that indicate losing interest or annoyance.
+ * @type {readonly ["shut up", "stop", "please shut up", "shut up please", "dont talk", "silence", "stop talking", "be quiet", "hush", "wtf", "chill", "stfu", "stupid bot", "dumb bot", "stop responding", "god damn it", "god damn", "goddamnit", "can you not", "can you stop", "be quiet", "hate you", "hate this", "fuck up"]}
+ */
 export const LOSE_INTEREST_WORDS = [
 	"shut up",
 	"stop",

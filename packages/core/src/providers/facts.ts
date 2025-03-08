@@ -8,6 +8,12 @@ import {
 	type State,
 } from "../types.ts";
 
+/**
+ * Formats an array of memories into a single string with each memory content text separated by a new line.
+ *
+ * @param {Memory[]} facts - An array of Memory objects to be formatted.
+ * @returns {string} A single string containing all memory content text with new lines separating each text.
+ */
 function formatFacts(facts: Memory[]) {
 	return facts
 		.reverse()
@@ -15,6 +21,13 @@ function formatFacts(facts: Memory[]) {
 		.join("\n");
 }
 
+/**
+ * Function to get key facts that the agent knows.
+ * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+ * @param {Memory} message - The message object containing relevant information.
+ * @param {State} [_state] - Optional state information.
+ * @returns {Object} An object containing values, data, and text related to the key facts.
+ */
 const factsProvider: Provider = {
 	name: "FACTS",
 	description: "Key facts that {{agentName}} knows",

@@ -10,6 +10,11 @@ import { sql } from "drizzle-orm";
 import { numberTimestamp } from "./types";
 import type { MessageExample } from "@elizaos/core";
 
+/**
+ * Represents a table for storing agent data.
+ *
+ * @type {Table}
+ */
 export const agentTable = pgTable(
 	"agents",
 	{

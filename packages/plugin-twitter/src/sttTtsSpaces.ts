@@ -16,6 +16,13 @@ import type { Readable } from "node:stream";
 import type { ClientBase } from "./base";
 import type { AudioDataWithUser, JanusClient, Space } from "./client";
 
+/**
+ * Interface for defining configuration options for a plugin.
+ * @typedef {Object} PluginConfig
+ * @property {IAgentRuntime} runtime - The runtime environment for the plugin.
+ * @property {ClientBase} client - The client to interact with.
+ * @property {string} spaceId - The ID of the space the plugin is associated with.
+ */
 interface PluginConfig {
 	runtime: IAgentRuntime;
 	client: ClientBase;
@@ -32,6 +39,11 @@ const SILENCE_DETECTION_THRESHOLD_MS = 1000; // 1-second silence threshold
  *   - Collect each speaker's unmuted PCM in a memory buffer (only if above silence threshold)
  *   - On speaker mute -> flush STT -> GPT -> TTS -> push to Janus
  */
+/**
+ * Class representing a plugin for Speech-to-text (OpenAI) + conversation + TTS (ElevenLabs).
+ * @class
+ */
+
 export class SttTtsPlugin implements Plugin {
 	name = "SttTtsPlugin";
 	description = "Speech-to-text (OpenAI) + conversation + TTS (ElevenLabs)";

@@ -1,6 +1,10 @@
 import { addHeader } from "../prompts";
 import type { IAgentRuntime, Memory, Provider } from "../types";
 
+/**
+ * Provider for retrieving list of all data providers available for the agent to use.
+ * @type { Provider }
+ */
 export const providersProvider: Provider = {
 	name: "PROVIDERS",
 	description:

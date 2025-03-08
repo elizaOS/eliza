@@ -25,6 +25,10 @@ import { DeriveKeyProvider } from "./base";
  * const provider = new PhalaDeriveKeyProvider(runtime.getSetting('TEE_MODE'));
  * ```
  */
+/**
+ * A class representing a key provider for deriving keys in the Phala TEE environment.
+ * Extends the DeriveKeyProvider class.
+ */
 class PhalaDeriveKeyProvider extends DeriveKeyProvider {
 	private client: TappdClient;
 	private raProvider: RemoteAttestationProvider;

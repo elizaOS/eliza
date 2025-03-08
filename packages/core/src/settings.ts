@@ -9,6 +9,11 @@ import type {
 } from "./types";
 import crypto from "node:crypto";
 
+/**
+ * Creates a new Setting object based on provided config settings.
+ * @param {Omit<Setting, "value">} configSetting - The configuration settings for the new Setting object.
+ * @returns {Setting} - The newly created Setting object.
+ */
 function createSettingFromConfig(
 	configSetting: Omit<Setting, "value">,
 ): Setting {
@@ -29,6 +34,12 @@ function createSettingFromConfig(
 
 /**
  * Generate a salt for settings encryption
+ */
+/**
+ * Retrieves the salt for the agent based on the provided runtime information.
+ *
+ * @param {IAgentRuntime} runtime - The runtime information of the agent.
+ * @returns {string} The salt for the agent.
  */
 function getSalt(runtime: IAgentRuntime): string {
 	const secretSalt = process.env.SECRET_SALT || "secretsalt";

@@ -12,6 +12,17 @@ import { Logger } from "../logger";
  *   const plugin = new MonitorAudioPlugin(48000, /* debug= *\/ true);
  *   space.use(plugin);
  */
+/**
+ * MonitorAudioPlugin class that implements Plugin interface.
+ *
+ * @param {number} sampleRate The expected PCM sample rate (e.g. 16000 or 48000).
+ * @param {boolean} debug If true, enables debug logging via Logger.
+ *
+ * @method onAudioData Called whenever PCM frames arrive (from a speaker).
+ * @param {AudioDataWithUser} data The audio data received.
+ *
+ * @method cleanup Cleanup function called when the plugin is removed or when the space/participant stops.
+ */
 export class MonitorAudioPlugin implements Plugin {
 	private ffplay?: ChildProcessWithoutNullStreams;
 	private logger: Logger;

@@ -21,6 +21,13 @@ import { calculateSHA256 } from "../utils";
 import { RemoteAttestationProvider } from "./base";
 
 // Define the ProviderResult interface if not already imported
+/**
+ * Interface for the result returned by a provider.
+ * @typedef {Object} ProviderResult
+ * @property {any} data - The data returned by the provider.
+ * @property {Record<string, string>} values - The values returned by the provider.
+ * @property {string} text - The text returned by the provider.
+ */
 interface ProviderResult {
 	data?: any;
 	values?: Record<string, string>;
@@ -33,6 +40,10 @@ interface ProviderResult {
  * ```ts
  * const provider = new PhalaRemoteAttestationProvider();
  * ```
+ */
+/**
+ * PhalaRemoteAttestationProvider class that extends RemoteAttestationProvider
+ * @extends RemoteAttestationProvider
  */
 class PhalaRemoteAttestationProvider extends RemoteAttestationProvider {
 	private client: TappdClient;

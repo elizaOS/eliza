@@ -17,6 +17,10 @@ const PROVIDER_CONFIG = {
 	},
 };
 
+/**
+ * Service class for interacting with the Solana blockchain and accessing wallet data.
+ * @extends Service
+ */
 export class SolanaService extends Service {
 	static serviceType: string = SOLANA_SERVICE_NAME;
 	capabilityDescription =
@@ -28,6 +32,10 @@ export class SolanaService extends Service {
 	private connection: Connection;
 	private publicKey: PublicKey;
 
+	/**
+	 * Constructor for creating an instance of the class.
+	 * @param {IAgentRuntime} runtime - The runtime object that provides access to agent-specific functionality.
+	 */
 	constructor(protected runtime: IAgentRuntime) {
 		super();
 		const connection = new Connection(
@@ -39,6 +47,12 @@ export class SolanaService extends Service {
 		});
 	}
 
+	/**
+	 * Starts the Solana service with the given agent runtime.
+	 *
+	 * @param {IAgentRuntime} runtime - The agent runtime to use for the Solana service.
+	 * @returns {Promise<SolanaService>} The initialized Solana service.
+	 */
 	static async start(runtime: IAgentRuntime): Promise<SolanaService> {
 		logger.log("initSolanaService");
 
@@ -60,6 +74,12 @@ export class SolanaService extends Service {
 		return solanaService;
 	}
 
+	/**
+	 * Stops the Solana service.
+	 *
+	 * @param {IAgentRuntime} runtime - The agent runtime.
+	 * @returns {Promise<void>} - A promise that resolves once the Solana service has stopped.
+	 */
 	static async stop(runtime: IAgentRuntime) {
 		const client = runtime.getService(SOLANA_SERVICE_NAME);
 		if (!client) {
@@ -69,6 +89,10 @@ export class SolanaService extends Service {
 		await client.stop();
 	}
 
+	/**
+	 * Stops the update interval if it is currently running.
+	 * @returns {Promise<void>} A Promise that resolves when the update interval is stopped.
+	 */
 	async stop(): Promise<void> {
 		if (this.updateInterval) {
 			clearInterval(this.updateInterval);
@@ -76,6 +100,12 @@ export class SolanaService extends Service {
 		}
 	}
 
+	/**
+	 * Fetches data from the provided URL with retry logic.
+	 * @param {string} url - The URL to fetch data from.
+	 * @param {RequestInit} [options={}] - The options for the fetch request.
+	 * @returns {Promise<unknown>} - A promise that resolves to the fetched data.
+	 */
 	private async fetchWithRetry(
 		url: string,
 		options: RequestInit = {},
@@ -116,6 +146,11 @@ export class SolanaService extends Service {
 		throw lastError;
 	}
 
+	/**
+	 * Asynchronously fetches the prices of SOL, BTC, and ETH tokens.
+	 * Uses cache to store and retrieve prices if available.
+	 * @returns A Promise that resolves to an object containing the prices of SOL, BTC, and ETH tokens.
+	 */
 	private async fetchPrices(): Promise<Prices> {
 		const cacheKey = "prices";
 		const cachedValue = await this.runtime
@@ -154,6 +189,11 @@ export class SolanaService extends Service {
 		return prices;
 	}
 
+	/**
+	 * Asynchronously fetches token accounts for a specific owner.
+	 *
+	 * @returns {Promise<any[]>} A promise that resolves to an array of token accounts.
+	 */
 	private async getTokenAccounts() {
 		try {
 			const accounts = await this.connection.getParsedTokenAccountsByOwner(
@@ -171,6 +211,11 @@ export class SolanaService extends Service {
 		}
 	}
 
+	/**
+	 * Update wallet data including fetching wallet portfolio information, prices, and caching the data.
+	 * @param {boolean} [force=false] - Whether to force update the wallet data even if the update interval has not passed
+	 * @returns {Promise<WalletPortfolio>} The updated wallet portfolio information
+	 */
 	private async updateWalletData(force = false): Promise<WalletPortfolio> {
 		const now = Date.now();
 
@@ -252,6 +297,10 @@ export class SolanaService extends Service {
 		}
 	}
 
+	/**
+	 * Retrieves cached wallet portfolio data from the database adapter.
+	 * @returns A promise that resolves with the cached WalletPortfolio data if available, otherwise resolves with null.
+	 */
 	public async getCachedData(): Promise<WalletPortfolio | null> {
 		const cachedValue = await this.runtime
 			.getDatabaseAdapter()
@@ -262,14 +311,28 @@ export class SolanaService extends Service {
 		return null;
 	}
 
+	/**
+	 * Forces an update of the wallet data and returns the updated WalletPortfolio object.
+	 * @returns A promise that resolves with the updated WalletPortfolio object.
+	 */
 	public async forceUpdate(): Promise<WalletPortfolio> {
 		return await this.updateWalletData(true);
 	}
 
+	/**
+	 * Retrieves the public key of the instance.
+	 *
+	 * @returns {PublicKey} The public key of the instance.
+	 */
 	public getPublicKey(): PublicKey {
 		return this.publicKey;
 	}
 
+	/**
+	 * Retrieves the connection object.
+	 *
+	 * @returns {Connection} The connection object.
+	 */
 	public getConnection(): Connection {
 		return this.connection;
 	}

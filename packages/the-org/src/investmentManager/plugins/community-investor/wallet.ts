@@ -16,6 +16,12 @@ import bs58 from "bs58";
 import { BirdeyeClient } from "./clients";
 import type { WalletPortfolioItem } from "./types";
 
+/**
+ * Interface representing the result of generating a keypair.
+ * @typedef {Object} KeypairResult
+ * @property {Keypair} [keypair] - The generated keypair.
+ * @property {PublicKey} [publicKey] - The public key of the generated keypair.
+ */
 export interface KeypairResult {
 	keypair?: Keypair;
 	publicKey?: PublicKey;
@@ -26,6 +32,15 @@ export interface KeypairResult {
  * @param runtime The agent runtime
  * @param requirePrivateKey Whether to return a full keypair (true) or just public key (false)
  * @returns KeypairResult containing either keypair or public key
+ */
+/**
+ * Retrieves the wallet key from the runtime settings.
+ * If requirePrivateKey is set to true, it attempts to retrieve and decode the private key.
+ * If requirePrivateKey is set to false, it retrieves and returns the public key.
+ * * @param { IAgentRuntime } runtime - The runtime object containing the settings.
+ * @param { boolean } [requirePrivateKey=true] - Flag indicating whether to retrieve the private key (default is true).
+ * @returns {Promise<KeypairResult>} A Promise that resolves to the keypair or public key.
+ * @throws { Error } If the private key or public key is not found in the settings, or if the key format is invalid.
  */
 export async function getWalletKey(
 	runtime: IAgentRuntime,

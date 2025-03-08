@@ -5,6 +5,12 @@ import { config } from "dotenv";
 
 config({ path: "../../.env" });
 
+/**
+ * Runs the database migrations based on the environment variable POSTGRES_URL.
+ * If the POSTGRES_URL is provided, it indicates the use of a PostgreSQL database and the corresponding migration logic needs to be implemented.
+ * If POSTGRES_URL is not provided, it uses a PGlite database and runs the migrations on it.
+ * @returns {Promise<void>} A promise that resolves once the migrations are completed successfully or rejects if an error occurs.
+ */
 async function runMigrations() {
 	if (process.env.POSTGRES_URL) {
 		console.log("Using PostgreSQL database");

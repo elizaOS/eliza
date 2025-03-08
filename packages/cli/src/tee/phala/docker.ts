@@ -16,16 +16,29 @@ const execAsync = promisify(exec);
 const LOGS_DIR = ".tee-cloud/logs";
 const MAX_CONSOLE_LINES = 10;
 
+/**
+ * Class representing DockerOperations for interacting with Docker containers.
+ * @class
+ */
 export class DockerOperations {
 	private imageName: string;
 	private dockerHubUsername?: string;
 
+	/**
+	 * Constructor for creating a new image with the specified image name and optional Docker Hub username.
+	 *
+	 * @param {string} imageName - The name of the image to be created.
+	 * @param {string} [dockerHubUsername] - The Docker Hub username if pulling the image from a private repository.
+	 */
 	constructor(imageName: string, dockerHubUsername?: string) {
 		this.imageName = imageName;
 		this.dockerHubUsername = dockerHubUsername;
 		this.ensureLogsDir();
 	}
 
+	/**
+	 * This method ensures that the logs directory exists by creating it if it does not already exist.
+	 */
 	private ensureLogsDir(): void {
 		const logsPath = path.resolve(LOGS_DIR);
 		if (!fs.existsSync(logsPath)) {
@@ -33,6 +46,11 @@ export class DockerOperations {
 		}
 	}
 
+	/**
+	 * Returns the file path for the log file based on the given operation.
+	 * @param {string} operation - The operation for which the log file is being created.
+	 * @returns {string} The file path for the log file.
+	 */
 	private getLogFilePath(operation: string): string {
 		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
 		return path.resolve(
@@ -41,6 +59,11 @@ export class DockerOperations {
 		);
 	}
 
+	/**
+	 * Retrieves the system architecture.
+	 *
+	 * @returns {string} The system architecture (e.g. "arm64", "amd64", etc.)
+	 */
 	private getSystemArchitecture(): string {
 		const arch = os.arch();
 		switch (arch) {
@@ -54,6 +77,14 @@ export class DockerOperations {
 		}
 	}
 
+	/**
+	 * Spawns a new process with the specified command, arguments, and operation.
+	 * @param {string} command - The command to execute.
+	 * @param {string[]} args - The arguments to pass to the command.
+	 * @param {string} operation - A description of the operation being performed.
+	 * @returns {Promise<void>} A Promise that resolves when the process completes successfully
+	 * and rejects if there is an error during the process execution.
+	 */
 	private spawnProcess(
 		command: string,
 		args: string[],
@@ -123,6 +154,14 @@ export class DockerOperations {
 		});
 	}
 
+	/**
+	 * Asynchronously builds a Docker image using the provided Dockerfile path and tag.
+	 *
+	 * @param {string} dockerfilePath - The path to the Dockerfile to build the image from.
+	 * @param {string} tag - The tag to assign to the built image.
+	 * @returns {Promise<void>} A Promise that resolves when the image is successfully built.
+	 * @throws {Error} If Docker Hub username is not set, an error is thrown.
+	 */
 	async buildImage(dockerfilePath: string, tag: string): Promise<void> {
 		try {
 			if (!this.dockerHubUsername) {
@@ -152,6 +191,14 @@ export class DockerOperations {
 		}
 	}
 
+	/**
+	 * Asynchronously pushes the Docker image with the specified tag to Docker Hub.
+	 *
+	 * @param {string} tag - The tag for the Docker image to push.
+	 * @returns {Promise<void>} A Promise that resolves when the image is successfully pushed to Docker Hub.
+	 * @throws {Error} If the Docker Hub username is not provided.
+	 * @throws {Error} If an error occurs while pushing the image to Docker Hub.
+	 */
 	async pushToDockerHub(tag: string): Promise<void> {
 		if (!this.dockerHubUsername) {
 			throw new Error("Docker Hub username is required for publishing");
@@ -169,6 +216,12 @@ export class DockerOperations {
 		}
 	}
 
+	/**
+	 * Asynchronously retrieves a list of published tags for the specified Docker Hub image.
+	 *
+	 * @returns A Promise that resolves to a string array of tag names.
+	 * @throws Error if Docker Hub username is not provided or if an error occurs during the query.
+	 */
 	async listPublishedTags(): Promise<string[]> {
 		if (!this.dockerHubUsername) {
 			throw new Error("Docker Hub username is required for querying images");
@@ -192,6 +245,12 @@ export class DockerOperations {
 		}
 	}
 
+	/**
+	 * Runs the simulator with the specified image.
+	 *
+	 * @param {string} image - The image of the simulator to run.
+	 * @returns {Promise<void>} A Promise that resolves when the simulator has been started successfully, or rejects with an error if there was a problem.
+	 */
 	async runSimulator(image: string): Promise<void> {
 		try {
 			console.log("Pulling latest simulator image...");
@@ -215,6 +274,11 @@ export class DockerOperations {
 		}
 	}
 
+	/**
+	 * Ensures that the compose directory exists by creating it if it doesn't already exist.
+	 *
+	 * @returns {string} The path to the compose directory.
+	 */
 	private ensureComposeDir(): string {
 		const composePath = path.resolve(COMPOSE_FILES_DIR);
 		if (!fs.existsSync(composePath)) {
@@ -223,6 +287,16 @@ export class DockerOperations {
 		return composePath;
 	}
 
+	/**
+	 * Asynchronously builds a compose file based on the provided parameters.
+	 *
+	 * @param {string} tag - The tag for the Docker image.
+	 * @param {string} characterName - The name of the character to be used.
+	 * @param {string} envFile - The path to the environment file.
+	 * @param {string} [version="v2"] - The version of the compose file (default is "v2").
+	 * @returns {Promise<string>} The path to the created compose file.
+	 * @throws {Error} If `dockerHubUsername` is not defined.
+	 */
 	async buildComposeFile(
 		tag: string,
 		characterName: string,
@@ -295,6 +369,13 @@ export class DockerOperations {
 		return composeFile;
 	}
 
+	/**
+	 * Asynchronously starts a local environment using the specified compose file and env file.
+	 *
+	 * @param {string} composeFile - The path to the docker-compose file.
+	 * @param {string} envFile - The path to the environment file to pass to docker-compose.
+	 * @returns {Promise<void>} A Promise that resolves when the local environment has been started successfully.
+	 */
 	async runLocalCompose(composeFile: string, envFile: string): Promise<void> {
 		try {
 			console.log(
@@ -316,6 +397,16 @@ export class DockerOperations {
 		}
 	}
 
+	/**
+	 * Asynchronously runs a local instance of the service with the specified tag, character name, environment file, and version.
+	 *
+	 * @param {string} tag - The tag for the service.
+	 * @param {string} characterName - The character name for the service.
+	 * @param {string} envFile - The environment file for the service.
+	 * @param {string} [version="v2"] - The version of the service to run (default is "v2").
+	 * @returns {Promise<void>} A Promise that resolves once the local instance has been successfully started.
+	 * @throws {Error} If an error occurs while building the compose file or running the local compose.
+	 */
 	async runLocal(
 		tag: string,
 		characterName: string,

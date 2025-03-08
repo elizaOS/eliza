@@ -32,6 +32,16 @@ export const wait = (minTime = 1000, maxTime = 3000) => {
 	return new Promise((resolve) => setTimeout(resolve, waitTime));
 };
 
+/**
+ * Starts an agent with the given character, agent server, initialization function, plugins, and options.
+ *
+ * @param character The character object representing the agent.
+ * @param server The agent server where the agent will be registered.
+ * @param init Optional initialization function to be called with the agent runtime.
+ * @param plugins An array of plugins to be used by the agent.
+ * @param options Additional options for starting the agent, such as data directory and postgres URL.
+ * @returns A promise that resolves to the agent runtime object.
+ */
 async function startAgent(
 	character: Character,
 	server: AgentServer,
@@ -72,11 +82,24 @@ async function startAgent(
 	return runtime;
 }
 
+/**
+ * Stops the agent by closing the database adapter and unregistering the agent from the server.
+ *
+ * @param {IAgentRuntime} runtime - The runtime of the agent.
+ * @param {AgentServer} server - The server that the agent is registered with.
+ * @returns {Promise<void>} - A promise that resolves once the agent is stopped.
+ */
 async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
 	await runtime.getDatabaseAdapter().close();
 	server.unregisterAgent(runtime.agentId);
 }
 
+/**
+ * Check if a port is available for listening.
+ *
+ * @param {number} port - The port number to check availability for.
+ * @returns {Promise<boolean>} A Promise that resolves to true if the port is available, and false if it is not.
+ */
 const checkPortAvailable = (port: number): Promise<boolean> => {
 	return new Promise((resolve) => {
 		const server = net.createServer();
@@ -95,6 +118,13 @@ const checkPortAvailable = (port: number): Promise<boolean> => {
 	});
 };
 
+/**
+ * Asynchronous function to start agents.
+ *
+ * This function tries to find a .env file by recursively checking parent directories. It initializes the current path to the provided envPath, sets the initial depth to 0, and defines the maximum depth to search as 10.
+ *
+ * @returns {Promise<void>} A promise that resolves when the agents are successfully started.
+ */
 const startAgents = async () => {
 	// Try to find .env file by recursively checking parent directories
 	let currentPath = envPath;
@@ -546,6 +576,11 @@ const startAgents = async () => {
 };
 
 // Convert this into a command
+/**
+ * Command to start the ElizaOS server with project agents.
+ * Starts the agents and handles any unhandled errors to prevent the process from crashing.
+ * @returns {Promise<void>}
+ */
 export const start = new Command("start")
 	.description("Start the ElizaOS server with project agents")
 	.action(async () => {

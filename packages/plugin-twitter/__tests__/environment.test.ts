@@ -2,6 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { validateTwitterConfig } from "../src/environment";
 import type { IAgentRuntime } from "@elizaos/core";
 
+/**
+ * Environment configuration object for Twitter bot.
+ * Contains various settings such as username, post interval, email, password, etc.
+ */
 const env = {
 	TWITTER_USERNAME: "testuser123",
 	TWITTER_DRY_RUN: "true",

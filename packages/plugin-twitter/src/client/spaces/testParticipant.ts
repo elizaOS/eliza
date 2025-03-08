@@ -13,6 +13,19 @@ import { SttTtsPlugin } from "./plugins/SttTtsPlugin";
  * - Optionally sends periodic beep frames if we become speaker
  * - Adds a graceful SIGINT handler for cleanup
  */
+/**
+ * Asynchronous function that serves as the main entry point for the program.
+ * It performs the following steps:
+ * 1) Logs that the test participant is starting.
+ * 2) Logs in to Twitter via Client.
+ * 3) Creates a SpaceParticipant instance using the provided AudioSpace ID and sets up TTS/STT plugins.
+ * 4) Joins the Space as a listener and retrieves the HLS URL.
+ * 5) Requests the speaker role, waits for host acceptance with a maximum wait time, and handles approval or timeout scenarios.
+ * 6) Performs mute/unmute test for the participant.
+ * 7) Generates a sine wave beep and sends PCM frames if the participant is a speaker.
+ * 8) Sets up a beep interval to send the beep every 10 seconds.
+ * 9) Initiates a graceful shutdown process after 60 seconds or catches SIGINT for manual stop.
+ */
 async function main() {
 	console.log("[TestParticipant] Starting...");
 

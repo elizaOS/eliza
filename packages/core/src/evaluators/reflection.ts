@@ -25,6 +25,12 @@ const relationshipSchema = z.object({
 		.optional(),
 });
 
+/**
+ * Defines a schema for reflecting on a topic, including facts and relationships.
+ * @type {import("zod").object}
+ * @property {import("zod").array<import("zod").object<{claim: import("zod").string(), type: import("zod").string(), in_bio: import("zod").boolean(), already_known: import("zod").boolean()}>} facts Array of facts about the topic
+ * @property {import("zod").array<import("zod").object>} relationships Array of relationships related to the topic
+ */
 const reflectionSchema = z.object({
 	// reflection: z.string(),
 	facts: z.array(
@@ -38,6 +44,11 @@ const reflectionSchema = z.object({
 	relationships: z.array(relationshipSchema),
 });
 
+/**
+ * Template string for generating Agent Reflection, Extracting Facts, and Relationships.
+ *
+ * @type {string}
+ */
 const reflectionTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
 
 {{providers}}
@@ -96,6 +107,14 @@ Generate a response in the following format:
  * @param name - Name to resolve
  * @param entities - List of entities to search through
  * @returns UUID if found, throws error if not found or if input is not a valid UUID
+ */
+/**
+ * Resolves an entity ID by searching through a list of entities.
+ *
+ * @param {UUID} entityId - The ID of the entity to resolve.
+ * @param {Entity[]} entities - The list of entities to search through.
+ * @returns {UUID} - The resolved UUID of the entity.
+ * @throws {Error} - If the entity ID cannot be resolved to a valid UUID.
  */
 function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
 	// First try exact UUID match

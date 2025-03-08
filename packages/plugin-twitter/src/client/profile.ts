@@ -3,6 +3,37 @@ import { requestApi, type RequestApiResult } from "./api";
 import type { TwitterAuth } from "./auth";
 import type { TwitterApiErrorRaw } from "./errors";
 
+/**
+ * Interface representing a raw user object from a legacy system.
+ * @typedef {Object} LegacyUserRaw
+ * @property {string} [created_at] - The date the user was created.
+ * @property {string} [description] - The user's description.
+ * @property {Object} [entities] - Additional entities associated with the user.
+ * @property {Object} [url] - The URL associated with the user.
+ * @property {Object[]} [urls] - Array of URLs associated with the user.
+ * @property {string} [expanded_url] - The expanded URL.
+ * @property {number} [favourites_count] - The number of favorited items.
+ * @property {number} [followers_count] - The number of followers.
+ * @property {number} [friends_count] - The number of friends.
+ * @property {number} [media_count] - The number of media items.
+ * @property {number} [statuses_count] - The number of statuses.
+ * @property {string} [id_str] - The user ID as a string.
+ * @property {number} [listed_count] - The number of lists the user is listed in.
+ * @property {string} [name] - The user's name.
+ * @property {string} location - The user's location.
+ * @property {boolean} [geo_enabled] - Indicates if geo locations are enabled.
+ * @property {string[]} [pinned_tweet_ids_str] - Array of pinned tweet IDs as strings.
+ * @property {string} [profile_background_color] - The background color of the user's profile.
+ * @property {string} [profile_banner_url] - The URL of the user's profile banner.
+ * @property {string} [profile_image_url_https] - The URL of the user's profile image (HTTPS).
+ * @property {boolean} [protected] - Indicates if the user's account is protected.
+ * @property {string} [screen_name] - The user's screen name.
+ * @property {boolean} [verified] - Indicates if the user is verified.
+ * @property {boolean} [has_custom_timelines] - Indicates if the user has custom timelines.
+ * @property {boolean} [has_extended_profile] - Indicates if the user has an extended profile.
+ * @property {string} [url] - The user's URL.
+ * @property {boolean} [can_dm] - Indicates if direct messages are enabled for the user.
+ */
 export interface LegacyUserRaw {
 	created_at?: string;
 	description?: string;
@@ -38,6 +69,34 @@ export interface LegacyUserRaw {
 
 /**
  * A parsed profile object.
+ */
+/**
+ * Interface representing a user profile.
+ * @typedef {Object} Profile
+ * @property {string} [avatar] - The URL to the user's avatar.
+ * @property {string} [banner] - The URL to the user's banner image.
+ * @property {string} [biography] - The user's biography.
+ * @property {string} [birthday] - The user's birthday.
+ * @property {number} [followersCount] - The number of followers the user has.
+ * @property {number} [followingCount] - The number of users the user is following.
+ * @property {number} [friendsCount] - The number of friends the user has.
+ * @property {number} [mediaCount] - The number of media items the user has posted.
+ * @property {number} [statusesCount] - The number of statuses the user has posted.
+ * @property {boolean} [isPrivate] - Indicates if the user's profile is private.
+ * @property {boolean} [isVerified] - Indicates if the user account is verified.
+ * @property {boolean} [isBlueVerified] - Indicates if the user account has blue verification badge.
+ * @property {Date} [joined] - The date the user joined the platform.
+ * @property {number} [likesCount] - The number of likes the user has received.
+ * @property {number} [listedCount] - The number of times the user has been listed.
+ * @property {string} location - The user's location.
+ * @property {string} [name] - The user's name.
+ * @property {string[]} [pinnedTweetIds] - The IDs of the user's pinned tweets.
+ * @property {number} [tweetsCount] - The number of tweets the user has posted.
+ * @property {string} [url] - The user's website URL.
+ * @property {string} [userId] - The unique user ID.
+ * @property {string} [username] - The user's username.
+ * @property {string} [website] - The user's website.
+ * @property {boolean} [canDm] - Indicates if the user can receive direct messages.
  */
 export interface Profile {
 	avatar?: string;

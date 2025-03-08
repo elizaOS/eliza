@@ -15,21 +15,43 @@ import type { FileDocsGroup, OrganizedDocs } from "../types";
 import { AIService } from "../AIService.js";
 import { promises as fs } from "node:fs";
 
+/**
+ * Interface representing a Frequently Asked Question (FAQ) with a question and its corresponding answer.
+ * @typedef {Object} FAQ
+ * @property {string} question - The question being asked.
+ * @property {string} answer - The answer to the question.
+ */
 interface FAQ {
 	question: string;
 	answer: string;
 }
 
+/**
+ * Interface representing a troubleshooting issue.
+ * @typedef {object} TroubleshootingIssue
+ * @property {string} issue - The description of the issue.
+ * @property {string} cause - The cause of the issue.
+ * @property {string} solution - The solution to the issue.
+ */
 interface TroubleshootingIssue {
 	issue: string;
 	cause: string;
 	solution: string;
 }
 
+/**
+ * Interface representing Troubleshooting information.
+ * @interface
+ */
 interface Troubleshooting {
 	commonIssues: TroubleshootingIssue[];
 	debuggingTips: string[];
 }
+
+/**
+ * Class representing a FullDocumentationGenerator.
+ * @class
+ */
 
 export class FullDocumentationGenerator {
 	private typeScriptParser: TypeScriptParser;
@@ -42,6 +64,11 @@ export class FullDocumentationGenerator {
 	 *
 	 * @param {Configuration} configuration - The configuration instance to be used
 	 * @throws {Error} If OPENAI_API_KEY environment variable is not set
+	 */
+	/**
+	 * Constructor for initializing a new Instance.
+	 *
+	 * @param {Configuration} configuration - The configuration for the instance.
 	 */
 	constructor(private configuration: Configuration) {
 		this.typeScriptParser = new TypeScriptParser();

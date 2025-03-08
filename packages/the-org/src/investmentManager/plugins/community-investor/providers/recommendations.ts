@@ -5,6 +5,10 @@ const recommendationsPrompt = `<user_recommendations_provider>
 <draft_recommendations>{{recommendations}}</draft_recommendations>
 </user_recommendations_provider>` as const;
 
+/**
+ * Provider for retrieving recommendations based on user input.
+ * @type {Provider}
+ */
 export const recommendationsProvider: Provider = {
 	name: "recommendations",
 	async get(runtime, message) {

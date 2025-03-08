@@ -19,8 +19,17 @@ const headers = {
 	"Content-Type": "application/json",
 };
 
+/**
+ * Variable apiKey to store the API key.
+ * @type {string | null}
+ */
 let apiKey: string | null = null;
 
+/**
+ * Retrieves the API key either from a cache or by asynchronously fetching it using `getApiKey` function.
+ * If the API key is not found, an error is logged and the process exits with code 1.
+ * @returns {string} The retrieved API key.
+ */
 const retrieveApiKey = async () => {
 	if (apiKey) {
 		return apiKey;
@@ -34,6 +43,13 @@ const retrieveApiKey = async () => {
 	return apiKey;
 };
 
+/**
+ * Wrap the input text to fit within the specified maxWidth by breaking the text into lines.
+ *
+ * @param {string} text - The text to wrap.
+ * @param {number} maxWidth - The maximum width for each line.
+ * @returns {string[]} An array of strings where each item represents a line of wrapped text.
+ */
 function wrapText(text: string, maxWidth: number): string[] {
 	if (!text) return [""];
 
@@ -76,10 +92,22 @@ function wrapText(text: string, maxWidth: number): string[] {
 	return lines;
 }
 
+/**
+ * Retrieves the width of the terminal window.
+ * If the width cannot be determined, it defaults to 80.
+ *
+ * @returns {number} The width of the terminal window or 80 if width cannot be determined.
+ */
 function getTerminalWidth(): number {
 	return process.stdout.columns || 80; // Default to 80 if width cannot be determined
 }
 
+/**
+ * Calculates the optimal column widths based on the terminal width and the data from an array of cvms.
+ *
+ * @param {GetCvmsByUserIdResponse} cvms - The array of cvms data to calculate column widths for
+ * @returns {{key: string; value: number;}} - An object containing the calculated widths for each column
+ */
 function calculateColumnWidths(cvms: GetCvmsByUserIdResponse): {
 	[key: string]: number;
 } {
@@ -138,6 +166,12 @@ function calculateColumnWidths(cvms: GetCvmsByUserIdResponse): {
 	};
 }
 
+/**
+ * Formats and prints a table of CVMs based on user ID.
+ *
+ * @param {GetCvmsByUserIdResponse} cvms - The CVMs to be formatted and displayed.
+ * @returns {void}
+ */
 function formatCvmsTable(cvms: GetCvmsByUserIdResponse): void {
 	const columnWidths = calculateColumnWidths(cvms);
 
@@ -184,6 +218,11 @@ function formatCvmsTable(cvms: GetCvmsByUserIdResponse): void {
 	console.log(`\nTotal CVMs: ${cvms.length}`);
 }
 
+/**
+ * Asynchronously queries the Phala Cloud API to retrieve information about teepods.
+ *
+ * @returns {Promise<any>} The data retrieved from the API.
+ */
 async function queryTeepods(): Promise<any> {
 	try {
 		const response = await axios.get(`${PHALA_CLOUD_API_URL}/api/v1/teepods`, {
@@ -199,6 +238,11 @@ async function queryTeepods(): Promise<any> {
 	}
 }
 
+/**
+ * Query images of a teepod from the Phala Cloud API.
+ * @param {string} teepodId - The ID of the teepod for which images are being queried.
+ * @returns {Promise<any>} - A promise that resolves with the response data if successful, or null if an error occurs.
+ */
 async function queryImages(teepodId: string): Promise<any> {
 	try {
 		const response = await axios.get(
@@ -217,6 +261,11 @@ async function queryImages(teepodId: string): Promise<any> {
 	}
 }
 
+/**
+ * Asynchronously queries Cvms by user ID.
+ *
+ * @returns {Promise<GetCvmsByUserIdResponse | null>} The response containing Cvms related to the user ID, or null if an error occurs.
+ */
 async function queryCvmsByUserId(): Promise<GetCvmsByUserIdResponse | null> {
 	try {
 		const userInfo = await getUserInfo();
@@ -236,6 +285,12 @@ async function queryCvmsByUserId(): Promise<GetCvmsByUserIdResponse | null> {
 	}
 }
 
+/**
+ * Asynchronous function to create a Custom Virtual Machine (CVM) based on the provided configuration.
+ *
+ * @param {any} vm_config The configuration object for the Custom Virtual Machine.
+ * @returns {Promise<CreateCvmResponse | null>} A Promise that resolves with the response data if successful, or null if an error occurs.
+ */
 async function createCvm(vm_config: any): Promise<CreateCvmResponse | null> {
 	try {
 		const response = await axios.post(
@@ -255,6 +310,14 @@ async function createCvm(vm_config: any): Promise<CreateCvmResponse | null> {
 	}
 }
 
+/**
+ * Retrieves a public key from the Cloud API based on the provided CVM configuration.
+ *
+ * @async
+ * @function getPubkeyFromCvm
+ * @param {Object} vm_config - The CVM configuration for which to retrieve the public key.
+ * @returns {Promise<GetPubkeyFromCvmResponse | null>} The response containing the public key, or null if an error occurs.
+ */
 async function getPubkeyFromCvm(
 	vm_config: any,
 ): Promise<GetPubkeyFromCvmResponse | null> {
@@ -276,6 +339,12 @@ async function getPubkeyFromCvm(
 	}
 }
 
+/**
+ * Fetches the CVM (Containerized Virtual Machine) information by the given application ID.
+ *
+ * @param {string} appId - The ID of the application to retrieve CVM information for.
+ * @returns {Promise<GetCvmByAppIdResponse | null>} A Promise that resolves with the CVM information or null if an error occurs.
+ */
 async function getCvmByAppId(
 	appId: string,
 ): Promise<GetCvmByAppIdResponse | null> {
@@ -296,6 +365,11 @@ async function getCvmByAppId(
 	}
 }
 
+/**
+ * Asynchronously retrieves the user information from the Phala Cloud API.
+ *
+ * @returns A Promise that resolves with the user information in the form of GetUserInfoResponse, or null if an error occurs.
+ */
 async function getUserInfo(): Promise<GetUserInfoResponse | null> {
 	try {
 		const getUserAuth = await axios.get(
@@ -322,6 +396,12 @@ async function getUserInfo(): Promise<GetUserInfoResponse | null> {
 	}
 }
 
+/**
+ * Upgrades a CVM for a specific app.
+ * @param {string} appId - The ID of the app.
+ * @param {any} vm_config - The configuration for the CVM.
+ * @returns {Promise<UpgradeCvmResponse|null>} - The response from upgrading the CVM, or null if an error occurred.
+ */
 async function upgradeCvm(
 	appId: string,
 	vm_config: any,
@@ -344,6 +424,11 @@ async function upgradeCvm(
 	}
 }
 
+/**
+ * Starts a CVM (Cloud Virtual Machine) with the specified App ID.
+ * @param {string} appId - The ID of the app associated with the CVM to start.
+ * @returns {Promise<any>} - The response data from starting the CVM.
+ */
 async function startCvm(appId: string): Promise<any> {
 	try {
 		const response = await axios.post(
@@ -363,6 +448,11 @@ async function startCvm(appId: string): Promise<any> {
 	}
 }
 
+/**
+ * Asynchronously fetches CVMs associated with the user's account and displays them in a formatted table.
+ *
+ * @returns {Promise<void>} A Promise that resolves once the CVMs are fetched and displayed.
+ */
 async function listCvms(): Promise<void> {
 	console.log("Fetching your CVMs...");
 	const cvms = await queryCvmsByUserId();

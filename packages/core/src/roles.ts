@@ -5,6 +5,9 @@ import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
 import { Role, type IAgentRuntime, type World } from "./types";
 
+/**
+ * Represents the state of server ownership, including a mapping of server IDs to their respective World objects.
+ */
 export interface ServerOwnershipState {
 	servers: {
 		[serverId: string]: World;
@@ -13,6 +16,14 @@ export interface ServerOwnershipState {
 
 /**
  * Gets a user's role from world metadata
+ */
+/**
+ * Retrieve the server role of a specified user entity within a given server.
+ *
+ * @param {IAgentRuntime} runtime - The runtime object containing necessary configurations and services.
+ * @param {string} entityId - The unique identifier of the user entity.
+ * @param {string} serverId - The unique identifier of the server.
+ * @returns {Promise<Role>} The role of the user entity within the server, resolved as a Promise.
  */
 export async function getUserServerRole(
 	runtime: IAgentRuntime,

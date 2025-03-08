@@ -1,7 +1,18 @@
 import type { ASTQueueItem } from "../../types";
 import type { FileDocsGroup, OrganizedDocs } from "../types";
 
+/**
+ * Class representing a DocumentOrganizer.
+ */
+
 export class DocumentOrganizer {
+	/**
+	 * Organizes the given array of ASTQueueItems into different categories based on their nodeType.
+	 * Categories include classes, methods, interfaces, types, functions, and variables.
+	 *
+	 * @param docs - The array of ASTQueueItems to be organized
+	 * @returns An object containing arrays of ASTQueueItems categorized by nodeType
+	 */
 	public organizeDocumentation(docs: ASTQueueItem[]): OrganizedDocs {
 		return docs.reduce(
 			(acc: OrganizedDocs, doc) => {
@@ -40,6 +51,12 @@ export class DocumentOrganizer {
 		);
 	}
 
+	/**
+	 * Groups the given organized documentation by file path.
+	 *
+	 * @param {OrganizedDocs} docs - The organized documentation to group.
+	 * @returns {FileDocsGroup[]} An array of grouped documentation based on file paths.
+	 */
 	public groupDocsByFile(docs: OrganizedDocs): FileDocsGroup[] {
 		// Get unique file paths
 		const filePaths = new Set<string>();

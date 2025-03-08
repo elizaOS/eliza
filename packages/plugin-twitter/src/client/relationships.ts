@@ -10,6 +10,13 @@ import {
 } from "./timeline-relationship";
 import stringify from "json-stable-stringify";
 
+/**
+ * Function to get the following profiles of a user.
+ * @param {string} userId - The ID of the user to get the following profiles for.
+ * @param {number} maxProfiles - The maximum number of profiles to retrieve.
+ * @param {TwitterAuth} auth - The Twitter authentication credentials.
+ * @returns {AsyncGenerator<Profile, void>} An async generator that yields Profile objects.
+ */
 export function getFollowing(
 	userId: string,
 	maxProfiles: number,
@@ -20,6 +27,13 @@ export function getFollowing(
 	});
 }
 
+/**
+ * Get followers for a specific user.
+ * @param {string} userId - The user ID for which to retrieve followers.
+ * @param {number} maxProfiles - The maximum number of profiles to retrieve.
+ * @param {TwitterAuth} auth - The authentication credentials for the Twitter API.
+ * @returns {AsyncGenerator<Profile, void>} - An async generator that yields Profile objects representing followers.
+ */
 export function getFollowers(
 	userId: string,
 	maxProfiles: number,
@@ -30,6 +44,14 @@ export function getFollowers(
 	});
 }
 
+/**
+ * Fetches the profiles that a user is following.
+ * @param {string} userId - The ID of the user whose following profiles are to be fetched.
+ * @param {number} maxProfiles - The maximum number of profiles to fetch.
+ * @param {TwitterAuth} auth - The Twitter authentication details.
+ * @param {string} [cursor] - Optional cursor for pagination.
+ * @returns {Promise<QueryProfilesResponse>} A Promise that resolves with the response containing profiles the user is following.
+ */
 export async function fetchProfileFollowing(
 	userId: string,
 	maxProfiles: number,
@@ -46,6 +68,15 @@ export async function fetchProfileFollowing(
 	return parseRelationshipTimeline(timeline);
 }
 
+/**
+ * Fetches the profile followers for a given user ID.
+ *
+ * @param {string} userId - The user ID for which to fetch profile followers.
+ * @param {number} maxProfiles - The maximum number of profiles to fetch.
+ * @param {TwitterAuth} auth - The Twitter authentication credentials.
+ * @param {string} [cursor] - Optional cursor for paginating results.
+ * @returns {Promise<QueryProfilesResponse>} A promise that resolves with the parsed profile followers timeline.
+ */
 export async function fetchProfileFollowers(
 	userId: string,
 	maxProfiles: number,
@@ -62,6 +93,16 @@ export async function fetchProfileFollowers(
 	return parseRelationshipTimeline(timeline);
 }
 
+/**
+ * Asynchronously fetches the timeline of accounts that a user is following.
+ *
+ * @param {string} userId - The ID of the user whose following timeline is to be retrieved.
+ * @param {number} maxItems - The maximum number of items to fetch (limited to 50).
+ * @param {TwitterAuth} auth - The authentication information for making the API request.
+ * @param {string} [cursor] - Optional cursor to paginate the results.
+ * @returns {Promise<RelationshipTimeline>} A Promise that resolves to the RelationshipTimeline object representing the following timeline.
+ * @throws {Error} If the client is not logged-in for profile following.
+ */
 async function getFollowingTimeline(
 	userId: string,
 	maxItems: number,
@@ -109,6 +150,15 @@ async function getFollowingTimeline(
 	return res.value;
 }
 
+/**
+ * Retrieves the followers timeline for a specific user.
+ * @param userId The ID of the user whose followers timeline will be retrieved.
+ * @param maxItems The maximum number of items to retrieve (up to 50).
+ * @param auth The Twitter authentication credentials.
+ * @param cursor (Optional) The cursor for pagination.
+ * @returns A Promise that resolves with the RelationshipTimeline object.
+ * @throws Error if the client is not logged in or if the API request fails.
+ */
 async function getFollowersTimeline(
 	userId: string,
 	maxItems: number,
@@ -156,6 +206,14 @@ async function getFollowersTimeline(
 	return res.value;
 }
 
+/**
+ * Makes a request to follow a user on Twitter.
+ *
+ * @param {string} username - The username of the user to follow.
+ * @param {TwitterAuth} auth - Twitter authentication object.
+ * @returns {Promise<Response>} - A Promise that resolves with the response data.
+ * @throws {Error} - If the user is not logged in, or if an error occurs during the follow process.
+ */
 export async function followUser(
 	username: string,
 	auth: TwitterAuth,

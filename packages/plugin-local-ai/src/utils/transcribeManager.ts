@@ -7,10 +7,28 @@ import { exec } from "node:child_process";
 
 const execAsync = promisify(exec);
 
+/**
+ * Interface representing the result of a transcription process.
+ * @interface
+ * @property {string} text - The transcribed text.
+ */
 interface TranscriptionResult {
 	text: string;
 }
 
+/**
+ * Class representing a TranscribeManager.
+ *
+ * @property {TranscribeManager | null} instance - The singleton instance of the TranscribeManager class.
+ * @property {string} cacheDir - The directory path for caching transcribed files.
+ * @property {boolean} ffmpegAvailable - Flag indicating if ffmpeg is available for audio processing.
+ * @property {string | null} ffmpegVersion - The version of ffmpeg if available.
+ * @property {string | null} ffmpegPath - The path to the ffmpeg executable.
+ * @property {boolean} ffmpegInitialized - Flag indicating if ffmpeg has been initialized.
+ *
+ * @constructor
+ * Creates an instance of TranscribeManager with the specified cache directory.
+ */
 export class TranscribeManager {
 	private static instance: TranscribeManager | null = null;
 	private cacheDir: string;
@@ -19,6 +37,11 @@ export class TranscribeManager {
 	private ffmpegPath: string | null = null;
 	private ffmpegInitialized = false;
 
+	/**
+	 * Constructor for TranscribeManager class.
+	 *
+	 * @param {string} cacheDir - The directory path for storing cached files.
+	 */
 	private constructor(cacheDir: string) {
 		this.cacheDir = path.join(cacheDir, "whisper");
 		logger.info("Initializing TranscribeManager", {
@@ -28,6 +51,10 @@ export class TranscribeManager {
 		this.ensureCacheDirectory();
 	}
 
+	/**
+	 * Ensures that FFmpeg is initialized and available for use.
+	 * @returns {Promise<boolean>} A promise that resolves to a boolean value indicating if FFmpeg is available.
+	 */
 	public async ensureFFmpeg(): Promise<boolean> {
 		if (!this.ffmpegInitialized) {
 			try {
@@ -45,10 +72,19 @@ export class TranscribeManager {
 		return this.ffmpegAvailable;
 	}
 
+	/**
+	 * Checks if FFmpeg is available.
+	 * @returns {boolean} True if FFmpeg is available, false otherwise.
+	 */
 	public isFFmpegAvailable(): boolean {
 		return this.ffmpegAvailable;
 	}
 
+	/**
+	 * Asynchronously retrieves the FFmpeg version if it hasn't been fetched yet.
+	 * If the FFmpeg version has already been fetched, it will return the stored version.
+	 * @returns A Promise that resolves with the FFmpeg version as a string, or null if the version is not available.
+	 */
 	public async getFFmpegVersion(): Promise<string | null> {
 		if (!this.ffmpegVersion) {
 			await this.fetchFFmpegVersion();
@@ -56,6 +92,12 @@ export class TranscribeManager {
 		return this.ffmpegVersion;
 	}
 
+	/**
+	 * Fetches the FFmpeg version by executing the command "ffmpeg -version".
+	 * Updates the class property ffmpegVersion with the retrieved version.
+	 * Logs the FFmpeg version information or error message.
+	 * @returns {Promise<void>} A Promise that resolves once the FFmpeg version is fetched and logged.
+	 */
 	private async fetchFFmpegVersion(): Promise<void> {
 		try {
 			const { stdout } = await execAsync("ffmpeg -version");
@@ -73,6 +115,17 @@ export class TranscribeManager {
 		}
 	}
 
+	/**
+	 * Initializes FFmpeg by performing the following steps:
+	 * 1. Checks for FFmpeg availability in PATH
+	 * 2. Retrieves FFmpeg version information
+	 * 3. Verifies FFmpeg capabilities
+	 *
+	 * If FFmpeg is available, logs a success message with version, path, and timestamp.
+	 * If FFmpeg is not available, logs installation instructions.
+	 *
+	 * @returns A Promise that resolves once FFmpeg has been successfully initialized
+	 */
 	private async initializeFFmpeg(): Promise<void> {
 		try {
 			// First check if ffmpeg exists in PATH
@@ -104,6 +157,13 @@ export class TranscribeManager {
 		}
 	}
 
+	/**
+	 * Asynchronously checks for the availability of FFmpeg in the system by executing a command to find the FFmpeg location.
+	 * Updates the class properties `ffmpegPath` and `ffmpegAvailable` accordingly.
+	 * Logs relevant information such as FFmpeg location and potential errors using the logger.
+	 *
+	 * @returns A Promise that resolves with no value upon completion.
+	 */
 	private async checkFFmpegAvailability(): Promise<void> {
 		try {
 			const { stdout, stderr } = await execAsync(
@@ -130,6 +190,11 @@ export class TranscribeManager {
 		}
 	}
 
+	/**
+	 * Verifies the FFmpeg capabilities by checking if FFmpeg supports the required codecs and formats.
+	 *
+	 * @returns {Promise<void>} A Promise that resolves if FFmpeg has the required codecs, otherwise rejects with an error message.
+	 */
 	private async verifyFFmpegCapabilities(): Promise<void> {
 		try {
 			// Check if FFmpeg supports required codecs and formats
@@ -156,6 +221,9 @@ export class TranscribeManager {
 		}
 	}
 
+	/**
+	 * Logs instructions on how to install FFmpeg if it is not properly installed.
+	 */
 	private logFFmpegInstallInstructions(): void {
 		logger.warn(
 			"FFmpeg is required but not properly installed. Please install FFmpeg:",
@@ -173,6 +241,12 @@ export class TranscribeManager {
 		);
 	}
 
+	/**
+	 * Gets the singleton instance of TranscribeManager, creates a new instance if it doesn't exist.
+	 *
+	 * @param {string} cacheDir - The directory path for caching transcriptions.
+	 * @returns {TranscribeManager} The singleton instance of TranscribeManager.
+	 */
 	public static getInstance(cacheDir: string): TranscribeManager {
 		if (!TranscribeManager.instance) {
 			TranscribeManager.instance = new TranscribeManager(cacheDir);
@@ -180,6 +254,11 @@ export class TranscribeManager {
 		return TranscribeManager.instance;
 	}
 
+	/**
+	 * Ensures that the cache directory exists. If it doesn't exist,
+	 * creates the directory using fs.mkdirSync with recursive set to true.
+	 * @returns {void}
+	 */
 	private ensureCacheDirectory(): void {
 		if (!fs.existsSync(this.cacheDir)) {
 			fs.mkdirSync(this.cacheDir, { recursive: true });
@@ -187,6 +266,14 @@ export class TranscribeManager {
 		}
 	}
 
+	/**
+	 * Converts an audio file to WAV format using FFmpeg.
+	 *
+	 * @param {string} inputPath - The input path of the audio file to convert.
+	 * @param {string} outputPath - The output path where the converted WAV file will be saved.
+	 * @returns {Promise<void>} A Promise that resolves when the conversion is completed.
+	 * @throws {Error} If FFmpeg is not installed or not properly configured, or if the audio conversion fails.
+	 */
 	private async convertToWav(
 		inputPath: string,
 		outputPath: string,
@@ -231,6 +318,14 @@ export class TranscribeManager {
 		}
 	}
 
+	/**
+	 * Asynchronously preprocesses the audio by converting the provided audio buffer into a WAV file.
+	 * If FFmpeg is not installed, an error is thrown.
+	 *
+	 * @param {Buffer} audioBuffer The audio buffer to preprocess
+	 * @returns {Promise<string>} The path to the preprocessed WAV file
+	 * @throws {Error} If FFmpeg is not installed or if audio preprocessing fails
+	 */
 	private async preprocessAudio(audioBuffer: Buffer): Promise<string> {
 		if (!this.ffmpegAvailable) {
 			throw new Error(
@@ -285,6 +380,14 @@ export class TranscribeManager {
 			);
 		}
 	}
+
+	/**
+	 * Transcribes the audio buffer to text using whisper.
+	 *
+	 * @param {Buffer} audioBuffer The audio buffer to transcribe.
+	 * @returns {Promise<TranscriptionResult>} A promise that resolves with the transcription result.
+	 * @throws {Error} If FFmpeg is not installed or properly configured.
+	 */
 
 	public async transcribe(audioBuffer: Buffer): Promise<TranscriptionResult> {
 		await this.ensureFFmpeg();

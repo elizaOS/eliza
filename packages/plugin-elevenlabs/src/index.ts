@@ -7,6 +7,11 @@ import {
 import { Readable } from "node:stream";
 import { prependWavHeader } from "./utils.ts";
 
+/**
+ * Function to retrieve voice settings based on runtime and environment variables.
+ * @param {IAgentRuntime} runtime - The agent runtime object.
+ * @returns {Object} - Object containing various voice settings.
+ */
 function getVoiceSettings(runtime: IAgentRuntime) {
 	const getSetting = (key: string, fallback = "") =>
 		process.env[key] || runtime.getSetting(key) || fallback;
@@ -24,6 +29,12 @@ function getVoiceSettings(runtime: IAgentRuntime) {
 	};
 }
 
+/**
+ * Fetch speech from Eleven Labs API using given text and runtime settings.
+ * @param {IAgentRuntime} runtime - The runtime interface containing necessary data for the API call.
+ * @param {string} text - The text to be converted into speech.
+ * @returns {Promise<Readable>} A promise resolving to a readable stream of the fetched speech.
+ */
 async function fetchSpeech(runtime: IAgentRuntime, text: string) {
 	const settings = getVoiceSettings(runtime);
 	try {
@@ -68,6 +79,11 @@ async function fetchSpeech(runtime: IAgentRuntime, text: string) {
 	}
 }
 
+/**
+ * Represents the ElevenLabs plugin.
+ * This plugin provides functionality related to ElevenLabs API, including text to speech conversion.
+ * @type {Plugin}
+ */
 export const elevenLabsPlugin: Plugin = {
 	name: "elevenLabs",
 	description: "ElevenLabs plugin",

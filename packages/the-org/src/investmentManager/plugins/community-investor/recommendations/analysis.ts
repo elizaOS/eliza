@@ -15,6 +15,32 @@ import {
 import type { CommunityInvestorService } from "../tradingService.js";
 import { ServiceTypes } from "../types.js";
 
+/**
+ * Template for generating a message to present token details to the user.
+ *
+ * Message should follow specific guidelines:
+ * - Should enclude engaging tagline at the beginning.
+ * - Should include a report of the token.
+ * - Should always include links to the token addresses and accounts.
+ * - Should always end in a question asking the user if they want to confirm the token recommendation.
+ * - Should use a few emojis to make the message more engaging.
+ *
+ * Restrictions:
+ * - Message should NOT contain more than 5 emojis.
+ * - Message should NOT be too long.
+ *
+ * Structure of the message:
+ * - <ticker>{{ticker}}</ticker>
+ * - <token_overview>{{tokenOverview}}</token_overview>
+ *
+ * When responding:
+ * - MESSAGE: This is the message you will need to send to the user.
+ *
+ * Response Format:
+ * - <message>
+ * **MESSAGE_TEXT_HERE**
+ * </message>
+ */
 const tokenDetailsTemplate = `You are a crypto expert.
 
 You will be given a ticker and token overview.
@@ -98,6 +124,21 @@ Creator Information:
 
 Now based on the user_message, recommendation, and token_overview, write your message.`;
 
+/**
+ * Function to extract the most recent ticker or token address mentioned from a list of messages.
+ * The function analyzes messages containing <createdAt> and <content> fields, searching for specific token tickers or addresses.
+ * The response should include the ticker and token address in the following format:
+ *
+ * <token>
+ *    <ticker>__TICKER___</ticker>
+ *    <tokenAddress>__TOKEN_ADDRESS___</tokenAddress>
+ * </token>
+ *
+ * Strict instructions and examples are provided within the response guidelines for clarity.
+ *
+ * @param {string} messages - List of messages from the user containing <createdAt> and <content> fields
+ * @returns {string} - The most recent ticker or token address mentioned from the user in the specified format
+ */
 const extractLatestTicketTemplate = `You are an expert crypto analyst and trader, that specializes in extracting tickers or token addresses from a group of messages.
 
 You will be given a list of messages from a user each containing <createdAt> and <content> fields.
@@ -146,6 +187,42 @@ Respond in the following format:
 
 Now, based on the messages provided, please respond with the most recent ticker or token address mentioned from the user.`;
 
+/**
+ * Function to get detailed analysis of a token.
+ *
+ * @name GET_TOKEN_DETAILS
+ * @description Gets the detailed analysis of a token
+ * @example
+ * [
+ *     {
+ *         name: "{{name1}}",
+ *         content: {
+ *             text: "Are you just looking for details, or are you recommending this token?",
+ *         },
+ *     },
+ *     {
+ *         name: "{{name2}}",
+ *         content: {
+ *             text: "I am just looking for details",
+ *         },
+ *     },
+ *     {
+ *         name: "{{name1}}",
+ *         content: {
+ *             text: "Ok, here are the details...",
+ *             actions: ["GET_TOKEN_DETAILS"],
+ *         },
+ *     },
+ * ]
+ * @similes ["TOKEN_DETAILS"]
+ *
+ * @param {IAgentRuntime} runtime - The Agent Runtime
+ * @param {Memory} message - The incoming message
+ * @param {State} _state - The state of the conversation
+ * @param _options - Additional options
+ * @param {Function} callback - The callback function
+ * @returns {boolean} - Returns true
+ */
 export const getTokenDetails: any = {
 	name: "GET_TOKEN_DETAILS",
 	description: "Gets the detailed analysis of a token",

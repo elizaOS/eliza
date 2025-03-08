@@ -4,14 +4,26 @@ import path from "node:path";
 import { z } from "zod";
 import logger from "./logger";
 
+/**
+ * Interface for settings object with key-value pairs.
+ */
 interface Settings {
 	[key: string]: string | undefined;
 }
 
+/**
+ * Represents a collection of settings grouped by namespace.
+ *
+ * @typedef {Object} NamespacedSettings
+ * @property {Settings} namespace - The namespace key and corresponding Settings value.
+ */
 interface NamespacedSettings {
 	[namespace: string]: Settings;
 }
 
+/**
+ * Initialize an empty object for storing environment settings.
+ */
 let environmentSettings: Settings = {};
 
 /**

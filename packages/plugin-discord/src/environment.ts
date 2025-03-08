@@ -5,7 +5,19 @@ export const discordEnvSchema = z.object({
 	DISCORD_API_TOKEN: z.string().min(1, "Discord API token is required"),
 });
 
+/**
+ * Represents the type of Discord configuration settings inferred from the discordEnvSchema.
+ */
 export type DiscordConfig = z.infer<typeof discordEnvSchema>;
+
+/**
+ * Validates the Discord configuration by retrieving the Discord API token from the runtime settings
+ * and parsing it with the Discord environment schema.
+ *
+ * @param {IAgentRuntime} runtime The agent runtime instance.
+ * @returns {Promise<DiscordConfig>} A promise that resolves with the validated Discord configuration.
+ * @throws {Error} If the Discord configuration validation fails, an error with detailed error messages is thrown.
+ */
 
 export async function validateDiscordConfig(
 	runtime: IAgentRuntime,
