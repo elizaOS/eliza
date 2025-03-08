@@ -6,6 +6,12 @@ import Twitter from "./providers/twitter";
 import TwitterParser from "./providers/twitter-parser";
 import BuySignal from "./providers/buy-signal";
 
+/**
+ * Registers tasks for the agent to perform various Intel-related actions.
+ * * @param { IAgentRuntime } runtime - The agent runtime object.
+ * @param { UUID } [worldId] - The optional world ID to associate with the tasks.
+ * @returns {Promise<void>} - A promise that resolves once tasks are registered.
+ */
 export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 	worldId = runtime.agentId; // this is global data for the agent
 
