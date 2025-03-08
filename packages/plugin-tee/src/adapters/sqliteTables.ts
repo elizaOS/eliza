@@ -1,3 +1,9 @@
+/**
+ * Defines the SQL script to create SQLite tables for the 'tee_logs' and 'tee_agents' tables.
+ * 
+ * @constant
+ * @type {string}
+ */
 export const sqliteTables = `
 BEGIN TRANSACTION;
 
