@@ -25,11 +25,21 @@ const TEST_IMAGE = {
 	alt_text: "mock image",
 };
 
+/**
+ * Represents a Test Suite for Twitter functionality.
+ * This class implements the TestSuite interface.
+ * It contains various test cases related to Twitter operations such as initializing the client,
+ * fetching profile, search tweets, home timeline, own posts, posting tweets, generating new tweets, and handling tweet responses.
+ */
 export class TwitterTestSuite implements TestSuite {
 	name = "twitter";
 	private twitterClient: TwitterClient | null = null;
 	tests: { name: string; fn: (runtime: IAgentRuntime) => Promise<void> }[];
 
+/**
+ * Constructor for TestSuite class.
+ * Initializes an array of test functions to be executed.
+ */
 	constructor() {
 		this.tests = [
 			{
@@ -56,6 +66,12 @@ export class TwitterTestSuite implements TestSuite {
 		];
 	}
 
+/**
+ * Asynchronously initializes the Twitter client for the provided agent runtime.
+ * 
+ * @param {IAgentRuntime} runtime - The agent runtime to use for initializing the Twitter client.
+ * @throws {Error} If the Twitter client manager is not found or if the Twitter client fails to initialize.
+ */
 	async testInitializingClient(runtime: IAgentRuntime) {
 		try {
 			const manager = runtime.getService(ServiceTypes.TWITTER);
@@ -78,6 +94,12 @@ export class TwitterTestSuite implements TestSuite {
 		}
 	}
 
+/**
+ * Asynchronously fetches the profile of a user from Twitter using the given runtime.
+ * 
+ * @param {IAgentRuntime} runtime The runtime to use for fetching the profile.
+ * @returns {Promise<void>} A Promise that resolves when the profile is successfully fetched, or rejects with an error.
+ */
 	async testFetchProfile(runtime: IAgentRuntime) {
 		try {
 			const username = runtime.getSetting("TWITTER_USERNAME") as string;
@@ -91,6 +113,13 @@ export class TwitterTestSuite implements TestSuite {
 		}
 	}
 
+/**
+ * Asynchronously fetches search tweets from the Twitter API.
+ *
+ * @param {IAgentRuntime} _runtime - The runtime object used to access certain functionalities.
+ * @returns {Promise<void>} - A Promise that resolves once the search tweets have been successfully fetched.
+ * @throws {Error} - If there is an error while fetching the search tweets.
+ */
 	async testFetchSearchTweets(_runtime: IAgentRuntime) {
 		try {
 			const tweets = await this.twitterClient.client.fetchSearchTweets(
@@ -107,6 +136,13 @@ export class TwitterTestSuite implements TestSuite {
 		}
 	}
 
+/**
+ * Asynchronously fetches the home timeline from the Twitter client.
+ *
+ * @param {IAgentRuntime} _runtime - The agent runtime object.
+ * @throws {Error} If there are no tweets in the home timeline.
+ * @throws {Error} If an error occurs while fetching the home timeline.
+ */
 	async testFetchHomeTimeline(_runtime: IAgentRuntime) {
 		try {
 			const timeline = await this.twitterClient.client.fetchHomeTimeline(5);
@@ -121,6 +157,12 @@ export class TwitterTestSuite implements TestSuite {
 		}
 	}
 
+/**
+ * Fetches own posts using the Twitter client.
+ * 
+ * @param {IAgentRuntime} _runtime - The Agent Runtime object.
+ * @throws {Error} If no own posts are found or if there is an error fetching the posts.
+ */
 	async testFetchOwnPosts(_runtime: IAgentRuntime) {
 		try {
 			const posts = await this.twitterClient.client.fetchOwnPosts(5);
@@ -133,6 +175,13 @@ export class TwitterTestSuite implements TestSuite {
 		}
 	}
 
+/**
+ * Asynchronously posts a test tweet using the Twitter API.
+ * 
+ * @param {IAgentRuntime} runtime - The agent runtime object.
+ * @returns {Promise<void>} A Promise that resolves when the tweet is successfully posted.
+ * @throws {Error} If there is an error posting the tweet.
+ */
 	async testPostTweet(runtime: IAgentRuntime) {
 		try {
 			const roomId = createUniqueUuid(runtime, "twitter_mock_room");
@@ -153,6 +202,13 @@ export class TwitterTestSuite implements TestSuite {
 		}
 	}
 
+/**
+ * Asynchronously posts an image tweet on Twitter using the provided runtime and tweet content.
+ * 
+ * @param {IAgentRuntime} runtime - The runtime environment for the action.
+ * @returns {Promise<void>} A Promise that resolves when the tweet is successfully posted.
+ * @throws {Error} If there is an error posting the tweet.
+ */
 	async testPostImageTweet(runtime: IAgentRuntime) {
 		try {
 			const roomId = createUniqueUuid(runtime, "twitter_mock_room");
@@ -178,6 +234,13 @@ export class TwitterTestSuite implements TestSuite {
 		}
 	}
 
+/**
+ * Asynchronously generates a new tweet using the provided agent runtime.
+ * 
+ * @param {IAgentRuntime} _runtime - The agent runtime used to generate the new tweet.
+ * @returns {Promise<void>} - A promise that resolves once the tweet has been successfully generated.
+ * @throws {Error} - If there is an error generating the new tweet.
+ */
 	async testGenerateNewTweet(_runtime: IAgentRuntime) {
 		try {
 			const postClient = this.twitterClient.post;
@@ -188,6 +251,13 @@ export class TwitterTestSuite implements TestSuite {
 		}
 	}
 
+/**
+ * Asynchronously handles a fake tweet response using the given runtime.
+ * 
+ * @param {IAgentRuntime} runtime - The runtime object for the agent
+ * @returns {Promise<void>} - A promise that resolves when the tweet response is handled
+ * @throws {Error} - If there is an error handling the tweet response
+ */
 	async testHandleTweetResponse(runtime: IAgentRuntime) {
 		try {
 			const testTweet = {
@@ -223,6 +293,13 @@ export class TwitterTestSuite implements TestSuite {
 		}
 	}
 
+/**
+ * Generates a random tweet content based on the given context.
+ * 
+ * @param {IAgentRuntime} runtime - The runtime environment.
+ * @param {string} [context] - The context to determine the type of tweet content to generate. Optional.
+ * @returns {Promise<string>} The generated tweet content.
+ */
 	private async generateRandomTweetContent(
 		runtime: IAgentRuntime,
 		context?: string,
