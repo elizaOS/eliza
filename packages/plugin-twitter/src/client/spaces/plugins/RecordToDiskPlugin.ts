@@ -4,6 +4,13 @@ import type { Space } from "../core/Space";
 import type { SpaceParticipant } from "../core/SpaceParticipant";
 import { Logger } from "../logger";
 
+/**
+ * Configuration options for the RecordToDiskPlugin.
+ * 
+ * @typedef {Object} RecordToDiskPluginConfig
+ * @property {string} [filePath] - The file path where records will be stored.
+ * @property {boolean} [debug] - Whether to enable verbose logs.
+ */
 interface RecordToDiskPluginConfig {
 	filePath?: string;
 	debug?: boolean; // whether to enable verbose logs
@@ -19,6 +26,10 @@ interface RecordToDiskPluginConfig {
  *  - init(...) => finalize file path, open stream
  *  - onAudioData(...) => append PCM frames to the file
  *  - cleanup(...) => close file stream
+ */
+/**
+ * Class representing a plugin for recording audio data to disk.
+ * @implements {Plugin}
  */
 export class RecordToDiskPlugin implements Plugin {
 	private filePath = "/tmp/speaker_audio.raw";
