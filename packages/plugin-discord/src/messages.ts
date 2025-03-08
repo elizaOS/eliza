@@ -1,15 +1,15 @@
 import {
 	ChannelType,
 	type Content,
-	createUniqueUuid,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type IBrowserService,
 	type IVideoService,
-	logger,
 	type Media,
 	type Memory,
 	ServiceTypes,
+	createUniqueUuid,
+	logger,
 } from "@elizaos/core";
 import {
 	type Channel,

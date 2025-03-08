@@ -1,16 +1,16 @@
 import {
 	type Action,
 	type ActionExample,
-	composePrompt,
 	type Content,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type IVideoService,
 	type Memory,
 	ModelTypes,
-	parseJSONObjectFromText,
 	ServiceTypes,
 	type State,
+	composePrompt,
+	parseJSONObjectFromText,
 } from "@elizaos/core";
 
 /**

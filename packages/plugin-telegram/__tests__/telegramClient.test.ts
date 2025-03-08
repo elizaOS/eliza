@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TelegramClient } from "../src/telegramClient";
 import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TelegramClient } from "../src/telegramClient";
 
 // Mock Telegraf
 vi.mock("telegraf", () => {

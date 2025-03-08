@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { z } from "zod";
 import { logger } from "@elizaos/core";
+import { z } from "zod";
 
 // Configuration schema with text model source flags
 /**

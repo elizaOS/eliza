@@ -1,17 +1,17 @@
 import {
-	composePrompt,
 	type IAgentRuntime,
 	type Memory,
 	type Provider,
 	type State,
 	type UUID,
+	composePrompt,
 } from "@elizaos/core";
 import { z } from "zod";
 import { formatRecommenderReport } from "../reports";
 import type { CommunityInvestorService } from "../tradingService";
 import {
-	ServiceTypes,
 	type PositionWithBalance,
+	ServiceTypes,
 	type TokenPerformance,
 	type RecommenderMetrics as TypesRecommenderMetrics,
 	type TokenPerformance as TypesTokenPerformance,
@@ -91,148 +91,6 @@ Total P&L: {{totalPnL}}
 </data_provider>`;
 
 /**
- * Represents the state of data actions including runtime, message, trading service, tokens, positions, and transactions.
- *
- * @typedef {Object} DataActionState
- * @property {IAgentRuntime} runtime - The agent runtime object.
- * @property {Memory} message - The memory message object.
- * @property {CommunityInvestorService} tradingService - The trading service object used by the community investor.
- * @property {TypesTokenPerformance[]} tokens - Array of token performance types.
- * @property {PositionWithBalance[]} positions - Array of positions with balance information.
- * @property {TypesTransaction[]} transactions - Array of transaction types.
- */
-type DataActionState = {
-	runtime: IAgentRuntime;
-	message: Memory;
-	tradingService: CommunityInvestorService;
-	tokens: TypesTokenPerformance[];
-	positions: PositionWithBalance[];
-	transactions: TypesTransaction[];
-};
-
-/**
- * Represents a data action that can be dispatched.
- * @template Params the type of parameters that the action accepts
- * @property {string} name - The name of the action
- * @property {string} description - The description of the action
- * @property {Params} params - The parameters that the action accepts
- * @property {function(state: DataActionState, params: z.infer<Params>): Promise<void>} handler - The function that handles the action and the state
- */
-type DataAction<Params extends z.AnyZodObject = z.AnyZodObject> = {
-	name: string;
-	description: string;
-	params: Params;
-	handler: (state: DataActionState, params: z.infer<Params>) => Promise<void>;
-};
-
-/**
- * Creates an action with the specified parameters.
- *
- * @template Params The type of parameters for the action. Defaults to AnyZodObject.
- * @param {DataAction<Params>} action The data action to create.
- * @returns {DataAction<Params>} The created data action.
- */
-
-function createAction<Params extends z.AnyZodObject = z.AnyZodObject>(
-	action: DataAction<Params>,
-) {
-	return action;
-}
-
-// Available actions
-/**
- * Array of actions to perform various tasks related to trading and positions.
- * Each action has a name, description, parameters, and an async handler function that executes the action.
- * @type {Array<Object>}
- */
-const _actions = [
-	createAction({
-		name: "refresh_token",
-		description: "Refresh token information from chain",
-		params: z.object({
-			tokenAddress: z.string().describe("Token address to refresh"),
-			chain: z.string().default("solana").describe("Chain name"),
-		}),
-		async handler({ tradingService, tokens }, params) {
-			// Normalize token address
-			const tokenAddress = params.tokenAddress.toLowerCase();
-			// Update token information using the CommunityInvestorService
-			await tradingService.updateTokenPerformance(params.chain, tokenAddress);
-			// Could also update trade history, position balances, etc.
-		},
-	}),
-	createAction({
-		name: "refresh_position",
-		description: "Refresh position information",
-		params: z.object({
-			positionId: z.string().uuid().describe("Position ID to refresh"),
-			includeTx: z.boolean().default(true).describe("Include transactions"),
-		}),
-		async handler(_state, { positionId, includeTx }) {},
-	}),
-	createAction({
-		name: "close_positions",
-		description: "Close positions (set them as closed)",
-		params: z.object({
-			positionIds: z.array(z.string().uuid()).describe("Position IDs to close"),
-		}),
-		async handler({ runtime }, { positionIds }) {
-			const tradingService = runtime.getService<CommunityInvestorService>(
-				ServiceTypes.COMMUNITY_INVESTOR,
-			);
-			for (const positionId of positionIds) {
-				await tradingService.closePosition(positionId as UUID);
-			}
-		},
-	}),
-	createAction({
-		name: "update_trust_score",
-		description: "Update trust score for a entity",
-		params: z.object({
-			entityId: z.string().uuid().describe("Entity ID to update"),
-		}),
-		async handler({ runtime, message }, { entityId }) {
-			const tradingService = runtime.getService<CommunityInvestorService>(
-				ServiceTypes.COMMUNITY_INVESTOR,
-			);
-			// Use db method instead - assuming this is the correct replacement
-			await tradingService.initializeRecommenderMetrics(
-				entityId as UUID,
-				message.content.source,
-			);
-		},
-	}),
-	createAction({
-		name: "update_positions",
-		description: "Update performance calculation of positions",
-		params: z.object({
-			positionIds: z
-				.array(z.string().uuid())
-				.describe("Position IDs to update"),
-		}),
-		async handler(
-			{ runtime, tokens, positions, transactions },
-			{ positionIds },
-		) {
-			// Use the correct method for updating positions
-			for (const positionId of positionIds) {
-				// Get token address from position
-				const position = positions.find((p) => p.id === positionId);
-				if (position) {
-					const tradingService = runtime.getService<CommunityInvestorService>(
-						ServiceTypes.COMMUNITY_INVESTOR,
-					);
-					await tradingService.updateTokenPerformance(
-						position.chain,
-						position.tokenAddress,
-					);
-				}
-			}
-		},
-	}),
-];
-
-/**
  * Extracts actions from a given text that is formatted with <action name="...">...</action> tags.
  *
  * @param {string} text - The text containing the actions to extract.
@@ -241,9 +99,8 @@ const _actions = [
 function extractActions(text: string) {
 	const regex = /<action name="([^"]+)">([^<]+)<\/action>/g;
 	const actions = [];
-	let match;
-
-	while ((match = regex.exec(text)) !== null) {
+	const match = regex.exec(text);
+	while (match !== null) {
 		try {
 			const name = match[1];
 			const params = JSON.parse(match[2]);
@@ -254,18 +111,6 @@ function extractActions(text: string) {
 	}
 
 	return actions;
-}
-
-/**
- * A function that formats a value as JSON, converting Date objects to ISO strings.
- *
- * @param {any} _key - The key of the JSON property.
- * @param {any} value - The value of the JSON property.
- * @returns {any} The formatted value.
- */
-function jsonFormatter(_key: any, value: any) {
-	if (value instanceof Date) return value.toISOString();
-	return value;
 }
 
 /**
@@ -386,7 +231,6 @@ export const dataProvider: Provider = {
 			const totalRealizedPnL = "$0.00";
 			const totalUnrealizedPnL = "$0.00";
 			const totalPnL = "$0.00";
-			const _positionReports: string[] = [];
 
 			const stateData = {
 				tokenReports: tokenReports.join("\n"),

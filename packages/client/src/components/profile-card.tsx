@@ -1,3 +1,4 @@
+import { Button } from "./ui/button";
 import {
 	Card,
 	CardContent,
@@ -5,7 +6,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "./ui/card";
-import { Button } from "./ui/button";
 
 interface ButtonConfig {
 	label?: string;

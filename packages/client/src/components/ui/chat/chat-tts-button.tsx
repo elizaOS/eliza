@@ -1,10 +1,10 @@
-import { Ellipsis, StopCircle, Volume2 } from "lucide-react";
-import { Button } from "../button";
-import { useMutation } from "@tanstack/react-query";
-import { useRef, useState } from "react";
-import { apiClient } from "@/lib/api";
-import { Tooltip, TooltipTrigger, TooltipContent } from "../tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { apiClient } from "@/lib/api";
+import { useMutation } from "@tanstack/react-query";
+import { Ellipsis, StopCircle, Volume2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Button } from "../button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../tooltip";
 
 export default function ChatTtsButton({
 	agentId,
@@ -80,6 +80,7 @@ export default function ChatTtsButton({
 					autoPlay
 				>
 					<source src={URL.createObjectURL(audioBlob)} type="audio/mpeg" />
+					<track kind="captions" src="" label="English captions" />
 					Your browser does not support the audio element.
 				</audio>
 			) : null}

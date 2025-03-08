@@ -1,4 +1,4 @@
-import { UUID, IAgentRuntime } from "@elizaos/core";
+import { IAgentRuntime, UUID } from "@elizaos/core";
 import { z } from "zod";
 import type { Transaction } from "./types.js";
 

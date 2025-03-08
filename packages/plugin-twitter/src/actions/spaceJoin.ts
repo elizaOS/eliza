@@ -1,12 +1,12 @@
 import {
 	type Action,
 	type ActionExample,
+	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
 	type State,
-	stringToUuid,
-	type HandlerCallback,
 	logger,
+	stringToUuid,
 } from "@elizaos/core";
 import type { Tweet } from "../client";
 import { SpaceActivity } from "../spaces";

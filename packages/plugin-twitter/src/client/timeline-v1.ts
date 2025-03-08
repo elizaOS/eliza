@@ -1,4 +1,4 @@
-import { type LegacyUserRaw, parseProfile, type Profile } from "./profile";
+import { type LegacyUserRaw, type Profile, parseProfile } from "./profile";
 import { parseMediaGroups, reconstructTweetHtml } from "./timeline-tweet-util";
 import type { PlaceRaw, Tweet } from "./tweets";
 import { isFieldDefined } from "./type-util";

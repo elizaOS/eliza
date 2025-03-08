@@ -2,7 +2,12 @@
 	"extends": "../core/tsconfig.json",
 	"compilerOptions": {
 		"outDir": "dist",
-		"rootDir": "src"
+		"rootDir": "src",
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/core": ["../../packages/core/src"],
+			"@elizaos/core/*": ["../../packages/core/src/*"]
+		}
 	},
 	"include": ["src/**/*.ts"]
 }

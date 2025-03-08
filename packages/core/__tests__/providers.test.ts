@@ -1,11 +1,11 @@
-import { getProviders } from "../src/providers.ts";
+import { getProviders } from "../src/providers";
 import type {
 	IAgentRuntime,
 	Memory,
-	State,
 	Provider,
+	State,
 	UUID,
-} from "../src/types.ts";
+} from "../src/types";
 
 describe("getProviders", () => {
 	let runtime: IAgentRuntime;

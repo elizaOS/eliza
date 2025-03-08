@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import { CacheManager, MemoryCacheAdapter } from "../src/cache.ts";
+import { CacheManager, MemoryCacheAdapter } from "../src/cache";
 import {
 	createGoal,
 	formatGoalsAsString,
 	getGoals,
 	updateGoal,
-} from "../src/goals.ts";
+} from "../src/goals";
 import {
 	type Action,
 	type ChannelType,
@@ -26,7 +26,7 @@ import {
 	type Task,
 	type UUID,
 	type WorldData,
-} from "../src/types.ts";
+} from "../src/types";
 
 // Mock the database adapter
 export const mockDatabaseAdapter = {

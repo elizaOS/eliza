@@ -1,12 +1,12 @@
+import { AIService } from "./AIService/AIService.js";
+import { Configuration } from "./Configuration.js";
 import { DirectoryTraversal } from "./DirectoryTraversal.js";
-import { TypeScriptParser } from "./TypeScriptParser.js";
+import { DocumentationGenerator } from "./DocumentationGenerator.js";
+import { GitManager } from "./GitManager.js";
 import { JsDocAnalyzer } from "./JsDocAnalyzer.js";
 import { JsDocGenerator } from "./JsDocGenerator.js";
-import { DocumentationGenerator } from "./DocumentationGenerator.js";
-import { Configuration } from "./Configuration.js";
-import { AIService } from "./AIService/AIService.js";
-import { GitManager } from "./GitManager.js";
 import { PluginDocumentationGenerator } from "./PluginDocumentationGenerator.js";
+import { TypeScriptParser } from "./TypeScriptParser.js";
 
 /**
  * Main function for generating documentation.

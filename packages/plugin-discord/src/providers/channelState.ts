@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
-import { ServiceTypes } from "../types.ts";
-import type { DiscordService } from "../index.ts";
+import type { DiscordService } from "../index";
+import { ServiceTypes } from "../types";
 
 /**
  * Represents a provider for retrieving channel state information.

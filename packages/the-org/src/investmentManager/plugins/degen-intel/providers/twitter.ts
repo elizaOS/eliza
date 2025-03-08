@@ -4,11 +4,11 @@
 // store tweets as memories in db, no reason really to get twitter here
 
 import {
-	type IAgentRuntime,
-	logger,
-	createUniqueUuid,
-	type UUID,
 	ChannelType,
+	type IAgentRuntime,
+	type UUID,
+	createUniqueUuid,
+	logger,
 } from "@elizaos/core";
 
 export default class Twitter {

@@ -1,16 +1,16 @@
-import {
-	pgTable,
-	uuid,
-	text,
-	index,
-	foreignKey,
-	unique,
-} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { numberTimestamp } from "./types";
+import {
+	foreignKey,
+	index,
+	pgTable,
+	text,
+	unique,
+	uuid,
+} from "drizzle-orm/pg-core";
+import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
-import { agentTable } from "./agent";
+import { numberTimestamp } from "./types";
 
 /**
  * Defines the schema for the "participants" table in the database.

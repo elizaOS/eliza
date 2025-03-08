@@ -6,9 +6,9 @@ import type {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { initCharacter } from "../init";
+import { communityInvestorPlugin } from "./plugins/community-investor";
 import { degenIntelPlugin } from "./plugins/degen-intel";
 import { degenTraderPlugin } from "./plugins/degen-trader";
-import { communityInvestorPlugin } from "./plugins/community-investor";
 
 dotenv.config({ path: "../../.env" });
 

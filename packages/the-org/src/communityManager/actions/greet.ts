@@ -11,43 +11,6 @@ import {
 	type State,
 	logger,
 } from "@elizaos/core";
-
-/**
- * Interface representing settings for a greeting feature.
- * @interface
- */
- 
-/**
- * Whether the greeting feature is enabled or not.
- * @type {boolean}
- */
- GreetingSettings.enabled
- 
-/**
- * The ID of the channel where the greeting message should be sent.
- * @type {string | undefined}
- */
- GreetingSettings.channelId
- 
-/**
- * The greeting message to be sent.
- * @type {string | undefined}
- */
- GreetingSettings.message
- 
-/**
- * The timestamp of when the settings were last updated.
- * @type {number}
- */
- GreetingSettings.lastUpdated
- */
-interface GreetingSettings {
-	enabled: boolean;
-	channelId?: string;
-	message?: string;
-	lastUpdated: number;
-}
-
 /**
  * Action to greet new users in the configured channel
  * @typedef {Object} Action

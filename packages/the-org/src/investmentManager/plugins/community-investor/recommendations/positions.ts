@@ -1,18 +1,18 @@
 import {
-	logger,
 	type Action,
 	type IAgentRuntime,
 	type Memory,
 	type UUID,
+	logger,
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { formatFullReport } from "../reports";
+import type { CommunityInvestorService } from "../tradingService";
 import {
 	ServiceTypes,
 	type TokenPerformance,
 	type Transaction,
 } from "../types";
-import type { CommunityInvestorService } from "../tradingService";
 
 /**
  * Action to retrieve and format position data for the agent's portfolio.

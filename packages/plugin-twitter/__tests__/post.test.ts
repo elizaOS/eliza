@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TwitterPostClient } from "../src/post";
-import { ClientBase } from "../src/base";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger, truncateToCompleteSentence } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ClientBase } from "../src/base";
 import type { TwitterConfig } from "../src/environment";
-import { truncateToCompleteSentence, logger } from "@elizaos/core";
+import { TwitterPostClient } from "../src/post";
 
 const MAX_TWITTER_POST_LENGTH = 280;
 

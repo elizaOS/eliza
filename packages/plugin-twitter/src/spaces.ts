@@ -1,15 +1,15 @@
-import { logger, ModelTypes, type IAgentRuntime } from "@elizaos/core";
-import type { ClientBase } from "./base.ts";
+import { type IAgentRuntime, ModelTypes, logger } from "@elizaos/core";
+import type { ClientBase } from "./base";
 import {
+	type Client,
 	IdleMonitorPlugin,
 	Space,
-	SpaceParticipant,
-	type Client,
 	type SpaceConfig,
+	SpaceParticipant,
 	type SpeakerRequest,
-} from "./client/index.ts";
-import { SttTtsPlugin } from "./sttTtsSpaces.ts";
-import { generateTopicsIfEmpty, isAgentInSpace, speakFiller } from "./utils.ts";
+} from "./client/index";
+import { SttTtsPlugin } from "./sttTtsSpaces";
+import { generateTopicsIfEmpty, isAgentInSpace, speakFiller } from "./utils";
 
 /**
  * Interface representing options for deciding on creating a Twitter Space.

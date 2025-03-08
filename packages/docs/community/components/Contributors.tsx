@@ -1,9 +1,9 @@
-import type React from "react";
-import { useEffect, useState, useRef } from "react";
-import ContributorCard from "./Contributor";
-import Contributions from "./Contributions";
 import { useColorMode } from "@docusaurus/theme-common";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import contributorsSpec from "../contributors.json";
+import Contributions from "./Contributions";
+import ContributorCard from "./Contributor";
 import { useGithubAccessToken } from "./utils";
 
 export interface Contributor {

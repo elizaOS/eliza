@@ -5,7 +5,7 @@
 		"lib": ["ESNext", "dom"],
 		"moduleResolution": "Bundler",
 		"outDir": "dist",
-		"rootDir": "src",
+		"composite": true,
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
@@ -19,7 +19,13 @@
 		"checkJs": false,
 		"noEmitOnError": false,
 		"moduleDetection": "force",
-		"allowArbitraryExtensions": true
+		"allowArbitraryExtensions": true,
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/core": ["../../packages/core/src"],
+			"@elizaos/core/*": ["../../packages/core/src/*"]
+		}
 	},
-	"include": ["src/**/*.ts"]
+	"include": ["src/**/*.ts"],
+	"references": [{ "path": "../core" }]
 }

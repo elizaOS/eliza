@@ -1,5 +1,5 @@
-import type { Provider } from "../types";
 import { addHeader } from "../prompts";
+import type { Provider } from "../types";
 import type { IAgentRuntime, Memory } from "../types";
 
 /**

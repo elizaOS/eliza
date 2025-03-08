@@ -1,8 +1,8 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
+import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import readline from "readline";
-import { fileURLToPath } from "url";
 
 // Define __dirname for ES modules
 const __dirname = new URL(".", import.meta.url).pathname;
@@ -458,7 +458,7 @@ async function main() {
 		const concurrencyResponse = await prompt(
 			"How many files to process concurrently? (default: 10): ",
 		);
-		const maxConcurrent = parseInt(concurrencyResponse) || 10;
+		const maxConcurrent = Number.parseInt(concurrencyResponse) || 10;
 		console.log(`Processing with ${maxConcurrent} concurrent workers\n`);
 
 		// Find all packages

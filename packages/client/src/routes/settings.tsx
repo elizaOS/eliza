@@ -1,9 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
-import { apiClient } from "@/lib/api";
 import AgentSettings from "@/components/agent-settings";
-import { useParams } from "react-router";
-import type { UUID } from "@elizaos/core";
 import { STALE_TIMES } from "@/hooks/use-query-hooks";
+import { apiClient } from "@/lib/api";
+import type { UUID } from "@elizaos/core";
+import { useQuery } from "@tanstack/react-query";
+import { useParams } from "react-router";
 
 export default function AgentRoute() {
 	const { agentId } = useParams<{ agentId: UUID }>();

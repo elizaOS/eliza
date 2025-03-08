@@ -1,9 +1,9 @@
-import { execa } from "execa";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { logger } from "@/src/utils/logger";
-import { runBunCommand } from "@/src/utils/run-bun";
-import { promises as fs } from "node:fs";
 import { getBestBranch } from "@/src/utils/registry";
+import { runBunCommand } from "@/src/utils/run-bun";
+import { execa } from "execa";
 
 /**
  * Asynchronously installs a plugin to a specified directory.

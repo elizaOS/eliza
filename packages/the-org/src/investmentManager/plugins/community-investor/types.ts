@@ -1,8 +1,8 @@
 import type {
 	Content,
-	Memory,
-	UUID as CoreUUID,
 	Entity as CoreEntity,
+	UUID as CoreUUID,
+	Memory,
 } from "@elizaos/core";
 import type { MessageRecommendation } from "./recommendations/schema";
 

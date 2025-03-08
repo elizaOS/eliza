@@ -2,8 +2,8 @@ import {
 	type IAgentRuntime,
 	ModelTypes,
 	logger,
-	trimTokens,
 	parseJSONObjectFromText,
+	trimTokens,
 } from "@elizaos/core";
 import {
 	ChannelType,

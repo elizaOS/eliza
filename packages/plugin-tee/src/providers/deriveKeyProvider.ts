@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import {
 	type IAgentRuntime,
 	type Memory,
@@ -5,18 +6,17 @@ import {
 	type State,
 	logger,
 } from "@elizaos/core";
-import { Keypair } from "@solana/web3.js";
-import crypto from "node:crypto";
-import { type DeriveKeyResponse, TappdClient } from "@phala/dstack-sdk";
-import { privateKeyToAccount } from "viem/accounts";
-import { type PrivateKeyAccount, keccak256 } from "viem";
-import { PhalaRemoteAttestationProvider as RemoteAttestationProvider } from "./remoteAttestationProvider";
 import {
-	TEEMode,
-	type RemoteAttestationQuote,
 	type DeriveKeyAttestationData,
+	type RemoteAttestationQuote,
+	TEEMode,
 } from "@elizaos/core";
+import { type DeriveKeyResponse, TappdClient } from "@phala/dstack-sdk";
+import { Keypair } from "@solana/web3.js";
+import { type PrivateKeyAccount, keccak256 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { DeriveKeyProvider } from "./base";
+import { PhalaRemoteAttestationProvider as RemoteAttestationProvider } from "./remoteAttestationProvider";
 
 /**
  * Phala TEE Cloud Provider

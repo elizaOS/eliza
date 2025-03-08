@@ -1,12 +1,12 @@
 import PageTitle from "@/components/page-title";
+import ProfileCard from "@/components/profile-card";
+import { Card } from "@/components/ui/card";
+import { useAgentManagement } from "@/hooks/use-agent-management";
 import { useAgents } from "@/hooks/use-query-hooks";
+import { formatAgentName } from "@/lib/utils";
+import type { Agent } from "@elizaos/core";
 import { Cog, Loader2, MessageSquare, Play, Plus, Square } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import ProfileCard from "@/components/profile-card";
-import { formatAgentName } from "@/lib/utils";
-import { Card } from "@/components/ui/card";
-import type { Agent } from "@elizaos/core";
-import { useAgentManagement } from "@/hooks/use-agent-management";
 
 export default function Home() {
 	const {

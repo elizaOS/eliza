@@ -1,7 +1,7 @@
-import type { TeeVendor } from "./types";
-import { PhalaVendor } from "./phala";
 import { GramineVendor } from "./gramine";
-import { TeeVendorNames, type TeeVendorName } from "./types";
+import { PhalaVendor } from "./phala";
+import type { TeeVendor } from "./types";
+import { type TeeVendorName, TeeVendorNames } from "./types";
 
 const vendors: Record<TeeVendorName, TeeVendor> = {
 	[TeeVendorNames.PHALA]: new PhalaVendor(),

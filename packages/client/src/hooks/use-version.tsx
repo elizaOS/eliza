@@ -1,9 +1,9 @@
-import { useEffect } from "react";
-import { useToast } from "./use-toast";
-import info from "@/lib/info.json";
-import semver from "semver";
 import { ToastAction } from "@/components/ui/toast";
+import info from "@/lib/info.json";
+import { useEffect } from "react";
 import { NavLink } from "react-router";
+import semver from "semver";
+import { useToast } from "./use-toast";
 
 export default function useVersion() {
 	const { toast } = useToast();

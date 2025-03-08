@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-	parseShouldRespondFromText,
 	parseBooleanFromText,
-	parseJsonArrayFromText,
 	parseJSONObjectFromText,
+	parseJsonArrayFromText,
+	parseShouldRespondFromText,
 } from "../src/parsing";
 
 describe("Parsing Module", () => {

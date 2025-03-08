@@ -1,5 +1,5 @@
-import { themes as prismThemes } from "prism-react-renderer";
 import dotenv from "dotenv";
+import { themes as prismThemes } from "prism-react-renderer";
 
 dotenv.config();
 

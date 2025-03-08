@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	Agent,
 	Character,
@@ -9,17 +11,15 @@ import type {
 } from "@elizaos/core";
 import {
 	ChannelType,
+	ModelTypes,
 	composePrompt,
 	createUniqueUuid,
 	logger,
 	messageHandlerTemplate,
-	ModelTypes,
 	parseJSONObjectFromText,
 	validateUuid,
 } from "@elizaos/core";
 import express from "express";
-import fs from "node:fs";
-import path from "node:path";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
 

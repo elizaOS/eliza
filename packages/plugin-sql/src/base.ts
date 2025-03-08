@@ -5,7 +5,6 @@ import {
 	type Entity,
 	type Goal,
 	type GoalStatus,
-	logger,
 	type Memory,
 	type Participant,
 	type Relationship,
@@ -13,6 +12,7 @@ import {
 	type Task,
 	type UUID,
 	type World,
+	logger,
 } from "@elizaos/core";
 import {
 	and,

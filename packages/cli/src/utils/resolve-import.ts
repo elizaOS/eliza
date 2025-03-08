@@ -1,6 +1,6 @@
 import {
-	createMatchPath,
 	type ConfigLoaderSuccessResult,
+	createMatchPath,
 } from "tsconfig-paths";
 
 /**

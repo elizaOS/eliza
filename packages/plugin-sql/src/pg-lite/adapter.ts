@@ -1,5 +1,5 @@
-import { logger, type UUID } from "@elizaos/core";
-import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
+import { type UUID, logger } from "@elizaos/core";
+import { type PgliteDatabase, drizzle } from "drizzle-orm/pglite";
 import { BaseDrizzleAdapter } from "../base";
 import {
 	DIMENSION_MAP,

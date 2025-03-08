@@ -1,19 +1,19 @@
-import { Command } from "commander";
-import {
-	deploy,
-	type DeployOptions,
-	images,
-	teepods,
-	upgrade,
-	type UpgradeOptions,
-	type Env,
-	listCvms,
-} from "@/src/tee/phala";
-import { writeApiKey } from "@/src/tee/phala/credential";
-import { DockerOperations } from "@/src/tee/phala/docker";
-import { TEE_SIMULATOR } from "@/src/tee/phala/constants";
 import fs from "node:fs";
 import os from "node:os";
+import {
+	type DeployOptions,
+	type Env,
+	type UpgradeOptions,
+	deploy,
+	images,
+	listCvms,
+	teepods,
+	upgrade,
+} from "@/src/tee/phala";
+import { TEE_SIMULATOR } from "@/src/tee/phala/constants";
+import { writeApiKey } from "@/src/tee/phala/credential";
+import { DockerOperations } from "@/src/tee/phala/docker";
+import { Command } from "commander";
 
 /**
  * Parses environment variables from given values and a file.

@@ -10,7 +10,9 @@ export default defineConfig({
 	target: "node23",
 	bundle: true,
 	splitting: true, // Add this for better code splitting
-	dts: true, // Generate declaration files
+	dts: false, // Disable type generation
+	// Use esbuild's simpler DTS generation
+	tsconfig: "./tsconfig.build.json", // Use build-specific tsconfig
 	external: [
 		"dotenv", // Externalize dotenv to prevent bundling
 		"fs", // Externalize fs to use Node.js built-in module
@@ -21,4 +23,11 @@ export default defineConfig({
 		"https",
 		"sharp",
 	],
+	// Improve source map configuration
+	esbuildOptions(options) {
+		options.sourceRoot = "./"; // Set source root to help with source mapping
+		options.sourcesContent = true;
+		options.outbase = "./src"; // Makes output paths match input structure
+	},
+	keepNames: true, // Preserve names for better debugging
 });

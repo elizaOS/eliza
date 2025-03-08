@@ -1,8 +1,8 @@
 import {
+	formatEvaluatorExampleDescriptions,
+	formatEvaluatorExamples,
 	formatEvaluatorNames,
 	formatEvaluators,
-	formatEvaluatorExamples,
-	formatEvaluatorExampleDescriptions,
 } from "../src/evaluators";
 import type {
 	Evaluator,

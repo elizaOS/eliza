@@ -1,12 +1,12 @@
 import type { Database } from "better-sqlite3";
 import {
-	TeeLogDAO,
 	type TeeAgent,
 	type TeeLog,
+	TeeLogDAO,
 	type TeeLogQuery,
 	type TeePageQuery,
-} from "../types.ts";
-import { sqliteTables } from "./sqliteTables.ts";
+} from "../types";
+import { sqliteTables } from "./sqliteTables";
 
 /**
  * Represents a data access object for interacting with SQLite database to perform operations related to TeeLog and TeeAgent.

@@ -1,9 +1,9 @@
-import { type Cookie, CookieJar, type MemoryCookieStore } from "tough-cookie";
-import { updateCookieJar } from "./requests";
 import { Headers } from "headers-polyfill";
-import type { FetchTransformOptions } from "./api";
+import { type Cookie, CookieJar, type MemoryCookieStore } from "tough-cookie";
 import { TwitterApi } from "twitter-api-v2";
+import type { FetchTransformOptions } from "./api";
 import type { Profile } from "./profile";
+import { updateCookieJar } from "./requests";
 
 /**
  * Represents the TwitterAuthOptions interface that defines the properties required for Twitter authentication.

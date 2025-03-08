@@ -1,24 +1,24 @@
+import { existsSync } from "node:fs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
 import { logger } from "@elizaos/core";
 import {
 	AutoProcessor,
 	AutoTokenizer,
-	env,
 	Florence2ForConditionalGeneration,
 	type Florence2Processor,
-	type PreTrainedTokenizer,
-	RawImage,
-	type Tensor,
 	type PreTrainedModel,
+	type PreTrainedTokenizer,
 	type ProgressCallback,
 	type ProgressInfo,
+	RawImage,
+	type Tensor,
+	env,
 } from "@huggingface/transformers";
-import { existsSync } from "node:fs";
 import { MODEL_SPECS } from "../types";
 import { DownloadManager } from "./downloadManager";
-import path from "node:path";
-import process from "node:process";
-import fs from "node:fs";
-import os from "node:os";
 
 // Define valid types based on HF transformers types
 /**

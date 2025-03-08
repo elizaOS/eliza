@@ -1,15 +1,15 @@
-import { logger } from "@elizaos/core";
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { logger } from "@elizaos/core";
 import {
-	getLlama,
-	type LlamaModel,
 	type LlamaContext,
 	type LlamaContextSequence,
+	type LlamaModel,
 	type Token,
+	getLlama,
 } from "node-llama-cpp";
 import { MODEL_SPECS } from "../types";
-import { Readable } from "node:stream";
 import { prependWavHeader } from "./audioUtils";
 import { DownloadManager } from "./downloadManager";
 

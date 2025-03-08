@@ -1,10 +1,10 @@
 import { join } from "node:path";
 import { v4 as uuidv4 } from "uuid";
-import { bootstrapPlugin } from "./bootstrap.ts";
-import { settings } from "./environment.ts";
-import { createUniqueUuid, handlePluginImporting, logger } from "./index.ts";
-import { MemoryManager } from "./memory.ts";
-import { splitChunks } from "./prompts.ts";
+import { bootstrapPlugin } from "./bootstrap";
+import { settings } from "./environment";
+import { createUniqueUuid, handlePluginImporting, logger } from "./index";
+import { MemoryManager } from "./memory";
+import { splitChunks } from "./prompts";
 import {
 	type Action,
 	type Agent,
@@ -30,8 +30,8 @@ import {
 	type TaskWorker,
 	type UUID,
 	type World,
-} from "./types.ts";
-import { stringToUuid } from "./uuid.ts";
+} from "./types";
+import { stringToUuid } from "./uuid";
 
 /**
  * Represents the runtime environment for an agent, handling message processing,

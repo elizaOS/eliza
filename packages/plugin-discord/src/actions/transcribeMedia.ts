@@ -1,15 +1,15 @@
 import {
 	type Action,
 	type ActionExample,
-	composePrompt,
 	type Content,
-	createUniqueUuid,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
 	ModelTypes,
-	parseJSONObjectFromText,
 	type State,
+	composePrompt,
+	createUniqueUuid,
+	parseJSONObjectFromText,
 } from "@elizaos/core";
 
 export const transcriptionTemplate = `# Transcription of media file

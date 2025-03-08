@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getWavHeader, sendMessageInChunks } from "../src/utils.ts";
 import type { TextChannel } from "discord.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getWavHeader, sendMessageInChunks } from "../src/utils";
 
 vi.mock("@elizaos/core", () => ({
 	trimTokens: vi.fn((text) => Promise.resolve(text)),

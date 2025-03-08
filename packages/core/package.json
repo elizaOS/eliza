@@ -18,9 +18,9 @@
 	},
 	"files": ["dist"],
 	"scripts": {
-		"build": "tsup --format esm --dts",
+		"build": "tsup",
 		"watch": "tsc --watch",
-		"dev": "tsup --format esm --dts --watch",
+		"dev": "tsup --watch",
 		"build:docs": "cd docs && bun run build",
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage",

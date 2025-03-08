@@ -1,5 +1,5 @@
-import { describe, test, expect } from "vitest";
 import { ModelClass } from "@elizaos/core";
+import { describe, expect, test } from "vitest";
 import { localAIPlugin } from "../src/index";
 
 describe("LocalAI Plugin Initialization", () => {

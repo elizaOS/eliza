@@ -3,13 +3,13 @@
 import logger from "../logger";
 import {
 	type IAgentRuntime,
-	Service,
-	ServiceTypes,
-	type UUID,
-	type ServiceType,
 	type Memory,
+	Service,
+	type ServiceType,
+	ServiceTypes,
 	type State,
 	type Task,
+	type UUID,
 } from "../types";
 
 /**

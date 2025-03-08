@@ -1,21 +1,21 @@
-import {
-	pgTable,
-	uuid,
-	text,
-	jsonb,
-	vector,
-	index,
-	boolean,
-	foreignKey,
-	unique,
-	check,
-} from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
-import { numberTimestamp } from "./types";
+import {
+	boolean,
+	check,
+	foreignKey,
+	index,
+	jsonb,
+	pgTable,
+	text,
+	unique,
+	uuid,
+	vector,
+} from "drizzle-orm/pg-core";
+import { agentTable } from "./agent";
+import { embeddingTable } from "./embedding";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
-import { embeddingTable } from "./embedding";
-import { agentTable } from "./agent";
+import { numberTimestamp } from "./types";
 
 /**
  * Definition of the memory table in the database.

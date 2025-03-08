@@ -1,20 +1,20 @@
 import "./index.css";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "./components/app-sidebar";
-import { TooltipProvider } from "./components/ui/tooltip";
-import { Toaster } from "./components/ui/toaster";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-import Chat from "./routes/chat";
-import Settings from "./routes/settings";
-import Home from "./routes/home";
-import useVersion from "./hooks/use-version";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { apiClient } from "./lib/api";
-import { STALE_TIMES } from "./hooks/use-query-hooks";
-import AgentCreatorRoute from "./routes/createAgent";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import AgentCreator from "./components/agent-creator";
+import { AppSidebar } from "./components/app-sidebar";
 import { LogViewer } from "./components/log-viewer";
+import { Toaster } from "./components/ui/toaster";
+import { TooltipProvider } from "./components/ui/tooltip";
+import { STALE_TIMES } from "./hooks/use-query-hooks";
+import useVersion from "./hooks/use-version";
+import { apiClient } from "./lib/api";
+import Chat from "./routes/chat";
+import AgentCreatorRoute from "./routes/createAgent";
+import Home from "./routes/home";
+import Settings from "./routes/settings";
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({

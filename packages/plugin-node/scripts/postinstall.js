@@ -1,6 +1,6 @@
-import os from "node:os";
-import fs from "node:fs";
 import { execSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 
 const platform = os.platform();
 const rel = os.release();

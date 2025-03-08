@@ -1,16 +1,16 @@
+import fs from "node:fs";
+import path from "node:path";
+import { Readable } from "node:stream";
 import {
-	logger,
-	ModelTypes,
-	type ModelType,
 	type Character,
 	type IAgentRuntime,
 	type IDatabaseAdapter,
 	type IMemoryManager,
+	type ModelType,
+	ModelTypes,
 	type State,
+	logger,
 } from "@elizaos/core";
-import fs from "node:fs";
-import path from "node:path";
-import { Readable } from "node:stream";
 import { vi } from "vitest";
 import { MODEL_SPECS } from "../src/types";
 

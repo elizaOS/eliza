@@ -1,12 +1,12 @@
-import { MemoryManager } from "../memory.ts";
-import { formatMessages } from "../prompts.ts";
+import { MemoryManager } from "../memory";
+import { formatMessages } from "../prompts";
 import {
 	type IAgentRuntime,
 	type Memory,
 	ModelTypes,
 	type Provider,
 	type State,
-} from "../types.ts";
+} from "../types";
 
 /**
  * Formats an array of memories into a single string with each memory content text separated by a new line.

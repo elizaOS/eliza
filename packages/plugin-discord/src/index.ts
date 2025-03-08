@@ -1,17 +1,17 @@
 import {
 	ChannelType,
 	type Character,
-	createUniqueUuid,
 	type Entity,
 	type HandlerCallback,
 	type IAgentRuntime,
-	logger,
 	type Memory,
 	type Plugin,
 	Role,
 	Service,
 	type UUID,
 	type World,
+	createUniqueUuid,
+	logger,
 } from "@elizaos/core";
 import {
 	type Channel,
@@ -28,19 +28,19 @@ import {
 	type TextChannel,
 	type User,
 } from "discord.js";
-import chatWithAttachments from "./actions/chatWithAttachments.ts";
-import downloadMedia from "./actions/downloadMedia.ts";
-import summarize from "./actions/summarizeConversation.ts";
-import transcribe_media from "./actions/transcribeMedia.ts";
-import joinVoice from "./actions/voiceJoin.ts";
-import leaveVoice from "./actions/voiceLeave.ts";
-import { DISCORD_SERVICE_NAME } from "./constants.ts";
-import { MessageManager } from "./messages.ts";
-import channelStateProvider from "./providers/channelState.ts";
-import voiceStateProvider from "./providers/voiceState.ts";
-import { DiscordTestSuite } from "./tests.ts";
-import type { IDiscordService } from "./types.ts";
-import { VoiceManager } from "./voice.ts";
+import chatWithAttachments from "./actions/chatWithAttachments";
+import downloadMedia from "./actions/downloadMedia";
+import summarize from "./actions/summarizeConversation";
+import transcribe_media from "./actions/transcribeMedia";
+import joinVoice from "./actions/voiceJoin";
+import leaveVoice from "./actions/voiceLeave";
+import { DISCORD_SERVICE_NAME } from "./constants";
+import { MessageManager } from "./messages";
+import channelStateProvider from "./providers/channelState";
+import voiceStateProvider from "./providers/voiceState";
+import { DiscordTestSuite } from "./tests";
+import type { IDiscordService } from "./types";
+import { VoiceManager } from "./voice";
 
 /**
  * DiscordService class representing a service for interacting with Discord.

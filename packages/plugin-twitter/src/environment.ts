@@ -1,5 +1,5 @@
-import { parseBooleanFromText, type IAgentRuntime } from "@elizaos/core";
-import { z, ZodError } from "zod";
+import { type IAgentRuntime, parseBooleanFromText } from "@elizaos/core";
+import { ZodError, z } from "zod";
 
 /**
  * Schema for validating an X/Twitter Username.

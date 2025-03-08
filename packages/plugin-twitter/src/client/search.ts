@@ -1,15 +1,15 @@
+import stringify from "json-stable-stringify";
 import { addApiFeatures, requestApi } from "./api";
 import type { TwitterAuth } from "./auth";
 import type { Profile } from "./profile";
-import type { QueryProfilesResponse, QueryTweetsResponse } from "./timeline-v1";
 import { getTweetTimeline, getUserTimeline } from "./timeline-async";
-import type { Tweet } from "./tweets";
 import {
 	type SearchTimeline,
 	parseSearchTimelineTweets,
 	parseSearchTimelineUsers,
 } from "./timeline-search";
-import stringify from "json-stable-stringify";
+import type { QueryProfilesResponse, QueryTweetsResponse } from "./timeline-v1";
+import type { Tweet } from "./tweets";
 
 /**
  * The categories that can be used in Twitter searches.

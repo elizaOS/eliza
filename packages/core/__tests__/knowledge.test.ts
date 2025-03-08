@@ -1,14 +1,14 @@
-import { describe, expect, it, mock, beforeEach, type Mock } from "bun:test";
+import { type Mock, beforeEach, describe, expect, it, mock } from "bun:test";
 import knowledge from "../src/knowledge";
 import type { AgentRuntime } from "../src/runtime";
 import type {
+	FragmentMetadata,
+	IMemoryManager,
+	KnowledgeItem,
 	Memory,
 	UUID,
-	KnowledgeItem,
-	IMemoryManager,
-	FragmentMetadata,
 } from "../src/types";
-import { MemoryType, ModelClass } from "../src/types.ts";
+import { MemoryType, ModelClass } from "../src/types";
 
 // Define test UUIDs
 const TEST_UUID_1 = "123e4567-e89b-12d3-a456-426614174000" as UUID;

@@ -3,14 +3,14 @@ import {
 	type Action,
 	type ActionExample,
 	ChannelType,
-	composePrompt,
-	createUniqueUuid,
 	type HandlerCallback,
 	type IAgentRuntime,
-	logger,
 	type Memory,
 	ModelTypes,
 	type State,
+	composePrompt,
+	createUniqueUuid,
+	logger,
 } from "@elizaos/core";
 import {
 	type BaseGuildVoiceChannel,
@@ -18,9 +18,9 @@ import {
 	ChannelType as DiscordChannelType,
 	type Guild,
 } from "discord.js";
-import type { DiscordService } from "../index.ts";
-import { ServiceTypes } from "../types.ts";
-import type { VoiceManager } from "../voice.ts";
+import type { DiscordService } from "../index";
+import { ServiceTypes } from "../types";
+import type { VoiceManager } from "../voice";
 
 export default {
 	name: "JOIN_VOICE",

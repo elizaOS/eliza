@@ -1,8 +1,15 @@
+import fs from "node:fs";
+import path from "node:path";
+import type { TSESTree } from "@typescript-eslint/types";
+import type { AIService } from "./AIService/AIService.js";
+import type { Configuration } from "./Configuration.js";
 import type { DirectoryTraversal } from "./DirectoryTraversal.js";
-import type { TypeScriptParser } from "./TypeScriptParser.js";
+import type { GitManager } from "./GitManager.js";
+import { JSDocValidator } from "./JSDocValidator.js";
 import type { JsDocAnalyzer } from "./JsDocAnalyzer.js";
 import type { JsDocGenerator } from "./JsDocGenerator.js";
-import type { TSESTree } from "@typescript-eslint/types";
+import { PluginDocumentationGenerator } from "./PluginDocumentationGenerator.js";
+import type { TypeScriptParser } from "./TypeScriptParser.js";
 import type {
 	ASTQueueItem,
 	EnvUsage,
@@ -10,13 +17,6 @@ import type {
 	PrModeFileChange,
 	TodoItem,
 } from "./types/index.js";
-import type { GitManager } from "./GitManager.js";
-import fs from "node:fs";
-import type { Configuration } from "./Configuration.js";
-import path from "node:path";
-import type { AIService } from "./AIService/AIService.js";
-import { PluginDocumentationGenerator } from "./PluginDocumentationGenerator.js";
-import { JSDocValidator } from "./JSDocValidator.js";
 
 /**
  * Class representing a Documentation Generator.

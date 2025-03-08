@@ -1,6 +1,6 @@
+import fs from "node:fs";
 import { ProxyAgent, setGlobalDispatcher } from "undici";
 import { Client } from "./client";
-import fs from "node:fs";
 
 /**
  * Authentication method preference for the client.

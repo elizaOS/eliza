@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type { Media, ModelType, State } from "@elizaos/core";
 import {
 	ChannelType,
@@ -10,8 +12,6 @@ import {
 	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
-import fs from "node:fs";
-import path from "node:path";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
 import type { SttTtsPlugin } from "./sttTtsSpaces";

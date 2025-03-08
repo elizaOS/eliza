@@ -1,6 +1,6 @@
-import { Cookie, type CookieJar } from "tough-cookie";
-import setCookie from "set-cookie-parser";
 import type { Headers as HeadersPolyfill } from "headers-polyfill";
+import setCookie from "set-cookie-parser";
+import { Cookie, type CookieJar } from "tough-cookie";
 
 /**
  * Updates a cookie jar with the Set-Cookie headers from the provided Headers instance.

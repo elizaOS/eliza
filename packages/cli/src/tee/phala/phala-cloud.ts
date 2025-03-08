@@ -1,18 +1,18 @@
-import axios from "axios";
 import {
-	PHALA_CLOUD_API_URL,
 	CLI_VERSION,
 	CLOUD_URL,
+	PHALA_CLOUD_API_URL,
 } from "@/src/tee/phala/constants";
 import { getApiKey } from "@/src/tee/phala/credential";
 import type {
 	CreateCvmResponse,
-	GetPubkeyFromCvmResponse,
 	GetCvmByAppIdResponse,
+	GetCvmsByUserIdResponse,
+	GetPubkeyFromCvmResponse,
 	GetUserInfoResponse,
 	UpgradeCvmResponse,
-	GetCvmsByUserIdResponse,
 } from "@/src/tee/phala/types";
+import axios from "axios";
 
 const headers = {
 	"User-Agent": `tee-cli/${CLI_VERSION}`,

@@ -1,30 +1,30 @@
+import * as fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
+import * as path from "node:path";
 import {
 	AgentRuntime,
-	logger,
-	type ProjectAgent,
-	settings,
-	stringToUuid,
 	type Character,
 	type IAgentRuntime,
 	type Plugin,
+	type ProjectAgent,
+	logger,
+	settings,
+	stringToUuid,
 } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
-import * as fs from "node:fs";
-import net from "node:net";
-import * as path from "node:path";
-import os from "node:os";
 import { character as defaultCharacter } from "../characters/eliza";
-import { AgentServer } from "../server/index.ts";
-import { jsonToCharacter, loadCharacterTryPath } from "../server/loader.ts";
+import { AgentServer } from "../server/index";
+import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const envPath = path.join(process.cwd(), ".env");
 
+import { fileURLToPath } from "node:url";
 // Convert this into a command
 import { Command } from "commander";
-import { fileURLToPath } from "node:url";
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
 	const waitTime =

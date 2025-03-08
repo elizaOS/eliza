@@ -1,8 +1,8 @@
+import { logger } from "@elizaos/core";
 import {
 	AutoTokenizer,
 	type PreTrainedTokenizer,
 } from "@huggingface/transformers";
-import { logger } from "@elizaos/core";
 
 // Import the MODEL_SPECS type from a new types file we'll create later
 import type { ModelSpec } from "../types";

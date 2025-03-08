@@ -13,7 +13,7 @@ import type {
 	Task,
 	UUID,
 	World,
-} from "./types.ts";
+} from "./types";
 
 /**
  * An abstract class representing a database adapter for managing various entities

@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { composeContext } from "../src/context.ts";
 import handlebars from "handlebars";
-import type { State } from "../src/types.ts";
+import { describe, expect, it } from "vitest";
+import { composeContext } from "../src/context";
+import type { State } from "../src/types";
 
 describe("composeContext", () => {
 	const baseState: State = {

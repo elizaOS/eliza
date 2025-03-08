@@ -1,5 +1,7 @@
 // src/plugins/SttTtsPlugin.ts
 
+import { spawn } from "node:child_process";
+import type { Readable } from "node:stream";
 import {
 	ChannelType,
 	type Content,
@@ -11,8 +13,6 @@ import {
 	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
-import { spawn } from "node:child_process";
-import type { Readable } from "node:stream";
 import type { ClientBase } from "./base";
 import type { AudioDataWithUser, JanusClient, Space } from "./client";
 

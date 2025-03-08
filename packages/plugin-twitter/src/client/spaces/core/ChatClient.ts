@@ -1,9 +1,9 @@
 // src/core/ChatClient.ts
 
-import WebSocket from "ws";
 import { EventEmitter } from "node:events";
-import type { SpeakerRequest, OccupancyUpdate } from "../types";
+import WebSocket from "ws";
 import type { Logger } from "../logger";
+import type { OccupancyUpdate, SpeakerRequest } from "../types";
 
 /**
  * Configuration object for ChatClient.

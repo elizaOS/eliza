@@ -1,6 +1,6 @@
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
-import { type IAgentRuntime, logger } from "@elizaos/core";
 
 /**
  * Interface representing the result of a keypair generation.

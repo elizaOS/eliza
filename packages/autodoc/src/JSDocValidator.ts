@@ -1,4 +1,4 @@
-import { parse, type ParserOptions } from "@typescript-eslint/parser";
+import { type ParserOptions, parse } from "@typescript-eslint/parser";
 import type { AIService } from "./AIService/AIService.js";
 
 /**

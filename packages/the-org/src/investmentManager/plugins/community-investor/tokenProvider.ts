@@ -1,6 +1,6 @@
-import { type IAgentRuntime, logger, settings } from "@elizaos/core";
 import * as path from "node:path";
-import { toBN } from "./bignumber.ts";
+import { type IAgentRuntime, logger, settings } from "@elizaos/core";
+import { toBN } from "./bignumber";
 import type {
 	CalculatedBuyAmounts,
 	DexScreenerData,
@@ -10,8 +10,8 @@ import type {
 	ProcessedTokenData,
 	TokenSecurityData,
 	TokenTradeData,
-} from "./types.ts";
-import type { Item, WalletProvider } from "./wallet.ts";
+} from "./types";
+import type { Item, WalletProvider } from "./wallet";
 
 /**
  * Object containing various configurations for provider settings.

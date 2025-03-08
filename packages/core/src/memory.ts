@@ -1,13 +1,13 @@
-import logger from "./logger.ts";
+import logger from "./logger";
 import {
-	MemoryType,
-	ModelTypes,
 	type IAgentRuntime,
 	type IMemoryManager,
-	type MemoryMetadata,
 	type Memory,
+	type MemoryMetadata,
+	MemoryType,
+	ModelTypes,
 	type UUID,
-} from "./types.ts";
+} from "./types";
 
 const defaultMatchThreshold = 0.1;
 const defaultMatchCount = 10;

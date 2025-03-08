@@ -1,5 +1,5 @@
-import { composePrompt } from "../prompts";
 import logger from "../logger";
+import { composePrompt } from "../prompts";
 import { booleanFooter } from "../prompts";
 import {
 	type Action,

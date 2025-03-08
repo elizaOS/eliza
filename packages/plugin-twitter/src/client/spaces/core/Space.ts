@@ -1,28 +1,28 @@
 // src/core/Space.ts
 
 import { EventEmitter } from "node:events";
-import { ChatClient } from "./ChatClient";
-import { JanusClient } from "./JanusClient";
-import {
-	getTurnServers,
-	createBroadcast,
-	publishBroadcast,
-	authorizeToken,
-	getRegion,
-	muteSpeaker,
-	unmuteSpeaker,
-	setupCommonChatEvents,
-} from "../utils";
-import type {
-	BroadcastCreated,
-	Plugin,
-	AudioDataWithUser,
-	PluginRegistration,
-	SpeakerInfo,
-	SpaceConfig,
-} from "../types";
 import type { Client } from "../../client";
 import { Logger } from "../logger";
+import type {
+	AudioDataWithUser,
+	BroadcastCreated,
+	Plugin,
+	PluginRegistration,
+	SpaceConfig,
+	SpeakerInfo,
+} from "../types";
+import {
+	authorizeToken,
+	createBroadcast,
+	getRegion,
+	getTurnServers,
+	muteSpeaker,
+	publishBroadcast,
+	setupCommonChatEvents,
+	unmuteSpeaker,
+} from "../utils";
+import { ChatClient } from "./ChatClient";
+import { JanusClient } from "./JanusClient";
 
 /**
  * Manages the creation of a new Space (broadcast host):

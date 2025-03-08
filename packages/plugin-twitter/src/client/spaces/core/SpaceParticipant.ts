@@ -1,19 +1,18 @@
 // src/core/SpaceParticipant.ts
 
 import { EventEmitter } from "node:events";
-import { Logger } from "../logger";
-import { ChatClient } from "./ChatClient";
-import { JanusClient } from "./JanusClient";
 import type { Client } from "../../client";
+import { Logger } from "../logger";
 import type {
-	TurnServersInfo,
+	AudioDataWithUser,
 	Plugin,
 	PluginRegistration,
-	AudioDataWithUser,
+	TurnServersInfo,
 } from "../types";
 import {
 	accessChat,
 	authorizeToken,
+	cancelSpeakerRequest,
 	getTurnServers,
 	muteSpeaker,
 	negotiateGuestStream,
@@ -22,8 +21,9 @@ import {
 	stopWatching,
 	submitSpeakerRequest,
 	unmuteSpeaker,
-	cancelSpeakerRequest,
 } from "../utils";
+import { ChatClient } from "./ChatClient";
+import { JanusClient } from "./JanusClient";
 
 /**
  * Interface representing the configuration options for a space participant.

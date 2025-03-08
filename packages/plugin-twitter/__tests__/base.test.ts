@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ClientBase } from "../src/base";
 import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ClientBase } from "../src/base";
 import type { TwitterConfig } from "../src/environment";
 
 // TODO: Probably won't work with focus on runtime.getSetting() due to lack of defaults

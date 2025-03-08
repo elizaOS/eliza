@@ -1,6 +1,6 @@
-import type { Plugin, AudioDataWithUser } from "../types";
 import type { Space } from "../core/Space";
 import { Logger } from "../logger";
+import type { AudioDataWithUser, Plugin } from "../types";
 
 /**
  * IdleMonitorPlugin

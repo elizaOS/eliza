@@ -1,5 +1,5 @@
-import { logger, type UUID } from "@elizaos/core";
-import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { type UUID, logger } from "@elizaos/core";
+import { type NodePgDatabase, drizzle } from "drizzle-orm/node-postgres";
 import { BaseDrizzleAdapter } from "../base";
 import {
 	DIMENSION_MAP,

@@ -3,7 +3,12 @@
 	"compilerOptions": {
 		"outDir": "dist",
 		"rootDir": "src",
-		"types": ["node"]
+		"types": ["node"],
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/core": ["../../packages/core/src"],
+			"@elizaos/core/*": ["../../packages/core/src/*"]
+		}
 	},
 	"include": ["src/**/*.ts"]
 }

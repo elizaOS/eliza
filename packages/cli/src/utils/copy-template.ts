@@ -1,7 +1,7 @@
 import { promises as fs, existsSync } from "node:fs";
 import path from "node:path";
-import { logger } from "./logger";
 import { getPackageVersion } from "./get-package-info";
+import { logger } from "./logger";
 
 /**
  * Copy a directory recursively
@@ -125,7 +125,7 @@ export async function copyTemplate(
 		// Write the updated package.json
 		await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
 		logger.success(
-			`Updated package.json with project name and latest dependencies`,
+			"Updated package.json with project name and latest dependencies",
 		);
 	} catch (error) {
 		logger.error(`Error updating package.json: ${error}`);

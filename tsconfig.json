@@ -8,7 +8,13 @@
 		"forceConsistentCasingInFileNames": true,
 		"allowImportingTsExtensions": true,
 		"noEmit": true,
-		"allowSyntheticDefaultImports": true
+		"allowSyntheticDefaultImports": true,
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/core": ["packages/core/src"],
+			"@elizaos/core/*": ["packages/core/src/*"]
+		},
+		"sourceMap": true
 	},
 	"files": [],
 	"references": [

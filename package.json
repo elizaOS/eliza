@@ -3,7 +3,7 @@
   "scripts": {
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "cli": "bun --filter=@elizaos/cli cli",
-    "lint": "biome ci --config-path=./biome.json && biome format --write --config-path=./biome.json",
+    "lint": "turbo run lint --filter=./packages/*",
     "preinstall": "npx only-allow bun",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
@@ -22,7 +22,9 @@
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --filter=@elizaos/the-org"
+    "test": "turbo run test --filter=@elizaos/the-org",
+    "update-sourcemaps": "bash ./update-tsup-config.sh && bun run build",
+    "reset-sourcemaps": "find packages -name \"tsup.config.ts.bak\" -exec bash -c 'cp \"{}\" \"${0%.bak}\"' {} \\;"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
@@ -39,7 +41,9 @@
     "typedoc": "0.26.11",
     "typescript": "5.8.2",
     "vite": "5.4.12",
-    "vitest": "3.0.5"
+    "vitest": "3.0.5",
+    "@types/uuid": "^9.0.8",
+    "tsup": "8.4.0"
   },
   "bun": {
     "overrides": {
@@ -52,7 +56,6 @@
       "minipass": "7.1.2",
       "form-data": "4.0.2",
       "eslint": "9.22.0",
-      "vitest": "3.0.5",
       "react": "19.0.0",
       "react-dom": "19.0.0",
       "solana-bankrun": "0.3.1",

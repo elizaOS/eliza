@@ -1,8 +1,8 @@
-import type { TeeVendor } from "./types";
-import { phalaRemoteAttestationProvider as remoteAttestationProvider } from "../providers/remoteAttestationProvider";
-import { phalaDeriveKeyProvider as deriveKeyProvider } from "../providers/deriveKeyProvider";
-import { phalaRemoteAttestationAction as remoteAttestationAction } from "../actions/remoteAttestationAction";
 import { TeeVendors } from "@elizaos/core";
+import { phalaRemoteAttestationAction as remoteAttestationAction } from "../actions/remoteAttestationAction";
+import { phalaDeriveKeyProvider as deriveKeyProvider } from "../providers/deriveKeyProvider";
+import { phalaRemoteAttestationProvider as remoteAttestationProvider } from "../providers/remoteAttestationProvider";
+import type { TeeVendor } from "./types";
 
 /**
  * A class representing a vendor for Phala TEE.

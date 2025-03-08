@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MessageManager } from "../src/messages.ts";
-import { ChannelType, Client, Collection } from "discord.js";
 import type { IAgentRuntime } from "@elizaos/core";
+import { ChannelType, Client, Collection } from "discord.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MessageManager } from "../src/messages";
 
 describe("Discord MessageManager", () => {
 	let mockRuntime: IAgentRuntime;

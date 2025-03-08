@@ -1,13 +1,13 @@
 import type {
+	HandlerCallback,
 	IAgentRuntime,
 	Memory,
 	RemoteAttestationMessage,
 	State,
-	HandlerCallback,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { PhalaRemoteAttestationProvider as RemoteAttestationProvider } from "../providers/remoteAttestationProvider";
 import { hexToUint8Array } from "../utils";
-import { logger } from "@elizaos/core";
 
 /**
  * Asynchronously uploads a Uint8Array as a binary file to a specified URL.

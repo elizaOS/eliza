@@ -1,7 +1,7 @@
-import { logger } from "@elizaos/core";
-import os from "node:os";
 import { exec } from "node:child_process";
+import os from "node:os";
 import { promisify } from "node:util";
+import { logger } from "@elizaos/core";
 
 const execAsync = promisify(exec);
 

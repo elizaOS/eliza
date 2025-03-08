@@ -1,8 +1,8 @@
-import { pgTable, uuid, text, jsonb, foreignKey } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { numberTimestamp } from "./types";
+import { foreignKey, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
+import { numberTimestamp } from "./types";
 
 /**
  * Represents a PostgreSQL table for storing logs.

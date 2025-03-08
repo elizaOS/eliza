@@ -2,9 +2,9 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
 	clean: true,
-	dts: true,
 	entry: ["src/index.ts"],
-	format: ["esm"],
+	format: ["esm"], // Ensure you're targeting CommonJS
+	dts: false, // Skip DTS generation to avoid external import issues
 	sourcemap: true,
 	external: [
 		"better-sqlite3",

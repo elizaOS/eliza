@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EyeOff, Eye, MoreVertical, Check, X } from "lucide-react";
 import type { Agent } from "@elizaos/core";
+import { Check, Eye, EyeOff, MoreVertical, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 type EnvVariable = {
 	name: string;
@@ -97,19 +97,29 @@ export default function EnvSettingsPanel({
 
 			<div className="grid grid-cols-[1fr_2fr_auto] gap-4 items-end w-full pb-4">
 				<div className="flex flex-col gap-1">
-					<label className="ml-2 text-xs font-medium text-gray-400">NAME</label>
+					<label
+						htmlFor="secret-name"
+						className="ml-2 text-xs font-medium text-gray-400"
+					>
+						NAME
+					</label>
 					<Input
+						id="secret-name"
 						placeholder="VARIABLE_NAME"
 						value={name}
 						onChange={(e) => setName(e.target.value)}
 					/>
 				</div>
 				<div className="flex flex-col gap-1 relative">
-					<label className="ml-2 text-xs font-medium text-gray-400">
+					<label
+						htmlFor="secret-value"
+						className="ml-2 text-xs font-medium text-gray-400"
+					>
 						VALUE
 					</label>
 					<div className="relative">
 						<Input
+							id="secret-value"
 							type={showPassword ? "text" : "password"}
 							placeholder="i9ju23nfsdf56"
 							value={value}
@@ -119,6 +129,11 @@ export default function EnvSettingsPanel({
 						<div
 							className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-500"
 							onClick={() => setShowPassword(!showPassword)}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === " ") {
+									setShowPassword(!showPassword);
+								}
+							}}
 						>
 							{showPassword ? <EyeOff /> : <Eye />}
 						</div>

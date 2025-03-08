@@ -1,15 +1,15 @@
 import {
 	type Action,
 	type ActionExample,
-	composePrompt,
 	type Content,
 	type HandlerCallback,
 	type IAgentRuntime,
-	logger,
 	type Memory,
 	ModelTypes,
-	parseJSONObjectFromText,
 	type State,
+	composePrompt,
+	logger,
+	parseJSONObjectFromText,
 } from "@elizaos/core";
 import {
 	createAssociatedTokenAccountInstruction,

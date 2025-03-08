@@ -1,10 +1,10 @@
+import fs from "node:fs";
+import path from "node:path";
 import { handleError } from "@/src/utils/handle-error";
 import { displayAgent } from "@/src/utils/helpers";
 import { logger } from "@/src/utils/logger";
-import { Command } from "commander";
-import fs from "node:fs";
-import path from "node:path";
 import type { Agent } from "@elizaos/core";
+import { Command } from "commander";
 
 const AGENT_RUNTIME_URL =
 	process.env.AGENT_RUNTIME_URL?.replace(/\/$/, "") || "http://localhost:3000";

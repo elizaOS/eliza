@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, ModelTypes } from "@elizaos/core";
+import { type IAgentRuntime, ModelTypes, logger } from "@elizaos/core";
 import type { Sentiment } from "../schemas";
 import type { IToken } from "../types";
 

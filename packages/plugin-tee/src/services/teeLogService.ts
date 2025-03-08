@@ -1,21 +1,21 @@
+import path from "node:path";
 import {
 	type IAgentRuntime,
-	Service,
-	ServiceTypes,
 	type ITeeLogService,
-	TeeType,
-	type TeeLogDAO,
+	Service,
+	type ServiceType,
+	ServiceTypes,
+	TEEMode,
 	type TeeAgent,
 	type TeeLog,
+	type TeeLogDAO,
 	type TeeLogQuery,
 	type TeePageQuery,
-	TEEMode,
-	type ServiceType,
+	TeeType,
 } from "@elizaos/core";
+import Database from "better-sqlite3";
 import { SqliteTeeLogDAO } from "../adapters/sqliteDAO";
 import { TeeLogManager } from "./teeLogManager";
-import Database from "better-sqlite3";
-import path from "node:path";
 
 /**
  * Represents a TeeLogService class that extends Service and implements ITeeLogService

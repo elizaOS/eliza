@@ -1,8 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
 import { getClient } from "./test-utils";
 import type { QueryTweetsResponse } from "./timeline-v1";
 import { type Mention, type Tweet, getTweetAnonymous } from "./tweets";
-import fs from "node:fs";
-import path from "node:path";
 
 /**
  * Flag to determine if version 2 tests should be skipped.

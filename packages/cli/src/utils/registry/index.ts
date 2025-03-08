@@ -1,18 +1,18 @@
 import {
-	registrySchema,
+	getLocalPackages,
+	isMonorepoContext,
+} from "@/src/utils/get-package-info";
+import { logger } from "@/src/utils/logger";
+import {
 	type Registry,
 	getPluginType,
+	registrySchema,
 } from "@/src/utils/registry/schema";
+import { execa } from "execa";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import fetch from "node-fetch";
-import { REGISTRY_URL } from "./constants";
 import { z } from "zod";
-import {
-	isMonorepoContext,
-	getLocalPackages,
-} from "@/src/utils/get-package-info";
-import { execa } from "execa";
-import { logger } from "@/src/utils/logger";
+import { REGISTRY_URL } from "./constants";
 
 const agent = process.env.https_proxy
 	? new HttpsProxyAgent(process.env.https_proxy)
@@ -97,12 +97,12 @@ export async function getBestBranch(repoUrl: string): Promise<string> {
 	// Check for v2 or v2-develop branches
 	if (await repoHasBranch(repoUrl, "v2")) {
 		return "v2";
-	} else if (await repoHasBranch(repoUrl, "v2-develop")) {
-		return "v2-develop";
-	} else {
-		// Default to main branch
-		return "main";
 	}
+	if (await repoHasBranch(repoUrl, "v2-develop")) {
+		return "v2-develop";
+	}
+	// Default to main branch
+	return "main";
 }
 
 export async function listPluginsByType(

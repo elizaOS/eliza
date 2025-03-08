@@ -1,15 +1,15 @@
 import { exec } from "node:child_process";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 import axios from "axios";
-import os from "node:os";
-import fs from "node:fs";
-import path from "node:path";
 import Handlebars from "handlebars";
-import { spawn } from "node:child_process";
 import {
+	COMPOSE_FILES_DIR,
 	DOCKER_COMPOSE_ELIZA_V1_TEMPLATE,
 	DOCKER_COMPOSE_ELIZA_V2_TEMPLATE,
-	COMPOSE_FILES_DIR,
 } from "./constants";
 
 const execAsync = promisify(exec);

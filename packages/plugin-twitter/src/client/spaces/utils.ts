@@ -1,10 +1,10 @@
 // src/utils.ts
 
+import type { EventEmitter } from "node:events";
 import { Headers } from "headers-polyfill";
-import type { BroadcastCreated, TurnServersInfo } from "./types";
 import type { ChatClient } from "./core/ChatClient";
 import type { Logger } from "./logger";
-import type { EventEmitter } from "node:events";
+import type { BroadcastCreated, TurnServersInfo } from "./types";
 
 /**
  * Authorizes a token for guest access, using the provided Periscope cookie.

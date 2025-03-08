@@ -1,11 +1,11 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { goalEvaluator } from "../../src/evaluators/goal";
 import {
 	composeContext,
 	generateText,
 	getGoals,
 	parseJsonArrayFromText,
 } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { goalEvaluator } from "../../src/evaluators/goal";
 
 vi.mock("@elizaos/core", () => ({
 	composeContext: vi.fn(),

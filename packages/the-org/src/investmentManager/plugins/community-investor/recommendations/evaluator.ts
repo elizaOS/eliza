@@ -1,16 +1,16 @@
 import {
-	composePrompt,
-	ModelTypes,
 	type Evaluator,
 	type IAgentRuntime,
 	type Memory,
+	ModelTypes,
 	type State,
 	type UUID,
+	composePrompt,
 } from "@elizaos/core";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import type { CommunityInvestorService } from "../tradingService.js";
-import { ServiceTypes, type RecommendationMemory } from "../types.js";
+import { type RecommendationMemory, ServiceTypes } from "../types.js";
 import {
 	extractXMLFromResponse,
 	getZodJsonSchema,

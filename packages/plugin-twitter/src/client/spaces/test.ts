@@ -1,12 +1,12 @@
 // src/test.ts
 
 import "dotenv/config";
-import { Space, type SpaceConfig } from "./core/Space";
 import { Client } from "../client";
+import { Space, type SpaceConfig } from "./core/Space";
+import { HlsRecordPlugin } from "./plugins/HlsRecordPlugin";
+import { IdleMonitorPlugin } from "./plugins/IdleMonitorPlugin";
 import { RecordToDiskPlugin } from "./plugins/RecordToDiskPlugin";
 import { SttTtsPlugin } from "./plugins/SttTtsPlugin";
-import { IdleMonitorPlugin } from "./plugins/IdleMonitorPlugin";
-import { HlsRecordPlugin } from "./plugins/HlsRecordPlugin";
 
 /**
  * Main test entry point

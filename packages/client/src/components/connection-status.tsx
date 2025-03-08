@@ -1,3 +1,4 @@
+import { STALE_TIMES } from "@/hooks/use-query-hooks";
 import { apiClient } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -5,7 +6,6 @@ import { Activity, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { SidebarMenuButton, SidebarMenuItem } from "./ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import { STALE_TIMES } from "@/hooks/use-query-hooks";
 
 export default function ConnectionStatus() {
 	const [queryTime, setQueryTime] = useState<number | null>(null);

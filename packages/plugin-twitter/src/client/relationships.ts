@@ -1,14 +1,14 @@
-import { addApiFeatures, requestApi, bearerToken } from "./api";
 import { Headers } from "headers-polyfill";
+import stringify from "json-stable-stringify";
+import { addApiFeatures, bearerToken, requestApi } from "./api";
 import type { TwitterAuth } from "./auth";
 import { type Profile, getUserIdByScreenName } from "./profile";
-import type { QueryProfilesResponse } from "./timeline-v1";
 import { getUserTimeline } from "./timeline-async";
 import {
 	type RelationshipTimeline,
 	parseRelationshipTimeline,
 } from "./timeline-relationship";
-import stringify from "json-stable-stringify";
+import type { QueryProfilesResponse } from "./timeline-v1";
 
 /**
  * Function to get the following profiles of a user.

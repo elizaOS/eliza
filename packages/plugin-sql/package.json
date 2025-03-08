@@ -25,17 +25,18 @@
 		"@types/pg": "8.11.10",
 		"drizzle-kit": "^0.30.4",
 		"drizzle-orm": "^0.39.1",
-		"pg": "8.13.1"
+		"pg": "^8.13.3"
 	},
 	"devDependencies": {
 		"dockerode": "^4.0.4",
 		"tsup": "8.4.0"
 	},
 	"scripts": {
-		"build": "tsup --format esm --dts",
-		"dev": "tsup --format esm --dts --watch",
+		"build": "tsup",
+		"dev": "tsup --watch",
 		"migrate:generate": "drizzle-kit generate:pg",
-		"migrate": "tsup src/migrate.ts --format esm --clean=false --onSuccess=\"node dist/migrate.js\""
+		"migrate": "tsup src/migrate.ts --format esm --clean=false --onSuccess=\"node dist/migrate.js\"",
+		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
 	},
 	"peerDependencies": {
 		"typescript": "5.8.2"

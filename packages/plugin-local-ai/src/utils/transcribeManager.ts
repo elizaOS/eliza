@@ -1,9 +1,9 @@
-import { logger } from "@elizaos/core";
-import { nodewhisper } from "nodejs-whisper";
+import { exec } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-import { exec } from "node:child_process";
+import { logger } from "@elizaos/core";
+import { nodewhisper } from "nodejs-whisper";
 
 const execAsync = promisify(exec);
 

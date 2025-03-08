@@ -1,14 +1,14 @@
 import {
-	Service,
 	type IAgentRuntime,
-	logger,
 	type Plugin,
+	Service,
+	logger,
 } from "@elizaos/core";
 import { type Context, Telegraf } from "telegraf";
-import { validateTelegramConfig } from "./environment.ts";
-import { MessageManager } from "./messageManager.ts";
-import { TelegramTestSuite } from "./tests.ts";
-import { TELEGRAM_SERVICE_NAME } from "./constants.ts";
+import { TELEGRAM_SERVICE_NAME } from "./constants";
+import { validateTelegramConfig } from "./environment";
+import { MessageManager } from "./messageManager";
+import { TelegramTestSuite } from "./tests";
 
 /**
  * Class representing a Telegram service that allows the agent to send and receive messages on Telegram.

@@ -1,12 +1,12 @@
-import { describe, test, expect, beforeAll, beforeEach, vi } from "vitest";
 import {
-	ModelClass,
 	type GenerateTextParams,
+	ModelClass,
 	type Plugin,
 } from "@elizaos/core";
-import { createMockRuntime, TEST_PATHS, downloadModelMock } from "./test-utils";
 import { logger } from "@elizaos/core";
+import { beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { MODEL_SPECS, type ModelSpec } from "../src/types";
+import { TEST_PATHS, createMockRuntime, downloadModelMock } from "./test-utils";
 
 // Set environment variables before importing the plugin
 process.env.LLAMALOCAL_PATH = TEST_PATHS.MODELS_DIR;

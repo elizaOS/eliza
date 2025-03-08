@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import type { Agent } from "@elizaos/core";
 import type React from "react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 
 type FieldType = "text" | "textarea" | "number" | "checkbox" | "select";
 
@@ -285,7 +285,9 @@ export default function CharacterForm({
 					<TabsList
 						className={"grid w-full mb-6"}
 						style={{
-							gridTemplateColumns: `repeat(${customComponents.length + 3}, minmax(0, 1fr))`,
+							gridTemplateColumns: `repeat(${
+								customComponents.length + 3
+							}, minmax(0, 1fr))`,
 						}}
 					>
 						{CHARACTER_FORM_SCHEMA.map((section) => (
@@ -296,8 +298,11 @@ export default function CharacterForm({
 								{section.sectionTitle}
 							</TabsTrigger>
 						))}
-						{customComponents.map((component, index) => (
-							<TabsTrigger key={`custom-${index}`} value={`custom-${index}`}>
+						{customComponents.map((component) => (
+							<TabsTrigger
+								key={`custom-${component.name}`}
+								value={`custom-${component.name}`}
+							>
 								{component.name}
 							</TabsTrigger>
 						))}
@@ -316,8 +321,11 @@ export default function CharacterForm({
 										: (section.fields as ArrayField[]).map(renderArrayField)}
 								</TabsContent>
 							))}
-							{customComponents.map((component, index) => (
-								<TabsContent key={`custom-${index}`} value={`custom-${index}`}>
+							{customComponents.map((component) => (
+								<TabsContent
+									key={`custom-${component.name}`}
+									value={`custom-${component.name}`}
+								>
 									{component.component}
 								</TabsContent>
 							))}

@@ -1,15 +1,15 @@
 import {
 	type Action,
 	type IAgentRuntime,
-	logger,
 	type Memory,
-	type UUID,
 	type MemoryMetadata,
+	type UUID,
+	logger,
 } from "@elizaos/core";
 import { v4 as uuid } from "uuid";
 import type { CommunityInvestorService } from "../tradingService";
+import { Conviction, RecommendationType, ServiceTypes } from "../types";
 import type { MessageRecommendation } from "./schema";
-import { RecommendationType, Conviction, ServiceTypes } from "../types";
 
 // Use type intersection for extended metadata
 /**

@@ -9,5 +9,6 @@ export default defineConfig({
 	clean: true,
 	target: "node23",
 	outDir: "dist",
+	tsconfig: "./tsconfig.build.json", // Use build-specific tsconfig
 	treeshake: true,
 });

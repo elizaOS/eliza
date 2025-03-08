@@ -1,3 +1,4 @@
+import { promises as fs } from "node:fs"; // Fix: Use node: protocol
 import {
 	type IAgentRuntime,
 	type Memory,
@@ -6,17 +7,16 @@ import {
 	logger,
 } from "@elizaos/core";
 import {
-	type TdxQuoteResponse,
-	TappdClient,
-	type TdxQuoteHashAlgorithms,
-} from "@phala/dstack-sdk";
-import {
+	type RemoteAttestationMessage,
 	type RemoteAttestationQuote,
 	TEEMode,
-	type RemoteAttestationMessage,
 } from "@elizaos/core";
 import type { SgxAttestation } from "@elizaos/core";
-import { promises as fs } from "node:fs"; // Fix: Use node: protocol
+import {
+	TappdClient,
+	type TdxQuoteHashAlgorithms,
+	type TdxQuoteResponse,
+} from "@phala/dstack-sdk";
 import { calculateSHA256 } from "../utils";
 import { RemoteAttestationProvider } from "./base";
 
@@ -134,7 +134,9 @@ const phalaRemoteAttestationProvider: Provider = {
 				JSON.stringify(attestationMessage),
 			);
 			return {
-				text: `Your Agent's remote attestation is: ${JSON.stringify(attestation)}`,
+				text: `Your Agent's remote attestation is: ${JSON.stringify(
+					attestation,
+				)}`,
 				data: {
 					attestation,
 				},
@@ -250,7 +252,9 @@ const sgxAttestationProvider: Provider = {
 					quote: attestation.quote,
 					timestamp: attestation.timestamp.toString(),
 				},
-				text: `Your Agent's remote attestation is: ${JSON.stringify(attestation)}`,
+				text: `Your Agent's remote attestation is: ${JSON.stringify(
+					attestation,
+				)}`,
 			};
 		} catch (error) {
 			console.error("Error in remote attestation provider:", error);

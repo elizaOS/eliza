@@ -1,10 +1,10 @@
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 
 import Birdeye from "./providers/birdeye";
+import BuySignal from "./providers/buy-signal";
 import CoinmarketCap from "./providers/coinmarketcap";
 import Twitter from "./providers/twitter";
 import TwitterParser from "./providers/twitter-parser";
-import BuySignal from "./providers/buy-signal";
 
 /**
  * Registers tasks for the agent to perform various Intel-related actions.

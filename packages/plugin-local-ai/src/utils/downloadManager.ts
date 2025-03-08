@@ -1,7 +1,7 @@
-import { logger } from "@elizaos/core";
 import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import type { ModelSpec } from "../types";
 
 /**

@@ -1,15 +1,15 @@
-import { describe, test, expect, beforeAll, vi } from "vitest";
-import { ModelClass, type Plugin } from "@elizaos/core";
-import { createMockRuntime, TEST_PATHS } from "./test-utils";
-import { logger } from "@elizaos/core";
 import fs from "node:fs";
 import path from "node:path";
+import { ModelClass, type Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
 	Florence2ForConditionalGeneration,
 	Florence2Processor,
-	PreTrainedTokenizer,
 	ModelOutput,
+	PreTrainedTokenizer,
 } from "@huggingface/transformers";
+import { beforeAll, describe, expect, test, vi } from "vitest";
+import { TEST_PATHS, createMockRuntime } from "./test-utils";
 
 // Mock the transformers library
 vi.mock("@huggingface/transformers", () => {

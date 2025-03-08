@@ -1,9 +1,9 @@
-import { logger, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
 	Connection,
 	Keypair,
-	VersionedTransaction,
 	PublicKey,
+	VersionedTransaction,
 } from "@solana/web3.js";
 import { decodeBase58 } from "./utils";
 

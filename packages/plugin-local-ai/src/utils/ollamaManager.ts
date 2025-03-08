@@ -1,4 +1,4 @@
-import { logger, ModelTypes, type GenerateTextParams } from "@elizaos/core";
+import { type GenerateTextParams, ModelTypes, logger } from "@elizaos/core";
 
 import fetch from "node-fetch";
 

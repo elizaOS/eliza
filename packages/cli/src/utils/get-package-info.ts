@@ -1,9 +1,9 @@
 import { promises as fs } from "node:fs";
-import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { execa } from "execa";
 import fs_extra from "fs-extra";
 import type { PackageJson } from "type-fest";
-import { execa } from "execa";
 import { logger } from "./logger";
 
 const packageJsonPath = path.join("package.json");
@@ -43,7 +43,7 @@ export async function getPackageVersion(packageName: string): Promise<string> {
 
 		if (existsSync(cliPackagePath)) {
 			const packageJson = JSON.parse(await fs.readFile(cliPackagePath, "utf8"));
-			if (packageJson.dependencies && packageJson.dependencies[packageName]) {
+			if (packageJson.dependencies?.[packageName]) {
 				return packageJson.dependencies[packageName].replace("^", "");
 			}
 		}
@@ -51,7 +51,7 @@ export async function getPackageVersion(packageName: string): Promise<string> {
 		// Try to get the latest version from npm
 		try {
 			const { stdout } = await execa("npm", ["view", packageName, "version"]);
-			if (stdout && stdout.trim()) {
+			if (stdout?.trim()) {
 				logger.info(
 					`Found latest version of ${packageName} from npm: ${stdout.trim()}`,
 				);
@@ -69,7 +69,7 @@ export async function getPackageVersion(packageName: string): Promise<string> {
 		// Try to get the latest version from npm as a last resort
 		try {
 			const { stdout } = await execa("npm", ["view", packageName, "version"]);
-			if (stdout && stdout.trim()) {
+			if (stdout?.trim()) {
 				logger.info(
 					`Found latest version of ${packageName} from npm: ${stdout.trim()}`,
 				);
@@ -101,7 +101,7 @@ export function isMonorepoContext(): boolean {
 				readFileSync(workspacePackageJsonPath, "utf8"),
 			);
 			return !!packageJson.workspaces;
-		} catch (error) {
+		} catch (_error) {
 			return false;
 		}
 	}

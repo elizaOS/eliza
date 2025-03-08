@@ -1,20 +1,20 @@
 // TODO: Replace with cache adapter
 
 import {
-	type Route,
 	type IAgentRuntime,
-	createUniqueUuid,
 	type Memory,
+	type Route,
+	createUniqueUuid,
 } from "@elizaos/core";
 
 import { SentimentArraySchema, TweetArraySchema } from "./schemas";
 
-import type { IToken } from "./types";
 import type {
-	TransactionHistory,
 	Portfolio,
 	SentimentContent,
+	TransactionHistory,
 } from "./providers/birdeye";
+import type { IToken } from "./types";
 
 /**
  * Definition of routes with type, path, and handler for each route.

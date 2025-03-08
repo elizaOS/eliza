@@ -15,7 +15,15 @@
 			"console": "integratedTerminal",
 			"sourceMaps": true,
 			"preLaunchTask": "build-core",
-			"outFiles": ["${workspaceFolder}/packages/*/dist/**/*.js"]
+			"outFiles": ["${workspaceFolder}/packages/*/dist/**/*.js"],
+			"resolveSourceMapLocations": [
+				"${workspaceFolder}/**",
+				"!**/node_modules/**"
+			],
+			"sourceMapPathOverrides": {
+				"@elizaos/core": "${workspaceFolder}/packages/core/src/*",
+				"/*": "${workspaceFolder}/*"
+			}
 		},
 		{
 			"name": "Attach to Node Process",
@@ -23,7 +31,15 @@
 			"request": "attach",
 			"skipFiles": ["<node_internals>/**"],
 			"type": "node",
-			"restart": true
+			"restart": true,
+			"sourceMaps": true,
+			"resolveSourceMapLocations": [
+				"${workspaceFolder}/**",
+				"!**/node_modules/**"
+			],
+			"sourceMapPathOverrides": {
+				"@elizaos/core": "${workspaceFolder}/packages/core/src"
+			}
 		},
 		{
 			"type": "node",
@@ -35,7 +51,15 @@
 			"runtimeArgs": ["--inspect"],
 			"outFiles": ["${workspaceFolder}/packages/cli/dist/**/*.js"],
 			"console": "integratedTerminal",
-			"sourceMaps": true
+			"sourceMaps": true,
+			"resolveSourceMapLocations": [
+				"${workspaceFolder}/**",
+				"!**/node_modules/**"
+			],
+			"sourceMapPathOverrides": {
+				"@elizaos/core": "${workspaceFolder}/packages/core/src",
+				"/*": "${workspaceFolder}/*"
+			}
 		},
 		{
 			"type": "node",
@@ -46,7 +70,15 @@
 			"runtimeArgs": ["--inspect", "run", "agent"],
 			"cwd": "${workspaceFolder}",
 			"console": "integratedTerminal",
-			"sourceMaps": true
+			"sourceMaps": true,
+			"resolveSourceMapLocations": [
+				"${workspaceFolder}/**",
+				"!**/node_modules/**"
+			],
+			"sourceMapPathOverrides": {
+				"@elizaos/core": "${workspaceFolder}/packages/core/src",
+				"/*": "${workspaceFolder}/*"
+			}
 		},
 		{
 			"type": "node",
@@ -55,7 +87,15 @@
 			"runtimeExecutable": "bun",
 			"runtimeArgs": ["--inspect-brk", "test"],
 			"console": "integratedTerminal",
-			"sourceMaps": true
+			"sourceMaps": true,
+			"resolveSourceMapLocations": [
+				"${workspaceFolder}/**",
+				"!**/node_modules/**"
+			],
+			"sourceMapPathOverrides": {
+				"@elizaos/core": "${workspaceFolder}/packages/core/src",
+				"/*": "${workspaceFolder}/*"
+			}
 		},
 		{
 			"type": "node",
@@ -64,7 +104,15 @@
 			"runtimeExecutable": "bun",
 			"runtimeArgs": ["--inspect-brk", "test", "${file}"],
 			"console": "integratedTerminal",
-			"sourceMaps": true
+			"sourceMaps": true,
+			"resolveSourceMapLocations": [
+				"${workspaceFolder}/**",
+				"!**/node_modules/**"
+			],
+			"sourceMapPathOverrides": {
+				"@elizaos/core": "${workspaceFolder}/packages/core/src",
+				"/*": "${workspaceFolder}/*"
+			}
 		}
 	]
 }

@@ -4,8 +4,8 @@ import * as bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
 import type { AgentServer } from "..";
-import { agentRouter } from "./agent.ts";
-import { teeRouter } from "./tee.ts";
+import { agentRouter } from "./agent";
+import { teeRouter } from "./tee";
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {

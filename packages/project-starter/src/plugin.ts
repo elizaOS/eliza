@@ -7,10 +7,10 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	ModelTypes,
-	Service,
-	type State,
 	type Provider,
 	type ProviderResult,
+	Service,
+	type State,
 	logger,
 } from "@elizaos/core";
 import { z } from "zod";

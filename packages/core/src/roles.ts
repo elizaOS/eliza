@@ -3,7 +3,7 @@
 
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
-import { Role, type IAgentRuntime, type World } from "./types";
+import { type IAgentRuntime, Role, type World } from "./types";
 
 /**
  * Represents the state of server ownership, including a mapping of server IDs to their respective World objects.

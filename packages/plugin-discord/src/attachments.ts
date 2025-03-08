@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { trimTokens } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core";
 import {
@@ -10,7 +11,6 @@ import {
 } from "@elizaos/core";
 import { type Attachment, Collection } from "discord.js";
 import ffmpeg from "fluent-ffmpeg";
-import fs from "node:fs";
 
 /**
  * Generates a summary for the provided text using a specified model.

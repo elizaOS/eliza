@@ -1,17 +1,17 @@
 /* eslint-disable no-dupe-class-members */
-import { DatabaseAdapter } from "../src/database.ts";
+import { DatabaseAdapter } from "../src/database";
 import {
-	type Memory,
 	type Actor,
+	type ChannelType,
 	type Entity,
 	type Goal,
 	GoalStatus,
+	type Memory,
 	type Participant,
 	type Relationship,
-	type UUID,
-	type ChannelType,
 	type RoomData,
-} from "../src/types.ts";
+	type UUID,
+} from "../src/types";
 
 /**
  * MockDatabaseAdapter class extends DatabaseAdapter class and provides mock implementations for various database operations.

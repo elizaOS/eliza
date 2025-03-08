@@ -1,10 +1,10 @@
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
+import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { cn } from "@/lib/utils";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 
 type TagProps = {
 	tag: string;

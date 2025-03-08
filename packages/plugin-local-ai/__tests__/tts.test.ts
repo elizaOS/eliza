@@ -1,15 +1,15 @@
-import { describe, test, expect, beforeAll, vi } from "vitest";
-import { ModelClass, type Plugin } from "@elizaos/core";
-import { createMockRuntime, TEST_PATHS } from "./test-utils";
-import { logger } from "@elizaos/core";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { ModelClass, type Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
-	LlamaModel,
 	LlamaContext,
 	LlamaContextSequence,
+	LlamaModel,
 } from "node-llama-cpp";
+import { beforeAll, describe, expect, test, vi } from "vitest";
+import { TEST_PATHS, createMockRuntime } from "./test-utils";
 
 // Mock the node-llama-cpp
 vi.mock("node-llama-cpp", () => {

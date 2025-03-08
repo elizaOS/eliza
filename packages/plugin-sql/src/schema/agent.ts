@@ -1,14 +1,14 @@
+import type { MessageExample } from "@elizaos/core";
+import { sql } from "drizzle-orm";
 import {
 	boolean,
 	jsonb,
 	pgTable,
 	text,
-	uuid,
 	unique,
+	uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { numberTimestamp } from "./types";
-import type { MessageExample } from "@elizaos/core";
 
 /**
  * Represents a table for storing agent data.

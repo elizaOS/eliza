@@ -1,7 +1,7 @@
-import { jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { numberTimestamp } from "./types";
+import { jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
+import { numberTimestamp } from "./types";
 
 export const worldTable = pgTable("worlds", {
 	id: uuid("id").notNull().primaryKey().default(sql`gen_random_uuid()`),

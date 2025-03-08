@@ -1,4 +1,4 @@
-import { requestApi, type RequestApiResult } from "./api";
+import { type RequestApiResult, requestApi } from "./api";
 import type { TwitterAuth } from "./auth";
 import { ApiError } from "./errors";
 import type { TimelineInstruction } from "./timeline-v2";

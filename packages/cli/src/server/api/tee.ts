@@ -1,5 +1,5 @@
 import type { IAgentRuntime, ITeeLogService, TeeLogQuery } from "@elizaos/core";
-import { logger, ServiceTypes } from "@elizaos/core";
+import { ServiceTypes, logger } from "@elizaos/core";
 import express from "express";
 
 /**

@@ -1,16 +1,16 @@
-import { SgxAttestationProvider } from "../providers/remoteAttestationProvider";
-import { PhalaRemoteAttestationProvider as TdxAttestationProvider } from "../providers/remoteAttestationProvider";
 import {
 	type TEEMode,
-	TeeType,
-	type TeeLogDAO,
 	type TeeAgent,
 	type TeeLog,
+	type TeeLogDAO,
 	type TeeLogQuery,
 	type TeePageQuery,
+	TeeType,
 } from "@elizaos/core";
 import elliptic from "elliptic";
 import { v4 } from "uuid";
+import { SgxAttestationProvider } from "../providers/remoteAttestationProvider";
+import { PhalaRemoteAttestationProvider as TdxAttestationProvider } from "../providers/remoteAttestationProvider";
 
 /**
  * Manage TeeLog related operations including agent registration, logging, and retrieval.

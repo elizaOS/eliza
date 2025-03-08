@@ -1,18 +1,18 @@
+import fs from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
 	type IAgentRuntime,
 	type IVideoService,
 	type Media,
-	Service,
-	ServiceTypes,
-	type ServiceType,
-	stringToUuid,
-	logger,
 	ModelTypes,
+	Service,
+	type ServiceType,
+	ServiceTypes,
+	logger,
+	stringToUuid,
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
-import fs from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import ytdl, { create } from "youtube-dl-exec";
 
 /**

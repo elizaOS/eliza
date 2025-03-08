@@ -1,7 +1,7 @@
 import type { ZodSchema, z } from "zod";
 import { createUniqueUuid } from "..";
-import { composePrompt } from "../prompts";
 import { logger } from "../logger";
+import { composePrompt } from "../prompts";
 import {
 	type Action,
 	type ActionExample,

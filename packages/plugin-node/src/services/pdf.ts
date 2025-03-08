@@ -5,7 +5,7 @@ import {
 	type ServiceType,
 	ServiceTypes,
 } from "@elizaos/core";
-import { getDocument, type PDFDocumentProxy } from "pdfjs-dist";
+import { type PDFDocumentProxy, getDocument } from "pdfjs-dist";
 import type {
 	TextItem,
 	TextMarkedContent,

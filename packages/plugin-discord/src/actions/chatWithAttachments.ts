@@ -1,18 +1,18 @@
+import * as fs from "node:fs";
 import {
 	type Action,
 	type ActionExample,
 	ChannelType,
-	composePrompt,
 	type Content,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
 	ModelTypes,
-	parseJSONObjectFromText,
 	type State,
+	composePrompt,
+	parseJSONObjectFromText,
 	trimTokens,
 } from "@elizaos/core";
-import * as fs from "node:fs";
 
 export const summarizationTemplate = `# Summarized so far (we are adding to this)
 {{currentSummary}}

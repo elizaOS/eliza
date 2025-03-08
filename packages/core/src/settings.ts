@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { createUniqueUuid } from "./entities";
 import { logger } from "./logger";
 import type {
@@ -7,7 +8,6 @@ import type {
 	World,
 	WorldSettings,
 } from "./types";
-import crypto from "node:crypto";
 
 /**
  * Creates a new Setting object based on provided config settings.

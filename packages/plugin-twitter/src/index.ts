@@ -1,20 +1,20 @@
 import {
-	logger,
-	Service,
 	type IAgentRuntime,
 	type Plugin,
+	Service,
 	type UUID,
+	logger,
 } from "@elizaos/core";
-import reply from "./actions/reply.ts";
-import spaceJoin from "./actions/spaceJoin.ts";
-import { ClientBase } from "./base.ts";
-import { TWITTER_SERVICE_NAME } from "./constants.ts";
-import type { TwitterConfig } from "./environment.ts";
-import { TwitterInteractionClient } from "./interactions.ts";
-import { TwitterPostClient } from "./post.ts";
-import { TwitterSpaceClient } from "./spaces.ts";
-import { TwitterTestSuite } from "./tests.ts";
-import type { ITwitterClient } from "./types.ts";
+import reply from "./actions/reply";
+import spaceJoin from "./actions/spaceJoin";
+import { ClientBase } from "./base";
+import { TWITTER_SERVICE_NAME } from "./constants";
+import type { TwitterConfig } from "./environment";
+import { TwitterInteractionClient } from "./interactions";
+import { TwitterPostClient } from "./post";
+import { TwitterSpaceClient } from "./spaces";
+import { TwitterTestSuite } from "./tests";
+import type { ITwitterClient } from "./types";
 
 /**
  * A manager that orchestrates all specialized Twitter logic:

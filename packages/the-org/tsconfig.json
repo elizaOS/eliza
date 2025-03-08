@@ -2,11 +2,16 @@
 	"extends": "../core/tsconfig.json",
 	"compilerOptions": {
 		"outDir": "dist",
-		"rootDir": ".",
+		"rootDir": "src",
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
 		"types": ["node"],
-		"jsx": "react-jsx"
+		"jsx": "react-jsx",
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/core": ["../../packages/core/src"],
+			"@elizaos/core/*": ["../../packages/core/src/*"]
+		}
 	},
 	"ts-node": {
 		"experimentalSpecifierResolution": "node",

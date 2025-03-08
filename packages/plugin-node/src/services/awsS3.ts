@@ -1,3 +1,11 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import {
+	GetObjectCommand,
+	PutObjectCommand,
+	S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
 	type IAgentRuntime,
 	type IFileService,
@@ -6,14 +14,6 @@ import {
 	ServiceTypes,
 	logger,
 } from "@elizaos/core";
-import {
-	GetObjectCommand,
-	PutObjectCommand,
-	S3Client,
-} from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 /**
  * Interface representing the result of an upload operation.

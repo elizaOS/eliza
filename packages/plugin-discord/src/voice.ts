@@ -1,3 +1,5 @@
+import { EventEmitter } from "node:events";
+import { type Readable, pipeline } from "node:stream";
 import {
 	type AudioPlayer,
 	type AudioReceiveStream,
@@ -32,11 +34,9 @@ import {
 	type VoiceChannel,
 	type VoiceState,
 } from "discord.js";
-import { EventEmitter } from "node:events";
-import { type Readable, pipeline } from "node:stream";
 import prism from "prism-media";
-import type { DiscordService } from "./index.ts";
-import { getWavHeader } from "./utils.ts";
+import type { DiscordService } from "./index";
+import { getWavHeader } from "./utils";
 
 // These values are chosen for compatibility with picovoice components
 const DECODE_FRAME_SIZE = 1024;

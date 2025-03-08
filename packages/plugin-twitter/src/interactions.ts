@@ -1,18 +1,18 @@
 import {
 	ChannelType,
-	composePrompt,
 	type Content,
-	createUniqueUuid,
 	type HandlerCallback,
 	type IAgentRuntime,
-	logger,
 	type Memory,
 	ModelTypes,
+	composePrompt,
+	createUniqueUuid,
+	logger,
 	parseJSONObjectFromText,
 } from "@elizaos/core";
-import type { ClientBase } from "./base.ts";
-import { SearchMode, type Tweet } from "./client/index.ts";
-import { buildConversationThread, sendTweet, wait } from "./utils.ts";
+import type { ClientBase } from "./base";
+import { SearchMode, type Tweet } from "./client/index";
+import { buildConversationThread, sendTweet, wait } from "./utils";
 
 /**
  * Template for generating dialog and actions for a Twitter message handler.

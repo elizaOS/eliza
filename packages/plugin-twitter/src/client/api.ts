@@ -1,8 +1,8 @@
+import { Headers } from "headers-polyfill";
 import type { TwitterAuth } from "./auth";
 import { ApiError } from "./errors";
 import { Platform, type PlatformExtensions } from "./platform";
 import { updateCookieJar } from "./requests";
-import { Headers } from "headers-polyfill";
 
 // For some reason using Parameters<typeof fetch> reduces the request transform function to
 // `(url: string) => string` in tests.

@@ -9,10 +9,10 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	type Provider,
-	type State,
-	type Setting,
-	type WorldSettings,
 	type ProviderResult,
+	type Setting,
+	type State,
+	type WorldSettings,
 } from "../types";
 
 /**

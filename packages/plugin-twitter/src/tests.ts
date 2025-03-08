@@ -1,15 +1,15 @@
 import {
-	logger,
-	type TestSuite,
 	type IAgentRuntime,
 	ModelTypes,
-	stringToUuid,
+	type TestSuite,
 	createUniqueUuid,
+	logger,
+	stringToUuid,
 } from "@elizaos/core";
-import type { TwitterClient } from "./index.ts";
-import { SearchMode } from "./client/index.ts";
-import { fetchMediaData } from "./utils.ts";
-import { ServiceTypes } from "./types.ts";
+import { SearchMode } from "./client/index";
+import type { TwitterClient } from "./index";
+import { ServiceTypes } from "./types";
+import { fetchMediaData } from "./utils";
 
 const TEST_IMAGE_URL =
 	"https://github.com/elizaOS/awesome-eliza/blob/main/assets/eliza-logo.jpg?raw=true";

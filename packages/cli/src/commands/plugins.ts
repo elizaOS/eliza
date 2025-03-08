@@ -1,16 +1,16 @@
+import { promises as fs, existsSync } from "node:fs";
+import path from "node:path";
+import { copyTemplate } from "@/src/utils/copy-template";
 import { getConfig } from "@/src/utils/get-config";
 import { handleError } from "@/src/utils/handle-error";
+import { installPlugin } from "@/src/utils/install-plugin";
 import { logger } from "@/src/utils/logger";
 import { getPluginRepository, getRegistryIndex } from "@/src/utils/registry";
+import { runBunCommand } from "@/src/utils/run-bun";
+import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";
-import { installPlugin } from "@/src/utils/install-plugin";
-import { existsSync, promises as fs } from "node:fs";
-import path from "node:path";
 import prompts from "prompts";
-import { copyTemplate } from "@/src/utils/copy-template";
-import chalk from "chalk";
-import { runBunCommand } from "@/src/utils/run-bun";
 
 export const plugins = new Command()
 	.name("plugins")

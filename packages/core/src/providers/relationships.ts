@@ -1,12 +1,12 @@
 import type {
+	Entity,
 	IAgentRuntime,
 	Memory,
 	Provider,
-	State,
 	Relationship,
+	State,
 	UUID,
-	Entity,
-} from "../types.ts";
+} from "../types";
 
 /**
  * Formats the provided relationships based on interaction strength and returns a string.

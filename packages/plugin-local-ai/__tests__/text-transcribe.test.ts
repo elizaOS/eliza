@@ -1,12 +1,12 @@
-import { describe, test, expect, beforeAll, vi } from "vitest";
-import { ModelClass, type Plugin } from "@elizaos/core";
-import { createMockRuntime, TEST_PATHS } from "./test-utils";
-import { logger } from "@elizaos/core";
-import fs from "node:fs";
-import path from "node:path";
-import type { IOptions } from "nodejs-whisper";
 import type { ExecException, ExecOptions } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { ModelClass, type Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { IOptions } from "nodejs-whisper";
+import { beforeAll, describe, expect, test, vi } from "vitest";
+import { TEST_PATHS, createMockRuntime } from "./test-utils";
 
 // Mock the nodewhisper function
 vi.mock("nodejs-whisper", () => {

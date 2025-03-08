@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import {
 	ChannelType,
 	type Content,
@@ -8,13 +9,12 @@ import {
 	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
-import { EventEmitter } from "node:events";
 import {
-	type QueryTweetsResponse,
 	Client,
+	type QueryTweetsResponse,
 	SearchMode,
 	type Tweet,
-} from "./client/index.ts";
+} from "./client/index";
 
 /**
  * Extracts the answer from the given text.

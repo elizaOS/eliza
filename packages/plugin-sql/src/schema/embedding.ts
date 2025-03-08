@@ -1,14 +1,14 @@
+import { sql } from "drizzle-orm";
 import {
+	check,
+	foreignKey,
+	index,
 	pgTable,
 	uuid,
 	vector,
-	index,
-	foreignKey,
-	check,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { numberTimestamp } from "./types";
 import { memoryTable } from "./memory";
+import { numberTimestamp } from "./types";
 
 export const VECTOR_DIMS = {
 	SMALL: 384,

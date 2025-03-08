@@ -1,15 +1,15 @@
 // Combined DegenTradingService that integrates all functionality
 
 import {
-	composePrompt,
 	type Content,
 	type IAgentRuntime,
-	logger,
 	type Memory,
 	ModelTypes,
-	parseJSONObjectFromText,
 	Service,
 	type UUID,
+	composePrompt,
+	logger,
+	parseJSONObjectFromText,
 } from "@elizaos/core";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 import { v4 as uuidv4 } from "uuid";

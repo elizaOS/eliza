@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { validateDiscordConfig } from "../src/environment";
 import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { validateDiscordConfig } from "../src/environment";
 
 // Mock runtime environment
 const mockRuntime: IAgentRuntime = {

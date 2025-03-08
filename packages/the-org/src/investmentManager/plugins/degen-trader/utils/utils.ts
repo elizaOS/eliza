@@ -1,4 +1,4 @@
-import { logger, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { PublicKey } from "@solana/web3.js";
 
 /**

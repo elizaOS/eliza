@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, Service, logger } from "@elizaos/core";
 import { Connection, PublicKey } from "@solana/web3.js";
 import BigNumber from "bignumber.js";
 import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";

@@ -1,9 +1,9 @@
-import { pgTable, uuid, jsonb, text } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { entityTable } from "./entity";
-import { numberTimestamp } from "./types";
+import { jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
+import { entityTable } from "./entity";
 import { roomTable } from "./room";
+import { numberTimestamp } from "./types";
 import { worldTable } from "./worldTable";
 
 /**

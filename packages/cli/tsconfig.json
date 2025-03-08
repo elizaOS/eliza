@@ -5,7 +5,9 @@
 		"isolatedModules": false,
 		"baseUrl": ".",
 		"paths": {
-			"@/*": ["./*"]
+			"@/*": ["./*"],
+			"@elizaos/core": ["../../packages/core/src"],
+			"@elizaos/core/*": ["../../packages/core/src/*"]
 		},
 		"rootDir": "src",
 		"moduleResolution": "Node",

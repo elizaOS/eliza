@@ -1,11 +1,11 @@
 import {
-	type IAgentRuntime,
-	logger,
-	ModelTypes,
-	createUniqueUuid,
-	type UUID,
-	type Memory,
 	type Content,
+	type IAgentRuntime,
+	type Memory,
+	ModelTypes,
+	type UUID,
+	createUniqueUuid,
+	logger,
 } from "@elizaos/core";
 import type { IToken } from "../types";
 

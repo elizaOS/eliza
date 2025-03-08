@@ -1,6 +1,6 @@
-import * as React from "react";
-import { ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ArrowDown } from "lucide-react";
+import * as React from "react";
 
 interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 	scrollRef: React.RefObject<HTMLDivElement | null>;

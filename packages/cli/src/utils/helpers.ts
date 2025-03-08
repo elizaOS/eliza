@@ -1,6 +1,6 @@
 import type { Agent, MessageExample } from "@elizaos/core";
-import { logger } from "./logger";
 import chalk from "chalk";
+import { logger } from "./logger";
 
 /**
  * Format message examples into readable conversation format

@@ -1,15 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { TwitterInteractionClient } from "../src/interactions";
-import { ClientBase } from "../src/base";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { TwitterConfig } from "../src/environment";
-import type { Tweet } from "../src/client";
-import { SearchMode } from "../src/client/index";
 import {
 	generateMessageResponse,
 	generateShouldRespond,
 	logger,
 } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ClientBase } from "../src/base";
+import type { Tweet } from "../src/client";
+import { SearchMode } from "../src/client/index";
+import type { TwitterConfig } from "../src/environment";
+import { TwitterInteractionClient } from "../src/interactions";
 
 const mockProfile = {
 	screenName: "Mock Screen Name",

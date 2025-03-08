@@ -1,5 +1,5 @@
-import { formatPosts } from "../src/posts.ts";
-import type { Actor, Memory } from "../src/types.ts";
+import { formatPosts } from "../src/posts";
+import type { Actor, Memory } from "../src/types";
 
 // Mocked data with consistent conversation IDs
 /**

@@ -1,6 +1,3 @@
-import { JupiterClient } from "../clients";
-import { WalletProvider } from "../wallet";
-import { SOL_ADDRESS } from "../constants";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
 	Connection,
@@ -9,6 +6,8 @@ import {
 	VersionedTransaction,
 } from "@solana/web3.js";
 import bs58 from "bs58";
+import { JupiterClient } from "../clients";
+import { SOL_ADDRESS } from "../constants";
 import type {
 	QuoteInParams,
 	QuoteResult,
@@ -16,6 +15,7 @@ import type {
 	SwapInResult,
 	TrustWalletProvider,
 } from "../types";
+import { WalletProvider } from "../wallet";
 import { JitoRegion, sendTxUsingJito } from "./jitoBundle";
 
 /**

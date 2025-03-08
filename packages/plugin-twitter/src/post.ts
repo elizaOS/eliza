@@ -1,21 +1,21 @@
 import {
 	ChannelType,
+	type IAgentRuntime,
+	ModelTypes,
+	type UUID,
 	cleanJsonResponse,
 	composePrompt,
 	createUniqueUuid,
 	extractAttributes,
-	type IAgentRuntime,
 	logger,
-	ModelTypes,
 	parseJSONObjectFromText,
 	truncateToCompleteSentence,
-	type UUID,
 } from "@elizaos/core";
-import type { ClientBase } from "./base.ts";
-import type { Tweet } from "./client/index.ts";
-import { twitterPostTemplate } from "./templates.ts";
-import type { MediaData } from "./types.ts";
-import { fetchMediaData } from "./utils.ts";
+import type { ClientBase } from "./base";
+import type { Tweet } from "./client/index";
+import { twitterPostTemplate } from "./templates";
+import type { MediaData } from "./types";
+import { fetchMediaData } from "./utils";
 
 /**
  * Class representing a Twitter post client.

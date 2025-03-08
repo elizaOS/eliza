@@ -2,13 +2,13 @@
 // replace moment with helper functions
 
 import {
+	type Content,
 	type IAgentRuntime,
-	logger,
-	ModelTypes,
 	type Memory,
+	ModelTypes,
 	type UUID,
 	createUniqueUuid,
-	type Content,
+	logger,
 } from "@elizaos/core";
 
 const makeBulletpointList = (array: string[]) => {

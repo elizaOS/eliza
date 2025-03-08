@@ -1,13 +1,13 @@
-import { type TwitterAuthOptions, TwitterGuestAuth } from "./auth";
-import { requestApi } from "./api";
-import { CookieJar } from "tough-cookie";
-import { updateCookieJar } from "./requests";
-import { Headers } from "headers-polyfill";
-import type { TwitterApiErrorRaw } from "./errors";
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 import { Check } from "@sinclair/typebox/value";
+import { Headers } from "headers-polyfill";
 import * as OTPAuth from "otpauth";
-import { type LegacyUserRaw, parseProfile, type Profile } from "./profile";
+import { CookieJar } from "tough-cookie";
+import { requestApi } from "./api";
+import { type TwitterAuthOptions, TwitterGuestAuth } from "./auth";
+import type { TwitterApiErrorRaw } from "./errors";
+import { type LegacyUserRaw, type Profile, parseProfile } from "./profile";
+import { updateCookieJar } from "./requests";
 
 /**
  * Interface representing the init request for a Twitter user authentication flow.

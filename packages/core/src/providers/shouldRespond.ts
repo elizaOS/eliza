@@ -1,6 +1,6 @@
 import {
-	adjectives,
 	type Config,
+	adjectives,
 	names,
 	uniqueNamesGenerator,
 } from "unique-names-generator";

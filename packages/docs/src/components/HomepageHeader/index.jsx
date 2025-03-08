@@ -1,6 +1,6 @@
-import React from "react";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import Heading from "@theme/Heading";
+import React from "react";
 
 import styles from "./styles.module.css";
 

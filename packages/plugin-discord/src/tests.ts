@@ -1,22 +1,22 @@
 import {
 	AudioPlayerStatus,
 	NoSubscriberBehavior,
+	type VoiceConnection,
 	VoiceConnectionStatus,
 	createAudioPlayer,
 	createAudioResource,
 	entersState,
-	type VoiceConnection,
 } from "@discordjs/voice";
 import {
-	ModelTypes,
-	logger,
 	type IAgentRuntime,
+	ModelTypes,
 	type TestSuite,
+	logger,
 } from "@elizaos/core";
 import { ChannelType, Events, type TextChannel } from "discord.js";
-import type { DiscordService } from "./index.ts";
-import { ServiceTypes } from "./types.ts";
-import { sendMessageInChunks } from "./utils.ts";
+import type { DiscordService } from "./index";
+import { ServiceTypes } from "./types";
+import { sendMessageInChunks } from "./utils";
 
 const TEST_IMAGE_URL =
 	"https://github.com/elizaOS/awesome-eliza/blob/main/assets/eliza-logo.jpg?raw=true";

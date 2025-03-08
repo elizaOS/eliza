@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getEntityDetails } from "../entities";
 import logger from "../logger";
 import { MemoryManager } from "../memory";
 import { composePrompt } from "../prompts";
@@ -11,7 +12,6 @@ import {
 	type State,
 	type UUID,
 } from "../types";
-import { getEntityDetails } from "../entities";
 
 // Schema definitions for the reflection output
 const relationshipSchema = z.object({

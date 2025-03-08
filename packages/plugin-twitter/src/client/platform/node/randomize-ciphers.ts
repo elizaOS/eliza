@@ -1,5 +1,5 @@
-import tls from "node:tls";
 import { randomBytes } from "node:crypto";
+import tls from "node:tls";
 
 const ORIGINAL_CIPHERS = tls.DEFAULT_CIPHERS;
 

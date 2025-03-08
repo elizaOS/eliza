@@ -1,4 +1,4 @@
-export * from "./services/index.ts";
+export * from "./services/index";
 
 import type { Plugin } from "@elizaos/core";
 
@@ -7,7 +7,7 @@ import {
 	BrowserService,
 	PdfService,
 	VideoService,
-} from "./services/index.ts";
+} from "./services/index";
 
 export const nodePlugin: Plugin = {
 	name: "default",

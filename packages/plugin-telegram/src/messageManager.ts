@@ -1,15 +1,15 @@
 import {
 	ChannelType,
 	type Content,
-	createUniqueUuid,
 	type HandlerCallback,
 	type IAgentRuntime,
-	logger,
 	type Media,
 	type Memory,
 	ModelTypes,
 	Role,
 	type UUID,
+	createUniqueUuid,
+	logger,
 } from "@elizaos/core";
 import type { Chat, Message, ReactionType, Update } from "@telegraf/types";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
@@ -65,7 +65,7 @@ export class MessageManager {
 	 * @param {Message} message - The Telegram message object containing the image.
 	 * @returns {Promise<{ description: string } | null>} The description of the processed image or null if no image found.
 	 */
-	private async processImage(
+	async processImage(
 		message: Message,
 	): Promise<{ description: string } | null> {
 		try {
@@ -110,7 +110,7 @@ export class MessageManager {
 	 * @param {number} [replyToMessageId] - The ID of the message to reply to, if any
 	 * @returns {Promise<Message.TextMessage[]>} - An array of TextMessage objects representing the messages sent
 	 */
-	private async sendMessageInChunks(
+	async sendMessageInChunks(
 		ctx: Context,
 		content: Content,
 		replyToMessageId?: number,
@@ -190,6 +190,7 @@ export class MessageManager {
 	): Promise<void> {
 		try {
 			const isUrl = /^(http|https):\/\//.test(mediaPath);
+			// biome-ignore lint/complexity/noBannedTypes: <explanation>
 			const sendFunctionMap: Record<MediaType, Function> = {
 				[MediaType.PHOTO]: ctx.telegram.sendPhoto.bind(ctx.telegram),
 				[MediaType.VIDEO]: ctx.telegram.sendVideo.bind(ctx.telegram),

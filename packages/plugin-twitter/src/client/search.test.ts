@@ -1,5 +1,5 @@
-import { getClient } from "./test-utils";
 import { SearchMode } from "./search";
+import { getClient } from "./test-utils";
 import type { QueryTweetsResponse } from "./timeline-v1";
 
 test("client can process search cursor", async () => {

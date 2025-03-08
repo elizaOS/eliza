@@ -1,7 +1,3 @@
-import { usePlugins } from "@/hooks/use-plugins";
-import { useMemo, useState } from "react";
-import type { Agent } from "@elizaos/core";
-import { Button } from "./ui/button";
 import {
 	Dialog,
 	DialogContent,
@@ -10,6 +6,10 @@ import {
 	DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { usePlugins } from "@/hooks/use-plugins";
+import type { Agent } from "@elizaos/core";
+import { useMemo, useState } from "react";
+import { Button } from "./ui/button";
 
 interface PluginsPanelProps {
 	characterValue: Agent;

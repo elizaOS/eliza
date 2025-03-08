@@ -1,8 +1,8 @@
 import type {
-	Project,
-	ProjectAgent,
 	Character,
 	IAgentRuntime,
+	Project,
+	ProjectAgent,
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import starterPlugin from "./plugin";

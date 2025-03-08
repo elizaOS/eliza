@@ -1,16 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
 	Tooltip,
 	TooltipContent,
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
-import { Ellipsis, Mic, Send, Trash } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation } from "@tanstack/react-query";
-import type { UUID } from "@elizaos/core";
 import { apiClient } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import type { UUID } from "@elizaos/core";
+import { useMutation } from "@tanstack/react-query";
+import { Ellipsis, Mic, Send, Trash } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
 	agentId: UUID;

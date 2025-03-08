@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, test, vi } from "vitest";
 import { AgentRuntime } from "../src/runtime";
 import {
-	ChannelType,
 	type Action,
+	ChannelType,
 	type IDatabaseAdapter,
 	type IMemoryManager,
 	type Memory,

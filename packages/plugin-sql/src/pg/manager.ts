@@ -1,10 +1,10 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { logger } from "@elizaos/core";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import pkg, { type Pool as PgPool } from "pg";
 import type { IDatabaseClientManager } from "../types";
-import { logger } from "@elizaos/core";
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
-import { drizzle } from "drizzle-orm/node-postgres";
 
 const { Pool } = pkg;
 

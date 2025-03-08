@@ -1,12 +1,12 @@
 import {
 	type IAgentRuntime,
 	type IBrowserService,
-	logger,
 	ModelTypes,
-	parseJSONObjectFromText,
 	Service,
 	type ServiceType,
 	ServiceTypes,
+	logger,
+	parseJSONObjectFromText,
 	settings,
 	stringToUuid,
 	trimTokens,
@@ -15,8 +15,8 @@ import CaptchaSolver from "capsolver-npm";
 import {
 	type Browser,
 	type BrowserContext,
-	chromium,
 	type Page,
+	chromium,
 } from "patchright";
 
 /**

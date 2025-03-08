@@ -1,12 +1,12 @@
 import type React from "react";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Accordion } from "./Accordion";
-import { StatCard } from "./StatCard";
 import { THEME_COLORS } from "./Contributors";
-import { hexToRgb, useGithubAccessToken } from "./utils";
-import ScoreIcon from "./ScoreIcon";
-import Summary from "./Summary";
 import Hero from "./Hero";
+import ScoreIcon from "./ScoreIcon";
+import { StatCard } from "./StatCard";
+import Summary from "./Summary";
+import { hexToRgb, useGithubAccessToken } from "./utils";
 
 export interface GitHubItem {
 	html_url: string;

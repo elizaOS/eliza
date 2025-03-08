@@ -4,15 +4,13 @@
 		"module": "ESNext",
 		"lib": ["ESNext", "dom"],
 		"moduleResolution": "Bundler",
-		"outDir": "./dist",
-		"rootDir": "..",
 		"strict": false,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": false,
-		"allowImportingTsExtensions": true,
+		"noEmit": false,
+		"composite": true,
 		"declaration": true,
-		"emitDeclarationOnly": true,
 		"resolveJsonModule": true,
 		"noImplicitAny": false,
 		"allowJs": true,
@@ -20,8 +18,9 @@
 		"noEmitOnError": false,
 		"moduleDetection": "force",
 		"allowArbitraryExtensions": true,
-		"types": ["node"]
+		"types": ["node"],
+		"sourceMap": true
 	},
-	"include": ["src/**/*"],
+	"include": ["src/**/*.ts", "src/*.ts"],
 	"exclude": ["node_modules", "dist", "src/**/*.d.ts", "types/**/*.test.ts"]
 }

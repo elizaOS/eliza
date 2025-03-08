@@ -1,12 +1,12 @@
+import CharacterForm from "@/components/character-form";
+import { useToast } from "@/hooks/use-toast";
+import { apiClient } from "@/lib/api";
+import type { Agent } from "@elizaos/core";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
-import type { Agent } from "@elizaos/core";
-import CharacterForm from "@/components/character-form";
 import PluginsPanel from "./plugins-panel";
 import SecretPanel from "./secret-panel";
-import { apiClient } from "@/lib/api";
 
 const defaultCharacter = {
 	name: "",

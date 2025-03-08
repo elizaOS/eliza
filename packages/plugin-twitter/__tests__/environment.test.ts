@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { validateTwitterConfig } from "../src/environment";
 import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import { validateTwitterConfig } from "../src/environment";
 
 /**
  * Environment configuration object for Twitter bot.

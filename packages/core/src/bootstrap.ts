@@ -1,44 +1,45 @@
 import type { UUID } from "node:crypto";
 import { v4 } from "uuid";
-import { choiceAction } from "./actions/choice.ts";
-import { followRoomAction } from "./actions/followRoom.ts";
-import { ignoreAction } from "./actions/ignore.ts";
-import { muteRoomAction } from "./actions/muteRoom.ts";
-import { noneAction } from "./actions/none.ts";
-import { replyAction } from "./actions/reply.ts";
-import updateRoleAction from "./actions/roles.ts";
-import { sendMessageAction } from "./actions/sendMessage.ts";
-import updateSettingsAction from "./actions/settings.ts";
-import { unfollowRoomAction } from "./actions/unfollowRoom.ts";
-import { unmuteRoomAction } from "./actions/unmuteRoom.ts";
-import { updateEntityAction } from "./actions/updateEntity.ts";
-import { createUniqueUuid } from "./entities.ts";
-import { goalEvaluator } from "./evaluators/goal.ts";
-import { reflectionEvaluator } from "./evaluators/reflection.ts";
-import { providersProvider } from "./providers/providers.ts";
-import { logger } from "./logger.ts";
+import { choiceAction } from "./actions/choice";
+import { followRoomAction } from "./actions/followRoom";
+import { ignoreAction } from "./actions/ignore";
+import { muteRoomAction } from "./actions/muteRoom";
+import { noneAction } from "./actions/none";
+import { replyAction } from "./actions/reply";
+import updateRoleAction from "./actions/roles";
+import { sendMessageAction } from "./actions/sendMessage";
+import updateSettingsAction from "./actions/settings";
+import { unfollowRoomAction } from "./actions/unfollowRoom";
+import { unmuteRoomAction } from "./actions/unmuteRoom";
+import { updateEntityAction } from "./actions/updateEntity";
+import { createUniqueUuid } from "./entities";
+import { goalEvaluator } from "./evaluators/goal";
+import { reflectionEvaluator } from "./evaluators/reflection";
+import { logger } from "./logger";
 import {
 	composePrompt,
 	messageHandlerTemplate,
 	parseJSONObjectFromText,
 	shouldRespondTemplate,
-} from "./prompts.ts";
-import { actionsProvider } from "./providers/actionExamples.ts";
-import { anxietyProvider } from "./providers/anxiety.ts";
-import { attachmentsProvider } from "./providers/attachments.ts";
-import { capabilitiesProvider } from "./providers/capabilities.ts";
-import { characterProvider } from "./providers/character.ts";
-import { choiceProvider } from "./providers/choice.ts";
-import { entitiesProvider } from "./providers/entities.ts";
-import { evaluatorsProvider } from "./providers/evaluators.ts";
-import { factsProvider } from "./providers/facts.ts";
-import { knowledgeProvider } from "./providers/knowledge.ts";
-import { recentMessagesProvider } from "./providers/recentMessages.ts";
-import { relationshipsProvider } from "./providers/relationships.ts";
-import { roleProvider } from "./providers/roles.ts";
-import { settingsProvider } from "./providers/settings.ts";
-import { timeProvider } from "./providers/time.ts";
-import { TaskService } from "./services/task.ts";
+} from "./prompts";
+import { actionsProvider } from "./providers/actionExamples";
+import { anxietyProvider } from "./providers/anxiety";
+import { attachmentsProvider } from "./providers/attachments";
+import { capabilitiesProvider } from "./providers/capabilities";
+import { characterProvider } from "./providers/character";
+import { choiceProvider } from "./providers/choice";
+import { entitiesProvider } from "./providers/entities";
+import { evaluatorsProvider } from "./providers/evaluators";
+import { factsProvider } from "./providers/facts";
+import { knowledgeProvider } from "./providers/knowledge";
+import { providersProvider } from "./providers/providers";
+import { recentMessagesProvider } from "./providers/recentMessages";
+import { relationshipsProvider } from "./providers/relationships";
+import { roleProvider } from "./providers/roles";
+import { settingsProvider } from "./providers/settings";
+import { timeProvider } from "./providers/time";
+import { ScenarioService } from "./services/scenario";
+import { TaskService } from "./services/task";
 import {
 	type ChannelType,
 	type Content,
@@ -50,8 +51,7 @@ import {
 	type Plugin,
 	type Room,
 	type World,
-} from "./types.ts";
-import { ScenarioService } from "./services/scenario.ts";
+} from "./types";
 
 /**
  * Represents the parameters passed when a server is joined.

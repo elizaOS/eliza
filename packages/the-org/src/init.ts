@@ -1,15 +1,15 @@
 import {
 	type Action,
 	ChannelType,
-	createUniqueUuid,
 	type Evaluator,
 	type IAgentRuntime,
-	initializeOnboarding,
-	logger,
 	type OnboardingConfig,
 	type Provider,
 	Role,
 	type UUID,
+	createUniqueUuid,
+	initializeOnboarding,
+	logger,
 } from "@elizaos/core";
 import type { Guild } from "discord.js";
 

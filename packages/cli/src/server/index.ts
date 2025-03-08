@@ -1,17 +1,17 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
-	logger,
 	type Character,
 	type IAgentRuntime,
 	type UUID,
+	logger,
 } from "@elizaos/core";
+import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import * as bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { createApiRouter } from "./api/index.ts";
-import { fileURLToPath } from "node:url";
-import { createDatabaseAdapter } from "@elizaos/plugin-sql";
+import { createApiRouter } from "./api/index";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

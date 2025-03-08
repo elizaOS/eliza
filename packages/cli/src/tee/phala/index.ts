@@ -1,20 +1,20 @@
 import * as crypto from "node:crypto";
 import fs from "node:fs";
+import { x25519 } from "@noble/curves/ed25519";
+import prompts from "prompts";
+import { CLOUD_URL, PHALA_CLOUD_API_URL } from "./constants";
 import { getApiKey } from "./credential";
-import { PHALA_CLOUD_API_URL, CLOUD_URL } from "./constants";
+import { hexToUint8Array, uint8ArrayToHex } from "./lib";
 import {
 	createCvm,
 	getCvmByAppId,
 	getPubkeyFromCvm,
+	listCvms,
 	queryImages,
 	queryTeepods,
 	startCvm,
 	upgradeCvm,
-	listCvms,
 } from "./phala-cloud";
-import { x25519 } from "@noble/curves/ed25519";
-import { hexToUint8Array, uint8ArrayToHex } from "./lib";
-import prompts from "prompts";
 
 /**
  * Interface for defining deployment options.

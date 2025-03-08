@@ -1,6 +1,6 @@
-import { logger, stringToUuid } from "./index.ts";
+import { logger, stringToUuid } from "./index";
 import { parseJSONObjectFromText } from "./prompts";
-import { composePrompt } from "./prompts.ts";
+import { composePrompt } from "./prompts";
 import {
 	type Entity,
 	type IAgentRuntime,
@@ -9,7 +9,7 @@ import {
 	type Relationship,
 	type State,
 	type UUID,
-} from "./types.ts";
+} from "./types";
 
 /**
  * Template for resolving entity name within a conversation context.

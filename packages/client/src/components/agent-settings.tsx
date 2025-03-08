@@ -1,10 +1,10 @@
+import CharacterForm from "@/components/character-form";
 import { useToast } from "@/hooks/use-toast";
 import { apiClient } from "@/lib/api";
 import type { Agent, UUID } from "@elizaos/core";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import CharacterForm from "@/components/character-form";
 import PluginsPanel from "./plugins-panel";
 import SecretPanel from "./secret-panel";
 

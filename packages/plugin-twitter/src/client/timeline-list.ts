@@ -1,5 +1,5 @@
 import type { QueryTweetsResponse } from "./timeline-v1";
-import { parseAndPush, type TimelineEntryRaw } from "./timeline-v2";
+import { type TimelineEntryRaw, parseAndPush } from "./timeline-v2";
 import type { Tweet } from "./tweets";
 
 /**

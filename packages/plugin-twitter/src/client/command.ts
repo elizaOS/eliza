@@ -1,10 +1,10 @@
-// Your existing imports
-import { Client } from "./client";
-import type { Photo, Tweet } from "./tweets";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import dotenv from "dotenv";
+// Your existing imports
+import { Client } from "./client";
+import type { Photo, Tweet } from "./tweets";
 
 // Load environment variables from .env file
 dotenv.config();

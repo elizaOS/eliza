@@ -113,8 +113,6 @@ export const getAgentPositions: any = {
 			}
 
 			const {
-				positionReports,
-				tokenReports,
 				totalCurrentValue,
 				totalPnL,
 				totalRealizedPnL,
@@ -128,8 +126,7 @@ export const getAgentPositions: any = {
 
 			if (callback) {
 				const formattedPositions = positionsWithBalance
-					.map(({ position, token, transactions }) => {
-						const _latestTx = transactions[transactions.length - 1];
+					.map(({ position, token }) => {
 						const currentValue = token.price
 							? (Number(position.balance) * token.price).toString()
 							: "0";

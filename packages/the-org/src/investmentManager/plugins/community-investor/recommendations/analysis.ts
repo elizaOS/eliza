@@ -1,19 +1,19 @@
 import {
-	composePrompt,
 	type IAgentRuntime,
-	logger,
 	type Memory,
 	ModelTypes,
 	type State,
 	type UUID,
+	composePrompt,
+	logger,
 } from "@elizaos/core";
+import type { CommunityInvestorService } from "../tradingService.js";
+import { ServiceTypes } from "../types.js";
 import {
 	extractXMLFromResponse,
 	parseConfirmationResponse,
 	parseTokenResponse,
 } from "../utils.js";
-import type { CommunityInvestorService } from "../tradingService.js";
-import { ServiceTypes } from "../types.js";
 
 /**
  * Template for generating a message to present token details to the user.

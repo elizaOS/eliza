@@ -1,6 +1,6 @@
 import { sha1 } from "js-sha1";
 import { z } from "zod";
-import type { UUID } from "./types.ts";
+import type { UUID } from "./types";
 
 export const uuidSchema = z.string().uuid() as z.ZodType<UUID>;
 

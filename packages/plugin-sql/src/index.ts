@@ -1,9 +1,9 @@
 import {
 	type IAgentRuntime,
 	type IDatabaseAdapter,
-	logger,
 	type Plugin,
 	type UUID,
+	logger,
 } from "@elizaos/core";
 import { PgliteDatabaseAdapter } from "./pg-lite/adapter";
 import { PGliteClientManager } from "./pg-lite/manager";

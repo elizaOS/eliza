@@ -1,7 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import type { Plugin, OccupancyUpdate } from "../types";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import type { Space } from "../core/Space";
 import { Logger } from "../logger";
+import type { OccupancyUpdate, Plugin } from "../types";
 
 /**
  * HlsRecordPlugin
@@ -206,7 +206,7 @@ export class HlsRecordPlugin implements Plugin {
 			this.logger?.warn(
 				"[HlsRecordPlugin] No output path set, using /tmp/space_record.ts",
 			);
-			this.outputPath = "/tmp/space_record.ts";
+			this.outputPath = "/tmp/space_record";
 		}
 
 		this.logger?.info("[HlsRecordPlugin] Starting HLS recording =>", hlsUrl);

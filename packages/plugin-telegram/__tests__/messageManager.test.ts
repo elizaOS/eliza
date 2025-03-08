@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MediaType, MessageManager } from "../src/messageManager";
+import { Readable } from "node:stream";
 import type { IAgentRuntime } from "@elizaos/core";
 import { type Context, Telegraf } from "telegraf";
-import { Readable } from "node:stream";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MediaType, MessageManager } from "../src/messageManager";
 
 // Mock Telegraf
 vi.mock("telegraf", () => {

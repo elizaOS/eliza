@@ -1,8 +1,9 @@
-import { logger, type TestSuite, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, type TestSuite, logger } from "@elizaos/core";
+import type { Chat, User } from "@telegraf/types";
 import type { Telegraf } from "telegraf";
-import type { MessageManager } from "./messageManager";
 import type { Context } from "telegraf";
 import type { TelegramService } from ".";
+import type { MessageManager } from "./messageManager";
 
 const TEST_IMAGE_URL =
 	"https://github.com/elizaOS/awesome-eliza/blob/main/assets/eliza-logo.jpg?raw=true";
@@ -121,7 +122,7 @@ export class TelegramTestSuite implements TestSuite {
 			const chat = await this.getChatInfo(runtime);
 			const mockContext: Partial<Context> = {
 				chat,
-				from: { id: "mock-user-id", username: "TestUser" } as any,
+				from: { id: 123, username: "TestUser" } as User,
 				telegram: this.bot.telegram,
 			};
 
@@ -129,6 +130,10 @@ export class TelegramTestSuite implements TestSuite {
 				text: "Here is an image attachment:",
 				attachments: [
 					{
+						id: "123",
+						title: "Sample Image",
+						source: TEST_IMAGE_URL,
+						text: "Sample Image",
 						url: TEST_IMAGE_URL,
 						contentType: "image/png",
 						description: "Sample Image",
@@ -154,12 +159,19 @@ export class TelegramTestSuite implements TestSuite {
 			const chat = await this.getChatInfo(runtime);
 			const mockContext: Partial<Context> = {
 				chat,
-				from: { id: "mock-user-id", username: "TestUser" } as any,
+				from: {
+					id: 123,
+					username: "TestUser",
+					is_bot: false,
+					first_name: "Test",
+					last_name: "User",
+				} as User,
 				message: {
 					message_id: undefined,
 					text: `@${this.bot.botInfo?.username}! Hello!`,
 					date: Math.floor(Date.now() / 1000),
 					chat,
+					// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 				} as any,
 				telegram: this.bot.telegram,
 			};
@@ -181,14 +193,14 @@ export class TelegramTestSuite implements TestSuite {
 
 			const mockMessage = {
 				message_id: undefined,
+				chat: { id: chatId } as Chat,
 				date: Math.floor(Date.now() / 1000),
 				photo: [{ file_id: fileId }],
 				text: `@${this.bot.botInfo?.username}!`,
 			};
 
-			const { description } = await this.messageManager.processImage(
-				mockMessage as any,
-			);
+			const { description } =
+				await this.messageManager.processImage(mockMessage);
 			if (!description) {
 				throw new Error("Error processing Telegram image");
 			}

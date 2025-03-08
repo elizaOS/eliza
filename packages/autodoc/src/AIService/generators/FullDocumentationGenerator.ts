@@ -1,3 +1,7 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import type { Configuration } from "../../Configuration.js";
+import { TypeScriptParser } from "../../TypeScriptParser.js";
 import type {
 	ASTQueueItem,
 	EnvUsage,
@@ -5,15 +9,11 @@ import type {
 	TodoItem,
 	TodoSection,
 } from "../../types";
-import type { Configuration } from "../../Configuration.js";
-import { TypeScriptParser } from "../../TypeScriptParser.js";
+import { PROMPT_TEMPLATES } from "../../utils/prompts";
+import { AIService } from "../AIService.js";
+import type { FileDocsGroup, OrganizedDocs } from "../types";
 import { CodeFormatter } from "../utils/CodeFormatter.js";
 import { DocumentOrganizer } from "../utils/DocumentOrganizer.js";
-import path from "node:path";
-import { PROMPT_TEMPLATES } from "../../utils/prompts";
-import type { FileDocsGroup, OrganizedDocs } from "../types";
-import { AIService } from "../AIService.js";
-import { promises as fs } from "node:fs";
 
 /**
  * Interface representing a Frequently Asked Question (FAQ) with a question and its corresponding answer.

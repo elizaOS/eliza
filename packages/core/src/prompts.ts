@@ -1,7 +1,7 @@
 import handlebars from "handlebars";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { names, uniqueNamesGenerator } from "unique-names-generator";
-import logger from "./logger.ts";
+import logger from "./logger";
 import type {
 	Content,
 	Entity,
@@ -9,8 +9,8 @@ import type {
 	Memory,
 	State,
 	TemplateType,
-} from "./types.ts";
-import { ModelTypes } from "./types.ts";
+} from "./types";
+import { ModelTypes } from "./types";
 
 /**
  * Composes a context string by replacing placeholders in a template with corresponding values from the state.

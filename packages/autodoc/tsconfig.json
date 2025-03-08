@@ -7,7 +7,12 @@
 		"module": "ESNext",
 		"moduleResolution": "node",
 		"resolveJsonModule": true,
-		"isolatedModules": true
+		"isolatedModules": true,
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/core": ["../../packages/core/src"],
+			"@elizaos/core/*": ["../../packages/core/src/*"]
+		}
 	},
 	"include": ["src/**/*.ts"],
 	"exclude": ["node_modules", "dist"]

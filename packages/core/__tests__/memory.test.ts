@@ -9,7 +9,7 @@ import type {
 	Memory,
 	UUID,
 } from "../src/types";
-import { MemoryType } from "../src/types.ts";
+import { MemoryType } from "../src/types";
 
 describe("MemoryManager", () => {
 	const TEST_UUID_1 = "123e4567-e89b-12d3-a456-426614174000" as UUID;
