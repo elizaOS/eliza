@@ -35,7 +35,7 @@
 		"build": "tsup --format esm --dts",
 		"dev": "tsup --format esm --dts --watch",
 		"migrate:generate": "drizzle-kit generate:pg",
-		"migrate": "tsup src/migrate.ts --format esm --onSuccess \"node dist/migrate.js\""
+		"migrate": "tsup src/migrate.ts --format esm --clean=false --onSuccess=\"node dist/migrate.js\""
 	},
 	"peerDependencies": {
 		"typescript": "5.8.2"

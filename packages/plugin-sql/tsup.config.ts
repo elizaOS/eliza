@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-	entry: ["src/index.ts"],
+	entry: ["src/index.ts", "src/migrate.ts"],
 	outDir: "dist",
 	sourcemap: true,
 	clean: true,

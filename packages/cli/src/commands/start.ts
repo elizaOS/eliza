@@ -1,21 +1,21 @@
 import {
 	AgentRuntime,
 	logger,
+	type ProjectAgent,
 	settings,
 	stringToUuid,
 	type Character,
 	type IAgentRuntime,
-	type IDatabaseAdapter,
 	type Plugin,
 } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import * as fs from "node:fs";
 import net from "node:net";
 import * as path from "node:path";
+import os from "node:os";
 import { character as defaultCharacter } from "../characters/eliza";
 import { AgentServer } from "../server/index.ts";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader.ts";
-import os from "os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,16 +59,13 @@ async function startAgent(
 		plugins,
 	});
 
+	const db = createDatabaseAdapter(options, runtime.agentId);
+
 	if (init) {
 		await init(runtime);
 	}
 
-	const db = createDatabaseAdapter(options, runtime.agentId);
-
 	runtime.registerDatabaseAdapter(db);
-
-	// Make sure character exists in database
-	await runtime.getDatabaseAdapter().ensureAgentExists(character);
 
 	// start services/plugins/process knowledge
 	await runtime.initialize();
@@ -215,7 +212,7 @@ const startAgents = async () => {
 	let isPlugin = false;
 	let pluginModule: Plugin | null = null;
 	let projectPath = "";
-	let projectModule: { default?: { agents: any[] } } | null = null;
+	let projectModule: { default?: { agents: ProjectAgent[] } } | null = null;
 	let useDefaultCharacter = false;
 
 	try {
@@ -514,6 +511,8 @@ const startAgents = async () => {
 					agent.plugins || [],
 				);
 				startedAgents.push(runtime);
+				// wait .5 seconds
+				await new Promise((resolve) => setTimeout(resolve, 500));
 			} catch (agentError) {
 				logger.error(
 					`Error starting agent ${agent.character.name}: ${agentError}`,

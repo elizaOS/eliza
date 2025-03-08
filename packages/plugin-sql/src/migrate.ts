@@ -1,6 +1,6 @@
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate as pgliteMigrate } from "drizzle-orm/pglite/migrator";
-import { PGlite } from "@electric-sql/pglite";
+import { PostgresConnectionManager } from "./pg/manager.js";
+import { PGliteClientManager } from "./pg-lite/manager.js";
+import { logger } from "@elizaos/core";
 import { config } from "dotenv";
 
 config({ path: "../../.env" });
@@ -13,24 +13,44 @@ config({ path: "../../.env" });
  */
 async function runMigrations() {
 	if (process.env.POSTGRES_URL) {
-		console.log("Using PostgreSQL database");
-		// You'll need to add PostgreSQL migration logic here if needed
-		return;
-	}
-
-	console.log("Using PGlite database");
-	const client = new PGlite("file://../../pglite");
-	const db = drizzle(client);
-
-	try {
-		await pgliteMigrate(db, {
-			migrationsFolder: "./drizzle/migrations",
+		try {
+			const connectionManager = new PostgresConnectionManager(
+				process.env.POSTGRES_URL,
+			);
+			await connectionManager.initialize();
+			await connectionManager.runMigrations();
+			await connectionManager.close();
+			logger.success("PostgreSQL migrations completed successfully");
+			process.exit(0);
+		} catch (error) {
+			logger.warn("PostgreSQL migration failed:", error);
+			process.exit(1);
+		}
+	} else {
+		logger.info("Using PGlite database");
+		const clientManager = new PGliteClientManager({
+			dataDir: "../../pglite",
 		});
-		console.log("Migrations completed successfully");
-	} catch (error) {
-		console.error("Migration failed:", error);
-		process.exit(1);
+
+		try {
+			await clientManager.initialize();
+			await clientManager.runMigrations();
+			logger.success("PGlite migrations completed successfully");
+			await clientManager.close();
+			process.exit(0);
+		} catch (error) {
+			logger.error("PGlite migration failed:", error);
+			try {
+				await clientManager.close();
+			} catch (closeError) {
+				logger.error("Failed to close PGlite connection:", closeError);
+			}
+			process.exit(1);
+		}
 	}
 }
 
-runMigrations().catch(console.error);
+runMigrations().catch((error) => {
+	logger.error("Unhandled error in migrations:", error);
+	process.exit(1);
+});

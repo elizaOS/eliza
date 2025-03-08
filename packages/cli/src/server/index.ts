@@ -46,7 +46,7 @@ const AGENT_RUNTIME_URL =
 
 /**
  * Class representing an agent server.
- *//**
+ */ /**
  * Represents an agent server which handles agents, database, and server functionalities.
  */
 export class AgentServer {
@@ -84,16 +84,16 @@ export class AgentServer {
 			);
 
 			// Initialize the database
-			this.database
-				.init()
-				.then(() => {
-					logger.success("Database initialized successfully");
-					this.initializeServer(options);
-				})
-				.catch((error) => {
-					logger.error("Failed to initialize database:", error);
-					throw error;
-				});
+			// this.database
+			// 	.init()
+			// 	.then(() => {
+			// 		logger.success("Database initialized successfully");
+			// 		this.initializeServer(options);
+			// 	})
+			// 	.catch((error) => {
+			// 		logger.error("Failed to initialize database:", error);
+			// 		throw error;
+			// 	});
 		} catch (error) {
 			logger.error("Failed to initialize AgentServer:", error);
 			throw error;

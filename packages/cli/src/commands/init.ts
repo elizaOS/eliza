@@ -1,28 +1,24 @@
-import { existsSync, promises as fs } from "node:fs";
-import path from "node:path";
-import os from "node:os";
-import { getConfig, rawConfigSchema } from "@/src/utils/get-config";
+import { copyTemplate } from "@/src/utils/copy-template";
+import { rawConfigSchema } from "@/src/utils/get-config";
 import { handleError } from "@/src/utils/handle-error";
+import { installPlugin } from "@/src/utils/install-plugin";
 import { logger } from "@/src/utils/logger";
-import {
-	getAvailableDatabases,
-	getRegistryIndex,
-	listPluginsByType,
-} from "@/src/utils/registry";
+import { getAvailableDatabases, listPluginsByType } from "@/src/utils/registry";
+import { runBunCommand } from "@/src/utils/run-bun";
 import {
 	createDatabaseTemplate,
-	createPluginsTemplate,
 	createEnvTemplate,
+	createPluginsTemplate,
 } from "@/src/utils/templates";
-import { runBunCommand } from "@/src/utils/run-bun";
-import { installPlugin } from "@/src/utils/install-plugin";
-import { copyTemplate } from "@/src/utils/copy-template";
 import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";
+import { existsSync, readFileSync } from "node:fs";
+import * as fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import prompts from "prompts";
 import { z } from "zod";
-import { getPackageVersion } from "@/src/utils/get-package-info";
 
 const initOptionsSchema = z.object({
 	dir: z.string().default("."),
@@ -205,8 +201,8 @@ export const init = new Command()
 			let postgresUrl = null;
 
 			while (depth < maxDepth && currentPath.includes(path.sep)) {
-				if (fs.existsSync(currentPath)) {
-					const env = fs.readFileSync(currentPath, "utf8");
+				if (existsSync(currentPath)) {
+					const env = readFileSync(currentPath, "utf8");
 					const envVars = env.split("\n").filter((line) => line.trim() !== "");
 					const postgresUrlLine = envVars.find((line) =>
 						line.startsWith("POSTGRES_URL="),

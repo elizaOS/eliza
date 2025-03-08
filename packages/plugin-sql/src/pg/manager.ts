@@ -86,7 +86,7 @@ export class PostgresConnectionManager
 	 * @returns {Promise<boolean>} - A Promise that resolves to true if the database connection test is successful.
 	 */
 	async testConnection(): Promise<boolean> {
-		let client: pkg.PoolClient;
+		let client: pkg.PoolClient | null = null;
 		try {
 			client = await this.pool.connect();
 			const result = await client.query("SELECT NOW()");

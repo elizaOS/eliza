@@ -460,11 +460,13 @@ export abstract class BaseDrizzleAdapter<
 					return true;
 				});
 			} catch (error) {
-				logger.error("Error creating account:", {
+				logger.error("Error creating entity:", {
 					error: error instanceof Error ? error.message : String(error),
 					entityId: entity.id,
 					name: entity.metadata?.name,
 				});
+				// trace the error
+				console.trace(error);
 				return false;
 			}
 		});
@@ -1643,7 +1645,9 @@ export abstract class BaseDrizzleAdapter<
 						.map((tag) => `'${tag.replace(/'/g, "''")}'`)
 						.join(", ");
 					query = query.where(
-						sql`${relationshipTable.tags} @> ARRAY[${sql.raw(tagParams)}]::text[]`,
+						sql`${relationshipTable.tags} @> ARRAY[${sql.raw(
+							tagParams,
+						)}]::text[]`,
 					);
 				}
 
