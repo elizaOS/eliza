@@ -49,6 +49,19 @@ import {
 import type { DrizzleOperations } from "./types";
 
 // Define the metadata type inline since we can't import it
+/**
+ * Represents metadata information about memory.
+ * @typedef {Object} MemoryMetadata
+ * @property {string} type - The type of memory.
+ * @property {string} [source] - The source of the memory.
+ * @property {UUID} [sourceId] - The ID of the source.
+ * @property {string} [scope] - The scope of the memory.
+ * @property {number} [timestamp] - The timestamp of the memory.
+ * @property {string[]} [tags] - The tags associated with the memory.
+ * @property {UUID} [documentId] - The ID of the document associated with the memory.
+ * @property {number} [position] - The position of the memory.
+ */
+               
 type MemoryMetadata = {
 	type: string;
 	source?: string;
@@ -60,6 +73,10 @@ type MemoryMetadata = {
 	position?: number;
 };
 
+/**
+ * Abstract class representing a base Drizzle adapter for working with databases.
+ * @template TDatabase - The type of Drizzle operations supported by the adapter.
+ */
 export abstract class BaseDrizzleAdapter<
 	TDatabase extends DrizzleOperations,
 > extends DatabaseAdapter<TDatabase> {
@@ -75,11 +92,22 @@ export abstract class BaseDrizzleAdapter<
 
 	protected agentId: UUID;
 
+/**
+ * Constructor for creating a new instance of Agent with the specified agentId.
+ * 
+ * @param {UUID} agentId - The unique identifier for the agent.
+ */
 	constructor(agentId: UUID) {
 		super();
 		this.agentId = agentId;
 	}
 
+/**
+ * Executes the given operation with retry logic.
+ * @template T
+ * @param {() => Promise<T>} operation - The operation to be executed.
+ * @returns {Promise<T>} A promise that resolves with the result of the operation.
+ */
 	protected async withRetry<T>(operation: () => Promise<T>): Promise<T> {
 		let lastError: Error = new Error("Unknown error");
 
@@ -122,6 +150,14 @@ export abstract class BaseDrizzleAdapter<
 		throw lastError;
 	}
 
+/**
+ * Ensure that an agent exists by checking if an agent with the same name already exists in the system.
+ * If the agent does not exist, it will be created with the provided data.
+ * 
+ * @param {Partial<Agent>} agent - The partial data of the agent to ensure its existence.
+ * @returns {Promise<void>} - A promise that resolves when the agent is successfully ensured.
+ * @throws {Error} - If the agent name is not provided or if there is an issue creating the agent.
+ */
 	async ensureAgentExists(agent: Partial<Agent>): Promise<void> {
 		if (!agent.name) {
 			throw new Error("Agent name is required");
@@ -137,6 +173,12 @@ export abstract class BaseDrizzleAdapter<
 		}
 	}
 
+/**
+ * Ensure that the given embedding dimension is valid for the agent.
+ *
+ * @param {number} dimension - The dimension to ensure for the embedding.
+ * @returns {Promise<void>} - Resolves once the embedding dimension is ensured.
+ */
 	async ensureEmbeddingDimension(dimension: number) {
 		const existingMemory = await this.db
 			.select({
@@ -160,6 +202,11 @@ export abstract class BaseDrizzleAdapter<
 		this.embeddingDimension = DIMENSION_MAP[dimension];
 	}
 
+/**
+ * Asynchronously retrieves an agent by their ID from the database.
+ * @param {UUID} agentId - The ID of the agent to retrieve.
+ * @returns {Promise<Agent | null>} A promise that resolves to the retrieved agent or null if not found.
+ */
 	async getAgent(agentId: UUID): Promise<Agent | null> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -173,6 +220,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+/**
+ * Asynchronously retrieves a list of agents from the database.
+ * 
+ * @returns {Promise<Agent[]>} A Promise that resolves to an array of Agent objects.
+ */
 	async getAgents(): Promise<Agent[]> {
 		return this.withDatabase(async () => {
 			const result = await this.db.select().from(agentTable);
@@ -181,6 +233,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+/**
+ * Asynchronously creates a new agent record in the database.
+ * 
+ * @param {Partial<Agent>} agent The agent object to be created.
+ * @returns {Promise<boolean>} A promise that resolves to a boolean indicating the success of the operation.
+ */
 	async createAgent(agent: Partial<Agent>): Promise<boolean> {
 		return this.withDatabase(async () => {
 			try {
@@ -205,6 +263,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+/**
+ * Updates an agent in the database with the provided agent ID and data.
+ * @param {UUID} agentId - The unique identifier of the agent to update.
+ * @param {Partial<Agent>} agent - The partial agent object containing the fields to update.
+ * @returns {Promise<boolean>} - A boolean indicating if the agent was successfully updated.
+ */
 	async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
 		return this.withDatabase(async () => {
 			try {
@@ -237,6 +301,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+/**
+ * Asynchronously deletes an agent with the specified UUID and all related entries.
+ * 
+ * @param {UUID} agentId - The UUID of the agent to be deleted.
+ * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
+ */
 	async deleteAgent(agentId: UUID): Promise<boolean> {
 		// casacade delete all related for the agent
 		return this.withDatabase(async () => {
@@ -251,6 +321,10 @@ export abstract class BaseDrizzleAdapter<
 	 * Count all agents in the database
 	 * Used primarily for maintenance and cleanup operations
 	 */
+/**
+ * Asynchronously counts the number of agents in the database.
+ * @returns {Promise<number>} A Promise that resolves to the number of agents in the database.
+ */
 	async countAgents(): Promise<number> {
 		return this.withDatabase(async () => {
 			try {
