@@ -8,6 +8,10 @@ import { Logger } from "../logger";
  * Monitors silence in both remote speaker audio and local (pushed) audio.
  * If no audio is detected for a specified duration, it emits an 'idleTimeout' event on the space.
  */
+/**
+ * Class representing an Idle Monitor Plugin.
+ * * @implements { Plugin }
+ */
 export class IdleMonitorPlugin implements Plugin {
 	private space?: Space;
 	private logger?: Logger;
