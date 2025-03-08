@@ -10,6 +10,15 @@ import {
 } from "../types";
 
 // Move getRecentInteractions outside the provider
+/**
+ * Retrieves the recent interactions between two entities in a specific context.
+ *
+ * @param {IAgentRuntime} runtime - The agent runtime object.
+ * @param {UUID} sourceEntityId - The UUID of the source entity.
+ * @param {UUID} targetEntityId - The UUID of the target entity.
+ * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
+ * @returns {Promise<Memory[]>} A promise that resolves to an array of Memory objects representing recent interactions.
+ */
 const getRecentInteractions = async (
 	runtime: IAgentRuntime,
 	sourceEntityId: UUID,
@@ -29,6 +38,17 @@ const getRecentInteractions = async (
 	});
 };
 
+/**
+ * A provider object that retrieves recent messages, interactions, and memories based on a given message.
+ * @typedef {object} Provider
+ * @property {string} name - The name of the provider ("RECENT_MESSAGES").
+ * @property {string} description - A description of the provider's purpose ("Recent messages, interactions and other memories").
+ * @property {number} position - The position of the provider (100).
+ * @property {Function} get - Asynchronous function that retrieves recent messages, interactions, and memories.
+ * @param {IAgentRuntime} runtime - The runtime context for the agent.
+ * @param {Memory} message - The message to retrieve data from.
+ * @returns {object} An object containing data, values, and text sections.
+ */
 export const recentMessagesProvider: Provider = {
 	name: "RECENT_MESSAGES",
 	description: "Recent messages, interactions and other memories",
