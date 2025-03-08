@@ -13,6 +13,20 @@ import type {
 } from "./types.ts";
 import type { Item, WalletProvider } from "./wallet.ts";
 
+/**
+ * Object containing various configurations for provider settings.
+ * @constant
+ * @type {object}
+ * @property {string} BIRDEYE_API - The URL for the BirdEye API.
+ * @property {number} MAX_RETRIES - The maximum number of retries allowed.
+ * @property {number} RETRY_DELAY - The delay time (in milliseconds) between retries.
+ * @property {string} DEFAULT_RPC - The default URL for RPC calls.
+ * @property {object} TOKEN_ADDRESSES - Object containing various token addresses.
+ * @property {string} TOKEN_SECURITY_ENDPOINT - The endpoint for token security information.
+ * @property {string} TOKEN_TRADE_DATA_ENDPOINT - The endpoint for token trade data.
+ * @property {string} DEX_SCREENER_API - The URL for the Dex Screener API.
+ * @property {string} MAIN_WALLET - The main wallet address.
+ */
 const PROVIDER_CONFIG = {
 	BIRDEYE_API: "https://public-api.birdeye.so",
 	MAX_RETRIES: 3,
@@ -30,10 +44,19 @@ const PROVIDER_CONFIG = {
 	MAIN_WALLET: "",
 };
 
+/**
+ * Class representing a provider for Solana tokens.
+ */
 export class SolanaTokenProvider {
 	private cacheKey = "solana/tokens";
 	private NETWORK_ID = 1399811149;
 
+/**
+ * Constructor for initializing a new instance of the class.
+ * @param {string} tokenAddress - The address of the token.
+ * @param {WalletProvider} walletProvider - The provider for the wallet.
+ * @param {IAgentRuntime} runtime - The runtime for the agent.
+ */
 	constructor(
 		//  private connection: Connection,
 		private tokenAddress: string,
@@ -41,6 +64,13 @@ export class SolanaTokenProvider {
 		private runtime: IAgentRuntime,
 	) {}
 
+/**
+ * Asynchronously reads data from the cache based on the specified key.
+ * 
+ * @template T - The type of data stored in the cache.
+ * @param {string} key - The key used to retrieve data from the cache.
+ * @returns {Promise<T | null>} - A Promise that resolves with the cached data if found, or null otherwise.
+ */
 	private async readFromCache<T>(key: string): Promise<T | null> {
 		const cached = await this.runtime
 			.getDatabaseAdapter()
@@ -48,12 +78,26 @@ export class SolanaTokenProvider {
 		return cached ? cached : (null as T | null);
 	}
 
+/**
+ * Writes data to cache with the specified key.
+ * @template T
+ * @param {string} key - The key to store the data under in the cache
+ * @param {T} data - The data to be stored in the cache
+ * @returns {Promise<void>} A promise that resolves when the data has been successfully written to the cache
+ */
 	private async writeToCache<T>(key: string, data: T): Promise<void> {
 		await this.runtime
 			.getDatabaseAdapter()
 			.setCache<T>(path.join(this.cacheKey, key), data);
 	}
 
+/**
+ * Fetches data from a given URL with retry mechanism.
+ * 
+ * @param {string} url - The URL to fetch data from.
+ * @param {RequestInit} [options={}] - The options for the fetch request.
+ * @returns {Promise<any>} - A promise that resolves with the fetched data.
+ */
 	private async fetchWithRetry(
 		url: string,
 		options: RequestInit = {},
@@ -96,6 +140,12 @@ export class SolanaTokenProvider {
 		throw lastError;
 	}
 
+/**
+ * Async function to fetch the tokens in the wallet using the provided agent runtime.
+ * 
+ * @param {IAgentRuntime} _runtime The agent runtime interface.
+ * @returns {Promise<Item[]>} A promise that resolves to an array of items representing the tokens in the wallet.
+ */
 	async getTokensInWallet(_runtime: IAgentRuntime): Promise<Item[]> {
 		const walletInfo = await this.walletProvider.fetchPortfolioValue();
 		const items = walletInfo.items;
@@ -103,6 +153,13 @@ export class SolanaTokenProvider {
 	}
 
 	// check if the token symbol is in the wallet
+/**
+ * Asynchronously retrieves the address of a specific token from the wallet based on token symbol.
+ * 
+ * @param {IAgentRuntime} runtime The runtime object provided by the agent
+ * @param {string} tokenSymbol The symbol of the token to retrieve the address for
+ * @returns {Promise<string | null>} A Promise that resolves with the address of the token if found, or null if not found
+ */
 	async getTokenFromWallet(runtime: IAgentRuntime, tokenSymbol: string) {
 		try {
 			const items = await this.getTokensInWallet(runtime);
@@ -118,6 +175,12 @@ export class SolanaTokenProvider {
 		}
 	}
 
+/**
+ * Asynchronously fetches prices for SOL, BTC, and ETH tokens.
+ * If the prices are cached, returns the cached data.
+ * Otherwise, fetches the latest prices from the API and stores them in the cache.
+ * @returns {Promise<Prices>} The prices of SOL, BTC, and ETH tokens.
+ */
 	async fetchPrices(): Promise<Prices> {
 		try {
 			const cacheKey = "prices";
@@ -160,6 +223,10 @@ export class SolanaTokenProvider {
 			throw error;
 		}
 	}
+/**
+ * Asynchronously calculates the buy amounts based on Dex Screener data and current prices.
+ * @returns {Promise<CalculatedBuyAmounts>} The calculated buy amounts categorized as none, low, medium, and high.
+ */
 	async calculateBuyAmounts(): Promise<CalculatedBuyAmounts> {
 		const dexScreenerData = await this.fetchDexScreenerData();
 		const prices = await this.fetchPrices();
@@ -210,6 +277,15 @@ export class SolanaTokenProvider {
 		};
 	}
 
+/**
+ * Fetches token security data for a given token address.
+ * If cached data is available, returns the cached data.
+ * If no cached data is available, makes an API call to fetch the data.
+ * If the data is retrieved successfully, stores it in cache and returns it.
+ * If there is an error in retrieving the data, throws an error.
+ * 
+ * @returns {Promise<TokenSecurityData>} The token security data for the given token address.
+ */
 	async fetchTokenSecurity(): Promise<TokenSecurityData> {
 		const cacheKey = `tokenSecurity_${this.tokenAddress}`;
 		const cachedData = await this.readFromCache<TokenSecurityData>(cacheKey);
@@ -240,6 +316,11 @@ export class SolanaTokenProvider {
 		return security;
 	}
 
+/**
+ * Asynchronously fetches token trade data.
+ * 
+ * @returns {Promise<TokenTradeData>} A promise that resolves with the fetched token trade data.
+ */
 	async fetchTokenTradeData(): Promise<TokenTradeData> {
 		const cacheKey = `tokenTradeData_${this.tokenAddress}`;
 		const cachedData = await this.readFromCache<TokenTradeData>(cacheKey);
@@ -461,6 +542,13 @@ export class SolanaTokenProvider {
 		return tradeData;
 	}
 
+/**
+ * Asynchronously fetches DexScreener data for a given token address.
+ * If cached data is available, return it from cache.
+ * If not, fetch the data from DexScreener API and cache the result.
+ *
+ * @returns {Promise<DexScreenerData>} The fetched or cached DexScreener data.
+ */
 	async fetchDexScreenerData(): Promise<DexScreenerData> {
 		const cacheKey = `dexScreenerData_${this.tokenAddress}`;
 		const cachedData = await this.readFromCache<DexScreenerData>(cacheKey);
@@ -500,6 +588,14 @@ export class SolanaTokenProvider {
 		}
 	}
 
+/**
+ * Asynchronously searches for DexScreener data for a given symbol.
+ * If the data is already cached, returns the pair with the highest liquidity.
+ * If the data is not cached, fetches the data from DexScreener API,
+ * caches the result, and returns the pair with the highest liquidity.
+ * @param {string} symbol The symbol to search for in DexScreener.
+ * @returns {Promise<DexScreenerPair | null>} The pair with the highest liquidity or null if no data available.
+ */
 	async searchDexScreenerData(symbol: string): Promise<DexScreenerPair | null> {
 		const cacheKey = `dexScreenerData_search_${symbol}`;
 		const cachedData = await this.readFromCache<DexScreenerData>(cacheKey);
@@ -537,6 +633,13 @@ export class SolanaTokenProvider {
 			return null;
 		}
 	}
+/**
+ * Retrieves the pair with the highest liquidity from the given DexScreenerData object.
+ * If no pairs are available, it returns null.
+ *
+ * @param {DexScreenerData} dexData The DexScreenerData object containing pairs to search through
+ * @returns {DexScreenerPair | null} The pair with the highest liquidity, or null if no pairs are available
+ */
 	getHighestLiquidityPair(dexData: DexScreenerData): DexScreenerPair | null {
 		if (dexData.pairs.length === 0) {
 			return null;
@@ -552,6 +655,12 @@ export class SolanaTokenProvider {
 		})[0];
 	}
 
+/**
+ * Asynchronously analyzes holder distribution based on the provided TokenTradeData object.
+ * 
+ * @param {TokenTradeData} tradeData - The TokenTradeData object containing trade data.
+ * @returns {Promise<string>} A Promise that resolves with the analysis result: "increasing", "decreasing", or "stable".
+ */
 	async analyzeHolderDistribution(tradeData: TokenTradeData): Promise<string> {
 		// Define the time intervals to consider (e.g., 30m, 1h, 2h)
 		const intervals = [
@@ -593,6 +702,11 @@ export class SolanaTokenProvider {
 		return "stable";
 	}
 
+/**
+ * Asynchronously fetches the list of holders for a specific token address.
+ *
+ * @returns {Promise<HolderData[]>} The list of holders with their addresses and balances.
+ */
 	async fetchHolderList(): Promise<HolderData[]> {
 		const cacheKey = `holderList_${this.tokenAddress}`;
 		const cachedData = await this.readFromCache<HolderData[]>(cacheKey);
@@ -686,6 +800,12 @@ export class SolanaTokenProvider {
 		}
 	}
 
+/**
+ * Asynchronously filters the high value holders based on their token balance in USD.
+ *
+ * @param {TokenTradeData} tradeData - The trade data containing token price information.
+ * @returns {Promise<Array<{ holderAddress: string; balanceUsd: string }>>} An array of high value holders with their address and balance in USD.
+ */
 	async filterHighValueHolders(
 		tradeData: TokenTradeData,
 	): Promise<Array<{ holderAddress: string; balanceUsd: string }>> {
@@ -706,10 +826,22 @@ export class SolanaTokenProvider {
 		return highValueHolders;
 	}
 
+/**
+ * Check if the volume of trades in the last 24 hours is greater than 0.
+ * @param {TokenTradeData} tradeData - The trade data containing the volume in the last 24 hours.
+ * @returns {Promise<boolean>} A promise that resolves to a boolean indicating if the volume is greater than 0.
+ */
 	async checkRecentTrades(tradeData: TokenTradeData): Promise<boolean> {
 		return toBN(tradeData.volume_24h_usd).isGreaterThan(0);
 	}
 
+/**
+ * Asynchronously counts the number of high supply holders based on the percentage of their balance compared to the total token supply,
+ * including owner and creator balances.
+ * 
+ * @param {TokenSecurityData} securityData - The security data of the token, including owner and creator balance.
+ * @returns {Promise<number>} - The number of high supply holders.
+ */
 	async countHighSupplyHolders(
 		securityData: TokenSecurityData,
 	): Promise<number> {
@@ -729,6 +861,13 @@ export class SolanaTokenProvider {
 		}
 	}
 
+/**
+ * Asynchronously fetches and processes token data including security, trade data, DexScreener data, holder distribution trend,
+ * high-value holders, recent trades, high-supply holders count, DexScreener listing status, and other related information.
+ * 
+ * @returns {Promise<ProcessedTokenData>} The processed token data including various metrics and information about the token.
+ * @throws {Error} If there is an error during the processing of token data.
+ */
 	async getProcessedTokenData(): Promise<ProcessedTokenData> {
 		try {
 			logger.log(`Fetching security data for token: ${this.tokenAddress}`);
@@ -798,6 +937,14 @@ export class SolanaTokenProvider {
 		}
 	}
 
+/**
+ * Asynchronously determines whether to trade a token based on various criteria including
+ * liquidity, market cap, top 10 holder percentage, volume in the last 24 hours, price changes
+ * in the last 24 and 12 hours, unique wallets in the last 24 hours, and specific thresholds
+ * for these metrics.
+ * 
+ * @returns {Promise<boolean>} A boolean indicating whether to trade the token
+ */
 	async shouldTradeToken(): Promise<boolean> {
 		try {
 			const tokenData = await this.getProcessedTokenData();
@@ -847,6 +994,11 @@ export class SolanaTokenProvider {
 		}
 	}
 
+/**
+ * Formats the token data and returns a formatted string.
+ * @param {ProcessedTokenData} data - The processed token data object containing security, trade, holder distribution, high-value holders, recent trades, high-supply holders, and DEX Screener information.
+ * @returns {string} The formatted token data string.
+ */
 	formatTokenData(data: ProcessedTokenData): string {
 		let output = "**Token Security and Trade Report**\n";
 		output += `Token Address: ${this.tokenAddress}\n\n`;
@@ -911,6 +1063,13 @@ export class SolanaTokenProvider {
 		return output;
 	}
 
+/**
+ * Asynchronously generates a formatted token report by first retrieving processed token data 
+ * and then formatting it. 
+ * 
+ * @returns {Promise<string>} A promise that resolves to a string representing the formatted token report 
+ * or an error message if the token information cannot be fetched.
+ */
 	async getFormattedTokenReport(): Promise<string> {
 		try {
 			logger.log("Generating formatted token report...");
