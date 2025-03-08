@@ -1,6 +1,14 @@
 import type { FileDocsGroup } from "../types";
 
+/**
+ * Class representing a CodeFormatter that includes methods for formatting code components and JSDoc comments.
+ */
 export class CodeFormatter {
+/**
+ * Ensures that the filePath has a .ts extension
+ * @param {string} filePath - The file path to check/modify
+ * @returns {string} The filePath with a .ts extension
+ */
 	public ensureTypeScriptExtension(filePath: string): string {
 		// If the path already ends with .ts, return it as is
 		if (filePath.endsWith(".ts")) {
@@ -10,6 +18,12 @@ export class CodeFormatter {
 		return `${filePath}.ts`;
 	}
 
+/**
+ * Formats the API components in the given FileDocsGroup into a string.
+ *
+ * @param {FileDocsGroup} fileGroup - The FileDocsGroup containing the components to format.
+ * @returns {string} The formatted API components string.
+ */
 	public formatApiComponents(fileGroup: FileDocsGroup): string {
 		const sections: string[] = [];
 
@@ -75,6 +89,12 @@ export class CodeFormatter {
 		return sections.join("\n\n");
 	}
 
+/**
+ * Formats the components in the given FileDocsGroup object into a string.
+ *
+ * @param {FileDocsGroup} fileGroup - The FileDocsGroup object containing classes, methods, interfaces, types, and functions.
+ * @returns {string} The formatted string containing the components separated by sections.
+ */
 	public formatComponents(fileGroup: FileDocsGroup): string {
 		const sections: string[] = [];
 
@@ -116,6 +136,12 @@ export class CodeFormatter {
 		return sections.join("\n\n");
 	}
 
+/**
+ * Formats a file path by getting the relative path from the 'src' directory.
+ * 
+ * @param {string} filePath - The file path to be formatted.
+ * @returns {string} The formatted relative path from the 'src' directory.
+ */
 	public formatFilePath(filePath: string): string {
 		// Get relative path from src directory
 		const srcIndex = filePath.indexOf("/src/");
@@ -125,6 +151,13 @@ export class CodeFormatter {
 		return relativePath;
 	}
 
+/**
+ * Formats the JSDoc comment by cleaning it up and adding TypeScript declaration.
+ * 
+ * @param {string} jsDoc - The original JSDoc comment
+ * @param {string} [_code] - Optional code snippet to include after the JSDoc
+ * @returns {string} The formatted JSDoc comment
+ */
 	public formatJSDoc(jsDoc: string, _code?: string): string {
 		// Clean up the JSDoc
 		let cleanDoc = jsDoc
@@ -144,6 +177,13 @@ export class CodeFormatter {
 		return docSection;
 	}
 
+/**
+ * Truncates a code block if its length exceeds the specified maximum length.
+ *
+ * @param {string} code - The code block to truncate.
+ * @param {number} [maxLength=8000] - The maximum length of the code block before truncation.
+ * @returns {string} The truncated code block.
+ */
 	public truncateCodeBlock(code: string, maxLength = 8000): string {
 		if (code.length <= maxLength) return code;
 
