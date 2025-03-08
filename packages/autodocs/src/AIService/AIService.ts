@@ -10,6 +10,10 @@ dotenv.config();
 /**
  * Service for interacting with OpenAI chat API.
  */
+/**
+ * Class representing an AI service for generating comments based on prompts.
+ */
+
 export class AIService {
 	private chatModel: ChatOpenAI;
 	private codeFormatter: CodeFormatter;
