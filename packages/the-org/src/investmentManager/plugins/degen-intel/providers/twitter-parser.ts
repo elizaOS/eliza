@@ -15,6 +15,14 @@ const makeBulletpointList = (array: string[]) => {
 	return array.map((a) => ` - ${a}`).join("\n");
 };
 
+/**
+ * Interface representing a sentiment object.
+ * @interface
+ * @property {string} timeslot - The timeslot of the sentiment.
+ * @property {boolean} processed - Indicates if the sentiment has been processed.
+ * @property {string} [text] - The text associated with the sentiment.
+ * @property {Array<{ token: string; sentiment: number; reason: string; }>} [occuringTokens] - The array of tokens with their sentiment and reason.
+*/
 interface Sentiment {
 	timeslot: string;
 	processed: boolean;
@@ -26,6 +34,15 @@ interface Sentiment {
 	}>;
 }
 
+/**
+ * Interface representing a tweet object.
+ * @typedef {Object} Tweet
+ * @property {string} text - The text content of the tweet.
+ * @property {string} username - The username of the user who posted the tweet.
+ * @property {number} [likes] - The number of likes the tweet has (optional).
+ * @property {number} [retweets] - The number of retweets the tweet has (optional).
+ * @property {number} timestamp - The timestamp when the tweet was posted.
+ */
 interface Tweet {
 	text: string;
 	username: string;
@@ -33,6 +50,18 @@ interface Tweet {
 	retweets?: number;
 	timestamp: number;
 }
+
+/**
+ * Interface representing content from Twitter.
+ * Extends the Content interface.
+ * @property {string} text - The text content of the tweet.
+ * @property {"twitter"} source - The source of the content, always "twitter".
+ * @property {string} [url] - Optional URL of the tweet.
+ * @property {Object} tweet - Object containing tweet details.
+ * @property {string} tweet.username - The username of the tweet author.
+ * @property {number} [tweet.likes] - Optional number of likes on the tweet.
+ * @property {number} [tweet.retweets] - Optional number of retweets of the tweet.
+ */
 
 interface TwitterContent extends Content {
 	text: string;
@@ -45,6 +74,10 @@ interface TwitterContent extends Content {
 	};
 }
 
+/**
+ * Array of examples containing information about various tokens and developments in the crypto industry.
+ * Each example includes details such as token names, market trends, volume, market cap, and upcoming launches.
+ */
 const examples = [
 	"$KUDAI 87% retention rate after 30 days. smart engagement up 1333% week over week. arbitrum expansion next with full gmx integration",
 	"ecosystem play emerging\n\nboth tokens showing unusual strength - $HWTR running 12m mcap in first 24h, $MON bringing established gaming liquidity to HL",
@@ -93,6 +126,13 @@ const examples = [
 
 const rolePrompt = "You are a tweet analyzer.";
 
+/**
+ * Generate a summary and sentiment analysis of tweets related to the cryptocurrency market.
+ * 
+ * @param {string[]} tweets - An array of tweets to analyze.
+ * @param {string[]} examples - An array of example texts to reference in the summary.
+ * @returns {Object} - A JSON object with a summary of the tweets and sentiment analysis of occurring tokens.
+ */
 const template = `Write a summary of what is happening in the tweets. The main topic is the cryptocurrency market, but you don't have to state that explicitly.
 You will also be analyzing the tokens that occur in the tweet and tell us whether their sentiment is positive or negative.
 
