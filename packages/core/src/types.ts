@@ -600,7 +600,7 @@ export interface Plugin {
 	actions?: Action[];
 	providers?: Provider[];
 	evaluators?: Evaluator[];
-	adapters?: IDatabaseAdapter[];
+	adapter?: IDatabaseAdapter;
 	models?: {
 		[key: string]: (...args: any[]) => Promise<any>;
 	};
@@ -1028,8 +1028,6 @@ export interface IAgentRuntime {
 	registerService(service: typeof Service): void;
 
 	registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
-
-	getDatabaseAdapters(): IDatabaseAdapter[];
 
 	getDatabaseAdapter(): IDatabaseAdapter | null;
 

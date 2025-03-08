@@ -59,7 +59,7 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly fetch = fetch;
 	services: Map<ServiceType, Service> = new Map();
 
-	public adapters: IDatabaseAdapter[];
+	public adapter: IDatabaseAdapter;
 
 	private readonly knowledgeRoot: string;
 
@@ -75,7 +75,7 @@ export class AgentRuntime implements IAgentRuntime {
 		plugins?: Plugin[];
 		fetch?: typeof fetch;
 		databaseAdapter?: IDatabaseAdapter;
-		adapters?: IDatabaseAdapter[];
+		adapter?: IDatabaseAdapter;
 		events?: { [key: string]: ((params: any) => void)[] };
 		ignoreBootstrap?: boolean;
 	}) {
@@ -106,8 +106,8 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
 
-		// Initialize adapters from options or empty array if not provided
-		this.adapters = opts.adapters ?? [];
+		// Initialize adapter from options or empty array if not provided
+		this.adapter = opts.adapter;
 
 		// Register plugins from options or empty array
 		const plugins = opts?.plugins ?? [];
@@ -137,11 +137,9 @@ export class AgentRuntime implements IAgentRuntime {
 			this.plugins.push(plugin);
 		}
 
-		// Register plugin adapters
-		if (plugin.adapters) {
-			for (const adapter of plugin.adapters) {
-				this.adapters.push(adapter);
-			}
+		// Register plugin adapter
+		if (plugin.adapter) {
+			this.registerDatabaseAdapter(plugin.adapter);
 		}
 
 		// Register plugin actions
@@ -532,15 +530,17 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	registerDatabaseAdapter(adapter: IDatabaseAdapter) {
-		this.adapters.push(adapter);
-	}
-
-	getDatabaseAdapters() {
-		return this.adapters;
+		if (this.adapter) {
+			logger.warn(
+				"Database adapter already registered. Additional adapters will be ignored. This may lead to unexpected behavior.",
+			);
+		} else {
+			this.adapter = adapter;
+		}
 	}
 
 	getDatabaseAdapter() {
-		return this.adapters[0];
+		return this.adapter;
 	}
 
 	/**

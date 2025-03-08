@@ -55,19 +55,16 @@ The adapter is typically used as part of the ElizaOS runtime:
 
 ```typescript
 async function findDatabaseAdapter(runtime: IAgentRuntime) {
-    const { adapters } = runtime;
-    let adapter: Adapter | undefined;
+    let adapter = runtime.getDatabaseAdapter();
     
-    if (adapters.length === 0) {
+    if (!adapter) {
         const drizzleAdapterPlugin = await import('@elizaos/plugin-sql');
         const drizzleAdapterPluginDefault = drizzleAdapterPlugin.default;
-        adapter = drizzleAdapterPluginDefault.adapters[0];
+        adapter = drizzleAdapterPluginDefault.adapter;
         if (!adapter) {
             throw new Error("Internal error: No database adapter found for default plugin-sql");
         }
-    } else if (adapters.length === 1) {
-        adapter = adapters[0];
-    } else {
+    } else if (!adapter) {
         throw new Error("Multiple database adapters found. You must have no more than one. Adjust your plugins configuration.");
     }
     
