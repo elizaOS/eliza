@@ -2,6 +2,19 @@ import type { QueryTweetsResponse } from "./timeline-v1";
 import { parseAndPush, type TimelineEntryRaw } from "./timeline-v2";
 import type { Tweet } from "./tweets";
 
+/**
+ * Interface representing a list timeline with optional data. 
+ * 
+ * @property {Object} data - Optional object containing list timeline data.
+ * @property {Object} data.list - Optional object containing list information.
+ * @property {Object} data.list.tweets_timeline - Optional object containing tweets timeline information.
+ * @property {Object} data.list.tweets_timeline.timeline - Optional object containing timeline instructions.
+ * @property {Object[]} data.list.tweets_timeline.timeline.instructions - Optional array of timeline instructions.
+ * @property {Object[]} data.list.tweets_timeline.timeline.instructions.entries - Optional array of timeline entry objects.
+ * @property {Object} data.list.tweets_timeline.timeline.instructions.entry - Optional single timeline entry object.
+ * @property {string} data.list.tweets_timeline.timeline.instructions.type - Optional string indicating the type of timeline entry.
+ */
+
 export interface ListTimeline {
 	data?: {
 		list?: {
@@ -18,6 +31,12 @@ export interface ListTimeline {
 	};
 }
 
+/**
+ * Parses the list timeline tweets from the provided ListTimeline object.
+ * 
+ * @param {ListTimeline} timeline The ListTimeline object to parse tweets from.
+ * @returns {QueryTweetsResponse} An object containing the parsed tweets, next cursor, and previous cursor.
+ */
 export function parseListTimelineTweets(
 	timeline: ListTimeline,
 ): QueryTweetsResponse {
