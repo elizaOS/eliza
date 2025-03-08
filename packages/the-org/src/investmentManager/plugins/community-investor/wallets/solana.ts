@@ -18,6 +18,15 @@ import type {
 } from "../types";
 import { JitoRegion, sendTxUsingJito } from "./jitoBundle";
 
+/**
+ * Represents the result of a quote generated for a trade on the Jupiter protocol.
+ * @typedef {Object} JupiterQuoteResult
+ * @property {string} inputMint - The input mint for the trade.
+ * @property {string} outputMint - The output mint for the trade.
+ * @property {string} inAmount - The input amount for the trade.
+ * @property {string} outAmount - The output amount for the trade.
+ * @property {any[]} routePlan - The route plan for executing the trade.
+ */
 type JupiterQuoteResult = {
 	inputMint: string;
 	outputMint: string;
@@ -26,6 +35,13 @@ type JupiterQuoteResult = {
 	routePlan: any[];
 };
 
+/**
+ * Loads a private key from the runtime settings and creates a keypair.
+ * 
+ * @param {IAgentRuntime} runtime - The agent runtime interface.
+ * @returns {Keypair} - The generated keypair.
+ * @throws {Error} - If the private key format is invalid or the key length is incorrect.
+ */
 export function loadPrivateKey(runtime: IAgentRuntime) {
 	const privateKeyString =
 		runtime.getSetting("SOLANA_PRIVATE_KEY") ??
@@ -89,37 +105,83 @@ const generateTransactionHash = (): string => {
 	return bs58.encode(hashBytes);
 };
 
+/**
+ * Represents a Trust Wallet provider for Solana blockchain with Jupiter integration.
+ * @template JupiterQuoteResult - The type of Jupiter quote result.
+ */
 export class SolanaTrustWalletProvider
 	implements TrustWalletProvider<JupiterQuoteResult>
 {
+/**
+ * Creates a new instance of SolanaTrustWalletProvider using the provided runtime and wallet
+ * 
+ * @param {IAgentRuntime} runtime - The agent runtime to use
+ * @returns {SolanaTrustWalletProvider} - A new instance of SolanaTrustWalletProvider
+ */
 	static createFromRuntime(runtime: IAgentRuntime) {
 		const wallet = WalletProvider.createFromRuntime(runtime);
 		const connection = new Connection(runtime.getSetting("RPC_URL")!);
 		return new SolanaTrustWalletProvider(runtime, wallet, connection);
 	}
 
+/**
+ * Constructor for creating an instance of an object.
+ * 
+ * @param runtime - The agent runtime used for communication with the runtime environment.
+ * @param wallet - The wallet provider used for managing cryptographic keys and identities.
+ * @param connection - The connection object used for establishing and maintaining connections.
+ */
 	constructor(
 		private runtime: IAgentRuntime,
 		private wallet: WalletProvider,
 		private connection: Connection,
 	) {}
 
+/**
+ * Get the address associated with the wallet.
+ * @returns {string} The base58 encoded public key of the wallet.
+ */
 	getAddress(): string {
 		return this.wallet.publicKey.toBase58();
 	}
 
+/**
+ * Returns the address of the currency.
+ *
+ * @returns {string} The currency address.
+ */
 	getCurrencyAddress(): string {
 		return SOL_ADDRESS;
 	}
 
+/**
+ * Asynchronously retrieves the token with the specified symbol from the wallet.
+ * 
+ * @param {string} tokenSymbol - The symbol of the token to retrieve.
+ * @returns {Promise<string | null>} A promise that resolves with the token string if found, or null if not found.
+ */
 	async getTokenFromWallet(tokenSymbol: string): Promise<string | null> {
 		return this.wallet.getTokenFromWallet(tokenSymbol);
 	}
 
+/**
+ * Asynchronously retrieves the account balance from the wallet.
+ * 
+ * @returns {Promise<bigint>} A Promise that resolves with the account balance as a bigint.
+ */
 	async getAccountBalance(): Promise<bigint> {
 		return this.wallet.getAccountBalance();
 	}
 
+/**
+ * Get a quote for performing a trade from one token to another.
+ * @param {QuoteInParams} params - The parameters for getting the quote.
+ * @param {string} params.inputToken - The input token for the trade.
+ * @param {string} params.outputToken - The output token for the trade.
+ * @param {number} params.amountIn - The amount of input token to trade.
+ * @param {number} params.slippageBps - The slippage tolerance in basis points.
+ * @returns {Promise<QuoteResult<JupiterQuoteResult>>} A promise that resolves to the quote result.
+ */
 	async getQuoteIn({
 		inputToken,
 		outputToken,
@@ -139,6 +201,12 @@ export class SolanaTrustWalletProvider
 		};
 	}
 
+/**
+ * Performs a swap in operation based on the provided input parameters.
+ *
+ * @param {SwapInParams<JupiterQuoteResult>} options - The swap in parameters including inputToken, outputToken, minAmountOut, isSimulation, and data.
+ * @returns {Promise<SwapInResult<ParsedTransactionWithMeta | null>>} A promise that resolves to a SwapInResult containing the transaction hash, timestamp, amount out, and details of the swap operation.
+ */
 	async swapIn({
 		inputToken,
 		outputToken,
@@ -172,6 +240,15 @@ export class SolanaTrustWalletProvider
 		};
 	}
 
+/**
+ * Executes a swap transaction by deserializing the swap data, signing the transaction, 
+ * getting the latest blockhash, sending the transaction using Jito, and retrieving transaction details.
+ * @param {object} param0 - The parameters for executing the swap transaction.
+ * @param {string} param0.inputToken - The input token for the swap.
+ * @param {string} param0.outputToken - The output token for the swap.
+ * @param {any} param0.swapData - The swap data containing the transaction details.
+ * @returns {object} - An object containing the transaction hash, amount out, timestamp, and transaction details.
+ */
 	async executeSwap({
 		outputToken,
 		swapData,
