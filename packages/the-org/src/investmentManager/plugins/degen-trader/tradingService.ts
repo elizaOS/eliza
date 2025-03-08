@@ -28,6 +28,37 @@ import {
 	getWalletKeypair,
 } from "./utils/wallet";
 
+/**
+ * Interface representing a token signal object.
+ * @typedef {Object} TokenSignal
+ * @property {string} address - The address of the token.
+ * @property {string} symbol - The symbol of the token.
+ * @property {number} marketCap - The market capitalization of the token.
+ * @property {number} volume24h - The 24-hour trading volume of the token.
+ * @property {number} price - The current price of the token.
+ * @property {number} liquidity - The liquidity of the token.
+ * @property {number} score - The overall score of the token.
+ * @property {string[]} reasons - The reasons for the signal.
+ * @property {Object} [technicalSignals] - Optional technical signals object.
+ * @property {number} technicalSignals.rsi - The Relative Strength Index (RSI) value.
+ * @property {Object} technicalSignals.macd - The Moving Average Convergence Divergence (MACD) values.
+ * @property {number} technicalSignals.macd.value - The MACD value.
+ * @property {number} technicalSignals.macd.signal - The MACD signal line value.
+ * @property {number} technicalSignals.macd.histogram - The MACD histogram value.
+ * @property {Object} technicalSignals.volumeProfile - The volume profile information.
+ * @property {("increasing"|"decreasing"|"stable")} technicalSignals.volumeProfile.trend - The trend of the volume profile.
+ * @property {boolean} technicalSignals.volumeProfile.unusualActivity - Indicates if there is unusual volume activity.
+ * @property {number} technicalSignals.volatility - The volatility of the token.
+ * @property {Object} [socialMetrics] - Optional social metrics object.
+ * @property {number} socialMetrics.mentionCount - The number of mentions on social media.
+ * @property {number} socialMetrics.sentiment - The sentiment score of the token.
+ * @property {number} socialMetrics.influencerMentions - The number of influencer mentions.
+ * @property {Object} [cmcMetrics] - Optional CoinMarketCap (CMC) metrics object.
+ * @property {number} cmcMetrics.rank - The rank of the token on CoinMarketCap.
+ * @property {number} cmcMetrics.priceChange24h - The price change in the last 24 hours.
+ * @property {number} cmcMetrics.volumeChange24h - The volume change in the last 24 hours.
+ */
+
 interface TokenSignal {
 	address: string;
 	symbol: string;
@@ -62,6 +93,15 @@ interface TokenSignal {
 	};
 }
 
+/**
+ * Interface representing risk limits for a trading strategy.
+ * 
+ * @typedef {object} RiskLimits
+ * @property {number} maxPositionSize - The maximum allowable position size.
+ * @property {number} maxDrawdown - The maximum acceptable drawdown.
+ * @property {number} stopLossPercentage - The percentage at which to trigger a stop loss.
+ * @property {number} takeProfitPercentage - The percentage at which to trigger a take profit.
+ */
 interface RiskLimits {
 	maxPositionSize: number;
 	maxDrawdown: number;
@@ -69,6 +109,24 @@ interface RiskLimits {
 	takeProfitPercentage: number;
 }
 
+/**
+ * Interface for trading configuration settings.
+ * @typedef {Object} TradingConfig
+ * @property {Object} intervals - Time intervals for various trading operations
+ * @property {number} intervals.priceCheck - Interval for price checking
+ * @property {number} intervals.walletSync - Interval for wallet synchronization
+ * @property {number} intervals.performanceMonitor - Interval for performance monitoring
+ * @property {Object} thresholds - Threshold values for trading parameters
+ * @property {number} thresholds.minLiquidity - Minimum liquidity threshold
+ * @property {number} thresholds.minVolume - Minimum volume threshold
+ * @property {number} thresholds.minScore - Minimum score threshold
+ * @property {RiskLimits} riskLimits - Risk limits configuration
+ * @property {Object} slippageSettings - Settings for slippage control
+ * @property {number} slippageSettings.baseSlippage - Base slippage percentage
+ * @property {number} slippageSettings.maxSlippage - Maximum allowed slippage percentage
+ * @property {number} slippageSettings.liquidityMultiplier - Multiplier for liquidity-based adjustment
+ * @property {number} slippageSettings.volumeMultiplier - Multiplier for volume-based adjustment
+ */
 interface TradingConfig {
 	intervals: {
 		priceCheck: number;
@@ -89,16 +147,33 @@ interface TradingConfig {
 	};
 }
 
+/**
+ * Represents an entry in a cache.
+ * @template T
+ * @property { T } value - The value stored in the cache entry.
+ * @property { number } timestamp - The timestamp when the entry was created.
+ * @property { number } expiry - The expiry timestamp for the entry.
+ */
 interface CacheEntry<T> {
 	value: T;
 	timestamp: number;
 	expiry: number;
 }
 
+/**
+ * Class representing a Cache Manager.
+ */
+
 class CacheManager {
 	private cache: Map<string, CacheEntry<any>> = new Map();
 	private defaultTTL = 60000; // 60 seconds default TTL
 
+/**
+ * Retrieve the value associated with the specified key from the cache.
+ * @template T - The type of the value to retrieve
+ * @param {string} key - The key to look up in the cache
+ * @returns {Promise<T | null>} - The value associated with the key, or null if the key does not exist or has expired
+ */
 	async get<T>(key: string): Promise<T | null> {
 		const entry = this.cache.get(key);
 		if (!entry) return null;
@@ -111,6 +186,15 @@ class CacheManager {
 		return entry.value as T;
 	}
 
+/**
+ * Set a value in the cache with the specified key.
+ * 
+ * @template T - The type of the value being stored
+ * @param {string} key - The key to store the value with
+ * @param {T} value - The value to store in the cache
+ * @param {number} [ttl=this.defaultTTL] - The time-to-live (in milliseconds) for the cached entry
+ * @returns {Promise<void>} - A promise that resolves once the value is set in the cache
+ */
 	async set<T>(
 		key: string,
 		value: T,
@@ -125,6 +209,13 @@ class CacheManager {
 	}
 }
 
+/**
+ * Interface representing the status of a portfolio.
+ * @property {number} totalValue - The total value of the portfolio.
+ * @property {Object.<string, { amount: number; value: number }>} positions - The positions in the portfolio, with token addresses as keys and amount and value as values.
+ * @property {number} solBalance - The balance of Solana token in the portfolio.
+ * @property {number} drawdown - The drawdown percentage of the portfolio.
+ */
 interface PortfolioStatus {
 	totalValue: number;
 	positions: { [tokenAddress: string]: { amount: number; value: number } };
@@ -132,6 +223,9 @@ interface PortfolioStatus {
 	drawdown: number;
 }
 
+/**
+ * Class representing a service for Degen Trading.
+ */
 export class DegenTradingService extends Service {
 	private isRunning = false;
 	private processId: string;
@@ -168,12 +262,24 @@ export class DegenTradingService extends Service {
 		},
 	};
 
+/**
+ * Constructor for SolProcess class.
+ * 
+ * @param {IAgentRuntime} runtime - The runtime object for the agent.
+ */
 	constructor(protected runtime: IAgentRuntime) {
 		super(runtime);
 		this.processId = `sol-process-${Date.now()}`;
 		this.cacheManager = new CacheManager();
 	}
 
+/**
+ * Starts the DegenTradingService with the provided IAgentRuntime.
+ * 
+ * @param {IAgentRuntime} runtime - The runtime object required for degen trader plugin initialization.
+ * @returns {Promise<DegenTradingService>} - A promise that resolves with the initialized DegenTradingService.
+ * @throws {Error} - If the runtime is not provided or if any required settings are missing.
+ */ 
 	static async start(runtime: IAgentRuntime): Promise<DegenTradingService> {
 		if (!runtime) {
 			throw new Error(
@@ -212,6 +318,12 @@ export class DegenTradingService extends Service {
 		return service;
 	}
 
+/**
+ * Method to stop the specified DEGEN_TRADING service of the given agent runtime.
+ * 
+ * @param {IAgentRuntime} runtime - The agent runtime to work with.
+ * @returns {Promise<void>} - A Promise that resolves when the service is successfully stopped.
+ */
 	static async stop(runtime: IAgentRuntime) {
 		const service = runtime.getService(ServiceTypes.DEGEN_TRADING);
 		if (service) {
@@ -226,6 +338,16 @@ export class DegenTradingService extends Service {
 	/**
 	 * Gets token recommendation based on multiple data sources
 	 */
+/**
+ * Asynchronously gets token recommendations based on signals from multiple sources.
+ * @returns {Promise<{
+ *     recommended_buy: string;
+ *     recommend_buy_address: string;
+ *     reason: string;
+ *     marketcap: number;
+ *     buy_amount: number;
+ * }>} Object containing recommended token purchase details.
+ */
 	async getTokenRecommendation(): Promise<{
 		recommended_buy: string;
 		recommend_buy_address: string;
