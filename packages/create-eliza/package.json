@@ -1,29 +1,38 @@
 {
-	"name": "create-eliza",
-	"version": "0.2.2",
-	"description": "Initialize an Eliza project",
-	"publishConfig": {
-		"access": "public"
-	},
-	"bin": {
-		"create-eliza": "cli/index.js"
-	},
-	"license": "MIT",
-	"author": {
-		"name": "elizaOS",
-		"url": "https://twitter.com/eliza_OS"
-	},
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/elizaOS/eliza.git",
-		"directory": "packages/create-eliza"
-	},
-	"files": ["cli"],
-	"keywords": ["eliza", "elizaos", "ai", "agent", "create"],
-	"engines": {
-		"node": ">=14.0.0"
-	},
-	"dependencies": {
-		"tsup": "^8.4.0"
-	}
+  "name": "create-eliza",
+  "version": "1.0.0-alpha.6",
+  "description": "Initialize an Eliza project",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "create-eliza": "cli/index.js init"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "elizaOS",
+    "url": "https://twitter.com/eliza_OS"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/create-eliza"
+  },
+  "files": [
+    "cli"
+  ],
+  "keywords": [
+    "eliza",
+    "elizaos",
+    "ai",
+    "agent",
+    "create"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "tsup": "^8.4.0"
+  }
 }
