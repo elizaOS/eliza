@@ -19,6 +19,12 @@ const mockProfile = {
 	nicknames: ["MockNickname"],
 };
 
+/**
+ * Function to create a mock Tweet object for testing purposes.
+ *
+ * @param {Partial<Tweet>} overrides - Optional object containing properties to override in the mock Tweet.
+ * @returns {Tweet} - A mock Tweet object with default and overridden properties.
+ */
 function createMockTweet(overrides: Partial<Tweet> = {}): Tweet {
 	return {
 		id: "1234567890",
