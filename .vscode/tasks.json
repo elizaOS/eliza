@@ -1,24 +1,20 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "build-core",
-            "type": "shell",
-            "command": "bun",
-            "args": [
-                "run",
-                "build",
-                "--filter=./packages/core"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "shared"
-            },
-            "problemMatcher": []
-        }
-    ]
-} 
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build-core",
+			"type": "shell",
+			"command": "bun",
+			"args": ["run", "build", "--filter=./packages/core"],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		}
+	]
+}
