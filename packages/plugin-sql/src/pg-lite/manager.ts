@@ -11,11 +11,20 @@ import { drizzle } from "drizzle-orm/pglite";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Class representing a database client manager for PGlite.
+ * @implements { IDatabaseClientManager }
+ */
 export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 	private client: PGlite;
 	private shuttingDown = false;
 	private readonly shutdownTimeout = 800;
 
+/**
+ * Constructor for creating a new instance of PGlite with the provided options.
+ * Initializes the PGlite client with additional extensions.
+ * @param {PGliteOptions} options - The options to configure the PGlite client.
+ */
 	constructor(options: PGliteOptions) {
 		this.client = new PGlite({
 			...options,
@@ -27,6 +36,12 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 		this.setupShutdownHandlers();
 	}
 
+/**
+ * Retrieves the PostgreSQL lite connection.
+ * 
+ * @returns {PGlite} The PostgreSQL lite connection.
+ * @throws {Error} If the client manager is currently shutting down.
+ */
 	public getConnection(): PGlite {
 		if (this.shuttingDown) {
 			throw new Error("Client manager is shutting down");
@@ -34,6 +49,14 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 		return this.client;
 	}
 
+/**
+ * Initiates a graceful shutdown of the PGlite client.
+ * Checks if the client is already in the process of shutting down.
+ * Logs the start of shutdown process and sets shuttingDown flag to true.
+ * Sets a timeout for the shutdown process and forces closure of database connection if timeout is reached.
+ * Handles the shutdown process, closes the client connection, clears the timeout, and logs the completion of shutdown.
+ * Logs any errors that occur during the shutdown process.
+ */
 	private async gracefulShutdown() {
 		if (this.shuttingDown) {
 			return;
@@ -63,6 +86,10 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 		}
 	}
 
+/**
+ * Sets up shutdown handlers for SIGINT, SIGTERM, and beforeExit events to gracefully shutdown the application.
+ * @private
+ */
 	private setupShutdownHandlers() {
 		process.on("SIGINT", async () => {
 			await this.gracefulShutdown();
@@ -77,6 +104,11 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 		});
 	}
 
+/**
+ * Initializes the client for PGlite. 
+ * 
+ * @returns {Promise<void>} A Promise that resolves when the client is initialized successfully
+ */
 	public async initialize(): Promise<void> {
 		try {
 			await this.client.waitReady;
@@ -87,16 +119,32 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 		}
 	}
 
+/**
+ * Asynchronously closes the resource. If the resource is not already shutting down,
+ * it performs a graceful shutdown before closing.
+ * 
+ * @returns A promise that resolves once the resource has been closed.
+ */
 	public async close(): Promise<void> {
 		if (!this.shuttingDown) {
 			await this.gracefulShutdown();
 		}
 	}
 
+/**
+ * Check if the system is currently shutting down.
+ * 
+ * @returns {boolean} True if the system is shutting down, false otherwise.
+ */
 	public isShuttingDown(): boolean {
 		return this.shuttingDown;
 	}
 
+/**
+ * Asynchronously runs database migrations using Drizzle.
+ * 
+ * @returns {Promise<void>} A Promise that resolves once the migrations are completed successfully.
+ */
 	async runMigrations(): Promise<void> {
 		try {
 			const db = drizzle(this.client);
