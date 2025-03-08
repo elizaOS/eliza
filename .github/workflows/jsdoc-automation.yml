@@ -59,17 +59,6 @@ jobs:
             - name: Install bun
               uses: oven-sh/setup-bun@v2
 
-            - name: Update lockfile
-              working-directory: packages/autodocs
-              run: |
-                  echo "Updating lockfile..."
-                  bun install
-                  git config --global user.email "github-actions[bot]@users.noreply.github.com"
-                  git config --global user.name "github-actions[bot]"
-                  git add bun.lock
-                  git commit -m "chore: update bun lockfile" || echo "No changes to commit"
-                  git push || echo "No changes to push"
-
             - name: Install root dependencies
               run: bun install
 
