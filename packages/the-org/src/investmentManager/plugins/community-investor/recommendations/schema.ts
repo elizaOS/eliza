@@ -1,7 +1,13 @@
 import { z } from "zod";
 
+/**
+ * Type definition for MessageRecommendation based on the schema recommendationSchema
+ */
 export type MessageRecommendation = z.infer<typeof recommendationSchema>;
 
+/**
+ * Schema for extracting trading recommendations from conversational text, capturing the key components of who made the recommendation, what asset was discussed, what action was recommended, and how strongly it was recommended
+ */
 export const recommendationSchema = z
 	.object({
 		username: z
