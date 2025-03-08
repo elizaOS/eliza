@@ -8,6 +8,11 @@ import {
 	type State,
 } from "../types";
 
+/**
+ * Template for updating goals based on conversation analysis.
+ *
+ * @type {string}
+ */
 const goalsTemplate = `# TASK: Update Goal
 Analyze the conversation and update the status of the goals based on the new information provided.
 
@@ -45,6 +50,17 @@ Response format should be:
 ]
 \`\`\``;
 
+/**
+ * Handles the incoming message and updates the goals accordingly.
+ * 
+ * @param {IAgentRuntime} runtime - The agent runtime instance.
+ * @param {Memory} message - The incoming message.
+ * @param {State} [state] - The current state.
+ * @param {Object} [options] - Additional options for handling the message.
+ * @param {boolean} [options.onlyInProgress=true] - Flag to indicate if only in progress goals should be considered.
+ * 
+ * @returns {Promise<Goal[]>} The updated goals after processing the incoming message.
+ */
 async function handler(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -104,6 +120,17 @@ async function handler(
 	return updatedGoals; // Return updated goals for further processing or logging
 }
 
+/**
+ * goalEvaluator object represents an evaluator for updating goals.
+ * 
+ * @typedef {Object} goalEvaluator
+ * @property {string} name - The name of the evaluator.
+ * @property {Array<string>} similes - The similes related to updating goals.
+ * @property {function} validate - Asynchronous function to validate if there are active goals that could be updated.
+ * @property {string} description - Description of the evaluator's purpose.
+ * @property {function} handler - The handler function for updating goals.
+ * @property {Array<Object>} examples - Array of examples showing how the evaluator works with prompts, messages, and outcomes.
+ */
 export const goalEvaluator: Evaluator = {
 	name: "UPDATE_GOAL",
 	similes: [
