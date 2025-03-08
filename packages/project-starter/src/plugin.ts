@@ -15,6 +15,12 @@ import {
 } from "@elizaos/core";
 import { z } from "zod";
 
+/**
+ * Define the configuration schema for the plugin with the following properties:
+ *
+ * @param {string} PLUGIN_NAME - The name of the plugin (min length of 1, optional)
+ * @returns {object} - The configured schema object
+ */
 const configSchema = z.object({
 	PLUGIN_NAME: z
 		.string()
@@ -31,6 +37,17 @@ const configSchema = z.object({
 /**
  * Example HelloWorld action
  * This demonstrates the simplest possible action structure
+ */
+/**
+ * Represents an action that responds with a simple hello world message.
+ *
+ * @typedef {Object} Action
+ * @property {string} name - The name of the action
+ * @property {string[]} similes - The related similes of the action
+ * @property {string} description - Description of the action
+ * @property {Function} validate - Validation function for the action
+ * @property {Function} handler - The function that handles the action
+ * @property {Object[]} examples - Array of examples for the action
  */
 const helloWorldAction: Action = {
 	name: "HELLO_WORLD",
