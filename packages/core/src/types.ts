@@ -1,6 +1,10 @@
 /**
  * Represents a UUID string in the format "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
  */
+/**
+ * Type definition for a Universally Unique Identifier (UUID) using a specific format.
+ * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
+ */
 export type UUID = `${string}-${string}-${string}-${string}-${string}`;
 
 /**
