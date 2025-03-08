@@ -3,6 +3,12 @@ import type { TwitterAuth } from "./auth";
 import { ApiError } from "./errors";
 import type { TimelineInstruction } from "./timeline-v2";
 
+/**
+ * Interface for the response data of the latest timeline for the home page.
+ * @property {object} data - The response data object.
+ * @property {object} data.home - The home object within the response data.
+ * @property {array} data.home.home_timeline_urt - The array of timeline instructions for the home page.
+ */
 export interface HomeLatestTimelineResponse {
 	data?: {
 		home: {
@@ -13,6 +19,14 @@ export interface HomeLatestTimelineResponse {
 	};
 }
 
+/**
+ * Fetches the following timeline from Twitter API.
+ * 
+ * @param {number} count - The number of tweets to fetch
+ * @param {string[]} seenTweetIds - Array of IDs of tweets that have been seen
+ * @param {TwitterAuth} auth - The authentication credentials
+ * @returns {Promise<any[]>} - Array of tweets in the following timeline
+ */
 export async function fetchFollowingTimeline(
 	count: number,
 	seenTweetIds: string[],
