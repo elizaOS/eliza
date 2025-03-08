@@ -13,6 +13,12 @@ export { PhalaRemoteAttestationProvider } from "./providers/remoteAttestationPro
 export { TeeLogService };
 export type { TeeVendorConfig };
 
+/**
+ * Asynchronously initializes the Trusted Execution Environment (TEE) based on the provided configuration and runtime settings.
+ * @param {Record<string, string>} config - The configuration object containing TEE vendor information.
+ * @param {IAgentRuntime} runtime - The runtime object with TEE related settings.
+ * @returns {Promise<void>} - A promise that resolves once the TEE is initialized.
+ */
 async function initializeTEE(
 	config: Record<string, string>,
 	runtime: IAgentRuntime,
@@ -43,6 +49,11 @@ async function initializeTEE(
 	}
 }
 
+/**
+ * A function that creates a TEE (Trusted Execution Environment) plugin based on the provided configuration.
+ * @param { TeePluginConfig } [config] - Optional configuration for the TEE plugin.
+ * @returns { Plugin } - The TEE plugin containing initialization, description, actions, evaluators, providers, and services.
+ */
 export const teePlugin = (config?: TeePluginConfig): Plugin => {
 	const vendorType = config?.vendor || TeeVendorNames.PHALA;
 	const vendor = getVendor(vendorType);
