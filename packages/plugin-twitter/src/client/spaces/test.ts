@@ -11,6 +11,18 @@ import { HlsRecordPlugin } from "./plugins/HlsRecordPlugin";
 /**
  * Main test entry point
  */
+/**
+ * Function to initialize and run the main logic of the program.
+ * The function performs the following steps:
+ * 1. Login to Twitter using client credentials.
+ * 2. Initialize a new Space instance with various plugins for recording, TTS/STT, idle monitoring, etc.
+ * 3. Initialize the Space with specified configuration and create a Space URL.
+ * 4. Tweet out the Space link on Twitter.
+ * 5. Demonstrate dynamic GPT model changes and interactions.
+ * 6. Perform various actions such as speaking greetings, handling speaker requests, reacting with emojis, and handling errors.
+ * 7. Generate and send a beep audio signal to the Space.
+ * The function includes event listeners for interrupt signal handling for graceful shutdown.
+ */
 async function main() {
 	console.log("[Test] Starting...");
 
