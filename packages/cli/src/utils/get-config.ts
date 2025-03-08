@@ -7,22 +7,22 @@ import { promises as fs } from "node:fs";
 import dotenv from "dotenv";
 
 const explorer = cosmiconfig("eliza", {
-	searchPlaces: ["project.json"],
+  searchPlaces: ["project.json"],
 });
 
 // Database config schemas
 const postgresConfigSchema = z.object({
-	type: z.literal("postgres"),
-	config: z.object({
-		url: z.string(),
-	}),
+  type: z.literal("postgres"),
+  config: z.object({
+    url: z.string().optional(),
+  }),
 });
 
 const pgliteConfigSchema = z.object({
-	type: z.literal("pglite"),
-	config: z.object({
-		dataDir: z.string(),
-	}),
+  type: z.literal("pglite"),
+  config: z.object({
+    dataDir: z.string(),
+  }),
 });
 
 // Main config schema
@@ -32,21 +32,21 @@ const pgliteConfigSchema = z.object({
  * @type {z.ZodType<RawConfig>}
  */
 export const rawConfigSchema = z
-	.object({
-		$schema: z.string().optional(),
-		database: z.discriminatedUnion("type", [
-			postgresConfigSchema,
-			pgliteConfigSchema,
-		]),
-		plugins: z.object({
-			registry: z.string().url(),
-			installed: z.array(z.string()),
-		}),
-		paths: z.object({
-			knowledge: z.string(),
-		}),
-	})
-	.strict();
+  .object({
+    $schema: z.string().optional(),
+    database: z.discriminatedUnion("type", [
+      postgresConfigSchema,
+      pgliteConfigSchema,
+    ]),
+    plugins: z.object({
+      registry: z.string().url(),
+      installed: z.array(z.string()),
+    }),
+    paths: z.object({
+      knowledge: z.string(),
+    }),
+  })
+  .strict();
 
 /**
  * Type definition for the inferred type of the raw config schema.
@@ -54,9 +54,9 @@ export const rawConfigSchema = z
 export type RawConfig = z.infer<typeof rawConfigSchema>;
 
 export const configSchema = rawConfigSchema.extend({
-	resolvedPaths: z.object({
-		knowledge: z.string(),
-	}),
+  resolvedPaths: z.object({
+    knowledge: z.string(),
+  }),
 });
 
 /**
@@ -70,13 +70,13 @@ export type Config = z.infer<typeof configSchema>;
  * @returns {Promise<object | null>} The resolved configuration object, or null if no configuration is found
  */
 export async function getConfig(cwd: string) {
-	const config = await getRawConfig(cwd);
+  const config = await getRawConfig(cwd);
 
-	if (!config) {
-		return null;
-	}
+  if (!config) {
+    return null;
+  }
 
-	return await resolveConfigPaths(cwd, config);
+  return await resolveConfigPaths(cwd, config);
 }
 
 /**
@@ -86,12 +86,12 @@ export async function getConfig(cwd: string) {
  * @returns {Promise<ResolvedConfig>} The resolved configuration object with updated paths.
  */
 export async function resolveConfigPaths(cwd: string, config: RawConfig) {
-	return configSchema.parse({
-		...config,
-		resolvedPaths: {
-			knowledge: path.resolve(cwd, config.paths.knowledge),
-		},
-	});
+  return configSchema.parse({
+    ...config,
+    resolvedPaths: {
+      knowledge: path.resolve(cwd, config.paths.knowledge),
+    },
+  });
 }
 
 /**
@@ -101,17 +101,17 @@ export async function resolveConfigPaths(cwd: string, config: RawConfig) {
  * @throws {Error} If an invalid configuration is found in the project.json file within the specified directory.
  */
 export async function getRawConfig(cwd: string): Promise<RawConfig | null> {
-	try {
-		const configResult = await explorer.search(cwd);
+  try {
+    const configResult = await explorer.search(cwd);
 
-		if (!configResult) {
-			return null;
-		}
+    if (!configResult) {
+      return null;
+    }
 
-		return rawConfigSchema.parse(configResult.config);
-	} catch (_error) {
-		throw new Error(`Invalid configuration found in ${cwd}/project.json.`);
-	}
+    return rawConfigSchema.parse(configResult.config);
+  } catch (_error) {
+    throw new Error(`Invalid configuration found in ${cwd}/project.json.`);
+  }
 }
 
 /**
@@ -127,34 +127,34 @@ export async function getRawConfig(cwd: string): Promise<RawConfig | null> {
  * @returns {Promise<void>} A Promise that resolves once the environment variables are loaded or created.
  */
 export async function loadEnvironment(
-	projectDir: string = process.cwd(),
+  projectDir: string = process.cwd()
 ): Promise<void> {
-	const projectEnvPath = path.join(projectDir, ".env");
-	const globalEnvDir = path.join(os.homedir(), ".eliza");
-	const globalEnvPath = path.join(globalEnvDir, ".env");
+  const projectEnvPath = path.join(projectDir, ".env");
+  const globalEnvDir = path.join(os.homedir(), ".eliza");
+  const globalEnvPath = path.join(globalEnvDir, ".env");
 
-	// First try loading from project directory
-	if (existsSync(projectEnvPath)) {
-		dotenv.config({ path: projectEnvPath });
-		return;
-	}
+  // First try loading from project directory
+  if (existsSync(projectEnvPath)) {
+    dotenv.config({ path: projectEnvPath });
+    return;
+  }
 
-	// If not found, try loading from global config
-	if (existsSync(globalEnvPath)) {
-		dotenv.config({ path: globalEnvPath });
-		return;
-	}
+  // If not found, try loading from global config
+  if (existsSync(globalEnvPath)) {
+    dotenv.config({ path: globalEnvPath });
+    return;
+  }
 
-	// If neither exists, create the global .env
-	if (!existsSync(globalEnvDir)) {
-		await fs.mkdir(globalEnvDir, { recursive: true });
-	}
+  // If neither exists, create the global .env
+  if (!existsSync(globalEnvDir)) {
+    await fs.mkdir(globalEnvDir, { recursive: true });
+  }
 
-	// Create an empty .env file
-	if (!existsSync(globalEnvPath)) {
-		await fs.writeFile(
-			globalEnvPath,
-			"# Global environment variables for Eliza\n",
-		);
-	}
+  // Create an empty .env file
+  if (!existsSync(globalEnvPath)) {
+    await fs.writeFile(
+      globalEnvPath,
+      "# Global environment variables for Eliza\n"
+    );
+  }
 }
