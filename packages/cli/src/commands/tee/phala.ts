@@ -15,6 +15,13 @@ import { TEE_SIMULATOR } from "@/src/tee/phala/constants";
 import fs from "node:fs";
 import os from "node:os";
 
+/**
+ * Parses environment variables from given values and a file.
+ * @param {string[]} envs - Array of environment variable strings.
+ * @param {string} envFile - Path to a file containing environment variables.
+ * @returns {Env[]} Array of objects with key-value pairs representing the environment variables.
+ */ 
+
 const parseEnv = (envs: string[], envFile: string): Env[] => {
 	// Process environment variables
 	const envVars: Record<string, string> = {};
@@ -57,6 +64,20 @@ const setApiKeyCommand = new Command()
 	});
 
 // Define the `deploy` command
+/**
+ * Command to deploy to TEE cloud
+ *
+ * @typedef {object} DeployOptions
+ * @property {string} type - The TEE vendor type
+ * @property {string} mode - The deployment mode
+ * @property {string} name - The name of the docker image or agent being deployed
+ * @property {string} compose - The docker compose file to be deployed
+ * @property {string[]} env - Environment variables in the form of KEY=VALUE
+ * @property {string} envFile - A file containing environment variables
+ * @property {boolean} debug - Enable debug mode to print more information
+ *
+ * @param {DeployOptions} options - The deployment options
+ */
 const deployCommand = new Command()
 	.command("deploy")
 	.description("Deploy to TEE cloud")
@@ -130,6 +151,11 @@ const imagesCommand = new Command()
 		images(options.teepodId);
 	});
 
+/**
+ * Command for upgrading the TEE CLI
+ *
+ * @param {UpgradeOptions} options - The options for the upgrade command
+ */
 const upgradeCommand = new Command()
 	.command("upgrade")
 	.description("Upgrade the TEE CLI")
@@ -163,6 +189,18 @@ const upgradeCommand = new Command()
 		upgrade(options);
 	});
 
+/**
+ * Command to build a Docker image with specified options.
+ * 
+ * @typedef {Object} Options
+ * @property {string} image - Docker image name
+ * @property {string} dockerfile - Path to Dockerfile
+ * @property {string} tag - Tag for the Docker image
+ * @property {string} username - Docker Hub username
+ * 
+ * @param {Options} options - The options for building the Docker image
+ * @returns {Promise<void>} - A promise that resolves once the image is built or rejects with an error
+ */
 const buildCommand = new Command()
 	.command("build")
 	.description("Build the docker image")
@@ -183,6 +221,19 @@ const buildCommand = new Command()
 		}
 	});
 
+/**
+ * Command to build a docker-compose file for Eliza Agent.
+ * 
+ * @param {Object} options - The options for building the docker-compose file.
+ * @param {string} options.image - Docker image name.
+ * @param {string} options.username - Docker Hub username.
+ * @param {string} options.tag - Tag for the Docker image.
+ * @param {string} options.character - Path to the character file.
+ * @param {string} options.envFile - Path to environment file.
+ * @param {string} options.version - Version of Eliza to run (v1 or v2).
+ * 
+ * @returns {Promise} - Promise that resolves when the docker-compose file is successfully built.
+ */
 const buildComposeCommand = new Command()
 	.command("build-compose")
 	.description("Build a docker-compose file for Eliza Agent")
@@ -216,6 +267,13 @@ const buildComposeCommand = new Command()
 		}
 	});
 
+/**
+ * Command to run an Eliza Agent compose file locally
+ * @param {Object} options - The options passed to the command
+ * @param {string} options.compose - Path to the docker-compose file
+ * @param {string} options.envFile - Path to environment file
+ * @returns {Promise<void>} - Promise that resolves once the compose file is run locally
+ */
 const runLocalCommand = new Command()
 	.command("run-local")
 	.description("Run an Eliza Agent compose file locally")
@@ -233,6 +291,15 @@ const runLocalCommand = new Command()
 		}
 	});
 
+/**
+ * Represents a command to publish a Docker image to Docker Hub.
+ *
+ * @param {Object} options - The options for the command.
+ * @param {string} options.image - The Docker image name.
+ * @param {string} options.username - The Docker Hub username.
+ * @param {string} options.tag - The tag of the Docker image to publish.
+ * @returns {Promise<void>} A promise that resolves once the Docker image is published successfully.
+ */
 const publishCommand = new Command()
 	.command("publish")
 	.description("Publish Docker image to Docker Hub")
@@ -254,6 +321,12 @@ const publishCommand = new Command()
 		}
 	});
 
+/**
+ * Command to list tags of a Docker image on Docker Hub.
+ *
+ * @param options - Command line options including image name and Docker Hub username.
+ * @returns {Promise<void>} - Promise that resolves after listing the tags.
+ */
 const listTagsCommand = new Command()
 	.command("list-tags")
 	.description("List tags of a Docker image on Docker Hub")
@@ -277,6 +350,10 @@ const listTagsCommand = new Command()
 		}
 	});
 
+/**
+ * Create a command for running the TEE simulator locally
+ * @returns {Promise<void>} A promise that resolves when the simulator has been pulled and run successfully
+ */
 const simulatorCommand = new Command()
 	.command("simulator")
 	.description("Pull and run the latest TEE simulator locally")
@@ -302,6 +379,11 @@ const listCvmsCommand = new Command()
 		}
 	});
 
+/**
+ * A command for managing Phala TEE deployments.
+ * 
+ * @type {Command}
+ */
 export const phalaCommand = new Command("phala")
 	.description("Manage Phala TEE deployments")
 	.addCommand(setApiKeyCommand)
