@@ -15,6 +15,16 @@ import type {
 	TransactionHistory,
 } from "./providers/birdeye";
 import type { IToken } from "./types";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import fs from "node:fs";
+
+// Define the equivalent of __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// from the package.json, find frontend/dist and host it statically
+const frontendDist = path.resolve(__dirname, "./");
 
 /**
  * Definition of routes with type, path, and handler for each route.
@@ -23,9 +33,41 @@ import type { IToken } from "./types";
 
 export const routes: Route[] = [
 	{
+		type: "GET",
+		path: "/portal",
+		handler: async (_req: any, res: any) => {
+			console.log("frontendDist", frontendDist);
+			res.sendFile(path.resolve(frontendDist, "index.html"));
+		},
+	},
+	{
+		type: "GET",
+		path: "/portal/*",
+		handler: async (_req: any, res: any) => {
+			console.log("serving file portal/*", _req.path);
+			// serve js, css, png, jpg and svg files from the frontend dist directory
+			const filePath = path.resolve(frontendDist, _req.path);
+			if (fs.existsSync(filePath)) {
+				res.sendFile(filePath);
+			} else {
+				res.status(404).send("File not found");
+			}
+		},
+	},
+	{
+		type: "GET",
+		path: "/testing",
+		handler: async (_req: any, res: any) => {
+			console.log("testing");
+			// return  hello world
+			res.json({ message: "hello world" });
+		},
+	},
+	{
 		type: "POST",
 		path: "/trending",
 		handler: async (_req: any, res: any, runtime) => {
+			console.log("trending");
 			try {
 				const cachedTokens = await runtime
 					.getDatabaseAdapter()

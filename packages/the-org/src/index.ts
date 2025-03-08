@@ -11,12 +11,12 @@ import socialMediaManager from "./socialMediaManager";
 
 export const project: Project = {
 	agents: [
-		devRel,
-		communityManager,
+		// devRel,
+		// communityManager,
 		investmentManager,
-		liaison,
-		projectManager,
-		socialMediaManager,
+		// liaison,
+		// projectManager,
+		// socialMediaManager,
 	],
 };
 

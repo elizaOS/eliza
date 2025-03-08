@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { logger, type IAgentRuntime, type UUID } from "@elizaos/core";
 
 import Birdeye from "./providers/birdeye";
 import BuySignal from "./providers/buy-signal";
@@ -29,9 +29,15 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		validate: async (_runtime, _message, _state) => {
 			return true; // TODO: validate after certain time
 		},
-		execute: async (runtime, _options) => {
+		execute: async (runtime, _options, task) => {
 			const birdeye = new Birdeye(runtime);
-			await birdeye.syncTrendingTokens("solana");
+			try {
+				await birdeye.syncTrendingTokens("solana");
+			} catch (error) {
+				logger.error("Failed to sync trending tokens", error);
+				// kill this task
+				runtime.getDatabaseAdapter().deleteTask(task.id);
+			}
 		},
 	});
 
@@ -51,9 +57,15 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		validate: async (_runtime, _message, _state) => {
 			return true; // TODO: validate after certain time
 		},
-		execute: async (runtime, _options) => {
+		execute: async (runtime, _options, task) => {
 			const cmc = new CoinmarketCap(runtime);
-			await cmc.syncTokens();
+			try {
+				await cmc.syncTokens();
+			} catch (error) {
+				logger.error("Failed to sync tokens", error);
+				// kill this task
+				runtime.getDatabaseAdapter().deleteTask(task.id);
+			}
 		},
 	});
 
@@ -73,9 +85,15 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		validate: async (_runtime, _message, _state) => {
 			return true; // TODO: validate after certain time
 		},
-		execute: async (runtime, _options) => {
+		execute: async (runtime, _options, task) => {
 			const twitter = new Twitter(runtime);
-			await twitter.syncRawTweets();
+			try {
+				await twitter.syncRawTweets();
+			} catch (error) {
+				logger.error("Failed to sync raw tweets", error);
+				// kill this task
+				runtime.getDatabaseAdapter().deleteTask(task.id);
+			}
 		},
 	});
 
@@ -95,9 +113,15 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		validate: async (_runtime, _message, _state) => {
 			return true; // TODO: validate after certain time
 		},
-		execute: async (runtime, _options) => {
+		execute: async (runtime, _options, task) => {
 			const birdeye = new Birdeye(runtime);
-			await birdeye.syncWallet();
+			try {
+				await birdeye.syncWallet();
+			} catch (error) {
+				logger.error("Failed to sync wallet", error);
+				// kill this task
+				runtime.getDatabaseAdapter().deleteTask(task.id);
+			}
 		},
 	});
 
@@ -117,9 +141,15 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		validate: async (_runtime, _message, _state) => {
 			return true; // TODO: validate after certain time
 		},
-		execute: async (runtime, _options) => {
+		execute: async (runtime, _options, task) => {
 			const signal = new BuySignal(runtime);
-			await signal.generateSignal();
+			try {
+				await signal.generateSignal();
+			} catch (error) {
+				logger.error("Failed to generate buy signal", error);
+				// kill this task
+				runtime.getDatabaseAdapter().deleteTask(task.id);
+			}
 		},
 	});
 
@@ -139,9 +169,15 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		validate: async (_runtime, _message, _state) => {
 			return true; // TODO: validate after certain time
 		},
-		execute: async (runtime, _options) => {
+		execute: async (runtime, _options, task) => {
 			const twitterParser = new TwitterParser(runtime);
-			await twitterParser.parseTweets();
+			try {
+				await twitterParser.parseTweets();
+			} catch (error) {
+				logger.error("Failed to parse tweets", error);
+				// kill this task
+				runtime.getDatabaseAdapter().deleteTask(task.id);
+			}
 		},
 	});
 

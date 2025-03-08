@@ -5,7 +5,7 @@ export default defineConfig({
 	outDir: "dist",
 	tsconfig: "./tsconfig.build.json", // Use build-specific tsconfig
 	sourcemap: true,
-	clean: true,
+	clean: false, // Don't clean dist folder before building
 	format: ["esm"], // Ensure you're targeting CommonJS
 	dts: false, // Skip DTS generation to avoid external import issues // Ensure you're targeting CommonJS
 	external: [

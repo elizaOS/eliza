@@ -566,10 +566,10 @@ export abstract class Service {
 }
 
 export type Route = {
-	type: "GET" | "POST" | "PUT" | "DELETE";
+	type: "GET" | "POST" | "PUT" | "DELETE" | "STATIC";
 	path: string;
-	// TODO: give me strong types
-	handler: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
+	filePath?: string;
+	handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
 };
 
 /**
@@ -1347,6 +1347,7 @@ export interface TaskWorker {
 	execute: (
 		runtime: IAgentRuntime,
 		options: { [key: string]: unknown },
+		task: Task,
 	) => Promise<void>;
 	validate?: (
 		runtime: IAgentRuntime,

@@ -232,7 +232,7 @@ export class TaskService extends Service {
 			}
 
 			logger.debug(`Executing task ${task.name} (${task.id})`);
-			await worker.execute(this.runtime, task.metadata || {});
+			await worker.execute(this.runtime, task.metadata || {}, task);
 			logger.debug("task.tags are", task.tags);
 			// Handle repeating vs non-repeating tasks
 			if (task.tags?.includes("repeat")) {

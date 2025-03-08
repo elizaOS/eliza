@@ -198,7 +198,11 @@ export const choiceAction: Action = {
 
 				try {
 					const taskWorker = runtime.getTaskWorker(selectedTask.name);
-					await taskWorker.execute(runtime, { option: selectedOption });
+					await taskWorker.execute(
+						runtime,
+						{ option: selectedOption },
+						selectedTask,
+					);
 					await runtime.getDatabaseAdapter().deleteTask(selectedTask.id);
 					await callback({
 						text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,

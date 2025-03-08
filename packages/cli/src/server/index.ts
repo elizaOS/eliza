@@ -84,16 +84,16 @@ export class AgentServer {
 			);
 
 			// Initialize the database
-			// this.database
-			// 	.init()
-			// 	.then(() => {
-			// 		logger.success("Database initialized successfully");
-			// 		this.initializeServer(options);
-			// 	})
-			// 	.catch((error) => {
-			// 		logger.error("Failed to initialize database:", error);
-			// 		throw error;
-			// 	});
+			this.database
+				.init()
+				.then(() => {
+					logger.success("Database initialized successfully");
+					this.initializeServer(options);
+				})
+				.catch((error) => {
+					logger.error("Failed to initialize database:", error);
+					throw error;
+				});
 		} catch (error) {
 			logger.error("Failed to initialize AgentServer:", error);
 			throw error;
@@ -111,19 +111,28 @@ export class AgentServer {
 
 	private async initializeServer(options?: ServerOptions) {
 		try {
-			// Core middleware setup
-			this.app.use(cors());
-			this.app.use(bodyParser.json());
-			this.app.use(bodyParser.urlencoded({ extended: true }));
+			// Initialize middleware and database
+			this.app = express();
 
-			// Custom middleware setup
+			// Apply custom middlewares if provided
 			if (options?.middlewares) {
+				logger.debug("Applying custom middlewares...");
 				for (const middleware of options.middlewares) {
 					this.app.use(middleware);
 				}
 			}
 
-			// Static file serving setup
+			// Setup middleware for all requests
+			logger.debug("Setting up standard middlewares...");
+			this.app.use(cors());
+			this.app.use(bodyParser.json());
+			this.app.use(bodyParser.urlencoded({ extended: true }));
+			this.app.use(
+				express.json({
+					limit: process.env.EXPRESS_MAX_PAYLOAD || "100kb",
+				}),
+			);
+
 			const uploadsPath = path.join(process.cwd(), "/data/uploads");
 			const generatedPath = path.join(process.cwd(), "/generatedImages");
 			fs.mkdirSync(uploadsPath, { recursive: true });
@@ -132,94 +141,184 @@ export class AgentServer {
 			this.app.use("/media/uploads", express.static(uploadsPath));
 			this.app.use("/media/generated", express.static(generatedPath));
 
-			// Serve client application
-			// First try to find it in the CLI package dist/client directory
-			const clientPath = path.join(__dirname, "./client");
+			// Add specific middleware to handle portal assets
+			// This needs to be before the static middleware
+			this.app.use((req, res, next) => {
+				// Automatically detect and handle static assets based on file extension
+				const ext = path.extname(req.path).toLowerCase();
 
-			console.log("clientPath", clientPath);
+				// Set correct content type based on file extension
+				if (ext === ".js" || ext === ".mjs") {
+					res.setHeader("Content-Type", "application/javascript");
+				} else if (ext === ".css") {
+					res.setHeader("Content-Type", "text/css");
+				} else if (ext === ".svg") {
+					res.setHeader("Content-Type", "image/svg+xml");
+				} else if (ext === ".png") {
+					res.setHeader("Content-Type", "image/png");
+				} else if (ext === ".jpg" || ext === ".jpeg") {
+					res.setHeader("Content-Type", "image/jpeg");
+				}
 
-			if (fs.existsSync(clientPath)) {
-				logger.debug(
-					`Found client build at ${clientPath}, serving it at /client and root path`,
-				);
+				// Continue processing
+				next();
+			});
 
-				// Set up proper MIME types
-				const staticOptions = {
-					setHeaders: (res: express.Response, path: string) => {
-						// Set the correct content type for different file extensions
-						if (path.endsWith(".css")) {
-							res.setHeader("Content-Type", "text/css");
-						} else if (path.endsWith(".js")) {
-							res.setHeader("Content-Type", "application/javascript");
-						} else if (path.endsWith(".html")) {
-							res.setHeader("Content-Type", "text/html");
+			// Setup static file serving with proper MIME types
+			const staticOptions = {
+				etag: true,
+				lastModified: true,
+				setHeaders: (res: express.Response, filePath: string) => {
+					// Set the correct content type for different file extensions
+					const ext = path.extname(filePath).toLowerCase();
+					if (ext === ".css") {
+						res.setHeader("Content-Type", "text/css");
+					} else if (ext === ".js") {
+						res.setHeader("Content-Type", "application/javascript");
+					} else if (ext === ".html") {
+						res.setHeader("Content-Type", "text/html");
+					} else if (ext === ".png") {
+						res.setHeader("Content-Type", "image/png");
+					} else if (ext === ".jpg" || ext === ".jpeg") {
+						res.setHeader("Content-Type", "image/jpeg");
+					} else if (ext === ".svg") {
+						res.setHeader("Content-Type", "image/svg+xml");
+					}
+				},
+			};
+
+			// Serve static assets from the client path
+			const clientPath = path.join(process.cwd(), "client/dist");
+			logger.info(`Client build path: ${clientPath}`);
+			this.app.use("/", express.static(clientPath, staticOptions));
+
+			// Serve assets from packages/the-org/dist - needed for the portal's Vite assets
+			const orgDistPath = path.join(process.cwd(), "packages/the-org/dist");
+			if (fs.existsSync(orgDistPath)) {
+				logger.debug(`Serving Vite static assets from: ${orgDistPath}`);
+				this.app.use("/", express.static(orgDistPath, staticOptions));
+
+				// Also serve /assets explicitly to handle Vite assets
+				const assetsDir = path.join(orgDistPath, "assets");
+				if (fs.existsSync(assetsDir)) {
+					logger.debug(`Serving Vite /assets from: ${assetsDir}`);
+					this.app.use("/assets", express.static(assetsDir, staticOptions));
+				}
+			}
+
+			// Serve static assets from plugins
+			// Look for well-known static asset directories in plugins
+			for (const [, runtime] of this.agents) {
+				if (!runtime.plugins?.length) continue;
+
+				// Check each plugin for static assets
+				for (const plugin of runtime.plugins) {
+					if (!plugin.name) continue;
+
+					try {
+						// Try to find the plugin's directory
+						let pluginDir;
+						try {
+							const packagePath = require.resolve(
+								`${plugin.name}/package.json`,
+								{
+									paths: [process.cwd()],
+								},
+							);
+							pluginDir = path.dirname(packagePath);
+						} catch (err) {
+							pluginDir = path.join(process.cwd(), "node_modules", plugin.name);
+							if (!fs.existsSync(pluginDir)) continue;
 						}
-					},
-				};
 
-				// Serve all static assets from client/dist at root level
-				this.app.use(express.static(clientPath, staticOptions));
+						// Check common locations for static assets
+						const commonDirs = [
+							{ path: "frontend/dist", mount: "/" },
+							{ path: "frontend/dist/assets", mount: "/assets" },
+							{ path: "dist/client", mount: "/" },
+							{ path: "dist/assets", mount: "/assets" },
+							{ path: "dist", mount: "/" },
+							{ path: "public", mount: "/" },
+							{ path: "assets", mount: "/assets" },
+						];
 
-				// Serve the same files at /client path for consistency
-				this.app.use("/", express.static(clientPath, staticOptions));
+						// For each plugin route that might be serving HTML,
+						// also check for assets in related directories
+						if (plugin.routes) {
+							const htmlRoutes = plugin.routes.filter(
+								(route) => route.type === "GET" && !route.path.includes("api/"),
+							);
 
-				// Serve index.html for client root path
-				this.app.get("/", (_req, res) => {
-					res.setHeader("Content-Type", "text/html");
-					res.sendFile(path.join(clientPath, "index.html"));
-				});
-			} else {
-				logger.warn(`Client build not found at ${clientPath}`);
+							for (const route of htmlRoutes) {
+								const routePath = route.path.startsWith("/")
+									? route.path
+									: `/${route.path}`;
+								const routeParts = routePath.split("/").filter(Boolean);
+
+								if (routeParts.length > 0) {
+									// The first part of the path might indicate a feature/module
+									const featureName = routeParts[0];
+
+									// Check if this plugin has a related assets directory
+									const relatedDirs = [
+										{ path: `${featureName}/dist/assets`, mount: "/assets" },
+										{ path: `${featureName}/assets`, mount: "/assets" },
+										{ path: `${featureName}/dist`, mount: "/" },
+									];
+
+									// Add these potential asset directories
+									commonDirs.push(...relatedDirs);
+								}
+							}
+						}
+
+						// Serve static assets from any existing plugin asset directories
+						for (const dir of commonDirs) {
+							const dirPath = path.join(pluginDir, dir.path);
+							if (fs.existsSync(dirPath)) {
+								logger.debug(
+									`Serving static assets for plugin ${plugin.name} from ${dirPath} at ${dir.mount}`,
+								);
+								this.app.use(dir.mount, express.static(dirPath, staticOptions));
+							}
+						}
+					} catch (error) {
+						logger.error(
+							`Error setting up static assets for plugin ${plugin.name}:`,
+							error,
+						);
+					}
+				}
 			}
 
 			// API Router setup
 			const apiRouter = createApiRouter(this.agents, this);
 			this.app.use(apiRouter);
 
-			// Add client fallback AFTER API routes
-			if (fs.existsSync(clientPath)) {
-				// Fallback route for SPA - handle all non-API routes
-				this.app.use((req, res, next) => {
-					// Skip for API routes and known static files
-					if (req.path.startsWith("/api") || req.path.startsWith("/media")) {
-						return next();
-					}
+			// Main fallback for the SPA - must be registered after all other routes
+			// For Express 4, we need to use the correct method for fallback routes
+			this.app.all("*", function (req, res) {
+				// Skip for API routes
+				if (req.path.startsWith("/api") || req.path.startsWith("/media")) {
+					return res.status(404).send("Not found");
+				}
 
-					// Check if this looks like an asset request
-					if (req.path.includes(".")) {
-						// Try to serve the file from the client dist directory
-						const filePath = path.join(clientPath, req.path);
-						if (fs.existsSync(filePath)) {
-							// Set proper content type based on file extension
-							if (req.path.endsWith(".css")) {
-								res.setHeader("Content-Type", "text/css");
-							} else if (req.path.endsWith(".js")) {
-								res.setHeader("Content-Type", "application/javascript");
-							} else if (req.path.endsWith(".html")) {
-								res.setHeader("Content-Type", "text/html");
-							} else if (req.path.endsWith(".png")) {
-								res.setHeader("Content-Type", "image/png");
-							} else if (
-								req.path.endsWith(".jpg") ||
-								req.path.endsWith(".jpeg")
-							) {
-								res.setHeader("Content-Type", "image/jpeg");
-							} else if (req.path.endsWith(".ico")) {
-								res.setHeader("Content-Type", "image/x-icon");
-							} else if (req.path.endsWith(".svg")) {
-								res.setHeader("Content-Type", "image/svg+xml");
-							} else if (req.path.endsWith(".webp")) {
-								res.setHeader("Content-Type", "image/webp");
-							}
-							return res.sendFile(filePath);
-						}
-					}
+				// For JavaScript requests that weren't handled by static middleware,
+				// return a JavaScript response instead of HTML
+				if (
+					req.path.endsWith(".js") ||
+					req.path.includes(".js?") ||
+					req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
+				) {
+					res.setHeader("Content-Type", "application/javascript");
+					return res
+						.status(404)
+						.send(`// JavaScript module not found: ${req.path}`);
+				}
 
-					// For all other routes, serve the index.html
-					res.setHeader("Content-Type", "text/html");
-					res.sendFile(path.join(clientPath, "index.html"));
-				});
-			}
+				// For all other routes, serve the SPA's index.html
+				res.sendFile(path.join(clientPath, "index.html"));
+			});
 
 			logger.success("AgentServer initialization complete");
 		} catch (error) {
@@ -236,6 +335,7 @@ export class AgentServer {
 	 * or if there are any errors during registration.
 	 */
 	public registerAgent(runtime: IAgentRuntime) {
+		console.log("*** REGISTERING AGENT ***", runtime);
 		try {
 			if (!runtime) {
 				throw new Error("Attempted to register null/undefined runtime");
@@ -277,9 +377,15 @@ export class AgentServer {
 				`Registering ${runtime.routes.length} custom routes for agent ${runtime.agentId}`,
 			);
 			for (const route of runtime.routes) {
+				console.log("*** REGISTERING ROUTE ***", route);
 				const routePath = route.path;
 				try {
 					switch (route.type) {
+						case "STATIC":
+							this.app.get(routePath, (req, res) =>
+								route.handler(req, res, runtime),
+							);
+							break;
 						case "GET":
 							this.app.get(routePath, (req, res) =>
 								route.handler(req, res, runtime),

@@ -193,6 +193,21 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
+		// Register plugin static assets directories
+		if (plugin.staticDirs) {
+			if (!this.staticDirs) {
+				this.staticDirs = [];
+			}
+			// Add the static directories for this plugin
+			for (const dir of plugin.staticDirs) {
+				this.staticDirs.push({
+					path: dir.path,
+					mountPath: dir.mountPath || "/",
+					pluginName: plugin.name,
+				});
+			}
+		}
+
 		// Register plugin events
 		if (plugin.events) {
 			for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {

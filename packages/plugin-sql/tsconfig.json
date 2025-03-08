@@ -1,31 +1,30 @@
 {
-	"compilerOptions": {
-		"target": "ESNext",
-		"module": "ESNext",
-		"lib": ["ESNext", "dom"],
-		"moduleResolution": "Bundler",
-		"outDir": "dist",
-		"composite": true,
-		"strict": true,
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": false,
-		"allowImportingTsExtensions": true,
-		"declaration": true,
-		"emitDeclarationOnly": true,
-		"resolveJsonModule": true,
-		"noImplicitAny": false,
-		"allowJs": true,
-		"checkJs": false,
-		"noEmitOnError": false,
-		"moduleDetection": "force",
-		"allowArbitraryExtensions": true,
-		"baseUrl": ".",
-		"paths": {
-			"@elizaos/core": ["../../packages/core/src"],
-			"@elizaos/core/*": ["../../packages/core/src/*"]
-		}
-	},
-	"include": ["src/**/*.ts"],
-	"references": [{ "path": "../core" }]
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext", "dom"],
+    "moduleResolution": "Bundler",
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": false,
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "resolveJsonModule": true,
+    "noImplicitAny": false,
+    "allowJs": true,
+    "checkJs": false,
+    "noEmitOnError": false,
+    "moduleDetection": "force",
+    "allowArbitraryExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src"],
+      "@elizaos/core/*": ["../../packages/core/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "references": [{ "path": "../core" }]
 }
