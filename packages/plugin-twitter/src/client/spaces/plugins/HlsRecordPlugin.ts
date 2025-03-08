@@ -19,6 +19,27 @@ import { Logger } from "../logger";
  *  - init(...) => fully runs once the Space is created (broadcastInfo ready)
  *  - cleanup() => stop ffmpeg if running
  */
+/**
+ * HlsRecordPlugin class for recording HLS stream from Twitter Space.
+ * 
+ * @param {string} [outputPath] - Optional output path for recording.
+ * 
+ * @property {Logger} [logger] - Logger instance for logging.
+ * @property {ChildProcessWithoutNullStreams} [recordingProcess] - Child process for recording.
+ * @property {boolean} isRecording - Flag indicating if recording is in progress.
+ * @property {string} [outputPath] - Output path for recording.
+ * @property {string} [mediaKey] - Media key for the broadcast.
+ * @property {Space} [space] - Twitter Space instance where recording is happening.
+ * 
+ * @method constructor - HlsRecordPlugin constructor.
+ * @method onAttach - Method called after attaching the plugin to store references and create a Logger.
+ * @method init - Method called after Space has fully initialized to prepare for recording.
+ * @method handleOccupancyUpdate - Private method to handle occupancy updates and start recording if necessary.
+ * @method waitForHlsReady - Private method to check if HLS URL is ready for recording.
+ * @method startRecording - Private method to spawn ffmpeg for recording HLS stream.
+ * @method cleanup - Method called when the plugin is being cleaned up, to stop the recording process.
+ */
+ 
 export class HlsRecordPlugin implements Plugin {
 	private logger?: Logger;
 	private recordingProcess?: ChildProcessWithoutNullStreams;
