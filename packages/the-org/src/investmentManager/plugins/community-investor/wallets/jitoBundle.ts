@@ -14,6 +14,17 @@ const BUNDLE_STATUS_CHECK_DELAY = 5000; // 5 seconds
 const JSON_RPC_VERSION = "2.0";
 const DEFAULT_HEADERS = { "Content-Type": "application/json" };
 
+/**
+ * Enum representing different regions for Jito service.
+ * 
+ * @enum {string}
+ * @readonly
+ * @property {string} Mainnet - Mainnet region
+ * @property {string} Amsterdam - Amsterdam region
+ * @property {string} Frankfurt - Frankfurt region
+ * @property {string} NY - New York region
+ * @property {string} Tokyo - Tokyo region
+ */
 export enum JitoRegion {
 	Mainnet = "mainnet",
 	Amsterdam = "amsterdam",
@@ -33,22 +44,45 @@ export const JitoEndpoints: Record<JitoRegion, string> = {
 		"https://tokyo.mainnet.block-engine.jito.wtf/api/v1/bundles",
 };
 
+/**
+ * Interface representing a response object containing information about a bundle.
+ * @typedef {object} BundleResponse
+ * @property {string} signature - The signature of the bundle.
+ * @property {string} bundleStatus - The status of the bundle.
+ * @property {string[]} transactions - An array of strings representing transactions in the bundle.
+ */
 interface BundleResponse {
 	signature: string;
 	bundleStatus: string;
 	transactions: string[];
 }
 
+/**
+ * Interface representing the response from a Jito API request.
+ * @template T - Type of the `result` property.
+ */
 interface JitoApiResponse {
 	result: any;
 	error?: { message: string };
 }
 
 // Helper Functions
+/**
+ * Returns the Jito endpoint URL based on the specified region.
+ * 
+ * @param {JitoRegion} region - The region for which the Jito endpoint URL is needed.
+ * @returns {string} The Jito endpoint URL corresponding to the specified region.
+ */
 export function getJitoEndpoint(region: JitoRegion): string {
 	return JitoEndpoints[region];
 }
 
+/**
+ * Fetches a random validator PublicKey from a Jito API endpoint.
+ * 
+ * @param {string} rpcEndpoint The RPC endpoint URL to fetch the validator data from.
+ * @returns {Promise<PublicKey>} A Promise that resolves to a random PublicKey of a validator.
+ */
 export async function getRandomValidator(
 	rpcEndpoint: string,
 ): Promise<PublicKey> {
@@ -80,6 +114,14 @@ export async function getRandomValidator(
 	}
 }
 
+/**
+ * Sends a POST request to the Jito API endpoint with the provided payload.
+ * 
+ * @param {string} endpoint - The endpoint of the Jito API.
+ * @param {any} payload - The data to be sent in the request body.
+ * @returns {Promise<JitoApiResponse>} - A promise that resolves with the API response.
+ * @throws {Error} - If an error occurs during the API request or if the API response indicates an error.
+ */
 async function fetchJitoApi(
 	endpoint: string,
 	payload: any,
@@ -104,6 +146,15 @@ async function fetchJitoApi(
 }
 
 // Main Function
+/**
+ * Sends a transaction bundle using Jito API.
+ * @param {Object} options - The options for sending the transaction bundle.
+ * @param {VersionedTransaction[]} options.versionedTxs - The versioned transactions to be included in the bundle.
+ * @param {JitoRegion} [options.region=JitoRegion.Mainnet] - The Jito region to use for sending the transaction bundle.
+ * @param {Keypair} options.authority - The authority keypair to sign the transactions.
+ * @param {Object} options.lastestBlockhash - The latest blockhash object containing the blockhash string.
+ * @returns {Promise<BundleResponse | null>} A promise that resolves with the bundle response object or null if the bundle fails.
+ */
 export async function sendTxUsingJito({
 	versionedTxs,
 	region = JitoRegion.Mainnet,
