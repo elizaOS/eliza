@@ -13,6 +13,17 @@ import {
 } from "@elizaos/core";
 import type { Guild } from "discord.js";
 
+/**
+ * Initializes the character with the provided runtime, configuration, actions, providers, and evaluators.
+ * Registers actions, providers, and evaluators to the runtime. Registers runtime events for "DISCORD_SERVER_JOINED" and "DISCORD_SERVER_CONNECTED".
+ *
+ * @param {Object} param - Object containing runtime, config, actions, providers, and evaluators.
+ * @param {IAgentRuntime} param.runtime - The runtime instance to use.
+ * @param {OnboardingConfig} param.config - The configuration for onboarding.
+ * @param {Action[]} [param.actions] - Optional array of actions to register.
+ * @param {Provider[]} [param.providers] - Optional array of providers to register.
+ * @param {Evaluator[]} [param.evaluators] - Optional array of evaluators to register.
+ */
 export const initCharacter = ({
 	runtime,
 	config,
@@ -64,6 +75,14 @@ export const initCharacter = ({
 
 /**
  * Initializes all systems for a server
+ */
+/**
+ * Initializes all systems for the given servers with the provided runtime, servers, and onboarding configuration.
+ * 
+ * @param {IAgentRuntime} runtime - The runtime object that provides functionalities for the agent.
+ * @param {Guild[]} servers - The list of servers to initialize systems for.
+ * @param {OnboardingConfig} config - The configuration settings for onboarding.
+ * @returns {Promise<void>} - A Promise that resolves when all systems have been initialized.
  */
 export async function initializeAllSystems(
 	runtime: IAgentRuntime,
