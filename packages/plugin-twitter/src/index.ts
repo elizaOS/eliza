@@ -24,6 +24,13 @@ import type { ITwitterClient } from "./types.ts";
  * - interaction: handling mentions, replies
  * - space: launching and managing Twitter Spaces (optional)
  */
+/**
+ * TwitterClientInstance class that implements ITwitterClient interface.
+ *
+ * @class
+ * @implements {ITwitterClient}
+ */
+
 export class TwitterClientInstance implements ITwitterClient {
 	client: ClientBase;
 	post: TwitterPostClient;
