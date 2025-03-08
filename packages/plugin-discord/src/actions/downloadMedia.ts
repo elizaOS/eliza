@@ -13,6 +13,21 @@ import {
 	type State,
 } from "@elizaos/core";
 
+/**
+ * Template for generating a media URL for a requested media file.
+ * 
+ * @type {string}
+ * @description This template is used for messages where a user is requesting to download a specific media file (video or audio). The goal is to determine the URL of the media they want to download.
+ * 
+ * @param {string} recentMessages - Placeholder for recent messages related to the request.
+ * @param {string} senderName - Name of the sender requesting the media file.
+ * 
+ * @returns {string} - Formatted template with instructions and JSON structure for response.
+ * 
+ * @example
+ * `mediaUrlTemplate` contains the template for generating a media URL based on user request. 
+ */
+
 export const mediaUrlTemplate = `# Messages we are searching for a media URL
 {{recentMessages}}
 
@@ -27,6 +42,13 @@ Your response must be formatted as a JSON block with this structure:
 \`\`\`
 `;
 
+/**
+ * Get a media URL from the user through text input using the provided runtime and state.
+ * @param {IAgentRuntime} runtime - The runtime object to interact with the agent.
+ * @param {Memory} _message - The memory object containing the input message.
+ * @param {State} state - The state of the conversation.
+ * @returns {Promise<string | null>} The media URL provided by the user or null if no valid URL is provided.
+ */
 const getMediaUrl = async (
 	runtime: IAgentRuntime,
 	_message: Memory,
