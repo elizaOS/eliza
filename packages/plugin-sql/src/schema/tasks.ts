@@ -1,5 +1,10 @@
 import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
+/**
+ * Represents a table schema for tasks in the database.
+ * 
+ * @type {PgTable}
+ */
 export const taskTable = pgTable("tasks", {
 	id: uuid("id").primaryKey().defaultRandom(),
 	name: text("name").notNull(),
