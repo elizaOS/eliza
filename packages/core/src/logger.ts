@@ -2,21 +2,40 @@ import pino, { type LogFn, type DestinationStream } from "pino";
 import pretty from "pino-pretty";
 import { parseBooleanFromText } from "./prompts";
 
+/**
+ * Interface representing a log entry.
+ * @property {number} [time] - The timestamp of the log entry.
+ * @property {unknown} [key] - Additional properties that can be added to the log entry.
+ */
 interface LogEntry {
 	time?: number;
 	[key: string]: unknown;
 }
 
 // Custom destination that maintains recent logs in memory
+/**
+ * Class representing an in-memory destination stream for logging.
+ * Implements DestinationStream interface.
+ */
 class InMemoryDestination implements DestinationStream {
 	private logs: LogEntry[] = [];
 	private maxLogs = 1000; // Keep last 1000 logs
 	private stream: DestinationStream | null;
 
+/**
+ * Constructor for creating a new instance of the class.
+ * @param {DestinationStream|null} stream - The stream to assign to the instance. Can be null.
+ */
 	constructor(stream: DestinationStream | null) {
 		this.stream = stream;
 	}
 
+/**
+ * Writes a log entry to the memory buffer and forwards it to the pretty print stream if available.
+ *
+ * @param {string | LogEntry} data - The data to be written, which can be either a string or a LogEntry object.
+ * @returns {void}
+ */
 	write(data: string | LogEntry): void {
 		// Parse the log entry if it's a string
 		const logEntry: LogEntry =
@@ -43,6 +62,11 @@ class InMemoryDestination implements DestinationStream {
 		}
 	}
 
+/**
+ * Retrieves the recent logs from the system.
+ * 
+ * @returns {LogEntry[]} An array of LogEntry objects representing the recent logs.
+ */
 	recentLogs(): LogEntry[] {
 		return this.logs;
 	}
@@ -76,6 +100,17 @@ const createStream = () => {
 const defaultLevel =
 	process?.env?.DEFAULT_LOG_LEVEL || process?.env?.LOG_LEVEL || "info";
 
+/**
+ * Configuration options for logger.
+ * @typedef {object} LoggerOptions
+ * @property {string} level - The default log level.
+ * @property {object} customLevels - Custom log levels.
+ * @property {object} hooks - Hooks for customizing log behavior.
+ * @property {Function} hooks.logMethod - Custom log method.
+ * @param {Array} inputArgs - The arguments passed to the log method.
+ * @param {Function} method - The log method to be executed.
+ * @returns {void}
+ */
 const options = {
 	level: defaultLevel,
 	customLevels,
