@@ -1,5 +1,14 @@
 import type { Transaction } from "./types";
 
+/**
+ * Defines the weights for each performance metric used in calculation.
+ * @typedef {Object} PerformanceWeights
+ * @property {number} profitWeight - The weight for profit metric.
+ * @property {number} roiWeight - The weight for ROI metric.
+ * @property {number} marketCapWeight - The weight for market capitalization metric.
+ * @property {number} liquidityWeight - The weight for liquidity metric.
+ * @property {number} holdingPeriodWeight - The weight for holding period metric.
+ */
 type PerformanceWeights = {
 	profitWeight: number;
 	roiWeight: number;
@@ -16,6 +25,22 @@ export const PERFORMANCE_DEFAULT_WEIGHTS: PerformanceWeights = {
 	holdingPeriodWeight: 0.05, // Time held
 };
 
+/**
+ * Represents the performance metrics for a particular position.
+ * 
+ * @property {bigint} totalInvestment - The total investment amount in the position.
+ * @property {number} totalInvestmentUsd - The total investment amount converted to USD.
+ * @property {bigint} remainingAmount - The remaining amount in the position.
+ * @property {bigint} totalProfitAmount - The total profit amount in the position.
+ * @property {number} totalProfitUsd - The total profit amount converted to USD.
+ * @property {number} roi - The return on investment percentage.
+ * @property {number} roiUsd - The return on investment percentage converted to USD.
+ * @property {number} marketCapChange - The percentage change in market capitalization.
+ * @property {number} liquidityChange - The percentage change in liquidity.
+ * @property {number} holdingPeriodHours - The holding period in hours.
+ * @property {number} performanceScore - The performance score of the position.
+ */
+
 type PositionPerformance = {
 	totalInvestment: bigint;
 	totalInvestmentUsd: number;
@@ -30,6 +55,11 @@ type PositionPerformance = {
 	performanceScore: number;
 };
 
+/**
+ * Calculates the position performance based on a series of transactions.
+ * @param {Transaction[]} txs - The list of transactions to calculate performance for.
+ * @returns {PositionPerformance} - The performance metrics of the position.
+ */
 export function calculatePositionPerformance(
 	txs: Transaction[],
 ): PositionPerformance {
@@ -126,6 +156,23 @@ export function calculatePositionPerformance(
 	};
 }
 
+/**
+ * Calculate the performance score based on the given metrics and weights.
+ *
+ * @param {Object} metrics - Object containing performance metrics:
+ * @param {number} metrics.totalProfitUsd - Total profit in USD.
+ * @param {number} metrics.roiUsd - Return on investment in USD.
+ * @param {number} metrics.marketCapChange - Market capitalization change.
+ * @param {number} metrics.liquidityChange - Liquidity change.
+ * @param {number} metrics.holdingPeriodHours - Holding period in hours.
+ * @param {Object} weights - Object containing performance weights (optional).
+ * @param {number} weights.profitWeight - Weight for profit.
+ * @param {number} weights.roiWeight - Weight for ROI.
+ * @param {number} weights.marketCapWeight - Weight for market cap change.
+ * @param {number} weights.liquidityWeight - Weight for liquidity change.
+ * @param {number} weights.holdingPeriodWeight - Weight for holding period.
+ * @returns {number} - Performance score calculated based on the metrics and weights.
+ */
 function calculatePerformanceScore(
 	metrics: {
 		totalProfitUsd: number;
