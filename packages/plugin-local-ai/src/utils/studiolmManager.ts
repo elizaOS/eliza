@@ -1,6 +1,13 @@
 import { logger, ModelTypes, type GenerateTextParams } from "@elizaos/core";
 import fetch from "node-fetch";
 
+/**
+ * Represents a StudioLMModel object with the following properties:
+ * - id: string
+ * - object: string
+ * - created: number
+ * - owned_by: string
+ */
 interface StudioLMModel {
 	id: string;
 	object: string;
@@ -8,10 +15,25 @@ interface StudioLMModel {
 	owned_by: string;
 }
 
+/**
+ * Interface representing a chat message.
+ * @property {string} role - The role of the sender, can be "system", "user", or "assistant".
+ * @property {string} content - The content of the message.
+ */
 interface ChatMessage {
 	role: "system" | "user" | "assistant";
 	content: string;
 }
+
+/**
+ * Interface representing a chat completion request.
+ * @property {string} model - The model to be used for generating chat completions.
+ * @property {ChatMessage[]} messages - An array of chat messages to provide context for the completion.
+ * @property {number} [temperature] - The temperature parameter to control the randomness of the generated completions.
+ * @property {number} [max_tokens] - The maximum number of tokens to generate in the completion.
+ * @property {boolean} [stream] - Whether to generate completions in a streaming fashion.
+ */
+ 
 
 interface ChatCompletionRequest {
 	model: string;
@@ -21,6 +43,18 @@ interface ChatCompletionRequest {
 	stream?: boolean;
 }
 
+/**
+ * Represents a response object for completing a chat session.
+ * @typedef {Object} ChatCompletionResponse
+ * @property {string} id - The unique identifier for the completion response.
+ * @property {string} object - The type of object being returned.
+ * @property {number} created - The timestamp of when the completion response was created.
+ * @property {string} model - The type of model associated with the completion response.
+ * @property {Object[]} choices - An array of choices made during the chat session.
+ * @property {number} choices.index - The index of the choice within the array.
+ * @property {ChatMessage} choices.message - The message associated with the choice.
+ * @property {string} choices.finish_reason - The reason for finishing the chat session.
+ */
 interface ChatCompletionResponse {
 	id: string;
 	object: string;
@@ -32,6 +66,10 @@ interface ChatCompletionResponse {
 		finish_reason: string;
 	}[];
 }
+
+/**
+ * Class representing a Studio Language Model Manager.
+ */
 
 export class StudioLMManager {
 	private static instance: StudioLMManager | null = null;
@@ -45,6 +83,11 @@ export class StudioLMManager {
 		medium: process.env.STUDIOLM_MEDIUM_MODEL || "deepseek-r1-distill-qwen-7b",
 	};
 
+/**
+ * Private constructor for StudioLMManager.
+ * Initializes with default serverUrl if not provided in environment variables.
+ * Logs initialization information including serverUrl, configuredModels, and timestamp.
+ */
 	private constructor() {
 		this.serverUrl = process.env.STUDIOLM_SERVER_URL || "http://localhost:1234";
 		logger.info("StudioLMManager initialized with configuration:", {
@@ -54,6 +97,10 @@ export class StudioLMManager {
 		});
 	}
 
+/**
+ * Returns an instance of StudioLMManager. If an instance already exists, it returns the existing instance.
+ * @returns {StudioLMManager} The instance of StudioLMManager
+ */
 	public static getInstance(): StudioLMManager {
 		if (!StudioLMManager.instance) {
 			StudioLMManager.instance = new StudioLMManager();
@@ -61,6 +108,10 @@ export class StudioLMManager {
 		return StudioLMManager.instance;
 	}
 
+/**
+ * Check the status of the server by sending a request to the /v1/models endpoint.
+ * @returns {Promise<boolean>} A Promise that resolves to true if the server responds with success status, false otherwise.
+ */
 	private async checkServerStatus(): Promise<boolean> {
 		try {
 			const response = await fetch(`${this.serverUrl}/v1/models`);
@@ -78,6 +129,11 @@ export class StudioLMManager {
 		}
 	}
 
+/**
+ * Fetches the available models from the server and stores them in the 'availableModels' property.
+ * 
+ * @returns {Promise<void>} A Promise that resolves when the models are fetched successfully or rejects with an error.
+ */
 	private async fetchAvailableModels(): Promise<void> {
 		try {
 			const response = await fetch(`${this.serverUrl}/v1/models`);
@@ -103,6 +159,11 @@ export class StudioLMManager {
 		}
 	}
 
+/**
+  * Asynchronously tests the specified model with a chat completion request.
+  * @param {string} modelId - The ID of the model to test.
+  * @returns {Promise<boolean>} - A promise that resolves to true if the model test was successful, false otherwise.
+  */
 	private async testModel(modelId: string): Promise<boolean> {
 		try {
 			const testRequest: ChatCompletionRequest = {
@@ -156,6 +217,11 @@ export class StudioLMManager {
 		}
 	}
 
+/**
+ * Tests the configured text models to ensure they are working properly.
+ * Logs the results of the test and any failed models.
+ * @returns {Promise<void>} A promise that resolves when the test is complete.
+ */
 	private async testTextModels(): Promise<void> {
 		logger.info("Testing configured text models...");
 
@@ -181,6 +247,12 @@ export class StudioLMManager {
 		}
 	}
 
+/**
+ * Initializes StudioLM by checking server status, fetching available models,
+ * and testing text models.
+ * 
+ * @returns {Promise<void>} A Promise that resolves when initialization is complete
+ */
 	public async initialize(): Promise<void> {
 		try {
 			if (this.initialized) {
@@ -209,14 +281,31 @@ export class StudioLMManager {
 		}
 	}
 
+/**
+ * Retrieves the available models in the studio.
+ * 
+ * @returns {StudioLMModel[]} An array of StudioLMModel objects representing the available models.
+ */
 	public getAvailableModels(): StudioLMModel[] {
 		return this.availableModels;
 	}
 
+/**
+ * Check if the object is initialized.
+ * 
+ * @returns {boolean} Returns true if the object is initialized, otherwise false.
+ */
 	public isInitialized(): boolean {
 		return this.initialized;
 	}
 
+/**
+ * Asynchronously generates text using StudioLM based on provided parameters.
+ * 
+ * @param {GenerateTextParams} params - The parameters for generating text.
+ * @param {boolean} [isInitialized=false] - Flag to indicate if the model is already initialized.
+ * @returns {Promise<string>} The generated text as a Promise.
+ */
 	public async generateText(
 		params: GenerateTextParams,
 		isInitialized = false,
