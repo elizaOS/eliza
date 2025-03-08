@@ -4,6 +4,11 @@ import { PublicKey } from "@solana/web3.js";
 /**
  * Validates a Solana address format
  */
+/**
+ * Checks if a given string is a valid Solana address.
+ * * @param { string } address - The Solana address to validate.
+ * @returns { boolean } - Returns true if the address is valid, false otherwise.
+ */
 export function isValidSolanaAddress(address: string): boolean {
 	try {
 		new PublicKey(address);
