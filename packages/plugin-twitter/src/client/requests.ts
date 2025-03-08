@@ -7,6 +7,12 @@ import type { Headers as HeadersPolyfill } from "headers-polyfill";
  * @param cookieJar The cookie jar to update.
  * @param headers The response headers to populate the cookie jar with.
  */
+/**
+ * Updates the provided CookieJar with cookies from the given Headers or document.cookie.
+ * @param {CookieJar} cookieJar - The CookieJar to update.
+ * @param {Headers | HeadersPolyfill} headers - The Headers object containing cookie information.
+ * @returns {Promise<void>} - A Promise that resolves once the update is complete.
+ */
 export async function updateCookieJar(
 	cookieJar: CookieJar,
 	headers: Headers | HeadersPolyfill,
