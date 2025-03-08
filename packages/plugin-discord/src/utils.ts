@@ -13,6 +13,14 @@ import {
 	ThreadChannel,
 } from "discord.js";
 
+/**
+ * Generates a WAV file header based on the provided audio information.
+ * @param {number} audioLength - The length of the audio data in bytes.
+ * @param {number} sampleRate - The sample rate of the audio.
+ * @param {number} [channelCount=1] - The number of audio channels (default is 1).
+ * @param {number} [bitsPerSample=16] - The number of bits per audio sample (default is 16).
+ * @returns {Buffer} The generated WAV file header as a Buffer object.
+ */
 export function getWavHeader(
 	audioLength: number,
 	sampleRate: number,
@@ -38,6 +46,13 @@ export function getWavHeader(
 
 const MAX_MESSAGE_LENGTH = 1900;
 
+/**
+ * Generates a summary for a given text using a specified model.
+ * 
+ * @param {IAgentRuntime} runtime - The IAgentRuntime instance.
+ * @param {string} text - The text for which to generate a summary.
+ * @returns {Promise<{ title: string; description: string }>} An object containing the generated title and summary.
+ */
 export async function generateSummary(
 	runtime: IAgentRuntime,
 	text: string,
@@ -78,6 +93,14 @@ export async function generateSummary(
 	};
 }
 
+/**
+ * Sends a message in chunks to a specified Discord TextChannel.
+ * @param {TextChannel} channel - The Discord TextChannel to send the message to.
+ * @param {string} content - The content of the message to be sent.
+ * @param {string} _inReplyTo - The message ID to reply to (if applicable).
+ * @param {any[]} files - Array of files to attach to the message.
+ * @returns {Promise<DiscordMessage[]>} - Array of sent Discord messages.
+ */
 export async function sendMessageInChunks(
 	channel: TextChannel,
 	content: string,
@@ -120,6 +143,11 @@ export async function sendMessageInChunks(
 	return sentMessages;
 }
 
+/**
+ * Splits the content into an array of strings based on the maximum message length.
+ * @param {string} content - The content to split into messages
+ * @returns {string[]} An array of strings that represent the split messages
+ */
 function splitMessage(content: string): string[] {
 	const messages: string[] = [];
 	let currentMessage = "";
@@ -151,6 +179,14 @@ function splitMessage(content: string): string[] {
 	return messages;
 }
 
+/**
+ * Checks if the bot can send messages in a given channel by checking permissions.
+ * @param {TextChannel | NewsChannel | ThreadChannel} channel - The channel to check permissions for.
+ * @returns {Object} Object containing information about whether the bot can send messages or not.
+ * @returns {boolean} canSend - Whether the bot can send messages in the channel.
+ * @returns {string} reason - The reason why the bot cannot send messages, if applicable.
+ * @returns {string[]} missingPermissions - Array of missing permissions, if any.
+ */
 export function canSendMessage(channel) {
 	// validate input
 	if (!channel) {
