@@ -31,6 +31,11 @@ import { Logger } from "../logger";
  * 3) Optionally creates a ChatClient for interactive mode
  * 4) Allows managing (approve/remove) speakers, pushing audio, etc.
  */
+/**
+ * Represents a space that can be used for communication and collaboration.
+ * Extends the EventEmitter class and contains properties for debugging, logging, Janus client, chat client, authentication token,
+ * and broadcast information.
+ */
 export class Space extends EventEmitter {
 	private readonly debug: boolean;
 	private readonly logger: Logger;
