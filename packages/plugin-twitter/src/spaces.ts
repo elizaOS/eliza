@@ -11,6 +11,18 @@ import {
 import { SttTtsPlugin } from "./sttTtsSpaces.ts";
 import { generateTopicsIfEmpty, isAgentInSpace, speakFiller } from "./utils.ts";
 
+/**
+ * Interface representing options for deciding on creating a Twitter Space.
+ * @typedef {Object} TwitterSpaceDecisionOptions
+ * @property {number} [maxSpeakers] - Maximum number of speakers allowed in the Twitter Space.
+ * @property {number} [typicalDurationMinutes] - Typical duration of the Twitter Space in minutes.
+ * @property {number} [idleKickTimeoutMs] - Timeout in milliseconds for kicking idle users from the Twitter Space.
+ * @property {number} [minIntervalBetweenSpacesMinutes] - Minimum interval between creating new Twitter Spaces in minutes.
+ * @property {boolean} [enableIdleMonitor] - Flag to enable or disable idle user monitoring in the Twitter Space.
+ * @property {boolean} enableSpaceHosting - Flag to enable or disable space hosting in the Twitter Space.
+ * @property {boolean} [enableRecording] - Flag to enable or disable recording of the Twitter Space.
+ * @property {number} [speakerMaxDurationMs] - Maximum duration in milliseconds for each speaker in the Twitter Space.
+ */
 export interface TwitterSpaceDecisionOptions {
 	maxSpeakers?: number;
 	typicalDurationMinutes?: number;
@@ -22,6 +34,14 @@ export interface TwitterSpaceDecisionOptions {
 	speakerMaxDurationMs?: number;
 }
 
+/**
+ * Represents the state of the current speaker in a session.
+ * @typedef { Object } CurrentSpeakerState
+ * @property { string } userId - The unique identifier of the user who is the current speaker.
+ * @property { string } sessionUUID - The unique identifier of the session the speaker is in.
+ * @property { string } username - The username of the current speaker.
+ * @property { number } startTime - The timestamp when the current speaker started speaking.
+ */
 interface CurrentSpeakerState {
 	userId: string;
 	sessionUUID: string;
@@ -29,12 +49,29 @@ interface CurrentSpeakerState {
 	startTime: number;
 }
 
+/**
+ * Enum representing space activity options.
+ * 
+ * @enum {string}
+ * @readonly
+ * @property {string} HOSTING - Indicates that the space is being used for hosting an event.
+ * @property {string} PARTICIPATING - Indicates that the space is being used for participating in an event.
+ * @property {string} IDLE - Indicates that the space is not currently being used.
+ */
 export enum SpaceActivity {
 	HOSTING = "hosting",
 	PARTICIPATING = "participating",
 	IDLE = "idle",
 }
 
+/**
+ * An enum representing the activity role of a participant.
+ * @enum {string}
+ * @readonly
+ * @property {string} LISTENER - Represents a participant who is a listener.
+ * @property {string} SPEAKER - Represents a participant who is a speaker.
+ * @property {string} PENDING - Represents a participant whose activity is pending.
+ */
 export enum ParticipantActivity {
 	LISTENER = "listener",
 	SPEAKER = "speaker",
@@ -43,6 +80,18 @@ export enum ParticipantActivity {
 
 /**
  * Main class: manage a Twitter Space with N speakers max, speaker queue, filler messages, etc.
+ */
+/**
+ * Represents a client for interacting with Twitter Spaces.
+ * * @class
+ * @property { IAgentRuntime } runtime - The agent runtime for the client.
+ * @property { ClientBase } client - The base client for making requests.
+ * @property { Client } twitterClient - The Twitter client for interacting with Twitter API.
+ * @property {Space | undefined} currentSpace - The current Twitter Space the client is connected to (if any).
+ * @property {string | undefined} spaceId - The ID of the Twitter Space the client is connected to (if any).
+ * @property {number | undefined} startedAt - The timestamp when the client was started.
+ * @property {NodeJS.Timeout | undefined} checkInterval - The interval for checking the status of the Twitter Space.
+ * @property {number | undefined} lastSpaceEndedAt - The timestamp of when the last Twitter Space ended.
  */
 export class TwitterSpaceClient {
 	private runtime: IAgentRuntime;
