@@ -18,6 +18,12 @@ import {
 	type WorldSettings,
 } from "../types";
 
+/**
+ * Interface representing the structure of a setting update object.
+ * @interface
+ * @property {string} key - The key of the setting to be updated.
+ * @property {string|boolean} value - The new value for the setting, can be a string or a boolean.
+ */
 interface SettingUpdate {
 	key: string;
 	value: string | boolean;
@@ -32,6 +38,28 @@ Do not including any thinking or internal reflection in the "text" field.
 "thought" should be a short description of what the agent is thinking about before responding, including a brief justification for the response.`;
 
 // Template for success responses when settings are updated
+/**
+ * JSDoc comment for successTemplate constant
+ *
+ * # Task: Generate a response for successful setting updates
+ * {{providers}}
+ *
+ * # Update Information:
+ * - Updated Settings: {{updateMessages}}
+ * - Next Required Setting: {{nextSetting.name}}
+ * - Remaining Required Settings: {{remainingRequired}}
+ *
+ * # Instructions:
+ * 1. Acknowledge the successful update of settings
+ * 2. Maintain {{agentName}}'s personality and tone
+ * 3. Provide clear guidance on the next setting that needs to be configured
+ * 4. Explain what the next setting is for and how to set it
+ * 5. If appropriate, mention how many required settings remain
+ *
+ * Write a natural, conversational response that {{agentName}} would send about the successful update and next steps.
+ * Include the actions array ["SETTING_UPDATED"] in your response.
+ * ${messageCompletionFooter}
+ */
 const successTemplate = `# Task: Generate a response for successful setting updates
 {{providers}}
 
@@ -52,6 +80,13 @@ Include the actions array ["SETTING_UPDATED"] in your response.
 ${messageCompletionFooter}`;
 
 // Template for failure responses when settings couldn't be updated
+/**
+ * Template for generating a response for failed setting updates.
+ * 
+ * @template T
+ * @param {string} failureTemplate - The failure template string to fill in with dynamic content.
+ * @returns {string} - The filled-in template for generating the response.
+ */
 const failureTemplate = `# Task: Generate a response for failed setting updates
 
 # About {{agentName}}:
@@ -81,6 +116,20 @@ Include the actions array ["SETTING_UPDATE_FAILED"] in your response.
 ${messageCompletionFooter}`;
 
 // Template for error responses when unexpected errors occur
+/**
+ * Template for generating a response for an error during setting updates.
+ *
+ * The template includes placeholders for agent name, bio, recent messages,
+ * and provides instructions for crafting a response.
+ *
+ * Instructions:
+ * 1. Apologize for the technical difficulty
+ * 2. Maintain agent's personality and tone
+ * 3. Suggest trying again or contacting support if the issue persists
+ * 4. Keep the message concise and helpful
+ *
+ * Actions array to include: ["SETTING_UPDATE_ERROR"]
+ */
 const errorTemplate = `# Task: Generate a response for an error during setting updates
 
 # About {{agentName}}:
@@ -100,6 +149,29 @@ Include the actions array ["SETTING_UPDATE_ERROR"] in your response.
 ${messageCompletionFooter}`;
 
 // Template for completion responses when all required settings are configured
+/**
+ * Task: Generate a response for settings completion
+ * 
+ * About {{agentName}}:
+ * {{bio}}
+ * 
+ * Settings Status:
+ * {{settingsStatus}}
+ * 
+ * Recent Conversation:
+ * {{recentMessages}}
+ * 
+ * Instructions:
+ * 1. Congratulate the user on completing the settings process
+ * 2. Maintain {{agentName}}'s personality and tone
+ * 3. Summarize the key settings that have been configured
+ * 4. Explain what functionality is now available
+ * 5. Provide guidance on what the user can do next
+ * 6. Express enthusiasm about working together
+ * 
+ * Write a natural, conversational response that {{agentName}} would send about the successful completion of settings.
+ * Include the actions array ["ONBOARDING_COMPLETE"] in your response.
+ */
 const completionTemplate = `# Task: Generate a response for settings completion
 
 # About {{agentName}}:
@@ -124,6 +196,12 @@ Include the actions array ["ONBOARDING_COMPLETE"] in your response.
 ${messageCompletionFooter}`;
 
 // Enhanced extraction template that explicitly handles multiple settings
+/**
+ * Template for extracting setting values from a conversation.
+ * Includes available settings, current settings status, recent conversation, and instructions for extraction.
+ * 
+ * @returns {string} - Extraction template containing instructions and placeholders.
+ */
 const extractionTemplate = `# Task: Extract setting values from the conversation
 
 # Available Settings:
@@ -157,6 +235,19 @@ Return ONLY a JSON array of objects with 'key' and 'value' properties. Format:
 
 IMPORTANT: Only include settings from the Available Settings list above. Ignore any other potential settings.`;
 
+/**
+ * Asynchronously generates an object based on the specified parameters.
+ * 
+ * @param {Object} options - The options object containing the following properties:
+ * @param {any} runtime - The runtime object.
+ * @param {string} prompt - The prompt string for generating the object.
+ * @param {ModelType} [modelType=ModelTypes.TEXT_LARGE] - The type of model to use for generation.
+ * @param {string[]} [stopSequences=[]] - The stop sequences to use during generation.
+ * @param {string} [output="object"] - The expected output type ("object" or "enum").
+ * @param {string[]} [enumValues=[]] - The enum values if output is "enum".
+ * @param {Record<string, unknown>} [schema] - The schema object to validate the generated JSON against.
+ * @returns {Promise<any>} The generated object or value.
+ */
 const generateObject = async ({
 	runtime,
 	prompt,
@@ -249,6 +340,19 @@ const generateObject = async ({
 	}
 };
 
+/**
+ * Asynchronously generates an array of objects based on the provided parameters.
+ * 
+ * @param {Object} param0 - The destructured object containing the input parameters:
+ * @param {IAgentRuntime} param0.runtime - The runtime object provided by the agent.
+ * @param {string} param0.prompt - The prompt to use for generating the objects.
+ * @param {ModelType} [param0.modelType=ModelTypes.TEXT_SMALL] - The type of model to use for generating the objects.
+ * @param {ZodSchema} [param0.schema] - The schema to validate the generated objects.
+ * @param {string} [param0.schemaName] - The name of the schema.
+ * @param {string} [param0.schemaDescription] - The description of the schema.
+ * 
+ * @returns {Promise<z.infer<typeof schema>[]>} An array of objects generated based on the parameters.
+ */
 async function generateObjectArray({
 	runtime,
 	prompt,
@@ -287,6 +391,12 @@ async function generateObjectArray({
 
 /**
  * Gets settings state from world metadata
+ */
+/**
+ * Retrieves the settings for a specific world from the database.
+ * @param {IAgentRuntime} runtime - The Agent Runtime instance.
+ * @param {string} serverId - The ID of the server.
+ * @returns {Promise<WorldSettings | null>} The settings of the world, or null if not found.
  */
 export async function getWorldSettings(
 	runtime: IAgentRuntime,
