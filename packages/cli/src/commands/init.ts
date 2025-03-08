@@ -30,6 +30,14 @@ const initOptionsSchema = z.object({
 	type: z.enum(["project", "plugin"]).default("project"),
 });
 
+/**
+ * Sets up the environment by creating .env and .env.example files in the target directory,
+ * and optionally in the user's home directory if not in a project.
+ * 
+ * @param {string} targetDir - The target directory where the .env files should be created.
+ * @param {string} database - The name of the database to use in the environment files.
+ * @returns {Promise<void>}
+ */
 async function setupEnvironment(targetDir: string, database: string) {
 	const envPath = path.join(targetDir, ".env");
 	const envExamplePath = path.join(targetDir, ".env.example");
@@ -55,6 +63,11 @@ async function setupEnvironment(targetDir: string, database: string) {
 	}
 }
 
+/**
+ * Async function to select client and additional plugins to install.
+ * Retrieves list of client and plugin plugins, then prompts the user to select which ones to install.
+ * @returns An array of selected client and additional plugins.
+ */
 async function selectPlugins() {
 	const clients = await listPluginsByType("client");
 	const plugins = await listPluginsByType("plugin");
@@ -83,6 +96,13 @@ async function selectPlugins() {
 	return [...result.clients, ...result.plugins];
 }
 
+/**
+ * Installs dependencies for the specified target directory, database, and selected plugins.
+ * @param {string} targetDir - The directory where dependencies will be installed.
+ * @param {string} database - The database for which the adapter will be installed.
+ * @param {string[]} selectedPlugins - An array of selected plugins to be installed.
+ * @returns {Promise<void>} A promise that resolves once all dependencies are installed.
+ */
 async function installDependencies(
 	targetDir: string,
 	database: string,
@@ -152,6 +172,16 @@ async function installDependencies(
 	}
 }
 
+/**
+ * Initialize a new project or plugin.
+ *
+ * @param {Object} opts - Options for initialization.
+ * @param {string} opts.dir - Installation directory.
+ * @param {boolean} opts.yes - Skip confirmation.
+ * @param {string} opts.type - Type of template to use (project or plugin).
+ *
+ * @returns {Promise<void>} Promise that resolves once the initialization process is complete.
+ */
 export const init = new Command()
 	.name("init")
 	.description("Initialize a new project or plugin")
