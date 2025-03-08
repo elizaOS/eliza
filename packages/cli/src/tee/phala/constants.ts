@@ -4,6 +4,11 @@ export const CLOUD_URL = "https://cloud.phala.network";
 export const TEE_SIMULATOR = "phalanetwork/tappd-simulator:latest";
 export const COMPOSE_FILES_DIR = ".tee-cloud/compose-files";
 
+/**
+ * Docker Compose Eliza V2 Template
+ * 
+ * @constant {string} DOCKER_COMPOSE_ELIZA_V2_TEMPLATE - Docker Compose template for setting up Eliza V2 container
+ */
 export const DOCKER_COMPOSE_ELIZA_V2_TEMPLATE = `version: '3'
 services:
   eliza:
@@ -30,6 +35,11 @@ services:
 volumes:
   eliza:`;
 
+/**
+ * Docker Compose Eliza v1 Template.
+ * 
+ * @type {string}
+ */
 export const DOCKER_COMPOSE_ELIZA_V1_TEMPLATE = `version: '3'
 services:
   eliza:
