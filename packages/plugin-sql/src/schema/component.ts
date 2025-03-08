@@ -6,6 +6,11 @@ import { agentTable } from "./agent";
 import { roomTable } from "./room";
 import { worldTable } from "./worldTable";
 
+/**
+ * Definition of a table representing components in the database.
+ * 
+ * @type {Table}
+ */
 export const componentTable = pgTable("components", {
 	id: uuid("id").primaryKey().defaultRandom(),
 	entityId: uuid("entityId")
