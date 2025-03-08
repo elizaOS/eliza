@@ -186,7 +186,7 @@ export const init = new Command()
 						break;
 					}
 				}
-		
+
 				// Move up one directory by getting the parent directory path
 				// First get the directory containing the current .env file
 				const currentDir = path.dirname(currentPath);

@@ -14,9 +14,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@ai-sdk/anthropic": "^1.1.6",
 		"@elizaos/core": "1.0.0-alpha.6",

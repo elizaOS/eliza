@@ -14,9 +14,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@anush008/tokenizers": "^0.0.0",
 		"@aws-sdk/client-s3": "^3.749.0",

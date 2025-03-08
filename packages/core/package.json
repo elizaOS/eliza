@@ -16,9 +16,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"scripts": {
 		"build": "tsup --format esm --dts",
 		"watch": "tsc --watch",
