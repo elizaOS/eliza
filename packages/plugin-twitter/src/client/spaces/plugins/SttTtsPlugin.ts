@@ -9,6 +9,20 @@ import type { SpaceParticipant } from "../core/SpaceParticipant";
 import type { JanusClient } from "../core/JanusClient";
 import { Logger } from "../logger";
 
+/**
+ * Interface for configuring a plugin
+ * @typedef {Object} PluginConfig
+ * @property {string} [openAiApiKey] - API key for OpenAI used for STT & ChatGPT
+ * @property {string} [elevenLabsApiKey] - API key for ElevenLabs used for TTS
+ * @property {string} [sttLanguage] - Language code for speech-to-text (e.g., "en" for English)
+ * @property {string} [gptModel] - Model for ChatGPT (e.g., "gpt-3.5-turbo" or "gpt-4")
+ * @property {number} [silenceThreshold] - Amplitude threshold for ignoring silence
+ * @property {string} [voiceId] - Specifies which ElevenLabs voice to use
+ * @property {string} [elevenLabsModel] - Model for ElevenLabs (e.g., "eleven_monolingual_v1")
+ * @property {string} [systemPrompt] - Default prompt for the AI assistant
+ * @property {Array<{ role: "system" | "user" | "assistant"; content: string; }>} [chatContext] - Array of objects representing chat context
+ * @property {boolean} [debug] - Flag to enable debug mode
+ */
 interface PluginConfig {
 	openAiApiKey?: string; // for STT & ChatGPT
 	elevenLabsApiKey?: string; // for TTS
@@ -40,6 +54,13 @@ interface PluginConfig {
  *  - onJanusReady(...) => we have a JanusClient
  *  - onAudioData(...) => receiving PCM frames from speakers
  *  - cleanup(...) => release resources, stop timers, etc.
+ */
+/**
+ * Represents a plugin for speech-to-text and text-to-speech functionality.
+ * @implements Plugin
+ * @property {Space | SpaceParticipant} spaceOrParticipant - Reference to the space/participant using the plugin.
+ * @property {JanusClient} janus - Reference to the Janus client for real-time communication.
+ * @property {Logger} logger - Optional logger retrieved from the space or participant.
  */
 export class SttTtsPlugin implements Plugin {
 	// References to the space/participant and the Janus client
