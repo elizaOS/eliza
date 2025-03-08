@@ -1,10 +1,10 @@
-name: JSDoc Automation
+name: Autodocs Documentation Generator
 
 on:
     workflow_dispatch:
         inputs:
             jsdoc:
-                description: "Generate JSDoc comments (T/F)"
+                description: "Generate code comments (T/F)"
                 required: true
                 default: "T"
                 type: string
@@ -60,7 +60,7 @@ jobs:
               uses: oven-sh/setup-bun@v2
 
             - name: Update lockfile
-              working-directory: scripts/jsdoc-automation
+              working-directory: packages/autodocs
               run: |
                   echo "Updating lockfile..."
                   bun install
@@ -74,15 +74,15 @@ jobs:
               run: bun install
 
             - name: Install package dependencies
-              working-directory: scripts/jsdoc-automation
+              working-directory: packages/autodocs
               run: bun install
 
             - name: Build TypeScript
-              working-directory: scripts/jsdoc-automation
+              working-directory: packages/autodocs
               run: bun run build
 
             - name: Run documentation generator
-              working-directory: scripts/jsdoc-automation
+              working-directory: packages/autodocs
               run: bun start
               env:
                   INPUT_ROOT_DIRECTORY: ${{ inputs.root_directory }}
