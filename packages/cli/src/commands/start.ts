@@ -138,7 +138,8 @@ const startAgents = async () => {
 				line.startsWith("POSTGRES_URL="),
 			);
 			if (postgresUrlLine) {
-				postgresUrl = postgresUrlLine.split("=")[1].trim();
+				// Get everything after the first = sign without trimming
+				postgresUrl = postgresUrlLine.substring(postgresUrlLine.indexOf('=') + 1);
 				break;
 			}
 		}
