@@ -1,6 +1,13 @@
 import { addHeader } from "../prompts";
 import type { IAgentRuntime, Memory, Provider, State } from "../types";
 import { ChannelType } from "../types";
+/**
+ * Represents an anxiety provider that provides examples and guidance for an AI roleplaying as a character.
+ * The anxiety provider offers suggestions on how to reduce verbosity and eagerness in responses based on the channel type.
+ * Randomly selects and returns three anxiety examples for the AI to follow.
+ *
+ * @type {Provider}
+ */
 export const anxietyProvider: Provider = {
 	name: "ANXIETY",
 	get: async (_runtime: IAgentRuntime, message: Memory) => {
