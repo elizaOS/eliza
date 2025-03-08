@@ -16,12 +16,27 @@ import {
 	type Tweet,
 } from "./client/index.ts";
 
+/**
+ * Extracts the answer from the given text.
+ * 
+ * @param {string} text - The text containing the answer
+ * @returns {string} The extracted answer
+ */
 export function extractAnswer(text: string): string {
 	const startIndex = text.indexOf("Answer: ") + 8;
 	const endIndex = text.indexOf("<|endoftext|>", 11);
 	return text.slice(startIndex, endIndex);
 }
 
+/**
+ * Represents a Twitter Profile.
+ * @typedef {Object} TwitterProfile
+ * @property {string} id - The unique identifier of the profile.
+ * @property {string} username - The username of the profile.
+ * @property {string} screenName - The screen name of the profile.
+ * @property {string} bio - The biography of the profile.
+ * @property {string[]} nicknames - An array of nicknames associated with the profile.
+ */
 type TwitterProfile = {
 	id: string;
 	username: string;
@@ -30,10 +45,21 @@ type TwitterProfile = {
 	nicknames: string[];
 };
 
+/**
+ * Class representing a request queue for handling asynchronous requests in a controlled manner.
+ */
+
 class RequestQueue {
 	private queue: (() => Promise<any>)[] = [];
 	private processing = false;
 
+/**
+ * Asynchronously adds a request to the queue, then processes the queue.
+ * 
+ * @template T
+ * @param {() => Promise<T>} request - The request to be added to the queue
+ * @returns {Promise<T>} - A promise that resolves with the result of the request or rejects with an error
+ */
 	async add<T>(request: () => Promise<T>): Promise<T> {
 		return new Promise((resolve, reject) => {
 			this.queue.push(async () => {
@@ -48,6 +74,11 @@ class RequestQueue {
 		});
 	}
 
+/**
+ * Asynchronously processes the queue of requests.
+ * 
+ * @returns A promise that resolves when the queue has been fully processed.
+ */
 	private async processQueue(): Promise<void> {
 		if (this.processing || this.queue.length === 0) {
 			return;
@@ -69,17 +100,31 @@ class RequestQueue {
 		this.processing = false;
 	}
 
+/**
+ * Implements an exponential backoff strategy for retrying a task.
+ * @param {number} retryCount - The number of retries attempted so far.
+ * @returns {Promise<void>} - A promise that resolves after a delay based on the retry count.
+ */
 	private async exponentialBackoff(retryCount: number): Promise<void> {
 		const delay = 2 ** retryCount * 1000;
 		await new Promise((resolve) => setTimeout(resolve, delay));
 	}
 
+/**
+ * Asynchronous method that creates a random delay between 1500ms and 3500ms.
+ * 
+ * @returns A Promise that resolves after the random delay has passed.
+ */
 	private async randomDelay(): Promise<void> {
 		const delay = Math.floor(Math.random() * 2000) + 1500;
 		await new Promise((resolve) => setTimeout(resolve, delay));
 	}
 }
 
+/**
+ * Class representing a base client for interacting with Twitter.
+ * @extends EventEmitter
+ */
 export class ClientBase extends EventEmitter {
 	static _twitterClients: { [accountIdentifier: string]: Client } = {};
 	twitterClient: Client;
@@ -91,6 +136,12 @@ export class ClientBase extends EventEmitter {
 
 	profile: TwitterProfile | null;
 
+/**
+ * Caches a tweet in the database.
+ * 
+ * @param {Tweet} tweet - The tweet to cache.
+ * @returns {Promise<void>} A promise that resolves once the tweet is cached.
+ */
 	async cacheTweet(tweet: Tweet): Promise<void> {
 		if (!tweet) {
 			console.warn("Tweet is undefined, skipping cache");
@@ -102,6 +153,11 @@ export class ClientBase extends EventEmitter {
 			.setCache<Tweet>(`twitter/tweets/${tweet.id}`, tweet);
 	}
 
+/**
+ * Retrieves a cached tweet by its ID.
+ * @param {string} tweetId - The ID of the tweet to retrieve from the cache.
+ * @returns {Promise<Tweet | undefined>} A Promise that resolves to the cached tweet, or undefined if the tweet is not found in the cache.
+ */
 	async getCachedTweet(tweetId: string): Promise<Tweet | undefined> {
 		const cached = await this.runtime
 			.getDatabaseAdapter()
@@ -114,6 +170,13 @@ export class ClientBase extends EventEmitter {
 		return cached;
 	}
 
+/**
+ * Asynchronously retrieves a tweet with the specified ID.
+ * If the tweet is found in the cache, it is returned from the cache.
+ * If not, a request is made to the Twitter API to get the tweet, which is then cached and returned.
+ * @param {string} tweetId - The ID of the tweet to retrieve.
+ * @returns {Promise<Tweet>} A Promise that resolves to the retrieved tweet.
+ */
 	async getTweet(tweetId: string): Promise<Tweet> {
 		const cachedTweet = await this.getCachedTweet(tweetId);
 
@@ -131,6 +194,11 @@ export class ClientBase extends EventEmitter {
 
 	callback: (self: ClientBase) => any = null;
 
+/**
+ * This method is called when the application is ready.
+ * It throws an error indicating that it is not implemented in the base class
+ * and should be implemented in the subclass.
+ */
 	onReady() {
 		throw new Error("Not implemented in base class, please call from subclass");
 	}
@@ -138,6 +206,14 @@ export class ClientBase extends EventEmitter {
 	/**
 	 * Parse the raw tweet data into a standardized Tweet object.
 	 */
+/**
+ * Parses a raw tweet object into a structured Tweet object.
+ * 
+ * @param {any} raw - The raw tweet object to parse.
+ * @param {number} [depth=0] - The current depth of parsing nested quotes/retweets.
+ * @param {number} [maxDepth=3] - The maximum depth allowed for parsing nested quotes/retweets.
+ * @returns {Tweet} The parsed Tweet object.
+ */
 	parseTweet(raw: any, depth = 0, maxDepth = 3): Tweet {
 		// If we've reached maxDepth, don't parse nested quotes/retweets further
 		const canRecurse = depth < maxDepth;
