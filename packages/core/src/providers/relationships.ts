@@ -8,6 +8,12 @@ import type {
 	Entity,
 } from "../types.ts";
 
+/**
+ * Formats the provided relationships based on interaction strength and returns a string.
+ * @param {IAgentRuntime} runtime - The runtime object to interact with the agent.
+ * @param {Relationship[]} relationships - The relationships to format.
+ * @returns {string} The formatted relationships as a string.
+ */
 async function formatRelationships(
 	runtime: IAgentRuntime,
 	relationships: Relationship[],
@@ -76,6 +82,17 @@ async function formatRelationships(
 	return formattedRelationships.join("\n");
 }
 
+/**
+ * Provider for fetching relationships data.
+ *
+ * @type {Provider}
+ * @property {string} name - The name of the provider ("RELATIONSHIPS").
+ * @property {string} description - Description of the provider.
+ * @property {Function} get - Asynchronous function to fetch relationships data.
+ * @param {IAgentRuntime} runtime - The agent runtime object.
+ * @param {Memory} message - The message object containing entity ID.
+ * @returns {Promise<Object>} Object containing relationships data or error message.
+ */
 const relationshipsProvider: Provider = {
 	name: "RELATIONSHIPS",
 	description:
