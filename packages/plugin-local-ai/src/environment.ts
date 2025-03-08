@@ -3,6 +3,13 @@ import { z } from "zod";
 import { logger } from "@elizaos/core";
 
 // Configuration schema with text model source flags
+/**
+ * Configuration schema for different AI models and their settings.
+ * This schema includes:
+ * - Flags for enabling/disabling various AI models
+ * - Ollama configurations including server URL, models, and embedding models
+ * - StudioLM configurations including server URL, models, and embedding models
+ */
 export const configSchema = z.object({
 	USE_LOCAL_AI: z.boolean().default(true),
 	USE_STUDIOLM_TEXT_MODELS: z.boolean().default(false),
@@ -26,8 +33,17 @@ export const configSchema = z.object({
 	STUDIOLM_EMBEDDING_MODEL: z.union([z.boolean(), z.string()]).default(false),
 });
 
+/**
+ * Export type representing the inferred type of the 'configSchema'.
+ */
 export type Config = z.infer<typeof configSchema>;
 
+/**
+ * Validates the model configuration object.
+ * 
+ * @param {Record<string, boolean>} config - The model configuration object containing boolean values.
+ * @returns {void}
+ */
 function validateModelConfig(config: Record<string, boolean>): void {
 	// Log raw values before validation
 	logger.info("Validating model configuration with values:", {
@@ -52,6 +68,12 @@ function validateModelConfig(config: Record<string, boolean>): void {
 	logger.info("Configuration is valid");
 }
 
+/**
+ * Validates and parses the configuration provided as a record of string key-value pairs.
+ * This function performs boolean conversion on specific configuration values and sets default values for missing keys.
+ * @param {Record<string, string>} config - The configuration to validate and parse.
+ * @returns {Promise<Config>} The validated and parsed configuration object.
+ */
 export async function validateConfig(
 	config: Record<string, string>,
 ): Promise<Config> {
