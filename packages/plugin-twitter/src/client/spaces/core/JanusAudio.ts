@@ -9,6 +9,9 @@ import type { Logger } from "../logger";
 /**
  * Configuration options for the JanusAudioSource.
  */
+/**
+ * Optional logger instance for debug/info/warn logs.
+ */
 interface AudioSourceOptions {
 	/**
 	 * Optional logger instance for debug/info/warn logs.
