@@ -11,6 +11,11 @@ import {
 	type State,
 } from "../types";
 
+/**
+ * Template string for deciding if the agent should mute a room and stop responding unless explicitly mentioned.
+ *
+ * @type {string}
+ */
 export const shouldMuteTemplate = `# Task: Decide if {{agentName}} should mute this room and stop responding unless explicitly mentioned.
 
 {{recentMessages}}
@@ -25,6 +30,20 @@ Respond with YES if:
 Otherwise, respond with NO.
 ${booleanFooter}`;
 
+/**
+ * Action for muting a room, ignoring all messages unless explicitly mentioned.
+ * Only do this if explicitly asked to, or if you're annoying people.
+ * 
+ * @name MUTE_ROOM
+ * @type {Action}
+ * 
+ * @property {string} name - The name of the action
+ * @property {string[]} similes - Similar actions related to muting a room
+ * @property {string} description - Description of the action
+ * @property {Function} validate - Validation function to check if the room is not already muted
+ * @property {Function} handler - Handler function to handle muting the room
+ * @property {ActionExample[][]} examples - Examples of using the action
+ */
 export const muteRoomAction: Action = {
 	name: "MUTE_ROOM",
 	similes: [
