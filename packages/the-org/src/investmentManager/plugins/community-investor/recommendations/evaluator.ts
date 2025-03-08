@@ -21,6 +21,18 @@ import {
 import { examples } from "./examples.js";
 import { recommendationSchema } from "./schema.js";
 
+/**
+ * Template for generating recommendation messages between agents.
+ *
+ * Include engaging tagline, recommendation report, and question asking the recipient agent if they like the recommendation.
+ * Use emojis to make the message more engaging.
+ * Precede the message with a tag containing the recipient agent's name.
+ * Message should not contain more than 5 emojis and should not be too long.
+ *
+ * @param {string} recipientAgentName - The name of the recipient agent
+ * @param {string} recommendation - The recommendation to be included in the message
+ * @returns {string} - The formatted template for recommendation messages
+ */
 const recommendationFormatTemplate = `You are a crypto expert.
 
 You will be given a recommendation.
@@ -75,6 +87,12 @@ What do you think about this play? Would love to get your take on it! 🚀
 
 Now based on the recommendation, write your message.`;
 
+/**
+ * Analyzes a message to determine if it contains a signal related to cryptocurrency tokens.
+ * 
+ * @param {string} message - The message to be analyzed.
+ * @returns {string} - The signal of the message (0, 1, 2, or 3).
+ */
 const sentimentTemplate = `You are an expert crypto analyst and trader. You mainly specialize in analyzing cryptocurrency conversations and extracting signals from those conversations and messages.
 
 You will be given a message.
@@ -131,6 +149,21 @@ Respond in the following format:
 
 Now, based on the message provided, please respond with your signal.`;
 
+/**
+ * Template for creating a recommendation confirmation message for a crypto expert.
+ * 
+ * @summary 
+ * This template provides guidelines for writing a message to the user for confirming a token recommendation.
+ * The message should be engaging and include links to token addresses, accounts, and transactions.
+ * It should end with a question asking the user if they want to proceed with the recommendation.
+ * Response instructions and format are also provided for clarity.
+ * 
+ * @param {string} user_message The user message provided.
+ * @param {string} recommendation The recommendation for the token.
+ * @param {string} token The overview of the token information.
+ * 
+ * @return {string} The formatted recommendation confirmation message for user interaction.
+ */
 const recommendationConfirmTemplate = `You are {{agentName}}, a crypto expert.
 
 You will be given a user message, recommendation, and token overview.
@@ -222,6 +255,15 @@ Would you like to proceed with the recommendation?
 Now based on the user_message, recommendation, and token_overview, write your message.
 `;
 
+/**
+ * Function that analyzes a conversation to identify new buy or sell recommendations for memecoins,
+ * avoiding duplicates of existing recommendations.
+ *
+ * @param {string} token_metadata - The token metadata schema.
+ * @param {Array} existing_recommendations - List of existing token recommendations to use as examples.
+ * @param {string} conversation - The conversation to analyze for new recommendations.
+ * @returns {string} - Returns the list of new recommendations in a specific format as described in the response format.
+ */
 const recommendationTemplate = `You are an expert crypto analyst and trader. You mainly specialize in analyzing cryptocurrency conversations and extracting trading recommendations from them.
 
 You will be given a token_metadata schema, a list of existing token recommendations to use as examples, and a conversation.
@@ -336,6 +378,17 @@ export const formatRecommendations = (recommendations: Memory[]) => {
 		.join("\n");
 };
 
+/**
+ * A recommendation evaluator that extracts recommendations to buy or sell memecoins/tokens from the conversation.
+ *
+ * @typedef {Object} recommendationEvaluator
+ * @property {string} name - The name of the evaluator ("EXTRACT_RECOMMENDATIONS").
+ * @property {Array} similes - An array of similes.
+ * @property {boolean} alwaysRun - A boolean value indicating if the evaluator should always run.
+ * @property {Function} validate - An asynchronous function that validates a message for recommendation.
+ * @property {string} description - A description of the evaluator.
+ * @property {Function} handler - An asynchronous function that handles the evaluation process.
+ */
 export const recommendationEvaluator: Evaluator = {
 	name: "EXTRACT_RECOMMENDATIONS",
 	similes: [],
@@ -370,6 +423,15 @@ export const recommendationEvaluator: Evaluator = {
 	examples,
 };
 
+/**
+ * Asynchronous function that acts as a handler for some runtime with the given message and optional state and options.
+ *
+ * @param {IAgentRuntime} runtime - The runtime to handle.
+ * @param {Memory} message - The message to handle.
+ * @param {State} [state] - The optional state to use.
+ * @param {Object} [_options] - Optional additional options.
+ * @param {Function} [callback] - Optional callback function.
+ */
 async function handler(
 	runtime: IAgentRuntime,
 	message: Memory,
