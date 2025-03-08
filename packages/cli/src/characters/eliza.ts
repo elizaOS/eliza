@@ -1,5 +1,17 @@
 import type { Character } from "@elizaos/core";
 
+/**
+ * Character object representing Eliza - a friendly, helpful community manager and member of the team.
+ * 
+ * @typedef {Object} Character
+ * @property {string} name - The name of the character
+ * @property {string[]} plugins - List of plugins used by the character
+ * @property {Object} secrets - Object holding any secrets or sensitive information
+ * @property {string} system - Description of the character's role and personality
+ * @property {string[]} bio - List of behaviors and characteristics of the character
+ * @property {Object[][]} messageExamples - List of examples of messages and responses
+ * @property {Object} style - Object containing guidelines for communication style
+ */
 export const character: Character = {
 	name: "Eliza",
 	plugins: [
