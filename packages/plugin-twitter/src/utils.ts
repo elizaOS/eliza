@@ -35,6 +35,13 @@ export const isValidTweet = (tweet: Tweet): boolean => {
 	);
 };
 
+/**
+ * Builds a conversation thread starting from a given tweet.
+ * @param {Tweet} tweet - The tweet to start building the thread from.
+ * @param {ClientBase} client - The client base object.
+ * @param {number} [maxReplies=10] - The maximum number of replies to include in the thread.
+ * @returns {Promise<Tweet[]>} The conversation thread as an array of tweets.
+ */
 export async function buildConversationThread(
 	tweet: Tweet,
 	client: ClientBase,
@@ -160,6 +167,12 @@ export async function buildConversationThread(
 	return thread;
 }
 
+/**
+ * Fetches media data from a list of attachments, supporting both HTTP URLs and local file paths.
+ * 
+ * @param attachments Array of Media objects containing URLs or file paths to fetch media from
+ * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
+ */
 export async function fetchMediaData(
 	attachments: Media[],
 ): Promise<MediaData[]> {
@@ -190,6 +203,16 @@ export async function fetchMediaData(
 	);
 }
 
+/**
+ * Sends a tweet on Twitter using the given client.
+ * 
+ * @param {ClientBase} client The client used to send the tweet.
+ * @param {Content} content The content of the tweet.
+ * @param {UUID} roomId The ID of the room where the tweet will be sent.
+ * @param {string} twitterUsername The Twitter username of the sender.
+ * @param {string} inReplyTo The ID of the tweet to which the new tweet will reply.
+ * @returns {Promise<Memory[]>} An array of memories representing the sent tweets.
+ */
 export async function sendTweet(
 	client: ClientBase,
 	content: Content,
@@ -283,6 +306,12 @@ export async function sendTweet(
 	return memories;
 }
 
+/**
+ * Splits the given content into individual tweets based on the maximum length allowed for a tweet.
+ * @param {string} content - The content to split into tweets.
+ * @param {number} maxLength - The maximum length allowed for a single tweet.
+ * @returns {string[]} An array of strings representing individual tweets.
+ */
 function splitTweetContent(content: string, maxLength: number): string[] {
 	const paragraphs = content.split("\n\n").map((p) => p.trim());
 	const tweets: string[] = [];
@@ -319,6 +348,12 @@ function splitTweetContent(content: string, maxLength: number): string[] {
 	return tweets;
 }
 
+/**
+ * Extracts URLs from a given paragraph and replaces them with placeholders.
+ * 
+ * @param {string} paragraph - The paragraph containing URLs that need to be replaced
+ * @returns {Object} An object containing the updated text with placeholders and a map of placeholders to original URLs
+ */
 function extractUrls(paragraph: string): {
 	textWithPlaceholders: string;
 	placeholderMap: Map<string, string>;
@@ -340,6 +375,14 @@ function extractUrls(paragraph: string): {
 	return { textWithPlaceholders, placeholderMap };
 }
 
+/**
+ * Splits a given text into chunks based on the specified maximum length while preserving sentence boundaries.
+ *
+ * @param {string} text - The text to be split into chunks
+ * @param {number} maxLength - The maximum length each chunk should not exceed
+ *
+ * @returns {string[]} An array of chunks where each chunk is within the specified maximum length
+ */
 function splitSentencesAndWords(text: string, maxLength: number): string[] {
 	// Split by periods, question marks and exclamation marks
 	// Note that URLs in text have been replaced with `<<URL_xxx>>` and won't be split by dots
@@ -393,6 +436,12 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
 	return chunks;
 }
 
+/**
+ * Deduplicates mentions at the beginning of a paragraph.
+ * 
+ * @param {string} paragraph - The input paragraph containing mentions.
+ * @returns {string} - The paragraph with deduplicated mentions.
+ */
 function deduplicateMentions(paragraph: string) {
 	// Regex to match mentions at the beginning of the string
 	const mentionRegex = /^@(\w+)(?:\s+@(\w+))*(\s+|$)/;
@@ -420,6 +469,13 @@ function deduplicateMentions(paragraph: string) {
 	return `${uniqueMentionsString} ${paragraph.slice(endOfMentions)}`;
 }
 
+/**
+ * Restores the original URLs in the chunks by replacing placeholder URLs.
+ *
+ * @param {string[]} chunks - Array of strings representing chunks of text containing placeholder URLs.
+ * @param {Map<string, string>} placeholderMap - Map with placeholder URLs as keys and original URLs as values.
+ * @returns {string[]} - Array of strings with original URLs restored in each chunk.
+ */
 function restoreUrls(
 	chunks: string[],
 	placeholderMap: Map<string, string>,
@@ -433,6 +489,13 @@ function restoreUrls(
 	});
 }
 
+/**
+ * Splits a paragraph into chunks of text with a maximum length, while preserving URLs.
+ * 
+ * @param {string} paragraph - The paragraph to split.
+ * @param {number} maxLength - The maximum length of each chunk.
+ * @returns {string[]} An array of strings representing the splitted chunks of text.
+ */
 function splitParagraph(paragraph: string, maxLength: number): string[] {
 	// 1) Extract URLs and replace with placeholders
 	const { textWithPlaceholders, placeholderMap } = extractUrls(paragraph);
@@ -449,6 +512,12 @@ function splitParagraph(paragraph: string, maxLength: number): string[] {
 	return restoredChunks;
 }
 
+/**
+ * Parses the action response from the given text.
+ *
+ * @param {string} text - The text to parse actions from.
+ * @returns {{ actions: ActionResponse }} The parsed actions with boolean values indicating if each action is present in the text.
+ */
 export const parseActionResponseFromText = (
 	text: string,
 ): { actions: ActionResponse } => {
@@ -484,6 +553,15 @@ export const parseActionResponseFromText = (
 	return { actions };
 };
 
+/**
+ * Generates tweet actions based on the given prompt and model type using the provided runtime.
+ * @param {{
+ *     runtime: IAgentRuntime;
+ *     prompt: string;
+ *     modelType: ModelType;
+ * }} params - Parameters including the runtime, prompt, and model type.
+ * @returns {Promise<ActionResponse | null>} The generated actions or null if no valid response.
+ */
 export async function generateTweetActions({
 	runtime,
 	prompt,
@@ -528,6 +606,13 @@ export async function generateTweetActions({
 
 /**
  * Generate short filler text via GPT
+ */
+/**
+ * Generates a short filler message for a Twitter Space based on the specified filler type.
+ * 
+ * @param {IAgentRuntime} runtime - The agent runtime instance to use for generating the filler.
+ * @param {string} fillerType - The type of filler message to generate.
+ * @returns {Promise<string>} The generated filler message as a string.
  */
 export async function generateFiller(
 	runtime: IAgentRuntime,
