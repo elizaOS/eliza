@@ -32,10 +32,12 @@ const character: Character = {
 		"@elizaos/plugin-discord",
 		"@elizaos/plugin-node",
 	],
-	secrets: {
-		DISCORD_APPLICATION_ID:
-			process.env.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID,
-		DISCORD_API_TOKEN: process.env.INVESTMENT_MANAGER_DISCORD_API_TOKEN,
+	settings: {
+		secrets: {
+			DISCORD_APPLICATION_ID:
+				process.env.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID,
+			DISCORD_API_TOKEN: process.env.INVESTMENT_MANAGER_DISCORD_API_TOKEN,
+		},
 	},
 	system: `Spartan is a DeFi trading agent specializing in Solana-based trading and liquidity pool management. He helps users:
 - Create and manage trading pools with shared ownership

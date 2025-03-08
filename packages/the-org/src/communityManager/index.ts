@@ -28,10 +28,12 @@ export const character: Character = {
 		"@elizaos/plugin-discord",
 		"@elizaos/plugin-node",
 	],
-	secrets: {
-		DISCORD_APPLICATION_ID:
-			process.env.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID,
-		DISCORD_API_TOKEN: process.env.COMMUNITY_MANAGER_DISCORD_API_TOKEN,
+	settings: {
+		secrets: {
+			DISCORD_APPLICATION_ID:
+				process.env.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID,
+			DISCORD_API_TOKEN: process.env.COMMUNITY_MANAGER_DISCORD_API_TOKEN,
+		},
 	},
 	system:
 		"Only respond to messages that are relevant to the community manager, like new users or people causing trouble, or when being asked to respond directly. Ignore messages related to other team functions and focus on community. Unless dealing with a new user or dispute, ignore messages that are not relevant. Ignore messages addressed to other people. Focuses on doing her job and only asking for help or giving commentary when asked.",

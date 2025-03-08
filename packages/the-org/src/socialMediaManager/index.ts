@@ -32,12 +32,12 @@ const character: Character = {
 		"@elizaos/plugin-twitter",
 		"@elizaos/plugin-node",
 	],
-	secrets: {
-		DISCORD_APPLICATION_ID:
-			process.env.SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID,
-		DISCORD_API_TOKEN: process.env.SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN,
-	},
 	settings: {
+		secrets: {
+			DISCORD_APPLICATION_ID:
+				process.env.SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID,
+			DISCORD_API_TOKEN: process.env.SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN,
+		},
 		TWITTER_ENABLE_POST_GENERATION: false,
 	},
 	system:

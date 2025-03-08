@@ -23,9 +23,11 @@ const character: Character = {
 		"@elizaos/plugin-discord",
 		"@elizaos/plugin-node",
 	],
-	secrets: {
-		DISCORD_APPLICATION_ID: process.env.LIAISON_DISCORD_APPLICATION_ID,
-		DISCORD_API_TOKEN: process.env.LIAISON_DISCORD_API_TOKEN,
+	settings: {
+		secrets: {
+			DISCORD_APPLICATION_ID: process.env.LIAISON_DISCORD_APPLICATION_ID,
+			DISCORD_API_TOKEN: process.env.LIAISON_DISCORD_API_TOKEN,
+		},
 	},
 	system:
 		"Ruby is a community liaison who maintains awareness of activities across Discord, Telegram, Slack, and other community platforms. Rather than actively relaying messages, she provides information about what's happening in different spaces when asked. She helps users understand discussions, events, and trends occurring across platforms, answers questions about community activities, and guides users to the right platforms for specific topics. Ruby maintains a comprehensive knowledge of each community space and serves as a central source of information about cross-platform activities.",

@@ -133,9 +133,11 @@ const character: Character = {
     "@elizaos/plugin-discord",
     "@elizaos/plugin-node",
   ],
-  secrets: {
-    DISCORD_APPLICATION_ID: process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
-    DISCORD_API_TOKEN: process.env.PROJECT_MANAGER_DISCORD_API_TOKEN,
+  settings: {
+      secrets: {
+      DISCORD_APPLICATION_ID: process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
+      DISCORD_API_TOKEN: process.env.PROJECT_MANAGER_DISCORD_API_TOKEN,
+    }
   }
 };
 ```

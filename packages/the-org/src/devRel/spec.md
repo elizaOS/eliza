@@ -66,10 +66,12 @@ const character: Character = {
     "@elizaos/plugin-rag",
     "@elizaos/plugin-node",
   ],
-  secrets: {
-    DISCORD_APPLICATION_ID: process.env.DEV_SUPPORT_DISCORD_APPLICATION_ID,
-    DISCORD_API_TOKEN: process.env.DEV_SUPPORT_DISCORD_API_TOKEN,
-    TELEGRAM_BOT_TOKEN: process.env.DEV_SUPPORT_TELEGRAM_TOKEN,
+  settings: {˝
+    secrets: {
+      DISCORD_APPLICATION_ID: process.env.DEV_SUPPORT_DISCORD_APPLICATION_ID,
+      DISCORD_API_TOKEN: process.env.DEV_SUPPORT_DISCORD_API_TOKEN,
+      TELEGRAM_BOT_TOKEN: process.env.DEV_SUPPORT_TELEGRAM_TOKEN,
+    }
   }
 };
 ```
