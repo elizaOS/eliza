@@ -72,7 +72,7 @@ jobs:
 
             - name: Run documentation generator
               working-directory: packages/autodocs
-              run: bun start
+              run: bun run autodoc
               env:
                   INPUT_ROOT_DIRECTORY: ${{ inputs.root_directory }}
                   INPUT_PULL_NUMBER: ${{ inputs.pull_number }}
