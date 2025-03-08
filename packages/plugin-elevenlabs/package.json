@@ -18,7 +18,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.6",
 		"tsup": "8.4.0"
 	},
 	"scripts": {
@@ -70,5 +70,5 @@
 			}
 		}
 	},
-	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
+	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
 }

@@ -1,0 +1,35 @@
+{
+  "name": "create-eliza",
+  "version": "0.2.2",
+  "description": "Initialize an Eliza project",
+  "publishConfig": {
+		"access": "public"
+	},
+  "bin": {
+    "create-eliza": "index.js"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "elizaOS",
+    "url": "https://twitter.com/eliza_OS"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/create-eliza"
+  },
+  "files": [
+    "index.js",
+    "cli"
+  ],
+  "keywords": [
+    "eliza",
+    "elizaos",
+    "ai",
+    "agent",
+    "create"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

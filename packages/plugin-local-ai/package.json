@@ -25,7 +25,7 @@
 		"@echogarden/espeak-ng-emscripten": "0.3.3",
 		"@echogarden/kissfft-wasm": "0.2.0",
 		"@echogarden/speex-resampler-wasm": "0.2.1",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.6",
 		"@huggingface/hub": "^1.0.1",
 		"@huggingface/inference": "^3.3.4",
 		"@huggingface/transformers": "^3.3.3",
@@ -98,5 +98,5 @@
 		"pluginType": "elizaos:plugin:1.0.0",
 		"pluginParameters": {}
 	},
-	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
+	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
 }

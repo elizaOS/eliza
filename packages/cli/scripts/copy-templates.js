@@ -32,7 +32,7 @@ async function copyDir(src, dest, exclude = []) {
 			entry.name === "node_modules" ||
 			entry.name === "dist" ||
 			entry.name === ".git" ||
-			entry.name === "content_cache" ||
+			entry.name === "cache" ||
 			entry.name === "data" ||
 			entry.name === "generatedImages" ||
 			entry.name === ".turbo"
