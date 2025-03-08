@@ -23,6 +23,14 @@ import path from "node:path";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
 
+/**
+ * Interface representing a custom request object that extends the express.Request interface.
+ * @interface CustomRequest
+ * @extends express.Request
+ * @property {Express.Multer.File} [file] - Optional property representing a file uploaded with the request
+ * @property {Object} params - Object representing parameters included in the request
+ * @property {string} params.agentId - The unique identifier for the agent associated with the request
+ */
 interface CustomRequest extends express.Request {
 	file?: Express.Multer.File;
 	params: {
@@ -30,6 +38,13 @@ interface CustomRequest extends express.Request {
 	};
 }
 
+/**
+ * Creates an express Router for handling agent-related routes.
+ * 
+ * @param agents - Map of UUID to agent runtime instances.
+ * @param server - Optional AgentServer instance.
+ * @returns An express Router for agent routes.
+ */
 export function agentRouter(
 	agents: Map<UUID, IAgentRuntime>,
 	server?: AgentServer,
