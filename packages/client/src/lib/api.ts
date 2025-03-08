@@ -3,6 +3,15 @@ import { WorldManager } from "./world-manager";
 
 const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 
+/**
+ * A function that handles fetching data from a specified URL with various options.
+ * 
+ * @param url - The URL to fetch data from.
+ * @param method - The HTTP method to use for the request. Defaults to "GET" if not provided.
+ * @param body - The data to be sent in the request body. Can be either an object or FormData.
+ * @param headers - The headers to include in the request.
+ * @returns A Promise that resolves to the response data based on the Content-Type of the response.
+ */
 const fetcher = async ({
 	url,
 	method,
@@ -71,6 +80,13 @@ const fetcher = async ({
 };
 
 // Add these interfaces near the top with other types
+/**
+ * Interface representing a log entry.
+ * @property {number} level - The log level.
+ * @property {number} time - The timestamp of the log entry.
+ * @property {string} msg - The log message.
+ * @property {string | number | boolean | null | undefined} [key] - Additional properties for the log entry.
+ */
 interface LogEntry {
 	level: number;
 	time: number;
@@ -78,6 +94,15 @@ interface LogEntry {
 	[key: string]: string | number | boolean | null | undefined;
 }
 
+/**
+ * Interface representing a log response.
+ * @typedef {Object} LogResponse
+ * @property {LogEntry[]} logs - Array of log entries.
+ * @property {number} count - Number of log entries in the response.
+ * @property {number} total - Total number of log entries available.
+ * @property {string} level - Log level of the response.
+ * @property {string[]} levels - Array of available log levels.
+ */
 interface LogResponse {
 	logs: LogEntry[];
 	count: number;
@@ -86,6 +111,32 @@ interface LogResponse {
 	levels: string[];
 }
 
+/**
+ * Library for interacting with the API to perform various actions related to agents, messages, rooms, logs, etc.
+ * @type {{
+ * 	apiClient: {
+ * 		sendMessage: (agentId: string, message: string, selectedFile?: File | null, roomId?: UUID) => Promise<any>;
+ * 		getAgents: () => Promise<any>;
+ * 		getAgent: (agentId: string) => Promise<{ data: Agent }>;
+ * 		tts: (agentId: string, text: string) => Promise<any>;
+ * 		whisper: (agentId: string, audioBlob: Blob) => Promise<any>;
+ * 		sendAudioMessage: (agentId: string, audioBlob: Blob, options?: { roomId?: string; entityId?: string; userName?: string; name?: string; }) => Promise<any>;
+ * 		speechConversation: (agentId: string, text: string, options?: { roomId?: string; entityId?: string; userName?: string; name?: string; }) => Promise<any>;
+ * 		deleteAgent: (agentId: string) => Promise<{ success: boolean }>;
+ * 		updateAgent: (agentId: string, agent: Agent) => Promise<any>;
+ * 		createAgent: (params: { characterPath?: string; characterJson?: Character; }) => Promise<any>;
+ * 		startAgent: (agentId: UUID) => Promise<any>;
+ * 		stopAgent: (agentId: string) => Promise<any>;
+ * 		getMemories: (agentId: string, roomId: string, options?: { limit?: number; before?: number; }) => Promise<any>;
+ * 		getRooms: (agentId: string) => Promise<any>;
+ * 		createRoom: (agentId: string, roomName: string) => Promise<any>;
+ * 		getRoom: (agentId: string, roomId: string) => Promise<any>;
+ * 		updateRoom: (agentId: string, roomId: string, updates: { name?: string; worldId?: string; }) => Promise<any>;
+ * 		deleteRoom: (agentId: string, roomId: string) => Promise<any>;
+ * 		getLogs: (level: string) => Promise<LogResponse>;
+ * 	}
+ * }}
+ */
 export const apiClient = {
 	sendMessage: (
 		agentId: string,
