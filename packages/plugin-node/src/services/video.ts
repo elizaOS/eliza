@@ -15,6 +15,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import ytdl, { create } from "youtube-dl-exec";
 
+/**
+ * Function to get the Youtube DL executable path.
+ * It first checks if /usr/local/bin/yt-dlp exists, 
+ * if it does, it returns the path to that executable.
+ * If not, it checks if /usr/bin/yt-dlp exists,
+ * and returns the path if found.
+ * If neither paths exist, it returns the default ytdl executable.
+ * @returns {string} The path to the Youtube DL executable.
+ */
 function getYoutubeDL() {
 	// first check if /usr/local/bin/yt-dlp exists
 	if (fs.existsSync("/usr/local/bin/yt-dlp")) {
@@ -30,6 +39,12 @@ function getYoutubeDL() {
 	return ytdl;
 }
 
+/**
+ * VideoService class that extends Service and implements IVideoService interface.
+ * Defines the service type as VIDEO and sets capability description for processing videos.
+ * Manages caching of video content with cacheKey and dataDir properties.
+ * Maintains a queue of video processing tasks and tracks processing status.
+ */
 export class VideoService extends Service implements IVideoService {
 	static serviceType: ServiceType = ServiceTypes.VIDEO;
 	capabilityDescription = "The agent is able to download and process videos";
@@ -39,17 +54,34 @@ export class VideoService extends Service implements IVideoService {
 	private queue: string[] = [];
 	private processing = false;
 
+/**
+ * Constructor for creating a new instance of the object.
+ * 
+ * @param {IAgentRuntime} runtime - The runtime object to be used by the instance
+ */
 	constructor(runtime: IAgentRuntime) {
 		super();
 		this.runtime = runtime;
 		this.ensureDataDirectoryExists();
 	}
 
+/**
+ * Starts the VideoService by initializing it with the given IAgentRuntime instance.
+ * 
+ * @param {IAgentRuntime} runtime - The IAgentRuntime instance to initialize the service with.
+ * @returns {Promise<VideoService>} A promise that resolves to the initialized VideoService instance.
+ */
 	static async start(runtime: IAgentRuntime): Promise<VideoService> {
 		const service = new VideoService(runtime);
 		return service;
 	}
 
+/**
+ * Stops the video service if it is running.
+ *
+ * @param {IAgentRuntime} runtime - The agent runtime instance
+ * @returns {Promise<void>} A promise that resolves once the video service is stopped
+ */
 	static async stop(runtime: IAgentRuntime) {
 		const service = runtime.getService(ServiceTypes.VIDEO);
 		if (service) {
@@ -57,16 +89,28 @@ export class VideoService extends Service implements IVideoService {
 		}
 	}
 
+/**
+ * Asynchronous method to stop the operation. 
+ */
 	async stop() {
 		// do nothing
 	}
 
+/**
+ * Checks if the data directory exists, and if not, creates it.
+ */
 	private ensureDataDirectoryExists() {
 		if (!fs.existsSync(this.dataDir)) {
 			fs.mkdirSync(this.dataDir);
 		}
 	}
 
+/**
+ * Check if a given URL is a video URL from YouTube or Vimeo.
+ * 
+ * @param {string} url - The URL to check.
+ * @return {boolean} Returns true if the URL is from YouTube or Vimeo, false otherwise.
+ */
 	public isVideoUrl(url: string): boolean {
 		return (
 			url.includes("youtube.com") ||
@@ -75,6 +119,13 @@ export class VideoService extends Service implements IVideoService {
 		);
 	}
 
+/**
+ * Downloads media from a given URL. If the media already exists, it returns the file path.
+ * 
+ * @param {string} url - The URL of the media to download.
+ * @returns {Promise<string>} A promise that resolves to the file path of the downloaded media.
+ * @throws {Error} If there is an error downloading the media.
+ */
 	public async downloadMedia(url: string): Promise<string> {
 		const videoId = this.getVideoId(url);
 		const outputFile = path.join(this.dataDir, `${videoId}.mp4`);
@@ -97,6 +148,12 @@ export class VideoService extends Service implements IVideoService {
 		}
 	}
 
+/**
+ * Downloads a video using the videoInfo object provided and returns the path to the downloaded video file.
+ * If the video file already exists, it will return the path without re-downloading.
+ * @param {Object} videoInfo - Information about the video to download.
+ * @returns {Promise<string>} - Path to the downloaded video file.
+ */
 	public async downloadVideo(videoInfo: any): Promise<string> {
 		const videoId = this.getVideoId(videoInfo.webpage_url);
 		const outputFile = path.join(this.dataDir, `${videoId}.mp4`);
@@ -120,6 +177,13 @@ export class VideoService extends Service implements IVideoService {
 		}
 	}
 
+/**
+ * Process a video from the given URL using the provided agent runtime.
+ * 
+ * @param {string} url - The URL of the video to be processed
+ * @param {IAgentRuntime} runtime - The agent runtime to be used for processing the video
+ * @returns {Promise<Media>} A promise that resolves to the processed media
+ */
 	public async processVideo(
 		url: string,
 		runtime: IAgentRuntime,
@@ -140,6 +204,12 @@ export class VideoService extends Service implements IVideoService {
 		});
 	}
 
+/**
+ * Processes the queue of URLs by calling processVideoFromUrl for each URL.
+ * 
+ * @param {any} runtime - The runtime information for processing the videos.
+ * @returns {Promise<void>} - A promise that resolves when the queue has been processed.
+ */
 	private async processQueue(runtime): Promise<void> {
 		if (this.processing || this.queue.length === 0) {
 			return;
@@ -155,6 +225,15 @@ export class VideoService extends Service implements IVideoService {
 		this.processing = false;
 	}
 
+/**
+ * Processes a video from a given URL.
+ * Retrieves video information, transcript, and caches the result.
+ * 
+ * @param {string} url - The URL of the video to process.
+ * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+ * @returns {Promise<Media>} A promise that resolves to the processed video data.
+ * @throws {Error} If there is an error processing the video.
+ */
 	private async processVideoFromUrl(
 		url: string,
 		runtime: IAgentRuntime,
@@ -197,10 +276,21 @@ export class VideoService extends Service implements IVideoService {
 		}
 	}
 
+/**
+ * Returns the unique video ID generated from the provided URL.
+ * @param {string} url - The URL used to generate the video ID.
+ * @returns {string} The unique video ID.
+ */
 	private getVideoId(url: string): string {
 		return stringToUuid(url);
 	}
 
+/**
+ * Asynchronously fetches video information from the provided URL. If the URL ends with ".mp4" or includes ".mp4?", attempts to fetch the video directly using fetch. If successful, returns a simplified video info object with title, description, and channel. If direct download fails, falls back to using youtube-dl to fetch video information. Utilizes options such as dumpJson, verbose, callHome, noCheckCertificates, preferFreeFormats, youtubeSkipDashManifest, writeSub, writeAutoSub, subLang, and skipDownload when calling youtube-dl. Throws an error if the response from youtube-dl is empty or if there is an error during the process. 
+ * 
+ * @param {string} url - The URL from which to fetch video information
+ * @returns {Promise<any>} A Promise resolving to the fetched video information or rejecting with an error message
+ */
 	async fetchVideoInfo(url: string): Promise<any> {
 		console.log("url", url);
 		if (url.endsWith(".mp4") || url.includes(".mp4?")) {
@@ -246,6 +336,14 @@ export class VideoService extends Service implements IVideoService {
 		}
 	}
 
+/**
+ * Asynchronously retrieves the transcript of a video based on the provided URL, video information, and runtime environment.
+ * 
+ * @param {string} url - The URL of the video.
+ * @param {any} videoInfo - Information about the video, including subtitles, automatic captions, and categories.
+ * @param {IAgentRuntime} runtime - The runtime environment of the agent.
+ * @returns {Promise<string>} A Promise that resolves to the transcript of the video.
+ */
 	private async getTranscript(
 		url: string,
 		videoInfo: any,
@@ -287,6 +385,12 @@ export class VideoService extends Service implements IVideoService {
 		}
 	}
 
+/**
+ * Downloads a caption from the specified URL.
+ * @param {string} url - The URL from which to download the caption.
+ * @returns {Promise<string>} A promise that resolves with the downloaded caption as a string.
+ * @throws {Error} If the caption download fails, an error is thrown with the reason.
+ */
 	private async downloadCaption(url: string): Promise<string> {
 		logger.log("Downloading caption from:", url);
 		const response = await fetch(url);
@@ -296,6 +400,12 @@ export class VideoService extends Service implements IVideoService {
 		return await response.text();
 	}
 
+/**
+ * Parses the given caption content to extract relevant information.
+ * 
+ * @param {string} captionContent - The caption content to parse.
+ * @returns {string} The extracted caption information as a string.
+ */
 	private parseCaption(captionContent: string): string {
 		logger.log("Parsing caption");
 		try {
@@ -315,6 +425,12 @@ export class VideoService extends Service implements IVideoService {
 		}
 	}
 
+/**
+ * Parses SRT (SubRip) content to extract subtitles.
+ * 
+ * @param {string} srtContent - The SRT content to parse.
+ * @returns {string} The parsed subtitles as a single string.
+ */
 	private parseSRT(srtContent: string): string {
 		// Simple SRT parser (replace with a more robust solution if needed)
 		return srtContent
@@ -323,12 +439,25 @@ export class VideoService extends Service implements IVideoService {
 			.join(" ");
 	}
 
+/**
+ * Asynchronously downloads a SubRip subtitle file from the specified URL.
+ * 
+ * @param {string} url - The URL of the subtitle file to download.
+ * @returns {Promise<string>} A promise that resolves to the text content of the downloaded subtitle file.
+ */
 	private async downloadSRT(url: string): Promise<string> {
 		logger.log("downloadSRT");
 		const response = await fetch(url);
 		return await response.text();
 	}
 
+/**
+ * Asynchronously transcribes audio from the provided URL using the agent runtime.
+ * 
+ * @param {string} url - The URL of the audio file to transcribe.
+ * @param {IAgentRuntime} runtime - The agent runtime to use for transcription.
+ * @returns {Promise<string>} A promise that resolves with the transcription result, or "Transcription failed" if the process was unsuccessful.
+ */
 	async transcribeAudio(url: string, runtime: IAgentRuntime): Promise<string> {
 		logger.log("Preparing audio for transcription...");
 
@@ -388,6 +517,13 @@ export class VideoService extends Service implements IVideoService {
 		return transcript || "Transcription failed";
 	}
 
+/**
+ * Converts a given MP4 file to MP3 format.
+ * 
+ * @param {string} inputPath - The path to the input MP4 file.
+ * @param {string} outputPath - The desired path for the output MP3 file.
+ * @returns {Promise<void>} A Promise that resolves once the conversion is complete or rejects with an error.
+ */
 	private async convertMp4ToMp3(
 		inputPath: string,
 		outputPath: string,
@@ -409,6 +545,13 @@ export class VideoService extends Service implements IVideoService {
 		});
 	}
 
+/**
+ * Convert a WebM file to MP3 format.
+ * 
+ * @param {string} inputPath - The path of the WebM file to convert.
+ * @param {string} outputPath - The path where the MP3 file will be saved.
+ * @returns {Promise<void>} Promise that resolves when the conversion is complete.
+ */
 	private async convertWebmToMp3(
 		inputPath: string,
 		outputPath: string,
@@ -430,6 +573,16 @@ export class VideoService extends Service implements IVideoService {
 		});
 	}
 
+/**
+ * Downloads audio from a given URL and saves it to the specified output file.
+ * If no output file is provided, it will default to saving the audio in the data directory with the video ID as the filename.
+ * Supports downloading and converting MP4 files to MP3 as well as downloading audio from YouTube videos using youtube-dl.
+ * 
+ * @param url - The URL of the audio to download.
+ * @param outputFile - The path to save the downloaded audio file. If not provided, it defaults to saving in the data directory with the video ID as the filename.
+ * @returns A Promise that resolves with the path to the downloaded audio file.
+ * @throws Error if there is an issue during the download process.
+ */
 	private async downloadAudio(
 		url: string,
 		outputFile: string,
