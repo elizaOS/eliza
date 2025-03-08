@@ -14,6 +14,51 @@ import {
 } from "../types";
 import type { CommunityInvestorService } from "../tradingService";
 
+/**
+* Action to retrieve and format position data for the agent's portfolio.
+* @type {Action}
+* @name GET_SIMULATED_POSITIONS
+* @description Retrieves and formats position data for the agent's portfolio
+* @examples [
+* [
+* {
+* name: "{{name1}}",
+* content: {
+* text: "{{agentName}} show me my simulated positions",
+* },
+* },
+* {
+* name: "{{name2}}",
+* content: {
+* text: "<NONE>",
+* actions: ["GET_SIMULATED_POSITIONS"],
+* },
+* },
+* ],
+* [
+* {
+* name: "{{name1}}",
+* content: {
+* text: "{{agentName}} show me simulated positions",
+* },
+* },
+* {
+* name: "{{name2}}",
+* content: {
+* text: "<NONE>",
+* actions: ["GET_SIMULATED_POSITIONS"],
+* },
+* },
+* ],
+* ],
+* @similes ["GET_SIMULATED_POSITIONS", "SHOW_SIMULATED_PORTFOLIO"]
+* @param {IAgentRuntime} runtime - The runtime of the agent
+* @param {Memory} message - The message received by the agent
+* @param {object} _state - The state of the agent
+* @param {object} _options - Additional options
+* @param {any} callback - The callback function to handle the response
+* @returns {Promise<void>}
+*/
 export const getSimulatedPositions: Action = {
 	name: "GET_SIMULATED_POSITIONS",
 	description: "Retrieves and formats position data for the agent's portfolio",
