@@ -12,12 +12,29 @@ import type { MessageRecommendation } from "./schema";
 import { RecommendationType, Conviction, ServiceTypes } from "../types";
 
 // Use type intersection for extended metadata
+/**
+ * Represents extended metadata for a memory, including client-related information.
+ * @typedef {Object} ExtendedMetadata
+ * @property {string} [clientUsername] - The username of the client associated with the memory
+ * @property {string} [clientUserId] - The user ID of the client associated with the memory
+ * @property {string} [clientChatId] - The chat ID of the client associated with the memory
+ */
 type ExtendedMetadata = MemoryMetadata & {
 	clientUsername?: string;
 	clientUserId?: string;
 	clientChatId?: string;
 };
 
+/**
+ * Action to confirm a recommendation to buy or sell memecoins/tokens in a user recommendations provider from the trust plugin.
+ * @typedef {Object} Action
+ * @property {string} name - The name of the action
+ * @property {string} description - Description of the action
+ * @property {Array<Array<{name: string, content: Object}>>} examples - Examples of how to use the action
+ * @property {Array<string>} similes - Array of similes related to the action
+ * @property {Function} handler - Asynchronous function to handle confirming a recommendation
+ * @property {Function} validate - Asynchronous function to validate the message
+ */
 export const confirmRecommendation: Action = {
 	name: "CONFIRM_RECOMMENDATION",
 	description:
