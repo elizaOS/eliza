@@ -20,6 +20,13 @@ const rl = readline.createInterface({
 });
 
 // Function to log in and save cookies
+/**
+ * Asynchronously logs in to Twitter using credentials from environment variables,
+ * retrieves the current session cookies, and saves the cookies to a JSON file
+ * for future sessions.
+ * 
+ * @returns {Promise<void>} A Promise that resolves once the login is complete and cookies are saved
+ */
 async function loginAndSaveCookies() {
 	try {
 		// Log in using credentials from environment variables
@@ -45,6 +52,10 @@ async function loginAndSaveCookies() {
 }
 
 // Function to load cookies from the JSON file
+/**
+ * Asynchronously loads cookies from a JSON file in the file system and sets them for the current session.
+ * @returns {Promise<void>} A promise that resolves once the cookies are successfully loaded and set, or rejects if an error occurs.
+ */
 async function loadCookies() {
 	try {
 		// Read cookies from the file system
@@ -73,6 +84,12 @@ async function loadCookies() {
 }
 
 // Function to ensure the client is authenticated
+/**
+ * Asynchronous function to ensure the user is authenticated.
+ * Checks if cookies.json exists to decide whether to log in or load cookies.
+ * If cookies exist, it loads the cookies and informs the user that they are already logged in.
+ * If no cookie file is found, it logs in and saves the cookies.
+ */
 async function ensureAuthenticated() {
 	// Check if cookies.json exists to decide whether to log in or load cookies
 	if (fs.existsSync(path.resolve(__dirname, "cookies.json"))) {
@@ -88,6 +105,14 @@ async function ensureAuthenticated() {
 }
 
 // Function to send a tweet with optional media files
+/**
+ * Asynchronously sends a tweet command with optional media files and reply to tweet ID.
+ * @param {string} text - The text content of the tweet.
+ * @param {string[]} mediaFiles - Optional array of paths to media files to attach to the tweet.
+ * @param {string} replyToTweetId - Optional ID of the tweet to reply to.
+ * @returns {Promise<string | null>} A promise that resolves with the ID of the sent tweet,
+ * or null if there was an error.
+ */
 async function sendTweetCommand(
 	text: string,
 	mediaFiles?: string[],
@@ -130,6 +155,11 @@ async function sendTweetCommand(
 }
 
 // Function to get media type based on file extension
+/**
+ * Returns the corresponding media type based on the file extension provided.
+ * @param {string} ext - The file extension to determine the media type for.
+ * @returns {string} - The corresponding media type for the given file extension.
+ */
 function getMediaType(ext: string): string {
 	switch (ext) {
 		case ".jpg":
@@ -148,6 +178,12 @@ function getMediaType(ext: string): string {
 }
 
 // Function to get replies to a specific tweet
+/**
+ * Asynchronously retrieves the replies to a given tweet ID.
+ * 
+ * @param {string} tweetId - The ID of the tweet to fetch replies for.
+ * @returns {Promise<Tweet[]>} An array of tweets that are direct replies to the original tweet.
+ */
 async function getRepliesToTweet(tweetId: string): Promise<Tweet[]> {
 	const replies: Tweet[] = [];
 	try {
@@ -176,6 +212,13 @@ async function getRepliesToTweet(tweetId: string): Promise<Tweet[]> {
 }
 
 // Function to reply to a specific tweet
+/**
+ * Asynchronously sends a reply tweet to a tweet with the specified tweet ID.
+ * 
+ * @param {string} tweetId - The ID of the tweet to reply to.
+ * @param {string} text - The text content of the reply tweet.
+ * @returns {Promise<void>} A Promise that resolves once the reply tweet is sent.
+ */
 async function replyToTweet(tweetId: string, text: string) {
 	try {
 		// Pass empty array for mediaFiles (2nd param) and tweetId as replyToTweetId (3rd param)
@@ -190,6 +233,12 @@ async function replyToTweet(tweetId: string, text: string) {
 }
 
 // Function to get photos from a specific tweet
+/**
+ * Asynchronously fetches photos associated with a tweet based on the tweet ID.
+ *
+ * @param {string} tweetId - The ID of the tweet to retrieve photos from.
+ * @returns {Promise<void>} - A Promise that resolves once the photos are retrieved and displayed.
+ */
 async function getPhotosFromTweet(tweetId: string) {
 	try {
 		// Fetch the tweet by its ID
@@ -213,6 +262,12 @@ async function getPhotosFromTweet(tweetId: string) {
 }
 
 // Function to parse command line while preserving quoted strings
+/**
+ * Parses a command line string into an array of individual arguments.
+ * 
+ * @param {string} commandLine - The command line string to parse
+ * @returns {string[]} An array of individual arguments parsed from the command line
+ */
 function parseCommandLine(commandLine: string): string[] {
 	const args: string[] = [];
 	let currentArg = "";
@@ -244,6 +299,11 @@ function parseCommandLine(commandLine: string): string[] {
 }
 
 // Function to execute commands
+/**
+ * Asynchronously executes a Twitter command based on the provided command line input.
+ * @param {string} commandLine - The command line input string containing the command and arguments.
+ * @returns {Promise<void>} - A Promise that resolves once the command has been executed.
+ */
 async function executeCommand(commandLine: string) {
 	const args = parseCommandLine(commandLine);
 	const command = args.shift(); // Remove and get the first element as command
@@ -516,6 +576,13 @@ async function executeCommand(commandLine: string) {
 }
 
 // Function to send a long tweet (Note Tweet) with optional media files
+/**
+ * Asynchronously sends a long tweet command with optional media files and replyToTweetId.
+ * @param {string} text - The text content of the tweet.
+ * @param {string[]} [mediaFiles] - Array of file paths for media files to include in the tweet.
+ * @param {string} [replyToTweetId] - The ID of the tweet to reply to.
+ * @returns {Promise<string|null>} A Promise that resolves with the tweet ID if successful, or null if an error occurs.
+ */
 async function sendLongTweetCommand(
 	text: string,
 	mediaFiles?: string[],
