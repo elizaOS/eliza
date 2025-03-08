@@ -12,6 +12,35 @@ import {
 	logger,
 } from "@elizaos/core";
 
+/**
+ * Interface representing settings for a greeting feature.
+ * @interface
+ */
+ 
+/**
+ * Whether the greeting feature is enabled or not.
+ * @type {boolean}
+ */
+ GreetingSettings.enabled
+ 
+/**
+ * The ID of the channel where the greeting message should be sent.
+ * @type {string | undefined}
+ */
+ GreetingSettings.channelId
+ 
+/**
+ * The greeting message to be sent.
+ * @type {string | undefined}
+ */
+ GreetingSettings.message
+ 
+/**
+ * The timestamp of when the settings were last updated.
+ * @type {number}
+ */
+ GreetingSettings.lastUpdated
+ */
 interface GreetingSettings {
 	enabled: boolean;
 	channelId?: string;
@@ -19,6 +48,16 @@ interface GreetingSettings {
 	lastUpdated: number;
 }
 
+/**
+ * Action to greet new users in the configured channel
+ * @typedef {Object} Action
+ * @property {string} name - The name of the action
+ * @property {string[]} similes - Array of similar actions
+ * @property {string} description - Description of the action
+ * @property {Function} validate - Function to validate the action
+ * @property {Function} handler - Function to handle the action
+ * @property {ActionExample[][]} examples - Array of examples for the action
+ */
 export const greetAction: Action = {
 	name: "GREET_NEW_PERSON",
 	similes: ["WELCOME_USER", "SAY_HELLO", "INTRODUCE"],
