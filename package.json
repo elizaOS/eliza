@@ -6,7 +6,7 @@
 		"lint": "biome ci --config-path=./biome.json",
 		"format": "biome format --write --config-path=./biome.json",
 		"preinstall": "npx only-allow bun",
-		"migrate": "turbo run migrate --filter=./packages/plugin-sql",
+		"migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
 		"migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
 		"build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs",
 		"build:docker": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/* --filter=!./packages/docs",
