@@ -14,6 +14,10 @@ import path from "node:path";
 /**
  * Generates comprehensive plugin documentation based on existing JSDoc comments
  */
+/**
+ * Class for generating comprehensive plugin documentation
+ */
+         
 export class PluginDocumentationGenerator {
 	private fullDocumentationGenerator: FullDocumentationGenerator;
 	constructor(
