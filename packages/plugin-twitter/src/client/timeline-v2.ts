@@ -10,12 +10,29 @@ import type {
 import type { Tweet } from "./tweets";
 import { isFieldDefined } from "./type-util";
 
+/**
+ * Interface representing raw data for a user result in a timeline.
+ * @property {string} [rest_id] - The REST ID of the user.
+ * @property {LegacyUserRaw} [legacy] - The legacy user data.
+ * @property {boolean} [is_blue_verified] - Indicates if the user is blue verified.
+ */
 export interface TimelineUserResultRaw {
 	rest_id?: string;
 	legacy?: LegacyUserRaw;
 	is_blue_verified?: boolean;
 }
 
+/**
+ * Interface representing the raw content of a timeline entry item.
+ * @typedef {Object} TimelineEntryItemContentRaw
+ * @property {string} [itemType] - The type of the item.
+ * @property {string} [tweetDisplayType] - The display type of the tweet.
+ * @property {Object} [tweetResult] - The result of the tweet.
+ * @property {Object} [tweet_results] - The results of the tweet.
+ * @property {string} [userDisplayType] - The display type of the user.
+ * @property {Object} [user_results] - The results of the user.
+ */
+ 
 export interface TimelineEntryItemContentRaw {
 	itemType?: string;
 	tweetDisplayType?: string;
@@ -31,6 +48,19 @@ export interface TimelineEntryItemContentRaw {
 	};
 }
 
+/**
+ * Interface representing a raw Timeline Entry.
+ * @typedef { Object } TimelineEntryRaw
+ * @property { string } entryId - The unique identifier of the entry.
+ * @property { Object } [content] - The content of the entry.
+ * @property { string } [content.cursorType] - The cursor type of the content.
+ * @property { string } [content.value] - The value of the content.
+ * @property {Object[]} [content.items] - An array of items within the content.
+ * @property { string } [content.items.entryId] - The unique identifier of an item.
+ * @property { Object } [content.items.item] - The item within the content.
+ * @property { Object } [content.items.item.content] - The content of the item.
+ * @property { Object } [content.items.item.itemContent] - The item content of the item.
+ */
 export interface TimelineEntryRaw {
 	entryId: string;
 	content?: {
@@ -47,6 +77,16 @@ export interface TimelineEntryRaw {
 	};
 }
 
+/**
+ * Interface representing the raw content of a search entry item.
+ * @interface
+ * @property {string} [tweetDisplayType] - The display type of the tweet.
+ * @property {Object} [tweet_results] - The results of the tweet search.
+ * @property {Object} [tweet_results.result] - The raw search result of the tweet.
+ * @property {string} [userDisplayType] - The display type of the user.
+ * @property {Object} [user_results] - The results of the user search.
+ * @property {Object} [user_results.result] - The raw search result of the user timeline.
+ */
 export interface SearchEntryItemContentRaw {
 	tweetDisplayType?: string;
 	tweet_results?: {
@@ -58,6 +98,21 @@ export interface SearchEntryItemContentRaw {
 	};
 }
 
+/**
+ * Interface representing a raw search entry.
+ * @typedef { Object } SearchEntryRaw
+ * @property { string } entryId - The unique identifier of the entry.
+ * @property { string } sortIndex - The sorting index of the entry.
+ * @property { Object } [content] - The content details of the entry.
+ * @property { string } [content.cursorType] - The type of cursor associated with the entry content.
+ * @property { string } [content.entryType] - The type of entry.
+ * @property { string } [content.__typename] - The typename of the content.
+ * @property { string } [content.value] - The value associated with the entry content.
+ * @property {Array<Object>} [content.items] - An array of items associated with the entry.
+ * @property { Object } [content.items.item] - An item object associated with the entry.
+ * @property { Object } [content.items.item.content] - The content details of the item associated with the entry.
+ * @property { Object } [content.itemContent] - The content details of the item associated with the entry.
+ */
 export interface SearchEntryRaw {
 	entryId: string;
 	sortIndex: string;
@@ -75,12 +130,29 @@ export interface SearchEntryRaw {
 	};
 }
 
+/**
+ * Interface representing a timeline instruction.
+ * @typedef {Object} TimelineInstruction
+ * @property {TimelineEntryRaw[]} [entries] - An array of timeline entry raw objects.
+ * @property {TimelineEntryRaw} [entry] - A single timeline entry raw object.
+ * @property {string} [type] - The type of the timeline instruction.
+ */
 export interface TimelineInstruction {
 	entries?: TimelineEntryRaw[];
 	entry?: TimelineEntryRaw;
 	type?: string;
 }
 
+/**
+ * Interface representing version 2 of a timeline object.
+ * @typedef {Object} TimelineV2
+ * @property {Object} data - Data object containing user information.
+ * @property {Object} data.user - User object containing result information.
+ * @property {Object} data.user.result - Result object containing timeline_v2 information.
+ * @property {Object} data.user.result.timeline_v2 - Timeline_v2 object containing timeline information.
+ * @property {Object} data.user.result.timeline_v2.timeline - Timeline object containing instructions.
+ * @property {Array<TimelineInstruction>} data.user.result.timeline_v2.timeline.instructions - Array of timeline instructions.
+ */
 export interface TimelineV2 {
 	data?: {
 		user?: {
@@ -95,6 +167,13 @@ export interface TimelineV2 {
 	};
 }
 
+/**
+ * Represents a threaded conversation with optional data.
+ * @interface
+ * @property {Object} data - Optional data for the conversation.
+ * @property {Object} data.threaded_conversation_with_injections_v2 - Optional object containing instructions.
+ * @property {TimelineInstruction[]} data.threaded_conversation_with_injections_v2.instructions - Array of timeline instructions.
+ */
 export interface ThreadedConversation {
 	data?: {
 		threaded_conversation_with_injections_v2?: {
@@ -103,6 +182,12 @@ export interface ThreadedConversation {
 	};
 }
 
+/**
+ * Parses a legacy tweet object and returns a ParseTweetResult.
+ * @param {LegacyUserRaw} [user] - The legacy user object.
+ * @param {LegacyTweetRaw} [tweet] - The legacy tweet object.
+ * @returns {ParseTweetResult} The result of parsing the legacy tweet.
+ */
 export function parseLegacyTweet(
 	user?: LegacyUserRaw,
 	tweet?: LegacyTweetRaw,
@@ -234,6 +319,12 @@ export function parseLegacyTweet(
 	return { success: true, tweet: tw };
 }
 
+/**
+ * Parses a raw timeline result object into a ParseTweetResult object.
+ * 
+ * @param {TimelineResultRaw} result - The raw timeline result object to parse.
+ * @returns {ParseTweetResult} The parsed tweet result object.
+ */
 function parseResult(result?: TimelineResultRaw): ParseTweetResult {
 	const noteTweetResultText =
 		result?.note_tweet?.note_tweet_results?.result?.text;
@@ -274,6 +365,11 @@ function parseResult(result?: TimelineResultRaw): ParseTweetResult {
 
 const expectedEntryTypes = ["tweet", "profile-conversation"];
 
+/**
+ * Parses the timeline tweets from a TimelineV2 object and returns the QueryTweetsResponse.
+ * @param {TimelineV2} timeline The timeline object containing the tweet data.
+ * @returns {QueryTweetsResponse} The parsed tweets along with the next and previous cursors.
+ */
 export function parseTimelineTweetsV2(
 	timeline: TimelineV2,
 ): QueryTweetsResponse {
@@ -323,6 +419,13 @@ export function parseTimelineTweetsV2(
 	return { tweets, next: bottomCursor, previous: topCursor };
 }
 
+/**
+ * Parses the raw content of a timeline entry item to extract the tweet data.
+ * @param {TimelineEntryItemContentRaw} content - The raw content of the timeline entry item
+ * @param {string} entryId - The entry ID of the timeline entry
+ * @param {boolean} [isConversation=false] - Indicates if the timeline entry is part of a conversation
+ * @returns {Tweet | null} The parsed tweet data or null if the parsing was unsuccessful
+ */
 export function parseTimelineEntryItemContentRaw(
 	content: TimelineEntryItemContentRaw,
 	entryId: string,
@@ -357,6 +460,14 @@ export function parseTimelineEntryItemContentRaw(
 	return null;
 }
 
+/**
+ * Parses the given content and pushes the resulting Tweet object to the specified array.
+ * 
+ * @param {Tweet[]} tweets - The array to push the parsed Tweet object to.
+ * @param {TimelineEntryItemContentRaw} content - The raw content to parse.
+ * @param {string} entryId - The ID of the timeline entry.
+ * @param {boolean} [isConversation=false] - Indicates if the tweet is part of a conversation.
+ */
 export function parseAndPush(
 	tweets: Tweet[],
 	content: TimelineEntryItemContentRaw,
@@ -374,6 +485,11 @@ export function parseAndPush(
 	}
 }
 
+/**
+ * Parses a threaded conversation object and returns an array of Tweets.
+ * @param conversation The threaded conversation object to parse
+ * @returns An array of Tweet objects parsed from the conversation
+ */
 export function parseThreadedConversation(
 	conversation: ThreadedConversation,
 ): Tweet[] {
@@ -425,6 +541,16 @@ export function parseThreadedConversation(
 	return tweets;
 }
 
+/**
+ * Interface representing a timeline article.
+ * @typedef {Object} TimelineArticle
+ * @property {string} id - The unique identifier for the article.
+ * @property {string} articleId - The identifier for the article.
+ * @property {string} title - The title of the article.
+ * @property {string} previewText - The preview text of the article.
+ * @property {string} [coverMediaUrl] - The URL of the cover media for the article. (Optional)
+ * @property {string} text - The main text content of the article.
+ */
 export interface TimelineArticle {
 	id: string;
 	articleId: string;
@@ -434,6 +560,12 @@ export interface TimelineArticle {
 	text: string;
 }
 
+/**
+ * Parses a ThreadedConversation object to extract TimelineArticle objects.
+ * 
+ * @param {ThreadedConversation} conversation - The ThreadedConversation object to parse.
+ * @returns {TimelineArticle[]} The extracted TimelineArticle objects.
+ */
 export function parseArticle(
 	conversation: ThreadedConversation,
 ): TimelineArticle[] {
