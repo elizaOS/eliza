@@ -553,7 +553,7 @@ const startAgents = async () => {
 
 	// If not found, fall back to the old relative path for development
 	if (!fs.existsSync(clientPath)) {
-		clientPath = path.join(__dirname, "../../../..", "packages/client/dist");
+		clientPath = path.join(__dirname, "../../../../..", "packages/client/dist");
 	}
 
 	if (fs.existsSync(clientPath)) {
