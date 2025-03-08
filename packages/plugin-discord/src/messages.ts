@@ -21,11 +21,19 @@ import {
 import { AttachmentManager } from "./attachments";
 import { canSendMessage, sendMessageInChunks } from "./utils";
 
+/**
+ * Class representing a Message Manager for handling Discord messages.
+ */
+
 export class MessageManager {
 	private client: Client;
 	private runtime: IAgentRuntime;
 	private attachmentManager: AttachmentManager;
 	private getChannelType: (channel: Channel) => Promise<ChannelType>;
+/**
+ * Constructor for a new instance of MyClass.
+ * @param {any} discordClient - The Discord client object.
+ */
 	constructor(discordClient: any) {
 		this.client = discordClient.client;
 		this.runtime = discordClient.runtime;
@@ -33,6 +41,11 @@ export class MessageManager {
 		this.getChannelType = discordClient.getChannelType;
 	}
 
+/**
+* Handles incoming Discord messages and processes them accordingly.
+* 
+* @param {DiscordMessage} message - The Discord message to be handled
+*/
 	async handleMessage(message: DiscordMessage) {
 		if (
 			this.runtime.character.settings?.discord?.allowedChannelIds &&
@@ -199,6 +212,13 @@ export class MessageManager {
 		}
 	}
 
+/**
+ * Processes the message content, mentions, code blocks, attachments, and URLs to generate
+ * processed content and media attachments.
+ * 
+ * @param {DiscordMessage} message The message to process
+ * @returns {Promise<{ processedContent: string; attachments: Media[] }>} Processed content and media attachments
+ */
 	async processMessage(
 		message: DiscordMessage,
 	): Promise<{ processedContent: string; attachments: Media[] }> {
@@ -296,6 +316,14 @@ export class MessageManager {
 
 		return { processedContent, attachments };
 	}
+
+/**
+ * Asynchronously fetches the bot's username and discriminator from Discord API.
+ * 
+ * @param {string} botToken The token of the bot to authenticate the request
+ * @returns {Promise<string>} A promise that resolves with the bot's username and discriminator
+ * @throws {Error} If there is an error while fetching the bot details
+ */ 
 
 	async fetchBotName(botToken: string) {
 		const url = "https://discord.com/api/v10/users/@me";
