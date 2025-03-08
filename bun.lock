@@ -203,7 +203,7 @@
       "name": "create-eliza",
       "version": "0.2.2",
       "bin": {
-        "create-eliza": "index.js"
+        "create-eliza": "cli/index.js"
       },
       "dependencies": {
         "tsup": "^8.4.0",
