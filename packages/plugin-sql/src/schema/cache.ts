@@ -3,6 +3,11 @@ import { jsonb, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 import { numberTimestamp } from "./types";
 
+/**
+ * Represents a PostgreSQL table for caching data.
+ * 
+ * @type {pgTable}
+ */
 export const cacheTable = pgTable(
 	"cache",
 	{
