@@ -232,42 +232,47 @@ export class AgentServer {
 						}
 
 						// Check common locations for static assets
+						// These patterns cover most common frontend build outputs
 						const commonDirs = [
-							{ path: "frontend/dist", mount: "/" },
-							{ path: "frontend/dist/assets", mount: "/assets" },
-							{ path: "dist/client", mount: "/" },
+							// Vite build output
 							{ path: "dist/assets", mount: "/assets" },
+
+							// Main dist directories at various levels
+							{ path: "frontend/dist", mount: "/" },
+							{ path: "dist/client", mount: "/" },
 							{ path: "dist", mount: "/" },
+
+							// Common public/static asset directories
 							{ path: "public", mount: "/" },
+							{ path: "static", mount: "/" },
 							{ path: "assets", mount: "/assets" },
 						];
 
-						// For each plugin route that might be serving HTML,
-						// also check for assets in related directories
+						// For each plugin route, also check for related asset directories
 						if (plugin.routes) {
-							const htmlRoutes = plugin.routes.filter(
-								(route) => route.type === "GET" && !route.path.includes("api/"),
+							// Find potential static route paths (like /portal)
+							const staticRoutes = plugin.routes.filter(
+								(route) =>
+									route.type === "GET" &&
+									(route.path.endsWith("/*") || !route.path.includes("api/")),
 							);
 
-							for (const route of htmlRoutes) {
-								const routePath = route.path.startsWith("/")
-									? route.path
-									: `/${route.path}`;
-								const routeParts = routePath.split("/").filter(Boolean);
+							for (const route of staticRoutes) {
+								// Extract the base path without wildcards
+								let basePath = route.path;
+								if (basePath.endsWith("/*")) {
+									basePath = basePath.slice(0, -2);
+								}
+								if (basePath.startsWith("/")) {
+									basePath = basePath.slice(1);
+								}
 
-								if (routeParts.length > 0) {
-									// The first part of the path might indicate a feature/module
-									const featureName = routeParts[0];
-
-									// Check if this plugin has a related assets directory
-									const relatedDirs = [
-										{ path: `${featureName}/dist/assets`, mount: "/assets" },
-										{ path: `${featureName}/assets`, mount: "/assets" },
-										{ path: `${featureName}/dist`, mount: "/" },
-									];
-
-									// Add these potential asset directories
-									commonDirs.push(...relatedDirs);
+								if (basePath) {
+									// Check for static assets related to this route
+									commonDirs.push(
+										{ path: `${basePath}/dist`, mount: `/${basePath}` },
+										{ path: `${basePath}/assets`, mount: `/assets` },
+									);
 								}
 							}
 						}

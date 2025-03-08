@@ -1,6 +1,5 @@
 import type {
 	Agent,
-	Character,
 	Component,
 	Entity,
 	Goal,

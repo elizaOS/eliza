@@ -34,20 +34,20 @@ const frontendDist = path.resolve(__dirname, "./");
 export const routes: Route[] = [
 	{
 		type: "GET",
-		path: "/portal",
+		path: "/degen-intel",
 		handler: async (_req: any, res: any) => {
-			console.log("frontendDist", frontendDist);
+			const route = _req.url;
 			res.sendFile(path.resolve(frontendDist, "index.html"));
 		},
 	},
 	{
 		type: "GET",
-		path: "/portal/*",
-		handler: async (_req: any, res: any) => {
-			console.log("serving file portal/*", _req.path);
-			// serve js, css, png, jpg and svg files from the frontend dist directory
-			const filePath = path.resolve(frontendDist, _req.path);
-			if (fs.existsSync(filePath)) {
+		path: "/degen-intel/assets/*",
+		handler: async (req: any, res: any) => {
+			const assetPath = `/dist/assets/${req.path.split("/assets/")[1]}`;
+			const cwd = process.cwd();
+			const filePath = cwd + path.resolve(cwd, assetPath);
+			if (fs.existsSync(path.resolve(filePath))) {
 				res.sendFile(filePath);
 			} else {
 				res.status(404).send("File not found");

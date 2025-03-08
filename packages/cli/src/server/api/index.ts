@@ -127,42 +127,51 @@ export function createApiRouter(
 					reqPath.startsWith(routePath.slice(0, -1))
 				) {
 					try {
-						// Check if this is likely a static asset request
-						const isAssetRequest =
-							/\.(js|mjs|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|otf)$/i.test(
-								reqPath,
+						// Set the correct MIME type based on the file extension
+						// This is important for any static files served by plugin routes
+						const ext = path.extname(reqPath).toLowerCase();
+
+						// Map extensions to content types
+						const contentTypes: Record<string, string> = {
+							".js": "application/javascript",
+							".mjs": "application/javascript",
+							".css": "text/css",
+							".html": "text/html",
+							".json": "application/json",
+							".png": "image/png",
+							".jpg": "image/jpeg",
+							".jpeg": "image/jpeg",
+							".gif": "image/gif",
+							".svg": "image/svg+xml",
+							".ico": "image/x-icon",
+							".webp": "image/webp",
+							".woff": "font/woff",
+							".woff2": "font/woff2",
+							".ttf": "font/ttf",
+							".eot": "application/vnd.ms-fontobject",
+							".otf": "font/otf",
+						};
+
+						// Set content type if we have a mapping for this extension
+						if (ext && contentTypes[ext]) {
+							res.setHeader("Content-Type", contentTypes[ext]);
+							logger.debug(
+								`Set MIME type for ${reqPath}: ${contentTypes[ext]}`,
 							);
+						}
 
-						// For JavaScript module files, handle specially to avoid HTML content
-						if (
-							reqPath.endsWith(".js") ||
-							reqPath.includes(".js?") ||
-							reqPath.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
-						) {
-							// Set JavaScript MIME type
-							res.setHeader("Content-Type", "application/javascript");
-							res.setHeader("Cache-Control", "no-cache, max-age=0");
-
-							// Try to let the handler serve it
-							try {
-								route.handler(req, res, runtime);
-								handled = true;
-								break;
-							} catch (jsError) {
-								// If file not found or other error, return a JavaScript-formatted 404
-								// This ensures browsers don't get HTML content when expecting JS
-								logger.debug(
-									`JavaScript file not found: ${reqPath} - Using JS-formatted 404`,
-								);
-								res
-									.status(404)
-									.send(`// JavaScript module not found: ${reqPath}`);
-								handled = true;
-								break;
+						// Check for Vite's hashed filenames pattern (common in assets directories)
+						if (reqPath.match(/[a-zA-Z0-9]+-[a-zA-Z0-9]{8}\.[a-z]{2,4}$/)) {
+							// Ensure JS modules get the correct MIME type
+							if (reqPath.endsWith(".js")) {
+								res.setHeader("Content-Type", "application/javascript");
+							} else if (reqPath.endsWith(".css")) {
+								res.setHeader("Content-Type", "text/css");
 							}
 						}
 
-						// For non-JS files, use the normal handler
+						// Now let the route handler process the request
+						// The plugin's handler is responsible for finding and sending the file
 						route.handler(req, res, runtime);
 						handled = true;
 						break;
@@ -173,28 +182,59 @@ export function createApiRouter(
 							agent: runtime.agentId,
 						});
 
+						// Handle errors for different file types appropriately
+						const ext = path.extname(reqPath).toLowerCase();
+
 						// If the error was from trying to find a static file that doesn't exist,
-						// we should continue to next middleware rather than returning a 500
+						// we should return a response with the appropriate MIME type based on file extension
 						if (
 							error.code === "ENOENT" ||
 							error.message?.includes("not found") ||
 							error.message?.includes("cannot find")
 						) {
-							logger.debug(
-								`Static file not found: ${reqPath}, continuing to next handler`,
-							);
-							continue; // Try next route
+							logger.debug(`File not found: ${reqPath}`);
+
+							// Return responses with the correct MIME type
+							// This prevents browsers from misinterpreting the response type
+							if (ext === ".js" || ext === ".mjs") {
+								res.setHeader("Content-Type", "application/javascript");
+								return res
+									.status(404)
+									.send(`// JavaScript file not found: ${reqPath}`);
+							}
+
+							if (ext === ".css") {
+								res.setHeader("Content-Type", "text/css");
+								return res
+									.status(404)
+									.send(`/* CSS file not found: ${reqPath} */`);
+							}
+
+							if (ext === ".svg") {
+								res.setHeader("Content-Type", "image/svg+xml");
+								return res
+									.status(404)
+									.send(`<!-- SVG not found: ${reqPath} -->`);
+							}
+
+							if (ext === ".json") {
+								res.setHeader("Content-Type", "application/json");
+								return res
+									.status(404)
+									.send(`{ "error": "File not found", "path": "${reqPath}" }`);
+							}
+
+							// Generic 404 for other file types
+							res.status(404).send(`File not found: ${reqPath}`);
+							handled = true;
+							break;
 						}
 
-						// Special handling for module scripts
-						if (/\.m?js(\?.*)?$/i.test(reqPath)) {
-							logger.debug(
-								`Module script error for ${reqPath}, continuing to next handler`,
-							);
-							continue; // Try next route instead of returning 500
-						}
-
-						res.status(500).json({ error: "Internal Server Error" });
+						// Return a 500 error for other types of errors
+						res.status(500).json({
+							error: "Internal Server Error",
+							message: error.message || "Unknown error",
+						});
 						handled = true;
 						break;
 					}
