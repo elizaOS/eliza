@@ -6,6 +6,11 @@ import type { Configuration } from "./Configuration.js";
  * DirectoryTraversal class for traversing through directories and files.
  * @class DirectoryTraversal
  */
+/**
+ * DirectoryTraversal class for scanning directories and files based on configuration.
+ * 
+ * @class
+ */
 export class DirectoryTraversal {
 	/**
 	 * Directories that should always be excluded from scanning,
