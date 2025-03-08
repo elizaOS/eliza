@@ -6,6 +6,15 @@ import type { SpaceParticipant } from "./core/SpaceParticipant";
 /**
  * Basic PCM audio frame properties.
  */
+/**
+ * Represents audio data with specified characteristics.
+ * @typedef {Object} AudioData
+ * @property {number} bitsPerSample - Bits per sample (e.g., 16).
+ * @property {number} sampleRate - The sample rate in Hz (e.g., 48000 for 48kHz).
+ * @property {number} channelCount - Number of channels (e.g., 1 for mono, 2 for stereo).
+ * @property {number} numberOfFrames - Number of frames (samples per channel).
+ * @property {Int16Array} samples - The raw PCM data for all channels (interleaved if stereo).
+ */
 export interface AudioData {
 	/**
 	 * Bits per sample (e.g., 16).

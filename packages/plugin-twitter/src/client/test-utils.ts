@@ -2,6 +2,14 @@ import { ProxyAgent, setGlobalDispatcher } from "undici";
 import { Client } from "./client";
 import fs from "node:fs";
 
+/**
+ * Authentication method preference for the client.
+ * - 'api': Use Twitter API keys and tokens.
+ * - 'cookies': Resume session using cookies.
+ * - 'password': Use username/password for login.
+ * - 'anonymous': No authentication.
+ */
+
 export interface ClientTestOptions {
 	/**
 	 * Authentication method preference for the client.

@@ -16,12 +16,26 @@ import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Represents a function that acts as a server middleware.
+ * @param {express.Request} req - The request object.
+ * @param {express.Response} res - The response object.
+ * @param {express.NextFunction} next - The next function to be called in the middleware chain.
+ * @returns {void}
+ */
 export type ServerMiddleware = (
 	req: express.Request,
 	res: express.Response,
 	next: express.NextFunction,
 ) => void;
 
+/**
+ * Interface for defining server configuration options.
+ * @typedef {Object} ServerOptions
+ * @property {ServerMiddleware[]} [middlewares] - Optional array of server middlewares.
+ * @property {string} [dataDir] - Optional directory for storing server data.
+ * @property {string} [postgresUrl] - Optional URL for connecting to a PostgreSQL database.
+ */
 export interface ServerOptions {
 	middlewares?: ServerMiddleware[];
 	dataDir?: string;
@@ -30,6 +44,11 @@ export interface ServerOptions {
 const AGENT_RUNTIME_URL =
 	process.env.AGENT_RUNTIME_URL?.replace(/\/$/, "") || "http://localhost:3000";
 
+/**
+ * Class representing an agent server.
+ *//**
+ * Represents an agent server which handles agents, database, and server functionalities.
+ */
 export class AgentServer {
 	public app: express.Application;
 	private agents: Map<UUID, IAgentRuntime>;
@@ -41,6 +60,12 @@ export class AgentServer {
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
 
+	/**
+	 * Constructor for AgentServer class.
+	 *
+	 * @param {ServerOptions} [options] - The options for the server.
+	 * @constructor
+	 */
 	constructor(options?: ServerOptions) {
 		try {
 			logger.log("Initializing AgentServer...");
@@ -76,6 +101,13 @@ export class AgentServer {
 
 		logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
 	}
+
+	/**
+	 * Initializes the server with the provided options.
+	 *
+	 * @param {ServerOptions} [options] - Optional server options.
+	 * @returns {Promise<void>} - A promise that resolves once the server is initialized.
+	 */
 
 	private async initializeServer(options?: ServerOptions) {
 		try {
@@ -196,6 +228,13 @@ export class AgentServer {
 		}
 	}
 
+	/**
+	 * Registers an agent with the provided runtime.
+	 *
+	 * @param {IAgentRuntime} runtime - The runtime object containing agent information.
+	 * @throws {Error} if the runtime is null/undefined, if agentId is missing, if character configuration is missing,
+	 * or if there are any errors during registration.
+	 */
 	public registerAgent(runtime: IAgentRuntime) {
 		try {
 			if (!runtime) {
@@ -286,6 +325,12 @@ export class AgentServer {
 		}
 	}
 
+	/**
+	 * Unregisters an agent from the system.
+	 *
+	 * @param {UUID} agentId - The unique identifier of the agent to unregister.
+	 * @returns {void}
+	 */
 	public unregisterAgent(agentId: UUID) {
 		if (!agentId) {
 			logger.warn(
@@ -302,10 +347,20 @@ export class AgentServer {
 		}
 	}
 
+	/**
+	 * Add middleware to the server's request handling pipeline
+	 * @param {ServerMiddleware} middleware - The middleware function to be registered
+	 */
 	public registerMiddleware(middleware: ServerMiddleware) {
 		this.app.use(middleware);
 	}
 
+	/**
+	 * Starts the server on the specified port.
+	 *
+	 * @param {number} port - The port number on which the server should listen.
+	 * @throws {Error} If the port is invalid or if there is an error while starting the server.
+	 */
 	public start(port: number) {
 		try {
 			if (!port || typeof port !== "number") {
@@ -364,6 +419,10 @@ export class AgentServer {
 		}
 	}
 
+	/**
+	 * Stops the server if it is running. Closes the server connection,
+	 * stops the database connection, and logs a success message.
+	 */
 	public async stop() {
 		if (this.server) {
 			this.server.close(() => {

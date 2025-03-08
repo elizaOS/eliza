@@ -17,6 +17,11 @@ import { escapeMarkdown } from "./utils";
 
 import fs from "node:fs";
 
+/**
+ * Enum representing different types of media.
+ * @enum { string }
+ * @readonly
+ */
 export enum MediaType {
 	PHOTO = "photo",
 	VIDEO = "video",
@@ -34,16 +39,32 @@ const getChannelType = (chat: Chat): ChannelType => {
 	if (chat.type === "group") return ChannelType.GROUP;
 };
 
+/**
+ * Class representing a message manager.
+ * @class
+ */
 export class MessageManager {
 	public bot: Telegraf<Context>;
 	protected runtime: IAgentRuntime;
 
+	/**
+	 * Constructor for creating a new instance of a BotAgent.
+	 *
+	 * @param {Telegraf<Context>} bot - The Telegraf instance used for interacting with the bot platform.
+	 * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+	 */
 	constructor(bot: Telegraf<Context>, runtime: IAgentRuntime) {
 		this.bot = bot;
 		this.runtime = runtime;
 	}
 
 	// Process image messages and generate descriptions
+	/**
+	 * Process an image from a Telegram message to extract the image URL and description.
+	 *
+	 * @param {Message} message - The Telegram message object containing the image.
+	 * @returns {Promise<{ description: string } | null>} The description of the processed image or null if no image found.
+	 */
 	private async processImage(
 		message: Message,
 	): Promise<{ description: string } | null> {
@@ -81,6 +102,14 @@ export class MessageManager {
 	}
 
 	// Send long messages in chunks
+	/**
+	 * Sends a message in chunks, handling attachments and splitting the message if necessary
+	 *
+	 * @param {Context} ctx - The context object representing the current state of the bot
+	 * @param {Content} content - The content of the message to be sent
+	 * @param {number} [replyToMessageId] - The ID of the message to reply to, if any
+	 * @returns {Promise<Message.TextMessage[]>} - An array of TextMessage objects representing the messages sent
+	 */
 	private async sendMessageInChunks(
 		ctx: Context,
 		content: Content,
@@ -143,6 +172,16 @@ export class MessageManager {
 		}
 	}
 
+	/**
+	 * Sends media to a chat using the Telegram API.
+	 *
+	 * @param {Context} ctx - The context object containing information about the current chat.
+	 * @param {string} mediaPath - The path to the media to be sent, either a URL or a local file path.
+	 * @param {MediaType} type - The type of media being sent (PHOTO, VIDEO, DOCUMENT, AUDIO, or ANIMATION).
+	 * @param {string} [caption] - Optional caption for the media being sent.
+	 *
+	 * @returns {Promise<void>} A Promise that resolves when the media is successfully sent.
+	 */
 	private async sendMedia(
 		ctx: Context,
 		mediaPath: string,
@@ -198,6 +237,12 @@ export class MessageManager {
 	}
 
 	// Split message into smaller parts
+	/**
+	 * Splits a given text into an array of strings based on the maximum message length.
+	 *
+	 * @param {string} text - The text to split into chunks.
+	 * @returns {string[]} An array of strings with each element representing a chunk of the original text.
+	 */
 	private splitMessage(text: string): string[] {
 		const chunks: string[] = [];
 		let currentChunk = "";
@@ -217,6 +262,11 @@ export class MessageManager {
 	}
 
 	// Main handler for incoming messages
+	/**
+	 * Handle incoming messages from Telegram and process them accordingly.
+	 * @param {Context} ctx - The context object containing information about the message.
+	 * @returns {Promise<void>}
+	 */
 	public async handleMessage(ctx: Context): Promise<void> {
 		// Type guard to ensure message exists
 		if (!ctx.message || !ctx.from) return;
@@ -417,6 +467,11 @@ export class MessageManager {
 		}
 	}
 
+	/**
+	 * Handles the reaction event triggered by a user reacting to a message.
+	 * * @param {NarrowedContext<Context<Update>, Update.MessageReactionUpdate>} ctx The context of the message reaction update
+	 * @returns {Promise<void>} A Promise that resolves when the reaction handling is complete
+	 */
 	public async handleReaction(
 		ctx: NarrowedContext<Context<Update>, Update.MessageReactionUpdate>,
 	): Promise<void> {

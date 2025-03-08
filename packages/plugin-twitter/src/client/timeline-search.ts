@@ -3,6 +3,18 @@ import type { QueryProfilesResponse, QueryTweetsResponse } from "./timeline-v1";
 import { type SearchEntryRaw, parseLegacyTweet } from "./timeline-v2";
 import type { Tweet } from "./tweets";
 
+/**
+ * Represents a search timeline object.
+ * * @typedef { Object } SearchTimeline
+ * @property { Object } [data] - Optional data object containing search information.
+ * @property { Object } [data.search_by_raw_query] - Optional object containing search timeline information.
+ * @property { Object } [data.search_by_raw_query.search_timeline] - Optional object containing search timeline details.
+ * @property { Object } [data.search_by_raw_query.search_timeline.timeline] - Optional object containing timeline instructions.
+ * @property {Array<Object>} [data.search_by_raw_query.search_timeline.timeline.instructions] - Optional array of search entry instructions.
+ * @property {Array<SearchEntryRaw>} [data.search_by_raw_query.search_timeline.timeline.instructions.entries] - Optional array of raw search entries.
+ * @property { SearchEntryRaw } [data.search_by_raw_query.search_timeline.timeline.instructions.entry] - Optional raw search entry.
+ * @property { string } [data.search_by_raw_query.search_timeline.timeline.instructions.type] - Optional type of search instructions.
+ */
 export interface SearchTimeline {
 	data?: {
 		search_by_raw_query?: {
@@ -19,6 +31,12 @@ export interface SearchTimeline {
 	};
 }
 
+/**
+ * Parses the search timeline tweets from the provided SearchTimeline object.
+ *
+ * @param {SearchTimeline} timeline The SearchTimeline object containing the data to be parsed.
+ * @returns {QueryTweetsResponse} An object containing an array of parsed Tweet objects, as well as the next and previous cursors for pagination.
+ */
 export function parseSearchTimelineTweets(
 	timeline: SearchTimeline,
 ): QueryTweetsResponse {
@@ -74,6 +92,11 @@ export function parseSearchTimelineTweets(
 	return { tweets, next: bottomCursor, previous: topCursor };
 }
 
+/**
+ * Parses the search timeline users from the provided SearchTimeline.
+ * @param {SearchTimeline} timeline The search timeline to parse users from.
+ * @returns {QueryProfilesResponse} An object containing the parsed profiles along with next and previous cursors.
+ */
 export function parseSearchTimelineUsers(
 	timeline: SearchTimeline,
 ): QueryProfilesResponse {

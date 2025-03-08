@@ -7,6 +7,13 @@ const WORLD_ID_KEY = "elizaos-world-id";
  * WorldManager utility for managing the current world ID
  * Each browser/device is treated as a separate "world"
  */
+/**
+ * WorldManager module containing functions for managing the world
+ * @type {Object}
+ * @property {Function} getWorldId - Get the current world ID, creating one if it doesn't exist
+ * @property {Function} resetWorldId - Reset the world ID (mainly for testing purposes)
+ * @property {Function} getRoomStorageKey - Get a room key that's specific to this world and agent
+ */
 export const WorldManager = {
 	/**
 	 * Get the current world ID, creating one if it doesn't exist

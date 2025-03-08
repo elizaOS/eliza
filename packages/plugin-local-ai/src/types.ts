@@ -1,9 +1,24 @@
 // Model specifications and configurations
+/**
+ * Interface representing a Tokenizer configuration.
+ * @property {string} name - The name of the tokenizer.
+ * @property {string} type - The type of the tokenizer.
+ */
 export interface TokenizerConfig {
 	name: string;
 	type: string;
 }
 
+/**
+ * Interface representing the specification of a model.
+ * @typedef {Object} ModelSpec
+ * @property {string} name - The name of the model.
+ * @property {string} repo - The repository of the model.
+ * @property {string} size - The size of the model.
+ * @property {string} quantization - The quantization of the model.
+ * @property {number} contextSize - The context size of the model.
+ * @property {TokenizerConfig} tokenizer - The configuration for the tokenizer used by the model.
+ */
 export interface ModelSpec {
 	name: string;
 	repo: string;
@@ -13,6 +28,17 @@ export interface ModelSpec {
 	tokenizer: TokenizerConfig;
 }
 
+/**
+ * Interface representing a specification for a vision model.
+ * @typedef {object} VisionModelSpec
+ * @property {string} name - The name of the vision model.
+ * @property {string} repo - The repository of the vision model.
+ * @property {string} size - The size of the vision model.
+ * @property {string} modelId - The ID of the vision model.
+ * @property {number} contextSize - The context size of the vision model.
+ * @property {number} maxTokens - The maximum tokens of the vision model.
+ * @property {Array.<string>} tasks - The tasks performed by the vision model.
+ */
 export interface VisionModelSpec {
 	name: string;
 	repo: string;
@@ -23,6 +49,21 @@ export interface VisionModelSpec {
 	tasks: string[];
 }
 
+/**
+ * Interface representing the specification for a TTS model.
+ * @typedef { Object } TTSModelSpec
+ * @property { string } name - The name of the model.
+ * @property { string } repo - The repository where the model is stored.
+ * @property { string } size - The size of the model.
+ * @property { string } quantization - The quantization method used for the model.
+ * @property {string[]} speakers - An array of speakers the model can mimic.
+ * @property {string[]} languages - An array of languages the model can speak in.
+ * @property {string[]} features - An array of features supported by the model.
+ * @property { number } maxInputLength - The maximum input length accepted by the model.
+ * @property { number } sampleRate - The sample rate used by the model.
+ * @property { number } contextSize - The context size used by the model.
+ * @property { TokenizerConfig } tokenizer - The configuration for the tokenizer used by the model.
+ */
 export interface TTSModelSpec {
 	name: string;
 	repo: string;
@@ -38,6 +79,18 @@ export interface TTSModelSpec {
 }
 
 // Model specifications mapping
+/**
+ * Interface for specifying different models for a project.
+ * @interface ModelSpecs
+ * @property {ModelSpec} small - Specifications for a small model
+ * @property {ModelSpec} medium - Specifications for a medium model
+ * @property {VisionModelSpec} vision - Specifications for a vision model
+ * @property {VisionModelSpec} visionvl - Specifications for a vision model with vision loss
+ * @property {Object} tts - Specifications for text-to-speech models
+ * @property {TTSModelSpec} tts.base - Specifications for the base text-to-speech model
+ * @property {TTSModelSpec} tts.medium - Specifications for a medium text-to-speech model
+ * @property {TTSModelSpec} tts.large - Specifications for a large text-to-speech model
+ */
 export interface ModelSpecs {
 	small: ModelSpec;
 	medium: ModelSpec;
@@ -51,6 +104,9 @@ export interface ModelSpecs {
 }
 
 // Export MODEL_SPECS constant type
+/**
+ * Model specifications containing information about various models such as name, repository, size, quantization, context size, tokenizer details, tasks, speakers, languages, features, max input length, sample rate, and other relevant information.
+ */
 export const MODEL_SPECS: ModelSpecs = {
 	small: {
 		name: "DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf",

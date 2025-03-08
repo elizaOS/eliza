@@ -11,6 +11,17 @@ const configSchema = z.object({
 	ANTHROPIC_LARGE_MODEL: z.string().optional(),
 });
 
+/**
+ * Plugin for Anthropic.
+ *
+ * @type {Plugin}
+ * @property {string} name - The name of the plugin.
+ * @property {string} description - The description of the plugin.
+ * @property {Object} config - The configuration object with API keys and model variables.
+ * @property {Function} init - Initializes the plugin with the given configuration.
+ * @property {Function} models - Contains functions for generating text using small and large models.
+ * @property {Function[]} tests - An array of test functions for the plugin.
+ */
 export const anthropicPlugin: Plugin = {
 	name: "anthropic",
 	description: "Anthropic plugin (supports text generation only)",

@@ -42,6 +42,17 @@ import { DiscordTestSuite } from "./tests.ts";
 import type { IDiscordService } from "./types.ts";
 import { VoiceManager } from "./voice.ts";
 
+/**
+ * DiscordService class representing a service for interacting with Discord.
+ * @extends Service
+ * @implements IDiscordService
+ * @property {string} serviceType - The type of service, set to DISCORD_SERVICE_NAME.
+ * @property {string} capabilityDescription - A description of the service's capabilities.
+ * @property {DiscordJsClient} client - The DiscordJsClient used for communication.
+ * @property {Character} character - The character associated with the service.
+ * @property {MessageManager} messageManager - The manager for handling messages.
+ * @property {VoiceManager} voiceManager - The manager for handling voice communication.
+ */
 export class DiscordService extends Service implements IDiscordService {
 	static serviceType: string = DISCORD_SERVICE_NAME;
 	capabilityDescription =
@@ -50,6 +61,14 @@ export class DiscordService extends Service implements IDiscordService {
 	character: Character;
 	messageManager: MessageManager;
 	voiceManager: VoiceManager;
+
+	/**
+	 * Constructor for Discord client.
+	 * Initializes the Discord client with specified intents and partials,
+	 * sets up event listeners, and ensures all servers exist.
+	 *
+	 * @param {IAgentRuntime} runtime - The AgentRuntime instance
+	 */
 
 	constructor(runtime: IAgentRuntime) {
 		super(runtime);
@@ -97,6 +116,12 @@ export class DiscordService extends Service implements IDiscordService {
 		ensureAllServersExist(this.runtime);
 	}
 
+	/**
+	 * Ensures that all channels exist in the database for a given guild.
+	 * @param {IAgentRuntime} runtime - The agent runtime object.
+	 * @param {OAuth2Guild} guild - The OAuth2Guild object for which channels need to be ensured.
+	 * @returns {Promise<void>} - A Promise that resolves once all channels are ensured.
+	 */
 	async ensureAllChannelsExist(runtime: IAgentRuntime, guild: OAuth2Guild) {
 		// fetch the owning member from the OAuth2Guild object
 		const guildObj = await guild.fetch();
@@ -135,6 +160,9 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 	}
 
+	/**
+	 * Set up event listeners for the client
+	 */
 	private setupEventListeners() {
 		// When joining to a new server
 		this.client.on("guildCreate", this.handleGuildCreate.bind(this));
@@ -173,6 +201,12 @@ export class DiscordService extends Service implements IDiscordService {
 		);
 	}
 
+	/**
+	 * Handles the event when a new member joins a guild.
+	 *
+	 * @param {GuildMember} member - The GuildMember object representing the new member that joined the guild.
+	 * @returns {Promise<void>} - A Promise that resolves once the event handling is complete.
+	 */
 	private async handleGuildMemberAdd(member: GuildMember) {
 		logger.log(`New member joined: ${member.user.username}`);
 
@@ -205,11 +239,24 @@ export class DiscordService extends Service implements IDiscordService {
 		});
 	}
 
+	/**
+	 *
+	 * Start the Discord service
+	 * @param {IAgentRuntime} runtime - The runtime for the agent
+	 * @returns {Promise<DiscordService>} A promise that resolves to a DiscordService instance
+	 *
+	 */
 	static async start(runtime: IAgentRuntime): Promise<DiscordService> {
 		const client = new DiscordService(runtime);
 		return client;
 	}
 
+	/**
+	 * Stops the Discord client associated with the given runtime.
+	 *
+	 * @param {IAgentRuntime} runtime - The runtime associated with the Discord client.
+	 * @returns {void}
+	 */
 	static async stop(runtime: IAgentRuntime) {
 		const client = runtime.getService(DISCORD_SERVICE_NAME);
 		if (!client) {
@@ -225,10 +272,22 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 	}
 
+	/**
+	 * Asynchronously stops the client by destroying it.
+	 *
+	 * @returns {Promise<void>}
+	 */
 	async stop() {
 		await this.client.destroy();
 	}
 
+	/**
+	 * Handle the event when the client is ready.
+	 * @param {Object} readyClient - The ready client object containing user information.
+	 * @param {string} readyClient.user.tag - The username and discriminator of the client user.
+	 * @param {string} readyClient.user.id - The user ID of the client.
+	 * @returns {Promise<void>}
+	 */
 	private async onClientReady(readyClient: { user: { tag: any; id: any } }) {
 		logger.success(`Logged in as ${readyClient.user?.tag}`);
 
@@ -290,6 +349,12 @@ export class DiscordService extends Service implements IDiscordService {
 		await this.onReady();
 	}
 
+	/**
+	 * Asynchronously retrieves the type of a given channel.
+	 *
+	 * @param {Channel} channel - The channel for which to determine the type.
+	 * @returns {Promise<ChannelType>} A Promise that resolves with the type of the channel.
+	 */
 	async getChannelType(channel: Channel): Promise<ChannelType> {
 		switch (channel.type) {
 			case DiscordChannelType.DM:
@@ -301,6 +366,13 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 	}
 
+	/**
+	 * Handles the addition of a reaction on a message.
+	 *
+	 * @param {MessageReaction} reaction The reaction that was added.
+	 * @param {User} user The user who added the reaction.
+	 * @returns {void}
+	 */
 	async handleReactionAdd(reaction: MessageReaction, user: User) {
 		try {
 			logger.log("Reaction added");
@@ -415,6 +487,13 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 	}
 
+	/**
+	 * Handles the removal of a reaction on a message.
+	 *
+	 * @param {MessageReaction} reaction - The reaction that was removed.
+	 * @param {User} user - The user who removed the reaction.
+	 * @returns {Promise<void>} - A Promise that resolves after handling the reaction removal.
+	 */
 	async handleReactionRemove(reaction: MessageReaction, user: User) {
 		try {
 			logger.log("Reaction removed");
@@ -508,6 +587,11 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 	}
 
+	/**
+	 * Handles the event when the bot joins a guild. It logs the guild name, fetches additional information about the guild, scans the guild for voice data, creates standardized world data structure, generates unique IDs, and emits events to the runtime.
+	 * @param {Guild} guild - The guild that the bot has joined.
+	 * @returns {Promise<void>}
+	 */
 	private async handleGuildCreate(guild: Guild) {
 		logger.log(`Joined guild ${guild.name}`);
 		const fullGuild = await guild.fetch();
@@ -547,6 +631,11 @@ export class DiscordService extends Service implements IDiscordService {
 		this.runtime.emitEvent(["SERVER_JOINED"], standardizedData);
 	}
 
+	/**
+	 * Handles interactions created by the user, specifically commands.
+	 * @param {any} interaction - The interaction object received
+	 * @returns {void}
+	 */
 	private async handleInteractionCreate(interaction: any) {
 		if (!interaction.isCommand()) return;
 
@@ -562,6 +651,13 @@ export class DiscordService extends Service implements IDiscordService {
 
 	/**
 	 * Builds a standardized list of rooms from Discord guild channels
+	 */
+	/**
+	 * Build standardized rooms for a guild based on text and voice channels.
+	 *
+	 * @param {Guild} guild The guild to build rooms for.
+	 * @param {UUID} _worldId The ID of the world to associate with the rooms.
+	 * @returns {Promise<any[]>} An array of standardized room objects.
 	 */
 	private async buildStandardizedRooms(
 		guild: Guild,

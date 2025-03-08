@@ -17,6 +17,10 @@ import type {
  * Generates a random string that mimics a UUID v4.
  */
 // TODO: install and replace with uuidv4
+/**
+ * Generates a random UUID (Universally Unique Identifier) in the form of "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".
+ * @returns {string} A randomly generated UUID.
+ */
 function generateRandomId(): string {
 	return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
 		const r = (Math.random() * 16) | 0;

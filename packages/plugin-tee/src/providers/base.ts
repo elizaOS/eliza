@@ -20,6 +20,9 @@ import type { TdxQuoteHashAlgorithms } from "@phala/dstack-sdk";
  * }
  * ```
  */
+/**
+ * Abstract class representing a key provider for deriving keys.
+ */
 export abstract class DeriveKeyProvider {}
 
 /**

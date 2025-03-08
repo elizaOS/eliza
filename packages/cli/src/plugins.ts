@@ -16,4 +16,7 @@ export const availablePlugins = {
 };
 
 // Helper type
+/**
+ * Defines a type PluginName which is a key of the object availablePlugins.
+ */
 export type PluginName = keyof typeof availablePlugins;

@@ -9,11 +9,23 @@ import { Check } from "@sinclair/typebox/value";
 import * as OTPAuth from "otpauth";
 import { type LegacyUserRaw, parseProfile, type Profile } from "./profile";
 
+/**
+ * Interface representing the init request for a Twitter user authentication flow.
+ * @typedef {Object} TwitterUserAuthFlowInitRequest
+ * @property {string} flow_name - The name of the flow.
+ * @property {Record<string, unknown>} input_flow_data - The input flow data.
+ */
 interface TwitterUserAuthFlowInitRequest {
 	flow_name: string;
 	input_flow_data: Record<string, unknown>;
 }
 
+/**
+ * Interface representing a request for a subtask in the Twitter user authentication flow.
+ * @typedef {object} TwitterUserAuthFlowSubtaskRequest
+ * @property {string} flow_token - The token representing the flow.
+ * @property {object[]} subtask_inputs - An array of subtask inputs, each containing a subtask ID and other unknown properties.
+ */
 interface TwitterUserAuthFlowSubtaskRequest {
 	flow_token: string;
 	subtask_inputs: ({
@@ -21,10 +33,22 @@ interface TwitterUserAuthFlowSubtaskRequest {
 	} & Record<string, unknown>)[];
 }
 
+/**
+ * Represents a request for a Twitter user authentication flow, which can be either an init request
+ * or a subtask request.
+ */
+
 type TwitterUserAuthFlowRequest =
 	| TwitterUserAuthFlowInitRequest
 	| TwitterUserAuthFlowSubtaskRequest;
 
+/**
+ * Interface representing the response object of the Twitter user authentication flow.
+ * @property {TwitterApiErrorRaw[]} [errors] The errors occurred during the authentication flow.
+ * @property {string} [flow_token] The token associated with the authentication flow.
+ * @property {string} [status] The status of the authentication flow.
+ * @property {TwitterUserAuthSubtask[]} [subtasks] The subtasks involved in the authentication flow.
+ */
 interface TwitterUserAuthFlowResponse {
 	errors?: TwitterApiErrorRaw[];
 	flow_token?: string;
@@ -32,6 +56,11 @@ interface TwitterUserAuthFlowResponse {
 	subtasks?: TwitterUserAuthSubtask[];
 }
 
+/**
+ * Interface representing the response structure for verifying Twitter user authentication credentials.
+ *
+ * @property {TwitterApiErrorRaw[]} [errors] Optional array of Twitter API errors.
+ */
 interface TwitterUserAuthVerifyCredentials {
 	errors?: TwitterApiErrorRaw[];
 }
@@ -40,18 +69,36 @@ const TwitterUserAuthSubtask = Type.Object({
 	subtask_id: Type.String(),
 	enter_text: Type.Optional(Type.Object({})),
 });
+/**
+ * Represents the type of a Twitter user authentication subtask.
+ */
 type TwitterUserAuthSubtask = Static<typeof TwitterUserAuthSubtask>;
 
+/**
+ * Represents the result of a successful flow token generation.
+ * @typedef {Object} FlowTokenResultSuccess
+ * @property {string} status - The status of the result (always "success").
+ * @property {string} flowToken - The generated flow token.
+ * @property {TwitterUserAuthSubtask} [subtask] - Optional subtask related to Twitter user authentication.
+ */
 type FlowTokenResultSuccess = {
 	status: "success";
 	flowToken: string;
 	subtask?: TwitterUserAuthSubtask;
 };
 
+/**
+ * Represents the result of a FlowToken operation, which can either be a success with the token or an error with the error details.
+ * @typedef {FlowTokenResultSuccess | { status: "error"; err: Error }} FlowTokenResult
+ */
 type FlowTokenResult = FlowTokenResultSuccess | { status: "error"; err: Error };
 
 /**
  * A user authentication token manager.
+ */
+/**
+ * Class representing Twitter User Authentication.
+ * Extends TwitterGuestAuth class.
  */
 export class TwitterUserAuth extends TwitterGuestAuth {
 	private userProfile: Profile | undefined;

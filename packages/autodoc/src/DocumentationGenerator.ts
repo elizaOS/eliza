@@ -22,6 +22,17 @@ import { JSDocValidator } from "./JSDocValidator.js";
  * Class representing a Documentation Generator.
  *
  */
+/**
+ * Class representing a Documentation Generator.
+ * @property {ASTQueueItem[]} missingJsDocQueue - Array representing missing JSDoc queue.
+ * @property {ASTQueueItem[]} existingJsDocQueue - Array representing existing JSDoc queue.
+ * @property { boolean } hasChanges - Flag indicating if there are changes.
+ * @property {Map<string, string>} fileContents - Map containing file contents.
+ * @property { string } branchName - Name of the branch.
+ * @property {Map<string, number>} fileOffsets - Map containing file offsets.
+ * @property {string[]} typeScriptFiles - Array containing TypeScript files.
+ * @property { JSDocValidator } jsDocValidator - Instance of JSDocValidator.
+ */
 export class DocumentationGenerator {
 	public missingJsDocQueue: ASTQueueItem[] = [];
 	public existingJsDocQueue: ASTQueueItem[] = [];

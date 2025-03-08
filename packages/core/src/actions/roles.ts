@@ -16,6 +16,19 @@ import {
 	type UUID,
 } from "../types";
 
+/**
+ * Asynchronous function to generate an object based on the provided parameters.
+ *
+ * @param {Object} options - The options object containing runtime, prompt, modelType, stopSequences, output, enumValues, and schema.
+ * @param {Object} options.runtime - The runtime object.
+ * @param {string} options.prompt - The prompt to be used for generating the object.
+ * @param {string} options.modelType - The type of model to use for generation.
+ * @param {string[]} [options.stopSequences=[]] - The stop sequences to be used during generation.
+ * @param {string} [options.output="object"] - The desired output type (object or enum).
+ * @param {string[]} [options.enumValues=[]] - The enum values to be used for enum output type.
+ * @param {Object} [options.schema] - The schema object to validate the generated object against.
+ * @returns {Promise<any>} The generated object based on the provided parameters, or null if an error occurs.
+ */
 export const generateObject = async ({
 	runtime,
 	prompt,
@@ -109,6 +122,15 @@ export const generateObject = async ({
 };
 
 // Role modification validation helper
+/**
+ * Determines if a user with a given current role can modify another user's role to a new role.
+ * Owners can modify any role except other owners. Admins can only modify NONE roles and can't promote to OWNER or ADMIN.
+ *
+ * @param {Role} currentRole - The current role of the user attempting to modify roles.
+ * @param {Role | null} targetRole - The current role of the user whose role is being modified, can be null.
+ * @param {Role} newRole - The new role that the user is attempting to set.
+ * @returns {boolean} Returns true if the role can be modified, false if not.
+ */
 const canModifyRole = (
 	currentRole: Role,
 	targetRole: Role | null,
@@ -130,6 +152,12 @@ const canModifyRole = (
 	return false;
 };
 
+/**
+ * Template for extracting role assignments from a conversation.
+ *
+ * @type {string} extractionTemplate - The template string containing information about the task, server members, available roles, recent messages, current speaker role, and extraction instructions.
+ * @returns {string} JSON format of role assignments if valid role assignments are found, otherwise an empty array.
+ */
 const extractionTemplate = `# Task: Extract role assignments from the conversation
 
 # Current Server Members:
@@ -164,6 +192,18 @@ Return the results in this JSON format:
 
 If no valid role assignments are found, return an empty array.`;
 
+/**
+ * Asynchronous function to generate an array of objects based on the provided parameters.
+ *
+ * @param {Object} parameters - The parameters object.
+ * @param {IAgentRuntime} parameters.runtime - The runtime for the agent.
+ * @param {string} parameters.prompt - The prompt for generating the objects.
+ * @param {ModelType} [parameters.modelType=ModelTypes.TEXT_SMALL] - The type of model to use.
+ * @param {ZodSchema} [parameters.schema] - The schema for validating the generated objects.
+ * @param {string} [parameters.schemaName] - The name of the schema.
+ * @param {string} [parameters.schemaDescription] - The description of the schema.
+ * @returns {Promise<z.infer<typeof schema>[]>} - A promise that resolves to an array of objects conforming to the schema.
+ */
 async function generateObjectArray({
 	runtime,
 	prompt,
@@ -200,11 +240,27 @@ async function generateObjectArray({
 	return schema ? schema.parse(result) : result;
 }
 
+/**
+ * Interface representing a role assignment.
+ * @typedef {Object} RoleAssignment
+ * @property {UUID} entityId - The unique identifier of the entity.
+ * @property {Role} newRole - The new role assigned to the entity.
+ */
 interface RoleAssignment {
 	entityId: UUID;
 	newRole: Role;
 }
 
+/**
+ * Represents an action to update the role of a user within a server.
+ * @typedef {Object} Action
+ * @property {string} name - The name of the action.
+ * @property {string[]} similes - The similar actions that can be performed.
+ * @property {string} description - A description of the action and its purpose.
+ * @property {Function} validate - A function to validate the action before execution.
+ * @property {Function} handler - A function to handle the execution of the action.
+ * @property {ActionExample[][]} examples - Examples demonstrating how the action can be used.
+ */
 const updateRoleAction: Action = {
 	name: "UPDATE_ROLE",
 	similes: ["CHANGE_ROLE", "SET_ROLE", "MODIFY_ROLE"],

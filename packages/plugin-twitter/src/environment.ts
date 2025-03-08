@@ -1,6 +1,17 @@
 import { parseBooleanFromText, type IAgentRuntime } from "@elizaos/core";
 import { z, ZodError } from "zod";
 
+/**
+ * Schema for validating an X/Twitter Username.
+ *
+ * Constraints:
+ * - Must be at least 1 character long
+ * - Cannot exceed 15 characters
+ * - Can only contain letters, numbers, and underscores
+ * - Special case allows wildcard '*' as value
+ *
+ * @type {import("zod").StringType}
+ */
 const _twitterUsernameSchema = z
 	.string()
 	.min(1, "An X/Twitter Username must be at least 1 character long")
@@ -19,6 +30,9 @@ const _twitterUsernameSchema = z
 /**
  * This schema defines all required/optional environment settings,
  * including new fields like TWITTER_SPACES_ENABLE.
+ */
+/**
+ * Schema definition for Twitter environment variables
  */
 export const twitterEnvSchema = z.object({
 	TWITTER_DRY_RUN: z.boolean(),

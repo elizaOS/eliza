@@ -13,6 +13,12 @@ import { decodeBase58 } from "./utils";
  * @returns Solana keypair for transactions
  * @throws Error if private key is missing or invalid
  */
+/**
+ * Retrieves the wallet keypair based on the private key stored in the runtime settings.
+ * @param {IAgentRuntime} [runtime] - Optional parameter representing the runtime environment (e.g., browser, server).
+ * @returns {Keypair} - The Keypair object generated from the stored private key.
+ * @throws {Error} - If no wallet private key is configured or if an error occurs during keypair creation.
+ */
 export function getWalletKeypair(runtime?: IAgentRuntime): Keypair {
 	const privateKeyString = runtime?.getSetting("SOLANA_PRIVATE_KEY");
 	if (!privateKeyString) {

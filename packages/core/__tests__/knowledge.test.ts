@@ -28,8 +28,18 @@ mock.module("../src/uuid.ts", () => ({
 }));
 
 // Define the mock function types using interfaces
+/**
+ * Define a type alias `SearchMemoriesFn` which refers to the `searchMemories` function
+ * defined in the `IMemoryManager` interface.
+ */
 type SearchMemoriesFn = IMemoryManager["searchMemories"];
+/**
+ * Define a type alias GetMemoryByIdFn that represents the getMemoryById function from the IMemoryManager interface.
+ */
 type GetMemoryByIdFn = IMemoryManager["getMemoryById"];
+/**
+ * Represents a function type that points to the 'createMemory' method of the IMemoryManager interface.
+ */
 type CreateMemoryFn = IMemoryManager["createMemory"];
 
 describe("Knowledge Module", () => {

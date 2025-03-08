@@ -14,6 +14,11 @@ import stringify from "json-stable-stringify";
 /**
  * The categories that can be used in Twitter searches.
  */
+/**
+ * Enum representing different search modes.
+ * @enum {number}
+ */
+
 export enum SearchMode {
 	Top = 0,
 	Latest = 1,

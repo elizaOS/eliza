@@ -9,17 +9,34 @@ import {
 } from "@elizaos/core";
 import type { IToken } from "../types";
 
+/**
+ * Interface representing a transaction history entry.
+ * @property {string} txHash - The hash of the transaction.
+ * @property {Date} blockTime - The time when the transaction occurred.
+ * @property {any} data - Additional data related to the transaction.
+ */
 export interface TransactionHistory {
 	txHash: string;
 	blockTime: Date;
 	data: any;
 }
 
+/**
+ * Interface representing a Portfolio object.
+ * @typedef {Object} Portfolio
+ * @property {string} key - The key associated with the portfolio.
+ * @property {any} data - The data contained in the portfolio.
+ */
 export interface Portfolio {
 	key: string;
 	data: any;
 }
 
+/**
+ * Interface representing content with sentiment analysis data.
+ * @extends Content
+ * @interface
+ */
 export interface SentimentContent extends Content {
 	text: string;
 	source: "sentiment-analysis";
@@ -37,6 +54,24 @@ export interface SentimentContent extends Content {
 const rolePrompt =
 	"You are a sentiment analyzer for cryptocurrency and market data.";
 
+/**
+ * Template for analyzing tweets related to the cryptocurrency market.
+ *
+ * The template prompts the user to write a summary of the tweets and analyze the tokens present in the tweet.
+ * It requests information on whether the sentiment towards the tokens is positive or negative.
+ *
+ * To analyze the given tweets, the user needs to strictly return a JSON object with the following structure:
+ * {
+ *     "text": "the summary of what has happened in those tweets, with a max length of 200 characters",
+ *     "occuringTokens": [
+ *         {
+ *             "token": "the token symbol, like: ETH, SOL, BTC etc.",
+ *             "sentiment": "positive is between 1 and 100 and negative is from -1 to -100",
+ *             "reason": "a short sentence explaining the reason for this sentiment score"
+ *         }
+ *     ]
+ * }
+ */
 const template = `Write a summary of what is happening in the tweets. The main topic is the cryptocurrency market.
 You will also be analyzing the tokens that occur in the tweet and tell us whether their sentiment is positive or negative.
 
@@ -56,6 +91,12 @@ Strictly return the following json:
    ]
 }`;
 
+/**
+ * Generates a bulletpoint list from an array of strings.
+ *
+ * @param {string[]} array - The array of strings to create the list from.
+ * @returns {string} The bulletpoint list as a single string with new lines separating each item.
+ */
 function makeBulletpointList(array: string[]): string {
 	return array.map((a) => ` - ${a}`).join("\n");
 }

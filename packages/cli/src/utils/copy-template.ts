@@ -6,6 +6,15 @@ import { getPackageVersion } from "./get-package-info";
 /**
  * Copy a directory recursively
  */
+/**
+ * Asynchronously copies the contents of a directory from a source path to a destination path, excluding specified files and directories.
+ * If the destination directory does not exist, it will be created.
+ *
+ * @param {string} src - The path to the source directory.
+ * @param {string} dest - The path to the destination directory.
+ * @param {string[]} [exclude=[]] - An array of file and directory names to exclude from the copy operation.
+ * @returns {Promise<void>} A Promise that resolves when the copy operation is complete.
+ */
 export async function copyDir(
 	src: string,
 	dest: string,

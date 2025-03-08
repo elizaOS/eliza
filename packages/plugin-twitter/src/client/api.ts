@@ -6,7 +6,26 @@ import { Headers } from "headers-polyfill";
 
 // For some reason using Parameters<typeof fetch> reduces the request transform function to
 // `(url: string) => string` in tests.
+/**
+ * Represents an array type for parameters used in the fetch function,
+ * with the first element being input of type RequestInfo or URL,
+ * and the second element being init of type RequestInit or optional if not provided.
+ */
 type FetchParameters = [input: RequestInfo | URL, init?: RequestInit];
+
+/**
+ * @typedef {Object} FetchTransformOptions
+ * @property {Function} request Transforms the request options before a request is made. This executes after all of the default
+ * parameters have been configured, and is stateless. It is safe to return new request options
+ * objects.
+ * @param {FetchParameters} args The request options.
+ * @returns {FetchParameters|Promise<FetchParameters>} The transformed request options.
+ *
+ * @property {Function} response Transforms the response after a request completes. This executes immediately after the request
+ * completes, and is stateless. It is safe to return a new response object.
+ * @param {Response} response The response object.
+ * @returns {Response|Promise<Response>} The transformed response object.
+ */
 
 export interface FetchTransformOptions {
 	/**

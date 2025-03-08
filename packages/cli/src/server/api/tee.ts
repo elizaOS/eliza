@@ -2,6 +2,12 @@ import type { IAgentRuntime, ITeeLogService, TeeLogQuery } from "@elizaos/core";
 import { logger, ServiceTypes } from "@elizaos/core";
 import express from "express";
 
+/**
+ * Creates and configures an Express Router for TEE related endpoints.
+ *
+ * @param {Map<string, IAgentRuntime>} agents - A map of agent runtimes keyed by agent ID.
+ * @returns {express.Router} - The configured Express Router.
+ */
 export function teeRouter(agents: Map<string, IAgentRuntime>): express.Router {
 	const router = express.Router();
 

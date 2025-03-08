@@ -1,3 +1,8 @@
+/**
+ * Escapes Markdown special characters in the given text, excluding code blocks.
+ * @param {string} text - The text to escape Markdown characters from.
+ * @returns {string} The text with escaped Markdown characters.
+ */
 export function escapeMarkdown(text: string): string {
 	// Don't escape if it's a code block
 	if (text.startsWith("```") && text.endsWith("```")) {
@@ -27,6 +32,13 @@ export function escapeMarkdown(text: string): string {
 
 /**
  * Splits a message into chunks that fit within Telegram's message length limit
+ */
+/**
+ * Splits a text message into chunks based on a maximum length for each chunk.
+ *
+ * @param {string} text - The text message to split.
+ * @param {number} maxLength - The maximum length for each chunk (default is 4096).
+ * @returns {string[]} An array containing the text message split into chunks.
  */
 export function splitMessage(text: string, maxLength = 4096): string[] {
 	const chunks: string[] = [];

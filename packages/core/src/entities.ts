@@ -11,6 +11,11 @@ import {
 	type UUID,
 } from "./types.ts";
 
+/**
+ * Template for resolving entity name within a conversation context.
+ *
+ * @type {string}
+ */
 const entityResolutionTemplate = `# Task: Resolve Entity Name
 Message Sender: {{senderName}} (ID: {{senderId}})
 Agent: {{agentName}} (ID: {{agentId}})
@@ -45,6 +50,16 @@ Return a JSON object with:
 Make sure to include the \`\`\`json\`\`\` tags around the JSON object.
 `;
 
+/**
+ * Get recent interactions between a source entity and candidate entities in a specific room.
+ *
+ * @param {IAgentRuntime} runtime - The runtime context for the agent.
+ * @param {UUID} sourceEntityId - The ID of the source entity initiating interactions.
+ * @param {Entity[]} candidateEntities - The list of candidate entities to evaluate interactions with.
+ * @param {UUID} roomId - The ID of the room where interactions are taking place.
+ * @param {Relationship[]} relationships - The relationships between the entities involved.
+ * @returns {Promise<{ entity: Entity; interactions: Memory[]; count: number }[]>} - An array of objects containing the entity, recent interactions, and interaction count.
+ */
 async function getRecentInteractions(
 	runtime: IAgentRuntime,
 	sourceEntityId: UUID,
@@ -106,6 +121,14 @@ async function getRecentInteractions(
 	return results.sort((a, b) => b.count - a.count);
 }
 
+/**
+ * Finds an entity by name in the given runtime environment.
+ *
+ * @param {IAgentRuntime} runtime - The agent runtime environment.
+ * @param {Memory} message - The memory message containing relevant information.
+ * @param {State} state - The current state of the system.
+ * @returns {Promise<Entity | null>} A promise that resolves to the found entity or null if not found.
+ */
 export async function findEntityByName(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -279,6 +302,13 @@ export async function findEntityByName(
 	}
 }
 
+/**
+ * Function to create a unique UUID based on the runtime and base user ID.
+ *
+ * @param {RuntimeContext} runtime - The runtime context object.
+ * @param {UUID|string} baseUserId - The base user ID to use in generating the UUID.
+ * @returns {UUID} - The unique UUID generated based on the runtime and base user ID.
+ */
 export const createUniqueUuid = (runtime, baseUserId: UUID | string): UUID => {
 	// If the base user ID is the agent ID, return it directly
 	if (baseUserId === runtime.agentId) {
@@ -295,6 +325,14 @@ export const createUniqueUuid = (runtime, baseUserId: UUID | string): UUID => {
 
 /**
  * Get details for a list of entities.
+ */
+/**
+ * Retrieves entity details for a specific room from the database.
+ *
+ * @param {Object} params - The input parameters
+ * @param {IAgentRuntime} params.runtime - The Agent Runtime instance
+ * @param {UUID} params.roomId - The ID of the room to retrieve entity details for
+ * @returns {Promise<Array>} - A promise that resolves to an array of unique entity details
  */
 export async function getEntityDetails({
 	runtime,

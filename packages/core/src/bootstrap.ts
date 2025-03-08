@@ -53,6 +53,13 @@ import {
 } from "./types.ts";
 import { ScenarioService } from "./services/scenario.ts";
 
+/**
+ * Represents the parameters passed when a server is joined.
+ * @typedef {Object} ServerJoinedParams
+ * @property {IAgentRuntime} runtime - The agent runtime object.
+ * @property {any} world - The platform-specific server object.
+ * @property {string} source - The source platform of the server (e.g. "discord", "telegram").
+ */
 type ServerJoinedParams = {
 	runtime: IAgentRuntime;
 	world: any; // Platform-specific server object
@@ -60,6 +67,15 @@ type ServerJoinedParams = {
 };
 
 // Add this to your types.ts file
+/**
+ * Represents the parameters required when a server is connected.
+ * @typedef { Object } ServerConnectedParams
+ * @property { IAgentRuntime } runtime - The runtime of the agent.
+ * @property { World } world - The world connected to the server.
+ * @property {Room[]} rooms - The array of rooms connected to the server.
+ * @property {Entity[]} users - The array of users connected to the server.
+ * @property { string } source - The source of the connection.
+ */
 type ServerConnectedParams = {
 	runtime: IAgentRuntime;
 	world: World;
@@ -68,6 +84,17 @@ type ServerConnectedParams = {
 	source: string;
 };
 
+/**
+ * Represents the parameters when a user joins a server.
+ * @typedef {Object} UserJoinedParams
+ * @property {IAgentRuntime} runtime - The runtime object for the agent.
+ * @property {any} user - The user who joined.
+ * @property {string} serverId - The ID of the server the user joined.
+ * @property {UUID} entityId - The entity ID of the user.
+ * @property {string} channelId - The ID of the channel the user joined.
+ * @property {ChannelType} channelType - The type of channel the user joined.
+ * @property {string} source - The source of the user joining.
+ */
 type UserJoinedParams = {
 	runtime: IAgentRuntime;
 	user: any;
@@ -78,6 +105,13 @@ type UserJoinedParams = {
 	source: string;
 };
 
+/**
+ * Represents the parameters for a message received handler.
+ * @typedef {Object} MessageReceivedHandlerParams
+ * @property {IAgentRuntime} runtime - The agent runtime associated with the message.
+ * @property {Memory} message - The message received.
+ * @property {HandlerCallback} callback - The callback function to be executed after handling the message.
+ */
 type MessageReceivedHandlerParams = {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -86,6 +120,12 @@ type MessageReceivedHandlerParams = {
 
 const latestResponseIds = new Map<string, Map<string, string>>();
 
+/**
+ * Handles incoming messages and generates responses based on the provided runtime and message information.
+ *
+ * @param {MessageReceivedHandlerParams} params - The parameters needed for message handling, including runtime, message, and callback.
+ * @returns {Promise<void>} - A promise that resolves once the message handling and response generation is complete.
+ */
 const messageReceivedHandler = async ({
 	runtime,
 	message,
@@ -246,6 +286,14 @@ const messageReceivedHandler = async ({
 	);
 };
 
+/**
+ * Handles the receipt of a reaction message and creates a memory in the designated memory manager.
+ *
+ * @param {Object} params - The parameters for the function.
+ * @param {IAgentRuntime} params.runtime - The agent runtime object.
+ * @param {Memory} params.message - The reaction message to be stored in memory.
+ * @returns {void}
+ */
 const reactionReceivedHandler = async ({
 	runtime,
 	message,
@@ -266,6 +314,18 @@ const reactionReceivedHandler = async ({
 
 /**
  * Syncs a single user into an entity
+ */
+/**
+ * Asynchronously sync a single user with the specified parameters.
+ *
+ * @param {UUID} entityId - The unique identifier for the entity.
+ * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+ * @param {any} user - The user object to sync.
+ * @param {string} serverId - The unique identifier for the server.
+ * @param {string} channelId - The unique identifier for the channel.
+ * @param {ChannelType} type - The type of channel.
+ * @param {string} source - The source of the user data.
+ * @returns {Promise<void>} A promise that resolves once the user is synced.
  */
 const syncSingleUser = async (
 	entityId: UUID,

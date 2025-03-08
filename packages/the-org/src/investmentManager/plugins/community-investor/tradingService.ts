@@ -46,6 +46,15 @@ import {
 } from "./types";
 
 // Event types
+/**
+ * Represents different types of trading events that can occur.
+ * @typedef {Object} TradingEvent
+ * @property {string} type - The type of trading event.
+ * @property {Position} [position] - The position associated with the event. (if type is 'position_opened' or 'position_closed')
+ * @property {Transaction} [transaction] - The transaction associated with the event. (if type is 'transaction_added')
+ * @property {TokenRecommendation} [recommendation] - The token recommendation associated with the event. (if type is 'recommendation_added')
+ * @property {TokenPerformance} [performance] - The token performance associated with the event. (if type is 'token_performance_updated')
+ */
 export type TradingEvent =
 	| { type: "position_opened"; position: Position }
 	| { type: "position_closed"; position: Position }
@@ -55,6 +64,18 @@ export type TradingEvent =
 
 /**
  * Unified Trading Service that centralizes all trading operations
+ */
+/**
+ * CommunityInvestorService class representing a service for trading on the Solana blockchain.
+ * @extends Service
+ * @property {string} serviceType - The type of service, set to ServiceTypes.COMMUNITY_INVESTOR.
+ * @property {string} capabilityDescription - Description of the agent's ability to trade on the Solana blockchain.
+ * @property {IMemoryManager} tokenMemoryManager - Memory manager for tokens.
+ * @property {IMemoryManager} positionMemoryManager - Memory manager for positions.
+ * @property {IMemoryManager} transactionMemoryManager - Memory manager for transactions.
+ * @property {IMemoryManager} recommendationMemoryManager - Memory manager for recommendations.
+ * @method storeRecommenderMetrics - Store entity metrics and cache for 5 minutes.
+ * @method storeRecommenderMetricsHistory - Store entity metrics history.
  */
 export class CommunityInvestorService extends Service {
 	static serviceType = ServiceTypes.COMMUNITY_INVESTOR;

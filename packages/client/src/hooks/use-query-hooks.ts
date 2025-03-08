@@ -6,6 +6,15 @@ import { useState } from "react";
 import { useToast } from "./use-toast";
 
 // Define the ContentWithUser type
+/**
+ * Represents content with additional user information.
+ * @typedef {Object} ContentWithUser
+ * @property {string} name - The name of the user.
+ * @property {number} createdAt - The timestamp when the content was created.
+ * @property {boolean} [isLoading] - Optional flag indicating if the content is currently loading.
+ * @property {string} [worldId] - Optional ID of the world associated with the content.
+ * @property {string} [id] - Optional ID field.
+ */
 type ContentWithUser = Content & {
 	name: string;
 	createdAt: number;
@@ -15,6 +24,20 @@ type ContentWithUser = Content & {
 };
 
 // Define the Memory type needed for the useMessages hook
+/**
+ * Represents a memory object with the following properties:
+ * @typedef {Object} Memory
+ * @property {UUID} id - The unique identifier of the memory
+ * @property {string} entityId - The identifier of the entity associated with the memory
+ * @property {Object} content - The content of the memory
+ * @property {string} content.text - The text content of the memory
+ * @property {Media[]} [content.attachments] - Optional array of media attachments
+ * @property {string} [content.source] - Optional source of the memory
+ * @property {string[]} [content.actions] - Optional array of actions related to the memory
+ * @property {number} createdAt - The timestamp when the memory was created
+ * @property {string} [worldId] - Optional identifier of the world associated with the memory
+ */
+
 type Memory = {
 	id: UUID;
 	entityId: string;
@@ -37,6 +60,14 @@ export const STALE_TIMES = {
 };
 
 // Network Information API interface
+/**
+ * Interface for representing network information.
+ *
+ * @property {("slow-2g" | "2g" | "3g" | "4g" | "unknown")} effectiveType - The effective network type.
+ * @property {boolean} saveData - Indicates if data saver mode is enabled.
+ * @property {unknown} [key] - Additional properties with unknown value types.
+ */
+
 interface NetworkInformation {
 	effectiveType: "slow-2g" | "2g" | "3g" | "4g" | "unknown";
 	saveData: boolean;
@@ -44,6 +75,15 @@ interface NetworkInformation {
 }
 
 // Network status detection for smart polling
+/**
+ * A custom React hook that returns the network status information.
+ * Utilizes the Network Information API if available.
+ * @returns {{
+ *  isOffline: boolean,
+ *  effectiveType: string,
+ *  saveData: boolean
+ * }} The network status information including whether the user is offline, the effective connection type, and if data-saving mode is enabled.
+ */
 const useNetworkStatus = () => {
 	// Get navigator.connection if available (Network Information API)
 	const connection =
@@ -60,6 +100,11 @@ const useNetworkStatus = () => {
 };
 
 // Hook for fetching agents with smart polling
+/**
+ * Custom hook to fetch a list of agents from the server.
+ * @param {object} options - Optional configuration options.
+ * @returns {object} - A query object with data containing an array of agents.
+ */
 export function useAgents(options = {}) {
 	const network = useNetworkStatus();
 
@@ -82,6 +127,12 @@ export function useAgents(options = {}) {
 }
 
 // Hook for fetching a specific agent with smart polling
+/**
+ * Custom hook to fetch agent data based on the provided agentId.
+ * @param {UUID | undefined | null} agentId - The ID of the agent to fetch data for.
+ * @param {Object} options - Additional options to configure the query.
+ * @returns {QueryResult} The result of the query containing agent data.
+ */
 export function useAgent(agentId: UUID | undefined | null, options = {}) {
 	const network = useNetworkStatus();
 
@@ -106,6 +157,11 @@ export function useAgent(agentId: UUID | undefined | null, options = {}) {
 }
 
 // Hook for starting an agent with optimistic updates
+/**
+ * Custom hook to start an agent by calling the API with the provided agent ID.
+ *
+ * @returns {MutationFunction<UUID, unknown>} The useMutation hook for starting an agent.
+ */
 export function useStartAgent() {
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
@@ -167,6 +223,11 @@ export function useStartAgent() {
 }
 
 // Hook for stopping an agent with optimistic updates
+/**
+ * Custom hook to stop an agent by calling the API and updating the UI optimistically.
+ *
+ * @returns {UseMutationResult} - Object containing the mutation function and its handlers.
+ */
 export function useStopAgent() {
 	const queryClient = useQueryClient();
 	const { toast } = useToast();
@@ -211,6 +272,11 @@ export function useStopAgent() {
 }
 
 // Hook for fetching messages directly for a specific agent without requiring a room
+/**
+ * Custom hook to fetch and return messages for a specific agent.
+ * * @param { UUID } agentId - The unique identifier of the agent to get messages for.
+ * @returns { Object } An object containing the messages for the agent.
+ */
 export function useAgentMessages(agentId: UUID) {
 	const queryClient = useQueryClient();
 	const worldId = WorldManager.getWorldId();
@@ -229,6 +295,21 @@ export function useAgentMessages(agentId: UUID) {
 }
 
 // The original useMessages hook remains for backward compatibility
+/**
+ * Custom hook to manage fetching and loading messages for a specific agent and room.
+ * @param {UUID} agentId - The ID of the agent.
+ * @param {UUID} roomId - The ID of the room.
+ * @returns {{
+ *  data: Memory[] | undefined;
+ *  isLoading: boolean;
+ *  isError: boolean;
+ *  error: unknown;
+ *  loadOlderMessages: () => Promise<boolean>;
+ *  hasOlderMessages: boolean;
+ *  isLoadingMore: boolean;
+ * }} An object containing messages data, loading states, error state, function to load older messages,
+ * indication of whether there are older messages, and loading state for loading older messages.
+ */
 export function useMessages(
 	agentId: UUID,
 	roomId: UUID,

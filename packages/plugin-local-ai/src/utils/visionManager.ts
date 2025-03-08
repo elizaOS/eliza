@@ -21,21 +21,52 @@ import fs from "node:fs";
 import os from "node:os";
 
 // Define valid types based on HF transformers types
+/**
+ * Defines the type 'DeviceType' which can take one of the three string values: 'cpu', 'gpu', or 'auto'
+ */
 type DeviceType = "cpu" | "gpu" | "auto";
+/**
+ * Represents the available data types options.
+ */
 type DTypeType = "fp32" | "fp16" | "auto";
 
+/**
+ * Interface for platform configuration options.
+ * @typedef {Object} PlatformConfig
+ * @property {DeviceType} device - The type of device to use.
+ * @property {DTypeType} dtype - The data type to use.
+ * @property {boolean} useOnnx - Flag indicating whether to use ONNX for processing.
+ */
 interface PlatformConfig {
 	device: DeviceType;
 	dtype: DTypeType;
 	useOnnx: boolean;
 }
 
+/**
+ * Represents a model component with a name, type, and optionally a data type.
+ * @interface ModelComponent
+ * @property { string } name - The name of the model component.
+ * @property { string } type - The type of the model component.
+ * @property { DTypeType } [dtype] - The data type of the model component (optional).
+ */
 interface ModelComponent {
 	name: string;
 	type: string;
 	dtype?: DTypeType;
 }
 
+/**
+ * Class representing a VisionManager.
+ * @property {VisionManager | null} instance - The static instance of VisionManager.
+ * @property {Florence2ForConditionalGeneration | null} model - The model for conditional generation.
+ * @property {Florence2Processor | null} processor - The processor for Florence2.
+ * @property {PreTrainedTokenizer | null} tokenizer - The pre-trained tokenizer.
+ * @property {string} modelsDir - The directory for models.
+ * @property {string} cacheDir - The directory for caching.
+ * @property {boolean} initialized - Flag indicating if the VisionManager has been initialized.
+ * @property {DownloadManager} downloadManager - The manager for downloading.
+ */
 export class VisionManager {
 	private static instance: VisionManager | null = null;
 	private model: Florence2ForConditionalGeneration | null = null;
@@ -56,6 +87,11 @@ export class VisionManager {
 		{ name: "encoder_model", type: "encoder" },
 	];
 
+	/**
+	 * Constructor for VisionManager class.
+	 *
+	 * @param {string} cacheDir - The directory path for caching vision models.
+	 */
 	private constructor(cacheDir: string) {
 		this.modelsDir = path.join(path.dirname(cacheDir), "models", "vision");
 		this.cacheDir = cacheDir;
@@ -73,6 +109,10 @@ export class VisionManager {
 		// });
 	}
 
+	/**
+	 * Retrieves the platform configuration based on the operating system and architecture.
+	 * @returns {PlatformConfig} The platform configuration object with device, dtype, and useOnnx properties.
+	 */
 	private getPlatformConfig(): PlatformConfig {
 		const platform = os.platform();
 		const arch = os.arch();
@@ -112,6 +152,9 @@ export class VisionManager {
 		return config;
 	}
 
+	/**
+	 * Ensures that the models directory exists. If it does not exist, it creates the directory.
+	 */
 	private ensureModelsDirExists(): void {
 		if (!existsSync(this.modelsDir)) {
 			logger.info(`Creating models directory at: ${this.modelsDir}`);
@@ -119,6 +162,14 @@ export class VisionManager {
 		}
 	}
 
+	/**
+	 * Returns the singleton instance of VisionManager.
+	 * If an instance does not already exist, a new instance is created with the specified cache directory.
+	 *
+	 * @param {string} cacheDir - The directory where cache files will be stored.
+	 *
+	 * @returns {VisionManager} The singleton instance of VisionManager.
+	 */
 	public static getInstance(cacheDir: string): VisionManager {
 		if (!VisionManager.instance) {
 			VisionManager.instance = new VisionManager(cacheDir);
@@ -126,6 +177,12 @@ export class VisionManager {
 		return VisionManager.instance;
 	}
 
+	/**
+	 * Check if the cache exists for the specified model or tokenizer or processor.
+	 * @param {string} modelId - The ID of the model.
+	 * @param {"model" | "tokenizer" | "processor"} type - The type of the cache ("model", "tokenizer", or "processor").
+	 * @returns {boolean} - Returns true if cache exists, otherwise returns false.
+	 */
 	private checkCacheExists(
 		modelId: string,
 		type: "model" | "tokenizer" | "processor",
@@ -142,6 +199,11 @@ export class VisionManager {
 		return false;
 	}
 
+	/**
+	 * Configures the model components based on the platform and architecture.
+	 * Sets the default data type (dtype) for components based on platform capabilities.
+	 * Updates all component dtypes to match the default dtype.
+	 */
 	private configureModelComponents(): void {
 		const platform = os.platform();
 		const arch = os.arch();
@@ -174,6 +236,11 @@ export class VisionManager {
 		});
 	}
 
+	/**
+	 * Get the model configuration based on the input component name.
+	 * @param {string} componentName - The name of the component to retrieve the configuration for.
+	 * @returns {object} The model configuration object containing device, dtype, and cache_dir.
+	 */
 	private getModelConfig(componentName: string) {
 		const component = this.modelComponents.find(
 			(c) => c.name === componentName,
@@ -185,6 +252,12 @@ export class VisionManager {
 		};
 	}
 
+	/**
+	 * Asynchronous method to initialize the vision model by loading Florence2 model, vision tokenizer, and vision processor.
+	 *
+	 * @returns {Promise<void>} - Promise that resolves once the initialization process is completed.
+	 * @throws {Error} - If there is an error during the initialization process.
+	 */
 	private async initialize() {
 		try {
 			if (this.initialized) {
@@ -377,6 +450,12 @@ export class VisionManager {
 		}
 	}
 
+	/**
+	 * Fetches an image from a given URL and returns the image data as a Buffer along with its MIME type.
+	 *
+	 * @param {string} url - The URL of the image to fetch.
+	 * @returns {Promise<{ buffer: Buffer; mimeType: string }>} Object containing the image data as a Buffer and its MIME type.
+	 */
 	private async fetchImage(
 		url: string,
 	): Promise<{ buffer: Buffer; mimeType: string }> {
@@ -422,6 +501,11 @@ export class VisionManager {
 		}
 	}
 
+	/**
+	 * Processes the image from the provided URL using the initialized vision model components.
+	 * @param {string} imageUrl - The URL of the image to process.
+	 * @returns {Promise<{ title: string; description: string }>} An object containing the title and description of the processed image.
+	 */
 	public async processImage(
 		imageUrl: string,
 	): Promise<{ title: string; description: string }> {

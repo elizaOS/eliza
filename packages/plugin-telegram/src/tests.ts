@@ -7,6 +7,17 @@ import type { TelegramService } from ".";
 const TEST_IMAGE_URL =
 	"https://github.com/elizaOS/awesome-eliza/blob/main/assets/eliza-logo.jpg?raw=true";
 
+/**
+ * Represents a test suite for testing Telegram functionality.
+ *
+ * This test suite includes methods to initialize and validate a Telegram bot connection,
+ * send basic text messages to a Telegram chat, send text messages with image attachments,
+ * handle and process incoming Telegram messages, and process and validate image attachments
+ * in incoming messages.
+ *
+ * @implements {TestSuite}
+ */
+
 export class TelegramTestSuite implements TestSuite {
 	name = "telegram";
 	private telegramClient: TelegramService = null;
@@ -14,6 +25,14 @@ export class TelegramTestSuite implements TestSuite {
 	private messageManager: MessageManager | null = null;
 	tests: { name: string; fn: (runtime: IAgentRuntime) => Promise<void> }[];
 
+	/**
+	 * Constructor for initializing a set of test cases for a Telegram bot.
+	 *
+	 * @constructor
+	 * @property {Array<Object>} tests - An array of test cases with name and corresponding test functions.
+	 * @property {string} tests.name - The name of the test case.
+	 * @property {function} tests.fn - The test function to be executed.
+	 */
 	constructor() {
 		this.tests = [
 			{
@@ -44,6 +63,13 @@ export class TelegramTestSuite implements TestSuite {
 	 *
 	 * Reference on getting the Telegram chat ID:
 	 * https://stackoverflow.com/a/32572159
+	 */
+	/**
+	 * Validates the chat ID by checking if it is set in the runtime settings or environment variables.
+	 * If not set, an error is thrown with a message instructing to provide a valid chat ID.
+	 * @param {IAgentRuntime} runtime - The runtime object that provides access to the settings and environment variables.
+	 * @throws {Error} If TELEGRAM_TEST_CHAT_ID is not set in the runtime settings or environment variables.
+	 * @returns {string} The validated chat ID.
 	 */
 	validateChatId(runtime: IAgentRuntime) {
 		const testChatId =

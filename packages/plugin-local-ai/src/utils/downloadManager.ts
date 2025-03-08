@@ -4,6 +4,9 @@ import https from "node:https";
 import path from "node:path";
 import type { ModelSpec } from "../types";
 
+/**
+ * Class representing a Download Manager.
+ */
 export class DownloadManager {
 	private static instance: DownloadManager | null = null;
 	private cacheDir: string;
@@ -11,6 +14,12 @@ export class DownloadManager {
 	// Track active downloads to prevent duplicates
 	private activeDownloads: Map<string, Promise<void>> = new Map();
 
+	/**
+	 * Creates a new instance of CacheManager.
+	 *
+	 * @param {string} cacheDir - The directory path for caching data.
+	 * @param {string} modelsDir - The directory path for model files.
+	 */
 	private constructor(cacheDir: string, modelsDir: string) {
 		this.cacheDir = cacheDir;
 		this.modelsDir = modelsDir;
@@ -18,6 +27,14 @@ export class DownloadManager {
 		this.ensureModelsDirectory();
 	}
 
+	/**
+	 * Returns the singleton instance of the DownloadManager class.
+	 * If an instance does not already exist, it creates a new one using the provided cache directory and models directory.
+	 *
+	 * @param {string} cacheDir - The directory where downloaded files are stored.
+	 * @param {string} modelsDir - The directory where model files are stored.
+	 * @returns {DownloadManager} The singleton instance of the DownloadManager class.
+	 */
 	public static getInstance(
 		cacheDir: string,
 		modelsDir: string,
@@ -28,6 +45,9 @@ export class DownloadManager {
 		return DownloadManager.instance;
 	}
 
+	/**
+	 * Ensure that the cache directory exists.
+	 */
 	private ensureCacheDirectory(): void {
 		logger.info("Ensuring cache directory exists:", this.cacheDir);
 		if (!fs.existsSync(this.cacheDir)) {
@@ -36,6 +56,9 @@ export class DownloadManager {
 		}
 	}
 
+	/**
+	 * Ensure that the models directory exists. If it does not exist, create it.
+	 */
 	private ensureModelsDirectory(): void {
 		logger.info("Ensuring models directory exists:", this.modelsDir);
 		if (!fs.existsSync(this.modelsDir)) {
@@ -44,6 +67,13 @@ export class DownloadManager {
 		}
 	}
 
+	/**
+	 * Downloads a file from a given URL to a specified destination path asynchronously.
+	 *
+	 * @param {string} url - The URL from which to download the file.
+	 * @param {string} destPath - The destination path where the downloaded file will be saved.
+	 * @returns {Promise<void>} A Promise that resolves when the file download is completed successfully or rejects if an error occurs.
+	 */
 	private async downloadFileInternal(
 		url: string,
 		destPath: string,
@@ -297,6 +327,13 @@ export class DownloadManager {
 		});
 	}
 
+	/**
+	 * Asynchronously downloads a file from the specified URL to the destination path.
+	 *
+	 * @param {string} url - The URL of the file to download.
+	 * @param {string} destPath - The destination path to save the downloaded file.
+	 * @returns {Promise<void>} A Promise that resolves once the file has been successfully downloaded.
+	 */
 	public async downloadFile(url: string, destPath: string): Promise<void> {
 		// Check if this file is already being downloaded
 		if (this.activeDownloads.has(destPath)) {
@@ -326,6 +363,14 @@ export class DownloadManager {
 		}
 	}
 
+	/**
+	 * Downloads a model specified by the modelSpec and saves it to the provided modelPath.
+	 * If the model is successfully downloaded, returns true, otherwise returns false.
+	 *
+	 * @param {ModelSpec} modelSpec - The model specification containing repo and name.
+	 * @param {string} modelPath - The path where the model will be saved.
+	 * @returns {Promise<boolean>} - Indicates if the model was successfully downloaded or not.
+	 */
 	public async downloadModel(
 		modelSpec: ModelSpec,
 		modelPath: string,
@@ -420,14 +465,32 @@ export class DownloadManager {
 		}
 	}
 
+	/**
+	 * Returns the cache directory path.
+	 *
+	 * @returns {string} The path of the cache directory.
+	 */
+
 	public getCacheDir(): string {
 		return this.cacheDir;
 	}
 
+	/**
+	 * Downloads a file from a given URL to a specified destination path.
+	 *
+	 * @param {string} url - The URL of the file to download.
+	 * @param {string} destPath - The destination path where the file should be saved.
+	 * @returns {Promise<void>} A Promise that resolves once the file has been downloaded.
+	 */
 	public async downloadFromUrl(url: string, destPath: string): Promise<void> {
 		return this.downloadFile(url, destPath);
 	}
 
+	/**
+	 * Ensures that the specified directory exists. If it does not exist, it will be created.
+	 * @param {string} dirPath - The path of the directory to ensure existence of.
+	 * @returns {void}
+	 */
 	public ensureDirectoryExists(dirPath: string): void {
 		if (!fs.existsSync(dirPath)) {
 			fs.mkdirSync(dirPath, { recursive: true });

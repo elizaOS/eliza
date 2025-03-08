@@ -7,22 +7,64 @@ import type {
 import type { MessageRecommendation } from "./recommendations/schema";
 
 // Re-export UUID type for use in other files
+/**
+ * Represents a universally unique identifier (UUID).
+ */
 export type UUID = CoreUUID;
 
+/**
+ * Represents a type where certain properties from the original type T are optional.
+ * @template T - The original type
+ * @template K - The keys of the properties that should be optional
+ * @typedef {Omit<T, K> & Partial<Pick<T, K>>} Optional
+ */
 export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+/**
+ * Creates a new type by transforming each key in the provided type `type` into a property with the same key and value.
+ * @template type The type to make pretty.
+ * @typedef {Object} Pretty
+ * @property {keyof type} key The key from the original type
+ * @property {type[key]} value The value associated with the key from the original type
+ * @augments unknown
+ */
 export type Pretty<type> = { [key in keyof type]: type[key] } & unknown;
 
+/**
+ * Type that extracts variables enclosed in double curly braces from a given string.
+ *
+ * @template T The input string type
+ * @typedef {T} ExtractVariables
+ * @param {T} T The input string to extract variables from
+ * @returns {Var} The variables extracted from the input string
+ */
 type ExtractVariables<T extends string> =
 	T extends `${infer Start}{{${infer Var}}}${infer Rest}`
 		? Var | ExtractVariables<Rest>
 		: never;
 
+/**
+ * Represents a type that defines template variables for a given string type.
+ *
+ * @template T - The string type for which template variables are defined.
+ * @typedef TemplateVariables
+ * @type {Pretty<{ [K in ExtractVariables<T>]: string; }>}
+ */
 export type TemplateVariables<T extends string> = Pretty<{
 	[K in ExtractVariables<T>]: string;
 }>;
 
+/**
+ * Represents a value that can be stored in a SQLite database, which can be a string, number, or null.
+ */
 type SQLiteValue = string | number | null;
 
+/**
+ * Type utility for converting TypeScript types to SQLite column types.
+ *
+ * @template T - The TypeScript type to convert.
+ * @param {T} - The value to convert.
+ * @returns {ToSQLiteType<T>} - The SQLite column type equivalent of the input type.
+ */
 type ToSQLiteType<T> = T extends boolean
 	? number
 	: T extends Date
@@ -37,15 +79,51 @@ type ToSQLiteType<T> = T extends boolean
 						? T
 						: never;
 
+/**
+ * Converts a generic record type to a SQLite record type, where each property value is converted to a SQLite type.
+ *
+ * @template T - The generic record type to be converted to a SQLite record type.
+ * @typedef ToSQLiteRecord
+ * @type {object}
+ */
 export type ToSQLiteRecord<T extends Record<string, any>> = {
 	[K in keyof T]: ToSQLiteType<T[K]>;
 };
 
+/**
+ * Represents a type which is used to define a single row in the database table for RecommenderMetrics.
+ */
 export type RecommenderMetricsRow = ToSQLiteRecord<RecommenderMetrics>;
+/**
+ * Defines an alias for converting a TokenPerformance object into a SQLite record format.
+ */
 export type TokenPerformanceRow = ToSQLiteRecord<TokenPerformance>;
+/**
+ * Represents a single row of data in a SQLite database table, corresponding to the Position model.
+ */
 export type PositionRow = ToSQLiteRecord<Position>;
+/**
+ * A type alias representing a row in the Transaction table,
+ * serialized as a SQLite record.
+ */
 export type TransactionRow = ToSQLiteRecord<Transaction>;
 
+/**
+ * Interface representing the metrics of a recommender.
+ * @typedef {{
+ *    entityId: UUID,
+ *    platform: string,
+ *    totalRecommendations: number,
+ *    successfulRecs: number,
+ *    failedTrades: number,
+ *    totalProfit: number,
+ *    avgTokenPerformance: number,
+ *    consistencyScore: number,
+ *    trustScore: number,
+ *    lastUpdated: Date,
+ *    createdAt: Date
+ * }} RecommenderMetrics
+ */
 export interface RecommenderMetrics {
 	entityId: UUID;
 	platform: string;
@@ -60,12 +138,48 @@ export interface RecommenderMetrics {
 	createdAt: Date;
 }
 
+/**
+ * Interface representing the history of recommender metrics for a specific entity.
+ * @typedef {Object} RecommenderMetricsHistory
+ * @property {UUID} entityId - The ID of the entity for which the metrics are recorded.
+ * @property {RecommenderMetrics} metrics - The metrics related to the entity.
+ * @property {Date} timestamp - The timestamp when the metrics were recorded.
+ */
 export interface RecommenderMetricsHistory {
 	entityId: UUID;
 	metrics: RecommenderMetrics;
 	timestamp: Date;
 }
 
+/**
+ * Interface representing performance data for a token.
+ * @typedef {Object} TokenPerformance
+ * @property {string} [chain] - The blockchain network the token belongs to.
+ * @property {string} [address] - The address of the token.
+ * @property {string} [name] - The name of the token.
+ * @property {string} [symbol] - The symbol of the token.
+ * @property {number} [decimals] - The number of decimal places for the token.
+ * @property {Object.<string, any>} [metadata] - Additional metadata for the token.
+ * @property {number} [price] - The current price of the token.
+ * @property {number} [price24hChange] - The percentage change in price over the last 24 hours.
+ * @property {number} [volume] - The trading volume of the token.
+ * @property {number} [volume24hChange] - The percentage change in trading volume over the last 24 hours.
+ * @property {number} [trades] - The number of trades for the token.
+ * @property {number} [trades24hChange] - The percentage change in number of trades over the last 24 hours.
+ * @property {number} [liquidity] - The liquidity of the token.
+ * @property {number} [holders] - The number of holders of the token.
+ * @property {number} [holders24hChange] - The percentage change in number of holders over the last 24 hours.
+ * @property {number} [initialMarketCap] - The initial market capitalization of the token.
+ * @property {number} [currentMarketCap] - The current market capitalization of the token.
+ * @property {boolean} [rugPull] - Indicates if the token is associated with a rug pull.
+ * @property {boolean} [isScam] - Indicates if the token is considered a scam.
+ * @property {boolean} [sustainedGrowth] - Indicates if the token has shown sustained growth.
+ * @property {boolean} [rapidDump] - Indicates if the token has experienced a rapid dump in price.
+ * @property {boolean} [suspiciousVolume] - Indicates if the token has suspicious trading volume.
+ * @property {number} [validationTrust] - The level of trust in the token's validation.
+ * @property {Date} [createdAt] - The date and time when the token performance data was created.
+ * @property {Date} [updatedAt] - The date and time when the token performance data was last updated.
+ */
 export interface TokenPerformance {
 	chain?: string;
 	address?: string;
@@ -97,6 +211,16 @@ export interface TokenPerformance {
 /**
  * Conviction levels for recommendations
  * IMPORTANT: Must match the enum in config.ts
+ */
+/**
+ * Enumeration representing levels of conviction.
+ * @readonly
+ * @enum {string}
+ * @property {string} NONE - No conviction.
+ * @property {string} LOW - Low level of conviction.
+ * @property {string} MEDIUM - Medium level of conviction.
+ * @property {string} HIGH - High level of conviction.
+ * @property {string} VERY_HIGH - Very high level of conviction.
  */
 export enum Conviction {
 	NONE = "NONE",

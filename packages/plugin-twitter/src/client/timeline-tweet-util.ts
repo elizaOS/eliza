@@ -7,6 +7,14 @@ const reCashtag = /\B(\$\S+\b)/g;
 const reTwitterUrl = /https:(\/\/t\.co\/([A-Za-z0-9]|[A-Za-z]){10})/g;
 const reUsername = /\B(\@\S{1,15}\b)/g;
 
+/**
+ * Parses the media groups from the provided array of TimelineMediaExtendedRaw objects
+ * to extract photos and videos along with the sensitive content information.
+ *
+ * @param {TimelineMediaExtendedRaw[]} media - The array of TimelineMediaExtendedRaw objects to parse
+ * @returns {{ sensitiveContent?: boolean, photos: Photo[], videos: Video[] }} - An object containing
+ * the sensitive content boolean flag, an array of photos, and an array of videos
+ */
 export function parseMediaGroups(media: TimelineMediaExtendedRaw[]): {
 	sensitiveContent?: boolean;
 	photos: Photo[];
@@ -41,6 +49,12 @@ export function parseMediaGroups(media: TimelineMediaExtendedRaw[]): {
 	return { sensitiveContent, photos, videos };
 }
 
+/**
+ * Parses the video information from the given raw media object.
+ *
+ * @param {NonNullableField<TimelineMediaExtendedRaw, "id_str" | "media_url_https">} m The raw media object containing the video information.
+ * @returns {Video} The parsed video object with id, preview, and URL.
+ */
 function parseVideo(
 	m: NonNullableField<TimelineMediaExtendedRaw, "id_str" | "media_url_https">,
 ): Video {
@@ -69,6 +83,15 @@ function parseVideo(
 	return video;
 }
 
+/**
+ * Reconstructs the tweet HTML by parsing the tweet text and adding links to hashtags, cashtags, usernames,
+ * and converting Twitter URLs. Also adds images and videos to the HTML.
+ *
+ * @param {LegacyTweetRaw} tweet The raw tweet object containing the full text of the tweet.
+ * @param {Photo[]} photos Array of photo objects associated with the tweet.
+ * @param {Video[]} videos Array of video objects associated with the tweet.
+ * @returns {string} The reconstructed HTML for the tweet.
+ */
 export function reconstructTweetHtml(
 	tweet: LegacyTweetRaw,
 	photos: Photo[],
@@ -105,6 +128,13 @@ export function reconstructTweetHtml(
 	return html;
 }
 
+/**
+ * Generates an HTML link for a hashtag by removing the '#' symbol
+ * and creating a Twitter hashtag link.
+ *
+ * @param hashtag - The hashtag to generate the link for
+ * @returns The HTML link for the specified hashtag
+ */
 function linkHashtagHtml(hashtag: string) {
 	return `<a href="https://twitter.com/hashtag/${hashtag.replace(
 		"#",
@@ -112,6 +142,11 @@ function linkHashtagHtml(hashtag: string) {
 	)}">${hashtag}</a>`;
 }
 
+/**
+ * Generates HTML anchor link for a cashtag.
+ * @param {string} cashtag - The cashtag to link.
+ * @returns {string} The HTML anchor link for the cashtag.
+ */
 function linkCashtagHtml(cashtag: string) {
 	return `<a href="https://twitter.com/search?q=%24${cashtag.replace(
 		"$",
@@ -119,6 +154,12 @@ function linkCashtagHtml(cashtag: string) {
 	)}">${cashtag}</a>`;
 }
 
+/**
+ * Generates HTML for linking a Twitter username.
+ *
+ * @param {string} username - The Twitter username to generate link for.
+ * @returns {string} - The HTML string for the linked username.
+ */
 function linkUsernameHtml(username: string) {
 	return `<a href="https://twitter.com/${username.replace(
 		"@",
@@ -126,6 +167,12 @@ function linkUsernameHtml(username: string) {
 	)}">${username}</a>`;
 }
 
+/**
+ * Unwraps the t.co URL in a tweet HTML based on the provided tweet object and founded media URLs.
+ * @param {LegacyTweetRaw} tweet - The tweet object containing URLs and media entities.
+ * @param {string[]} foundedMedia - An array to store the founded media URLs.
+ * @returns {function(string): string} - A function that takes a t.co URL and returns the corresponding HTML representation.
+ */
 function unwrapTcoUrlHtml(tweet: LegacyTweetRaw, foundedMedia: string[]) {
 	return (tco: string) => {
 		for (const entity of tweet.entities?.urls ?? []) {

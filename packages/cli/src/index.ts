@@ -11,6 +11,11 @@ import { loadEnvironment } from "@/src/utils/get-config";
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
 
+/**
+ * Asynchronous function that serves as the main entry point for the application.
+ * It loads environment variables, initializes the CLI program, and parses the command line arguments.
+ * @returns {Promise<void>}
+ */
 async function main() {
 	// Load environment variables, trying project .env first, then global ~/.eliza/.env
 	await loadEnvironment();

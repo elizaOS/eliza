@@ -1,6 +1,13 @@
 /**
  * Represents a Community that can host Spaces.
  */
+/**
+ * Represents a community entity.
+ * @typedef {object} Community
+ * @property {string} id - The ID of the community.
+ * @property {string} name - The name of the community.
+ * @property {string} rest_id - The ID of the associated restaurant.
+ */
 export interface Community {
 	id: string;
 	name: string;

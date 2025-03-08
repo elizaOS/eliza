@@ -14,6 +14,9 @@ const CREDENTIAL_FILE = path.join(CONFIG_DIR, "credential.enc");
 const KEY_FILE = path.join(CONFIG_DIR, ".key");
 
 // Function to ensure the config directory exists
+/**
+ * Ensures that the config directory exists, creates it if it does not already exist.
+ */
 function ensureConfigDir() {
 	if (!fs.existsSync(CONFIG_DIR)) {
 		fs.mkdirSync(CONFIG_DIR, { recursive: true });
@@ -21,6 +24,10 @@ function ensureConfigDir() {
 }
 
 // Get or create persistent key pair
+/**
+ * Function to get a key pair, either by retrieving from an existing file or generating new keys
+ * @returns {Object} Returns an object with privateKey and publicKey as Uint8Array
+ */
 function getKeyPair(): { privateKey: Uint8Array; publicKey: Uint8Array } {
 	ensureConfigDir();
 
@@ -49,6 +56,12 @@ function getKeyPair(): { privateKey: Uint8Array; publicKey: Uint8Array } {
 	return { privateKey, publicKey };
 }
 
+/**
+ * Encrypts the provided API key using AES-GCM algorithm with a shared secret key.
+ *
+ * @param {string} apiKey - The API key to be encrypted.
+ * @returns {Promise<string>} The encrypted API key as a hexadecimal string.
+ */
 async function encryptApiKey(apiKey: string): Promise<string> {
 	const { privateKey, publicKey } = getKeyPair();
 
@@ -80,6 +93,12 @@ async function encryptApiKey(apiKey: string): Promise<string> {
 	return uint8ArrayToHex(result);
 }
 
+/**
+ * Asynchronously decrypts an encrypted API key using x25519 key exchange and AES-GCM encryption.
+ *
+ * @param {string} encryptedData - The encrypted API key to decrypt.
+ * @returns {Promise<string>} The decrypted API key.
+ */
 async function decryptApiKey(encryptedData: string): Promise<string> {
 	const { privateKey, publicKey } = getKeyPair();
 
@@ -110,6 +129,12 @@ async function decryptApiKey(encryptedData: string): Promise<string> {
 	return new TextDecoder().decode(decrypted);
 }
 
+/**
+ * Writes the API key securely to a file after encrypting it.
+ *
+ * @param {string} apiKey - The API key to be securely saved.
+ * @returns {Promise<void>} - A Promise that resolves after the API key is saved.
+ */
 export async function writeApiKey(apiKey: string) {
 	ensureConfigDir();
 	const encryptedApiKey = await encryptApiKey(apiKey);
@@ -117,6 +142,14 @@ export async function writeApiKey(apiKey: string) {
 	console.log(`API key securely saved to ${CREDENTIAL_FILE}`);
 }
 
+/**
+ * Asynchronously retrieves the API key by checking if the credential file exists.
+ * If the file does not exist, returns null.
+ * Reads the encrypted API key from the file, decrypts it, and returns the decrypted key.
+ * If any errors occur during the process, logs the error message and returns null.
+ *
+ * @returns A Promise that resolves with a string representing the decrypted API key or null if there was an error.
+ */
 export async function getApiKey(): Promise<string | null> {
 	try {
 		if (!fs.existsSync(CREDENTIAL_FILE)) {

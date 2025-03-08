@@ -26,6 +26,12 @@ Summarization objective: {{objective}}
 # Instructions: Summarize the conversation so far. Return the summary. Do not acknowledge this request, just summarize and continue the existing summary if there is one. Capture any important details to the objective. Only respond with the new summary text.
 Your response should be extremely detailed and include any and all relevant information.`;
 
+/**
+ * Template for providing instructions and details on how to summarize conversation messages and determine the range of dates requested.
+ * The template includes placeholders for recent messages, sender name, objective, start and end date range.
+ * The response is expected to be formatted as a JSON block with specific structure.
+ * @type {string}
+ */
 export const dateRangeTemplate = `# Messages we are summarizing (the conversation is continued after this)
 {{recentMessages}}
 
@@ -44,6 +50,14 @@ Your response must be formatted as a JSON block with this structure:
 \`\`\`
 `;
 
+/**
+ * Function to get a date range from user input.
+ *
+ * @param {IAgentRuntime} runtime - The Agent Runtime object.
+ * @param {Memory} _message - The Memory object.
+ * @param {State} state - The State object.
+ * @return {Promise<{ objective: string; start: string | number; end: string | number; } | null>} Parsed user input containing objective, start, and end timestamps, or null.
+ */
 const getDateRange = async (
 	runtime: IAgentRuntime,
 	_message: Memory,
@@ -124,6 +138,17 @@ const getDateRange = async (
 	}
 };
 
+/**
+ * Action to summarize a conversation and attachments.
+ *
+ * @typedef {Action} summarizeAction
+ * @property {string} name - The name of the action.
+ * @property {string[]} similes - Array of related terms.
+ * @property {string} description - Description of the action.
+ * @property {Function} validate - Asynchronous function to validate the action.
+ * @property {Function} handler - Asynchronous function to handle the action.
+ * @property {ActionExample[][]} examples - Array of examples demonstrating the action.
+ */
 const summarizeAction = {
 	name: "SUMMARIZE_CONVERSATION",
 	similes: [

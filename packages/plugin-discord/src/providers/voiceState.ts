@@ -2,6 +2,14 @@ import { getVoiceConnection } from "@discordjs/voice";
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
 
+/**
+ * Provides information about the voice state of the user, including whether they are currently in a voice channel.
+ *
+ * @param {IAgentRuntime} runtime - The runtime object for the agent
+ * @param {Memory} message - The message object containing room ID
+ * @param {State} [state] - Optional state object for the user
+ * @returns {Object} An object containing information about the voice state of the user
+ */
 const voiceStateProvider: Provider = {
 	name: "voiceState",
 	get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {

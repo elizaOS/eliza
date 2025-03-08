@@ -17,6 +17,10 @@ import { twitterPostTemplate } from "./templates.ts";
 import type { MediaData } from "./types.ts";
 import { fetchMediaData } from "./utils.ts";
 
+/**
+ * Class representing a Twitter post client.
+ */
+
 export class TwitterPostClient {
 	client: ClientBase;
 	runtime: IAgentRuntime;
@@ -24,6 +28,12 @@ export class TwitterPostClient {
 	private isDryRun: boolean;
 	private state: any;
 
+	/**
+	 * Constructor for initializing a new Twitter client with the provided client, runtime, and state
+	 * @param {ClientBase} client - The client used for interacting with Twitter API
+	 * @param {IAgentRuntime} runtime - The runtime environment for the agent
+	 * @param {any} state - The state object containing configuration settings
+	 */
 	constructor(client: ClientBase, runtime: IAgentRuntime, state: any) {
 		this.client = client;
 		this.state = state;
@@ -63,6 +73,12 @@ export class TwitterPostClient {
 		}
 	}
 
+	/**
+	 * Asynchronously starts the tweet generation loop.
+	 * If the client's profile is not available, it initializes the client first.
+	 * It generates a new tweet at random intervals specified by the TWITTER_POST_INTERVAL_MIN and TWITTER_POST_INTERVAL_MAX settings or state properties.
+	 * Optionally, it can immediately generate a tweet if TWITTER_POST_IMMEDIATELY is set to true in the state or settings.
+	 */
 	async start() {
 		if (!this.client.profile) {
 			await this.client.init();
@@ -122,6 +138,14 @@ export class TwitterPostClient {
 		}
 	}
 
+	/**
+	 * Creates a Tweet object based on the tweet result, client information, and Twitter username.
+	 *
+	 * @param {any} tweetResult - The result object from the Twitter API representing a tweet.
+	 * @param {any} client - The client object containing profile information.
+	 * @param {string} twitterUsername - The Twitter username of the user.
+	 * @returns {Tweet} A Tweet object with specific properties extracted from the tweet result and client information.
+	 */
 	createTweetObject(
 		tweetResult: any,
 		client: any,
@@ -147,6 +171,15 @@ export class TwitterPostClient {
 		} as Tweet;
 	}
 
+	/**
+	 * Processes and caches a tweet.
+	 *
+	 * @param {IAgentRuntime} runtime - The agent runtime.
+	 * @param {ClientBase} client - The client object.
+	 * @param {Tweet} tweet - The tweet to be processed and cached.
+	 * @param {UUID} roomId - The ID of the room where the tweet will be stored.
+	 * @param {string} rawTweetContent - The raw content of the tweet.
+	 */
 	async processAndCacheTweet(
 		runtime: IAgentRuntime,
 		client: ClientBase,
@@ -192,6 +225,16 @@ export class TwitterPostClient {
 		});
 	}
 
+	/**
+	 * Handles sending a note tweet with optional media data.
+	 *
+	 * @param {ClientBase} client - The client object used for sending the note tweet.
+	 * @param {string} content - The content of the note tweet.
+	 * @param {string} [tweetId] - Optional Tweet ID to reply to.
+	 * @param {MediaData[]} [mediaData] - Optional media data to attach to the note tweet.
+	 * @returns {Promise<Object>} - The result of the note tweet operation.
+	 * @throws {Error} - If the note tweet operation fails.
+	 */
 	async handleNoteTweet(
 		client: ClientBase,
 		content: string,
@@ -215,6 +258,15 @@ export class TwitterPostClient {
 		}
 	}
 
+	/**
+	 * Asynchronously sends a standard tweet using the provided Twitter client.
+	 *
+	 * @param {ClientBase} client - The client used to make the request.
+	 * @param {string} content - The content of the tweet.
+	 * @param {string} [tweetId] - Optional tweet ID to reply to.
+	 * @param {MediaData[]} [mediaData] - Optional array of media data to attach to the tweet.
+	 * @returns {Promise<string>} The result of sending the tweet.
+	 */
 	async sendStandardTweet(
 		client: ClientBase,
 		content: string,
@@ -238,6 +290,18 @@ export class TwitterPostClient {
 		}
 	}
 
+	/**
+	 * Posts a new tweet with the provided tweet content and optional media data.
+	 *
+	 * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+	 * @param {ClientBase} client - The Twitter client used to post the tweet.
+	 * @param {string} tweetTextForPosting - The text content of the tweet.
+	 * @param {UUID} roomId - The ID of the room where the tweet will be posted.
+	 * @param {string} rawTweetContent - The raw content of the tweet.
+	 * @param {string} twitterUsername - The username associated with the Twitter account.
+	 * @param {MediaData[]} [mediaData] - Optional media data to be included in the tweet.
+	 * @returns {Promise<void>} - A Promise that resolves when the tweet is successfully posted.
+	 */
 	async postTweet(
 		runtime: IAgentRuntime,
 		client: ClientBase,
@@ -284,6 +348,12 @@ export class TwitterPostClient {
 
 	/**
 	 * Generates and posts a new tweet. If isDryRun is true, only logs what would have been posted.
+	 */
+	/**
+	 * Asynchronously generates a new tweet for the Twitter account associated with the agent.
+	 * This method retrieves random topics of interest from the character's topics list and prompts the user to compose a tweet based on those topics.
+	 * The tweet is then processed and posted on Twitter with optional media attachments.
+	 * @returns {void}
 	 */
 	async generateNewTweet() {
 		logger.log("Generating new tweet");

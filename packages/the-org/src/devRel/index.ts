@@ -8,6 +8,18 @@ import dotenv from "dotenv";
 import { initCharacter } from "../init";
 dotenv.config({ path: "../../.env" });
 
+/**
+ * A character object representing Eddy, a developer support agent for ElizaOS.
+ *
+ * @typedef {Object} Character
+ * @property {string} name - The name of the character
+ * @property {string[]} plugins - List of plugins utilized by the character
+ * @property {Object} secrets - Object containing sensitive information
+ * @property {string} system - Description of the character's role and capabilities
+ * @property {string[]} bio - List of bio information about the character
+ * @property {string[]} messageExamples - List of message examples
+ * @property {Object} style - Object containing style preferences for communication
+ */
 const character: Character = {
 	name: "Eddy",
 	plugins: [
@@ -35,6 +47,19 @@ const character: Character = {
 	},
 };
 
+/**
+ * Configuration object for onboarding settings.
+ * @typedef {Object} OnboardingConfig
+ * @property {Object} settings - Object containing different onboarding settings.
+ * @property {Object} settings.DOCUMENTATION_SOURCES - Object containing details about documentation sources setting.
+ * @property {string} settings.DOCUMENTATION_SOURCES.name - Name of the setting.
+ * @property {string} settings.DOCUMENTATION_SOURCES.description - Description of the setting.
+ * @property {boolean} settings.DOCUMENTATION_SOURCES.required - Indicates if the setting is required.
+ * @property {boolean} settings.DOCUMENTATION_SOURCES.public - Indicates if the setting is public.
+ * @property {boolean} settings.DOCUMENTATION_SOURCES.secret - Indicates if the setting is secret.
+ * @property {string} settings.DOCUMENTATION_SOURCES.usageDescription - Description of how the setting is used.
+ * @property {Function} settings.DOCUMENTATION_SOURCES.validation - Function to validate the setting value.
+ */
 const config: OnboardingConfig = {
 	settings: {
 		DOCUMENTATION_SOURCES: {

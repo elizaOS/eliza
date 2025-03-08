@@ -4,11 +4,24 @@ import type { UUID } from "./types.ts";
 
 export const uuidSchema = z.string().uuid() as z.ZodType<UUID>;
 
+/**
+ * Validates a UUID value.
+ *
+ * @param {unknown} value - The value to validate.
+ * @returns {UUID | null} Returns the validated UUID value or null if validation fails.
+ */
 export function validateUuid(value: unknown): UUID | null {
 	const result = uuidSchema.safeParse(value);
 	return result.success ? result.data : null;
 }
 
+/**
+ * Converts a string or number to a UUID.
+ *
+ * @param {string | number} target - The string or number to convert to a UUID.
+ * @returns {UUID} The UUID generated from the input target.
+ * @throws {TypeError} Throws an error if the input target is not a string.
+ */
 export function stringToUuid(target: string | number): UUID {
 	if (typeof target === "number") {
 		target = (target as number).toString();

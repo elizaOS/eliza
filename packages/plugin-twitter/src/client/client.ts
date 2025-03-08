@@ -110,6 +110,15 @@ const twUrl = "https://twitter.com";
 const UserTweetsUrl =
 	"https://twitter.com/i/api/graphql/E3opETHurmVJflFsUBVuUQ/UserTweets";
 
+/**
+ * An alternative fetch function to use instead of the default fetch function. This may be useful
+ * in nonstandard runtime environments, such as edge workers.
+ *
+ * @param {typeof fetch} fetch - The fetch function to use.
+ *
+ * @param {Partial<FetchTransformOptions>} transform - Additional options that control how requests
+ * and responses are processed. This can be used to proxy requests through other hosts, for example.
+ */
 export interface ClientOptions {
 	/**
 	 * An alternative fetch function to use instead of the default fetch function. This may be useful

@@ -25,12 +25,26 @@ import {
 } from "@solana/web3.js";
 import { getWalletKey } from "../keypairUtils";
 
+/**
+ * Interface representing the content of a transfer.
+ *
+ * @interface TransferContent
+ * @extends Content
+ * @property {string | null} tokenAddress - The address of the token being transferred, or null for SOL transfers
+ * @property {string} recipient - The address of the recipient of the transfer
+ * @property {string | number} amount - The amount of the transfer, represented as a string or number
+ */
 interface TransferContent extends Content {
 	tokenAddress: string | null; // null for SOL transfers
 	recipient: string;
 	amount: string | number;
 }
 
+/**
+ * Checks if the given transfer content is valid based on the type of transfer.
+ * @param {TransferContent} content - The content to be validated for transfer.
+ * @returns {boolean} Returns true if the content is valid for transfer, and false otherwise.
+ */
 function isTransferContent(content: TransferContent): boolean {
 	logger.log("Content for transfer", content);
 
@@ -54,6 +68,35 @@ function isTransferContent(content: TransferContent): boolean {
 	return false;
 }
 
+/**
+ * Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
+ *
+ * Example responses:
+ * For SPL tokens:
+ * ```json
+ * {
+ *    "tokenAddress": "BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump",
+ *    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+ *    "amount": "1000"
+ * }
+ * ```
+ *
+ * For SOL:
+ * ```json
+ * {
+ *    "tokenAddress": null,
+ *    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+ *    "amount": 1.5
+ * }
+ * ```
+ *
+ * {{recentMessages}}
+ *
+ * Extract the following information about the requested transfer:
+ * - Token contract address (use null for SOL transfers)
+ * - Recipient wallet address
+ * - Amount to transfer
+ */
 const transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
 
 Example responses:

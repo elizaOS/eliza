@@ -16,6 +16,11 @@ import type {
 	SentimentContent,
 } from "./providers/birdeye";
 
+/**
+ * Definition of routes with type, path, and handler for each route.
+ * Routes include fetching trending tokens, wallet information, tweets, sentiment analysis, and signals.
+ */
+
 export const routes: Route[] = [
 	{
 		type: "POST",

@@ -4,6 +4,12 @@ import { numberTimestamp } from "./types";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
 
+/**
+ * Represents a PostgreSQL table for storing logs.
+ *
+ * @type {Table}
+ */
+
 export const logTable = pgTable(
 	"logs",
 	{

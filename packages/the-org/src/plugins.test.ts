@@ -32,6 +32,12 @@ const elizaOpenAIFirst: Character = {
 const agentRuntimes = new Map<string, IAgentRuntime>();
 
 // Initialize runtime for a character
+/**
+ * Asynchronously initializes the runtime for a given character with the provided configuration.
+ *
+ * @param {Character} character - The character for which the runtime is being initialized.
+ * @returns {Promise<IAgentRuntime>} A promise that resolves to the initialized agent runtime.
+ */
 async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
 	try {
 		character.id = stringToUuid(character.name);
@@ -205,6 +211,14 @@ describe("Multi-Character Plugin Tests", () => {
 	);
 });
 
+/**
+ * Interface representing test statistics.
+ * @interface
+ * @property {number} total - Total number of tests.
+ * @property {number} passed - Number of tests that passed.
+ * @property {number} failed - Number of tests that failed.
+ * @property {number} skipped - Number of tests that were skipped.
+ */
 interface TestStats {
 	total: number;
 	passed: number;
@@ -212,6 +226,15 @@ interface TestStats {
 	skipped: number;
 }
 
+/**
+ * Represents the result of a test.
+ * @typedef {Object} TestResult
+ * @property {string} file - The file where the test was executed.
+ * @property {string} suite - The test suite name.
+ * @property {string} name - The name of the test.
+ * @property {"passed" | "failed"} status - The status of the test, can be either "passed" or "failed".
+ * @property {Error} [error] - Optional error object if the test failed.
+ */
 interface TestResult {
 	file: string;
 	suite: string;
@@ -220,16 +243,32 @@ interface TestResult {
 	error?: Error;
 }
 
+/**
+ * Enumeration representing the status of a test.
+ * @enum {string}
+ * @readonly
+ * @property {string} Passed - Indicates that the test has passed.
+ * @property {string} Failed - Indicates that the test has failed.
+ */
 enum TestStatus {
 	Passed = "passed",
 	Failed = "failed",
 }
 
+/**
+ * TestRunner class for running plugin tests and handling test results.
+ * * @class TestRunner
+ */
 class TestRunner {
 	private runtime: IAgentRuntime;
 	private stats: TestStats;
 	private testResults: Map<string, TestResult[]> = new Map();
 
+	/**
+	 * Constructor function for creating a new instance of the class.
+	 *
+	 * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+	 */
 	constructor(runtime: IAgentRuntime) {
 		this.runtime = runtime;
 		this.stats = {
@@ -240,6 +279,14 @@ class TestRunner {
 		};
 	}
 
+	/**
+	 * Asynchronously runs a test case and updates the test results accordingly.
+	 *
+	 * @param {TestCase} test - The test case to run.
+	 * @param {string} file - The file the test case belongs to.
+	 * @param {string} suite - The suite the test case belongs to.
+	 * @returns {Promise<void>} - A Promise that resolves once the test case has been run.
+	 */
 	private async runTestCase(
 		test: TestCase,
 		file: string,
@@ -260,6 +307,14 @@ class TestRunner {
 		}
 	}
 
+	/**
+	 * Add a test result to the testResults map.
+	 * @param {string} file - The file being tested.
+	 * @param {string} suite - The test suite name.
+	 * @param {string} name - The test name.
+	 * @param {TestStatus} status - The status of the test (passed, failed, skipped, etc.).
+	 * @param {Error} [error] - The error object if the test failed.
+	 */
 	private addTestResult(
 		file: string,
 		suite: string,
@@ -273,6 +328,13 @@ class TestRunner {
 		this.testResults.get(file)?.push({ file, suite, name, status, error });
 	}
 
+	/**
+	 * Runs a test suite, logging the name of the suite and running each test case.
+	 *
+	 * @param {TestSuite} suite - The test suite to run.
+	 * @param {string} file - The file containing the test suite.
+	 * @returns {Promise<void>}
+	 */
 	private async runTestSuite(suite: TestSuite, file: string): Promise<void> {
 		logger.info(`\nTest suite: ${suite.name}`);
 		for (const test of suite.tests) {
@@ -281,6 +343,10 @@ class TestRunner {
 		}
 	}
 
+	/**
+	 * Runs tests for all plugins in the runtime and returns the test statistics.
+	 * @returns {Promise<TestStats>} The test statistics object.
+	 */
 	public async runPluginTests(): Promise<TestStats> {
 		const plugins = this.runtime.plugins;
 
@@ -312,6 +378,9 @@ class TestRunner {
 		return this.stats;
 	}
 
+	/**
+	 * Logs the summary of test results in the console with colors for each section.
+	 */
 	private logTestSummary(): void {
 		const COLORS = {
 			reset: "\x1b[0m",

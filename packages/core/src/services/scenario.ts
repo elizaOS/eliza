@@ -10,6 +10,11 @@ import {
 	type UUID,
 } from "../types";
 
+/**
+ * Represents a service that allows the agent to interact in a scenario testing environment.
+ * The agent can create rooms, send messages, and communicate with other agents in a live interactive testing environment.
+ * @extends Service
+ */
 export class ScenarioService extends Service {
 	static serviceType = "scenario";
 	capabilityDescription =
@@ -17,15 +22,31 @@ export class ScenarioService extends Service {
 	private messageHandlers: Map<UUID, HandlerCallback[]> = new Map();
 	private rooms: Map<string, { roomId: UUID }> = new Map();
 
+	/**
+	 * Constructor for creating a new instance of the class.
+	 *
+	 * @param runtime - The IAgentRuntime instance to be passed to the constructor.
+	 */
 	constructor(protected runtime: IAgentRuntime) {
 		super(runtime);
 	}
 
+	/**
+	 * Start the scenario service with the given runtime.
+	 * @param {IAgentRuntime} runtime - The agent runtime
+	 * @returns {Promise<ScenarioService>} - The started scenario service
+	 */
 	static async start(runtime: IAgentRuntime) {
 		const service = new ScenarioService(runtime);
 		return service;
 	}
 
+	/**
+	 * Stops the Scenario service associated with the given runtime.
+	 *
+	 * @param {IAgentRuntime} runtime The runtime to stop the service for.
+	 * @throws {Error} When the Scenario service is not found.
+	 */
 	static async stop(runtime: IAgentRuntime) {
 		// get the service from the runtime
 		const service = runtime.getService(ScenarioService.serviceType);
@@ -35,12 +56,22 @@ export class ScenarioService extends Service {
 		service.stop();
 	}
 
+	/**
+	 * Asynchronously stops the current process by clearing all message handlers and rooms.
+	 */
 	async stop() {
 		this.messageHandlers.clear();
 		this.rooms.clear();
 	}
 
 	// Create a room for an agent
+	/**
+	 * Creates a room for the specified agent with the given agentId and optional name.
+	 *
+	 * @param {string} agentId The ID of the agent for whom the room is being created.
+	 * @param {string} [name] Optional. The name of the room. If not provided, a default name will be generated.
+	 * @returns {Promise<void>} A promise that resolves once the room has been created.
+	 */
 	async createRoom(agentId: string, name?: string) {
 		const roomId = uuidv4() as UUID;
 
@@ -57,6 +88,14 @@ export class ScenarioService extends Service {
 	}
 
 	// Save a message in all agents' memory without emitting events
+	/**
+	 * Saves a message from a sender to multiple receivers.
+	 *
+	 * @param {IAgentRuntime} sender - The agent sending the message.
+	 * @param {IAgentRuntime[]} receivers - The agents receiving the message.
+	 * @param {string} text - The text of the message.
+	 * @returns {Promise<void>} - A Promise that resolves when the message is successfully saved for all receivers.
+	 */
 	async saveMessage(
 		sender: IAgentRuntime,
 		receivers: IAgentRuntime[],
@@ -95,6 +134,13 @@ export class ScenarioService extends Service {
 	}
 
 	// Send a live message that triggers handlers
+	/**
+	 * Send a message to the specified receivers.
+	 *
+	 * @param {IAgentRuntime} sender - The agent sending the message.
+	 * @param {IAgentRuntime[]} receivers - The agents receiving the message.
+	 * @param {string} text - The text content of the message.
+	 */
 	async sendMessage(
 		sender: IAgentRuntime,
 		receivers: IAgentRuntime[],
@@ -154,6 +200,11 @@ export class ScenarioService extends Service {
 	}
 
 	// Get conversation history for all participants
+	/**
+	 * Asynchronously retrieves conversations for the given participants.
+	 * @param {IAgentRuntime[]} participants - List of participants for whom to retrieve conversations
+	 * @returns {Promise<IMessageMemory[][]>} - Promise that resolves to an array of arrays of message memories for each participant
+	 */
 	async getConversations(participants: IAgentRuntime[]) {
 		const conversations = await Promise.all(
 			participants.map(async (member) => {
@@ -178,6 +229,12 @@ export class ScenarioService extends Service {
 }
 
 // Updated scenario implementation using the new client
+/**
+ * An array of asynchronous functions representing different scenarios.
+ *
+ * @param {IAgentRuntime[]} members - The array of agent runtime objects.
+ * @returns {Promise<void>} - A promise that resolves when the scenario is completed.
+ */
 const scenarios = [
 	async function scenario1(members: IAgentRuntime[]) {
 		// Create and register test client
@@ -217,6 +274,11 @@ const scenarios = [
 	},
 ];
 
+/**
+ * Asynchronously starts the specified scenario for the given list of agent runtimes.
+ * @param {IAgentRuntime[]} members - The list of agent runtimes participating in the scenario.
+ * @returns {Promise<void>} - A promise that resolves when all scenarios have been executed.
+ */
 export async function startScenario(members: IAgentRuntime[]) {
 	for (const scenario of scenarios) {
 		await scenario(members);

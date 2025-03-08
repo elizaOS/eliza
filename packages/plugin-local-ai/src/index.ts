@@ -34,6 +34,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Words to punish in LLM responses
+/**
+ * Array containing words that should trigger a punishment when used in a message.
+ * This array includes words like "please", "feel", "free", punctuation marks, and various topic-related words.
+ * @type {string[]}
+ */
 const wordsToPunish = [
 	" please",
 	" feel",
@@ -86,13 +91,33 @@ const wordsToPunish = [
 ];
 
 // Add type definitions for model source selection
+/**
+ * Represents the available sources for a text model: "local", "studiolm", or "ollama".
+ */
 type TextModelSource = "local" | "studiolm" | "ollama";
 
+/**
+ * Interface representing the configuration for a text model.
+ *
+ * @property {TextModelSource} source - The source of the text model.
+ * @property {ModelType} modelType - The type of the model.
+ */
 interface TextModelConfig {
 	source: TextModelSource;
 	modelType: ModelType;
 }
 
+/**
+ * Class representing a LocalAIManager.
+ * @property {LocalAIManager | null} instance - The static instance of LocalAIManager.
+ * @property {Llama | undefined} llama - The llama object.
+ * @property {LlamaModel | undefined} smallModel - The small LlamaModel object.
+ * @property {LlamaModel | undefined} mediumModel - The medium LlamaModel object.
+ * @property {LlamaContext | undefined} ctx - The LlamaContext object.
+ * @property {LlamaContextSequence | undefined} sequence - The LlamaContextSequence object.
+ * @property {LlamaChatSession | undefined} chatSession - The LlamaChatSession object.
+ * @property {string} modelPath - The path to the model.
+ */
 class LocalAIManager {
 	private static instance: LocalAIManager | null = null;
 	private llama: Llama | undefined;
@@ -117,6 +142,13 @@ class LocalAIManager {
 	private studioLMInitialized = false;
 	private modelsDir: string;
 
+	/**
+	 * Private constructor function to initialize various managers and services.
+	 * This function sets up model directories, initializes managers for download, tokenizer, vision, transcribe, and TTS.
+	 * It also initializes StudioLM and Ollama managers if enabled in the environment.
+	 * Additionally, this function initializes the environment, checks platform capabilities, sets up embeddings,
+	 * and initializes various models and services sequentially and in parallel to avoid conflicts.
+	 */
 	private constructor() {
 		// Set up models directory consistently, similar to cacheDir
 		const modelsDir = path.join(process.cwd(), "models");
@@ -289,6 +321,10 @@ class LocalAIManager {
 		});
 	}
 
+	/**
+	 * Retrieves the singleton instance of LocalAIManager. If an instance does not already exist, a new one is created and returned.
+	 * @returns {LocalAIManager} The singleton instance of LocalAIManager
+	 */
 	public static getInstance(): LocalAIManager {
 		if (!LocalAIManager.instance) {
 			LocalAIManager.instance = new LocalAIManager();
@@ -296,6 +332,11 @@ class LocalAIManager {
 		return LocalAIManager.instance;
 	}
 
+	/**
+	 * Initializes the environment by validating the configuration and setting the environment variables with the validated values.
+	 *
+	 * @returns {Promise<void>} A Promise that resolves once the environment has been successfully initialized.
+	 */
 	private async initializeEnvironment(): Promise<void> {
 		try {
 			logger.info("Validating environment configuration...");
@@ -339,6 +380,12 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously initializes the Ollama model.
+	 *
+	 * @returns {Promise<void>} A Promise that resolves when the initialization is complete.
+	 * @throws {Error} If the Ollama manager is not created, or if initialization of Ollama models fails.
+	 */
 	private async initializeOllama(): Promise<void> {
 		try {
 			logger.info("Initializing Ollama models...");
@@ -368,6 +415,11 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Initializes StudioLM model with error handling.
+	 * @returns A Promise that resolves when the initialization is complete.
+	 * @throws {Error} If StudioLM manager is not created, initialization fails, or models are not properly loaded.
+	 */
 	private async initializeStudioLM(): Promise<void> {
 		try {
 			logger.info("Initializing StudioLM models...");
@@ -398,6 +450,16 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously initializes the transcription model by performing the following steps:
+	 * 1. Ensuring FFmpeg availability.
+	 * 2. Defining sample file path and AWS URL.
+	 * 3. Downloading the sample file if it doesn't exist in the cache.
+	 * 4. Verifying the existence of the sample file and loading it.
+	 * 5. Generating transcription result using the transcribeAudio method.
+	 *
+	 * @returns {Promise<void>} A Promise that resolves when the initialization process is complete or rejects with an error.
+	 */
 	private async initializeTranscription(): Promise<void> {
 		try {
 			logger.info("Initializing transcription model...");
@@ -476,6 +538,11 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously initializes the vision by downloading a test image from AWS, processing it, and describing the image.
+	 *
+	 * @returns A Promise that resolves when the vision is successfully initialized
+	 */
 	private async initializeVision(): Promise<void> {
 		try {
 			logger.info("Initializing vision model...");
@@ -526,6 +593,12 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously initializes the Text-to-Speech (TTS) model by testing TTS with sample text,
+	 * generating speech, and verifying the audio stream readability.
+	 *
+	 * @returns {Promise<void>} A Promise that resolves when the TTS model initialization is complete.
+	 */
 	private async initializeTTS(): Promise<void> {
 		try {
 			logger.info("Initializing TTS model...");
@@ -576,6 +649,12 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Downloads the model based on the modelPath provided.
+	 * Determines whether to download a large or small model based on the current modelPath.
+	 *
+	 * @returns A Promise that resolves to a boolean indicating whether the model download was successful.
+	 */
 	private async downloadModel(): Promise<boolean> {
 		try {
 			// Determine which model to download based on current modelPath
@@ -594,6 +673,11 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously checks the platform capabilities.
+	 *
+	 * @returns {Promise<void>} A promise that resolves once the platform capabilities have been checked.
+	 */
 	public async checkPlatformCapabilities(): Promise<void> {
 		try {
 			const platformManager = getPlatformManager();
@@ -611,6 +695,12 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Initializes the LocalAI Manager for a given model type.
+	 *
+	 * @param {ModelType} modelType - The type of model to initialize (default: ModelTypes.TEXT_SMALL)
+	 * @returns {Promise<void>} A promise that resolves when initialization is complete or rejects if an error occurs
+	 */
 	async initialize(
 		modelType: ModelType = ModelTypes.TEXT_SMALL,
 	): Promise<void> {
@@ -687,6 +777,11 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously initializes the embedding model.
+	 *
+	 * @returns {Promise<void>} A promise that resolves once the initialization is complete.
+	 */
 	public async initializeEmbedding(): Promise<void> {
 		try {
 			logger.info("Initializing embedding model...");
@@ -751,6 +846,12 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously generates text using either StudioLM or Ollama models based on the specified parameters.
+	 *
+	 * @param {GenerateTextParams} params - The parameters for generating the text.
+	 * @returns {Promise<string>} - A promise that resolves to the generated text.
+	 */
 	async generateTextOllamaStudio(params: GenerateTextParams): Promise<string> {
 		try {
 			const modelConfig = this.getTextModelSource();
@@ -837,6 +938,12 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously generates text based on the provided parameters.
+	 *
+	 * @param {GenerateTextParams} params - The parameters for text generation.
+	 * @returns {Promise<string>} The generated text as a string.
+	 */
 	async generateText(params: GenerateTextParams): Promise<string> {
 		try {
 			// Initialize with the appropriate model class if not initialized
@@ -946,6 +1053,13 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously generates an embedding for the provided text.
+	 *
+	 * @param {string} text - The input text for which to generate the embedding
+	 * @returns {Promise<number[]>} The generated embedding as an array of numbers
+	 * @throws {Error} If the input text is null or undefined, or if there is an issue generating the embedding
+	 */
 	async generateEmbedding(text: string): Promise<number[]> {
 		try {
 			logger.info("Generating embedding...");
@@ -983,6 +1097,16 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously describes the image based on the provided image data and MIME type.
+	 * Converts the image data buffer to a data URL, then passes the URL to the VisionManager for processing.
+	 *
+	 * @param {Buffer} imageData The image data buffer to describe.
+	 * @param {string} mimeType The MIME type of the image data.
+	 * @returns {Promise<{ title: string; description: string }>} A Promise that resolves to an object containing the title and description of the described image.
+	 * @throws {Error} If an error occurs during image description process.
+	 */
+
 	public async describeImage(
 		imageData: Buffer,
 		mimeType: string,
@@ -998,6 +1122,13 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Transcribe audio data from a Buffer.
+	 *
+	 * @param {Buffer} audioBuffer The audio data to transcribe
+	 * @returns {Promise<string>} The transcribed text
+	 * @throws {Error} If the audio transcription fails
+	 */
 	public async transcribeAudio(audioBuffer: Buffer): Promise<string> {
 		try {
 			const result = await this.transcribeManager.transcribe(audioBuffer);
@@ -1011,6 +1142,13 @@ class LocalAIManager {
 		}
 	}
 
+	/**
+	 * Asynchronously generates speech for the given text using the TTS manager.
+	 *
+	 * @param {string} text - The text for which speech needs to be generated.
+	 * @returns {Promise<Readable>} A Promise that resolves to a Readable stream containing the generated speech.
+	 * @throws {Error} If speech generation fails, an error is thrown with details logged using the logger.
+	 */
 	public async generateSpeech(text: string): Promise<Readable> {
 		try {
 			return await this.ttsManager.generateSpeech(text);
@@ -1024,14 +1162,27 @@ class LocalAIManager {
 	}
 
 	// Add public accessor methods
+	/**
+	 * Returns the TokenizerManager associated with this object.
+	 *
+	 * @returns {TokenizerManager} The TokenizerManager object.
+	 */
 	public getTokenizerManager(): TokenizerManager {
 		return this.tokenizerManager;
 	}
 
+	/**
+	 * Returns the active model configuration.
+	 * @returns {ModelSpec} The active model configuration.
+	 */
 	public getActiveModelConfig(): ModelSpec {
 		return this.activeModelConfig;
 	}
 
+	/**
+	 * Retrieves the source configuration for the text model based on environment variables and manager existence.
+	 * @returns {TextModelConfig} The configuration object containing the text model source and type.
+	 */
 	public getTextModelSource(): TextModelConfig {
 		try {
 			// Default configuration
@@ -1066,6 +1217,10 @@ class LocalAIManager {
 // Create manager instance
 const localAIManager = LocalAIManager.getInstance();
 
+/**
+ * Plugin that provides functionality for local AI using LLaMA models.
+ * @type {Plugin}
+ */
 export const localAIPlugin: Plugin = {
 	name: "local-ai",
 	description: "Local AI plugin using LLaMA models",

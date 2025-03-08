@@ -14,6 +14,49 @@ import {
 	type State,
 } from "../types";
 
+/**
+ * Task: Extract Target and Source Information
+ *
+ * Recent Messages:
+ * {{recentMessages}}
+ *
+ * Instructions:
+ * Analyze the conversation to identify:
+ * 1. The target type (user or room)
+ * 2. The target platform/source (e.g. telegram, discord, etc)
+ * 3. Any identifying information about the target
+ *
+ * Return a JSON object with:
+ * {
+ *   "targetType": "user|room",
+ *   "source": "platform-name",
+ *   "identifiers": {
+ *     // Relevant identifiers for that target
+ *     // e.g. username, roomName, etc.
+ *   }
+ * }
+ *
+ * Example outputs:
+ * For "send a message to @dev_guru on telegram":
+ * {
+ *   "targetType": "user",
+ *   "source": "telegram",
+ *   "identifiers": {
+ *     "username": "dev_guru"
+ *   }
+ * }
+ *
+ * For "post this in #announcements":
+ * {
+ *   "targetType": "room",
+ *   "source": "discord",
+ *   "identifiers": {
+ *     "roomName": "announcements"
+ *   }
+ * }
+ *
+ * Make sure to include the ```json``` tags around the JSON object.
+ */
 const targetExtractionTemplate = `# Task: Extract Target and Source Information
 
 # Recent Messages:
@@ -60,6 +103,17 @@ Example outputs:
 \`\`\`
 
 Make sure to include the \`\`\`json\`\`\` tags around the JSON object.`;
+/**
+ * Represents an action to send a message to a user or room.
+ *
+ * @typedef {Action} sendMessageAction
+ * @property {string} name - The name of the action.
+ * @property {string[]} similes - Additional names for the action.
+ * @property {string} description - Description of the action.
+ * @property {function} validate - Asynchronous function to validate if the action can be executed.
+ * @property {function} handler - Asynchronous function to handle the action execution.
+ * @property {ActionExample[][]} examples - Examples demonstrating the usage of the action.
+ */
 export const sendMessageAction: Action = {
 	name: "SEND_MESSAGE",
 	similes: ["DM", "MESSAGE", "SEND_DM", "POST_MESSAGE"],

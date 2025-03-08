@@ -1,5 +1,12 @@
 import type { OrganizedDocs } from "../AIService/types";
 
+/**
+ * Function to generate a comprehensive documentation overview, FAQ, and Troubleshooting section for a given package.
+ *
+ * @param {any} packageJson - The package.json file with information about the package
+ * @param {OrganizedDocs} docs - The organized documentation for the package
+ * @returns {string} - The response in JSON structure with overview, FAQ, and Troubleshooting sections
+ */
 export const PROMPT_TEMPLATES = {
 	overview: (packageJson: any, docs: OrganizedDocs) => `
     Using the provided JSDoc as context, create a comprehensive documentation overview, FAQ, and Troubleshooting section for ${packageJson.name}. Return the response in the following JSON structure:

@@ -11,6 +11,11 @@ const { Pool } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/**
+ * Manages connections to a PostgreSQL database using a connection pool.
+ * Implements IDatabaseClientManager interface.
+ */
+
 export class PostgresConnectionManager
 	implements IDatabaseClientManager<PgPool>
 {
@@ -18,6 +23,10 @@ export class PostgresConnectionManager
 	private isShuttingDown = false;
 	private readonly connectionTimeout: number = 5000;
 
+	/**
+	 * Constructor for creating a connection pool.
+	 * @param {string} connectionString - The connection string used to connect to the database.
+	 */
 	constructor(connectionString: string) {
 		const defaultConfig = {
 			max: 20,
@@ -39,6 +48,12 @@ export class PostgresConnectionManager
 		this.testConnection();
 	}
 
+	/**
+	 * Handles a pool error by attempting to reconnect the pool.
+	 *
+	 * @param {Error} error The error that occurred in the pool.
+	 * @throws {Error} If failed to reconnect the pool.
+	 */
 	private async handlePoolError(error: Error) {
 		logger.error("Pool error occurred, attempting to reconnect", {
 			error: error.message,
@@ -65,8 +80,13 @@ export class PostgresConnectionManager
 		}
 	}
 
+	/**
+	 * Asynchronously tests the database connection by executing a query to get the current timestamp.
+	 *
+	 * @returns {Promise<boolean>} - A Promise that resolves to true if the database connection test is successful.
+	 */
 	async testConnection(): Promise<boolean> {
-		let client;
+		let client: pkg.PoolClient;
 		try {
 			client = await this.pool.connect();
 			const result = await client.query("SELECT NOW()");
@@ -82,6 +102,9 @@ export class PostgresConnectionManager
 		}
 	}
 
+	/**
+	 * Sets up event listeners to handle pool cleanup on SIGINT, SIGTERM, and beforeExit events.
+	 */
 	private setupPoolErrorHandling() {
 		process.on("SIGINT", async () => {
 			await this.cleanup();
@@ -98,6 +121,11 @@ export class PostgresConnectionManager
 		});
 	}
 
+	/**
+	 * Get the connection pool.
+	 * @returns {PgPool} The connection pool
+	 * @throws {Error} If the connection manager is shutting down or an error occurs when trying to get the connection from the pool
+	 */
 	public getConnection(): PgPool {
 		if (this.isShuttingDown) {
 			throw new Error("Connection manager is shutting down");
@@ -111,6 +139,12 @@ export class PostgresConnectionManager
 		}
 	}
 
+	/**
+	 * Asynchronously acquires a database client from the connection pool.
+	 *
+	 * @returns {Promise<pkg.PoolClient>} A Promise that resolves with the acquired database client.
+	 * @throws {Error} If an error occurs while acquiring the database client.
+	 */
 	public async getClient(): Promise<pkg.PoolClient> {
 		try {
 			return await this.pool.connect();
@@ -120,6 +154,12 @@ export class PostgresConnectionManager
 		}
 	}
 
+	/**
+	 * Initializes the PostgreSQL connection manager by testing the connection and logging the result.
+	 *
+	 * @returns {Promise<void>} A Promise that resolves once the manager is successfully initialized
+	 * @throws {Error} If there is an error initializing the connection manager
+	 */
 	public async initialize(): Promise<void> {
 		try {
 			await this.testConnection();
@@ -130,10 +170,18 @@ export class PostgresConnectionManager
 		}
 	}
 
+	/**
+	 * Asynchronously close the current process by executing a cleanup function.
+	 * @returns A promise that resolves once the cleanup is complete.
+	 */
 	public async close(): Promise<void> {
 		await this.cleanup();
 	}
 
+	/**
+	 * Cleans up and closes the database pool.
+	 * @returns {Promise<void>} A Promise that resolves when the database pool is closed.
+	 */
 	async cleanup(): Promise<void> {
 		try {
 			await this.pool.end();
@@ -143,6 +191,11 @@ export class PostgresConnectionManager
 		}
 	}
 
+	/**
+	 * Asynchronously runs database migrations using the Drizzle library.
+	 *
+	 * @returns {Promise<void>} A Promise that resolves once the migrations are completed successfully.
+	 */
 	async runMigrations(): Promise<void> {
 		try {
 			const db = drizzle(this.pool);

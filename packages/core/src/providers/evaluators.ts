@@ -8,6 +8,12 @@ import type { Evaluator, IAgentRuntime, Memory, Provider } from "../types";
  * @param evaluators - An array of evaluator objects.
  * @returns A string that concatenates the names of all evaluators, each enclosed in single quotes and separated by commas.
  */
+/**
+ * Formats the names of the evaluators in the provided array.
+ *
+ * @param {Evaluator[]} evaluators - Array of evaluators.
+ * @returns {string} - Formatted string of evaluator names.
+ */
 export function formatEvaluatorNames(evaluators: Evaluator[]) {
 	return evaluators
 		.map((evaluator: Evaluator) => `'${evaluator.name}'`)

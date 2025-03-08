@@ -13,11 +13,20 @@ import { Readable } from "node:stream";
 import { prependWavHeader } from "./audioUtils";
 import { DownloadManager } from "./downloadManager";
 
+/**
+ * Interface representing the response from a Text-to-Speech (TTS) service.
+ * @typedef { Object } TTSResponse
+ * @property {number[]} tokens - The array of token ids representing the text to be converted to speech.
+ * @property { Float32Array } [audio] - Optional Float32Array representing the audio data output from the TTS service.
+ */
 interface TTSResponse {
 	tokens: number[];
 	audio?: Float32Array;
 }
 
+/**
+ * Class representing a Text-to-Speech Manager
+ */
 export class TTSManager {
 	private static instance: TTSManager | null = null;
 	private cacheDir: string;
@@ -28,6 +37,11 @@ export class TTSManager {
 	private downloadManager: DownloadManager;
 	private modelsDir: string;
 
+	/**
+	 * Creates a new instance of TTSManager with the provided cache directory.
+	 *
+	 * @param {string} cacheDir - The directory where cached data will be stored.
+	 */
 	private constructor(cacheDir: string) {
 		this.cacheDir = path.join(cacheDir, "tts");
 		this.modelsDir = process.env.LLAMALOCAL_PATH?.trim()
@@ -47,6 +61,12 @@ export class TTSManager {
 		// });
 	}
 
+	/**
+	 * Returns an instance of TTSManager, creating a new one if none exist.
+	 *
+	 * @param {string} cacheDir - The directory path to store cached audio files.
+	 * @returns {TTSManager} An instance of TTSManager.
+	 */
 	public static getInstance(cacheDir: string): TTSManager {
 		if (!TTSManager.instance) {
 			TTSManager.instance = new TTSManager(cacheDir);
@@ -54,6 +74,9 @@ export class TTSManager {
 		return TTSManager.instance;
 	}
 
+	/**
+	 * Ensures that the cache directory exists. If it does not exist, the directory will be created.
+	 */
 	private ensureCacheDirectory(): void {
 		if (!fs.existsSync(this.cacheDir)) {
 			fs.mkdirSync(this.cacheDir, { recursive: true });
@@ -61,6 +84,15 @@ export class TTSManager {
 		}
 	}
 
+	/**
+	 * Asynchronously initializes the TTS module with GGUF backend.
+	 * If already initialized or missing necessary components (model and context), it returns early.
+	 * Handles model download using different URL patterns as fallback if model not found locally.
+	 * Initializes the TTS model, creates context, and sets the sequence for TTS generation.
+	 * Logs detailed steps and final output of initialization.
+	 *
+	 * @returns {Promise<void>} A promise that resolves once the TTS module is fully initialized.
+	 */
 	private async initialize(): Promise<void> {
 		try {
 			if (this.initialized && this.model && this.ctx) {
@@ -168,6 +200,12 @@ export class TTSManager {
 		}
 	}
 
+	/**
+	 * Asynchronously generates speech from a given text using the initialized TTS model.
+	 * @param {string} text - The text to generate speech from.
+	 * @returns {Promise<Readable>} A promise that resolves to a Readable stream containing the generated audio data.
+	 * @throws {Error} If the TTS model is not initialized or if no audio tokens are generated.
+	 */
 	public async generateSpeech(text: string): Promise<Readable> {
 		try {
 			await this.initialize();
@@ -267,6 +305,17 @@ export class TTSManager {
 		}
 	}
 
+	/**
+	 * Processes the audio response from the TTS service by converting
+	 * the data to 16-bit PCM format.
+	 * If the response contains direct audio data, it converts Float32Array
+	 * to 16-bit PCM. If the response only contains tokens, it converts
+	 * them to PCM data. The actual conversion process may vary depending
+	 * on the model used.
+	 *
+	 * @param {TTSResponse} response - The response object from the TTS service
+	 * @returns {Buffer} The processed audio data in 16-bit PCM format
+	 */
 	private processAudioResponse(response: TTSResponse): Buffer {
 		if (response.audio) {
 			// If we have direct audio data, convert Float32Array to 16-bit PCM

@@ -14,6 +14,12 @@ export const registerDynamicImport = (specifier: string, module: any) => {
 	registrations.set(specifier, module);
 };
 
+/**
+ * Handles importing of plugins asynchronously.
+ *
+ * @param {string[]} plugins - An array of strings representing the plugins to import.
+ * @returns {Promise<Function[]>} - A Promise that resolves to an array of imported plugins functions.
+ */
 export async function handlePluginImporting(plugins: string[]) {
 	if (plugins.length > 0) {
 		logger.debug("Imported are: ", plugins);

@@ -1,6 +1,9 @@
 import { parse, type ParserOptions } from "@typescript-eslint/parser";
 import type { AIService } from "./AIService/AIService.js";
 
+/**
+ * Class for validating and fixing JSDoc comments in TypeScript code.
+ */
 export class JSDocValidator {
 	private parserOptions: ParserOptions = {
 		sourceType: "module",
@@ -14,10 +17,22 @@ export class JSDocValidator {
 		comment: true,
 	};
 
+	/**
+	 * Constructor for the class.
+	 *
+	 * @param {AIService} aiService - An instance of the AIService class.
+	 */
 	constructor(private aiService: AIService) {}
 
 	/**
 	 * Validates and fixes JSDoc comments in TypeScript code
+	 */
+	/**
+	 * Validates and fixes the JSDoc comment in the given file.
+	 * @param {string} fileName - The name of the file.
+	 * @param {string} code - The code containing the JSDoc comment.
+	 * @param {string} originalComment - The original JSDoc comment.
+	 * @returns {Promise<string>} The validated and potentially fixed JSDoc comment.
 	 */
 	public async validateAndFixJSDoc(
 		fileName: string,

@@ -9,6 +9,12 @@ import { PhalaRemoteAttestationProvider as RemoteAttestationProvider } from "../
 import { hexToUint8Array } from "../utils";
 import { logger } from "@elizaos/core";
 
+/**
+ * Asynchronously uploads a Uint8Array as a binary file to a specified URL.
+ *
+ * @param {Uint8Array} data - The Uint8Array data to be uploaded as a binary file.
+ * @returns {Promise<Response>} A Promise that resolves once the upload is complete, returning a Response object.
+ */
 async function uploadUint8Array(data: Uint8Array) {
 	const blob = new Blob([data], { type: "application/octet-stream" });
 	const formData = new FormData();
@@ -20,6 +26,13 @@ async function uploadUint8Array(data: Uint8Array) {
 	});
 }
 
+/**
+ * Represents an action for remote attestation.
+ *
+ * This action is used to generate a remote attestation to prove that the agent is running in a Trusted Execution Environment (TEE).
+ *
+ * @type {{name: string, similes: string[], description: string, handler: Function, validate: Function, examples: Array<Array<Object>>}}
+ */
 export const phalaRemoteAttestationAction = {
 	name: "REMOTE_ATTESTATION",
 	similes: ["REMOTE_ATTESTATION", "TEE_REMOTE_ATTESTATION", "TEE_ATTESTATION"],
@@ -121,6 +134,20 @@ https://proof.t16z.com/reports/${data.checksum}`,
 	],
 };
 
+/**
+ * Marlin Remote Attestation action.
+ *
+ * This action allows generating a remote attestation to prove that the agent is running in a Trusted Execution Environment (TEE).
+ *
+ * @type {{
+ *   name: string,
+ *   similes: string[],
+ *   description: string,
+ *   handler: (runtime: IAgentRuntime, _message: Memory, _state: State, _options: Record<string, unknown>, callback: HandlerCallback) => Promise<boolean>,
+ *   validate: (runtime: IAgentRuntime) => Promise<boolean>,
+ *   examples: { name: string, content: { text: string, actions: string[] } }[][]
+ * }}
+ */
 export const marlinRemoteAttestationAction = {
 	name: "REMOTE_ATTESTATION",
 	similes: ["REMOTE_ATTESTATION", "TEE_REMOTE_ATTESTATION", "TEE_ATTESTATION"],

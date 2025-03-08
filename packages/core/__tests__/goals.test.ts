@@ -38,6 +38,23 @@ export const mockDatabaseAdapter = {
 const _services = new Map<ServiceType, Service>();
 
 // Create memory managers first
+/**
+ * Object representing a message manager.
+ * @type {IMemoryManager}
+ * @property {any} runtime - Will be set after runtime creation.
+ * @property {string} tableName - The name of the table for storing messages.
+ * @property {Function} searchMemories - Asynchronous function to search memories.
+ * @property {Function} addEmbeddingToMemory - Asynchronous function to add embedding to memory.
+ * @property {Function} getMemories - Asynchronous function to get memories.
+ * @property {Function} getCachedEmbeddings - Asynchronous function to get cached embeddings.
+ * @property {Function} getMemoryById - Asynchronous function to get memory by ID.
+ * @property {Function} getMemoriesByRoomIds - Asynchronous function to get memories by room IDs.
+ * @property {Function} createMemory - Asynchronous function to create a memory.
+ * @property {Function} removeMemory - Asynchronous function to remove a memory.
+ * @property {Function} removeAllMemories - Asynchronous function to remove all memories.
+ * @property {Function} countMemories - Asynchronous function to count memories.
+ */
+
 const messageManager: IMemoryManager = {
 	runtime: undefined as any, // Will set after runtime creation
 	tableName: "messages",
@@ -52,6 +69,23 @@ const messageManager: IMemoryManager = {
 	removeAllMemories: async () => {},
 	countMemories: async () => 0,
 };
+
+/**
+ * Interface for managing descriptions in memory.
+ * @typedef {Object} IMemoryManager
+ * @property {any} runtime - Runtime instance to be set after creation
+ * @property {string} tableName - Name of the table for descriptions
+ * @property {Function} searchMemories - Asynchronous function to search memories
+ * @property {Function} addEmbeddingToMemory - Asynchronous function to add embedding to memory
+ * @property {Function} getMemories - Asynchronous function to get memories
+ * @property {Function} getCachedEmbeddings - Asynchronous function to get cached embeddings
+ * @property {Function} getMemoryById - Asynchronous function to get a memory by ID
+ * @property {Function} getMemoriesByRoomIds - Asynchronous function to get memories by room IDs
+ * @property {Function} createMemory - Asynchronous function to create a memory
+ * @property {Function} removeMemory - Asynchronous function to remove a memory
+ * @property {Function} removeAllMemories - Asynchronous function to remove all memories
+ * @property {Function} countMemories - Asynchronous function to count memories
+ */
 
 const descriptionManager: IMemoryManager = {
 	runtime: undefined as any, // Will set after runtime creation
@@ -69,6 +103,10 @@ const descriptionManager: IMemoryManager = {
 };
 
 // Then create runtime
+/**
+ * Mock runtime object implementing the IAgentRuntime interface.
+ * This object is used for testing purposes.
+ */
 export const mockRuntime: IAgentRuntime = {
 	databaseAdapter: mockDatabaseAdapter as any,
 	cacheManager: new CacheManager(new MemoryCacheAdapter()),

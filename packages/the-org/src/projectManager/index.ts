@@ -8,6 +8,13 @@ import dotenv from "dotenv";
 import { initCharacter } from "../init";
 dotenv.config({ path: "../../.env" });
 
+/**
+ * Represents a character with a name and a list of plugins.
+ * @typedef {Object} Character
+ * @property {string} name - The name of the character.
+ * @property {Array<string>} plugins - The list of plugins associated with the character.
+ * @property {Object} secrets - The secrets object containing sensitive information.
+ */
 const character: Character = {
 	name: "Jimmy",
 	plugins: [
@@ -275,6 +282,37 @@ const character: Character = {
 	},
 };
 
+/**
+ * Configuration object for onboarding process.
+ * Contains settings for list of projects, team members, and contact info.
+ *
+ * @typedef {Object} OnboardingConfig
+ * @property {Object} settings - Settings for onboarding process
+ * @property {Object} settings.CHECK_IN_FREQUENCY - Configuration for check-in frequency
+ * @property {string} settings.CHECK_IN_FREQUENCY.name - The name of the setting
+ * @property {string} settings.CHECK_IN_FREQUENCY.description - Description of the setting
+ * @property {boolean} settings.CHECK_IN_FREQUENCY.required - Whether the setting is required
+ * @property {boolean} settings.CHECK_IN_FREQUENCY.public - Whether the setting is public
+ * @property {boolean} settings.CHECK_IN_FREQUENCY.secret - Whether the setting is secret
+ * @property {string} settings.CHECK_IN_FREQUENCY.usageDescription - Description of how to use the setting
+ * @property {function} settings.CHECK_IN_FREQUENCY.validation - Validation function for the setting
+ * @property {Object} settings.REPORT_SCHEDULE - Configuration for report schedule
+ * @property {string} settings.REPORT_SCHEDULE.name - The name of the setting
+ * @property {string} settings.REPORT_SCHEDULE.description - Description of the setting
+ * @property {boolean} settings.REPORT_SCHEDULE.required - Whether the setting is required
+ * @property {boolean} settings.REPORT_SCHEDULE.public - Whether the setting is public
+ * @property {boolean} settings.REPORT_SCHEDULE.secret - Whether the setting is secret
+ * @property {string} settings.REPORT_SCHEDULE.usageDescription - Description of how to use the setting
+ * @property {function} settings.REPORT_SCHEDULE.validation - Validation function for the setting
+ * @property {Object} settings.CLIENT_LIST - Configuration for client list
+ * @property {string} settings.CLIENT_LIST.name - The name of the setting
+ * @property {string} settings.CLIENT_LIST.description - Description of the setting
+ * @property {boolean} settings.CLIENT_LIST.required - Whether the setting is required
+ * @property {boolean} settings.CLIENT_LIST.public - Whether the setting is public
+ * @property {boolean} settings.CLIENT_LIST.secret - Whether the setting is secret
+ * @property {string} settings.CLIENT_LIST.usageDescription - Description of how to use the setting
+ * @property {function} settings.CLIENT_LIST.validation - Validation function for the setting
+ */
 const config: OnboardingConfig = {
 	settings: {
 		// List of projects

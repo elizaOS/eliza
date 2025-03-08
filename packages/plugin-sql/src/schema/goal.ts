@@ -5,6 +5,11 @@ import { entityTable } from "./entity";
 import { roomTable } from "./room";
 import { agentTable } from "./agent";
 
+/**
+ * Represents a table in the database for storing goals.
+ *
+ * @type {Table}
+ */
 export const goalTable = pgTable(
 	"goals",
 	{

@@ -18,6 +18,12 @@ const agent = process.env.https_proxy
 	? new HttpsProxyAgent(process.env.https_proxy)
 	: undefined;
 
+/**
+ * Fetches the registry index asynchronously.
+ *
+ * @returns {Promise<Registry>} The registry index
+ * @throws {Error} If the response from the registry is not valid JSON or if there is an error fetching the plugins
+ */
 export async function getRegistryIndex(): Promise<Registry> {
 	try {
 		const response = await fetch(REGISTRY_URL, { agent });
@@ -39,6 +45,13 @@ export async function getRegistryIndex(): Promise<Registry> {
 	}
 }
 
+/**
+ * Retrieves the repository URL for a given plugin from the registry.
+ *
+ * @param {string} pluginName - The name of the plugin to fetch the repository URL for.
+ * @returns {Promise<string | null>} The repository URL for the plugin, or null if not found.
+ * @throws {Error} If an error occurs while retrieving the repository URL.
+ */
 export async function getPluginRepository(
 	pluginName: string,
 ): Promise<string | null> {
@@ -52,6 +65,13 @@ export async function getPluginRepository(
 
 /**
  * Check if a GitHub repository has a specific branch
+ */
+/**
+ * Check if a repository has a specific branch.
+ *
+ * @param {string} repoUrl - The URL of the repository to check.
+ * @param {string} branchName - The name of the branch to check for.
+ * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the branch exists in the repository.
  */
 export async function repoHasBranch(
 	repoUrl: string,

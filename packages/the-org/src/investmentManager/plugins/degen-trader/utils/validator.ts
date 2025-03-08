@@ -1,6 +1,11 @@
 import { logger } from "@elizaos/core";
 import { PublicKey } from "@solana/web3.js";
 
+/**
+ * Function to validate a Solana address.
+ * @param {string | undefined} address - The Solana address to validate.
+ * @returns {boolean} - Returns true if the address is valid, false otherwise.
+ */
 export function validateSolanaAddress(address: string | undefined): boolean {
 	if (!address) return false;
 	try {
