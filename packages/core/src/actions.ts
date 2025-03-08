@@ -8,6 +8,13 @@ import type { Action, ActionExample } from "./types.ts";
  * @param count - The number of examples to generate.
  * @returns A string containing formatted examples of conversations.
  */
+/**
+ * Compose a specified number of random action examples from the given actionsData.
+ *
+ * @param {Action[]} actionsData - The list of actions to generate examples from.
+ * @param {number} count - The number of examples to compose.
+ * @returns {string} The formatted action examples.
+ */
 export const composeActionExamples = (actionsData: Action[], count: number) => {
 	const data: ActionExample[][][] = actionsData.map((action: Action) => [
 		...action.examples,
