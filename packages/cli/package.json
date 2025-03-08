@@ -79,5 +79,8 @@
 		"type-fest": "^3.8.0",
 		"typescript": "5.8.2"
 	},
+	"peerDependencies": {
+		"form-data": "4.0.2"
+	},
 	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
 }

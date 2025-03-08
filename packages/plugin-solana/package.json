@@ -40,7 +40,7 @@
 		"test": "vitest run"
 	},
 	"peerDependencies": {
-		"form-data": "4.0.1",
+		"form-data": "4.0.2",
 		"whatwg-url": "7.1.0"
 	},
 	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
