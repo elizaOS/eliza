@@ -11,6 +11,15 @@ import {
 	type State,
 } from "../types";
 
+/**
+ * Template for deciding if {{agentName}} should start following a room.
+ * The decision is based on various criteria, including recent messages and user interactions.
+ * Respond with YES if:
+ * - The user has directly asked {{agentName}} to follow the conversation
+ * - The conversation topic is engaging and {{agentName}}'s input would add value
+ * - {{agentName}} has unique insights to contribute and users seem receptive
+ * Otherwise, respond with NO.
+ */
 export const shouldFollowTemplate = `# Task: Decide if {{agentName}} should start following this room, i.e. eagerly participating without explicit mentions.
 
 {{recentMessages}}
@@ -24,6 +33,14 @@ Respond with YES if:
 Otherwise, respond with NO.
 ${booleanFooter}`;
 
+/**
+ * Action for following a room with great interest.
+ * Similes: FOLLOW_CHAT, FOLLOW_CHANNEL, FOLLOW_CONVERSATION, FOLLOW_THREAD
+ * Description: Start following this channel with great interest, chiming in without needing to be explicitly mentioned. Only do this if explicitly asked to.
+ * @param {IAgentRuntime} runtime - The current agent runtime.
+ * @param {Memory} message - The message memory.
+ * @returns {Promise<boolean>} - Promise that resolves to a boolean indicating if the room should be followed.
+ */
 export const followRoomAction: Action = {
 	name: "FOLLOW_ROOM",
 	similes: [
