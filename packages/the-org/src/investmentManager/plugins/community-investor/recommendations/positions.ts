@@ -14,6 +14,16 @@ import {
 } from "../types";
 import type { CommunityInvestorService } from "../tradingService";
 
+/**
+ * Action to retrieve and format position data for the agent's portfolio.
+ * @type {Action}
+ * @property {string} name - The name of the action, "GET_POSITIONS".
+ * @property {string} description - Description of the action.
+ * @property {Array<Array<Object>>} examples - Examples demonstrating how to use the action.
+ * @property {Array<string>} similes - Related actions for comparison.
+ * @property {Function} handler - Asynchronous function to handle the action logic.
+ * @property {Function} validate - Asynchronous function to validate the action parameters.
+ */
 export const getPositions: Action = {
 	name: "GET_POSITIONS",
 	description: "Retrieves and formats position data for the agent's portfolio",
