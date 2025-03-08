@@ -36,7 +36,7 @@ export function createApiRouter(
 			limit: getEnvVariable("EXPRESS_MAX_PAYLOAD") || "100kb",
 		}),
 	);
-	
+
 	router.get("/hello", (_req, res) => {
 		res.json({ message: "Hello World!" });
 	});

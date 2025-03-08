@@ -15,12 +15,10 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@coral-xyz/anchor": "0.30.1",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.6",
 		"@solana/spl-token": "0.4.9",
 		"@solana/web3.js": "^1.98.0",
 		"bignumber.js": "9.1.2",
@@ -44,5 +42,6 @@
 	"peerDependencies": {
 		"form-data": "4.0.1",
 		"whatwg-url": "7.1.0"
-	}
+	},
+	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
 }

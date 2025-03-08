@@ -15,9 +15,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@discordjs/opus": "github:discordjs/opus",
 		"@discordjs/rest": "2.4.0",
@@ -37,15 +35,12 @@
 		"dev": "tsup --format esm --dts --watch",
 		"test": "vitest run"
 	},
-	"trustedDependencies": [
-		"@discordjs/opus",
-		"@discordjs/voice"
-	],
+	"trustedDependencies": ["@discordjs/opus", "@discordjs/voice"],
 	"peerDependencies": {
 		"whatwg-url": "7.1.0"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
+	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
 }

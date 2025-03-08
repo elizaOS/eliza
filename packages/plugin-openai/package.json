@@ -14,13 +14,11 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@ai-sdk/openai": "^1.1.9",
 		"@ai-sdk/ui-utils": "1.1.9",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.6",
 		"ai": "^4.1.25",
 		"js-tiktoken": "^1.0.18",
 		"tsup": "8.4.0",
@@ -49,5 +47,5 @@
 			}
 		}
 	},
-	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
+	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
 }

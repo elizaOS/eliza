@@ -16,18 +16,15 @@
 		"test": "vitest --run"
 	},
 	"nodemonConfig": {
-		"watch": [
-			"src",
-			"../core/dist"
-		],
+		"watch": ["src", "../core/dist"],
 		"ext": "ts,json",
 		"exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
 	},
 	"dependencies": {
-		"@elizaos/cli": "workspace:*",
-		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-tee": "workspace:*",
-		"@elizaos/plugin-twitter": "workspace:*",
+		"@elizaos/cli": "1.0.0-alpha.6",
+		"@elizaos/core": "1.0.0-alpha.6",
+		"@elizaos/plugin-tee": "1.0.0-alpha.6",
+		"@elizaos/plugin-twitter": "1.0.0-alpha.6",
 		"@solana/web3.js": "^1.87.6",
 		"@types/body-parser": "1.19.5",
 		"@types/cors": "2.8.17",
@@ -48,5 +45,5 @@
 		"ts-node": "10.9.2",
 		"tsup": "8.4.0"
 	},
-	"gitHead": "084c3b06c279b85528a81d42fc93ef68ff9f7364"
+	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
 }

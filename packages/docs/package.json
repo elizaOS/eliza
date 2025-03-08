@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/docs",
-	"version": "1.0.0-alpha.1",
+	"version": "1.0.0-alpha.0",
 	"private": true,
 	"packageManager": "bun@9.4.0",
 	"scripts": {
@@ -21,30 +21,23 @@
 		"@docusaurus/plugin-content-docs": "3.7.0",
 		"@docusaurus/plugin-ideal-image": "3.7.0",
 		"@docusaurus/preset-classic": "3.7.0",
-		"@docusaurus/theme-common": "3.7.0",
 		"@docusaurus/theme-mermaid": "3.7.0",
+		"@docusaurus/theme-common": "3.7.0",
 		"@mdx-js/react": "3.0.1",
 		"clsx": "2.1.1",
 		"docusaurus-lunr-search": "3.5.0",
-		"dotenv": "^16.4.7",
 		"lunr": "2.3.9",
+		"dotenv": "^16.4.7",
 		"prism-react-renderer": "2.3.1",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0"
 	},
 	"devDependencies": {
 		"@docusaurus/module-type-aliases": "3.7.0",
-		"@docusaurus/remark-plugin-npm2yarn": "^3.7.0",
 		"@docusaurus/types": "3.7.0",
-		"@types/node": "^22.13.9",
-		"assert": "^2.1.0",
-		"docusaurus-plugin-typedoc": "1.2.2",
-		"events": "^3.3.0",
-		"path-browserify": "^1.0.1",
-		"stream-browserify": "^3.0.0",
+		"docusaurus-plugin-typedoc": "1.0.5",
 		"typedoc": "0.26.11",
-		"typedoc-plugin-markdown": "4.2.10",
-		"util": "^0.12.5"
+		"typedoc-plugin-markdown": "4.2.10"
 	},
 	"browserslist": {
 		"production": [">0.5%", "not dead", "not op_mini all"],

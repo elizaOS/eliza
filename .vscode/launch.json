@@ -1,0 +1,70 @@
+{
+	// Use IntelliSense to learn about possible attributes.
+	// Hover to view descriptions of existing attributes.
+	// For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug Entire Monorepo",
+			"skipFiles": ["<node_internals>/**"],
+			"runtimeExecutable": "bun",
+			"runtimeArgs": ["--inspect", "run", "dev"],
+			"cwd": "${workspaceFolder}",
+			"console": "integratedTerminal",
+			"sourceMaps": true,
+			"preLaunchTask": "build-core",
+			"outFiles": ["${workspaceFolder}/packages/*/dist/**/*.js"]
+		},
+		{
+			"name": "Attach to Node Process",
+			"port": 9229,
+			"request": "attach",
+			"skipFiles": ["<node_internals>/**"],
+			"type": "node",
+			"restart": true
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug CLI",
+			"skipFiles": ["<node_internals>/**"],
+			"program": "${workspaceFolder}/packages/cli/src/index.ts",
+			"runtimeExecutable": "bun",
+			"runtimeArgs": ["--inspect"],
+			"outFiles": ["${workspaceFolder}/packages/cli/dist/**/*.js"],
+			"console": "integratedTerminal",
+			"sourceMaps": true
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug The-Org",
+			"skipFiles": ["<node_internals>/**"],
+			"runtimeExecutable": "bun",
+			"runtimeArgs": ["--inspect", "run", "agent"],
+			"cwd": "${workspaceFolder}",
+			"console": "integratedTerminal",
+			"sourceMaps": true
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug Tests",
+			"runtimeExecutable": "bun",
+			"runtimeArgs": ["--inspect-brk", "test"],
+			"console": "integratedTerminal",
+			"sourceMaps": true
+		},
+		{
+			"type": "node",
+			"request": "launch",
+			"name": "Debug Current Test File",
+			"runtimeExecutable": "bun",
+			"runtimeArgs": ["--inspect-brk", "test", "${file}"],
+			"console": "integratedTerminal",
+			"sourceMaps": true
+		}
+	]
+}

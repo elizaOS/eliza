@@ -30,7 +30,7 @@ export async function copyDir(
 		if (
 			entry.name === "node_modules" ||
 			entry.name === ".git" ||
-			entry.name === "content_cache" ||
+			entry.name === "cache" ||
 			entry.name === "data" ||
 			entry.name === "generatedImages" ||
 			entry.name === ".turbo"
@@ -133,10 +133,7 @@ export async function copyClientDist() {
 
 	// Determine source and destination paths
 	const srcClientDist = path.resolve(process.cwd(), "../client/dist");
-	const destClientDist = path.resolve(
-		process.cwd(),
-		"./dist/client",
-	);
+	const destClientDist = path.resolve(process.cwd(), "./dist/client");
 
 	// Create destination directory
 	await fs.mkdir(destClientDist, { recursive: true });
@@ -153,15 +150,19 @@ export async function copyClientDist() {
 				break;
 			}
 		}
-		
-		logger.info(`Waiting for client dist files to be built (attempt ${retries + 1}/${maxRetries})...`);
-		await new Promise(resolve => setTimeout(resolve, retryDelay));
+
+		logger.info(
+			`Waiting for client dist files to be built (attempt ${retries + 1}/${maxRetries})...`,
+		);
+		await new Promise((resolve) => setTimeout(resolve, retryDelay));
 		retries++;
 	}
 
 	// Check if source exists after retries
 	if (!existsSync(srcClientDist)) {
-		logger.error(`Client dist not found at ${srcClientDist} after ${maxRetries} attempts`);
+		logger.error(
+			`Client dist not found at ${srcClientDist} after ${maxRetries} attempts`,
+		);
 		return;
 	}
 

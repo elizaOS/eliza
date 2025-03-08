@@ -1,6 +1,6 @@
 {
 	"type": "module",
-	"name": "plugin-audix",
+	"name": "@elizaos/autodoc",
 	"version": "1.0.0",
 	"description": "",
 	"main": "dist/index.js",
@@ -8,8 +8,8 @@
 	"types": "dist/index.d.ts",
 	"scripts": {
 		"build": "tsup",
-		"dev": "tsup --watch",
-		"start": "node dist/index.js",
+		"autodoc:dev": "tsup --watch",
+		"autodoc": "node dist/index.js",
 		"clean": "rm -rf node_modules dist"
 	},
 	"keywords": [],

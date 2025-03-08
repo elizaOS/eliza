@@ -1,10 +1,10 @@
-name: JSDoc Automation
+name: Autodocs Documentation Generator
 
 on:
     workflow_dispatch:
         inputs:
             jsdoc:
-                description: "Generate JSDoc comments (T/F)"
+                description: "Generate code comments (T/F)"
                 required: true
                 default: "T"
                 type: string
@@ -43,7 +43,7 @@ jobs:
         runs-on: ubuntu-latest
 
         env:
-            GITHUB_ACCESS_TOKEN: ${{ secrets.GH_PAT }}
+            GITHUB_ACCESS_TOKEN: ${{ secrets.GH_TOKEN }}
             OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
         steps:
@@ -56,35 +56,23 @@ jobs:
               uses: actions/setup-node@v4
               with:
                   node-version: "23"
-
             - name: Install bun
-              - uses: oven-sh/setup-bun@v2
-
-            - name: Update lockfile
-              working-directory: scripts/jsdoc-automation
-              run: |
-                  echo "Updating lockfile..."
-                  bun install
-                  git config --global user.email "github-actions[bot]@users.noreply.github.com"
-                  git config --global user.name "github-actions[bot]"
-                  git add bun.lockb
-                  git commit -m "chore: update bun lockfile" || echo "No changes to commit"
-                  git push || echo "No changes to push"
+              uses: oven-sh/setup-bun@v2
 
             - name: Install root dependencies
               run: bun install
 
             - name: Install package dependencies
-              working-directory: scripts/jsdoc-automation
+              working-directory: packages/autodoc
               run: bun install
 
             - name: Build TypeScript
-              working-directory: scripts/jsdoc-automation
+              working-directory: packages/autodoc
               run: bun run build
 
             - name: Run documentation generator
-              working-directory: scripts/jsdoc-automation
-              run: bun start
+              working-directory: packages/autodoc
+              run: bun run autodoc
               env:
                   INPUT_ROOT_DIRECTORY: ${{ inputs.root_directory }}
                   INPUT_PULL_NUMBER: ${{ inputs.pull_number }}

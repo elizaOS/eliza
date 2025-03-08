@@ -1,14 +1,9 @@
 #!/bin/bash
 
-# Repository Optimizer Script
-# Provides two main functions:
-# 1. Squash commits while preserving one commit per author per day
-# 2. Create a slim version of the repository that preserves history but minimizes content
-#
-# USAGE: ./repo_optimizer.sh [--slim-only] [--skip-slim] [--help]
-#   --slim-only: Skip squashing and only create slim version from existing squashed branch
-#   --skip-slim: Only perform squashing without creating slim version
-#   --help: Display usage information
+# Repository Optimizer Script - FIXED VERSION 4
+# Ensures exactly one commit per author per day, no duplicates
+# Uses a TRULY SLIM approach that actually purges all original content
+# FIXED: properly handles staging area to prevent uncommitted changes
 
 set -e  # Exit on error
 
@@ -40,12 +35,12 @@ for arg in "$@"; do
       set -x  # Enable trace mode
       ;;
     --help)
-      echo -e "${BLUE}Repository Optimizer Script${NC}"
+      echo -e "${BLUE}Repository Optimizer Script - FIXED VERSION 4${NC}"
       echo "Provides two main functions:"
-      echo "1. Squash commits while preserving one commit per author per day"
-      echo "2. Create a slim version of the repository that preserves history but minimizes content"
+      echo "1. Squash commits while preserving EXACTLY one commit per author per day"
+      echo "2. Create a TRULY slim version of the repository with minimal size"
       echo
-      echo "USAGE: ./repo_optimizer.sh [--slim-only] [--skip-slim] [--debug] [--help]"
+      echo "USAGE: ./repo_optimizer_fixed4.sh [--slim-only] [--skip-slim] [--debug] [--help]"
       echo "  --slim-only: Skip squashing and only create slim version from existing squashed branch"
       echo "  --skip-slim: Only perform squashing without creating slim version"
       echo "  --debug: Enable debug output"
@@ -84,8 +79,28 @@ cleanup() {
   fi
 }
 
-# Trap to ensure cleanup on exit
-trap cleanup EXIT
+# Function to reset git staging area
+reset_staging() {
+  # Reset any staged but uncommitted changes
+  if git diff --staged --quiet; then
+    # No staged changes
+    return 0
+  else
+    print_warning "Unstaging uncommitted changes"
+    git reset --hard HEAD 2>/dev/null || git reset --hard 2>/dev/null || true
+  fi
+}
+
+# Create a temporary directory for our work
+work_dir=$(mktemp -d)
+echo "Using temporary directory: $work_dir"
+
+# Make sure all directories exist
+mkdir -p "$work_dir/logs"
+mkdir -p "$work_dir/author_data"
+
+# Trap to ensure cleanup on exit (disabled for debugging)
+# trap cleanup EXIT
 
 # Check if we're in a git repository
 if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
@@ -101,15 +116,9 @@ fi
 
 # Get the current branch - we'll return to this at the end
 original_branch=$(git symbolic-ref --short HEAD)
+original_repo=$(pwd)
 echo "Current branch is $original_branch"
-
-# Create a temporary directory for our work
-work_dir=$(mktemp -d)
-echo "Using temporary directory: $work_dir"
-
-# Create empty files to avoid issues with missing files
-touch "$work_dir/commits_to_keep.txt"
-touch "$work_dir/commits_sorted.txt"
+echo "Original repository path: $original_repo"
 
 #############################
 # SQUASHING IMPLEMENTATION #
@@ -129,193 +138,221 @@ squash_repository() {
     git branch -D $SQUASHED_BRANCH
   fi
   
-  # Get all authors - IMPORTANT: specify branch to search
-  print_header "Finding all unique authors..."
-  authors=$(git log "$original_branch" --format='%an' | sort -u)
-  author_count=$(echo "$authors" | wc -l | tr -d ' ')
-  print_success "Found $author_count unique authors"
+  # CRITICAL: Create maps to ensure we keep one commit per author per day
+  print_header "Analyzing commit history..."
   
-  # First collect all commits we want to keep BEFORE creating the new branch
-  print_header "Analyzing commits by author and date..."
-  total_kept=0
+  # First, get all author-date combinations and sort them chronologically
+  git log --format="%at %H %an %ad" --date=short "$original_branch" > "$work_dir/all_commits_raw.txt"
   
-  # Process each author directly without using files for author names
-  echo "$authors" | while read -r author; do
-    if [ -z "$author" ]; then
-      echo "Skipping empty author"
-      continue
+  # Count total commits for reporting
+  total_commits=$(wc -l < "$work_dir/all_commits_raw.txt" | tr -d ' ')
+  print_success "Found $total_commits total commits to analyze"
+  
+  # Process the commits to identify unique author-date combinations
+  print_header "Processing commits to identify unique author+date combinations"
+  
+  # CRITICAL: STORE COMMITS TO PROCESS IN A FILE
+  # This avoids subshell issues that may lose data
+  sort -n "$work_dir/all_commits_raw.txt" > "$work_dir/all_commits_sorted.txt"
+  
+  # Initialize files
+  touch "$work_dir/author_date_map.txt"  # Will contain author|date => hash mappings
+  touch "$work_dir/commits_to_keep.txt"  # Will contain list of commits to keep
+  
+  # VERY IMPORTANT: Do this processing in the main shell, NOT in a subshell/pipe
+  while IFS= read -r line; do
+    timestamp=$(echo "$line" | awk '{print $1}')
+    hash=$(echo "$line" | awk '{print $2}')
+    date=$(echo "$line" | awk '{print $NF}')  # Last field is the date
+    
+    # Extract author - everything between the hash and the date
+    # This handles spaces and special characters in author names
+    author_part=$(echo "$line" | cut -d' ' -f3-)
+    author=$(echo "$author_part" | sed "s/ $date\$//")
+    
+    # Create a key for this author-date combination
+    key="${author}|${date}"
+    
+    # Check if we've seen this key before
+    if ! grep -q "^$key=" "$work_dir/author_date_map.txt"; then
+      # First time seeing this author-date combination
+      echo "$key=$hash" >> "$work_dir/author_date_map.txt"
+      echo "$timestamp $hash $author $date" >> "$work_dir/commits_to_keep.txt"
+      
+      # Debug output - log what we're keeping
+      echo "KEEPING: $hash from $author on $date" >> "$work_dir/logs/commits_kept.log"
+    else
+      # Debug output - log what we're skipping
+      echo "SKIPPING: $hash from $author on $date (already have a commit for this author-date)" >> "$work_dir/logs/commits_skipped.log"
     fi
-    
-    echo "Processing commits for author: $author"
-    
-    # Get all commit dates for this author - specify branch
-    dates=$(git log "$original_branch" --author="$author" --format='%ad' --date=short | sort -u)
-    
-    # Process each date directly without writing to files
-    echo "$dates" | while read -r date; do
-      if [ -z "$date" ]; then
-        echo "Skipping empty date for author: $author"
-        continue
-      fi
-      
-      echo "Processing date: $date for author: $author"
-      
-      # Find the oldest commit by this author on this date - specify branch
-      commit=$(git log "$original_branch" --author="$author" --format='%H' --date=short --after="$date 00:00:00" --before="$date 23:59:59" | tail -1)
-      
-      if [ -n "$commit" ]; then
-        echo "Keeping commit $commit by $author on $date"
-        
-        # Save commit info for later processing
-        # Use base64 encoding to safely handle special characters in author names
-        timestamp=$(git log -1 --format='%at' "$commit")
-        echo "$timestamp $commit $(echo "$author" | base64) $date" >> "$work_dir/commits_to_keep.txt"
-        
-        # Increment counter safely
-        if [ -f "$work_dir/total_kept.txt" ]; then
-          total_kept=$(cat "$work_dir/total_kept.txt")
-          total_kept=$((total_kept + 1))
-        else
-          total_kept=1
-        fi
-        echo "$total_kept" > "$work_dir/total_kept.txt"
-        
-        echo "Total commits so far: $total_kept"
-      else
-        echo "No commit found for $author on $date"
-      fi
-    done
-    
-    echo "Finished processing author: $author"
-  done
+  done < "$work_dir/all_commits_sorted.txt"
   
-  # Read saved count
-  if [ -f "$work_dir/total_kept.txt" ]; then
-    total_kept=$(cat "$work_dir/total_kept.txt")
-  else
-    total_kept=0
-  fi
+  # Count unique combinations for reporting
+  unique_combinations=$(wc -l < "$work_dir/author_date_map.txt" | tr -d ' ')
+  print_success "Found $unique_combinations unique author-date combinations to preserve"
   
-  print_success "Total commits to keep: $total_kept"
+  # Also count unique authors for reporting
+  unique_authors=$(cut -d'|' -f1 "$work_dir/author_date_map.txt" | sort -u | wc -l | tr -d ' ')
+  print_success "Found $unique_authors unique authors across all commits"
   
-  # Sort commits by timestamp (oldest first)
-  if [ -f "$work_dir/commits_to_keep.txt" ]; then
-    sort -n "$work_dir/commits_to_keep.txt" > "$work_dir/commits_sorted.txt"
-    mv "$work_dir/commits_sorted.txt" "$work_dir/commits_to_keep.txt"
-    echo "Sorted $total_kept commits by date"
-  else
-    print_error "commits_to_keep.txt not found"
+  # Debug files for confirmation
+  echo "Top 5 commits we're keeping:" >> "$work_dir/logs/debug.txt"
+  head -n 5 "$work_dir/commits_to_keep.txt" >> "$work_dir/logs/debug.txt"
+  
+  # CRITICAL CHECKPOINT: Make sure commits_to_keep.txt exists and has content
+  if [ ! -s "$work_dir/commits_to_keep.txt" ]; then
+    print_error "Critical error: No commits were selected to keep!"
+    cat "$work_dir/logs/debug.txt"
     return 1
   fi
   
-  # Debug check
-  echo "First few commits to keep:"
-  head -n 5 "$work_dir/commits_to_keep.txt"
-  echo "Total lines in commits file: $(wc -l < "$work_dir/commits_to_keep.txt")"
+  # Re-sort commits by timestamp to maintain chronological order
+  sort -n "$work_dir/commits_to_keep.txt" > "$work_dir/commits_sorted.txt"
+  mv "$work_dir/commits_sorted.txt" "$work_dir/commits_to_keep.txt"
   
-  # Now create the new orphan branch
-  print_header "Creating new orphan branch..."
+  # Create the new branch
+  print_header "Creating new orphan branch for squashed history..."
   git checkout --orphan $SQUASHED_BRANCH
-  git rm -rf .
   
-  # SAFETY CHECK: Make sure we're still in a git repository
+  # CRITICAL FIX: After creating orphan branch, IMMEDIATELY create a commit
+  # to prevent having staged file deletions
+  
+  # First, remove all files from the working directory and staging area
+  git rm -rf . > /dev/null 2>&1
+
+  # Create a temporary file to commit - this ensures we have a clean starting point
+  echo "# Temporary file" > README.md
+  git add README.md
+  git commit -m "Initial commit for squashed branch" > /dev/null 2>&1
+  
+  # Safety check - make sure we're still in a git repository
   if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
     print_error "CRITICAL ERROR: Lost git repository reference after checkout. Aborting."
     return 1
   fi
   
-  # Create the new history
-  if [ -f "$work_dir/commits_to_keep.txt" ] && [ -s "$work_dir/commits_to_keep.txt" ]; then
-    parent=""
+  # Create commit history
+  print_header "Creating new commit history..."
+  
+  if [ -s "$work_dir/commits_to_keep.txt" ]; then
+    # Status update with expected number of commits
+    commits_to_create=$(wc -l < "$work_dir/commits_to_keep.txt" | tr -d ' ')
+    echo "Will create $commits_to_create new commits (one per author per day)"
+    
+    # Process each commit from the file (avoid pipes/subshells)
+    # The first commit will be our parent - we'll reset it later
+    first_parent=$(git rev-parse HEAD)
+    parent="$first_parent"
     commit_count=0
+    commit_error_count=0
     
-    print_header "Creating new commit history..."
-    
-    while read -r line; do
-      if [ -z "$line" ]; then
-        echo "Skipping empty line"
+    while IFS= read -r line; do
+      # Parse the line
+      timestamp=$(echo "$line" | awk '{print $1}')
+      orig_commit=$(echo "$line" | awk '{print $2}')
+      
+      # Extract author and date, handling spaces in author names
+      date=$(echo "$line" | awk '{print $NF}')  # Last field is the date
+      author_part=$(echo "$line" | cut -d' ' -f3-)
+      author=$(echo "$author_part" | sed "s/ $date\$//")
+      
+      # Debug - log the values we extracted
+      echo "Processing original commit: $orig_commit" >> "$work_dir/logs/commit_creation.log"
+      echo "  Author: '$author'" >> "$work_dir/logs/commit_creation.log"
+      echo "  Date: '$date'" >> "$work_dir/logs/commit_creation.log"
+      
+      # CRITICAL: Verify we can access the original commit
+      if ! git cat-file -e "$orig_commit" 2>/dev/null; then
+        print_error "Cannot access commit: $orig_commit"
+        commit_error_count=$((commit_error_count + 1))
         continue
       fi
       
-      # Extract fields from line
-      timestamp=$(echo "$line" | awk '{print $1}')
-      commit=$(echo "$line" | awk '{print $2}')
-      encoded_author=$(echo "$line" | awk '{print $3}')
-      date=$(echo "$line" | awk '{print $4}')
+      # Get the original commit's data
+      message=$(git log -1 --format='%B' "$orig_commit")
+      tree=$(git log -1 --format='%T' "$orig_commit")
+      email=$(git log -1 --format='%ae' "$orig_commit")
+      author_date=$(git log -1 --format='%ad' "$orig_commit")
+      committer_name=$(git log -1 --format='%cn' "$orig_commit")
+      committer_email=$(git log -1 --format='%ce' "$orig_commit")
+      committer_date=$(git log -1 --format='%cd' "$orig_commit")
       
-      # Decode the author name from base64
-      author=$(echo "$encoded_author" | base64 --decode)
-      
-      # Get the commit message
-      message=$(git log -1 --format='%s' "$commit")
-      
-      # Get the tree hash (snapshot of files)
-      tree=$(git log -1 --format='%T' "$commit")
-      
-      # Get author email
-      email=$(git log -1 --format='%ae' "$commit")
-      
-      # Get author date format
-      author_date=$(git log -1 --format='%ad' "$commit")
-      
-      # Get committer information
-      committer_name=$(git log -1 --format='%cn' "$commit")
-      committer_email=$(git log -1 --format='%ce' "$commit")
-      committer_date=$(git log -1 --format='%cd' "$commit")
-      
-      echo "Creating commit $((commit_count + 1))/$total_kept: $commit - $author - $date - $message"
-      
-      # Create new commit with the same tree
-      if [ -z "$parent" ]; then
-        # First commit has no parent
-        new_commit=$(GIT_AUTHOR_NAME="$author" \
+      # Create the new commit with original metadata
+      if [ "$parent" = "$first_parent" ]; then
+        # First real commit - we'll discard the temporary parent later
+        new_commit=$(
+          GIT_AUTHOR_NAME="$author" \
           GIT_AUTHOR_EMAIL="$email" \
           GIT_AUTHOR_DATE="$author_date" \
           GIT_COMMITTER_NAME="$committer_name" \
           GIT_COMMITTER_EMAIL="$committer_email" \
           GIT_COMMITTER_DATE="$committer_date" \
-          git commit-tree "$tree" -m "$message")
+          git commit-tree "$tree" -m "$message"
+        )
+        # Reset the first parent variable
+        first_parent=""
       else
         # Subsequent commits have the previous one as parent
-        new_commit=$(GIT_AUTHOR_NAME="$author" \
+        new_commit=$(
+          GIT_AUTHOR_NAME="$author" \
           GIT_AUTHOR_EMAIL="$email" \
           GIT_AUTHOR_DATE="$author_date" \
           GIT_COMMITTER_NAME="$committer_name" \
           GIT_COMMITTER_EMAIL="$committer_email" \
           GIT_COMMITTER_DATE="$committer_date" \
-          git commit-tree "$tree" -p "$parent" -m "$message")
+          git commit-tree "$tree" -p "$parent" -m "$message"
+        )
       fi
       
-      # Save this commit as the parent for the next one
+      # CRITICAL ERROR CHECK: Make sure we created a valid commit
+      if [ -z "$new_commit" ] || ! git cat-file -e "$new_commit" 2>/dev/null; then
+        echo "FAILED to create commit from $orig_commit" >> "$work_dir/logs/errors.log"
+        echo "  Author: $author" >> "$work_dir/logs/errors.log"
+        echo "  Date: $date" >> "$work_dir/logs/errors.log"
+        echo "  Tree: $tree" >> "$work_dir/logs/errors.log"
+        commit_error_count=$((commit_error_count + 1))
+        continue
+      fi
+      
+      # Debug - log the new commit
+      echo "  Created new commit: $new_commit" >> "$work_dir/logs/commit_creation.log"
+      echo "$orig_commit -> $new_commit ($author, $date)" >> "$work_dir/logs/commit_map.txt"
+      
+      # Update the parent for the next commit
       parent="$new_commit"
       commit_count=$((commit_count + 1))
       
-      # Show progress more frequently
+      # CRITICAL: Update the branch reference frequently to avoid losing work
       if [ $((commit_count % 10)) -eq 0 ]; then
-        echo "Progress: $commit_count/$total_kept commits"
+        git update-ref refs/heads/$SQUASHED_BRANCH "$parent"
+        echo "Progress: $commit_count/$commits_to_create commits created (latest: $new_commit)"
       fi
     done < "$work_dir/commits_to_keep.txt"
     
-    print_success "Finished creating $commit_count new commits"
-    
-    # Update the branch reference to point to the last commit
+    # CRITICAL: Final update of the branch reference
     if [ -n "$parent" ]; then
       git update-ref refs/heads/$SQUASHED_BRANCH "$parent"
-      print_success "Created new branch with $commit_count commits"
+      print_success "Created $SQUASHED_BRANCH branch with $commit_count commits"
+      
+      if [ $commit_error_count -gt 0 ]; then
+        print_warning "$commit_error_count commits could not be processed"
+      fi
     else
-      print_error "No commits were created"
+      print_error "Failed to create any commits"
       return 1
     fi
   else
-    print_error "No commits to keep were found or file is empty"
-    ls -la "$work_dir"
+    print_error "No commits to keep were identified"
     return 1
   fi
   
-  # Checkout the new branch to make it active
+  # Checkout the new branch
   git checkout $SQUASHED_BRANCH
+
+  # CRITICAL: Clean up any uncommitted changes
+  reset_staging
   
-  # SAFETY CHECK: Make sure we're still in a git repository
+  # Safety check - make sure we're still in a git repository
   if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
     print_error "CRITICAL ERROR: Lost git repository reference after checkout. Aborting."
     return 1
@@ -323,16 +360,22 @@ squash_repository() {
   
   # Verify the results
   print_header "SQUASHING COMPLETE!"
-  echo "New branch '$SQUASHED_BRANCH' created."
-  echo "Number of commits in original branch: $(git rev-list --count "$original_branch")"
   new_commit_count=$(git rev-list --count HEAD)
-  echo "Number of commits in squashed branch: $new_commit_count"
-  authors_count=$(git log --format='%an' | sort -u | wc -l | tr -d ' ')
-  echo "Number of unique authors: $authors_count"
+  print_success "Number of commits in original branch: $(git rev-list --count "$original_branch")"
+  print_success "Number of commits in squashed branch: $new_commit_count"
+  print_success "Number of unique author-date combinations: $unique_combinations"
   
-  # Verify that we have at least one commit per author
-  echo "Checking for at least one commit per author..."
-  git log --format='%an' | sort | uniq -c | sort -nr | head -20
+  if [ "$new_commit_count" -eq "$unique_combinations" ]; then
+    print_success "VERIFICATION PASSED: Commit count matches unique author-date combinations"
+  else
+    print_warning "VERIFICATION FAILED: Expected $unique_combinations commits, got $new_commit_count"
+    echo "See logs in $work_dir/logs/ for details"
+  fi
+  
+  # Copy logs to a more permanent location
+  mkdir -p "logs"
+  cp -r "$work_dir/logs/"* "logs/" 2>/dev/null || true
+  print_success "Logs saved to ./logs/ directory"
   
   return 0
 }
@@ -342,7 +385,7 @@ squash_repository() {
 ############################
 
 slim_repository() {
-  print_header "SLIMMING REPOSITORY"
+  print_header "SLIMMING REPOSITORY - TRULY SLIM VERSION"
   
   # Check if source squashed branch exists
   if ! git show-ref --verify --quiet refs/heads/$SQUASHED_BRANCH; then
@@ -350,29 +393,21 @@ slim_repository() {
     return 1
   fi
   
-  # Check if target slim branch exists
-  if git show-ref --verify --quiet refs/heads/$SLIM_BRANCH; then
-    print_warning "Branch $SLIM_BRANCH already exists. Do you want to overwrite it? (y/n)"
-    read answer
-    if [ "$answer" != "y" ]; then
-      print_warning "Slimming cancelled."
-      return 1
-    fi
-    git branch -D $SLIM_BRANCH
-  fi
+  print_header "Using a DIFFERENT approach for slimming - creating a completely new repository"
+  echo "This approach ensures all binaries and large files are completely removed"
   
-  # First, make sure we're on the squashed branch
-  git checkout $SQUASHED_BRANCH
-  echo "Switched to branch $SQUASHED_BRANCH"
+  # Create a new temporary directory for the slim repo
+  slim_temp_dir="$work_dir/slim_repo"
+  mkdir -p "$slim_temp_dir"
   
-  # SAFETY CHECK: Make sure we're still in a git repository
-  if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-    print_error "CRITICAL ERROR: Lost git repository reference after checkout. Aborting."
-    return 1
-  fi
+  # Initialize a new repository - this ensures NO objects from original repo are copied
+  cd "$slim_temp_dir"
+  git init
+  
+  print_success "Created new empty repository at $slim_temp_dir"
   
   # Create a minimal README to use for all commits
-  cat > "$work_dir/README.md" << EOF
+  cat > README.md << EOF
 # Repository History
 
 This repository contains commit history with minimal content.
@@ -386,50 +421,61 @@ The actual file contents have been removed to reduce repository size while prese
 This is a slimmed version of the full repository.
 EOF
   
-  # Get all commits from the squashed branch in chronological order
-  print_header "Collecting commits from $SQUASHED_BRANCH branch..."
-  commits=$(git log --reverse --format='%H' $SQUASHED_BRANCH)
-  total_commits=$(echo "$commits" | wc -l | tr -d ' ')
-  print_success "Found $total_commits commits to process"
+  # Add and commit the README
+  git add README.md
+  git commit -m "Initial commit with README only"
   
-  # SAFER APPROACH: Use git commit-tree instead of git commit
-  # This is safer as it doesn't involve manipulating the working directory
-  print_header "Creating new slim history using commit-tree (this is safer)..."
-  
-  # Create a simple blob for our README - use exact syntax
-  readme_blob=$(git hash-object -w "$work_dir/README.md")
-  echo "Created README blob: $readme_blob"
-  
-  # Create a tree with just our README - use a different approach that's more reliable
-  # Create a temporary index file
-  export GIT_INDEX_FILE="$work_dir/temp_index"
-  git read-tree --empty  # Start with an empty index
-  git update-index --add --cacheinfo 100644 "$readme_blob" "README.md"
+  # Get the tree hash - we'll use this for all commits
   tree_with_readme=$(git write-tree)
   echo "Created tree with README: $tree_with_readme"
   
-  # Verify the tree was created correctly
-  if [ -z "$tree_with_readme" ]; then
-    print_error "Failed to create tree with README.md"
-    return 1
-  fi
+  # Now go back to the original repository
+  cd "$original_repo"
   
+  # Get all commits from the squashed branch in chronological order
+  print_header "Collecting commits from $SQUASHED_BRANCH branch..."
+  git checkout $SQUASHED_BRANCH
+  
+  # CRITICAL: Make sure we have a clean state before continuing
+  reset_staging
+  
+  git log --reverse --format='%H %an %ae %ad %cd %s' > "$work_dir/squashed_commits.txt"
+  total_commits=$(wc -l < "$work_dir/squashed_commits.txt" | tr -d ' ')
+  print_success "Found $total_commits commits to process"
+  
+  # Process all commits to create slim versions in the new repo
+  print_header "Creating slim versions of all commits in new repository..."
+  cd "$slim_temp_dir"
+  
+  # Starting point
   parent=""
   commit_count=0
   
-  echo "$commits" | while read -r commit; do
-    # Get commit details
-    author_name=$(git log -1 --format='%an' "$commit")
-    author_email=$(git log -1 --format='%ae' "$commit")
-    author_date=$(git log -1 --format='%ad' "$commit")
-    committer_name=$(git log -1 --format='%cn' "$commit")
-    committer_email=$(git log -1 --format='%ce' "$commit")
-    committer_date=$(git log -1 --format='%cd' "$commit")
-    commit_message=$(git log -1 --format='%B' "$commit")
+  # Process commits from the file to avoid subshell issues
+  while IFS= read -r line; do
+    # Parse commit info
+    hash=$(echo "$line" | awk '{print $1}')
+    author_name=$(echo "$line" | awk '{print $2}')
+    author_email=$(echo "$line" | awk '{print $3}')
+    # Need to handle dates more carefully as they can contain spaces
+    rest_of_line=$(echo "$line" | cut -d' ' -f4-)
+    # Extract message - everything after the date fields
+    message_part=$(echo "$rest_of_line" | cut -d' ' -f3-)
     
-    echo "Processing commit $((commit_count + 1))/$total_commits: $commit - $author_name"
+    # Go back to original repo to get full commit info
+    cd "$original_repo"
     
-    # Create new commit with the same metadata but minimal content
+    # Get proper format dates and full message
+    author_date=$(git log -1 --format="%ad" $hash)
+    committer_name=$(git log -1 --format="%cn" $hash)
+    committer_email=$(git log -1 --format="%ce" $hash)
+    committer_date=$(git log -1 --format="%cd" $hash)
+    full_message=$(git log -1 --format="%B" $hash)
+    
+    # Return to slim repo
+    cd "$slim_temp_dir"
+    
+    # Create a new commit with identical metadata but minimal content
     if [ -z "$parent" ]; then
       # First commit has no parent
       new_commit=$(
@@ -439,7 +485,7 @@ EOF
         GIT_COMMITTER_NAME="$committer_name" \
         GIT_COMMITTER_EMAIL="$committer_email" \
         GIT_COMMITTER_DATE="$committer_date" \
-        git commit-tree "$tree_with_readme" -m "$commit_message"
+        git commit-tree "$tree_with_readme" -m "$full_message"
       )
     else
       # Subsequent commits have the previous one as parent
@@ -450,80 +496,93 @@ EOF
         GIT_COMMITTER_NAME="$committer_name" \
         GIT_COMMITTER_EMAIL="$committer_email" \
         GIT_COMMITTER_DATE="$committer_date" \
-        git commit-tree "$tree_with_readme" -p "$parent" -m "$commit_message"
+        git commit-tree "$tree_with_readme" -p "$parent" -m "$full_message"
       )
     fi
     
     # Verify the commit was created successfully
     if [ -z "$new_commit" ]; then
-      print_error "Failed to create commit for $commit"
-      continue  # Try to continue with the next commit
+      echo "Failed to create commit for $hash" >> "$work_dir/logs/errors.log"
+      continue
     fi
-    
-    echo "Created new commit: $new_commit"
     
     # Save for next iteration
     parent="$new_commit"
-    
-    # Save the last commit to create our branch later
-    echo "$new_commit" > "$work_dir/last_commit.txt"
-    
     commit_count=$((commit_count + 1))
     
     # Show progress
-    if [ $((commit_count % 20)) -eq 0 ]; then
+    if [ $((commit_count % 10)) -eq 0 ]; then
       echo "Progress: $commit_count/$total_commits commits"
     fi
-  done
+  done < "$work_dir/squashed_commits.txt"
   
-  # Clean up custom index file
-  unset GIT_INDEX_FILE
-  rm -f "$work_dir/temp_index"
-  
-  # Create the new branch pointing to the last commit
-  if [ -f "$work_dir/last_commit.txt" ] && [ -s "$work_dir/last_commit.txt" ]; then
-    last_commit=$(cat "$work_dir/last_commit.txt")
-    if [ -n "$last_commit" ]; then
-      print_success "Creating $SLIM_BRANCH branch pointing to $last_commit"
-      git branch $SLIM_BRANCH "$last_commit"
-      print_success "Branch created successfully"
-    else
-      print_error "No commits were created (last_commit.txt is empty)"
-      return 1
-    fi
+  # Update the HEAD to point to the last commit
+  if [ -n "$parent" ]; then
+    git update-ref refs/heads/main "$parent"
+    print_success "Created main branch with $commit_count commits"
   else
-    print_error "last_commit.txt not found or empty"
-    echo "Contents of work directory:"
-    ls -la "$work_dir"
+    print_error "Failed to create any commits in the slim repository"
     return 1
   fi
   
-  # Checkout the new branch to make it active
-  print_header "Checking out $SLIM_BRANCH branch..."
-  git checkout $SLIM_BRANCH
-  
-  # SAFETY CHECK: Make sure we're still in a git repository
-  if ! git rev-parse --is-inside-work-tree > /dev/null 2>&1; then
-    print_error "CRITICAL ERROR: Lost git repository reference after checkout. Aborting."
-    return 1
+  # Copy the slim repository for later use
+  slim_output_dir="../slim-repo"
+  if [ ! -d "$slim_output_dir" ]; then
+    print_header "Creating a standalone slim repository..."
+    cp -r "$slim_temp_dir" "$slim_output_dir"
+    echo "Standalone slim repository created at: $slim_output_dir"
+    echo "You can use this repository directly for a truly minimal size."
   fi
+  
+  # Now go back to the original repository and create a new branch with the slim repo commits
+  cd "$original_repo"
+  
+  # CRITICAL FIX: Ensure we're on a valid branch with no uncommitted changes 
+  # before trying to create the new branch
+  git checkout $SQUASHED_BRANCH
+  reset_staging
+  
+  # Check if target slim branch exists
+  if git show-ref --verify --quiet refs/heads/$SLIM_BRANCH; then
+    print_warning "Branch $SLIM_BRANCH already exists. Do you want to overwrite it? (y/n)"
+    read answer
+    if [ "$answer" != "y" ]; then
+      print_warning "Slimming cancelled (but standalone slim repo was still created)."
+      return 0  # We still created the standalone repo, so this isn't a failure
+    fi
+    git branch -D $SLIM_BRANCH
+  fi
+  
+  print_header "Creating the slim branch in the original repository..."
+  
+  # CRITICAL FIX: Use a different approach to create the slim branch
+  # that doesn't require a clean working directory
+  slim_repo_path=$(realpath "$slim_temp_dir")
+  
+  # Directly create the new branch pointing to the slim repo's HEAD
+  cd "$slim_temp_dir"
+  slim_head=$(git rev-parse HEAD)
+  cd "$original_repo"
+  
+  # Create a remote and fetch from it, but don't checkout yet
+  git remote add slim_temp "$slim_repo_path" || true
+  git fetch slim_temp
+  
+  # Create the branch without checking out
+  git branch $SLIM_BRANCH slim_temp/main
+  git remote remove slim_temp
   
   # Verify the results
   print_header "REPOSITORY SLIMMING COMPLETE!"
   print_success "New branch '$SLIM_BRANCH' created."
-  new_commit_count=$(git rev-list --count HEAD)
+  new_commit_count=$(git rev-list --count $SLIM_BRANCH)
   echo "Number of commits in slim branch: $new_commit_count"
-  authors_count=$(git log --format='%an' | sort -u | wc -l | tr -d ' ')
-  echo "Number of unique authors: $authors_count"
   
-  echo ""
-  echo "Repository size comparison:"
-  git checkout $SQUASHED_BRANCH
+  # Show the size comparison
+  slim_repo_size=$(du -sh "$slim_temp_dir" | cut -f1)
+  echo "Size of slim repository: $slim_repo_size"
   squashed_size=$(du -sh .git | cut -f1)
-  echo "Size of $SQUASHED_BRANCH branch: $squashed_size"
-  git checkout $SLIM_BRANCH
-  slim_size=$(du -sh .git | cut -f1)
-  echo "Size of $SLIM_BRANCH branch: $slim_size"
+  echo "Size of current repository: $squashed_size"
   
   return 0
 }
@@ -535,8 +594,9 @@ main() {
   if $PERFORM_SQUASH; then
     if ! squash_repository; then
       print_error "Squashing failed."
-      # Return to original branch
+      # Return to original branch - with safety checks
       git checkout "$original_branch" 2>/dev/null || true
+      reset_staging
       return 1
     fi
   else
@@ -546,8 +606,9 @@ main() {
   if $PERFORM_SLIM; then
     if ! slim_repository; then
       print_error "Slimming failed."
-      # Return to original branch
+      # Return to original branch - with safety checks
       git checkout "$original_branch" 2>/dev/null || true
+      reset_staging
       return 1
     fi
   else
@@ -570,21 +631,24 @@ main() {
     echo "  git checkout $SLIM_BRANCH"
     echo "  git push -f origin $SLIM_BRANCH:main"
     echo ""
-    echo "To create a new slimmed repository:"
-    echo "  mkdir ../slim-repo"
-    echo "  cd ../slim-repo"
-    echo "  git init"
-    echo "  git fetch <path_to_original_repo> $SLIM_BRANCH:main"
-    echo "  git checkout main"
+    echo "For an EVEN SMALLER repository, use the separate repository created at:"
+    echo "  ../slim-repo"
     echo ""
   fi
   
   echo "To switch back to your original branch:"
   echo "  git checkout $original_branch"
   
-  # Return to original branch
-  print_header "Returning to original branch"
-  git checkout "$original_branch"
+  # CRITICAL FIX: Don't try to switch back automatically
+  # This prevents the "local changes would be overwritten" error
+  print_header "NOTE: You have uncommitted changes in your working directory"
+  echo "To return to your original branch, first stash your changes:"
+  echo "  git stash"
+  echo "  git checkout $original_branch"
+  echo ""
+  echo "Or discard changes:"
+  echo "  git reset --hard HEAD"
+  echo "  git checkout $original_branch"
   
   return 0
 }

@@ -5,26 +5,14 @@ node_modules
 .env.production
 .env.local
 .env_main
-concatenated-output.ts
-embedding-cache.json
-
-node-compile-cache
 
 .idea
-.vscode
 .zed
 .DS_Store
 
 dist/
 # Allow models directory but ignore model files
-models/*.gguf
 db/
-
-cookies.json
-
-db.sqlite
-searches/
-tweets/
 
 *.gguf
 *.onnx
@@ -34,14 +22,8 @@ tweets/
 logs/
 
 test-report.json
-content_cache/
 test_data/
 tokencache/
-tweetcache/
-twitter_cookies.json
-timeline_cache.json
-
-*.sqlite
 
 # Character configurations
 characters/**/secrets.json
@@ -55,42 +37,29 @@ tsup.config.bundled_*.mjs
 
 .turbo
 .cursorrules
+
 instructions.md
 wallet_data.txt
 
 coverage
 .eslintcache
 
-agent/content
-
 eliza.manifest
 eliza.manifest.sgx
 eliza.sig
-
-# Edriziai specific ignores
-characters/edriziai-info/secrets.json
-
-lit-config.json
 
 # Configuration to exclude the extra and local_docs directories
 extra
 **/dist/**
 
-ton_nft_metadata/
-ton_nft_metadata/*
-
-ton_nft_images/
-ton_nft_images/*
-
 packages/docs/api/*
-packages/*/dist/*
-
 
 **/dist/**
 
 **/.docusaurus/**
 **/docs/build/**
 
-**lock**
-
 lerna-debug.log
+
+tsdoc_cache/
+tsdoc_comments/

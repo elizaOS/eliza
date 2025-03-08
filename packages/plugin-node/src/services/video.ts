@@ -34,7 +34,7 @@ export class VideoService extends Service implements IVideoService {
 	static serviceType: ServiceType = ServiceTypes.VIDEO;
 	capabilityDescription = "The agent is able to download and process videos";
 	private cacheKey = "content/video";
-	private dataDir = "./content_cache";
+	private dataDir = "./cache";
 
 	private queue: string[] = [];
 	private processing = false;

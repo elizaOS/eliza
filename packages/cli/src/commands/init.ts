@@ -165,7 +165,36 @@ export const init = new Command()
 	.action(async (opts) => {
 		try {
 			const options = initOptionsSchema.parse(opts);
+			// Try to find .env file by recursively checking parent directories
+			const envPath = path.join(process.cwd(), ".env");
 
+			let currentPath = envPath;
+			let depth = 0;
+			const maxDepth = 10;
+
+			let postgresUrl = null;
+
+			while (depth < maxDepth && currentPath.includes(path.sep)) {
+				if (fs.existsSync(currentPath)) {
+					const env = fs.readFileSync(currentPath, "utf8");
+					const envVars = env.split("\n").filter((line) => line.trim() !== "");
+					const postgresUrlLine = envVars.find((line) =>
+						line.startsWith("POSTGRES_URL="),
+					);
+					if (postgresUrlLine) {
+						postgresUrl = postgresUrlLine.split("=")[1].trim();
+						break;
+					}
+				}
+
+				// Move up one directory by getting the parent directory path
+				// First get the directory containing the current .env file
+				const currentDir = path.dirname(currentPath);
+				// Then move up one directory from there
+				const parentDir = path.dirname(currentDir);
+				currentPath = path.join(parentDir, ".env");
+				depth++;
+			}
 			// Prompt for project/plugin name
 			const { name } = await prompts({
 				type: "text",
@@ -287,6 +316,9 @@ export const init = new Command()
 				// On failure, use the fallback path
 			}
 
+			console.log(dbPath);
+			console.log(postgresUrl);
+
 			// Create project configuration
 			const config = rawConfigSchema.parse({
 				$schema: "https://elizaos.com/schema.json",
@@ -295,7 +327,7 @@ export const init = new Command()
 					config:
 						database === "postgres"
 							? {
-									url: process.env.POSTGRES_URL || "",
+									url: postgresUrl || null,
 								}
 							: {
 									path: dbPath,
