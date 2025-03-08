@@ -8,6 +8,13 @@ import type { Logger } from "../logger";
 /**
  * Configuration object for ChatClient.
  */
+/**
+ * @typedef {Object} ChatClientConfig
+ * @property {string} spaceId - The space ID (e.g., "1vOGwAbcdE...") for this audio space.
+ * @property {string} accessToken - The access token obtained from accessChat or the live_video_stream/status.
+ * @property {string} endpoint - The endpoint host for the chat server (e.g., "https://prod-chatman-ancillary-eu-central-1.pscp.tv").
+ * @property {Logger} logger - An instance of Logger for debug/info logs.
+ */
 interface ChatClientConfig {
 	/**
 	 * The space ID (e.g., "1vOGwAbcdE...") for this audio space.
