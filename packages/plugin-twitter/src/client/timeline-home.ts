@@ -3,6 +3,13 @@ import type { TwitterAuth } from "./auth";
 import { ApiError } from "./errors";
 import type { TimelineInstruction } from "./timeline-v2";
 
+/**
+ * Interface representing the response object for the home timeline API endpoint.
+ * @property {object} data - The data object containing the response data.
+ * @property {object} data.home - The home object containing the home timeline data.
+ * @property {object} data.home.home_timeline_urt - The object containing the timeline instructions.
+ * @property {TimelineInstruction[]} data.home.home_timeline_urt.instructions - An array of timeline instructions.
+ */
 export interface HomeTimelineResponse {
 	data?: {
 		home: {
@@ -13,6 +20,14 @@ export interface HomeTimelineResponse {
 	};
 }
 
+/**
+ * Fetches the home timeline for a Twitter user.
+ * 
+ * @param {number} count - The number of tweets to fetch.
+ * @param {string[]} seenTweetIds - An array of ids of tweets that the user has already seen.
+ * @param {TwitterAuth} auth - The authentication credentials for the Twitter API.
+ * @returns {Promise<any[]>} - A promise that resolves to an array of tweets from the home timeline.
+ */
 export async function fetchHomeTimeline(
 	count: number,
 	seenTweetIds: string[],
