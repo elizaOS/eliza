@@ -28,6 +28,10 @@ export const DIMENSION_MAP = {
 	[VECTOR_DIMS.XXXL]: "dim3072",
 } as const;
 
+/**
+ * Definition of the embeddings table in the database.
+ * Contains columns for ID, Memory ID, Creation Timestamp, and multiple vector dimensions.
+ */
 export const embeddingTable = pgTable(
 	"embeddings",
 	{
@@ -52,6 +56,10 @@ export const embeddingTable = pgTable(
 	],
 );
 
+/**
+ * Defines the possible values for the Embedding Dimension Column.
+ * It can be "dim384", "dim512", "dim768", "dim1024", "dim1536", or "dim3072".
+ */
 export type EmbeddingDimensionColumn =
 	| "dim384"
 	| "dim512"
@@ -60,5 +68,8 @@ export type EmbeddingDimensionColumn =
 	| "dim1536"
 	| "dim3072";
 
+/**
+ * Retrieve the type of a specific column in the EmbeddingTable based on the EmbeddingDimensionColumn key.
+ */
 export type EmbeddingTableColumn =
 	(typeof embeddingTable._.columns)[EmbeddingDimensionColumn];
