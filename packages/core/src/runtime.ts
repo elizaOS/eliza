@@ -221,6 +221,8 @@ export class AgentRuntime implements IAgentRuntime {
 	async initialize() {
 		// First create the agent entity directly
 		try {
+			await this.getDatabaseAdapter().init();
+
 			await this.getDatabaseAdapter().ensureAgentExists(
 				this.character as Partial<Agent>,
 			);

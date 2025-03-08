@@ -36,12 +36,7 @@ export function createApiRouter(
 			limit: getEnvVariable("EXPRESS_MAX_PAYLOAD") || "100kb",
 		}),
 	);
-
-	// Base routes
-	router.get("/", (_req, res) => {
-		res.send("Welcome, this is the REST API!");
-	});
-
+	
 	router.get("/hello", (_req, res) => {
 		res.json({ message: "Hello World!" });
 	});

@@ -25,7 +25,7 @@ export function createDatabaseAdapter(
 		return new PgDatabaseAdapter(agentId, manager);
 	}
 
-	const dataDir = config.dataDir ?? "../../pgLite";
+	const dataDir = config.dataDir ?? "./elizadb";
 
 	if (!pgLiteClientManager) {
 		pgLiteClientManager = new PGliteClientManager({ dataDir });
@@ -38,7 +38,7 @@ const drizzlePlugin: Plugin = {
 	description: "Database adapter plugin using Drizzle ORM",
 	init: async (_, runtime: IAgentRuntime) => {
 		const config = {
-			dataDir: runtime.getSetting("PGLITE_DATA_DIR"),
+			dataDir: runtime.getSetting("PGLITE_DATA_DIR") ?? "./pglite",
 			postgresUrl: runtime.getSetting("POSTGRES_URL"),
 		};
 

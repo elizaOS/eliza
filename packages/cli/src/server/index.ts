@@ -10,8 +10,8 @@ import express from "express";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createApiRouter } from "./api/index.ts";
-import { adapter } from "./database.ts";
 import { fileURLToPath } from "node:url";
+import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +24,8 @@ export type ServerMiddleware = (
 
 export interface ServerOptions {
 	middlewares?: ServerMiddleware[];
+	dataDir?: string;
+	postgresUrl?: string;
 }
 const AGENT_RUNTIME_URL =
 	process.env.AGENT_RUNTIME_URL?.replace(/\/$/, "") || "http://localhost:3000";
@@ -44,13 +46,29 @@ export class AgentServer {
 			logger.log("Initializing AgentServer...");
 			this.app = express();
 			this.agents = new Map();
-			this.database = adapter;
+
+			const dataDir =
+				options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? "./elizadb";
+
+			this.database = createDatabaseAdapter(
+				{
+					dataDir,
+					postgresUrl: options?.postgresUrl,
+				},
+				"00000000-0000-0000-0000-000000000002",
+			);
 
 			// Initialize the database
-			this.database.init();
-
-			// Initialize server components - will handle agent disabling
-			this.initializeServer(options);
+			this.database
+				.init()
+				.then(() => {
+					logger.success("Database initialized successfully");
+					this.initializeServer(options);
+				})
+				.catch((error) => {
+					logger.error("Failed to initialize database:", error);
+					throw error;
+				});
 		} catch (error) {
 			logger.error("Failed to initialize AgentServer:", error);
 			throw error;
@@ -82,12 +100,12 @@ export class AgentServer {
 			this.app.use("/media/uploads", express.static(uploadsPath));
 			this.app.use("/media/generated", express.static(generatedPath));
 
-			// Serve client application from packages/client/dist
-			const clientPath = path.join(
-				__dirname,
-				"../../..",
-				"packages/client/dist",
-			);
+			// Serve client application
+			// First try to find it in the CLI package dist/client directory
+			const clientPath = path.join(__dirname, "./client");
+
+			console.log("clientPath", clientPath);
+
 			if (fs.existsSync(clientPath)) {
 				logger.debug(
 					`Found client build at ${clientPath}, serving it at /client and root path`,
@@ -111,10 +129,10 @@ export class AgentServer {
 				this.app.use(express.static(clientPath, staticOptions));
 
 				// Serve the same files at /client path for consistency
-				this.app.use("/client", express.static(clientPath, staticOptions));
+				this.app.use("/", express.static(clientPath, staticOptions));
 
 				// Serve index.html for client root path
-				this.app.get("/client", (_req, res) => {
+				this.app.get("/", (_req, res) => {
 					res.setHeader("Content-Type", "text/html");
 					res.sendFile(path.join(clientPath, "index.html"));
 				});
