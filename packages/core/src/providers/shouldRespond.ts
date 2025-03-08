@@ -16,6 +16,11 @@ const nameConfig: Config = {
 };
 
 // Example messages to determine if the agent should respond
+/**
+ * Array of message examples that the agent should respond to, ignore, or stop based on the content.
+ * Each message example includes the sender's name, agent's name, and the expected response type.
+ * Examples can include requests for help, questions, stories, or simple interactions like saying "marco".
+ */
 const messageExamples = [
 	// Examples where agent should RESPOND
 	`// {{name1}}: Hey {{agentName}}, can you help me with something
@@ -71,6 +76,10 @@ const messageExamples = [
 // Response: STOP`,
 ];
 
+/**
+ * Represents a provider that generates response examples for the agent.
+ * @type {Provider}
+ */
 export const shouldRespondProvider: Provider = {
 	name: "SHOULD_RESPOND",
 	description:
