@@ -4,6 +4,46 @@ import { formatRecommenderReport } from "../reports";
 import type { CommunityInvestorService } from "../tradingService";
 import { ServiceTypes } from "../types";
 
+/**
+ * Action for getting a entity's report scoring their recommendations
+ * @type {Action}
+ * @name GET_RECOMMENDER_REPORT
+ * @description Gets a entity's report scoring their recommendations
+ * @example
+ * [
+ *   [
+ *     {
+ *       name: "{{name1}}",
+ *       content: {
+ *         text: "what is my entity score?",
+ *       },
+ *     },
+ *     {
+ *       name: "{{name2}}",
+ *       content: {
+ *         text: "<NONE>",
+ *         actions: ["GET_RECOMMENDER_REPORT"],
+ *       },
+ *     },
+ *   ],
+ *   [
+ *     {
+ *       name: "{{name1}}",
+ *       content: {
+ *         text: "please provide my entity report",
+ *       },
+ *     },
+ *     {
+ *       name: "{{name2}}",
+ *       content: {
+ *         text: "<NONE>",
+ *         actions: ["GET_RECOMMENDER_REPORT"],
+ *       },
+ *     },
+ *   ],
+ * ]
+ * @similes RECOMMENDER_REPORT, RECOMMENDER_SCORE
+ */
 export const getRecommenderReport: Action = {
 	name: "GET_RECOMMENDER_REPORT",
 	description: "Gets a entity's report scoring their recommendations",
