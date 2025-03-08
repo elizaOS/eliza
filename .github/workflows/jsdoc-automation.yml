@@ -57,7 +57,7 @@ jobs:
               with:
                   node-version: "23"
             - name: Install bun
-            - uses: oven-sh/setup-bun@v2
+              uses: oven-sh/setup-bun@v2
 
             - name: Update lockfile
               working-directory: scripts/jsdoc-automation
