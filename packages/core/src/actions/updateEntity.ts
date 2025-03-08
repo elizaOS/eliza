@@ -131,7 +131,7 @@ export const updateEntityAction: Action = {
 		"CREATE_COMPONENT",
 	],
 	description:
-		"Add or edit contact details for a user entity (like twitter, discord, email address, etc.)",
+		"Add or edit contact details for a person you are talking to or observing in the conversation. Use this when you learn this information from the conversation about a contact.",
 
 	validate: async (
 		_runtime: IAgentRuntime,

@@ -39,7 +39,7 @@ function generateStatusMessage(
 	try {
 		// Format settings for display
 		const formattedSettings = Object.entries(worldSettings)
-			.map(([_key, setting]) => {
+			.map(([key, setting]) => {
 				if (typeof setting !== "object" || !setting.name) return null;
 
 				const description = setting.description || "";
@@ -51,6 +51,7 @@ function generateStatusMessage(
 				}
 
 				return {
+					key,
 					name: setting.name,
 					value: formatSettingValue(setting, isOnboarding),
 					description,
@@ -73,10 +74,12 @@ function generateStatusMessage(
 					runtime.character.name
 				} still needs to configure ${requiredUnconfigured} required settings:\n\n${formattedSettings
 					.filter((s) => s.required && !s.configured)
-					.map((s) => `${s.name}: ${s.usageDescription}\nValue: ${s.value}`)
-					.join(
-						"\n\n",
-					)}\n\nIf the user gives any information related to the settings, ${
+					.map((s) => `${s.key}: ${s.value}\n(${s.name}) ${s.usageDescription}`)
+					.join("\n\n")}\n\nValid settings keys: ${Object.keys(
+					worldSettings,
+				).join(
+					", ",
+				)}\n\nIf the user gives any information related to the settings, ${
 					runtime.character.name
 				} should use the UPDATE_SETTINGS action to update the settings with this new information. ${
 					runtime.character.name

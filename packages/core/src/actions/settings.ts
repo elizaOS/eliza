@@ -207,6 +207,7 @@ const extractionTemplate = `# Task: Extract setting values from the conversation
 # Available Settings:
 {{#each settings}}
 {{key}}:
+  Key: {{key}}
   Name: {{name}}
   Description: {{description}}
   Current Value: {{value}}
@@ -223,7 +224,7 @@ const extractionTemplate = `# Task: Extract setting values from the conversation
 # Instructions:
 1. Review the ENTIRE conversation and identify ALL values provided for settings
 2. For each setting mentioned, extract:
-   - The setting key (must exactly match one of the available settings above)
+   - Infer the settings key the user is trying to set (must exactly match one of the available settings above)
    - The provided value that matches the setting's description and purpose
 3. Return an array of ALL setting updates found, even if mentioned earlier in the conversation
 
@@ -456,6 +457,7 @@ export async function updateWorldSettings(
  * Formats a list of settings for display
  */
 function formatSettingsList(worldSettings: WorldSettings): string {
+	console.log("*** WORLD SETTINGS ***\n", worldSettings);
 	const settings = Object.entries(worldSettings)
 		.filter(([key]) => !key.startsWith("_")) // Skip internal settings
 		.map(([key, setting]) => {
@@ -464,6 +466,8 @@ function formatSettingsList(worldSettings: WorldSettings): string {
 			return `- ${setting.name} (${key}): ${status}, ${required}`;
 		})
 		.join("\n");
+
+	console.log("*** SETTINGS LIST ***\n", settings);
 
 	return settings || "No settings available";
 }
@@ -509,27 +513,33 @@ async function extractSettingValues(
 	worldSettings: WorldSettings,
 ): Promise<SettingUpdate[]> {
 	try {
+		console.log("*** WORLD SETTINGS ***\n", worldSettings);
 		// Create prompt with current settings status for better extraction
 		const prompt = composePrompt({
 			state: {
 				...state,
-				settings: Object.entries(worldSettings)
-					.filter(([key]) => !key.startsWith("_")) // Skip internal settings
-					.map(([key, setting]) => ({
-						key,
-						...setting,
-					})),
-				settingsStatus: formatSettingsList(worldSettings),
+				values: {
+					...state.values,
+					settings: Object.entries(worldSettings)
+						.filter(([key]) => !key.startsWith("_")) // Skip internal settings
+						.map(([key, setting]) => ({
+							key,
+							...setting,
+						})),
+					settingsStatus: formatSettingsList(worldSettings),
+				},
 			},
 			template: extractionTemplate,
 		});
-
+		console.log("*** EXTRACTION PROMPT ***\n", prompt);
 		// Generate extractions using larger model for better comprehension
 		const extractions = (await generateObjectArray({
 			runtime,
 			prompt,
 			modelType: ModelTypes.TEXT_LARGE,
 		})) as SettingUpdate[];
+
+		console.log("*** EXTRACTIONS ***\n", extractions);
 
 		logger.info(`Extracted ${extractions.length} potential setting updates`);
 
@@ -822,7 +832,8 @@ async function generateErrorResponse(
 const updateSettingsAction: Action = {
 	name: "UPDATE_SETTINGS",
 	similes: ["UPDATE_SETTING", "SAVE_SETTING", "SET_CONFIGURATION", "CONFIGURE"],
-	description: "Saves a setting during the settings process",
+	description:
+		"Saves a setting during the settings process. Use this when you are onboarding with a server owner or when you are setting up a server.",
 
 	validate: async (
 		runtime: IAgentRuntime,
