@@ -25,6 +25,12 @@ import {
 	cancelSpeakerRequest,
 } from "../utils";
 
+/**
+ * Interface representing the configuration options for a space participant.
+ * @typedef {object} SpaceParticipantConfig
+ * @property {string} spaceId - The unique identifier for the space.
+ * @property {boolean} [debug] - Optional flag for enabling debug mode.
+ */
 interface SpaceParticipantConfig {
 	spaceId: string;
 	debug?: boolean;
@@ -33,6 +39,10 @@ interface SpaceParticipantConfig {
 /**
  * Manages joining an existing Space in listener mode,
  * and optionally becoming a speaker via WebRTC (Janus).
+ */
+/**
+ * Class representing a participant in a space.
+ * @extends EventEmitter
  */
 export class SpaceParticipant extends EventEmitter {
 	private readonly spaceId: string;
