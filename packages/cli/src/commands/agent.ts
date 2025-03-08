@@ -11,6 +11,13 @@ const AGENT_RUNTIME_URL =
 const AGENTS_BASE_URL = `${AGENT_RUNTIME_URL}/agents`;
 
 // Define basic agent interface for type safety
+/**
+ * Defines the structure of AgentBasic interface.
+ * @property {string} id - The unique identifier of the agent.
+ * @property {string} name - The name of the agent.
+ * @property {string} [status] - The status of the agent (optional).
+ * @property {unknown} [key] - Additional properties can be added dynamically using any key.
+ */
 interface AgentBasic {
 	id: string;
 	name: string;
@@ -18,6 +25,11 @@ interface AgentBasic {
 	[key: string]: unknown;
 }
 
+/**
+ * Asynchronously fetches a list of basic agent information from the server.
+ * @returns {Promise<AgentBasic[]>} A promise that resolves to an array of AgentBasic objects.
+ * @throws {Error} If the fetch request fails.
+ */
 async function getAgents(): Promise<AgentBasic[]> {
 	const response = await fetch(`${AGENTS_BASE_URL}`);
 	if (!response.ok) {
@@ -30,6 +42,13 @@ async function getAgents(): Promise<AgentBasic[]> {
 }
 
 // Utility function to resolve agent ID from name, index, or direct ID
+/**
+ * Resolves the ID of an agent based on the provided name, ID, or index.
+ *
+ * @param {string} idOrNameOrIndex - The name, ID, or index of the agent to resolve.
+ * @returns {Promise<string>} The resolved ID of the agent.
+ * @throws {Error} If the agent is not found.
+ */
 async function resolveAgentId(idOrNameOrIndex: string): Promise<string> {
 	// First try to get all agents to find by name
 	const agents = await getAgents();
@@ -64,11 +83,27 @@ export const agent = new Command()
 	.name("agent")
 	.description("manage ElizaOS agents");
 
+/**
+ * Interface representing the payload sent when starting an agent.
+ * @typedef {Object} AgentStartPayload
+ * @property {string} [characterPath] - The path to the character.
+ * @property {Record<string, unknown>} [characterJson] - The JSON representation of the character.
+ */
 interface AgentStartPayload {
 	characterPath?: string;
 	characterJson?: Record<string, unknown>;
 }
 
+/**
+ * Interface for defining the structure of an API response.
+ * @template T - The type of data included in the response.
+ * @property {boolean} success - Flag indicating if the response was successful.
+ * @property {T | undefined} data - The data returned in the response.
+ * @property {Object | undefined} error - Information about any errors that occurred.
+ * @property {string} error.code - The error code.
+ * @property {string} error.message - A message describing the error.
+ * @property {unknown | undefined} error.details - Additional details about the error.
+ */
 interface ApiResponse<T> {
 	success: boolean;
 	data?: T;
@@ -79,6 +114,11 @@ interface ApiResponse<T> {
 	};
 }
 
+/**
+ * Interface representing the response from starting an agent.
+ * @property {string} id - The unique identifier for the response.
+ * @property {Partial<Agent>} character - The partial information of the Agent object associated with the response.
+ */
 interface AgentStartResponse {
 	id: string;
 	character: Partial<Agent>;
