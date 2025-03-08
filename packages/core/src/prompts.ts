@@ -41,6 +41,14 @@ import { ModelTypes } from "./types.ts";
  * const contextSimple = composePrompt({ state, template });
  */
 
+/**
+ * Function to compose a prompt using a provided template and state.
+ * 
+ * @param {Object} options - Object containing state and template information.
+ * @param {State} options.state - The state object containing values to fill the template.
+ * @param {TemplateType} options.template - The template to be used for composing the prompt.
+ * @returns {string} The composed prompt output.
+ */
 export const composePrompt = ({
 	state,
 	template,
