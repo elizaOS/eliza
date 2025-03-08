@@ -24,27 +24,33 @@ export const characterProvider: Provider = {
 		const agentName = character.name;
 
 		// Handle bio (string or random selection from array)
-		let bio = character.bio || "";
-		if (Array.isArray(bio)) {
-			bio = bio
-				.sort(() => 0.5 - Math.random())
-				.slice(0, 3)
-				.join(" ");
-		}
+		const bioText = Array.isArray(character.bio)
+			? character.bio
+					.sort(() => 0.5 - Math.random())
+					.slice(0, 10)
+					.join(" ")
+			: character.bio || "";
+
+		const bio = addHeader(`# About ${character.name}`, bioText);
 
 		// System prompt
 		const system = character.system ?? "";
 
 		// Select random topic if available
-		const topic =
+		const topicString =
 			character.topics && character.topics.length > 0
 				? character.topics[Math.floor(Math.random() * character.topics.length)]
 				: null;
 
+		const topic = topicString
+			? `${character.name} is currently interested in ${topicString}`
+			: "";
+
 		// Format topics list
 		const topics =
 			character.topics && character.topics.length > 0
-				? `${character.name} is interested in ${character.topics
+				? `${character.name} is also interested in ${character.topics
+						.filter((topic) => topic !== topicString)
 						.sort(() => 0.5 - Math.random())
 						.slice(0, 5)
 						.map((topic, index, array) => {
@@ -60,12 +66,16 @@ export const characterProvider: Provider = {
 				: "";
 
 		// Select random adjective if available
-		const adjective =
+		const adjectiveString =
 			character.adjectives && character.adjectives.length > 0
 				? character.adjectives[
 						Math.floor(Math.random() * character.adjectives.length)
 					]
 				: "";
+
+		const adjective = adjectiveString
+			? `${character.name} is ${adjectiveString}`
+			: "";
 
 		// Format post examples
 		const formattedCharacterPostExamples = !character.postExamples
@@ -107,7 +117,7 @@ export const characterProvider: Provider = {
 										: ""
 								}`;
 								exampleNames.forEach((name, index) => {
-									const placeholder = `{{user${index + 1}}}`;
+									const placeholder = `{{name${index + 1}}}`;
 									messageString = messageString.replaceAll(placeholder, name);
 								});
 								return messageString;
@@ -177,11 +187,34 @@ export const characterProvider: Provider = {
 			characterMessageExamples,
 		};
 
+		const data = {
+			bio,
+			adjective,
+			topic,
+			topics,
+			character,
+			directions,
+			examples,
+			system,
+		};
+
 		// Combine all text sections
-		const text = [directions, examples].filter(Boolean).join("\n\n");
+		const text = [
+			bio,
+			adjective,
+			topic,
+			topics,
+			adjective,
+			directions,
+			examples,
+			system,
+		]
+			.filter(Boolean)
+			.join("\n\n");
 
 		return {
 			values,
+			data,
 			text,
 		};
 	},

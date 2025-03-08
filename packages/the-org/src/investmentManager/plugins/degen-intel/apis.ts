@@ -9,15 +9,15 @@ import {
 
 import { SentimentArraySchema, TweetArraySchema } from "./schemas";
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
 	Portfolio,
 	SentimentContent,
 	TransactionHistory,
 } from "./providers/birdeye";
 import type { IToken } from "./types";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import fs from "node:fs";
 
 // Define the equivalent of __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);

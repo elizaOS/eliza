@@ -9,14 +9,7 @@ import type { Action, ActionExample, IAgentRuntime, Memory } from "../types";
  */
 export const noneAction: Action = {
 	name: "NONE",
-	similes: [
-		"NO_ACTION",
-		"NO_RESPONSE",
-		"NO_REACTION",
-		"RESPONSE",
-		"REPLY",
-		"DEFAULT",
-	],
+	similes: ["NO_ACTION", "NO_RESPONSE", "NO_REACTION"],
 	validate: async (_runtime: IAgentRuntime, _message: Memory) => {
 		return true;
 	},

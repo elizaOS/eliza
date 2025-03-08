@@ -4,9 +4,12 @@ export default function Statistics() {
 	const query = useQuery({
 		queryKey: ["statistics"],
 		queryFn: async () => {
-			const response = await fetch(`${import.meta.env.VITE_API_URL}/statistics`, {
-				method: "POST",
-			});
+			const response = await fetch(
+				`${import.meta.env.VITE_API_URL}/statistics`,
+				{
+					method: "POST",
+				},
+			);
 			const data = await response.json();
 			return data;
 		},

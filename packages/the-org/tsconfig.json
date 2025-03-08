@@ -1,22 +1,22 @@
 {
-  "extends": "../core/tsconfig.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "types": ["node"],
-    "jsx": "react-jsx",
-    "baseUrl": ".",
-    "paths": {
-      "@elizaos/core": ["../../packages/core/src"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
-    }
-  },
-  "ts-node": {
-    "experimentalSpecifierResolution": "node",
-    "transpileOnly": true,
-    "esm": true
-  },
-  "include": ["src"]
+	"extends": "../core/tsconfig.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"composite": true,
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"types": ["node"],
+		"jsx": "react-jsx",
+		"baseUrl": ".",
+		"paths": {
+			"@elizaos/core": ["../../packages/core/src"],
+			"@elizaos/core/*": ["../../packages/core/src/*"]
+		}
+	},
+	"ts-node": {
+		"experimentalSpecifierResolution": "node",
+		"transpileOnly": true,
+		"esm": true
+	},
+	"include": ["src"]
 }

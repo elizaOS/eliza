@@ -667,12 +667,12 @@ export class AgentRuntime implements IAgentRuntime {
 					continue;
 				}
 
-				logger.success(`Executing handler for action: ${action.name}`);
-
 				try {
 					logger.info(`Executing handler for action: ${action.name}`);
 
 					await action.handler(this, message, state, {}, callback, responses);
+
+					logger.success(`Action ${action.name} executed successfully.`);
 
 					// log to database
 					await this.getDatabaseAdapter().log({

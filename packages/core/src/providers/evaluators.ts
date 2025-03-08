@@ -38,7 +38,7 @@ export function formatEvaluatorExamples(evaluators: Evaluator[]) {
 					let formattedOutcome = example.outcome;
 
 					exampleNames.forEach((name, index) => {
-						const placeholder = `{{user${index + 1}}}`;
+						const placeholder = `{{name${index + 1}}}`;
 						formattedPrompt = formattedPrompt.replaceAll(placeholder, name);
 						formattedOutcome = formattedOutcome.replaceAll(placeholder, name);
 					});
@@ -47,7 +47,7 @@ export function formatEvaluatorExamples(evaluators: Evaluator[]) {
 						.map((message: ActionExample) => {
 							let messageString = `${message.name}: ${message.content.text}`;
 							exampleNames.forEach((name, index) => {
-								const placeholder = `{{user${index + 1}}}`;
+								const placeholder = `{{name${index + 1}}}`;
 								messageString = messageString.replaceAll(placeholder, name);
 							});
 							return (

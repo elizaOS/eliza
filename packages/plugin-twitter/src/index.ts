@@ -5,7 +5,6 @@ import {
 	type UUID,
 	logger,
 } from "@elizaos/core";
-import reply from "./actions/reply";
 import spaceJoin from "./actions/spaceJoin";
 import { ClientBase } from "./base";
 import { TWITTER_SERVICE_NAME } from "./constants";
@@ -220,7 +219,7 @@ const twitterPlugin: Plugin = {
 	name: TWITTER_SERVICE_NAME,
 	description: "Twitter client with per-server instance management",
 	services: [TwitterService],
-	actions: [reply, spaceJoin],
+	actions: [spaceJoin],
 	tests: [new TwitterTestSuite()],
 };
 

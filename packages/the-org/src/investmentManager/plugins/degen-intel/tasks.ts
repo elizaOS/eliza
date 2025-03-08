@@ -1,4 +1,4 @@
-import { logger, type IAgentRuntime, type UUID } from "@elizaos/core";
+import { type IAgentRuntime, type UUID, logger } from "@elizaos/core";
 
 import Birdeye from "./providers/birdeye";
 import BuySignal from "./providers/buy-signal";

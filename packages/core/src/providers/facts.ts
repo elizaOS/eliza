@@ -30,7 +30,7 @@ function formatFacts(facts: Memory[]) {
  */
 const factsProvider: Provider = {
 	name: "FACTS",
-	description: "Key facts that {{agentName}} knows",
+	description: "Key facts that the agent knows",
 	dynamic: true,
 	get: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
 		// Parallelize initial data fetching operations including recentInteractions

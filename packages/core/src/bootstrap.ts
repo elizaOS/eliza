@@ -181,9 +181,19 @@ const messageReceivedHandler = async ({
 			shouldRespondTemplate,
 	});
 
+	logger.debug(
+		`*** Should Respond Prompt for ${runtime.character.name} ***`,
+		shouldRespondPrompt,
+	);
+
 	const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
 		prompt: shouldRespondPrompt,
 	});
+
+	logger.debug(
+		`*** Should Respond Response for ${runtime.character.name} ***`,
+		response,
+	);
 
 	const responseObject = parseJSONObjectFromText(response);
 
@@ -512,6 +522,7 @@ export const bootstrapPlugin: Plugin = {
 	name: "bootstrap",
 	description: "Agent bootstrap with basic actions and evaluators",
 	actions: [
+		replyAction,
 		followRoomAction,
 		unfollowRoomAction,
 		ignoreAction,
@@ -523,7 +534,6 @@ export const bootstrapPlugin: Plugin = {
 		choiceAction,
 		updateRoleAction,
 		updateSettingsAction,
-		replyAction,
 	],
 	events,
 	evaluators: [reflectionEvaluator, goalEvaluator],
@@ -532,7 +542,6 @@ export const bootstrapPlugin: Plugin = {
 		anxietyProvider,
 		knowledgeProvider,
 		timeProvider,
-		characterProvider,
 		entitiesProvider,
 		relationshipsProvider,
 		choiceProvider,
@@ -543,6 +552,7 @@ export const bootstrapPlugin: Plugin = {
 		attachmentsProvider,
 		providersProvider,
 		actionsProvider,
+		characterProvider,
 		recentMessagesProvider,
 	],
 	services: [TaskService, ScenarioService],

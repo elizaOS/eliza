@@ -1,6 +1,5 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	type Character,
 	type IAgentRuntime,
@@ -12,10 +11,6 @@ import * as bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
 import { createApiRouter } from "./api/index";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 /**
  * Represents a function that acts as a server middleware.
  * @param {express.Request} req - The request object.
@@ -269,10 +264,10 @@ export class AgentServer {
 
 								if (basePath) {
 									// Check for static assets related to this route
-									commonDirs.push(
-										{ path: `${basePath}/dist`, mount: `/${basePath}` },
-										{ path: `${basePath}/assets`, mount: `/assets` },
-									);
+									commonDirs.push({
+										path: `${basePath}/dist`,
+										mount: `/${basePath}`,
+									});
 								}
 							}
 						}
@@ -302,7 +297,8 @@ export class AgentServer {
 
 			// Main fallback for the SPA - must be registered after all other routes
 			// For Express 4, we need to use the correct method for fallback routes
-			this.app.all("*", function (req, res) {
+			// @ts-ignore - Express 4 type definitions are incorrect for .all()
+			this.app.all("*", (req, res) => {
 				// Skip for API routes
 				if (req.path.startsWith("/api") || req.path.startsWith("/media")) {
 					return res.status(404).send("Not found");
@@ -340,7 +336,6 @@ export class AgentServer {
 	 * or if there are any errors during registration.
 	 */
 	public registerAgent(runtime: IAgentRuntime) {
-		console.log("*** REGISTERING AGENT ***", runtime);
 		try {
 			if (!runtime) {
 				throw new Error("Attempted to register null/undefined runtime");
@@ -382,7 +377,6 @@ export class AgentServer {
 				`Registering ${runtime.routes.length} custom routes for agent ${runtime.agentId}`,
 			);
 			for (const route of runtime.routes) {
-				console.log("*** REGISTERING ROUTE ***", route);
 				const routePath = route.path;
 				try {
 					switch (route.type) {
