@@ -10,6 +10,7 @@
     "build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs",
     "build:docker": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/* --filter=!./packages/docs",
     "start": "turbo run start --filter=!./packages/docs",
+    "start:debug": "LOG_LEVEL=debug turbo run start --filter=!./packages/docs",
     "start:no-warnings": "BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run start --filter=!./packages/docs",
     "build:no-warnings": "BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run build --filter=./packages/core && BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run build --filter=./packages/plugin-sql && BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run build --filter=!./packages/docs",
     "agent": "turbo run start --filter=@elizaos/the-org",
