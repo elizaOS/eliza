@@ -1,12 +1,12 @@
 import { PostgresConnectionManager } from "./pg/manager.js";
 import { PGliteClientManager } from "./pg-lite/manager.js";
+import { logger } from "@elizaos/core";
 import { config } from "dotenv";
 
 config({ path: "../../.env" });
 
 async function runMigrations() {
 	if (process.env.POSTGRES_URL) {
-		console.log("Using PostgreSQL database");
 		try {
 			const connectionManager = new PostgresConnectionManager(
 				process.env.POSTGRES_URL,
@@ -14,14 +14,14 @@ async function runMigrations() {
 			await connectionManager.initialize();
 			await connectionManager.runMigrations();
 			await connectionManager.close();
-			console.log("PostgreSQL migrations completed successfully");
+			logger.success("PostgreSQL migrations completed successfully");
 			process.exit(0);
 		} catch (error) {
-			console.error("PostgreSQL migration failed:", error);
+			logger.warn("PostgreSQL migration failed:", error);
 			process.exit(1);
 		}
 	} else {
-		console.log("Using PGlite database");
+		logger.info("Using PGlite database");
 		const clientManager = new PGliteClientManager({
 			dataDir: "../../pglite",
 		});
@@ -29,15 +29,15 @@ async function runMigrations() {
 		try {
 			await clientManager.initialize();
 			await clientManager.runMigrations();
-			console.log("PGlite migrations completed successfully");
+			logger.success("PGlite migrations completed successfully");
 			await clientManager.close();
 			process.exit(0);
 		} catch (error) {
-			console.error("PGlite migration failed:", error);
+			logger.error("PGlite migration failed:", error);
 			try {
 				await clientManager.close();
 			} catch (closeError) {
-				console.error("Failed to close PGlite connection:", closeError);
+				logger.error("Failed to close PGlite connection:", closeError);
 			}
 			process.exit(1);
 		}
@@ -45,6 +45,6 @@ async function runMigrations() {
 }
 
 runMigrations().catch((error) => {
-	console.error("Unhandled error in migrations:", error);
+	logger.error("Unhandled error in migrations:", error);
 	process.exit(1);
 });
