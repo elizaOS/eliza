@@ -13,6 +13,20 @@ import { PluginDocumentationGenerator } from "./PluginDocumentationGenerator.js"
  * Uses configuration initialized from the GitHub workflow file.
  * @async
  */
+/**
+ * Asynchronous function that serves as the main entry point for generating documentation.
+ * 
+ * This function:
+ * 1. Initializes necessary components like Configuration, GitManager, DirectoryTraversal, 
+ *    TypeScriptParser, JsDocAnalyzer, AIService, JsDocGenerator, DocumentationGenerator, 
+ *    PluginDocumentationGenerator, etc.
+ * 2. Analyzes the codebase and generates JSDoc documentation.
+ * 3. Conditionally updates README and creates a pull request for documentation changes.
+ * 4. Handles and logs any errors that occur during the documentation generation process.
+ * 
+ * @returns {Promise<void>} A promise that resolves when the documentation generation is complete.
+ */ 
+
 async function main() {
 	try {
 		const configuration = new Configuration();
