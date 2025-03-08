@@ -24,6 +24,13 @@ Summarization objective: {{objective}}
 
 # Instructions: Summarize the attachments. Return the summary. Do not acknowledge this request, just summarize and continue the existing summary if there is one. Capture any important details based on the objective. Only respond with the new summary text.`;
 
+/**
+ * Template for generating a summary of specific attachments based on recent messages.
+ * This template includes placeholders for recentMessages, senderName, objective, and attachmentIds.
+ * To generate a response, the user's objective and a list of attachment IDs must be determined.
+ *
+ * @type {string}
+ */
 export const attachmentIdsTemplate = `# Messages we are summarizing
 {{recentMessages}}
 
@@ -40,6 +47,13 @@ Your response must be formatted as a JSON block with this structure:
 \`\`\`
 `;
 
+/**
+ * Retrieves attachment IDs from a model using a prompt generated from the current state and a template.
+ * @param {IAgentRuntime} runtime - The agent runtime to use for interaction with models
+ * @param {Memory} _message - The memory object
+ * @param {State} state - The current state of the conversation
+ * @returns {Promise<{ objective: string; attachmentIds: string[] } | null>} An object containing the objective and attachment IDs, or null if the data could not be retrieved after multiple attempts
+ */
 const getAttachmentIds = async (
 	runtime: IAgentRuntime,
 	_message: Memory,
@@ -68,6 +82,18 @@ const getAttachmentIds = async (
 	return null;
 };
 
+/**
+ * Represents an action to summarize user request informed by specific attachments based on their IDs.
+ * If a user asks to chat with a PDF, or wants more specific information about a link or video or anything else they've attached, this is the action to use.
+ * @typedef {Object} summarizeAction
+ * @property {string} name - The name of the action
+ * @property {string[]} similes - Similar actions related to summarization with attachments
+ * @property {string} description - Description of the action
+ * @property {Function} validate - Validation function to check if the action should be triggered based on keywords in the message
+ * @property {Function} handler - Handler function to process the user request, summarize attachments, and provide a summary
+ * @property {Object[]} examples - Examples demonstrating how to use the action with message content and expected responses
+ */ 
+      
 const summarizeAction = {
 	name: "CHAT_WITH_ATTACHMENTS",
 	similes: [
