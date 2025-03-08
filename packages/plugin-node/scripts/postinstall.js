@@ -7,7 +7,7 @@ const rel = os.release();
 
 if (platform !== "linux") {
 	console.log(
-		"Skipping playwright installation: non-Linux platform detected:",
+		"Skipping [patchright] installation: non-Linux platform detected:",
 		platform,
 	);
 	process.exit(0);
@@ -49,7 +49,7 @@ const supportedDistros = [
 
 if (!distro || !supportedDistros.some((name) => distro.includes(name))) {
 	console.log(
-		"Skipping playwright installation on unsupported platform:",
+		"Skipping [patchright] installation on unsupported platform:",
 		platform,
 		rel,
 		distro || "unknown distro",
@@ -58,12 +58,12 @@ if (!distro || !supportedDistros.some((name) => distro.includes(name))) {
 }
 
 try {
-	execSync("npx playwright install", {
+	execSync("npx patchright install", {
 		stdio: "inherit",
 	});
 } catch (err) {
 	console.error(
-		"Failed to install Playwright you may need to install playwright deps with 'sudo npx playwright install-deps'. Error: ",
+		"Failed to install [patchright] you may need to install [patchright] deps with 'sudo npx patchright install-deps'. Error: ",
 		err.message,
 	);
 	process.exit(1);

@@ -63,3 +63,5 @@ lerna-debug.log
 
 tsdoc_cache/
 tsdoc_comments/
+
+**/elizaDb/**

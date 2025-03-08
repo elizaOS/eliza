@@ -29,7 +29,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/bun": "latest",
-    "@types/node": "^22.13.9",
+    "@types/node": "^22.13.10",
     "@vitest/eslint-plugin": "1.0.1",
     "bun": "1.2.2",
     "concurrently": "9.1.0",
