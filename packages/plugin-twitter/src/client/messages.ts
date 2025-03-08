@@ -1,6 +1,19 @@
 import type { TwitterAuth } from "./auth";
 import { updateCookieJar } from "./requests";
 
+/**
+ * Represents a direct message object.
+ * @typedef {Object} DirectMessage
+ * @property {string} id - The unique identifier of the direct message.
+ * @property {string} text - The text content of the direct message.
+ * @property {string} senderId - The unique identifier of the sender of the direct message.
+ * @property {string} recipientId - The unique identifier of the recipient of the direct message.
+ * @property {string} createdAt - The timestamp when the direct message was created.
+ * @property {string[]} [mediaUrls] - An optional array of URLs for any media included in the direct message.
+ * @property {string} [senderScreenName] - The screen name of the sender of the direct message.
+ * @property {string} [recipientScreenName] - The screen name of the recipient of the direct message.
+ */
+
 export interface DirectMessage {
 	id: string;
 	text: string;
@@ -12,6 +25,15 @@ export interface DirectMessage {
 	recipientScreenName?: string;
 }
 
+/**
+ * Represents a direct message conversation.
+ * @typedef {Object} DirectMessageConversation
+ * @property {string} conversationId - The ID of the conversation.
+ * @property {DirectMessage[]} messages - An array of DirectMessage objects representing the messages in the conversation.
+ * @property {Object[]} participants - An array of participant objects with IDs and screen names.
+ * @property {string} participants.id - The ID of the participant.
+ * @property {string} participants.screenName - The screen name of the participant.
+ */
 export interface DirectMessageConversation {
 	conversationId: string;
 	messages: DirectMessage[];
@@ -21,6 +43,27 @@ export interface DirectMessageConversation {
 	}[];
 }
 
+/**
+ * Represents a direct message event object.
+ * @typedef {Object} DirectMessageEvent
+ * @property {string} id - The unique identifier of the direct message event.
+ * @property {string} type - The type of the direct message event.
+ * @property {Object} message_create - Object containing information about the message creation.
+ * @property {string} message_create.sender_id - The sender's unique identifier.
+ * @property {Object} message_create.target - Object containing information about the message target user.
+ * @property {string} message_create.target.recipient_id - The recipient's unique identifier.
+ * @property {Object} message_create.message_data - Object containing the message data.
+ * @property {string} message_create.message_data.text - The text content of the message.
+ * @property {string} message_create.message_data.created_at - The timestamp when the message was created.
+ * @property {Object} [message_create.message_data.entities] - Object containing optional entities in the message data.
+ * @property {Array<Object>} [message_create.message_data.entities.urls] - Array of URL objects in the message data.
+ * @property {string} message_create.message_data.entities.urls.url - The URL in the message.
+ * @property {string} message_create.message_data.entities.urls.expanded_url - The expanded URL of the link in the message.
+ * @property {string} message_create.message_data.entities.urls.display_url - The display URL of the link in the message.
+ * @property {Array<Object>} [message_create.message_data.entities.media] - Array of media objects in the message data.
+ * @property {string} message_create.message_data.entities.media.url - The URL of the media in the message.
+ * @property {string} message_create.message_data.entities.media.type - The type of media in the message.
+ */
 export interface DirectMessageEvent {
 	id: string;
 	type: string;
@@ -47,6 +90,24 @@ export interface DirectMessageEvent {
 	};
 }
 
+/**
+ * Interface representing the response of direct messages.
+ * @typedef {Object} DirectMessagesResponse
+ * @property {DirectMessageConversation[]} conversations - Array of direct message conversations.
+ * @property {TwitterUser[]} users - Array of Twitter users.
+ * @property {string} [cursor] - Optional cursor for pagination.
+ * @property {string} [lastSeenEventId] - Optional ID of the last seen event.
+ * @property {string} [trustedLastSeenEventId] - Optional ID of the last seen trusted event.
+ * @property {string} [untrustedLastSeenEventId] - Optional ID of the last seen untrusted event.
+ * @property {Object} [inboxTimelines] - Optional object containing trusted and untrusted inbox timelines.
+ * @property {Object} [inboxTimelines.trusted] - Object containing status and optional minimum entry ID for trusted inbox timeline.
+ * @property {string} inboxTimelines.trusted.status - Status of the trusted inbox timeline.
+ * @property {string} [inboxTimelines.trusted.minEntryId] - Optional minimum entry ID for the trusted inbox timeline.
+ * @property {Object} [inboxTimelines.untrusted] - Object containing status and optional minimum entry ID for untrusted inbox timeline.
+ * @property {string} inboxTimelines.untrusted.status - Status of the untrusted inbox timeline.
+ * @property {string} [inboxTimelines.untrusted.minEntryId] - Optional minimum entry ID for the untrusted inbox timeline.
+ * @property {string} userId - ID of the user.
+ */
 export interface DirectMessagesResponse {
 	conversations: DirectMessageConversation[];
 	users: TwitterUser[];
@@ -67,6 +128,18 @@ export interface DirectMessagesResponse {
 	userId: string;
 }
 
+/**
+ * Interface representing a Twitter user.
+ * @property {string} id - The unique identifier of the user.
+ * @property {string} screenName - The user's screen name.
+ * @property {string} name - The user's full name.
+ * @property {string} profileImageUrl - The URL of the user's profile image.
+ * @property {string} [description] - The user's profile description.
+ * @property {boolean} [verified] - Whether the user is a verified account.
+ * @property {boolean} [protected] - Whether the user has a protected account.
+ * @property {number} [followersCount] - The number of followers the user has.
+ * @property {number} [friendsCount] - The number of friends the user has.
+ */ 
 export interface TwitterUser {
 	id: string;
 	screenName: string;
@@ -79,6 +152,12 @@ export interface TwitterUser {
 	friendsCount?: number;
 }
 
+/**
+ * Interface representing the response of sending a direct message.
+ * @typedef {Object} SendDirectMessageResponse
+ * @property {Array<{message: {id: string, time: string, affects_sort: boolean, conversation_id: string, message_data: {id: string, time: string, recipient_id: string, sender_id: string, text: string}}}>} entries - Array of message entries.
+ * @property {Object.<string, TwitterUser>} users - Record of Twitter users.
+ */
 export interface SendDirectMessageResponse {
 	entries: {
 		message: {
@@ -98,6 +177,12 @@ export interface SendDirectMessageResponse {
 	users: Record<string, TwitterUser>;
 }
 
+/**
+ * Parses direct message conversations from the provided data.
+ * @param {any} data - The data containing direct message conversations.
+ * @param {string} userId - The user ID for which the conversations should be parsed.
+ * @returns {DirectMessagesResponse} The parsed direct message conversations.
+ */
 function parseDirectMessageConversations(
 	data: any,
 	userId: string,
@@ -183,6 +268,13 @@ function parseDirectMessageConversations(
 	}
 }
 
+/**
+ * Parse direct messages and return an array of DirectMessage objects.
+ *
+ * @param {any[]} messages - Array of messages to parse
+ * @param {any} users - Object containing user information
+ * @returns {DirectMessage[]} Array of DirectMessage objects
+ */
 function parseDirectMessages(messages: any[], users: any): DirectMessage[] {
 	try {
 		return messages.map((msg: any) => ({
@@ -201,6 +293,11 @@ function parseDirectMessages(messages: any[], users: any): DirectMessage[] {
 	}
 }
 
+/**
+ * Extracts media URLs from message data.
+ * @param {any} messageData - The message data containing entities with URLs and media.
+ * @returns {string[] | undefined} - An array of media URLs if found, otherwise undefined.
+ */
 function extractMediaUrls(messageData: any): string[] | undefined {
 	const urls: string[] = [];
 
@@ -221,6 +318,15 @@ function extractMediaUrls(messageData: any): string[] | undefined {
 	return urls.length > 0 ? urls : undefined;
 }
 
+/**
+ * Retrieves a list of direct message conversations for a specific user.
+ *
+ * @param {string} userId - The ID of the user for whom to fetch direct message conversations.
+ * @param {TwitterAuth} auth - The TwitterAuth object containing authentication information.
+ * @param {string} [cursor] - Optional parameter for fetching paginated results.
+ * @returns {Promise<DirectMessagesResponse>} A Promise that resolves to the response containing direct message conversations.
+ * @throws {Error} If authentication is not available to fetch direct messages or if the response is not successful.
+ */
 export async function getDirectMessageConversations(
 	userId: string,
 	auth: TwitterAuth,
@@ -274,6 +380,15 @@ export async function getDirectMessageConversations(
 	return parseDirectMessageConversations(data, userId);
 }
 
+/**
+ * Sends a direct message on Twitter.
+ *
+ * @param {TwitterAuth} auth - The Twitter authentication object.
+ * @param {string} conversation_id - The ID of the conversation to send the message to.
+ * @param {string} text - The text of the message to send.
+ * @returns {Promise<SendDirectMessageResponse>} A Promise that resolves with the response of sending the direct message.
+ * @throws {Error} If authentication is required to send direct messages and the user is not logged in.
+ */
 export async function sendDirectMessage(
 	auth: TwitterAuth,
 	conversation_id: string,
