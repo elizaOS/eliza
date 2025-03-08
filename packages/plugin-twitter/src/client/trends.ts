@@ -2,6 +2,13 @@ import { addApiParams, requestApi } from "./api";
 import type { TwitterAuth } from "./auth";
 import type { TimelineV1 } from "./timeline-v1";
 
+/**
+ * Retrieves the current trends from the Twitter API.
+ * 
+ * @param {TwitterAuth} auth - The authentication credentials for accessing the Twitter API.
+ * @returns {Promise<string[]>} An array of strings representing the current trends.
+ * @throws {Error} If no trend entries are found in the response.
+ */
 export async function getTrends(auth: TwitterAuth): Promise<string[]> {
 	const params = new URLSearchParams();
 	addApiParams(params, false);
