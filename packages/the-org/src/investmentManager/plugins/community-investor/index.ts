@@ -8,6 +8,10 @@ import { getRecommenderReport } from "./recommendations/report";
 import { getSimulatedPositions } from "./recommendations/simulatedPositions";
 import { CommunityInvestorService } from "./tradingService";
 
+/**
+ * Plugin representing the Community Investor Plugin for Eliza.
+ * Includes evaluators, actions, and services for community investment functionality.
+ */
 export const communityInvestorPlugin: Plugin = {
 	name: "community-investor",
 	description: "Community Investor Plugin for Eliza",
