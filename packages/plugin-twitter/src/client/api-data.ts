@@ -5,6 +5,11 @@ import stringify from "json-stable-stringify";
  * as templates for requests to a particular endpoint. Please ensure these do
  * not contain any information that you do not want published to NPM.
  */
+/**
+ * Object containing various endpoint URLs for Twitter API.
+ * 
+ * @type {Object}
+ */
 const endpoints = {
 	// TODO: Migrate other endpoint URLs here
 	UserTweets:
