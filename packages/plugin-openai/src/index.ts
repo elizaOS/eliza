@@ -10,6 +10,13 @@ import { generateText } from "ai";
 import { encodingForModel, type TiktokenModel } from "js-tiktoken";
 import { z } from "zod";
 
+/**
+ * Asynchronously tokenizes the given text based on the specified model and prompt.
+ * 
+ * @param {ModelType} model - The type of model to use for tokenization.
+ * @param {string} prompt - The text prompt to tokenize.
+ * @returns {number[]} - An array of tokens representing the encoded prompt.
+ */
 async function tokenizeText(model: ModelType, prompt: string) {
 	const modelName =
 		model === ModelTypes.TEXT_SMALL
@@ -22,6 +29,13 @@ async function tokenizeText(model: ModelType, prompt: string) {
 	return tokens;
 }
 
+/**
+ * Detokenize a sequence of tokens back into text using the specified model.
+ * 
+ * @param {ModelType} model - The type of model to use for detokenization.
+ * @param {number[]} tokens - The sequence of tokens to detokenize.
+ * @returns {string} The detokenized text.
+ */
 async function detokenizeText(model: ModelType, tokens: number[]) {
 	const modelName =
 		model === ModelTypes.TEXT_SMALL
@@ -42,6 +56,10 @@ const configSchema = z.object({
 	LARGE_MODEL: z.string().optional(),
 });
 
+/**
+ * Defines the OpenAI plugin with its name, description, and configuration options.
+ * @type {Plugin}
+ */
 export const openaiPlugin: Plugin = {
 	name: "openai",
 	description: "OpenAI plugin",
