@@ -22,5 +22,8 @@
 	"keywords": ["eliza", "elizaos", "ai", "agent", "create"],
 	"engines": {
 		"node": ">=14.0.0"
+	},
+	"dependencies": {
+		"tsup": "^8.4.0"
 	}
 }

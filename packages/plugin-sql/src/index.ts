@@ -1,5 +1,4 @@
 import {
-	type DatabaseAdapter,
 	type IAgentRuntime,
 	type IDatabaseAdapter,
 	logger,
@@ -11,10 +10,9 @@ import { PGliteClientManager } from "./pg-lite/manager";
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 
-/**
- * Declaration of a variable named pgLiteClientManager of type PGliteClientManager.
- */
+// Singleton connection managers
 let pgLiteClientManager: PGliteClientManager;
+let postgresConnectionManager: PostgresConnectionManager;
 
 /**
  * Creates a database adapter based on the provided configuration.
@@ -35,8 +33,12 @@ export function createDatabaseAdapter(
 	agentId: UUID,
 ): IDatabaseAdapter {
 	if (config.postgresUrl) {
-		const manager = new PostgresConnectionManager(config.postgresUrl);
-		return new PgDatabaseAdapter(agentId, manager);
+		if (!postgresConnectionManager) {
+			postgresConnectionManager = new PostgresConnectionManager(
+				config.postgresUrl,
+			);
+		}
+		return new PgDatabaseAdapter(agentId, postgresConnectionManager);
 	}
 
 	const dataDir = config.dataDir ?? "./elizadb";
