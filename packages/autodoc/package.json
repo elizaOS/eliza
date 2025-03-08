@@ -1,6 +1,6 @@
 {
 	"type": "module",
-	"name": "@elizaos/autodocs",
+	"name": "@elizaos/autodoc",
 	"version": "1.0.0",
 	"description": "",
 	"main": "dist/index.js",

@@ -133,7 +133,7 @@ export class Configuration implements Omit<ConfigurationData, "rootDirectory"> {
 			console.log("Falling back to workflow file configuration");
 			const workflowPath = join(
 				this.repoRoot,
-				".github/workflows/autodocs.yml",
+				".github/workflows/jsdoc-automation.yml",
 			);
 			if (!fs.existsSync(workflowPath)) {
 				throw new Error(`Workflow file not found at ${workflowPath}`);
