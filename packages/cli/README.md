@@ -1,6 +1,20 @@
-# TEE CLI
+# CLI
 
-The TEE CLI provides a set of commands to manage your ElizaOS TEE deployments, from local development to cloud deployment.
+The CLI provides a set of commands to manage your ElizaOS projects and plugins, from local development to cloud deployment.
+
+# TODO: CLI Documentation goes here
+
+## Environment Variables
+
+Create a .env file with your required variables:
+
+```env
+ANTHROPIC_API_KEY=your_key
+TELEGRAM_BOT_TOKEN=your_token
+# Add other required variables
+```
+
+# TEE Deployment Docs
 
 ## Getting Started
 
@@ -143,16 +157,6 @@ The CLI will create the following directory structure:
 ```
 .tee-cloud/
   └── compose-files/     # Generated docker-compose files
-```
-
-## Environment Variables
-
-Create a .env file with your required variables:
-
-```env
-ANTHROPIC_API_KEY=your_key
-TELEGRAM_BOT_TOKEN=your_token
-# Add other required variables
 ```
 
 ## Tips

@@ -21,3 +21,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+src/lib/info.json

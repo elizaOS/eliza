@@ -131,7 +131,7 @@ function initializeDatabase(): IDatabaseAdapter {
     }
 
     // Fall back to SQLite
-    return new SqliteDatabaseAdapter(new Database("./db.sqlite"));
+    return new SqliteDatabaseAdapter(new Database("./elizadb.sqlite"));
 }
 ```
 

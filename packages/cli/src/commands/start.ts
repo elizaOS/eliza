@@ -15,6 +15,7 @@ import * as path from "node:path";
 import { character as defaultCharacter } from "../characters/eliza";
 import { AgentServer } from "../server/index.ts";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader.ts";
+import os from "os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,8 +37,11 @@ async function startAgent(
 	server: AgentServer,
 	init?: (runtime: IAgentRuntime) => void,
 	plugins: Plugin[] = [],
+	options: {
+		dataDir?: string;
+		postgresUrl?: string;
+	} = {},
 ): Promise<IAgentRuntime> {
-	let db: IDatabaseAdapter;
 	character.id ??= stringToUuid(character.name);
 
 	const runtime = new AgentRuntime({
@@ -49,43 +53,8 @@ async function startAgent(
 		await init(runtime);
 	}
 
-	// try to read a file in the current directory titled .env
-	let postgresUrl = null;
-	// Try to find .env file by recursively checking parent directories
-	let currentPath = envPath;
-	let depth = 0;
-	const maxDepth = 10;
+	const db = createDatabaseAdapter(options, runtime.agentId);
 
-	while (depth < maxDepth && currentPath.includes(path.sep)) {
-		if (fs.existsSync(currentPath)) {
-			const env = fs.readFileSync(currentPath, "utf8");
-			const envVars = env.split("\n").filter((line) => line.trim() !== "");
-			const postgresUrlLine = envVars.find((line) =>
-				line.startsWith("POSTGRES_URL="),
-			);
-			if (postgresUrlLine) {
-				postgresUrl = postgresUrlLine.split("=")[1].trim();
-				break;
-			}
-		}
-
-		// Move up one directory by getting the parent directory path
-		// First get the directory containing the current .env file
-		const currentDir = path.dirname(currentPath);
-		// Then move up one directory from there
-		const parentDir = path.dirname(currentDir);
-		currentPath = path.join(parentDir, ".env");
-		depth++;
-	}
-
-	// find a db from the plugins
-	db = await createDatabaseAdapter(
-		{
-			dataDir: path.join(process.cwd(), "data"),
-			postgresUrl,
-		},
-		runtime.agentId,
-	);
 	runtime.registerDatabaseAdapter(db);
 
 	// Make sure character exists in database
@@ -127,7 +96,75 @@ const checkPortAvailable = (port: number): Promise<boolean> => {
 };
 
 const startAgents = async () => {
-	const server = new AgentServer();
+	// Try to find .env file by recursively checking parent directories
+	let currentPath = envPath;
+	let depth = 0;
+	const maxDepth = 10;
+
+	let postgresUrl = null;
+
+	while (depth < maxDepth && currentPath.includes(path.sep)) {
+		if (fs.existsSync(currentPath)) {
+			const env = fs.readFileSync(currentPath, "utf8");
+			const envVars = env.split("\n").filter((line) => line.trim() !== "");
+			const postgresUrlLine = envVars.find((line) =>
+				line.startsWith("POSTGRES_URL="),
+			);
+			if (postgresUrlLine) {
+				postgresUrl = postgresUrlLine.split("=")[1].trim();
+				break;
+			}
+		}
+
+		// Move up one directory by getting the parent directory path
+		// First get the directory containing the current .env file
+		const currentDir = path.dirname(currentPath);
+		// Then move up one directory from there
+		const parentDir = path.dirname(currentDir);
+		currentPath = path.join(parentDir, ".env");
+		depth++;
+	}
+
+	// Implement the database directory setup logic
+	let dataDir = "./elizadb"; // Default fallback path
+	try {
+		// 1. Get the user's home directory
+		const homeDir = os.homedir();
+		const elizaDir = path.join(homeDir, ".eliza");
+		const elizaDbDir = path.join(elizaDir, "db");
+
+		// Debug information
+		console.log(`Setting up database directory at: ${elizaDbDir}`);
+
+		// 2 & 3. Check if .eliza directory exists, create if not
+		if (!fs.existsSync(elizaDir)) {
+			console.log(`Creating .eliza directory at: ${elizaDir}`);
+			fs.mkdirSync(elizaDir, { recursive: true });
+		}
+
+		// 4 & 5. Check if db directory exists in .eliza, create if not
+		if (!fs.existsSync(elizaDbDir)) {
+			console.log(`Creating db directory at: ${elizaDbDir}`);
+			fs.mkdirSync(elizaDbDir, { recursive: true });
+		}
+
+		// 6, 7 & 8. Use the db directory
+		dataDir = elizaDbDir;
+		console.log(`Using database directory: ${dataDir}`);
+	} catch (error) {
+		console.warn(
+			"Failed to create database directory in home directory, using fallback location:",
+			error,
+		);
+		// 9. On failure, use the fallback path
+	}
+
+	const options = {
+		dataDir: dataDir,
+		postgresUrl,
+	};
+
+	const server = new AgentServer(options);
 
 	// Assign the required functions first
 	server.startAgent = async (character) => {
@@ -141,17 +178,6 @@ const startAgents = async () => {
 	server.jsonToCharacter = jsonToCharacter;
 
 	let serverPort = Number.parseInt(settings.SERVER_PORT || "3000");
-
-	// Add this before creating the AgentServer
-	const dataDir = path.join(process.cwd(), "data");
-	try {
-		fs.accessSync(dataDir, fs.constants.W_OK);
-		logger.debug(`Data directory ${dataDir} is writable`);
-	} catch (error) {
-		logger.error(`Data directory ${dataDir} is not writable:`, error);
-		fs.mkdirSync(dataDir, { recursive: true });
-		logger.info(`Created data directory ${dataDir}`);
-	}
 
 	// 1. Check if we're in a project with a package.json
 	const packageJsonPath = path.join(process.cwd(), "package.json");
@@ -493,11 +519,14 @@ const startAgents = async () => {
 	}
 
 	// Display link to the client UI
-	const clientPath = path.join(
-		__dirname,
-		"../../../..",
-		"packages/client/dist",
-	);
+	// First try to find it in the CLI package dist/client directory
+	let clientPath = path.join(__dirname, "../../client");
+
+	// If not found, fall back to the old relative path for development
+	if (!fs.existsSync(clientPath)) {
+		clientPath = path.join(__dirname, "../../../..", "packages/client/dist");
+	}
+
 	if (fs.existsSync(clientPath)) {
 		logger.success(
 			`Client UI is available at http://localhost:${serverPort}/client`,

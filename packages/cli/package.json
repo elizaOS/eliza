@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/cli",
-	"version": "1.0.0-alpha.1",
+	"version": "1.0.0-alpha.6",
 	"description": "elizaOS CLI - Manage your AI agents and plugins",
 	"publishConfig": {
 		"access": "public"
@@ -30,15 +30,12 @@
 	},
 	"scripts": {
 		"cli": "bun build src/index.ts --outdir dist --watch",
-		"build": "tsup --format esm --dts",
+		"build": "tsup --format esm --dts && bun run src/scripts/copy-client-dist.ts",
 		"watch": "tsc --watch",
 		"dev": "tsup --format esm --dts --watch",
 		"typecheck": "tsc --noEmit",
 		"start:cli": "bun run build && node dist/index.js",
 		"release": "changeset version",
-		"pub:beta": "tsup --format esm && bun publish --no-git-checks --access public --tag beta",
-		"pub:next": "tsup --format esm && bun publish --no-git-checks --access public --tag next",
-		"pub:release": "tsup --format esm && bun publish --access public",
 		"test": "vitest run",
 		"test:dev": "REGISTRY_URL=http://localhost:3333 vitest run"
 	},
@@ -49,6 +46,8 @@
 		"@babel/plugin-transform-typescript": "^7.22.5",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-sql": "workspace:*",
+		"@elizaos/plugin-starter": "workspace:*",
+		"@elizaos/project-starter": "workspace:*",
 		"@noble/curves": "^1.8.1",
 		"axios": "^1.7.9",
 		"chalk": "5.2.0",
