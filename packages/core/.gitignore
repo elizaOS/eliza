@@ -3,3 +3,4 @@ dist
 elizaConfig.yaml
 custom_actions/
 cache/
+*.tsbuildinfo

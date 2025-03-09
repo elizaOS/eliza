@@ -19,8 +19,9 @@
     "allowArbitraryExtensions": true,
     "types": ["node"],
     "sourceMap": true,
-    "composite": true
+    "composite": true,
+    "rootDir": "./src"
   },
-  "include": ["src/**/*.ts", "src/*.ts"],
-  "exclude": ["node_modules", "dist", "src/**/*.d.ts", "types/**/*.test.ts"]
+  "include": ["src/**/*.ts", "src/**/*.js"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }

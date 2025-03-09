@@ -10,7 +10,7 @@ export default defineConfig({
 	target: "node23",
 	bundle: true,
 	splitting: true, // Add this for better code splitting
-	dts: true, // Enable type generation
+	dts: false, // Enable type generation
 	// Use esbuild's simpler DTS generation
 	tsconfig: "./tsconfig.build.json", // Use build-specific tsconfig
 	external: [
