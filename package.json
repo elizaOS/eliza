@@ -16,7 +16,7 @@
     "agent": "turbo run start --filter=@elizaos/the-org",
     "dev": "turbo run build --filter=./packages/core && turbo run dev --filter=!./packages/core --filter=!./packages/docs --concurrency=20",
     "release": "bun run build && bun lint && npx lerna publish --no-private --force-publish && bun lint",
-    "release:alpha": "npx lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose && bun lint",
+    "release:alpha": "bun run build && bun lint && npx lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose && bun lint",
     "docker:build": "bash ./scripts/docker.sh build",
     "docker:run": "bash ./scripts/docker.sh run",
     "docker:bash": "bash ./scripts/docker.sh bash",

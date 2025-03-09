@@ -263,7 +263,6 @@ export const choiceAction: Action = {
 						{ option: selectedOption },
 						selectedTask,
 					);
-					await runtime.getDatabaseAdapter().deleteTask(selectedTask.id);
 					await callback({
 						text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
 						actions: ["CHOOSE_OPTION"],
