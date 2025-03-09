@@ -465,7 +465,11 @@ async function handler(
 
 	const sentimentPrompt = composePrompt({
 		template: sentimentTemplate,
-		state: { message: message.content.text } as unknown as State,
+		state: {
+			values: {
+				message: message.content.text,
+			},
+		} as unknown as State,
 	});
 
 	const sentimentText = await runtime.useModel(ModelTypes.TEXT_LARGE, {
@@ -522,15 +526,17 @@ async function handler(
 	const prompt = composePrompt({
 		state: {
 			schema: JSON.stringify(getZodJsonSchema(recommendationSchema)),
-			message: JSON.stringify({
-				text: message.content.text,
-				entityId: message.entityId,
-				agentId: message.agentId,
-				roomId: message.roomId,
-				// TODO: name vs userName is bad
-				// This should be handled better, especially cross platform
-				username: message.content.username ?? message.content.userName,
-			}),
+			values: {
+				message: JSON.stringify({
+					text: message.content.text,
+					entityId: message.entityId,
+					agentId: message.agentId,
+					roomId: message.roomId,
+					// TODO: name vs userName is bad
+					// This should be handled better, especially cross platform
+					username: message.content.username ?? message.content.userName,
+				}),
+			},
 		} as unknown as State,
 		template: recommendationTemplate,
 	});
@@ -636,8 +642,10 @@ async function handler(
 			(async () => {
 				const prompt = composePrompt({
 					state: {
-						recommendation: JSON.stringify(recommendation),
-						recipientAgentName: "scarletAgent",
+						values: {
+							recommendation: JSON.stringify(recommendation),
+							recipientAgentName: runtime.character.name,
+						},
 					} as unknown as State,
 					template: recommendationFormatTemplate,
 				});
@@ -742,10 +750,12 @@ async function handler(
 			}
 			const prompt = composePrompt({
 				state: {
-					agentName: runtime.character.name,
-					msg: message.content.text,
-					recommendation: JSON.stringify(recommendation),
-					token: tokenString,
+					values: {
+						agentName: runtime.character.name,
+						msg: message.content.text,
+						recommendation: JSON.stringify(recommendation),
+						token: tokenString,
+					},
 				} as unknown as State,
 				template: recommendationConfirmTemplate,
 			});

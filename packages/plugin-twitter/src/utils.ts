@@ -620,7 +620,11 @@ export async function generateFiller(
 ): Promise<string> {
 	try {
 		const prompt = composePrompt({
-			state: { fillerType } as any as State,
+			state: {
+				values: {
+					fillerType,
+				},
+			} as any as State,
 			template: `
 # INSTRUCTIONS:
 You are generating a short filler message for a Twitter Space. The filler type is "{{fillerType}}".

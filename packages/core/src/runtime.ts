@@ -140,8 +140,11 @@ export class AgentRuntime implements IAgentRuntime {
 	 */
 	async registerPlugin(plugin: Plugin): Promise<void> {
 		if (!plugin) {
+			console.log("*** registerPlugin plugin is undefined");
 			return;
 		}
+
+		console.log("*** registerPlugin plugin", plugin);
 
 		// Add to plugins array if not already present - but only if it was not passed there initially
 		// (otherwise we can't add to readonly array)
@@ -230,10 +233,38 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async initialize() {
+		// Track registered plugins to avoid duplicates
+		const registeredPluginNames = new Set<string>();
+
+		// Load and register plugins from character configuration
+		const pluginRegistrationPromises = [];
+
+		if (this.character.plugins) {
+			const characterPlugins = (await handlePluginImporting(
+				this.character.plugins,
+			)) as Plugin[];
+
+			// Register each character plugin
+			for (const plugin of characterPlugins) {
+				if (plugin && !registeredPluginNames.has(plugin.name)) {
+					registeredPluginNames.add(plugin.name);
+					pluginRegistrationPromises.push(this.registerPlugin(plugin));
+				}
+			}
+		}
+
+		// Register plugins that were provided in the constructor
+		for (const plugin of [...this.plugins]) {
+			if (plugin && !registeredPluginNames.has(plugin.name)) {
+				registeredPluginNames.add(plugin.name);
+				pluginRegistrationPromises.push(this.registerPlugin(plugin));
+			}
+		}
+
+		await this.getDatabaseAdapter().init();
+
 		// First create the agent entity directly
 		try {
-			await this.getDatabaseAdapter().init();
-
 			await this.getDatabaseAdapter().ensureAgentExists(
 				this.character as Partial<Agent>,
 			);
@@ -268,34 +299,6 @@ export class AgentRuntime implements IAgentRuntime {
 				}`,
 			);
 			throw error;
-		}
-
-		// Track registered plugins to avoid duplicates
-		const registeredPluginNames = new Set<string>();
-
-		// Load and register plugins from character configuration
-		const pluginRegistrationPromises = [];
-
-		if (this.character.plugins) {
-			const characterPlugins = (await handlePluginImporting(
-				this.character.plugins,
-			)) as Plugin[];
-
-			// Register each character plugin
-			for (const plugin of characterPlugins) {
-				if (plugin && !registeredPluginNames.has(plugin.name)) {
-					registeredPluginNames.add(plugin.name);
-					pluginRegistrationPromises.push(this.registerPlugin(plugin));
-				}
-			}
-		}
-
-		// Register plugins that were provided in the constructor
-		for (const plugin of [...this.plugins]) {
-			if (plugin && !registeredPluginNames.has(plugin.name)) {
-				registeredPluginNames.add(plugin.name);
-				pluginRegistrationPromises.push(this.registerPlugin(plugin));
-			}
 		}
 
 		// Create room for the agent and register all plugins in parallel

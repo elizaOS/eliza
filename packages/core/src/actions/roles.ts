@@ -400,8 +400,11 @@ const updateRoleAction: Action = {
 		const extractionPrompt = composePrompt({
 			state: {
 				...state,
-				serverMembers: serverMembersContext,
-				speakerRole: requesterRole,
+				values: {
+					...state.values,
+					serverMembers: serverMembersContext,
+					speakerRole: requesterRole,
+				},
 			},
 			template: extractionTemplate,
 		});

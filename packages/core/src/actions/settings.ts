@@ -662,7 +662,10 @@ async function handleOnboardingComplete(
 		const prompt = composePrompt({
 			state: {
 				...state,
-				settingsStatus: formatSettingsList(worldSettings),
+				values: {
+					...state.values,
+					settingsStatus: formatSettingsList(worldSettings),
+				},
 			},
 			template: completionTemplate,
 		});
@@ -712,9 +715,12 @@ async function generateSuccessResponse(
 		const prompt = composePrompt({
 			state: {
 				...state,
-				updateMessages: messages.join("\n"),
-				nextSetting: requiredUnconfigured[0][1],
-				remainingRequired: requiredUnconfigured.length,
+				values: {
+					...state.values,
+					updateMessages: messages.join("\n"),
+					nextSetting: requiredUnconfigured[0][1],
+					remainingRequired: requiredUnconfigured.length,
+				},
 			},
 			template: successTemplate,
 		});
@@ -763,8 +769,11 @@ async function generateFailureResponse(
 		const prompt = composePrompt({
 			state: {
 				...state,
-				nextSetting: requiredUnconfigured[0][1],
-				remainingRequired: requiredUnconfigured.length,
+				values: {
+					...state.values,
+					nextSetting: requiredUnconfigured[0][1],
+					remainingRequired: requiredUnconfigured.length,
+				},
 			},
 			template: failureTemplate,
 		});
@@ -833,7 +842,7 @@ const updateSettingsAction: Action = {
 	name: "UPDATE_SETTINGS",
 	similes: ["UPDATE_SETTING", "SAVE_SETTING", "SET_CONFIGURATION", "CONFIGURE"],
 	description:
-		"Saves a setting during the settings process. Use this when you are onboarding with a server owner or when you are setting up a server.",
+		"Saves a configuration setting during the onboarding process, or update an existing setting. Use this when you are onboarding with a world owner or admin.",
 
 	validate: async (
 		runtime: IAgentRuntime,

@@ -6,6 +6,7 @@ import {
 	type Memory,
 	ModelTypes,
 	Service,
+	type State,
 	type UUID,
 	composePrompt,
 	logger,
@@ -882,31 +883,34 @@ export class DegenTradingService extends Service {
 			const prompt = composePrompt({
 				template: tradeAnalysisTemplate,
 				state: {
-					bio: "",
-					lore: "",
-					messageDirections: "",
-					postDirections: "",
-					replyDirections: "",
-					systemDirections: "",
-					userDirections: "",
-					roomId: `trade-0000-0000-0000-${Date.now().toString(16)}`,
-					entities: JSON.stringify(["trader"]),
-					recentMessages: JSON.stringify([""]),
-					recentMessagesData: [],
-					walletBalance: walletBalance.toString(),
-					api_data: JSON.stringify(
-						{
-							// Format the API data nicely
-							recommended_buy: tokenRecommendation.recommended_buy,
-							recommend_buy_address: tokenRecommendation.recommend_buy_address,
-							reason: tokenRecommendation.reason,
-							buy_amount: tokenRecommendation.buy_amount,
-							marketcap: tokenRecommendation.marketcap,
-						},
-						null,
-						2,
-					), // Pretty print with 2 spaces indentation
-				},
+					values: {
+						bio: "",
+						lore: "",
+						messageDirections: "",
+						postDirections: "",
+						replyDirections: "",
+						systemDirections: "",
+						userDirections: "",
+						roomId: `trade-0000-0000-0000-${Date.now().toString(16)}`,
+						entities: JSON.stringify(["trader"]),
+						recentMessages: JSON.stringify([""]),
+						recentMessagesData: [],
+						walletBalance: walletBalance.toString(),
+						api_data: JSON.stringify(
+							{
+								// Format the API data nicely
+								recommended_buy: tokenRecommendation.recommended_buy,
+								recommend_buy_address:
+									tokenRecommendation.recommend_buy_address,
+								reason: tokenRecommendation.reason,
+								buy_amount: tokenRecommendation.buy_amount,
+								marketcap: tokenRecommendation.marketcap,
+							},
+							null,
+							2,
+						), // Pretty print with 2 spaces indentation
+					},
+				} as unknown as State,
 			});
 
 			// Log context

@@ -32,6 +32,7 @@ export function createDatabaseAdapter(
 	},
 	agentId: UUID,
 ): IDatabaseAdapter {
+	console.log("*** postgresUrl", config.postgresUrl);
 	if (config.postgresUrl) {
 		if (!postgresConnectionManager) {
 			postgresConnectionManager = new PostgresConnectionManager(
@@ -63,6 +64,7 @@ const drizzlePlugin: Plugin = {
 	name: "drizzle",
 	description: "Database adapter plugin using Drizzle ORM",
 	init: async (_, runtime: IAgentRuntime) => {
+		console.log("*** drizzlePlugin init");
 		const config = {
 			dataDir: runtime.getSetting("PGLITE_DATA_DIR") ?? "./pglite",
 			postgresUrl: runtime.getSetting("POSTGRES_URL"),

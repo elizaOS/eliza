@@ -232,6 +232,7 @@ const twitterPostAction: Action = {
 				message.entityId,
 				serverId,
 			);
+			console.log("*** USER ROLE ***\n", userRole);
 			if (userRole !== "OWNER" && userRole !== "ADMIN") {
 				// callback and return
 				await callback({
@@ -258,7 +259,7 @@ const twitterPostAction: Action = {
 			}
 
 			const worker = {
-				name: "TWITTER_POST",
+				name: "Confirm Twitter Post",
 				execute: async (
 					runtime: IAgentRuntime,
 					options: { option: string },

@@ -148,7 +148,7 @@ function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
 		return entity.id;
 	}
 
-	throw new Error(`Could not resolve name "${name}" to a valid UUID`);
+	throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
 }
 
 const generateObject = async ({
@@ -266,14 +266,19 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 		}),
 	]);
 
+	console.log("****** entities ******\n", entities);
+
 	const prompt = composePrompt({
 		state: {
 			...state,
-			knownFacts: formatFacts(knownFacts),
-			roomType: message.content.channelType,
-			entitiesInRoom: JSON.stringify(entities),
-			existingRelationships: JSON.stringify(existingRelationships),
-			senderId: message.entityId,
+			values: {
+				...state.values,
+				knownFacts: formatFacts(knownFacts),
+				roomType: message.content.channelType,
+				entitiesInRoom: JSON.stringify(entities),
+				existingRelationships: JSON.stringify(existingRelationships),
+				senderId: message.entityId,
+			},
 		},
 		template:
 			runtime.character.templates?.reflectionTemplate || reflectionTemplate,

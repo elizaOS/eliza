@@ -366,30 +366,33 @@ export class TwitterInteractionClient {
 		const prompt = composePrompt({
 			state: {
 				...state,
-				// Convert actionNames array to string
-				actionNames: Array.isArray(state.actionNames)
-					? state.actionNames.join(", ")
-					: state.actionNames || "",
-				actions: Array.isArray(state.actions)
-					? state.actions.join("\n")
-					: state.actions || "",
-				// Ensure character examples are included
-				characterPostExamples: this.runtime.character.messageExamples
-					? this.runtime.character.messageExamples
-							.map((example) =>
-								example
-									.map(
-										(msg) =>
-											`${msg.name}: ${msg.content.text}${
-												msg.content.actions
-													? ` (Actions: ${msg.content.actions.join(", ")})`
-													: ""
-											}`,
-									)
-									.join("\n"),
-							)
-							.join("\n\n")
-					: "",
+				values: {
+					...state.values,
+					// Convert actionNames array to string
+					actionNames: Array.isArray(state.actionNames)
+						? state.actionNames.join(", ")
+						: state.actionNames || "",
+					actions: Array.isArray(state.actions)
+						? state.actions.join("\n")
+						: state.actions || "",
+					// Ensure character examples are included
+					characterPostExamples: this.runtime.character.messageExamples
+						? this.runtime.character.messageExamples
+								.map((example) =>
+									example
+										.map(
+											(msg) =>
+												`${msg.name}: ${msg.content.text}${
+													msg.content.actions
+														? ` (Actions: ${msg.content.actions.join(", ")})`
+														: ""
+												}`,
+										)
+										.join("\n"),
+								)
+								.join("\n\n")
+						: "",
+				},
 			},
 			template:
 				this.runtime.character.templates?.twitterMessageHandlerTemplate ||

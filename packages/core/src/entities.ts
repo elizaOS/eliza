@@ -217,11 +217,14 @@ export async function findEntityByName(
 		const prompt = composePrompt({
 			state: {
 				...state,
-				roomName: room.name || room.id,
-				worldName: world?.name || "Unknown",
-				entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
-				entityId: message.entityId,
-				senderId: message.entityId,
+				values: {
+					...state.values,
+					roomName: room.name || room.id,
+					worldName: world?.name || "Unknown",
+					entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
+					entityId: message.entityId,
+					senderId: message.entityId,
+				},
 			},
 			template: entityResolutionTemplate,
 		});

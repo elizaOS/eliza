@@ -122,16 +122,10 @@ Make sure to include the \`\`\`json\`\`\` tags around the JSON object.`;
  * ]
  */
 export const updateEntityAction: Action = {
-	name: "UPDATE_ENTITY",
-	similes: [
-		"CREATE_ENTITY",
-		"UPDATE_USER",
-		"EDIT_ENTITY",
-		"UPDATE_COMPONENT",
-		"CREATE_COMPONENT",
-	],
+	name: "UPDATE_CONTACT",
+	similes: ["UPDATE_ENTITY"],
 	description:
-		"Add or edit contact details for a person you are talking to or observing in the conversation. Use this when you learn this information from the conversation about a contact.",
+		"Add or edit contact details for a person you are talking to or observing in the conversation. Use this when you learn this information from the conversation about a contact. This is for the agent to relate entities across platforms, not for world settings or configuration.",
 
 	validate: async (
 		_runtime: IAgentRuntime,

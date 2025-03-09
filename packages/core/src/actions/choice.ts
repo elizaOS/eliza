@@ -17,7 +17,7 @@ import {
  *
  * Available Tasks:
  * {{#each tasks}}
- * Task {{taskId}}: {{name}}
+ * Task ID: {{taskId}} - {{name}}
  * Available options:
  * {{#each options}}
  * - {{name}}: {{description}}
@@ -31,13 +31,13 @@ import {
  * Instructions:
  * 1. Review the user's message and identify which task and option they are selecting
  * 2. Match against the available tasks and their options, including ABORT
- * 3. Return the task ID and selected option name exactly as listed above
+ * 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
  * 4. If no clear selection is made, return null for both fields
  *
  * Return in JSON format:
  * ```json
  * {
- *   "taskId": number | null,
+ *   "taskId": "string" | null,
  *   "selectedOption": "OPTION_NAME" | null
  * }
  * ```
@@ -48,7 +48,7 @@ const optionExtractionTemplate = `# Task: Extract selected task and option from 
 
 # Available Tasks:
 {{#each tasks}}
-Task {{taskId}}: {{name}}
+Task ID: {{taskId}} - {{name}}
 Available options:
 {{#each options}}
 - {{name}}: {{description}}
@@ -63,13 +63,13 @@ Available options:
 # Instructions:
 1. Review the user's message and identify which task and option they are selecting
 2. Match against the available tasks and their options, including ABORT
-3. Return the task ID and selected option name exactly as listed above
+3. Return the task ID (shortened UUID) and selected option name exactly as listed above
 4. If no clear selection is made, return null for both fields
 
 Return in JSON format:
 \`\`\`json
 {
-  "taskId": number | null,
+  "taskId": "string" | null,
   "selectedOption": "OPTION_NAME" | null
 }
 \`\`\`
@@ -133,15 +133,19 @@ export const choiceAction: Action = {
 		responses: Memory[],
 	): Promise<void> => {
 		try {
-			// Handle initial responses
-			for (const response of responses) {
-				await callback(response.content);
-			}
+			console.log("*** CHOICE HANDLER ***\n");
+
+			console.log("*** MESSAGE ***\n", JSON.stringify(message, null, 2));
 
 			const pendingTasks = await runtime.getDatabaseAdapter().getTasks({
 				roomId: message.roomId,
 				tags: ["AWAITING_CHOICE"],
 			});
+
+			console.log(
+				"*** PENDING TASKS ***\n",
+				JSON.stringify(pendingTasks, null, 2),
+			);
 
 			if (!pendingTasks?.length) {
 				throw new Error("No pending tasks with options found");
@@ -151,64 +155,129 @@ export const choiceAction: Action = {
 				(task) => task.metadata?.options,
 			);
 
+			console.log(
+				"*** TASKS WITH OPTIONS ***\n",
+				JSON.stringify(tasksWithOptions, null, 2),
+			);
+
 			if (!tasksWithOptions.length) {
 				throw new Error("No tasks currently have options to select from.");
 			}
 
-			// Format tasks with their options for the LLM
-			const formattedTasks = tasksWithOptions.map((task, index) => ({
-				taskId: index + 1,
-				name: task.name,
-				options: task.metadata.options.map((opt) => ({
-					name: typeof opt === "string" ? opt : opt.name,
-					description:
-						typeof opt === "string" ? opt : opt.description || opt.name,
-				})),
-			}));
+			// Format tasks with their options for the LLM, using shortened UUIDs
+			const formattedTasks = tasksWithOptions.map((task) => {
+				// Generate a short ID from the task UUID (first 8 characters should be unique enough)
+				const shortId = task.id.substring(0, 8);
+
+				return {
+					taskId: shortId,
+					fullId: task.id,
+					name: task.name,
+					options: task.metadata.options.map((opt) => ({
+						name: typeof opt === "string" ? opt : opt.name,
+						description:
+							typeof opt === "string" ? opt : opt.description || opt.name,
+					})),
+				};
+			});
+
+			console.log(
+				"*** FORMATTED TASKS ***\n",
+				JSON.stringify(formattedTasks, null, 2),
+			);
 
 			const prompt = composePrompt({
 				state: {
 					...state,
-					tasks: formattedTasks,
-					recentMessages: message.content.text,
+					values: {
+						...state.values,
+						tasks: formattedTasks,
+						recentMessages: message.content.text,
+					},
 				},
 				template: optionExtractionTemplate,
 			});
+
+			console.log("*** PROMPT ***\n", prompt);
 
 			const result = await runtime.useModel(ModelTypes.TEXT_SMALL, {
 				prompt,
 				stopSequences: [],
 			});
 
+			console.log("*** RESULT ***\n", result);
+
 			const parsed = parseJSONObjectFromText(result);
 			const { taskId, selectedOption } = parsed;
 
 			if (taskId && selectedOption) {
-				const selectedTask = tasksWithOptions[taskId - 1];
+				console.log(
+					"*** TASK ID AND SELECTED OPTION ***\n",
+					taskId,
+					selectedOption,
+				);
+
+				// Find the task by matching the shortened UUID
+				const taskMap = new Map(
+					formattedTasks.map((task) => [task.taskId, task]),
+				);
+				const taskInfo = taskMap.get(taskId);
+
+				if (!taskInfo) {
+					await callback({
+						text: `Could not find a task matching ID: ${taskId}. Please try again.`,
+						actions: ["SELECT_OPTION_ERROR"],
+						source: message.content.source,
+					});
+					return;
+				}
+
+				// Find the actual task using the full UUID
+				const selectedTask = tasksWithOptions.find(
+					(task) => task.id === taskInfo.fullId,
+				);
+
+				if (!selectedTask) {
+					await callback({
+						text: "Error locating the selected task. Please try again.",
+						actions: ["SELECT_OPTION_ERROR"],
+						source: message.content.source,
+					});
+					return;
+				}
 
 				if (selectedOption === "ABORT") {
+					console.log("*** ABORT ***\n");
 					await runtime.getDatabaseAdapter().deleteTask(selectedTask.id);
 					await callback({
 						text: `Task "${selectedTask.name}" has been cancelled.`,
-						actions: ["CHOOSE_OPTION"],
+						actions: ["CHOOSE_OPTION_CANCELLED"],
 						source: message.content.source,
 					});
 					return;
 				}
 
 				try {
+					console.log("selectedTask", JSON.stringify(selectedTask, null, 2));
 					const taskWorker = runtime.getTaskWorker(selectedTask.name);
+					console.log(
+						"*** TASK WORKER ***\n",
+						JSON.stringify(taskWorker, null, 2),
+					);
 					await taskWorker.execute(
 						runtime,
 						{ option: selectedOption },
 						selectedTask,
 					);
+					console.log("*** TASK WORKER EXECUTED ***\n");
 					await runtime.getDatabaseAdapter().deleteTask(selectedTask.id);
+					console.log("*** TASK DELETED ***\n");
 					await callback({
 						text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
 						actions: ["CHOOSE_OPTION"],
 						source: message.content.source,
 					});
+					console.log("*** TASK CALLBACK ***\n");
 					return;
 				} catch (error) {
 					logger.error("Error executing task with option:", error);
@@ -224,8 +293,12 @@ export const choiceAction: Action = {
 			// If no task/option was selected, list available options
 			let optionsText =
 				"Please select a valid option from one of these tasks:\n\n";
-			tasksWithOptions.forEach((task, index) => {
-				optionsText += `${index + 1}. **${task.name}**:\n`;
+
+			tasksWithOptions.forEach((task) => {
+				// Create a shortened UUID for display
+				const shortId = task.id.substring(0, 8);
+
+				optionsText += `**${task.name}** (ID: ${shortId}):\n`;
 				const options = task.metadata.options.map((opt) =>
 					typeof opt === "string" ? opt : opt.name,
 				);

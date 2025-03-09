@@ -43,7 +43,17 @@ function createSettingFromConfig(
  */
 function getSalt(runtime: IAgentRuntime): string {
 	const secretSalt = process.env.SECRET_SALT || "secretsalt";
-	return secretSalt + runtime.agentId;
+	const agentId = runtime.agentId;
+
+	if (!agentId) {
+		logger.warn("AgentId is missing when generating encryption salt");
+	}
+
+	const salt = secretSalt + (agentId || "");
+	logger.debug(
+		`Generated salt with length: ${salt.length} (truncated for security)`,
+	);
+	return salt;
 }
 
 /**
@@ -59,17 +69,46 @@ function saltSettingValue(setting: Setting, salt: string): Setting {
 		typeof setting.value === "string" &&
 		setting.value
 	) {
-		// Create key and iv from the salt
-		const key = crypto.createHash("sha256").update(salt).digest().slice(0, 32);
-		const iv = crypto.randomBytes(16);
+		try {
+			// Check if value is already encrypted (has the format "iv:encrypted")
+			const parts = setting.value.split(":");
+			if (parts.length === 2) {
+				try {
+					// Try to parse the first part as hex to see if it's already encrypted
+					const possibleIv = Buffer.from(parts[0], "hex");
+					if (possibleIv.length === 16) {
+						// Value is likely already encrypted, return as is
+						logger.debug(
+							"Value appears to be already encrypted, skipping re-encryption",
+						);
+						return settingCopy;
+					}
+				} catch (e) {
+					// Not a valid hex string, proceed with encryption
+				}
+			}
 
-		// Encrypt the value
-		const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-		let encrypted = cipher.update(setting.value, "utf8", "hex");
-		encrypted += cipher.final("hex");
+			// Create key and iv from the salt
+			const key = crypto
+				.createHash("sha256")
+				.update(salt)
+				.digest()
+				.slice(0, 32);
+			const iv = crypto.randomBytes(16);
 
-		// Store IV with the encrypted value so we can decrypt it later
-		settingCopy.value = `${iv.toString("hex")}:${encrypted}`;
+			// Encrypt the value
+			const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+			let encrypted = cipher.update(setting.value, "utf8", "hex");
+			encrypted += cipher.final("hex");
+
+			// Store IV with the encrypted value so we can decrypt it later
+			settingCopy.value = `${iv.toString("hex")}:${encrypted}`;
+
+			logger.debug(`Successfully encrypted value with IV length: ${iv.length}`);
+		} catch (error) {
+			logger.error(`Error encrypting setting value: ${error}`);
+			// Return the original value on error
+		}
 	}
 
 	return settingCopy;
@@ -92,11 +131,20 @@ function unsaltSettingValue(setting: Setting, salt: string): Setting {
 			// Split the IV and encrypted value
 			const parts = setting.value.split(":");
 			if (parts.length !== 2) {
-				throw new Error("Invalid encrypted value format");
+				logger.warn(
+					`Invalid encrypted value format for setting - expected 'iv:encrypted'`,
+				);
+				return settingCopy; // Return the original value without decryption
 			}
 
 			const iv = Buffer.from(parts[0], "hex");
 			const encrypted = parts[1];
+
+			// Verify IV length
+			if (iv.length !== 16) {
+				logger.warn(`Invalid IV length (${iv.length}) - expected 16 bytes`);
+				return settingCopy; // Return the original value without decryption
+			}
 
 			// Create key from the salt
 			const key = crypto

@@ -69,7 +69,7 @@ export class AgentServer {
 
 			const dataDir =
 				options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? "./elizadb";
-
+			console.log("postgresUrl", options?.postgresUrl?.slice(0, 20));
 			this.database = createDatabaseAdapter(
 				{
 					dataDir,

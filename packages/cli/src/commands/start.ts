@@ -58,14 +58,9 @@ async function startAgent(
 		character,
 		plugins,
 	});
-
-	const db = createDatabaseAdapter(options, runtime.agentId);
-
 	if (init) {
 		await init(runtime);
 	}
-
-	runtime.registerDatabaseAdapter(db);
 
 	// start services/plugins/process knowledge
 	await runtime.initialize();
@@ -157,36 +152,38 @@ const startAgents = async () => {
 
 	// Implement the database directory setup logic
 	let dataDir = "./elizadb"; // Default fallback path
-	try {
-		// 1. Get the user's home directory
-		const homeDir = os.homedir();
-		const elizaDir = path.join(homeDir, ".eliza");
-		const elizaDbDir = path.join(elizaDir, "db");
+	if (!postgresUrl) {
+		try {
+			// 1. Get the user's home directory
+			const homeDir = os.homedir();
+			const elizaDir = path.join(homeDir, ".eliza");
+			const elizaDbDir = path.join(elizaDir, "db");
 
-		// Debug information
-		console.log(`Setting up database directory at: ${elizaDbDir}`);
+			// Debug information
+			console.log(`Setting up database directory at: ${elizaDbDir}`);
 
-		// 2 & 3. Check if .eliza directory exists, create if not
-		if (!fs.existsSync(elizaDir)) {
-			console.log(`Creating .eliza directory at: ${elizaDir}`);
-			fs.mkdirSync(elizaDir, { recursive: true });
+			// 2 & 3. Check if .eliza directory exists, create if not
+			if (!fs.existsSync(elizaDir)) {
+				console.log(`Creating .eliza directory at: ${elizaDir}`);
+				fs.mkdirSync(elizaDir, { recursive: true });
+			}
+
+			// 4 & 5. Check if db directory exists in .eliza, create if not
+			if (!fs.existsSync(elizaDbDir)) {
+				console.log(`Creating db directory at: ${elizaDbDir}`);
+				fs.mkdirSync(elizaDbDir, { recursive: true });
+			}
+
+			// 6, 7 & 8. Use the db directory
+			dataDir = elizaDbDir;
+			console.log(`Using database directory: ${dataDir}`);
+		} catch (error) {
+			console.warn(
+				"Failed to create database directory in home directory, using fallback location:",
+				error,
+			);
+			// 9. On failure, use the fallback path
 		}
-
-		// 4 & 5. Check if db directory exists in .eliza, create if not
-		if (!fs.existsSync(elizaDbDir)) {
-			console.log(`Creating db directory at: ${elizaDbDir}`);
-			fs.mkdirSync(elizaDbDir, { recursive: true });
-		}
-
-		// 6, 7 & 8. Use the db directory
-		dataDir = elizaDbDir;
-		console.log(`Using database directory: ${dataDir}`);
-	} catch (error) {
-		console.warn(
-			"Failed to create database directory in home directory, using fallback location:",
-			error,
-		);
-		// 9. On failure, use the fallback path
 	}
 
 	const options = {

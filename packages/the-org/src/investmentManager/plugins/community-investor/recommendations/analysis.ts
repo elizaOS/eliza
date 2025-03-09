@@ -295,7 +295,9 @@ export const getTokenDetails: any = {
 
 		const prompt = composePrompt({
 			state: {
-				messages: messages,
+				values: {
+					messages: messages,
+				},
 			} as unknown as State,
 			template: extractLatestTicketTemplate,
 		});
@@ -332,8 +334,10 @@ export const getTokenDetails: any = {
 
 		const tokenDetailsPrompt = composePrompt({
 			state: {
-				ticker: results.ticker,
-				tokenOverview: tokenOverviewString,
+				values: {
+					ticker: results.ticker,
+					tokenOverview: tokenOverviewString,
+				},
 			} as unknown as State,
 			template: tokenDetailsTemplate,
 		});

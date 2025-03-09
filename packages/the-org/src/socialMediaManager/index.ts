@@ -31,6 +31,7 @@ const character: Character = {
 		"@elizaos/plugin-discord",
 		"@elizaos/plugin-twitter",
 		"@elizaos/plugin-node",
+		"@elizaos/plugin-sql",
 	],
 	settings: {
 		secrets: {
