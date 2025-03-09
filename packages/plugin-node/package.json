@@ -15,13 +15,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist",
-		"scripts",
-		"package.json",
-		"LICENSE",
-		"tsup.config.ts"
-	],
+	"files": ["dist", "scripts", "package.json", "LICENSE", "tsup.config.ts"],
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.705.0",
 		"@aws-sdk/s3-request-presigner": "^3.705.0",
@@ -76,9 +70,7 @@
 		"yargs": "17.7.2",
 		"youtube-dl-exec": "3.0.15"
 	},
-	"trustedDependencies": [
-		"youtube-dl-exec"
-	],
+	"trustedDependencies": ["youtube-dl-exec"],
 	"devDependencies": {
 		"@types/node": "22.8.4",
 		"tsup": "8.4.0"

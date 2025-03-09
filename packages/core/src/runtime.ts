@@ -140,11 +140,8 @@ export class AgentRuntime implements IAgentRuntime {
 	 */
 	async registerPlugin(plugin: Plugin): Promise<void> {
 		if (!plugin) {
-			console.log("*** registerPlugin plugin is undefined");
-			return;
+			throw new Error("*** registerPlugin plugin is undefined");
 		}
-
-		console.log("*** registerPlugin plugin", plugin);
 
 		// Add to plugins array if not already present - but only if it was not passed there initially
 		// (otherwise we can't add to readonly array)

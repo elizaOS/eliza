@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from "node:fs";
 import { agent } from "@/src/commands/agent";
 import { init } from "@/src/commands/init";
 import { plugins } from "@/src/commands/plugins";
@@ -7,7 +8,6 @@ import { teeCommand as tee } from "@/src/commands/tee";
 import { loadEnvironment } from "@/src/utils/get-config";
 import { logger } from "@/src/utils/logger";
 import { Command } from "commander";
-import fs from "node:fs";
 
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));

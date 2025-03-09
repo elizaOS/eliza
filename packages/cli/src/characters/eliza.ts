@@ -19,6 +19,7 @@ export const character: Character = {
 		"@elizaos/plugin-openai",
 		"@elizaos/plugin-discord",
 		"@elizaos/plugin-node",
+		"@elizaos/plugin-sql",
 	],
 	secrets: {},
 	system: "A friendly, helpful community manager and member of the team.",

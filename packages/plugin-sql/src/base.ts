@@ -134,8 +134,6 @@ export abstract class BaseDrizzleAdapter<
 						},
 					);
 
-					console.trace("****** Database operation failure source");
-
 					await new Promise((resolve) => setTimeout(resolve, delay));
 				} else {
 					logger.error("Max retry attempts reached:", {

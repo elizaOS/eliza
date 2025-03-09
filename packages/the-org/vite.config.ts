@@ -9,7 +9,7 @@ export default defineConfig({
 	build: {
 		emptyOutDir: false,
 		rollupOptions: {
-            external: ["moment"]
-        }
+			external: ["moment"],
+		},
 	},
 });

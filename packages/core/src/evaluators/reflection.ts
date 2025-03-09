@@ -266,8 +266,6 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 		}),
 	]);
 
-	console.log("****** entities ******\n", entities);
-
 	const prompt = composePrompt({
 		state: {
 			...state,

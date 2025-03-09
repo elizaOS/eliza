@@ -65,6 +65,7 @@ const character: Character = {
     "@elizaos/plugin-telegram",
     "@elizaos/plugin-rag",
     "@elizaos/plugin-node",
+    "@elizaos/plugin-sql",
   ],
   settings: {˝
     secrets: {

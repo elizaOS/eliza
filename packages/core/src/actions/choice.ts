@@ -132,19 +132,10 @@ export const choiceAction: Action = {
 		responses: Memory[],
 	): Promise<void> => {
 		try {
-			console.log("*** CHOICE HANDLER ***\n");
-
-			console.log("*** MESSAGE ***\n", JSON.stringify(message, null, 2));
-
 			const pendingTasks = await runtime.getDatabaseAdapter().getTasks({
 				roomId: message.roomId,
 				tags: ["AWAITING_CHOICE"],
 			});
-
-			console.log(
-				"*** PENDING TASKS ***\n",
-				JSON.stringify(pendingTasks, null, 2),
-			);
 
 			if (!pendingTasks?.length) {
 				throw new Error("No pending tasks with options found");
@@ -152,11 +143,6 @@ export const choiceAction: Action = {
 
 			const tasksWithOptions = pendingTasks.filter(
 				(task) => task.metadata?.options,
-			);
-
-			console.log(
-				"*** TASKS WITH OPTIONS ***\n",
-				JSON.stringify(tasksWithOptions, null, 2),
 			);
 
 			if (!tasksWithOptions.length) {
@@ -180,11 +166,6 @@ export const choiceAction: Action = {
 				};
 			});
 
-			console.log(
-				"*** FORMATTED TASKS ***\n",
-				JSON.stringify(formattedTasks, null, 2),
-			);
-
 			const prompt = composePrompt({
 				state: {
 					...state,
@@ -197,25 +178,15 @@ export const choiceAction: Action = {
 				template: optionExtractionTemplate,
 			});
 
-			console.log("*** PROMPT ***\n", prompt);
-
 			const result = await runtime.useModel(ModelTypes.TEXT_SMALL, {
 				prompt,
 				stopSequences: [],
 			});
 
-			console.log("*** RESULT ***\n", result);
-
 			const parsed = parseJSONObjectFromText(result);
 			const { taskId, selectedOption } = parsed;
 
 			if (taskId && selectedOption) {
-				console.log(
-					"*** TASK ID AND SELECTED OPTION ***\n",
-					taskId,
-					selectedOption,
-				);
-
 				// Find the task by matching the shortened UUID
 				const taskMap = new Map(
 					formattedTasks.map((task) => [task.taskId, task]),
@@ -246,7 +217,6 @@ export const choiceAction: Action = {
 				}
 
 				if (selectedOption === "ABORT") {
-					console.log("*** ABORT ***\n");
 					await runtime.getDatabaseAdapter().deleteTask(selectedTask.id);
 					await callback({
 						text: `Task "${selectedTask.name}" has been cancelled.`,

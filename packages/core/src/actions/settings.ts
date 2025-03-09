@@ -457,7 +457,6 @@ export async function updateWorldSettings(
  * Formats a list of settings for display
  */
 function formatSettingsList(worldSettings: WorldSettings): string {
-	console.log("*** WORLD SETTINGS ***\n", worldSettings);
 	const settings = Object.entries(worldSettings)
 		.filter(([key]) => !key.startsWith("_")) // Skip internal settings
 		.map(([key, setting]) => {
@@ -466,8 +465,6 @@ function formatSettingsList(worldSettings: WorldSettings): string {
 			return `- ${setting.name} (${key}): ${status}, ${required}`;
 		})
 		.join("\n");
-
-	console.log("*** SETTINGS LIST ***\n", settings);
 
 	return settings || "No settings available";
 }
@@ -513,7 +510,6 @@ async function extractSettingValues(
 	worldSettings: WorldSettings,
 ): Promise<SettingUpdate[]> {
 	try {
-		console.log("*** WORLD SETTINGS ***\n", worldSettings);
 		// Create prompt with current settings status for better extraction
 		const prompt = composePrompt({
 			state: {
@@ -531,15 +527,13 @@ async function extractSettingValues(
 			},
 			template: extractionTemplate,
 		});
-		console.log("*** EXTRACTION PROMPT ***\n", prompt);
+
 		// Generate extractions using larger model for better comprehension
 		const extractions = (await generateObjectArray({
 			runtime,
 			prompt,
 			modelType: ModelTypes.TEXT_LARGE,
 		})) as SettingUpdate[];
-
-		console.log("*** EXTRACTIONS ***\n", extractions);
 
 		logger.info(`Extracted ${extractions.length} potential setting updates`);
 

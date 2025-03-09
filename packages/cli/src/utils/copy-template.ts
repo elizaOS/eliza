@@ -142,7 +142,7 @@ export async function copyClientDist() {
 
 	// Determine source and destination paths
 	const srcClientDist = path.resolve(process.cwd(), "../client/dist");
-	const destClientDist = path.resolve(process.cwd(), "./dist/client");
+	const destClientDist = path.resolve(process.cwd(), "./dist");
 
 	// Create destination directory
 	await fs.mkdir(destClientDist, { recursive: true });

@@ -31,29 +31,21 @@ export async function getUserServerRole(
 	serverId: string,
 ): Promise<Role> {
 	try {
-		console.log("*** GET USER SERVER ROLE ***\n", entityId, serverId);
 		const worldId = createUniqueUuid(runtime, serverId);
-		console.log("*** WORLD ID ***\n", worldId);
 		const world = await runtime.getDatabaseAdapter().getWorld(worldId);
-		console.log("*** WORLD ***\n", world);
 
 		if (!world || !world.metadata?.roles) {
-			console.log("*** NO ROLES ***\n");
 			return Role.NONE;
 		}
 
 		if (world.metadata.roles[entityId]) {
-			console.log("*** ROLE ***\n", world.metadata.roles[entityId]);
 			return world.metadata.roles[entityId] as Role;
 		}
 
 		// Also check original ID format
 		if (world.metadata.roles[entityId]) {
-			console.log("*** ROLE ***\n", world.metadata.roles[entityId]);
 			return world.metadata.roles[entityId] as Role;
 		}
-
-		console.log("WORLD METADATA IS", JSON.stringify(world.metadata, null, 2));
 
 		return Role.NONE;
 	} catch (error) {

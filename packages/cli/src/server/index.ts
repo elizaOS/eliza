@@ -182,8 +182,8 @@ export class AgentServer {
 				},
 			};
 
-			// Serve static assets from the client path
-			const clientPath = path.join(process.cwd(), "../client/dist");
+			// Serve static assets from the client dist path
+			const clientPath = path.join(process.cwd(), "dist");
 			logger.info(`Client build path: ${clientPath}`);
 			this.app.use("/", express.static(clientPath, staticOptions));
 
