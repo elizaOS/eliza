@@ -261,7 +261,7 @@ services:
             - SMALL_REDPILL_MODEL=anthropic/claude-3-5-sonnet
             - MEDIUM_REDPILL_MODEL=anthropic/claude-3-5-sonnet
             - LARGE_REDPILL_MODEL=anthropic/claude-3-opus
-            - ELEVENLABS_XI_API_KEY=$ELEVENLABS_XI_API_KEY
+            - ELEVENLABS_API_KEY=$ELEVENLABS_API_KEY
             - ELEVENLABS_MODEL_ID=eleven_multilingual_v2
             - ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
             - ELEVENLABS_VOICE_STABILITY=0.5

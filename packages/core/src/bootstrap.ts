@@ -13,7 +13,7 @@ import { unfollowRoomAction } from "./actions/unfollowRoom";
 import { unmuteRoomAction } from "./actions/unmuteRoom";
 import { updateEntityAction } from "./actions/updateEntity";
 import { createUniqueUuid } from "./entities";
-import { goalEvaluator } from "./evaluators/goal";
+import { goalAction } from "./actions/goal";
 import { reflectionEvaluator } from "./evaluators/reflection";
 import { logger } from "./logger";
 import {
@@ -22,7 +22,7 @@ import {
 	parseJSONObjectFromText,
 	shouldRespondTemplate,
 } from "./prompts";
-import { actionsProvider } from "./providers/actionExamples";
+import { actionsProvider } from "./providers/actions";
 import { anxietyProvider } from "./providers/anxiety";
 import { attachmentsProvider } from "./providers/attachments";
 import { capabilitiesProvider } from "./providers/capabilities";
@@ -536,7 +536,7 @@ export const bootstrapPlugin: Plugin = {
 		updateSettingsAction,
 	],
 	events,
-	evaluators: [reflectionEvaluator, goalEvaluator],
+	evaluators: [reflectionEvaluator, goalAction],
 	providers: [
 		evaluatorsProvider,
 		anxietyProvider,

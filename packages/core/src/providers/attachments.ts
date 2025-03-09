@@ -10,7 +10,9 @@ import type { IAgentRuntime, Memory } from "../types";
  */
 export const attachmentsProvider: Provider = {
 	name: "ATTACHMENTS",
-	description: "List of attachments in the current conversation",
+	description:
+		"List of attachments sent during the current conversation, including names, descriptions, and summaries",
+	dynamic: true,
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		// Start with any attachments in the current message
 		let allAttachments = message.content.attachments || [];

@@ -17,7 +17,8 @@ function getVoiceSettings(runtime: IAgentRuntime) {
 		process.env[key] || runtime.getSetting(key) || fallback;
 
 	return {
-		apiKey: getSetting("ELEVENLABS_XI_API_KEY"),
+		apiKey:
+			getSetting("ELEVENLABS_API_KEY") || getSetting("ELEVENLABS_XI_API_KEY"),
 		voiceId: getSetting("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL"),
 		model: getSetting("ELEVENLABS_MODEL_ID", "eleven_monolingual_v1"),
 		stability: getSetting("ELEVENLABS_VOICE_STABILITY", "0.5"),

@@ -48,7 +48,8 @@ async function main() {
 	const sttTtsPlugin = new SttTtsPlugin();
 	participant.use(sttTtsPlugin, {
 		openAiApiKey: process.env.OPENAI_API_KEY,
-		elevenLabsApiKey: process.env.ELEVENLABS_API_KEY,
+		elevenLabsApiKey:
+			process.env.ELEVENLABS_API_KEY || process.env.ELEVENLABS_XI_API_KEY,
 		voiceId: "D38z5RcWu1voky8WS1ja", // example voice
 		// systemPrompt: "You are a calm and friendly AI assistant."
 	});

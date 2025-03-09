@@ -25,7 +25,7 @@ Common secrets you'll need to manage:
 # API Keys
 OPENAI_API_KEY=sk-*
 ANTHROPIC_API_KEY=your-key
-ELEVENLABS_XI_API_KEY=your-key
+ELEVENLABS_API_KEY=your-key
 GOOGLE_GENERATIVE_AI_API_KEY=your-key
 
 # Client Authentication

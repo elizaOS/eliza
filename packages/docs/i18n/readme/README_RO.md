@@ -81,7 +81,7 @@ Va trebui să adăugați variabile de mediu în fișierul dvs. `.env` pentru a v
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Token do bot
 OPENAI_API_KEY=sk-* # Chave API do OpenAI, começando com sk-
-ELEVENLABS_XI_API_KEY= # Chave API do elevenlabs
+ELEVENLABS_API_KEY= # Chave API do elevenlabs
 GOOGLE_GENERATIVE_AI_API_KEY= # Chave API do Gemini
 
 # CONFIGURAÇÕES DO ELEVENLABS

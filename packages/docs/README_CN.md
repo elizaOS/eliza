@@ -78,7 +78,7 @@ bun install --include=optional sharp
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Bot token
 OPENAI_API_KEY=sk-* # OpenAI API key, starting with sk-
-ELEVENLABS_XI_API_KEY= # API key from elevenlabs
+ELEVENLABS_API_KEY= # API key from elevenlabs
 
 # ELEVENLABS SETTINGS
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2

@@ -1,6 +1,5 @@
 import { logger } from "../logger";
-import { composePrompt } from "../prompts";
-import { parseJSONObjectFromText } from "../prompts";
+import { composePrompt, parseJSONObjectFromText } from "../prompts";
 import { getUserServerRole } from "../roles";
 import {
 	type Action,
@@ -258,29 +257,18 @@ export const choiceAction: Action = {
 				}
 
 				try {
-					console.log("selectedTask", JSON.stringify(selectedTask, null, 2));
 					const taskWorker = runtime.getTaskWorker(selectedTask.name);
-					// ignore
-					// @ts-ignore
-					console.log("taskWorkers is", runtime.taskWorkers);
-					console.log(
-						"*** TASK WORKER ***\n",
-						JSON.stringify(taskWorker, null, 2),
-					);
 					await taskWorker.execute(
 						runtime,
 						{ option: selectedOption },
 						selectedTask,
 					);
-					console.log("*** TASK WORKER EXECUTED ***\n");
 					await runtime.getDatabaseAdapter().deleteTask(selectedTask.id);
-					console.log("*** TASK DELETED ***\n");
 					await callback({
 						text: `Selected option: ${selectedOption} for task: ${selectedTask.name}`,
 						actions: ["CHOOSE_OPTION"],
 						source: message.content.source,
 					});
-					console.log("*** TASK CALLBACK ***\n");
 					return;
 				} catch (error) {
 					logger.error("Error executing task with option:", error);

@@ -1,6 +1,6 @@
 import { composePrompt, parseJsonArrayFromText } from "../prompts";
 import {
-	type Evaluator,
+	type Action,
 	type Goal,
 	type IAgentRuntime,
 	type Memory,
@@ -121,9 +121,9 @@ async function handler(
 }
 
 /**
- * goalEvaluator object represents an evaluator for updating goals.
+ * goalAction object represents an evaluator for updating goals.
  *
- * @typedef {Object} goalEvaluator
+ * @typedef {Object} goalAction
  * @property {string} name - The name of the evaluator.
  * @property {Array<string>} similes - The similes related to updating goals.
  * @property {function} validate - Asynchronous function to validate if there are active goals that could be updated.
@@ -131,8 +131,10 @@ async function handler(
  * @property {function} handler - The handler function for updating goals.
  * @property {Array<Object>} examples - Array of examples showing how the evaluator works with prompts, messages, and outcomes.
  */
-export const goalEvaluator: Evaluator = {
+export const goalAction: Action = {
 	name: "UPDATE_GOAL",
+	description:
+		"Analyze the conversation and update the status of the goals based on the new information provided.",
 	similes: [
 		"UPDATE_GOALS",
 		"EDIT_GOAL",
@@ -151,183 +153,85 @@ export const goalEvaluator: Evaluator = {
 		});
 		return goals.length > 0;
 	},
-	description:
-		"Analyze the conversation and update the status of the goals based on the new information provided.",
 	handler,
 	examples: [
-		{
-			prompt: `People in the scene:
-  {{name1}}: An avid reader and member of a book club.
-  {{name2}}: The organizer of the book club.
-
-  Goals:
-  - Name: Finish reading "War and Peace"
-    id: 12345-67890-12345-67890
-    Status: IN_PROGRESS
-    Objectives:
-      - Read up to chapter 20 by the end of the month
-      - Discuss the first part in the next meeting`,
-
-			messages: [
-				{
-					name: "{{name1}}",
-					content: {
-						text: "I've just finished chapter 20 of 'War and Peace'",
-					},
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "I've just finished chapter 20 of 'War and Peace'",
 				},
-				{
-					name: "{{name2}}",
-					content: {
-						text: "Were you able to grasp the complexities of the characters",
-					},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "Were you able to grasp the complexities of the characters",
 				},
-				{
-					name: "{{name1}}",
-					content: {
-						text: "Yep. I've prepared some notes for our discussion",
-					},
+			},
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Yep. I've prepared some notes for our discussion",
 				},
-			],
-
-			outcome: `[
-        {
-          "id": "12345-67890-12345-67890",
-          "status": "DONE",
-          "objectives": [
-            { "description": "Read up to chapter 20 by the end of the month", "completed": true },
-            { "description": "Prepare notes for the next discussion", "completed": true }
-          ]
-        }
-      ]`,
-		},
-
-		{
-			prompt: `People in the scene:
-  {{name1}}: A fitness enthusiast working towards a marathon.
-  {{name2}}: A personal trainer.
-
-  Goals:
-  - Name: Complete a marathon
-    id: 23456-78901-23456-78901
-    Status: IN_PROGRESS
-    Objectives:
-      - Increase running distance to 30 miles a week
-      - Complete a half-marathon as practice`,
-
-			messages: [
-				{
-					name: "{{name1}}",
-					content: { text: "I managed to run 30 miles this week" },
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: { text: "I managed to run 30 miles this week" },
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "Impressive progress! How do you feel about the half-marathon next month?",
 				},
-				{
-					name: "{{name2}}",
-					content: {
-						text: "Impressive progress! How do you feel about the half-marathon next month?",
-					},
+			},
+			{
+				name: "{{name1}}",
+				content: {
+					text: "I feel confident. The training is paying off.",
 				},
-				{
-					name: "{{name1}}",
-					content: {
-						text: "I feel confident. The training is paying off.",
-					},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "I've submitted the first draft of my thesis.",
 				},
-			],
-
-			outcome: `[
-        {
-          "id": "23456-78901-23456-78901",
-          "objectives": [
-            { "description": "Increase running distance to 30 miles a week", "completed": true },
-            { "description": "Complete a half-marathon as practice", "completed": false }
-          ]
-        }
-      ]`,
-		},
-
-		{
-			prompt: `People in the scene:
-  {{name1}}: A student working on a final year project.
-  {{name2}}: The project supervisor.
-
-  Goals:
-  - Name: Finish the final year project
-    id: 34567-89012-34567-89012
-    Status: IN_PROGRESS
-    Objectives:
-      - Submit the first draft of the thesis
-      - Complete the project prototype`,
-
-			messages: [
-				{
-					name: "{{name1}}",
-					content: {
-						text: "I've submitted the first draft of my thesis.",
-					},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "Well done. How is the prototype coming along?",
 				},
-				{
-					name: "{{name2}}",
-					content: {
-						text: "Well done. How is the prototype coming along?",
-					},
+			},
+			{
+				name: "{{name1}}",
+				content: {
+					text: "It's almost done. I just need to finalize the testing phase.",
 				},
-				{
-					name: "{{name1}}",
-					content: {
-						text: "It's almost done. I just need to finalize the testing phase.",
-					},
+			},
+		],
+		[
+			{
+				name: "{{name1}}",
+				content: {
+					text: "How's the progress on the new features?",
 				},
-			],
-
-			outcome: `[
-        {
-          "id": "34567-89012-34567-89012",
-          "objectives": [
-            { "description": "Submit the first draft of the thesis", "completed": true },
-            { "description": "Complete the project prototype", "completed": false }
-          ]
-        }
-      ]`,
-		},
-
-		{
-			prompt: `People in the scene:
-        {{name1}}: A project manager working on a software development project.
-        {{name2}}: A software developer in the project team.
-
-        Goals:
-        - Name: Launch the new software version
-          id: 45678-90123-45678-90123
-          Status: IN_PROGRESS
-          Objectives:
-            - Complete the coding for the new features
-            - Perform comprehensive testing of the software`,
-
-			messages: [
-				{
-					name: "{{name1}}",
-					content: {
-						text: "How's the progress on the new features?",
-					},
+			},
+			{
+				name: "{{name2}}",
+				content: {
+					text: "We've encountered some unexpected challenges and are currently troubleshooting.",
 				},
-				{
-					name: "{{name2}}",
-					content: {
-						text: "We've encountered some unexpected challenges and are currently troubleshooting.",
-					},
+			},
+			{
+				name: "{{name1}}",
+				content: {
+					text: "Let's move on and cancel the task.",
 				},
-				{
-					name: "{{name1}}",
-					content: {
-						text: "Let's move on and cancel the task.",
-					},
-				},
-			],
-
-			outcome: `[
-        {
-          "id": "45678-90123-45678-90123",
-          "status": "FAILED"
-      ]`,
-		},
+			},
+		],
 	],
 };

@@ -114,7 +114,7 @@ Implement text-to-speech capabilities:
 ```typescript
 class SpeechService extends Service implements ISpeechService {
     async generate(runtime: IAgentRuntime, text: string): Promise<Readable> {
-        if (runtime.getSetting("ELEVENLABS_XI_API_KEY")) {
+        if (runtime.getSetting("ELEVENLABS_API_KEY") || runtime.getSetting("ELEVENLABS_XI_API_KEY")) {
             return textToSpeech(runtime, text);
         }
 

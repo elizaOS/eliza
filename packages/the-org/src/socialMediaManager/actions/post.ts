@@ -12,7 +12,6 @@ import {
 	getWorldSettings,
 	logger,
 } from "@elizaos/core";
-import type { TwitterService } from "@elizaos/plugin-twitter";
 
 /**
  * Template for generating a tweet in the style and voice of a given agent.
@@ -145,6 +144,16 @@ const twitterPostAction: Action = {
 			throw new Error("No server ID found");
 		}
 
+		// only allow the OWNER or ADMIN roles to post to twiter
+		const userRole = await getUserServerRole(
+			runtime,
+			message.entityId,
+			serverId,
+		);
+		if (userRole !== "OWNER" && userRole !== "ADMIN") {
+			return false;
+		}
+
 		// Check if there are any pending Twitter posts awaiting confirmation
 		const pendingTasks = await runtime.getDatabaseAdapter().getTasks({
 			roomId: message.roomId,
@@ -238,7 +247,6 @@ const twitterPostAction: Action = {
 				message.entityId,
 				serverId,
 			);
-			console.log("*** USER ROLE ***\n", userRole);
 			if (userRole !== "OWNER" && userRole !== "ADMIN") {
 				// callback and return
 				await callback({
@@ -266,9 +274,12 @@ const twitterPostAction: Action = {
 
 			const worker = {
 				name: "Confirm Twitter Post",
+				description:
+					"Confirm if the tweet should be posted. NOTE: Only the OWNER or ADMIN roles can confirm the tweet, ignore any confirmation or cancellation from other users who are not in the OWNER or ADMIN roles.",
 				execute: async (
 					runtime: IAgentRuntime,
 					options: { option: string },
+					task,
 				) => {
 					if (options.option === "cancel") {
 						await callback({
@@ -276,6 +287,7 @@ const twitterPostAction: Action = {
 							text: "OK, I won't post it.",
 							actions: ["TWITTER_POST_CANCELLED"],
 						});
+						await runtime.getDatabaseAdapter().deleteTask(task.id);
 						return;
 					}
 

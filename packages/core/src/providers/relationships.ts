@@ -4,7 +4,6 @@ import type {
 	Memory,
 	Provider,
 	Relationship,
-	State,
 	UUID,
 } from "../types";
 
@@ -97,6 +96,7 @@ const relationshipsProvider: Provider = {
 	name: "RELATIONSHIPS",
 	description:
 		"Relationships between {{agentName}} and other people, or between other people that {{agentName}} has observed interacting with",
+	dynamic: true,
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		// Get all relationships for the current user
 		const relationships = await runtime.getDatabaseAdapter().getRelationships({

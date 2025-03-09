@@ -81,7 +81,7 @@ Trebaće vam da dodate promenljive okruženja u vašu .env datoteku da biste se 
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Token bota
 OPENAI_API_KEY=sk-* # API ključ OpenAI, počinje sa sk-
-ELEVENLABS_XI_API_KEY= # API ključ ElevenLabs
+ELEVENLABS_API_KEY= # API ključ ElevenLabs
 GOOGLE_GENERATIVE_AI_API_KEY= # API ključ Gemini
 
 # KONFIGURACIJE ELEVENLABS

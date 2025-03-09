@@ -575,7 +575,14 @@ export class AgentRuntime implements IAgentRuntime {
 		logger.success(
 			`${this.character.name}(${this.agentId}) - Registering action: ${action.name}`,
 		);
-		this.actions.push(action);
+		// if an action with the same name already exists, throw a warning and don't add the new action
+		if (this.actions.find((a) => a.name === action.name)) {
+			logger.warn(
+				`${this.character.name}(${this.agentId}) - Action ${action.name} already exists. Skipping registration.`,
+			);
+		} else {
+			this.actions.push(action);
+		}
 	}
 
 	/**

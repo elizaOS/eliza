@@ -103,7 +103,7 @@ DISCORD_API_TOKEN= # رمز البوت
 
 OPENAI_API_KEY=sk-* # مفتاح OpenAI API، يبدأ بـ sk-
 
-ELEVENLABS_XI_API_KEY= # مفتاح API من elevenlabs
+ELEVENLABS_API_KEY= # مفتاح API من elevenlabs
 
 # إعدادات ELEVENLABS
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2

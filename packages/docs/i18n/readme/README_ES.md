@@ -81,7 +81,7 @@ Deberá agregar variables de ambiente a su archivo .env para conectarse a varias
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Token del bot
 OPENAI_API_KEY=sk-* # Clave API de OpenAI, comenzando con sk-
-ELEVENLABS_XI_API_KEY= # Clave API de ElevenLabs
+ELEVENLABS_API_KEY= # Clave API de ElevenLabs
 GOOGLE_GENERATIVE_AI_API_KEY= # Clave API de Gemini
 
 # CONFIGURACIONES DE ELEVENLABS

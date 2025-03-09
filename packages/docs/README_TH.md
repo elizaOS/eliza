@@ -82,7 +82,7 @@ bun install --include=optional sharp
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # โทเค็นของบอท
 OPENAI_API_KEY=sk-* # API key ของ OpenAI เริ่มต้นด้วย sk-
-ELEVENLABS_XI_API_KEY= # API key จาก elevenlabs
+ELEVENLABS_API_KEY= # API key จาก elevenlabs
 
 # การตั้งค่า ELEVENLABS
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2

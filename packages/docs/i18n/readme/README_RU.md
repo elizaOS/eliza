@@ -94,7 +94,7 @@ bun install --include=optional sharp
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Токен бота
 OPENAI_API_KEY=sk-* # API-ключ OpenAI, начинающийся с sk-
-ELEVENLABS_XI_API_KEY= # API-ключ от elevenlabs
+ELEVENLABS_API_KEY= # API-ключ от elevenlabs
 GOOGLE_GENERATIVE_AI_API_KEY= # API-ключ Gemini
 
 # НАСТРОЙКИ ELEVENLABS

@@ -86,7 +86,7 @@ Você precisará adicionar variáveis de ambiente ao seu arquivo .env para conec
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Bot token
 OPENAI_API_KEY=sk-* # OpenAI API key, começando com sk-
-ELEVENLABS_XI_API_KEY= # API key da elevenlabs
+ELEVENLABS_API_KEY= # API key da elevenlabs
 
 # Configuracoes ELEVENLABS
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2

@@ -80,7 +80,7 @@ bun install --include=optional sharp
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # ボットトークン
 OPENAI_API_KEY=sk-* # OpenAI APIキー、sk-で始まる
-ELEVENLABS_XI_API_KEY= # elevenlabsからのAPIキー
+ELEVENLABS_API_KEY= # elevenlabsからのAPIキー
 
 # ELEVENLABS設定
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2

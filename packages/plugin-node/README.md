@@ -36,7 +36,7 @@ OPENAI_API_KEY=your_openai_api_key
 ### Voice Settings (Optional)
 
 ```env
-ELEVENLABS_XI_API_KEY=your_elevenlabs_api_key
+ELEVENLABS_API_KEY=your_elevenlabs_api_key
 ELEVENLABS_MODEL_ID=eleven_monolingual_v1
 ELEVENLABS_VOICE_ID=your_voice_id
 ELEVENLABS_VOICE_STABILITY=0.5

@@ -24,7 +24,8 @@ function formatEntities({ entities }: { entities: Entity[] }) {
 
 export const entitiesProvider: Provider = {
 	name: "ENTITIES",
-	description: "Entities in the current conversation",
+	description: "People in the current conversation",
+	dynamic: true,
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		const { roomId, entityId } = message;
 		// Get entities details

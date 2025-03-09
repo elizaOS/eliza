@@ -82,7 +82,7 @@ Sie müssen Umgebungsvariablen in Ihrer .env-Datei hinzufügen, um sich mit vers
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Bot-Token
 OPENAI_API_KEY=sk-* # OpenAI API-Schlüssel, beginnt mit sk-
-ELEVENLABS_XI_API_KEY= # API-Schlüssel von Elevenlabs
+ELEVENLABS_API_KEY= # API-Schlüssel von Elevenlabs
 
 # ELEVENLABS EINSTELLUNGEN
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
