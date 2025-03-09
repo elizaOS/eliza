@@ -21,6 +21,7 @@ import {
 	type State,
 	type WorldSettings,
 } from "../types";
+import dedent from "dedent";
 
 /**
  * Interface representing the structure of a setting update object.
@@ -199,200 +200,33 @@ Write a natural, conversational response that {{agentName}} would send about the
 Include the actions array ["ONBOARDING_COMPLETE"] in your response.
 ${messageCompletionFooter}`;
 
-// Enhanced extraction template that explicitly handles multiple settings
 /**
- * Template for extracting setting values from a conversation.
- * Includes available settings, current settings status, recent conversation, and instructions for extraction.
+ * Generates an extraction template with formatting details.
  *
- * @returns {string} - Extraction template containing instructions and placeholders.
+ * @param {WorldSettings} worldSettings - The settings to generate a template for.
+ * @returns {string} The formatted extraction template.
  */
-const extractionTemplate = `# Task: Extract setting values from the conversation
+const extractionTemplate = `# Task: Extract Setting Changes from User Input
 
-# Available Settings:
-{{#each settings}}
-{{key}}:
-  Key: {{key}}
-  Name: {{name}}
-  Description: {{description}}
-  Current Value: {{value}}
-  Required: {{required}}
-  Validation Rules: {{#if validation}}Present{{else}}None{{/if}}
-{{/each}}
+I need to extract settings that the user wants to change based on their message.
 
-# Current Settings Status:
-{{settingsStatus}}
+Available Settings:
+{{settingsContext}}
 
-# Recent Conversation:
-{{recentMessages}}
+User message: {{content}}
 
-# Instructions:
-1. Review the ENTIRE conversation and identify ALL values provided for settings
-2. For each setting mentioned, extract:
-   - Infer the settings key the user is trying to set (must exactly match one of the available settings above)
-   - The provided value that matches the setting's description and purpose
-3. Return an array of ALL setting updates found, even if mentioned earlier in the conversation
+For each setting mentioned in the user's input, extract the key and its new value.
+Format your response as a JSON array of objects, each with 'key' and 'value' properties.
 
-Return ONLY a JSON array of objects with 'key' and 'value' properties. Format:
+Example response:
+\`\`\`json
 [
   { "key": "SETTING_NAME", "value": "extracted value" },
   { "key": "ANOTHER_SETTING", "value": "another value" }
 ]
+\`\`\`
 
 IMPORTANT: Only include settings from the Available Settings list above. Ignore any other potential settings.`;
-
-/**
- * Asynchronously generates an object based on the specified parameters.
- *
- * @param {Object} options - The options object containing the following properties:
- * @param {any} runtime - The runtime object.
- * @param {string} prompt - The prompt string for generating the object.
- * @param {ModelType} [modelType=ModelTypes.TEXT_LARGE] - The type of model to use for generation.
- * @param {string[]} [stopSequences=[]] - The stop sequences to use during generation.
- * @param {string} [output="object"] - The expected output type ("object" or "enum").
- * @param {string[]} [enumValues=[]] - The enum values if output is "enum".
- * @param {Record<string, unknown>} [schema] - The schema object to validate the generated JSON against.
- * @returns {Promise<any>} The generated object or value.
- */
-const generateObject = async ({
-	runtime,
-	prompt,
-	modelType = ModelTypes.TEXT_LARGE as ModelType,
-	stopSequences = [],
-	output = "object",
-	enumValues = [],
-	schema,
-}): Promise<any> => {
-	if (!prompt) {
-		const errorMessage = "generateObject prompt is empty";
-		console.error(errorMessage);
-		throw new Error(errorMessage);
-	}
-
-	// Special handling for enum output type
-	if (output === "enum" && enumValues) {
-		const response = await runtime.useModel(modelType, {
-			runtime,
-			prompt,
-			modelType,
-			stopSequences,
-			maxTokens: 8,
-			object: true,
-		});
-
-		// Clean up the response to extract just the enum value
-		const cleanedResponse = response.trim();
-
-		// Verify the response is one of the allowed enum values
-		if (enumValues.includes(cleanedResponse)) {
-			return cleanedResponse;
-		}
-
-		// If the response includes one of the enum values (case insensitive)
-		const matchedValue = enumValues.find((value) =>
-			cleanedResponse.toLowerCase().includes(value.toLowerCase()),
-		);
-
-		if (matchedValue) {
-			return matchedValue;
-		}
-
-		logger.error(`Invalid enum value received: ${cleanedResponse}`);
-		logger.error(`Expected one of: ${enumValues.join(", ")}`);
-		return null;
-	}
-
-	// Regular object/array generation
-	const response = await runtime.useModel(modelType, {
-		runtime,
-		prompt,
-		modelType,
-		stopSequences,
-		object: true,
-	});
-
-	let jsonString = response;
-
-	// Find appropriate brackets based on expected output type
-	const firstChar = output === "array" ? "[" : "{";
-	const lastChar = output === "array" ? "]" : "}";
-
-	const firstBracket = response.indexOf(firstChar);
-	const lastBracket = response.lastIndexOf(lastChar);
-
-	if (firstBracket !== -1 && lastBracket !== -1 && firstBracket < lastBracket) {
-		jsonString = response.slice(firstBracket, lastBracket + 1);
-	}
-
-	if (jsonString.length === 0) {
-		logger.error(`Failed to extract JSON ${output} from model response`);
-		return null;
-	}
-
-	// Parse the JSON string
-	try {
-		const json = JSON.parse(jsonString);
-
-		// Validate against schema if provided
-		if (schema) {
-			return schema.parse(json);
-		}
-
-		return json;
-	} catch (_error) {
-		logger.error(`Failed to parse JSON ${output}`);
-		logger.error(jsonString);
-		return null;
-	}
-};
-
-/**
- * Asynchronously generates an array of objects based on the provided parameters.
- *
- * @param {Object} param0 - The destructured object containing the input parameters:
- * @param {IAgentRuntime} param0.runtime - The runtime object provided by the agent.
- * @param {string} param0.prompt - The prompt to use for generating the objects.
- * @param {ModelType} [param0.modelType=ModelTypes.TEXT_SMALL] - The type of model to use for generating the objects.
- * @param {ZodSchema} [param0.schema] - The schema to validate the generated objects.
- * @param {string} [param0.schemaName] - The name of the schema.
- * @param {string} [param0.schemaDescription] - The description of the schema.
- *
- * @returns {Promise<z.infer<typeof schema>[]>} An array of objects generated based on the parameters.
- */
-async function generateObjectArray({
-	runtime,
-	prompt,
-	modelType = ModelTypes.TEXT_SMALL,
-	schema,
-	schemaName,
-	schemaDescription,
-}: {
-	runtime: IAgentRuntime;
-	prompt: string;
-	modelType: ModelType;
-	schema?: ZodSchema;
-	schemaName?: string;
-	schemaDescription?: string;
-}): Promise<z.infer<typeof schema>[]> {
-	if (!prompt) {
-		logger.error("generateObjectArray prompt is empty");
-		return [];
-	}
-
-	const result = await generateObject({
-		runtime,
-		prompt,
-		modelType,
-		output: "array",
-		schema,
-	});
-
-	if (!Array.isArray(result)) {
-		logger.error("Generated result is not an array");
-		return [];
-	}
-
-	return schema ? schema.parse(result) : result;
-}
 
 /**
  * Gets settings state from world metadata
@@ -513,52 +347,65 @@ async function extractSettingValues(
 	state: State,
 	worldSettings: WorldSettings,
 ): Promise<SettingUpdate[]> {
+	// Find what settings need to be configured
+	const { requiredUnconfigured, optionalUnconfigured } =
+		categorizeSettings(worldSettings);
+
+	// Generate a prompt to extract settings from the user's message
+	const settingsContext = requiredUnconfigured
+		.concat(optionalUnconfigured)
+		.map(([key, setting]) => {
+			const requiredStr = setting.required ? "Required." : "Optional.";
+			return `${key}: ${setting.description} ${requiredStr}`;
+		})
+		.join("\n");
+
+	const basePrompt = dedent`
+    I need to extract settings values from the user's message.
+    
+    Available settings:
+    ${settingsContext}
+    
+    User message: ${state.text}
+
+    For each setting mentioned in the user's message, extract the value.
+    
+    Only return settings that are clearly mentioned in the user's message.
+    If a setting is mentioned but no clear value is provided, do not include it.
+    `;
+
 	try {
-		// Create prompt with current settings status for better extraction
-		const prompt = composePrompt({
-			state: {
-				settings: Object.entries(worldSettings)
-					.filter(([key]) => !key.startsWith("_")) // Skip internal settings
-					.map(([key, setting]) => ({
-						key,
-						...setting,
-					}))
-					.join("\n"),
-				settingsStatus: formatSettingsList(worldSettings),
+		// Use runtime.useModel directly with strong typing
+		const result = await runtime.useModel<
+			typeof ModelTypes.OBJECT_LARGE,
+			SettingUpdate[]
+		>(ModelTypes.OBJECT_LARGE, {
+			prompt: basePrompt,
+			output: "array",
+			schema: {
+				type: "array",
+				items: {
+					type: "object",
+					properties: {
+						key: { type: "string" },
+						value: { type: "string" },
+					},
+					required: ["key", "value"],
+				},
 			},
-			template: extractionTemplate,
 		});
 
-		// Generate extractions using larger model for better comprehension
-		const extractions = (await generateObjectArray({
-			runtime,
-			prompt,
-			modelType: ModelTypes.TEXT_LARGE,
-		})) as SettingUpdate[];
+		// Validate the extracted settings
+		if (!result || !Array.isArray(result)) {
+			return [];
+		}
 
-		logger.info(`Extracted ${extractions.length} potential setting updates`);
-
-		// Validate each extraction against setting definitions
-		const validExtractions = extractions.filter((update) => {
-			const setting = worldSettings[update.key];
-			if (!setting) {
-				logger.info(`Ignored extraction for unknown setting: ${update.key}`);
-				return false;
-			}
-
-			// Validate value if validation function exists
-			if (setting.validation && !setting.validation(update.value)) {
-				logger.info(`Validation failed for setting ${update.key}`);
-				return false;
-			}
-
-			return true;
+		// Filter out any invalid settings
+		return result.filter(({ key, value }) => {
+			return Boolean(key && value && worldSettings[key]);
 		});
-
-		logger.info(`Validated ${validExtractions.length} setting updates`);
-		return validExtractions;
 	} catch (error) {
-		logger.error("Error extracting setting values:", error);
+		console.error("Error extracting settings:", error);
 		return [];
 	}
 }

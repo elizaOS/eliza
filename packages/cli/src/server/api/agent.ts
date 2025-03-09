@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import type {
 	Agent,
 	Character,
@@ -738,22 +739,39 @@ export function agentRouter(
 				ModelTypes.TEXT_TO_SPEECH,
 				text,
 			);
-			const audioBuffer = await speechResponse.arrayBuffer();
+
+			// Convert to Buffer if not already a Buffer
+			const audioBuffer = Buffer.isBuffer(speechResponse)
+				? speechResponse
+				: await new Promise<Buffer>((resolve, reject) => {
+						if (!(speechResponse instanceof Readable)) {
+							return reject(
+								new Error("Unexpected response type from TEXT_TO_SPEECH model"),
+							);
+						}
+
+						const chunks: Buffer[] = [];
+						speechResponse.on("data", (chunk) =>
+							chunks.push(Buffer.from(chunk)),
+						);
+						speechResponse.on("end", () => resolve(Buffer.concat(chunks)));
+						speechResponse.on("error", (err) => reject(err));
+					});
 
 			res.set({
 				"Content-Type": "audio/mpeg",
 				"Transfer-Encoding": "chunked",
 			});
 
-			res.send(Buffer.from(audioBuffer));
+			res.send(audioBuffer);
 		} catch (error) {
 			logger.error("[TTS] Error generating speech:", error);
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "PROCESSING_ERROR",
-					message: "Error generating speech",
-					details: error.message,
+					code: "TTS_ERROR",
+					message:
+						error instanceof Error ? error.message : "Unknown error occurred",
 				},
 			});
 		}
@@ -805,7 +823,24 @@ export function agentRouter(
 				ModelTypes.TEXT_TO_SPEECH,
 				text,
 			);
-			const audioBuffer = await speechResponse.arrayBuffer();
+
+			// Convert to Buffer if not already a Buffer
+			const audioBuffer = Buffer.isBuffer(speechResponse)
+				? speechResponse
+				: await new Promise<Buffer>((resolve, reject) => {
+						if (!(speechResponse instanceof Readable)) {
+							return reject(
+								new Error("Unexpected response type from TEXT_TO_SPEECH model"),
+							);
+						}
+
+						const chunks: Buffer[] = [];
+						speechResponse.on("data", (chunk) =>
+							chunks.push(Buffer.from(chunk)),
+						);
+						speechResponse.on("end", () => resolve(Buffer.concat(chunks)));
+						speechResponse.on("error", (err) => reject(err));
+					});
 
 			logger.debug("[SPEECH GENERATE] Setting response headers");
 			res.set({
@@ -813,7 +848,7 @@ export function agentRouter(
 				"Transfer-Encoding": "chunked",
 			});
 
-			res.send(Buffer.from(audioBuffer));
+			res.send(audioBuffer);
 			logger.success(
 				`[SPEECH GENERATE] Successfully generated speech for: ${runtime.character.name}`,
 			);
@@ -951,7 +986,9 @@ export function agentRouter(
 			const responseMessage = {
 				...userMessage,
 				entityId: runtime.agentId,
-				content: response,
+				content: { text: response },
+				roomId: roomId as UUID,
+				agentId: runtime.agentId,
 			};
 
 			await runtime.getMemoryManager("messages").createMemory(responseMessage);
@@ -959,7 +996,7 @@ export function agentRouter(
 
 			await runtime.processActions(
 				memory,
-				[responseMessage],
+				[responseMessage as Memory],
 				state,
 				async () => [memory],
 			);
@@ -967,9 +1004,26 @@ export function agentRouter(
 			logger.info("[SPEECH CONVERSATION] Generating speech response");
 			const speechResponse = await runtime.useModel(
 				ModelTypes.TEXT_TO_SPEECH,
-				response.text,
+				response,
 			);
-			const audioBuffer = await speechResponse.arrayBuffer();
+
+			// Convert to Buffer if not already a Buffer
+			const audioBuffer = Buffer.isBuffer(speechResponse)
+				? speechResponse
+				: await new Promise<Buffer>((resolve, reject) => {
+						if (!(speechResponse instanceof Readable)) {
+							return reject(
+								new Error("Unexpected response type from TEXT_TO_SPEECH model"),
+							);
+						}
+
+						const chunks: Buffer[] = [];
+						speechResponse.on("data", (chunk) =>
+							chunks.push(Buffer.from(chunk)),
+						);
+						speechResponse.on("end", () => resolve(Buffer.concat(chunks)));
+						speechResponse.on("error", (err) => reject(err));
+					});
 
 			logger.debug("[SPEECH CONVERSATION] Setting response headers");
 			res.set({
@@ -977,7 +1031,7 @@ export function agentRouter(
 				"Transfer-Encoding": "chunked",
 			});
 
-			res.send(Buffer.from(audioBuffer));
+			res.send(audioBuffer);
 			logger.success(
 				`[SPEECH CONVERSATION] Successfully processed conversation for: ${runtime.character.name}`,
 			);

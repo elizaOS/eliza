@@ -2,6 +2,7 @@
 	"compilerOptions": {
 		"outDir": "dist",
 		"rootDir": "src",
+		"baseUrl": "../..",
 		"lib": ["ESNext"],
 		"target": "ESNext",
 		"module": "Preserve",
@@ -20,7 +21,6 @@
 		"noEmitOnError": false,
 		"moduleDetection": "force",
 		"allowArbitraryExtensions": true,
-		"baseUrl": ".",
 		"paths": {
 			"@elizaos/core": ["../../packages/core/src"],
 			"@elizaos/core/*": ["../../packages/core/src/*"]

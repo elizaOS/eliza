@@ -8,9 +8,14 @@ import { splitChunks } from "./prompts";
 import {
 	type Action,
 	type Agent,
-	ChannelType,
 	type Character,
+	ChannelType,
+	type Component,
+	type Entity,
 	type Evaluator,
+	type Goal,
+	type GoalStatus,
+	type Handler,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type IDatabaseAdapter,
@@ -18,15 +23,23 @@ import {
 	type KnowledgeItem,
 	type Memory,
 	MemoryType,
+	type MemoryMetadata,
+	type ModelConfiguration,
+	type ModelParamsMap,
+	type ModelResultMap,
 	type ModelType,
 	ModelTypes,
+	type ObjectGenerationParams,
 	type Plugin,
 	type Provider,
+	type ProviderResult,
 	type Room,
 	type Route,
 	type Service,
 	type ServiceType,
+	ServiceTypes,
 	type State,
+	type Task,
 	type TaskWorker,
 	type UUID,
 	type World,
@@ -424,10 +437,9 @@ export class AgentRuntime implements IAgentRuntime {
 			return [];
 		}
 
-		const embedding = await this.useModel(
-			ModelTypes.TEXT_EMBEDDING,
-			message?.content?.text,
-		);
+		const embedding = await this.useModel(ModelTypes.TEXT_EMBEDDING, {
+			text: message?.content?.text,
+		});
 		const fragments = await this.getMemoryManager("knowledge").searchMemories({
 			embedding,
 			roomId: message.agentId,
@@ -1172,7 +1184,18 @@ export class AgentRuntime implements IAgentRuntime {
 		return models[0];
 	}
 
-	async useModel(modelType: ModelType, params: any): Promise<any> {
+	/**
+	 * Use a model with strongly typed parameters and return values based on model type
+	 * @template T - The model type to use
+	 * @template R - The expected return type, defaults to the type defined in ModelResultMap[T]
+	 * @param {T} modelType - The type of model to use
+	 * @param {ModelParamsMap[T] | any} params - The parameters for the model, typed based on model type
+	 * @returns {Promise<R>} - The model result, typed based on the provided generic type parameter
+	 */
+	async useModel<T extends ModelType, R = ModelResultMap[T]>(
+		modelType: T,
+		params: Omit<ModelParamsMap[T], "runtime"> | any,
+	): Promise<R> {
 		const modelKey =
 			typeof modelType === "string" ? modelType : ModelTypes[modelType];
 		const model = this.getModel(modelKey);
@@ -1180,26 +1203,50 @@ export class AgentRuntime implements IAgentRuntime {
 			throw new Error(`No handler found for delegate type: ${modelKey}`);
 		}
 
-		// Call the model
-		const response = await model(this, params);
+		// Handle different parameter formats
+		let paramsWithRuntime: any;
 
+		// If params is a simple value (string, number, etc.), pass it directly
+		if (
+			params === null ||
+			params === undefined ||
+			typeof params !== "object" ||
+			Array.isArray(params)
+		) {
+			paramsWithRuntime = params;
+		} else {
+			// Otherwise inject the runtime
+			paramsWithRuntime = {
+				...params,
+				runtime: this,
+			};
+		}
+
+		// Call the model
+		const response = await model(this, paramsWithRuntime);
+
+		// Log the model usage
 		await this.getDatabaseAdapter().log({
 			entityId: this.agentId,
 			roomId: this.agentId,
 			body: {
 				modelType,
 				modelKey,
-				params: params ? Object.keys(params) : [],
+				params: params
+					? typeof params === "object"
+						? Object.keys(params)
+						: typeof params
+					: null,
 				response:
 					Array.isArray(response) &&
 					response.every((x) => typeof x === "number")
 						? "[array]"
 						: response,
 			},
-			type: `useModel:${modelType}`,
+			type: `useModel:${modelKey}`,
 		});
 
-		return response;
+		return response as R;
 	}
 
 	registerEvent(event: string, handler: (params: any) => void) {
@@ -1286,6 +1333,9 @@ export class AgentRuntime implements IAgentRuntime {
 		this.taskWorkers.set(taskHandler.name, taskHandler);
 	}
 
+	/**
+	 * Get a task worker by name
+	 */
 	getTaskWorker(name: string): TaskWorker | undefined {
 		return this.taskWorkers.get(name);
 	}

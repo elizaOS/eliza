@@ -48,10 +48,9 @@ const factsProvider: Provider = {
 			.map((message) => message.content.text)
 			.join("\n");
 
-		const embedding = await runtime.useModel(
-			ModelTypes.TEXT_EMBEDDING,
-			last5Messages,
-		);
+		const embedding = await runtime.useModel(ModelTypes.TEXT_EMBEDDING, {
+			text: last5Messages,
+		});
 
 		const memoryManager = new MemoryManager({
 			runtime,

@@ -15,141 +15,35 @@ import {
 	type State,
 	type UUID,
 } from "../types";
+import dedent from "dedent";
 
 /**
- * Asynchronous function to generate an object based on the provided parameters.
- *
- * @param {Object} options - The options object containing runtime, prompt, modelType, stopSequences, output, enumValues, and schema.
- * @param {Object} options.runtime - The runtime object.
- * @param {string} options.prompt - The prompt to be used for generating the object.
- * @param {string} options.modelType - The type of model to use for generation.
- * @param {string[]} [options.stopSequences=[]] - The stop sequences to be used during generation.
- * @param {string} [options.output="object"] - The desired output type (object or enum).
- * @param {string[]} [options.enumValues=[]] - The enum values to be used for enum output type.
- * @param {Object} [options.schema] - The schema object to validate the generated object against.
- * @returns {Promise<any>} The generated object based on the provided parameters, or null if an error occurs.
- */
-export const generateObject = async ({
-	runtime,
-	prompt,
-	modelType,
-	stopSequences = [],
-	output = "object",
-	enumValues = [],
-	schema,
-}): Promise<any> => {
-	if (!prompt) {
-		const errorMessage = "generateObject prompt is empty";
-		console.error(errorMessage);
-		throw new Error(errorMessage);
-	}
-
-	// Special handling for enum output type
-	if (output === "enum" && enumValues) {
-		const response = await runtime.useModel(modelType, {
-			runtime,
-			prompt,
-			modelType,
-			stopSequences,
-			maxTokens: 8,
-			object: true,
-		});
-
-		// Clean up the response to extract just the enum value
-		const cleanedResponse = response.trim();
-
-		// Verify the response is one of the allowed enum values
-		if (enumValues.includes(cleanedResponse)) {
-			return cleanedResponse;
-		}
-
-		// If the response includes one of the enum values (case insensitive)
-		const matchedValue = enumValues.find((value) =>
-			cleanedResponse.toLowerCase().includes(value.toLowerCase()),
-		);
-
-		if (matchedValue) {
-			return matchedValue;
-		}
-
-		logger.error(`Invalid enum value received: ${cleanedResponse}`);
-		logger.error(`Expected one of: ${enumValues.join(", ")}`);
-		return null;
-	}
-
-	// Regular object/array generation
-	const response = await runtime.useModel(modelType, {
-		runtime,
-		prompt,
-		modelType,
-		stopSequences,
-		object: true,
-	});
-
-	let jsonString = response;
-
-	// Find appropriate brackets based on expected output type
-	const firstChar = output === "array" ? "[" : "{";
-	const lastChar = output === "array" ? "]" : "}";
-
-	const firstBracket = response.indexOf(firstChar);
-	const lastBracket = response.lastIndexOf(lastChar);
-
-	if (firstBracket !== -1 && lastBracket !== -1 && firstBracket < lastBracket) {
-		jsonString = response.slice(firstBracket, lastBracket + 1);
-	}
-
-	if (jsonString.length === 0) {
-		logger.error(`Failed to extract JSON ${output} from model response`);
-		return null;
-	}
-
-	// Parse the JSON string
-	try {
-		const json = JSON.parse(jsonString);
-
-		// Validate against schema if provided
-		if (schema) {
-			return schema.parse(json);
-		}
-
-		return json;
-	} catch (_error) {
-		logger.error(`Failed to parse JSON ${output}`);
-		logger.error(jsonString);
-		return null;
-	}
-};
-
-// Role modification validation helper
-/**
- * Determines if a user with a given current role can modify another user's role to a new role.
- * Owners can modify any role except other owners. Admins can only modify NONE roles and can't promote to OWNER or ADMIN.
- *
- * @param {Role} currentRole - The current role of the user attempting to modify roles.
- * @param {Role | null} targetRole - The current role of the user whose role is being modified, can be null.
- * @param {Role} newRole - The new role that the user is attempting to set.
- * @returns {boolean} Returns true if the role can be modified, false if not.
+ * Determines if the user with the current role can modify the role to the new role.
+ * @param currentRole The current role of the user making the change
+ * @param targetRole The current role of the user being changed (null if new user)
+ * @param newRole The new role to assign
+ * @returns Whether the role change is allowed
  */
 const canModifyRole = (
 	currentRole: Role,
 	targetRole: Role | null,
 	newRole: Role,
 ): boolean => {
-	// Owners can modify any role except other owners
-	if (currentRole === Role.OWNER) {
-		return targetRole !== Role.OWNER;
-	}
+	// User's can't change their own role
+	if (targetRole === currentRole) return false;
 
-	// Admins can only modify NONE roles and can't promote to OWNER or ADMIN
-	if (currentRole === Role.ADMIN) {
-		return (
-			(!targetRole || targetRole === Role.NONE) &&
-			![Role.OWNER, Role.ADMIN].includes(newRole)
-		);
+	switch (currentRole) {
+		// Owners can do everything
+		case Role.OWNER:
+			return true;
+		// Admins can only create/modify users up to their level
+		case Role.ADMIN:
+			return newRole !== Role.OWNER;
+		// Normal users can't modify roles
+		case Role.NONE:
+		default:
+			return false;
 	}
-
-	return false;
 };
 
 /**
@@ -193,61 +87,10 @@ Return the results in this JSON format:
 If no valid role assignments are found, return an empty array.`;
 
 /**
- * Asynchronous function to generate an array of objects based on the provided parameters.
- *
- * @param {Object} parameters - The parameters object.
- * @param {IAgentRuntime} parameters.runtime - The runtime for the agent.
- * @param {string} parameters.prompt - The prompt for generating the objects.
- * @param {ModelType} [parameters.modelType=ModelTypes.TEXT_SMALL] - The type of model to use.
- * @param {ZodSchema} [parameters.schema] - The schema for validating the generated objects.
- * @param {string} [parameters.schemaName] - The name of the schema.
- * @param {string} [parameters.schemaDescription] - The description of the schema.
- * @returns {Promise<z.infer<typeof schema>[]>} - A promise that resolves to an array of objects conforming to the schema.
- */
-async function generateObjectArray({
-	runtime,
-	prompt,
-	modelType = ModelTypes.TEXT_SMALL,
-	schema,
-	schemaName,
-	schemaDescription,
-}: {
-	runtime: IAgentRuntime;
-	prompt: string;
-	modelType: ModelType;
-	schema?: ZodSchema;
-	schemaName?: string;
-	schemaDescription?: string;
-}): Promise<z.infer<typeof schema>[]> {
-	if (!prompt) {
-		logger.error("generateObjectArray prompt is empty");
-		return [];
-	}
-
-	const result = await generateObject({
-		runtime,
-		prompt,
-		modelType,
-		output: "array",
-		schema,
-	});
-
-	if (!Array.isArray(result)) {
-		logger.error("Generated result is not an array");
-		return [];
-	}
-
-	return schema ? schema.parse(result) : result;
-}
-
-/**
- * Interface representing a role assignment.
- * @typedef {Object} RoleAssignment
- * @property {UUID} entityId - The unique identifier of the entity.
- * @property {Role} newRole - The new role assigned to the entity.
+ * Interface representing a role assignment to a user.
  */
 interface RoleAssignment {
-	entityId: UUID;
+	entityId: string;
 	newRole: Role;
 }
 
@@ -263,76 +106,26 @@ interface RoleAssignment {
  */
 const updateRoleAction: Action = {
 	name: "UPDATE_ROLE",
-	similes: ["CHANGE_ROLE", "SET_ROLE", "MODIFY_ROLE"],
+	similes: ["CHANGE_ROLE", "SET_PERMISSIONS", "ASSIGN_ROLE", "MAKE_ADMIN"],
 	description:
-		"Updates the role for a user with respect to the agent, world being the server they are in. For example, if an admin tells the agent that a user is their boss, set their role to ADMIN. Can only be used to set roles to ADMIN, OWNER or NONE. Can't be used to ban.",
+		"Assigns a role (Admin, Owner, None) to a user or list of users in a channel.",
 
 	validate: async (
 		runtime: IAgentRuntime,
 		message: Memory,
 		state: State,
 	): Promise<boolean> => {
-		logger.info("Starting role update validation");
+		// Only activate in group chats where the feature is enabled
+		const channelType = message.content.channelType as ChannelType;
+		const serverId = message.content.serverId as string;
 
-		// Validate message source
-		if (message.content.source !== "discord") {
-			logger.info("Validation failed: Not a discord message");
-			return false;
-		}
-
-		const room =
-			state.data.room ??
-			(await runtime.getDatabaseAdapter().getRoom(message.roomId));
-		if (!room) {
-			throw new Error("No room found");
-		}
-
-		// if room type is DM, return
-		if (room.type !== ChannelType.GROUP) {
-			// only handle in a group scenario for now
-			return false;
-		}
-
-		const serverId = room.serverId;
-		if (!serverId) {
-			throw new Error("No server ID found");
-		}
-		try {
-			// Get world data instead of ownership state from cache
-			const worldId = createUniqueUuid(runtime, serverId);
-			const world = await runtime.getDatabaseAdapter().getWorld(worldId);
-
-			// Get requester ID and convert to UUID for consistent lookup
-			const requesterId = message.entityId;
-
-			// Get roles from world metadata
-			if (!world.metadata?.roles) {
-				logger.info(`No roles found for server ${serverId}`);
-				return false;
-			}
-
-			// Lookup using UUID for consistency
-			const requesterRole = world.metadata.roles[requesterId] as Role;
-
-			logger.info(`Requester ${requesterId} role:`, requesterRole);
-
-			if (!requesterRole) {
-				logger.info("Validation failed: No requester role found");
-				return false;
-			}
-
-			if (![Role.OWNER, Role.ADMIN].includes(requesterRole)) {
-				logger.info(
-					`Validation failed: Role ${requesterRole} insufficient for role management`,
-				);
-				return false;
-			}
-
-			return true;
-		} catch (error) {
-			logger.error("Error validating updateOrgRole action:", error);
-			return false;
-		}
+		return (
+			// First, check if this is a supported channel type
+			(channelType === ChannelType.GROUP ||
+				channelType === ChannelType.WORLD) &&
+			// Then, check if we have a server ID
+			!!serverId
+		);
 	},
 
 	handler: async (
@@ -341,76 +134,100 @@ const updateRoleAction: Action = {
 		state: State,
 		_options: any,
 		callback: HandlerCallback,
-		responses: Memory[],
 	): Promise<void> => {
-		// Handle initial responses
-		for (const response of responses) {
-			await callback(response.content);
+		// Extract needed values from message and state
+		const { roomId } = message;
+		const channelType = message.content.channelType as ChannelType;
+		const serverId = message.content.serverId as string;
+		const worldId = runtime.getSetting("WORLD_ID");
+
+		// First, get the world for this server
+		let world;
+		if (worldId) {
+			world = await runtime.getDatabaseAdapter().getWorld(worldId as UUID);
 		}
 
-		const room =
-			state.data.room ??
-			(await runtime.getDatabaseAdapter().getRoom(message.roomId));
-		const world = await runtime.getDatabaseAdapter().getWorld(room.worldId);
-
-		if (!room) {
-			throw new Error("No room found");
-		}
-
-		const serverId = world.serverId;
-		const requesterId = message.entityId;
-
-		if (!world || !world.metadata) {
-			logger.error(`No world or metadata found for server ${serverId}`);
+		if (!world) {
+			logger.error("World not found");
 			await callback({
-				text: "Unable to process role changes due to missing server data.",
-				actions: ["UPDATE_ROLE"],
-				source: "discord",
+				text: "I couldn't find the world. This action only works in a world.",
 			});
 			return;
 		}
 
-		// Ensure roles object exists
-		if (!world.metadata.roles) {
+		if (!world.metadata?.roles) {
+			world.metadata = world.metadata || {};
 			world.metadata.roles = {};
 		}
 
-		// Get requester's role from world metadata
-		const requesterRole =
-			(world.metadata.roles[requesterId] as Role) || Role.NONE;
-
-		// Get all entities in the room
+		// Get the entities for this room
 		const entities = await runtime
 			.getDatabaseAdapter()
-			.getEntitiesForRoom(room.id, true);
+			.getEntitiesForRoom(roomId);
 
-		// Build server members prompt from entities
-		const serverMembersContext = entities
-			.map((entity) => {
-				const discordData = entity.components?.find(
-					(c) => c.type === "discord",
-				)?.data;
-				const name = discordData?.username || entity.names[0];
-				const id = entity.id;
-				return `${name} (${id})`;
-			})
-			.join("\n");
+		// Get the role of the requester
+		const requesterRole = world.metadata.roles[message.entityId] || Role.NONE;
 
-		// Create extraction prompt
+		// Construct extraction prompt
 		const extractionPrompt = composePrompt({
 			state: {
-				serverMembers: serverMembersContext,
-				speakerRole: requesterRole,
+				...state.values,
+				content: state.text,
 			},
-			template: extractionTemplate,
+			template: dedent`
+				# Task: Parse Role Assignment
+
+				I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
+
+				The available role types are:
+				- OWNER: Full control over the server and all settings
+				- ADMIN: Ability to manage channels and moderate content
+				- NONE: Regular user with no special permissions
+
+				# Current context:
+				{{content}}
+
+				Format your response as a JSON array of objects, each with:
+				- entityId: The name or ID of the user
+				- newRole: The role to assign (OWNER, ADMIN, or NONE)
+
+				Example:
+				\`\`\`json
+				[
+					{
+						"entityId": "John",
+						"newRole": "ADMIN"
+					},
+					{
+						"entityId": "Sarah",
+						"newRole": "OWNER"
+					}
+				]
+				\`\`\`
+			`,
 		});
 
-		// Extract role assignments
-		const result = (await generateObjectArray({
-			runtime,
+		// Extract role assignments using type-safe model call
+		const result = await runtime.useModel<
+			typeof ModelTypes.OBJECT_LARGE,
+			RoleAssignment[]
+		>(ModelTypes.OBJECT_LARGE, {
 			prompt: extractionPrompt,
-			modelType: ModelTypes.TEXT_SMALL,
-		})) as RoleAssignment[];
+			schema: {
+				type: "array",
+				items: {
+					type: "object",
+					properties: {
+						entityId: { type: "string" },
+						newRole: {
+							type: "string",
+							enum: Object.values(Role),
+						},
+					},
+					required: ["entityId", "newRole"],
+				},
+			},
+		});
 
 		if (!result?.length) {
 			await callback({

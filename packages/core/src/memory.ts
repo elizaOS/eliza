@@ -98,7 +98,9 @@ export class MemoryManager implements IMemoryManager {
 			// Generate embedding from text content
 			memory.embedding = await this.runtime.useModel(
 				ModelTypes.TEXT_EMBEDDING,
-				memoryText,
+				{
+					text: memoryText,
+				},
 			);
 		} catch (error) {
 			logger.error("Failed to generate embedding:", error);

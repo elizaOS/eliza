@@ -204,7 +204,7 @@ export class PostgresConnectionManager
 			});
 			logger.info("Migrations completed successfully!");
 		} catch (error) {
-			logger.error("Failed to run database migrations:", error);
+			logger.error("Failed to run database migrations (pg):", error);
 			// throw error;
 		}
 	}

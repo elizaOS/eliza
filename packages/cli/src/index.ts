@@ -30,30 +30,19 @@ async function main() {
 
 	// Find package.json relative to the current file
 	const packageJsonPath = path.resolve(__dirname, "../package.json");
-	console.log("packageJsonPath", packageJsonPath);
 
 	// Add a simple check in case the path is incorrect
 	let version = "0.0.0"; // Fallback version
 	if (!fs.existsSync(packageJsonPath)) {
-		console.warn(
-			"Package.json not found at expected location:",
-			packageJsonPath,
-		);
-		console.warn("Using fallback version:", version);
 	} else {
 		const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-		console.log("packageJson", packageJson);
 		version = packageJson.version;
 	}
-
-	console.log("version", version);
 
 	const program = new Command()
 		.name("eliza")
 		.description("elizaOS CLI - Manage your AI agents and plugins")
 		.version(version);
-
-	console.log("program", program);
 
 	program
 		.addCommand(init)

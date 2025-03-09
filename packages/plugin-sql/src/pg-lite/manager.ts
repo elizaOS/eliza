@@ -152,7 +152,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 			});
 			logger.info("Migrations completed successfully!");
 		} catch (error) {
-			logger.error("Failed to run database migrations:", error);
+			logger.error("Failed to run database migrations (pglite):", error);
 			// throw error;
 		}
 	}

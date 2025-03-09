@@ -1,3 +1,6 @@
+import type { Readable } from "node:stream";
+import type { z } from "zod";
+
 /**
  * Represents a UUID string in the format "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
  */
@@ -115,22 +118,24 @@ export type ModelType = (typeof ModelTypes)[keyof typeof ModelTypes] | string;
  * Model size/type classification
  */
 export const ModelTypes = {
-	SMALL: "text_small", // kept for backwards compatibility
-	MEDIUM: "text_large", // kept for backwards compatibility
-	LARGE: "text_large", // kept for backwards compatibility
-	TEXT_SMALL: "text_small",
-	TEXT_LARGE: "text_large",
-	TEXT_EMBEDDING: "text_embedding",
+	SMALL: "TEXT_SMALL", // kept for backwards compatibility
+	MEDIUM: "TEXT_LARGE", // kept for backwards compatibility
+	LARGE: "TEXT_LARGE", // kept for backwards compatibility
+	TEXT_SMALL: "TEXT_SMALL",
+	TEXT_LARGE: "TEXT_LARGE",
+	TEXT_EMBEDDING: "TEXT_EMBEDDING",
 	TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
 	TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
-	TEXT_REASONING_SMALL: "reasoning_small",
-	TEXT_REASONING_LARGE: "reasoning_large",
-	IMAGE: "image",
-	IMAGE_DESCRIPTION: "image_description",
-	TRANSCRIPTION: "transcription",
-	TEXT_TO_SPEECH: "text_to_speech",
-	AUDIO: "audio",
-	VIDEO: "video",
+	TEXT_REASONING_SMALL: "REASONING_SMALL",
+	TEXT_REASONING_LARGE: "REASONING_LARGE",
+	IMAGE: "IMAGE",
+	IMAGE_DESCRIPTION: "IMAGE_DESCRIPTION",
+	TRANSCRIPTION: "TRANSCRIPTION",
+	TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
+	AUDIO: "AUDIO",
+	VIDEO: "VIDEO",
+	OBJECT_SMALL: "OBJECT_SMALL",
+	OBJECT_LARGE: "OBJECT_LARGE",
 } as const;
 
 export type ServiceType = (typeof ServiceTypes)[keyof typeof ServiceTypes];
@@ -1103,7 +1108,19 @@ export interface IAgentRuntime {
 		includeList?: string[],
 	): Promise<State>;
 
-	useModel<T = any>(modelType: ModelType | string, params: T): Promise<any>;
+	/**
+	 * Use a model with strongly typed parameters and return values based on model type
+	 * @template T - The model type to use
+	 * @template R - The expected return type, defaults to the type defined in ModelResultMap[T]
+	 * @param {T} modelType - The type of model to use
+	 * @param {ModelParamsMap[T] | any} params - The parameters for the model, typed based on model type
+	 * @returns {Promise<R>} - The model result, typed based on the provided generic type parameter
+	 */
+	useModel<T extends ModelType, R = ModelResultMap[T]>(
+		modelType: T,
+		params: Omit<ModelParamsMap[T], "runtime"> | any,
+	): Promise<R>;
+
 	registerModel(
 		modelType: ModelType | string,
 		handler: (params: any) => Promise<any>,
@@ -1404,4 +1421,200 @@ export interface OnboardingConfig {
 	settings: {
 		[key: string]: Omit<Setting, "value">;
 	};
+}
+
+/**
+ * Base parameters common to all model types
+ */
+export interface BaseModelParams {
+	/** The agent runtime for accessing services and utilities */
+	runtime: IAgentRuntime;
+}
+
+/**
+ * Parameters for text generation models
+ */
+export interface TextGenerationParams extends BaseModelParams {
+	/** The prompt to generate text from */
+	prompt: string;
+	/** Model temperature (0.0 to 1.0, lower is more deterministic) */
+	temperature?: number;
+	/** Maximum number of tokens to generate */
+	maxTokens?: number;
+	/** Sequences that should stop generation when encountered */
+	stopSequences?: string[];
+	/** Frequency penalty to apply */
+	frequencyPenalty?: number;
+	/** Presence penalty to apply */
+	presencePenalty?: number;
+}
+
+/**
+ * Parameters for text embedding models
+ */
+export interface TextEmbeddingParams extends BaseModelParams {
+	/** The text to create embeddings for */
+	text: string;
+}
+
+/**
+ * Parameters for text tokenization models
+ */
+export interface TokenizeTextParams extends BaseModelParams {
+	/** The text to tokenize */
+	prompt: string;
+	/** The model type to use for tokenization */
+	modelType: ModelType;
+}
+
+/**
+ * Parameters for text detokenization models
+ */
+export interface DetokenizeTextParams extends BaseModelParams {
+	/** The tokens to convert back to text */
+	tokens: number[];
+	/** The model type to use for detokenization */
+	modelType: ModelType;
+}
+
+/**
+ * Parameters for image generation models
+ */
+export interface ImageGenerationParams extends BaseModelParams {
+	/** The prompt describing the image to generate */
+	prompt: string;
+	/** The dimensions of the image to generate */
+	size?: string;
+	/** Number of images to generate */
+	count?: number;
+}
+
+/**
+ * Parameters for image description models
+ */
+export interface ImageDescriptionParams extends BaseModelParams {
+	/** The URL or path of the image to describe */
+	imageUrl: string;
+	/** Optional prompt to guide the description */
+	prompt?: string;
+}
+
+/**
+ * Parameters for transcription models
+ */
+export interface TranscriptionParams extends BaseModelParams {
+	/** The URL or path of the audio file to transcribe */
+	audioUrl: string;
+	/** Optional prompt to guide transcription */
+	prompt?: string;
+}
+
+/**
+ * Parameters for text-to-speech models
+ */
+export interface TextToSpeechParams extends BaseModelParams {
+	/** The text to convert to speech */
+	text: string;
+	/** The voice to use */
+	voice?: string;
+	/** The speaking speed */
+	speed?: number;
+}
+
+/**
+ * Parameters for audio processing models
+ */
+export interface AudioProcessingParams extends BaseModelParams {
+	/** The URL or path of the audio file to process */
+	audioUrl: string;
+	/** The type of audio processing to perform */
+	processingType: string;
+}
+
+/**
+ * Parameters for video processing models
+ */
+export interface VideoProcessingParams extends BaseModelParams {
+	/** The URL or path of the video file to process */
+	videoUrl: string;
+	/** The type of video processing to perform */
+	processingType: string;
+}
+
+/**
+ * Optional JSON schema for validating generated objects
+ */
+export type JSONSchema = {
+	type: string;
+	properties?: Record<string, any>;
+	required?: string[];
+	items?: JSONSchema;
+	[key: string]: any;
+};
+
+/**
+ * Parameters for object generation models
+ * @template T - The expected return type, inferred from schema if provided
+ */
+export interface ObjectGenerationParams<T = any> extends BaseModelParams {
+	/** The prompt describing the object to generate */
+	prompt: string;
+	/** Optional JSON schema for validation */
+	schema?: JSONSchema;
+	/** Type of object to generate */
+	output?: "object" | "array" | "enum";
+	/** For enum type, the allowed values */
+	enumValues?: string[];
+	/** Model type to use */
+	modelType?: ModelType;
+	/** Model temperature (0.0 to 1.0) */
+	temperature?: number;
+	/** Sequences that should stop generation */
+	stopSequences?: string[];
+}
+
+/**
+ * Map of model types to their parameter types
+ */
+export interface ModelParamsMap {
+	[ModelTypes.TEXT_SMALL]: TextGenerationParams;
+	[ModelTypes.TEXT_LARGE]: TextGenerationParams;
+	[ModelTypes.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
+	[ModelTypes.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
+	[ModelTypes.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
+	[ModelTypes.TEXT_REASONING_SMALL]: TextGenerationParams;
+	[ModelTypes.TEXT_REASONING_LARGE]: TextGenerationParams;
+	[ModelTypes.IMAGE]: ImageGenerationParams;
+	[ModelTypes.IMAGE_DESCRIPTION]: ImageDescriptionParams | string;
+	[ModelTypes.TRANSCRIPTION]: TranscriptionParams | Buffer | string;
+	[ModelTypes.TEXT_TO_SPEECH]: TextToSpeechParams | string;
+	[ModelTypes.AUDIO]: AudioProcessingParams;
+	[ModelTypes.VIDEO]: VideoProcessingParams;
+	[ModelTypes.OBJECT_SMALL]: ObjectGenerationParams<any>;
+	[ModelTypes.OBJECT_LARGE]: ObjectGenerationParams<any>;
+	// Allow string index for custom model types
+	[key: string]: BaseModelParams | any;
+}
+
+/**
+ * Map of model types to their return value types
+ */
+export interface ModelResultMap {
+	[ModelTypes.TEXT_SMALL]: string;
+	[ModelTypes.TEXT_LARGE]: string;
+	[ModelTypes.TEXT_EMBEDDING]: number[];
+	[ModelTypes.TEXT_TOKENIZER_ENCODE]: number[];
+	[ModelTypes.TEXT_TOKENIZER_DECODE]: string;
+	[ModelTypes.TEXT_REASONING_SMALL]: string;
+	[ModelTypes.TEXT_REASONING_LARGE]: string;
+	[ModelTypes.IMAGE]: { url: string }[];
+	[ModelTypes.IMAGE_DESCRIPTION]: { title: string; description: string };
+	[ModelTypes.TRANSCRIPTION]: string;
+	[ModelTypes.TEXT_TO_SPEECH]: Readable | Buffer;
+	[ModelTypes.AUDIO]: any; // Specific return type depends on processing type
+	[ModelTypes.VIDEO]: any; // Specific return type depends on processing type
+	[ModelTypes.OBJECT_SMALL]: any;
+	[ModelTypes.OBJECT_LARGE]: any;
+	// Allow string index for custom model types
+	[key: string]: any;
 }

@@ -534,9 +534,10 @@ export const bootstrapPlugin: Plugin = {
 		choiceAction,
 		updateRoleAction,
 		updateSettingsAction,
+		goalAction,
 	],
 	events,
-	evaluators: [reflectionEvaluator, goalAction],
+	evaluators: [reflectionEvaluator],
 	providers: [
 		evaluatorsProvider,
 		anxietyProvider,

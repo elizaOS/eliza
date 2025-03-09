@@ -1372,7 +1372,9 @@ export const localAIPlugin: Plugin = {
 							// Test with normal text
 							const embedding = await runtime.useModel(
 								ModelTypes.TEXT_EMBEDDING,
-								"Test embedding generation",
+								{
+									text: "This is a test of the text embedding model.",
+								},
 							);
 
 							logger.info(
