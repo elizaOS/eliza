@@ -8,7 +8,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": false,
-    "noEmit": false,
+    "noEmit": true,
     "declaration": true,
     "resolveJsonModule": true,
     "noImplicitAny": false,
@@ -19,9 +19,8 @@
     "allowArbitraryExtensions": true,
     "types": ["node"],
     "sourceMap": true,
-    "composite": true,
     "rootDir": "./src"
   },
-  "include": ["src/**/*.ts", "src/**/*.js"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }

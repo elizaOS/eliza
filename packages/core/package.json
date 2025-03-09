@@ -20,7 +20,7 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsup && tsc --emitDeclarationOnly --outDir dist",
+		"build": "tsup && tsc -p tsconfig.build.json",
 		"watch": "tsc --watch",
 		"dev": "tsup --watch",
 		"build:docs": "cd docs && bun run build",
