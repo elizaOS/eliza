@@ -8,8 +8,5 @@ export default defineConfig({
 	base: "/degen-intel/",
 	build: {
 		emptyOutDir: false,
-		rollupOptions: {
-			external: ["moment"],
-		},
 	},
 });
