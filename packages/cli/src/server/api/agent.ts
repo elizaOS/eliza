@@ -12,7 +12,7 @@ import type {
 import {
 	ChannelType,
 	ModelTypes,
-	composePrompt,
+	composePromptFromState,
 	createUniqueUuid,
 	logger,
 	messageHandlerTemplate,
@@ -539,7 +539,7 @@ export function agentRouter(
 
 			let state = await runtime.composeState(userMessage);
 
-			const prompt = composePrompt({
+			const prompt = composePromptFromState({
 				state,
 				template: messageHandlerTemplate,
 			});
@@ -917,7 +917,7 @@ export function agentRouter(
 			const state = await runtime.composeState(userMessage);
 
 			logger.debug("[SPEECH CONVERSATION] Creating context");
-			const prompt = composePrompt({
+			const prompt = composePromptFromState({
 				state,
 				template: messageHandlerTemplate,
 			});

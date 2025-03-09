@@ -7,7 +7,7 @@ import {
 	type Memory,
 	ModelTypes,
 	type State,
-	composePrompt,
+	composePromptFromState,
 	getUserServerRole,
 	getWorldSettings,
 	logger,
@@ -227,7 +227,7 @@ const twitterPostAction: Action = {
 			}
 
 			// Generate tweet content
-			const prompt = composePrompt({
+			const prompt = composePromptFromState({
 				state,
 				template: tweetGenerationTemplate,
 			});

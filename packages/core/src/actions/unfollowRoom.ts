@@ -1,4 +1,4 @@
-import { composePrompt } from "../prompts";
+import { composePromptFromState } from "../prompts";
 import { booleanFooter, parseBooleanFromText } from "../prompts";
 import {
 	type Action,
@@ -64,7 +64,7 @@ export const unfollowRoomAction: Action = {
 		_responses?: Memory[],
 	) => {
 		async function _shouldUnfollow(state: State): Promise<boolean> {
-			const shouldUnfollowPrompt = composePrompt({
+			const shouldUnfollowPrompt = composePromptFromState({
 				state,
 				template: shouldUnfollowTemplate, // Define this template separately
 			});

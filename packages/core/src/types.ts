@@ -633,7 +633,9 @@ export interface ModelConfiguration {
 	maxInputTokens?: number;
 }
 
-export type TemplateType = string | ((options: { state: State }) => string);
+export type TemplateType =
+	| string
+	| ((options: { state: State | { [key: string]: string } }) => string);
 
 /**
  * Configuration for an agent character

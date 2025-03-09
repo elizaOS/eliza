@@ -166,14 +166,17 @@ export const choiceAction: Action = {
 				};
 			});
 
+			// format tasks as a string
+			const tasksString = formattedTasks
+				.map((task) => {
+					return `Task ID: ${task.taskId} - ${task.name}\nAvailable options:\n${task.options.map((opt) => `- ${opt.name}: ${opt.description}`).join("\n")}`;
+				})
+				.join("\n");
+
 			const prompt = composePrompt({
 				state: {
-					...state,
-					values: {
-						...state.values,
-						tasks: formattedTasks,
-						recentMessages: message.content.text,
-					},
+					tasks: tasksString,
+					recentMessages: message.content.text,
 				},
 				template: optionExtractionTemplate,
 			});

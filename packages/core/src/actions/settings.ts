@@ -1,7 +1,11 @@
 import type { ZodSchema, z } from "zod";
 import { createUniqueUuid } from "../entities";
 import { logger } from "../logger";
-import { composePrompt, parseJSONObjectFromText } from "../prompts";
+import {
+	composePrompt,
+	composePromptFromState,
+	parseJSONObjectFromText,
+} from "../prompts";
 import { findWorldForOwner } from "../roles";
 import {
 	type Action,
@@ -513,17 +517,14 @@ async function extractSettingValues(
 		// Create prompt with current settings status for better extraction
 		const prompt = composePrompt({
 			state: {
-				...state,
-				values: {
-					...state.values,
-					settings: Object.entries(worldSettings)
-						.filter(([key]) => !key.startsWith("_")) // Skip internal settings
-						.map(([key, setting]) => ({
-							key,
-							...setting,
-						})),
-					settingsStatus: formatSettingsList(worldSettings),
-				},
+				settings: Object.entries(worldSettings)
+					.filter(([key]) => !key.startsWith("_")) // Skip internal settings
+					.map(([key, setting]) => ({
+						key,
+						...setting,
+					}))
+					.join("\n"),
+				settingsStatus: formatSettingsList(worldSettings),
 			},
 			template: extractionTemplate,
 		});
@@ -655,11 +656,7 @@ async function handleOnboardingComplete(
 		// Generate completion message
 		const prompt = composePrompt({
 			state: {
-				...state,
-				values: {
-					...state.values,
-					settingsStatus: formatSettingsList(worldSettings),
-				},
+				settingsStatus: formatSettingsList(worldSettings),
 			},
 			template: completionTemplate,
 		});
@@ -705,16 +702,16 @@ async function generateSuccessResponse(
 			return;
 		}
 
+		const requiredUnconfiguredString = requiredUnconfigured
+			.map(([key, setting]) => `${key}: ${setting.name}`)
+			.join("\n");
+
 		// Generate success message
 		const prompt = composePrompt({
 			state: {
-				...state,
-				values: {
-					...state.values,
-					updateMessages: messages.join("\n"),
-					nextSetting: requiredUnconfigured[0][1],
-					remainingRequired: requiredUnconfigured.length,
-				},
+				updateMessages: messages.join("\n"),
+				nextSetting: requiredUnconfiguredString,
+				remainingRequired: requiredUnconfigured.length.toString(),
 			},
 			template: successTemplate,
 		});
@@ -759,15 +756,15 @@ async function generateFailureResponse(
 			return;
 		}
 
+		const requiredUnconfiguredString = requiredUnconfigured
+			.map(([key, setting]) => `${key}: ${setting.name}`)
+			.join("\n");
+
 		// Generate failure message
 		const prompt = composePrompt({
 			state: {
-				...state,
-				values: {
-					...state.values,
-					nextSetting: requiredUnconfigured[0][1],
-					remainingRequired: requiredUnconfigured.length,
-				},
+				nextSetting: requiredUnconfiguredString,
+				remainingRequired: requiredUnconfigured.length.toString(),
 			},
 			template: failureTemplate,
 		});
@@ -802,7 +799,7 @@ async function generateErrorResponse(
 	callback: HandlerCallback,
 ): Promise<void> {
 	try {
-		const prompt = composePrompt({
+		const prompt = composePromptFromState({
 			state,
 			template: errorTemplate,
 		});

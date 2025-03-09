@@ -1,4 +1,4 @@
-import { composePrompt, parseJSONObjectFromText } from "../prompts";
+import { composePromptFromState, parseJSONObjectFromText } from "../prompts";
 import {
 	type Action,
 	type ActionExample,
@@ -67,7 +67,7 @@ export const replyAction = {
 			"RECENT_MESSAGES",
 		]);
 
-		const prompt = composePrompt({
+		const prompt = composePromptFromState({
 			state,
 			template: replyTemplate,
 		});

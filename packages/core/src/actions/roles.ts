@@ -399,12 +399,8 @@ const updateRoleAction: Action = {
 		// Create extraction prompt
 		const extractionPrompt = composePrompt({
 			state: {
-				...state,
-				values: {
-					...state.values,
-					serverMembers: serverMembersContext,
-					speakerRole: requesterRole,
-				},
+				serverMembers: serverMembersContext,
+				speakerRole: requesterRole,
 			},
 			template: extractionTemplate,
 		});

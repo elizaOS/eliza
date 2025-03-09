@@ -1,18 +1,13 @@
 // Combined DegenTradingService that integrates all functionality
 
 import {
-	type Content,
 	type IAgentRuntime,
-	type Memory,
 	ModelTypes,
 	Service,
-	type State,
 	type UUID,
-	composePrompt,
 	logger,
 	parseJSONObjectFromText,
 } from "@elizaos/core";
-import { Connection, VersionedTransaction } from "@solana/web3.js";
 import { v4 as uuidv4 } from "uuid";
 import { REQUIRED_SETTINGS } from "./config/config";
 import {
@@ -26,7 +21,6 @@ import {
 	executeTrade,
 	getTokenBalance,
 	getWalletBalance,
-	getWalletKeypair,
 } from "./utils/wallet";
 
 /**
@@ -883,34 +877,31 @@ export class DegenTradingService extends Service {
 			const prompt = composePrompt({
 				template: tradeAnalysisTemplate,
 				state: {
-					values: {
-						bio: "",
-						lore: "",
-						messageDirections: "",
-						postDirections: "",
-						replyDirections: "",
-						systemDirections: "",
-						userDirections: "",
-						roomId: `trade-0000-0000-0000-${Date.now().toString(16)}`,
-						entities: JSON.stringify(["trader"]),
-						recentMessages: JSON.stringify([""]),
-						recentMessagesData: [],
-						walletBalance: walletBalance.toString(),
-						api_data: JSON.stringify(
-							{
-								// Format the API data nicely
-								recommended_buy: tokenRecommendation.recommended_buy,
-								recommend_buy_address:
-									tokenRecommendation.recommend_buy_address,
-								reason: tokenRecommendation.reason,
-								buy_amount: tokenRecommendation.buy_amount,
-								marketcap: tokenRecommendation.marketcap,
-							},
-							null,
-							2,
-						), // Pretty print with 2 spaces indentation
-					},
-				} as unknown as State,
+					bio: "",
+					lore: "",
+					messageDirections: "",
+					postDirections: "",
+					replyDirections: "",
+					systemDirections: "",
+					userDirections: "",
+					roomId: `trade-0000-0000-0000-${Date.now().toString(16)}`,
+					entities: JSON.stringify(["trader"]),
+					recentMessages: JSON.stringify([""]),
+					recentMessagesData: [],
+					walletBalance: walletBalance.toString(),
+					api_data: JSON.stringify(
+						{
+							// Format the API data nicely
+							recommended_buy: tokenRecommendation.recommended_buy,
+							recommend_buy_address: tokenRecommendation.recommend_buy_address,
+							reason: tokenRecommendation.reason,
+							buy_amount: tokenRecommendation.buy_amount,
+							marketcap: tokenRecommendation.marketcap,
+						},
+						null,
+						2,
+					), // Pretty print with 2 spaces indentation
+				},
 			});
 
 			// Log context

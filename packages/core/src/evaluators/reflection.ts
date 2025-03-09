@@ -268,15 +268,12 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
 	const prompt = composePrompt({
 		state: {
-			...state,
-			values: {
-				...state.values,
-				knownFacts: formatFacts(knownFacts),
-				roomType: message.content.channelType,
-				entitiesInRoom: JSON.stringify(entities),
-				existingRelationships: JSON.stringify(existingRelationships),
-				senderId: message.entityId,
-			},
+			...state.values,
+			knownFacts: formatFacts(knownFacts),
+			roomType: message.content.channelType as string,
+			entitiesInRoom: JSON.stringify(entities),
+			existingRelationships: JSON.stringify(existingRelationships),
+			senderId: message.entityId,
 		},
 		template:
 			runtime.character.templates?.reflectionTemplate || reflectionTemplate,

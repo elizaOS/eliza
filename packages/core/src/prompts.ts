@@ -31,14 +31,14 @@ import { ModelTypes } from "./types";
  *
  * // Composing the context with simple string replacement will result in:
  * // "Hello, Alice! You are 30 years old."
- * const contextSimple = composePrompt({ state, template });
+ * const contextSimple = composePromptFromState({ state, template });
  *
- * // Using composePrompt with a template function for dynamic template
+ * // Using composePromptFromState with a template function for dynamic template
  * const template = ({ state }) => {
  * const tone = Math.random() > 0.5 ? "kind" : "rude";
  *   return `Hello, {{userName}}! You are {{userAge}} years old. Be ${tone}`;
  * };
- * const contextSimple = composePrompt({ state, template });
+ * const contextSimple = composePromptFromState({ state, template });
  */
 
 /**
@@ -53,13 +53,49 @@ export const composePrompt = ({
 	state,
 	template,
 }: {
+	state: { [key: string]: string };
+	template: TemplateType;
+}) => {
+	const templateStr =
+		typeof template === "function" ? template({ state }) : template;
+	const templateFunction = handlebars.compile(templateStr);
+	const output = composeRandomUser(templateFunction(state), 10);
+	return output;
+};
+
+/**
+ * Function to compose a prompt using a provided template and state.
+ *
+ * @param {Object} options - Object containing state and template information.
+ * @param {State} options.state - The state object containing values to fill the template.
+ * @param {TemplateType} options.template - The template to be used for composing the prompt.
+ * @returns {string} The composed prompt output.
+ */
+export const composePromptFromState = ({
+	state,
+	template,
+}: {
 	state: State;
 	template: TemplateType;
 }) => {
 	const templateStr =
 		typeof template === "function" ? template({ state }) : template;
 	const templateFunction = handlebars.compile(templateStr);
-	const output = composeRandomUser(templateFunction(state.values), 10);
+
+	// get any keys that are in state but are not named text, values or data
+	const stateKeys = Object.keys(state);
+	const filteredKeys = stateKeys.filter(
+		(key) => !["text", "values", "data"].includes(key),
+	);
+	const filteredState = filteredKeys.reduce((acc, key) => {
+		acc[key] = state[key];
+		return acc;
+	}, {});
+
+	const output = composeRandomUser(
+		templateFunction({ ...filteredState, ...state.values }),
+		10,
+	);
 	return output;
 };
 

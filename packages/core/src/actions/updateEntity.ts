@@ -9,7 +9,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { findEntityByName } from "../entities";
 import { logger } from "../logger";
-import { composePrompt } from "../prompts";
+import { composePromptFromState } from "../prompts";
 import {
 	type Action,
 	type ActionExample,
@@ -182,7 +182,7 @@ export const updateEntityAction: Action = {
 			let existingComponent = null;
 
 			// Generate component data using the combined template
-			const prompt = composePrompt({
+			const prompt = composePromptFromState({
 				state,
 				template: componentTemplate,
 			});

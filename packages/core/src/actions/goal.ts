@@ -1,4 +1,4 @@
-import { composePrompt, parseJsonArrayFromText } from "../prompts";
+import { composePromptFromState, parseJsonArrayFromText } from "../prompts";
 import {
 	type Action,
 	type Goal,
@@ -67,7 +67,7 @@ async function handler(
 	state: State | undefined,
 	options: { [key: string]: unknown } = { onlyInProgress: true },
 ): Promise<Goal[]> {
-	const prompt = composePrompt({
+	const prompt = composePromptFromState({
 		state,
 		template: runtime.character.templates?.goalsTemplate || goalsTemplate,
 	});

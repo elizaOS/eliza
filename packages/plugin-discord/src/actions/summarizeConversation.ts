@@ -9,7 +9,7 @@ import {
 	type Memory,
 	ModelTypes,
 	type State,
-	composePrompt,
+	composePromptFromState,
 	getEntityDetails,
 	parseJSONObjectFromText,
 	splitChunks,
@@ -63,7 +63,7 @@ const getDateRange = async (
 	_message: Memory,
 	state: State,
 ) => {
-	const prompt = composePrompt({
+	const prompt = composePromptFromState({
 		state,
 		template: dateRangeTemplate,
 	});
@@ -291,7 +291,7 @@ const summarizeAction = {
 				chunkSize + 500,
 				runtime,
 			);
-			const prompt = composePrompt({
+			const prompt = composePromptFromState({
 				state,
 				// make sure it fits, we can pad the tokens a bit
 				template,

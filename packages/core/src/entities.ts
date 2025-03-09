@@ -1,6 +1,5 @@
 import { logger, stringToUuid } from "./index";
-import { parseJSONObjectFromText } from "./prompts";
-import { composePrompt } from "./prompts";
+import { composePrompt, parseJSONObjectFromText } from "./prompts";
 import {
 	type Entity,
 	type IAgentRuntime,
@@ -216,15 +215,11 @@ export async function findEntityByName(
 		// Compose context for LLM
 		const prompt = composePrompt({
 			state: {
-				...state,
-				values: {
-					...state.values,
-					roomName: room.name || room.id,
-					worldName: world?.name || "Unknown",
-					entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
-					entityId: message.entityId,
-					senderId: message.entityId,
-				},
+				roomName: room.name || room.id,
+				worldName: world?.name || "Unknown",
+				entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
+				entityId: message.entityId,
+				senderId: message.entityId,
 			},
 			template: entityResolutionTemplate,
 		});

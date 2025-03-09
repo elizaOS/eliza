@@ -466,10 +466,8 @@ async function handler(
 	const sentimentPrompt = composePrompt({
 		template: sentimentTemplate,
 		state: {
-			values: {
-				message: message.content.text,
-			},
-		} as unknown as State,
+			message: message.content.text,
+		},
 	});
 
 	const sentimentText = await runtime.useModel(ModelTypes.TEXT_LARGE, {
@@ -523,21 +521,24 @@ async function handler(
 
 	console.log("message", message);
 
+	const messageData = {
+		text: message.content.text,
+		entityId: message.entityId,
+		agentId: message.agentId,
+		roomId: message.roomId,
+		username: message.content.username ?? message.content.userName,
+	};
+
+	// nicely format message data
+
+	const messageString = `username: ${messageData.username}: text: ${messageData.text}
+	entityId: ${messageData.entityId} | agentId: ${messageData.agentId} | roomId: ${messageData.roomId}`;
+
 	const prompt = composePrompt({
 		state: {
 			schema: JSON.stringify(getZodJsonSchema(recommendationSchema)),
-			values: {
-				message: JSON.stringify({
-					text: message.content.text,
-					entityId: message.entityId,
-					agentId: message.agentId,
-					roomId: message.roomId,
-					// TODO: name vs userName is bad
-					// This should be handled better, especially cross platform
-					username: message.content.username ?? message.content.userName,
-				}),
-			},
-		} as unknown as State,
+			message: messageString,
+		},
 		template: recommendationTemplate,
 	});
 
@@ -638,15 +639,15 @@ async function handler(
 			continue;
 		}
 
+		const recommendationString = `username: ${recommendation.username} | ticker: ${recommendation.ticker} | tokenAddress: ${recommendation.tokenAddress} | conviction: ${recommendation.conviction} | type: ${recommendation.type}`;
+
 		if (TELEGRAM_CHANNEL_ID) {
 			(async () => {
 				const prompt = composePrompt({
 					state: {
-						values: {
-							recommendation: JSON.stringify(recommendation),
-							recipientAgentName: runtime.character.name,
-						},
-					} as unknown as State,
+						recommendation: recommendationString,
+						recipientAgentName: runtime.character.name,
+					},
 					template: recommendationFormatTemplate,
 				});
 
@@ -750,13 +751,11 @@ async function handler(
 			}
 			const prompt = composePrompt({
 				state: {
-					values: {
-						agentName: runtime.character.name,
-						msg: message.content.text,
-						recommendation: JSON.stringify(recommendation),
-						token: tokenString,
-					},
-				} as unknown as State,
+					agentName: runtime.character.name,
+					msg: message.content.text,
+					recommendation: recommendationString,
+					token: tokenString,
+				},
 				template: recommendationConfirmTemplate,
 			});
 

@@ -1,4 +1,4 @@
-import { type Provider, type State, composePrompt } from "@elizaos/core";
+import { type Provider, composePrompt } from "@elizaos/core";
 import { formatRecommendations } from "../recommendations/evaluator";
 
 const recommendationsPrompt = `<user_recommendations_provider>
@@ -43,10 +43,8 @@ export const recommendationsProvider: Provider = {
 		const renderedText = composePrompt({
 			template: recommendationsPrompt,
 			state: {
-				values: {
-					recommendations: formattedRecommendations,
-				},
-			} as any as State,
+				recommendations: formattedRecommendations,
+			},
 		});
 
 		return {

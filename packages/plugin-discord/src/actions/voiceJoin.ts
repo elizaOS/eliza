@@ -8,7 +8,7 @@ import {
 	type Memory,
 	ModelTypes,
 	type State,
-	composePrompt,
+	composePromptFromState,
 	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
@@ -178,7 +178,7 @@ You should only respond with the name of the voice channel or none, no commentar
 				.join("\n"),
 		};
 
-		const prompt = composePrompt({
+		const prompt = composePromptFromState({
 			template: messageTemplate,
 			state: guessState as unknown as State,
 		});

@@ -9,7 +9,7 @@ import {
 	type Memory,
 	ModelTypes,
 	type State,
-	composePrompt,
+	composePromptFromState,
 	parseJSONObjectFromText,
 	trimTokens,
 } from "@elizaos/core";
@@ -59,7 +59,7 @@ const getAttachmentIds = async (
 	_message: Memory,
 	state: State,
 ): Promise<{ objective: string; attachmentIds: string[] } | null> => {
-	const prompt = composePrompt({
+	const prompt = composePromptFromState({
 		state,
 		template: attachmentIdsTemplate,
 	});
@@ -221,7 +221,7 @@ const summarizeAction = {
 			chunkSize,
 			runtime,
 		);
-		const prompt = composePrompt({
+		const prompt = composePromptFromState({
 			state,
 			// make sure it fits, we can pad the tokens a bit
 			// Get the model's tokenizer based on the current model being used

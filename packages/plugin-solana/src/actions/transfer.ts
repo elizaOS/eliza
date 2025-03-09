@@ -7,7 +7,7 @@ import {
 	type Memory,
 	ModelTypes,
 	type State,
-	composePrompt,
+	composePromptFromState,
 	logger,
 	parseJSONObjectFromText,
 } from "@elizaos/core";
@@ -156,7 +156,7 @@ export default {
 	): Promise<boolean> => {
 		logger.log("Starting TRANSFER handler...");
 
-		const transferPrompt = composePrompt({
+		const transferPrompt = composePromptFromState({
 			state: state,
 			template: transferTemplate,
 		});

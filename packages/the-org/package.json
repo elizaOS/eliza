@@ -17,10 +17,7 @@
 		"test": "vitest --run"
 	},
 	"nodemonConfig": {
-		"watch": [
-			"src",
-			"../core/dist"
-		],
+		"watch": ["src", "../core/dist"],
 		"ext": "ts,json",
 		"exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
 	},
@@ -76,5 +73,5 @@
 		"typescript-eslint": "^8.18.2",
 		"vite": "^6.0.5"
 	},
-	"gitHead": "383a5ce0902885b4cbb36ba529401936ccdacc60"
+	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
 }

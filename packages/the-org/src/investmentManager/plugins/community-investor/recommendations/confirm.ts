@@ -163,7 +163,7 @@ export const confirmRecommendation: Action = {
 
 		if (newUserRecommendations.length === 0) return;
 
-		//     const prompt = composePrompt({
+		//     const prompt = composePromptFromState({
 		//         state: {
 		//             ...state,
 		//             recommendations: formatRecommendations(newUserRecommendations),

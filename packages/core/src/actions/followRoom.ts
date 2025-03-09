@@ -1,5 +1,5 @@
 import logger from "../logger";
-import { composePrompt } from "../prompts";
+import { composePromptFromState } from "../prompts";
 import { booleanFooter } from "../prompts";
 import {
 	type Action,
@@ -82,7 +82,7 @@ export const followRoomAction: Action = {
 		_responses?: Memory[],
 	) => {
 		async function _shouldFollow(state: State): Promise<boolean> {
-			const shouldFollowPrompt = composePrompt({
+			const shouldFollowPrompt = composePromptFromState({
 				state,
 				template: shouldFollowTemplate, // Define this template separately
 			});

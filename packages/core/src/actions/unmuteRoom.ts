@@ -1,5 +1,5 @@
 import logger from "../logger";
-import { composePrompt } from "../prompts";
+import { composePromptFromState } from "../prompts";
 import { booleanFooter } from "../prompts";
 import {
 	type Action,
@@ -65,7 +65,7 @@ export const unmuteRoomAction: Action = {
 		_responses?: Memory[],
 	) => {
 		async function _shouldUnmute(state: State): Promise<boolean> {
-			const shouldUnmutePrompt = composePrompt({
+			const shouldUnmutePrompt = composePromptFromState({
 				state,
 				template: shouldUnmuteTemplate, // Define this template separately
 			});

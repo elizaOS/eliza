@@ -1,5 +1,5 @@
 import logger from "../logger";
-import { composePrompt } from "../prompts";
+import { composePromptFromState } from "../prompts";
 import { booleanFooter } from "../prompts";
 import {
 	type Action,
@@ -71,7 +71,7 @@ export const muteRoomAction: Action = {
 		_responses?: Memory[],
 	) => {
 		async function _shouldMute(state: State): Promise<boolean> {
-			const shouldMutePrompt = composePrompt({
+			const shouldMutePrompt = composePromptFromState({
 				state,
 				template: shouldMuteTemplate, // Define this template separately
 			});

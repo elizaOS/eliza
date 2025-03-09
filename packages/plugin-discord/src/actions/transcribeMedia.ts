@@ -7,7 +7,7 @@ import {
 	type Memory,
 	ModelTypes,
 	type State,
-	composePrompt,
+	composePromptFromState,
 	createUniqueUuid,
 	parseJSONObjectFromText,
 } from "@elizaos/core";
@@ -49,7 +49,7 @@ const getMediaAttachmentId = async (
 	_message: Memory,
 	state: State,
 ): Promise<string | null> => {
-	const prompt = composePrompt({
+	const prompt = composePromptFromState({
 		state,
 		template: mediaAttachmentIdTemplate,
 	});

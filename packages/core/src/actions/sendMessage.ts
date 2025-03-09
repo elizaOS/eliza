@@ -3,7 +3,7 @@
 
 import { findEntityByName } from "../entities";
 import { logger } from "../logger";
-import { composePrompt, parseJSONObjectFromText } from "../prompts";
+import { composePromptFromState, parseJSONObjectFromText } from "../prompts";
 import {
 	type Action,
 	type ActionExample,
@@ -164,7 +164,7 @@ export const sendMessageAction: Action = {
 			const worldId = room.worldId;
 
 			// Extract target and source information
-			const targetPrompt = composePrompt({
+			const targetPrompt = composePromptFromState({
 				state,
 				template: targetExtractionTemplate,
 			});

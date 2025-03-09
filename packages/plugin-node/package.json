@@ -15,13 +15,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist",
-		"scripts",
-		"package.json",
-		"LICENSE",
-		"tsup.config.ts"
-	],
+	"files": ["dist", "scripts", "package.json", "LICENSE", "tsup.config.ts"],
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.705.0",
 		"@aws-sdk/s3-request-presigner": "^3.705.0",
@@ -35,9 +29,7 @@
 		"uuid": "11.0.3",
 		"youtube-dl-exec": "3.0.15"
 	},
-	"trustedDependencies": [
-		"youtube-dl-exec"
-	],
+	"trustedDependencies": ["youtube-dl-exec"],
 	"devDependencies": {
 		"@types/node": "22.8.4",
 		"tsup": "8.4.0"
@@ -54,5 +46,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "383a5ce0902885b4cbb36ba529401936ccdacc60"
+	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
 }

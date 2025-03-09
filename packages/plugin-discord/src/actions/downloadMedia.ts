@@ -9,7 +9,7 @@ import {
 	ModelTypes,
 	ServiceTypes,
 	type State,
-	composePrompt,
+	composePromptFromState,
 	parseJSONObjectFromText,
 } from "@elizaos/core";
 
@@ -54,7 +54,7 @@ const getMediaUrl = async (
 	_message: Memory,
 	state: State,
 ): Promise<string | null> => {
-	const prompt = composePrompt({
+	const prompt = composePromptFromState({
 		state,
 		template: mediaUrlTemplate,
 	});

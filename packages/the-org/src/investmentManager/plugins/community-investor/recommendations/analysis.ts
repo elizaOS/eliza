@@ -3,7 +3,6 @@ import {
 	type Memory,
 	ModelTypes,
 	type State,
-	type UUID,
 	composePrompt,
 	logger,
 } from "@elizaos/core";
@@ -283,22 +282,22 @@ export const getTokenDetails: any = {
 			return;
 		}
 
-		const messages = rawMessages.map((m) => {
-			const content =
-				typeof m.content === "string" ? JSON.parse(m.content) : m.content;
-			return `
+		const messages = rawMessages
+			.map((m) => {
+				const content =
+					typeof m.content === "string" ? JSON.parse(m.content) : m.content;
+				return `
             <message>
                 <createdAt>${new Date(m.createdAt as number).toISOString()}</createdAt>
                 <content>${JSON.stringify(content.text)}</content>
             </message>`;
-		});
+			})
+			.join("\n");
 
 		const prompt = composePrompt({
 			state: {
-				values: {
-					messages: messages,
-				},
-			} as unknown as State,
+				messages: messages,
+			},
 			template: extractLatestTicketTemplate,
 		});
 
@@ -334,11 +333,9 @@ export const getTokenDetails: any = {
 
 		const tokenDetailsPrompt = composePrompt({
 			state: {
-				values: {
-					ticker: results.ticker,
-					tokenOverview: tokenOverviewString,
-				},
-			} as unknown as State,
+				ticker: results.ticker,
+				tokenOverview: tokenOverviewString,
+			},
 			template: tokenDetailsTemplate,
 		});
 

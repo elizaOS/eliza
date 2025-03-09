@@ -15,9 +15,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@coral-xyz/anchor": "0.30.1",
 		"@elizaos/core": "^1.0.0-alpha.20",
@@ -46,5 +44,5 @@
 		"form-data": "4.0.2",
 		"whatwg-url": "7.1.0"
 	},
-	"gitHead": "383a5ce0902885b4cbb36ba529401936ccdacc60"
+	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
 }

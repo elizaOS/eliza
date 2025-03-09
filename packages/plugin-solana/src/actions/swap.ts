@@ -6,7 +6,7 @@ import {
 	type Memory,
 	ModelTypes,
 	type State,
-	composePrompt,
+	composePromptFromState,
 	logger,
 	parseJSONObjectFromText,
 	settings,
@@ -271,7 +271,7 @@ export const executeSwap: Action = {
 			const walletData = await solanaService.getCachedData();
 			state.values.walletInfo = walletData;
 
-			const swapPrompt = composePrompt({
+			const swapPrompt = composePromptFromState({
 				state,
 				template: swapTemplate,
 			});

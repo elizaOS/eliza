@@ -15,9 +15,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@elizaos/core": "^1.0.0-alpha.20",
 		"@roamhq/wrtc": "^0.8.0",
@@ -51,5 +49,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "383a5ce0902885b4cbb36ba529401936ccdacc60"
+	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
 }

@@ -15,9 +15,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@telegraf/types": "7.1.0",
 		"telegraf": "4.16.3"
@@ -36,5 +34,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "383a5ce0902885b4cbb36ba529401936ccdacc60"
+	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
 }

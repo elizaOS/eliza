@@ -17,7 +17,7 @@ import { goalAction } from "./actions/goal";
 import { reflectionEvaluator } from "./evaluators/reflection";
 import { logger } from "./logger";
 import {
-	composePrompt,
+	composePromptFromState,
 	messageHandlerTemplate,
 	parseJSONObjectFromText,
 	shouldRespondTemplate,
@@ -174,7 +174,7 @@ const messageReceivedHandler = async ({
 		"ENTITIES",
 	]);
 
-	const shouldRespondPrompt = composePrompt({
+	const shouldRespondPrompt = composePromptFromState({
 		state,
 		template:
 			runtime.character.templates?.shouldRespondTemplate ||
@@ -207,7 +207,7 @@ const messageReceivedHandler = async ({
 	let responseMessages: Memory[] = [];
 
 	if (shouldRespond) {
-		const prompt = composePrompt({
+		const prompt = composePromptFromState({
 			state,
 			template:
 				runtime.character.templates?.messageHandlerTemplate ||

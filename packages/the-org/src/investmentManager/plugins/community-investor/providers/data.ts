@@ -4,7 +4,7 @@ import {
 	type Provider,
 	type State,
 	type UUID,
-	composePrompt,
+	composePromptFromState,
 } from "@elizaos/core";
 import { z } from "zod";
 import { formatRecommenderReport } from "../reports";
@@ -245,7 +245,7 @@ export const dataProvider: Provider = {
 				}),
 			};
 
-			const renderedText = composePrompt({
+			const renderedText = composePromptFromState({
 				state: stateData as unknown as State,
 				template: dataProviderTemplate,
 			});
