@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-discord",
-	"version": "1.0.0-alpha.17",
+	"version": "1.0.0-alpha.18",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -15,7 +15,9 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"dependencies": {
 		"@discordjs/opus": "github:discordjs/opus",
 		"@discordjs/rest": "2.4.0",
@@ -36,7 +38,10 @@
 		"test": "vitest run",
 		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
 	},
-	"trustedDependencies": ["@discordjs/opus", "@discordjs/voice"],
+	"trustedDependencies": [
+		"@discordjs/opus",
+		"@discordjs/voice"
+	],
 	"peerDependencies": {
 		"whatwg-url": "7.1.0"
 	},
