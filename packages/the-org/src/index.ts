@@ -16,7 +16,7 @@ export const project: Project = {
 		investmentManager,
 		// liaison,
 		// projectManager,
-		socialMediaManager,
+		// socialMediaManager,
 	],
 };
 

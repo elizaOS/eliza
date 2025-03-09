@@ -138,3 +138,94 @@ export async function getAvailableDatabases(): Promise<string[]> {
 		throw new Error(`Failed to get available databases: ${error.message}`);
 	}
 }
+
+/**
+ * Attempts to get package details from the registry
+ */
+export async function getPackageDetails(packageName: string): Promise<{
+	name: string;
+	description: string;
+	author: string;
+	repository: string;
+	versions: string[];
+	latestVersion: string;
+	runtimeVersion: string;
+	maintainer: string;
+} | null> {
+	try {
+		// Normalize the package name (remove @elizaos/ prefix if present)
+		const normalizedName = packageName.replace(/^@elizaos\//, "");
+
+		// Get package details from registry
+		const packageUrl = `${REGISTRY_URL.replace("index.json", "")}packages/${normalizedName}.json`;
+
+		const response = await fetch(packageUrl, { agent });
+		if (response.status !== 200) {
+			return null;
+		}
+
+		// Get the response body
+		const text = await response.text();
+		try {
+			return JSON.parse(text);
+		} catch {
+			logger.warn(
+				`Invalid JSON response received from registry for package ${packageName}:`,
+				text,
+			);
+			return null;
+		}
+	} catch (error) {
+		logger.warn(
+			`Failed to fetch package details from registry: ${error.message}`,
+		);
+		return null;
+	}
+}
+
+/**
+ * Gets the best matching version of a plugin based on runtime version
+ */
+export async function getBestPluginVersion(
+	packageName: string,
+	runtimeVersion: string,
+): Promise<string | null> {
+	const packageDetails = await getPackageDetails(packageName);
+	if (
+		!packageDetails ||
+		!packageDetails.versions ||
+		packageDetails.versions.length === 0
+	) {
+		return null;
+	}
+
+	// If runtime version matches exactly, use the latest version
+	if (packageDetails.runtimeVersion === runtimeVersion) {
+		return packageDetails.latestVersion;
+	}
+
+	// Parse the runtime version for semver matching
+	const [runtimeMajor, runtimeMinor, runtimePatch] = runtimeVersion
+		.split(".")
+		.map(Number);
+	const [packageMajor, packageMinor, packagePatch] =
+		packageDetails.runtimeVersion.split(".").map(Number);
+
+	// If major version is different, warn but still return the latest
+	if (runtimeMajor !== packageMajor) {
+		logger.warn(
+			`Plugin ${packageName} was built for runtime v${packageDetails.runtimeVersion}, but you're using v${runtimeVersion}`,
+		);
+		logger.warn("This may cause compatibility issues.");
+		return packageDetails.latestVersion;
+	}
+
+	// If minor version is different, warn but with less severity
+	if (runtimeMinor !== packageMinor) {
+		logger.warn(
+			`Plugin ${packageName} was built for runtime v${packageDetails.runtimeVersion}, you're using v${runtimeVersion}`,
+		);
+	}
+
+	return packageDetails.latestVersion;
+}

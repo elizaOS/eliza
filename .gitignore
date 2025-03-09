@@ -4,6 +4,7 @@ node_modules
 .env
 .env.production
 .env.local
+.env.bak
 .env_main
 
 .idea

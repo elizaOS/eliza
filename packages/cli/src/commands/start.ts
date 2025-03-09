@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	AgentRuntime,
 	type Character,
@@ -13,18 +14,17 @@ import {
 	stringToUuid,
 } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
+import { Command } from "commander";
 import { character as defaultCharacter } from "../characters/eliza";
 import { AgentServer } from "../server/index";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
+import { handleError } from "../utils/handle-error";
+import { ensureAllPluginsEnvRequirements } from "../utils/plugin-env";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const envPath = path.join(process.cwd(), ".env");
-
-import { fileURLToPath } from "node:url";
-// Convert this into a command
-import { Command } from "commander";
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
 	const waitTime =
@@ -580,24 +580,34 @@ const startAgents = async () => {
  * Starts the agents and handles any unhandled errors to prevent the process from crashing.
  * @returns {Promise<void>}
  */
-export const start = new Command("start")
-	.description("Start the ElizaOS server with project agents")
-	.action(async () => {
-		startAgents().catch((error) => {
-			logger.error("Unhandled error in startAgents:", error.message);
-			process.exit(1);
-		});
+export const start = new Command()
+	.name("start")
+	.description("start agent")
+	.option("-s, --skip-env-check", "Skip environment variable check", false)
+	.action(async (options) => {
+		try {
+			const cwd = process.cwd();
 
-		// Prevent unhandled exceptions from crashing the process if desired
-		// Handle uncaught exceptions to prevent the process from crashing
-		process.on("uncaughtException", (err) => {
-			console.error("uncaughtException", err);
-		});
+			// Check environment variables before starting
+			const skipEnvCheck = options.skipEnvCheck === true;
+			if (!skipEnvCheck) {
+				logger.info("Checking environment variables for plugins...");
+				const allRequirementsMet = await ensureAllPluginsEnvRequirements(
+					cwd,
+					true,
+					skipEnvCheck,
+				);
+				if (!allRequirementsMet) {
+					logger.warn(
+						"Some environment variables are missing. Starting anyway, but some plugins may not work correctly.",
+					);
+				}
+			}
 
-		// Handle unhandled rejections to prevent the process from crashing
-		process.on("unhandledRejection", (err) => {
-			console.error("unhandledRejection", err);
-		});
+			await startAgents();
+		} catch (error) {
+			handleError(error);
+		}
 	});
 
 export default start;

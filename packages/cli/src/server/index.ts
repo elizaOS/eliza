@@ -11,6 +11,10 @@ import * as bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
 import { createApiRouter } from "./api/index";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 /**
  * Represents a function that acts as a server middleware.
  * @param {express.Request} req - The request object.
@@ -183,23 +187,9 @@ export class AgentServer {
 			};
 
 			// Serve static assets from the client dist path
-			const clientPath = path.join(process.cwd(), "dist");
+			const clientPath = path.join(__dirname, "..", "dist");
 			logger.info(`Client build path: ${clientPath}`);
 			this.app.use("/", express.static(clientPath, staticOptions));
-
-			// Serve assets from packages/the-org/dist - needed for the portal's Vite assets
-			const orgDistPath = path.join(process.cwd(), "packages/the-org/dist");
-			if (fs.existsSync(orgDistPath)) {
-				logger.debug(`Serving Vite static assets from: ${orgDistPath}`);
-				this.app.use("/", express.static(orgDistPath, staticOptions));
-
-				// Also serve /assets explicitly to handle Vite assets
-				const assetsDir = path.join(orgDistPath, "assets");
-				if (fs.existsSync(assetsDir)) {
-					logger.debug(`Serving Vite /assets from: ${assetsDir}`);
-					this.app.use("/assets", express.static(assetsDir, staticOptions));
-				}
-			}
 
 			// Serve static assets from plugins
 			// Look for well-known static asset directories in plugins

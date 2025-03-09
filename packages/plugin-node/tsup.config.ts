@@ -13,7 +13,6 @@ export default defineConfig({
 		"fs", // Externalize fs to use Node.js built-in module
 		"path", // Externalize other built-ins if necessary
 		"@reflink/reflink",
-		"@node-llama-cpp",
 		"https",
 		"http",
 		"agentkeepalive",

@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { logger } from "@/src/utils/logger";
 import { getBestBranch } from "@/src/utils/registry";
+import { getBestPluginVersion } from "@/src/utils/registry";
 import { runBunCommand } from "@/src/utils/run-bun";
 import { execa } from "execa";
 
@@ -20,10 +21,20 @@ export async function installPlugin(
 	const cleanedName = pluginName.replace(/^github:|^@/, "");
 	let installed = false;
 	try {
-		//logger.info(`Attempting to install ${pluginName} using bun add...`);
-		//await runBunCommand(["add", `${pluginName}`], cwd);
-		//logger.success(`Successfully installed ${pluginName} via bun add.`);
-		//installed = true;
+		// Get package version information if available
+		const packageJson = path.join(cwd, "package.json");
+		let runtimeVersion = "0.0.0";
+		try {
+			const packageContent = await fs.readFile(packageJson, "utf-8");
+			const pkg = JSON.parse(packageContent);
+			runtimeVersion = pkg.version || "0.0.0";
+		} catch (error) {
+			logger.warn(`Could not read package.json: ${error.message}`);
+		}
+
+		// Try to get best matching version
+		const bestVersion = await getBestPluginVersion(pluginName, runtimeVersion);
+
 		// Set the directory to clone into the packages folder (each plugin gets its own subfolder)
 		const cloneDir = path.join(
 			cwd,
@@ -35,7 +46,9 @@ export async function installPlugin(
 		const repoUrl = `https://github.com/${cleanedName}.git`;
 
 		// Determine the best branch to use
-		const branch = await getBestBranch(repoUrl);
+		const branch = bestVersion
+			? `v${bestVersion}`
+			: await getBestBranch(repoUrl);
 
 		// Clone with the specific branch if not main
 		if (branch === "main") {
@@ -51,6 +64,15 @@ export async function installPlugin(
 			await execa("git", ["clone", "-b", branch, repoUrl, cloneDir], {
 				cwd,
 				stdio: "inherit",
+			}).catch(() => {
+				// If specific branch/tag doesn't exist, fall back to main branch
+				logger.warn(
+					`Branch/tag ${branch} not found, falling back to main branch`,
+				);
+				return execa("git", ["clone", repoUrl, cloneDir], {
+					cwd,
+					stdio: "inherit",
+				});
 			});
 		}
 

@@ -54,7 +54,7 @@
 		"libsodium-wrappers": "0.7.15",
 		"multer": "1.4.5-lts.1",
 		"node-cache": "5.1.2",
-		"node-llama-cpp": "3.5.0",
+		"node-llama-cpp": "3.6.0",
 		"nodejs-whisper": "0.1.18",
 		"onnxruntime-node": "1.20.1",
 		"outetts": "0.2.0",

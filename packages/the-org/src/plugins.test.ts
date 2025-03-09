@@ -349,6 +349,7 @@ class TestRunner {
 	 * @returns {Promise<TestStats>} The test statistics object.
 	 */
 	public async runPluginTests(): Promise<TestStats> {
+		console.log("*** Running plugin tests...");
 		const plugins = this.runtime.plugins;
 
 		for (const plugin of plugins) {

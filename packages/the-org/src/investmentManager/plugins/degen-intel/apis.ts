@@ -37,6 +37,7 @@ export const routes: Route[] = [
 		path: "/degen-intel",
 		handler: async (_req: any, res: any) => {
 			const route = _req.url;
+			console.log("frontendDist is", frontendDist);
 			res.sendFile(path.resolve(frontendDist, "index.html"));
 		},
 	},
