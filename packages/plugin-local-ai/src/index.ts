@@ -207,19 +207,19 @@ class LocalAIManager {
 		}
 
 		// Initialize the download manager
-		this.downloadManager = DownloadManager.getInstance();
+		this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
 
 		// Initialize tokenizer manager
-		this.tokenizerManager = TokenizerManager.getInstance();
+		this.tokenizerManager = TokenizerManager.getInstance(this.cacheDir, this.modelsDir);
 
 		// Initialize vision manager
-		this.visionManager = VisionManager.getInstance();
+		this.visionManager = VisionManager.getInstance(this.cacheDir);
 
 		// Initialize transcribe manager
-		this.transcribeManager = TranscribeManager.getInstance();
+		this.transcribeManager = TranscribeManager.getInstance(this.cacheDir);
 
 		// Initialize TTS manager
-		this.ttsManager = TTSManager.getInstance();
+		this.ttsManager = TTSManager.getInstance(this.cacheDir);
 
 		// Initialize StudioLM manager if enabled
 		if (process.env.USE_STUDIOLM_TEXT_MODELS === "true") {
@@ -872,9 +872,9 @@ class LocalAIManager {
 					// Use getLlama helper instead of directly creating
 					this.llama = await getLlama();
 
-					const smallModel = await this.llama.loadModel(this.modelPath, {
+					const smallModel = await this.llama.loadModel({
 						gpuLayers: 43,
-						embeddings: true,
+						modelPath: this.modelPath,
 						vocabOnly: false,
 					});
 
@@ -915,10 +915,9 @@ class LocalAIManager {
 				// Initialize medium model
 				try {
 					const mediumModel = await this.llama!.loadModel(
-						this.mediumModelPath,
 						{
 							gpuLayers: 43,
-							embeddings: true,
+							modelPath: this.mediumModelPath,
 							vocabOnly: false,
 						},
 					);
@@ -1189,7 +1188,7 @@ export const localAIPlugin: Plugin = {
 
 				// Handle null/undefined/empty text
 				if (!text) {
-					logger.warn("Null or empty text input for embedding");
+					logger.debug("Null or empty text input for embedding, returning zero vector");
 					return new Array(384).fill(0);
 				}
 

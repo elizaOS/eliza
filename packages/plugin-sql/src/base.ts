@@ -188,10 +188,6 @@ export abstract class BaseDrizzleAdapter<
 			const usedDimension = Object.entries(DIMENSION_MAP).find(
 				([_, colName]) => existingMemory[0].embedding[colName] !== null,
 			);
-
-			if (usedDimension && usedDimension[1] !== DIMENSION_MAP[dimension]) {
-				throw new Error("Cannot change embedding dimension for agent");
-			}
 		}
 
 		this.embeddingDimension = DIMENSION_MAP[dimension];
