@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-node",
-	"version": "1.0.0-alpha.8",
+	"version": "1.0.0-alpha.9",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -28,7 +28,7 @@
 		"@echogarden/espeak-ng-emscripten": "0.3.3",
 		"@echogarden/kissfft-wasm": "0.2.0",
 		"@echogarden/speex-resampler-wasm": "0.2.1",
-		"@elizaos/core": "^1.0.0-alpha.8",
+		"@elizaos/core": "^1.0.0-alpha.9",
 		"@opendocsg/pdf2md": "0.1.32",
 		"@types/uuid": "10.0.0",
 		"alawmulaw": "6.0.0",
