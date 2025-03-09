@@ -14,9 +14,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@ai-sdk/openai": "^1.1.9",
 		"@ai-sdk/ui-utils": "1.1.9",
@@ -50,5 +48,5 @@
 			}
 		}
 	},
-	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
+	"gitHead": "45175c735affb7ea45b3d9efecde34223e782b79"
 }

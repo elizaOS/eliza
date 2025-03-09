@@ -1,15 +1,10 @@
 {
   "version": "1.0.0-alpha.7",
-  "packages": [
-    "packages/*"
-  ],
+  "packages": ["packages/*"],
   "npmClient": "bun",
   "command": {
     "publish": {
-      "ignoreChanges": [
-        "packages/docs",
-        "packages/client"
-      ]
+      "ignoreChanges": ["packages/docs", "packages/client", "packages/autodoc"]
     }
   }
 }

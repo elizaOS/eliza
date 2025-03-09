@@ -6,6 +6,7 @@
 	"main": "dist/index.js",
 	"module": "dist/index.mjs",
 	"types": "dist/index.d.ts",
+	"private": true,
 	"scripts": {
 		"build": "tsup",
 		"autodoc:dev": "tsup --watch",
@@ -31,5 +32,6 @@
 		"ts-node": "^10.9.2",
 		"tsup": "8.4.0",
 		"typescript": "5.8.2"
-	}
+	},
+	"gitHead": "45175c735affb7ea45b3d9efecde34223e782b79"
 }

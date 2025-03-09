@@ -15,10 +15,7 @@
 		"url": "https://github.com/elizaOS/eliza.git",
 		"directory": "packages/cli"
 	},
-	"files": [
-		"dist",
-		"templates"
-	],
+	"files": ["dist", "templates"],
 	"keywords": [],
 	"type": "module",
 	"exports": {
@@ -85,5 +82,5 @@
 	"peerDependencies": {
 		"form-data": "4.0.2"
 	},
-	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
+	"gitHead": "45175c735affb7ea45b3d9efecde34223e782b79"
 }

@@ -15,9 +15,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@elizaos/core": "^1.0.0-alpha.7",
 		"zod": "3.21.4"
@@ -37,5 +35,5 @@
 	"resolutions": {
 		"zod": "3.24.1"
 	},
-	"gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
+	"gitHead": "45175c735affb7ea45b3d9efecde34223e782b79"
 }
