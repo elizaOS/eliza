@@ -35,7 +35,7 @@
     "concurrently": "9.1.0",
     "cross-env": "7.0.3",
     "husky": "9.1.7",
-    "lerna": "8.1.5",
+    "lerna": "8.1.4",
     "only-allow": "^1.2.1",
     "turbo": "^2.4.4",
     "typedoc": "0.26.11",
