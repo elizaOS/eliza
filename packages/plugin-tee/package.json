@@ -1,27 +1,27 @@
 {
-  "name": "@elizaos/plugin-tee",
-  "version": "1.0.0-alpha.18",
-  "main": "dist/index.js",
-  "type": "module",
-  "types": "dist/index.d.ts",
-  "dependencies": {
-    "@elizaos/core": "^1.0.0-alpha.18",
-    "@phala/dstack-sdk": "^0.1.7",
-    "@solana/web3.js": "^1.98.0",
-    "better-sqlite3": "11.8.1",
-    "elliptic": "6.6.1"
-  },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "tsup": "8.4.0"
-  },
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "gitHead": "383a5ce0902885b4cbb36ba529401936ccdacc60"
+	"name": "@elizaos/plugin-tee",
+	"version": "1.0.0-alpha.19",
+	"main": "dist/index.js",
+	"type": "module",
+	"types": "dist/index.d.ts",
+	"dependencies": {
+		"@elizaos/core": "^1.0.0-alpha.19",
+		"@phala/dstack-sdk": "^0.1.7",
+		"@solana/web3.js": "^1.98.0",
+		"better-sqlite3": "11.8.1",
+		"elliptic": "6.6.1"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"tsup": "8.4.0"
+	},
+	"scripts": {
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"gitHead": "383a5ce0902885b4cbb36ba529401936ccdacc60"
 }

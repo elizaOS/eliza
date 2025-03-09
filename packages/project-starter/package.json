@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/project-starter",
 	"description": "Project starter for elizaOS",
-	"version": "1.0.0-alpha.18",
+	"version": "1.0.0-alpha.19",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -19,7 +19,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "^1.0.0-alpha.18",
+		"@elizaos/core": "^1.0.0-alpha.19",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
