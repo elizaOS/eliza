@@ -7,6 +7,7 @@ import { teeCommand as tee } from "@/src/commands/tee";
 import { loadEnvironment } from "@/src/utils/get-config";
 import { logger } from "@/src/utils/logger";
 import { Command } from "commander";
+import fs from "node:fs";
 
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
@@ -20,10 +21,14 @@ async function main() {
 	// Load environment variables, trying project .env first, then global ~/.eliza/.env
 	await loadEnvironment();
 
+	// read package.json version
+	const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+	const version = packageJson.version;
+
 	const program = new Command()
 		.name("eliza")
 		.description("elizaOS CLI - Manage your AI agents and plugins")
-		.version("1.0.0");
+		.version(version);
 
 	program
 		.addCommand(init)
