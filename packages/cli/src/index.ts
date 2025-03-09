@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import path from "node:path";
 import { agent } from "@/src/commands/agent";
 import { init } from "@/src/commands/init";
 import { plugins } from "@/src/commands/plugins";
@@ -22,13 +23,16 @@ async function main() {
 	await loadEnvironment();
 
 	// read package.json version
-	const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+	const packageJsonPath = path.join(process.cwd(), "package.json");
+	const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
 	const version = packageJson.version;
 
 	const program = new Command()
 		.name("eliza")
 		.description("elizaOS CLI - Manage your AI agents and plugins")
 		.version(version);
+
+	console.log("program", program);
 
 	program
 		.addCommand(init)
