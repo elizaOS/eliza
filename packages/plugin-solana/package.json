@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-solana",
-  "version": "1.0.0-alpha.6",
+  "version": "1.0.0-alpha.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -20,7 +20,7 @@
   ],
   "dependencies": {
     "@coral-xyz/anchor": "0.30.1",
-    "@elizaos/core": "1.0.0-alpha.6",
+    "@elizaos/core": "^1.0.0-alpha.7",
     "@solana/spl-token": "0.4.9",
     "@solana/web3.js": "^1.98.0",
     "bignumber.js": "9.1.2",
@@ -42,9 +42,9 @@
     "lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
   },
   "peerDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "form-data": "4.0.2",
-    "whatwg-url": "7.1.0",
-    "@biomejs/biome": "^1.9.4"
+    "whatwg-url": "7.1.0"
   },
   "gitHead": "c24f630188d19edcd867cae693fe4855e508e25a"
 }

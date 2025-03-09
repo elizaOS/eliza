@@ -1,6 +1,6 @@
 {
 	"name": "create-eliza",
-	"version": "1.0.0-alpha.6",
+	"version": "1.0.0-alpha.7",
 	"description": "Initialize an Eliza project",
 	"type": "module",
 	"publishConfig": {
@@ -19,8 +19,16 @@
 		"url": "https://github.com/elizaOS/eliza.git",
 		"directory": "packages/create-eliza"
 	},
-	"files": ["cli"],
-	"keywords": ["eliza", "elizaos", "ai", "agent", "create"],
+	"files": [
+		"cli"
+	],
+	"keywords": [
+		"eliza",
+		"elizaos",
+		"ai",
+		"agent",
+		"create"
+	],
 	"engines": {
 		"node": ">=14.0.0"
 	},

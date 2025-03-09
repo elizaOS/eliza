@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-local-ai",
-	"version": "1.0.0-alpha.6",
+	"version": "1.0.0-alpha.7",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -14,7 +14,9 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"dependencies": {
 		"@anush008/tokenizers": "^0.0.0",
 		"@aws-sdk/client-s3": "^3.749.0",
@@ -22,7 +24,7 @@
 		"@echogarden/espeak-ng-emscripten": "0.3.3",
 		"@echogarden/kissfft-wasm": "0.2.0",
 		"@echogarden/speex-resampler-wasm": "0.2.1",
-		"@elizaos/core": "1.0.0-alpha.6",
+		"@elizaos/core": "^1.0.0-alpha.7",
 		"@huggingface/hub": "^1.0.1",
 		"@huggingface/inference": "^3.3.4",
 		"@huggingface/transformers": "^3.3.3",
@@ -58,8 +60,8 @@
 		"nodejs-whisper": "0.1.18",
 		"onnxruntime-node": "1.20.1",
 		"outetts": "0.2.0",
-		"pdfjs-dist": "4.7.76",
 		"patchright": "1.50.1",
+		"pdfjs-dist": "4.7.76",
 		"pm2": "5.4.3",
 		"puppeteer-extra": "3.3.6",
 		"puppeteer-extra-plugin-capsolver": "2.0.1",

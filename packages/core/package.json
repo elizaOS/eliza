@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/core",
-	"version": "1.0.0-alpha.6",
+	"version": "1.0.0-alpha.7",
 	"description": "",
 	"type": "module",
 	"main": "dist/index.js",
@@ -16,7 +16,9 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"scripts": {
 		"build": "tsup",
 		"watch": "tsc --watch",
