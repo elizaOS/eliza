@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-solana",
-  "version": "1.0.0-alpha.16",
+  "version": "1.0.0-alpha.17",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -20,7 +20,7 @@
   ],
   "dependencies": {
     "@coral-xyz/anchor": "0.30.1",
-    "@elizaos/core": "^1.0.0-alpha.16",
+    "@elizaos/core": "^1.0.0-alpha.17",
     "@solana/spl-token": "0.4.9",
     "@solana/web3.js": "^1.98.0",
     "bignumber.js": "9.1.2",
