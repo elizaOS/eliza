@@ -152,8 +152,14 @@ const twitterPostAction: Action = {
 		});
 
 		if (pendingTasks && pendingTasks.length > 0) {
-			// If there are already pending Twitter post tasks, don't allow another one
-			return false;
+			// Handle case where task worker has not been registered
+			if (!runtime.getTaskWorker("Confirm Twitter Post")) {
+				// delete the twitter post task
+				await runtime.getDatabaseAdapter().deleteTask(pendingTasks[0].id);
+			} else {
+				// If there are already pending Twitter post tasks, don't allow another one
+				return false;
+			}
 		}
 
 		// Validate Twitter configuration

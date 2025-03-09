@@ -260,6 +260,9 @@ export const choiceAction: Action = {
 				try {
 					console.log("selectedTask", JSON.stringify(selectedTask, null, 2));
 					const taskWorker = runtime.getTaskWorker(selectedTask.name);
+					// ignore
+					// @ts-ignore
+					console.log("taskWorkers is", runtime.taskWorkers);
 					console.log(
 						"*** TASK WORKER ***\n",
 						JSON.stringify(taskWorker, null, 2),
