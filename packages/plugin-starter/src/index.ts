@@ -18,16 +18,16 @@ import { z } from "zod";
 /**
  * Defines the configuration schema for a plugin, including the validation rules for the plugin name.
  *
- * @type {import('zod').ZodObject<{ PLUGIN_NAME: import('zod').ZodString }>}
+ * @type {import('zod').ZodObject<{ EXAMPLE_PLUGIN_VARIABLE: import('zod').ZodString }>}
  */
 const configSchema = z.object({
-	PLUGIN_NAME: z
+	EXAMPLE_PLUGIN_VARIABLE: z
 		.string()
-		.min(1, "Plugin name is not provided")
+		.min(1, "Example plugin variable is not provided")
 		.optional()
 		.transform((val) => {
 			if (!val) {
-				console.warn("Warning: Plugin name not provided");
+				console.warn("Warning: Example plugin variable is not provided");
 			}
 			return val;
 		}),
@@ -162,7 +162,7 @@ export const starterPlugin: Plugin = {
 	name: "plugin-starter",
 	description: "Plugin starter for elizaOS",
 	config: {
-		PLUGIN_NAME: process.env.PLUGIN_NAME,
+		EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
 	},
 	async init(config: Record<string, string>) {
 		logger.info("*** Initializing starter plugin ***");

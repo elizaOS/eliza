@@ -16,13 +16,13 @@ import {
 import { z } from "zod";
 
 const configSchema = z.object({
-	PLUGIN_NAME: z
+	EXAMPLE_PLUGIN_VARIABLE: z
 		.string()
-		.min(1, "Plugin name is not provided")
+		.min(1, "Example plugin variable is not provided")
 		.optional()
 		.transform((val) => {
 			if (!val) {
-				console.warn("Warning: Plugin name not provided");
+				console.warn("Warning: Example plugin variable is not provided");
 			}
 			return val;
 		}),
@@ -147,7 +147,7 @@ export const starterPlugin: Plugin = {
 	name: "plugin-starter",
 	description: "Plugin starter for elizaOS",
 	config: {
-		PLUGIN_NAME: process.env.PLUGIN_NAME,
+		EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
 	},
 	async init(config: Record<string, string>) {
 		logger.info("*** Initializing starter plugin ***");

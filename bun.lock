@@ -48,7 +48,7 @@
     },
     "packages/cli": {
       "name": "@elizaos/cli",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "bin": {
         "elizaos": "./dist/index.js",
       },
@@ -58,14 +58,14 @@
         "@babel/parser": "^7.22.6",
         "@babel/plugin-transform-typescript": "^7.22.5",
         "@electric-sql/pglite": "^0.2.17",
-        "@elizaos/core": "^1.0.0-alpha.19",
-        "@elizaos/plugin-anthropic": "^1.0.0-alpha.19",
-        "@elizaos/plugin-discord": "^1.0.0-alpha.19",
-        "@elizaos/plugin-local-ai": "^1.0.0-alpha.19",
-        "@elizaos/plugin-openai": "^1.0.0-alpha.19",
-        "@elizaos/plugin-sql": "^1.0.0-alpha.19",
-        "@elizaos/plugin-starter": "^1.0.0-alpha.19",
-        "@elizaos/project-starter": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
+        "@elizaos/plugin-anthropic": "^1.0.0-alpha.20",
+        "@elizaos/plugin-discord": "^1.0.0-alpha.20",
+        "@elizaos/plugin-local-ai": "^1.0.0-alpha.20",
+        "@elizaos/plugin-openai": "^1.0.0-alpha.20",
+        "@elizaos/plugin-sql": "^1.0.0-alpha.20",
+        "@elizaos/plugin-starter": "^1.0.0-alpha.20",
+        "@elizaos/project-starter": "^1.0.0-alpha.20",
         "@noble/curves": "^1.8.1",
         "axios": "^1.7.9",
         "chalk": "5.2.0",
@@ -168,7 +168,7 @@
     },
     "packages/core": {
       "name": "@elizaos/core",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
         "dotenv": "16.4.5",
         "events": "^3.3.0",
@@ -208,7 +208,7 @@
     },
     "packages/create-eliza": {
       "name": "create-eliza",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "bin": {
         "create-eliza": "cli/index.js init",
       },
@@ -246,10 +246,10 @@
     },
     "packages/plugin-anthropic": {
       "name": "@elizaos/plugin-anthropic",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
         "@ai-sdk/anthropic": "^1.1.6",
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "fastembed": "^1.0.0",
         "tsup": "8.4.0",
         "zod": "3.21.4",
@@ -260,7 +260,7 @@
     },
     "packages/plugin-discord": {
       "name": "@elizaos/plugin-discord",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
         "@discordjs/opus": "github:discordjs/opus",
         "@discordjs/rest": "2.4.0",
@@ -281,15 +281,15 @@
     },
     "packages/plugin-elevenlabs": {
       "name": "@elizaos/plugin-elevenlabs",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "tsup": "8.4.0",
       },
     },
     "packages/plugin-local-ai": {
       "name": "@elizaos/plugin-local-ai",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
         "@anush008/tokenizers": "^0.0.0",
         "@aws-sdk/client-s3": "^3.749.0",
@@ -297,7 +297,7 @@
         "@echogarden/espeak-ng-emscripten": "0.3.3",
         "@echogarden/kissfft-wasm": "0.2.0",
         "@echogarden/speex-resampler-wasm": "0.2.1",
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "@huggingface/hub": "^1.0.1",
         "@huggingface/inference": "^3.3.4",
         "@huggingface/transformers": "^3.3.3",
@@ -358,11 +358,11 @@
     },
     "packages/plugin-node": {
       "name": "@elizaos/plugin-node",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "@types/uuid": "10.0.0",
         "capsolver-npm": "2.0.2",
         "fluent-ffmpeg": "2.1.3",
@@ -382,11 +382,11 @@
     },
     "packages/plugin-openai": {
       "name": "@elizaos/plugin-openai",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
         "@ai-sdk/openai": "^1.1.9",
         "@ai-sdk/ui-utils": "1.1.9",
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "ai": "^4.1.25",
         "js-tiktoken": "^1.0.18",
         "tsup": "8.4.0",
@@ -398,10 +398,10 @@
     },
     "packages/plugin-solana": {
       "name": "@elizaos/plugin-solana",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
         "@coral-xyz/anchor": "0.30.1",
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "@solana/spl-token": "0.4.9",
         "@solana/web3.js": "^1.98.0",
         "bignumber.js": "9.1.2",
@@ -424,10 +424,10 @@
     },
     "packages/plugin-sql": {
       "name": "@elizaos/plugin-sql",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
         "@electric-sql/pglite": "^0.2.17",
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "@types/pg": "8.11.10",
         "drizzle-kit": "^0.30.4",
         "drizzle-orm": "^0.39.1",
@@ -443,9 +443,9 @@
     },
     "packages/plugin-starter": {
       "name": "@elizaos/plugin-starter",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "zod": "3.21.4",
       },
       "devDependencies": {
@@ -454,9 +454,9 @@
     },
     "packages/plugin-tee": {
       "name": "@elizaos/plugin-tee",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "@phala/dstack-sdk": "^0.1.7",
         "@solana/web3.js": "^1.98.0",
         "better-sqlite3": "11.8.1",
@@ -469,7 +469,7 @@
     },
     "packages/plugin-telegram": {
       "name": "@elizaos/plugin-telegram",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
         "@telegraf/types": "7.1.0",
         "telegraf": "4.16.3",
@@ -481,9 +481,9 @@
     },
     "packages/plugin-twitter": {
       "name": "@elizaos/plugin-twitter",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "@roamhq/wrtc": "^0.8.0",
         "@sinclair/typebox": "^0.32.20",
         "glob": "11.0.0",
@@ -508,9 +508,9 @@
     },
     "packages/project-starter": {
       "name": "@elizaos/project-starter",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-alpha.19",
+        "@elizaos/core": "^1.0.0-alpha.20",
         "zod": "3.21.4",
       },
       "devDependencies": {
@@ -519,12 +519,12 @@
     },
     "packages/the-org": {
       "name": "@elizaos/the-org",
-      "version": "1.0.0-alpha.19",
+      "version": "1.0.0-alpha.20",
       "dependencies": {
-        "@elizaos/cli": "^1.0.0-alpha.19",
-        "@elizaos/core": "^1.0.0-alpha.19",
-        "@elizaos/plugin-tee": "^1.0.0-alpha.19",
-        "@elizaos/plugin-twitter": "^1.0.0-alpha.19",
+        "@elizaos/cli": "^1.0.0-alpha.20",
+        "@elizaos/core": "^1.0.0-alpha.20",
+        "@elizaos/plugin-tee": "^1.0.0-alpha.20",
+        "@elizaos/plugin-twitter": "^1.0.0-alpha.20",
         "@radix-ui/react-slot": "^1.1.1",
         "@radix-ui/react-tabs": "^1.1.2",
         "@solana/web3.js": "^1.87.6",

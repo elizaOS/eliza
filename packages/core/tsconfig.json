@@ -18,7 +18,8 @@
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
     "types": ["node"],
-    "sourceMap": true
+    "sourceMap": true,
+    "composite": true
   },
   "include": ["src/**/*.ts", "src/*.ts"],
   "exclude": ["node_modules", "dist", "src/**/*.d.ts", "types/**/*.test.ts"]

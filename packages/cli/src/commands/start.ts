@@ -1,22 +1,19 @@
-import * as fs from "node:fs";
-import net from "node:net";
-import os from "node:os";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	AgentRuntime,
 	type Character,
 	type IAgentRuntime,
 	type Plugin,
-	type ProjectAgent,
 	logger,
 	settings,
-	stringToUuid,
+	stringToUuid
 } from "@elizaos/core";
-import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
-import { character as defaultCharacter } from "../characters/eliza";
+import * as fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { AgentServer } from "../server/index";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
 import { generateCustomCharacter } from "../utils/character-generator.js";
@@ -27,18 +24,13 @@ import {
 	saveConfig,
 } from "../utils/config-manager.js";
 import {
-	listMissingEnvVars,
 	promptForEnvVars,
-	promptForServices,
-	validatePluginConfig,
+	promptForServices
 } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
-import { ensureAllPluginsEnvRequirements } from "../utils/plugin-env";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-const envPath = path.join(process.cwd(), ".env");
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
 	const waitTime =
@@ -92,30 +84,6 @@ async function promptForProjectPlugins(
 
 	// Prompt for each identified plugin
 	for (const pluginName of pluginsToPrompt) {
-		try {
-			await promptForEnvVars(pluginName);
-		} catch (error) {
-			logger.warn(
-				`Failed to prompt for ${pluginName} environment variables: ${error}`,
-			);
-		}
-	}
-}
-
-/**
- * Prompts for environment variables for common plugins.
- * This ensures the CLI will ask for plugin credentials before attempting to load them.
- */
-async function promptForCommonPlugins(): Promise<void> {
-	// List of common plugins that might be needed
-	const commonPlugins = [
-		"pglite", // Database
-		"openai", // OpenAI
-		"anthropic", // Anthropic
-		"discord", // Discord
-	];
-
-	for (const pluginName of commonPlugins) {
 		try {
 			await promptForEnvVars(pluginName);
 		} catch (error) {
@@ -257,6 +225,8 @@ const startAgents = async (options: {
 	let selectedServices: string[] = [];
 	let selectedAiModels: string[] = [];
 
+	console.log("*** existingConfig", existingConfig);
+
 	// Check if we should reconfigure based on command-line option or if using default config
 	const shouldConfigure = options.configure || existingConfig.isDefault;
 
@@ -272,22 +242,20 @@ const startAgents = async (options: {
 			logger.info("Reconfiguration requested.");
 		}
 
-		// Prompt for services and AI models first
+		await new Promise((resolve) => setTimeout(resolve, 100));
 
-		// Save the configuration
+		// Prompt for services and AI models first
+		const userSelections = await promptForServices();
+		selectedServices = userSelections.services;
+		selectedAiModels = userSelections.aiModels;
+
+		// Save the configuration AFTER user has made selections
 		saveConfig({
 			services: selectedServices,
 			aiModels: selectedAiModels,
 			lastUpdated: new Date().toISOString(),
 			// isDefault is not included to indicate this is now a user-configured setup
 		});
-
-		// wait 100 ms
-		await new Promise((resolve) => setTimeout(resolve, 100));
-
-		const userSelections = await promptForServices();
-		selectedServices = userSelections.services;
-		selectedAiModels = userSelections.aiModels;
 	} else {
 		// Use existing configuration
 		selectedServices = existingConfig.services;

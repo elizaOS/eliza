@@ -1,17 +1,13 @@
-// NOTE: The linter error about '@elizaos/core' not being under 'rootDir' is related to the build system
-// configuration and doesn't affect functionality. It's related to how TypeScript is configured
-// in the monorepo structure.
 import { anthropic } from "@ai-sdk/anthropic";
 import type {
 	IAgentRuntime,
 	ObjectGenerationParams,
-	Plugin,
-	TextEmbeddingParams,
+	Plugin
 } from "@elizaos/core";
 import {
 	type GenerateTextParams,
-	type ModelType,
 	ModelTypes,
+	logger
 } from "@elizaos/core";
 import { generateText } from "ai";
 import { z } from "zod";
@@ -53,7 +49,7 @@ export const anthropicPlugin: Plugin = {
 
 			// If API key is not set, we'll show a warning but continue
 			if (!process.env.ANTHROPIC_API_KEY) {
-				console.warn(
+				logger.warn(
 					"ANTHROPIC_API_KEY is not set in environment - Anthropic functionality will be limited",
 				);
 				// Return early without throwing an error
@@ -61,11 +57,11 @@ export const anthropicPlugin: Plugin = {
 			}
 
 			// Optional: Add key validation here if Anthropic provides an API endpoint for it
-			console.log("Anthropic API key is set");
+			logger.log("Anthropic API key is set");
 		} catch (error) {
 			if (error instanceof z.ZodError) {
 				// Convert to warning instead of error
-				console.warn(
+				logger.warn(
 					`Anthropic plugin configuration issue: ${error.errors
 						.map((e) => e.message)
 						.join(
@@ -160,9 +156,9 @@ export const anthropicPlugin: Plugin = {
 							if (text.length === 0) {
 								throw new Error("Failed to generate text");
 							}
-							console.log("generated with test_text_small:", text);
+							logger.log("generated with test_text_small:", text);
 						} catch (error) {
-							console.error("Error in test_text_small:", error);
+							logger.error("Error in test_text_small:", error);
 							throw error;
 						}
 					},
@@ -177,9 +173,9 @@ export const anthropicPlugin: Plugin = {
 							if (text.length === 0) {
 								throw new Error("Failed to generate text");
 							}
-							console.log("generated with test_text_large:", text);
+							logger.log("generated with test_text_large:", text);
 						} catch (error) {
-							console.error("Error in test_text_large:", error);
+							logger.error("Error in test_text_large:", error);
 							throw error;
 						}
 					},
@@ -221,7 +217,7 @@ async function generateObject(
 
 	const apiKey = process.env.ANTHROPIC_API_KEY;
 	if (!apiKey) {
-		console.error("ANTHROPIC_API_KEY is not set");
+		logger.error("ANTHROPIC_API_KEY is not set");
 		return null;
 	}
 
@@ -283,7 +279,7 @@ async function generateObject(
 
 			return null;
 		} catch (error) {
-			console.error("Error generating enum value:", error);
+			logger.error("Error generating enum value:", error);
 			return null;
 		}
 	}
@@ -343,7 +339,7 @@ async function generateObject(
 
 		return null;
 	} catch (error) {
-		console.error("Error generating object:", error);
+		logger.error("Error generating object:", error);
 		return null;
 	}
 }

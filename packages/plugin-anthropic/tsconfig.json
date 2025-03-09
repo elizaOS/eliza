@@ -8,7 +8,12 @@
 		"paths": {
 			"@elizaos/core": ["../../packages/core/src"],
 			"@elizaos/core/*": ["../../packages/core/src/*"]
-		}
+		},
+		"skipLibCheck": true,
+		"composite": true
 	},
-	"include": ["src/**/*.ts"]
+	"include": ["src/**/*.ts"],
+	"references": [
+		{ "path": "../core" }
+	]
 }
