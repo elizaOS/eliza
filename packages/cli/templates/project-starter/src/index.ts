@@ -13,8 +13,8 @@ export const character: Character = {
 	plugins: [
 		"@elizaos/plugin-anthropic",
 		"@elizaos/plugin-openai",
+		"@elizaos/plugin-local-ai",
 		"@elizaos/plugin-discord",
-		"@elizaos/plugin-node",
 		"@elizaos/plugin-sql",
 	],
 	settings: {

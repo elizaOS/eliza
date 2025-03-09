@@ -15,9 +15,7 @@
 			}
 		}
 	},
-	"files": [
-		"dist"
-	],
+	"files": ["dist"],
 	"dependencies": {
 		"@elizaos/core": "^1.0.0-alpha.19",
 		"zod": "3.21.4"
