@@ -154,7 +154,7 @@ export class SolanaService extends Service {
 	private async fetchPrices(): Promise<Prices> {
 		const cacheKey = "prices";
 		const cachedValue = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<Prices>(cacheKey);
 
 		// if cachedValue is JSON, parse it
@@ -185,7 +185,7 @@ export class SolanaService extends Service {
 			}
 		}
 
-		await this.runtime.getDatabaseAdapter().setCache<Prices>(cacheKey, prices);
+		await this.runtime.setCache<Prices>(cacheKey, prices);
 		return prices;
 	}
 
@@ -259,7 +259,7 @@ export class SolanaService extends Service {
 					};
 
 					await this.runtime
-						.getDatabaseAdapter()
+						
 						.setCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY, portfolio);
 					this.lastUpdate = now;
 					return portfolio;
@@ -287,7 +287,7 @@ export class SolanaService extends Service {
 			};
 
 			await this.runtime
-				.getDatabaseAdapter()
+				
 				.setCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY, portfolio);
 			this.lastUpdate = now;
 			return portfolio;
@@ -303,7 +303,7 @@ export class SolanaService extends Service {
 	 */
 	public async getCachedData(): Promise<WalletPortfolio | null> {
 		const cachedValue = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
 		if (cachedValue) {
 			return cachedValue;

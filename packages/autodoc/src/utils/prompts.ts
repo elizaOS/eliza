@@ -119,7 +119,6 @@ export const PROMPT_TEMPLATES = {
         Overview
         Evaluators enable agents to:
         Build long-term memory
-        Track goal progress
         Extract facts and insights
         Maintain contextual awareness
 

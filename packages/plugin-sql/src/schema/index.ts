@@ -3,7 +3,6 @@ export { cacheTable } from "./cache";
 export { componentTable } from "./component";
 export { embeddingTable } from "./embedding";
 export { entityTable } from "./entity";
-export { goalTable } from "./goal";
 export { logTable } from "./log";
 export { memoryTable } from "./memory";
 export { participantTable } from "./participant";

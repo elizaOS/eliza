@@ -1,3 +1,8 @@
+import * as fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	AgentRuntime,
 	type Character,
@@ -9,11 +14,6 @@ import {
 } from "@elizaos/core";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
-import * as fs from "node:fs";
-import net from "node:net";
-import os from "node:os";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import { AgentServer } from "../server/index";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
 import { generateCustomCharacter } from "../utils/character-generator.js";
@@ -144,7 +144,7 @@ async function startAgent(
  * @returns {Promise<void>} - A promise that resolves once the agent is stopped.
  */
 async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
-	await runtime.getDatabaseAdapter().close();
+	await runtime.close();
 	server.unregisterAgent(runtime.agentId);
 }
 

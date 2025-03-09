@@ -2,8 +2,6 @@ import type {
 	Agent,
 	Component,
 	Entity,
-	Goal,
-	GoalStatus,
 	IDatabaseAdapter,
 	Memory,
 	Participant,
@@ -204,16 +202,6 @@ export abstract class DatabaseAdapter<DB = unknown>
 	}): Promise<Memory[]>;
 
 	/**
-	 * Updates the status of a specific goal.
-	 * @param params An object containing the goalId and the new status.
-	 * @returns A Promise that resolves when the goal status has been updated.
-	 */
-	abstract updateGoalStatus(params: {
-		goalId: UUID;
-		status: GoalStatus;
-	}): Promise<void>;
-
-	/**
 	 * Creates a new memory in the database.
 	 * @param memory The memory object to create.
 	 * @param tableName The table where the memory should be stored.
@@ -254,46 +242,6 @@ export abstract class DatabaseAdapter<DB = unknown>
 		unique?: boolean,
 		tableName?: string,
 	): Promise<number>;
-
-	/**
-	 * Retrieves goals based on specified parameters.
-	 * @param params An object containing parameters for goal retrieval.
-	 * @returns A Promise that resolves to an array of Goal objects.
-	 */
-	abstract getGoals(params: {
-		roomId: UUID;
-		entityId?: UUID | null;
-		onlyInProgress?: boolean;
-		count?: number;
-	}): Promise<Goal[]>;
-
-	/**
-	 * Updates a specific goal in the database.
-	 * @param goal The goal object with updated properties.
-	 * @returns A Promise that resolves when the goal has been updated.
-	 */
-	abstract updateGoal(goal: Goal): Promise<void>;
-
-	/**
-	 * Creates a new goal in the database.
-	 * @param goal The goal object to create.
-	 * @returns A Promise that resolves when the goal has been created.
-	 */
-	abstract createGoal(goal: Goal): Promise<void>;
-
-	/**
-	 * Removes a specific goal from the database.
-	 * @param goalId The UUID of the goal to remove.
-	 * @returns A Promise that resolves when the goal has been removed.
-	 */
-	abstract removeGoal(goalId: UUID): Promise<void>;
-
-	/**
-	 * Removes all goals associated with a specific room.
-	 * @param roomId The UUID of the room whose goals should be removed.
-	 * @returns A Promise that resolves when all goals have been removed.
-	 */
-	abstract removeAllGoals(roomId: UUID): Promise<void>;
 
 	/**
 	 * Retrieves a world by its ID.

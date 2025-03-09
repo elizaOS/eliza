@@ -137,7 +137,7 @@ export const characterProvider: Provider = {
 
 		const room =
 			state.data.room ??
-			(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+			(await runtime.getRoom(message.roomId));
 
 		const isPostFormat =
 			room?.type === ChannelType.FEED || room?.type === ChannelType.THREAD;

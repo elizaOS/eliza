@@ -96,14 +96,14 @@ export const choiceAction: Action = {
 		state: State,
 	): Promise<boolean> => {
 		// Get all tasks with options metadata
-		const pendingTasks = await runtime.getDatabaseAdapter().getTasks({
+		const pendingTasks = await runtime.getTasks({
 			roomId: message.roomId,
 			tags: ["AWAITING_CHOICE"],
 		});
 
 		const room =
 			state.data.room ??
-			(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+			(await runtime.getRoom(message.roomId));
 
 		const userRole = await getUserServerRole(
 			runtime,
@@ -132,7 +132,7 @@ export const choiceAction: Action = {
 		responses: Memory[],
 	): Promise<void> => {
 		try {
-			const pendingTasks = await runtime.getDatabaseAdapter().getTasks({
+			const pendingTasks = await runtime.getTasks({
 				roomId: message.roomId,
 				tags: ["AWAITING_CHOICE"],
 			});
@@ -220,7 +220,7 @@ export const choiceAction: Action = {
 				}
 
 				if (selectedOption === "ABORT") {
-					await runtime.getDatabaseAdapter().deleteTask(selectedTask.id);
+					await runtime.deleteTask(selectedTask.id);
 					await callback({
 						text: `Task "${selectedTask.name}" has been cancelled.`,
 						actions: ["CHOOSE_OPTION_CANCELLED"],

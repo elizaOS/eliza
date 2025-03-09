@@ -41,7 +41,7 @@ export default {
 
 		const room =
 			state.data.room ??
-			(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+			(await runtime.getRoom(message.roomId));
 
 		if (room?.type !== ChannelType.GROUP) {
 			return false;
@@ -59,7 +59,7 @@ export default {
 		_state: State,
 		_options: any,
 	): Promise<boolean> => {
-		const room = await runtime.getDatabaseAdapter().getRoom(message.roomId);
+		const room = await runtime.getRoom(message.roomId);
 		if (!room) {
 			throw new Error("No room found");
 		}

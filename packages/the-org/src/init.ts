@@ -111,7 +111,7 @@ export async function initializeAllSystems(
 				},
 			});
 
-			const world = await runtime.getDatabaseAdapter().getWorld(worldId);
+			const world = await runtime.getWorld(worldId);
 
 			if (world.metadata?.settings) {
 				continue;
@@ -173,11 +173,11 @@ export async function startOnboardingDM(
 		});
 
 		const entity = await runtime
-			.getDatabaseAdapter()
+			
 			.getEntityById(runtime.agentId);
 
 		if (!entity) {
-			await runtime.getDatabaseAdapter().createEntity({
+			await runtime.createEntity({
 				id: runtime.agentId,
 				names: [runtime.character.name],
 				agentId: runtime.agentId,

@@ -147,7 +147,7 @@ export class DiscordService extends Service implements IDiscordService {
 		// for channel in channels
 		for (const [, channel] of guildChannels.channels.cache) {
 			const roomId = createUniqueUuid(this.runtime, channel.id);
-			const room = await runtime.getDatabaseAdapter().getRoom(roomId);
+			const room = await runtime.getRoom(roomId);
 			// if the room already exists, skip
 			if (room) {
 				continue;

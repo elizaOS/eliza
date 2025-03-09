@@ -171,7 +171,7 @@ export default class TwitterParser {
 	async fillTimeframe() {
 		/** Each timeframe is always 1 hour. */
 		const cachedSentiments = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<Sentiment[]>("sentiments");
 		const sentiments: Sentiment[] = cachedSentiments ? cachedSentiments : [];
 
@@ -226,7 +226,7 @@ export default class TwitterParser {
 		if (timeSlots.length > 0) {
 			const updatedSentiments = [...sentiments, ...timeSlots];
 			await this.runtime
-				.getDatabaseAdapter()
+				
 				.setCache<Sentiment[]>("sentiments", updatedSentiments);
 		}
 
@@ -238,7 +238,7 @@ export default class TwitterParser {
 
 		// Get sentiments
 		const cachedSentiments = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<Sentiment[]>("sentiments");
 		const sentiments: Sentiment[] = cachedSentiments ? cachedSentiments : [];
 
@@ -299,7 +299,7 @@ export default class TwitterParser {
 					: s,
 			);
 			await this.runtime
-				.getDatabaseAdapter()
+				
 				.setCache<Sentiment[]>("sentiments", updatedSentiments);
 			return true;
 		}
@@ -335,7 +335,7 @@ export default class TwitterParser {
 				: s,
 		);
 		await this.runtime
-			.getDatabaseAdapter()
+			
 			.setCache<Sentiment[]>("sentiments", updatedSentiments);
 
 		logger.info(

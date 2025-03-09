@@ -66,18 +66,6 @@ CREATE TABLE "entities" (
 	CONSTRAINT "id_agent_id_unique" UNIQUE("id","agentId")
 );
 --> statement-breakpoint
-CREATE TABLE "goals" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"createdAt" timestamptz DEFAULT now() NOT NULL,
-	"entityId" uuid,
-	"agentId" uuid,
-	"name" text,
-	"status" text,
-	"description" text,
-	"roomId" uuid,
-	"objectives" jsonb DEFAULT '[]' NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE "logs" (
 	"id" uuid DEFAULT gen_random_uuid() NOT NULL,
 	"createdAt" timestamptz DEFAULT now() NOT NULL,

@@ -194,7 +194,7 @@ export const dataProvider: Provider = {
 			const clientUserId =
 				message.entityId === message.agentId ? "" : message.entityId;
 			const entity = await runtime
-				.getDatabaseAdapter()
+				
 				.getEntityById(clientUserId as UUID);
 			const tradingService = runtime.getService<CommunityInvestorService>(
 				ServiceTypes.COMMUNITY_INVESTOR,

@@ -13,7 +13,6 @@ import { unfollowRoomAction } from "./actions/unfollowRoom";
 import { unmuteRoomAction } from "./actions/unmuteRoom";
 import { updateEntityAction } from "./actions/updateEntity";
 import { createUniqueUuid } from "./entities";
-import { goalAction } from "./actions/goal";
 import { reflectionEvaluator } from "./evaluators/reflection";
 import { logger } from "./logger";
 import {
@@ -153,7 +152,7 @@ const messageReceivedHandler = async ({
 	]);
 
 	const agentUserState = await runtime
-		.getDatabaseAdapter()
+		
 		.getParticipantUserState(message.roomId, runtime.agentId);
 
 	if (
@@ -534,7 +533,6 @@ export const bootstrapPlugin: Plugin = {
 		choiceAction,
 		updateRoleAction,
 		updateSettingsAction,
-		goalAction,
 	],
 	events,
 	evaluators: [reflectionEvaluator],

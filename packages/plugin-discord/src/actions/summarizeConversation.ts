@@ -338,7 +338,7 @@ ${currentSummary.trim()}
 			const summaryDir = "cache";
 			const summaryFilename = `${summaryDir}/conversation_summary_${Date.now()}`;
 			await runtime
-				.getDatabaseAdapter()
+				
 				.setCache<string>(summaryFilename, currentSummary);
 			await fs.promises.mkdir(summaryDir, { recursive: true });
 

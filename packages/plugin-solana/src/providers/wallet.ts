@@ -33,7 +33,7 @@ export const walletProvider: Provider = {
 	): Promise<ProviderResult> => {
 		try {
 			const portfolioCache = await runtime
-				.getDatabaseAdapter()
+				
 				.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
 			if (!portfolioCache) {
 				return { data: null, values: {}, text: "" };

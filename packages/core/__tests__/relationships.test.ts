@@ -36,13 +36,13 @@ describe("Relationships Module", () => {
 
 			const result = await createRelationship({
 				runtime: mockRuntime,
-				userA: mockUserA,
-				userB: mockUserB,
+				sourceEntityId: mockUserA,
+				targetEntityId: mockUserB,
 			});
 
 			expect(mockDatabaseAdapter.createRelationship).toHaveBeenCalledWith({
-				userA: mockUserA,
-				userB: mockUserB,
+				sourceEntityId: mockUserA,
+				targetEntityId: mockUserB,
 			});
 			expect(result).toBe(true);
 		});
@@ -55,8 +55,8 @@ describe("Relationships Module", () => {
 			await expect(
 				createRelationship({
 					runtime: mockRuntime,
-					userA: mockUserA,
-					userB: mockUserB,
+					sourceEntityId: mockUserA,
+					targetEntityId: mockUserB,
 				}),
 			).rejects.toThrow("Database error");
 		});
@@ -65,8 +65,8 @@ describe("Relationships Module", () => {
 	describe("getRelationship", () => {
 		it("should call getRelationship on the databaseAdapter with correct parameters", async () => {
 			const mockRelationship: Relationship = {
-				userA: mockUserA,
-				userB: mockUserB,
+				sourceEntityId: mockUserA,
+				targetEntityId: mockUserB,
 				id: generateRandomUUID(),
 				userId: generateRandomUUID(),
 				roomId: generateRandomUUID(),
@@ -76,13 +76,13 @@ describe("Relationships Module", () => {
 
 			const result = await getRelationship({
 				runtime: mockRuntime,
-				userA: mockUserA,
-				userB: mockUserB,
+				sourceEntityId: mockUserA,
+				targetEntityId: mockUserB,
 			});
 
 			expect(mockDatabaseAdapter.getRelationship).toHaveBeenCalledWith({
-				userA: mockUserA,
-				userB: mockUserB,
+				sourceEntityId: mockUserA,
+				targetEntityId: mockUserB,
 			});
 			expect(result).toEqual(mockRelationship);
 		});
@@ -92,16 +92,16 @@ describe("Relationships Module", () => {
 		it("should call getRelationships on the databaseAdapter with correct parameters", async () => {
 			const mockRelationships: Relationship[] = [
 				{
-					userA: mockUserA,
-					userB: mockUserB,
+					sourceEntityId: mockUserA,
+					targetEntityId: mockUserB,
 					id: generateRandomUUID(),
 					userId: generateRandomUUID(),
 					roomId: generateRandomUUID(),
 					status: generateRandomUUID(),
 				},
 				{
-					userA: mockUserB,
-					userB: mockUserId,
+					sourceEntityId: mockUserB,
+					targetEntityId: mockUserId,
 					id: generateRandomUUID(),
 					userId: generateRandomUUID(),
 					roomId: generateRandomUUID(),
@@ -126,16 +126,16 @@ describe("Relationships Module", () => {
 		it("should format relationships correctly", async () => {
 			const mockRelationships: Relationship[] = [
 				{
-					userA: mockUserA,
-					userB: mockUserB,
+					sourceEntityId: mockUserA,
+					targetEntityId: mockUserB,
 					id: generateRandomUUID(),
 					userId: generateRandomUUID(),
 					roomId: generateRandomUUID(),
 					status: "STATUS",
 				},
 				{
-					userA: mockUserB,
-					userB: mockUserId,
+					sourceEntityId: mockUserB,
+					targetEntityId: mockUserId,
 					id: generateRandomUUID(),
 					userId: generateRandomUUID(),
 					roomId: generateRandomUUID(),

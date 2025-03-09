@@ -52,7 +52,7 @@ export const unmuteRoomAction: Action = {
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
 		const roomId = message.roomId;
 		const roomState = await runtime
-			.getDatabaseAdapter()
+			
 			.getParticipantUserState(roomId, runtime.agentId);
 		return roomState === "MUTED";
 	},
@@ -134,11 +134,11 @@ export const unmuteRoomAction: Action = {
 
 		if (await _shouldUnmute(state)) {
 			await runtime
-				.getDatabaseAdapter()
+				
 				.setParticipantUserState(message.roomId, runtime.agentId, null);
 		}
 
-		const room = await runtime.getDatabaseAdapter().getRoom(message.roomId);
+		const room = await runtime.getRoom(message.roomId);
 
 		await runtime.getMemoryManager("messages").createMemory({
 			entityId: message.entityId,

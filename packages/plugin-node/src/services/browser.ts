@@ -226,7 +226,7 @@ export class BrowserService extends Service implements IBrowserService {
 	): Promise<PageContent> {
 		const cacheKey = this.getCacheKey(url);
 		const cached = await runtime
-			.getDatabaseAdapter()
+			
 			.getCache<any>(`${this.cacheKey}/${cacheKey}`);
 
 		if (cached) {
@@ -272,7 +272,7 @@ export class BrowserService extends Service implements IBrowserService {
 			);
 			const content = { title: parsedTitle, description, bodyContent };
 			await runtime
-				.getDatabaseAdapter()
+				
 				.setCache<any>(`${this.cacheKey}/${cacheKey}`, {
 					url,
 					content,

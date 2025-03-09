@@ -137,7 +137,7 @@ export const updateEntityAction: Action = {
 		// const agentId = runtime.agentId;
 
 		// // Get all components for the current room to understand available sources
-		// const roomComponents = await runtime.getDatabaseAdapter().getComponents(message.roomId, worldId, agentId);
+		// const roomComponents = await runtime.getComponents(message.roomId, worldId, agentId);
 
 		// // Get source types from room components
 		// const availableSources = new Set(roomComponents.map(c => c.type));
@@ -163,7 +163,7 @@ export const updateEntityAction: Action = {
 			const agentId = runtime.agentId;
 			const room =
 				state.data.room ??
-				(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+				(await runtime.getRoom(message.roomId));
 			const worldId = room.worldId;
 
 			// First, find the entity being referenced
@@ -220,12 +220,12 @@ export const updateEntityAction: Action = {
 
 			// Now that we know the component type, get the existing component if it exists
 			existingComponent = await runtime
-				.getDatabaseAdapter()
+				
 				.getComponent(entity.id!, componentType, worldId, sourceEntityId);
 
 			// Create or update the component
 			if (existingComponent) {
-				await runtime.getDatabaseAdapter().updateComponent({
+				await runtime.updateComponent({
 					id: existingComponent.id,
 					entityId: entity.id!,
 					worldId,
@@ -242,7 +242,7 @@ export const updateEntityAction: Action = {
 					source: message.content.source,
 				});
 			} else {
-				await runtime.getDatabaseAdapter().createComponent({
+				await runtime.createComponent({
 					id: uuidv4() as UUID,
 					entityId: entity.id!,
 					worldId,

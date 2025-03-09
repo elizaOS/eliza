@@ -203,7 +203,7 @@ ${mediaTranscript.trim()}
 
 			// save the transcript to a file
 			await runtime
-				.getDatabaseAdapter()
+				
 				.setCache<string>(transcriptFilename, callbackData.text);
 
 			await callback(

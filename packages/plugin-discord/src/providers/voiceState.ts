@@ -14,7 +14,7 @@ const voiceStateProvider: Provider = {
 	name: "voiceState",
 	get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
 		// Voice doesn't get a discord message, so we need to use the channel for guild data
-		const room = await runtime.getDatabaseAdapter().getRoom(message.roomId);
+		const room = await runtime.getRoom(message.roomId);
 		if (!room) {
 			throw new Error("No room found");
 		}
@@ -60,8 +60,8 @@ const voiceStateProvider: Provider = {
 
 		const worldId = room.worldId;
 
-		// get the world from the runtime.getDatabaseAdapter().getWorld
-		const world = await runtime.getDatabaseAdapter().getWorld(worldId);
+		// get the world from the runtime.getWorld
+		const world = await runtime.getWorld(worldId);
 
 		if (!world) {
 			throw new Error("No world found");

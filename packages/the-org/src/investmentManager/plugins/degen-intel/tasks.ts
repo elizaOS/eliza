@@ -16,12 +16,12 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 	worldId = runtime.agentId; // this is global data for the agent
 
 	// first, get all tasks with tags "queue", "repeat", "degen_intel" and delete them
-	const tasks = await runtime.getDatabaseAdapter().getTasks({
+	const tasks = await runtime.getTasks({
 		tags: ["queue", "repeat", "degen_intel"],
 	});
 
 	for (const task of tasks) {
-		await runtime.getDatabaseAdapter().deleteTask(task.id);
+		await runtime.deleteTask(task.id);
 	}
 
 	runtime.registerTaskWorker({
@@ -36,12 +36,12 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 			} catch (error) {
 				logger.error("Failed to sync trending tokens", error);
 				// kill this task
-				runtime.getDatabaseAdapter().deleteTask(task.id);
+				runtime.deleteTask(task.id);
 			}
 		},
 	});
 
-	runtime.getDatabaseAdapter().createTask({
+	runtime.createTask({
 		name: "INTEL_BIRDEYE_SYNC_TRENDING",
 		description: "Sync trending tokens from Birdeye",
 		worldId,
@@ -64,12 +64,12 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 			} catch (error) {
 				logger.error("Failed to sync tokens", error);
 				// kill this task
-				runtime.getDatabaseAdapter().deleteTask(task.id);
+				runtime.deleteTask(task.id);
 			}
 		},
 	});
 
-	runtime.getDatabaseAdapter().createTask({
+	runtime.createTask({
 		name: "INTEL_COINMARKETCAP_SYNC",
 		description: "Sync tokens from Coinmarketcap",
 		worldId,
@@ -92,12 +92,12 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 			} catch (error) {
 				logger.error("Failed to sync raw tweets", error);
 				// kill this task
-				runtime.getDatabaseAdapter().deleteTask(task.id);
+				runtime.deleteTask(task.id);
 			}
 		},
 	});
 
-	runtime.getDatabaseAdapter().createTask({
+	runtime.createTask({
 		name: "INTEL_SYNC_RAW_TWEETS",
 		description: "Sync raw tweets from Twitter",
 		worldId,
@@ -120,12 +120,12 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 			} catch (error) {
 				logger.error("Failed to sync wallet", error);
 				// kill this task
-				runtime.getDatabaseAdapter().deleteTask(task.id);
+				runtime.deleteTask(task.id);
 			}
 		},
 	});
 
-	runtime.getDatabaseAdapter().createTask({
+	runtime.createTask({
 		name: "INTEL_SYNC_WALLET",
 		description: "Sync wallet from Birdeye",
 		worldId,
@@ -148,12 +148,12 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 			} catch (error) {
 				logger.error("Failed to generate buy signal", error);
 				// kill this task
-				runtime.getDatabaseAdapter().deleteTask(task.id);
+				runtime.deleteTask(task.id);
 			}
 		},
 	});
 
-	runtime.getDatabaseAdapter().createTask({
+	runtime.createTask({
 		name: "INTEL_GENERATE_BUY_SIGNAL",
 		description: "Generate a buy signal",
 		worldId,
@@ -176,12 +176,12 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 			} catch (error) {
 				logger.error("Failed to parse tweets", error);
 				// kill this task
-				runtime.getDatabaseAdapter().deleteTask(task.id);
+				runtime.deleteTask(task.id);
 			}
 		},
 	});
 
-	runtime.getDatabaseAdapter().createTask({
+	runtime.createTask({
 		name: "INTEL_PARSE_TWEETS",
 		description: "Parse tweets",
 		worldId,

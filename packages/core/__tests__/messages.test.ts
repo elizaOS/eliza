@@ -5,11 +5,11 @@ import {
 	formatTimestamp,
 	getActorDetails,
 } from "../src/messages";
-import type { Actor, Content, IAgentRuntime, Memory, UUID } from "../src/types";
+import type { Entity, Content, IAgentRuntime, Memory, UUID } from "../src/types";
 
 describe("Messages Library", () => {
 	let runtime: IAgentRuntime;
-	let actors: Actor[];
+	let actors: Entity[];
 	let userId: UUID;
 
 	beforeAll(() => {
@@ -38,9 +38,9 @@ describe("Messages Library", () => {
 
 		// Using vi.mocked() type assertion instead of jest.Mock casting
 		vi.mocked(
-			runtime.getDatabaseAdapter().getParticipantsForRoom,
+			runtime.getParticipantsForRoom,
 		).mockResolvedValue([userId]);
-		vi.mocked(runtime.getDatabaseAdapter().getEntityById).mockResolvedValue({
+		vi.mocked(runtime.getEntityById).mockResolvedValue({
 			id: userId,
 			name: "Test User",
 			username: "testuser",
@@ -135,7 +135,7 @@ describe("Messages Library", () => {
 });
 
 describe("Messages", () => {
-	const mockActors: Actor[] = [
+	const mockActors: Entity[] = [
 		{
 			id: "123e4567-e89b-12d3-a456-426614174006" as UUID,
 			name: "Alice",
@@ -202,7 +202,7 @@ describe("Messages", () => {
 			expect(actors[0].name).toBe("Alice");
 			expect(actors[1].name).toBe("Bob");
 			expect(
-				mockRuntime.getDatabaseAdapter().getParticipantsForRoom,
+				mockRuntime.getParticipantsForRoom,
 			).toHaveBeenCalled();
 		});
 
@@ -242,7 +242,7 @@ describe("Messages", () => {
 		});
 
 		it("should handle actors without details", () => {
-			const actorsWithoutDetails: Actor[] = [
+			const actorsWithoutDetails: Entity[] = [
 				{
 					id: "123e4567-e89b-12d3-a456-426614174013" as UUID,
 					name: "Charlie",

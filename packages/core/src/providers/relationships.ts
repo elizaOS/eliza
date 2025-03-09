@@ -37,7 +37,7 @@ async function formatRelationships(
 
 	// Fetch all required entities in a single batch operation
 	const entities = await Promise.all(
-		uniqueEntityIds.map((id) => runtime.getDatabaseAdapter().getEntityById(id)),
+		uniqueEntityIds.map((id) => runtime.getEntityById(id)),
 	);
 
 	// Create a lookup map for efficient access
@@ -99,7 +99,7 @@ const relationshipsProvider: Provider = {
 	dynamic: true,
 	get: async (runtime: IAgentRuntime, message: Memory) => {
 		// Get all relationships for the current user
-		const relationships = await runtime.getDatabaseAdapter().getRelationships({
+		const relationships = await runtime.getRelationships({
 			entityId: message.entityId,
 		});
 

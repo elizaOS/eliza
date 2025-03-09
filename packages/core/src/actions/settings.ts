@@ -243,7 +243,7 @@ export async function getWorldSettings(
 ): Promise<WorldSettings | null> {
 	try {
 		const worldId = createUniqueUuid(runtime, serverId);
-		const world = await runtime.getDatabaseAdapter().getWorld(worldId);
+		const world = await runtime.getWorld(worldId);
 
 		if (!world || !world.metadata?.settings) {
 			return null;
@@ -266,7 +266,7 @@ export async function updateWorldSettings(
 ): Promise<boolean> {
 	try {
 		const worldId = createUniqueUuid(runtime, serverId);
-		const world = await runtime.getDatabaseAdapter().getWorld(worldId);
+		const world = await runtime.getWorld(worldId);
 
 		if (!world) {
 			logger.error(`No world found for server ${serverId}`);
@@ -282,7 +282,7 @@ export async function updateWorldSettings(
 		world.metadata.settings = worldSettings;
 
 		// Save updated world
-		await runtime.getDatabaseAdapter().updateWorld(world);
+		await runtime.updateWorld(world);
 
 		return true;
 	} catch (error) {

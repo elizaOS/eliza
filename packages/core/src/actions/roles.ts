@@ -144,7 +144,7 @@ const updateRoleAction: Action = {
 		// First, get the world for this server
 		let world;
 		if (worldId) {
-			world = await runtime.getDatabaseAdapter().getWorld(worldId as UUID);
+			world = await runtime.getWorld(worldId as UUID);
 		}
 
 		if (!world) {
@@ -162,7 +162,7 @@ const updateRoleAction: Action = {
 
 		// Get the entities for this room
 		const entities = await runtime
-			.getDatabaseAdapter()
+			
 			.getEntitiesForRoom(roomId);
 
 		// Get the role of the requester
@@ -277,7 +277,7 @@ const updateRoleAction: Action = {
 
 		// Save updated world metadata if any changes were made
 		if (worldUpdated) {
-			await runtime.getDatabaseAdapter().updateWorld(world);
+			await runtime.updateWorld(world);
 			logger.info(`Updated roles in world metadata for server ${serverId}`);
 		}
 	},

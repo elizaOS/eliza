@@ -51,7 +51,7 @@ export const unfollowRoomAction: Action = {
 	validate: async (runtime: IAgentRuntime, message: Memory) => {
 		const roomId = message.roomId;
 		const roomState = await runtime
-			.getDatabaseAdapter()
+			
 			.getParticipantUserState(roomId, runtime.agentId);
 		return roomState === "FOLLOWED";
 	},
@@ -80,12 +80,12 @@ export const unfollowRoomAction: Action = {
 
 		if (await _shouldUnfollow(state)) {
 			await runtime
-				.getDatabaseAdapter()
+				
 				.setParticipantUserState(message.roomId, runtime.agentId, null);
 
 			const room =
 				state.data.room ??
-				(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+				(await runtime.getRoom(message.roomId));
 
 			await runtime.getMemoryManager("messages").createMemory({
 				entityId: message.entityId,

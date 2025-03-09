@@ -79,12 +79,12 @@ export class TaskService extends Service {
 
 		// check if the task exists
 		const tasks = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getTasksByName("REPEATING_TEST_TASK");
 
 		if (tasks.length === 0) {
 			// Create repeating task
-			await this.runtime.getDatabaseAdapter().createTask({
+			await this.runtime.createTask({
 				name: "REPEATING_TEST_TASK",
 				description: "A test task that repeats every minute",
 				metadata: {
@@ -96,7 +96,7 @@ export class TaskService extends Service {
 		}
 
 		// Create one-time task
-		await this.runtime.getDatabaseAdapter().createTask({
+		await this.runtime.createTask({
 			name: "ONETIME_TEST_TASK",
 			description: "A test task that runs once",
 			metadata: {
@@ -175,7 +175,7 @@ export class TaskService extends Service {
 	private async checkTasks() {
 		try {
 			// Get all tasks with "queue" tag
-			const allTasks = await this.runtime.getDatabaseAdapter().getTasks({
+			const allTasks = await this.runtime.getTasks({
 				tags: ["queue"],
 			});
 
@@ -237,7 +237,7 @@ export class TaskService extends Service {
 			// Handle repeating vs non-repeating tasks
 			if (task.tags?.includes("repeat")) {
 				// For repeating tasks, update the updatedAt timestamp
-				await this.runtime.getDatabaseAdapter().updateTask(task.id, {
+				await this.runtime.updateTask(task.id, {
 					metadata: {
 						...task.metadata,
 						updatedAt: Date.now(),
@@ -248,7 +248,7 @@ export class TaskService extends Service {
 				);
 			} else {
 				// For non-repeating tasks, delete the task after execution
-				await this.runtime.getDatabaseAdapter().deleteTask(task.id);
+				await this.runtime.deleteTask(task.id);
 				logger.debug(
 					`Deleted non-repeating task ${task.name} (${task.id}) after execution`,
 				);

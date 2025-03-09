@@ -66,52 +66,6 @@ export interface ConversationExample {
 	content: Content;
 }
 
-/**
- * Represents a single objective within a goal
- */
-export interface Objective {
-	/** Optional unique identifier */
-	id?: string;
-
-	/** Description of what needs to be achieved */
-	description: string;
-
-	/** Whether objective is completed */
-	completed: boolean;
-}
-
-/**
- * Status enum for goals
- */
-export enum GoalStatus {
-	DONE = "DONE",
-	FAILED = "FAILED",
-	IN_PROGRESS = "IN_PROGRESS",
-}
-
-/**
- * Represents a high-level goal composed of objectives
- */
-export interface Goal {
-	/** Optional unique identifier */
-	id?: UUID;
-
-	/** Room ID where goal exists */
-	roomId: UUID;
-
-	/** User ID of goal owner */
-	entityId: UUID;
-
-	/** Name/title of the goal */
-	name: string;
-
-	/** Current status */
-	status: GoalStatus;
-
-	/** Component objectives */
-	objectives: Objective[];
-}
-
 export type ModelType = (typeof ModelTypes)[keyof typeof ModelTypes] | string;
 
 /**
@@ -811,8 +765,6 @@ export interface IDatabaseAdapter {
 		type: string;
 	}): Promise<void>;
 
-	updateGoalStatus(params: { goalId: UUID; status: GoalStatus }): Promise<void>;
-
 	searchMemories(params: {
 		embedding: number[];
 		match_threshold?: number;
@@ -837,21 +789,6 @@ export interface IDatabaseAdapter {
 		unique?: boolean,
 		tableName?: string,
 	): Promise<number>;
-
-	getGoals(params: {
-		roomId: UUID;
-		entityId?: UUID | null;
-		onlyInProgress?: boolean;
-		count?: number;
-	}): Promise<Goal[]>;
-
-	updateGoal(goal: Goal): Promise<void>;
-
-	createGoal(goal: Goal): Promise<void>;
-
-	removeGoal(goalId: UUID): Promise<void>;
-
-	removeAllGoals(roomId: UUID): Promise<void>;
 
 	createWorld(world: World): Promise<UUID>;
 
@@ -941,7 +878,7 @@ export interface IDatabaseAdapter {
 		tags?: string[];
 	}): Promise<Relationship[]>;
 
-	ensureEmbeddingDimension(dimension: number): void;
+	ensureEmbeddingDimension(dimension: number): Promise<void>;
 
 	getCache<T>(key: string): Promise<T | undefined>;
 	setCache<T>(key: string, value: T): Promise<boolean>;
@@ -1003,7 +940,7 @@ export type CacheOptions = {
 	expires?: number;
 };
 
-export interface IAgentRuntime {
+export interface IAgentRuntime extends IDatabaseAdapter {
 	// Properties
 	agentId: UUID;
 	databaseAdapter: IDatabaseAdapter;
@@ -1016,6 +953,8 @@ export interface IAgentRuntime {
 	events: Map<string, ((params: any) => void)[]>;
 	fetch?: typeof fetch | null;
 	routes: Route[];
+	
+	// Methods
 	registerPlugin(plugin: Plugin): Promise<void>;
 
 	initialize(): Promise<void>;
@@ -1038,9 +977,8 @@ export interface IAgentRuntime {
 
 	registerService(service: typeof Service): void;
 
+	// Keep these methods for backward compatibility
 	registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
-
-	getDatabaseAdapter(): IDatabaseAdapter | null;
 
 	setSetting(
 		key: string,
@@ -1050,7 +988,6 @@ export interface IAgentRuntime {
 
 	getSetting(key: string): string | boolean | null | any;
 
-	// Methods
 	getConversationLength(): number;
 
 	processActions(
@@ -1125,6 +1062,7 @@ export interface IAgentRuntime {
 		modelType: ModelType | string,
 		handler: (params: any) => Promise<any>,
 	): void;
+	
 	getModel(
 		modelType: ModelType | string,
 	): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined;
@@ -1138,8 +1076,6 @@ export interface IAgentRuntime {
 	getTaskWorker(name: string): TaskWorker | undefined;
 
 	stop(): Promise<void>;
-
-	ensureEmbeddingDimension(): Promise<void>;
 }
 
 export type KnowledgeItem = {

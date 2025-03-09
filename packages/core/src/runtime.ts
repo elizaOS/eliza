@@ -10,6 +10,8 @@ import {
 	type Agent,
 	ChannelType,
 	type Character,
+	type Component,
+	type Entity,
 	type Evaluator,
 	type HandlerCallback,
 	type IAgentRuntime,
@@ -22,13 +24,16 @@ import {
 	type ModelResultMap,
 	type ModelType,
 	ModelTypes,
+	type Participant,
 	type Plugin,
 	type Provider,
+	type Relationship,
 	type Room,
 	type Route,
 	type Service,
 	type ServiceType,
 	type State,
+	type Task,
 	type TaskWorker,
 	type UUID,
 	type World
@@ -287,21 +292,21 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
-		await this.getDatabaseAdapter().init();
+		await this.adapter.init();
 
 		// First create the agent entity directly
 		try {
-			await this.getDatabaseAdapter().ensureAgentExists(
+			await this.adapter.ensureAgentExists(
 				this.character as Partial<Agent>,
 			);
 
 			// No need to transform agent's own ID
-			const agentEntity = await this.getDatabaseAdapter().getEntityById(
+			const agentEntity = await this.adapter.getEntityById(
 				this.agentId,
 			);
 
 			if (!agentEntity) {
-				const created = await this.getDatabaseAdapter().createEntity({
+				const created = await this.adapter.createEntity({
 					id: this.agentId,
 					agentId: this.agentId,
 					names: Array.from(
@@ -351,9 +356,9 @@ export class AgentRuntime implements IAgentRuntime {
 		try {
 			// No need to transform agent ID
 			const participants =
-				await this.getDatabaseAdapter().getParticipantsForRoom(this.agentId);
+				await this.adapter.getParticipantsForRoom(this.agentId);
 			if (!participants.includes(this.agentId)) {
-				const added = await this.getDatabaseAdapter().addParticipant(
+				const added = await this.adapter.addParticipant(
 					this.agentId,
 					this.agentId,
 				);
@@ -580,10 +585,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	getDatabaseAdapter() {
-		return this.adapter;
-	}
-
 	/**
 	 * Register a provider for the agent to use.
 	 * @param provider The provider to register.
@@ -710,7 +711,7 @@ export class AgentRuntime implements IAgentRuntime {
 					logger.success(`Action ${action.name} executed successfully.`);
 
 					// log to database
-					await this.getDatabaseAdapter().log({
+					await this.adapter.log({
 						entityId: message.entityId,
 						roomId: message.roomId,
 						type: "action",
@@ -786,7 +787,7 @@ export class AgentRuntime implements IAgentRuntime {
 						responses,
 					);
 					// log to database
-					await this.getDatabaseAdapter().log({
+					await this.adapter.log({
 						entityId: message.entityId,
 						roomId: message.roomId,
 						type: "evaluator",
@@ -806,18 +807,18 @@ export class AgentRuntime implements IAgentRuntime {
 
 	async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
 		// Make sure entity exists in database before adding as participant
-		const entity = await this.getDatabaseAdapter().getEntityById(entityId);
+		const entity = await this.adapter.getEntityById(entityId);
 		if (!entity) {
 			throw new Error(`User ${entityId} not found`);
 		}
 		// Get current participants
 		const participants =
-			await this.getDatabaseAdapter().getParticipantsForRoom(roomId);
+			await this.adapter.getParticipantsForRoom(roomId);
 
 		// Only add if not already a participant
 		if (!participants.includes(entityId)) {
 			// Add participant using the tenant-specific ID that now exists in the entities table
-			const added = await this.getDatabaseAdapter().addParticipant(
+			const added = await this.adapter.addParticipant(
 				entityId,
 				roomId,
 			);
@@ -875,10 +876,10 @@ export class AgentRuntime implements IAgentRuntime {
 			},
 		};
 
-		const entity = await this.getDatabaseAdapter().getEntityById(entityId);
+		const entity = await this.adapter.getEntityById(entityId);
 
 		if (!entity) {
-			await this.getDatabaseAdapter().createEntity({
+			await this.adapter.createEntity({
 				id: entityId,
 				names,
 				metadata,
@@ -928,7 +929,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 */
 	async ensureWorldExists({ id, name, serverId, metadata }: World) {
 		try {
-			const world = await this.getDatabaseAdapter().getWorld(id);
+			const world = await this.adapter.getWorld(id);
 			if (!world) {
 				logger.info("Creating world:", {
 					id,
@@ -936,7 +937,7 @@ export class AgentRuntime implements IAgentRuntime {
 					serverId,
 					agentId: this.agentId,
 				});
-				await this.getDatabaseAdapter().createWorld({
+				await this.adapter.createWorld({
 					id,
 					name,
 					agentId: this.agentId,
@@ -971,9 +972,9 @@ export class AgentRuntime implements IAgentRuntime {
 		serverId,
 		worldId,
 	}: Room) {
-		const room = await this.getDatabaseAdapter().getRoom(id);
+		const room = await this.adapter.getRoom(id);
 		if (!room) {
-			await this.getDatabaseAdapter().createRoom({
+			await this.adapter.createRoom({
 				id,
 				name,
 				agentId: this.agentId,
@@ -1215,7 +1216,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const response = await model(this, paramsWithRuntime);
 
 		// Log the model usage
-		await this.getDatabaseAdapter().log({
+		await this.adapter.log({
 			entityId: this.agentId,
 			roomId: this.agentId,
 			body: {
@@ -1270,7 +1271,7 @@ export class AgentRuntime implements IAgentRuntime {
 			`[AgentRuntime][${this.character.name}] Starting ensureEmbeddingDimension`,
 		);
 
-		if (!this.getDatabaseAdapter()) {
+		if (!this.adapter) {
 			throw new Error(
 				`[AgentRuntime][${this.character.name}] Database adapter not initialized before ensureEmbeddingDimension`,
 			);
@@ -1298,7 +1299,7 @@ export class AgentRuntime implements IAgentRuntime {
 			logger.debug(
 				`[AgentRuntime][${this.character.name}] Setting embedding dimension: ${embedding.length}`,
 			);
-			await this.getDatabaseAdapter().ensureEmbeddingDimension(
+			await this.adapter.ensureEmbeddingDimension(
 				embedding.length,
 			);
 			logger.debug(
@@ -1327,5 +1328,300 @@ export class AgentRuntime implements IAgentRuntime {
 	 */
 	getTaskWorker(name: string): TaskWorker | undefined {
 		return this.taskWorkers.get(name);
+	}
+
+	// Implement database adapter methods
+	
+	get db(): any {
+		return this.adapter.db;
+	}
+	
+	async init(): Promise<void> {
+		await this.adapter.init();
+	}
+	
+	async close(): Promise<void> {
+		await this.adapter.close();
+	}
+	
+	async getAgent(agentId: UUID): Promise<Agent | null> {
+		return await this.adapter.getAgent(agentId);
+	}
+	
+	async getAgents(): Promise<Agent[]> {
+		return await this.adapter.getAgents();
+	}
+	
+	async createAgent(agent: Partial<Agent>): Promise<boolean> {
+		return await this.adapter.createAgent(agent);
+	}
+	
+	async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
+		return await this.adapter.updateAgent(agentId, agent);
+	}
+	
+	async deleteAgent(agentId: UUID): Promise<boolean> {
+		return await this.adapter.deleteAgent(agentId);
+	}
+	
+	async ensureAgentExists(agent: Partial<Agent>): Promise<void> {
+		await this.adapter.ensureAgentExists(agent);
+	}
+	
+	async getEntityById(entityId: UUID): Promise<Entity | null> {
+		return await this.adapter.getEntityById(entityId);
+	}
+	
+	async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
+		return await this.adapter.getEntitiesForRoom(roomId, includeComponents);
+	}
+	
+	async createEntity(entity: Entity): Promise<boolean> {
+		return await this.adapter.createEntity(entity);
+	}
+	
+	async updateEntity(entity: Entity): Promise<void> {
+		await this.adapter.updateEntity(entity);
+	}
+	
+	async getComponent(entityId: UUID, type: string, worldId?: UUID, sourceEntityId?: UUID): Promise<Component | null> {
+		return await this.adapter.getComponent(entityId, type, worldId, sourceEntityId);
+	}
+	
+	async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
+		return await this.adapter.getComponents(entityId, worldId, sourceEntityId);
+	}
+	
+	async createComponent(component: Component): Promise<boolean> {
+		return await this.adapter.createComponent(component);
+	}
+	
+	async updateComponent(component: Component): Promise<void> {
+		await this.adapter.updateComponent(component);
+	}
+	
+	async deleteComponent(componentId: UUID): Promise<void> {
+		await this.adapter.deleteComponent(componentId);
+	}
+	
+	async getMemories(params: {
+		roomId: UUID;
+		count?: number;
+		unique?: boolean;
+		tableName: string;
+		start?: number;
+		end?: number;
+	}): Promise<Memory[]> {
+		return await this.adapter.getMemories(params);
+	}
+	
+	async getMemoryById(id: UUID): Promise<Memory | null> {
+		return await this.adapter.getMemoryById(id);
+	}
+	
+	async getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]> {
+		return await this.adapter.getMemoriesByIds(ids, tableName);
+	}
+	
+	async getMemoriesByRoomIds(params: {
+		tableName: string;
+		roomIds: UUID[];
+		limit?: number;
+	}): Promise<Memory[]> {
+		return await this.adapter.getMemoriesByRoomIds(params);
+	}
+	
+	async getCachedEmbeddings(params: {
+		query_table_name: string;
+		query_threshold: number;
+		query_input: string;
+		query_field_name: string;
+		query_field_sub_name: string;
+		query_match_count: number;
+	}): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
+		return await this.adapter.getCachedEmbeddings(params);
+	}
+	
+	async log(params: {
+		body: { [key: string]: unknown };
+		entityId: UUID;
+		roomId: UUID;
+		type: string;
+	}): Promise<void> {
+		await this.adapter.log(params);
+	}
+	
+	async searchMemories(params: {
+		embedding: number[];
+		match_threshold?: number;
+		count?: number;
+		roomId?: UUID;
+		unique?: boolean;
+		tableName: string;
+	}): Promise<Memory[]> {
+		return await this.adapter.searchMemories(params);
+	}
+	
+	async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
+		return await this.adapter.createMemory(memory, tableName, unique);
+	}
+	
+	async removeMemory(memoryId: UUID, tableName: string): Promise<void> {
+		await this.adapter.removeMemory(memoryId, tableName);
+	}
+	
+	async removeAllMemories(roomId: UUID, tableName: string): Promise<void> {
+		await this.adapter.removeAllMemories(roomId, tableName);
+	}
+	
+	async countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number> {
+		return await this.adapter.countMemories(roomId, unique, tableName);
+	}
+	
+	async createWorld(world: World): Promise<UUID> {
+		return await this.adapter.createWorld(world);
+	}
+	
+	async getWorld(id: UUID): Promise<World | null> {
+		return await this.adapter.getWorld(id);
+	}
+	
+	async getAllWorlds(): Promise<World[]> {
+		return await this.adapter.getAllWorlds();
+	}
+	
+	async updateWorld(world: World): Promise<void> {
+		await this.adapter.updateWorld(world);
+	}
+	
+	async getRoom(roomId: UUID): Promise<Room | null> {
+		return await this.adapter.getRoom(roomId);
+	}
+	
+	async createRoom({
+		id,
+		name,
+		source,
+		type,
+		channelId,
+		serverId,
+		worldId,
+	}: Room): Promise<UUID> {
+		return await this.adapter.createRoom({
+			id,
+			name,
+			source,
+			type,
+			channelId,
+			serverId,
+			worldId,
+		});
+	}
+	
+	async deleteRoom(roomId: UUID): Promise<void> {
+		await this.adapter.deleteRoom(roomId);
+	}
+	
+	async updateRoom(room: Room): Promise<void> {
+		await this.adapter.updateRoom(room);
+	}
+	
+	async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
+		return await this.adapter.getRoomsForParticipant(entityId);
+	}
+	
+	async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]> {
+		return await this.adapter.getRoomsForParticipants(userIds);
+	}
+	
+	async getRooms(worldId: UUID): Promise<Room[]> {
+		return await this.adapter.getRooms(worldId);
+	}
+	
+	async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+		return await this.adapter.addParticipant(entityId, roomId);
+	}
+	
+	async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+		return await this.adapter.removeParticipant(entityId, roomId);
+	}
+	
+	async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
+		return await this.adapter.getParticipantsForEntity(entityId);
+	}
+	
+	async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
+		return await this.adapter.getParticipantsForRoom(roomId);
+	}
+	
+	async getParticipantUserState(roomId: UUID, entityId: UUID): Promise<"FOLLOWED" | "MUTED" | null> {
+		return await this.adapter.getParticipantUserState(roomId, entityId);
+	}
+	
+	async setParticipantUserState(roomId: UUID, entityId: UUID, state: "FOLLOWED" | "MUTED" | null): Promise<void> {
+		await this.adapter.setParticipantUserState(roomId, entityId, state);
+	}
+	
+	async createRelationship(params: {
+		sourceEntityId: UUID;
+		targetEntityId: UUID;
+		tags?: string[];
+		metadata?: { [key: string]: any };
+	}): Promise<boolean> {
+		return await this.adapter.createRelationship(params);
+	}
+	
+	async updateRelationship(relationship: Relationship): Promise<void> {
+		await this.adapter.updateRelationship(relationship);
+	}
+	
+	async getRelationship(params: {
+		sourceEntityId: UUID;
+		targetEntityId: UUID;
+	}): Promise<Relationship | null> {
+		return await this.adapter.getRelationship(params);
+	}
+	
+	async getRelationships(params: {
+		entityId: UUID;
+		tags?: string[];
+	}): Promise<Relationship[]> {
+		return await this.adapter.getRelationships(params);
+	}
+	
+	async getCache<T>(key: string): Promise<T | undefined> {
+		return await this.adapter.getCache<T>(key);
+	}
+	
+	async setCache<T>(key: string, value: T): Promise<boolean> {
+		return await this.adapter.setCache<T>(key, value);
+	}
+	
+	async deleteCache(key: string): Promise<boolean> {
+		return await this.adapter.deleteCache(key);
+	}
+	
+	async createTask(task: Task): Promise<UUID> {
+		return await this.adapter.createTask(task);
+	}
+	
+	async getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]> {
+		return await this.adapter.getTasks(params);
+	}
+	
+	async getTask(id: UUID): Promise<Task | null> {
+		return await this.adapter.getTask(id);
+	}
+	
+	async getTasksByName(name: string): Promise<Task[]> {
+		return await this.adapter.getTasksByName(name);
+	}
+	
+	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
+		await this.adapter.updateTask(id, task);
+	}
+	
+	async deleteTask(id: UUID): Promise<void> {
+		await this.adapter.deleteTask(id);
 	}
 }

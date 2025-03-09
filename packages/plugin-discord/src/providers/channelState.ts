@@ -18,7 +18,7 @@ const channelStateProvider: Provider = {
 	get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
 		const room =
 			state.data?.room ??
-			(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+			(await runtime.getRoom(message.roomId));
 		if (!room) {
 			throw new Error("No room found");
 		}

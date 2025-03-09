@@ -130,7 +130,7 @@ export class MemoryManager implements IMemoryManager {
 		end?: number;
 		agentId?: UUID;
 	}): Promise<Memory[]> {
-		return await this.runtime.getDatabaseAdapter().getMemories({
+		return await this.runtime.getMemories({
 			roomId: opts.roomId,
 			count: opts.count,
 			unique: opts.unique,
@@ -146,7 +146,7 @@ export class MemoryManager implements IMemoryManager {
 			levenshtein_score: number;
 		}[]
 	> {
-		return await this.runtime.getDatabaseAdapter().getCachedEmbeddings({
+		return await this.runtime.getCachedEmbeddings({
 			query_table_name: this.tableName,
 			query_threshold: 2,
 			query_input: content,
@@ -183,7 +183,7 @@ export class MemoryManager implements IMemoryManager {
 			unique = true,
 		} = opts;
 
-		return await this.runtime.getDatabaseAdapter().searchMemories({
+		return await this.runtime.searchMemories({
 			tableName: this.tableName,
 			roomId,
 			embedding,
@@ -205,7 +205,7 @@ export class MemoryManager implements IMemoryManager {
 			this.validateMetadataRequirements(memory.metadata);
 		}
 		const existingMessage = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getMemoryById(memory.id);
 
 		if (existingMessage) {
@@ -247,7 +247,7 @@ export class MemoryManager implements IMemoryManager {
 		}
 
 		const memoryId = await this.runtime
-			.getDatabaseAdapter()
+			
 			.createMemory(memory, this.tableName, unique);
 
 		return memoryId;
@@ -258,7 +258,7 @@ export class MemoryManager implements IMemoryManager {
 		limit?: number;
 		agentId?: UUID;
 	}): Promise<Memory[]> {
-		return await this.runtime.getDatabaseAdapter().getMemoriesByRoomIds({
+		return await this.runtime.getMemoriesByRoomIds({
 			tableName: this.tableName,
 			roomIds: params.roomIds,
 			limit: params.limit,
@@ -266,7 +266,7 @@ export class MemoryManager implements IMemoryManager {
 	}
 
 	async getMemoryById(id: UUID): Promise<Memory | null> {
-		const result = await this.runtime.getDatabaseAdapter().getMemoryById(id);
+		const result = await this.runtime.getMemoryById(id);
 		if (result && result.agentId !== this.runtime.agentId) return null;
 		return result;
 	}
@@ -278,7 +278,7 @@ export class MemoryManager implements IMemoryManager {
 	 */
 	async removeMemory(memoryId: UUID): Promise<void> {
 		await this.runtime
-			.getDatabaseAdapter()
+			
 			.removeMemory(memoryId, this.tableName);
 	}
 
@@ -289,7 +289,7 @@ export class MemoryManager implements IMemoryManager {
 	 */
 	async removeAllMemories(roomId: UUID): Promise<void> {
 		await this.runtime
-			.getDatabaseAdapter()
+			
 			.removeAllMemories(roomId, this.tableName);
 	}
 
@@ -301,7 +301,7 @@ export class MemoryManager implements IMemoryManager {
 	 */
 	async countMemories(roomId: UUID, unique = true): Promise<number> {
 		return await this.runtime
-			.getDatabaseAdapter()
+			
 			.countMemories(roomId, unique, this.tableName);
 	}
 

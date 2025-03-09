@@ -136,19 +136,19 @@ export async function findEntityByName(
 	try {
 		const room =
 			state.data.room ??
-			(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+			(await runtime.getRoom(message.roomId));
 		if (!room) {
 			logger.warn("Room not found for entity search");
 			return null;
 		}
 
 		const world = room.worldId
-			? await runtime.getDatabaseAdapter().getWorld(room.worldId)
+			? await runtime.getWorld(room.worldId)
 			: null;
 
 		// Get all entities in the room with their components
 		const entitiesInRoom = await runtime
-			.getDatabaseAdapter()
+			
 			.getEntitiesForRoom(room.id, true);
 
 		// Filter components for each entity based on permissions
@@ -182,7 +182,7 @@ export async function findEntityByName(
 		);
 
 		// Get relationships for the message sender
-		const relationships = await runtime.getDatabaseAdapter().getRelationships({
+		const relationships = await runtime.getRelationships({
 			entityId: message.entityId,
 		});
 
@@ -193,7 +193,7 @@ export async function findEntityByName(
 					rel.sourceEntityId === message.entityId
 						? rel.targetEntityId
 						: rel.sourceEntityId;
-				return runtime.getDatabaseAdapter().getEntityById(entityId);
+				return runtime.getEntityById(entityId);
 			}),
 		);
 
@@ -240,7 +240,7 @@ export async function findEntityByName(
 		// If we got an exact entity ID match
 		if (resolution.type === "EXACT_MATCH" && resolution.entityId) {
 			const entity = await runtime
-				.getDatabaseAdapter()
+				
 				.getEntityById(resolution.entityId as UUID);
 			if (entity) {
 				// Filter components again for the returned entity
@@ -341,8 +341,8 @@ export async function getEntityDetails({
 }) {
 	// Parallelize the two async operations
 	const [room, roomEntities] = await Promise.all([
-		runtime.getDatabaseAdapter().getRoom(roomId),
-		runtime.getDatabaseAdapter().getEntitiesForRoom(roomId, true),
+		runtime.getRoom(roomId),
+		runtime.getEntitiesForRoom(roomId, true),
 	]);
 
 	// Use a Map for uniqueness checking while processing entities

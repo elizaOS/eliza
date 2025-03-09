@@ -254,7 +254,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
 	// Run all queries in parallel
 	const [existingRelationships, entities, knownFacts] = await Promise.all([
-		runtime.getDatabaseAdapter().getRelationships({
+		runtime.getRelationships({
 			entityId: message.entityId,
 		}),
 		getEntityDetails({ runtime, roomId }),
@@ -342,13 +342,13 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 				new Set([...(existingRelationship.tags || []), ...relationship.tags]),
 			);
 
-			await runtime.getDatabaseAdapter().updateRelationship({
+			await runtime.updateRelationship({
 				...existingRelationship,
 				tags: updatedTags,
 				metadata: updatedMetadata,
 			});
 		} else {
-			await runtime.getDatabaseAdapter().createRelationship({
+			await runtime.createRelationship({
 				sourceEntityId: sourceId,
 				targetEntityId: targetId,
 				tags: relationship.tags,
@@ -361,7 +361,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 	}
 
 	await runtime
-		.getDatabaseAdapter()
+		
 		.setCache<string>(
 			`${message.roomId}-reflection-last-processed`,
 			message.id,
@@ -383,7 +383,7 @@ export const reflectionEvaluator: Evaluator = {
 		message: Memory,
 	): Promise<boolean> => {
 		const lastMessageId = await runtime
-			.getDatabaseAdapter()
+			
 			.getCache<string>(`${message.roomId}-reflection-last-processed`);
 		const messages = await runtime.getMemoryManager("messages").getMemories({
 			roomId: message.roomId,

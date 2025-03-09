@@ -1,16 +1,13 @@
 /* eslint-disable no-dupe-class-members */
 import { DatabaseAdapter } from "../src/database";
-import {
-	type Actor,
-	type ChannelType,
-	type Entity,
-	type Goal,
-	GoalStatus,
-	type Memory,
-	type Participant,
-	type Relationship,
-	type RoomData,
-	type UUID,
+import type {
+	ChannelType,
+	Entity,
+	Memory,
+	Participant,
+	Relationship,
+	Room,
+	UUID
 } from "../src/types";
 
 /**
@@ -44,8 +41,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 			id: id,
 			content: { text: "Test Memory" },
 			roomId: "room-id" as UUID,
-			userId: "user-id" as UUID,
-			agentId: "agent-id" as UUID,
+			entityId: "user-id" as UUID,
 		})) as Memory[];
 	}
 	/**
@@ -53,14 +49,14 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	 *
 	 * @param {object} _params - The parameters for the log function.
 	 * @param {object} _params.body - The data object containing the event details.
-	 * @param {string} _params.userId - The unique identifier of the user performing the event.
+	 * @param {string} _params.entityId - The unique identifier of the user performing the event.
 	 * @param {string} _params.roomId - The unique identifier of the room where the event occurred.
 	 * @param {string} _params.type - The type of event being logged.
 	 * @returns {Promise<void>}
 	 */
 	log(_params: {
 		body: { [key: string]: unknown };
-		userId: UUID;
+		entityId: UUID;
 		roomId: UUID;
 		type: string;
 	}): Promise<void> {
@@ -71,10 +67,10 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	 *
 	 * @param {Object} _params - The parameters for the method.
 	 * @param {UUID} _params.roomId - The UUID of the room to retrieve actor details from.
-	 * @returns {Promise<Actor[]>} - A promise that resolves to an array of Actor objects representing the details of actors in the specified room.
+	 * @returns {Promise<Entity[]>} - A promise that resolves to an array of Entity objects representing the details of actors in the specified room.
 	 * @throws {Error} - If the method is not implemented.
 	 */
-	getActorDetails(_params: { roomId: UUID }): Promise<Actor[]> {
+	getActorDetails(_params: { roomId: UUID }): Promise<Entity[]> {
 		throw new Error("Method not implemented.");
 	}
 	/**
@@ -127,67 +123,13 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 		throw new Error("Method not implemented.");
 	}
 	/**
-	 * Retrieves goals based on specified parameters.
-	 *
-	 * @param {Object} _params - The parameters for filtering goals.
-	 * @param {UUID} _params.roomId - The ID of the room to get goals from.
-	 * @param {UUID} [_params.userId] - Optional. The ID of the user to filter goals by.
-	 * @param {boolean} [_params.onlyInProgress] - Optional. If true, only goals that are in progress will be returned.
-	 * @param {number} [_params.count] - Optional. The maximum number of goals to return.
-	 * @returns {Promise<Goal[]>} - A Promise that resolves to an array of Goal objects.
-	 */
-	getGoals(_params: {
-		roomId: UUID;
-		userId?: UUID | null;
-		onlyInProgress?: boolean;
-		count?: number;
-	}): Promise<Goal[]> {
-		throw new Error("Method not implemented.");
-	}
-	/**
-	 * Updates a goal.
-	 *
-	 * @param _goal The goal to update.
-	 * @returns A Promise that resolves when the goal has been updated.
-	 */
-	updateGoal(_goal: Goal): Promise<void> {
-		throw new Error("Method not implemented.");
-	}
-	/**
-	 * Creates a new goal.
-	 *
-	 * @param {Goal} _goal - The goal object to be created.
-	 * @returns {Promise<void>} - A Promise that resolves when the goal is created.
-	 */
-	createGoal(_goal: Goal): Promise<void> {
-		throw new Error("Method not implemented.");
-	}
-	/**
-	 * Removes a goal with the specified ID.
-	 *
-	 * @param {UUID} _goalId - The ID of the goal to remove.
-	 * @returns {Promise<void>} A promise that resolves when the goal is successfully removed.
-	 */
-	removeGoal(_goalId: UUID): Promise<void> {
-		throw new Error("Method not implemented.");
-	}
-	/**
-	 * Removes all goals associated with a specific room.
-	 *
-	 * @param {UUID} _roomId - The unique identifier of the room to remove goals from.
-	 * @returns {Promise<void>} A promise that resolves when all goals are successfully removed.
-	 */
-	removeAllGoals(_roomId: UUID): Promise<void> {
-		throw new Error("Method not implemented.");
-	}
-	/**
 	 * Retrieve the room data for a specific room and agent.
 	 *
 	 * @param {_roomId} UUID - The unique identifier of the room.
 	 * @param {_agentId} UUID - The unique identifier of the agent.
-	 * @returns {Promise<RoomData | null>} - The room data if found, otherwise null.
+	 * @returns {Promise<Room | null>} - The room data if found, otherwise null.
 	 */
-	getRoom(_roomId: UUID, _agentId: UUID): Promise<RoomData | null> {
+	getRoom(_roomId: UUID): Promise<Room | null> {
 		throw new Error("Method not implemented.");
 	}
 	/**
@@ -225,57 +167,57 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	}
 	/**
 	 * Retrieve a list of room IDs for a given participant.
-	 * @param {UUID} _userId - The ID of the participant
+	 * @param {UUID} _entityId - The ID of the participant
 	 * @returns {Promise<UUID[]>} - A promise that resolves with an array of room IDs
 	 */
-	getRoomsForParticipant(_userId: UUID): Promise<UUID[]> {
+	getRoomsForParticipant(_entityId: UUID): Promise<UUID[]> {
 		throw new Error("Method not implemented.");
 	}
 	/**
 	 * Retrieves the rooms for the specified participants.
 	 *
-	 * @param {UUID[]} _userIds - An array of UUIDs representing the participants whose rooms need to be retrieved.
+	 * @param {UUID[]} _entityIds - An array of UUIDs representing the participants whose rooms need to be retrieved.
 	 * @returns {Promise<UUID[]>} - A promise that resolves to an array of UUIDs representing the rooms for the specified participants.
 	 * @throws {Error} - If the method is not implemented.
 	 */
-	getRoomsForParticipants(_userIds: UUID[]): Promise<UUID[]> {
+	getRoomsForParticipants(_entityIds: UUID[]): Promise<UUID[]> {
 		throw new Error("Method not implemented.");
 	}
 	/**
 	 * Add a participant to a room.
 	 *
-	 * @param {UUID} _userId - The ID of the user to add to the room.
+	 * @param {UUID} _entityId - The ID of the user to add to the room.
 	 * @param {UUID} _roomId - The ID of the room to add the user to.
 	 * @returns {Promise<boolean>} - A promise that resolves to true if the user was successfully added to the room, otherwise false.
 	 */
-	addParticipant(_userId: UUID, _roomId: UUID): Promise<boolean> {
+	addParticipant(_entityId: UUID, _roomId: UUID): Promise<boolean> {
 		throw new Error("Method not implemented.");
 	}
 	/**
 	 * Remove a participant from a room.
 	 *
-	 * @param {_userId} UUID - The ID of the user to remove from the room.
+	 * @param {_entityId} UUID - The ID of the user to remove from the room.
 	 * @param {_roomId} UUID - The ID of the room from which to remove the participant.
 	 * @returns {Promise<boolean>} A promise that resolves to true if the participant was successfully removed, otherwise false.
 	 */
-	removeParticipant(_userId: UUID, _roomId: UUID): Promise<boolean> {
+	removeParticipant(_entityId: UUID, _roomId: UUID): Promise<boolean> {
 		throw new Error("Method not implemented.");
 	}
 	/**
 	 * Retrieve a list of participants associated with the specified account user ID.
 	 *
-	 * @param {UUID} userId - The unique identifier of the account user.
+	 * @param {UUID} entityId - The unique identifier of the account user.
 	 * @returns {Promise<Participant[]>} - A promise that resolves to an array of Participant objects.
 	 */
-	getParticipantsForAccount(userId: UUID): Promise<Participant[]>;
+	getParticipantsForAccount(entityId: UUID): Promise<Participant[]>;
 	/**
 	 * Retrieves the participants associated with a specific user account.
 	 *
-	 * @param {unknown} _userId - The ID of the user account to retrieve participants for.
+	 * @param {unknown} _entityId - The ID of the user account to retrieve participants for.
 	 * @returns {Promise<import("../src/types.ts").Participant[]>} A Promise that resolves to an array of participants.
 	 */
 	getParticipantsForAccount(
-		_userId: unknown,
+		_entityId: unknown,
 	): Promise<import("../src/types.ts").Participant[]> {
 		throw new Error("Method not implemented.");
 	}
@@ -292,12 +234,12 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	/**
 	 * Get the state of a participant user in a specific room.
 	 * @param {UUID} _roomId - The ID of the room.
-	 * @param {UUID} _userId - The ID of the user.
+	 * @param {UUID} _entityId - The ID of the user.
 	 * @returns {Promise<"FOLLOWED" | "MUTED" | null>} The state of the participant user (FOLLOWED, MUTED, or null).
 	 */
 	getParticipantUserState(
 		_roomId: UUID,
-		_userId: UUID,
+		_entityId: UUID,
 	): Promise<"FOLLOWED" | "MUTED" | null> {
 		throw new Error("Method not implemented.");
 	}
@@ -305,15 +247,14 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	 * Set the state of a participant in a room.
 	 *
 	 * @param {UUID} _roomId - The unique identifier of the room.
-	 * @param {UUID} _userId - The unique identifier of the user.
+	 * @param {UUID} _entityId - The unique identifier of the user.
 	 * @param {UUID} _agentId - The unique identifier of the agent.
 	 * @param {"FOLLOWED" | "MUTED" | null} _state - The state to set for the participant (FOLLOWED, MUTED, or null).
 	 * @returns {Promise<void>} - A promise that resolves when the state is set.
 	 */
 	setParticipantUserState(
 		_roomId: UUID,
-		_userId: UUID,
-		_agentId: UUID,
+		_entityId: UUID,
 		_state: "FOLLOWED" | "MUTED" | null,
 	): Promise<void> {
 		throw new Error("Method not implemented.");
@@ -322,36 +263,36 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	 * Creates a relationship between two users.
 	 *
 	 * @param {Object} _params - The parameters for creating the relationship.
-	 * @param {UUID} _params.userA - The UUID of the first user.
-	 * @param {UUID} _params.userB - The UUID of the second user.
+	 * @param {UUID} _params.sourceEntityId - The UUID of the first user.
+	 * @param {UUID} _params.targetEntityId - The UUID of the second user.
 	 * @returns {Promise<boolean>} - A promise that resolves to true if the relationship was successfully created.
 	 */
 	createRelationship(_params: {
-		userA: UUID;
-		userB: UUID;
+		sourceEntityId: UUID;
+		targetEntityId: UUID;
 	}): Promise<boolean> {
 		throw new Error("Method not implemented.");
 	}
 	/**
 	 * Retrieves the relationship between two users.
 	 * @param {object} _params The parameters for which relationship to get.
-	 * @param {UUID} _params.userA The UUID of the first user.
-	 * @param {UUID} _params.userB The UUID of the second user.
+	 * @param {UUID} _params.sourceEntityId The UUID of the first user.
+	 * @param {UUID} _params.targetEntityId The UUID of the second user.
 	 * @returns {Promise<Relationship | null>} A Promise that resolves with the relationship between the two users, or null if no relationship exists.
 	 */
 	getRelationship(_params: {
-		userA: UUID;
-		userB: UUID;
+		sourceEntityId: UUID;
+		targetEntityId: UUID;
 	}): Promise<Relationship | null> {
 		throw new Error("Method not implemented.");
 	}
 	/**
 	 * Retrieves relationships for a specific user based on the provided user ID.
 	 * @param {Object} _params - The parameters object containing the user ID.
-	 * @param {string} _params.userId - The unique identifier for the user to retrieve relationships for.
+	 * @param {string} _params.entityId - The unique identifier for the user to retrieve relationships for.
 	 * @returns {Promise<Relationship[]>} - A promise that resolves to an array of Relationship objects.
 	 */
-	getRelationships(_params: { userId: UUID }): Promise<Relationship[]> {
+	getRelationships(_params: { entityId: UUID }): Promise<Relationship[]> {
 		throw new Error("Method not implemented.");
 	}
 	db: Record<string, unknown> = {};
@@ -377,7 +318,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 				id: "memory-id" as UUID,
 				content: "Test Memory",
 				roomId: params.roomIds[0],
-				userId: "user-id" as UUID,
+				entityId: "user-id" as UUID,
 				agentId: params.agentId ?? ("agent-id" as UUID),
 			},
 		] as unknown as Memory[];
@@ -444,7 +385,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 				id: "memory-id" as UUID,
 				content: "Test Memory",
 				roomId: params.roomId,
-				userId: "user-id" as UUID,
+				entityId: "user-id" as UUID,
 				agentId: "agent-id" as UUID,
 			},
 		] as unknown as Memory[];
@@ -454,16 +395,17 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	/**
 	 * Asynchronously retrieves an Entity by its unique ID.
 	 *
-	 * @param {UUID} userId - The unique identifier of the Entity to retrieve.
+	 * @param {UUID} entityId - The unique identifier of the Entity to retrieve.
 	 * @returns {Promise<Entity | null>} A Promise that resolves with the Entity object if found, otherwise null.
 	 */
-	async getEntityById(userId: UUID): Promise<Entity | null> {
+	async getEntityById(entityId: UUID): Promise<Entity | null> {
 		return {
-			id: userId,
+			id: entityId,
 			metadata: {
 				username: "testuser",
 				name: "Test Entity",
 			},
+			names: ["Test Entity"],
 			agentId: "agent-id" as UUID,
 		} as Entity;
 	}
@@ -500,7 +442,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 				id: "memory-id" as UUID,
 				content: "Test Memory",
 				roomId: params.roomId,
-				userId: "user-id" as UUID,
+				entityId: "user-id" as UUID,
 				agentId: "agent-id" as UUID,
 			},
 		] as unknown as Memory[];
@@ -510,53 +452,19 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	 * Asynchronously retrieves a list of actors based on the provided roomId.
 	 * @param {Object} _params - The parameters object.
 	 * @param {UUID} _params.roomId - The roomId to filter actors by.
-	 * @returns {Promise<Actor[]>} - A promise that resolves to an array of Actor objects.
+	 * @returns {Promise<Entity[]>} - A promise that resolves to an array of Entity objects.
 	 */
-	async getActors(_params: { roomId: UUID }): Promise<Actor[]> {
+	async getEntities(_params: { roomId: UUID }): Promise<Entity[]> {
 		return [
 			{
 				id: "actor-id" as UUID,
-				name: "Test Actor",
+				name: "Test Entity",
 				username: "testactor",
 				roomId: "room-id" as UUID, // Ensure roomId is provided
 			},
-		] as unknown as Actor[];
-	}
-
-	/**
-	 * Update the status of a goal.
-	 *
-	 * @param {object} _params - The parameters for updating the goal status.
-	 * @param {string} _params.goalId - The ID of the goal to update.
-	 * @param {string} _params.status - The new status of the goal.
-	 * @returns {Promise<void>} A promise that resolves when the goal status is updated.
-	 */
-	async updateGoalStatus(_params: {
-		goalId: UUID;
-		status: GoalStatus;
-	}): Promise<void> {
-		return Promise.resolve();
-	}
-
-	/**
-	 * Asynchronously retrieves a goal by its ID.
-	 *
-	 * @param {UUID} goalId - The ID of the goal to retrieve.
-	 * @returns {Promise<Goal|null>} A Promise that resolves with the goal object if found, or null if not found.
-	 */
-	async getGoalById(goalId: UUID): Promise<Goal | null> {
-		return {
-			id: goalId,
-			status: GoalStatus.IN_PROGRESS,
-			roomId: "room-id" as UUID,
-			userId: "user-id" as UUID,
-			name: "Test Goal",
-			objectives: [],
-		} as Goal;
+		] as unknown as Entity[];
 	}
 }
-
-// Now, let’s fix the test suite.
 
 describe("DatabaseAdapter Tests", () => {
 	let adapter: MockDatabaseAdapter;
@@ -610,34 +518,21 @@ describe("DatabaseAdapter Tests", () => {
 	});
 
 	it("should create a new account", async () => {
-		const newAccount: Entity = {
+		const newEntity: Entity = {
 			id: "new-user-id" as UUID,
+			names: ["New Entity"],
 			metadata: {
 				username: "newuser",
 				name: "New Entity",
 			},
 			agentId: "agent-id" as UUID,
 		};
-		const result = await adapter.createEntity(newAccount);
+		const result = await adapter.createEntity(newEntity);
 		expect(result).toBe(true);
 	});
 
-	it("should update the goal status", async () => {
-		const goalId = "goal-id" as UUID;
-		await expect(
-			adapter.updateGoalStatus({ goalId, status: GoalStatus.IN_PROGRESS }),
-		).resolves.toBeUndefined();
-	});
-
 	it("should return actors by room ID", async () => {
-		const actors = await adapter.getActors({ roomId });
+		const actors = await adapter.getEntities({ roomId });
 		expect(actors).toHaveLength(1);
-	});
-
-	it("should get a goal by ID", async () => {
-		const goalId = "goal-id" as UUID;
-		const goal = await adapter.getGoalById(goalId);
-		expect(goal).not.toBeNull();
-		expect(goal?.status).toBe(GoalStatus.IN_PROGRESS);
 	});
 });

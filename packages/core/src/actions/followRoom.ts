@@ -69,7 +69,7 @@ export const followRoomAction: Action = {
 		}
 		const roomId = message.roomId;
 		const roomState = await runtime
-			.getDatabaseAdapter()
+			
 			.getParticipantUserState(roomId, runtime.agentId);
 		return roomState !== "FOLLOWED" && roomState !== "MUTED";
 	},
@@ -150,13 +150,13 @@ export const followRoomAction: Action = {
 
 		if (await _shouldFollow(state)) {
 			await runtime
-				.getDatabaseAdapter()
+				
 				.setParticipantUserState(message.roomId, runtime.agentId, "FOLLOWED");
 		}
 
 		const room =
 			state.data.room ??
-			(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+			(await runtime.getRoom(message.roomId));
 
 		await runtime.getMemoryManager("messages").createMemory({
 			entityId: message.entityId,

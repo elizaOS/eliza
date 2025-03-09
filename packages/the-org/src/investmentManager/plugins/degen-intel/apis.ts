@@ -73,7 +73,7 @@ export const routes: Route[] = [
 			console.log("trending");
 			try {
 				const cachedTokens = await runtime
-					.getDatabaseAdapter()
+					
 					.getCache<IToken[]>("tokens_solana");
 				const tokens: IToken[] = cachedTokens ? cachedTokens : [];
 				const sortedTokens = tokens.sort(
@@ -92,7 +92,7 @@ export const routes: Route[] = [
 			try {
 				// Get transaction history
 				const cachedTxs = await runtime
-					.getDatabaseAdapter()
+					
 					.getCache<TransactionHistory[]>("transaction_history");
 				const transactions: TransactionHistory[] = cachedTxs ? cachedTxs : [];
 				const history = transactions
@@ -105,7 +105,7 @@ export const routes: Route[] = [
 
 				// Get portfolio
 				const cachedPortfolio = await runtime
-					.getDatabaseAdapter()
+					
 					.getCache<Portfolio>("portfolio");
 				const portfolio: Portfolio = cachedPortfolio
 					? cachedPortfolio
@@ -196,7 +196,7 @@ export const routes: Route[] = [
 		handler: async (_req: any, res: any, runtime: IAgentRuntime) => {
 			try {
 				const cachedSignal = await runtime
-					.getDatabaseAdapter()
+					
 					.getCache<any>("BUY_SIGNAL");
 				const signal = cachedSignal ? cachedSignal : {};
 				res.json(signal?.data || {});

@@ -1,12 +1,12 @@
 import { formatPosts } from "../src/posts";
-import type { Actor, Memory } from "../src/types";
+import type { Entity, Memory } from "../src/types";
 
 // Mocked data with consistent conversation IDs
 /**
  * Array of mock actors with their id, name, and username.
- * @type {Actor[]}
+ * @type {Entity[]}
  */
-const mockActors: Actor[] = [
+const mockActors: Entity[] = [
 	{
 		id: "f9c8b107-953b-473d-8c87-2894c6e3fe25",
 		name: "Alice",

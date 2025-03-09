@@ -74,7 +74,7 @@ export default class BuySignal {
 		/** Get all sentiments */
 		const sentimentsData =
 			(await this.runtime
-				.getDatabaseAdapter()
+				
 				.getCache<Sentiment[]>("sentiments")) || [];
 		let sentiments = "";
 
@@ -92,7 +92,7 @@ export default class BuySignal {
 
 		/** Get all trending tokens */
 		const trendingData =
-			(await this.runtime.getDatabaseAdapter().getCache<IToken[]>("tokens")) ||
+			(await this.runtime.getCache<IToken[]>("tokens")) ||
 			[];
 		let tokens = "";
 		let index = 1;
@@ -167,7 +167,7 @@ export default class BuySignal {
 		};
 
 		// Store in cache
-		await this.runtime.getDatabaseAdapter().setCache<any>("buy_signals", {
+		await this.runtime.setCache<any>("buy_signals", {
 			key: "BUY_SIGNAL",
 			data,
 		});
@@ -176,7 +176,7 @@ export default class BuySignal {
 		const { v4: uuidv4 } = require("uuid");
 		const { ServiceTypes } = require("../../../plugins/degen-trader/types");
 
-		await this.runtime.getDatabaseAdapter().createTask({
+		await this.runtime.createTask({
 			id: uuidv4(),
 			roomId: this.runtime.agentId,
 			name: "EXECUTE_BUY_SIGNAL",

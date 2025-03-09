@@ -10,9 +10,9 @@ import type {
 import {
 	type DetokenizeTextParams,
 	type GenerateTextParams,
-	logger,
 	ModelTypes,
 	type TokenizeTextParams,
+	logger,
 } from "@elizaos/core";
 import { generateText } from "ai";
 import { type TiktokenModel, encodingForModel } from "js-tiktoken";

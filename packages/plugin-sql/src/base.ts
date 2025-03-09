@@ -3,8 +3,6 @@ import {
 	type Component,
 	DatabaseAdapter,
 	type Entity,
-	type Goal,
-	type GoalStatus,
 	type Memory,
 	type Participant,
 	type Relationship,
@@ -12,7 +10,7 @@ import {
 	type Task,
 	type UUID,
 	type World,
-	logger,
+	logger
 } from "@elizaos/core";
 import {
 	and,
@@ -37,14 +35,13 @@ import {
 	componentTable,
 	embeddingTable,
 	entityTable,
-	goalTable,
 	logTable,
 	memoryTable,
 	participantTable,
 	relationshipTable,
 	roomTable,
 	taskTable,
-	worldTable,
+	worldTable
 } from "./schema/index";
 import type { DrizzleOperations } from "./types";
 
@@ -904,31 +901,6 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
-	async updateGoalStatus(params: {
-		goalId: UUID;
-		status: GoalStatus;
-	}): Promise<void> {
-		return this.withDatabase(async () => {
-			try {
-				await this.db.transaction(async (tx) => {
-					await tx
-						.update(goalTable)
-						.set({
-							status: params.status as string,
-						})
-						.where(eq(goalTable.id, params.goalId));
-				});
-			} catch (error) {
-				logger.error("Failed to update goal status:", {
-					goalId: params.goalId,
-					status: params.status,
-					error: error instanceof Error ? error.message : String(error),
-				});
-				throw error;
-			}
-		});
-	}
-
 	async searchMemoriesByEmbedding(
 		embedding: number[],
 		params: {
@@ -1144,123 +1116,6 @@ export abstract class BaseDrizzleAdapter<
 				.where(and(...conditions));
 
 			return Number(result[0]?.count ?? 0);
-		});
-	}
-
-	async getGoals(params: {
-		roomId: UUID;
-		entityId?: UUID | null;
-		onlyInProgress?: boolean;
-		count?: number;
-	}): Promise<Goal[]> {
-		return this.withDatabase(async () => {
-			const conditions = [eq(goalTable.roomId, params.roomId)];
-
-			if (params.entityId) {
-				conditions.push(eq(goalTable.entityId, params.entityId));
-			}
-
-			if (params.onlyInProgress) {
-				conditions.push(eq(goalTable.status, "IN_PROGRESS" as GoalStatus));
-			}
-
-			const query = this.db
-				.select()
-				.from(goalTable)
-				.where(and(...conditions))
-				.orderBy(desc(goalTable.createdAt));
-
-			const result = await (params.count ? query.limit(params.count) : query);
-
-			return result.map((row) => ({
-				id: row.id as UUID,
-				roomId: row.roomId as UUID,
-				entityId: row.entityId as UUID,
-				name: row.name ?? "",
-				status: (row.status ?? "NOT_STARTED") as GoalStatus,
-				description: row.description ?? "",
-				objectives: row.objectives as unknown[],
-				createdAt: row.createdAt,
-			}));
-		});
-	}
-
-	async updateGoal(goal: Goal): Promise<void> {
-		return this.withDatabase(async () => {
-			try {
-				await this.db.transaction(async (tx) => {
-					await tx
-						.update(goalTable)
-						.set({
-							name: goal.name,
-							status: goal.status,
-							objectives: goal.objectives,
-						})
-						.where(eq(goalTable.id, goal.id as string));
-				});
-			} catch (error) {
-				logger.error("Failed to update goal:", {
-					error: error instanceof Error ? error.message : String(error),
-					goalId: goal.id,
-					status: goal.status,
-				});
-				throw error;
-			}
-		});
-	}
-
-	async createGoal(goal: Goal): Promise<void> {
-		return this.withDatabase(async () => {
-			try {
-				await this.db.transaction(async (tx) => {
-					await tx.insert(goalTable).values({
-						id: goal.id ?? v4(),
-						roomId: goal.roomId,
-						entityId: goal.entityId,
-						name: goal.name,
-						status: goal.status,
-						objectives: sql`${goal.objectives}::jsonb`,
-					});
-				});
-			} catch (error) {
-				logger.error("Failed to update goal:", {
-					goalId: goal.id,
-					error: error instanceof Error ? error.message : String(error),
-					status: goal.status,
-				});
-				throw error;
-			}
-		});
-	}
-
-	async removeGoal(goalId: UUID): Promise<void> {
-		if (!goalId) throw new Error("Goal ID is required");
-
-		return this.withDatabase(async () => {
-			try {
-				await this.db.transaction(async (tx) => {
-					await tx.delete(goalTable).where(eq(goalTable.id, goalId));
-				});
-
-				logger.debug("Goal removal attempt:", {
-					goalId,
-					removed: true,
-				});
-			} catch (error) {
-				logger.error("Failed to remove goal:", {
-					error: error instanceof Error ? error.message : String(error),
-					goalId,
-				});
-				throw error;
-			}
-		});
-	}
-
-	async removeAllGoals(roomId: UUID): Promise<void> {
-		return this.withDatabase(async () => {
-			await this.db.transaction(async (tx) => {
-				await tx.delete(goalTable).where(eq(goalTable.roomId, roomId));
-			});
 		});
 	}
 

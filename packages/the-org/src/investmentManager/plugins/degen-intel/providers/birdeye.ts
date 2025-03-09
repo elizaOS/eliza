@@ -145,7 +145,7 @@ export default class Birdeye {
 
 		// Get existing transactions
 		const cachedTxs = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<TransactionHistory[]>("transaction_history");
 		const transactions: TransactionHistory[] = cachedTxs ? cachedTxs : [];
 
@@ -168,7 +168,7 @@ export default class Birdeye {
 		}
 
 		await this.runtime
-			.getDatabaseAdapter()
+			
 			.setCache<TransactionHistory[]>("transaction_history", transactions);
 
 		logger.debug(
@@ -200,7 +200,7 @@ export default class Birdeye {
 		const data = resp?.data;
 
 		await this.runtime
-			.getDatabaseAdapter()
+			
 			.setCache<Portfolio>("portfolio", { key: "PORTFOLIO", data });
 	}
 
@@ -223,7 +223,7 @@ export default class Birdeye {
 
 		// Get existing tokens
 		const cachedTokens = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<IToken[]>(`tokens_${chain}`);
 		const tokens: IToken[] = cachedTokens ? cachedTokens : [];
 
@@ -275,7 +275,7 @@ export default class Birdeye {
 		}
 
 		await this.runtime
-			.getDatabaseAdapter()
+			
 			.setCache<IToken[]>(`tokens_${chain}`, tokens);
 
 		logger.debug(`Updated ${chain} tokens cache with ${tokens.length} tokens`);

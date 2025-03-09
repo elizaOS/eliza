@@ -130,7 +130,7 @@ export const sendMessageAction: Action = {
 
 		// Get all components for the current room to understand available sources
 		const roomComponents = await runtime
-			.getDatabaseAdapter()
+			
 			.getComponents(message.roomId, worldId, agentId);
 
 		// Get source types from room components
@@ -160,7 +160,7 @@ export const sendMessageAction: Action = {
 			const sourceEntityId = message.entityId;
 			const room =
 				state.data.room ??
-				(await runtime.getDatabaseAdapter().getRoom(message.roomId));
+				(await runtime.getRoom(message.roomId));
 			const worldId = room.worldId;
 
 			// Extract target and source information
@@ -201,7 +201,7 @@ export const sendMessageAction: Action = {
 
 				// Get the component for the specified source
 				const userComponent = await runtime
-					.getDatabaseAdapter()
+					
 					.getComponent(targetEntity.id!, source, worldId, sourceEntityId);
 
 				if (!userComponent) {
@@ -249,7 +249,7 @@ export const sendMessageAction: Action = {
 				}
 			} else if (targetData.targetType === "room") {
 				// Try to find the target room
-				const rooms = await runtime.getDatabaseAdapter().getRooms(worldId);
+				const rooms = await runtime.getRooms(worldId);
 				const targetRoom = rooms.find((r) => {
 					// Match room name from identifiers
 					return (

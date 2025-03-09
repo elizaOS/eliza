@@ -132,7 +132,7 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
 		runtime.registerDatabaseAdapter(adapter);
 
 		// Make sure character exists in database
-		await runtime.getDatabaseAdapter().ensureAgentExists(character);
+		await runtime.ensureAgentExists(character);
 
 		while (true) {
 			try {

@@ -190,12 +190,12 @@ export const confirmRecommendation: Action = {
 
 		try {
 			const participants = await runtime
-				.getDatabaseAdapter()
+				
 				.getParticipantsForRoom(message.roomId);
 
 			const entities = await Promise.all(
 				participants.map((id) =>
-					runtime.getDatabaseAdapter().getEntityById(id),
+					runtime.getEntityById(id),
 				),
 			).then((entities) => entities.filter((participant) => !!participant));
 
@@ -226,7 +226,7 @@ export const confirmRecommendation: Action = {
 				}
 
 				const entity = await runtime
-					.getDatabaseAdapter()
+					
 					.getEntityById(participant.id);
 
 				const result = await tradingService.handleRecommendation(entity, {
