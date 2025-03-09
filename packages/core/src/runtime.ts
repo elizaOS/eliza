@@ -150,6 +150,38 @@ export class AgentRuntime implements IAgentRuntime {
 			this.plugins.push(plugin);
 		}
 
+		// Initialize the plugin if it has an init function
+		if (plugin.init) {
+			try {
+				await plugin.init(plugin.config || {}, this);
+			} catch (error) {
+				// Check if the error is related to missing API keys
+				const errorMessage =
+					error instanceof Error ? error.message : String(error);
+
+				if (
+					errorMessage.includes("API key") ||
+					errorMessage.includes("environment variables") ||
+					errorMessage.includes("Invalid plugin configuration")
+				) {
+					// Instead of throwing an error, log a friendly message
+					console.warn(
+						`Plugin ${plugin.name} requires configuration. ${errorMessage}`,
+					);
+					console.warn(
+						"Please check your environment variables and ensure all required API keys are set.",
+					);
+					console.warn("You can set these in your .eliza/.env file.");
+
+					// We don't throw here, allowing the application to continue
+					// with reduced functionality
+				} else {
+					// For other types of errors, rethrow
+					throw error;
+				}
+			}
+		}
+
 		// Register plugin adapter
 		if (plugin.adapter) {
 			this.registerDatabaseAdapter(plugin.adapter);
@@ -207,11 +239,6 @@ export class AgentRuntime implements IAgentRuntime {
 			await Promise.all(
 				plugin.services.map((service) => this.registerService(service)),
 			);
-		}
-
-		// Initialize plugin if it has an init function
-		if (plugin.init) {
-			await plugin.init(plugin.config, this);
 		}
 	}
 

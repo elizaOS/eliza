@@ -1,9 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { logger } from "@/src/utils/logger";
-import { getBestBranch } from "@/src/utils/registry";
-import { getBestPluginVersion } from "@/src/utils/registry";
-import { runBunCommand } from "@/src/utils/run-bun";
+import { getBestBranch, getBestPluginVersion } from "@/src/utils/registry";
+import { logger } from "@elizaos/core";
 import { execa } from "execa";
 
 /**

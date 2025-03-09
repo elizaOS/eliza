@@ -14,10 +14,10 @@ import {
 } from "@/src/utils/github";
 import { handleError } from "@/src/utils/handle-error";
 import { installPlugin } from "@/src/utils/install-plugin";
-import { logger } from "@/src/utils/logger";
 import { ensurePluginEnvRequirements } from "@/src/utils/plugin-env";
 import { getPluginRepository, getRegistryIndex } from "@/src/utils/registry";
 import { runBunCommand } from "@/src/utils/run-bun";
+import { logger } from "@elizaos/core";
 import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";

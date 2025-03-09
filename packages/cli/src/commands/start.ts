@@ -15,9 +15,23 @@ import {
 } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import { Command } from "commander";
+import * as dotenv from "dotenv";
 import { character as defaultCharacter } from "../characters/eliza";
 import { AgentServer } from "../server/index";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
+import { generateCustomCharacter } from "../utils/character-generator.js";
+import {
+	displayConfigStatus,
+	getPluginStatus,
+	loadConfig,
+	saveConfig,
+} from "../utils/config-manager.js";
+import {
+	listMissingEnvVars,
+	promptForEnvVars,
+	promptForServices,
+	validatePluginConfig,
+} from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
 import { ensureAllPluginsEnvRequirements } from "../utils/plugin-env";
 
@@ -31,6 +45,86 @@ export const wait = (minTime = 1000, maxTime = 3000) => {
 		Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
 	return new Promise((resolve) => setTimeout(resolve, waitTime));
 };
+
+/**
+ * Analyzes project agents and their plugins to determine which environment variables to prompt for
+ */
+async function promptForProjectPlugins(
+	project: any,
+	pluginToLoad?: { name: string },
+): Promise<void> {
+	// Set to track unique plugin names to avoid duplicate prompts
+	const pluginsToPrompt = new Set<string>();
+
+	// If we have a specific plugin to load, add it
+	if (pluginToLoad?.name) {
+		pluginsToPrompt.add(pluginToLoad.name.toLowerCase());
+	}
+
+	// If we have a project, scan all its agents for plugins
+	if (project) {
+		// Handle both formats: project with agents array and project with single agent
+		const agents = Array.isArray(project.agents)
+			? project.agents
+			: project.agent
+				? [project.agent]
+				: [];
+
+		// Check each agent's plugins
+		for (const agent of agents) {
+			if (agent.plugins?.length) {
+				for (const plugin of agent.plugins) {
+					const pluginName = typeof plugin === "string" ? plugin : plugin.name;
+
+					if (pluginName) {
+						// Extract just the plugin name from the package name if needed
+						const simpleName =
+							pluginName.split("/").pop()?.replace("plugin-", "") || pluginName;
+						pluginsToPrompt.add(simpleName.toLowerCase());
+					}
+				}
+			}
+		}
+	}
+
+	// Always prompt for database configuration
+	pluginsToPrompt.add("pglite");
+
+	// Prompt for each identified plugin
+	for (const pluginName of pluginsToPrompt) {
+		try {
+			await promptForEnvVars(pluginName);
+		} catch (error) {
+			logger.warn(
+				`Failed to prompt for ${pluginName} environment variables: ${error}`,
+			);
+		}
+	}
+}
+
+/**
+ * Prompts for environment variables for common plugins.
+ * This ensures the CLI will ask for plugin credentials before attempting to load them.
+ */
+async function promptForCommonPlugins(): Promise<void> {
+	// List of common plugins that might be needed
+	const commonPlugins = [
+		"pglite", // Database
+		"openai", // OpenAI
+		"anthropic", // Anthropic
+		"discord", // Discord
+	];
+
+	for (const pluginName of commonPlugins) {
+		try {
+			await promptForEnvVars(pluginName);
+		} catch (error) {
+			logger.warn(
+				`Failed to prompt for ${pluginName} environment variables: ${error}`,
+			);
+		}
+	}
+}
 
 /**
  * Starts an agent with the given character, agent server, initialization function, plugins, and options.
@@ -111,89 +205,138 @@ const checkPortAvailable = (port: number): Promise<boolean> => {
 };
 
 /**
- * Asynchronous function to start agents.
+ * Function that starts the agents.
  *
- * This function tries to find a .env file by recursively checking parent directories. It initializes the current path to the provided envPath, sets the initial depth to 0, and defines the maximum depth to search as 10.
- *
+ * @param {Object} options - Command options
  * @returns {Promise<void>} A promise that resolves when the agents are successfully started.
  */
-const startAgents = async () => {
-	// Try to find .env file by recursively checking parent directories
-	let currentPath = envPath;
-	let depth = 0;
-	const maxDepth = 10;
+const startAgents = async (options: {
+	configure?: boolean;
+	port?: number;
+	character?: string;
+}) => {
+	// Set up standard paths and load .env
+	const homeDir = os.homedir();
+	const elizaDir = path.join(homeDir, ".eliza");
+	const elizaDbDir = path.join(elizaDir, "db");
+	const envFilePath = path.join(elizaDir, ".env");
 
-	let postgresUrl = null;
-
-	while (depth < maxDepth && currentPath.includes(path.sep)) {
-		if (fs.existsSync(currentPath)) {
-			const env = fs.readFileSync(currentPath, "utf8");
-			const envVars = env.split("\n").filter((line) => line.trim() !== "");
-			const postgresUrlLine = envVars.find((line) =>
-				line.startsWith("POSTGRES_URL="),
-			);
-			if (postgresUrlLine) {
-				// Get everything after the first = sign without trimming
-				postgresUrl = postgresUrlLine.substring(
-					postgresUrlLine.indexOf("=") + 1,
-				);
-				break;
-			}
-		}
-
-		// Move up one directory by getting the parent directory path
-		// First get the directory containing the current .env file
-		const currentDir = path.dirname(currentPath);
-		// Then move up one directory from there
-		const parentDir = path.dirname(currentDir);
-		currentPath = path.join(parentDir, ".env");
-		depth++;
+	// Create .eliza directory if it doesn't exist
+	if (!fs.existsSync(elizaDir)) {
+		fs.mkdirSync(elizaDir, { recursive: true });
+		logger.info(`Created directory: ${elizaDir}`);
 	}
 
-	// Implement the database directory setup logic
-	let dataDir = "./elizadb"; // Default fallback path
-	if (!postgresUrl) {
-		try {
-			// 1. Get the user's home directory
-			const homeDir = os.homedir();
-			const elizaDir = path.join(homeDir, ".eliza");
-			const elizaDbDir = path.join(elizaDir, "db");
-
-			// Debug information
-			console.log(`Setting up database directory at: ${elizaDbDir}`);
-
-			// 2 & 3. Check if .eliza directory exists, create if not
-			if (!fs.existsSync(elizaDir)) {
-				console.log(`Creating .eliza directory at: ${elizaDir}`);
-				fs.mkdirSync(elizaDir, { recursive: true });
-			}
-
-			// 4 & 5. Check if db directory exists in .eliza, create if not
-			if (!fs.existsSync(elizaDbDir)) {
-				console.log(`Creating db directory at: ${elizaDbDir}`);
-				fs.mkdirSync(elizaDbDir, { recursive: true });
-			}
-
-			// 6, 7 & 8. Use the db directory
-			dataDir = elizaDbDir;
-			console.log(`Using database directory: ${dataDir}`);
-		} catch (error) {
-			console.warn(
-				"Failed to create database directory in home directory, using fallback location:",
-				error,
-			);
-			// 9. On failure, use the fallback path
-		}
+	// Create db directory if it doesn't exist
+	if (!fs.existsSync(elizaDbDir)) {
+		fs.mkdirSync(elizaDbDir, { recursive: true });
+		logger.info(`Created database directory: ${elizaDbDir}`);
 	}
 
-	const options = {
-		dataDir: dataDir,
+	// Set the database directory in environment variables
+	process.env.PGLITE_DATA_DIR = elizaDbDir;
+	logger.info(`Using database directory: ${elizaDbDir}`);
+
+	// Load environment variables from .eliza/.env if it exists
+	if (fs.existsSync(envFilePath)) {
+		dotenv.config({ path: envFilePath });
+	}
+
+	// Always ensure database configuration is set
+	try {
+		await promptForEnvVars("pglite");
+	} catch (error) {
+		logger.warn(`Error configuring database: ${error}`);
+	}
+
+	// Load existing configuration
+	const existingConfig = loadConfig();
+	const pluginStatus = getPluginStatus();
+
+	// Variables to store the selected plugins
+	let selectedServices: string[] = [];
+	let selectedAiModels: string[] = [];
+
+	// Check if we should reconfigure based on command-line option or if using default config
+	const shouldConfigure = options.configure || existingConfig.isDefault;
+
+	// Handle service and model selection
+	if (shouldConfigure) {
+		// Display current configuration
+		displayConfigStatus();
+
+		// First-time setup or reconfiguration requested
+		if (existingConfig.isDefault) {
+			logger.info("First time setup. Let's configure your Eliza agent.");
+		} else {
+			logger.info("Reconfiguration requested.");
+		}
+
+		// Prompt for services and AI models first
+
+		// Save the configuration
+		saveConfig({
+			services: selectedServices,
+			aiModels: selectedAiModels,
+			lastUpdated: new Date().toISOString(),
+			// isDefault is not included to indicate this is now a user-configured setup
+		});
+
+		// wait 100 ms
+		await new Promise((resolve) => setTimeout(resolve, 100));
+
+		const userSelections = await promptForServices();
+		selectedServices = userSelections.services;
+		selectedAiModels = userSelections.aiModels;
+	} else {
+		// Use existing configuration
+		selectedServices = existingConfig.services;
+		selectedAiModels = existingConfig.aiModels;
+	}
+
+	// Now handle environment variables for the selected plugins
+	// Prompt for environment variables for selected services and AI models
+	const pluginsToPrompt = [
+		"pglite",
+		...selectedServices,
+		...selectedAiModels,
+	].filter((plugin, index, self) => self.indexOf(plugin) === index); // Remove duplicates
+
+	// Check which plugins are missing environment variables
+	const missingEnvVars = pluginsToPrompt.filter(
+		(plugin) => !pluginStatus[plugin],
+	);
+
+	// Prompt for missing environment variables
+	if (missingEnvVars.length > 0) {
+		logger.info(
+			`${missingEnvVars.length} plugins need configuration. Let's set them up.`,
+		);
+
+		for (const plugin of missingEnvVars) {
+			logger.info(`Configuring ${plugin}...`);
+			await promptForEnvVars(plugin);
+		}
+
+		logger.info("All required plugin configurations complete!");
+	}
+
+	// Create a custom character with the selected plugins
+	const customCharacter = generateCustomCharacter(
+		selectedServices,
+		selectedAiModels,
+	);
+
+	// Look for PostgreSQL URL in environment variables
+	const postgresUrl = process.env.POSTGRES_URL;
+
+	// Create server instance
+	const server = new AgentServer({
+		dataDir: elizaDbDir,
 		postgresUrl,
-	};
+	});
 
-	const server = new AgentServer(options);
-
-	// Assign the required functions first
+	// Set up server properties
 	server.startAgent = async (character) => {
 		logger.info(`Starting agent for character ${character.name}`);
 		return startAgent(character, server);
@@ -204,335 +347,257 @@ const startAgents = async () => {
 	server.loadCharacterTryPath = loadCharacterTryPath;
 	server.jsonToCharacter = jsonToCharacter;
 
-	let serverPort = Number.parseInt(settings.SERVER_PORT || "3000");
+	let serverPort =
+		options.port || Number.parseInt(settings.SERVER_PORT || "3000");
 
-	// 1. Check if we're in a project with a package.json
-	const packageJsonPath = path.join(process.cwd(), "package.json");
+	// Try to find a project or plugin in the current directory
 	let isProject = false;
 	let isPlugin = false;
 	let pluginModule: Plugin | null = null;
-	let projectPath = "";
-	let projectModule: { default?: { agents: ProjectAgent[] } } | null = null;
-	let useDefaultCharacter = false;
+	let projectModule: any = null;
+
+	logger.info("Checking for project or plugin in current directory...");
+	const currentDir = process.cwd();
+	logger.info(`Current directory: ${currentDir}`);
 
 	try {
+		// Check if we're in a project with a package.json
+		const packageJsonPath = path.join(process.cwd(), "package.json");
 		if (fs.existsSync(packageJsonPath)) {
 			// Read and parse package.json to check if it's a project or plugin
 			const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
 
-			const mainEntry = packageJson.main;
-			// Check if this is a plugin
-			isPlugin = false; // Reset to be sure
-			const name = packageJson.name || "";
-			const description = packageJson.description || "";
-
-			// First check for exact match with plugin-starter
-			if (
-				(name.includes("plugin") || name.includes("adapter")) &&
-				packageJson.main &&
-				packageJson.dependencies &&
-				packageJson.dependencies["@elizaos/core"]
-			) {
+			// Check if this is a plugin (package.json contains 'eliza' section with type='plugin')
+			if (packageJson.eliza?.type && packageJson.eliza.type === "plugin") {
 				isPlugin = true;
-				logger.info(`Found plugin package: ${name}`);
-			}
-			// Last resort check description
-			else if (
-				description.toLowerCase().includes("plugin") &&
-				packageJson.main &&
-				packageJson.dependencies &&
-				packageJson.dependencies["@elizaos/core"]
-			) {
-				isPlugin = true;
-				logger.info(`Found plugin from description: ${description}`);
+				logger.info("Found Eliza plugin in current directory");
 			}
 
-			if (mainEntry && !isPlugin) {
+			// Check if this is a project (package.json contains 'eliza' section with type='project')
+			if (packageJson.eliza?.type && packageJson.eliza.type === "project") {
 				isProject = true;
-				logger.info("Package is not detected as a plugin, treating as project");
-			} else if (isPlugin) {
-				logger.info("Plugin detected - will load onto default character");
-			} else {
-				logger.info(
-					"No main entry point found for project, loading default character",
-				);
-				useDefaultCharacter = true;
+				logger.info("Found Eliza project in current directory");
 			}
 
-			// 2. Read and parse package.json to get main entry point and check for build script
-			const hasBuildScript = packageJson.scripts?.build;
-
-			// Check if dist directory exists
-			const distDir = path.join(process.cwd(), "dist");
-			const distExists = fs.existsSync(distDir);
-
-			// If no build script or no dist directory exists
-			if (mainEntry && !hasBuildScript && !distExists) {
-				if (isPlugin) {
-					logger.info(
-						"No build script and no dist directory found for plugin, building...",
-					);
-					try {
-						// Execute build command - use bun directly for plugins
-						const { exec } = require("node:child_process");
-						await new Promise<void>((resolve, _reject) => {
-							// Use bun build for plugins directly
-							exec("bun run build", (error: Error | null) => {
-								if (error) {
-									logger.error(
-										`Error building plugin with bun: ${error.message}`,
-									);
-									resolve();
-									return;
-								}
-								logger.info("Plugin built successfully with bun");
-								resolve();
-							});
-						});
-
-						// After building, check if dist now exists
-						if (!fs.existsSync(distDir)) {
-							logger.warn(
-								"Dist directory still not found after build for plugin",
-							);
-							// Don't change isPlugin to false here, just try to load from src directly
-						}
-					} catch (buildError) {
-						logger.error(`Failed to build plugin: ${buildError}`);
-						// Don't change isPlugin to false here, just try to load from src directly
-					}
-				} else {
-					logger.info(
-						"No build script and no dist directory found, using default character",
-					);
-					useDefaultCharacter = true;
-				}
-			}
-			// If there's a build script but no dist, run the build
-			else if (mainEntry && hasBuildScript && !distExists) {
-				if (isPlugin) {
-					logger.info(
-						"Build script found but no dist directory for plugin, running bun build...",
-					);
-					try {
-						// Execute build command - use bun directly for plugins
-						const { exec } = require("node:child_process");
-						await new Promise<void>((resolve, _reject) => {
-							// Use bun build for plugins directly
-							exec("bun run build", (error: Error | null) => {
-								if (error) {
-									logger.error(
-										`Error building plugin with bun: ${error.message}`,
-									);
-									resolve();
-									return;
-								}
-								logger.info("Plugin built successfully with bun");
-								resolve();
-							});
-						});
-
-						// After building, check if dist now exists
-						if (!fs.existsSync(distDir)) {
-							logger.warn(
-								"Dist directory still not found after build for plugin",
-							);
-							// Don't change isPlugin to false here, just try to load from src directly
-						}
-					} catch (buildError) {
-						logger.error(`Failed to build plugin: ${buildError}`);
-						// Don't change isPlugin to false here, just try to load from src directly
-					}
-				} else if (packageJson.main) {
-					logger.info(
-						"Build script found but no dist directory, running build...",
-					);
-					try {
-						// Execute build command
-						const { exec } = require("node:child_process");
-						await new Promise<void>((resolve, _reject) => {
-							exec("npm run build", (error: Error | null) => {
-								if (error) {
-									logger.error(`Error building project: ${error.message}`);
-									useDefaultCharacter = true;
-									resolve();
-									return;
-								}
-								logger.info("Project built successfully");
-								resolve();
-							});
-						});
-
-						// After building, check if dist now exists
-						if (!fs.existsSync(distDir)) {
-							logger.warn(
-								"Dist directory still not found after build, using default character",
-							);
-							useDefaultCharacter = true;
-						}
-					} catch (buildError) {
-						logger.error(`Failed to build project: ${buildError}`);
-						useDefaultCharacter = true;
-					}
+			// Also check for project indicators like a Project type export
+			// or if the description mentions "project"
+			if (!isProject && !isPlugin) {
+				if (packageJson.description?.toLowerCase().includes("project")) {
+					isProject = true;
+					logger.info("Found project by description in package.json");
 				}
 			}
 
-			// If we're not using the default character, try to import the project or plugin
-			if (!useDefaultCharacter || isPlugin) {
-				// Load the compiled project or plugin from package.json's 'main' path entry
-				if (mainEntry) {
-					projectPath = path.resolve(process.cwd(), mainEntry);
+			// If we found a main entry in package.json, try to load it
+			const mainEntry = packageJson.main;
+			if (mainEntry) {
+				const mainPath = path.resolve(process.cwd(), mainEntry);
 
-					if (fs.existsSync(projectPath)) {
-						if (isPlugin) {
-							logger.info(`Loading plugin from ${projectPath}`);
-							try {
-								const pluginImport = await import(projectPath);
-								pluginModule = pluginImport.default;
+				if (fs.existsSync(mainPath)) {
+					try {
+						// Try to import the module
+						const importedModule = await import(mainPath);
 
-								if (!pluginModule) {
-									logger.error(
-										"Plugin module does not export a default export",
-									);
-									// Try to find any exported plugin object
-									for (const key in pluginImport) {
-										if (
-											pluginImport[key] &&
-											typeof pluginImport[key] === "object" &&
-											pluginImport[key].name &&
-											typeof pluginImport[key].init === "function"
-										) {
-											pluginModule = pluginImport[key];
-											logger.info(`Found plugin export under key: ${key}`);
-											break;
-										}
+						// First check if it's a plugin
+						if (
+							isPlugin ||
+							(importedModule.default &&
+								typeof importedModule.default === "object" &&
+								importedModule.default.name &&
+								typeof importedModule.default.init === "function")
+						) {
+							isPlugin = true;
+							pluginModule = importedModule.default;
+							logger.info(`Loaded plugin: ${pluginModule?.name || "unnamed"}`);
+
+							if (!pluginModule) {
+								logger.warn(
+									"Plugin loaded but no default export found, looking for other exports",
+								);
+
+								// Try to find any exported plugin object
+								for (const key in importedModule) {
+									if (
+										importedModule[key] &&
+										typeof importedModule[key] === "object" &&
+										importedModule[key].name &&
+										typeof importedModule[key].init === "function"
+									) {
+										pluginModule = importedModule[key];
+										logger.info(`Found plugin export under key: ${key}`);
+										break;
 									}
-
-									if (!pluginModule) {
-										logger.error("Could not find any valid plugin export");
-										isPlugin = false;
-										useDefaultCharacter = true;
-									}
-								} else {
-									logger.info(
-										`Successfully loaded plugin: ${
-											pluginModule.name || "unnamed plugin"
-										}`,
-									);
 								}
-							} catch (importError) {
-								logger.error(`Error importing plugin module: ${importError}`);
-								isPlugin = false;
-								useDefaultCharacter = true;
-							}
-						} else {
-							logger.info(`Loading project from ${projectPath}`);
-							try {
-								projectModule = await import(projectPath);
-							} catch (importError) {
-								logger.error(`Error importing project module: ${importError}`);
-								useDefaultCharacter = true;
 							}
 						}
-					} else {
-						if (isPlugin) {
-							logger.error(`Plugin entry point ${projectPath} does not exist`);
-							// Try to find the plugin in src directory
-							const srcPath = path.join(process.cwd(), "src", "index.ts");
-							if (fs.existsSync(srcPath)) {
-								logger.info(`Trying to load plugin from src: ${srcPath}`);
-								try {
-									// For TypeScript files, we need to transpile or use ts-node/esm
-									const { exec } = require("node:child_process");
-									exec("npx tsc", async (error: Error | null) => {
-										if (!error) {
-											try {
-												const srcModule = await import(
-													path.join(process.cwd(), "dist", "index.js")
-												);
-												pluginModule = srcModule.default;
-												logger.info(
-													"Successfully loaded plugin from transpiled source",
-												);
-											} catch (e) {
-												logger.error(`Failed to load transpiled plugin: ${e}`);
-											}
-										}
-									});
-								} catch (e) {
-									logger.error(`Failed to transpile plugin: ${e}`);
-								}
-							} else {
-								isPlugin = false;
-								useDefaultCharacter = true;
-							}
-						} else {
-							logger.error(`Main entry point ${projectPath} does not exist`);
-							useDefaultCharacter = true;
+						// Then check if it's a project
+						else if (
+							isProject ||
+							(importedModule.default &&
+								typeof importedModule.default === "object" &&
+								importedModule.default.agents)
+						) {
+							isProject = true;
+							projectModule = importedModule;
+							logger.info(
+								`Loaded project with ${projectModule.default?.agents?.length || 0} agents`,
+							);
 						}
+					} catch (importError) {
+						logger.error(`Error importing module: ${importError}`);
 					}
 				} else {
-					logger.error('No "main" field found in package.json');
-					useDefaultCharacter = true;
+					logger.error(`Main entry point ${mainPath} does not exist`);
 				}
 			}
 		} else {
-			logger.info("No package.json found, using default character");
-			useDefaultCharacter = true;
+			// Look for specific project files
+			const projectFiles = ["project.json", "eliza.json", "agents.json"];
+
+			for (const file of projectFiles) {
+				const filePath = path.join(process.cwd(), file);
+				if (fs.existsSync(filePath)) {
+					try {
+						const fileContent = fs.readFileSync(filePath, "utf-8");
+						const projectData = JSON.parse(fileContent);
+
+						if (projectData.agents || projectData.agent) {
+							isProject = true;
+							projectModule = { default: projectData };
+							logger.info(`Found project in ${file}`);
+							break;
+						}
+					} catch (error) {
+						logger.warn(
+							`Error reading possible project file ${file}: ${error}`,
+						);
+					}
+				}
+			}
+
+			if (!isProject && !isPlugin) {
+				logger.info(
+					"No package.json or project files found, using custom character",
+				);
+			}
 		}
 	} catch (error) {
-		logger.error(`Error checking for project: ${error}`);
-		useDefaultCharacter = true;
+		logger.error(`Error checking for project/plugin: ${error}`);
 	}
 
-	// Start agents based on project, plugin, or default configuration
-	if (isPlugin && pluginModule) {
-		// Load the default character and add the plugin to it
-		logger.info(
-			`Starting default character with plugin: ${
-				pluginModule.name || "unnamed plugin"
-			}`,
-		);
-		await startAgent(defaultCharacter, server, undefined, [pluginModule]);
-		logger.info("Default character started with plugin successfully");
-	} else if (isProject) {
-		// Load all project agents, call their init and register their plugins
-		const project = projectModule.default as import("@elizaos/core").Project;
-		logger.info(`Found ${project.agents.length} agents in project`);
+	// Log what was found
+	if (isProject) {
+		logger.info("Found project configuration");
+		if (projectModule?.default) {
+			const project = projectModule.default;
+			const agents = Array.isArray(project.agents)
+				? project.agents
+				: project.agent
+					? [project.agent]
+					: [];
+			logger.info(`Project contains ${agents.length} agent(s)`);
 
-		const startedAgents = [];
-		for (const agent of project.agents ?? []) {
-			try {
-				logger.info(`Starting agent: ${agent.character.name}`);
-				const runtime = await startAgent(
-					agent.character,
-					server,
-					agent.init,
-					agent.plugins || [],
+			// Log agent names
+			if (agents.length > 0) {
+				logger.info(
+					`Agents: ${agents.map((a) => a.character?.name || "unnamed").join(", ")}`,
 				);
-				startedAgents.push(runtime);
-				// wait .5 seconds
-				await new Promise((resolve) => setTimeout(resolve, 500));
-			} catch (agentError) {
-				logger.error(
-					`Error starting agent ${agent.character.name}: ${agentError}`,
+			}
+		} else {
+			logger.warn("Project module doesn't contain a valid default export");
+		}
+	} else if (isPlugin) {
+		logger.info(`Found plugin: ${pluginModule?.name || "unnamed"}`);
+	} else {
+		logger.info("No project or plugin found, will use custom character");
+	}
+
+	// Start agents based on project, plugin, or custom configuration
+	if (isProject && projectModule?.default) {
+		// Load all project agents, call their init and register their plugins
+		const project = projectModule.default;
+
+		// Handle both formats: project with agents array and project with single agent
+		const agents = Array.isArray(project.agents)
+			? project.agents
+			: project.agent
+				? [project.agent]
+				: [];
+
+		if (agents.length > 0) {
+			logger.info(`Found ${agents.length} agents in project`);
+
+			// Prompt for environment variables for all plugins in the project
+			try {
+				await promptForProjectPlugins(project);
+			} catch (error) {
+				logger.warn(
+					`Failed to prompt for project environment variables: ${error}`,
+				);
+			}
+
+			const startedAgents = [];
+			for (const agent of agents) {
+				try {
+					logger.info(`Starting agent: ${agent.character.name}`);
+					const runtime = await startAgent(
+						agent.character,
+						server,
+						agent.init,
+						agent.plugins || [],
+					);
+					startedAgents.push(runtime);
+					// wait .5 seconds
+					await new Promise((resolve) => setTimeout(resolve, 500));
+				} catch (agentError) {
+					logger.error(
+						`Error starting agent ${agent.character.name}: ${agentError}`,
+					);
+				}
+			}
+
+			if (startedAgents.length === 0) {
+				logger.warn(
+					"Failed to start any agents from project, falling back to custom character",
+				);
+				await startAgent(customCharacter, server);
+			} else {
+				logger.info(
+					`Successfully started ${startedAgents.length} agents from project`,
+				);
+			}
+		} else {
+			logger.warn(
+				"Project found but no agents defined, falling back to custom character",
+			);
+			await startAgent(customCharacter, server);
+		}
+	} else if (isPlugin && pluginModule) {
+		// Before starting with the plugin, prompt for any environment variables it needs
+		if (pluginModule.name) {
+			try {
+				await promptForEnvVars(pluginModule.name);
+			} catch (error) {
+				logger.warn(
+					`Failed to prompt for plugin environment variables: ${error}`,
 				);
 			}
 		}
 
-		if (startedAgents.length === 0) {
-			logger.warn(
-				"Failed to start any agents from project, falling back to default character",
-			);
-			await startAgent(defaultCharacter, server);
-		} else {
-			logger.info(
-				`Successfully started ${startedAgents.length} agents from project`,
-			);
-		}
+		// Load the custom character and add the plugin to it
+		logger.info(
+			`Starting custom character with plugin: ${pluginModule.name || "unnamed plugin"}`,
+		);
+
+		// Create a proper array of plugins, including the explicitly loaded one
+		const pluginsToLoad = [pluginModule];
+
+		// Start the agent with our custom character and plugins
+		await startAgent(customCharacter, server, undefined, pluginsToLoad);
+		logger.info("Character started with plugin successfully");
 	} else {
-		logger.info("No project or plugin found, starting default character");
-		await startAgent(defaultCharacter, server);
+		logger.info("Starting with custom character");
+		await startAgent(customCharacter, server);
 	}
 
 	// Rest of the function remains the same...
@@ -574,40 +639,45 @@ const startAgents = async () => {
 	}
 };
 
-// Convert this into a command
-/**
- * Command to start the ElizaOS server with project agents.
- * Starts the agents and handles any unhandled errors to prevent the process from crashing.
- * @returns {Promise<void>}
- */
+// Create command that can be imported directly
 export const start = new Command()
 	.name("start")
-	.description("start agent")
-	.option("-s, --skip-env-check", "Skip environment variable check", false)
+	.description("Start the Eliza agent with configurable plugins and services")
+	.option("-p, --port <port>", "Port to listen on", (val) =>
+		Number.parseInt(val),
+	)
+	.option(
+		"-c, --configure",
+		"Reconfigure services and AI models (skips using saved configuration)",
+	)
+	.option("--dev", "Start with development settings")
+	.option(
+		"--character <character>",
+		"Path or URL to character file to use instead of default",
+	)
 	.action(async (options) => {
 		try {
-			const cwd = process.cwd();
+			// Collect server options
+			const characterPath = options.character;
 
-			// Check environment variables before starting
-			const skipEnvCheck = options.skipEnvCheck === true;
-			if (!skipEnvCheck) {
-				logger.info("Checking environment variables for plugins...");
-				const allRequirementsMet = await ensureAllPluginsEnvRequirements(
-					cwd,
-					true,
-					skipEnvCheck,
-				);
-				if (!allRequirementsMet) {
-					logger.warn(
-						"Some environment variables are missing. Starting anyway, but some plugins may not work correctly.",
-					);
+			if (characterPath) {
+				logger.info(`Loading character from ${characterPath}`);
+				try {
+					const characterData = await loadCharacterTryPath(characterPath);
+					await startAgents(options);
+				} catch (error) {
+					logger.error(`Failed to load character: ${error}`);
+					process.exit(1);
 				}
+			} else {
+				await startAgents(options);
 			}
-
-			await startAgents();
 		} catch (error) {
 			handleError(error);
 		}
 	});
 
-export default start;
+// This is the function that registers the command with the CLI
+export default function registerCommand(cli: Command) {
+	return cli.addCommand(start);
+}

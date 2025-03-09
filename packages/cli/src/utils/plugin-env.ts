@@ -1,9 +1,9 @@
 import { promises as fs, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import dotenv from "dotenv";
 import { getConfig } from "./get-config";
-import { logger } from "./logger";
 
 /**
  * Represents a plugin's environment variable requirements
@@ -44,38 +44,6 @@ const PLUGIN_ENV_REQUIREMENTS: Record<string, PluginEnvRequirement[]> = {
 			description: "Anthropic large model name",
 			required: false,
 			default: "claude-3-opus-20240229",
-		},
-	],
-	"@elizaos/plugin-local-ai": [
-		{
-			name: "LLAMALOCAL_PATH",
-			description: "Path to models directory",
-			required: true,
-			default: path.join(process.cwd(), "models"),
-		},
-		{
-			name: "CACHE_DIR",
-			description: "Path to cache directory",
-			required: true,
-			default: path.join(process.cwd(), "cache"),
-		},
-		{
-			name: "USE_LOCAL_AI",
-			description: "Enable/disable local AI",
-			required: false,
-			default: "true",
-		},
-		{
-			name: "USE_STUDIOLM_TEXT_MODELS",
-			description: "Enable StudioLM text models",
-			required: false,
-			default: "false",
-		},
-		{
-			name: "USE_OLLAMA_TEXT_MODELS",
-			description: "Enable Ollama text models",
-			required: false,
-			default: "false",
 		},
 	],
 	"@elizaos/plugin-telegram": [

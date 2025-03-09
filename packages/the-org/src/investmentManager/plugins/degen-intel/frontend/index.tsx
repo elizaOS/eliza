@@ -1,12 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
-import ImagePrompt from "./frontend/image-prompt";
-import Sentiment from "./frontend/sentiment";
-import Statistics from "./frontend/statistics";
-import Trending from "./frontend/trending";
-import Tweets from "./frontend/tweets";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./frontend/ui/tabs";
-import Wallet from "./frontend/wallet";
+import ImagePrompt from "./image-prompt";
+import Sentiment from "./sentiment";
+import Statistics from "./statistics";
+import Trending from "./trending";
+import Tweets from "./tweets";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import Wallet from "./wallet";
 import "./index.css";
 
 const queryClient = new QueryClient();

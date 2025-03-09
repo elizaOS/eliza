@@ -1,10 +1,16 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { PGlite } from "@electric-sql/pglite";
 import {
+	type Action,
 	type IAgentRuntime,
-	type IDatabaseAdapter,
 	type Plugin,
-	type UUID,
 	logger,
 } from "@elizaos/core";
+import type { UUID } from "@elizaos/core";
+import type { IDatabaseAdapter } from "@elizaos/core";
+import { SQLAdapter } from "./adapter.js";
 import { PgliteDatabaseAdapter } from "./pg-lite/adapter";
 import { PGliteClientManager } from "./pg-lite/manager";
 import { PgDatabaseAdapter } from "./pg/adapter";
@@ -13,6 +19,16 @@ import { PostgresConnectionManager } from "./pg/manager";
 // Singleton connection managers
 let pgLiteClientManager: PGliteClientManager;
 let postgresConnectionManager: PostgresConnectionManager;
+
+/**
+ * Helper function to expand tilde in paths
+ */
+function expandTildePath(filepath: string): string {
+	if (filepath && typeof filepath === "string" && filepath.startsWith("~")) {
+		return filepath.replace(/^~/, os.homedir());
+	}
+	return filepath;
+}
 
 /**
  * Creates a database adapter based on the provided configuration.
@@ -32,6 +48,11 @@ export function createDatabaseAdapter(
 	},
 	agentId: UUID,
 ): IDatabaseAdapter {
+	// Expand tilde in database directory path if provided
+	if (config.dataDir) {
+		config.dataDir = expandTildePath(config.dataDir);
+	}
+
 	if (config.postgresUrl) {
 		if (!postgresConnectionManager) {
 			postgresConnectionManager = new PostgresConnectionManager(

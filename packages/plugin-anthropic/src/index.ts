@@ -39,19 +39,32 @@ export const anthropicPlugin: Plugin = {
 				if (value) process.env[key] = value;
 			}
 
-			// (Optional) If the Anthropics SDK supports API key verification,
-			// you might add a check here.
+			// If API key is not set, we'll show a warning but continue
+			if (!process.env.ANTHROPIC_API_KEY) {
+				console.warn(
+					"ANTHROPIC_API_KEY is not set in environment - Anthropic functionality will be limited",
+				);
+				// Return early without throwing an error
+				return;
+			}
+
+			// Optional: Add key validation here if Anthropic provides an API endpoint for it
+			console.log("Anthropic API key is set");
 		} catch (error) {
 			if (error instanceof z.ZodError) {
-				throw new Error(
-					`Invalid plugin configuration: ${error.errors
+				// Convert to warning instead of error
+				console.warn(
+					`Anthropic plugin configuration issue: ${error.errors
 						.map((e) => e.message)
 						.join(
 							", ",
-						)} - you need to configure the ANTHROPIC_API_KEY in your environment variables`,
+						)} - You need to configure the ANTHROPIC_API_KEY in your environment variables`,
 				);
+				// Continue execution instead of throwing
+			} else {
+				// For unexpected errors, still throw
+				throw error;
 			}
-			throw error;
 		}
 	},
 	models: {

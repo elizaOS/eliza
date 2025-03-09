@@ -1,7 +1,6 @@
 import { promises as fs, existsSync } from "node:fs";
 import path from "node:path";
-import { getPackageVersion } from "./get-package-info";
-import { logger } from "./logger";
+import { logger } from "@elizaos/core";
 
 /**
  * Copy a directory recursively

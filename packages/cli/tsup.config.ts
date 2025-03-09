@@ -6,8 +6,8 @@ export default defineConfig({
 	format: ["esm"],
 	dts: false,
 	sourcemap: true,
-	external: [], // Empty external array means bundle everything
-	noExternal: [/.*/], // Explicitly bundle all dependencies
+	external: ["@electric-sql/pglite"],
+	noExternal: [/^(?!@electric-sql\/pglite).*/],
 	platform: "node",
 	minify: false,
 	target: "esnext",

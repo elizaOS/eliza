@@ -1,4 +1,4 @@
-import { logger } from "@/src/utils/logger";
+import { logger } from "@elizaos/core";
 
 /**
  * Handles the error by logging it and exiting the process.

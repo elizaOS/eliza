@@ -9,7 +9,7 @@ import { plugins } from "@/src/commands/plugins";
 import { start } from "@/src/commands/start";
 import { teeCommand as tee } from "@/src/commands/tee";
 import { loadEnvironment } from "@/src/utils/get-config";
-import { logger } from "@/src/utils/logger";
+import { logger } from "@elizaos/core";
 import { Command } from "commander";
 
 process.on("SIGINT", () => process.exit(0));

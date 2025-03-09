@@ -6,7 +6,6 @@ import { copyTemplate } from "@/src/utils/copy-template";
 import { rawConfigSchema } from "@/src/utils/get-config";
 import { handleError } from "@/src/utils/handle-error";
 import { installPlugin } from "@/src/utils/install-plugin";
-import { logger } from "@/src/utils/logger";
 import { getAvailableDatabases, listPluginsByType } from "@/src/utils/registry";
 import { runBunCommand } from "@/src/utils/run-bun";
 import {
@@ -14,6 +13,7 @@ import {
 	createEnvTemplate,
 	createPluginsTemplate,
 } from "@/src/utils/templates";
+import { logger } from "@elizaos/core";
 import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";
@@ -335,7 +335,7 @@ export const init = new Command()
 
 				// Use the db directory path
 				dbPath = elizaDbDir;
-				logger.info(`Using database directory: ${dbPath}`);
+				logger.debug(`Using database directory: ${dbPath}`);
 			} catch (error) {
 				logger.warn(
 					"Failed to create database directory in home directory, using fallback location:",

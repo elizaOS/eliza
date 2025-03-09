@@ -1,17 +1,42 @@
 import * as fs from "node:fs";
+import { Server as HttpServer } from "node:http";
+import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	type Character,
 	type IAgentRuntime,
 	type UUID,
 	logger,
 } from "@elizaos/core";
+import { createUniqueUuid } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import * as bodyParser from "body-parser";
 import cors from "cors";
+import dotenv from "dotenv";
 import express from "express";
-import { createApiRouter } from "./api/index";
-import { fileURLToPath } from "node:url";
+import multer from "multer";
+import type { Server as SocketIoServer } from "socket.io";
+import character from "../default/character.js";
+import { charactersDirectory } from "../default/default-characters.js";
+import { downloadTemplate } from "../utils/download-template.js";
+import { parseArgs } from "../utils/parse-args.js";
+import { formatUrl } from "../utils/url-format.js";
+import type { AgentManager } from "./agent-manager.js";
+import { createApiRouter } from "./api/index.js";
+import type { CacheStore } from "./cache-store.js";
+import { requestHandlers } from "./lib/request-handlers.js";
+import { createCorsMiddleware } from "./middleware/cors.js";
+import { createAgentsRouter } from "./routes/agents.js";
+import { createCacheStoreRouter } from "./routes/cache-store.js";
+import { createCharacterRouter } from "./routes/character.js";
+import { createFileRouter } from "./routes/files.js";
+import { createMultiplayerRouter } from "./routes/multiplayer.js";
+import { createPromptsRouter } from "./routes/prompts.js";
+import { createSessionRouter } from "./routes/session.js";
+
+// Load environment variables
+dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,6 +83,10 @@ export class AgentServer {
 	public stopAgent!: (runtime: IAgentRuntime) => void;
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
+	private io: SocketIoServer;
+	private soundGenerator?: SoundGenerator;
+	private cacheStore: CacheStore;
+	private agentManager: AgentManager;
 
 	/**
 	 * Constructor for AgentServer class.
@@ -71,9 +100,16 @@ export class AgentServer {
 			this.app = express();
 			this.agents = new Map();
 
-			const dataDir =
+			let dataDir =
 				options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? "./elizadb";
+
+			// Expand tilde in database directory path
+			dataDir = expandTildePath(dataDir);
+
+			console.log("Using database directory:", dataDir);
 			console.log("postgresUrl", options?.postgresUrl?.slice(0, 20));
+
+			// Use the async database adapter
 			this.database = createDatabaseAdapter(
 				{
 					dataDir,
@@ -107,7 +143,6 @@ export class AgentServer {
 	 * @param {ServerOptions} [options] - Optional server options.
 	 * @returns {Promise<void>} - A promise that resolves once the server is initialized.
 	 */
-
 	private async initializeServer(options?: ServerOptions) {
 		try {
 			// Initialize middleware and database
@@ -526,4 +561,12 @@ export class AgentServer {
 			});
 		}
 	}
+}
+
+// Helper function to expand tilde in paths
+function expandTildePath(filepath: string): string {
+	if (filepath && typeof filepath === "string" && filepath.startsWith("~")) {
+		return filepath.replace(/^~/, os.homedir());
+	}
+	return filepath;
 }

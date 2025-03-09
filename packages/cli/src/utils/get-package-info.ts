@@ -1,10 +1,10 @@
 import { promises as fs } from "node:fs";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import { execa } from "execa";
 import fs_extra from "fs-extra";
 import type { PackageJson } from "type-fest";
-import { logger } from "./logger";
 
 const packageJsonPath = path.join("package.json");
 

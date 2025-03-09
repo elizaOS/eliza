@@ -80,29 +80,56 @@ export const openaiPlugin: Plugin = {
 				if (value) process.env[key] = value;
 			}
 
-			// Verify API key
-			const baseURL =
-				process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
-			const response = await fetch(`${baseURL}/models`, {
-				headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-			});
-
-			if (!response.ok) {
-				throw new Error(
-					`Failed to validate OpenAI API key: ${response.statusText}`,
+			// If API key is not set, we'll show a warning but continue
+			if (!process.env.OPENAI_API_KEY) {
+				console.warn(
+					"OPENAI_API_KEY is not set in environment - OpenAI functionality will be limited",
 				);
+				// Return early without throwing an error
+				return;
+			}
+
+			// Verify API key only if we have one
+			try {
+				const baseURL =
+					process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
+				const response = await fetch(`${baseURL}/models`, {
+					headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+				});
+
+				if (!response.ok) {
+					console.warn(
+						`OpenAI API key validation failed: ${response.statusText}`,
+					);
+					console.warn(
+						"OpenAI functionality will be limited until a valid API key is provided",
+					);
+					// Continue execution instead of throwing
+				} else {
+					console.log("OpenAI API key validated successfully");
+				}
+			} catch (fetchError) {
+				console.warn(`Error validating OpenAI API key: ${fetchError}`);
+				console.warn(
+					"OpenAI functionality will be limited until a valid API key is provided",
+				);
+				// Continue execution instead of throwing
 			}
 		} catch (error) {
 			if (error instanceof z.ZodError) {
-				throw new Error(
-					`Invalid plugin configuration: ${error.errors
+				// Convert to warning instead of error
+				console.warn(
+					`OpenAI plugin configuration issue: ${error.errors
 						.map((e) => e.message)
 						.join(
 							", ",
 						)} - You need to configure the OPENAI_API_KEY in your environment variables`,
 				);
+				// Continue execution instead of throwing
+			} else {
+				// For unexpected errors, still throw
+				throw error;
 			}
-			throw error;
 		}
 	},
 	models: {

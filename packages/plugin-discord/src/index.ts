@@ -57,7 +57,7 @@ export class DiscordService extends Service implements IDiscordService {
 	static serviceType: string = DISCORD_SERVICE_NAME;
 	capabilityDescription =
 		"The agent is able to send and receive messages on discord";
-	client: DiscordJsClient;
+	client: DiscordJsClient | null;
 	character: Character;
 	messageManager: MessageManager;
 	voiceManager: VoiceManager;
@@ -75,45 +75,63 @@ export class DiscordService extends Service implements IDiscordService {
 
 		logger.log("Discord client constructor was engaged");
 
-		this.client = new DiscordJsClient({
-			intents: [
-				GatewayIntentBits.Guilds,
-				GatewayIntentBits.GuildMembers,
-				GatewayIntentBits.GuildPresences,
-				GatewayIntentBits.DirectMessages,
-				GatewayIntentBits.GuildVoiceStates,
-				GatewayIntentBits.MessageContent,
-				GatewayIntentBits.GuildMessages,
-				GatewayIntentBits.DirectMessageTyping,
-				GatewayIntentBits.GuildMessageTyping,
-				GatewayIntentBits.GuildMessageReactions,
-			],
-			partials: [
-				Partials.Channel,
-				Partials.Message,
-				Partials.User,
-				Partials.Reaction,
-			],
-		});
+		// Check if Discord API token is available and valid
+		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
+		if (!token || token.trim() === "") {
+			logger.warn(
+				"Discord API Token not provided - Discord functionality will be unavailable",
+			);
+			this.client = null;
+			return;
+		}
 
-		this.runtime = runtime;
-		this.voiceManager = new VoiceManager(this, runtime);
-		this.messageManager = new MessageManager(this);
+		try {
+			this.client = new DiscordJsClient({
+				intents: [
+					GatewayIntentBits.Guilds,
+					GatewayIntentBits.GuildMembers,
+					GatewayIntentBits.GuildPresences,
+					GatewayIntentBits.DirectMessages,
+					GatewayIntentBits.GuildVoiceStates,
+					GatewayIntentBits.MessageContent,
+					GatewayIntentBits.GuildMessages,
+					GatewayIntentBits.DirectMessageTyping,
+					GatewayIntentBits.GuildMessageTyping,
+					GatewayIntentBits.GuildMessageReactions,
+				],
+				partials: [
+					Partials.Channel,
+					Partials.Message,
+					Partials.User,
+					Partials.Reaction,
+				],
+			});
 
-		this.client.once(Events.ClientReady, this.onClientReady.bind(this));
-		this.client.login(runtime.getSetting("DISCORD_API_TOKEN") as string);
+			this.runtime = runtime;
+			this.voiceManager = new VoiceManager(this, runtime);
+			this.messageManager = new MessageManager(this);
 
-		this.setupEventListeners();
+			this.client.once(Events.ClientReady, this.onClientReady.bind(this));
+			this.client.login(token).catch((error) => {
+				logger.error(`Failed to login to Discord: ${error.message}`);
+				this.client = null;
+			});
 
-		// give it to the
-		const ensureAllServersExist = async (runtime: IAgentRuntime) => {
-			const guilds = await this.client.guilds.fetch();
-			for (const [, guild] of guilds) {
-				await this.ensureAllChannelsExist(runtime, guild);
-			}
-		};
+			this.setupEventListeners();
 
-		ensureAllServersExist(this.runtime);
+			// give it to the
+			const ensureAllServersExist = async (runtime: IAgentRuntime) => {
+				const guilds = await this.client.guilds.fetch();
+				for (const [, guild] of guilds) {
+					await this.ensureAllChannelsExist(runtime, guild);
+				}
+			};
+
+			ensureAllServersExist(this.runtime);
+		} catch (error) {
+			logger.error(`Error initializing Discord client: ${error.message}`);
+			this.client = null;
+		}
 	}
 
 	/**
@@ -164,41 +182,74 @@ export class DiscordService extends Service implements IDiscordService {
 	 * Set up event listeners for the client
 	 */
 	private setupEventListeners() {
-		// When joining to a new server
-		this.client.on("guildCreate", this.handleGuildCreate.bind(this));
+		if (!this.client) {
+			return; // Skip if client is not available
+		}
 
-		this.client.on(
-			Events.MessageReactionAdd,
-			this.handleReactionAdd.bind(this),
-		);
-		this.client.on(
-			Events.MessageReactionRemove,
-			this.handleReactionRemove.bind(this),
-		);
+		// Setup handling for direct messages
+		this.client.on("messageCreate", (message) => {
+			// Skip if we're sending the message or in deleted state
+			if (message.author.id === this.client?.user?.id || message.author.bot) {
+				return;
+			}
 
-		this.client.on(Events.GuildMemberAdd, this.handleGuildMemberAdd.bind(this));
+			try {
+				this.messageManager.handleMessage(message);
+			} catch (error) {
+				logger.error(`Error handling message: ${error}`);
+			}
+		});
 
-		// Handle voice events with the voice manager
-		this.client.on(
-			"voiceStateUpdate",
-			this.voiceManager.handleVoiceStateUpdate.bind(this.voiceManager),
-		);
-		this.client.on(
-			"userStream",
-			this.voiceManager.handleUserStream.bind(this.voiceManager),
-		);
+		// Setup handling for reactions
+		this.client.on("messageReactionAdd", async (reaction, user) => {
+			if (user.id === this.client?.user?.id) {
+				return;
+			}
+			try {
+				await this.handleReactionAdd(reaction, user);
+			} catch (error) {
+				logger.error(`Error handling reaction add: ${error}`);
+			}
+		});
 
-		// Handle a new message with the message manager
-		this.client.on(
-			Events.MessageCreate,
-			this.messageManager.handleMessage.bind(this.messageManager),
-		);
+		// Handle reaction removal
+		this.client.on("messageReactionRemove", async (reaction, user) => {
+			if (user.id === this.client?.user?.id) {
+				return;
+			}
+			try {
+				await this.handleReactionRemove(reaction, user);
+			} catch (error) {
+				logger.error(`Error handling reaction remove: ${error}`);
+			}
+		});
 
-		// Handle a new interaction
-		this.client.on(
-			Events.InteractionCreate,
-			this.handleInteractionCreate.bind(this),
-		);
+		// Setup guild (server) event handlers
+		this.client.on("guildCreate", async (guild) => {
+			try {
+				await this.handleGuildCreate(guild);
+			} catch (error) {
+				logger.error(`Error handling guild create: ${error}`);
+			}
+		});
+
+		// Setup member (user) joining handlers
+		this.client.on("guildMemberAdd", async (member) => {
+			try {
+				await this.handleGuildMemberAdd(member);
+			} catch (error) {
+				logger.error(`Error handling guild member add: ${error}`);
+			}
+		});
+
+		// Interaction handlers
+		this.client.on("interactionCreate", async (interaction) => {
+			try {
+				await this.handleInteractionCreate(interaction);
+			} catch (error) {
+				logger.error(`Error handling interaction: ${error}`);
+			}
+		});
 	}
 
 	/**
@@ -278,7 +329,7 @@ export class DiscordService extends Service implements IDiscordService {
 	 * @returns {Promise<void>}
 	 */
 	async stop() {
-		await this.client.destroy();
+		await this.client?.destroy();
 	}
 
 	/**
@@ -313,7 +364,7 @@ export class DiscordService extends Service implements IDiscordService {
 		];
 
 		try {
-			await this.client.application?.commands.set(commands);
+			await this.client?.application?.commands.set(commands);
 			logger.success("Slash commands registered");
 		} catch (error) {
 			console.error("Error registering slash commands:", error);
@@ -729,7 +780,7 @@ export class DiscordService extends Service implements IDiscordService {
 	 */
 	private async buildStandardizedUsers(guild: Guild): Promise<Entity[]> {
 		const entities: Entity[] = [];
-		const botId = this.client.user?.id;
+		const botId = this.client?.user?.id;
 
 		// Strategy based on guild size
 		if (guild.memberCount > 1000) {
@@ -884,7 +935,7 @@ export class DiscordService extends Service implements IDiscordService {
 
 	private async onReady() {
 		logger.log("DISCORD ON READY");
-		const guilds = await this.client.guilds.fetch();
+		const guilds = await this.client?.guilds.fetch();
 		for (const [, guild] of guilds) {
 			const fullGuild = await guild.fetch();
 			await this.voiceManager.scanGuild(fullGuild);
@@ -931,7 +982,7 @@ export class DiscordService extends Service implements IDiscordService {
 			}, 1000);
 		}
 
-		this.client.emit("voiceManagerReady");
+		this.client?.emit("voiceManagerReady");
 	}
 }
 
@@ -949,6 +1000,18 @@ const discordPlugin: Plugin = {
 	],
 	providers: [channelStateProvider, voiceStateProvider],
 	tests: [new DiscordTestSuite()],
+	init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
+		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
+
+		if (!token || token.trim() === "") {
+			logger.warn(
+				"Discord API Token not provided - Discord plugin is loaded but will not be functional",
+			);
+			logger.info(
+				"To enable Discord functionality, please provide DISCORD_API_TOKEN in your .eliza/.env file",
+			);
+		}
+	},
 };
 
 export default discordPlugin;

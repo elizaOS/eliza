@@ -2,12 +2,12 @@ import {
 	getLocalPackages,
 	isMonorepoContext,
 } from "@/src/utils/get-package-info";
-import { logger } from "@/src/utils/logger";
 import {
 	type Registry,
 	getPluginType,
 	registrySchema,
 } from "@/src/utils/registry/schema";
+import { logger } from "@elizaos/core";
 import { execa } from "execa";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import fetch from "node-fetch";
