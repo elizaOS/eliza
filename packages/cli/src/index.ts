@@ -9,6 +9,8 @@ import { teeCommand as tee } from "@/src/commands/tee";
 import { loadEnvironment } from "@/src/utils/get-config";
 import { logger } from "@/src/utils/logger";
 import { Command } from "commander";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
 
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
@@ -22,10 +24,29 @@ async function main() {
 	// Load environment variables, trying project .env first, then global ~/.eliza/.env
 	await loadEnvironment();
 
-	// read package.json version
-	const packageJsonPath = path.join(process.cwd(), "package.json");
-	const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-	const version = packageJson.version;
+	// For ESM modules we need to use import.meta.url instead of __dirname
+	const __filename = fileURLToPath(import.meta.url);
+	const __dirname = dirname(__filename);
+
+	// Find package.json relative to the current file
+	const packageJsonPath = path.resolve(__dirname, "../package.json");
+	console.log("packageJsonPath", packageJsonPath);
+
+	// Add a simple check in case the path is incorrect
+	let version = "0.0.0"; // Fallback version
+	if (!fs.existsSync(packageJsonPath)) {
+		console.warn(
+			"Package.json not found at expected location:",
+			packageJsonPath,
+		);
+		console.warn("Using fallback version:", version);
+	} else {
+		const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+		console.log("packageJson", packageJson);
+		version = packageJson.version;
+	}
+
+	console.log("version", version);
 
 	const program = new Command()
 		.name("eliza")
