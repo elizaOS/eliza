@@ -373,52 +373,45 @@ export class ClientBase extends EventEmitter {
 			);
 		}
 
-		let retries =
-			(this.state?.TWITTER_RETRY_LIMIT ||
-				(this.runtime.getSetting(
-					"TWITTER_RETRY_LIMIT",
-				) as unknown as number)) ??
-			3;
+		const maxRetries = 3;
+		let retryCount = 0;
+		let lastError: Error | null = null;
 
-		if (!username) {
-			throw new Error("Twitter username not configured");
-		}
-
-		const authToken =
-			this.state?.TWITTER_COOKIES_AUTH_TOKEN ||
-			this.runtime.getSetting("TWITTER_COOKIES_AUTH_TOKEN");
-		const ct0 =
-			this.state?.TWITTER_COOKIES_CT0 ||
-			this.runtime.getSetting("TWITTER_COOKIES_CT0");
-		const guestId =
-			this.state?.TWITTER_COOKIES_GUEST_ID ||
-			this.runtime.getSetting("TWITTER_COOKIES_GUEST_ID");
-
-		const createTwitterCookies = (
-			authToken: string,
-			ct0: string,
-			guestId: string,
-		) =>
-			authToken && ct0 && guestId
-				? [
-						{ key: "auth_token", value: authToken, domain: ".twitter.com" },
-						{ key: "ct0", value: ct0, domain: ".twitter.com" },
-						{ key: "guest_id", value: guestId, domain: ".twitter.com" },
-					]
-				: null;
-
-		const cachedCookies =
-			(await this.getCachedCookies(username)) ||
-			createTwitterCookies(authToken, ct0, guestId);
-
-		if (cachedCookies) {
-			logger.info("Using cached cookies");
-			await this.setCookiesFromArray(cachedCookies);
-		}
-
-		logger.log("Waiting for Twitter login");
-		while (retries > 0) {
+		while (retryCount < maxRetries) {
 			try {
+				const authToken =
+					this.state?.TWITTER_COOKIES_AUTH_TOKEN ||
+					this.runtime.getSetting("TWITTER_COOKIES_AUTH_TOKEN");
+				const ct0 =
+					this.state?.TWITTER_COOKIES_CT0 ||
+					this.runtime.getSetting("TWITTER_COOKIES_CT0");
+				const guestId =
+					this.state?.TWITTER_COOKIES_GUEST_ID ||
+					this.runtime.getSetting("TWITTER_COOKIES_GUEST_ID");
+
+				const createTwitterCookies = (
+					authToken: string,
+					ct0: string,
+					guestId: string,
+				) =>
+					authToken && ct0 && guestId
+						? [
+								{ key: "auth_token", value: authToken, domain: ".twitter.com" },
+								{ key: "ct0", value: ct0, domain: ".twitter.com" },
+								{ key: "guest_id", value: guestId, domain: ".twitter.com" },
+						  ]
+						: null;
+
+				const cachedCookies =
+					(await this.getCachedCookies(username)) ||
+					createTwitterCookies(authToken, ct0, guestId);
+
+				if (cachedCookies) {
+					logger.info("Using cached cookies");
+					await this.setCookiesFromArray(cachedCookies);
+				}
+
+				logger.log("Waiting for Twitter login");
 				if (await this.twitterClient.isLoggedIn()) {
 					// cookies are valid, no login required
 					logger.info("Successfully logged in.");
@@ -441,21 +434,22 @@ export class ClientBase extends EventEmitter {
 					break;
 				}
 			} catch (error) {
-				logger.error(`Login attempt failed: ${error.message}`);
+				lastError = error instanceof Error ? error : new Error(String(error));
+				logger.error(`Login attempt ${retryCount + 1} failed: ${lastError.message}`);
+				retryCount++;
+				
+				if (retryCount < maxRetries) {
+					const delay = 2 ** retryCount * 1000; // Exponential backoff
+					logger.info(`Retrying in ${delay/1000} seconds...`);
+					await new Promise(resolve => setTimeout(resolve, delay));
+				}
 			}
-
-			retries--;
-			logger.error(
-				`Failed to login to Twitter. Retrying... (${retries} attempts left)`,
-			);
-
-			if (retries === 0) {
-				logger.error("Max retries reached. Exiting login process.");
-				throw new Error("Twitter login failed after maximum retries.");
-			}
-
-			await new Promise((resolve) => setTimeout(resolve, 2000));
 		}
+
+		if (retryCount === maxRetries) {
+			throw new Error(`Twitter login failed after ${maxRetries} attempts. Last error: ${lastError?.message}`);
+		}
+
 		// Initialize Twitter profile
 		this.profile = await this.fetchProfile(username);
 

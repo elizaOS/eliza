@@ -63,21 +63,40 @@ export class TelegramService extends Service {
 	static async start(runtime: IAgentRuntime): Promise<TelegramService> {
 		await validateTelegramConfig(runtime);
 
-		const tg = new TelegramService(runtime);
+		const maxRetries = 5;
+		let retryCount = 0;
+		let lastError: Error | null = null;
 
-		logger.success(
-			`✅ Telegram client successfully started for character ${runtime.character.name}`,
-		);
+		while (retryCount < maxRetries) {
+			try {
+				const service = new TelegramService(runtime);
 
-		logger.log("🚀 Starting Telegram bot...");
-		try {
-			await tg.initializeBot();
-			tg.setupMessageHandlers();
-		} catch (error) {
-			logger.error("❌ Failed to launch Telegram bot:", error);
-			throw error;
+				logger.success(
+					`✅ Telegram client successfully started for character ${runtime.character.name}`,
+				);
+
+				logger.log("🚀 Starting Telegram bot...");
+				await service.initializeBot();
+				service.setupMessageHandlers();
+
+				// Wait for bot to be ready by testing getMe()
+				await service.bot.telegram.getMe();
+
+				return service;
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+				logger.error(`Telegram initialization attempt ${retryCount + 1} failed: ${lastError.message}`);
+				retryCount++;
+				
+				if (retryCount < maxRetries) {
+					const delay = 2 ** retryCount * 1000; // Exponential backoff
+					logger.info(`Retrying Telegram initialization in ${delay/1000} seconds...`);
+					await new Promise(resolve => setTimeout(resolve, delay));
+				}
+			}
 		}
-		return tg;
+
+		throw new Error(`Telegram initialization failed after ${maxRetries} attempts. Last error: ${lastError?.message}`);
 	}
 
 	/**
@@ -295,7 +314,7 @@ export class TelegramService extends Service {
 		};
 		
 		// Emit generic SERVER_JOINED event
-		this.runtime.emitEvent<EventTypes.SERVER_JOINED>(
+		this.runtime.emitEvent(
 			EventTypes.SERVER_JOINED,
 			serverPayload
 		);
@@ -399,7 +418,7 @@ export class TelegramService extends Service {
 				};
 				
 				// Emit generic USER_JOINED event
-				this.runtime.emitEvent<EventTypes.USER_JOINED>(
+				this.runtime.emitEvent(
 					EventTypes.USER_JOINED,
 					userJoinedPayload
 				);
@@ -457,7 +476,7 @@ export class TelegramService extends Service {
 					};
 					
 					// Emit generic USER_LEFT event
-					this.runtime.emitEvent<EventTypes.USER_LEFT>(
+					this.runtime.emitEvent(
 						EventTypes.USER_LEFT,
 						userLeftPayload
 					);

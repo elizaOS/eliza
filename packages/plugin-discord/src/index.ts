@@ -22,6 +22,8 @@ import {
 	type Guild,
 	type GuildMember,
 	type MessageReaction,
+	type PartialMessageReaction,
+	type PartialUser,
 	type OAuth2Guild,
 	Partials,
 	PermissionsBitField,
@@ -298,8 +300,49 @@ export class DiscordService extends Service implements IDiscordService {
 	 *
 	 */
 	static async start(runtime: IAgentRuntime): Promise<DiscordService> {
-		const client = new DiscordService(runtime);
-		return client;
+		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
+		if (!token || token.trim() === "") {
+			throw new Error("Discord API Token not provided");
+		}
+
+		const maxRetries = 5;
+		let retryCount = 0;
+		let lastError: Error | null = null;
+
+		while (retryCount < maxRetries) {
+			try {
+				const service = new DiscordService(runtime);
+				if (!service.client) {
+					throw new Error("Failed to initialize Discord client");
+				}
+				
+				// Wait for client to be ready
+				await new Promise<void>((resolve, reject) => {
+					const timeout = setTimeout(() => {
+						reject(new Error("Discord client ready timeout"));
+					}, 30000); // 30 second timeout
+
+					service.client?.once("ready", () => {
+						clearTimeout(timeout);
+						resolve();
+					});
+				});
+
+				return service;
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+				logger.error(`Discord initialization attempt ${retryCount + 1} failed: ${lastError.message}`);
+				retryCount++;
+				
+				if (retryCount < maxRetries) {
+					const delay = 2 ** retryCount * 1000; // Exponential backoff
+					logger.info(`Retrying Discord initialization in ${delay/1000} seconds...`);
+					await new Promise(resolve => setTimeout(resolve, delay));
+				}
+			}
+		}
+
+		throw new Error(`Discord initialization failed after ${maxRetries} attempts. Last error: ${lastError?.message}`);
 	}
 
 	/**
@@ -420,11 +463,11 @@ export class DiscordService extends Service implements IDiscordService {
 	/**
 	 * Handles the addition of a reaction on a message.
 	 *
-	 * @param {MessageReaction} reaction The reaction that was added.
-	 * @param {User} user The user who added the reaction.
+	 * @param {MessageReaction | PartialMessageReaction} reaction The reaction that was added.
+	 * @param {User | PartialUser} user The user who added the reaction.
 	 * @returns {void}
 	 */
-	async handleReactionAdd(reaction: MessageReaction, user: User) {
+	async handleReactionAdd(reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) {
 		try {
 			logger.log("Reaction added");
 
@@ -541,11 +584,11 @@ export class DiscordService extends Service implements IDiscordService {
 	/**
 	 * Handles the removal of a reaction on a message.
 	 *
-	 * @param {MessageReaction} reaction - The reaction that was removed.
-	 * @param {User} user - The user who removed the reaction.
+	 * @param {MessageReaction | PartialMessageReaction} reaction - The reaction that was removed.
+	 * @param {User | PartialUser} user - The user who removed the reaction.
 	 * @returns {Promise<void>} - A Promise that resolves after handling the reaction removal.
 	 */
-	async handleReactionRemove(reaction: MessageReaction, user: User) {
+	async handleReactionRemove(reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser) {
 		try {
 			logger.log("Reaction removed");
 

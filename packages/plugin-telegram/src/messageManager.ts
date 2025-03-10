@@ -438,7 +438,7 @@ export class MessageManager {
 			};
 
 			// Let the bootstrap plugin handle the message
-			this.runtime.emitEvent<EventTypes.MESSAGE_RECEIVED>(
+			this.runtime.emitEvent(
 				EventTypes.MESSAGE_RECEIVED,
 				{
 					runtime: this.runtime,
@@ -539,7 +539,7 @@ export class MessageManager {
 			};
 
 			// Let the bootstrap plugin handle the reaction
-			this.runtime.emitEvent<EventTypes.REACTION_RECEIVED>(
+			this.runtime.emitEvent(
 				EventTypes.REACTION_RECEIVED,
 				{
 					runtime: this.runtime,
@@ -622,7 +622,7 @@ export class MessageManager {
 			}
 
 			// Emit both generic and platform-specific message sent events
-			this.runtime.emitEvent<EventTypes.MESSAGE_SENT>(
+			this.runtime.emitEvent(
 				EventTypes.MESSAGE_SENT,
 				{
 					runtime: this.runtime,
