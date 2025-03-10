@@ -4,16 +4,16 @@ import type { TwitterInteractionClient } from "./interactions";
 import type { TwitterPostClient } from "./post";
 import type { TwitterSpaceClient } from "./spaces";
 import type {
-	BaseEventPayload,
+	EventPayload,
 	EventTypes,
 	IAgentRuntime,
-	MessageReceivedPayload,
-	MessageSentPayload, 
-	PostGeneratedPayload,
+	MessagePayload,
+	MessagePayload, 
+	MessagePayload,
 	PostSentPayload,
-	ReactionReceivedPayload,
-	ServerPayload,
-	UserJoinedPayload,
+	MessagePayload,
+	WorldPayload,
+	EntityPayload,
 	UUID,
 	Memory,
 	HandlerCallback,
@@ -176,11 +176,11 @@ export enum TwitterEventTypes {
 	QUOTE_RECEIVED = "TWITTER_QUOTE_RECEIVED",
 	
 	// Server events
-	SERVER_JOINED = "TWITTER_SERVER_JOINED",
+	WORLD_JOINED = "TWITTER_WORLD_JOINED",
 	
 	// User events
-	USER_JOINED = "TWITTER_USER_JOINED",
-	USER_LEFT = "TWITTER_USER_LEFT",
+	ENTITY_JOINED = "TWITTER_USER_JOINED",
+	ENTITY_LEFT = "TWITTER_USER_LEFT",
 	USER_FOLLOWED = "TWITTER_USER_FOLLOWED",
 	USER_UNFOLLOWED = "TWITTER_USER_UNFOLLOWED",
 	
@@ -209,7 +209,7 @@ export interface TwitterMemory extends Memory {
 /**
  * Twitter-specific message received payload
  */
-export interface TwitterMessageReceivedPayload extends Omit<MessageReceivedPayload, 'message'> {
+export interface TwitterMessageReceivedPayload extends Omit<MessagePayload, 'message'> {
 	message: TwitterMemory;
 	tweet: Tweet;
 	user: any;
@@ -218,7 +218,7 @@ export interface TwitterMessageReceivedPayload extends Omit<MessageReceivedPaylo
 /**
  * Twitter-specific message sent payload (for replies)
  */
-export interface TwitterMessageSentPayload extends MessageSentPayload {
+export interface TwitterMessageSentPayload extends MessagePayload {
 	/** The tweet ID that was replied to */
 	inReplyToTweetId: string;
 	/** The tweet result from Twitter API */
@@ -228,7 +228,7 @@ export interface TwitterMessageSentPayload extends MessageSentPayload {
 /**
  * Twitter-specific post generated payload
  */
-export interface TwitterPostGeneratedPayload extends PostGeneratedPayload {
+export interface TwitterPostGeneratedPayload extends MessagePayload {
 	/** The tweet result from Twitter API */
 	tweetResult: any;
 }
@@ -244,7 +244,7 @@ export interface TwitterPostSentPayload extends PostSentPayload {
 /**
  * Twitter-specific reaction received payload
  */
-export interface TwitterReactionReceivedPayload extends ReactionReceivedPayload {
+export interface TwitterReactionReceivedPayload extends MessagePayload {
 	/** The tweet that was reacted to */
 	tweet: Tweet;
 	/** The reaction type (like, retweet) */
@@ -256,7 +256,7 @@ export interface TwitterReactionReceivedPayload extends ReactionReceivedPayload 
 /**
  * Twitter-specific quote tweet received payload
  */
-export interface TwitterQuoteReceivedPayload extends Omit<ReactionReceivedPayload, 'message' | 'reaction'> {
+export interface TwitterQuoteReceivedPayload extends Omit<MessagePayload, 'message' | 'reaction'> {
 	/** The original tweet that was quoted */
 	quotedTweet: Tweet;
 	/** The quote tweet */
@@ -277,7 +277,7 @@ export interface TwitterQuoteReceivedPayload extends Omit<ReactionReceivedPayloa
 /**
  * Twitter-specific mention received payload
  */
-export interface TwitterMentionReceivedPayload extends Omit<MessageReceivedPayload, 'message'> {
+export interface TwitterMentionReceivedPayload extends Omit<MessagePayload, 'message'> {
 	/** The tweet containing the mention */
 	tweet: Tweet;
 	/** The user who mentioned */
@@ -293,7 +293,7 @@ export interface TwitterMentionReceivedPayload extends Omit<MessageReceivedPaylo
 /**
  * Twitter-specific server joined payload
  */
-export interface TwitterServerPayload extends ServerPayload {
+export interface TwitterServerPayload extends WorldPayload {
 	/** The Twitter profile */
 	profile: {
 		id: string;
@@ -305,7 +305,7 @@ export interface TwitterServerPayload extends ServerPayload {
 /**
  * Twitter-specific user joined payload
  */
-export interface TwitterUserJoinedPayload extends UserJoinedPayload {
+export interface TwitterUserJoinedPayload extends EntityPayload {
 	/** The Twitter user who joined */
 	twitterUser: {
 		id: string;
@@ -317,7 +317,7 @@ export interface TwitterUserJoinedPayload extends UserJoinedPayload {
 /**
  * Twitter-specific user followed payload
  */
-export interface TwitterUserFollowedPayload extends UserJoinedPayload {
+export interface TwitterUserFollowedPayload extends EntityPayload {
 	/** The user who followed */
 	follower: any;
 }
@@ -325,7 +325,7 @@ export interface TwitterUserFollowedPayload extends UserJoinedPayload {
 /**
  * Twitter-specific user unfollowed payload
  */
-export interface TwitterUserUnfollowedPayload extends UserJoinedPayload {
+export interface TwitterUserUnfollowedPayload extends EntityPayload {
 	/** The user who unfollowed */
 	unfollower: any;
 }
@@ -333,7 +333,7 @@ export interface TwitterUserUnfollowedPayload extends UserJoinedPayload {
 /**
  * Twitter-specific thread created payload
  */
-export interface TwitterThreadCreatedPayload extends BaseEventPayload {
+export interface TwitterThreadCreatedPayload extends EventPayload {
 	/** The tweets in the thread */
 	tweets: Tweet[];
 	/** The user who created the thread */
@@ -343,7 +343,7 @@ export interface TwitterThreadCreatedPayload extends BaseEventPayload {
 /**
  * Twitter-specific thread updated payload
  */
-export interface TwitterThreadUpdatedPayload extends BaseEventPayload {
+export interface TwitterThreadUpdatedPayload extends EventPayload {
 	/** The tweets in the thread */
 	tweets: Tweet[];
 	/** The user who updated the thread */
@@ -364,9 +364,9 @@ export interface TwitterEventPayloadMap {
 	[TwitterEventTypes.LIKE_RECEIVED]: TwitterLikeReceivedPayload;
 	[TwitterEventTypes.RETWEET_RECEIVED]: TwitterRetweetReceivedPayload;
 	[TwitterEventTypes.QUOTE_RECEIVED]: TwitterQuoteReceivedPayload;
-	[TwitterEventTypes.SERVER_JOINED]: TwitterServerPayload;
-	[TwitterEventTypes.USER_JOINED]: TwitterUserJoinedPayload;
-	[TwitterEventTypes.USER_LEFT]: UserJoinedPayload;
+	[TwitterEventTypes.WORLD_JOINED]: TwitterServerPayload;
+	[TwitterEventTypes.ENTITY_JOINED]: TwitterUserJoinedPayload;
+	[TwitterEventTypes.ENTITY_LEFT]: EntityPayload;
 	[TwitterEventTypes.USER_FOLLOWED]: TwitterUserFollowedPayload;
 	[TwitterEventTypes.USER_UNFOLLOWED]: TwitterUserUnfollowedPayload;
 	[TwitterEventTypes.THREAD_CREATED]: TwitterThreadCreatedPayload;
@@ -403,7 +403,7 @@ export interface TwitterInteractionPayload {
 /**
  * Twitter-specific like received payload
  */
-export interface TwitterLikeReceivedPayload extends BaseEventPayload {
+export interface TwitterLikeReceivedPayload extends EventPayload {
 	tweet: Tweet;
 	user: {
 		id: string;
@@ -416,7 +416,7 @@ export interface TwitterLikeReceivedPayload extends BaseEventPayload {
 /**
  * Twitter-specific retweet received payload
  */
-export interface TwitterRetweetReceivedPayload extends BaseEventPayload {
+export interface TwitterRetweetReceivedPayload extends EventPayload {
 	tweet: Tweet;
 	retweetId: string;
 	user: {

@@ -11,7 +11,7 @@ import {
 	ChannelType,
 	Role,
 	EventTypes,
-	type ServerPayload,
+	type WorldPayload,
 } from "@elizaos/core";
 import { type Context, Telegraf } from "telegraf";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
@@ -148,7 +148,7 @@ export class TelegramService extends Service {
 		const chatId = ctx.chat?.id.toString();
 		if (!chatId) return false;
 
-		// If this is a chat we haven't seen before, emit SERVER_JOINED event
+		// If this is a chat we haven't seen before, emit WORLD_JOINED event
 		if (!this.knownChats.has(chatId)) {
 			await this.handleNewChat(ctx);
 		}
@@ -168,7 +168,7 @@ export class TelegramService extends Service {
 	}
 
 	/**
-	 * Handles new chat discovery and emits SERVER_JOINED event
+	 * Handles new chat discovery and emits WORLD_JOINED event
 	 * @param {Context} ctx - The context of the incoming update
 	 */
 	private async handleNewChat(ctx: Context): Promise<void> {
@@ -298,36 +298,36 @@ export class TelegramService extends Service {
 			}
 		}
 		
-		// Create payload for server events
-		const serverPayload: ServerPayload = {
+		// Create payload for world events
+		const worldPayload = {
 			runtime: this.runtime,
 			world,
 			rooms: [room],
-			users,
+			entities: users,
 			source: "telegram"
 		};
-		
+
 		// Create Telegram-specific payload
-		const telegramServerPayload: TelegramServerPayload = {
-			...serverPayload,
+		const telegramWorldPayload = {
+			...worldPayload,
 			chat
 		};
 		
-		// Emit generic SERVER_JOINED event
+		// Emit generic WORLD_JOINED event
 		this.runtime.emitEvent(
-			EventTypes.SERVER_JOINED,
-			serverPayload
+			EventTypes.WORLD_JOINED,
+			worldPayload
 		);
 		
-		// Emit platform-specific SERVER_JOINED event
+		// Emit platform-specific WORLD_JOINED event
 		this.runtime.emitEvent(
-			TelegramEventTypes.SERVER_JOINED,
-			telegramServerPayload
+			TelegramEventTypes.WORLD_JOINED,
+			telegramWorldPayload
 		);
 		
-		// Set up a handler to track new users as they interact with the chat
+		// Set up a handler to track new entities as they interact with the chat
 		if (chat.type === 'group' || chat.type === 'supergroup') {
-			this.setupUserTracking(chat.id);
+			this.setupEntityTracking(chat.id);
 		}
 	}
 
@@ -360,35 +360,35 @@ export class TelegramService extends Service {
 	}
 
 	/**
-	 * Sets up tracking for new users in a group chat to sync them as entities
-	 * @param {number} chatId - The Telegram chat ID to track users for
+	 * Sets up tracking for new entities in a group chat to sync them as entities
+	 * @param {number} chatId - The Telegram chat ID to track entities for
 	 */
-	private setupUserTracking(chatId: number): void {
-		// We'll maintain a set of user IDs we've already synced
-		const syncedUserIds = new Set<string>();
+	private setupEntityTracking(chatId: number): void {
+		// We'll maintain a set of entity IDs we've already synced
+		const syncedEntityIds = new Set<string>();
 		
 		// Add handler to track new message authors
 		this.bot.on('message', async (ctx) => {
 			if (!ctx.chat || ctx.chat.id !== chatId || !ctx.from) return;
 			
-			const userId = ctx.from.id.toString();
-			if (syncedUserIds.has(userId)) return;
+			const entityId = ctx.from.id.toString();
+			if (syncedEntityIds.has(entityId)) return;
 			
 			// Add to synced set to avoid duplicate processing
-			syncedUserIds.add(userId);
+			syncedEntityIds.add(entityId);
 			
-			// Sync this user as an entity
-			const entityId = createUniqueUuid(this.runtime, userId) as UUID;
+			// Sync this entity
+			const entityUuid = createUniqueUuid(this.runtime, entityId) as UUID;
 			const worldId = createUniqueUuid(this.runtime, chatId.toString()) as UUID;
 			const chatIdStr = chatId.toString();
 			
 			try {
-				// Create entity for the user
+				// Create entity
 				await this.runtime.ensureConnection({
-					entityId,
+					entityId: entityUuid,
 					roomId: createUniqueUuid(this.runtime, chatIdStr),
-					userName: ctx.from.username || ctx.from.first_name || 'Unknown User',
-					name: ctx.from.first_name || ctx.from.username || 'Unknown User',
+					userName: ctx.from.username || ctx.from.first_name || 'Unknown Entity',
+					name: ctx.from.first_name || ctx.from.username || 'Unknown Entity',
 					source: "telegram",
 					channelId: chatIdStr,
 					serverId: chatIdStr,
@@ -396,20 +396,25 @@ export class TelegramService extends Service {
 					worldId,
 				});
 				
-				// Create user joined payload
-				const userJoinedPayload = {
+				// Create entity joined payload
+				const entityJoinedPayload = {
 					runtime: this.runtime,
-					user: ctx.from,
-					serverId: chatIdStr,
-					entityId,
-					channelId: chatIdStr,
-					channelType: ChannelType.GROUP,
-					source: "telegram"
+					entityId: entityUuid,
+					entity: {
+						id: entityId,
+						username: ctx.from.username || ctx.from.first_name || 'Unknown Entity',
+						displayName: ctx.from.first_name || ctx.from.username || 'Unknown Entity'
+					},
+					worldId,
+					source: "telegram",
+					metadata: {
+						joinedAt: Date.now()
+					}
 				};
 				
 				// Create Telegram-specific payload
-				const telegramUserJoinedPayload = {
-					...userJoinedPayload,
+				const telegramEntityJoinedPayload = {
+					...entityJoinedPayload,
 					telegramUser: {
 						id: ctx.from.id,
 						username: ctx.from.username,
@@ -417,32 +422,32 @@ export class TelegramService extends Service {
 					}
 				};
 				
-				// Emit generic USER_JOINED event
+				// Emit generic ENTITY_JOINED event
 				this.runtime.emitEvent(
-					EventTypes.USER_JOINED,
-					userJoinedPayload
+					EventTypes.ENTITY_JOINED,
+					entityJoinedPayload
 				);
 				
-				// Emit platform-specific USER_JOINED event
+				// Emit platform-specific ENTITY_JOINED event
 				this.runtime.emitEvent(
-					TelegramEventTypes.USER_JOINED,
-					telegramUserJoinedPayload
+					TelegramEventTypes.ENTITY_JOINED,
+					telegramEntityJoinedPayload
 				);
 				
-				logger.info(`Tracked new Telegram user: ${ctx.from.username || ctx.from.first_name || userId}`);
+				logger.info(`Tracked new Telegram entity: ${ctx.from.username || ctx.from.first_name || entityId}`);
 			} catch (error) {
-				logger.error(`Error syncing new Telegram user ${userId} from chat ${chatId}:`, error);
+				logger.error(`Error syncing new Telegram entity ${entityId} from chat ${chatId}:`, error);
 			}
 		});
 		
-		// Track when users leave chat (from service message)
+		// Track when entities leave chat (from service message)
 		this.bot.on('left_chat_member', async (ctx) => {
 			if (!ctx.message?.left_chat_member || ctx.chat?.id !== chatId) return;
 			
 			const leftUser = ctx.message.left_chat_member;
-			const userId = leftUser.id.toString();
-			const entityId = createUniqueUuid(this.runtime, userId) as UUID;
+			const entityId = createUniqueUuid(this.runtime, leftUser.id.toString()) as UUID;
 			const chatIdStr = chatId.toString();
+			const worldId = createUniqueUuid(this.runtime, chatIdStr);
 			
 			try {
 				// Get the entity
@@ -456,18 +461,25 @@ export class TelegramService extends Service {
 					};
 					await this.runtime.updateEntity(entity);
 					
-					// Create user left payload
-					const userLeftPayload = {
+					// Create entity left payload
+					const entityLeftPayload = {
 						runtime: this.runtime,
-						user: leftUser,
-						serverId: chatIdStr,
 						entityId,
-						source: "telegram"
+						entity: {
+							id: leftUser.id.toString(),
+							username: leftUser.username || leftUser.first_name || 'Unknown Entity',
+							displayName: leftUser.first_name || leftUser.username || 'Unknown Entity'
+						},
+						worldId,
+						source: "telegram",
+						metadata: {
+							leftAt: Date.now()
+						}
 					};
 					
 					// Create Telegram-specific payload
-					const telegramUserLeftPayload = {
-						...userLeftPayload,
+					const telegramEntityLeftPayload = {
+						...entityLeftPayload,
 						telegramUser: {
 							id: leftUser.id,
 							username: leftUser.username,
@@ -475,22 +487,22 @@ export class TelegramService extends Service {
 						}
 					};
 					
-					// Emit generic USER_LEFT event
+					// Emit generic ENTITY_LEFT event
 					this.runtime.emitEvent(
-						EventTypes.USER_LEFT,
-						userLeftPayload
+						EventTypes.ENTITY_LEFT,
+						entityLeftPayload
 					);
 					
-					// Emit platform-specific USER_LEFT event
+					// Emit platform-specific ENTITY_LEFT event
 					this.runtime.emitEvent(
-						TelegramEventTypes.USER_LEFT,
-						telegramUserLeftPayload
+						TelegramEventTypes.ENTITY_LEFT,
+						telegramEntityLeftPayload
 					);
 					
-					logger.info(`User ${leftUser.username || leftUser.first_name || userId} left chat ${chatId}`);
+					logger.info(`Entity ${leftUser.username || leftUser.first_name || leftUser.id} left chat ${chatId}`);
 				}
 			} catch (error) {
-				logger.error(`Error handling Telegram user leaving chat ${chatId}:`, error);
+				logger.error(`Error handling Telegram entity leaving chat ${chatId}:`, error);
 			}
 		});
 	}

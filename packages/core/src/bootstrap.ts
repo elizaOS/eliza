@@ -43,23 +43,17 @@ import {
 	type ChannelType,
 	type Content,
 	type Entity,
+	type EntityPayload,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
+	type MessagePayload,
 	ModelTypes,
 	type Plugin,
 	type Room,
 	type World,
-	EventTypes,
-	type MessageReceivedPayload,
-	type MessageSentPayload,
-	type PostGeneratedPayload,
-	type PostSentPayload,
-	type ReactionReceivedPayload,
-	type ServerPayload,
-	type UserJoinedPayload,
-	type UserLeftPayload,
-	type VoiceMessageReceivedPayload,
+	type WorldPayload
 } from "./types";
 
 /**
@@ -460,18 +454,18 @@ const postGeneratedHandler = async ({
 const syncSingleUser = async (
 	entityId: UUID,
 	runtime: IAgentRuntime,
-	user: any,
 	serverId: string,
 	channelId: string,
 	type: ChannelType,
 	source: string,
 ) => {
-	logger.info(`Syncing user: ${user.username || user.id}`);
+	const entity = await runtime.getEntityById(entityId);
+	logger.info(`Syncing user: ${entity.metadata[source].username || entity.id}`);
 
 	try {
 		// Ensure we're not using WORLD type and that we have a valid channelId
 		if (!channelId) {
-			logger.warn(`Cannot sync user ${user.id} without a valid channelId`);
+			logger.warn(`Cannot sync user ${entity.id} without a valid channelId`);
 			return;
 		}
 
@@ -481,8 +475,8 @@ const syncSingleUser = async (
 		await runtime.ensureConnection({
 			entityId,
 			roomId,
-			userName: user.username || user.displayName || `User${user.id}`,
-			name: user.displayName || user.username || `User${user.id}`,
+			userName: entity.metadata[source].username || entity.id,
+			name: entity.metadata[source].name || entity.metadata[source].username || `User${entity.id}`,
 			source,
 			channelId,
 			serverId,
@@ -490,7 +484,7 @@ const syncSingleUser = async (
 			worldId,
 		});
 
-		logger.success(`Successfully synced user: ${user.username || user.id}`);
+		logger.success(`Successfully synced user: ${entity.id}`);
 	} catch (error) {
 		logger.error(
 			`Error syncing user: ${
@@ -501,15 +495,15 @@ const syncSingleUser = async (
 };
 
 /**
- * Handles standardized server data for both SERVER_JOINED and SERVER_CONNECTED events
+ * Handles standardized server data for both WORLD_JOINED and WORLD_CONNECTED events
  */
 const handleServerSync = async ({
 	runtime,
 	world,
 	rooms,
-	users,
+	entities,
 	source,
-}: ServerConnectedParams) => {
+}: WorldPayload) => {
 	logger.info(`Handling server sync event for server: ${world.name}`);
 	try {
 		// Create/ensure the world exists for this server
@@ -539,11 +533,11 @@ const handleServerSync = async ({
 		}
 
 		// Then sync all users
-		if (users && users.length > 0) {
-			// Process users in batches to avoid overwhelming the system
+		if (entities && entities.length > 0) {
+			// Process entities in batches to avoid overwhelming the system
 			const batchSize = 50;
-			for (let i = 0; i < users.length; i += batchSize) {
-				const entityBatch = users.slice(i, i + batchSize);
+			for (let i = 0; i < entities.length; i += batchSize) {
+				const entityBatch = entities.slice(i, i + batchSize);
 
 				// check if user is in any of these rooms in rooms
 				const firstRoomUserIsIn = rooms.length > 0 ? rooms[0] : null;
@@ -572,7 +566,7 @@ const handleServerSync = async ({
 				);
 
 				// Add a small delay between batches if not the last batch
-				if (i + batchSize < users.length) {
+				if (i + batchSize < entities.length) {
 					await new Promise((resolve) => setTimeout(resolve, 500));
 				}
 			}
@@ -592,7 +586,7 @@ const handleServerSync = async ({
 
 const events = {
 	[EventTypes.MESSAGE_RECEIVED]: [
-		async (payload: MessageReceivedPayload) => {
+		async (payload: MessagePayload) => {
 			await messageReceivedHandler({
 				runtime: payload.runtime,
 				message: payload.message,
@@ -602,7 +596,7 @@ const events = {
 	],
 	
 	[EventTypes.VOICE_MESSAGE_RECEIVED]: [
-		async (payload: VoiceMessageReceivedPayload) => {
+		async (payload: MessagePayload) => {
 			await messageReceivedHandler({
 				runtime: payload.runtime,
 				message: payload.message,
@@ -612,7 +606,7 @@ const events = {
 	],
 	
 	[EventTypes.REACTION_RECEIVED]: [
-		async (payload: ReactionReceivedPayload) => {
+		async (payload: MessagePayload) => {
 			await reactionReceivedHandler({
 				runtime: payload.runtime,
 				message: payload.message,
@@ -621,7 +615,7 @@ const events = {
 	],
 	
 	[EventTypes.POST_GENERATED]: [
-		async (payload: PostGeneratedPayload) => {
+		async (payload: MessagePayload) => {
 			await postGeneratedHandler({
 				runtime: payload.runtime,
 				message: payload.message,
@@ -631,47 +625,39 @@ const events = {
 	],
 	
 	[EventTypes.MESSAGE_SENT]: [
-		async (payload: MessageSentPayload) => {
+		async (payload: MessagePayload) => {
 			// Message sent tracking
-			logger.debug(`Tracked ${payload.messages.length} sent messages`);
-		}
-	],
-	
-	[EventTypes.POST_SENT]: [
-		async (payload: PostSentPayload) => {
-			// Post sent tracking
-			logger.debug(`Tracked ${payload.messages.length} sent posts`);
+			logger.debug(`Message sent: ${payload.message.content.text}`);
 		}
 	],
 
-	[EventTypes.SERVER_JOINED]: [
-		async (payload: ServerPayload) => {
+	[EventTypes.WORLD_JOINED]: [
+		async (payload: WorldPayload) => {
 			await handleServerSync(payload);
 		}
 	],
 	
-	[EventTypes.SERVER_CONNECTED]: [
-		async (payload: ServerPayload) => {
+	[EventTypes.WORLD_CONNECTED]: [
+		async (payload: WorldPayload) => {
 			await handleServerSync(payload);
 		}
 	],
 
-	[EventTypes.USER_JOINED]: [
-		async (payload: UserJoinedPayload) => {
+	[EventTypes.ENTITY_JOINED]: [
+		async (payload: EntityPayload) => {
 			await syncSingleUser(
 				payload.entityId,
 				payload.runtime,
-				payload.user,
-				payload.serverId,
-				payload.channelId,
-				payload.channelType,
+				payload.worldId,
+				payload.roomId,
+				payload.metadata.type,
 				payload.source,
 			);
 		},
 	],
 	
-	[EventTypes.USER_LEFT]: [
-		async (payload: UserLeftPayload) => {
+	[EventTypes.ENTITY_LEFT]: [
+		async (payload: EntityPayload) => {
 			try {
 				// Update entity to inactive
 				const entity = await payload.runtime.getEntityById(payload.entityId);
@@ -683,45 +669,12 @@ const events = {
 					};
 					await payload.runtime.updateEntity(entity);
 				}
-				logger.info(`User ${payload.user?.username || payload.entityId} left server ${payload.serverId}`);
+				logger.info(`User ${payload.entityId} left world ${payload.worldId}`);
 			} catch (error) {
 				logger.error(`Error handling user left: ${error.message}`);
 			}
 		}
 	],
-	
-	// Also include platform-specific events that map to the same handlers
-	"DISCORD_MESSAGE_RECEIVED": [
-		async (payload: MessageReceivedPayload) => {
-			await messageReceivedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
-		},
-	],
-	
-	"TELEGRAM_MESSAGE_RECEIVED": [
-		async (payload: MessageReceivedPayload) => {
-			await messageReceivedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
-		},
-	],
-	
-	"TWITTER_MESSAGE_RECEIVED": [
-		async (payload: MessageReceivedPayload) => {
-			await messageReceivedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
-		},
-	],
-	
-	// Add other platform-specific events as needed...
 };
 
 export const bootstrapPlugin: Plugin = {
