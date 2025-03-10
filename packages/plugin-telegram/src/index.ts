@@ -3,12 +3,22 @@ import {
 	type Plugin,
 	Service,
 	logger,
+	createUniqueUuid,
+	type UUID,
+	type World,
+	type Room,
+	type Entity,
+	ChannelType,
+	Role,
+	EventTypes,
+	type ServerPayload,
 } from "@elizaos/core";
 import { type Context, Telegraf } from "telegraf";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { validateTelegramConfig } from "./environment";
 import { MessageManager } from "./messageManager";
 import { TelegramTestSuite } from "./tests";
+import { TelegramEventTypes, type TelegramServerPayload } from "./types";
 
 /**
  * Class representing a Telegram service that allows the agent to send and receive messages on Telegram.
@@ -21,6 +31,7 @@ export class TelegramService extends Service {
 	private bot: Telegraf<Context>;
 	public messageManager: MessageManager;
 	private options;
+	private knownChats: Map<string, any> = new Map();
 
 	/**
 	 * Constructor for TelegramService class.
@@ -52,21 +63,40 @@ export class TelegramService extends Service {
 	static async start(runtime: IAgentRuntime): Promise<TelegramService> {
 		await validateTelegramConfig(runtime);
 
-		const tg = new TelegramService(runtime);
+		const maxRetries = 5;
+		let retryCount = 0;
+		let lastError: Error | null = null;
 
-		logger.success(
-			`✅ Telegram client successfully started for character ${runtime.character.name}`,
-		);
+		while (retryCount < maxRetries) {
+			try {
+				const service = new TelegramService(runtime);
 
-		logger.log("🚀 Starting Telegram bot...");
-		try {
-			await tg.initializeBot();
-			tg.setupMessageHandlers();
-		} catch (error) {
-			logger.error("❌ Failed to launch Telegram bot:", error);
-			throw error;
+				logger.success(
+					`✅ Telegram client successfully started for character ${runtime.character.name}`,
+				);
+
+				logger.log("🚀 Starting Telegram bot...");
+				await service.initializeBot();
+				service.setupMessageHandlers();
+
+				// Wait for bot to be ready by testing getMe()
+				await service.bot.telegram.getMe();
+
+				return service;
+			} catch (error) {
+				lastError = error instanceof Error ? error : new Error(String(error));
+				logger.error(`Telegram initialization attempt ${retryCount + 1} failed: ${lastError.message}`);
+				retryCount++;
+				
+				if (retryCount < maxRetries) {
+					const delay = 2 ** retryCount * 1000; // Exponential backoff
+					logger.info(`Retrying Telegram initialization in ${delay/1000} seconds...`);
+					await new Promise(resolve => setTimeout(resolve, delay));
+				}
+			}
 		}
-		return tg;
+
+		throw new Error(`Telegram initialization failed after ${maxRetries} attempts. Last error: ${lastError?.message}`);
 	}
 
 	/**
@@ -99,64 +129,210 @@ export class TelegramService extends Service {
 			dropPendingUpdates: true,
 			allowedUpdates: ["message", "message_reaction"],
 		});
-		logger.log("✨ Telegram bot successfully launched and is running!");
 
+		// Get bot info for identification purposes
 		const botInfo = await this.bot.telegram.getMe();
-		this.bot.botInfo = botInfo;
-		logger.success(`Bot username: @${botInfo.username}`);
-
-		this.messageManager.bot = this.bot;
-
-		// Emit standardized event that we've connected
-		// this.runtime.emitEvent("SERVER_CONNECTED", {
-		//     name: "Telegram",
-		//     runtime: this.runtime,
-		//     server: {
-		//         id: "telegram-main",
-		//         name: "Telegram"
-		//     },
-		//     source: "telegram"
-		// });
+		logger.log(`Bot info: ${JSON.stringify(botInfo)}`);
+		
+		// Handle sigint and sigterm signals to gracefully stop the bot
+		process.once("SIGINT", () => this.bot.stop("SIGINT"));
+		process.once("SIGTERM", () => this.bot.stop("SIGTERM"));
 	}
 
 	/**
-	 * Checks if the group is authorized based on the Telegram settings.
-	 *
-	 * @param {Context} ctx - The context object representing the incoming message.
-	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating if the group is authorized.
+	 * Checks if a group is authorized, based on the TELEGRAM_ALLOWED_CHATS setting.
+	 * @param {Context} ctx - The context of the incoming update.
+	 * @returns {Promise<boolean>} A Promise that resolves with a boolean indicating if the group is authorized.
 	 */
 	private async isGroupAuthorized(ctx: Context): Promise<boolean> {
-		const config = this.runtime.character.settings?.telegram;
-		if (ctx.from?.id === ctx.botInfo?.id) {
+		const chatId = ctx.chat?.id.toString();
+		if (!chatId) return false;
+
+		// If this is a chat we haven't seen before, emit SERVER_JOINED event
+		if (!this.knownChats.has(chatId)) {
+			await this.handleNewChat(ctx);
+		}
+
+		const allowedChats = this.runtime.getSetting("TELEGRAM_ALLOWED_CHATS");
+		if (!allowedChats) {
+			return true; // All chats are allowed if no restriction is set
+		}
+
+		try {
+			const allowedChatsList = JSON.parse(allowedChats as string);
+			return allowedChatsList.includes(chatId);
+		} catch (error) {
+			logger.error("Error parsing TELEGRAM_ALLOWED_CHATS:", error);
 			return false;
 		}
-
-		if (!config?.shouldOnlyJoinInAllowedGroups) {
-			return true;
-		}
-
-		const allowedGroups = config.allowedGroupIds || [];
-		const currentGroupId = ctx.chat.id.toString();
-
-		if (!allowedGroups.includes(currentGroupId)) {
-			logger.info(`Unauthorized group detected: ${currentGroupId}`);
-			try {
-				await ctx.reply("Not authorized. Leaving.");
-				await ctx.leaveChat();
-			} catch (error) {
-				logger.error(
-					`Error leaving unauthorized group ${currentGroupId}:`,
-					error,
-				);
-			}
-			return false;
-		}
-
-		return true;
 	}
 
 	/**
-	 * Set up message handlers for the bot.
+	 * Handles new chat discovery and emits SERVER_JOINED event
+	 * @param {Context} ctx - The context of the incoming update
+	 */
+	private async handleNewChat(ctx: Context): Promise<void> {
+		if (!ctx.chat) return;
+		
+		const chat = ctx.chat;
+		const chatId = chat.id.toString();
+		
+		// Mark this chat as known
+		this.knownChats.set(chatId, chat);
+		
+		// Get chat title based on type
+		let chatTitle: string;
+		let channelType: ChannelType;
+		
+		switch (chat.type) {
+			case 'private':
+				chatTitle = `Chat with ${chat.first_name || 'Unknown User'}`;
+				channelType = ChannelType.DM;
+				break;
+			case 'group':
+				chatTitle = chat.title || 'Unknown Group';
+				channelType = ChannelType.GROUP;
+				break;
+			case 'supergroup':
+				chatTitle = chat.title || 'Unknown Supergroup';
+				channelType = ChannelType.GROUP;
+				break;
+			case 'channel':
+				chatTitle = chat.title || 'Unknown Channel';
+				channelType = ChannelType.FEED;
+				break;
+			default:
+				chatTitle = 'Unknown Chat';
+				channelType = ChannelType.GROUP;
+		}
+		
+		// Create standardized world data
+		const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
+		const roomId = createUniqueUuid(this.runtime, chatId) as UUID;
+		
+		// Build world representation
+		const world: World = {
+			id: worldId,
+			name: chatTitle,
+			agentId: this.runtime.agentId,
+			serverId: chatId,
+			metadata: {
+				source: "telegram",
+				ownership: { ownerId: chatId },
+				roles: {
+					[chatId]: Role.OWNER,
+				},
+			},
+		};
+		
+		// Build room representation
+		const room: Room = {
+			id: roomId,
+			name: chatTitle,
+			source: "telegram",
+			type: channelType,
+			channelId: chatId,
+			serverId: chatId,
+			worldId: worldId,
+		};
+		
+		// Build users list
+		const users: Entity[] = [];
+		// For private chats, add the user
+		if (chat.type === 'private' && chat.id) {
+			const userId = createUniqueUuid(this.runtime, chat.id.toString()) as UUID;
+			users.push({
+				id: userId,
+				names: [chat.first_name || 'Unknown User'],
+				agentId: this.runtime.agentId,
+				metadata: {
+					telegram: {
+						id: chat.id.toString(),
+						username: chat.username || 'unknown',
+						name: chat.first_name || 'Unknown User',
+					},
+					source: "telegram"
+				}
+			});
+		} else if (chat.type === 'group' || chat.type === 'supergroup') {
+			// For groups and supergroups, try to get member information
+			try {
+				// Get chat administrators (this is what's available through the Bot API)
+				const admins = await this.bot.telegram.getChatAdministrators(chat.id);
+				
+				if (admins && admins.length > 0) {
+					for (const admin of admins) {
+						const userId = createUniqueUuid(this.runtime, admin.user.id.toString()) as UUID;
+						users.push({
+							id: userId,
+							names: [admin.user.first_name || admin.user.username || 'Unknown Admin'],
+							agentId: this.runtime.agentId,
+							metadata: {
+								telegram: {
+									id: admin.user.id.toString(),
+									username: admin.user.username || 'unknown',
+									name: admin.user.first_name || 'Unknown Admin',
+									isAdmin: true,
+									adminTitle: admin.custom_title || (admin.status === 'creator' ? 'Owner' : 'Admin')
+								},
+								source: "telegram",
+								roles: [admin.status === 'creator' ? Role.OWNER : Role.ADMIN]
+							}
+						});
+					}
+				}
+				
+				// Additionally, we can estimate member count
+				try {
+					const chatInfo = await this.bot.telegram.getChat(chat.id);
+					if (chatInfo && 'member_count' in chatInfo) {
+						// Store this information in the world metadata
+						world.metadata.memberCount = chatInfo.member_count;
+					}
+				} catch (countError) {
+					logger.warn(`Could not get member count for chat ${chatId}: ${countError}`);
+				}
+				
+			} catch (error) {
+				logger.warn(`Could not fetch administrators for chat ${chatId}: ${error}`);
+			}
+		}
+		
+		// Create payload for server events
+		const serverPayload: ServerPayload = {
+			runtime: this.runtime,
+			world,
+			rooms: [room],
+			users,
+			source: "telegram"
+		};
+		
+		// Create Telegram-specific payload
+		const telegramServerPayload: TelegramServerPayload = {
+			...serverPayload,
+			chat
+		};
+		
+		// Emit generic SERVER_JOINED event
+		this.runtime.emitEvent(
+			EventTypes.SERVER_JOINED,
+			serverPayload
+		);
+		
+		// Emit platform-specific SERVER_JOINED event
+		this.runtime.emitEvent(
+			TelegramEventTypes.SERVER_JOINED,
+			telegramServerPayload
+		);
+		
+		// Set up a handler to track new users as they interact with the chat
+		if (chat.type === 'group' || chat.type === 'supergroup') {
+			this.setupUserTracking(chat.id);
+		}
+	}
+
+	/**
+	 * Sets up message and reaction handlers for the bot.
 	 *
 	 * @private
 	 * @returns {void}
@@ -179,6 +355,142 @@ export class TelegramService extends Service {
 				await this.messageManager.handleReaction(ctx);
 			} catch (error) {
 				logger.error("Error handling reaction:", error);
+			}
+		});
+	}
+
+	/**
+	 * Sets up tracking for new users in a group chat to sync them as entities
+	 * @param {number} chatId - The Telegram chat ID to track users for
+	 */
+	private setupUserTracking(chatId: number): void {
+		// We'll maintain a set of user IDs we've already synced
+		const syncedUserIds = new Set<string>();
+		
+		// Add handler to track new message authors
+		this.bot.on('message', async (ctx) => {
+			if (!ctx.chat || ctx.chat.id !== chatId || !ctx.from) return;
+			
+			const userId = ctx.from.id.toString();
+			if (syncedUserIds.has(userId)) return;
+			
+			// Add to synced set to avoid duplicate processing
+			syncedUserIds.add(userId);
+			
+			// Sync this user as an entity
+			const entityId = createUniqueUuid(this.runtime, userId) as UUID;
+			const worldId = createUniqueUuid(this.runtime, chatId.toString()) as UUID;
+			const chatIdStr = chatId.toString();
+			
+			try {
+				// Create entity for the user
+				await this.runtime.ensureConnection({
+					entityId,
+					roomId: createUniqueUuid(this.runtime, chatIdStr),
+					userName: ctx.from.username || ctx.from.first_name || 'Unknown User',
+					name: ctx.from.first_name || ctx.from.username || 'Unknown User',
+					source: "telegram",
+					channelId: chatIdStr,
+					serverId: chatIdStr,
+					type: ChannelType.GROUP,
+					worldId,
+				});
+				
+				// Create user joined payload
+				const userJoinedPayload = {
+					runtime: this.runtime,
+					user: ctx.from,
+					serverId: chatIdStr,
+					entityId,
+					channelId: chatIdStr,
+					channelType: ChannelType.GROUP,
+					source: "telegram"
+				};
+				
+				// Create Telegram-specific payload
+				const telegramUserJoinedPayload = {
+					...userJoinedPayload,
+					telegramUser: {
+						id: ctx.from.id,
+						username: ctx.from.username,
+						first_name: ctx.from.first_name
+					}
+				};
+				
+				// Emit generic USER_JOINED event
+				this.runtime.emitEvent(
+					EventTypes.USER_JOINED,
+					userJoinedPayload
+				);
+				
+				// Emit platform-specific USER_JOINED event
+				this.runtime.emitEvent(
+					TelegramEventTypes.USER_JOINED,
+					telegramUserJoinedPayload
+				);
+				
+				logger.info(`Tracked new Telegram user: ${ctx.from.username || ctx.from.first_name || userId}`);
+			} catch (error) {
+				logger.error(`Error syncing new Telegram user ${userId} from chat ${chatId}:`, error);
+			}
+		});
+		
+		// Track when users leave chat (from service message)
+		this.bot.on('left_chat_member', async (ctx) => {
+			if (!ctx.message?.left_chat_member || ctx.chat?.id !== chatId) return;
+			
+			const leftUser = ctx.message.left_chat_member;
+			const userId = leftUser.id.toString();
+			const entityId = createUniqueUuid(this.runtime, userId) as UUID;
+			const chatIdStr = chatId.toString();
+			
+			try {
+				// Get the entity
+				const entity = await this.runtime.getEntityById(entityId);
+				if (entity) {
+					// Update entity metadata to show as inactive
+					entity.metadata = {
+						...entity.metadata,
+						status: "INACTIVE",
+						leftAt: Date.now(),
+					};
+					await this.runtime.updateEntity(entity);
+					
+					// Create user left payload
+					const userLeftPayload = {
+						runtime: this.runtime,
+						user: leftUser,
+						serverId: chatIdStr,
+						entityId,
+						source: "telegram"
+					};
+					
+					// Create Telegram-specific payload
+					const telegramUserLeftPayload = {
+						...userLeftPayload,
+						telegramUser: {
+							id: leftUser.id,
+							username: leftUser.username,
+							first_name: leftUser.first_name
+						}
+					};
+					
+					// Emit generic USER_LEFT event
+					this.runtime.emitEvent(
+						EventTypes.USER_LEFT,
+						userLeftPayload
+					);
+					
+					// Emit platform-specific USER_LEFT event
+					this.runtime.emitEvent(
+						TelegramEventTypes.USER_LEFT,
+						telegramUserLeftPayload
+					);
+					
+					logger.info(`User ${leftUser.username || leftUser.first_name || userId} left chat ${chatId}`);
+				}
+			} catch (error) {
+				logger.error(`Error handling Telegram user leaving chat ${chatId}:`, error);
 			}
 		});
 	}

@@ -50,6 +50,16 @@ import {
 	type Plugin,
 	type Room,
 	type World,
+	EventTypes,
+	type MessageReceivedPayload,
+	type MessageSentPayload,
+	type PostGeneratedPayload,
+	type PostSentPayload,
+	type ReactionReceivedPayload,
+	type ServerPayload,
+	type UserJoinedPayload,
+	type UserLeftPayload,
+	type VoiceMessageReceivedPayload,
 } from "./types";
 
 /**
@@ -322,6 +332,117 @@ const reactionReceivedHandler = async ({
 };
 
 /**
+ * Handles the generation of a post (like a Tweet) and creates a memory for it.
+ * 
+ * @param {Object} params - The parameters for the function.
+ * @param {IAgentRuntime} params.runtime - The agent runtime object.
+ * @param {Memory} params.message - The post message to be processed.
+ * @param {HandlerCallback} params.callback - The callback function to execute after processing.
+ * @returns {Promise<void>}
+ */
+const postGeneratedHandler = async ({
+	runtime,
+	message,
+	callback,
+}: MessageReceivedHandlerParams) => {
+	// First, save the post to memory
+	await Promise.all([
+		runtime.getMemoryManager("messages").addEmbeddingToMemory(message),
+		runtime.getMemoryManager("messages").createMemory(message),
+	]);
+
+	// Compose state with providers for generating content
+	let state = await runtime.composeState(message, [
+		"PROVIDERS",
+		"CHARACTER",
+		"RECENT_MESSAGES",
+		"ENTITIES",
+	]);
+
+	// Since posts are agent-generated content, we always respond
+	const providers = state.providers || [];
+
+	// Update state with additional providers
+	state = await runtime.composeState(message, null, providers);
+
+	// Get prompt template - use post template if available, otherwise default to messageHandler
+	const promptTemplate = 
+		runtime.character.templates?.postTemplate || 
+		runtime.character.templates?.messageHandlerTemplate || 
+		messageHandlerTemplate;
+
+	const prompt = composePromptFromState({
+		state,
+		template: promptTemplate,
+	});
+
+	let responseContent = null;
+
+	// Retry if missing required fields
+	let retries = 0;
+	const maxRetries = 3;
+	while (
+		retries < maxRetries &&
+		(!responseContent?.thought ||
+			!responseContent?.plan ||
+			!responseContent?.text)
+	) {
+		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			prompt,
+		});
+
+		responseContent = parseJSONObjectFromText(response) as Content;
+
+		retries++;
+		if (
+			!responseContent?.thought ||
+			!responseContent?.plan ||
+			!responseContent?.text
+		) {
+			logger.warn("*** Missing required fields, retrying... ***");
+		}
+	}
+
+	// Create the response memory
+	const responseMessages = [
+		{
+			id: v4() as UUID,
+			entityId: runtime.agentId,
+			agentId: runtime.agentId,
+			content: responseContent,
+			roomId: message.roomId,
+			createdAt: Date.now(),
+		},
+	];
+
+	// Save the response plan to memory
+	await runtime.getMemoryManager("messages").createMemory({
+		entityId: runtime.agentId,
+		agentId: runtime.agentId,
+		content: {
+			thought: responseContent.thought,
+			plan: responseContent.plan,
+			text: responseContent.text,
+			providers: responseContent.providers,
+		},
+		roomId: message.roomId,
+		createdAt: Date.now(),
+	});
+
+	// Process the actions and execute the callback
+	await runtime.processActions(message, responseMessages, state, callback);
+
+	// Run any configured evaluators
+	await runtime.evaluate(
+		message,
+		state,
+		true, // Post generation is always a "responding" scenario
+		callback,
+		responseMessages,
+	);
+};
+
+/**
  * Syncs a single user into an entity
  */
 /**
@@ -470,51 +591,137 @@ const handleServerSync = async ({
 };
 
 const events = {
-	MESSAGE_RECEIVED: [
-		async ({ runtime, message, callback }: MessageReceivedHandlerParams) => {
+	[EventTypes.MESSAGE_RECEIVED]: [
+		async (payload: MessageReceivedPayload) => {
 			await messageReceivedHandler({
-				runtime,
-				message,
-				callback,
+				runtime: payload.runtime,
+				message: payload.message,
+				callback: payload.callback,
 			});
 		},
 	],
-	VOICE_MESSAGE_RECEIVED: [
-		async ({ runtime, message, callback }: MessageReceivedHandlerParams) => {
+	
+	[EventTypes.VOICE_MESSAGE_RECEIVED]: [
+		async (payload: VoiceMessageReceivedPayload) => {
 			await messageReceivedHandler({
-				runtime,
-				message,
-				callback,
+				runtime: payload.runtime,
+				message: payload.message,
+				callback: payload.callback,
 			});
 		},
 	],
-	REACTION_RECEIVED: [reactionReceivedHandler],
+	
+	[EventTypes.REACTION_RECEIVED]: [
+		async (payload: ReactionReceivedPayload) => {
+			await reactionReceivedHandler({
+				runtime: payload.runtime,
+				message: payload.message,
+			});
+		}
+	],
+	
+	[EventTypes.POST_GENERATED]: [
+		async (payload: PostGeneratedPayload) => {
+			await postGeneratedHandler({
+				runtime: payload.runtime,
+				message: payload.message,
+				callback: payload.callback,
+			});
+		},
+	],
+	
+	[EventTypes.MESSAGE_SENT]: [
+		async (payload: MessageSentPayload) => {
+			// Message sent tracking
+			logger.debug(`Tracked ${payload.messages.length} sent messages`);
+		}
+	],
+	
+	[EventTypes.POST_SENT]: [
+		async (payload: PostSentPayload) => {
+			// Post sent tracking
+			logger.debug(`Tracked ${payload.messages.length} sent posts`);
+		}
+	],
 
-	// Both events now use the same handler function
-	SERVER_JOINED: [handleServerSync],
-	SERVER_CONNECTED: [handleServerSync],
+	[EventTypes.SERVER_JOINED]: [
+		async (payload: ServerPayload) => {
+			await handleServerSync(payload);
+		}
+	],
+	
+	[EventTypes.SERVER_CONNECTED]: [
+		async (payload: ServerPayload) => {
+			await handleServerSync(payload);
+		}
+	],
 
-	USER_JOINED: [
-		async ({
-			runtime,
-			user,
-			serverId,
-			entityId,
-			channelId,
-			channelType,
-			source,
-		}: UserJoinedParams) => {
+	[EventTypes.USER_JOINED]: [
+		async (payload: UserJoinedPayload) => {
 			await syncSingleUser(
-				entityId,
-				runtime,
-				user,
-				serverId,
-				channelId,
-				channelType,
-				source,
+				payload.entityId,
+				payload.runtime,
+				payload.user,
+				payload.serverId,
+				payload.channelId,
+				payload.channelType,
+				payload.source,
 			);
 		},
 	],
+	
+	[EventTypes.USER_LEFT]: [
+		async (payload: UserLeftPayload) => {
+			try {
+				// Update entity to inactive
+				const entity = await payload.runtime.getEntityById(payload.entityId);
+				if (entity) {
+					entity.metadata = {
+						...entity.metadata,
+						status: "INACTIVE",
+						leftAt: Date.now(),
+					};
+					await payload.runtime.updateEntity(entity);
+				}
+				logger.info(`User ${payload.user?.username || payload.entityId} left server ${payload.serverId}`);
+			} catch (error) {
+				logger.error(`Error handling user left: ${error.message}`);
+			}
+		}
+	],
+	
+	// Also include platform-specific events that map to the same handlers
+	"DISCORD_MESSAGE_RECEIVED": [
+		async (payload: MessageReceivedPayload) => {
+			await messageReceivedHandler({
+				runtime: payload.runtime,
+				message: payload.message,
+				callback: payload.callback,
+			});
+		},
+	],
+	
+	"TELEGRAM_MESSAGE_RECEIVED": [
+		async (payload: MessageReceivedPayload) => {
+			await messageReceivedHandler({
+				runtime: payload.runtime,
+				message: payload.message,
+				callback: payload.callback,
+			});
+		},
+	],
+	
+	"TWITTER_MESSAGE_RECEIVED": [
+		async (payload: MessageReceivedPayload) => {
+			await messageReceivedHandler({
+				runtime: payload.runtime,
+				message: payload.message,
+				callback: payload.callback,
+			});
+		},
+	],
+	
+	// Add other platform-specific events as needed...
 };
 
 export const bootstrapPlugin: Plugin = {

@@ -66,7 +66,7 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly evaluators: Evaluator[] = [];
 	readonly providers: Provider[] = [];
 	readonly plugins: Plugin[] = [];
-	events: Map<string, ((params: any) => void)[]> = new Map();
+	events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
 	stateCache = new Map<
 		UUID,
 		{
@@ -1265,18 +1265,18 @@ export class AgentRuntime implements IAgentRuntime {
 		return response as R;
 	}
 
-	registerEvent(event: string, handler: (params: any) => void) {
+	registerEvent(event: string, handler: (params: any) => Promise<void>) {
 		if (!this.events.has(event)) {
 			this.events.set(event, []);
 		}
 		this.events.get(event)?.push(handler);
 	}
 
-	getEvent(event: string): ((params: any) => void)[] | undefined {
+	getEvent(event: string): ((params: any) => Promise<void>)[] | undefined {
 		return this.events.get(event);
 	}
 
-	emitEvent(event: string | string[], params: any) {
+	async emitEvent(event: string | string[], params: any) {
 		// Handle both single event string and array of event strings
 		const events = Array.isArray(event) ? event : [event];
 
@@ -1285,9 +1285,7 @@ export class AgentRuntime implements IAgentRuntime {
 			const eventHandlers = this.events.get(eventName);
 
 			if (eventHandlers) {
-				for (const handler of eventHandlers) {
-					handler(params);
-				}
+				await Promise.all(eventHandlers.map(handler => handler(params)));
 			}
 		}
 	}
