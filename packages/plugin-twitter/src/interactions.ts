@@ -1,39 +1,33 @@
 import {
 	ChannelType,
 	type Content,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
+	type MessagePayload,
 	ModelTypes,
 	composePrompt,
 	createUniqueUuid,
-	logger,
-	parseJSONObjectFromText,
-	EventTypes,
-	type MessageReceivedPayload,
-	type ReactionReceivedPayload,
-	type UserJoinedPayload,
-	type UserLeftPayload,
+	logger
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import { SearchMode } from "./client/index";
 import type { Tweet as ClientTweet } from "./client/tweets";
-import { buildConversationThread, sendTweet, wait } from "./utils";
-import { TwitterEventTypes } from "./types";
 import type {
-	TwitterLikeReceivedPayload,
-	TwitterRetweetReceivedPayload,
-	TwitterQuoteReceivedPayload,
-	TwitterMentionReceivedPayload,
-	TwitterUserFollowedPayload,
-	TwitterUserUnfollowedPayload,
-	TwitterThreadCreatedPayload,
-	TwitterThreadUpdatedPayload,
-	TwitterMemory,
+	Tweet as CoreTweet,
 	TwitterInteractionMemory,
 	TwitterInteractionPayload,
-	Tweet as CoreTweet,
+	TwitterLikeReceivedPayload,
+	TwitterMemory,
+	TwitterMentionReceivedPayload,
+	TwitterQuoteReceivedPayload,
+	TwitterRetweetReceivedPayload,
+	TwitterUserFollowedPayload,
+	TwitterUserUnfollowedPayload
 } from "./types";
+import { TwitterEventTypes } from "./types";
+import { buildConversationThread } from "./utils";
 
 /**
  * Template for generating dialog and actions for a Twitter message handler.
@@ -201,7 +195,7 @@ export class TwitterInteractionClient {
 
 					// Emit mention received events
 					if (tweet.text.includes(`@${twitterUsername}`)) {
-						const messagePayload: MessageReceivedPayload = {
+						const messagePayload: MessagePayload = {
 							runtime: this.runtime,
 							message: {
 								...message,
@@ -342,7 +336,7 @@ export class TwitterInteractionClient {
 								callback: async () => {
 									return [];
 								}
-							} as ReactionReceivedPayload);
+							} as MessagePayload);
 							break;
 
 						case 'retweet':
@@ -365,7 +359,7 @@ export class TwitterInteractionClient {
 								callback: async () => {
 									return [];
 								}
-							} as ReactionReceivedPayload);
+							} as MessagePayload);
 							break;
 
 						case 'quote':
@@ -394,7 +388,7 @@ export class TwitterInteractionClient {
 								callback: async () => {
 									return [];
 								}
-							} as ReactionReceivedPayload);
+							} as MessagePayload);
 							break;
 					}
 				}
@@ -450,44 +444,21 @@ export class TwitterInteractionClient {
 				};
 
 				if (change.type === 'followed') {
-					// Emit generic USER_JOINED event
-					const userJoinedPayload: UserJoinedPayload = {
-						...basePayload,
-						serverId: this.client.profile.id,
-						channelId: this.client.profile.id,
-						channelType: ChannelType.GROUP,
-						entityId: createUniqueUuid(this.runtime, change.userId)
-					};
-					this.runtime.emitEvent(EventTypes.USER_JOINED, userJoinedPayload);
-
 					// Emit platform-specific USER_FOLLOWED event
 					const userFollowedPayload: TwitterUserFollowedPayload = {
 						...basePayload,
 						follower: change.user,
-						serverId: this.client.profile.id,
 						entityId: createUniqueUuid(this.runtime, change.userId),
-						channelId: this.client.profile.id,
-						channelType: ChannelType.GROUP
+						roomId: createUniqueUuid(this.runtime, this.client.profile.id)
 					};
 					this.runtime.emitEvent(TwitterEventTypes.USER_FOLLOWED, userFollowedPayload);
 				} else if (change.type === 'unfollowed') {
-					// Emit generic USER_LEFT event
-					const userLeftPayload: UserLeftPayload = {
-						...basePayload,
-						serverId: this.client.profile.id,
-						entityId: createUniqueUuid(this.runtime, change.userId),
-						source: "twitter"
-					};
-					this.runtime.emitEvent(EventTypes.USER_LEFT, userLeftPayload);
-
 					// Emit platform-specific USER_UNFOLLOWED event
 					const userUnfollowedPayload: TwitterUserUnfollowedPayload = {
 						...basePayload,
 						unfollower: change.user,
-						serverId: this.client.profile.id,
 						entityId: createUniqueUuid(this.runtime, change.userId),
-						channelId: this.client.profile.id,
-						channelType: ChannelType.GROUP
+						roomId: createUniqueUuid(this.runtime, this.client.profile.id)
 					};
 					this.runtime.emitEvent(TwitterEventTypes.USER_UNFOLLOWED, userUnfollowedPayload);
 				}
@@ -586,7 +557,6 @@ export class TwitterInteractionClient {
 		if (!tweetExists) {
 			logger.log("tweet does not exist, saving");
 			const entityId = createUniqueUuid(this.runtime, tweet.userId);
-			const worldId = createUniqueUuid(this.runtime, tweet.userId);
 			const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
 
 			// Ensure entity connection
@@ -597,7 +567,6 @@ export class TwitterInteractionClient {
 				name: tweet.name,
 				source: "twitter",
 				type: ChannelType.GROUP,
-				worldId,
 			});
 
 			// Ensure conversation room exists
@@ -607,8 +576,7 @@ export class TwitterInteractionClient {
 				source: "twitter",
 				type: ChannelType.GROUP,
 				channelId: tweet.conversationId,
-				serverId: tweet.userId,
-				worldId,
+				worldId: createUniqueUuid(this.runtime, tweet.userId),
 			});
 
 			// Create standardized message memory
@@ -717,7 +685,7 @@ export class TwitterInteractionClient {
 			message,
 			callback,
 			source: "twitter"
-		} as MessageReceivedPayload);
+		} as MessagePayload);
 
 		return { text: "", actions: ["RESPOND"] };
 	}

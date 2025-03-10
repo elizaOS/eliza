@@ -5,6 +5,7 @@ import type { Readable } from "node:stream";
 import {
 	ChannelType,
 	type Content,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
@@ -416,7 +417,7 @@ export class SttTtsPlugin implements Plugin {
 		};
 
 		// Emit voice-specific events
-		this.runtime.emitEvent(["VOICE_MESSAGE_RECEIVED"], {
+		this.runtime.emitEvent(EventTypes.VOICE_MESSAGE_RECEIVED, {
 			runtime: this.runtime,
 			message: memory,
 			callback,

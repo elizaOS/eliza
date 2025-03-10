@@ -1,24 +1,20 @@
 import {
 	ChannelType,
-	EventTypes,
 	type Content,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Media,
 	type Memory,
 	ModelTypes,
-	type MessageReceivedPayload,
-	type MessageSentPayload,
-	type ReactionReceivedPayload,
-	Role,
 	type UUID,
 	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
 import type { Chat, Message, ReactionType, Update } from "@telegraf/types";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
-import { escapeMarkdown } from "./utils";
 import { TelegramEventTypes, type TelegramMessageReceivedPayload, type TelegramMessageSentPayload, type TelegramReactionReceivedPayload } from "./types";
+import { escapeMarkdown } from "./utils";
 
 import fs from "node:fs";
 
@@ -636,10 +632,6 @@ export class MessageManager {
 			this.runtime.emitEvent(
 				TelegramEventTypes.MESSAGE_SENT,
 				{
-					runtime: this.runtime,
-					messages: memories,
-					roomId,
-					source: "telegram",
 					originalMessages: sentMessages,
 					chatId
 				} as TelegramMessageSentPayload

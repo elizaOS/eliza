@@ -2,6 +2,7 @@ import {
 	ChannelType,
 	type Character,
 	type Entity,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
@@ -22,9 +23,9 @@ import {
 	type Guild,
 	type GuildMember,
 	type MessageReaction,
+	type OAuth2Guild,
 	type PartialMessageReaction,
 	type PartialUser,
-	type OAuth2Guild,
 	Partials,
 	PermissionsBitField,
 	type TextChannel,
@@ -41,7 +42,7 @@ import { MessageManager } from "./messages";
 import channelStateProvider from "./providers/channelState";
 import voiceStateProvider from "./providers/voiceState";
 import { DiscordTestSuite } from "./tests";
-import type { IDiscordService } from "./types";
+import { DiscordEventTypes, type IDiscordService } from "./types";
 import { VoiceManager } from "./voice";
 
 /**
@@ -269,22 +270,23 @@ export class DiscordService extends Service implements IDiscordService {
 			? `${member.user.username}#${member.user.discriminator}`
 			: member.user.username;
 
-		// Emit standardized USER_JOINED event
-		this.runtime.emitEvent("USER_JOINED", {
+		// Emit standardized ENTITY_JOINED event
+		this.runtime.emitEvent([EventTypes.ENTITY_JOINED], {
 			runtime: this.runtime,
 			entityId: createUniqueUuid(this.runtime, member.id),
-			user: {
-				id: member.id,
+			worldId: createUniqueUuid(this.runtime, guild.id),
+			source: "discord",
+			metadata: {
+				originalId: member.id,
 				username: tag,
 				displayName: member.displayName || member.user.username,
-			},
-			serverId: guild.id,
-			channelId: null, // No specific channel for server joins
-			channelType: ChannelType.WORLD,
-			source: "discord",
+				roles: member.roles.cache.map(r => r.name),
+				joinedAt: member.joinedAt?.getTime()
+			}
 		});
 
-		this.runtime.emitEvent("DISCORD_USER_JOINED", {
+		// Emit Discord-specific event
+		this.runtime.emitEvent([DiscordEventTypes.ENTITY_JOINED], {
 			runtime: this.runtime,
 			entityId: createUniqueUuid(this.runtime, member.id),
 			member,
@@ -671,7 +673,7 @@ export class DiscordService extends Service implements IDiscordService {
 				return [];
 			};
 
-			this.runtime.emitEvent(["DISCORD_REACTION_EVENT", "REACTION_RECEIVED"], {
+			this.runtime.emitEvent([DiscordEventTypes.REACTION_RECEIVED], {
 				runtime: this.runtime,
 				message: memory,
 				callback,
@@ -715,14 +717,14 @@ export class DiscordService extends Service implements IDiscordService {
 		};
 
 		// Emit both Discord-specific and standardized events with the same data structure
-		this.runtime.emitEvent(["DISCORD_SERVER_JOINED"], {
+		this.runtime.emitEvent([DiscordEventTypes.WORLD_JOINED], {
 			runtime: this.runtime,
 			server: fullGuild,
 			source: "discord",
 		});
 
-		// Emit standardized event with the same structure as SERVER_CONNECTED
-		this.runtime.emitEvent(["SERVER_JOINED"], standardizedData);
+		// Emit standardized event with the same structure as WORLD_CONNECTED
+		this.runtime.emitEvent([EventTypes.WORLD_JOINED], standardizedData);
 	}
 
 	/**
@@ -990,7 +992,7 @@ export class DiscordService extends Service implements IDiscordService {
 				logger.log("DISCORD SERVER CONNECTED", fullGuild.name);
 
 				// Emit Discord-specific event with full guild object
-				this.runtime.emitEvent(["DISCORD_SERVER_CONNECTED"], {
+				this.runtime.emitEvent([DiscordEventTypes.WORLD_CONNECTED], {
 					runtime: this.runtime,
 					server: fullGuild,
 					source: "discord",
@@ -1004,7 +1006,7 @@ export class DiscordService extends Service implements IDiscordService {
 					name: fullGuild.name,
 					runtime: this.runtime,
 					rooms: await this.buildStandardizedRooms(fullGuild, worldId),
-					users: await this.buildStandardizedUsers(fullGuild),
+					entities: await this.buildStandardizedUsers(fullGuild),
 					world: {
 						id: worldId,
 						name: fullGuild.name,
@@ -1021,7 +1023,7 @@ export class DiscordService extends Service implements IDiscordService {
 				};
 
 				// Emit standardized event
-				this.runtime.emitEvent(["SERVER_CONNECTED"], standardizedData);
+				this.runtime.emitEvent([EventTypes.WORLD_CONNECTED], standardizedData);
 			}, 1000);
 		}
 

@@ -1,6 +1,7 @@
 import {
 	ChannelType,
 	type Content,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type IBrowserService,
@@ -20,6 +21,7 @@ import {
 } from "discord.js";
 import { AttachmentManager } from "./attachments";
 import { canSendMessage, sendMessageInChunks } from "./utils";
+import { DiscordEventTypes } from "./types";
 
 /**
  * Class representing a Message Manager for handling Discord messages.
@@ -202,7 +204,7 @@ export class MessageManager {
 				}
 			};
 
-			this.runtime.emitEvent(["DISCORD_MESSAGE_RECEIVED", "MESSAGE_RECEIVED"], {
+			this.runtime.emitEvent([DiscordEventTypes.MESSAGE_RECEIVED, EventTypes.MESSAGE_RECEIVED], {
 				runtime: this.runtime,
 				message: newMessage,
 				callback,

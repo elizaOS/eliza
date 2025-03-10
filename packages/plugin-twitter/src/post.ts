@@ -13,7 +13,7 @@ import {
 	type Content,
 	type Memory,
 	type HandlerCallback,
-	type PostGeneratedPayload,
+	type MessagePayload,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client/index";
@@ -452,7 +452,7 @@ export class TwitterPostClient {
 				message: memory,
 				callback,
 				source: "twitter"
-			} as PostGeneratedPayload);
+			} as MessagePayload);
 			
 		} catch (error) {
 			logger.error("Error generating tweet:", error);

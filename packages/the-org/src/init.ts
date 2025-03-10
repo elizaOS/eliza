@@ -15,7 +15,7 @@ import type { Guild } from "discord.js";
 
 /**
  * Initializes the character with the provided runtime, configuration, actions, providers, and evaluators.
- * Registers actions, providers, and evaluators to the runtime. Registers runtime events for "DISCORD_SERVER_JOINED" and "DISCORD_SERVER_CONNECTED".
+ * Registers actions, providers, and evaluators to the runtime. Registers runtime events for "DISCORD_WORLD_JOINED" and "DISCORD_SERVER_CONNECTED".
  *
  * @param {Object} param - Object containing runtime, config, actions, providers, and evaluators.
  * @param {IAgentRuntime} param.runtime - The runtime instance to use.
@@ -57,7 +57,7 @@ export const initCharacter = ({
 
 	// Register runtime events
 	runtime.registerEvent(
-		"DISCORD_SERVER_JOINED",
+		"DISCORD_WORLD_JOINED",
 		async (params: { server: Guild }) => {
 			// TODO: Save settings config to runtime
 			await initializeAllSystems(runtime, [params.server], config);

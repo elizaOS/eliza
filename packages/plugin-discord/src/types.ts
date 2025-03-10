@@ -1,23 +1,8 @@
 import type {
-	BaseEventPayload,
-	ChannelType,
-	EventPayloadMap,
-	EventTypes,
-	MessageReceivedPayload,
-	MessageSentPayload,
-	PlatformPrefix,
-	ReactionReceivedPayload,
-	ReactionRemovedPayload,
-	ServerPayload,
-	UserJoinedPayload,
-	UserLeftPayload,
-	VoiceStateChangedPayload,
 	Character,
-	Entity,
-	Memory,
-	Room,
-	UUID,
-	World,
+	EntityPayload,
+	MessagePayload,
+	WorldPayload
 } from "@elizaos/core";
 import type { Client, Guild, GuildMember, Message, MessageReaction, User, VoiceState } from "discord.js";
 
@@ -34,12 +19,12 @@ export enum DiscordEventTypes {
 	REACTION_REMOVED = "DISCORD_REACTION_REMOVED",
 	
 	// Server events
-	SERVER_JOINED = "DISCORD_SERVER_JOINED",
-	SERVER_CONNECTED = "DISCORD_SERVER_CONNECTED",
+	WORLD_JOINED = "DISCORD_WORLD_JOINED",
+	WORLD_CONNECTED = "DISCORD_SERVER_CONNECTED",
 	
 	// User events
-	USER_JOINED = "DISCORD_USER_JOINED",
-	USER_LEFT = "DISCORD_USER_LEFT",
+	ENTITY_JOINED = "DISCORD_USER_JOINED",
+	ENTITY_LEFT = "DISCORD_USER_LEFT",
 	
 	// Voice events
 	VOICE_STATE_CHANGED = "DISCORD_VOICE_STATE_CHANGED",
@@ -48,7 +33,7 @@ export enum DiscordEventTypes {
 /**
  * Discord-specific message received payload
  */
-export interface DiscordMessageReceivedPayload extends MessageReceivedPayload {
+export interface DiscordMessageReceivedPayload extends MessagePayload {
 	/** The original Discord message */
 	originalMessage: Message;
 }
@@ -56,7 +41,7 @@ export interface DiscordMessageReceivedPayload extends MessageReceivedPayload {
 /**
  * Discord-specific message sent payload
  */
-export interface DiscordMessageSentPayload extends MessageSentPayload {
+export interface DiscordMessageSentPayload extends MessagePayload {
 	/** The original Discord messages sent */
 	originalMessages: Message[];
 }
@@ -64,27 +49,16 @@ export interface DiscordMessageSentPayload extends MessageSentPayload {
 /**
  * Discord-specific reaction received payload
  */
-export interface DiscordReactionReceivedPayload extends ReactionReceivedPayload {
+export interface DiscordReactionPayload extends MessagePayload {
 	/** The original Discord reaction */
 	originalReaction: MessageReaction;
 	/** The user who reacted */
 	user: User;
 }
-
-/**
- * Discord-specific reaction removed payload
- */
-export interface DiscordReactionRemovedPayload extends ReactionRemovedPayload {
-	/** The original Discord reaction */
-	originalReaction: MessageReaction;
-	/** The user who removed the reaction */
-	user: User;
-}
-
 /**
  * Discord-specific server payload
  */
-export interface DiscordServerPayload extends ServerPayload {
+export interface DiscordServerPayload extends WorldPayload {
 	/** The original Discord guild */
 	server: Guild;
 }
@@ -92,7 +66,7 @@ export interface DiscordServerPayload extends ServerPayload {
 /**
  * Discord-specific user joined payload
  */
-export interface DiscordUserJoinedPayload extends UserJoinedPayload {
+export interface DiscordUserJoinedPayload extends EntityPayload {
 	/** The original Discord guild member */
 	member: GuildMember;
 }
@@ -100,7 +74,7 @@ export interface DiscordUserJoinedPayload extends UserJoinedPayload {
 /**
  * Discord-specific user left payload
  */
-export interface DiscordUserLeftPayload extends UserLeftPayload {
+export interface DiscordUserLeftPayload extends EntityPayload {
 	/** The original Discord guild member */
 	member: GuildMember;
 }
@@ -108,7 +82,7 @@ export interface DiscordUserLeftPayload extends UserLeftPayload {
 /**
  * Discord-specific voice state changed payload
  */
-export interface DiscordVoiceStateChangedPayload extends VoiceStateChangedPayload {
+export interface DiscordVoiceStateChangedPayload {
 	/** The original Discord voice state */
 	voiceState: VoiceState;
 }
@@ -119,12 +93,12 @@ export interface DiscordVoiceStateChangedPayload extends VoiceStateChangedPayloa
 export interface DiscordEventPayloadMap {
 	[DiscordEventTypes.MESSAGE_RECEIVED]: DiscordMessageReceivedPayload;
 	[DiscordEventTypes.MESSAGE_SENT]: DiscordMessageSentPayload;
-	[DiscordEventTypes.REACTION_RECEIVED]: DiscordReactionReceivedPayload;
-	[DiscordEventTypes.REACTION_REMOVED]: DiscordReactionRemovedPayload;
-	[DiscordEventTypes.SERVER_JOINED]: DiscordServerPayload;
-	[DiscordEventTypes.SERVER_CONNECTED]: DiscordServerPayload;
-	[DiscordEventTypes.USER_JOINED]: DiscordUserJoinedPayload;
-	[DiscordEventTypes.USER_LEFT]: DiscordUserLeftPayload;
+	[DiscordEventTypes.REACTION_RECEIVED]: DiscordReactionPayload;
+	[DiscordEventTypes.REACTION_REMOVED]: DiscordReactionPayload;
+	[DiscordEventTypes.WORLD_JOINED]: DiscordServerPayload;
+	[DiscordEventTypes.WORLD_CONNECTED]: DiscordServerPayload;
+	[DiscordEventTypes.ENTITY_JOINED]: DiscordUserJoinedPayload;
+	[DiscordEventTypes.ENTITY_LEFT]: DiscordUserLeftPayload;
 	[DiscordEventTypes.VOICE_STATE_CHANGED]: DiscordVoiceStateChangedPayload;
 }
 

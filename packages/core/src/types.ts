@@ -570,7 +570,7 @@ export interface Plugin {
 	events?: {
 		[K in keyof EventPayloadMap]?: EventHandler<K>[];
 	} & {
-		[key: string]: ((params: BaseEventPayload) => Promise<any>)[];
+		[key: string]: ((params: EventPayload) => Promise<any>)[];
 	};
 	routes?: Route[];
 	tests?: TestSuite[];
@@ -1563,29 +1563,32 @@ export interface ModelResultMap {
  * Standard event types across all platforms
  */
 export enum EventTypes {
+	// World events
+	WORLD_JOINED = "WORLD_JOINED",
+	WORLD_CONNECTED = "WORLD_CONNECTED",
+	WORLD_LEFT = "WORLD_LEFT",
+	
+	// Entity events
+	ENTITY_JOINED = "ENTITY_JOINED",
+	ENTITY_LEFT = "ENTITY_LEFT",
+	ENTITY_UPDATED = "ENTITY_UPDATED",
+	
+	// Room events
+	ROOM_JOINED = "ROOM_JOINED",
+	ROOM_LEFT = "ROOM_LEFT",
+	
 	// Message events
 	MESSAGE_RECEIVED = "MESSAGE_RECEIVED",
 	MESSAGE_SENT = "MESSAGE_SENT",
-	
-	// Reaction events
-	REACTION_RECEIVED = "REACTION_RECEIVED",
-	REACTION_REMOVED = "REACTION_REMOVED",
-	
-	// Post events
-	POST_GENERATED = "POST_GENERATED",
-	POST_SENT = "POST_SENT",
-	
-	// Server events
-	SERVER_JOINED = "SERVER_JOINED",
-	SERVER_CONNECTED = "SERVER_CONNECTED",
-	
-	// User events
-	USER_JOINED = "USER_JOINED",
-	USER_LEFT = "USER_LEFT",
-	
+
 	// Voice events
 	VOICE_MESSAGE_RECEIVED = "VOICE_MESSAGE_RECEIVED",
-	VOICE_STATE_CHANGED = "VOICE_STATE_CHANGED",
+	VOICE_MESSAGE_SENT = "VOICE_MESSAGE_SENT",
+	
+	// Interaction events
+	REACTION_RECEIVED = "REACTION_RECEIVED",
+	POST_GENERATED = "POST_GENERATED",
+	INTERACTION_RECEIVED = "INTERACTION_RECEIVED"
 }
 
 /**
@@ -1598,186 +1601,60 @@ export enum PlatformPrefix {
 }
 
 /**
- * Base event payload interface - all event payloads should extend this
+ * Base payload interface for all events
  */
-export interface BaseEventPayload {
-	/** The runtime instance for the agent handling the event */
+export interface EventPayload {
 	runtime: IAgentRuntime;
-	
-	/** The source platform of the event */
 	source: string;
 }
 
 /**
- * Message received event payload
+ * Payload for world-related events
  */
-export interface MessageReceivedPayload extends BaseEventPayload {
-	/** The message that was received */
-	message: Memory;
-	
-	/** Callback function to handle responses */
-	callback: HandlerCallback;
-}
-
-/**
- * Message sent event payload
- */
-export interface MessageSentPayload extends BaseEventPayload {
-	/** The messages that were sent */
-	messages: Memory[];
-	
-	/** The room ID where messages were sent */
-	roomId: UUID;
-}
-
-/**
- * Reaction received event payload
- */
-export interface ReactionReceivedPayload extends BaseEventPayload {
-	/** The reaction memory */
-	message: Memory;
-	
-	/** Callback function to handle responses */
-	callback: HandlerCallback;
-	
-	/** Optional reaction type */
-	reactionType?: string;
-}
-
-/**
- * Reaction removed event payload
- */
-export interface ReactionRemovedPayload extends BaseEventPayload {
-	/** The reaction memory */
-	message: Memory;
-	
-	/** Callback function to handle responses */
-	callback?: HandlerCallback;
-}
-
-/**
- * Post generated event payload
- */
-export interface PostGeneratedPayload extends BaseEventPayload {
-	/** The post content */
-	message: Memory;
-	
-	/** Callback function to handle responses */
-	callback: HandlerCallback;
-}
-
-/**
- * Post sent event payload
- */
-export interface PostSentPayload extends BaseEventPayload {
-	/** The post messages that were sent */
-	messages: Memory[];
-	
-	/** The room ID where post was sent */
-	roomId: UUID;
-}
-
-/**
- * Server joined/connected event payload
- */
-export interface ServerPayload extends BaseEventPayload {
-	/** The world representation of the server */
+export interface WorldPayload extends EventPayload {
 	world: World;
-	
-	/** The rooms in the server */
 	rooms: Room[];
-	
-	/** The users in the server */
-	users: Entity[];
+	entities: Entity[];
 }
 
 /**
- * User joined event payload
+ * Payload for entity-related events
  */
-export interface UserJoinedPayload extends BaseEventPayload {
-	/** The user who joined */
-	user: any;
-	
-	/** The server ID where user joined */
-	serverId: string;
-	
-	/** The entity ID of the user */
+export interface EntityPayload extends EventPayload {
 	entityId: UUID;
-	
-	/** The channel ID the user joined */
-	channelId: string;
-	
-	/** The channel type */
-	channelType: ChannelType;
-}
-
-/**
- * User left event payload
- */
-export interface UserLeftPayload extends BaseEventPayload {
-	/** The user who left */
-	user: any;
-	
-	/** The server ID the user left */
-	serverId: string;
-	
-	/** The entity ID of the user */
-	entityId: UUID;
-}
-
-/**
- * Voice message received event payload
- */
-export interface VoiceMessageReceivedPayload extends MessageReceivedPayload {
-	/** Voice-specific data */
-	voiceData?: {
-		duration?: number;
-		fileSize?: number;
-		transcription?: string;
+	worldId?: UUID;
+	roomId?: UUID;
+	metadata?: {
+		orginalId: string;
+		username: string;
+		displayName?: string;
+		[key: string]: any;
 	};
 }
 
 /**
- * Voice state changed event payload
+ * Payload for reaction-related events
  */
-export interface VoiceStateChangedPayload extends BaseEventPayload {
-	/** The user whose voice state changed */
-	user: any;
-	
-	/** The entity ID of the user */
-	entityId: UUID;
-	
-	/** The channel they joined/left */
-	channelId?: string;
-	
-	/** Whether they are speaking */
-	speaking?: boolean;
-	
-	/** Whether they muted themselves */
-	selfMute?: boolean;
-	
-	/** Whether they deafened themselves */
-	selfDeaf?: boolean;
+export interface MessagePayload extends EventPayload {
+	message: Memory;
+	callback?: HandlerCallback;
 }
 
 /**
- * Maps event types to their payload interfaces
+ * Maps event types to their corresponding payload types
  */
 export interface EventPayloadMap {
-	[EventTypes.MESSAGE_RECEIVED]: MessageReceivedPayload;
-	[EventTypes.MESSAGE_SENT]: MessageSentPayload;
-	[EventTypes.REACTION_RECEIVED]: ReactionReceivedPayload;
-	[EventTypes.REACTION_REMOVED]: ReactionRemovedPayload;
-	[EventTypes.POST_GENERATED]: PostGeneratedPayload;
-	[EventTypes.POST_SENT]: PostSentPayload;
-	[EventTypes.SERVER_JOINED]: ServerPayload;
-	[EventTypes.SERVER_CONNECTED]: ServerPayload;
-	[EventTypes.USER_JOINED]: UserJoinedPayload;
-	[EventTypes.USER_LEFT]: UserLeftPayload;
-	[EventTypes.VOICE_MESSAGE_RECEIVED]: VoiceMessageReceivedPayload;
-	[EventTypes.VOICE_STATE_CHANGED]: VoiceStateChangedPayload;
-	// Allow string index for custom events
-	[key: string]: BaseEventPayload;
+	[EventTypes.WORLD_JOINED]: WorldPayload;
+	[EventTypes.WORLD_CONNECTED]: WorldPayload;
+	[EventTypes.WORLD_LEFT]: WorldPayload;
+	[EventTypes.ENTITY_JOINED]: EntityPayload;
+	[EventTypes.ENTITY_LEFT]: EntityPayload;
+	[EventTypes.ENTITY_UPDATED]: EntityPayload;
+	[EventTypes.MESSAGE_RECEIVED]: MessagePayload;
+	[EventTypes.MESSAGE_SENT]: MessagePayload;
+	[EventTypes.REACTION_RECEIVED]: MessagePayload;
+	[EventTypes.POST_GENERATED]: MessagePayload;
+	[EventTypes.INTERACTION_RECEIVED]: MessagePayload;
 }
 
 /**

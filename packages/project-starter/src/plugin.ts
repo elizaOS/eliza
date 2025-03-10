@@ -247,16 +247,16 @@ export const starterPlugin: Plugin = {
 				console.log(Object.keys(params));
 			},
 		],
-		SERVER_CONNECTED: [
+		WORLD_CONNECTED: [
 			async (params) => {
-				console.log("SERVER_CONNECTED event received");
+				console.log("WORLD_CONNECTED event received");
 				// print the keys
 				console.log(Object.keys(params));
 			},
 		],
-		SERVER_JOINED: [
+		WORLD_JOINED: [
 			async (params) => {
-				console.log("SERVER_JOINED event received");
+				console.log("WORLD_JOINED event received");
 				// print the keys
 				console.log(Object.keys(params));
 			},
