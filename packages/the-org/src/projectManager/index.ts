@@ -357,10 +357,21 @@ const config: OnboardingConfig = {
 	},
 };
 
+// Import our plugins for Jimmy
+import { plugins } from './plugins';
+
 export const projectManager: ProjectAgent = {
 	character,
-	init: async (runtime: IAgentRuntime) =>
-		await initCharacter({ runtime, config }),
+	plugins,
+	init: async (runtime: IAgentRuntime) => {
+		// Register all plugins with the character
+		for (const plugin of plugins) {
+			runtime.registerPlugin(plugin);
+		}
+		
+		// Initialize the character with config
+		await initCharacter({ runtime, config });
+	},
 };
 
 export default projectManager;
