@@ -1,19 +1,18 @@
 {
-	"extends": "../core/tsconfig.json",
-	"compilerOptions": {
-		"outDir": "dist",
-		"rootDir": "src",
-		"types": ["node"],
-		"baseUrl": ".",
-		"paths": {
-			"@elizaos/core": ["../../packages/core/src"],
-			"@elizaos/core/*": ["../../packages/core/src/*"]
-		},
-		"skipLibCheck": true,
-		"composite": true
-	},
-	"include": ["src/**/*.ts"],
-	"references": [
-		{ "path": "../core" }
-	]
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": ["node"],
+    "moduleResolution": "NodeNext",
+    "module": "NodeNext",
+    "target": "ESNext",
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src"],
+      "@elizaos/core/*": ["../../packages/core/src/*"]
+    },
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts"]
 }

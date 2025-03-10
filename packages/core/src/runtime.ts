@@ -711,7 +711,7 @@ export class AgentRuntime implements IAgentRuntime {
 					logger.success(`Action ${action.name} executed successfully.`);
 
 					// log to database
-					await this.adapter.log({
+					this.adapter.log({
 						entityId: message.entityId,
 						roomId: message.roomId,
 						type: "action",
@@ -787,7 +787,7 @@ export class AgentRuntime implements IAgentRuntime {
 						responses,
 					);
 					// log to database
-					await this.adapter.log({
+					this.adapter.log({
 						entityId: message.entityId,
 						roomId: message.roomId,
 						type: "evaluator",
@@ -1193,6 +1193,12 @@ export class AgentRuntime implements IAgentRuntime {
 			throw new Error(`No handler found for delegate type: ${modelKey}`);
 		}
 
+		// Log input parameters
+		logger.debug(
+			`[useModel] ${modelKey} input:`,
+			JSON.stringify(params, null, 2)
+		);
+
 		// Handle different parameter formats
 		let paramsWithRuntime: any;
 
@@ -1212,11 +1218,28 @@ export class AgentRuntime implements IAgentRuntime {
 			};
 		}
 
+		// Start timer
+		const startTime = performance.now();
+
 		// Call the model
 		const response = await model(this, paramsWithRuntime);
 
+		// Calculate elapsed time
+		const elapsedTime = performance.now() - startTime;
+
+		// Log timing
+		logger.info(
+			`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`
+		);
+
+		// Log response
+		logger.debug(
+			`[useModel] ${modelKey} output:`,
+			JSON.stringify(response, null, 2)
+		);
+
 		// Log the model usage
-		await this.adapter.log({
+		this.adapter.log({
 			entityId: this.agentId,
 			roomId: this.agentId,
 			body: {
