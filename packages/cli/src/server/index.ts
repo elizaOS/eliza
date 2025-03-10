@@ -1,7 +1,7 @@
-import * as fs from "node:fs";
+import fs from "node:fs";
 import { Server as HttpServer } from "node:http";
 import * as os from "node:os";
-import * as path from "node:path";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type Character,
@@ -556,7 +556,6 @@ export class AgentServer {
 	public async stop() {
 		if (this.server) {
 			this.server.close(() => {
-				this.database.stop();
 				logger.success("Server stopped");
 			});
 		}

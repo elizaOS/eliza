@@ -8,6 +8,7 @@ import { init } from "@/src/commands/init";
 import { plugins } from "@/src/commands/plugins";
 import { start } from "@/src/commands/start";
 import { teeCommand as tee } from "@/src/commands/tee";
+import { test } from "@/src/commands/test";
 import { loadEnvironment } from "@/src/utils/get-config";
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
@@ -49,7 +50,8 @@ async function main() {
 		.addCommand(plugins)
 		.addCommand(agent)
 		.addCommand(tee)
-		.addCommand(start);
+		.addCommand(start)
+		.addCommand(test);
 	program.parse(process.argv);
 }
 
