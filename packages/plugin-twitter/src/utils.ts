@@ -16,6 +16,8 @@ import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
 import type { SttTtsPlugin } from "./sttTtsSpaces";
 import type { ActionResponse, MediaData } from "./types";
+import type { Tweet as ClientTweet } from "./client/tweets";
+import type { Tweet as CoreTweet } from "./types";
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
 	const waitTime =

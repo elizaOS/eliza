@@ -1,11 +1,15 @@
 import {
 	ChannelType,
+	EventTypes,
 	type Content,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Media,
 	type Memory,
 	ModelTypes,
+	type MessageReceivedPayload,
+	type MessageSentPayload,
+	type ReactionReceivedPayload,
 	Role,
 	type UUID,
 	createUniqueUuid,
@@ -14,6 +18,7 @@ import {
 import type { Chat, Message, ReactionType, Update } from "@telegraf/types";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
 import { escapeMarkdown } from "./utils";
+import { TelegramEventTypes, type TelegramMessageReceivedPayload, type TelegramMessageSentPayload, type TelegramReactionReceivedPayload } from "./types";
 
 import fs from "node:fs";
 
@@ -308,42 +313,20 @@ export class MessageManager {
 				: messageText;
 			if (!fullText) return;
 
-			// Create the memory object
-			const memory: Memory = {
-				id: messageId,
-				entityId,
-				agentId: this.runtime.agentId,
-				roomId,
-				content: {
-					text: fullText,
-					source: "telegram",
-					channelType: getChannelType(message.chat as Chat),
-					// name: userName,
-					// userName: userName,
-					// Safely access reply_to_message with type guard
-					inReplyTo:
-						"reply_to_message" in message && message.reply_to_message
-							? createUniqueUuid(
-									this.runtime,
-									message.reply_to_message.message_id.toString(),
-								)
-							: undefined,
-				},
-				createdAt: message.date * 1000,
-			};
-
-			// if its a telegram group of multiple chats, we need to get the name of the group chat
+			// Get chat type and determine channel type
 			const chat = message.chat as Chat;
+			const channelType = getChannelType(chat);
 
-			// Get world name from supergroup/channel title, or use chat title as fallback
+			// Get world and room names
 			const worldName =
 				chat.type === "supergroup"
 					? (chat as Chat.SupergroupChat).title
 					: chat.type === "channel"
 						? (chat as Chat.ChannelChat).title
-						: "undefined";
+						: chat.type === "private"
+							? `Chat with ${(chat as Chat.PrivateChat).first_name || 'Unknown'}`
+							: "Telegram";
 
-			// Get room name from chat title/first name
 			const roomName =
 				chat.type === "private"
 					? (chat as Chat.PrivateChat).first_name
@@ -355,6 +338,10 @@ export class MessageManager {
 								? (chat as Chat.GroupChat).title
 								: "Unknown Group";
 
+			// Create the standardized world ID for this chat
+			const worldId = createUniqueUuid(this.runtime, chat.id.toString());
+
+			// Ensure entity connection
 			await this.runtime.ensureConnection({
 				entityId,
 				roomId,
@@ -363,12 +350,11 @@ export class MessageManager {
 				source: "telegram",
 				channelId: ctx.chat.id.toString(),
 				serverId: chat.id.toString(),
-				type: getChannelType(chat),
+				type: channelType,
+				worldId: worldId
 			});
 
-			// TODO: chat.id is probably used incorrectly here and needs to be fixed
-			const channelType = getChannelType(chat);
-			const worldId = createUniqueUuid(this.runtime, chat.id.toString());
+			// Ensure room exists
 			const room = {
 				id: roomId,
 				name: roomName,
@@ -378,30 +364,29 @@ export class MessageManager {
 				serverId: ctx.chat.id.toString(),
 				worldId: worldId,
 			};
-			// TODO: chat.id is probably used incorrectly here and needs to be fixed
-			const ownerId = chat.id; // this might be wrong
-			if (channelType === ChannelType.GROUP) {
-				// if the type is a group, we need to get the world id from the supergroup/channel id
-				await this.runtime.ensureWorldExists({
-					id: worldId,
-					name: worldName,
-					serverId: chat.id.toString(),
-					agentId: this.runtime.agentId,
-					metadata: {
-						ownership:
-							chat.type === "supergroup"
-								? { ownerId: chat.id.toString() }
-								: undefined,
-						roles: {
-							// TODO: chat.id is probably wrong key for this
-							[ownerId]: Role.OWNER,
-						},
-					},
-				});
-				room.worldId = worldId;
-			}
-
+			
 			await this.runtime.ensureRoomExists(room);
+
+			// Create the memory object
+			const memory: Memory = {
+				id: messageId,
+				entityId,
+				agentId: this.runtime.agentId,
+				roomId,
+				content: {
+					text: fullText,
+					source: "telegram",
+					channelType: channelType,
+					inReplyTo:
+						"reply_to_message" in message && message.reply_to_message
+							? createUniqueUuid(
+									this.runtime,
+									message.reply_to_message.message_id.toString(),
+								)
+							: undefined,
+				},
+				createdAt: message.date * 1000,
+			};
 
 			// Create callback for handling responses
 			const callback: HandlerCallback = async (
@@ -434,7 +419,7 @@ export class MessageManager {
 								...content,
 								text: sentMessage.text,
 								inReplyTo: messageId,
-								channelType: getChannelType(message.chat as Chat),
+								channelType: channelType,
 							},
 							createdAt: sentMessage.date * 1000,
 						};
@@ -453,13 +438,27 @@ export class MessageManager {
 			};
 
 			// Let the bootstrap plugin handle the message
-			this.runtime.emitEvent(
-				["TELEGRAM_MESSAGE_RECEIVED", "MESSAGE_RECEIVED"],
+			this.runtime.emitEvent<EventTypes.MESSAGE_RECEIVED>(
+				EventTypes.MESSAGE_RECEIVED,
 				{
 					runtime: this.runtime,
 					message: memory,
 					callback,
+					source: "telegram"
 				},
+			);
+			
+			// Also emit the platform-specific event
+			this.runtime.emitEvent(
+				TelegramEventTypes.MESSAGE_RECEIVED,
+				{
+					runtime: this.runtime,
+					message: memory,
+					callback,
+					source: "telegram",
+					ctx,
+					originalMessage: message
+				} as TelegramMessageReceivedPayload
 			);
 		} catch (error) {
 			logger.error("❌ Error handling message:", error);
@@ -489,6 +488,7 @@ export class MessageManager {
 				ctx.from.id.toString(),
 			) as UUID;
 			const roomId = createUniqueUuid(this.runtime, ctx.chat.id.toString());
+			const worldId = createUniqueUuid(this.runtime, ctx.chat.id.toString());
 
 			const reactionId = createUniqueUuid(
 				this.runtime,
@@ -505,8 +505,6 @@ export class MessageManager {
 					channelType: getChannelType(reaction.chat as Chat),
 					text: `Reacted with: ${reactionType === "emoji" ? reactionEmoji : reactionType}`,
 					source: "telegram",
-					// name: ctx.from.first_name,
-					// userName: ctx.from.username,
 					inReplyTo: createUniqueUuid(
 						this.runtime,
 						reaction.message_id.toString(),
@@ -514,7 +512,6 @@ export class MessageManager {
 				},
 				createdAt: Date.now(),
 			};
-			await this.runtime.getMemoryManager("messages").createMemory(memory);
 
 			// Create callback for handling reaction responses
 			const callback: HandlerCallback = async (content: Content) => {
@@ -542,16 +539,116 @@ export class MessageManager {
 			};
 
 			// Let the bootstrap plugin handle the reaction
-			this.runtime.emitEvent(
-				["TELEGRAM_REACTION_RECEIVED", "REACTION_RECEIVED"],
+			this.runtime.emitEvent<EventTypes.REACTION_RECEIVED>(
+				EventTypes.REACTION_RECEIVED,
 				{
 					runtime: this.runtime,
 					message: memory,
 					callback,
+					source: "telegram"
 				},
+			);
+			
+			// Also emit the platform-specific event
+			this.runtime.emitEvent(
+				TelegramEventTypes.REACTION_RECEIVED,
+				{
+					runtime: this.runtime,
+					message: memory,
+					callback,
+					source: "telegram",
+					ctx,
+					reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
+					originalReaction: reaction.new_reaction[0] as ReactionType
+				} as TelegramReactionReceivedPayload
 			);
 		} catch (error) {
 			logger.error("Error handling reaction:", error);
+		}
+	}
+
+	/**
+	 * Sends a message to a Telegram chat and emits appropriate events
+	 * @param {number | string} chatId - The Telegram chat ID to send the message to
+	 * @param {Content} content - The content to send
+	 * @param {number} [replyToMessageId] - Optional message ID to reply to
+	 * @returns {Promise<Message.TextMessage[]>} The sent messages
+	 */
+	public async sendMessage(
+		chatId: number | string,
+		content: Content,
+		replyToMessageId?: number
+	): Promise<Message.TextMessage[]> {
+		try {
+			// Create a context-like object for sending
+			const ctx = { 
+				chat: { id: chatId },
+				telegram: this.bot.telegram
+			};
+			
+			const sentMessages = await this.sendMessageInChunks(
+				ctx as Context,
+				content,
+				replyToMessageId
+			);
+
+			if (!sentMessages?.length) return [];
+
+			// Create room ID
+			const roomId = createUniqueUuid(this.runtime, chatId.toString());
+			
+			// Create memories for the sent messages
+			const memories: Memory[] = [];
+			for (const sentMessage of sentMessages) {
+				const memory: Memory = {
+					id: createUniqueUuid(this.runtime, sentMessage.message_id.toString()),
+					entityId: this.runtime.agentId,
+					agentId: this.runtime.agentId,
+					roomId,
+					content: {
+						...content,
+						text: sentMessage.text,
+						source: "telegram",
+						channelType: getChannelType({ 
+							id: typeof chatId === 'string' ? Number.parseInt(chatId, 10) : chatId,
+							type: "private" // Default to private, will be overridden if in context
+						} as Chat)
+					},
+					createdAt: sentMessage.date * 1000
+				};
+				
+				await this.runtime.getMemoryManager("messages").createMemory(memory);
+				memories.push(memory);
+			}
+
+			// Emit both generic and platform-specific message sent events
+			this.runtime.emitEvent<EventTypes.MESSAGE_SENT>(
+				EventTypes.MESSAGE_SENT,
+				{
+					runtime: this.runtime,
+					messages: memories,
+					roomId,
+					source: "telegram"
+				},
+			);
+			
+			// Also emit platform-specific event
+			this.runtime.emitEvent(
+				TelegramEventTypes.MESSAGE_SENT,
+				{
+					runtime: this.runtime,
+					messages: memories,
+					roomId,
+					source: "telegram",
+					originalMessages: sentMessages,
+					chatId
+				} as TelegramMessageSentPayload
+			);
+			
+			return sentMessages;
+		} catch (error) {
+			logger.error("Error sending message to Telegram:", error);
+			return [];
 		}
 	}
 }

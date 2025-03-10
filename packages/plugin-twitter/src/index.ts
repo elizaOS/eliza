@@ -3,6 +3,12 @@ import {
 	type Plugin,
 	Service,
 	type UUID,
+	createUniqueUuid,
+	ChannelType,
+	type World,
+	type Room,
+	type Entity,
+	Role,
 	logger,
 } from "@elizaos/core";
 import spaceJoin from "./actions/spaceJoin";
@@ -112,11 +118,109 @@ export class TwitterService extends Service {
 			// Store the client instance
 			this.clients.set(this.getClientKey(clientId, runtime.agentId), client);
 
+			// Emit standardized SERVER_JOINED event once we have client profile
+			await this.emitServerJoinedEvent(runtime, client);
+
 			logger.info(`Created Twitter client for ${clientId}`);
 			return client;
 		} catch (error) {
 			logger.error(`Failed to create Twitter client for ${clientId}:`, error);
 			throw error;
+		}
+	}
+
+	/**
+	 * Emits a standardized SERVER_JOINED event for Twitter
+	 * @param runtime The agent runtime
+	 * @param client The Twitter client instance
+	 */
+	private async emitServerJoinedEvent(
+		runtime: IAgentRuntime,
+		client: TwitterClientInstance
+	): Promise<void> {
+		try {
+			if (!client.client.profile) {
+				logger.warn("Twitter profile not available yet, can't emit SERVER_JOINED event");
+				return;
+			}
+
+			const profile = client.client.profile;
+			const twitterId = profile.id;
+			const username = profile.username;
+			
+			// Create the world ID based on the twitter user ID
+			const worldId = createUniqueUuid(runtime, twitterId) as UUID;
+			
+			// For Twitter, we create a single world representing the user's Twitter account
+			const world: World = {
+				id: worldId,
+				name: `${username}'s Twitter`,
+				agentId: runtime.agentId,
+				serverId: twitterId,
+				metadata: {
+					ownership: { ownerId: twitterId },
+					roles: {
+						[twitterId]: Role.OWNER,
+					},
+					twitter: {
+						username: username,
+						id: twitterId,
+					}
+				},
+			};
+			
+			// We'll create a "home timeline" room
+			const homeTimelineRoomId = createUniqueUuid(runtime, `${twitterId}-home`) as UUID;
+			const homeTimelineRoom: Room = {
+				id: homeTimelineRoomId,
+				name: `${username}'s Timeline`,
+				source: "twitter",
+				type: ChannelType.FEED,
+				channelId: `${twitterId}-home`,
+				serverId: twitterId,
+				worldId: worldId,
+			};
+			
+			// Create a "mentions" room
+			const mentionsRoomId = createUniqueUuid(runtime, `${twitterId}-mentions`) as UUID;
+			const mentionsRoom: Room = {
+				id: mentionsRoomId,
+				name: `${username}'s Mentions`,
+				source: "twitter",
+				type: ChannelType.GROUP,
+				channelId: `${twitterId}-mentions`,
+				serverId: twitterId,
+				worldId: worldId,
+			};
+			
+			// Create an entity for the Twitter user
+			const twitterUserId = createUniqueUuid(runtime, twitterId) as UUID;
+			const twitterUser: Entity = {
+				id: twitterUserId,
+				names: [profile.screenName || username],
+				agentId: runtime.agentId, 
+				metadata: {
+					twitter: {
+						id: twitterId,
+						username: username,
+						screenName: profile.screenName || username,
+						name: profile.screenName || username
+					}
+				}
+			};
+			
+			// Emit the SERVER_JOINED event
+			runtime.emitEvent(["TWITTER_SERVER_JOINED", "SERVER_JOINED"], {
+				runtime: runtime,
+				world: world,
+				rooms: [homeTimelineRoom, mentionsRoom],
+				users: [twitterUser],
+				source: "twitter",
+			});
+			
+			logger.info(`Emitted SERVER_JOINED event for Twitter account ${username}`);
+		} catch (error) {
+			logger.error("Failed to emit SERVER_JOINED event for Twitter:", error);
 		}
 	}
 

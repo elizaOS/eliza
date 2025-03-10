@@ -16,6 +16,26 @@ import {
 	type Tweet,
 } from "./client/index";
 
+interface TwitterUser {
+	id_str: string;
+	screen_name: string;
+	name: string;
+}
+
+interface TwitterInteraction {
+	id_str: string;
+	user: TwitterUser;
+	in_reply_to_status_id_str?: string;
+	quoted_status_id_str?: string;
+	quoted_status?: any;
+	retweeted_status?: any;
+	is_quote_status: boolean;
+}
+
+interface TwitterFollowersResponse {
+	users: TwitterUser[];
+}
+
 /**
  * Extracts the answer from the given text.
  *
@@ -149,7 +169,7 @@ export class ClientBase extends EventEmitter {
 		}
 
 		this.runtime
-			.getDatabaseAdapter()
+			.databaseAdapter
 			.setCache<Tweet>(`twitter/tweets/${tweet.id}`, tweet);
 	}
 
@@ -160,7 +180,7 @@ export class ClientBase extends EventEmitter {
 	 */
 	async getCachedTweet(tweetId: string): Promise<Tweet | undefined> {
 		const cached = await this.runtime
-			.getDatabaseAdapter()
+			.databaseAdapter
 			.getCache<Tweet>(`twitter/tweets/${tweetId}`);
 
 		if (!cached) {
@@ -766,7 +786,7 @@ export class ClientBase extends EventEmitter {
 
 	async loadLatestCheckedTweetId(): Promise<void> {
 		const latestCheckedTweetId = await this.runtime
-			.getDatabaseAdapter()
+			.databaseAdapter
 			.getCache<string>(
 				`twitter/${this.profile.username}/latest_checked_tweet_id`,
 			);
@@ -779,7 +799,7 @@ export class ClientBase extends EventEmitter {
 	async cacheLatestCheckedTweetId() {
 		if (this.lastCheckedTweetId) {
 			await this.runtime
-				.getDatabaseAdapter()
+				.databaseAdapter
 				.setCache<string>(
 					`twitter/${this.profile.username}/latest_checked_tweet_id`,
 					this.lastCheckedTweetId.toString(),
@@ -789,7 +809,7 @@ export class ClientBase extends EventEmitter {
 
 	async getCachedTimeline(): Promise<Tweet[] | undefined> {
 		const cached = await this.runtime
-			.getDatabaseAdapter()
+			.databaseAdapter
 			.getCache<Tweet[]>(`twitter/${this.profile.username}/timeline`);
 
 		if (!cached) {
@@ -801,19 +821,19 @@ export class ClientBase extends EventEmitter {
 
 	async cacheTimeline(timeline: Tweet[]) {
 		await this.runtime
-			.getDatabaseAdapter()
+			.databaseAdapter
 			.setCache<Tweet[]>(`twitter/${this.profile.username}/timeline`, timeline);
 	}
 
 	async cacheMentions(mentions: Tweet[]) {
 		await this.runtime
-			.getDatabaseAdapter()
+			.databaseAdapter
 			.setCache<Tweet[]>(`twitter/${this.profile.username}/mentions`, mentions);
 	}
 
 	async getCachedCookies(username: string) {
 		const cached = await this.runtime
-			.getDatabaseAdapter()
+			.databaseAdapter
 			.getCache<any[]>(`twitter/${username}/cookies`);
 
 		if (!cached) {
@@ -825,7 +845,7 @@ export class ClientBase extends EventEmitter {
 
 	async cacheCookies(username: string, cookies: any[]) {
 		await this.runtime
-			.getDatabaseAdapter()
+			.databaseAdapter
 			.setCache<any[]>(`twitter/${username}/cookies`, cookies);
 	}
 
@@ -852,5 +872,124 @@ export class ClientBase extends EventEmitter {
 			console.error("Error fetching Twitter profile:", error);
 			throw error;
 		}
+	}
+
+	/**
+	 * Fetches recent interactions (likes, retweets, quotes) for the authenticated user's tweets
+	 */
+	async fetchInteractions() {
+		try {
+			// Get recent interactions from Twitter API
+			const interactions = await this.requestQueue.add(() => 
+				(this.twitterClient as any).get("statuses/mentions_timeline", {
+					count: 100,
+					include_entities: true
+				})
+			) as TwitterInteraction[];
+
+			// Process and categorize interactions
+			return interactions.map((interaction) => ({
+				id: interaction.id_str,
+				type: this.getInteractionType(interaction),
+				userId: interaction.user.id_str,
+				username: interaction.user.screen_name,
+				name: interaction.user.name,
+				targetTweetId: interaction.in_reply_to_status_id_str || interaction.quoted_status_id_str,
+				targetTweet: interaction.quoted_status || interaction,
+				quoteTweet: interaction.is_quote_status ? interaction : undefined,
+				retweetId: interaction.retweeted_status?.id_str
+			}));
+		} catch (error) {
+			logger.error("Error fetching Twitter interactions:", error);
+			return [];
+		}
+	}
+
+	/**
+	 * Determines the type of interaction from a Twitter API response
+	 */
+	private getInteractionType(interaction: any): 'like' | 'retweet' | 'quote' {
+		if (interaction.retweeted_status) {
+			return 'retweet';
+		}
+		if (interaction.is_quote_status) {
+			return 'quote';
+		}
+		return 'like';
+	}
+
+	/**
+	 * Fetches recent follower changes (new followers and unfollowers)
+	 */
+	async fetchFollowerChanges() {
+		try {
+			// Get current followers
+			const currentFollowers = await this.requestQueue.add(() =>
+				(this.twitterClient as any).get("followers/list", {
+					count: 200,
+					include_user_entities: false
+				})
+			) as TwitterFollowersResponse;
+
+			// Get cached followers
+			const cachedFollowers = await this.getCachedFollowers();
+
+			// Compare and find changes
+			const changes = [];
+
+			// Find new followers
+			for (const follower of currentFollowers.users) {
+				if (!cachedFollowers.some((f: TwitterUser) => f.id_str === follower.id_str)) {
+					changes.push({
+						type: 'followed',
+						userId: follower.id_str,
+						username: follower.screen_name,
+						name: follower.name,
+						user: follower
+					});
+				}
+			}
+
+			// Find unfollowers
+			for (const cached of cachedFollowers) {
+				if (!currentFollowers.users.some((f) => f.id_str === cached.id_str)) {
+					changes.push({
+						type: 'unfollowed',
+						userId: cached.id_str,
+						username: cached.screen_name,
+						name: cached.name,
+						user: cached
+					});
+				}
+			}
+
+			// Cache current followers
+			await this.cacheFollowers(currentFollowers.users);
+
+			return changes;
+		} catch (error) {
+			logger.error("Error fetching Twitter follower changes:", error);
+			return [];
+		}
+	}
+
+	/**
+	 * Gets cached followers from the database
+	 */
+	private async getCachedFollowers(): Promise<TwitterUser[]> {
+		const cached = await this.runtime
+			.databaseAdapter
+			.getCache<TwitterUser[]>(`twitter/${this.profile.username}/followers`);
+
+		return cached || [];
+	}
+
+	/**
+	 * Caches current followers in the database
+	 */
+	private async cacheFollowers(followers: TwitterUser[]): Promise<void> {
+		await this.runtime
+			.databaseAdapter
+			.setCache(`twitter/${this.profile.username}/followers`, followers);
 	}
 }
