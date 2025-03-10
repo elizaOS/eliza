@@ -153,12 +153,12 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
 		const attachments: IAttachment[] | undefined = selectedFile
 			? [
-					{
-						url: URL.createObjectURL(selectedFile),
-						contentType: selectedFile.type,
-						title: selectedFile.name,
-					},
-				]
+				{
+					url: URL.createObjectURL(selectedFile),
+					contentType: selectedFile.type,
+					title: selectedFile.name,
+				},
+			]
 			: undefined;
 
 		const newMessages = [
@@ -286,50 +286,39 @@ export default function Page({ agentId }: { agentId: UUID }) {
 				</div>
 			</div>
 
-			<div className="flex-1 overflow-y-auto">
-				<ChatMessageList
-					scrollRef={scrollRef}
-					isAtBottom={isAtBottom}
-					scrollToBottom={scrollToBottom}
-					disableAutoScroll={disableAutoScroll}
-				>
-					{messages.map((message: ContentWithUser) => {
-						return (
-							<div
-								key={message.name + message.createdAt}
-								style={{
-									display: "flex",
-									flexDirection: "column",
-									gap: "0.5rem",
-									padding: "1rem",
-								}}
+
+			{/* Chat Messages */}
+
+			<ChatMessageList
+				scrollRef={scrollRef}
+				isAtBottom={isAtBottom}
+				scrollToBottom={scrollToBottom}
+				disableAutoScroll={disableAutoScroll}
+			>
+				{messages.map((message: ContentWithUser) => {
+					const isUser = message.name === "Anon";
+
+					return (
+						<div
+							key={message.name + message.createdAt}
+							className={`flex flex-column gap-1 p-1 ${isUser ? "justify-end" : ""}`}
+						>
+							<ChatBubble
+								variant={getMessageVariant(message.name)}
+								className={`flex flex-row items-center gap-2 ${isUser ? "flex-row-reverse" : ""}`}
 							>
-								<ChatBubble
-									variant={getMessageVariant(message.name)}
-									className="flex flex-row items-center gap-2"
-								>
-									{message.name !== "Anon" ? (
-										<>
-											<Avatar className="size-8 p-1 border rounded-full select-none">
-												<AvatarImage src="/elizaos-icon.png" />
-											</Avatar>
-											<MessageContent message={message} agentId={agentId} />
-										</>
-									) : (
-										<>
-											<MessageContent message={message} agentId={agentId} />
-											<Avatar className="size-8 p-1 border rounded-full select-none">
-												<AvatarImage src="/user-icon.png" />
-												<AvatarFallback>U</AvatarFallback>
-											</Avatar>
-										</>
-									)}
-								</ChatBubble>
-							</div>
-						);
-					})}
-				</ChatMessageList>
-			</div>
+								<Avatar className="size-8 p-1 border rounded-full select-none">
+									<AvatarImage src={isUser ? "/user-icon.png" : "/elizaos-icon.png"} />
+									{isUser && <AvatarFallback>U</AvatarFallback>}
+								</Avatar>
+								<MessageContent message={message} agentId={agentId} />
+							</ChatBubble>
+						</div>
+					);
+				})}
+			</ChatMessageList>
+
+			{/* Chat Input */}
 			<div className="px-4 pb-4">
 				<form
 					ref={formRef}
