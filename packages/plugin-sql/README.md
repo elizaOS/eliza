@@ -55,7 +55,7 @@ The adapter is typically used as part of the ElizaOS runtime:
 
 ```typescript
 async function findDatabaseAdapter(runtime: IAgentRuntime) {
-    let adapter = runtime.getDatabaseAdapter();
+    let adapter = runtime;
     
     if (!adapter) {
         const drizzleAdapterPlugin = await import('@elizaos/plugin-sql');

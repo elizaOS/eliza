@@ -149,7 +149,7 @@ export class ClientBase extends EventEmitter {
 		}
 
 		this.runtime
-			.getDatabaseAdapter()
+			
 			.setCache<Tweet>(`twitter/tweets/${tweet.id}`, tweet);
 	}
 
@@ -160,7 +160,7 @@ export class ClientBase extends EventEmitter {
 	 */
 	async getCachedTweet(tweetId: string): Promise<Tweet | undefined> {
 		const cached = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<Tweet>(`twitter/tweets/${tweetId}`);
 
 		if (!cached) {
@@ -766,7 +766,7 @@ export class ClientBase extends EventEmitter {
 
 	async loadLatestCheckedTweetId(): Promise<void> {
 		const latestCheckedTweetId = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<string>(
 				`twitter/${this.profile.username}/latest_checked_tweet_id`,
 			);
@@ -779,7 +779,7 @@ export class ClientBase extends EventEmitter {
 	async cacheLatestCheckedTweetId() {
 		if (this.lastCheckedTweetId) {
 			await this.runtime
-				.getDatabaseAdapter()
+				
 				.setCache<string>(
 					`twitter/${this.profile.username}/latest_checked_tweet_id`,
 					this.lastCheckedTweetId.toString(),
@@ -789,7 +789,7 @@ export class ClientBase extends EventEmitter {
 
 	async getCachedTimeline(): Promise<Tweet[] | undefined> {
 		const cached = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<Tweet[]>(`twitter/${this.profile.username}/timeline`);
 
 		if (!cached) {
@@ -801,19 +801,19 @@ export class ClientBase extends EventEmitter {
 
 	async cacheTimeline(timeline: Tweet[]) {
 		await this.runtime
-			.getDatabaseAdapter()
+			
 			.setCache<Tweet[]>(`twitter/${this.profile.username}/timeline`, timeline);
 	}
 
 	async cacheMentions(mentions: Tweet[]) {
 		await this.runtime
-			.getDatabaseAdapter()
+			
 			.setCache<Tweet[]>(`twitter/${this.profile.username}/mentions`, mentions);
 	}
 
 	async getCachedCookies(username: string) {
 		const cached = await this.runtime
-			.getDatabaseAdapter()
+			
 			.getCache<any[]>(`twitter/${username}/cookies`);
 
 		if (!cached) {
@@ -825,7 +825,7 @@ export class ClientBase extends EventEmitter {
 
 	async cacheCookies(username: string, cookies: any[]) {
 		await this.runtime
-			.getDatabaseAdapter()
+			
 			.setCache<any[]>(`twitter/${username}/cookies`, cookies);
 	}
 

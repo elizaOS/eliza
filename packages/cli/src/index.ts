@@ -3,13 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { agent } from "@/src/commands/agent";
-import { init } from "@/src/commands/init";
-import { plugins } from "@/src/commands/plugins";
-import { start } from "@/src/commands/start";
-import { teeCommand as tee } from "@/src/commands/tee";
-import { test } from "@/src/commands/test";
-import { loadEnvironment } from "@/src/utils/get-config";
+import { agent } from "./commands/agent.js";
+import { init } from "./commands/init.js";
+import { plugins } from "./commands/plugins.js";
+import { start } from "./commands/start.js";
+import { teeCommand as tee } from "./commands/tee.js";
+import test from "./commands/test.js";
+import { loadEnvironment } from "./utils/get-config.js";
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
 
@@ -52,7 +52,8 @@ async function main() {
 		.addCommand(tee)
 		.addCommand(start)
 		.addCommand(test);
-	program.parse(process.argv);
+
+	await program.parseAsync();
 }
 
 main().catch((error) => {

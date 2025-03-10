@@ -578,6 +578,7 @@ export interface ProjectAgent {
 	character: Character;
 	init?: (runtime: IAgentRuntime) => Promise<void>;
 	plugins?: Plugin[];
+	tests?: TestSuite | TestSuite[];
 }
 
 export interface Project {

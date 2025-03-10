@@ -341,10 +341,9 @@ export class SttTtsPlugin implements Plugin {
 		const userUuid = createUniqueUuid(this.runtime, numericId);
 
 		const entity = await this.runtime
-			.getDatabaseAdapter()
 			.getEntityById(userUuid);
 		if (!entity) {
-			await this.runtime.getDatabaseAdapter().createEntity({
+			await this.runtime.createEntity({
 				id: userUuid,
 				names: [userId],
 				agentId: this.runtime.agentId,

@@ -88,6 +88,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 	private taskWorkers = new Map<string, TaskWorker>();
 
+	// Event emitter methods
+	private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
+
 	constructor(opts: {
 		conversationLength?: number;
 		agentId?: UUID;
@@ -1646,5 +1649,33 @@ export class AgentRuntime implements IAgentRuntime {
 	
 	async deleteTask(id: UUID): Promise<void> {
 		await this.adapter.deleteTask(id);
+	}
+
+	// Event emitter methods
+	on(event: string, callback: (data: any) => void): void {
+		if (!this.eventHandlers.has(event)) {
+			this.eventHandlers.set(event, []);
+		}
+		this.eventHandlers.get(event)!.push(callback);
+	}
+
+	off(event: string, callback: (data: any) => void): void {
+		if (!this.eventHandlers.has(event)) {
+			return;
+		}
+		const handlers = this.eventHandlers.get(event)!;
+		const index = handlers.indexOf(callback);
+		if (index !== -1) {
+			handlers.splice(index, 1);
+		}
+	}
+
+	emit(event: string, data: any): void {
+		if (!this.eventHandlers.has(event)) {
+			return;
+		}
+		for (const handler of this.eventHandlers.get(event)!) {
+			handler(data);
+		}
 	}
 }

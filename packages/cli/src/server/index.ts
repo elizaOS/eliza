@@ -315,43 +315,12 @@ export class AgentServer {
 					}
 				}
 			}
-
-			// API Router setup
-			const apiRouter = createApiRouter(this.agents, this);
-			this.app.use(apiRouter);
-
-			// Main fallback for the SPA - must be registered after all other routes
-			// For Express 4, we need to use the correct method for fallback routes
-			// @ts-ignore - Express 4 type definitions are incorrect for .all()
-			this.app.all("*", (req, res) => {
-				// Skip for API routes
-				if (req.path.startsWith("/api") || req.path.startsWith("/media")) {
-					return res.status(404).send("Not found");
-				}
-
-				// For JavaScript requests that weren't handled by static middleware,
-				// return a JavaScript response instead of HTML
-				if (
-					req.path.endsWith(".js") ||
-					req.path.includes(".js?") ||
-					req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
-				) {
-					res.setHeader("Content-Type", "application/javascript");
-					return res
-						.status(404)
-						.send(`// JavaScript module not found: ${req.path}`);
-				}
-
-				// For all other routes, serve the SPA's index.html
-				res.sendFile(path.join(clientPath, "index.html"));
-			});
-
-			logger.success("AgentServer initialization complete");
 		} catch (error) {
-			logger.error("Failed to complete server initialization:", error);
+			logger.error("Failed to initialize server:", error);
 			throw error;
 		}
 	}
+
 
 	/**
 	 * Registers an agent with the provided runtime.

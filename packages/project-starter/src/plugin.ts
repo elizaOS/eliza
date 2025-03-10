@@ -14,6 +14,7 @@ import {
 	logger,
 } from "@elizaos/core";
 import { z } from "zod";
+import starterTestSuite from "./tests";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -160,9 +161,9 @@ export class StarterService extends Service {
 	}
 }
 
-export const starterPlugin: Plugin = {
-	name: "plugin-starter",
-	description: "Plugin starter for elizaOS",
+const plugin: Plugin = {
+	name: "starter",
+	description: "A starter plugin for Eliza",
 	config: {
 		EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
 	},
@@ -207,19 +208,7 @@ export const starterPlugin: Plugin = {
 			return "Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...";
 		},
 	},
-	tests: [
-		{
-			name: "plugin_starter_test_suite",
-			tests: [
-				{
-					name: "example_test",
-					fn: async (runtime) => {
-						console.log("example_test run by ", runtime.character.name);
-					},
-				},
-			],
-		},
-	],
+	tests: [starterTestSuite],
 	routes: [
 		{
 			path: "/helloworld",
@@ -266,4 +255,5 @@ export const starterPlugin: Plugin = {
 	actions: [helloWorldAction],
 	providers: [helloWorldProvider],
 };
-export default starterPlugin;
+
+export default plugin;

@@ -74,7 +74,7 @@ class MemoryManager implements IMemoryManager {
             memory.embedding = await embed(this.runtime, memory.content.text);
         }
 
-        await this.runtime.getDatabaseAdapter().createMemory(
+        await this.runtime.createMemory(
             memory,
             this.tableName,
             unique,
@@ -91,7 +91,7 @@ class MemoryManager implements IMemoryManager {
             unique?: boolean;
         },
     ): Promise<Memory[]> {
-        return this.runtime.getDatabaseAdapter().searchMemories({
+        return this.runtime.searchMemories({
             tableName: this.tableName,
             roomId: opts.roomId,
             embedding,
@@ -441,7 +441,7 @@ async function enhancedEmbed(
     },
 ): Promise<number[]> {
     // Get cached embedding if available
-    const cached = await runtime.getDatabaseAdapter().getCachedEmbeddings({
+    const cached = await runtime.getCachedEmbeddings({
         query_input: text,
         query_threshold: 0.95,
     });
@@ -460,7 +460,7 @@ async function enhancedEmbed(
 ```typescript
 class StateManager {
     async saveState(state: State): Promise<void> {
-        await this.runtime.getDatabaseAdapter().createMemory(
+        await this.runtime.createMemory(
             {
                 content: {
                     type: "state",
@@ -474,7 +474,7 @@ class StateManager {
     }
 
     async loadState(roomId: UUID): Promise<State | null> {
-        const states = await this.runtime.getDatabaseAdapter().getMemories({
+        const states = await this.runtime.getMemories({
             roomId,
             tableName: "states",
             count: 1,
