@@ -1,4 +1,4 @@
-import * as path from "node:path";
+import path from "node:path";
 import { type IAgentRuntime, logger, settings } from "@elizaos/core";
 import { toBN } from "./bignumber";
 import type {

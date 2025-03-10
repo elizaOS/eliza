@@ -1,13 +1,14 @@
 {
-	"extends": "../core/tsconfig.json",
-	"compilerOptions": {
-		"outDir": "dist",
-		"rootDir": "src",
-		"baseUrl": ".",
-		"paths": {
-			"@elizaos/core": ["../../packages/core/src"],
-			"@elizaos/core/*": ["../../packages/core/src/*"]
-		}
-	},
-	"include": ["src/**/*.ts"]
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "module": "ESNext",
+    "target": "ESNext",
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src"],
+      "@elizaos/core/*": ["../../packages/core/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"]
 }

@@ -1,19 +1,20 @@
 {
-	"$schema": "https://json.schemastore.org/tsconfig",
-	"extends": "../core/tsconfig.json",
-	"compilerOptions": {
-		"isolatedModules": false,
-		"baseUrl": ".",
-		"paths": {
-			"@/*": ["./*"],
-			"@elizaos/core": ["../../packages/core/src"],
-			"@elizaos/core/*": ["../../packages/core/src/*"]
-		},
-		"rootDir": "src",
-		"moduleResolution": "Node",
-		"module": "ESNext",
-		"outDir": "./dist"
-	},
-	"include": ["src/**/*.ts"],
-	"exclude": ["node_modules"]
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "isolatedModules": false,
+    "baseUrl": ".",
+    "module": "ESNext",
+    "allowSyntheticDefaultImports": true,
+    "target": "ESNext",
+    "paths": {
+      "@/*": ["./*"],
+      "@elizaos/core": ["../../packages/core/src"],
+      "@elizaos/core/*": ["../../packages/core/src/*"]
+    },
+    "rootDir": "src",
+    "moduleResolution": "Node",
+    "outDir": "./dist"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"]
 }

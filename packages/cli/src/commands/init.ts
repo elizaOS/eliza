@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import * as fs from "node:fs/promises";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { copyTemplate } from "@/src/utils/copy-template";

@@ -1,16 +1,10 @@
-import * as fs from "node:fs";
 import * as os from "node:os";
-import * as path from "node:path";
-import { PGlite } from "@electric-sql/pglite";
+import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import {
-	type Action,
 	type IAgentRuntime,
 	type Plugin,
-	logger,
+	logger
 } from "@elizaos/core";
-import type { UUID } from "@elizaos/core";
-import type { IDatabaseAdapter } from "@elizaos/core";
-import { SQLAdapter } from "./adapter.js";
 import { PgliteDatabaseAdapter } from "./pg-lite/adapter";
 import { PGliteClientManager } from "./pg-lite/manager";
 import { PgDatabaseAdapter } from "./pg/adapter";
