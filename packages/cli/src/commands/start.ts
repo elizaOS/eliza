@@ -41,7 +41,7 @@ export const wait = (minTime = 1000, maxTime = 3000) => {
 /**
  * Analyzes project agents and their plugins to determine which environment variables to prompt for
  */
-async function promptForProjectPlugins(
+export async function promptForProjectPlugins(
 	project: any,
 	pluginToLoad?: { name: string },
 ): Promise<void> {
