@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-sql",
-	"version": "1.0.0-alpha.21",
+	"version": "1.0.0-alpha.22",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -23,7 +23,7 @@
 	],
 	"dependencies": {
 		"@electric-sql/pglite": "^0.2.17",
-		"@elizaos/core": "^1.0.0-alpha.21",
+		"@elizaos/core": "^1.0.0-alpha.22",
 		"@types/pg": "8.11.10",
 		"drizzle-kit": "^0.30.4",
 		"drizzle-orm": "^0.39.1",
@@ -44,5 +44,5 @@
 	"peerDependencies": {
 		"typescript": "5.8.2"
 	},
-	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
 }
