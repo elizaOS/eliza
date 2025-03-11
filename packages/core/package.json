@@ -22,6 +22,7 @@
 	"scripts": {
 		"build": "tsup && tsc -p tsconfig.build.json",
 		"watch": "tsc --watch",
+		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
 		"dev": "tsup --watch",
 		"build:docs": "cd docs && bun run build",
 		"test": "vitest run",
