@@ -10,6 +10,7 @@ import {
 	type ActionEventPayload,
 	type EvaluatorEventPayload,
 } from "../types";
+import logger from "../logger";
 
 interface World {
 	id: UUID;
@@ -97,6 +98,7 @@ export class ScenarioService extends Service {
 				startTime: Date.now(),
 				completed: false
 			});
+			logger.debug("Evaluator started", data);
 			return Promise.resolve();
 		});
 
@@ -106,6 +108,7 @@ export class ScenarioService extends Service {
 				evaluator.completed = true;
 				evaluator.error = data.error;
 			}
+			logger.debug("Evaluator completed", data);
 			return Promise.resolve();
 		});
 	}
