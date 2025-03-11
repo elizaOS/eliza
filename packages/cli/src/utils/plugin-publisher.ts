@@ -78,6 +78,10 @@ export async function testPublishToNpm(cwd: string): Promise<boolean> {
     return true;
   } catch (error) {
     logger.error('Test failed:', error);
+    if (error instanceof Error) {
+      logger.error(`Error message: ${error.message}`);
+      logger.error(`Error stack: ${error.stack}`);
+    }
     return false;
   }
 }
@@ -110,25 +114,51 @@ export async function testPublishToGitHub(
     const settings = await getRegistrySettings();
     const [registryOwner, registryRepo] = settings.defaultRegistry.split('/');
 
-    // Check fork permissions
+    // Check fork permissions and create fork if needed
     const hasFork = await forkExists(token, registryOwner, registryRepo, username);
     logger.info(hasFork ? '✓ Fork exists' : '✓ Can create fork');
+    
+    if (!hasFork) {
+      logger.info('Creating fork...');
+      const forkCreated = await forkRepository(token, registryOwner, registryRepo);
+      if (!forkCreated) {
+        logger.error('Failed to create fork');
+        return false;
+      }
+      logger.info('✓ Fork created');
+      
+      // Wait a moment for GitHub to complete the fork
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
 
     // Test branch creation
     const branchName = `test-${packageJson.name.replace(/^@elizaos\//, '')}-${packageJson.version}`;
     const hasBranch = await branchExists(token, username, registryRepo, branchName);
     logger.info(hasBranch ? '✓ Test branch exists' : '✓ Can create branch');
+    
+    if (!hasBranch) {
+      logger.info('Creating branch...');
+      const branchCreated = await createBranch(token, username, registryRepo, branchName, 'main');
+      if (!branchCreated) {
+        logger.error('Failed to create branch');
+        return false;
+      }
+      logger.info('✓ Branch created');
+    }
 
     // Test file update permissions
-    const testPath = `test/${packageJson.name.replace(/^@elizaos\//, '')}.json`;
+    const simpleName = packageJson.name.replace(/^@elizaos\//, '').replace(/[^a-zA-Z0-9-]/g, '-');
+    const testPath = `${simpleName}-test.json`;
+    logger.info(`Attempting to create test file: ${testPath} in branch: ${branchName}`);
+    
     const canUpdate = await updateFile(
       token,
       username,
       registryRepo,
       testPath,
-      JSON.stringify({ test: true }),
+      JSON.stringify({ test: true, timestamp: new Date().toISOString() }),
       'Test file update',
-      'main',
+      branchName, // Use the test branch instead of main
     );
     if (!canUpdate) {
       logger.error('Cannot update files in repository');
@@ -139,6 +169,10 @@ export async function testPublishToGitHub(
     return true;
   } catch (error) {
     logger.error('Test failed:', error);
+    if (error instanceof Error) {
+      logger.error(`Error message: ${error.message}`);
+      logger.error(`Error stack: ${error.stack}`);
+    }
     return false;
   }
 }
