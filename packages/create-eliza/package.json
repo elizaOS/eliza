@@ -1,6 +1,6 @@
 {
 	"name": "create-eliza",
-	"version": "1.0.0-alpha.20",
+	"version": "1.0.0-alpha.21",
 	"description": "Initialize an Eliza project",
 	"type": "module",
 	"publishConfig": {
@@ -8,6 +8,9 @@
 	},
 	"bin": {
 		"create-eliza": "cli/index.js init"
+	},
+	"scripts": {
+		"create-eliza": "bun run cli/index.js init"
 	},
 	"license": "MIT",
 	"author": {
