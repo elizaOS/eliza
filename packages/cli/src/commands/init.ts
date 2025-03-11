@@ -6,7 +6,7 @@ import { copyTemplate } from "@/src/utils/copy-template";
 import { rawConfigSchema } from "@/src/utils/get-config";
 import { handleError } from "@/src/utils/handle-error";
 import { installPlugin } from "@/src/utils/install-plugin";
-import { getAvailableDatabases, listPluginsByType } from "@/src/utils/registry";
+import { getAvailableDatabases, listPluginsByType } from "@/src/utils/registry/index";
 import { runBunCommand } from "@/src/utils/run-bun";
 import {
 	createDatabaseTemplate,
