@@ -317,7 +317,7 @@ export class TwitterInteractionClient {
 
 					// Emit platform-specific event
 					switch (interaction.type) {
-						case 'like':
+						case 'like': {
 							const likePayload: TwitterLikeReceivedPayload = {
 								...basePayload,
 								tweet: interaction.targetTweet as unknown as CoreTweet
@@ -338,8 +338,9 @@ export class TwitterInteractionClient {
 								}
 							} as MessagePayload);
 							break;
+						}
 
-						case 'retweet':
+						case 'retweet': {
 							const retweetPayload: TwitterRetweetReceivedPayload = {
 								...basePayload,
 								tweet: interaction.targetTweet as unknown as CoreTweet,
@@ -361,8 +362,9 @@ export class TwitterInteractionClient {
 								}
 							} as MessagePayload);
 							break;
+						}
 
-						case 'quote':
+						case 'quote': {
 							const quotePayload: TwitterQuoteReceivedPayload = {
 								...basePayload,
 								message: reactionMessage,
@@ -390,6 +392,7 @@ export class TwitterInteractionClient {
 								}
 							} as MessagePayload);
 							break;
+						}
 					}
 				}
 			};
@@ -397,7 +400,7 @@ export class TwitterInteractionClient {
 			// Process interactions
 			const processInteractions = async (interactions: TwitterInteractionPayload[]) => {
 				for (const interaction of interactions) {
-					if (interaction && interaction.targetTweet && interaction.targetTweet.conversationId) {
+					if (interaction?.targetTweet?.conversationId) {
 						await handleInteraction(interaction);
 					}
 				}

@@ -1,25 +1,25 @@
-import { Command } from "commander";
-import {
-	logger,
-	type IAgentRuntime,
-	type Character,
-	type ProjectAgent,
-	AgentRuntime,
-	stringToUuid,
-	settings
-} from "@elizaos/core";
-import { loadProject } from "../project.js";
-import { TestRunner } from "../testRunner.js";
-import { AgentServer } from "../server/index.js";
-import * as net from "node:net";
-import path from "node:path";
-import * as os from "node:os";
 import * as fs from "node:fs";
+import { existsSync, readFileSync } from 'node:fs';
+import * as net from "node:net";
+import * as os from "node:os";
+import path from "node:path";
+import {
+	AgentRuntime,
+	type Character,
+	type IAgentRuntime,
+	type ProjectAgent,
+	logger,
+	settings,
+	stringToUuid
+} from "@elizaos/core";
+import { Command } from "commander";
 import * as dotenv from "dotenv";
+import { loadProject } from "../project.js";
+import { AgentServer } from "../server/index.js";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
+import { TestRunner } from "../testRunner.js";
 import { promptForEnvVars } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
-import { existsSync, readFileSync } from 'node:fs';
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {
@@ -105,7 +105,7 @@ async function startAgent(
 		// Before runtime initialization, patch the runtime object to skip entity creation
 		// if we're in test mode since we know the agent exists now
 		const originalInitialize = runtime.initialize.bind(runtime);
-		runtime.initialize = async function() {
+		runtime.initialize = async () => {
 			try {
 				// Skip entity creation for the test agent in this case
 				return await originalInitialize();
@@ -526,12 +526,11 @@ function checkIfLikelyPluginDir(dir: string): boolean {
 		try {
 			const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 			// Check if the name contains 'plugin'
-			if (packageJson.name && packageJson.name.includes('plugin')) {
+			if (packageJson.name?.includes('plugin')) {
 				return true;
 			}
 			// Check if it has eliza plugin keywords
-			if (packageJson.keywords && 
-				packageJson.keywords.some((k: string) => 
+			if (packageJson.keywords?.some((k: string) => 
 					k.includes('elizaos') || 
 					k.includes('eliza') || 
 					k.includes('plugin'))) {

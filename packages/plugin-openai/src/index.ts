@@ -114,7 +114,7 @@ export const openaiPlugin: Plugin = {
 					);
 					// Continue execution instead of throwing
 				} else {
-					logger.log("OpenAI API key validated successfully");
+					// logger.log("OpenAI API key validated successfully");
 				}
 			} catch (fetchError) {
 				logger.warn(`Error validating OpenAI API key: ${fetchError}`);
@@ -147,7 +147,7 @@ export const openaiPlugin: Plugin = {
 		): Promise<number[]> => {
 			// Handle null input (initialization case)
 			if (params === null) {
-				logger.log("Creating test embedding for initialization");
+				logger.debug("Creating test embedding for initialization");
 				// Return a consistent vector for null input
 				const testVector = Array(1536).fill(0);
 				testVector[0] = 0.1; // Make it non-zero

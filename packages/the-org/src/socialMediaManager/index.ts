@@ -7,9 +7,9 @@ import type {
 	UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
+import { v4 as uuidv4 } from "uuid";
 import { initCharacter } from "../init";
 import twitterPostAction from "./actions/post";
-import { v4 as uuidv4 } from "uuid";
 dotenv.config({ path: "../../.env" });
 
 /**

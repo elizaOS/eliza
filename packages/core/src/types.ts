@@ -1,5 +1,4 @@
 import type { Readable } from "node:stream";
-import type { z } from "zod";
 
 /**
  * Represents a UUID string in the format "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"

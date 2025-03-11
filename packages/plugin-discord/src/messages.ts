@@ -20,8 +20,8 @@ import {
 	type TextChannel,
 } from "discord.js";
 import { AttachmentManager } from "./attachments";
-import { canSendMessage, sendMessageInChunks } from "./utils";
 import { DiscordEventTypes } from "./types";
+import { canSendMessage, sendMessageInChunks } from "./utils";
 
 /**
  * Class representing a Message Manager for handling Discord messages.

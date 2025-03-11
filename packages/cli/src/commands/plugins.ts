@@ -1,5 +1,6 @@
 import { promises as fs, existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { copyTemplate } from "@/src/utils/copy-template";
 import { getConfig } from "@/src/utils/get-config";
 import {
@@ -15,15 +16,16 @@ import {
 import { handleError } from "@/src/utils/handle-error";
 import { installPlugin } from "@/src/utils/install-plugin";
 import { ensurePluginEnvRequirements } from "@/src/utils/plugin-env";
+import { publishToGitHub, publishToNpm, testPublishToGitHub, testPublishToNpm } from "@/src/utils/plugin-publisher";
 import {
 	getPluginRepository,
-	listPluginsByType,
 	getRegistryIndex,
 	getRegistrySettings,
+	initializeDataDir,
+	listPluginsByType,
 	saveRegistrySettings,
 	setGitHubToken,
 	validateDataDir,
-	initializeDataDir,
 } from "@/src/utils/registry/index";
 import { runBunCommand } from "@/src/utils/run-bun";
 import { logger } from "@elizaos/core";
@@ -31,8 +33,6 @@ import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";
 import prompts from "prompts";
-import { publishToGitHub, publishToNpm, testPublishToGitHub, testPublishToNpm } from "@/src/utils/plugin-publisher";
-import { fileURLToPath } from "node:url";
 
 export const plugins = new Command()
 	.name("plugins")

@@ -1,3 +1,7 @@
+import { promises as fs } from 'node:fs';
+import { existsSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
 	getLocalPackages,
 	isMonorepoContext,
@@ -8,17 +12,13 @@ import {
 	registrySchema,
 } from "@/src/utils/registry/schema";
 import { logger } from "@elizaos/core";
+import dotenv from 'dotenv';
 import { execa } from "execa";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import fetch from "node-fetch";
 import { z } from "zod";
-import { REGISTRY_URL } from "./constants";
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
-import dotenv from 'dotenv';
 import { getGitHubCredentials } from '../github';
-import { existsSync } from 'node:fs';
+import { REGISTRY_URL } from "./constants";
 
 const ELIZA_DIR = path.join(os.homedir(), '.eliza');
 const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { execa } from 'execa';
 import { logger } from '@elizaos/core';
+import { execa } from 'execa';
 import {
   branchExists,
   createBranch,
@@ -11,7 +11,7 @@ import {
   getFileContent,
   updateFile,
 } from './github';
-import { getRegistrySettings, getGitHubToken } from './registry';
+import { getGitHubToken, getRegistrySettings } from './registry';
 
 interface PackageJson {
   name: string;

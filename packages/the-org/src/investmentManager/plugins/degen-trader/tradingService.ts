@@ -4,7 +4,9 @@ import {
 	type IAgentRuntime,
 	ModelTypes,
 	Service,
+	type Task,
 	type UUID,
+	composePrompt,
 	logger,
 	parseJSONObjectFromText,
 } from "@elizaos/core";
@@ -901,6 +903,9 @@ export class DegenTradingService extends Service {
 						null,
 						2,
 					), // Pretty print with 2 spaces indentation
+					values: {},
+					data: {},
+					text: ""
 				},
 			});
 
@@ -1199,9 +1204,15 @@ export class DegenTradingService extends Service {
 		// Register BUY_SIGNAL task worker
 		this.runtime.registerTaskWorker({
 			name: "BUY_SIGNAL",
-			execute: async (_runtime: IAgentRuntime, _options: any) => {
+			execute: async (_runtime: IAgentRuntime, _options: any, task: Task) => {
 				logger.debug("*** BUY_SIGNAL ***");
-				await this.executeBuyTask();
+				try {
+					await this.executeBuyTask();
+				} catch (error) {
+					logger.error("Failed to execute buy task", error);
+					logger.warn("BUY_SIGNAL task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1209,7 +1220,7 @@ export class DegenTradingService extends Service {
 		// Register EXECUTE_BUY_SIGNAL task worker
 		this.runtime.registerTaskWorker({
 			name: "EXECUTE_BUY_SIGNAL",
-			execute: async (_runtime: IAgentRuntime, options: any) => {
+			execute: async (_runtime: IAgentRuntime, options: any, task: Task) => {
 				logger.info("*** EXECUTE_BUY_SIGNAL ***", options);
 
 				const { signal, tradeAmount, reason } = options.metadata || {};
@@ -1235,6 +1246,7 @@ export class DegenTradingService extends Service {
 					});
 				} else {
 					logger.error("Buy failed", { error: result.error });
+					await _runtime.deleteTask(task.id);
 				}
 			},
 			validate: async () => true,
@@ -1243,9 +1255,15 @@ export class DegenTradingService extends Service {
 		// Register SELL_SIGNAL task worker
 		this.runtime.registerTaskWorker({
 			name: "SELL_SIGNAL",
-			execute: async (_runtime: IAgentRuntime, options: any) => {
+			execute: async (_runtime: IAgentRuntime, options: any, task: Task) => {
 				logger.info("*** SELL_SIGNAL ***");
-				await this.executeSellTask(options);
+				try {
+					await this.executeSellTask(options);
+				} catch (error) {
+					logger.error("Failed to execute sell task", error);
+					logger.warn("SELL_SIGNAL task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1253,9 +1271,15 @@ export class DegenTradingService extends Service {
 		// Register MONITOR_TOKEN task worker
 		this.runtime.registerTaskWorker({
 			name: "MONITOR_TOKEN",
-			execute: async (_runtime: IAgentRuntime, options: any) => {
+			execute: async (_runtime: IAgentRuntime, options: any, task: Task) => {
 				logger.info("*** MONITOR_TOKEN ***");
-				await this.monitorToken(options);
+				try {
+					await this.monitorToken(options);
+				} catch (error) {
+					logger.error("Failed to monitor token", error);
+					logger.warn("MONITOR_TOKEN task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1263,9 +1287,15 @@ export class DegenTradingService extends Service {
 		// Register MONITOR_TRAILING_STOP task worker
 		this.runtime.registerTaskWorker({
 			name: "MONITOR_TRAILING_STOP",
-			execute: async (_runtime: IAgentRuntime, options: any) => {
+			execute: async (_runtime: IAgentRuntime, options: any, task: Task) => {
 				logger.debug("*** MONITOR_TRAILING_STOP ***");
-				await this.monitorTrailingStop(options);
+				try {
+					await this.monitorTrailingStop(options);
+				} catch (error) {
+					logger.error("Failed to monitor trailing stop", error);
+					logger.warn("MONITOR_TRAILING_STOP task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1273,9 +1303,15 @@ export class DegenTradingService extends Service {
 		// Register VALIDATE_DATA_SOURCES task worker
 		this.runtime.registerTaskWorker({
 			name: "VALIDATE_DATA_SOURCES",
-			execute: async (_runtime: IAgentRuntime) => {
+			execute: async (_runtime: IAgentRuntime, _options, task: Task) => {
 				logger.debug("*** VALIDATE_DATA_SOURCES ***");
-				await this.validateDataSources();
+				try {
+					await this.validateDataSources();
+				} catch (error) {
+					logger.error("Failed to validate data sources", error);
+					logger.warn("VALIDATE_DATA_SOURCES task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1283,9 +1319,15 @@ export class DegenTradingService extends Service {
 		// Register CIRCUIT_BREAKER_CHECK task worker
 		this.runtime.registerTaskWorker({
 			name: "CIRCUIT_BREAKER_CHECK",
-			execute: async (_runtime: IAgentRuntime) => {
+			execute: async (_runtime: IAgentRuntime, _options, task: Task) => {
 				logger.debug("*** CIRCUIT_BREAKER_CHECK ***");
-				await this.checkCircuitBreaker();
+				try {
+					await this.checkCircuitBreaker();
+				} catch (error) {
+					logger.error("Failed to check circuit breaker", error);
+					logger.warn("CIRCUIT_BREAKER_CHECK task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});

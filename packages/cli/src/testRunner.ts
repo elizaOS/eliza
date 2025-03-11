@@ -1,4 +1,4 @@
-import { type IAgentRuntime, type TestSuite, type ProjectAgent, type Plugin, logger } from "@elizaos/core";
+import { type IAgentRuntime, type Plugin, type ProjectAgent, type TestSuite, logger } from "@elizaos/core";
 
 interface TestStats {
   total: number;

@@ -73,9 +73,7 @@ export default class BuySignal {
 		logger.debug("Updating latest buy signal");
 		/** Get all sentiments */
 		const sentimentsData =
-			(await this.runtime
-				
-				.getCache<Sentiment[]>("sentiments")) || [];
+			(await this.runtime.getCache<Sentiment[]>("sentiments")) || [];
 		let sentiments = "";
 
 		let idx = 1;
@@ -174,7 +172,7 @@ export default class BuySignal {
 
 		// Create a buy task to execute the trade
 		const { v4: uuidv4 } = require("uuid");
-		const { ServiceTypes } = require("../../../plugins/degen-trader/types");
+		const { ServiceTypes } = require("../../degen-trader/types");
 
 		await this.runtime.createTask({
 			id: uuidv4(),

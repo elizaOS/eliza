@@ -225,7 +225,7 @@ export class VoiceManager extends EventEmitter {
 	private setReady(status: boolean) {
 		this.ready = status;
 		this.emit("ready");
-		logger.success(`VoiceManager is now ready: ${this.ready}`);
+		logger.debug(`VoiceManager is now ready: ${this.ready}`);
 	}
 
 	/**

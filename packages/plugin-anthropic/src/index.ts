@@ -55,9 +55,6 @@ export const anthropicPlugin: Plugin = {
 				// Return early without throwing an error
 				return;
 			}
-
-			// Optional: Add key validation here if Anthropic provides an API endpoint for it
-			logger.log("Anthropic API key is set");
 		} catch (error) {
 			if (error instanceof z.ZodError) {
 				// Convert to warning instead of error

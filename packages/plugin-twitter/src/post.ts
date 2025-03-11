@@ -1,19 +1,17 @@
 import {
 	ChannelType,
+	type Content,
+	type HandlerCallback,
 	type IAgentRuntime,
+	type Memory,
+	type MessagePayload,
 	ModelTypes,
 	type UUID,
-	cleanJsonResponse,
 	composePrompt,
 	createUniqueUuid,
-	extractAttributes,
 	logger,
 	parseJSONObjectFromText,
-	truncateToCompleteSentence,
-	type Content,
-	type Memory,
-	type HandlerCallback,
-	type MessagePayload,
+	truncateToCompleteSentence
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client/index";

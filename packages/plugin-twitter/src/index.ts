@@ -1,16 +1,16 @@
 import {
+	ChannelType,
+	type Entity,
+	EventTypes,
 	type IAgentRuntime,
 	type Plugin,
+	Role,
+	type Room,
 	Service,
 	type UUID,
-	createUniqueUuid,
-	ChannelType,
 	type World,
-	type Room,
-	type Entity,
-	Role,
+	createUniqueUuid,
 	logger,
-	EventTypes,
 } from "@elizaos/core";
 import spaceJoin from "./actions/spaceJoin";
 import { ClientBase } from "./base";
@@ -20,7 +20,7 @@ import { TwitterInteractionClient } from "./interactions";
 import { TwitterPostClient } from "./post";
 import { TwitterSpaceClient } from "./spaces";
 import { TwitterTestSuite } from "./tests";
-import { TwitterEventTypes, type ITwitterClient } from "./types";
+import { type ITwitterClient, TwitterEventTypes } from "./types";
 
 /**
  * A manager that orchestrates all specialized Twitter logic:

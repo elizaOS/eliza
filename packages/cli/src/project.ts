@@ -1,9 +1,9 @@
-import { logger } from "@elizaos/core";
-import type { AgentRuntime, UUID, Project as ProjectType, ProjectAgent, Character, Plugin, IAgentRuntime } from "@elizaos/core";
-import { resolve } from "node:path";
-import { v4 as uuidv4 } from "uuid";
 import * as fs from "node:fs";
+import { resolve } from "node:path";
 import path from "node:path";
+import { logger } from "@elizaos/core";
+import type { AgentRuntime, Character, IAgentRuntime, Plugin, ProjectAgent, Project as ProjectType, UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 import { character as elizaCharacter } from "./characters/eliza";
 
 /**

@@ -1,15 +1,11 @@
-// optimize async and await
-
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import path from 'path';
-import fs from 'fs/promises';
-import { parse } from '@babel/parser';
-import traverse from '@babel/traverse';
-import { default as generate } from '@babel/generator';
-import * as t from '@babel/types';
-import crypto from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
+import { default as generate } from '@babel/generator';
+import { parse } from '@babel/parser';
+import crypto from 'node:crypto';
+import dotenv from 'dotenv';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -601,8 +597,6 @@ async function extractAsyncFunctions(filePath) {
 function analyzeASTForParallelization(node, sourceCode) {
   const parallelOps = [];
   const awaitExpressions = [];
-  let hasPromiseAll = false;
-  let promiseAllNodes = [];
   const visited = new WeakSet();
   
   // Refined blacklisted terms that prevent parallelization
@@ -619,11 +613,11 @@ function analyzeASTForParallelization(node, sourceCode) {
   // Helper to check if nodes are in different branches
   function areInDifferentBranches(node1, node2) {
     let parent1 = node1;
-    let parent2 = node2;
+    const parent2 = node2;
     
     while (parent1) {
       if (parent1.type === 'IfStatement' || parent1.type === 'SwitchCase') {
-        let branch1Parent = parent1;
+        const branch1Parent = parent1;
         let temp = parent2;
         while (temp) {
           if (temp === branch1Parent) {
@@ -1134,7 +1128,7 @@ async function parseAllPackages(packagesDir) {
           console.log(`\n  Function: ${fn.name}`);
           for (const op of fn.astAnalysis.parallelizableOperations) {
             console.log(`    Lines ${op.lines[0]}-${op.lines[1]}:`);
-            console.log(`    Operations:`, op.operations);
+            console.log("    Operations:", op.operations);
           }
         }
       }
@@ -1542,9 +1536,111 @@ function generateDefaultOptimization(originalCode, parallelizableOperations) {
   // Reconstruct the function
   if (asyncFunctionMatch) {
     return `async function ${functionName}(${params}) {${optimizedBody}}`;
-  } else {
-    return `const ${functionName} = async (${params}) => {${optimizedBody}}`;
   }
+    return `const ${functionName} = async (${params}) => {${optimizedBody}}`;
+}
+
+/**
+ * Generates a markdown report of all optimization recommendations
+ * @param {Object} analysisResults The results from Claude's analysis
+ * @returns {string} Markdown formatted report
+ */
+async function generateMarkdownReport(analysisResults) {
+  const reportParts = [];
+  
+  // Add report header
+  reportParts.push('# Parallelization Optimization Report\n');
+  reportParts.push(`Generated on: ${new Date().toLocaleString()}\n`);
+  
+  // Add summary
+  reportParts.push('## Summary\n');
+  reportParts.push(`- Total functions analyzed: ${Object.keys(analysisResults.results).length}`);
+  reportParts.push(`- Parallelizable functions identified: ${analysisResults.parallelizableFunctions.size}`);
+  reportParts.push(`- Errors encountered: ${analysisResults.errors.length}\n`);
+  
+  // If no parallelizable functions were found, note that
+  if (analysisResults.parallelizableFunctions.size === 0) {
+    reportParts.push('> No parallelizable functions were identified.');
+    // Return early if there's nothing to report
+    return reportParts.join('\n');
+  }
+  
+  // Add detailed recommendations for each parallelizable function
+  reportParts.push('## Detailed Recommendations\n');
+  
+  // Organize by files for a cleaner report
+  const fileMap = {};
+  
+  for (const key of analysisResults.parallelizableFunctions) {
+    const analysis = analysisResults.results[key];
+    const { sourceInfo } = analysis;
+    
+    if (!sourceInfo || !sourceInfo.filePath) continue;
+    
+    // Group by file path
+    if (!fileMap[sourceInfo.filePath]) {
+      fileMap[sourceInfo.filePath] = [];
+    }
+    
+    fileMap[sourceInfo.filePath].push({
+      functionName: sourceInfo.name,
+      analysis
+    });
+  }
+  
+  // Now create markdown sections by file
+  for (const [filePath, functions] of Object.entries(fileMap)) {
+    // Get relative path for cleaner display
+    const relativePath = filePath.includes(process.cwd()) 
+      ? filePath.replace(process.cwd(), '').replace(/^\//, '')
+      : filePath;
+    
+    reportParts.push(`### File: \`${relativePath}\`\n`);
+    
+    for (const { functionName, analysis } of functions) {
+      reportParts.push(`#### Function: \`${functionName}\`\n`);
+      
+      // Add Claude's explanation
+      if (analysis.dataFlow) {
+        reportParts.push('**Analysis:**');
+        reportParts.push(analysis.dataFlow);
+        reportParts.push('');
+      }
+      
+      // Add the parallelizable operations
+      reportParts.push('**Parallelizable Operations:**\n');
+      
+      analysis.parallelizableOperations.forEach((op, index) => {
+        reportParts.push(`${index + 1}. **Type:** ${op.type}`);
+        reportParts.push(`   - **Lines:** ${op.lines.join('-')}`);
+        reportParts.push(`   - **Operations:** ${op.operations.join(', ')}`);
+        
+        if (op.suggestion) {
+          reportParts.push(`   - **Suggestion:** ${op.suggestion}`);
+        }
+        reportParts.push('');
+      });
+      
+      // Add the optimized code section
+      reportParts.push('**Recommended Implementation:**');
+      reportParts.push('```javascript');
+      reportParts.push(analysis.optimizedCode);
+      reportParts.push('```\n');
+    }
+  }
+  
+  // Add error section if there were any errors
+  if (analysisResults.errors.length > 0) {
+    reportParts.push('## Errors\n');
+    reportParts.push('The following errors were encountered during analysis:\n');
+    
+    analysisResults.errors.forEach((error, index) => {
+      reportParts.push(`${index + 1}. Function: \`${error.function}\` in file \`${error.file}\``);
+      reportParts.push(`   Error: ${error.error}\n`);
+    });
+  }
+  
+  return reportParts.join('\n');
 }
 
 async function main() {
@@ -1575,7 +1671,7 @@ async function main() {
     const finalResults = await generateOptimizations(analysisResults);
     
     // Print optimization results
-    console.log(`\nOptimization Results:`);
+    console.log("\nOptimization Results:");
     console.log(`- Functions optimized: ${Object.keys(finalResults.optimizations).length}`);
     console.log(`- Optimization errors: ${finalResults.errors.length}`);
   } else {
@@ -1584,7 +1680,7 @@ async function main() {
   
   // Print final summary
   console.log('\n=== Final Summary ===');
-  console.log(`Parse Results:`);
+  console.log("Parse Results:");
   console.log(`- Files processed: ${parseResults.sourceFiles.length}`);
   console.log(`- Async functions found: ${parseResults.asyncFunctions.length}`);
   console.log(`- Potentially parallelizable (AST analysis): ${
@@ -1592,10 +1688,23 @@ async function main() {
   }`);
   console.log(`- Parse errors: ${parseResults.errors.length}`);
   
-  console.log(`\nAnalysis Results:`);
+  console.log("\nAnalysis Results:");
   console.log(`- Functions analyzed with Claude: ${Object.keys(analysisResults.results).length}`);
   console.log(`- Confirmed parallelizable: ${Object.values(analysisResults.results).filter(a => a.isParallelizable).length}`);
   console.log(`- Analysis errors: ${analysisResults.errors.length}`);
+  
+  // Generate and save markdown report
+  if (shouldAnalyze || shouldApply) {
+    const markdownReport = await generateMarkdownReport(analysisResults);
+    const reportPath = path.join(__dirname, 'optimization-report.md');
+    await fs.writeFile(reportPath, markdownReport);
+    console.log(`\nDetailed optimization report saved to: ${reportPath}`);
+    
+    // Also print the report to console if there are parallelizable functions
+    if (analysisResults.parallelizableFunctions.size > 0) {
+      console.log(`\n${markdownReport}`);
+    }
+  }
 }
 
 main().catch(error => {

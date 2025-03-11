@@ -76,8 +76,6 @@ export class DiscordService extends Service implements IDiscordService {
 	constructor(runtime: IAgentRuntime) {
 		super(runtime);
 
-		logger.log("Discord client constructor was engaged");
-
 		// Check if Discord API token is available and valid
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		if (!token || token.trim() === "") {
@@ -145,8 +143,22 @@ export class DiscordService extends Service implements IDiscordService {
 	 */
 	async ensureAllChannelsExist(runtime: IAgentRuntime, guild: OAuth2Guild) {
 		// fetch the owning member from the OAuth2Guild object
-		const guildObj = await guild.fetch();
-		const guildChannels = await guild.fetch();
+		let guildObj;
+		let guildChannels;
+		let retries = 3;
+		while (retries > 0) {
+			try {
+				guildObj = await guild.fetch();
+				guildChannels = await guild.fetch();
+				break;
+			} catch (error) {
+				retries--;
+				if (retries === 0) {
+					throw error;
+				}
+				await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+			}
+		}
 		// for channel in channels
 		for (const [, channel] of guildChannels.channels.cache) {
 			const roomId = createUniqueUuid(this.runtime, channel.id);
@@ -385,7 +397,7 @@ export class DiscordService extends Service implements IDiscordService {
 	 * @returns {Promise<void>}
 	 */
 	private async onClientReady(readyClient: { user: { tag: any; id: any } }) {
-		logger.success(`Logged in as ${readyClient.user?.tag}`);
+		logger.success(`DISCORD: Logged in as ${readyClient.user?.tag}`);
 
 		// Register slash commands
 		const commands = [
@@ -410,7 +422,7 @@ export class DiscordService extends Service implements IDiscordService {
 
 		try {
 			await this.client?.application?.commands.set(commands);
-			logger.success("Slash commands registered");
+			logger.success("DISCORD: Slash commands registered");
 		} catch (error) {
 			console.error("Error registering slash commands:", error);
 		}

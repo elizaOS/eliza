@@ -1,5 +1,5 @@
-import { Command } from "commander";
 import { logger } from "@elizaos/core";
+import { Command } from "commander";
 import { loadProject } from "../project.js";
 
 export const agentPlugin = new Command("plugin")

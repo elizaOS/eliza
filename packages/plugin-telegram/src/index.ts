@@ -1,17 +1,17 @@
 import {
+	ChannelType,
+	type Entity,
+	EventTypes,
 	type IAgentRuntime,
 	type Plugin,
+	Role,
+	type Room,
 	Service,
-	logger,
-	createUniqueUuid,
 	type UUID,
 	type World,
-	type Room,
-	type Entity,
-	ChannelType,
-	Role,
-	EventTypes,
 	type WorldPayload,
+	createUniqueUuid,
+	logger,
 } from "@elizaos/core";
 import { type Context, Telegraf } from "telegraf";
 import { TELEGRAM_SERVICE_NAME } from "./constants";

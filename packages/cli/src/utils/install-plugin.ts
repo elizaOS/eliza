@@ -1,5 +1,5 @@
-import { execa } from 'execa';
 import { logger } from '@elizaos/core';
+import { execa } from 'execa';
 import { getPluginVersion } from './registry';
 
 /**

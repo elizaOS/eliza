@@ -43,7 +43,7 @@ export class TaskService extends Service {
 	static async start(runtime: IAgentRuntime): Promise<TaskService> {
 		const service = new TaskService(runtime);
 		await service.startTimer();
-		// await service.createTestTasks();
+		await service.createTestTasks();
 		return service;
 	}
 
@@ -190,10 +190,23 @@ export class TaskService extends Service {
 			const now = Date.now();
 
 			for (const task of tasks) {
-				const taskStartTime = new Date(task.updatedAt || 0).getTime();
-
-				// convert updatedAt which is an ISO string to a number
-				const updateIntervalMs = task.metadata.updateInterval ?? 0; // update immediately
+				// First check task.updatedAt (for newer task format)
+				// Then fall back to task.metadata.updatedAt (for older tasks)
+				// Finally default to 0 if neither exists
+				let taskStartTime: number;
+				
+				if (typeof task.updatedAt === 'number') {
+					taskStartTime = task.updatedAt;
+				} else if (task.metadata?.updatedAt && typeof task.metadata.updatedAt === 'number') {
+					taskStartTime = task.metadata.updatedAt;
+				} else if (task.updatedAt) {
+					taskStartTime = new Date(task.updatedAt).getTime();
+				} else {
+					taskStartTime = 0; // Default to immediate execution if no timestamp found
+				}
+				
+				// Get updateInterval from metadata
+				const updateIntervalMs = task.metadata?.updateInterval ?? 0; // update immediately
 
 				// if tags does not contain "repeat", execute immediately
 				if (!task.tags?.includes("repeat")) {

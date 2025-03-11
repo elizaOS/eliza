@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import {
   ChannelType,
   type Content,
@@ -8,7 +9,6 @@ import {
   createUniqueUuid,
   logger,
 } from "@elizaos/core";
-import { EventEmitter } from "node:events";
 import {
   Client,
   type QueryTweetsResponse,

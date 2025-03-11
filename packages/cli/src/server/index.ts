@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import * as os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	type Character,
 	type IAgentRuntime,
@@ -9,10 +13,6 @@ import * as bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import fs from "node:fs";
-import * as os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Server as SocketIoServer } from "socket.io";
 
 // Load environment variables
@@ -111,7 +111,7 @@ export class AgentServer {
 			throw error;
 		}
 
-		logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
+		logger.info(`*** Server started, visit the console at ${AGENT_RUNTIME_URL} ***`);
 	}
 
 	/**
@@ -200,7 +200,6 @@ export class AgentServer {
 
 			// Serve static assets from the client dist path
 			const clientPath = path.join(__dirname, "..", "dist");
-			logger.info(`Client build path: ${clientPath}`);
 			this.app.use("/", express.static(clientPath, staticOptions));
 
 			// Serve static assets from plugins

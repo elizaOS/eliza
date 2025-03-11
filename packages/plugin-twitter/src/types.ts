@@ -1,24 +1,10 @@
+import type { EntityPayload, EventPayload, HandlerCallback, Memory, MessagePayload, UUID, WorldPayload } from "@elizaos/core";
 import type { TwitterService } from ".";
 import type { ClientBase } from "./base";
+import type { Tweet as ClientTweet, Mention } from "./client/tweets";
 import type { TwitterInteractionClient } from "./interactions";
 import type { TwitterPostClient } from "./post";
 import type { TwitterSpaceClient } from "./spaces";
-import type {
-	EventPayload,
-	EventTypes,
-	IAgentRuntime,
-	MessagePayload,
-	MessagePayload, 
-	MessagePayload,
-	PostSentPayload,
-	MessagePayload,
-	WorldPayload,
-	EntityPayload,
-	UUID,
-	Memory,
-	HandlerCallback,
-} from "@elizaos/core";
-import type { Tweet as ClientTweet, Mention } from "./client/tweets";
 
 /**
  * Defines a type for media data, which includes a Buffer representing the actual data
@@ -236,7 +222,7 @@ export interface TwitterPostGeneratedPayload extends MessagePayload {
 /**
  * Twitter-specific post sent payload
  */
-export interface TwitterPostSentPayload extends PostSentPayload {
+export interface TwitterPostSentPayload extends MessagePayload {
 	/** The tweet result from Twitter API */
 	tweetResult: any;
 }

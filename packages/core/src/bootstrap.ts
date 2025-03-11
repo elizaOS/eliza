@@ -40,10 +40,12 @@ import { timeProvider } from "./providers/time";
 import { ScenarioService } from "./services/scenario";
 import { TaskService } from "./services/task";
 import {
+	type ActionEventPayload,
 	type ChannelType,
 	type Content,
 	type Entity,
 	type EntityPayload,
+	type EvaluatorEventPayload,
 	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
@@ -54,8 +56,6 @@ import {
 	type Room,
 	type World,
 	type WorldPayload,
-	type ActionEventPayload,
-	type EvaluatorEventPayload,
 } from "./types";
 
 /**

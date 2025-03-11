@@ -1,6 +1,6 @@
-import type { IAgentRuntime, TestSuite, Memory, State, UUID, Content } from "@elizaos/core";
-import { character } from "./index";
+import type { Content, IAgentRuntime, Memory, State, TestSuite, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
+import { character } from "./index";
 
 export class StarterTestSuite implements TestSuite {
   name = "starter";

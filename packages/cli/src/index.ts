@@ -3,15 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { logger } from "@elizaos/core";
+import { Command } from "commander";
 import { agent } from "./commands/agent.js";
 import { init } from "./commands/init.js";
 import { plugins } from "./commands/plugins.js";
 import { start } from "./commands/start.js";
-import { test } from "./commands/test.js";
 import { teeCommand as tee } from "./commands/tee.js";
+import { test } from "./commands/test.js";
 import { loadEnvironment } from "./utils/get-config.js";
-import { logger } from "@elizaos/core";
-import { Command } from "commander";
 
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));

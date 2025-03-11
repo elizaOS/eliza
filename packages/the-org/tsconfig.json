@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
     "outDir": "dist",
-    "module": "NodeNext",
+    "module": "ESNext",
     "target": "ESNext",
-    "moduleResolution": "NodeNext",
+    "moduleResolution": "Node",
     "types": ["node"],
     "jsx": "react-jsx",
     "allowJs": true,

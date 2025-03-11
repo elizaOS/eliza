@@ -324,10 +324,7 @@ const startAgents = async (options: {
 	let pluginModule: Plugin | null = null;
 	let projectModule: any = null;
 
-	logger.info("Checking for project or plugin in current directory...");
 	const currentDir = process.cwd();
-	logger.info(`Current directory: ${currentDir}`);
-
 	try {
 		// Check if we're in a project with a package.json
 		const packageJsonPath = path.join(process.cwd(), "package.json");
