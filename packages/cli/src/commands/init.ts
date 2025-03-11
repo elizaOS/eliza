@@ -8,6 +8,7 @@ import { handleError } from "@/src/utils/handle-error";
 import { installPlugin } from "@/src/utils/install-plugin";
 import { getAvailableDatabases, listPluginsByType } from "@/src/utils/registry/index";
 import { runBunCommand } from "@/src/utils/run-bun";
+import { buildProject } from "@/src/utils/build-project";
 import {
 	createDatabaseTemplate,
 	createEnvTemplate,
@@ -270,6 +271,9 @@ export const init = new Command()
 				try {
 					await runBunCommand(["install"], targetDir);
 					logger.success("Dependencies installed successfully!");
+					
+					// Build the plugin after installing dependencies
+					await buildProject(targetDir, true);
 				} catch (_error) {
 					logger.warn(
 						"Failed to install dependencies automatically. Please run 'bun install' manually.",
@@ -412,6 +416,9 @@ export const init = new Command()
 
 			// Install dependencies
 			await installDependencies(targetDir, database, selectedPlugins);
+
+			// Build the project after installing dependencies
+			await buildProject(targetDir);
 
 			logger.success("Project initialized successfully!");
 

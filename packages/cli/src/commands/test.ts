@@ -20,6 +20,7 @@ import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
 import { TestRunner } from "../testRunner.js";
 import { promptForEnvVars } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
+import { buildProject } from "@/src/utils/build-project";
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {
@@ -175,7 +176,15 @@ const runAgentTests = async (options: {
 	plugin?: string;
 	skipPlugins?: boolean;
 	skipProjectTests?: boolean;
+	skipBuild?: boolean;
 }) => {
+	// Build the project or plugin first unless skip-build is specified
+	if (!options.skipBuild) {
+		const cwd = process.cwd();
+		const isPlugin = options.plugin ? true : checkIfLikelyPluginDir(cwd);
+		await buildProject(cwd, isPlugin);
+	}
+
 	try {
 		const runtimes: IAgentRuntime[] = [];
 		const projectAgents: ProjectAgent[] = [];
@@ -557,6 +566,7 @@ export const test = new Command()
 	.option("-P, --plugin <name>", "Name of plugin to test")
 	.option("--skip-plugins", "Skip plugin tests")
 	.option("--skip-project-tests", "Skip project tests")
+	.option("--skip-build", "Skip building before running tests")
 	.action(async (options) => {
 		logger.info("Starting test command...");
 		logger.info("Command options:", options);

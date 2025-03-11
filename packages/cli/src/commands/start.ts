@@ -28,6 +28,8 @@ import {
 	promptForServices
 } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
+import { buildProject } from "@/src/utils/build-project";
+import chalk from "chalk";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -620,8 +622,14 @@ export const start = new Command()
 		"--character <character>",
 		"Path or URL to character file to use instead of default",
 	)
+	.option("--skip-build", "Skip building the project before starting")
 	.action(async (options) => {
 		try {
+			// Build the project first unless skip-build is specified
+			if (!options.skipBuild) {
+				await buildProject(process.cwd());
+			}
+			
 			// Collect server options
 			const characterPath = options.character;
 
