@@ -1,7 +1,7 @@
 {
   "name": "eliza",
   "scripts": {
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "npx turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
     "cli": "bun --filter=@elizaos/cli cli",
     "lint": "turbo run lint --filter=./packages/*",
     "preinstall": "npx only-allow bun",

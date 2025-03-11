@@ -36,7 +36,8 @@
 		"dev": "tsup --watch",
 		"migrate:generate": "drizzle-kit generate:pg",
 		"migrate": "tsup src/migrate.ts --format esm --clean=false --onSuccess=\"node dist/migrate.js\"",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
+		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
+		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"peerDependencies": {
 		"typescript": "5.8.2"

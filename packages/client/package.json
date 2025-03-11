@@ -10,10 +10,11 @@
 		"dev:client": "bun run extract-version && vite",
 		"build": "bun run extract-version && tsc -b && vite build",
 		"preview": "vite preview",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
+		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
+		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "^1.0.0-alpha.20",
 		"@radix-ui/react-avatar": "^1.1.3",
 		"@radix-ui/react-collapsible": "^1.1.3",
 		"@radix-ui/react-dialog": "^1.1.6",
