@@ -82,6 +82,7 @@ export const ModelTypes = {
 	TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
 	TEXT_REASONING_SMALL: "REASONING_SMALL",
 	TEXT_REASONING_LARGE: "REASONING_LARGE",
+	TEXT_COMPLETION: "TEXT_COMPLETION",
 	IMAGE: "IMAGE",
 	IMAGE_DESCRIPTION: "IMAGE_DESCRIPTION",
 	TRANSCRIPTION: "TRANSCRIPTION",
@@ -1589,7 +1590,20 @@ export enum EventTypes {
 	// Interaction events
 	REACTION_RECEIVED = "REACTION_RECEIVED",
 	POST_GENERATED = "POST_GENERATED",
-	INTERACTION_RECEIVED = "INTERACTION_RECEIVED"
+	INTERACTION_RECEIVED = "INTERACTION_RECEIVED",
+
+	// Run events
+	RUN_STARTED = "RUN_STARTED",
+	RUN_ENDED = "RUN_ENDED",
+	RUN_TIMEOUT = "RUN_TIMEOUT",
+
+	// Action events
+	ACTION_STARTED = "ACTION_STARTED",
+	ACTION_COMPLETED = "ACTION_COMPLETED",
+
+	// Evaluator events
+	EVALUATOR_STARTED = "EVALUATOR_STARTED",
+	EVALUATOR_COMPLETED = "EVALUATOR_COMPLETED"
 }
 
 /**
@@ -1642,6 +1656,43 @@ export interface MessagePayload extends EventPayload {
 }
 
 /**
+ * Run event payload type
+ */
+export interface RunEventPayload extends EventPayload {
+	runId: UUID;
+	messageId: UUID;
+	roomId: UUID;
+	entityId: UUID;
+	startTime: number;
+	status: "started" | "completed" | "timeout";
+	endTime?: number;
+	duration?: number;
+	error?: string;
+}
+
+/**
+ * Action event payload type
+ */
+export interface ActionEventPayload extends EventPayload {
+	actionId: UUID;
+	actionName: string;
+	startTime?: number;
+	completed?: boolean;
+	error?: Error;
+}
+
+/**
+ * Evaluator event payload type
+ */
+export interface EvaluatorEventPayload extends EventPayload {
+	evaluatorId: UUID;
+	evaluatorName: string;
+	startTime?: number;
+	completed?: boolean;
+	error?: Error;
+}
+
+/**
  * Maps event types to their corresponding payload types
  */
 export interface EventPayloadMap {
@@ -1656,6 +1707,13 @@ export interface EventPayloadMap {
 	[EventTypes.REACTION_RECEIVED]: MessagePayload;
 	[EventTypes.POST_GENERATED]: MessagePayload;
 	[EventTypes.INTERACTION_RECEIVED]: MessagePayload;
+	[EventTypes.RUN_STARTED]: RunEventPayload;
+	[EventTypes.RUN_ENDED]: RunEventPayload;
+	[EventTypes.RUN_TIMEOUT]: RunEventPayload;
+	[EventTypes.ACTION_STARTED]: ActionEventPayload;
+	[EventTypes.ACTION_COMPLETED]: ActionEventPayload;
+	[EventTypes.EVALUATOR_STARTED]: EvaluatorEventPayload;
+	[EventTypes.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
 }
 
 /**
