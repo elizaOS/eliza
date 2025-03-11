@@ -14,7 +14,7 @@
 		"lint": "biome check --config-path=./ --write",
 		"dev": "node --loader ts-node/esm src/index.ts",
 		"check-types": "tsc --noEmit",
-		"test": "vitest --run"
+		"test": "cd ../cli && bun run build && cd ../the-org && bun run build && npx elizaos test"
 	},
 	"nodemonConfig": {
 		"watch": ["src", "../core/dist"],
