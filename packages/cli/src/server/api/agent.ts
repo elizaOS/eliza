@@ -17,11 +17,13 @@ import {
 	logger,
 	messageHandlerTemplate,
 	parseJSONObjectFromText,
+	stringToUuid,
 	validateUuid,
 } from "@elizaos/core";
 import express from "express";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
+import { Readable } from "node:stream";
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -459,21 +461,19 @@ export function agentRouter(
 				worldId,
 			});
 
-			console.log("entityId", entityId);
-			console.log("runtime.agentId", runtime.agentId);
+			logger.info("entityId", entityId);
+			logger.info("runtime.agentId", runtime.agentId);
 
 			const existingRelationship = await runtime
-				.getDatabaseAdapter()
 				.getRelationship({
 					sourceEntityId: entityId,
 					targetEntityId: runtime.agentId,
 				});
 
-			console.log("existingRelationship", existingRelationship);
+			logger.info("existingRelationship", JSON.stringify(existingRelationship, null, 2));
 
 			if (!existingRelationship && entityId !== runtime.agentId) {
 				const createdRelationship = await runtime
-					.getDatabaseAdapter()
 					.createRelationship({
 						sourceEntityId: entityId,
 						targetEntityId: runtime.agentId,
@@ -483,7 +483,7 @@ export function agentRouter(
 							channel: "direct",
 						},
 					});
-				console.log("created relationship", createdRelationship);
+				logger.info("created relationship", JSON.stringify(createdRelationship, null, 2));
 			}
 
 			const messageId = createUniqueUuid(runtime, Date.now().toString());
@@ -533,9 +533,9 @@ export function agentRouter(
 			};
 
 			await runtime.getMemoryManager("messages").addEmbeddingToMemory(memory);
-			console.log("added embedding to memory");
+			logger.info("added embedding to memory");
 			await runtime.getMemoryManager("messages").createMemory(memory);
-			console.log("created memory");
+			logger.info("created memory");
 
 			let state = await runtime.composeState(userMessage);
 
@@ -548,11 +548,11 @@ export function agentRouter(
 				prompt,
 			});
 
-			console.log("responseText", responseText);
+			logger.info("responseText", responseText);
 
 			const response = parseJSONObjectFromText(responseText) as Content;
 
-			console.log("response", response);
+			logger.info("response", response);
 
 			if (!response) {
 				res.status(500).json({
@@ -599,15 +599,15 @@ export function agentRouter(
 				replyHandler,
 			);
 
-			console.log("processed actions");
+			logger.info("processed actions");
 
 			await runtime.evaluate(memory, state);
 
-			console.log("evaluated");
+			logger.info("evaluated");
 
 			res.status(202).json();
 		} catch (error) {
-			logger.error("Error processing message:", error);
+			logger.error("Error processing message:", error.message);
 			res.status(500).json({
 				success: false,
 				error: {
@@ -738,13 +738,32 @@ export function agentRouter(
 				ModelTypes.TEXT_TO_SPEECH,
 				text,
 			);
-			const audioBuffer = await speechResponse.arrayBuffer();
+			
+			// Convert to Buffer if not already a Buffer
+			const audioBuffer = Buffer.isBuffer(speechResponse)
+				? speechResponse
+				: await new Promise<Buffer>((resolve, reject) => {
+						if (!(speechResponse instanceof Readable)) {
+							return reject(
+								new Error("Unexpected response type from TEXT_TO_SPEECH model"),
+							);
+						}
 
+						const chunks: Buffer[] = [];
+						speechResponse.on("data", (chunk) =>
+							chunks.push(Buffer.from(chunk)),
+						);
+						speechResponse.on("end", () => resolve(Buffer.concat(chunks)));
+						speechResponse.on("error", (err) => reject(err));
+					});
+
+			logger.debug("[TTS] Setting response headers");
 			res.set({
 				"Content-Type": "audio/mpeg",
 				"Transfer-Encoding": "chunked",
 			});
 
+			
 			res.send(Buffer.from(audioBuffer));
 		} catch (error) {
 			logger.error("[TTS] Error generating speech:", error);
@@ -805,7 +824,26 @@ export function agentRouter(
 				ModelTypes.TEXT_TO_SPEECH,
 				text,
 			);
-			const audioBuffer = await speechResponse.arrayBuffer();
+			
+
+			// Convert to Buffer if not already a Buffer
+			const audioBuffer = Buffer.isBuffer(speechResponse)
+				? speechResponse
+				: await new Promise<Buffer>((resolve, reject) => {
+						if (!(speechResponse instanceof Readable)) {
+							return reject(
+								new Error("Unexpected response type from TEXT_TO_SPEECH model"),
+							);
+						}
+
+						const chunks: Buffer[] = [];
+						speechResponse.on("data", (chunk) =>
+							chunks.push(Buffer.from(chunk)),
+						);
+						speechResponse.on("end", () => resolve(Buffer.concat(chunks)));
+						speechResponse.on("error", (err) => reject(err));
+					});
+
 
 			logger.debug("[SPEECH GENERATE] Setting response headers");
 			res.set({
@@ -948,36 +986,65 @@ export function agentRouter(
 			}
 
 			logger.debug("[SPEECH CONVERSATION] Creating response memory");
+			
 			const responseMessage = {
 				...userMessage,
-				entityId: runtime.agentId,
-				content: response,
+				content: { text: response },
+				roomId: roomId as UUID,
+				agentId: runtime.agentId,
 			};
+
 
 			await runtime.getMemoryManager("messages").createMemory(responseMessage);
 			await runtime.evaluate(memory, state);
 
+
 			await runtime.processActions(
 				memory,
-				[responseMessage],
+				[responseMessage as Memory],
 				state,
 				async () => [memory],
 			);
 
 			logger.info("[SPEECH CONVERSATION] Generating speech response");
+			
 			const speechResponse = await runtime.useModel(
 				ModelTypes.TEXT_TO_SPEECH,
-				response.text,
+				text,
 			);
-			const audioBuffer = await speechResponse.arrayBuffer();
+			
+
+			// Convert to Buffer if not already a Buffer
+			const audioBuffer = Buffer.isBuffer(speechResponse)
+				? speechResponse
+				: await new Promise<Buffer>((resolve, reject) => {
+						if (!(speechResponse instanceof Readable)) {
+							return reject(
+								new Error("Unexpected response type from TEXT_TO_SPEECH model"),
+							);
+						}
+
+						const chunks: Buffer[] = [];
+						speechResponse.on("data", (chunk) =>
+							chunks.push(Buffer.from(chunk)),
+						);
+						speechResponse.on("end", () => resolve(Buffer.concat(chunks)));
+						speechResponse.on("error", (err) => reject(err));
+					});
+
+
 
 			logger.debug("[SPEECH CONVERSATION] Setting response headers");
+
+
 			res.set({
 				"Content-Type": "audio/mpeg",
 				"Transfer-Encoding": "chunked",
 			});
 
 			res.send(Buffer.from(audioBuffer));
+
+
 			logger.success(
 				`[SPEECH CONVERSATION] Successfully processed conversation for: ${runtime.character.name}`,
 			);
@@ -1119,13 +1186,13 @@ export function agentRouter(
 		try {
 			const worldId = req.query.worldId as string;
 			const rooms = await runtime
-				.getDatabaseAdapter()
+				.databaseAdapter
 				.getRoomsForParticipant(agentId);
 
 			const roomDetails = await Promise.all(
 				rooms.map(async (roomId) => {
 					try {
-						const roomData = await runtime.getDatabaseAdapter().getRoom(roomId);
+						const roomData = await runtime.databaseAdapter.getRoom(roomId);
 						if (!roomData) return null;
 
 						if (worldId && roomData.worldId !== worldId) {
@@ -1133,7 +1200,7 @@ export function agentRouter(
 						}
 
 						const entities = await runtime
-							.getDatabaseAdapter()
+							.databaseAdapter
 							.getEntitiesForRoom(roomId, true);
 
 						return {
@@ -1214,11 +1281,11 @@ export function agentRouter(
 			});
 
 			await runtime
-				.getDatabaseAdapter()
+				.databaseAdapter
 				.addParticipant(runtime.agentId, roomName);
 			await runtime.ensureParticipantInRoom(entityId, roomId);
 			await runtime
-				.getDatabaseAdapter()
+				.databaseAdapter
 				.setParticipantUserState(roomId, entityId, "FOLLOWED");
 
 			res.status(201).json({
@@ -1276,7 +1343,7 @@ export function agentRouter(
 		}
 
 		try {
-			const room = await runtime.getDatabaseAdapter().getRoom(roomId);
+			const room = await runtime.databaseAdapter.getRoom(roomId);
 			if (!room) {
 				res.status(404).json({
 					success: false,
@@ -1288,9 +1355,7 @@ export function agentRouter(
 				return;
 			}
 
-			const entities = await runtime
-				.getDatabaseAdapter()
-				.getEntitiesForRoom(roomId, true);
+			const entities = await runtime.databaseAdapter.getEntitiesForRoom(roomId, true);
 
 			res.json({
 				success: true,
@@ -1344,7 +1409,7 @@ export function agentRouter(
 		}
 
 		try {
-			const room = await runtime.getDatabaseAdapter().getRoom(roomId);
+			const room = await runtime.databaseAdapter.getRoom(roomId);
 			if (!room) {
 				res.status(404).json({
 					success: false,
@@ -1357,9 +1422,9 @@ export function agentRouter(
 			}
 
 			const updates = req.body;
-			await runtime.getDatabaseAdapter().updateRoom({ ...updates, roomId });
+			await runtime.databaseAdapter.updateRoom({ ...updates, roomId });
 
-			const updatedRoom = await runtime.getDatabaseAdapter().getRoom(roomId);
+			const updatedRoom = await runtime.databaseAdapter.getRoom(roomId);
 			res.json({
 				success: true,
 				data: updatedRoom,
@@ -1406,7 +1471,7 @@ export function agentRouter(
 		}
 
 		try {
-			await runtime.getDatabaseAdapter().deleteRoom(roomId);
+			await runtime.databaseAdapter.deleteRoom(roomId);
 			res.status(204).send();
 		} catch (error) {
 			logger.error(`[ROOM DELETE] Error deleting room ${roomId}:`, error);
