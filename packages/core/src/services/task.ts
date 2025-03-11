@@ -115,8 +115,12 @@ export class TaskService extends Service {
 		}
 
 		this.timer = setInterval(async () => {
-			await this.checkTasks();
-		}, this.TICK_INTERVAL);
+			try {
+				await this.checkTasks();
+			} catch (error) {
+				logger.error("Error checking tasks:", error);
+			}
+		}, this.TICK_INTERVAL) as unknown as NodeJS.Timeout;
 	}
 
 	/**

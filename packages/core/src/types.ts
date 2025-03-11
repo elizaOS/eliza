@@ -900,7 +900,6 @@ export interface IDatabaseAdapter {
 export interface IMemoryManager {
 	runtime: IAgentRuntime;
 	tableName: string;
-	constructor: Function;
 
 	addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 
@@ -1565,10 +1564,6 @@ export interface ModelResultMap {
  * Standard event types across all platforms
  */
 export enum EventTypes {
-	ACTION_STARTED = "ACTION_STARTED",
-	ACTION_COMPLETED = "ACTION_COMPLETED",
-	EVALUATOR_STARTED = "EVALUATOR_STARTED",
-	EVALUATOR_COMPLETED = "EVALUATOR_COMPLETED",
 	// World events
 	WORLD_JOINED = "WORLD_JOINED",
 	WORLD_CONNECTED = "WORLD_CONNECTED",

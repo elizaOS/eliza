@@ -1,3 +1,5 @@
+// TODO: Review ensureConnection and other runtime helper methods and their usage and implement, they may be helpful
+
 import { v4 as uuidv4 } from "uuid";
 import {
 	ChannelType,
@@ -7,28 +9,13 @@ import {
 	type Memory,
 	Service,
 	type UUID,
-	EventTypes,
 	type ActionEventPayload,
 	type EvaluatorEventPayload,
+	type World,
+	type Room,
 } from "../types";
+import { createUniqueUuid } from "../entities";
 import logger from "../logger";
-
-interface World {
-	id: UUID;
-	name: string;
-	rooms: Map<UUID, Room>;
-	owner: {
-		id: UUID;
-		name: string;
-	};
-}
-
-interface Room {
-	id: UUID;
-	name: string;
-	worldId: UUID;
-	participants: Set<UUID>;
-}
 
 interface ActionTracker {
 	actionId: UUID;
@@ -155,16 +142,22 @@ export class ScenarioService extends Service {
 	 * @returns The created world's ID
 	 */
 	async createWorld(name: string, ownerName: string): Promise<UUID> {
+		const serverId = createUniqueUuid(this.runtime.agentId, name);
 		const worldId = uuidv4() as UUID;
 		const ownerId = uuidv4() as UUID;
 
 		const world: World = {
 			id: worldId,
 			name,
-			rooms: new Map(),
-			owner: {
-				id: ownerId,
-				name: ownerName
+			serverId,
+			agentId: this.runtime.agentId,
+			// TODO: get the server id, create it or whatever
+			metadata: {
+				// this is wrong, the owner needs to be tracked by scenario and similar to how we do it with Discord etc
+				owner: {
+					id: ownerId,
+					name: ownerName
+				}
 			}
 		};
 
@@ -185,14 +178,8 @@ export class ScenarioService extends Service {
 		}
 
 		const roomId = uuidv4() as UUID;
-		const room: Room = {
-			id: roomId,
-			name,
-			worldId,
-			participants: new Set()
-		};
 
-		world.rooms.set(roomId, room);
+		// worlds do not have rooms on them, we'll need to use runtime.getRooms(worldId) from the runtime
 
 		await this.runtime.ensureRoomExists({
 			id: roomId,
@@ -218,12 +205,15 @@ export class ScenarioService extends Service {
 			throw new Error(`World ${worldId} not found`);
 		}
 
-		const room = world.rooms.get(roomId);
+		const room = this.runtime.getRoom(roomId);
 		if (!room) {
 			throw new Error(`Room ${roomId} not found in world ${worldId}`);
 		}
 
-		room.participants.add(participantId);
+		await this.runtime.addParticipant(roomId, participantId);
+
+
+		// TODO: This could all be rewritten like an ensureConnection approach
 	}
 
 	/**
@@ -244,11 +234,6 @@ export class ScenarioService extends Service {
 			throw new Error(`World ${worldId} not found`);
 		}
 
-		const room = world.rooms.get(roomId);
-		if (!room) {
-			throw new Error(`Room ${roomId} not found in world ${worldId}`);
-		}
-
 		const memory: Memory = {
 			entityId: sender.agentId,
 			agentId: sender.agentId,
@@ -262,13 +247,15 @@ export class ScenarioService extends Service {
 			},
 		};
 
+		const participants = await this.runtime.getParticipantsForRoom(roomId);
+
 		// Emit message received event for all participants
-		for (const participantId of room.participants) {
+		for (const participantId of participants) {
 			this.runtime.emitEvent("MESSAGE_RECEIVED", {
 				runtime: this.runtime,
 				message: memory,
 				roomId,
-				entityId: sender.agentId,
+				entityId: participantId,
 				source: "scenario",
 				type: ChannelType.GROUP,
 			});
@@ -337,7 +324,7 @@ const scenarios = [
 		}
 
 		// Create a test world
-		const worldId = await service.createWorld("Test World", "Test Owner");
+		const worldId = await service.createWorld("Test Server", "Test Owner");
 
 		// Create rooms for each member
 		const roomIds = [];
