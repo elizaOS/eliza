@@ -7,10 +7,12 @@ import {
 	type Provider,
 	Role,
 	type UUID,
+	type World,
 	createUniqueUuid,
 	initializeOnboarding,
-	logger,
+	logger
 } from "@elizaos/core";
+
 import type { Guild } from "discord.js";
 
 /**
@@ -24,7 +26,7 @@ import type { Guild } from "discord.js";
  * @param {Provider[]} [param.providers] - Optional array of providers to register.
  * @param {Evaluator[]} [param.evaluators] - Optional array of evaluators to register.
  */
-export const initCharacter = ({
+export const initCharacter = async ({
 	runtime,
 	config,
 	actions,
@@ -36,7 +38,7 @@ export const initCharacter = ({
 	actions?: Action[];
 	providers?: Provider[];
 	evaluators?: Evaluator[];
-}) => {
+}): Promise<void> => {
 	if (actions) {
 		for (const action of actions) {
 			runtime.registerAction(action);
@@ -74,9 +76,6 @@ export const initCharacter = ({
 };
 
 /**
- * Initializes all systems for a server
- */
-/**
  * Initializes all systems for the given servers with the provided runtime, servers, and onboarding configuration.
  *
  * @param {IAgentRuntime} runtime - The runtime object that provides functionalities for the agent.
@@ -98,38 +97,28 @@ export async function initializeAllSystems(
 			const worldId = createUniqueUuid(runtime, server.id);
 			const ownerId = createUniqueUuid(runtime, server.ownerId);
 
-			await runtime.ensureWorldExists({
+			// Initialize onboarding for this server
+			const world: World = {
 				id: worldId,
 				name: server.name,
-				agentId: runtime.agentId,
 				serverId: server.id,
+				agentId: runtime.agentId,
 				metadata: {
-					ownership: server.ownerId ? { ownerId } : undefined,
 					roles: {
 						[ownerId]: Role.OWNER,
 					},
+					ownership: {
+						ownerId: ownerId,
+					},
 				},
-			});
+			};
 
-			const world = await runtime.getWorld(worldId);
-
-			if (world.metadata?.settings) {
-				continue;
-			}
-
-			// Initialize settings configuration
-			const worldSettings = await initializeOnboarding(runtime, world, config);
-
-			if (!worldSettings) {
-				logger.error(`Failed to initialize settings for server ${server.id}`);
-				continue;
-			}
-
-			// Start settings DM with server owner
-			await startOnboardingDM(runtime, server, worldId);
+			await runtime.ensureWorldExists(world);
+			await initializeOnboarding(runtime, world, config);
 		}
 	} catch (error) {
-		logger.error(`Error initializing systems: ${error}`);
+		logger.error("Error initializing systems:", error);
+		throw error;
 	}
 }
 
@@ -172,9 +161,7 @@ export async function startOnboardingDM(
 			worldId: worldId,
 		});
 
-		const entity = await runtime
-			
-			.getEntityById(runtime.agentId);
+		const entity = await runtime.getEntityById(runtime.agentId);
 
 		if (!entity) {
 			await runtime.createEntity({
