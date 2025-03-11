@@ -292,7 +292,7 @@ plugins
 			// Get CLI version for runtime compatibility
 			const cliPackageJsonPath = path.resolve(
 				path.dirname(fileURLToPath(import.meta.url)),
-				'../../package.json'
+				'../package.json'
 			);
 
 			let cliVersion = '0.0.0';
@@ -345,7 +345,7 @@ plugins
 				// wait 10 ms
 				await new Promise((resolve) => setTimeout(resolve, 10));
 				
-				const newCredentials = await promptAndSaveGitHubToken();
+				const newCredentials = await getGitHubCredentials();
 				if (!newCredentials) {
 					process.exit(1);
 				}
@@ -612,14 +612,17 @@ plugins
 				logger.info("  * repo (for repository access)");
 				logger.info("  * read:org (for organization access)");
 				logger.info("  * workflow (for workflow access)\n");
-
-				await new Promise((resolve) => setTimeout(resolve, 10));
 				
-				const newCredentials = await promptAndSaveGitHubToken();
-				if (!newCredentials) {
+				// Initialize data directory first
+				await initializeDataDir();
+				
+				// Use the built-in credentials function
+				const credentials = await getGitHubCredentials();
+				if (!credentials) {
+					logger.error("GitHub credentials setup cancelled.");
 					process.exit(1);
 				}
-
+				
 				// Revalidate after saving credentials
 				const revalidated = await validateDataDir();
 				if (!revalidated) {
@@ -664,7 +667,7 @@ plugins
 			// Get CLI version for runtime compatibility
 			const cliPackageJsonPath = path.resolve(
 				path.dirname(fileURLToPath(import.meta.url)),
-				'../../package.json'
+				'../package.json'
 			);
 
 			let cliVersion = '0.0.0';
@@ -687,7 +690,7 @@ plugins
 
 				await new Promise((resolve) => setTimeout(resolve, 10));
 				
-				const newCredentials = await promptAndSaveGitHubToken();
+				const newCredentials = await getGitHubCredentials();
 				if (!newCredentials) {
 					process.exit(1);
 				}
@@ -761,30 +764,3 @@ plugins
 			handleError(error);
 		}
 	});
-
-async function promptAndSaveGitHubToken(): Promise<{ username: string; token: string } | null> {
-	const { username, token } = await prompts([
-		{
-			type: "text",
-			name: "username",
-			message: "Enter your GitHub username:",
-			validate: (value) => value.length > 0 || "Username is required",
-		},
-		{
-			type: "password",
-			name: "token",
-			message: "Enter your GitHub Personal Access Token (with repo, read:org, and workflow scopes):",
-			validate: (value) => value.length > 0 || "Token is required",
-		},
-	]);
-
-	if (!username || !token) {
-		return null;
-	}
-
-	// Save the token
-	await setGitHubToken(token);
-	logger.success("GitHub token saved successfully!");
-	
-	return { username, token };
-}

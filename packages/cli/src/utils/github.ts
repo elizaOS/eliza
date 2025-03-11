@@ -159,7 +159,7 @@ export async function createBranch(
 ): Promise<boolean> {
 	try {
 		// Get the SHA of the base branch
-		const baseResponse = await fetch(
+		let baseResponse = await fetch(
 			`${GITHUB_API_URL}/repos/${owner}/${repo}/git/ref/heads/${baseBranch}`,
 			{
 				headers: {
@@ -168,6 +168,161 @@ export async function createBranch(
 				},
 			},
 		);
+
+		// If the requested base branch doesn't exist, try to find an alternative branch
+		if (baseResponse.status !== 200) {
+			logger.warn(`Base branch '${baseBranch}' not found, checking for alternative branches...`);
+			
+			// List available branches
+			const branchesResponse = await fetch(
+				`${GITHUB_API_URL}/repos/${owner}/${repo}/branches`,
+				{
+					headers: {
+						Authorization: `token ${token}`,
+						Accept: "application/vnd.github.v3+json",
+					},
+				},
+			);
+			
+			if (branchesResponse.status === 200) {
+				const branches = await branchesResponse.json() as Array<{name: string}>;
+				if (branches && branches.length > 0) {
+					// Use the first available branch as base
+					const alternativeBranch = branches[0].name;
+					logger.info(`Using '${alternativeBranch}' as base branch instead`);
+					
+					// Try again with the alternative branch
+					baseResponse = await fetch(
+						`${GITHUB_API_URL}/repos/${owner}/${repo}/git/ref/heads/${alternativeBranch}`,
+						{
+							headers: {
+								Authorization: `token ${token}`,
+								Accept: "application/vnd.github.v3+json",
+							},
+						},
+					);
+				} else {
+					// No branches found, could be a fresh fork - create initial empty commit and branch
+					logger.info("No branches found in repository, creating initial commit");
+					
+					// Create a blob for empty README
+					const blobResponse = await fetch(
+						`${GITHUB_API_URL}/repos/${owner}/${repo}/git/blobs`,
+						{
+							method: "POST",
+							headers: {
+								Authorization: `token ${token}`,
+								Accept: "application/vnd.github.v3+json",
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								content: "# Repository initialized by Eliza CLI",
+								encoding: "utf-8",
+							}),
+						}
+					);
+					
+					if (blobResponse.status !== 201) {
+						logger.error("Failed to create initial blob");
+						return false;
+					}
+					
+					const blobData = await blobResponse.json() as { sha: string };
+					const blobSha = blobData.sha;
+					
+					// Create a tree with the README
+					const treeResponse = await fetch(
+						`${GITHUB_API_URL}/repos/${owner}/${repo}/git/trees`,
+						{
+							method: "POST",
+							headers: {
+								Authorization: `token ${token}`,
+								Accept: "application/vnd.github.v3+json",
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								tree: [
+									{
+										path: "README.md",
+										mode: "100644",
+										type: "blob",
+										sha: blobSha,
+									},
+								],
+							}),
+						}
+					);
+					
+					if (treeResponse.status !== 201) {
+						logger.error("Failed to create initial tree");
+						return false;
+					}
+					
+					const treeData = await treeResponse.json() as { sha: string };
+					const treeSha = treeData.sha;
+					
+					// Create a commit
+					const commitResponse = await fetch(
+						`${GITHUB_API_URL}/repos/${owner}/${repo}/git/commits`,
+						{
+							method: "POST",
+							headers: {
+								Authorization: `token ${token}`,
+								Accept: "application/vnd.github.v3+json",
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								message: "Initial commit",
+								tree: treeSha,
+							}),
+						}
+					);
+					
+					if (commitResponse.status !== 201) {
+						logger.error("Failed to create initial commit");
+						return false;
+					}
+					
+					const commitData = await commitResponse.json() as { sha: string };
+					const commitSha = commitData.sha;
+					
+					// Create a reference for main branch
+					const refResponse = await fetch(
+						`${GITHUB_API_URL}/repos/${owner}/${repo}/git/refs`,
+						{
+							method: "POST",
+							headers: {
+								Authorization: `token ${token}`,
+								Accept: "application/vnd.github.v3+json",
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								ref: "refs/heads/main",
+								sha: commitSha,
+							}),
+						}
+					);
+					
+					if (refResponse.status !== 201) {
+						logger.error("Failed to create main branch");
+						return false;
+					}
+					
+					logger.success("Created main branch with initial commit");
+					
+					// Now we can use this as our base
+					baseResponse = await fetch(
+						`${GITHUB_API_URL}/repos/${owner}/${repo}/git/ref/heads/main`,
+						{
+							headers: {
+								Authorization: `token ${token}`,
+								Accept: "application/vnd.github.v3+json",
+							},
+						},
+					);
+				}
+			}
+		}
 
 		if (baseResponse.status !== 200) {
 			logger.error(
@@ -310,9 +465,18 @@ export async function updateFile(
 			return true;
 		}
 
-		logger.error(
-			`Failed to ${existingContent !== null ? "update" : "create"} file: ${response.statusText}`,
-		);
+		// Log more detailed error information
+		try {
+			const errorData = await response.json();
+			logger.error(
+				`Failed to ${existingContent !== null ? "update" : "create"} file: ${response.statusText}`,
+			);
+			logger.error(`Error details: ${JSON.stringify(errorData)}`);
+		} catch (jsonError) {
+			logger.error(
+				`Failed to ${existingContent !== null ? "update" : "create"} file: ${response.statusText}`,
+			);
+		}
 		return false;
 	} catch (error) {
 		logger.error(`Failed to update file: ${error.message}`);
@@ -396,76 +560,116 @@ export async function getGitHubCredentials(): Promise<{
 	username: string;
 	token: string;
 } | null> {
-	// Check for existing credentials in env
-	if (process.env.GITHUB_USERNAME && process.env.GITHUB_TOKEN) {
-		const isValid = await validateGitHubToken(process.env.GITHUB_TOKEN);
-		if (isValid) {
-			return {
-				username: process.env.GITHUB_USERNAME,
-				token: process.env.GITHUB_TOKEN,
-			};
-		}
-	}
-
-	// No valid credentials found, prompt the user
-	const prompt = await import("prompts");
-
-	const { username } = await prompt.default({
-		type: "text",
-		name: "username",
-		message: "Enter your GitHub username:",
-		validate: (value) => (value ? true : "Username is required"),
-	});
-
-	if (!username) {
-		return null;
-	}
-
-	const { token } = await prompt.default({
-		type: "password",
-		name: "token",
-		message: "Enter your GitHub Personal Access Token (with repo scope):",
-		validate: (value) => (value ? true : "Token is required"),
-	});
-
-	if (!token) {
-		return null;
-	}
-
-	// Validate token
-	const isValid = await validateGitHubToken(token);
-	if (!isValid) {
-		logger.error("Invalid GitHub token");
-		return null;
-	}
-
-	// Save credentials to .env
-	const envFile = path.join(os.homedir(), ".eliza", ".env");
-	const envDir = path.dirname(envFile);
-
-	await fs.mkdir(envDir, { recursive: true });
-
 	try {
-		let envContent = "";
-		try {
-			envContent = await fs.readFile(envFile, "utf-8");
-			if (!envContent.endsWith("\n")) {
-				envContent += "\n";
+		// Check for existing credentials in env
+		let token = process.env.GITHUB_TOKEN;
+		let username = process.env.GITHUB_USERNAME;
+		
+		// If not in process.env, try to load from .env file
+		if (!token) {
+			const { getGitHubToken } = await import("./registry");
+			token = await getGitHubToken() || undefined;
+		}
+		
+		// If we have a token, validate it and try to get username if missing
+		if (token) {
+			const isValid = await validateGitHubToken(token);
+			if (isValid) {
+				// If we don't have a username, try to get it from GitHub
+				if (!username) {
+					const userInfo = await getAuthenticatedUser(token);
+					if (userInfo) {
+						username = userInfo.login;
+						// Save the username to env
+						await saveGitHubCredentials(username, token);
+					}
+				}
+				
+				if (username) {
+					logger.info(`✓ Using GitHub credentials for ${username}`);
+					return { username, token };
+				}
+			} else {
+				logger.warn("Stored GitHub token is invalid, will prompt for new credentials");
 			}
-		} catch (error) {
-			// File doesn't exist, create it
-			envContent = "# Environment variables for Eliza\n\n";
 		}
 
-		// Add GitHub credentials
-		envContent += `GITHUB_USERNAME=${username}\n`;
-		envContent += `GITHUB_TOKEN=${token}\n`;
+		// No valid credentials found, prompt the user
+		const prompt = await import("prompts");
 
-		await fs.writeFile(envFile, envContent);
-		logger.success(`GitHub credentials saved to ${envFile}`);
+		const { promptedUsername } = await prompt.default({
+			type: "text",
+			name: "promptedUsername",
+			message: "Enter your GitHub username:",
+			validate: (value) => (value ? true : "Username is required"),
+		});
+
+		if (!promptedUsername) {
+			return null;
+		}
+
+		const { promptedToken } = await prompt.default({
+			type: "password",
+			name: "promptedToken",
+			message: "Enter your GitHub Personal Access Token (with repo, read:org, and workflow scopes):",
+			validate: (value) => (value ? true : "Token is required"),
+		});
+
+		if (!promptedToken) {
+			return null;
+		}
+
+		// Validate token
+		const isValid = await validateGitHubToken(promptedToken);
+		if (!isValid) {
+			logger.error("Invalid GitHub token");
+			return null;
+		}
+
+		// Save credentials
+		await saveGitHubCredentials(promptedUsername, promptedToken);
+		logger.success("GitHub credentials saved successfully");
+
+		return { username: promptedUsername, token: promptedToken };
 	} catch (error) {
-		logger.warn(`Failed to save GitHub credentials: ${error.message}`);
+		logger.error(`Error handling GitHub credentials: ${error.message}`);
+		return null;
 	}
+}
 
-	return { username, token };
+/**
+ * Save GitHub credentials to the .env file
+ */
+async function saveGitHubCredentials(username: string, token: string): Promise<void> {
+	try {
+		// Save username to process.env for immediate use
+		process.env.GITHUB_USERNAME = username;
+		process.env.GITHUB_TOKEN = token;
+		
+		// Save to .env file using registry utility
+		const { setGitHubToken } = await import("./registry");
+		await setGitHubToken(token);
+		
+		// Also save username to .env
+		const envFile = path.join(os.homedir(), ".eliza", ".env");
+		
+		try {
+			let envContent = await fs.readFile(envFile, "utf-8");
+			
+			// Replace or add GITHUB_USERNAME
+			const usernameRegex = /^GITHUB_USERNAME=.*$/m;
+			if (usernameRegex.test(envContent)) {
+				envContent = envContent.replace(usernameRegex, `GITHUB_USERNAME=${username}`);
+			} else {
+				if (!envContent.endsWith("\n")) envContent += "\n";
+				envContent += `GITHUB_USERNAME=${username}\n`;
+			}
+			
+			await fs.writeFile(envFile, envContent);
+		} catch (error) {
+			logger.debug(`Error updating username in .env: ${error.message}`);
+		}
+	} catch (error) {
+		logger.error(`Failed to save GitHub credentials: ${error.message}`);
+	}
 }

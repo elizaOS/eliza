@@ -18,6 +18,7 @@ import path from 'node:path';
 import os from 'node:os';
 import dotenv from 'dotenv';
 import { getGitHubCredentials } from '../github';
+import { existsSync } from 'node:fs';
 
 const ELIZA_DIR = path.join(os.homedir(), '.eliza');
 const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');
@@ -107,11 +108,57 @@ export async function setEnvVar(key: string, value: string) {
 }
 
 export async function getGitHubToken(): Promise<string | undefined> {
-	return getEnvVar('GITHUB_TOKEN');
+	try {
+		// Force reload of .env file to get the latest token
+		const envPath = ENV_FILE;
+		if (existsSync(envPath)) {
+			const envContent = await fs.readFile(envPath, 'utf-8');
+			const env = dotenv.parse(envContent);
+			return env.GITHUB_TOKEN;
+		}
+	} catch (error) {
+		logger.debug(`Error reading GitHub token: ${error.message}`);
+	}
+	return undefined;
 }
 
 export async function setGitHubToken(token: string) {
-	await setEnvVar('GITHUB_TOKEN', token);
+	await ensureElizaDir();
+	
+	try {
+		// Read existing .env file or create a new one
+		let envContent = '';
+		try {
+			if (existsSync(ENV_FILE)) {
+				envContent = await fs.readFile(ENV_FILE, 'utf-8');
+			}
+		} catch (error) {
+			// File doesn't exist, create it with empty content
+			envContent = '# Eliza environment variables\n\n';
+		}
+
+		// Parse the existing content
+		const env = dotenv.parse(envContent);
+		
+		// Update the token
+		env.GITHUB_TOKEN = token;
+		
+		// Convert back to string format
+		let newContent = '';
+		for (const [key, value] of Object.entries(env)) {
+			newContent += `${key}=${value}\n`;
+		}
+		
+		// Write back to file
+		await fs.writeFile(ENV_FILE, newContent);
+		
+		// Also update process.env for immediate use
+		process.env.GITHUB_TOKEN = token;
+		
+		logger.debug('GitHub token saved successfully');
+	} catch (error) {
+		logger.error(`Failed to save GitHub token: ${error.message}`);
+	}
 }
 
 const agent = process.env.https_proxy
