@@ -179,6 +179,22 @@ export class PostgresConnectionManager
 	}
 
 	/**
+	 * Asynchronously checks if migrations exist in the database.
+	 * @returns {Promise<boolean>} A Promise that resolves to true if migrations exist, otherwise false.
+	 */
+	private async hasMigrations(): Promise<boolean> {
+		try {
+			const result = await this.pool.query(
+				"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '__drizzle_migrations')"
+			);
+			return result.rows[0].exists;
+		} catch (error) {
+			logger.error("Failed to check migrations:", error);
+			return false;
+		}
+	}
+
+	/**
 	 * Cleans up and closes the database pool.
 	 * @returns {Promise<void>} A Promise that resolves when the database pool is closed.
 	 */
@@ -199,6 +215,10 @@ export class PostgresConnectionManager
 	async runMigrations(): Promise<void> {
 		try {
 			const db = drizzle(this.pool);
+			if (await this.hasMigrations()) {
+				logger.info("Migrations already exist, skipping...");
+				return;
+			}
 			await migrate(db, {
 				migrationsFolder: path.resolve(__dirname, "../drizzle/migrations"),
 			});
