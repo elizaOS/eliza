@@ -6,7 +6,11 @@ import {
 	type Memory,
 	Service,
 	type UUID,
+	EventTypes,
+	type ActionEventPayload,
+	type EvaluatorEventPayload,
 } from "../types";
+import logger from "../logger";
 
 interface World {
 	id: UUID;
@@ -67,39 +71,45 @@ export class ScenarioService extends Service {
 
 	private setupEventListeners() {
 		// Track action start/completion
-		this.runtime.registerEvent("ACTION_STARTED", (data: { actionId: UUID; actionName: string }) => {
+		this.runtime.registerEvent(EventTypes.ACTION_STARTED, async (data: ActionEventPayload) => {
 			this.activeActions.set(data.actionId, {
 				actionId: data.actionId,
 				actionName: data.actionName,
 				startTime: Date.now(),
 				completed: false
 			});
+			return Promise.resolve();
 		});
 
-		this.runtime.registerEvent("ACTION_COMPLETED", (data: { actionId: UUID; error?: Error }) => {
+		this.runtime.registerEvent(EventTypes.ACTION_COMPLETED, async (data: ActionEventPayload) => {
 			const action = this.activeActions.get(data.actionId);
 			if (action) {
 				action.completed = true;
 				action.error = data.error;
 			}
+			return Promise.resolve();
 		});
 
 		// Track evaluator start/completion
-		this.runtime.registerEvent("EVALUATOR_STARTED", (data: { evaluatorId: UUID; evaluatorName: string }) => {
+		this.runtime.registerEvent(EventTypes.EVALUATOR_STARTED, async (data: EvaluatorEventPayload) => {
 			this.activeEvaluators.set(data.evaluatorId, {
 				evaluatorId: data.evaluatorId,
 				evaluatorName: data.evaluatorName,
 				startTime: Date.now(),
 				completed: false
 			});
+			logger.debug("Evaluator started", data);
+			return Promise.resolve();
 		});
 
-		this.runtime.registerEvent("EVALUATOR_COMPLETED", (data: { evaluatorId: UUID; error?: Error }) => {
+		this.runtime.registerEvent(EventTypes.EVALUATOR_COMPLETED, async (data: EvaluatorEventPayload) => {
 			const evaluator = this.activeEvaluators.get(data.evaluatorId);
 			if (evaluator) {
 				evaluator.completed = true;
 				evaluator.error = data.error;
 			}
+			logger.debug("Evaluator completed", data);
+			return Promise.resolve();
 		});
 	}
 
