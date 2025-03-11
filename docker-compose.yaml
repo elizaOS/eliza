@@ -1,42 +1,63 @@
+version: '3'
 services:
-    eliza:
-        build:
-            context: .
-            dockerfile: Dockerfile
-        stdin_open: true
-        tty: true
-        volumes:
-            - /var/run/tappd.sock:/var/run/tappd.sock
-            - eliza:/app/packages/plugin-twitter/src/tweetcache
-            - eliza:/app/db.sqlite
-        environment:
-            - OPENAI_API_KEY=
-            - REDPILL_API_KEY=
-            - ELEVENLABS_API_KEY=
-            - ELEVENLABS_MODEL_ID=eleven_multilingual_v2
-            - ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
-            - ELEVENLABS_VOICE_STABILITY=0.5
-            - ELEVENLABS_VOICE_SIMILARITY_BOOST=0.9
-            - ELEVENLABS_VOICE_STYLE=0.66
-            - ELEVENLABS_VOICE_USE_SPEAKER_BOOST=false
-            - ELEVENLABS_OPTIMIZE_STREAMING_LATENCY=4
-            - ELEVENLABS_OUTPUT_FORMAT=pcm_16000
-            - TWITTER_DRY_RUN=false
-            - TWITTER_USERNAME=
-            - TWITTER_PASSWORD=
-            - TWITTER_EMAIL=
-            - BIRDEYE_API_KEY=
-            - SOL_ADDRESS=So11111111111111111111111111111111111111112
-            - SLIPPAGE=1
-            - SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
-            - HELIUS_API_KEY=
-            - SERVER_PORT=3000
-            - WALLET_SECRET_SALT=secret_salt
-            # Refer to: https://github.com/elizaOS/eliza/blob/develop/.env.example for all available environment variables
-        ports:
-            - "3000:3000"
-            - "5173:5173"
-        restart: always
+  postgres:
+    image: postgres:15
+    environment:
+        - POSTGRES_PASSWORD=postgres
+        - POSTGRES_USER=postgres
+        - POSTGRES_DB=eliza
+    volumes:
+        - postgres-data:/var/lib/postgresql/data
+    ports:
+        - "127.0.0.1:5432:5432"
+    healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U postgres"]
+        interval: 5s
+        timeout: 5s
+        retries: 5
+    restart: always
+  eliza:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: elizav2
+    command: bun run start
+    stdin_open: true
+    tty: true
+    volumes:
+      - /var/run/tappd.sock:/var/run/tappd.sock
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SERVER_PORT=${SERVER_PORT}
+      - POSTGRES_URL=${POSTGRES_URL}
+      - EVM_CHAINS=${EVM_CHAINS}
+      - BIRDEYE_API_KEY=${BIRDEYE_API_KEY}
+      - COMMUNITY_MANAGER_DISCORD_APPLICATION_ID=${COMMUNITY_MANAGER_DISCORD_APPLICATION_ID}
+      - COMMUNITY_MANAGER_DISCORD_API_TOKEN=${COMMUNITY_MANAGER_DISCORD_API_TOKEN}
+      - SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID=${SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID}
+      - SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN=${SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN}
+      - LIAISON_DISCORD_APPLICATION_ID=${LIAISON_DISCORD_APPLICATION_ID}
+      - LIAISON_DISCORD_API_TOKEN=${LIAISON_DISCORD_API_TOKEN}
+      - PROJECT_MANAGER_DISCORD_APPLICATION_ID=${PROJECT_MANAGER_DISCORD_APPLICATION_ID}
+      - PROJECT_MANAGER_DISCORD_API_TOKEN=${PROJECT_MANAGER_DISCORD_API_TOKEN}
+      - DEV_SUPPORT_DISCORD_APPLICATION_ID=${DEV_SUPPORT_DISCORD_APPLICATION_ID}
+      - DEV_SUPPORT_DISCORD_API_TOKEN=${DEV_SUPPORT_DISCORD_API_TOKEN}
+      - INVESTMENT_MANAGER_DISCORD_APPLICATION_ID=${INVESTMENT_MANAGER_DISCORD_APPLICATION_ID}
+      - INVESTMENT_MANAGER_DISCORD_API_TOKEN=${INVESTMENT_MANAGER_DISCORD_API_TOKEN}
+    ports:
+      - "3000:3000"
+      - "5173:5173"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    networks:
+            - eliza-network
+
+networks:
+  eliza-network:
+    driver: bridge
 
 volumes:
-    eliza:
+  postgres-data:
