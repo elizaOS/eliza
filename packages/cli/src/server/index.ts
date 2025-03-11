@@ -1,7 +1,3 @@
-import fs from "node:fs";
-import * as os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	type Character,
 	type IAgentRuntime,
@@ -13,7 +9,11 @@ import * as bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import type { Server as SocketIoServer } from "socket.io";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createApiRouter } from "./api/index.js";
 
 // Load environment variables
 dotenv.config();
@@ -63,7 +63,6 @@ export class AgentServer {
 	public stopAgent!: (runtime: IAgentRuntime) => void;
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
-	private io: SocketIoServer;
 
 	/**
 	 * Constructor for AgentServer class.
@@ -111,7 +110,7 @@ export class AgentServer {
 			throw error;
 		}
 
-		logger.info(`*** Server started, visit the console at ${AGENT_RUNTIME_URL} ***`);
+		logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
 	}
 
 	/**
@@ -200,6 +199,7 @@ export class AgentServer {
 
 			// Serve static assets from the client dist path
 			const clientPath = path.join(__dirname, "..", "dist");
+			logger.info(`Client build path: ${clientPath}`);
 			this.app.use("/", express.static(clientPath, staticOptions));
 
 			// Serve static assets from plugins
@@ -291,12 +291,43 @@ export class AgentServer {
 					}
 				}
 			}
+
+			// API Router setup
+			const apiRouter = createApiRouter(this.agents, this);
+			this.app.use(apiRouter);
+
+			// Main fallback for the SPA - must be registered after all other routes
+			// For Express 4, we need to use the correct method for fallback routes
+			// @ts-ignore - Express 4 type definitions are incorrect for .all()
+			this.app.all("*", (req, res) => {
+				// Skip for API routes
+				if (req.path.startsWith("/api") || req.path.startsWith("/media")) {
+					return res.status(404).send("Not found");
+				}
+
+				// For JavaScript requests that weren't handled by static middleware,
+				// return a JavaScript response instead of HTML
+				if (
+					req.path.endsWith(".js") ||
+					req.path.includes(".js?") ||
+					req.path.match(/\/[a-zA-Z0-9_-]+-[A-Za-z0-9]{8}\.js/)
+				) {
+					res.setHeader("Content-Type", "application/javascript");
+					return res
+						.status(404)
+						.send(`// JavaScript module not found: ${req.path}`);
+				}
+
+				// For all other routes, serve the SPA's index.html
+				res.sendFile(path.join(clientPath, "index.html"));
+			});
+
+			logger.success("AgentServer initialization complete");
 		} catch (error) {
-			logger.error("Failed to initialize server:", error);
+			logger.error("Failed to complete server initialization:", error);
 			throw error;
 		}
 	}
-
 
 	/**
 	 * Registers an agent with the provided runtime.
@@ -501,6 +532,7 @@ export class AgentServer {
 	public async stop() {
 		if (this.server) {
 			this.server.close(() => {
+				this.database.stop();
 				logger.success("Server stopped");
 			});
 		}
