@@ -24,6 +24,8 @@ import { Badge } from "./ui/badge";
 import ChatTtsButton from "./ui/chat/chat-tts-button";
 import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import WebSocketsManager from "@/lib/websocket-manager";
+import { getUserId } from "@/lib/utils";
 
 type ExtraContentFields = {
 	name: string;
@@ -122,6 +124,18 @@ export default function Page({ agentId }: { agentId: UUID }) {
 	const { messages } = useAgentMessages(agentId);
 
 	const agentData = useAgent(agentId)?.data?.data;
+	const userId = getUserId();
+	const roomId = agentId;
+
+	const wsManager = WebSocketsManager.getInstance();
+	useEffect(() => {
+		wsManager.connect(agentId, roomId);
+		wsManager.connect(userId, roomId);
+
+		return () => {
+			wsManager.disconnectAll();
+		};
+	}, []);
 
 	const getMessageVariant = (role: string) =>
 		role !== "user" ? "received" : "sent";

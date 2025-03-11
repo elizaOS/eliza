@@ -14,6 +14,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApiRouter } from "./api/index.js";
+import { WebSocketServer } from "ws";
+import { WebSocketRouter } from "./wss/index.js";
 
 // Load environment variables
 dotenv.config();
@@ -63,6 +65,7 @@ export class AgentServer {
 	public stopAgent!: (runtime: IAgentRuntime) => void;
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
+	private wss: WebSocketServer;
 
 	/**
 	 * Constructor for AgentServer class.
@@ -484,6 +487,23 @@ export class AgentServer {
 				logger.debug(`Active agents: ${this.agents.size}`);
 				this.agents.forEach((agent, id) => {
 					logger.debug(`- Agent ${id}: ${agent.character.name}`);
+				});
+			});
+
+			this.wss = new WebSocketServer({ server: this.server });
+			
+			const wsRouter = new WebSocketRouter(this.agents, this);
+
+			this.wss.on("connection", (ws) => {
+				logger.info("New WebSocket connection established");
+
+				ws.on("message", (message) => {
+					wsRouter.handleMessage(ws, message.toString());
+				});
+
+				ws.on("close", () => {
+					logger.info("WebSocket closed");
+					wsRouter.handleClose(ws);
 				});
 			});
 

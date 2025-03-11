@@ -11,3 +11,8 @@ export interface IAttachment {
 	contentType: string;
 	title: string;
 }
+
+export enum SOCKET_MESSAGE_TYPE {
+    ROOM_JOINING = 1,
+    SEND_MESSAGE = 2
+}

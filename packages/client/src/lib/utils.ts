@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import dayjs from "dayjs";
 import localizedFormat from "dayjs/plugin/localizedFormat";
+import { UUID } from "node:crypto";
 import { twMerge } from "tailwind-merge";
 
 /**
@@ -38,4 +39,18 @@ export function characterNameToUrl(name: string): string {
  */
 export function urlToCharacterName(urlName: string): string {
 	return urlName.replace(/-+/g, " ");
+}
+
+export function getUserId(): UUID {
+	const USER_ID_KEY = "elizaos-client-user-id";
+    const existingUserId = localStorage.getItem(USER_ID_KEY);
+
+    if (existingUserId) {
+      return existingUserId as UUID;
+    }
+
+    const newUserId = crypto.randomUUID() as UUID;
+    localStorage.setItem(USER_ID_KEY, newUserId);
+
+    return newUserId;
 }
