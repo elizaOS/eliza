@@ -13,10 +13,123 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 import fetch from "node-fetch";
 import { z } from "zod";
 import { REGISTRY_URL } from "./constants";
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import dotenv from 'dotenv';
+import { getGitHubCredentials } from '../github';
+
+const ELIZA_DIR = path.join(os.homedir(), '.eliza');
+const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');
+const ENV_FILE = path.join(ELIZA_DIR, '.env');
+
+const REQUIRED_ENV_VARS = ['GITHUB_TOKEN'] as const;
+const REQUIRED_SETTINGS = ['defaultRegistry'] as const;
+
+export interface RegistrySettings {
+	defaultRegistry: string;
+	publishConfig?: {
+		registry: string;
+		username?: string;
+		useNpm?: boolean;
+	};
+}
+
+export interface DataDirStatus {
+	exists: boolean;
+	env: {
+		exists: boolean;
+		missingKeys: string[];
+		hasAllKeys: boolean;
+	};
+	settings: {
+		exists: boolean;
+		missingKeys: string[];
+		hasAllKeys: boolean;
+	};
+}
+
+export async function ensureElizaDir() {
+	try {
+		await fs.mkdir(ELIZA_DIR, { recursive: true });
+	} catch (error) {
+		// Directory already exists
+	}
+}
+
+export async function getRegistrySettings(): Promise<RegistrySettings> {
+	await ensureElizaDir();
+	
+	try {
+		const content = await fs.readFile(REGISTRY_SETTINGS_FILE, 'utf-8');
+		return JSON.parse(content);
+	} catch (error) {
+		// Return default settings if file doesn't exist
+		return {
+			defaultRegistry: 'elizaos/registry',
+		};
+	}
+}
+
+export async function saveRegistrySettings(settings: RegistrySettings) {
+	await ensureElizaDir();
+	await fs.writeFile(REGISTRY_SETTINGS_FILE, JSON.stringify(settings, null, 2));
+}
+
+export async function getEnvVar(key: string): Promise<string | undefined> {
+	try {
+		const envContent = await fs.readFile(ENV_FILE, 'utf-8');
+		const env = dotenv.parse(envContent);
+		return env[key];
+	} catch (error) {
+		return undefined;
+	}
+}
+
+export async function setEnvVar(key: string, value: string) {
+	await ensureElizaDir();
+	
+	let envContent = '';
+	try {
+		envContent = await fs.readFile(ENV_FILE, 'utf-8');
+	} catch (error) {
+		// File doesn't exist yet
+	}
+
+	const env = dotenv.parse(envContent);
+	env[key] = value;
+
+	const newContent = Object.entries(env)
+		.map(([k, v]) => `${k}=${v}`)
+		.join('\n');
+
+	await fs.writeFile(ENV_FILE, newContent);
+}
+
+export async function getGitHubToken(): Promise<string | undefined> {
+	return getEnvVar('GITHUB_TOKEN');
+}
+
+export async function setGitHubToken(token: string) {
+	await setEnvVar('GITHUB_TOKEN', token);
+}
 
 const agent = process.env.https_proxy
 	? new HttpsProxyAgent(process.env.https_proxy)
 	: undefined;
+
+interface PluginMetadata {
+	name: string;
+	description: string;
+	author: string;
+	repository: string;
+	versions: string[];
+	latestVersion: string;
+	runtimeVersion: string;
+	maintainer: string;
+	tags?: string[];
+	categories?: string[];
+}
 
 /**
  * Fetches the registry index asynchronously.
@@ -24,25 +137,42 @@ const agent = process.env.https_proxy
  * @returns {Promise<Registry>} The registry index
  * @throws {Error} If the response from the registry is not valid JSON or if there is an error fetching the plugins
  */
-export async function getRegistryIndex(): Promise<Registry> {
-	try {
-		const response = await fetch(REGISTRY_URL, { agent });
-		// Get the response body as text first
-		const text = await response.text();
+export async function getRegistryIndex(): Promise<Record<string, string>> {
+	const settings = await getRegistrySettings();
+	const credentials = await getGitHubCredentials();
 
-		let registry: Registry;
-		try {
-			// validate if the response is a valid registry
-			registry = registrySchema.parse(JSON.parse(text));
-		} catch {
-			console.error("Invalid JSON response received from registry:", text);
-			throw new Error("Registry response is not valid JSON");
-		}
-
-		return registry;
-	} catch (error) {
-		throw new Error(`Failed to fetch plugins from registry: ${error.message}`);
+	if (!credentials) {
+		logger.error('GitHub credentials not found. Please run login first.');
+		process.exit(1);
 	}
+
+	const [owner, repo] = settings.defaultRegistry.split('/');
+	const url = `https://api.github.com/repos/${owner}/${repo}/contents/index.json`;
+
+	const response = await fetch(url, {
+		headers: {
+			Authorization: `token ${credentials.token}`,
+			Accept: 'application/vnd.github.v3.raw',
+		},
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to fetch registry index: ${response.statusText}`);
+	}
+
+	const data = await response.json();
+	if (typeof data !== 'object' || data === null) {
+		throw new Error('Invalid registry index format');
+	}
+
+	const result: Record<string, string> = {};
+	for (const [key, value] of Object.entries(data)) {
+		if (typeof value === 'string') {
+			result[key] = value;
+		}
+	}
+
+	return result;
 }
 
 /**
@@ -52,15 +182,9 @@ export async function getRegistryIndex(): Promise<Registry> {
  * @returns {Promise<string | null>} The repository URL for the plugin, or null if not found.
  * @throws {Error} If an error occurs while retrieving the repository URL.
  */
-export async function getPluginRepository(
-	pluginName: string,
-): Promise<string | null> {
-	try {
-		const registry = await getRegistryIndex();
-		return registry[pluginName] || null;
-	} catch (error) {
-		throw new Error(`Failed to get plugin repository: ${error.message}`);
-	}
+export async function getPluginRepository(pluginName: string): Promise<string | null> {
+	const metadata = await getPluginMetadata(pluginName);
+	return metadata?.repository || null;
 }
 
 /**
@@ -105,38 +229,92 @@ export async function getBestBranch(repoUrl: string): Promise<string> {
 	return "main";
 }
 
-export async function listPluginsByType(
-	type: "adapter" | "client" | "plugin",
-): Promise<string[]> {
+export async function listPluginsByType(type?: string): Promise<string[]> {
+	const registry = await getRegistryIndex();
+	return Object.keys(registry)
+		.filter((name) => !type || name.includes(type))
+		.sort();
+}
+
+export async function getPluginMetadata(pluginName: string): Promise<PluginMetadata | null> {
+	const settings = await getRegistrySettings();
+	const credentials = await getGitHubCredentials();
+
+	if (!credentials) {
+		logger.error('GitHub credentials not found. Please run login first.');
+		process.exit(1);
+	}
+
+	const [owner, repo] = settings.defaultRegistry.split('/');
+	const normalizedName = pluginName.replace(/^@elizaos\//, '');
+	const url = `https://api.github.com/repos/${owner}/${repo}/contents/packages/${normalizedName}.json`;
+
 	try {
-		const registry = await getRegistryIndex();
-		const registryPlugins = Object.keys(registry).filter((name) =>
-			name.includes(`${type}-`),
-		);
+		const response = await fetch(url, {
+			headers: {
+				Authorization: `token ${credentials.token}`,
+				Accept: 'application/vnd.github.v3.raw',
+			},
+		});
 
-		// If we're in a monorepo context, include local packages
-		if (isMonorepoContext()) {
-			const localPlugins = await getLocalPackages();
-			const filteredLocalPlugins = localPlugins.filter((name) =>
-				name.includes(`${type}-`),
-			);
-
-			// Combine and deduplicate
-			return [...new Set([...registryPlugins, ...filteredLocalPlugins])];
+		if (!response.ok) {
+			if (response.status === 404) {
+				return null;
+			}
+			throw new Error(`Failed to fetch plugin metadata: ${response.statusText}`);
 		}
 
-		return registryPlugins;
+		const data = await response.json();
+		if (typeof data !== 'object' || data === null) {
+			throw new Error('Invalid plugin metadata format');
+		}
+
+		const metadata = data as PluginMetadata;
+		if (!metadata.name || !metadata.description || !metadata.author || !metadata.repository ||
+			!metadata.versions || !metadata.latestVersion || !metadata.runtimeVersion || !metadata.maintainer) {
+			throw new Error('Invalid plugin metadata: missing required fields');
+		}
+
+		return metadata;
 	} catch (error) {
-		throw new Error(`Failed to list plugins: ${error.message}`);
+		logger.error('Failed to fetch plugin metadata:', error);
+		return null;
 	}
 }
 
-export async function getAvailableDatabases(): Promise<string[]> {
-	try {
-		return ["postgres", "pglite"];
-	} catch (error) {
-		throw new Error(`Failed to get available databases: ${error.message}`);
+export async function getPluginVersion(pluginName: string, version?: string): Promise<string | null> {
+	const metadata = await getPluginMetadata(pluginName);
+	
+	if (!metadata) {
+		return null;
 	}
+
+	if (!version) {
+		return metadata.latestVersion;
+	}
+
+	if (!metadata.versions.includes(version)) {
+		return null;
+	}
+
+	return version;
+}
+
+export async function getPluginTags(pluginName: string): Promise<string[]> {
+	const metadata = await getPluginMetadata(pluginName);
+	return metadata?.tags || [];
+}
+
+export async function getPluginCategories(pluginName: string): Promise<string[]> {
+	const metadata = await getPluginMetadata(pluginName);
+	return metadata?.categories || [];
+}
+
+export async function getAvailableDatabases(): Promise<string[]> {
+	const registry = await getRegistryIndex();
+	return Object.keys(registry)
+		.filter((name) => name.includes('database-'))
+		.sort();
 }
 
 /**
@@ -228,4 +406,102 @@ export async function getBestPluginVersion(
 	}
 
 	return packageDetails.latestVersion;
+}
+
+export async function checkDataDir(): Promise<DataDirStatus> {
+	const status: DataDirStatus = {
+		exists: false,
+		env: {
+			exists: false,
+			missingKeys: [...REQUIRED_ENV_VARS],
+			hasAllKeys: false,
+		},
+		settings: {
+			exists: false,
+			missingKeys: [...REQUIRED_SETTINGS],
+			hasAllKeys: false,
+		},
+	};
+
+	// Check if data directory exists
+	try {
+		await fs.access(ELIZA_DIR);
+		status.exists = true;
+	} catch {
+		return status;
+	}
+
+	// Check .env file
+	try {
+		const envContent = await fs.readFile(ENV_FILE, 'utf-8');
+		const env = dotenv.parse(envContent);
+		status.env.exists = true;
+		status.env.missingKeys = REQUIRED_ENV_VARS.filter(key => !env[key]);
+		status.env.hasAllKeys = status.env.missingKeys.length === 0;
+	} catch {
+		// .env file doesn't exist or can't be read
+	}
+
+	// Check settings file
+	try {
+		const settingsContent = await fs.readFile(REGISTRY_SETTINGS_FILE, 'utf-8');
+		const settings = JSON.parse(settingsContent);
+		status.settings.exists = true;
+		status.settings.missingKeys = REQUIRED_SETTINGS.filter(key => !(key in settings));
+		status.settings.hasAllKeys = status.settings.missingKeys.length === 0;
+	} catch {
+		// settings file doesn't exist or can't be read
+	}
+
+	return status;
+}
+
+export async function initializeDataDir(): Promise<void> {
+	await ensureElizaDir();
+
+	// Initialize .env if it doesn't exist
+	try {
+		await fs.access(ENV_FILE);
+	} catch {
+		await fs.writeFile(ENV_FILE, '');
+	}
+
+	// Initialize settings if they don't exist
+	try {
+		await fs.access(REGISTRY_SETTINGS_FILE);
+	} catch {
+		await saveRegistrySettings({
+			defaultRegistry: 'elizaos/registry',
+		});
+	}
+}
+
+export async function validateDataDir(): Promise<boolean> {
+	const status = await checkDataDir();
+
+	if (!status.exists) {
+		logger.warn('ElizaOS data directory not found. Initializing...');
+		await initializeDataDir();
+		return false;
+	}
+
+	let isValid = true;
+
+	if (!status.env.exists) {
+		logger.warn('.env file not found');
+		isValid = false;
+	} else if (!status.env.hasAllKeys) {
+		logger.warn(`Missing environment variables: ${status.env.missingKeys.join(', ')}`);
+		isValid = false;
+	}
+
+	if (!status.settings.exists) {
+		logger.warn('Registry settings file not found');
+		isValid = false;
+	} else if (!status.settings.hasAllKeys) {
+		logger.warn(`Missing settings: ${status.settings.missingKeys.join(', ')}`);
+		isValid = false;
+	}
+
+	return isValid;
 }
