@@ -1,7 +1,30 @@
-import { AgentRuntime, logger, type UUID, type Project as ProjectType, type ProjectAgent } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { AgentRuntime, UUID, Project as ProjectType, ProjectAgent, Character, Plugin, IAgentRuntime } from "@elizaos/core";
 import { resolve } from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "node:fs";
+import path from "node:path";
+import { character as elizaCharacter } from "./characters/eliza";
+
+/**
+ * Interface for a project module that can be loaded.
+ */
+interface ProjectModule {
+  agents?: ProjectAgent[];
+  character?: Character;
+  init?: (runtime: any) => Promise<void>;
+  [key: string]: any;
+}
+
+/**
+ * Interface for a loaded project.
+ */
+export interface Project {
+  agents: ProjectAgent[];
+  dir: string;
+  isPlugin?: boolean;
+  pluginModule?: Plugin;
+}
 
 export interface LoadedProject {
   runtimes: AgentRuntime[];
@@ -10,143 +33,219 @@ export interface LoadedProject {
 }
 
 /**
- * Loads a project from the specified path
- * @param path Path to the project directory
- * @returns The loaded project with all its agents
+ * Determine if a loaded module is a plugin
+ * @param module The loaded module to check
+ * @returns true if this appears to be a plugin
  */
-export async function loadProject(path: string): Promise<LoadedProject> {
+function isPlugin(module: any): boolean {
+  // Check for direct export of a plugin
+  if (module && typeof module === 'object' && 
+      typeof module.name === 'string' && 
+      typeof module.description === 'string') {
+    return true;
+  }
+
+  // Check for default export of a plugin
+  if (module && typeof module === 'object' && 
+      module.default && typeof module.default === 'object' &&
+      typeof module.default.name === 'string' && 
+      typeof module.default.description === 'string') {
+    return true;
+  }
+
+  // Check for named export of a plugin
+  for (const key in module) {
+    if (key !== 'default' && 
+        module[key] && typeof module[key] === 'object' &&
+        typeof module[key].name === 'string' && 
+        typeof module[key].description === 'string') {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Extract a Plugin object from a module
+ * @param module The module to extract from
+ * @returns The plugin object
+ */
+function extractPlugin(module: any): Plugin {
+  // Direct export
+  if (module && typeof module === 'object' && 
+      typeof module.name === 'string' && 
+      typeof module.description === 'string') {
+    return module as Plugin;
+  }
+
+  // Default export
+  if (module && typeof module === 'object' && 
+      module.default && typeof module.default === 'object' &&
+      typeof module.default.name === 'string' && 
+      typeof module.default.description === 'string') {
+    return module.default as Plugin;
+  }
+
+  // Named export
+  for (const key in module) {
+    if (key !== 'default' && 
+        module[key] && typeof module[key] === 'object' &&
+        typeof module[key].name === 'string' && 
+        typeof module[key].description === 'string') {
+      return module[key] as Plugin;
+    }
+  }
+
+  throw new Error("Could not extract plugin from module");
+}
+
+/**
+ * Loads a project from the specified directory.
+ * @param {string} dir - The directory to load the project from.
+ * @returns {Promise<Project>} A promise that resolves to the loaded project.
+ */
+export async function loadProject(dir: string): Promise<Project> {
   try {
-    const projectPath = resolve(path);
-    logger.info(`Loading project from ${projectPath}`);
+    // Try to find the project's entry point
+    const entryPoints = [
+      path.join(dir, "src/index.ts"),
+      path.join(dir, "src/index.js"),
+      path.join(dir, "dist/index.js"),
+      path.join(dir, "index.ts"),
+      path.join(dir, "index.js"),
+    ];
+
+    let projectModule: ProjectModule | null = null;
+    for (const entryPoint of entryPoints) {
+      if (fs.existsSync(entryPoint)) {
+        try {
+          const importPath = path.resolve(entryPoint);
+          projectModule = await import(importPath) as ProjectModule;
+          logger.info(`Loaded project from ${entryPoint}`);
+          
+          // Debug the module structure
+          const exportKeys = Object.keys(projectModule);
+          logger.debug(`Module exports: ${exportKeys.join(', ')}`);
+          
+          if (exportKeys.includes('default')) {
+            logger.debug(`Default export type: ${typeof projectModule.default}`);
+            if (typeof projectModule.default === 'object' && projectModule.default !== null) {
+              logger.debug(`Default export keys: ${Object.keys(projectModule.default).join(', ')}`);
+            }
+          }
+          
+          break;
+        } catch (error) {
+          logger.warn(`Failed to import project from ${entryPoint}:`, error);
+        }
+      }
+    }
+
+    if (!projectModule) {
+      throw new Error("Could not find project entry point");
+    }
+
+    // Check if it's a plugin using our improved detection
+    const moduleIsPlugin = isPlugin(projectModule);
+    logger.debug(`Is this a plugin? ${moduleIsPlugin}`);
     
-    let projectConfig: ProjectType | undefined;
-
-    // Check if we're in a project with a package.json
-    const packageJsonPath = resolve(projectPath, "package.json");
-    if (fs.existsSync(packageJsonPath)) {
-      // Read and parse package.json to check if it's a project
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-
-      // Check if this is a project (package.json contains 'eliza' section with type='project')
-      const isProject = packageJson.eliza?.type === "project" || 
-                       packageJson.description?.toLowerCase().includes("project");
-
-      if (isProject) {
-        // First try to load from src/index.ts or src/index.js
-        const srcIndexPaths = [
-          resolve(projectPath, "src", "index.ts"),
-          resolve(projectPath, "src", "index.js"),
-          resolve(projectPath, "dist", "index.js")
-        ];
-
-        for (const indexPath of srcIndexPaths) {
-          if (fs.existsSync(indexPath)) {
-            try {
-              logger.info(`Trying to load project from ${indexPath}`);
-              const importedModule = await import(`file://${indexPath}`);
-              
-              // Check if it exports a project with agents
-              if (importedModule.default?.agents || importedModule.project?.agents) {
-                projectConfig = importedModule.default || importedModule.project;
-                logger.info(`Successfully loaded project with ${projectConfig.agents.length} agents`);
-                break;
-              }
-            } catch (importError) {
-              logger.warn(`Error importing ${indexPath}: ${importError}`);
-            }
-          }
-        }
-
-        // If no project found in src/index, try package.json main entry
-        if (!projectConfig && packageJson.main) {
-          const mainPath = resolve(projectPath, packageJson.main);
-          if (fs.existsSync(mainPath)) {
-            try {
-              const importedModule = await import(`file://${mainPath}`);
-              if (importedModule.default?.agents || importedModule.project?.agents) {
-                projectConfig = importedModule.default || importedModule.project;
-              }
-            } catch (importError) {
-              logger.warn(`Error importing main entry: ${importError}`);
-            }
-          }
-        }
-      }
-    }
-
-    // If no project found in package.json, look for project files
-    if (!projectConfig) {
-      const projectFiles = ["project.json", "eliza.json", "agents.json"];
-
-      for (const file of projectFiles) {
-        const filePath = resolve(projectPath, file);
-        if (fs.existsSync(filePath)) {
-          try {
-            const fileContent = fs.readFileSync(filePath, "utf-8");
-            const projectData = JSON.parse(fileContent);
-
-            if (projectData.agents) {
-              projectConfig = projectData;
-              break;
-            }
-          } catch (error) {
-            logger.warn(`Error reading possible project file ${file}: ${error}`);
-          }
-        }
-      }
-    }
-
-    // If still no project found, use default test configuration
-    if (!projectConfig) {
-      logger.warn("No project configuration found, using default test configuration");
-      projectConfig = {
-        agents: [{
-          character: {
-            name: "Test Agent",
-            bio: ["A test agent for running automated tests"],
-            templates: {},
-            settings: {},
-            system: "You are a test agent for running automated tests.",
-            messageExamples: []
-          }
-        }]
-      };
-    }
-
-    // Get all agents
-    const agents = projectConfig.agents;
-    if (!agents || agents.length === 0) {
-      logger.error("No agents defined in project configuration");
-      throw new Error("No agents defined in project configuration");
-    }
-
-    logger.info(`Found ${agents.length} agents in project`);
-
-    // Initialize runtimes for all agents
-    const runtimes: AgentRuntime[] = [];
-    for (const agent of agents) {
-      logger.info(`Creating runtime for agent: ${agent.character.name}`);
-    const runtime = new AgentRuntime({
-      agentId: uuidv4() as UUID,
-      character: agent.character,
-      plugins: agent.plugins || []
-    });
-    
-    // Initialize the agent if it has an init function
-    if (agent.init) {
-      await agent.init(runtime);
-      }
+    if (moduleIsPlugin) {
+      logger.info("Detected plugin module instead of project");
       
-      runtimes.push(runtime);
+      try {
+        // Extract the plugin object
+        const plugin = extractPlugin(projectModule);
+        logger.debug(`Found plugin: ${plugin.name} - ${plugin.description}`);
+        
+        // Log plugin structure for debugging
+        logger.debug(`Plugin has the following properties: ${Object.keys(plugin).join(', ')}`);
+        
+        // Create a more complete plugin object with all required properties
+        const completePlugin: Plugin = {
+          name: plugin.name || 'unknown-plugin',
+          description: plugin.description || 'No description',
+          init: plugin.init || (async (config, runtime) => {
+            logger.info(`Dummy init for plugin: ${plugin.name}`);
+          }),
+          // Copy all other properties from the original plugin
+          ...plugin,
+        };
+        
+        // Use the Eliza character as our test agent
+        const testCharacter: Character = {
+          ...elizaCharacter,
+          id: uuidv4() as UUID,
+          name: "Eliza (Test Mode)",
+          system: `${elizaCharacter.system} Testing the plugin: ${completePlugin.name}.`,
+        };
+        
+        logger.info(`Using Eliza character as test agent for plugin: ${completePlugin.name}`);
+        
+        // Create a test agent with the plugin included
+        const testAgent: ProjectAgent = {
+          character: testCharacter,
+          plugins: [completePlugin], // Only include the plugin being tested
+          init: async (runtime: IAgentRuntime) => {
+            logger.info(`Initializing Eliza test agent for plugin: ${completePlugin.name}`);
+            // The plugin will be registered automatically in runtime.initialize()
+          }
+        };
+        
+        // Since we're in test mode, Eliza (our test agent) needs to already exist in the database
+        // before any entity is created, but we can't do this in the init function because
+        // the adapter might not be ready. Let's ensure this is handled properly in the runtime's
+        // initialize method or by initializing the agent in the database separately.
+
+        return {
+          agents: [testAgent],
+          dir,
+          isPlugin: true,
+          pluginModule: completePlugin,
+        };
+      } catch (error) {
+        logger.error("Error extracting plugin from module:", error);
+        throw error;
+      }
     }
-    
-    return {
-      runtimes,
-      path: projectPath,
-      agents
+
+    // Extract agents from the project module
+    const agents: ProjectAgent[] = [];
+
+    // Look for exported agents
+    for (const [key, value] of Object.entries(projectModule)) {
+      if (key === "default" && value && typeof value === "object") {
+        // If it's a default export and has agents property, use those
+        if (Array.isArray((value as ProjectModule).agents)) {
+          agents.push(...((value as ProjectModule).agents as ProjectAgent[]));
+        } else if ((value as ProjectModule).character && (value as ProjectModule).init) {
+          // If it's a single agent, add it
+          agents.push(value as ProjectAgent);
+        }
+      } else if (
+        value &&
+        typeof value === "object" &&
+        (value as ProjectModule).character &&
+        (value as ProjectModule).init
+      ) {
+        // If it's a named export that looks like an agent, add it
+        agents.push(value as ProjectAgent);
+      }
+    }
+
+    if (agents.length === 0) {
+      throw new Error("No agents found in project");
+    }
+
+    // Create and return the project object
+    const project: Project = {
+      agents,
+      dir,
     };
+
+    return project;
   } catch (error) {
-    logger.error("Failed to load project:", error);
+    logger.error("Error loading project:", error);
     throw error;
   }
 } 

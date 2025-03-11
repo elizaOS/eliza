@@ -8,8 +8,7 @@ import {
 	type ServiceType,
 	ServiceTypes,
 	type State,
-	type Task,
-	type UUID,
+	type Task
 } from "../types";
 
 /**
@@ -78,9 +77,7 @@ export class TaskService extends Service {
 		});
 
 		// check if the task exists
-		const tasks = await this.runtime
-			
-			.getTasksByName("REPEATING_TEST_TASK");
+		const tasks = await this.runtime.getTasksByName("REPEATING_TEST_TASK");
 
 		if (tasks.length === 0) {
 			// Create repeating task

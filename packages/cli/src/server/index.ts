@@ -1,39 +1,19 @@
-import fs from "node:fs";
-import { Server as HttpServer } from "node:http";
-import * as os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
 	type Character,
 	type IAgentRuntime,
 	type UUID,
 	logger,
 } from "@elizaos/core";
-import { createUniqueUuid } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import * as bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import multer from "multer";
+import fs from "node:fs";
+import * as os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Server as SocketIoServer } from "socket.io";
-import character from "../default/character.js";
-import { charactersDirectory } from "../default/default-characters.js";
-import { downloadTemplate } from "../utils/download-template.js";
-import { parseArgs } from "../utils/parse-args.js";
-import { formatUrl } from "../utils/url-format.js";
-import type { AgentManager } from "./agent-manager.js";
-import { createApiRouter } from "./api/index.js";
-import type { CacheStore } from "./cache-store.js";
-import { requestHandlers } from "./lib/request-handlers.js";
-import { createCorsMiddleware } from "./middleware/cors.js";
-import { createAgentsRouter } from "./routes/agents.js";
-import { createCacheStoreRouter } from "./routes/cache-store.js";
-import { createCharacterRouter } from "./routes/character.js";
-import { createFileRouter } from "./routes/files.js";
-import { createMultiplayerRouter } from "./routes/multiplayer.js";
-import { createPromptsRouter } from "./routes/prompts.js";
-import { createSessionRouter } from "./routes/session.js";
 
 // Load environment variables
 dotenv.config();
@@ -84,9 +64,6 @@ export class AgentServer {
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
 	private io: SocketIoServer;
-	private soundGenerator?: SoundGenerator;
-	private cacheStore: CacheStore;
-	private agentManager: AgentManager;
 
 	/**
 	 * Constructor for AgentServer class.
