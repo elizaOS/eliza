@@ -1131,7 +1131,7 @@ export class AgentRuntime implements IAgentRuntime {
 	getService<T extends Service>(service: ServiceType): T | null {
 		const serviceInstance = this.services.get(service);
 		if (!serviceInstance) {
-			logger.error(`Service ${service} not found`);
+			logger.warn(`Service ${service} not found`);
 			return null;
 		}
 		return serviceInstance as T;

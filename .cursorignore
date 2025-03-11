@@ -11,4 +11,3 @@
 *.lock
 codecov.yml
 LICENSE
-scripts/*

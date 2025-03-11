@@ -69,6 +69,8 @@
     "node": "23.3.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@babel/generator": "^7.26.9",
     "zod": "3.24.1"
   },
   "packageManager": "bun@1.2.2",

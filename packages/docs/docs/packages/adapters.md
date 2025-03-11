@@ -530,16 +530,6 @@ ALTER TABLE ONLY relationships ADD CONSTRAINT friendships_id_key UNIQUE (id);
 ALTER TABLE ONLY relationships ADD CONSTRAINT relationships_userA_fkey FOREIGN KEY ("userA") REFERENCES accounts(id);
 ALTER TABLE ONLY relationships ADD CONSTRAINT relationships_userB_fkey FOREIGN KEY ("userB") REFERENCES accounts(id);
 ALTER TABLE ONLY relationships ADD CONSTRAINT relationships_userId_fkey FOREIGN KEY ("userId") REFERENCES accounts(id);
-
-CREATE TABLE goals (
-  id UUID PRIMARY KEY,
-  "roomId" UUID NOT NULL,
-  "userId" UUID,
-  name TEXT NOT NULL,
-  status TEXT NOT NULL,
-  objectives JSONB NOT NULL,
-  "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 ```
 
 ### SQLite Schema
@@ -560,16 +550,6 @@ CREATE TABLE IF NOT EXISTS memories (
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts
   USING fts5(content, content_rowid=id);
-
-CREATE TABLE IF NOT EXISTS goals (
-  id TEXT PRIMARY KEY,
-  roomId TEXT NOT NULL,
-  userId TEXT,
-  name TEXT NOT NULL,
-  status TEXT NOT NULL,
-  objectives TEXT NOT NULL,
-  createdAt INTEGER DEFAULT (unixepoch())
-);
 `;
 ```
 
