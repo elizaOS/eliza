@@ -23,7 +23,6 @@ import { REGISTRY_URL } from "./constants";
 const ELIZA_DIR = path.join(os.homedir(), '.eliza');
 const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');
 const ENV_FILE = path.join(ELIZA_DIR, '.env');
-const REGISTRY_CACHE_FILE = path.join(ELIZA_DIR, 'registry-cache.json');
 
 const REQUIRED_ENV_VARS = ['GITHUB_TOKEN'] as const;
 const REQUIRED_SETTINGS = ['defaultRegistry'] as const;

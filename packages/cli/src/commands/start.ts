@@ -587,7 +587,6 @@ export const start = new Command()
 		"-c, --configure",
 		"Reconfigure services and AI models (skips using saved configuration)",
 	)
-	.option("--dev", "Start with development settings")
 	.option(
 		"--character <character>",
 		"Path or URL to character file to use instead of default",
