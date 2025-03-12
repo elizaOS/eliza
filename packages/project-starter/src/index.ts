@@ -9,7 +9,7 @@ import starterPlugin from "./plugin";
 dotenv.config({ path: "../../.env" });
 
 /**
- * Represents the character Eliza with her specific attributes and behaviors.
+ * Represents the default character (Eliza) with her specific attributes and behaviors.
  * Eliza responds to messages relevant to the community manager, offers help when asked, and stays focused on her job.
  * She interacts with users in a concise, direct, and helpful manner, using humor and silence effectively.
  * Eliza's responses are geared towards resolving issues, offering guidance, and maintaining a positive community environment.

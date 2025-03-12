@@ -25,7 +25,6 @@ export default defineConfig({
 		"http",
 		"https",
 		"sharp",
-		"bigint-buffer",
 		"@solana/web3.js",
 	],
 	sourcemap: true

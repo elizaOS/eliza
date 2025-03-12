@@ -77,7 +77,7 @@ async function installDependencies(
 
 	// First just install basic dependencies
 	try {
-		await runBunCommand(["install"], targetDir);
+		await runBunCommand(["install", "--no-optional"], targetDir);
 		logger.success("Installed base dependencies");
 	} catch (error) {
 		logger.warn(`Initial dependency installation error: ${error.message}`);
@@ -221,7 +221,7 @@ export const create = new Command()
 				// Install dependencies
 				logger.info("Installing dependencies...");
 				try {
-					await runBunCommand(["install"], targetDir);
+					await runBunCommand(["install", "--no-optional"], targetDir);
 					logger.success("Dependencies installed successfully!");
 					
 					// Build the plugin after installing dependencies

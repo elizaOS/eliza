@@ -20,10 +20,6 @@
 	"dependencies": {
 		"@anush008/tokenizers": "^0.0.0",
 		"@aws-sdk/client-s3": "^3.749.0",
-		"@aws-sdk/s3-request-presigner": "^3.749.0",
-		"@echogarden/espeak-ng-emscripten": "0.3.3",
-		"@echogarden/kissfft-wasm": "0.2.0",
-		"@echogarden/speex-resampler-wasm": "0.2.1",
 		"@elizaos/core": "workspace:*",
 		"@huggingface/hub": "^1.0.1",
 		"@huggingface/inference": "^3.3.4",
@@ -37,7 +33,6 @@
 		"command-exists": "1.2.9",
 		"cookie": "0.7.0",
 		"csv-writer": "1.6.0",
-		"echogarden": "2.0.7",
 		"espeak-ng": "1.0.2",
 		"fastembed": "^1.14.1",
 		"ffmpeg-static": "5.2.0",

@@ -293,8 +293,6 @@ const startAgents = async (options: {
 	let selectedServices: string[] = [];
 	let selectedAiModels: string[] = [];
 
-	console.log("*** existingConfig", existingConfig);
-
 	// Check if we should reconfigure based on command-line option or if using default config
 	const shouldConfigure = options.configure || existingConfig.isDefault;
 

@@ -1,6 +1,3 @@
-// FOURTH CHANGE - TESTING AUTO-REBUILD
-// This comment was added to test file watching in dev mode.
-
 import type { Plugin } from "@elizaos/core";
 import {
 	type Action,
@@ -216,6 +213,28 @@ export const starterPlugin: Plugin = {
 					name: "example_test",
 					fn: async (runtime) => {
 						console.log("example_test run by ", runtime.character.name);
+						// Add a proper assertion that will pass
+						if (runtime.character.name !== "Eliza") {
+							throw new Error(`Expected character name to be "Eliza" but got "${runtime.character.name}"`);
+						}
+						// Verify the plugin is loaded properly
+						const service = runtime.getService("starter");
+						if (!service) {
+							throw new Error("Starter service not found");
+						}
+						// Don't return anything to match the void return type
+					},
+				},
+				{
+					name: "should_have_hello_world_action",
+					fn: async (runtime) => {
+						// Check if the hello world action is registered
+						// Look for the action in our plugin's actions
+						// The actual action name in this plugin is "helloWorld", not "hello"
+						const actionExists = starterPlugin.actions.some(a => a.name === "HELLO_WORLD");
+						if (!actionExists) {
+							throw new Error("Hello world action not found in plugin");
+						}
 					},
 				},
 			],
@@ -267,4 +286,28 @@ export const starterPlugin: Plugin = {
 	actions: [helloWorldAction],
 	providers: [helloWorldProvider],
 };
+
+// Add debugging info to help understand why tests aren't running
+{
+	const debugPlugin = () => {
+		// Add this temporary code to print info about the tests
+		// Will be removed after debugging
+		console.log("DEBUG: PLUGIN STRUCTURE:");
+		console.log("Plugin name:", starterPlugin.name);
+		console.log("Tests array exists:", !!starterPlugin.tests);
+		console.log("Tests array length:", starterPlugin.tests?.length);
+		if (starterPlugin.tests && starterPlugin.tests.length > 0) {
+			console.log("First test suite name:", starterPlugin.tests[0].name);
+			console.log("First test suite has tests array:", !!starterPlugin.tests[0].tests);
+			console.log("First test suite tests length:", starterPlugin.tests[0].tests?.length);
+			if (starterPlugin.tests[0].tests && starterPlugin.tests[0].tests.length > 0) {
+				console.log("First test name:", starterPlugin.tests[0].tests[0].name);
+				console.log("First test has fn:", !!starterPlugin.tests[0].tests[0].fn);
+			}
+		}
+	};
+	// Call function but don't display in IDE completion
+	debugPlugin();
+}
+
 export default starterPlugin;

@@ -28,6 +28,7 @@
 	},
 	"scripts": {
 		"start": "elizaos start",
+		"test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
 		"dev": "elizaos dev",
 		"build": "tsup",
 		"lint": "biome check --config-path=./ --write",
