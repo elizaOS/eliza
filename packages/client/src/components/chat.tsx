@@ -6,14 +6,12 @@ import {
 } from "@/components/ui/chat/chat-bubble";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
-import { useAgent, useAgentMessages } from "@/hooks/use-query-hooks";
-import { useToast } from "@/hooks/use-toast";
-import { apiClient } from "@/lib/api";
+import { useAgent, useMessages } from "@/hooks/use-query-hooks";
 import { cn, moment } from "@/lib/utils";
 import { WorldManager } from "@/lib/world-manager";
 import type { IAttachment } from "@/types";
 import type { Content, UUID } from "@elizaos/core";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Paperclip, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import AIWriter from "react-aiwriter";
@@ -26,6 +24,9 @@ import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import WebSocketsManager from "@/lib/websocket-manager";
 import { getUserId } from "@/lib/utils";
+import { USER_NAME } from "@/constants";
+
+const SOURCE_NAME = "client_chat";
 
 type ExtraContentFields = {
 	name: string;
@@ -34,12 +35,6 @@ type ExtraContentFields = {
 };
 
 type ContentWithUser = Content & ExtraContentFields;
-
-type NewMessagesResponse = {
-	data: {
-		message: ContentWithUser;
-	};
-};
 
 function MessageContent({
 	message,
@@ -52,9 +47,9 @@ function MessageContent({
 		<div className="flex flex-col">
 			<ChatBubbleMessage
 				isLoading={message.isLoading}
-				{...(message.name === "Anon" ? { variant: "sent" } : {})}
+				{...(message.name === USER_NAME ? { variant: "sent" } : {})}
 			>
-				{message.name === "Anon" ? (
+				{message.name === USER_NAME ? (
 					message.text
 				) : (
 					<AIWriter>{message.text}</AIWriter>
@@ -112,7 +107,6 @@ function MessageContent({
 }
 
 export default function Page({ agentId }: { agentId: UUID }) {
-	const { toast } = useToast();
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
 	const [input, setInput] = useState("");
 	const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -121,24 +115,34 @@ export default function Page({ agentId }: { agentId: UUID }) {
 	const queryClient = useQueryClient();
 	const worldId = WorldManager.getWorldId();
 
-	const { messages } = useAgentMessages(agentId);
-
 	const agentData = useAgent(agentId)?.data?.data;
 	const userId = getUserId();
 	const roomId = agentId;
 
+	const { data: messages = [] } = useMessages(agentId, roomId);
+
 	const wsManager = WebSocketsManager.getInstance();
+
 	useEffect(() => {
 		wsManager.connect(agentId, roomId);
 		wsManager.connect(userId, roomId);
 
+		const handleMessageBroadcasting = (data: ContentWithUser) => {
+			queryClient.setQueryData(
+				["messages", agentId, roomId, worldId],
+				(old: ContentWithUser[] = []) => [...old, {...data, name: data.senderName}],
+			);
+		}
+		wsManager.on("messageBroadcast", handleMessageBroadcasting);
+
 		return () => {
 			wsManager.disconnectAll();
+			wsManager.off("messageBroadcast", handleMessageBroadcasting);
 		};
 	}, []);
 
 	const getMessageVariant = (role: string) =>
-		role !== "user" ? "received" : "sent";
+		role !== USER_NAME ? "received" : "sent";
 
 	const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } =
 		useAutoScroll({
@@ -147,7 +151,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
 	useEffect(() => {
 		scrollToBottom();
-	}, [queryClient.getQueryData(["messages", agentId, worldId])]);
+	}, [queryClient.getQueryData(["messages", agentId, roomId, worldId])]);
 
 	useEffect(() => {
 		scrollToBottom();
@@ -165,42 +169,13 @@ export default function Page({ agentId }: { agentId: UUID }) {
 		e.preventDefault();
 		if (!input) return;
 
-		const attachments: IAttachment[] | undefined = selectedFile
-			? [
-				{
-					url: URL.createObjectURL(selectedFile),
-					contentType: selectedFile.type,
-					title: selectedFile.name,
-				},
-			]
-			: undefined;
-
-		const newMessages = [
-			{
-				text: input,
-				name: "Anon",
-				createdAt: Date.now(),
-				attachments,
-				worldId,
-			},
-			{
-				text: input,
-				name: "system",
-				isLoading: true,
-				createdAt: Date.now(),
-				worldId,
-			},
-		];
-
-		queryClient.setQueryData(
-			["messages", agentId, worldId],
-			(old: ContentWithUser[] = []) => [...old, ...newMessages],
-		);
-
-		sendMessageMutation.mutate({
-			message: input,
-			selectedFile: selectedFile ? selectedFile : null,
-		});
+		wsManager.handleBroadcastMessage(
+			userId,
+			USER_NAME,
+			input,
+			roomId,
+			SOURCE_NAME
+		)
 
 		setSelectedFile(null);
 		setInput("");
@@ -212,42 +187,6 @@ export default function Page({ agentId }: { agentId: UUID }) {
 			inputRef.current.focus();
 		}
 	}, []);
-
-	const sendMessageMutation = useMutation({
-		mutationKey: ["send_message", agentId],
-		mutationFn: ({
-			message,
-			selectedFile,
-		}: {
-			message: string;
-			selectedFile?: File | null;
-		}) => apiClient.sendMessage(agentId, message, selectedFile),
-		onSuccess: (newMessages: NewMessagesResponse) => {
-			if (newMessages) {
-				queryClient.setQueryData(
-					["messages", agentId, worldId],
-					(old: ContentWithUser[] = []) => [
-						...old.filter((msg) => !msg.isLoading),
-						{ ...newMessages.data.message, createdAt: Date.now() },
-					],
-				);
-			} else {
-				queryClient.setQueryData(
-					["messages", agentId, worldId],
-					(old: ContentWithUser[] = []) => [
-						...old.filter((msg) => !msg.isLoading),
-					],
-				);
-			}
-		},
-		onError: (e) => {
-			toast({
-				variant: "destructive",
-				title: "Unable to send message",
-				description: e.message,
-			});
-		},
-	});
 
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
@@ -310,7 +249,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 				disableAutoScroll={disableAutoScroll}
 			>
 				{messages.map((message: ContentWithUser) => {
-					const isUser = message.name === "Anon";
+					const isUser = message.name === USER_NAME;
 
 					return (
 						<div
@@ -402,12 +341,10 @@ export default function Page({ agentId }: { agentId: UUID }) {
 							onChange={(newInput: string) => setInput(newInput)}
 						/>
 						<Button
-							disabled={!input || sendMessageMutation?.isPending}
 							type="submit"
 							size="sm"
 							className="ml-auto gap-1.5 h-[30px]"
 						>
-							{sendMessageMutation?.isPending ? "..." : "Send Message"}
 							<Send className="size-3.5" />
 						</Button>
 					</div>
