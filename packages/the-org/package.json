@@ -25,7 +25,7 @@
 		"exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
 	},
 	"dependencies": {
-		"@elizaos/cli": "workspace:*",
+		"elizaos": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-tee": "workspace:*",
 		"@elizaos/plugin-twitter": "workspace:*",

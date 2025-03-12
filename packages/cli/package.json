@@ -1,5 +1,5 @@
 {
-	"name": "@elizaos/cli",
+	"name": "elizaos",
 	"version": "1.0.0-alpha.23",
 	"description": "elizaOS CLI - Manage your AI agents and plugins",
 	"publishConfig": {
@@ -30,10 +30,7 @@
 	},
 	"scripts": {
 		"cli": "bun run build && node dist/index.js",
-		"start": "bun run build",
 		"build": "tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-to-create-eliza.ts && bun run src/scripts/copy-templates.ts",
-		"watch": "tsc --watch",
-		"typecheck": "tsc --noEmit",
 		"release": "changeset version",
 		"test": "vitest run",
 		"test:dev": "REGISTRY_URL=http://localhost:3333 vitest run",

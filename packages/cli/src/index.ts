@@ -7,6 +7,7 @@ import { logger } from "@elizaos/core";
 import { Command } from "commander";
 import { agent } from "./commands/agent.js";
 import { create } from "./commands/create.js";
+import devCommand from "./commands/dev.js";
 import envCommand from "./commands/env.js";
 import { plugin } from "./commands/plugin.js";
 import { project } from "./commands/project.js";
@@ -62,6 +63,9 @@ async function main() {
 	
 	// Register the env command
 	envCommand(program);
+	
+	// Register the dev command
+	devCommand(program);
 
 	await program.parseAsync();
 }
