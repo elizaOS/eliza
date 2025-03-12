@@ -9,7 +9,6 @@
 		"./package.json": "./package.json",
 		".": {
 			"import": {
-				"@elizaos/source": "./src/index.ts",
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
 			}
@@ -19,7 +18,6 @@
 		"dist"
 	],
 	"dependencies": {
-		"@coral-xyz/anchor": "0.30.1",
 		"@elizaos/core": "^1.0.0-alpha.24",
 		"@solana/spl-token": "0.4.9",
 		"@solana/web3.js": "^1.98.0",
@@ -47,5 +45,5 @@
 		"form-data": "4.0.2",
 		"whatwg-url": "7.1.0"
 	},
-	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
+	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
 }

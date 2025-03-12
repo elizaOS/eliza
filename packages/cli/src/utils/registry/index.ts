@@ -178,6 +178,113 @@ interface PluginMetadata {
 	categories?: string[];
 }
 
+// Default registry data for offline use or when GitHub is unavailable
+const DEFAULT_REGISTRY: Record<string, string> = {
+	"@elizaos/plugin-anthropic": "elizaos/plugin-anthropic",
+	"@elizaos/plugin-discord": "elizaos/plugin-discord",
+	"@elizaos/plugin-elevenlabs": "elizaos/plugin-elevenlabs",
+	"@elizaos/plugin-local-ai": "elizaos/plugin-local-ai",
+	"@elizaos/plugin-node": "elizaos/plugin-node",
+	"@elizaos/plugin-openai": "elizaos/plugin-openai",
+	"@elizaos/plugin-solana": "elizaos/plugin-solana",
+	"@elizaos/plugin-sql": "elizaos/plugin-sql",
+	"@elizaos/plugin-starter": "elizaos/plugin-starter",
+	"@elizaos/plugin-tee": "elizaos/plugin-tee",
+	"@elizaos/plugin-telegram": "elizaos/plugin-telegram",
+	"@elizaos/plugin-twitter": "elizaos/plugin-twitter"
+};
+
+// Add a new constant for the raw GitHub URL
+const RAW_REGISTRY_URL = 'https://raw.githubusercontent.com/elizaOS/registry/refs/heads/main/index.json';
+
+/**
+ * Saves the registry index to the cache file
+ */
+export async function saveRegistryCache(registry: Record<string, string>): Promise<void> {
+	try {
+		await ensureElizaDir();
+		await fs.writeFile(REGISTRY_CACHE_FILE, JSON.stringify(registry, null, 2));
+		logger.debug('Registry cache saved successfully');
+	} catch (error) {
+		logger.debug(`Failed to save registry cache: ${error.message}`);
+	}
+}
+
+/**
+ * Gets a local copy of the registry index without requiring GitHub authentication.
+ * This is useful for offline mode or when GitHub is unavailable.
+ * 
+ * @returns {Promise<Record<string, string>>} The local registry index
+ */
+export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
+	// First try to fetch from the public raw GitHub URL
+	try {
+		logger.debug('Fetching registry from public GitHub URL');
+		const response = await fetch(RAW_REGISTRY_URL);
+		
+		if (response.ok) {
+			const rawData = await response.json();
+			
+			// Validate the data structure
+			const result: Record<string, string> = {};
+			
+			if (typeof rawData === 'object' && rawData !== null) {
+				// Safely parse the response data
+				for (const [key, value] of Object.entries(rawData)) {
+					if (typeof value === 'string') {
+						result[key] = value;
+					}
+				}
+				
+				// Save the fetched registry to cache for future offline use
+				await saveRegistryCache(result);
+				logger.debug('Successfully fetched registry from public GitHub URL');
+				return result;
+			}
+		}
+	} catch (error) {
+		logger.debug(`Failed to fetch registry from public URL: ${error.message}`);
+	}
+	
+	// If fetching fails, try to read from cache
+	try {
+		if (existsSync(REGISTRY_CACHE_FILE)) {
+			const cacheContent = await fs.readFile(REGISTRY_CACHE_FILE, 'utf-8');
+			const cachedRegistry = JSON.parse(cacheContent);
+			logger.debug('Using cached registry index');
+			return cachedRegistry;
+		}
+	} catch (error) {
+		logger.debug(`Failed to read registry cache: ${error.message}`);
+	}
+	
+	// If we're in a monorepo context, try to discover local plugins
+	if (await isMonorepoContext()) {
+		try {
+			const localPackages = await getLocalPackages();
+			const localRegistry: Record<string, string> = {};
+			
+			// getLocalPackages returns an array of package names as strings
+			for (const pkgName of localPackages) {
+				if (pkgName.includes('plugin-')) {
+					// Use the package name as both key and value
+					// Format as expected by the registry: orgrepo/packagename
+					const repoName = pkgName.replace('@elizaos/', '');
+					localRegistry[pkgName] = `elizaos/${repoName}`;
+				}
+			}
+			
+			// Merge with default registry, prioritizing local packages
+			return { ...DEFAULT_REGISTRY, ...localRegistry };
+		} catch (error) {
+			logger.debug(`Failed to discover local plugins: ${error.message}`);
+		}
+	}
+	
+	// Fall back to default registry
+	return DEFAULT_REGISTRY;
+}
+
 /**
  * Fetches the registry index asynchronously.
  *
@@ -230,8 +337,27 @@ export async function getRegistryIndex(): Promise<Record<string, string>> {
  * @throws {Error} If an error occurs while retrieving the repository URL.
  */
 export async function getPluginRepository(pluginName: string): Promise<string | null> {
-	const metadata = await getPluginMetadata(pluginName);
-	return metadata?.repository || null;
+	try {
+		// First try getting from the local/public registry
+		const registry = await getLocalRegistryIndex();
+		if (registry[pluginName]) {
+			return registry[pluginName];
+		}
+		
+		// Fall back to authenticated method if needed
+		const metadata = await getPluginMetadata(pluginName);
+		return metadata?.repository || null;
+	} catch (error) {
+		logger.debug(`Error getting plugin repository for ${pluginName}: ${error.message}`);
+		// Fall back to authenticated method
+		try {
+			const metadata = await getPluginMetadata(pluginName);
+			return metadata?.repository || null;
+		} catch (fallbackError) {
+			logger.error(`Failed to get plugin repository: ${fallbackError.message}`);
+			return null;
+		}
+	}
 }
 
 /**

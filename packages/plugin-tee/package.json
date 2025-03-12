@@ -5,7 +5,7 @@
 	"type": "module",
 	"types": "dist/index.d.ts",
 	"dependencies": {
-		"@elizaos/core": "^1.0.0-alpha.24",
+		"@elizaos/core": "workspace:*",
 		"@phala/dstack-sdk": "^0.1.7",
 		"@solana/web3.js": "^1.98.0",
 		"better-sqlite3": "11.8.1",
@@ -24,5 +24,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
+	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
 }

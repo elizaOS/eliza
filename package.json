@@ -1,30 +1,23 @@
 {
   "name": "eliza",
   "scripts": {
-    "clean": "npx turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
-    "cli": "bun --filter=@elizaos/cli cli",
-    "lint": "turbo run lint --filter=./packages/*",
     "preinstall": "npx only-allow bun",
-    "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
-    "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
-    "build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs",
-    "build:docker": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/* --filter=!./packages/docs",
-    "start": "turbo run start --filter=!./packages/docs",
-    "start:debug": "LOG_LEVEL=debug turbo run start --filter=!./packages/docs",
-    "start:no-warnings": "BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run start --filter=!./packages/docs",
-    "build:no-warnings": "BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run build --filter=./packages/core && BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run build --filter=./packages/plugin-sql && BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run build --filter=!./packages/docs",
-    "agent": "turbo run start --filter=@elizaos/the-org",
-    "dev": "turbo run build --filter=./packages/core && turbo run dev --filter=!./packages/core --filter=!./packages/docs --concurrency=20",
+    "start": "npx elizaos start",
+    "start:debug": "LOG_LEVEL=debug npx elizaos start",
+    "dev": "npx elizaos start",
+    "build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs --filter=!./packages/core --filter=!./packages/plugin-sql",
+    "clean": "npx turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
+    "lint": "turbo run lint --filter=./packages/*",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
     "release:alpha": "bun run build && bun lint && lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose && bun lint",
+    "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
+    "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
     "docker:build": "bash ./scripts/docker.sh build",
     "docker:run": "bash ./scripts/docker.sh run",
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --filter=@elizaos/the-org",
-    "update-sourcemaps": "bash ./update-tsup-config.sh && bun run build",
-    "reset-sourcemaps": "find packages -name \"tsup.config.ts.bak\" -exec bash -c 'cp \"{}\" \"${0%.bak}\"' {} \\;"
+    "test": "turbo run test --filter=@elizaos/the-org"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
@@ -47,9 +40,6 @@
   },
   "bun": {
     "overrides": {
-      "onnxruntime-node": "1.20.1",
-      "@ai-sdk/provider": "1.0.6",
-      "@ai-sdk/provider-utils": "2.1.6",
       "cookie": "0.7.0",
       "bs58": "5.0.0",
       "secp256k1": "5.0.1",
@@ -58,10 +48,6 @@
       "eslint": "9.22.0",
       "react": "19.0.0",
       "react-dom": "19.0.0",
-      "solana-bankrun": "0.3.1",
-      "@metaplex-foundation/umi": "0.9.2",
-      "buffer": "6.0.3",
-      "@solana/spl-token": "0.4.9",
       "got": "12.6.1"
     }
   },

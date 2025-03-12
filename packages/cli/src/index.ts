@@ -6,15 +6,16 @@ import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
 import { agent } from "./commands/agent.js";
-import { init } from "./commands/init.js";
-import { plugins } from "./commands/plugins.js";
+import { create } from "./commands/create.js";
+import devCommand from "./commands/dev.js";
+import envCommand from "./commands/env.js";
+import { plugin } from "./commands/plugin.js";
+import { project } from "./commands/project.js";
 import { start } from "./commands/start.js";
 import { teeCommand as tee } from "./commands/tee.js";
 import { test } from "./commands/test.js";
-import updateCommand from "./commands/update.js";
-import envCommand from "./commands/env.js";
+import updateCommand, { update } from "./commands/update.js";
 import { loadEnvironment } from "./utils/get-config.js";
-
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
 
@@ -44,15 +45,17 @@ async function main() {
 
 	const program = new Command()
 		.name("eliza")
-		.description("elizaOS CLI - Manage your AI agents and plugins")
+		.description("elizaOS CLI - Manage your project and plugins")
 		.version(version);
 
 	program
-		.addCommand(init)
-		.addCommand(plugins)
+		.addCommand(create)
+		.addCommand(project)
+		.addCommand(plugin)
 		.addCommand(agent)
 		.addCommand(tee)
 		.addCommand(start)
+		.addCommand(update)
 		.addCommand(test);
 
 	// Register the update command
@@ -60,6 +63,9 @@ async function main() {
 	
 	// Register the env command
 	envCommand(program);
+	
+	// Register the dev command
+	devCommand(program);
 
 	await program.parseAsync();
 }

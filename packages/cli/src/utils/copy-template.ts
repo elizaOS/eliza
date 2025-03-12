@@ -77,7 +77,7 @@ export async function copyTemplate(
 	} else {
 		// In production, use the templates directory from the CLI package
 		templateDir = path.resolve(
-			path.dirname(require.resolve("@elizaos/cli/package.json")),
+			path.dirname(require.resolve("elizaos/package.json")),
 			"templates",
 			templateType === "project" ? "project-starter" : "plugin-starter",
 		);
@@ -94,17 +94,29 @@ export async function copyTemplate(
 	const packageJsonPath = path.join(targetDir, "package.json");
 
 	try {
+
+		// get the package.json of this package
+		const cliPackageJsonPath = path.resolve(
+			path.dirname(require.resolve("elizaos/package.json")),
+			"package.json",
+		);
+
+		const cliPackageJson = JSON.parse(await fs.readFile(cliPackageJsonPath, "utf8"));
+
+		// get the version of this package
+		const cliPackageVersion = cliPackageJson.version;		
+
 		const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
 
 		// Set project name
 		packageJson.name = name;
 
-		// Process dependencies - set all @elizaos/* packages to use "latest"
+		// Process dependencies - set all @elizaos/* packages to use cliPackageVersion
 		if (packageJson.dependencies) {
 			for (const depName of Object.keys(packageJson.dependencies)) {
 				if (depName.startsWith("@elizaos/")) {
 					logger.info(`Setting ${depName} to use latest version dynamically`);
-					packageJson.dependencies[depName] = "latest";
+					packageJson.dependencies[depName] = cliPackageVersion;
 				}
 			}
 		}
@@ -114,9 +126,9 @@ export async function copyTemplate(
 			for (const depName of Object.keys(packageJson.devDependencies)) {
 				if (depName.startsWith("@elizaos/")) {
 					logger.info(
-						`Setting dev dependency ${depName} to use latest version dynamically`,
+						`Setting dev dependency ${depName} to use version ${cliPackageVersion}`,
 					);
-					packageJson.devDependencies[depName] = "latest";
+					packageJson.devDependencies[depName] = cliPackageVersion;
 				}
 			}
 		}

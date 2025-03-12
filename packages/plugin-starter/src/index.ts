@@ -1,3 +1,6 @@
+// FOURTH CHANGE - TESTING AUTO-REBUILD
+// This comment was added to test file watching in dev mode.
+
 import type { Plugin } from "@elizaos/core";
 import {
 	type Action,
@@ -138,13 +141,13 @@ export class StarterService extends Service {
 	}
 
 	static async start(runtime: IAgentRuntime) {
-		logger.info("*** Starting starter service ***");
+		logger.info(`*** Starting starter service - MODIFIED: ${new Date().toISOString()} ***`);
 		const service = new StarterService(runtime);
 		return service;
 	}
 
 	static async stop(runtime: IAgentRuntime) {
-		logger.info("*** Stopping starter service ***");
+		logger.info("*** TESTING DEV MODE - STOP MESSAGE CHANGED! ***");
 		// get the service from the runtime
 		const service = runtime.getService(StarterService.serviceType);
 		if (!service) {
@@ -154,7 +157,7 @@ export class StarterService extends Service {
 	}
 
 	async stop() {
-		logger.info("*** Stopping starter service instance ***");
+		logger.info("*** THIRD CHANGE - TESTING FILE WATCHING! ***");
 	}
 }
 
@@ -165,7 +168,7 @@ export const starterPlugin: Plugin = {
 		EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
 	},
 	async init(config: Record<string, string>) {
-		logger.info("*** Initializing starter plugin ***");
+		logger.info("*** TESTING DEV MODE - PLUGIN MODIFIED AND RELOADED! ***");
 		try {
 			const validatedConfig = await configSchema.parseAsync(config);
 

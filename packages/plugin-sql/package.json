@@ -12,7 +12,6 @@
 		"./package.json": "./package.json",
 		".": {
 			"import": {
-				"@elizaos/source": "./src/index.ts",
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
 			}
@@ -23,7 +22,7 @@
 	],
 	"dependencies": {
 		"@electric-sql/pglite": "^0.2.17",
-		"@elizaos/core": "^1.0.0-alpha.24",
+		"@elizaos/core": "workspace:*",
 		"@types/pg": "8.11.10",
 		"drizzle-kit": "^0.30.4",
 		"drizzle-orm": "^0.39.1",
@@ -44,5 +43,5 @@
 	"peerDependencies": {
 		"typescript": "5.8.2"
 	},
-	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
+	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
 }

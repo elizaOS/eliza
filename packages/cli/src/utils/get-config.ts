@@ -1,14 +1,8 @@
-import { existsSync } from "node:fs";
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cosmiconfig } from "cosmiconfig";
 import dotenv from "dotenv";
 import { z } from "zod";
-
-const explorer = cosmiconfig("eliza", {
-	searchPlaces: ["project.json"],
-});
 
 // Database config schemas
 const postgresConfigSchema = z.object({
@@ -64,24 +58,10 @@ export const configSchema = rawConfigSchema.extend({
  */
 export type Config = z.infer<typeof configSchema>;
 
-/**
- * Gets the configuration for the given current working directory.
- * @param {string} cwd - The current working directory
- * @returns {Promise<object | null>} The resolved configuration object, or null if no configuration is found
- */
-export async function getConfig(cwd: string) {
-	const config = await getRawConfig(cwd);
-
-	if (!config) {
-		return null;
-	}
-
-	return await resolveConfigPaths(cwd, config);
-}
 
 /**
  * Resolves the paths in the given configuration based on the provided current working directory (cwd).
- * @param {string} cwd - The current working directory.
+ * @param {string} cwd - The current working directory.bun run b
  * @param {RawConfig} config - The raw configuration object.
  * @returns {Promise<ResolvedConfig>} The resolved configuration object with updated paths.
  */
@@ -92,26 +72,6 @@ export async function resolveConfigPaths(cwd: string, config: RawConfig) {
 			knowledge: path.resolve(cwd, config.paths.knowledge),
 		},
 	});
-}
-
-/**
- * Retrieves the raw configuration object for the specified directory.
- * @param {string} cwd - The current working directory.
- * @returns {Promise<RawConfig | null>} A promise that resolves to the raw configuration object, or null if no configuration is found.
- * @throws {Error} If an invalid configuration is found in the project.json file within the specified directory.
- */
-export async function getRawConfig(cwd: string): Promise<RawConfig | null> {
-	try {
-		const configResult = await explorer.search(cwd);
-
-		if (!configResult) {
-			return null;
-		}
-
-		return rawConfigSchema.parse(configResult.config);
-	} catch (_error) {
-		throw new Error(`Invalid configuration found in ${cwd}/project.json.`);
-	}
 }
 
 /**

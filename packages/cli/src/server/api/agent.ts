@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import type {
 	Agent,
 	Character,
@@ -23,7 +24,6 @@ import {
 import express from "express";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
-import { Readable } from "node:stream";
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.

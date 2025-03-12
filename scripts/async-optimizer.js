@@ -394,7 +394,7 @@ ${cleanedCode}
     if (parsed.isParallelizable && (!parsed.optimizedCode || typeof parsed.optimizedCode !== 'string')) {
       console.warn(`[${functionName}] Warning: Function is parallelizable but no optimized code provided. Generating default optimization.`);
       // Generate a basic optimization if none is provided
-      parsed.optimizedCode = generateDefaultOptimization(cleanedCode, parsed.parallelizableOperations);
+      parsed.optimizedCode = generateDefaultOptimization(functionName, parsed.parallelizableOperations, cleanedCode);
     }
     
     return parsed;
@@ -1484,7 +1484,7 @@ async function generateOptimizations(analysisResults) {
     // Ensure we have optimized code
     if (!analysis.optimizedCode || typeof analysis.optimizedCode !== 'string') {
       logVerbose(`Generating default optimization for ${sourceInfo.name}`);
-      analysis.optimizedCode = generateDefaultOptimization(sourceInfo.code, analysis.parallelizableOperations);
+      analysis.optimizedCode = generateDefaultOptimization(sourceInfo.name, analysis.parallelizableOperations, sourceInfo.code);
     }
     
     try {
@@ -1646,102 +1646,62 @@ async function updateResults(fn, analysis) {
 }
 
 // Helper function to generate a basic optimization if Claude doesn't provide one
-function generateDefaultOptimization(originalCode, parallelizableOperations) {
-  // If there are no parallelizable operations, return the original code
-  if (!parallelizableOperations || parallelizableOperations.length === 0) {
-    return originalCode;
-  }
-
-  // Find the async function declaration/expression pattern in the code
-  const asyncFunctionMatch = originalCode.match(/async\s+function\s+(\w+)?\s*\(([\s\S]*?)\)\s*\{([\s\S]*)\}/);
-  const asyncArrowMatch = originalCode.match(/(?:const|let|var)?\s*(\w+)?\s*=\s*async\s*\(([\s\S]*?)\)\s*=>\s*\{([\s\S]*)\}/);
-  
-  if (!asyncFunctionMatch && !asyncArrowMatch) {
-    console.warn("Could not identify async function pattern, returning original code");
-    return originalCode;
-  }
-
-  const match = asyncFunctionMatch || asyncArrowMatch;
-  const functionName = match[1] || 'anonymous';
-  const params = match[2].trim();
-  const functionBody = match[3];
-
-  // Extract the await expressions from the function body
-  const sequentialOps = parallelizableOperations.filter(op => op.operations && op.operations.length > 1);
-  
-  if (sequentialOps.length === 0) {
-    console.warn("No sequential operations found for parallelization");
-    return originalCode;
-  }
-
-  // Create a simple Promise.all implementation for each group of operations
-  let optimizedCode = '';
-  
-  if (asyncFunctionMatch) {
-    // Regular function
-    optimizedCode = `async function ${functionName}(${params}) {\n`;
-  } else {
-    // Arrow function
-    optimizedCode = `const ${functionName} = async (${params}) => {\n`;
-  }
-  
-  // Extract the console.log statements and other setup code
-  const setupCode = functionBody.match(/^([\s\S]*?)(?=const|let|var|await)/);
-  if (setupCode && setupCode[1]) {
-    optimizedCode += setupCode[1];
-  }
-  
-  // Add Promise.all for each group of operations
-  for (const op of sequentialOps) {
-    if (!Array.isArray(op.operations) || op.operations.length <= 1) {
-      continue;
-    }
+function generateDefaultOptimization(functionName, operations, originalCode) {
+  try {
+    // Extract the function declaration part (everything before the first '{')
+    const functionDeclarationMatch = originalCode.match(/^(.*?)\{/s);
+    const functionDeclaration = functionDeclarationMatch ? functionDeclarationMatch[1] : '';
     
-    // Extract variable names from the original await expressions
-    const varNames = [];
-    for (const operation of op.operations) {
-      const varMatch = operation.match(/await\s+([^(]+)\(/);
-      if (varMatch) {
-        // Find the variable name in the original code
-        const varNameMatch = functionBody.match(new RegExp(`(const|let|var)\\s+(\\w+)\\s*=\\s*await\\s+${varMatch[1]}\\(`));
-        if (varNameMatch) {
-          varNames.push(varNameMatch[2]);
-        } else {
-          // If we can't find the variable name, use a generic one
-          varNames.push(`result${varNames.length + 1}`);
+    // Extract the return statement
+    const returnMatch = originalCode.match(/\s*(return\s+[\s\S]*?;)/);
+    const returnStatement = returnMatch ? returnMatch[1] : 'return;';
+    
+    // Group operations by their function name
+    const groupedOperations = {};
+    for (const op of operations) {
+      if (!groupedOperations[op.functionName]) {
+        groupedOperations[op.functionName] = [];
+      }
+      groupedOperations[op.functionName].push(op);
+    }
+
+    // Generate Promise.all for each group of operations
+    let optimizedCode = '';
+    
+    for (const [funcName, ops] of Object.entries(groupedOperations)) {
+      if (ops.length > 1) {
+        // Create variable names for the results
+        const varNames = ops.map((op, i) => {
+          // Use the original variable name if available, otherwise generate a new one
+          return op.variableName || `${op.variableName || 'result'}${i > 0 ? i : ''}`;
+        });
+        
+        // Add a comment to indicate parallelized operations
+        optimizedCode += '  // Parallelized operations\n';
+        
+        // Generate the Promise.all statement
+        optimizedCode += `  const [${varNames.join(', ')}] = await Promise.all([\n`;
+        for (const op of ops) {
+          optimizedCode += `    ${op.functionName}(${op.args.join(', ')}),\n`;
         }
+        optimizedCode += '  ]);\n\n';
       } else {
-        varNames.push(`result${varNames.length + 1}`);
+        // For single operations, keep them as is
+        const op = ops[0];
+        optimizedCode += `  const ${op.variableName} = await ${op.functionName}(${op.args.join(', ')});\n`;
       }
     }
-    
-    // Create the Promise.all replacement
-    optimizedCode += `  // Parallelized operations\n`;
-    optimizedCode += `  const [${varNames.join(', ')}] = await Promise.all([\n`;
-    
-    // Remove the await keyword from the operations
-    const cleanedOperations = op.operations.map(operation => 
-      operation.replace(/await\s+/, '')
-    );
-    
-    optimizedCode += `    ${cleanedOperations.join(',\n    ')}\n`;
-    optimizedCode += `  ]);\n\n`;
+
+    // Add the return statement
+    optimizedCode += `  ${returnStatement}\n`;
+
+    // Combine everything
+    const finalCode = `${functionDeclaration}{\n${optimizedCode}}`;
+    return finalCode;
+  } catch (error) {
+    console.error(`Error generating optimization for ${functionName}:`, error);
+    return null;
   }
-  
-  // Extract the return statement
-  const returnMatch = functionBody.match(/\s*(return\s+[\s\S]*?;)/);
-  if (returnMatch && returnMatch[1]) {
-    optimizedCode += `  ${returnMatch[1]}\n`;
-  }
-  
-  optimizedCode += `}`;
-  
-  // Add semicolon for arrow functions if the original had one
-  if (asyncArrowMatch && originalCode.trim().endsWith(';')) {
-    optimizedCode += ';';
-  }
-  
-  return optimizedCode;
 }
 
 /**
@@ -2057,20 +2017,45 @@ async function analyzeWithRegex(filePath) {
     for (const fn of asyncFunctions) {
       // Look for consecutive await expressions using the same function call
       const awaitCalls = {};
-      const awaitPattern = /await\s+([a-zA-Z0-9_.]+)\(([^)]*)\)/g;
+      const awaitPattern = /const\s+([a-zA-Z0-9_]+)\s*=\s*await\s+([a-zA-Z0-9_.]+)\(([^)]*)\)/g;
       let awaitMatch;
       
       const fnBody = fn.body;
       while ((awaitMatch = awaitPattern.exec(fnBody)) !== null) {
-        const fnName = awaitMatch[1];
+        const varName = awaitMatch[1];
+        const fnName = awaitMatch[2];
         if (!awaitCalls[fnName]) {
           awaitCalls[fnName] = [];
         }
         awaitCalls[fnName].push({
           fullMatch: awaitMatch[0],
-          args: awaitMatch[2],
+          variableName: varName,
+          args: awaitMatch[3],
           position: awaitMatch.index
         });
+      }
+      
+      // Also look for simpler await expressions
+      const simpleAwaitPattern = /await\s+([a-zA-Z0-9_.]+)\(([^)]*)\)/g;
+      while ((awaitMatch = simpleAwaitPattern.exec(fnBody)) !== null) {
+        const fnName = awaitMatch[1];
+        if (!awaitCalls[fnName]) {
+          awaitCalls[fnName] = [];
+        }
+        
+        // Check if this await is already captured by the more specific pattern
+        const isDuplicate = awaitCalls[fnName].some(call => 
+          call.fullMatch.includes(awaitMatch[0])
+        );
+        
+        if (!isDuplicate) {
+          awaitCalls[fnName].push({
+            fullMatch: awaitMatch[0],
+            variableName: `result${awaitCalls[fnName].length}`,
+            args: awaitMatch[2],
+            position: awaitMatch.index
+          });
+        }
       }
       
       // Check for parallelization opportunities
@@ -2081,12 +2066,15 @@ async function analyzeWithRegex(filePath) {
         if (calls.length > 1) {
           hasParallelizable = true;
           
-          parallelOps.push({
-            name: calledFn,
-            count: calls.length,
-            calls: calls.map(c => c.fullMatch),
-            operations: calls.map(c => c.fullMatch)
-          });
+          // Add each call as a separate operation
+          for (const call of calls) {
+            parallelOps.push({
+              functionName: calledFn,
+              variableName: call.variableName,
+              args: call.args.split(',').map(arg => arg.trim()),
+              fullMatch: call.fullMatch
+            });
+          }
         }
       }
       
@@ -2102,7 +2090,7 @@ async function analyzeWithRegex(filePath) {
         };
         
         // Generate optimized version
-        fnInfo.optimizedCode = generateDefaultOptimization(fn.fullMatch, parallelOps);
+        fnInfo.optimizedCode = generateDefaultOptimization(fn.name, parallelOps, fn.fullMatch);
         
         result.functions.push(fnInfo);
       } else {
