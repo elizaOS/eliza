@@ -9,7 +9,6 @@
 		"./package.json": "./package.json",
 		".": {
 			"import": {
-				"@elizaos/source": "./src/index.ts",
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
 			}
@@ -19,8 +18,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@coral-xyz/anchor": "0.30.1",
-		"@elizaos/core": "^1.0.0-alpha.22",
+		"@elizaos/core": "workspace:*",
 		"@solana/spl-token": "0.4.9",
 		"@solana/web3.js": "^1.98.0",
 		"bignumber.js": "9.1.2",

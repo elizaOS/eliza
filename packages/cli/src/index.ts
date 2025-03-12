@@ -6,15 +6,15 @@ import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
 import { agent } from "./commands/agent.js";
-import envCommand from "./commands/env.js";
 import { create } from "./commands/create.js";
+import envCommand from "./commands/env.js";
+import { plugin } from "./commands/plugin.js";
 import { project } from "./commands/project.js";
 import { start } from "./commands/start.js";
 import { teeCommand as tee } from "./commands/tee.js";
 import { test } from "./commands/test.js";
 import updateCommand, { update } from "./commands/update.js";
 import { loadEnvironment } from "./utils/get-config.js";
-import { plugin } from "./commands/plugin.js";
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
 

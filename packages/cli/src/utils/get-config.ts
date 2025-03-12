@@ -1,7 +1,7 @@
-import dotenv from "dotenv";
-import { existsSync, promises as fs } from "node:fs";
+import { promises as fs, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import dotenv from "dotenv";
 import { z } from "zod";
 
 // Database config schemas

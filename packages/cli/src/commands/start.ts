@@ -592,11 +592,11 @@ export const start = new Command()
 		"--character <character>",
 		"Path or URL to character file to use instead of default",
 	)
-	.option("--skip-build", "Skip building the project before starting")
+	.option("--build", "Build the project before starting")
 	.action(async (options) => {
 		try {
 			// Build the project first unless skip-build is specified
-			if (!options.skipBuild) {
+			if (options.build) {
 				await buildProject(process.cwd());
 			}
 			

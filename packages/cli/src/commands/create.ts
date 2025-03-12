@@ -1,3 +1,7 @@
+import { existsSync, readFileSync } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { buildProject } from "@/src/utils/build-project";
 import { copyTemplate } from "@/src/utils/copy-template";
 import { rawConfigSchema } from "@/src/utils/get-config";
@@ -7,10 +11,6 @@ import { logger } from "@elizaos/core";
 import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";
-import { existsSync, readFileSync } from "node:fs";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import prompts from "prompts";
 import { z } from "zod";
 

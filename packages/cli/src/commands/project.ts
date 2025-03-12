@@ -1,6 +1,7 @@
 import { handleError } from "@/src/utils/handle-error";
 import { installPlugin } from "@/src/utils/install-plugin";
 import {
+	getLocalRegistryIndex,
 	getPluginRepository,
 	getRegistryIndex
 } from "@/src/utils/registry/index";
@@ -18,7 +19,16 @@ export const project = new Command()
 	.option("-t, --type <type>", "filter by type (adapter, client, plugin)")
 	.action(async (opts) => {
 		try {
-			const registry = await getRegistryIndex();
+			// Try to get registry without GitHub credentials first
+			let registry;
+			try {
+				registry = await getLocalRegistryIndex();
+			} catch (error) {
+				// If that fails, try with credentials as a backup
+				logger.debug("Failed to fetch registry without credentials, trying authenticated method");
+				registry = await getRegistryIndex();
+			}
+			
 			const plugins = Object.keys(registry)
 				.filter((name) => !opts.type || name.includes(opts.type))
 				.sort();

@@ -19,7 +19,7 @@
 	],
 	"dependencies": {
 		"@ai-sdk/anthropic": "^1.1.6",
-		"@elizaos/core": "^1.0.0-alpha.22",
+		"@elizaos/core": "workspace:*",
 		"fastembed": "^1.0.0",
 		"tsup": "8.4.0",
 		"zod": "3.21.4"

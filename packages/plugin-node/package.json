@@ -9,7 +9,6 @@
 		"./package.json": "./package.json",
 		".": {
 			"import": {
-				"@elizaos/source": "./src/index.ts",
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
 			}
@@ -25,7 +24,7 @@
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.705.0",
 		"@aws-sdk/s3-request-presigner": "^3.705.0",
-		"@elizaos/core": "^1.0.0-alpha.22",
+		"@elizaos/core": "workspace:*",
 		"@types/uuid": "10.0.0",
 		"capsolver-npm": "2.0.2",
 		"fluent-ffmpeg": "2.1.3",

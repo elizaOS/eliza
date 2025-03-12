@@ -19,7 +19,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "^1.0.0-alpha.22",
+		"@elizaos/core": "workspace:*",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {

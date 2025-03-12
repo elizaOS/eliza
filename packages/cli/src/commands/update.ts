@@ -1,11 +1,11 @@
+import { existsSync, readFileSync } from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { buildProject } from "@/src/utils/build-project";
 import { handleError } from "@/src/utils/handle-error";
 import { runBunCommand } from "@/src/utils/run-bun";
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
-import { existsSync, readFileSync } from "node:fs";
-import fs from "node:fs/promises";
-import path from "node:path";
 import prompts from "prompts";
 import semver from "semver";
 

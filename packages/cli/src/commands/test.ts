@@ -179,7 +179,7 @@ const runAgentTests = async (options: {
 	skipBuild?: boolean;
 }) => {
 	// Build the project or plugin first unless skip-build is specified
-	if (!options.skipBuild) {
+	if (options) {
 		const cwd = process.cwd();
 		const isPlugin = options.plugin ? true : checkIfLikelyPluginDir(cwd);
 		await buildProject(cwd, isPlugin);
