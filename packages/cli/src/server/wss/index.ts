@@ -2,11 +2,7 @@ import { WebSocket } from "ws";
 import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { ChannelType, createUniqueUuid, logger } from "@elizaos/core";
 import { AgentServer } from "../index.js";
-
-enum SOCKET_MESSAGE_TYPE {
-    ROOM_JOINING = 1,
-    SEND_MESSAGE = 2
-}
+import { SOCKET_MESSAGE_TYPE } from "@elizaos/core";
 
 export class WebSocketRouter {
     private agents: Map<UUID, IAgentRuntime>;

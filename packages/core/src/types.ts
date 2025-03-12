@@ -1724,3 +1724,8 @@ export type EventHandler<T extends keyof EventPayloadMap> = (
 /**
  * Update the Plugin interface with typed events
  */
+
+export enum SOCKET_MESSAGE_TYPE {
+    ROOM_JOINING = 1,
+    SEND_MESSAGE = 2
+}
