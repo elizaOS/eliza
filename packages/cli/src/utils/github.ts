@@ -1,9 +1,7 @@
+import { logger } from "@elizaos/core";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { logger } from "@elizaos/core";
-import { execa } from "execa";
-import fetch from "node-fetch";
 
 const GITHUB_API_URL = "https://api.github.com";
 

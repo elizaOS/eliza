@@ -1,5 +1,4 @@
 import { type GenerateTextParams, ModelTypes, logger } from "@elizaos/core";
-import fetch from "node-fetch";
 
 /**
  * Represents a StudioLMModel object with the following properties:

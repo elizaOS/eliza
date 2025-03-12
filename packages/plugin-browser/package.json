@@ -1,5 +1,5 @@
 {
-	"name": "@elizaos/plugin-node",
+	"name": "@elizaos/plugin-browser",
 	"version": "1.0.0-alpha.25",
 	"type": "module",
 	"main": "dist/index.js",

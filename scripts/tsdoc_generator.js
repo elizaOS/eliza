@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import fetch from "node-fetch";
 import ts from "typescript";
 
 import dotenv from "dotenv";
