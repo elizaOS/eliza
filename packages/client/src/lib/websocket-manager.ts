@@ -1,4 +1,4 @@
-import { SOCKET_MESSAGE_TYPE } from "../types/index";
+import { SOCKET_MESSAGE_TYPE } from "../types/index"; // TODO: Import from core instead of local types
 import EventEmitter from "events";
 import { WorldManager } from "./world-manager";
 import { apiClient } from "./api";
