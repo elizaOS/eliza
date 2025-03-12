@@ -138,45 +138,6 @@ interface LogResponse {
  * }}
  */
 export const apiClient = {
-	sendMessage: (
-		agentId: string,
-		message: string,
-		selectedFile?: File | null,
-		roomId?: UUID,
-	) => {
-		const worldId = WorldManager.getWorldId();
-
-		if (selectedFile) {
-			// Use FormData only when there's a file
-			const formData = new FormData();
-			formData.append("text", message);
-			formData.append("name", "Anon");
-			formData.append("file", selectedFile);
-			// Add roomId if provided
-			if (roomId) {
-				formData.append("roomId", roomId);
-			}
-			// Add worldId
-			formData.append("worldId", worldId);
-
-			return fetcher({
-				url: `/agents/${agentId}/messages`,
-				method: "POST",
-				body: formData,
-			});
-		}
-		// Use JSON when there's no file
-		return fetcher({
-			url: `/agents/${agentId}/messages`,
-			method: "POST",
-			body: {
-				text: message,
-				name: "Anon",
-				roomId: roomId || undefined,
-				worldId,
-			},
-		});
-	},
 	getAgents: () => fetcher({ url: "/agents" }),
 	getAgent: (agentId: string): Promise<{ data: Agent }> =>
 		fetcher({ url: `/agents/${agentId}` }),
