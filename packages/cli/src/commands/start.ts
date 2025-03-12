@@ -11,9 +11,9 @@ import {
 	type Plugin,
 	logger,
 	settings,
-	stringToUuid
+	stringToUuid,
+	ModelTypes
 } from "@elizaos/core";
-import chalk from "chalk";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
 import { AgentServer } from "../server/index";
@@ -114,6 +114,7 @@ async function startAgent(
 	options: {
 		dataDir?: string;
 		postgresUrl?: string;
+		isPluginTestMode?: boolean;
 	} = {},
 ): Promise<IAgentRuntime> {
 	character.id ??= stringToUuid(character.name);
@@ -128,6 +129,71 @@ async function startAgent(
 
 	// start services/plugins/process knowledge
 	await runtime.initialize();
+
+	// Check if TEXT_EMBEDDING model is registered, if not, try to load one
+	// Skip auto-loading embedding models if we're in plugin test mode
+	const embeddingModel = runtime.getModel(ModelTypes.TEXT_EMBEDDING);
+	if (!embeddingModel && !options.isPluginTestMode) {
+		logger.info("No TEXT_EMBEDDING model registered. Attempting to load one automatically...");
+		
+		// First check if OpenAI API key exists
+		if (process.env.OPENAI_API_KEY) {
+			logger.info("Found OpenAI API key. Loading OpenAI plugin for embeddings...");
+			
+			try {
+				// Use Node's require mechanism to dynamically load the plugin
+				const pluginName = "@elizaos/plugin-openai";
+				
+				try {
+					// Using require for dynamic imports in Node.js is safer than eval
+					// This is a CommonJS approach that works in Node.js
+					// @ts-ignore - Ignoring TypeScript's static checking for dynamic requires
+					const pluginModule = require(pluginName);
+					const plugin = pluginModule.default || pluginModule.openaiPlugin;
+					
+					if (plugin) {
+						await runtime.registerPlugin(plugin);
+						logger.success("Successfully loaded OpenAI plugin for embeddings");
+					} else {
+						logger.warn(`Could not find a valid plugin export in ${pluginName}`);
+					}
+				} catch (error) {
+					logger.warn(`Failed to import OpenAI plugin: ${error}`);
+					logger.warn(`You may need to install it with: npm install ${pluginName}`);
+				}
+			} catch (error) {
+				logger.warn(`Error loading OpenAI plugin: ${error}`);
+			}
+		} else {
+			logger.info("No OpenAI API key found. Loading local-ai plugin for embeddings...");
+			
+			try {
+				// Use Node's require mechanism to dynamically load the plugin
+				const pluginName = "@elizaos/plugin-local-ai";
+				
+				try {
+					// Using require for dynamic imports in Node.js is safer than eval
+					// @ts-ignore - Ignoring TypeScript's static checking for dynamic requires
+					const pluginModule = require(pluginName);
+					const plugin = pluginModule.default || pluginModule.localAIPlugin;
+					
+					if (plugin) {
+						await runtime.registerPlugin(plugin);
+						logger.success("Successfully loaded local-ai plugin for embeddings");
+					} else {
+						logger.warn(`Could not find a valid plugin export in ${pluginName}`);
+					}
+				} catch (error) {
+					logger.warn(`Failed to import local-ai plugin: ${error}`);
+					logger.warn(`You may need to install it with: npm install ${pluginName}`);
+				}
+			} catch (error) {
+				logger.warn(`Error loading local-ai plugin: ${error}`);
+			}
+		}
+	} else if (!embeddingModel && options.isPluginTestMode) {
+		logger.info("No TEXT_EMBEDDING model registered, but running in plugin test mode - skipping auto-loading");
+	}
 
 	// add to container
 	server.registerAgent(runtime);
@@ -330,9 +396,12 @@ const startAgents = async (options: {
 	try {
 		// Check if we're in a project with a package.json
 		const packageJsonPath = path.join(process.cwd(), "package.json");
+		logger.debug(`Checking for package.json at: ${packageJsonPath}`);
+		
 		if (fs.existsSync(packageJsonPath)) {
 			// Read and parse package.json to check if it's a project or plugin
 			const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+			logger.debug(`Found package.json with name: ${packageJson.name || 'unnamed'}`);
 
 			// Check if this is a plugin (package.json contains 'eliza' section with type='plugin')
 			if (packageJson.eliza?.type && packageJson.eliza.type === "plugin") {
@@ -423,6 +492,8 @@ const startAgents = async (options: {
 	}
 
 	// Log what was found
+	logger.debug(`Classification results - isProject: ${isProject}, isPlugin: ${isPlugin}`);
+	
 	if (isProject) {
 		logger.info("Found project configuration");
 		if (projectModule?.default) {
@@ -446,7 +517,9 @@ const startAgents = async (options: {
 	} else if (isPlugin) {
 		logger.info(`Found plugin: ${pluginModule?.name || "unnamed"}`);
 	} else {
-		logger.info("No project or plugin found, will use custom character");
+		// Change the log message to be clearer about what we're doing
+		logger.info("Running in standalone mode - using default Eliza character");
+		logger.debug("Will load the default Eliza character from ../characters/eliza");
 	}
 
 	// Start agents based on project, plugin, or custom configuration
@@ -521,20 +594,32 @@ const startAgents = async (options: {
 			}
 		}
 
-		// Load the custom character and add the plugin to it
+		// Load the default character with all its default plugins, then add the test plugin
 		logger.info(
-			`Starting custom character with plugin: ${pluginModule.name || "unnamed plugin"}`,
+			`Starting default Eliza character with plugin: ${pluginModule.name || "unnamed plugin"}`,
 		);
 
-		// Create a proper array of plugins, including the explicitly loaded one
+		// Import the default character with all its plugins
+		const { character: defaultElizaCharacter } = await import("../characters/eliza");
+		
+		// Create an array of plugins, including the explicitly loaded one
+		// We're using our test plugin plus all the plugins from the default character
 		const pluginsToLoad = [pluginModule];
+		
+		logger.debug(`Using default character with plugins: ${defaultElizaCharacter.plugins.join(", ")}`);
+		logger.info("Plugin test mode: Using default character's plugins plus the plugin being tested");
 
-		// Start the agent with our custom character and plugins
-		await startAgent(customCharacter, server, undefined, pluginsToLoad);
+		// Start the agent with the default character and our test plugin
+		// We're in plugin test mode, so we should skip auto-loading embedding models
+		await startAgent(defaultElizaCharacter, server, undefined, pluginsToLoad, {
+			isPluginTestMode: true
+		});
 		logger.info("Character started with plugin successfully");
 	} else {
-		logger.info("Starting with custom character");
-		await startAgent(customCharacter, server);
+		// When not in a project or plugin, load the default character with all plugins
+		const { character: defaultElizaCharacter } = await import("../characters/eliza");
+		logger.info("Using default Eliza character with all plugins");
+		await startAgent(defaultElizaCharacter, server);
 	}
 
 	// Rest of the function remains the same...
@@ -555,7 +640,7 @@ const startAgents = async (options: {
 
 	// If not found, fall back to the old relative path for development
 	if (!fs.existsSync(clientPath)) {
-		clientPath = path.join(__dirname, "../../../../..", "packages/client/dist");
+		clientPath = path.join(__dirname, "../../../..", "client/dist");
 	}
 
 	if (fs.existsSync(clientPath)) {
@@ -565,8 +650,8 @@ const startAgents = async (options: {
 	} else {
 		const clientSrcPath = path.join(
 			__dirname,
-			"../../../..",
-			"packages/client",
+			"../../..",
+			"client",
 		);
 		if (fs.existsSync(clientSrcPath)) {
 			logger.info(

@@ -343,7 +343,6 @@ export const character: Character = {
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
 	console.log("Initializing character");
 	console.log("Name: ", character.name);
-	runtime.registerPlugin(starterPlugin);
 };
 
 export const projectAgent: ProjectAgent = {
