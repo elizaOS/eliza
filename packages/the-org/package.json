@@ -38,7 +38,6 @@
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"cors": "2.8.5",
-		"elizaos": "workspace:*",
 		"express": "4.21.1",
 		"lucide-react": "^0.473.0",
 		"minipass": "7.1.2",
