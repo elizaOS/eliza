@@ -24,7 +24,7 @@
 		"@echogarden/espeak-ng-emscripten": "0.3.3",
 		"@echogarden/kissfft-wasm": "0.2.0",
 		"@echogarden/speex-resampler-wasm": "0.2.1",
-		"@elizaos/core": "^1.0.0-alpha.25",
+		"@elizaos/core": "workspace:*",
 		"@huggingface/hub": "^1.0.1",
 		"@huggingface/inference": "^3.3.4",
 		"@huggingface/transformers": "^3.3.3",
