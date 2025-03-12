@@ -23,7 +23,7 @@
 	],
 	"dependencies": {
 		"@ai-sdk/anthropic": "^1.1.6",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.26",
 		"fastembed": "^1.0.0",
 		"tsup": "8.4.0",
 		"zod": "3.21.4"
@@ -52,5 +52,5 @@
 			}
 		}
 	},
-	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
+	"gitHead": "bc8404af5c9e930c2de5c426c4bf730b86aacf8c"
 }

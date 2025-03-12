@@ -5,6 +5,10 @@
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elizaos-plugins/plugin-openai"
+	},
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
@@ -20,7 +24,7 @@
 	"dependencies": {
 		"@ai-sdk/openai": "^1.1.9",
 		"@ai-sdk/ui-utils": "1.1.9",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.26",
 		"ai": "^4.1.25",
 		"js-tiktoken": "^1.0.18",
 		"tsup": "8.4.0",
@@ -51,5 +55,5 @@
 			}
 		}
 	},
-	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
+	"gitHead": "bc8404af5c9e930c2de5c426c4bf730b86aacf8c"
 }

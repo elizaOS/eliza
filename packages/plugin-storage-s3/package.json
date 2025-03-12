@@ -5,6 +5,10 @@
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elizaos-plugins/plugin-storage-s3"
+	},
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
@@ -24,7 +28,7 @@
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.705.0",
 		"@aws-sdk/s3-request-presigner": "^3.705.0",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.26",
 		"@types/uuid": "10.0.0",
 		"capsolver-npm": "2.0.2",
 		"fluent-ffmpeg": "2.1.3",
@@ -54,5 +58,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
+	"gitHead": "bc8404af5c9e930c2de5c426c4bf730b86aacf8c"
 }

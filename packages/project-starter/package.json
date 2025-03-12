@@ -19,8 +19,8 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "workspace:*",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/cli": "1.0.0-alpha.26",
+		"@elizaos/core": "1.0.0-alpha.26",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
@@ -38,5 +38,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
+	"gitHead": "bc8404af5c9e930c2de5c426c4bf730b86aacf8c"
 }
