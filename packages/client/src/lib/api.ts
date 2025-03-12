@@ -359,4 +359,23 @@ export const apiClient = {
 			url: `/logs?level=${level}`,
 			method: "GET",
 		}),
+
+	getAgentCompletion: (
+			agentId: string,
+			senderId: string,
+			message: string,
+			roomId: UUID,
+			source: string,
+		) => {
+			return fetcher({
+				url: `/agents/${agentId}/message`,
+				method: "POST",
+				body: {
+					text: message,
+					roomId: roomId,
+					senderId,
+					source,
+				},
+			});
+		},
 };

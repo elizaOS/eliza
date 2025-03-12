@@ -1,6 +1,7 @@
 import { SOCKET_MESSAGE_TYPE } from "../types/index";
 import EventEmitter from "events";
 import { WorldManager } from "./world-manager";
+import { apiClient } from "./api";
 
 const BASE_URL = `ws://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 
@@ -56,6 +57,28 @@ class WebSocketsManager extends EventEmitter {
     socket.onmessage = async (event: MessageEvent) => {
       const messageData = JSON.parse(event.data);
       console.log(`[WebSocket Client] Message for agent ${agentId}:`, messageData, messageData.type);
+
+      const payload = messageData.payload;
+
+      if (messageData.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
+        const response = await apiClient.getAgentCompletion(
+          agentId,
+          payload.senderId,
+          payload.message,
+          payload.roomId,
+          payload.source,
+        );
+
+        if (response?.data?.message?.text) {
+          this.handleBroadcastMessage(
+            agentId, 
+            response?.data?.name,
+            response.data.message.text, 
+            response.data.roomId,
+            response.data.source,
+          );
+        }
+      }
     };
 
     socket.onerror = (error: Event) => {
@@ -91,7 +114,7 @@ class WebSocketsManager extends EventEmitter {
   }
 
   handleBroadcastMessage(senderId: string, senderName: string, text: string, roomId: string, source: string) {
-    console.log(`broadcast: ${senderId} broadcast ${text} to ${roomId}`)
+    console.log(`[WebSocket Client] broadcast: ${senderId} broadcast ${text} to ${roomId}`)
     this.sendMessage(senderId, {
       type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
       payload: {
