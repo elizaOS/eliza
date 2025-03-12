@@ -10,11 +10,73 @@ import dotenv from "dotenv";
 import prompts from "prompts";
 import { rimraf } from "rimraf";
 
+// Path to store the custom env path setting in the config.json file
+const CONFIG_FILE = path.join(os.homedir(), ".eliza", "config.json");
+
 /**
- * Get the path to the global .env file in the user's home directory
+ * Get the custom env path if one has been set
+ * @returns The custom env path or null if not set
+ */
+async function getCustomEnvPath(): Promise<string | null> {
+  try {
+    if (!existsSync(CONFIG_FILE)) {
+      return null;
+    }
+    
+    const content = await fs.readFile(CONFIG_FILE, "utf-8");
+    const config = JSON.parse(content);
+    return config.envPath || null;
+  } catch (error) {
+    logger.error(`Error reading custom env path: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * Save a custom env path to the config file
+ * @param customPath The path to save
+ */
+async function saveCustomEnvPath(customPath: string): Promise<void> {
+  try {
+    const dir = path.dirname(CONFIG_FILE);
+    if (!existsSync(dir)) {
+      await fs.mkdir(dir, { recursive: true });
+    }
+    
+    // Preserve existing config if it exists
+    let config = {};
+    if (existsSync(CONFIG_FILE)) {
+      try {
+        const content = await fs.readFile(CONFIG_FILE, "utf-8");
+        config = JSON.parse(content);
+      } catch (e) {
+        logger.warn(`Could not parse existing config file: ${e.message}`);
+      }
+    }
+    
+    // Update the config with the new env path
+    config = {
+      ...config,
+      envPath: customPath
+    };
+    
+    await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+    logger.success(`Custom environment path set to: ${customPath}`);
+  } catch (error) {
+    logger.error(`Error saving custom env path: ${error.message}`);
+  }
+}
+
+/**
+ * Get the path to the global .env file in the user's home directory or custom location
  * @returns The path to the global .env file
  */
-function getGlobalEnvPath(): string {
+async function getGlobalEnvPath(): Promise<string> {
+  const customPath = await getCustomEnvPath();
+  if (customPath) {
+    return customPath;
+  }
+  
   const homeDir = os.homedir();
   const elizaDir = path.join(homeDir, ".eliza");
   return path.join(elizaDir, ".env");
@@ -75,13 +137,18 @@ async function writeEnvFile(filePath: string, envVars: Record<string, string>): 
  * List all environment variables from both global and local .env files
  */
 async function listEnvVars(): Promise<void> {
-  const globalEnvPath = getGlobalEnvPath();
+  const globalEnvPath = await getGlobalEnvPath();
   const localEnvPath = getLocalEnvPath();
   
   const globalEnvVars = await parseEnvFile(globalEnvPath);
   const localEnvVars = localEnvPath ? await parseEnvFile(localEnvPath) : {};
   
-  logger.info(chalk.bold("\nGlobal environment variables (.eliza/.env):"));
+  const customPath = await getCustomEnvPath();
+  const globalEnvLabel = customPath 
+    ? `Global environment variables (custom path: ${customPath})`
+    : "Global environment variables (.eliza/.env)";
+  
+  logger.info(chalk.bold(`\n${globalEnvLabel}:`));
   if (Object.keys(globalEnvVars).length === 0) {
     logger.info("  No global environment variables set");
   } else {
@@ -104,6 +171,7 @@ async function listEnvVars(): Promise<void> {
   }
   
   logger.info("\n");
+  logger.info(chalk.cyan("You can also edit environment variables in the web UI: http://localhost:3000/settings"));
 }
 
 /**
@@ -125,9 +193,12 @@ function maskedValue(value: string): string {
 /**
  * Edit environment variables
  * @param scope Whether to edit global or local environment variables
+ * @returns A boolean indicating whether the user wants to go back to the main menu
  */
-async function editEnvVars(scope: "global" | "local"): Promise<void> {
-  const envPath = scope === "global" ? getGlobalEnvPath() : getLocalEnvPath();
+async function editEnvVars(scope: "global" | "local", fromMainMenu = false): Promise<boolean> {
+  const envPath = scope === "global" 
+    ? await getGlobalEnvPath() 
+    : getLocalEnvPath();
   
   if (scope === "local" && !envPath) {
     const { createLocal } = await prompts({
@@ -138,13 +209,13 @@ async function editEnvVars(scope: "global" | "local"): Promise<void> {
     });
     
     if (!createLocal) {
-      return;
+      return fromMainMenu; // Return to main menu if we came from there
     }
     
     // Create an empty local .env file
     await writeEnvFile(path.join(process.cwd(), ".env"), {});
     logger.success("Created empty local .env file");
-    return;
+    return fromMainMenu; // Return to main menu if we came from there
   }
   
   const envVars = await parseEnvFile(envPath);
@@ -166,11 +237,13 @@ async function editEnvVars(scope: "global" | "local"): Promise<void> {
       await addNewVariable(envPath, envVars);
     }
     
-    return;
+    return fromMainMenu; // Return to main menu if we came from there
   }
   
   // Keep looping until the user chooses to exit
   let exit = false;
+  let returnToMain = false;
+  
   while (!exit) {
     // Create menu choices from the environment variables
     const entries = Object.entries(envVars);
@@ -180,7 +253,9 @@ async function editEnvVars(scope: "global" | "local"): Promise<void> {
         value: key,
       })),
       { title: "Add new variable", value: "add_new" },
-      { title: "Exit", value: "exit" },
+      fromMainMenu 
+        ? { title: "Back to main menu", value: "back_to_main" }
+        : { title: "Exit", value: "exit" },
     ];
     
     // Prompt user to select a variable or action
@@ -191,8 +266,14 @@ async function editEnvVars(scope: "global" | "local"): Promise<void> {
       choices,
     });
     
-    if (!selection || selection === "exit") {
+    if (!selection) {
+      // If user cancels (Ctrl+C), go back to main menu if we came from there
+      return fromMainMenu;
+    }
+    
+    if (selection === "exit" || selection === "back_to_main") {
       exit = true;
+      returnToMain = selection === "back_to_main";
       continue;
     }
     
@@ -245,6 +326,8 @@ async function editEnvVars(scope: "global" | "local"): Promise<void> {
       }
     }
   }
+  
+  return returnToMain && fromMainMenu;
 }
 
 /**
@@ -294,7 +377,7 @@ async function resetEnv(): Promise<void> {
   // Get paths
   const homeDir = os.homedir();
   const elizaDir = path.join(homeDir, ".eliza");
-  const globalEnvPath = path.join(elizaDir, ".env");
+  const globalEnvPath = await getGlobalEnvPath();
   const cacheDir = path.join(elizaDir, "cache");
   const dbDir = path.join(elizaDir, "db");
   
@@ -302,6 +385,22 @@ async function resetEnv(): Promise<void> {
   if (existsSync(globalEnvPath)) {
     await fs.unlink(globalEnvPath);
     logger.success("Removed global .env file");
+  }
+  
+  // Clear custom env path if set
+  if (existsSync(CONFIG_FILE)) {
+    try {
+      const content = await fs.readFile(CONFIG_FILE, "utf-8");
+      const config = JSON.parse(content);
+      
+      if (config.envPath) {
+        delete config.envPath;
+        await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+        logger.success("Cleared custom environment path setting");
+      }
+    } catch (error) {
+      logger.error(`Error clearing custom env path: ${error.message}`);
+    }
   }
   
   // Wipe cache folder
@@ -324,6 +423,58 @@ async function resetEnv(): Promise<void> {
   }
   
   logger.success("Environment reset complete");
+}
+
+/**
+ * Set a custom path for the global .env file
+ * @param customPath The custom path to use
+ */
+async function setEnvPath(customPath: string): Promise<void> {
+  // Validate the path
+  const resolvedPath = path.resolve(customPath);
+  const isDirectory = existsSync(resolvedPath) && (await fs.stat(resolvedPath)).isDirectory();
+  
+  let finalPath = resolvedPath;
+  if (isDirectory) {
+    finalPath = path.join(resolvedPath, ".env");
+    logger.info(`Path is a directory. Will use ${finalPath} for environment variables.`);
+  }
+  
+  // Check if parent directory exists
+  const parentDir = path.dirname(finalPath);
+  if (!existsSync(parentDir)) {
+    const { createDir } = await prompts({
+      type: "confirm",
+      name: "createDir",
+      message: `Directory ${parentDir} does not exist. Create it?`,
+      initial: true,
+    });
+    
+    if (createDir) {
+      await fs.mkdir(parentDir, { recursive: true });
+      logger.success(`Created directory: ${parentDir}`);
+    } else {
+      logger.info("Custom path not set");
+      return;
+    }
+  }
+  
+  // If the file doesn't exist, create an empty one
+  if (!existsSync(finalPath)) {
+    const { createFile } = await prompts({
+      type: "confirm",
+      name: "createFile",
+      message: `Environment file doesn't exist at ${finalPath}. Create an empty one?`,
+      initial: true,
+    });
+    
+    if (createFile) {
+      await writeEnvFile(finalPath, {});
+      logger.success(`Created empty .env file at ${finalPath}`);
+    }
+  }
+  
+  await saveCustomEnvPath(finalPath);
 }
 
 // Create command for managing environment variables
@@ -379,34 +530,92 @@ env
     }
   });
 
-// Default command (list if no subcommand provided)
+// Set custom path subcommand
 env
-  .action(async () => {
+  .command("set-path <path>")
+  .description("Set a custom path for the global environment file")
+  .action(async (customPath: string) => {
     try {
-      await listEnvVars();
-
-      // wait 100ms
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Ask the user if they want to edit environment variables
-      const { scope } = await prompts({
-        type: "select",
-        name: "scope",
-        message: "Would you like to edit environment variables?",
-        choices: [
-          { title: "Edit global variables", value: "global" },
-          { title: "Edit local variables", value: "local" },
-          { title: "Exit", value: "exit" }
-        ]
-      });
-      
-      if (scope && scope !== "exit") {
-        await editEnvVars(scope);
-      }
+      await setEnvPath(customPath);
     } catch (error) {
       handleError(error);
     }
   });
+
+// Interactive mode
+env
+  .command("interactive")
+  .description("Interactive environment variable management")
+  .action(async () => {
+    try {
+      await showMainMenu();
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// Default command (show help if no subcommand provided)
+env.action(() => {
+  // Show available subcommands
+  console.log(chalk.bold("\nEliza Environment Variable Manager"));
+  console.log("\nAvailable commands:");
+  console.log("  list                  List all environment variables");
+  console.log("  edit-global           Edit global environment variables");
+  console.log("  edit-local            Edit local environment variables");
+  console.log("  set-path <path>       Set a custom path for the global environment file");
+  console.log("  reset                 Reset all environment variables and wipe the cache folder");
+  console.log("  interactive           Start interactive environment variable manager");
+  console.log("\nYou can also edit environment variables in the web UI:");
+  console.log("  http://localhost:3000/settings");
+});
+
+/**
+ * Display the main menu for environment variables
+ */
+async function showMainMenu(): Promise<void> {
+  let exit = false;
+  
+  while (!exit) {
+    const { action } = await prompts({
+      type: "select",
+      name: "action",
+      message: "Select an action:",
+      choices: [
+        { title: "List environment variables", value: "list" },
+        { title: "Edit global environment variables", value: "edit_global" },
+        { title: "Edit local environment variables", value: "edit_local" },
+        { title: "Set custom environment path", value: "set_path" },
+        { title: "Reset environment variables", value: "reset" },
+        { title: "Exit", value: "exit" },
+      ],
+    });
+    
+    if (!action || action === "exit") {
+      exit = true;
+      continue;
+    }
+    
+    switch (action) {
+      case "list":
+        await listEnvVars();
+        break;
+      case "edit_global":
+        const returnToMainFromGlobal = await editEnvVars("global", true);
+        exit = !returnToMainFromGlobal;
+        break;
+      case "edit_local":
+        const returnToMainFromLocal = await editEnvVars("local", true);
+        exit = !returnToMainFromLocal;
+        break;
+      case "set_path":
+        logger.info(chalk.yellow("\nTo set a custom path, run: eliza env set-path <path>"));
+        break;
+      case "reset":
+        await resetEnv();
+        break;
+    }
+  }
+}
 
 // Register command with the CLI
 export default function registerCommand(cli: Command) {
