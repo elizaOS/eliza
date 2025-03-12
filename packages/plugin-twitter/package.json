@@ -18,7 +18,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.25",
 		"@roamhq/wrtc": "^0.8.0",
 		"@sinclair/typebox": "^0.32.20",
 		"glob": "11.0.0",
@@ -51,5 +51,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
+	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
 }

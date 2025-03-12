@@ -1,6 +1,6 @@
-import { logger } from "@elizaos/core";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import { runBunCommand } from "./run-bun";
 /**
  * Builds a project or plugin by running the build script.

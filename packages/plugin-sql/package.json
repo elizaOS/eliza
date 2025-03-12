@@ -22,7 +22,7 @@
 	],
 	"dependencies": {
 		"@electric-sql/pglite": "^0.2.17",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.25",
 		"@types/pg": "8.11.10",
 		"drizzle-kit": "^0.30.4",
 		"drizzle-orm": "^0.39.1",
@@ -43,5 +43,5 @@
 	"peerDependencies": {
 		"typescript": "5.8.2"
 	},
-	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
+	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
 }

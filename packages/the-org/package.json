@@ -25,9 +25,9 @@
 		"exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
 	},
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-tee": "workspace:*",
-		"@elizaos/plugin-twitter": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.25",
+		"@elizaos/plugin-tee": "1.0.0-alpha.25",
+		"@elizaos/plugin-twitter": "1.0.0-alpha.25",
 		"@radix-ui/react-slot": "^1.1.1",
 		"@radix-ui/react-tabs": "^1.1.2",
 		"@solana/web3.js": "^1.87.6",
@@ -76,5 +76,5 @@
 		"typescript-eslint": "^8.18.2",
 		"vite": "^6.0.5"
 	},
-	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
+	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
 }

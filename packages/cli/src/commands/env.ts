@@ -599,14 +599,16 @@ async function showMainMenu(): Promise<void> {
       case "list":
         await listEnvVars();
         break;
-      case "edit_global":
+      case "edit_global": {
         const returnToMainFromGlobal = await editEnvVars("global", true);
         exit = !returnToMainFromGlobal;
         break;
-      case "edit_local":
+      }
+      case "edit_local": {
         const returnToMainFromLocal = await editEnvVars("local", true);
         exit = !returnToMainFromLocal;
         break;
+      }
       case "set_path":
         logger.info(chalk.yellow("\nTo set a custom path, run: eliza env set-path <path>"));
         break;

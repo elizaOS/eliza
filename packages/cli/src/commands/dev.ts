@@ -1,7 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildProject } from "@/src/utils/build-project";
 import { logger } from "@elizaos/core";
@@ -105,7 +105,7 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
       // More specific check for plugins - must have one of these explicit indicators
       if (
         packageJson.eliza?.type === "plugin" || 
-        (packageJson.name && packageJson.name.includes("plugin-")) ||
+        (packageJson.name?.includes("plugin-")) ||
         (packageJson.keywords && Array.isArray(packageJson.keywords) && 
           packageJson.keywords.some((k: string) => k === "elizaos-plugin" || k === "eliza-plugin"))
       ) {
@@ -230,7 +230,6 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
     }
     
     let debounceTimer: any = null;
-    let isFirstRun = true;
     
     // On ready handler
     watcher.on("ready", () => {
@@ -249,25 +248,6 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
       }
       
       logger.success(`File watching initialized in: ${dirToWatch}`);
-      
-      // Force a tiny change to a watched file to verify watching works
-      if (isFirstRun && tsFiles.length > 0) {
-        try {
-          const testFile = path.join(dirToWatch, tsFiles[0]);
-          logger.info(`Testing file watching with: ${testFile}`);
-          
-          // Read the file content
-          const content = fs.readFileSync(testFile, 'utf8');
-          
-          // Write it back with a harmless comment at the end
-          fs.writeFileSync(testFile, content + '\n// Test file watcher - ' + new Date().toISOString());
-          
-          logger.info("Wrote test file - should trigger a watch event soon");
-        } catch (err: any) {
-          logger.warn(`Could not set up test file watch: ${err.message}`);
-        }
-        isFirstRun = false;
-      }
     });
     
     // Set up file change handler
