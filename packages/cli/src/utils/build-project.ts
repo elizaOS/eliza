@@ -13,16 +13,9 @@ export async function buildProject(
   isPlugin = false
 ): Promise<boolean> {
   try {
-    // list the files in the directory
-    const files = await fs.readdir(cwd);
-    console.log("files");
-    console.trace();
-    console.log(files);
     logger.info(`Building ${isPlugin ? "plugin" : "project"}...`);
     await runBunCommand(["install"], cwd);
-    console.log("installed");
     await runBunCommand(["run", "build"], cwd);
-    console.log("built");
     logger.success(`${isPlugin ? "Plugin" : "Project"} built successfully!`);
     return true;
   } catch (error) {
