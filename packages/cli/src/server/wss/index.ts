@@ -1,6 +1,6 @@
 import { WebSocket } from "ws";
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { ChannelType, createUniqueUuid, logger } from "@elizaos/core";
 import { AgentServer } from "../index.js";
 
 enum SOCKET_MESSAGE_TYPE {
@@ -24,14 +24,15 @@ export class WebSocketRouter {
     handleMessage(ws: WebSocket, message: string) {
         try {
             const data = JSON.parse(message);
-            const roomId: UUID = data.roomId;
-            const agentId: UUID = data.agentId;
-
+            const payload = data.payload;
             logger.info("[WebSocket Server] Received data", data);
 
             switch (data.type) {
                 case SOCKET_MESSAGE_TYPE.ROOM_JOINING:
-                    this.handleRoomJoining(ws, roomId, agentId);
+                    this.handleRoomJoining(ws, payload);
+                    break;
+                case SOCKET_MESSAGE_TYPE.SEND_MESSAGE:
+                    this.handleBroadcastMessage(ws, payload);
                     break;
                 default:
                     ws.send(JSON.stringify({ error: "Unknown message type" }));
@@ -42,7 +43,13 @@ export class WebSocketRouter {
         }
     }
 
-    private handleRoomJoining(ws: WebSocket, roomId: UUID, agentId: UUID) {
+    private handleRoomJoining(ws: WebSocket, payload: any) {
+        const roomId = payload.roomId;
+        const agentId = payload.agentId;
+        if (!roomId || !agentId) {
+            ws.send(JSON.stringify({ error: `agentId and roomId are required` }));
+        }
+
         if (!this.rooms.has(roomId)) {
             this.rooms.set(roomId, []);
         }
@@ -57,6 +64,119 @@ export class WebSocketRouter {
         }
 
         console.log("[WebSocket Server] Current rooms status:", this.rooms);
+    }
+
+    private async handleBroadcastMessage(ws: WebSocket, payload: any) {
+        const senderId = payload.senderId;
+        const senderName = payload.senderName;
+        const message = payload.message;
+        const roomId = payload.roomId;
+        const worldId = payload.worldId;
+        const source = payload.source;
+
+        const roomAgents = this.rooms.get(roomId);
+        // Broadcast the message to all agents in the room except the sender
+        for (const [clientWs, agentId] of this.connections.entries()) {
+            if (roomAgents.includes(agentId) && agentId !== senderId) {
+                logger.info("[WebSocket server] Creating new message");
+                
+                // Retrieve the runtime instance
+                // If no runtime exists for the given agentId, it's a userId
+                const runtime = this.agents.get(agentId) || this.agents.get(senderId);
+                if (!runtime) {
+                    ws.send(JSON.stringify({ error: `[WebSocket server] No runtime found.` }));
+                    return;
+                }
+
+                const text = message.trim();
+                if (!text) {
+                    ws.send(JSON.stringify({ error: `[WebSocket server] No text found.` }));
+                    return;
+                }
+
+                const uniqueRoomId = createUniqueUuid(
+                    runtime,
+                    roomId,
+                );
+
+                const entityId = createUniqueUuid(runtime, senderId);
+                
+                try {
+                    await runtime.ensureConnection({
+                        entityId,
+                        roomId: uniqueRoomId,
+                        userName: senderName,
+                        name: senderName,
+                        source,
+                        type: ChannelType.API,
+                        worldId,
+                    });
+
+                    const existingRelationship = await runtime
+                        .getRelationship({
+                            sourceEntityId: entityId,
+                            targetEntityId: runtime.agentId,
+                        });
+
+                    if (!existingRelationship && entityId !== runtime.agentId) {
+                        await runtime
+                            .createRelationship({
+                                sourceEntityId: entityId,
+                                targetEntityId: runtime.agentId,
+                                tags: ["message_interaction"],
+                                metadata: {
+                                    lastInteraction: Date.now(),
+                                    channel: source,
+                                },
+                            });
+                    }
+
+                    const messageId = createUniqueUuid(runtime, Date.now().toString());
+                    
+                    const content: Content = {
+                        text,
+                        attachments: [],
+                        source,
+                        inReplyTo: undefined,
+                        channelType: ChannelType.API,
+                    };
+
+                    const userMessage = {
+                        content,
+                        entityId,
+                        roomId,
+                        agentId: runtime.agentId,
+                    };
+
+                    const memory: Memory = {
+                        id: createUniqueUuid(runtime, messageId),
+                        ...userMessage,
+                        agentId: runtime.agentId,
+                        entityId,
+                        roomId,
+                        content,
+                        createdAt: Date.now(),
+                    };
+
+                    await runtime.getMemoryManager("messages").addEmbeddingToMemory(memory);
+                    logger.info("added embedding to memory");
+                    await runtime.getMemoryManager("messages").createMemory(memory);
+                    logger.info("created memory");
+                } catch (error) {
+                    logger.error("Error processing message:", error.message);
+                    ws.send(JSON.stringify({ error: `[WebSocket server] Error processing message` }));
+                }
+               
+                clientWs.send(JSON.stringify(
+                    {
+                        type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
+                        payload
+                    }
+                ));
+            }
+        }
+
+        console.log(`[WebSocket server] Broadcasted message from Agent ${senderId} to Room ${roomId}`);
     }
 
     handleClose(ws: WebSocket) {

@@ -1,5 +1,6 @@
 import { SOCKET_MESSAGE_TYPE } from "../types/index";
 import EventEmitter from "events";
+import { WorldManager } from "./world-manager";
 
 const BASE_URL = `ws://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 
@@ -44,8 +45,10 @@ class WebSocketsManager extends EventEmitter {
       this.resolveReadyMap.get(agentId)?.();
       const data = {
         type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
-        agentId,
-        roomId,
+        payload: {
+          agentId,
+          roomId,
+        }
       };
       this.sendMessage(agentId, data);
     };
@@ -85,6 +88,22 @@ class WebSocketsManager extends EventEmitter {
     } else {
       console.warn(`[WebSocket Client] WebSocket for agent ${agentId} is not open.`);
     }
+  }
+
+  handleBroadcastMessage(senderId: string, senderName: string, text: string, roomId: string, source: string) {
+    console.log(`broadcast: ${senderId} broadcast ${text} to ${roomId}`)
+    this.sendMessage(senderId, {
+      type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
+      payload: {
+        senderId,
+        senderName,
+        message: text,
+        roomId,
+        worldId: WorldManager.getWorldId(),
+        source,
+      }
+    })
+
   }
 
   disconnect(agentId: string): void {
