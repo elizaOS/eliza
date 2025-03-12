@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-openai",
-	"version": "1.0.0-alpha.22",
+	"version": "1.0.0-alpha.23",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
