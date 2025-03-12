@@ -1,16 +1,16 @@
+import { buildProject } from "@/src/utils/build-project";
+import { handleError } from "@/src/utils/handle-error";
+import { runBunCommand } from "@/src/utils/run-bun";
+import { logger } from "@elizaos/core";
+import { Command } from "commander";
 import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { getConfig } from "@/src/utils/get-config";
-import { handleError } from "@/src/utils/handle-error";
-import { buildProject } from "@/src/utils/build-project";
-import { runBunCommand } from "@/src/utils/run-bun";
-import { logger } from "@elizaos/core";
-import chalk from "chalk";
-import { Command } from "commander";
 import prompts from "prompts";
 import semver from "semver";
 
+// define __dirname
+const __dirname = new URL('.', import.meta.url).pathname;
 /**
  * Get the current CLI version from package.json
  * @returns The current CLI version
@@ -173,7 +173,7 @@ function checkIfPluginDir(dir: string): boolean {
   try {
     const packageJsonContent = readFileSync(packageJsonPath, 'utf8');
     const packageJson = JSON.parse(packageJsonContent);
-    if (packageJson.name && packageJson.name.startsWith("@elizaos/plugin-")) {
+    if (packageJson.name?.startsWith("@elizaos/plugin-")) {
       return true;
     }
     

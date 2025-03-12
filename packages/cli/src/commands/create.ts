@@ -1,25 +1,34 @@
-import { existsSync, readFileSync } from "node:fs";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { buildProject } from "@/src/utils/build-project";
 import { copyTemplate } from "@/src/utils/copy-template";
 import { rawConfigSchema } from "@/src/utils/get-config";
 import { handleError } from "@/src/utils/handle-error";
-import { installPlugin } from "@/src/utils/install-plugin";
-import { getAvailableDatabases, listPluginsByType } from "@/src/utils/registry/index";
 import { runBunCommand } from "@/src/utils/run-bun";
-import { buildProject } from "@/src/utils/build-project";
-import {
-	createDatabaseTemplate,
-	createEnvTemplate,
-	createPluginsTemplate,
-} from "@/src/utils/templates";
 import { logger } from "@elizaos/core";
 import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";
+import { existsSync, readFileSync } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import prompts from "prompts";
 import { z } from "zod";
+
+/**
+ * This module handles creating both projects and plugins.
+ * 
+ * Previously, plugin creation was handled by the "plugins create" command,
+ * but that has been unified with project creation in this single command.
+ * Users are now prompted to select which type they want to create.
+ * 
+ * The workflow includes:
+ * 1. Asking if the user wants to create a project or plugin
+ * 2. Getting the name and creating a directory
+ * 3. Setting up proper templates and configurations
+ * 4. Installing dependencies
+ * 5. Automatically changing directory to the created project/plugin
+ * 6. Showing the user the next steps
+ */
 
 const initOptionsSchema = z.object({
 	dir: z.string().default("."),
@@ -28,69 +37,19 @@ const initOptionsSchema = z.object({
 });
 
 /**
- * Sets up the environment by creating .env and .env.example files in the target directory,
- * and optionally in the user's home directory if not in a project.
- *
- * @param {string} targetDir - The target directory where the .env files should be created.
- * @param {string} database - The name of the database to use in the environment files.
- * @returns {Promise<void>}
+ * Local implementation of getAvailableDatabases that doesn't require GitHub credentials.
+ * This is used during project creation to avoid prompting for credentials.
+ * 
+ * @returns {Promise<string[]>} Array of available databases
  */
-async function setupEnvironment(targetDir: string, database: string) {
-	const envPath = path.join(targetDir, ".env");
-	const envExamplePath = path.join(targetDir, ".env.example");
-
-	await fs.writeFile(envExamplePath, createEnvTemplate(database));
-
-	if (!existsSync(envPath)) {
-		await fs.copyFile(envExamplePath, envPath);
-		logger.info("Created .env file");
-	}
-
-	// Also set up a global .env file in the user's home directory if we're not in a project
-	const homeEnvDir = path.join(os.homedir(), ".eliza");
-	const homeEnvPath = path.join(homeEnvDir, ".env");
-
-	if (!existsSync(homeEnvDir)) {
-		await fs.mkdir(homeEnvDir, { recursive: true });
-	}
-
-	if (!existsSync(homeEnvPath)) {
-		await fs.writeFile(homeEnvPath, createEnvTemplate(database));
-		logger.info("Created global .env file in ~/.eliza");
-	}
-}
-
-/**
- * Async function to select client and additional plugins to install.
- * Retrieves list of client and plugin plugins, then prompts the user to select which ones to install.
- * @returns An array of selected client and additional plugins.
- */
-async function selectPlugins() {
-	const clients = await listPluginsByType("client");
-	const plugins = await listPluginsByType("plugin");
-
-	const result = await prompts([
-		{
-			type: "multiselect",
-			name: "clients",
-			message: "Select client plugins to install",
-			choices: clients.map((name) => ({
-				title: name,
-				value: name,
-			})),
-		},
-		{
-			type: "multiselect",
-			name: "plugins",
-			message: "Select additional plugins",
-			choices: plugins.map((name) => ({
-				title: name,
-				value: name,
-			})),
-		},
-	]);
-
-	return [...result.clients, ...result.plugins];
+async function getLocalAvailableDatabases(): Promise<string[]> {
+	// Hard-coded list of available databases to avoid GitHub API calls
+	return [
+		"pglite",
+		"postgres",
+		// "sqlite",
+		// "supabase"
+	];
 }
 
 /**
@@ -102,8 +61,6 @@ async function selectPlugins() {
  */
 async function installDependencies(
 	targetDir: string,
-	database: string,
-	selectedPlugins: string[],
 ) {
 	logger.info("Installing dependencies...");
 
@@ -125,48 +82,6 @@ async function installDependencies(
 	} catch (error) {
 		logger.warn(`Initial dependency installation error: ${error.message}`);
 	}
-
-	// Install core package with latest version
-	logger.info("Installing @elizaos/core using latest version...");
-	try {
-		await runBunCommand(["add", "@elizaos/core@latest"], targetDir);
-		logger.success("Successfully installed @elizaos/core@latest");
-	} catch (error) {
-		logger.error(`Failed to install @elizaos/core@latest: ${error.message}`);
-		// Continue with the process despite the error
-	}
-
-	// Install database adapter
-	logger.info(`Installing database adapter for ${database}...`);
-	try {
-		await runBunCommand(
-			["add", `@elizaos/adapter-${database}@latest`],
-			targetDir,
-		);
-		logger.success(
-			`Successfully installed @elizaos/adapter-${database}@latest`,
-		);
-	} catch (error) {
-		logger.error(
-			`Failed to install @elizaos/adapter-${database}: ${error.message}`,
-		);
-		// Continue with the process despite the error
-	}
-
-	// Install selected plugins
-	if (selectedPlugins.length > 0) {
-		logger.info(`Installing selected plugins: ${selectedPlugins.join(", ")}`);
-		for (const plugin of selectedPlugins) {
-			try {
-				await installPlugin(plugin, targetDir);
-			} catch (pluginError) {
-				logger.error(
-					`Failed to install plugin ${plugin}: ${pluginError.message}`,
-				);
-				// Continue with other plugins despite the error
-			}
-		}
-	}
 }
 
 /**
@@ -179,19 +94,52 @@ async function installDependencies(
  *
  * @returns {Promise<void>} Promise that resolves once the initialization process is complete.
  */
-export const init = new Command()
-	.name("init")
+export const create = new Command()
+	.name("create")
 	.description("Initialize a new project or plugin")
 	.option("-d, --dir <dir>", "installation directory", ".")
 	.option("-y, --yes", "skip confirmation", false)
 	.option(
 		"-t, --type <type>",
 		"type of template to use (project or plugin)",
-		"project",
+		"",
 	)
 	.action(async (opts) => {
 		try {
-			const options = initOptionsSchema.parse(opts);
+			// Parse options but use "" as the default for type to force prompting
+			const initialOptions = {
+				dir: opts.dir || ".",
+				yes: opts.yes || false,
+				type: opts.type || "",
+			};
+
+			// Prompt for project type if not specified
+			let projectType = initialOptions.type;
+			if (!projectType) {
+				const { type } = await prompts({
+					type: "select",
+					name: "type",
+					message: "What would you like to create?",
+					choices: [
+						{ title: "Project - Contains agents and plugins", value: "project" },
+						{ title: "Plugin - Can be added to the registry and installed by others", value: "plugin" },
+					],
+					initial: 0,
+				});
+				
+				if (!type) {
+					process.exit(0);
+				}
+				
+				projectType = type;
+			}
+			
+			// Now validate with zod after we've determined the type
+			const options = initOptionsSchema.parse({
+				...initialOptions,
+				type: projectType,
+			});
+
 			// Try to find .env file by recursively checking parent directories
 			const envPath = path.join(process.cwd(), ".env");
 
@@ -263,10 +211,14 @@ export const init = new Command()
 
 			// For plugin initialization, we can simplify the process
 			if (options.type === "plugin") {
-				// Copy plugin template
-				await copyTemplate("plugin", targetDir, name);
+				const pluginName = name.startsWith("@elizaos/plugin-")
+					? name
+					: `@elizaos/plugin-${name}`;
 
-				// Change directory and install dependencies
+				// Copy plugin template
+				await copyTemplate("plugin", targetDir, pluginName);
+
+				// Install dependencies
 				logger.info("Installing dependencies...");
 				try {
 					await runBunCommand(["install"], targetDir);
@@ -280,18 +232,21 @@ export const init = new Command()
 					);
 				}
 
+				// Change to the created directory
+				logger.info(`Changing to directory: ${targetDir}`);
+				process.chdir(targetDir);
+				
 				logger.success("Plugin initialized successfully!");
-				logger.info(`\nNext steps:
-1. ${chalk.cyan(`run \`cd ${name}\``)} to navigate to your plugin directory
-2. Update the plugin code in ${chalk.cyan("src/index.ts")} 
-3. Run ${chalk.cyan("bun dev")} to start development
-4. Run ${chalk.cyan("bun build")} to build your plugin`);
+				logger.info(`\nYour plugin is ready! Here's what you can do next:
+1. \`${chalk.cyan("npx elizaos start")}\` to start development
+2. \`${chalk.cyan("npx elizaos test")}\` to test your plugin
+3. \`${chalk.cyan("npx elizaos plugins publish")}\` to publish your plugin to the registry`);
 				return;
 			}
 
 			// For project initialization, continue with the regular flow
 			// Get available databases and select one
-			const availableDatabases = await getAvailableDatabases();
+			const availableDatabases = await getLocalAvailableDatabases();
 
 			const { database } = await prompts({
 				type: "select",
@@ -310,9 +265,6 @@ export const init = new Command()
 				logger.error("No database selected");
 				process.exit(1);
 			}
-
-			// Select plugins
-			const selectedPlugins = await selectPlugins();
 
 			// Copy project template
 			await copyTemplate("project", targetDir, name);
@@ -348,9 +300,6 @@ export const init = new Command()
 				// On failure, use the fallback path
 			}
 
-			console.log(dbPath);
-			console.log(postgresUrl);
-
 			if (database === "postgres" && !postgresUrl) {
 				// prompt for postgres url
 				const reply = await prompts({
@@ -361,82 +310,33 @@ export const init = new Command()
 				postgresUrl = reply.postgresUrl;
 			}
 
-			// Create project configuration
-			const config = rawConfigSchema.parse({
-				$schema: "https://elizaos.com/schema.json",
-				database: {
-					type: database,
-					config:
-						database === "postgres"
-							? {
-									url: postgresUrl || null,
-								}
-							: {
-									dataDir: dbPath,
-								},
-				},
-				plugins: {
-					registry:
-						"https://raw.githubusercontent.com/elizaos-plugins/registry/refs/heads/main/index.json",
-					installed: [`@elizaos/plugin-${database}`, ...selectedPlugins],
-				},
-				paths: {
-					knowledge: "./knowledge",
-				},
-			});
-
-			// Write configuration
-			await fs.writeFile(
-				path.join(targetDir, "project.json"),
-				JSON.stringify(config, null, 2),
-			);
-
 			// Set up src directory
 			const srcDir = path.join(targetDir, "src");
 			if (!existsSync(srcDir)) {
 				await fs.mkdir(srcDir);
 			}
-
-			// Generate database and plugin files
-			await fs.writeFile(
-				path.join(srcDir, "database.ts"),
-				createDatabaseTemplate(database),
-			);
-
-			await fs.writeFile(
-				path.join(srcDir, "plugins.ts"),
-				createPluginsTemplate(selectedPlugins),
-			);
-
-			// Set up environment
-			await setupEnvironment(targetDir, database);
-
+			
 			// Create knowledge directory
 			await fs.mkdir(path.join(targetDir, "knowledge"), { recursive: true });
 
 			// Install dependencies
-			await installDependencies(targetDir, database, selectedPlugins);
+			await installDependencies(targetDir);
 
 			// Build the project after installing dependencies
 			await buildProject(targetDir);
 
 			logger.success("Project initialized successfully!");
 
-			// Show next steps
-			if (database !== "postgres") {
-				logger.info(`\nNext steps:
-1. ${chalk.cyan(`cd ${name}`)} to navigate to your project directory
-2. Update ${chalk.cyan(".env")} with your database credentials
-3. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
-4. Run ${chalk.cyan("eliza agent import")} to import an agent`);
-			} else {
-				logger.info(`\nNext steps:
-1. ${chalk.cyan(`cd ${name}`)} to navigate to your project directory
-2. Run ${chalk.cyan("eliza plugins add")} to install additional plugins
-3. Run ${chalk.cyan("eliza agent import")} to import an agent`);
-			}
+			// Show next steps with updated message
+			logger.info(`\nYour project is ready! Here's what you can do next:
+1. \`cd ${targetDir}\` to change into your project directory
+2. Run \`npx elizaos start\` to start your project
+3. Visit \`http://localhost:3000\` to view your project in the browser`);
 
-			// exit
+			// exit successfully
+			// Set the user's shell working directory before exiting
+			// Note: This only works if the CLI is run with shell integration
+			process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
 			process.exit(0);
 		} catch (error) {
 			handleError(error);

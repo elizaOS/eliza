@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import * as net from "node:net";
 import * as os from "node:os";
 import path from "node:path";
+import { buildProject } from "@/src/utils/build-project";
 import {
 	AgentRuntime,
 	type Character,
@@ -20,7 +21,6 @@ import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
 import { TestRunner } from "../testRunner.js";
 import { promptForEnvVars } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
-import { buildProject } from "@/src/utils/build-project";
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {

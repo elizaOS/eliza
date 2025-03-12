@@ -31,7 +31,7 @@
 	"scripts": {
 		"cli": "bun run build && node dist/index.js",
 		"start": "bun run build",
-		"build": "tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-to-create-eliza.ts",
+		"build": "tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-to-create-eliza.ts && bun run src/scripts/copy-templates.ts",
 		"watch": "tsc --watch",
 		"typecheck": "tsc --noEmit",
 		"release": "changeset version",
@@ -91,5 +91,5 @@
 	"peerDependencies": {
 		"form-data": "4.0.2"
 	},
-	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
+	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
 }

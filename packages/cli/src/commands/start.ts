@@ -3,6 +3,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildProject } from "@/src/utils/build-project";
 import {
 	AgentRuntime,
 	type Character,
@@ -12,6 +13,7 @@ import {
 	settings,
 	stringToUuid
 } from "@elizaos/core";
+import chalk from "chalk";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
 import { AgentServer } from "../server/index";
@@ -28,8 +30,6 @@ import {
 	promptForServices
 } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
-import { buildProject } from "@/src/utils/build-project";
-import chalk from "chalk";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -416,36 +416,6 @@ const startAgents = async (options: {
 				} else {
 					logger.error(`Main entry point ${mainPath} does not exist`);
 				}
-			}
-		} else {
-			// Look for specific project files
-			const projectFiles = ["project.json", "eliza.json", "agents.json"];
-
-			for (const file of projectFiles) {
-				const filePath = path.join(process.cwd(), file);
-				if (fs.existsSync(filePath)) {
-					try {
-						const fileContent = fs.readFileSync(filePath, "utf-8");
-						const projectData = JSON.parse(fileContent);
-
-						if (projectData.agents || projectData.agent) {
-							isProject = true;
-							projectModule = { default: projectData };
-							logger.info(`Found project in ${file}`);
-							break;
-						}
-					} catch (error) {
-						logger.warn(
-							`Error reading possible project file ${file}: ${error}`,
-						);
-					}
-				}
-			}
-
-			if (!isProject && !isPlugin) {
-				logger.info(
-					"No package.json or project files found, using custom character",
-				);
 			}
 		}
 	} catch (error) {

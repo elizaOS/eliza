@@ -26,12 +26,12 @@
 		"tsup": "8.4.0"
 	},
 	"scripts": {
+		"start": "npx elizaos start",
+		"dev": "npx elizaos dev",
 		"build": "tsup",
-		"dev": "tsup --watch",
-		"test": "cd ../cli && bun run build && cd ../plugin-starter && node ../cli/dist/index.js test",
-		"publish": "cd ../cli && bun run build && cd ../plugin-starter && node ../cli/dist/index.js plugins publish --test",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
+		"lint": "biome check --config-path=./ --write",
+		"test": "npx elizaos test",
+		"deploy": "npx elizaos deploy"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -39,5 +39,5 @@
 	"resolutions": {
 		"zod": "3.24.1"
 	},
-	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
+	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
 }

@@ -1,5 +1,5 @@
-import { runBunCommand } from "./run-bun";
 import { logger } from "@elizaos/core";
+import { runBunCommand } from "./run-bun";
 
 /**
  * Builds a project or plugin by running the build script.
@@ -10,7 +10,7 @@ import { logger } from "@elizaos/core";
  */
 export async function buildProject(
   cwd: string,
-  isPlugin: boolean = false
+  isPlugin = false
 ): Promise<boolean> {
   try {
     logger.info(`Building ${isPlugin ? "plugin" : "project"}...`);
