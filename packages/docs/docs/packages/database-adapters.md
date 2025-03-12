@@ -161,26 +161,6 @@ const relationships = await db.getRelationships({
 });
 ```
 
-### Goal Management
-
-```typescript
-// Create goal
-await db.createGoal({
-    id: uuid(),
-    roomId: room.id,
-    userId: user.id,
-    name: "Complete task",
-    status: "IN_PROGRESS",
-    objectives: [],
-});
-
-// Get active goals
-const goals = await db.getGoals({
-    roomId: room.id,
-    onlyInProgress: true,
-});
-```
-
 ## Vector Search
 
 All adapters support vector similarity search for memory retrieval:

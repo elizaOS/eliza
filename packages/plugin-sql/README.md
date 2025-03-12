@@ -9,19 +9,6 @@ A PostgreSQL database adapter built with Drizzle ORM for the ElizaOS ecosystem.
 bun add @elizaos/plugin-sql
 ```
 
-## Database Schema
-
-The adapter includes the following tables:
-- accounts
-- cache
-- embeddings
-- goals
-- logs
-- memories
-- participants
-- relationships
-- rooms
-
 ## Vector Dimensions
 
 The adapter supports the following vector dimensions:

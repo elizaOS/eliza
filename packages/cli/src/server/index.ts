@@ -1,3 +1,7 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	type Character,
 	type IAgentRuntime,
@@ -9,10 +13,6 @@ import * as bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import { createApiRouter } from "./api/index.js";
 import { WebSocketServer } from "ws";
 import { WebSocketRouter } from "./wss/index.js";

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-node",
-	"version": "1.0.0-alpha.20",
+	"version": "1.0.0-alpha.22",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -15,11 +15,17 @@
 			}
 		}
 	},
-	"files": ["dist", "scripts", "package.json", "LICENSE", "tsup.config.ts"],
+	"files": [
+		"dist",
+		"scripts",
+		"package.json",
+		"LICENSE",
+		"tsup.config.ts"
+	],
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.705.0",
 		"@aws-sdk/s3-request-presigner": "^3.705.0",
-		"@elizaos/core": "^1.0.0-alpha.20",
+		"@elizaos/core": "^1.0.0-alpha.22",
 		"@types/uuid": "10.0.0",
 		"capsolver-npm": "2.0.2",
 		"fluent-ffmpeg": "2.1.3",
@@ -29,7 +35,9 @@
 		"uuid": "11.0.3",
 		"youtube-dl-exec": "3.0.15"
 	},
-	"trustedDependencies": ["youtube-dl-exec"],
+	"trustedDependencies": [
+		"youtube-dl-exec"
+	],
 	"devDependencies": {
 		"@types/node": "22.8.4",
 		"tsup": "8.4.0"
@@ -47,5 +55,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
 }

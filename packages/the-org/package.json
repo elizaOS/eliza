@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/the-org",
-	"version": "1.0.0-alpha.20",
+	"version": "1.0.0-alpha.22",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -18,15 +18,18 @@
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"nodemonConfig": {
-		"watch": ["src", "../core/dist"],
+		"watch": [
+			"src",
+			"../core/dist"
+		],
 		"ext": "ts,json",
 		"exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
 	},
 	"dependencies": {
-		"@elizaos/cli": "^1.0.0-alpha.20",
-		"@elizaos/core": "^1.0.0-alpha.20",
-		"@elizaos/plugin-tee": "^1.0.0-alpha.20",
-		"@elizaos/plugin-twitter": "^1.0.0-alpha.20",
+		"@elizaos/cli": "^1.0.0-alpha.22",
+		"@elizaos/core": "^1.0.0-alpha.22",
+		"@elizaos/plugin-tee": "^1.0.0-alpha.22",
+		"@elizaos/plugin-twitter": "^1.0.0-alpha.22",
 		"@radix-ui/react-slot": "^1.1.1",
 		"@radix-ui/react-tabs": "^1.1.2",
 		"@solana/web3.js": "^1.87.6",
@@ -74,5 +77,5 @@
 		"typescript-eslint": "^8.18.2",
 		"vite": "^6.0.5"
 	},
-	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
 }

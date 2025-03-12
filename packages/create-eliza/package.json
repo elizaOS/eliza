@@ -1,13 +1,16 @@
 {
 	"name": "create-eliza",
-	"version": "1.0.0-alpha.20",
+	"version": "1.0.0-alpha.22",
 	"description": "Initialize an Eliza project",
 	"type": "module",
 	"publishConfig": {
 		"access": "public"
 	},
 	"bin": {
-		"create-eliza": "cli/index.js init"
+		"create-eliza": "index.js"
+	},
+	"scripts": {
+		"create-eliza": "bun run cli/index.js init"
 	},
 	"license": "MIT",
 	"author": {
@@ -20,7 +23,9 @@
 		"directory": "packages/create-eliza"
 	},
 	"files": [
-		"cli"
+		"cli",
+		"index.js",
+		"package.json"
 	],
 	"keywords": [
 		"eliza",
@@ -31,9 +36,5 @@
 	],
 	"engines": {
 		"node": ">=14.0.0"
-	},
-	"dependencies": {
-		"tsup": "^8.4.0"
-	},
-	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+	}
 }
