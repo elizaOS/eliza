@@ -1,5 +1,5 @@
-import * as path from 'node:path';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
 
@@ -38,7 +38,7 @@ export async function buildProject(cwd: string, isPlugin = false) {
     const packageJsonPath = path.join(cwd, 'package.json');
     if (fs.existsSync(packageJsonPath)) {
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      if (packageJson.scripts && packageJson.scripts.build) {
+      if (packageJson.scripts?.build) {
         // Package has a build script, use it
         logger.info('Using build script from package.json');
         

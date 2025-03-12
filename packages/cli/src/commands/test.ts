@@ -8,8 +8,8 @@ import {
 	AgentRuntime,
 	type Character,
 	type IAgentRuntime,
-	type ProjectAgent,
 	ModelTypes,
+	type ProjectAgent,
 	logger,
 	settings,
 	stringToUuid

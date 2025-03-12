@@ -237,7 +237,7 @@
       "devDependencies": {
         "@docusaurus/module-type-aliases": "3.7.0",
         "@docusaurus/types": "3.7.0",
-        "docusaurus-plugin-typedoc": "1.0.5",
+        "docusaurus-plugin-typedoc": "1.2.3",
         "typedoc": "0.27.9",
         "typedoc-plugin-markdown": "4.2.10",
       },
@@ -3487,7 +3487,7 @@
 
     "docusaurus-lunr-search": ["docusaurus-lunr-search@3.5.0", "", { "dependencies": { "autocomplete.js": "^0.37.0", "clsx": "^1.2.1", "gauge": "^3.0.0", "hast-util-select": "^4.0.0", "hast-util-to-text": "^2.0.0", "hogan.js": "^3.0.2", "lunr": "^2.3.8", "lunr-languages": "^1.4.0", "mark.js": "^8.11.1", "minimatch": "^3.0.4", "rehype-parse": "^7.0.1", "to-vfile": "^6.1.0", "unified": "^9.0.0", "unist-util-is": "^4.0.2" }, "peerDependencies": { "@docusaurus/core": "^2.0.0-alpha.60 || ^2.0.0 || ^3.0.0", "react": "^16.8.4 || ^17 || ^18", "react-dom": "^16.8.4 || ^17 || ^18" } }, "sha512-k3zN4jYMi/prWInJILGKOxE+BVcgYinwj9+gcECsYm52tS+4ZKzXQzbPnVJAEXmvKOfFMcDFvS3MSmm6cEaxIQ=="],
 
-    "docusaurus-plugin-typedoc": ["docusaurus-plugin-typedoc@1.0.5", "", { "peerDependencies": { "typedoc-plugin-markdown": ">=4.0.0" } }, "sha512-mv8LBJYilGOOPLqaIM3vbYc34m4qwOCpb4WfP24DOPFNj2uiTerw8sg9MGvN6Jx2+J8rq9/WMnjcyz3UMqoIIQ=="],
+    "docusaurus-plugin-typedoc": ["docusaurus-plugin-typedoc@1.2.3", "", { "peerDependencies": { "typedoc-plugin-markdown": ">=4.4.0" } }, "sha512-u1l2VlNRDK49A8G3iZW8iRt3LCmE6aeYnkG+nNqQBMVMqiv8Ifwe7gjsoQXTJXDxbMqUiTWWhqOLElP8B9s3fg=="],
 
     "dom-converter": ["dom-converter@0.2.0", "", { "dependencies": { "utila": "~0.4" } }, "sha512-gd3ypIPfOMr9h5jIKq8E3sHOTCjeirnl0WK5ZdS1AW0Odt0b1PaWaHdJ4Qk4klv+YB9aJBS7mESXjFoDQPu6DA=="],
 

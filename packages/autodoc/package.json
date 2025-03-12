@@ -1,12 +1,11 @@
 {
 	"type": "module",
 	"name": "@elizaos/autodoc",
-	"version": "1.0.0-alpha.7",
+	"version": "1.0.0-alpha.25",
 	"description": "",
 	"main": "dist/index.js",
 	"module": "dist/index.mjs",
 	"types": "dist/index.d.ts",
-	"private": true,
 	"scripts": {
 		"build": "tsup",
 		"autodoc:dev": "tsup --watch",

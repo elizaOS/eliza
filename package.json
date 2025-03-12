@@ -75,6 +75,7 @@
     "react-dom": "19.0.0",
     "vitest": "3.0.5",
     "@metaplex-foundation/umi": "0.9.2",
+    "typedoc-plugin-markdown": "4.2.10",
     "buffer": "6.0.3",
     "@solana/spl-token": "0.4.9",
     "solana-bankrun": "0.3.1",
