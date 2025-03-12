@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import dayjs from "dayjs";
 import localizedFormat from "dayjs/plugin/localizedFormat";
-import { UUID } from "node:crypto";
+import type { UUID } from "@elizaos/core";
 import { twMerge } from "tailwind-merge";
 
 /**
