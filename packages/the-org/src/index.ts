@@ -21,4 +21,3 @@ export const project: Project = {
 };
 
 export default project;
-// Testing file watching

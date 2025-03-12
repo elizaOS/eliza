@@ -8,11 +8,11 @@ import {
 	AgentRuntime,
 	type Character,
 	type IAgentRuntime,
+	ModelTypes,
 	type Plugin,
 	logger,
 	settings,
-	stringToUuid,
-	ModelTypes
+	stringToUuid
 } from "@elizaos/core";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
@@ -641,23 +641,6 @@ const startAgents = async (options: {
 	// If not found, fall back to the old relative path for development
 	if (!fs.existsSync(clientPath)) {
 		clientPath = path.join(__dirname, "../../../..", "client/dist");
-	}
-
-	if (fs.existsSync(clientPath)) {
-		logger.success(
-			`Client UI is available at http://localhost:${serverPort}/client`,
-		);
-	} else {
-		const clientSrcPath = path.join(
-			__dirname,
-			"../../..",
-			"client",
-		);
-		if (fs.existsSync(clientSrcPath)) {
-			logger.info(
-				"Client build not found. You can build it with: cd packages/client && npm run build",
-			);
-		}
 	}
 };
 

@@ -20,7 +20,7 @@
 	"dependencies": {
 		"@ai-sdk/openai": "^1.1.9",
 		"@ai-sdk/ui-utils": "1.1.9",
-		"@elizaos/core": "^1.0.0-alpha.25",
+		"@elizaos/core": "workspace:*",
 		"ai": "^4.1.25",
 		"js-tiktoken": "^1.0.18",
 		"tsup": "8.4.0",
@@ -51,5 +51,5 @@
 			}
 		}
 	},
-	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
+	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
 }

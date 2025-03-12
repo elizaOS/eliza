@@ -51,34 +51,58 @@ async function startAgent(
 		// This is necessary for test mode to prevent foreign key errors
 		if (server.database) {
 			try {
-				// First directly create the agent in the database (don't rely on ensureAgentExists)
-				logger.debug(`Creating agent directly in database: ${character.name}`);
-				await server.database.createAgent({
-					id: character.id,
-					name: `${character.name} (DB)`,  // Use template literal instead of concatenation
-					bio: character.bio || "",
-					system: character.system || "",
-					enabled: true,
-					createdAt: Date.now(),
-					updatedAt: Date.now()
-				});
-				logger.debug(`Created agent in database: ${character.id}`);
-			} catch (error) {
-				// If it fails, it might be a duplicate, which is fine
-				logger.debug(`Note: Agent creation might have failed (possibly already exists): ${error instanceof Error ? error.message : String(error)}`);
-			}
-			
-			// Verify agent exists
-			try {
-				const agent = await server.database.getAgent(character.id);
+				// First check if the agent already exists
+				const existingAgent = await server.database.getAgent(character.id).catch(() => null);
+				
+				if (existingAgent) {
+					logger.debug(`Agent already exists in database with ID: ${character.id}`);
+					// Update the agent record to match our character
+					try {
+						await server.database.updateAgent({
+							id: character.id,
+							name: `${character.name} (DB)`,
+							bio: character.bio || "",
+							system: character.system || "",
+							enabled: true,
+							updatedAt: Date.now()
+						});
+						logger.debug(`Updated existing agent in database: ${character.id}`);
+					} catch (updateError) {
+						logger.debug(`Note: Agent update failed: ${updateError instanceof Error ? updateError.message : String(updateError)}`);
+					}
+				} else {
+					// If agent doesn't exist, create it
+					logger.debug(`Creating new agent in database: ${character.name}`);
+					await server.database.createAgent({
+						id: character.id,
+						name: `${character.name} (DB)`,
+						bio: character.bio || "",
+						system: character.system || "",
+						enabled: true,
+						createdAt: Date.now(),
+						updatedAt: Date.now()
+					});
+					logger.debug(`Created agent in database: ${character.id}`);
+				}
+				
+				// Verify agent exists (should exist now)
+				const agent = await server.database.getAgent(character.id).catch(() => null);
 				if (agent) {
 					logger.debug(`Verified agent exists in database with ID: ${character.id}`);
 				} else {
-					// If agent doesn't exist after creation attempt, something's wrong
-					logger.warn(`Warning: Agent does not exist in database after creation attempt: ${character.id}`);
+					// This should not happen if our create/update was successful
+					logger.error(`Critical error: Agent does not exist in database after creation/update: ${character.id}`);
+					throw new Error(`Agent ${character.id} does not exist in database after creation/update attempt`);
 				}
-			} catch (verifyError) {
-				logger.warn(`Warning: Error verifying agent: ${verifyError instanceof Error ? verifyError.message : String(verifyError)}`);
+			} catch (dbError) {
+				// Only throw if it's a critical error not related to entity existence
+				if (dbError instanceof Error && 
+					!dbError.message.includes('already exists') && 
+					!dbError.message.includes('foreign key constraint') &&
+					!dbError.message.includes('violates unique constraint')) {
+					throw dbError;
+				}
+				logger.debug(`Note: Database operation might have encountered a non-critical error: ${dbError instanceof Error ? dbError.message : String(dbError)}`);
 			}
 		}
 			
@@ -103,23 +127,30 @@ async function startAgent(
 			plugins: validPlugins,
 		});
 
-		// Before runtime initialization, patch the runtime object to skip entity creation
-		// if we're in test mode since we know the agent exists now
+		// Before runtime initialization, patch the runtime object to handle entity creation
+		// errors more gracefully in test mode
 		const originalInitialize = runtime.initialize.bind(runtime);
 		runtime.initialize = async () => {
 			try {
-				// Skip entity creation for the test agent in this case
+				// Try normal initialization
 				return await originalInitialize();
 			} catch (err) {
-				// If the error is about entity creation with a foreign key constraint
-				// or agent not existing, we'll handle it specially
-				if (err instanceof Error && 
-					(err.message.includes('foreign key constraint') || 
-					err.message.includes('does not exist in database'))) {
-					logger.warn(`Note: Ignoring common initialization error: ${err.message}`);
-					// We've already created the agent record, so we can consider this successful
-					return;
+				// Handle common initialization errors in test mode
+				if (err instanceof Error) {
+					// Check for database errors
+					if (err.message.includes('foreign key constraint') || 
+						err.message.includes('does not exist in database') ||
+						err.message.includes('violates unique constraint')) {
+						logger.warn(`Note: Ignoring initialization error in test mode: ${err.message}`);
+						// We've already created the agent record, so we can consider this successful
+						return;
+					}
+					
+					// For other errors, log in detail
+					logger.error(`Non-database initialization error: ${err.message}`);
+					logger.error(`Stack trace: ${err.stack}`);
 				}
+				
 				// For other errors, rethrow
 				throw err;
 			}
@@ -179,7 +210,7 @@ const runAgentTests = async (options: {
 	skipBuild?: boolean;
 }) => {
 	// Build the project or plugin first unless skip-build is specified
-	if (options) {
+	if (options && !options.skipBuild) {
 		const cwd = process.cwd();
 		const isPlugin = options.plugin ? true : checkIfLikelyPluginDir(cwd);
 		await buildProject(cwd, isPlugin);
@@ -341,7 +372,7 @@ const runAgentTests = async (options: {
 		// Try to determine if this is a plugin directory by checking for common plugin files
 		const isLikelyPluginDir = checkIfLikelyPluginDir(process.cwd());
 		
-		logger.info(`Loading ${isLikelyPluginDir ? 'plugin' : 'project'} from current directory: ${process.cwd()}`);
+		logger.info(`Checking current directory: ${process.cwd()}`);
 		
 		// Set environment variable to help TestRunner identify when we're testing a plugin directly
 		if (isLikelyPluginDir) {
@@ -351,32 +382,43 @@ const runAgentTests = async (options: {
 		
 		let project;
 		try {
-			logger.debug("Attempting to load module...");
-			project = await loadProject(process.cwd());
+			logger.debug("Attempting to load project or plugin...");
 			
-			if (project.isPlugin) {
-				logger.info(`Plugin loaded successfully: ${project.pluginModule?.name}`);
-				logger.info(`Description: ${project.pluginModule?.description}`);
+			// Only try to load the project if we're in a likely plugin or project directory
+			if (isLikelyPluginDir || options.plugin) {
+				project = await loadProject(process.cwd());
 				
-				// Show test information if available
-				if (project.pluginModule?.tests) {
-					const testSuites = Array.isArray(project.pluginModule.tests) 
-						? project.pluginModule.tests 
-						: [project.pluginModule.tests];
+				if (project.isPlugin) {
+					logger.info(`Plugin loaded successfully: ${project.pluginModule?.name}`);
+					logger.info(`Description: ${project.pluginModule?.description}`);
 					
-					logger.info(`Plugin has ${testSuites.length} test suites:`);
-					testSuites.forEach((suite, i) => {
-						if (suite) {
-							logger.info(`  Suite ${i+1}: ${suite.name} (${suite.tests?.length || 0} tests)`);
-						}
-					});
+					// Show test information if available
+					if (project.pluginModule?.tests) {
+						const testSuites = Array.isArray(project.pluginModule.tests) 
+							? project.pluginModule.tests 
+							: [project.pluginModule.tests];
+						
+						logger.info(`Plugin has ${testSuites.length} test suites:`);
+						testSuites.forEach((suite, i) => {
+							if (suite) {
+								logger.info(`  Suite ${i+1}: ${suite.name} (${suite.tests?.length || 0} tests)`);
+							}
+						});
+					} else {
+						logger.info("Plugin does not have any test suites defined");
+					}
+					
+					logger.info("Created a test agent to run plugin tests");
 				} else {
-					logger.info("Plugin does not have any test suites defined");
+					logger.info("Project loaded successfully");
+					logger.debug(`Project details: ${JSON.stringify(project, null, 2)}`);
 				}
-				
-				logger.info("Created a test agent to run plugin tests");
 			} else {
-				logger.info("Project loaded successfully:", JSON.stringify(project, null, 2));
+				// Not in a plugin or project directory
+				logger.warn("No Eliza project or plugin found in current directory.");
+				logger.info("Tests can only run in a valid Eliza project or plugin directory.");
+				logger.info("Please navigate to a project or plugin directory and try again.");
+				process.exit(0);
 			}
 			
 			if (!project || !project.agents || project.agents.length === 0) {
@@ -409,7 +451,10 @@ export default myPlugin;
 				logger.error("Error details:", error.message);
 				logger.error("Stack trace:", error.stack);
 			}
-			throw error;
+			
+			// If we can't load the project/plugin, we should exit
+			logger.error("Tests cannot run without a valid project or plugin. Exiting.");
+			process.exit(1);
 		}
 
 		logger.info("Checking port availability...");
@@ -436,9 +481,28 @@ export default myPlugin;
 			// Start each agent in sequence
 			logger.info(`Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'}`);
 			
+			// Create a map to track agent IDs we've already processed
+			const processedAgentIds = new Set<string>();
+			
 			for (const agent of project.agents) {
 				try {
 					logger.info(`Starting agent: ${agent.character.name}`);
+					
+					// Make sure each agent has a unique ID
+					if (!agent.character.id) {
+						agent.character.id = stringToUuid(agent.character.name);
+					}
+					
+					// If we've already processed an agent with this ID, generate a new unique ID
+					if (processedAgentIds.has(agent.character.id)) {
+						logger.warn(`Agent ID ${agent.character.id} has already been used. Generating a new ID.`);
+						// Generate a UUID based on the agent name plus a timestamp for uniqueness
+						agent.character.id = stringToUuid(`${agent.character.name}-${Date.now()}`);
+					}
+					
+					// Track this agent ID
+					processedAgentIds.add(agent.character.id);
+					
 					const runtime = await startAgent(
 						agent.character,
 						server,
@@ -534,26 +598,57 @@ function checkIfLikelyPluginDir(dir: string): boolean {
 	if (existsSync(packageJsonPath)) {
 		try {
 			const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-			// Check if the name contains 'plugin'
-			if (packageJson.name?.includes('plugin')) {
+			
+			// Most direct check: eliza type field
+			if (packageJson.eliza?.type === 'plugin') {
+				logger.debug("Found eliza.type=plugin in package.json");
 				return true;
 			}
+			
+			// Check if the name contains 'plugin'
+			if (packageJson.name?.toLowerCase().includes('plugin')) {
+				logger.debug(`Package name '${packageJson.name}' contains 'plugin'`);
+				return true;
+			}
+			
 			// Check if it has eliza plugin keywords
 			if (packageJson.keywords?.some((k: string) => 
-					k.includes('elizaos') || 
-					k.includes('eliza') || 
-					k.includes('plugin'))) {
+					k.toLowerCase().includes('elizaos') || 
+					k.toLowerCase().includes('eliza') || 
+					k.toLowerCase().includes('plugin'))) {
+				logger.debug("Found plugin-related keywords in package.json");
 				return true;
 			}
+			
+			// Check if this is explicitly NOT a project
+			if (packageJson.eliza?.type === 'plugin' || 
+				!packageJson.eliza?.type?.toLowerCase().includes('project')) {
+				// Look for plugin-like exports
+				if (existsSync(path.join(dir, 'src/plugin.ts')) || 
+					existsSync(path.join(dir, 'src/index.ts')) && !existsSync(path.join(dir, 'src/agent.ts'))) {
+					logger.debug("Found plugin-like file structure");
+					return true;
+				}
+			}
 		} catch (e) {
+			logger.debug(`Error parsing package.json: ${e}`);
 			// Ignore errors reading package.json
 		}
 	}
 	
-	// Check for common plugin files
-	return existsSync(path.join(dir, 'src/plugin.ts')) || 
-	       existsSync(path.join(dir, 'src/index.ts')) && !existsSync(path.join(dir, 'src/agent.ts')) ||
-	       dir.includes('plugin');
+	// Check for common plugin files and directories
+	const isPluginByFiles = 
+		existsSync(path.join(dir, 'src/plugin.ts')) || 
+		existsSync(path.join(dir, 'src/plugin.js')) ||
+		existsSync(path.join(dir, 'dist/plugin.js')) ||
+		(existsSync(path.join(dir, 'src/index.ts')) && !existsSync(path.join(dir, 'src/agent.ts'))) ||
+		dir.toLowerCase().includes('plugin');
+	
+	if (isPluginByFiles) {
+		logger.debug("Detected plugin directory based on file structure");
+	}
+	
+	return isPluginByFiles;
 }
 
 // Create command that can be imported directly

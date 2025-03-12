@@ -49,8 +49,6 @@
 		"@elizaos/plugin-local-ai": "workspace:*",
 		"@elizaos/plugin-openai": "workspace:*",
 		"@elizaos/plugin-sql": "workspace:*",
-		"@elizaos/plugin-starter": "workspace:*",
-		"@elizaos/project-starter": "workspace:*",
 		"@noble/curves": "^1.8.1",
 		"axios": "^1.7.9",
 		"chalk": "5.2.0",
@@ -88,5 +86,5 @@
 	"peerDependencies": {
 		"form-data": "4.0.2"
 	},
-	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
+	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
 }

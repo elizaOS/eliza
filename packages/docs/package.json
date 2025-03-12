@@ -37,7 +37,7 @@
 		"@docusaurus/module-type-aliases": "3.7.0",
 		"@docusaurus/types": "3.7.0",
 		"docusaurus-plugin-typedoc": "1.0.5",
-		"typedoc": "0.26.11",
+		"typedoc": "0.27.9",
 		"typedoc-plugin-markdown": "4.2.10"
 	},
 	"browserslist": {

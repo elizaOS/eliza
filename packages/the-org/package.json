@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/the-org",
-	"version": "1.0.0-alpha.25",
+	"version": "workspace:*",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -9,11 +9,11 @@
 		"access": "public"
 	},
 	"scripts": {
-		"start": "npx elizaos start",
+		"start": "elizaos start",
 		"build": "vite build && tsup",
 		"lint": "biome check --config-path=./ --write",
-		"dev": "npx elizaos dev",
-		"test": "npx elizaos test",
+		"dev": "elizaos dev",
+		"test": "elizaos test",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"nodemonConfig": {
@@ -25,6 +25,7 @@
 		"exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
 	},
 	"dependencies": {
+		"@elizaos/cli": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-tee": "workspace:*",
 		"@elizaos/plugin-twitter": "workspace:*",
@@ -38,7 +39,6 @@
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"cors": "2.8.5",
-		"elizaos": "workspace:*",
 		"express": "4.21.1",
 		"lucide-react": "^0.473.0",
 		"minipass": "7.1.2",
@@ -76,5 +76,5 @@
 		"typescript-eslint": "^8.18.2",
 		"vite": "^6.0.5"
 	},
-	"gitHead": "f2d87b67a335ea97e8a6078536c581f1b2ddc9a0"
+	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
 }
