@@ -133,7 +133,7 @@ interface LogResponse {
  * 		getRoom: (agentId: string, roomId: string) => Promise<any>;
  * 		updateRoom: (agentId: string, roomId: string, updates: { name?: string; worldId?: string; }) => Promise<any>;
  * 		deleteRoom: (agentId: string, roomId: string) => Promise<any>;
- * 		getLogs: (level: string) => Promise<LogResponse>;
+ * 		getLogs: (level: string, agentName?: string) => Promise<LogResponse>;
  * 	}
  * }}
  */
@@ -354,9 +354,14 @@ export const apiClient = {
 	},
 
 	// Add this new method
-	getLogs: (level: string): Promise<LogResponse> =>
-		fetcher({
-			url: `/logs?level=${level}`,
+	getLogs: (level: string, agentName?: string): Promise<LogResponse> => {
+		let url = `/logs?level=${level}`;
+		if (agentName) {
+			url += `&agentName=${encodeURIComponent(agentName)}`;
+		}
+		return fetcher({
+			url,
 			method: "GET",
-		}),
+		});
+	},
 };

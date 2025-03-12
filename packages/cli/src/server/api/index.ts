@@ -267,6 +267,7 @@ export function createApiRouter(
 			: Date.now() - 3600000; // Default 1 hour
 		const requestedLevel = (req.query.level?.toString().toLowerCase() ||
 			"info") as LogLevel;
+		const agentName = req.query.agentName?.toString();
 		const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
 
 		// Access the underlying logger instance
@@ -286,7 +287,15 @@ export function createApiRouter(
 
 			const filtered = recentLogs
 				.filter((log) => {
-					return log.time >= since && log.level >= requestedLevelValue;
+					// Filter by level
+					const levelMatch = log.time >= since && log.level >= requestedLevelValue;
+					
+					// Filter by agentName if provided
+					const agentNameMatch = agentName 
+						? log.agentName === agentName 
+						: true;
+					
+					return levelMatch && agentNameMatch;
 				})
 				.slice(-limit);
 

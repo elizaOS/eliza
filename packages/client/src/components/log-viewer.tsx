@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { apiClient } from "../lib/api";
 import PageTitle from "./page-title";
 import { ScrollArea } from "./ui/scroll-area";
@@ -16,6 +16,10 @@ interface LogEntry {
 	level: number;
 	time: number;
 	msg: string;
+	agentId?: string;
+	agentName?: string;
+	roomId?: string;
+	
 	[key: string]: string | number | boolean | null | undefined;
 }
 
@@ -53,18 +57,36 @@ const LOG_LEVEL_COLORS: Record<number, string> = {
 
 export function LogViewer() {
 	const [selectedLevel, setSelectedLevel] = useState("all");
+	const [selectedAgentName, setSelectedAgentName] = useState("all");
 	const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 	const scrollAreaRef = useRef<HTMLDivElement>(null);
 	const isUserScrolling = useRef(false);
 	const lastLogId = useRef<string>("");
 
 	const { data, error, isLoading } = useQuery<LogResponse>({
-		queryKey: ["logs", selectedLevel],
+		queryKey: ["logs", selectedLevel, selectedAgentName],
 		queryFn: () =>
-			apiClient.getLogs(selectedLevel === "all" ? "" : selectedLevel),
+			apiClient.getLogs(
+				selectedLevel === "all" ? "" : selectedLevel,
+				selectedAgentName === "all" ? undefined : selectedAgentName
+			),
 		refetchInterval: 1000,
 		staleTime: 1000,
 	});
+
+	// Extract unique agent names from logs
+	const agentNames = useMemo(() => {
+		if (!data?.logs) return [];
+		const names = new Set<string>();
+		
+		data.logs.forEach((log) => {
+			if (log.agentName) {
+				names.add(log.agentName);
+			}
+		});
+		
+		return Array.from(names).sort();
+	}, [data?.logs]);
 
 	const scrollToBottom = () => {
 		if (!scrollAreaRef.current) return;
@@ -178,6 +200,22 @@ export function LogViewer() {
 							))}
 						</SelectContent>
 					</Select>
+					
+					{agentNames.length > 0 && (
+						<Select value={selectedAgentName} onValueChange={setSelectedAgentName}>
+							<SelectTrigger className="w-40">
+								<SelectValue placeholder="Filter by agent" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">ALL AGENTS</SelectItem>
+								{agentNames.map((name) => (
+									<SelectItem key={name} value={name}>
+										{name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					)}
 				</div>
 			</div>
 
