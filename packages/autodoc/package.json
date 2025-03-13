@@ -1,7 +1,7 @@
 {
 	"type": "module",
 	"name": "@elizaos/autodoc",
-	"version": "1.0.0-alpha.26",
+	"version": "1.0.0-alpha.27",
 	"description": "",
 	"main": "dist/index.js",
 	"module": "dist/index.mjs",
