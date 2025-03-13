@@ -71,21 +71,21 @@ export default function ThumbnailPanel({
 
       <div className="flex flex-col items-center gap-4 pb-4">
         {thumbnail ? (
-          <div className="relative">
+          <div className="relative w-64 h-64">
             <img
               src={thumbnail}
               alt="Character Thumbnail"
-              className="w-64 h-64 object-cover rounded-lg border"
+              className="object-cover rounded-lg border"
             />
             <button
               className="absolute -top-2 -right-2 bg-white p-1 rounded-full shadow-md"
               onClick={() => setThumbnail(null)}
             >
-              <X className="w-5 h-5 text-red-500" />
+              <X className="w-5 h-5 text-card" />
             </button>
           </div>
         ) : (
-          <div className="w-32 h-32 flex items-center justify-center border border-dashed rounded-lg text-gray-500">
+          <div className="w-64 h-64 flex items-center justify-center border border-dashed rounded-lg text-gray-500">
             <ImageIcon className="w-10 h-10" />
           </div>
         )}
