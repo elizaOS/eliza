@@ -14,7 +14,7 @@ import {
 	logger,
 } from "@elizaos/core";
 import { ChannelType, Events, type TextChannel } from "discord.js";
-import type { DiscordService } from "./index";
+import type { DiscordService } from "./service";
 import { ServiceTypes } from "./types";
 import { sendMessageInChunks } from "./utils";
 

@@ -15,7 +15,7 @@ function ElizaWrapper() {
   // Function to check if server is accessible
   const checkServerAccessibility = async () => {
     try {
-      const response = await fetch("http://localhost:3000", {
+      await fetch("http://localhost:3000", {
         method: "HEAD",
         mode: "no-cors", // Just checking if we can connect, not actually getting a response
       });

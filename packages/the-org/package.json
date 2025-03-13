@@ -29,6 +29,8 @@
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-anthropic": "workspace:*",
 		"@elizaos/plugin-openai": "workspace:*",
+		"@elizaos/plugin-discord": "workspace:*",
+		"@elizaos/plugin-telegram": "workspace:*",
 		"@elizaos/plugin-sql": "workspace:*",
 		"@elizaos/plugin-tee": "workspace:*",
 		"@elizaos/plugin-twitter": "workspace:*",

@@ -18,11 +18,11 @@ import {
 	ChannelType as DiscordChannelType,
 	type Guild,
 } from "discord.js";
-import type { DiscordService } from "../index";
+import type { DiscordService } from "../service";
 import { ServiceTypes } from "../types";
 import type { VoiceManager } from "../voice";
 
-export default {
+export const joinVoice: Action = {
 	name: "JOIN_VOICE",
 	similes: [
 		"JOIN_VOICE",
@@ -368,3 +368,5 @@ You should only respond with the name of the voice channel or none, no commentar
 		],
 	] as ActionExample[][],
 } as Action;
+
+export default joinVoice;

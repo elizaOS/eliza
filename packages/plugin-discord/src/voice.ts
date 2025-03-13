@@ -35,7 +35,7 @@ import {
 	type VoiceState,
 } from "discord.js";
 import prism from "prism-media";
-import type { DiscordService } from "./index";
+import type { DiscordService } from "./service";
 import { getWavHeader } from "./utils";
 
 // These values are chosen for compatibility with picovoice components

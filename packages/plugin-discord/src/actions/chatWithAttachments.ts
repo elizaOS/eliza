@@ -94,7 +94,7 @@ const getAttachmentIds = async (
  * @property {Object[]} examples - Examples demonstrating how to use the action with message content and expected responses
  */
 
-const summarizeAction = {
+export const chatWithAttachments: Action = {
 	name: "CHAT_WITH_ATTACHMENTS",
 	similes: [
 		"CHAT_WITH_ATTACHMENT",
@@ -370,4 +370,4 @@ ${currentSummary.trim()}
 	] as ActionExample[][],
 } as Action;
 
-export default summarizeAction;
+export default chatWithAttachments;

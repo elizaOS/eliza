@@ -25,5 +25,5 @@
       "@elizaos/core/*": ["../core/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts"]
 }

@@ -12,11 +12,11 @@ import {
 } from "@elizaos/core";
 import { BaseGuildVoiceChannel } from "discord.js";
 
-import type { DiscordService } from "../index";
+import type { DiscordService } from "../service";
 import { ServiceTypes } from "../types";
 import type { VoiceManager } from "../voice";
 
-export default {
+export const leaveVoice: Action = {
 	name: "LEAVE_VOICE",
 	similes: [
 		"LEAVE_VOICE",
@@ -294,3 +294,5 @@ export default {
 		],
 	] as ActionExample[][],
 } as Action;
+
+export default leaveVoice;
