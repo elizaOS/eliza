@@ -1,10 +1,9 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { getEnvVariable, logger } from "@elizaos/core";
+import { getEnvVariable, logger  as Logger} from "@elizaos/core";
 import * as bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
+import path from "node:path";
 import type { AgentServer } from "..";
 import { agentRouter } from "./agent";
 import { teeRouter } from "./tee";
@@ -33,6 +32,11 @@ interface LogEntry {
 	msg: string;
 	[key: string]: string | number | boolean | null | undefined;
 }
+
+export const logger = Logger.child({
+	server: true,
+	apiService: true
+})
 
 /**
  * Creates an API router with various endpoints and middleware.

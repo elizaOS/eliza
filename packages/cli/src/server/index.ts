@@ -6,7 +6,7 @@ import {
 	type Character,
 	type IAgentRuntime,
 	type UUID,
-	logger,
+	logger as Logger,
 } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import * as bodyParser from "body-parser";
@@ -48,6 +48,10 @@ export interface ServerOptions {
 const AGENT_RUNTIME_URL =
 	process.env.AGENT_RUNTIME_URL?.replace(/\/$/, "") || "http://localhost:3000";
 
+const logger = Logger.child({
+		server: true
+	})
+
 /**
  * Class representing an agent server.
  */ /**
@@ -63,6 +67,9 @@ export class AgentServer {
 	public stopAgent!: (runtime: IAgentRuntime) => void;
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
+	
+
+	
 
 	/**
 	 * Constructor for AgentServer class.
@@ -71,6 +78,7 @@ export class AgentServer {
 	 * @constructor
 	 */
 	constructor(options?: ServerOptions) {
+		
 		try {
 			logger.log("Initializing AgentServer...");
 			this.app = express();

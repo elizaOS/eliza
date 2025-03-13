@@ -15,7 +15,6 @@ import {
 	ModelTypes,
 	composePrompt,
 	createUniqueUuid,
-	logger,
 	messageHandlerTemplate,
 	parseJSONObjectFromText,
 	stringToUuid,
@@ -24,6 +23,7 @@ import {
 import express from "express";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
+import { logger } from "./index";
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
