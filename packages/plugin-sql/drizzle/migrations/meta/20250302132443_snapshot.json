@@ -29,12 +29,11 @@
 			"notNull": true,
 			"default": "now()"
 		  },
-		  "enabled": {
-			"name": "enabled",
-			"type": "boolean",
+		  "thumbnail": {
+			"name": "thumbnail",
+			"type": "text",
 			"primaryKey": false,
-			"notNull": true,
-			"default": true
+			"notNull": false
 		  },
 		  "name": {
 			"name": "name",
