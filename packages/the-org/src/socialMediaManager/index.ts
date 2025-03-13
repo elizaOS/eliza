@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	Character,
 	IAgentRuntime,
@@ -10,8 +12,6 @@ import dotenv from "dotenv";
 import { v4 as uuidv4 } from "uuid";
 import { initCharacter } from "../init";
 import twitterPostAction from "./actions/post";
-import path from "node:path";
-import fs from "node:fs";
 
 const imagePath = path.resolve("./src/socialMediaManager/assets/portrait.jpg");
 

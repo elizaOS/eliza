@@ -1,11 +1,11 @@
-import type { Agent } from "@elizaos/core";
-import { Card, CardContent } from "./ui/card";
-import { formatAgentName } from "@/lib/utils";
-import { Button } from "./ui/button";
-import { Cog, Loader2, MessageSquare, MoreHorizontal, Play, Square } from "lucide-react";
 import { useAgentManagement } from "@/hooks/use-agent-management";
-import { useNavigate } from "react-router";
+import { formatAgentName } from "@/lib/utils";
+import type { Agent } from "@elizaos/core";
+import { Cog, Loader2, MessageSquare, MoreHorizontal, Play, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
 
 interface ProfileOverlayProps {
     isOpen: boolean;

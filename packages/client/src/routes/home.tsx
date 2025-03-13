@@ -1,13 +1,13 @@
 import PageTitle from "@/components/page-title";
 import ProfileCard from "@/components/profile-card";
+import ProfileOverlay from "@/components/profile-overlay";
 import { Card } from "@/components/ui/card";
 import { useAgents } from "@/hooks/use-query-hooks";
 import { formatAgentName } from "@/lib/utils";
 import type { Agent } from "@elizaos/core";
 import { Cog, Plus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import ProfileOverlay from "@/components/profile-overlay";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function Home() {
 	const {

@@ -201,6 +201,8 @@ export class PostgresConnectionManager
 	 * @returns {Promise<void>} A Promise that resolves once the migrations are completed successfully.
 	 */
 	async runMigrations(): Promise<void> {
+		logger.info("Running database migrations (pg)");
+		console.trace();
 		try {
 			const db = drizzle(this.pool);
 			await migrate(db, {

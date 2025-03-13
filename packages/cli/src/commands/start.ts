@@ -1,3 +1,8 @@
+import fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildProject } from "@/src/utils/build-project";
 import {
 	AgentRuntime,
@@ -11,11 +16,6 @@ import {
 } from "@elizaos/core";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
-import fs from "node:fs";
-import net from "node:net";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { character as defaultCharacter } from "../characters/eliza";
 import { AgentServer } from "../server/index";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
@@ -28,6 +28,7 @@ import {
 	promptForEnvVars,
 } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
+import { installPlugin } from "../utils/install-plugin";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -113,6 +114,22 @@ async function startAgent(
 	} = {},
 ): Promise<IAgentRuntime> {
 	character.id ??= stringToUuid(character.name);
+
+	// get the cli version
+	const cliVersion = require("@elizaos/cli/package.json").version;
+
+	// for each plugin, check if it installed, and install if it is not
+	for (const plugin of character.plugins) {
+		logger.info("Checking if plugin is installed: ", plugin);
+		// check if the plugin is installed by trying to import
+		try {
+			await import(plugin);
+		} catch (error) {
+			logger.info(`Plugin ${plugin} not installed, installing...`);
+			await installPlugin(plugin, process.cwd(), cliVersion);
+		}
+	}
+
 
 	const runtime = new AgentRuntime({
 		character,
@@ -559,6 +576,8 @@ const startAgents = async (options: {
 		logger.warn(`Port ${serverPort} is in use, trying ${serverPort + 1}`);
 		serverPort++;
 	}
+
+	await server.initialize();
 
 	server.start(serverPort);
 

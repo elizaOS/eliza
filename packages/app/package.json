@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app",
-  "version": "1.0.0-alpha.36",
+  "version": "1.0.0-alpha.37",
   "publishConfig": {
     "access": "public"
   },
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/cli": "workspace:*",
+    "@elizaos/cli": "^1.0.0-alpha.37",
     "@tauri-apps/api": "^2.3.0",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-shell": "^2",
@@ -30,5 +30,6 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "~5.8.2",
     "vite": "^6.0.3"
-  }
+  },
+  "gitHead": "3ab6794ec27dfee9891ce79fcf7643aa8bc6b196"
 }

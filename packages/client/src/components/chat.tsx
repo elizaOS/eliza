@@ -6,10 +6,14 @@ import {
 } from "@/components/ui/chat/chat-bubble";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
+import { USER_NAME } from "@/constants";
 import { useAgent, useMessages } from "@/hooks/use-query-hooks";
 import { cn, moment } from "@/lib/utils";
+import { getUserId } from "@/lib/utils";
+import WebSocketsManager from "@/lib/websocket-manager";
 import { WorldManager } from "@/lib/world-manager";
 import type { IAttachment } from "@/types";
+import { AGENT_STATUS } from "@/types/index";
 import type { Content, UUID } from "@elizaos/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { Paperclip, Send, X } from "lucide-react";
@@ -22,10 +26,6 @@ import { Badge } from "./ui/badge";
 import ChatTtsButton from "./ui/chat/chat-tts-button";
 import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import WebSocketsManager from "@/lib/websocket-manager";
-import { getUserId } from "@/lib/utils";
-import { USER_NAME } from "@/constants";
-import { AGENT_STATUS } from "@/types/index";
 
 const SOURCE_NAME = "client_chat";
 

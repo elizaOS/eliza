@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-solana",
-	"version": "1.0.0-alpha.36",
+	"version": "1.0.0-alpha.37",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -45,5 +45,5 @@
 		"form-data": "4.0.2",
 		"whatwg-url": "7.1.0"
 	},
-	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
+	"gitHead": "3ab6794ec27dfee9891ce79fcf7643aa8bc6b196"
 }

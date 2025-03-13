@@ -13,8 +13,8 @@ import * as bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import { createApiRouter } from "./api/index.js";
 import { WebSocketServer } from "ws";
+import { createApiRouter } from "./api/index.js";
 import { WebSocketRouter } from "./wss/index.js";
 
 // Load environment variables
@@ -211,10 +211,14 @@ export class AgentServer {
 				},
 			};
 
+			console.log("Serving static assets from the client dist path");
+
 			// Serve static assets from the client dist path
 			const clientPath = path.join(__dirname, "..", "dist");
 			logger.info(`Client build path: ${clientPath}`);
 			this.app.use("/", express.static(clientPath, staticOptions));
+
+			
 
 			// Serve static assets from plugins
 			// Look for well-known static asset directories in plugins

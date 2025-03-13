@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0-alpha.36",
+  "version": "1.0.0-alpha.37",
   "packages": [
     "packages/*"
   ],
@@ -7,11 +7,7 @@
   "command": {
     "publish": {
       "workspaceConfig": true,
-      "ignoreChanges": [
-        "packages/docs",
-        "packages/client",
-        "packages/autodoc"
-      ]
+      "preserveWorkspacePackageVersions": true
     }
   }
 }

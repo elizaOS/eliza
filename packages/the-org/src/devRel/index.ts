@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	Character,
 	IAgentRuntime,
@@ -6,8 +8,6 @@ import type {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { initCharacter } from "../init";
-import path from "node:path";
-import fs from "node:fs";
 
 const imagePath = path.resolve("./src/devRel/assets/portrait.jpg");
 

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	Character,
 	IAgentRuntime,
@@ -9,8 +11,6 @@ import { initCharacter } from "../init";
 import { communityInvestorPlugin } from "./plugins/community-investor";
 import { degenIntelPlugin } from "./plugins/degen-intel";
 import { degenTraderPlugin } from "./plugins/degen-trader";
-import path from "node:path";
-import fs from "node:fs";
 
 const imagePath = path.resolve("./src/investmentManager/assets/portrait.jpg");
 

@@ -63,7 +63,7 @@ export function createApiRouter(
 	// Plugin routes handling middleware
 	// This middleware needs to be registered before the other routes
 	// to ensure plugin routes take precedence
-	router.use((req, res, next) => {
+	router.use('/', (req, res, next) => {
 		// Debug output for all JavaScript requests to help diagnose MIME type issues
 		if (
 			req.path.endsWith(".js") ||
@@ -120,6 +120,9 @@ export function createApiRouter(
 						break;
 					}
 				}
+
+				console.log("routePath", routePath);
+				console.log("reqPath", reqPath);
 
 				// Handle wildcard paths (e.g., /portal/*)
 				if (

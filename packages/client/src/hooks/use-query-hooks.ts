@@ -1,10 +1,10 @@
+import { USER_NAME } from "@/constants";
 import { apiClient } from "@/lib/api";
 import { WorldManager } from "@/lib/world-manager";
 import type { Agent, Content, Media, UUID } from "@elizaos/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useToast } from "./use-toast";
-import { USER_NAME } from "@/constants";
 
 // Define the ContentWithUser type
 /**

@@ -13,12 +13,12 @@ import {
 } from "@/components/ui/sidebar";
 import { useAgents } from "@/hooks/use-query-hooks";
 import info from "@/lib/info.json";
+import { formatAgentName } from "@/lib/utils";
+import { AGENT_STATUS } from "@/types/index";
 import type { Agent } from "@elizaos/core";
 import { Book, Cog, Scroll, User } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 import ConnectionStatus from "./connection-status";
-import { AGENT_STATUS } from "@/types/index";
-import { formatAgentName } from "@/lib/utils";
 
 export function AppSidebar() {
 	const location = useLocation();

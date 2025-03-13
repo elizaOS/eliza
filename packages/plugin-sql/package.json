@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-sql",
-	"version": "1.0.0-alpha.36",
+	"version": "1.0.0-alpha.37",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -47,5 +47,5 @@
 	"peerDependencies": {
 		"typescript": "5.8.2"
 	},
-	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
+	"gitHead": "3ab6794ec27dfee9891ce79fcf7643aa8bc6b196"
 }

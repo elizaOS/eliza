@@ -1,8 +1,8 @@
-import { WebSocket } from "ws";
 import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { ChannelType, createUniqueUuid, logger } from "@elizaos/core";
-import { AgentServer } from "../index.js";
 import { SOCKET_MESSAGE_TYPE } from "@elizaos/core";
+import type { WebSocket } from "ws";
+import type { AgentServer } from "../index.js";
 
 export class WebSocketRouter {
     private agents: Map<UUID, IAgentRuntime>;
