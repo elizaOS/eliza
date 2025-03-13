@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-import { Readable } from "node:stream";
 import type {
 	Agent,
 	Character,
@@ -17,13 +14,15 @@ import {
 	createUniqueUuid,
 	messageHandlerTemplate,
 	parseJSONObjectFromText,
-	stringToUuid,
-	validateUuid,
+	validateUuid
 } from "@elizaos/core";
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
+import { Readable } from "node:stream";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
-import { logger } from "./index";
+import { logger as Logger} from "./index";
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -39,6 +38,11 @@ interface CustomRequest extends express.Request {
 		agentId: string;
 	};
 }
+
+const logger = Logger.child({
+	apiService: true,
+	apiRoute: "/agents"
+})
 
 /**
  * Creates an express Router for handling agent-related routes.

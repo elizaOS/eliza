@@ -7,10 +7,11 @@ import path from "node:path";
 import type { AgentServer } from "..";
 import { agentRouter } from "./agent";
 import { teeRouter } from "./tee";
+import { log } from "node:console";
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
-	...logger.levels.values,
+	...Logger.levels.values,
 } as const;
 
 /**
@@ -61,6 +62,7 @@ export function createApiRouter(
 	);
 
 	router.get("/hello", (_req, res) => {
+		logger.log({apiRoute: "/hello"})
 		res.json({ message: "Hello World!" });
 	});
 
@@ -261,6 +263,9 @@ export function createApiRouter(
 
 	router.get("/stop", (_req, res) => {
 		server.stop();
+		logger.log({
+			apiRoute: '/stop'
+		}, "Server stopping...")
 		res.json({ message: "Server stopping..." });
 	});
 
@@ -323,6 +328,7 @@ export function createApiRouter(
 
 	// Health check endpoints
 	router.get("/health", (_req, res) => {
+		logger.log({apiRoute: "/health"}, "Health check route hit")
 		const healthcheck = {
 			status: "OK",
 			version: process.env.APP_VERSION || "unknown",
@@ -339,6 +345,7 @@ export function createApiRouter(
 
 	// Status endpoint
 	router.get("/status", (_req, res) => {
+		logger.log({apiRoute: "/status"}, "Status route hit")
 		res.json({ status: "ok" });
 	});
 
