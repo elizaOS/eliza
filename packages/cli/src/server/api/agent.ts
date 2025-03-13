@@ -167,13 +167,12 @@ export function agentRouter(
 				throw new Error("Failed to create character configuration");
 			}
 
-			const agent = await server?.startAgent(character);
+			await db.ensureAgentExists(character);
 
 			res.status(201).json({
 				success: true,
 				data: {
-					id: agent.agentId,
-					character: agent.character,
+					character: character,
 				},
 			});
 			logger.success(
