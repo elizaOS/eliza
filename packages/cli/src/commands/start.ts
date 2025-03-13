@@ -1,8 +1,3 @@
-import fs from "node:fs";
-import net from "node:net";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { buildProject } from "@/src/utils/build-project";
 import {
 	AgentRuntime,
@@ -16,18 +11,21 @@ import {
 } from "@elizaos/core";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
+import fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { character as defaultCharacter } from "../characters/eliza";
 import { AgentServer } from "../server/index";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
-import { generateCustomCharacter } from "../utils/character-generator.js";
 import {
 	displayConfigStatus,
-	getPluginStatus,
 	loadConfig,
-	saveConfig,
+	saveConfig
 } from "../utils/config-manager.js";
 import {
 	promptForEnvVars,
-	promptForServices
 } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
 
@@ -277,11 +275,6 @@ const startAgents = async (options: {
 
 	// Load existing configuration
 	const existingConfig = loadConfig();
-	const pluginStatus = getPluginStatus();
-
-	// Variables to store the selected plugins
-	let selectedServices: string[] = [];
-	let selectedAiModels: string[] = [];
 
 	// Check if we should reconfigure based on command-line option or if using default config
 	const shouldConfigure = options.configure || existingConfig.isDefault;
@@ -297,54 +290,11 @@ const startAgents = async (options: {
 		} else {
 			logger.info("Reconfiguration requested.");
 		}
-
-		await new Promise((resolve) => setTimeout(resolve, 100));
-
-		// Prompt for services and AI models first
-		const userSelections = await promptForServices();
-		selectedServices = userSelections.services;
-		selectedAiModels = userSelections.aiModels;
-
 		// Save the configuration AFTER user has made selections
 		saveConfig({
-			services: selectedServices,
-			aiModels: selectedAiModels,
 			lastUpdated: new Date().toISOString(),
-			// isDefault is not included to indicate this is now a user-configured setup
 		});
-	} else {
-		// Use existing configuration
-		selectedServices = existingConfig.services;
-		selectedAiModels = existingConfig.aiModels;
 	}
-
-	// Now handle environment variables for the selected plugins
-	// Prompt for environment variables for selected services and AI models
-	const pluginsToPrompt = [
-		...selectedServices,
-		...selectedAiModels,
-	].filter((plugin, index, self) => self.indexOf(plugin) === index); // Remove duplicates
-
-	// Check which plugins are missing environment variables
-	const missingEnvVars = pluginsToPrompt.filter(
-		(plugin) => !pluginStatus[plugin],
-	);
-
-	// Prompt for missing environment variables
-	if (missingEnvVars.length > 0) {
-		for (const plugin of missingEnvVars) {
-			await promptForEnvVars(plugin);
-		}
-
-		logger.info("All required plugin configurations complete!");
-	}
-
-	// Create a custom character with the selected plugins
-	const customCharacter = generateCustomCharacter(
-		selectedServices,
-		selectedAiModels,
-	);
-
 	// Look for PostgreSQL URL in environment variables
 	const postgresUrl = process.env.POSTGRES_URL;
 
@@ -552,7 +502,7 @@ const startAgents = async (options: {
 				logger.warn(
 					"Failed to start any agents from project, falling back to custom character",
 				);
-				await startAgent(customCharacter, server);
+				await startAgent(defaultCharacter, server);
 			} else {
 				logger.info(
 					`Successfully started ${startedAgents.length} agents from project`,
@@ -562,7 +512,7 @@ const startAgents = async (options: {
 			logger.warn(
 				"Project found but no agents defined, falling back to custom character",
 			);
-			await startAgent(customCharacter, server);
+			await startAgent(defaultCharacter, server);
 		}
 	} else if (isPlugin && pluginModule) {
 		// Before starting with the plugin, prompt for any environment variables it needs

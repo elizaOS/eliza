@@ -9,8 +9,6 @@ import { checkEnvVarsForPlugin } from "./env-prompt.js";
  * Interface for the agent's configuration
  */
 interface AgentConfig {
-	services: string[];
-	aiModels: string[];
 	lastUpdated: string;
 	isDefault?: boolean; // Flag to indicate if this is a default config
 }
@@ -33,8 +31,6 @@ export function loadConfig(): AgentConfig {
 		const configPath = getConfigFilePath();
 		if (!fs.existsSync(configPath)) {
 			return {
-				services: [],
-				aiModels: ["openai"], // Default to OpenAI
 				lastUpdated: new Date().toISOString(),
 				isDefault: true, // Mark as default config
 			};
@@ -46,8 +42,6 @@ export function loadConfig(): AgentConfig {
 		logger.warn(`Error loading configuration: ${error}`);
 		// Return default configuration on error
 		return {
-			services: [],
-			aiModels: ["openai"],
 			lastUpdated: new Date().toISOString(),
 			isDefault: true, // Mark as default config
 		};
@@ -117,32 +111,6 @@ export function displayConfigStatus(): void {
 				"Using default configuration - you will be prompted to customize your setup.",
 			),
 		);
-	}
-
-	// Display services
-	logger.info("Services:");
-	if (config.services.length) {
-		for (const service of config.services) {
-			const status = pluginStatus[service]
-				? colors.green("✓ configured")
-				: colors.yellow("⚠ missing environment variables");
-			logger.info(`  ${colors.cyan(service)}: ${status}`);
-		}
-	} else {
-		logger.info(`  ${colors.gray("No services configured")}`);
-	}
-
-	// Display AI models
-	logger.info("AI Models:");
-	if (config.aiModels.length) {
-		for (const model of config.aiModels) {
-			const status = pluginStatus[model]
-				? colors.green("✓ configured")
-				: colors.yellow("⚠ missing environment variables");
-			logger.info(`  ${colors.cyan(model)}: ${status}`);
-		}
-	} else {
-		logger.info(`  ${colors.gray("No AI models configured")}`);
 	}
 
 	// Display last updated timestamp
