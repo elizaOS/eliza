@@ -3,6 +3,12 @@ name: Native App
 env:
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
   GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+  # Skip binary downloads during install
+  YOUTUBE_DL_SKIP_DOWNLOAD: true
+  ADBLOCK: true
+  PUPPETEER_SKIP_DOWNLOAD: true
+  CYPRESS_INSTALL_BINARY: 0
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
 
 on:
   push:
@@ -59,13 +65,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libx11-dev libxdo-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
           
-      - name: Install dependencies
-        run: bun install --no-postinstall
-        
-      - name: Trust all package managers
+      - name: Create .npmrc to skip postinstall scripts
         run: |
-          bun pm trust --all
+          echo "ignore-scripts=true" > .npmrc
+        shell: bash
           
+      - name: Install dependencies 
+        run: bun install
+        env:
+          NPM_CONFIG_IGNORE_SCRIPTS: true
+        
       - name: Build packages
         run: bun run build
           

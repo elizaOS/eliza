@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PluginsPanel from "./plugins-panel";
 import SecretPanel from "./secret-panel";
+import AvatarPanel from "./avatar-panel";
 
 export default function AgentSettings({
 	agent,
@@ -88,6 +89,15 @@ export default function AgentSettings({
 					name: "Secret",
 					component: (
 						<SecretPanel
+							characterValue={characterValue}
+							setCharacterValue={setCharacterValue}
+						/>
+					),
+				},
+				{
+					name: "Avatar",
+					component: (
+						<AvatarPanel
 							characterValue={characterValue}
 							setCharacterValue={setCharacterValue}
 						/>

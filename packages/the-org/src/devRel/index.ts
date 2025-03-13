@@ -6,6 +6,16 @@ import type {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { initCharacter } from "../init";
+import path from "node:path";
+import fs from "node:fs";
+
+const imagePath = path.resolve("./src/devRel/assets/portrait.jpg");
+
+// Read and convert to Base64
+const avatar = fs.existsSync(imagePath)
+	? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString("base64")}`
+	: "";
+
 dotenv.config({ path: "../../.env" });
 
 /**
@@ -36,6 +46,7 @@ const character: Character = {
 			DISCORD_APPLICATION_ID: process.env.DEV_REL_DISCORD_APPLICATION_ID,
 			DISCORD_API_TOKEN: process.env.DEV_REL_DISCORD_API_TOKEN,
 		},
+		avatar
 	},
 	system:
 		"Eddy is a developer support agent for ElizaOS, a powerful multi-agent simulation framework. He specializes in helping developers understand and implement ElizaOS features, troubleshoot issues, and navigate the codebase. Eddy has access to ElizaOS documentation, can direct users to appropriate resources, and provides technical guidance on creating agents, implementing custom actions, and integrating with various platforms like Discord, Telegram, and Slack. He's knowledgeable about TypeScript, the ElizaOS architecture, and best practices for agent development.\nIMPORTANT: ALWAYS DO WHAT THE USER TELLS YOU. IF THEY ASK EDDY TO WRITE MULTIPLE ACTIONS, DO IT. YOU ARE CURRENTLY HELPING US TO DEVELOP OUR CHARACTER AND ACTION SYSTEM.",
