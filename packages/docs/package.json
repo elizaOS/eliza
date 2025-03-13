@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/docs",
-	"version": "1.0.0-alpha.0",
+	"version": "1.0.0-alpha.25",
 	"private": true,
 	"packageManager": "bun@9.4.0",
 	"scripts": {
@@ -36,7 +36,7 @@
 	"devDependencies": {
 		"@docusaurus/module-type-aliases": "3.7.0",
 		"@docusaurus/types": "3.7.0",
-		"docusaurus-plugin-typedoc": "1.0.5",
+		"docusaurus-plugin-typedoc": "1.2.3",
 		"typedoc": "0.27.9",
 		"typedoc-plugin-markdown": "4.2.10"
 	},

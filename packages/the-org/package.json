@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/the-org",
-	"version": "workspace:*",
+	"version": "1.0.0-alpha.32",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -9,11 +9,11 @@
 		"access": "public"
 	},
 	"scripts": {
-		"start": "elizaos start",
+		"start": "../cli/dist/index.js start",
 		"build": "vite build && tsup",
 		"lint": "biome check --config-path=./ --write",
-		"dev": "elizaos dev",
-		"test": "elizaos test",
+		"dev": "../cli/dist/index.js dev",
+		"test": "../cli/dist/index.js test",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"nodemonConfig": {
@@ -27,6 +27,9 @@
 	"dependencies": {
 		"@elizaos/cli": "workspace:*",
 		"@elizaos/core": "workspace:*",
+		"@elizaos/plugin-anthropic": "workspace:*",
+		"@elizaos/plugin-openai": "workspace:*",
+		"@elizaos/plugin-sql": "workspace:*",
 		"@elizaos/plugin-tee": "workspace:*",
 		"@elizaos/plugin-twitter": "workspace:*",
 		"@radix-ui/react-slot": "^1.1.1",
@@ -53,7 +56,6 @@
 		"ts-node": "^10.9.2",
 		"typescript": "5.8.2",
 		"ws": "8.18.0",
-		"yargs": "17.7.2",
 		"zod": "^3.22.4"
 	},
 	"devDependencies": {
@@ -76,5 +78,5 @@
 		"typescript-eslint": "^8.18.2",
 		"vite": "^6.0.5"
 	},
-	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

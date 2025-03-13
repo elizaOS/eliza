@@ -1,12 +1,12 @@
 {
 	"type": "module",
 	"name": "@elizaos/autodoc",
-	"version": "1.0.0-alpha.7",
+	"version": "1.0.0-alpha.28",
+	"private": true,
 	"description": "",
 	"main": "dist/index.js",
 	"module": "dist/index.mjs",
 	"types": "dist/index.d.ts",
-	"private": true,
 	"scripts": {
 		"build": "tsup",
 		"autodoc:dev": "tsup --watch",
@@ -33,5 +33,5 @@
 		"tsup": "8.4.0",
 		"typescript": "5.8.2"
 	},
-	"gitHead": "45175c735affb7ea45b3d9efecde34223e782b79"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

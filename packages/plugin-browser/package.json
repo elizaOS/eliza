@@ -1,10 +1,14 @@
 {
-	"name": "@elizaos/plugin-node",
-	"version": "1.0.0-alpha.25",
+	"name": "@elizaos/plugin-browser",
+	"version": "1.0.0-alpha.32",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elizaos-plugins/plugin-browser"
+	},
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
@@ -54,5 +58,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

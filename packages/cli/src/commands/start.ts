@@ -293,8 +293,6 @@ const startAgents = async (options: {
 	let selectedServices: string[] = [];
 	let selectedAiModels: string[] = [];
 
-	console.log("*** existingConfig", existingConfig);
-
 	// Check if we should reconfigure based on command-line option or if using default config
 	const shouldConfigure = options.configure || existingConfig.isDefault;
 
@@ -345,12 +343,7 @@ const startAgents = async (options: {
 
 	// Prompt for missing environment variables
 	if (missingEnvVars.length > 0) {
-		logger.info(
-			`${missingEnvVars.length} plugins need configuration. Let's set them up.`,
-		);
-
 		for (const plugin of missingEnvVars) {
-			logger.info(`Configuring ${plugin}...`);
 			await promptForEnvVars(plugin);
 		}
 

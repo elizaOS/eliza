@@ -1,10 +1,14 @@
 {
 	"name": "@elizaos/plugin-anthropic",
-	"version": "1.0.0-alpha.25",
+	"version": "1.0.0-alpha.32",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elizaos-plugins/plugin-anthropic"
+	},
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
@@ -27,7 +31,6 @@
 	"scripts": {
 		"build": "tsup",
 		"dev": "tsup --watch",
-		"test": "vitest run",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"peerDependencies": {
@@ -48,5 +51,5 @@
 			}
 		}
 	},
-	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

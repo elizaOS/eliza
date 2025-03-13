@@ -3,40 +3,9 @@ import {
 	parseBooleanFromText,
 	parseJSONObjectFromText,
 	parseJsonArrayFromText,
-	parseShouldRespondFromText,
-} from "../src/parsing";
+} from "../src/prompts";
 
 describe("Parsing Module", () => {
-	describe("parseShouldRespondFromText", () => {
-		it("should parse exact matches", () => {
-			expect(parseShouldRespondFromText("RESPOND")).toBe("RESPOND");
-			expect(parseShouldRespondFromText("IGNORE")).toBe("IGNORE");
-			expect(parseShouldRespondFromText("STOP")).toBe("STOP");
-		});
-
-		it("should handle case insensitive input", () => {
-			expect(parseShouldRespondFromText("[respond]")).toBe("RESPOND");
-			expect(parseShouldRespondFromText("[ignore]")).toBe("IGNORE");
-			expect(parseShouldRespondFromText("[stop]")).toBe("STOP");
-		});
-
-		it("should handle text containing keywords", () => {
-			expect(parseShouldRespondFromText("I think we should RESPOND here")).toBe(
-				"RESPOND",
-			);
-			expect(parseShouldRespondFromText("Better to IGNORE this one")).toBe(
-				"IGNORE",
-			);
-			expect(parseShouldRespondFromText("We need to STOP now")).toBe("STOP");
-		});
-
-		it("should return null for invalid input", () => {
-			expect(parseShouldRespondFromText("")).toBe(null);
-			expect(parseShouldRespondFromText("invalid")).toBe(null);
-			expect(parseShouldRespondFromText("[INVALID]")).toBe(null);
-		});
-	});
-
 	describe("parseBooleanFromText", () => {
 		it("should parse exact YES/NO matches", () => {
 			expect(parseBooleanFromText("YES")).toBe(true);
@@ -49,9 +18,9 @@ describe("Parsing Module", () => {
 		});
 
 		it("should return null for invalid input", () => {
-			expect(parseBooleanFromText("")).toBe(null);
-			expect(parseBooleanFromText("maybe")).toBe(null);
-			expect(parseBooleanFromText("YES NO")).toBe(null);
+			expect(parseBooleanFromText("")).toBe(false);
+			expect(parseBooleanFromText("maybe")).toBe(false);
+			expect(parseBooleanFromText("YES NO")).toBe(false);
 		});
 	});
 

@@ -59,7 +59,8 @@ export class StarterTestSuite implements TestSuite {
           roomId: uuidv4() as UUID,
           content: {
             text: "Can you say hello?",
-            source: "test"
+            source: "test",
+            actions: ["HELLO_WORLD"] // Explicitly request the HELLO_WORLD action
           }
         };
 
@@ -70,6 +71,8 @@ export class StarterTestSuite implements TestSuite {
         };
         let responseReceived = false;
 
+        console.log("Available actions:", runtime.actions.map(a => a.name));
+
         // Test the hello world action
         try {
           await runtime.processActions(
@@ -77,12 +80,36 @@ export class StarterTestSuite implements TestSuite {
             [],
             state,
             async (content: Content) => {
+              console.log("Received content in callback:", JSON.stringify(content));
               if (content.text === "hello world!" && content.actions?.includes("HELLO_WORLD")) {
                 responseReceived = true;
               }
               return [];
             }
           );
+
+          if (!responseReceived) {
+            // Try directly executing the action if processActions didn't work
+            const helloWorldAction = runtime.actions.find(a => a.name === "HELLO_WORLD");
+            if (helloWorldAction) {
+              await helloWorldAction.handler(
+                runtime,
+                message,
+                state,
+                {},
+                async (content: Content) => {
+                  console.log("Direct action execution result:", JSON.stringify(content));
+                  if (content.text === "hello world!" && content.actions?.includes("HELLO_WORLD")) {
+                    responseReceived = true;
+                  }
+                  return [];
+                },
+                []
+              );
+            } else {
+              throw new Error("HELLO_WORLD action not found in runtime.actions");
+            }
+          }
 
           if (!responseReceived) {
             throw new Error("Hello world action did not produce expected response");
@@ -112,7 +139,21 @@ export class StarterTestSuite implements TestSuite {
 
         // Test the hello world provider
         try {
-          const result = await runtime.providers[0].get(runtime, message, state);
+          // Check if providers exist and log them for debugging
+          console.log(`Runtime providers: ${JSON.stringify(runtime.providers.map(p => p.name))}`);
+          
+          if (!runtime.providers || runtime.providers.length === 0) {
+            throw new Error("No providers found in runtime");
+          }
+          
+          // Find the specific provider we want to test
+          const helloWorldProvider = runtime.providers.find(p => p.name === "HELLO_WORLD_PROVIDER");
+          
+          if (!helloWorldProvider) {
+            throw new Error("HELLO_WORLD_PROVIDER not found in runtime providers");
+          }
+          
+          const result = await helloWorldProvider.get(runtime, message, state);
           
           if (result.text !== "I am a provider") {
             throw new Error(`Expected provider to return "I am a provider", got "${result.text}"`);

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/core",
-	"version": "1.0.0-alpha.25",
+	"version": "1.0.0-alpha.32",
 	"description": "",
 	"type": "module",
 	"main": "dist/index.js",
@@ -34,7 +34,6 @@
 		"@eslint/js": "9.16.0",
 		"@rollup/plugin-commonjs": "25.0.8",
 		"@rollup/plugin-json": "6.1.0",
-		"@rollup/plugin-node-resolve": "15.3.0",
 		"@rollup/plugin-replace": "5.0.7",
 		"@rollup/plugin-terser": "0.1.0",
 		"@rollup/plugin-typescript": "11.1.6",
@@ -69,5 +68,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "5947150f47f2646ddcaa0dd307e85bce0c63e668"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

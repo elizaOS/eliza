@@ -61,7 +61,7 @@ describe("Twitter Post Client", () => {
 				createMemory: vi.fn().mockResolvedValue(true),
 			},
 			composeState: vi.fn(),
-			composeContext: vi.fn(),
+			composePrompt: vi.fn(),
 			getOrCreateUser: vi.fn().mockResolvedValue(true),
 			ensureRoomExists: vi.fn().mockResolvedValue(true),
 			ensureParticipantInRoom: vi.fn().mockResolvedValue(true),

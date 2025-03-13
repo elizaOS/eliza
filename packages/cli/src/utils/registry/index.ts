@@ -1,22 +1,14 @@
-import { promises as fs } from 'node:fs';
-import { existsSync } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
 	getLocalPackages,
 	isMonorepoContext,
 } from "@/src/utils/get-package-info";
-import {
-	type Registry,
-	getPluginType,
-	registrySchema,
-} from "@/src/utils/registry/schema";
 import { logger } from "@elizaos/core";
 import dotenv from 'dotenv';
 import { execa } from "execa";
 import { HttpsProxyAgent } from "https-proxy-agent";
-import fetch from "node-fetch";
-import { z } from "zod";
 import { getGitHubCredentials } from '../github';
 import { REGISTRY_URL } from "./constants";
 
@@ -184,7 +176,6 @@ const DEFAULT_REGISTRY: Record<string, string> = {
 	"@elizaos/plugin-discord": "elizaos/plugin-discord",
 	"@elizaos/plugin-elevenlabs": "elizaos/plugin-elevenlabs",
 	"@elizaos/plugin-local-ai": "elizaos/plugin-local-ai",
-	"@elizaos/plugin-node": "elizaos/plugin-node",
 	"@elizaos/plugin-openai": "elizaos/plugin-openai",
 	"@elizaos/plugin-solana": "elizaos/plugin-solana",
 	"@elizaos/plugin-sql": "elizaos/plugin-sql",

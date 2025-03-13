@@ -10,7 +10,7 @@ const env = {
 	TWITTER_USERNAME: "testuser123",
 	TWITTER_DRY_RUN: "true",
 	TWITTER_SPACES_ENABLE: "false",
-	TWITTER_TARGET_USERS: "user1,user2,user3",
+	TWITTER_TARGET_USERS: "name1,name2,name3",
 	TWITTER_POST_INTERVAL_MIN: "90",
 	TWITTER_POST_INTERVAL_MAX: "180",
 	TWITTER_ENABLE_ACTION_PROCESSING: "false",
@@ -39,7 +39,7 @@ describe("Twitter Environment Configuration", () => {
 		expect(config.TWITTER_USERNAME).toBe("testuser123");
 		expect(config.TWITTER_DRY_RUN).toBe(true);
 		expect(config.TWITTER_SPACES_ENABLE).toBe(false);
-		expect(config.TWITTER_TARGET_USERS).toEqual(["user1", "user2", "user3"]);
+		expect(config.TWITTER_TARGET_USERS).toEqual(["name1", "name2", "name3"]);
 		expect(config.TWITTER_POST_INTERVAL_MIN).toBe(90);
 		expect(config.TWITTER_POST_INTERVAL_MAX).toBe(180);
 		expect(config.TWITTER_POST_IMMEDIATELY).toBe(false);

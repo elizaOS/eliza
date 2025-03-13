@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import chalk from "chalk";
+import colors from "yoctocolors";
 import inquirer from "inquirer";
 import prompts from "prompts";
 
@@ -196,13 +196,13 @@ async function promptForEnvVar(config: EnvVarConfig): Promise<string | null> {
 	}
 
 	console.log(
-		chalk.magenta(
+		colors.magenta(
 			`\n${config.name} ${config.required ? "(Required)" : "(Optional - press Enter to skip)"}`,
 		),
 	);
-	console.log(chalk.white(config.description));
+	console.log(colors.white(config.description));
 	if (config.url) {
-		console.log(chalk.blue(`Get it here: ${config.url}`));
+		console.log(colors.blue(`Get it here: ${config.url}`));
 	}
 
 	const { value } = await inquirer.prompt([
@@ -248,38 +248,38 @@ export async function promptForEnvVars(
 
 	// Special messages for optional integrations
 	if (pluginName.toLowerCase() === "discord") {
-		console.log(chalk.blue("\n=== Discord Integration (Optional) ==="));
+		console.log(colors.blue("\n=== Discord Integration (Optional) ==="));
 		console.log(
-			chalk.white(
+			colors.white(
 				"Setting up Discord integration will allow your agent to interact with Discord users.",
 			),
 		);
 		console.log(
-			chalk.white(
+			colors.white(
 				"You can press Enter to skip these if you don't want to use Discord.",
 			),
 		);
 	} else if (pluginName.toLowerCase() === "twitter") {
-		console.log(chalk.blue("\n=== Twitter Integration (Optional) ==="));
+		console.log(colors.blue("\n=== Twitter Integration (Optional) ==="));
 		console.log(
-			chalk.white(
+			colors.white(
 				"Setting up Twitter integration will allow your agent to post and interact on Twitter.",
 			),
 		);
 		console.log(
-			chalk.white(
+			colors.white(
 				"You can press Enter to skip these if you don't want to use Twitter.",
 			),
 		);
 	} else if (pluginName.toLowerCase() === "telegram") {
-		console.log(chalk.blue("\n=== Telegram Integration (Optional) ==="));
+		console.log(colors.blue("\n=== Telegram Integration (Optional) ==="));
 		console.log(
-			chalk.white(
+			colors.white(
 				"Setting up Telegram integration will allow your agent to interact in Telegram chats.",
 			),
 		);
 		console.log(
-			chalk.white(
+			colors.white(
 				"You can press Enter to skip these if you don't want to use Telegram.",
 			),
 		);
@@ -300,6 +300,9 @@ export async function promptForEnvVars(
 		) {
 			continue;
 		}
+
+		// wait 100 ms
+		await new Promise((resolve) => setTimeout(resolve, 100));
 
 		// Prompt for the missing or invalid variable
 		const value = await promptForEnvVar(config);
@@ -532,14 +535,14 @@ export async function promptForServices(): Promise<{
 	services: string[];
 	aiModels: string[];
 }> {
-	console.log(chalk.blue("\n=== Configure Your Agent's Services ==="));
+	console.log(colors.blue("\n=== Configure Your Agent's Services ==="));
 	console.log(
-		chalk.white(
+		colors.white(
 			"Let's customize which services and AI models your agent will use.",
 		),
 	);
 	console.log(
-		chalk.white(
+		colors.white(
 			"You'll be prompted for API keys after making your selections.",
 		),
 	);
@@ -571,7 +574,7 @@ export async function promptForServices(): Promise<{
 
 	// Prompt for services using multiselect
 	console.log(
-		chalk.yellow(
+		colors.yellow(
 			"\nStep 1: Select messaging services (optional - you can select none)",
 		),
 	);
@@ -585,7 +588,7 @@ export async function promptForServices(): Promise<{
 
 	// Prompt for AI models using multiselect
 	console.log(
-		chalk.yellow("\nStep 2: Select AI models (at least one required)"),
+		colors.yellow("\nStep 2: Select AI models (at least one required)"),
 	);
 	const modelResult = await prompts({
 		type: "multiselect",
@@ -596,15 +599,15 @@ export async function promptForServices(): Promise<{
 	});
 
 	// Display summary of selections
-	console.log(chalk.green("\n✓ Configuration selections complete!"));
+	console.log(colors.green("\n✓ Configuration selections complete!"));
 	console.log(
-		chalk.cyan(
+		colors.cyan(
 			`• Services: ${serviceResult.services?.length ? serviceResult.services.join(", ") : "None"}`,
 		),
 	);
-	console.log(chalk.cyan(`• AI Models: ${modelResult.aiModels.join(", ")}`));
+	console.log(colors.cyan(`• AI Models: ${modelResult.aiModels.join(", ")}`));
 	console.log(
-		chalk.white(
+		colors.white(
 			"\nNow we'll set up any required API keys for your selected services and models.",
 		),
 	);

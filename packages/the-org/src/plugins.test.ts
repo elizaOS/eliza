@@ -25,8 +25,10 @@ const elizaOpenAIFirst: Character = {
 	plugins: [
 		"@elizaos/plugin-openai", // OpenAI first, embedding size = 1536
 		"@elizaos/plugin-elevenlabs",
-		"@elizaos/plugin-node",
 		"@elizaos/plugin-sql",
+		"@elizaos/plugin-pdf",
+		"@elizaos/plugin-video-understanding",
+		"@elizaos/plugin-storage-s3",
 	],
 };
 

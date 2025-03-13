@@ -14,6 +14,7 @@ export default defineConfig({
 		"path", // Externalize other built-ins if necessary
 		"https",
 		"http",
+		"@elizaos/core",
 		// Add other modules you want to externalize
 	],
 });

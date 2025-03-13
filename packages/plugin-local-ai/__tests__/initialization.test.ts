@@ -1,4 +1,4 @@
-import { ModelClass } from "@elizaos/core";
+import { ModelTypes } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import { localAIPlugin } from "../src/index";
 
@@ -6,8 +6,8 @@ describe("LocalAI Plugin Initialization", () => {
 	test("should initialize plugin with default configuration", async () => {
 		// Mock runtime for testing
 		const mockRuntime = {
-			useModel: async (modelClass: ModelClass, _params: any) => {
-				if (modelClass === ModelClass.TEXT_SMALL) {
+			useModel: async (modelClass: ModelTypes, _params: any) => {
+				if (modelClass === ModelTypes.TEXT_SMALL) {
 					return "Initialization successful";
 				}
 				throw new Error(`Unexpected model class: ${modelClass}`);
@@ -19,7 +19,7 @@ describe("LocalAI Plugin Initialization", () => {
 			await localAIPlugin.init({});
 
 			// Run initialization test
-			const result = await mockRuntime.useModel(ModelClass.TEXT_SMALL, {
+			const result = await mockRuntime.useModel(ModelTypes.TEXT_SMALL, {
 				context:
 					"Debug Mode: Test initialization. Respond with 'Initialization successful' if you can read this.",
 				stopSequences: [],

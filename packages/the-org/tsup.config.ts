@@ -10,10 +10,10 @@ export default defineConfig({
 	dts: false, // Skip DTS generation to avoid external import issues // Ensure you're targeting CommonJS
 	external: [
 		"dotenv", // Externalize dotenv to prevent bundling
-		"fs", // Externalize fs to use Node.js built-in module
-		"path", // Externalize other built-ins if necessary
-		"https",
-		"http",
-		// Add other modules you want to externalize
+		"node:fs", // Externalize fs to use Node.js built-in module
+		"node:https",
+		"node:path", // Externalize other built-ins if necessary
+		"node:http",
+		"@elizaos/plugin-cli",
 	],
 });
