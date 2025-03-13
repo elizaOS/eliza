@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app",
-  "version": "1.0.0-alpha.26",
+  "version": "1.0.0-alpha.33",
   "publishConfig": {
     "access": "public"
   },
@@ -24,11 +24,11 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "~5.8.2",
-    "vite": "^6.0.3",
-    "@tauri-apps/cli": "^2"
+    "vite": "^6.0.3"
   }
 }

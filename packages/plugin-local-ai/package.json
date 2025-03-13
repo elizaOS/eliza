@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-local-ai",
-	"version": "1.0.0-alpha.32",
+	"version": "1.0.0-alpha.33",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
