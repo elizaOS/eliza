@@ -354,7 +354,7 @@ export async function getEntityDetails({
 
 		// Merge component data more efficiently
 		const allData = {};
-		for (const component of entity.components) {
+		for (const component of entity.components || []) {
 			Object.assign(allData, component.data);
 		}
 
@@ -387,4 +387,24 @@ export async function getEntityDetails({
 	}
 
 	return Array.from(uniqueEntities.values());
+}
+
+/**
+ * Format entities into a string
+ * @param entities - list of entities
+ * @returns string
+ */
+/**
+ * Format the given entities into a string representation.
+ *
+ * @param {Object} options - The options object.
+ * @param {Entity[]} options.entities - The list of entities to format.
+ * @returns {string} A formatted string representing the entities.
+ */
+export function formatEntities({ entities }: { entities: Entity[] }) {
+	const entityStrings = entities.map((entity: Entity) => {
+		const header = `${entity.names.join(" aka ")}\nID: ${entity.id}${entity.metadata && Object.keys(entity.metadata).length > 0 ? `\nData: ${JSON.stringify(entity.metadata)}\n` : "\n"}`;
+		return header;
+	});
+	return entityStrings.join("\n");
 }

@@ -4,18 +4,27 @@ import { type Context, Telegraf } from "telegraf";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "../src/messageManager";
 
+// Create mock functions directly to have access to them
+const sendMessageMock = vi.fn().mockResolvedValue({ message_id: 123 });
+const sendPhotoMock = vi.fn().mockResolvedValue({ message_id: 124 });
+const sendChatActionMock = vi.fn().mockResolvedValue(true);
+const sendVideoMock = vi.fn().mockResolvedValue({ message_id: 125 });
+const sendDocumentMock = vi.fn().mockResolvedValue({ message_id: 126 });
+const sendAudioMock = vi.fn().mockResolvedValue({ message_id: 127 });
+const sendAnimationMock = vi.fn().mockResolvedValue({ message_id: 128 });
+
 // Mock Telegraf
 vi.mock("telegraf", () => {
 	return {
 		Telegraf: vi.fn().mockImplementation(() => ({
 			telegram: {
-				sendMessage: vi.fn().mockResolvedValue({ message_id: 123 }),
-				sendChatAction: vi.fn().mockResolvedValue(true),
-				sendPhoto: vi.fn().mockResolvedValue({ message_id: 124 }),
-				sendVideo: vi.fn().mockResolvedValue({ message_id: 125 }),
-				sendDocument: vi.fn().mockResolvedValue({ message_id: 126 }),
-				sendAudio: vi.fn().mockResolvedValue({ message_id: 127 }),
-				sendAnimation: vi.fn().mockResolvedValue({ message_id: 128 }),
+				sendMessage: sendMessageMock,
+				sendChatAction: sendChatActionMock,
+				sendPhoto: sendPhotoMock,
+				sendVideo: sendVideoMock,
+				sendDocument: sendDocumentMock,
+				sendAudio: sendAudioMock,
+				sendAnimation: sendAnimationMock,
 			},
 		})),
 	};
@@ -148,7 +157,7 @@ describe("MessageManager", () => {
 			} as Context;
 
 			const error = new Error("Network error");
-			mockBot.telegram.sendMessage.mockRejectedValueOnce(error);
+			sendMessageMock.mockRejectedValueOnce(error);
 
 			await expect(
 				messageManager.sendMessageInChunks(ctx, { text: "test" }),
@@ -162,7 +171,7 @@ describe("MessageManager", () => {
 			} as Context;
 
 			const error = new Error("Image send failed");
-			mockBot.telegram.sendPhoto.mockRejectedValueOnce(error);
+			sendPhotoMock.mockRejectedValueOnce(error);
 
 			await expect(
 				messageManager.sendMedia(ctx, "test.jpg", MediaType.PHOTO),

@@ -1,11 +1,15 @@
 {
 	"name": "@elizaos/plugin-starter",
 	"description": "Plugin starter for elizaOS",
-	"version": "1.0.0-alpha.22",
+	"version": "1.0.0-alpha.30",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elizaos-plugins/plugin-starter"
+	},
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
@@ -19,19 +23,21 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "^1.0.0-alpha.22",
+		"@elizaos/cli": "^1.0.0-alpha.30",
+		"@elizaos/core": "workspace:*",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
 		"tsup": "8.4.0"
 	},
 	"scripts": {
+		"start": "npx @elizaos/cli start",
+		"test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
+		"dev": "npx @elizaos/cli dev",
 		"build": "tsup",
-		"dev": "tsup --watch",
-		"test": "cd ../cli && bun run build && cd ../plugin-starter && node ../cli/dist/index.js test",
-		"publish": "cd ../cli && bun run build && cd ../plugin-starter && node ../cli/dist/index.js plugins publish --test",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
+		"lint": "biome check --config-path=./ --write",
+		"test": "npx @elizaos/cli test",
+		"deploy": "npx @elizaos/cli deploy"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -39,5 +45,5 @@
 	"resolutions": {
 		"zod": "3.24.1"
 	},
-	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

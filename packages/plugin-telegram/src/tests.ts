@@ -2,7 +2,7 @@ import { type IAgentRuntime, type TestSuite, logger } from "@elizaos/core";
 import type { Chat, User } from "@telegraf/types";
 import type { Telegraf } from "telegraf";
 import type { Context } from "telegraf";
-import type { TelegramService } from ".";
+import type { TelegramService } from "./TelegramService";
 import type { MessageManager } from "./messageManager";
 
 const TEST_IMAGE_URL =

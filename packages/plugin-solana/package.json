@@ -1,15 +1,18 @@
 {
 	"name": "@elizaos/plugin-solana",
-	"version": "1.0.0-alpha.22",
+	"version": "1.0.0-alpha.30",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elizaos-plugins/plugin-solana"
+	},
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
 			"import": {
-				"@elizaos/source": "./src/index.ts",
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
 			}
@@ -19,16 +22,11 @@
 		"dist"
 	],
 	"dependencies": {
-		"@coral-xyz/anchor": "0.30.1",
-		"@elizaos/core": "^1.0.0-alpha.22",
+		"@elizaos/core": "workspace:*",
 		"@solana/spl-token": "0.4.9",
 		"@solana/web3.js": "^1.98.0",
 		"bignumber.js": "9.1.2",
 		"bs58": "6.0.0",
-		"fomo-sdk-solana": "1.3.2",
-		"node-cache": "5.1.2",
-		"pumpdotfun-sdk": "1.3.2",
-		"solana-agent-kit": "^1.4.0",
 		"tsup": "8.4.0",
 		"vitest": "2.1.9"
 	},
@@ -47,5 +45,5 @@
 		"form-data": "4.0.2",
 		"whatwg-url": "7.1.0"
 	},
-	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

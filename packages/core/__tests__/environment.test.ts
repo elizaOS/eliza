@@ -8,7 +8,7 @@ describe("Character Configuration", () => {
 		messageExamples: [
 			[
 				{
-					user: "user1",
+					name: "name1",
 					content: {
 						text: "Hello",
 					},
@@ -80,7 +80,7 @@ describe("Character Configuration", () => {
 			messageExamples: [
 				[
 					{
-						user: "user1",
+						name: "name1",
 						content: {
 							text: "Hello",
 							action: "wave",

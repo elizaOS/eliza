@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/project-starter",
 	"description": "Project starter for elizaOS",
-	"version": "1.0.0-alpha.22",
+	"version": "1.0.0-alpha.30",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -19,21 +19,27 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "^1.0.0-alpha.22",
+		"@elizaos/cli": "^1.0.0-alpha.30",
+		"@elizaos/core": "workspace:*",
+		"@elizaos/plugin-anthropic": "workspace:*",
+		"@elizaos/plugin-openai": "workspace:*",
+		"@elizaos/plugin-sql": "workspace:*",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
+		"@biomejs/biome": "^1.9.4",
 		"tsup": "8.4.0"
 	},
 	"scripts": {
+		"start": "npx @elizaos/cli start",
+		"dev": "npx @elizaos/cli dev",
 		"build": "tsup",
 		"lint": "biome check --config-path=./ --write",
-		"dev": "tsup --watch",
-		"test": "vitest run",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
+		"test": "npx @elizaos/cli test",
+		"deploy": "npx @elizaos/cli deploy"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

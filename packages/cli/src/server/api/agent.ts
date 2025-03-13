@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
 import type {
 	Agent,
 	Character,
@@ -23,7 +24,6 @@ import {
 import express from "express";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
-import { Readable } from "node:stream";
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -89,7 +89,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Error retrieving agents",
 					details: error.message,
 				},
@@ -139,7 +139,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Error getting agent",
 					details: error.message,
 				},
@@ -969,23 +969,19 @@ export function agentRouter(
 
 		try {
 			const worldId = req.query.worldId as string;
-			const rooms = await runtime
-				.databaseAdapter
-				.getRoomsForParticipant(agentId);
+			const rooms = await runtime.getRoomsForParticipant(agentId);
 
 			const roomDetails = await Promise.all(
 				rooms.map(async (roomId) => {
 					try {
-						const roomData = await runtime.databaseAdapter.getRoom(roomId);
+						const roomData = await runtime.getRoom(roomId);
 						if (!roomData) return null;
 
 						if (worldId && roomData.worldId !== worldId) {
 							return null;
 						}
 
-						const entities = await runtime
-							.databaseAdapter
-							.getEntitiesForRoom(roomId, true);
+						const entities = await runtime.getEntitiesForRoom(roomId, true);
 
 						return {
 							id: roomId,
@@ -1018,7 +1014,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Failed to retrieve rooms",
 					details: error.message,
 				},
@@ -1064,13 +1060,9 @@ export function agentRouter(
 				worldId,
 			});
 
-			await runtime
-				.databaseAdapter
-				.addParticipant(runtime.agentId, roomName);
+			await runtime.addParticipant(runtime.agentId, roomName);
 			await runtime.ensureParticipantInRoom(entityId, roomId);
-			await runtime
-				.databaseAdapter
-				.setParticipantUserState(roomId, entityId, "FOLLOWED");
+			await runtime.setParticipantUserState(roomId, entityId, "FOLLOWED");
 
 			res.status(201).json({
 				success: true,
@@ -1127,7 +1119,7 @@ export function agentRouter(
 		}
 
 		try {
-			const room = await runtime.databaseAdapter.getRoom(roomId);
+			const room = await runtime.getRoom(roomId);
 			if (!room) {
 				res.status(404).json({
 					success: false,
@@ -1139,7 +1131,7 @@ export function agentRouter(
 				return;
 			}
 
-			const entities = await runtime.databaseAdapter.getEntitiesForRoom(roomId, true);
+			const entities = await runtime.getEntitiesForRoom(roomId, true);
 
 			res.json({
 				success: true,
@@ -1156,7 +1148,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Failed to retrieve room",
 					details: error.message,
 				},
@@ -1193,7 +1185,7 @@ export function agentRouter(
 		}
 
 		try {
-			const room = await runtime.databaseAdapter.getRoom(roomId);
+			const room = await runtime.getRoom(roomId);
 			if (!room) {
 				res.status(404).json({
 					success: false,
@@ -1206,9 +1198,9 @@ export function agentRouter(
 			}
 
 			const updates = req.body;
-			await runtime.databaseAdapter.updateRoom({ ...updates, roomId });
+			await runtime.updateRoom({ ...updates, roomId });
 
-			const updatedRoom = await runtime.databaseAdapter.getRoom(roomId);
+			const updatedRoom = await runtime.getRoom(roomId);
 			res.json({
 				success: true,
 				data: updatedRoom,
@@ -1255,7 +1247,7 @@ export function agentRouter(
 		}
 
 		try {
-			await runtime.databaseAdapter.deleteRoom(roomId);
+			await runtime.deleteRoom(roomId);
 			res.status(204).send();
 		} catch (error) {
 			logger.error(`[ROOM DELETE] Error deleting room ${roomId}:`, error);
@@ -1325,7 +1317,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Failed to retrieve memories",
 					details: error.message,
 				},

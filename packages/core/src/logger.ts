@@ -1,6 +1,26 @@
 import pino, { type LogFn, type DestinationStream } from "pino";
 import pretty from "pino-pretty";
-import { parseBooleanFromText } from "./prompts";
+
+function parseBooleanFromText(
+	value: string | undefined | null,
+): boolean {
+	if (!value) return false;
+
+	const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
+	const negative = ["NO", "N", "FALSE", "F", "0", "OFF", "DISABLE"];
+
+	const normalizedText = value.trim().toUpperCase();
+
+	if (affirmative.includes(normalizedText)) {
+		return true;
+	}
+	if (negative.includes(normalizedText)) {
+		return false;
+	}
+
+	// For environment variables, we'll treat unrecognized values as false
+	return false;
+}
 
 /**
  * Interface representing a log entry.

@@ -1,7 +1,5 @@
 import { type GenerateTextParams, ModelTypes, logger } from "@elizaos/core";
 
-import fetch from "node-fetch";
-
 /**
  * Interface representing the structure of an Ollama model.
  * @typedef {Object} OllamaModel

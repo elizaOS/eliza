@@ -212,25 +212,36 @@ export async function loadProject(dir: string): Promise<Project> {
     // Extract agents from the project module
     const agents: ProjectAgent[] = [];
 
-    // Look for exported agents
-    for (const [key, value] of Object.entries(projectModule)) {
-      if (key === "default" && value && typeof value === "object") {
-        // If it's a default export and has agents property, use those
-        if (Array.isArray((value as ProjectModule).agents)) {
-          agents.push(...((value as ProjectModule).agents as ProjectAgent[]));
-        } else if ((value as ProjectModule).character && (value as ProjectModule).init) {
-          // If it's a single agent, add it
-          agents.push(value as ProjectAgent);
+    // First check if the default export has an agents array
+    if (projectModule.default && 
+        typeof projectModule.default === 'object' && 
+        Array.isArray(projectModule.default.agents)) {
+        // Use the agents from the default export
+        agents.push(...(projectModule.default.agents as ProjectAgent[]));
+        logger.debug(`Found ${agents.length} agents in default export's agents array`);
+    } 
+    // Only if we didn't find agents in the default export, look for other exports
+    else {
+        // Look for exported agents
+        for (const [key, value] of Object.entries(projectModule)) {
+            if (key === "default" && value && typeof value === "object") {
+                // If it's a default export but doesn't have agents array, check if it's a single agent
+                if ((value as ProjectModule).character && (value as ProjectModule).init) {
+                    // If it's a single agent, add it
+                    agents.push(value as ProjectAgent);
+                    logger.debug(`Found agent in default export (single agent)`);
+                }
+            } else if (
+                value &&
+                typeof value === "object" &&
+                (value as ProjectModule).character &&
+                (value as ProjectModule).init
+            ) {
+                // If it's a named export that looks like an agent, add it
+                agents.push(value as ProjectAgent);
+                logger.debug(`Found agent in named export: ${key}`);
+            }
         }
-      } else if (
-        value &&
-        typeof value === "object" &&
-        (value as ProjectModule).character &&
-        (value as ProjectModule).init
-      ) {
-        // If it's a named export that looks like an agent, add it
-        agents.push(value as ProjectAgent);
-      }
     }
 
     if (agents.length === 0) {

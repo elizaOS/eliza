@@ -23,11 +23,13 @@ dotenv.config({ path: "../../.env" });
 export const character: Character = {
 	name: "Eliza",
 	plugins: [
+		"@elizaos/plugin-sql",
 		"@elizaos/plugin-anthropic",
 		"@elizaos/plugin-openai",
 		"@elizaos/plugin-discord",
-		"@elizaos/plugin-node",
-		"@elizaos/plugin-sql",
+		"@elizaos/plugin-pdf",
+		"@elizaos/plugin-video-understanding",
+		"@elizaos/plugin-storage-s3",
 	],
 	settings: {
 		secrets: {

@@ -301,6 +301,9 @@ export async function promptForEnvVars(
 			continue;
 		}
 
+		// wait 100 ms
+		await new Promise((resolve) => setTimeout(resolve, 100));
+
 		// Prompt for the missing or invalid variable
 		const value = await promptForEnvVar(config);
 

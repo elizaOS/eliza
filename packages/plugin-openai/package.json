@@ -1,10 +1,14 @@
 {
 	"name": "@elizaos/plugin-openai",
-	"version": "1.0.0-alpha.22",
+	"version": "1.0.0-alpha.30",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elizaos-plugins/plugin-openai"
+	},
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
@@ -20,7 +24,7 @@
 	"dependencies": {
 		"@ai-sdk/openai": "^1.1.9",
 		"@ai-sdk/ui-utils": "1.1.9",
-		"@elizaos/core": "^1.0.0-alpha.22",
+		"@elizaos/core": "workspace:*",
 		"ai": "^4.1.25",
 		"js-tiktoken": "^1.0.18",
 		"tsup": "8.4.0",
@@ -29,7 +33,7 @@
 	"scripts": {
 		"build": "tsup",
 		"dev": "tsup --watch",
-		"test": "vitest run",
+		"test": "../cli/dist/index.js test",
 		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
@@ -51,5 +55,5 @@
 			}
 		}
 	},
-	"gitHead": "a1bb2c8ab6805f9585540a9a9e6b6ae39bfd4ed1"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

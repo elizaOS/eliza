@@ -60,7 +60,7 @@ export class DiscordService extends Service implements IDiscordService {
 	static serviceType: string = DISCORD_SERVICE_NAME;
 	capabilityDescription =
 		"The agent is able to send and receive messages on discord";
-	client: DiscordJsClient | null;
+	client: DiscordJsClient;
 	character: Character;
 	messageManager: MessageManager;
 	voiceManager: VoiceManager;
@@ -1064,7 +1064,7 @@ const discordPlugin: Plugin = {
 			logger.warn(
 				"Discord API Token not provided - Discord plugin is loaded but will not be functional",
 			);
-			logger.info(
+			logger.warn(
 				"To enable Discord functionality, please provide DISCORD_API_TOKEN in your .eliza/.env file",
 			);
 		}

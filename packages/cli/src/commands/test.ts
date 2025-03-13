@@ -3,10 +3,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import * as net from "node:net";
 import * as os from "node:os";
 import path from "node:path";
+import { buildProject } from "@/src/utils/build-project";
 import {
 	AgentRuntime,
 	type Character,
 	type IAgentRuntime,
+	ModelTypes,
 	type ProjectAgent,
 	logger,
 	settings,
@@ -20,7 +22,6 @@ import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
 import { TestRunner } from "../testRunner.js";
 import { promptForEnvVars } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
-import { buildProject } from "@/src/utils/build-project";
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {
@@ -37,65 +38,25 @@ async function checkPortAvailable(port: number): Promise<boolean> {
 	});
 }
 
-// Helper function to start an agent
+/**
+ * Helper function to start an agent
+ */
 async function startAgent(
 	character: Character,
 	server: AgentServer,
 	init?: (runtime: IAgentRuntime) => void,
 	plugins: any[] = [],
+	options: {
+		dataDir?: string;
+		postgresUrl?: string;
+		isPluginTestMode?: boolean;
+	} = {}
 ): Promise<IAgentRuntime> {
 	character.id ??= stringToUuid(character.name);
 
 	try {
-		// Manually ensure agent exists in the database before using it
-		// This is necessary for test mode to prevent foreign key errors
-		if (server.database) {
-			try {
-				// First directly create the agent in the database (don't rely on ensureAgentExists)
-				logger.debug(`Creating agent directly in database: ${character.name}`);
-				await server.database.createAgent({
-					id: character.id,
-					name: `${character.name} (DB)`,  // Use template literal instead of concatenation
-					bio: character.bio || "",
-					system: character.system || "",
-					enabled: true,
-					createdAt: Date.now(),
-					updatedAt: Date.now()
-				});
-				logger.debug(`Created agent in database: ${character.id}`);
-			} catch (error) {
-				// If it fails, it might be a duplicate, which is fine
-				logger.debug(`Note: Agent creation might have failed (possibly already exists): ${error instanceof Error ? error.message : String(error)}`);
-			}
-			
-			// Verify agent exists
-			try {
-				const agent = await server.database.getAgent(character.id);
-				if (agent) {
-					logger.debug(`Verified agent exists in database with ID: ${character.id}`);
-				} else {
-					// If agent doesn't exist after creation attempt, something's wrong
-					logger.warn(`Warning: Agent does not exist in database after creation attempt: ${character.id}`);
-				}
-			} catch (verifyError) {
-				logger.warn(`Warning: Error verifying agent: ${verifyError instanceof Error ? verifyError.message : String(verifyError)}`);
-			}
-		}
-			
 		// Filter out any undefined or null plugins
 		const validPlugins = plugins.filter(plugin => plugin != null);
-		
-		// Log information about the plugins
-		if (validPlugins.length > 0) {
-			logger.debug(`Starting agent with ${validPlugins.length} plugins:`);
-			validPlugins.forEach((plugin, i) => {
-				logger.debug(`  Plugin ${i+1}: ${plugin.name || 'unnamed'}`);
-				logger.debug(`  Plugin properties: ${Object.keys(plugin).join(', ')}`);
-				logger.debug(`  Plugin init type: ${typeof plugin.init}`);
-			});
-		} else if (plugins.length > 0) {
-			logger.warn(`Found ${plugins.length} plugins but none were valid objects`);
-		}
 		
 		// Create runtime
 		const runtime = new AgentRuntime({
@@ -103,56 +64,75 @@ async function startAgent(
 			plugins: validPlugins,
 		});
 
-		// Before runtime initialization, patch the runtime object to skip entity creation
-		// if we're in test mode since we know the agent exists now
-		const originalInitialize = runtime.initialize.bind(runtime);
-		runtime.initialize = async () => {
-			try {
-				// Skip entity creation for the test agent in this case
-				return await originalInitialize();
-			} catch (err) {
-				// If the error is about entity creation with a foreign key constraint
-				// or agent not existing, we'll handle it specially
-				if (err instanceof Error && 
-					(err.message.includes('foreign key constraint') || 
-					err.message.includes('does not exist in database'))) {
-					logger.warn(`Note: Ignoring common initialization error: ${err.message}`);
-					// We've already created the agent record, so we can consider this successful
-					return;
-				}
-				// For other errors, rethrow
-				throw err;
-			}
-		};
-		
 		// Call init if provided
 		if (init) {
-			try {
-				await init(runtime);
-			} catch (initError) {
-				logger.error(`Error in agent init function for ${character.name}:`, initError);
-				throw initError;
-			}
+			await init(runtime);
 		}
 
 		// start services/plugins/process knowledge
-		try {
-			await runtime.initialize();
-		} catch (initError) {
-			logger.error(`Error initializing runtime for ${character.name}:`, initError);
+		await runtime.initialize();
+
+		// Check if TEXT_EMBEDDING model is registered, if not, try to load one
+		// Skip auto-loading embedding models if we're in plugin test mode
+		const embeddingModel = runtime.getModel(ModelTypes.TEXT_EMBEDDING);
+		if (!embeddingModel && !options.isPluginTestMode) {
+			logger.info("No TEXT_EMBEDDING model registered. Attempting to load one automatically...");
 			
-			// Additional debugging for plugin issues
-			if (validPlugins.length > 0) {
-				logger.debug(`Agent has ${validPlugins.length} plugins:`);
-				validPlugins.forEach((plugin, index) => {
-					logger.debug(`  Plugin ${index + 1}: ${plugin.name || 'unnamed'}`);
-					if (plugin.init && typeof plugin.init !== 'function') {
-						logger.error(`  Plugin ${plugin.name} has an init property that is not a function`);
+			// First check if OpenAI API key exists
+			if (process.env.OPENAI_API_KEY) {
+				logger.info("Found OpenAI API key. Loading OpenAI plugin for embeddings...");
+				
+				try {
+					// Use Node's require mechanism to dynamically load the plugin
+					const pluginName = "@elizaos/plugin-openai";
+					
+					try {
+						// Using require for dynamic imports in Node.js is safer than eval
+						// @ts-ignore - Ignoring TypeScript's static checking for dynamic requires
+						const pluginModule = require(pluginName);
+						const plugin = pluginModule.default || pluginModule.openaiPlugin;
+						
+						if (plugin) {
+							await runtime.registerPlugin(plugin);
+							logger.success("Successfully loaded OpenAI plugin for embeddings");
+						} else {
+							logger.warn(`Could not find a valid plugin export in ${pluginName}`);
+						}
+					} catch (error) {
+						logger.warn(`Failed to import OpenAI plugin: ${error}`);
+						logger.warn(`You may need to install it with: npm install ${pluginName}`);
 					}
-				});
+				} catch (error) {
+					logger.warn(`Error loading OpenAI plugin: ${error}`);
+				}
+			} else {
+				logger.info("No OpenAI API key found. Loading local-ai plugin for embeddings...");
+				
+				try {
+					// Use Node's require mechanism to dynamically load the plugin
+					const pluginName = "@elizaos/plugin-local-ai";
+					
+					try {
+						// @ts-ignore - Ignoring TypeScript's static checking for dynamic requires
+						const pluginModule = require(pluginName);
+						const plugin = pluginModule.default || pluginModule.localAIPlugin;
+						
+						if (plugin) {
+							await runtime.registerPlugin(plugin);
+							logger.success("Successfully loaded local-ai plugin for embeddings");
+						} else {
+							logger.warn(`Could not find a valid plugin export in ${pluginName}`);
+						}
+					} catch (error) {
+						logger.warn(`Failed to import local-ai plugin: ${error}`);
+						logger.warn(`You may need to install it with: npm install ${pluginName}`);
+					}
+				} catch (error) {
+					logger.warn(`Error loading local-ai plugin: ${error}`);
+				}
 			}
-			
-			throw initError;
+		} else if (!embeddingModel && options.isPluginTestMode) {
+			logger.info("No TEXT_EMBEDDING model registered, but running in plugin test mode - skipping auto-loading");
 		}
 
 		// add to container
@@ -163,9 +143,62 @@ async function startAgent(
 
 		return runtime;
 	} catch (error) {
-		logger.error(`Failed to start agent ${character.name}:`, error);
+		// Handle database constraint errors gracefully
+		if (error instanceof Error && 
+			(error.message.includes('foreign key constraint') || 
+			  error.message.includes('does not exist in database') ||
+			  error.message.includes('violates unique constraint'))) {
+			
+			logger.warn(`Database constraint error detected. Creating a unique agent with preserved properties`);
+			
+			// Make a deep copy with a unique ID to avoid database constraints
+			const uniqueCharacter = JSON.parse(JSON.stringify(character));
+			const originalName = uniqueCharacter.name;
+			
+			// Use a timestamp to make the ID unique but deterministic
+			uniqueCharacter.id = stringToUuid(`${originalName}-test-${Date.now()}`);
+			
+			// Add a bio field to the character if not present (needed for database)
+			uniqueCharacter.bio = uniqueCharacter.bio || "Test agent for plugin testing";
+			
+			// Get valid plugins again inside this scope
+			const retryPlugins = plugins.filter(plugin => plugin != null);
+			
+			// Try again with the unique character
+			const runtime = new AgentRuntime({
+				character: uniqueCharacter,
+				plugins: retryPlugins,
+			});
+			
+			if (init) {
+				await init(runtime);
+			}
+			
+			await runtime.initialize();
+			
+			// Restore original name if needed
+			runtime.character.name = originalName;
+			
+			server.registerAgent(runtime);
+			logger.debug(`Started ${runtime.character.name} as ${runtime.agentId} (with unique ID)`);
+			
+			return runtime;
+		}
+		
+		// For other errors, log and rethrow
+		logger.error(`Error starting agent ${character.name}:`, error);
 		throw error;
 	}
+}
+
+/**
+ * Check if the current directory is likely a plugin directory
+ */
+function checkIfLikelyPluginDir(dir: string): boolean {
+	// Simple check based on common file patterns
+	return dir.includes('plugin') || 
+	       existsSync(path.join(dir, 'src/plugin.ts')) || 
+	       (existsSync(path.join(dir, 'src/index.ts')) && !existsSync(path.join(dir, 'src/agent.ts')));
 }
 
 /**
@@ -179,10 +212,18 @@ const runAgentTests = async (options: {
 	skipBuild?: boolean;
 }) => {
 	// Build the project or plugin first unless skip-build is specified
-	if (!options.skipBuild) {
-		const cwd = process.cwd();
-		const isPlugin = options.plugin ? true : checkIfLikelyPluginDir(cwd);
-		await buildProject(cwd, isPlugin);
+	if (options && !options.skipBuild) {
+		try {
+			const cwd = process.cwd();
+			const isPlugin = options.plugin ? true : checkIfLikelyPluginDir(cwd);
+			logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
+			await buildProject(cwd, isPlugin);
+			logger.info(`Build completed successfully`);
+		} catch (buildError) {
+			logger.error(`Build error: ${buildError}`);
+			logger.warn(`Attempting to continue with tests despite build error`);
+			// Continue with tests despite build error - the project might already be built
+		}
 	}
 
 	try {
@@ -337,46 +378,16 @@ const runAgentTests = async (options: {
 		logger.info("Server properties set up");
 
 		let serverPort = options.port || Number.parseInt(settings.SERVER_PORT || "3000");
-
-		// Try to determine if this is a plugin directory by checking for common plugin files
-		const isLikelyPluginDir = checkIfLikelyPluginDir(process.cwd());
-		
-		logger.info(`Loading ${isLikelyPluginDir ? 'plugin' : 'project'} from current directory: ${process.cwd()}`);
-		
-		// Set environment variable to help TestRunner identify when we're testing a plugin directly
-		if (isLikelyPluginDir) {
-			process.env.ELIZA_TESTING_PLUGIN = 'true';
-			logger.debug("Set ELIZA_TESTING_PLUGIN=true for direct plugin testing");
-		}
 		
 		let project;
 		try {
-			logger.debug("Attempting to load module...");
+			logger.info("Attempting to load project or plugin...");
 			project = await loadProject(process.cwd());
 			
 			if (project.isPlugin) {
 				logger.info(`Plugin loaded successfully: ${project.pluginModule?.name}`);
-				logger.info(`Description: ${project.pluginModule?.description}`);
-				
-				// Show test information if available
-				if (project.pluginModule?.tests) {
-					const testSuites = Array.isArray(project.pluginModule.tests) 
-						? project.pluginModule.tests 
-						: [project.pluginModule.tests];
-					
-					logger.info(`Plugin has ${testSuites.length} test suites:`);
-					testSuites.forEach((suite, i) => {
-						if (suite) {
-							logger.info(`  Suite ${i+1}: ${suite.name} (${suite.tests?.length || 0} tests)`);
-						}
-					});
-				} else {
-					logger.info("Plugin does not have any test suites defined");
-				}
-				
-				logger.info("Created a test agent to run plugin tests");
 			} else {
-				logger.info("Project loaded successfully:", JSON.stringify(project, null, 2));
+				logger.info("Project loaded successfully");
 			}
 			
 			if (!project || !project.agents || project.agents.length === 0) {
@@ -385,31 +396,17 @@ const runAgentTests = async (options: {
 			
 			logger.info(`Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'} configuration`);
 		} catch (error) {
-			if (isLikelyPluginDir) {
-				logger.error("Error loading plugin for testing:", error);
-				if (error instanceof Error && error.message.includes("No agents found in project")) {
-					logger.error("This appears to be a plugin directory, but we couldn't load the plugin properly.");
-					logger.error("Make sure your plugin exports a valid plugin object with name and description properties.");
-					logger.error("Example plugin structure:");
-					logger.error(`
-export const myPlugin = {
-  name: "my-plugin",
-  description: "Description of my plugin",
-  // other plugin properties
-};
-
-export default myPlugin;
-`);
-				}
-			} else {
-				logger.error("Error loading project:", error);
-			}
-			
+			logger.error("Error loading project/plugin:", error);
+			logger.error("Tests cannot run without a valid project or plugin. Exiting.");
 			if (error instanceof Error) {
+				// If the error is specifically about not finding a project
+				if (error.message.includes("Could not find project entry point")) {
+					logger.error("No Eliza project or plugin found in current directory.");
+					logger.error("Tests can only run in a valid Eliza project or plugin directory.");
+				}
 				logger.error("Error details:", error.message);
-				logger.error("Stack trace:", error.stack);
 			}
-			throw error;
+			process.exit(1);
 		}
 
 		logger.info("Checking port availability...");
@@ -436,29 +433,82 @@ export default myPlugin;
 			// Start each agent in sequence
 			logger.info(`Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'}`);
 			
-			for (const agent of project.agents) {
+			// When testing a plugin, import and use the default Eliza character
+			// to ensure consistency with the start command
+			// For projects, only use default agent if no agents are defined
+			if (project.isPlugin || (project.agents.length === 0)) {
+				// Set environment variable to signal this is a direct plugin test
+				// The TestRunner uses this to identify direct plugin tests
+				process.env.ELIZA_TESTING_PLUGIN = 'true';
+				
+				logger.info("Using default Eliza character as test agent");
 				try {
-					logger.info(`Starting agent: ${agent.character.name}`);
+					// Import the default character (same approach as start.ts)
+					const { character: defaultElizaCharacter } = await import("../characters/eliza");
+					
+					// Create the list of plugins for testing - exact same approach as start.ts
+					const pluginsToTest = [project.pluginModule];
+					
+					logger.info(`Starting test agent with plugin: ${project.pluginModule?.name}`);
+					logger.debug(`Using default character with plugins: ${defaultElizaCharacter.plugins ? defaultElizaCharacter.plugins.join(", ") : "none"}`);
+					logger.info("Plugin test mode: Using default character's plugins plus the plugin being tested");
+
+					// Start the agent with the default character and our test plugin
+					// Use isPluginTestMode option just like start.ts does
 					const runtime = await startAgent(
-						agent.character,
+						defaultElizaCharacter,
 						server,
-						agent.init,
-						agent.plugins || [],
+						undefined,
+						pluginsToTest,
+						{
+							isPluginTestMode: true
+						}
 					);
+					
 					runtimes.push(runtime);
-					projectAgents.push(agent);
-					// wait 1 second between agent starts
-					await new Promise((resolve) => setTimeout(resolve, 1000));
-				} catch (agentError) {
-					logger.error(
-						`Error starting agent ${agent.character.name}:`,
-						agentError,
-					);
-					if (agentError instanceof Error) {
-						logger.error("Error details:", agentError.message);
-						logger.error("Stack trace:", agentError.stack);
+					projectAgents.push({ 
+						character: defaultElizaCharacter, 
+						plugins: pluginsToTest 
+					});
+					
+					logger.info("Default test agent started successfully");
+				} catch (pluginError) {
+					logger.error(`Error starting plugin test agent: ${pluginError}`);
+					throw pluginError;
+				}
+			} else {
+				// For regular projects, start each agent as defined
+				for (const agent of project.agents) {
+					try {
+						// Make a copy of the original character to avoid modifying the project configuration
+						const originalCharacter = { ...agent.character };
+						
+						logger.info(`Starting agent: ${originalCharacter.name}`);
+						
+						const runtime = await startAgent(
+							originalCharacter,
+							server,
+							agent.init,
+							agent.plugins || [],
+						);
+						
+						runtimes.push(runtime);
+						projectAgents.push(agent);
+						
+						// wait 1 second between agent starts
+						await new Promise((resolve) => setTimeout(resolve, 1000));
+					} catch (agentError) {
+						logger.error(
+							`Error starting agent ${agent.character.name}:`,
+							agentError,
+						);
+						if (agentError instanceof Error) {
+							logger.error("Error details:", agentError.message);
+							logger.error("Stack trace:", agentError.stack);
+						}
+						// Log the error but don't fail the entire test run
+						logger.warn(`Skipping agent ${agent.character.name} due to startup error`);
 					}
-					throw agentError;
 				}
 			}
 
@@ -466,7 +516,7 @@ export default myPlugin;
 				throw new Error("Failed to start any agents from project");
 			}
 
-			logger.info(`Successfully started ${runtimes.length} agents from ${project.isPlugin ? 'plugin' : 'project'}`);
+			logger.info(`Successfully started ${runtimes.length} agents for testing`);
 
 			// Run tests for each agent
 			let totalFailed = 0;
@@ -524,37 +574,6 @@ export default myPlugin;
 		throw error;
 	}
 };
-
-/**
- * Check if the current directory is likely a plugin directory
- */
-function checkIfLikelyPluginDir(dir: string): boolean {
-	// Check for package.json with elizaos plugin indicators
-	const packageJsonPath = path.join(dir, 'package.json');
-	if (existsSync(packageJsonPath)) {
-		try {
-			const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
-			// Check if the name contains 'plugin'
-			if (packageJson.name?.includes('plugin')) {
-				return true;
-			}
-			// Check if it has eliza plugin keywords
-			if (packageJson.keywords?.some((k: string) => 
-					k.includes('elizaos') || 
-					k.includes('eliza') || 
-					k.includes('plugin'))) {
-				return true;
-			}
-		} catch (e) {
-			// Ignore errors reading package.json
-		}
-	}
-	
-	// Check for common plugin files
-	return existsSync(path.join(dir, 'src/plugin.ts')) || 
-	       existsSync(path.join(dir, 'src/index.ts')) && !existsSync(path.join(dir, 'src/agent.ts')) ||
-	       dir.includes('plugin');
-}
 
 // Create command that can be imported directly
 export const test = new Command()

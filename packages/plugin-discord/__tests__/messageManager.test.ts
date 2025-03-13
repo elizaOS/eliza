@@ -33,10 +33,8 @@ describe("Discord MessageManager", () => {
 				createMemory: vi.fn(),
 				addEmbeddingToMemory: vi.fn(),
 			},
-			databaseAdapter: {
-				getParticipantUserState: vi.fn().mockResolvedValue("ACTIVE"),
-				log: vi.fn(),
-			},
+			getParticipantUserState: vi.fn().mockResolvedValue("ACTIVE"),
+			log: vi.fn(),
 			processActions: vi.fn(),
 			emitEvent: vi.fn(),
 		} as unknown as IAgentRuntime;
