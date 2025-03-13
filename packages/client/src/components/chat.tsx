@@ -140,7 +140,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 			wsManager.disconnectAll();
 			wsManager.off("messageBroadcast", handleMessageBroadcasting);
 		};
-	}, []);
+	}, [roomId]);
 
 	const getMessageVariant = (role: string) =>
 		role !== USER_NAME ? "received" : "sent";
@@ -267,8 +267,17 @@ export default function Page({ agentId }: { agentId: UUID }) {
 								variant={getMessageVariant(message.name)}
 								className={`flex flex-row items-center gap-2 ${isUser ? "flex-row-reverse" : ""}`}
 							>
-								<Avatar className="size-8 p-1 border rounded-full select-none">
-									<AvatarImage src={isUser ? "/user-icon.png" : "/elizaos-icon.png"} />
+								<Avatar className="size-8 border rounded-full select-none">
+									<AvatarImage 
+										src={
+											isUser ? 
+												"/user-icon.png" : 
+												(agentData?.settings?.thumbnail ? 
+													agentData?.settings?.thumbnail : 
+													"/elizaos-icon.png")
+										} 
+									/>
+									
 									{isUser && <AvatarFallback>U</AvatarFallback>}
 								</Avatar>
 								<MessageContent message={message} agentId={agentId} />
