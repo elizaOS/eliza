@@ -111,7 +111,7 @@ export class AgentRuntime implements IAgentRuntime {
 		this.character = opts.character;
 
 		this.runtimeLogger = logger.child({
-			agent: this.character?.name,
+			agentName: this.character?.name,
 			agentId: this.agentId,
 		});
 	
