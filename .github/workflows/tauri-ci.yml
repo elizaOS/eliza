@@ -71,7 +71,7 @@ jobs:
         shell: bash
           
       - name: Install dependencies 
-        run: bun install --no-postinstall
+        run: bun install
         env:
           NPM_CONFIG_IGNORE_SCRIPTS: true
         
@@ -91,5 +91,4 @@ jobs:
       - name: Test build (verify it compiles)
         run: |
           cd packages/app
-          bun run build
           bun run tauri build --debug 
