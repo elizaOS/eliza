@@ -22,6 +22,8 @@ import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
 import { TestRunner } from "../testRunner.js";
 import { promptForEnvVars } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
+import { installPlugin } from "../utils/install-plugin";
+import { runBunCommand } from "../utils/run-bun";
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {
@@ -57,6 +59,24 @@ async function startAgent(
 	try {
 		// Filter out any undefined or null plugins
 		const validPlugins = plugins.filter(plugin => plugin != null);
+		const pluginsToInstall = [];
+		
+		// first, try importing the plugins, and if they fail, add them to the list of plugins to install
+		for (const plugin of validPlugins) {
+			try {
+				await import(plugin);
+			} catch (error) {
+				pluginsToInstall.push(plugin);
+			}
+		}
+
+		// if there are any plugins to install, install them
+		if (pluginsToInstall.length > 0) {
+			logger.info("Installing plugins...");
+			for (const plugin of pluginsToInstall) {
+				await runBunCommand(["add", plugin], process.cwd());
+			}
+		}
 		
 		// Create runtime
 		const runtime = new AgentRuntime({

@@ -9,11 +9,11 @@
 		"access": "public"
 	},
 	"scripts": {
-		"start": "npx elizaos start",
+		"start": "bun ../cli/dist/index.js start",
 		"build": "vite build && tsup",
 		"lint": "biome check --config-path=./ --write",
-		"dev": "npx elizaos dev",
-		"test": "npx elizaos test",
+		"dev": "bun ../cli/dist/index.js dev",
+		"test": "bun ../cli/dist/index.js test",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"nodemonConfig": {

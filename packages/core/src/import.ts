@@ -1,5 +1,3 @@
-import path from "node:path";
-import fs from "node:fs";
 import logger from "./logger";
 
 const registrations = new Map<string, any>();
@@ -27,34 +25,14 @@ export async function handlePluginImporting(plugins: string[]) {
 		logger.debug("Imported are: ", plugins);
 		const importedPlugins = await Promise.all(
 			plugins.map(async (plugin) => {
-				const functionName = `${plugin
-					.replace("@elizaos/plugin-", "")
-					.replace("@elizaos-plugins/", "")
-					.replace(/-./g, (x) => x[1].toUpperCase())}Plugin`; // Assumes plugin function is camelCased with Plugin suffix
-
 				try {
 					const importedPlugin = await import(plugin);
+					const functionName = `${plugin
+						.replace("@elizaos/plugin-", "")
+						.replace("@elizaos-plugins/", "")
+						.replace(/-./g, (x) => x[1].toUpperCase())}Plugin`; // Assumes plugin function is camelCased with Plugin suffix
 					return importedPlugin.default || importedPlugin[functionName];
 				} catch (importError) {
-
-					// check if there is a node_modules folder in the current directory
-					const nodeModulesPath = path.join(process.cwd(), "node_modules");
-					if (fs.existsSync(nodeModulesPath)) {
-						// check if the plugin is in the node_modules folder
-						const pluginPath = path.join(nodeModulesPath, plugin);
-						if (fs.existsSync(pluginPath)) {
-							try {
-
-								// import the plugin from the node_modules folder
-								const importedPlugin = await import(pluginPath);
-								return importedPlugin.default || importedPlugin[functionName];
-							} catch (importError) {
-								logger.error(`Failed to import plugin: ${plugin}`, importError);
-								return []; // Return null for failed imports
-							}
-						}
-					}
-
 					logger.error(`Failed to import plugin: ${plugin}`, importError);
 					return []; // Return null for failed imports
 				}

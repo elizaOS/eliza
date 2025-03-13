@@ -83,6 +83,7 @@
     "@solana/spl-token": "0.4.9",
     "solana-bankrun": "0.3.1",
     "got": "12.6.1",
-    "form-data": "4.0.2"
+    "form-data": "4.0.2",
+    "typedoc": "0.27.9"
   }
 }
