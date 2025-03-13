@@ -47,7 +47,7 @@ export default function ProfileCard({
 					style={{ aspectRatio: "1 / 1" }}
 				>
 					<div className="flex items-center justify-center h-full">
-						<div className="text-4xl font-bold uppercase h-full flex items-center justify-center">{content}</div>
+						<div className="text-4xl font-bold uppercase h-full flex items-center justify-center w-full">{content}</div>
 					</div>
 				</div>
 			</CardContent>

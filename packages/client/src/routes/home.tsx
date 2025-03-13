@@ -66,7 +66,7 @@ export default function Home() {
 									key={agent.id}
 									title={agent.name}
 									content={
-										<div className="cursor-pointer" onClick={() => openOverlay(agent)}>
+										<div className="cursor-pointer h-full w-full flex items-center justify-center" onClick={() => openOverlay(agent)}>
 											{
 												agent.thumbnail ?
 													<img src={agent.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
