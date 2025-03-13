@@ -6,7 +6,7 @@ import {
 	type Character,
 	type IAgentRuntime,
 	type UUID,
-	logger as Logger,
+	logger,
 } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import * as bodyParser from "body-parser";
@@ -48,9 +48,6 @@ export interface ServerOptions {
 const AGENT_RUNTIME_URL =
 	process.env.AGENT_RUNTIME_URL?.replace(/\/$/, "") || "http://localhost:3000";
 
-const logger = Logger.child({
-		server: true
-	})
 
 /**
  * Class representing an agent server.

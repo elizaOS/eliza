@@ -22,7 +22,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
-import { logger as Logger} from "./index";
+import { logger} from "@elizaos/core";
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -38,11 +38,6 @@ interface CustomRequest extends express.Request {
 		agentId: string;
 	};
 }
-
-const logger = Logger.child({
-	apiService: true,
-	apiRoute: "/agents"
-})
 
 /**
  * Creates an express Router for handling agent-related routes.

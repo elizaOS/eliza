@@ -7,7 +7,7 @@ import path from "node:path";
 import type { AgentServer } from "..";
 import { agentRouter } from "./agent";
 import { teeRouter } from "./tee";
-import { log } from "node:console";
+import logger from "@elizaos/core"
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -34,10 +34,6 @@ interface LogEntry {
 	[key: string]: string | number | boolean | null | undefined;
 }
 
-export const logger = Logger.child({
-	server: true,
-	apiService: true
-})
 
 /**
  * Creates an API router with various endpoints and middleware.
