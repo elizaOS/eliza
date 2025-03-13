@@ -52,7 +52,7 @@
     },
     "packages/cli": {
       "name": "@elizaos/cli",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "bin": {
         "elizaos": "./dist/index.js",
       },
@@ -76,6 +76,7 @@
         "recast": "^0.23.2",
         "tsconfig-paths": "^4.2.0",
         "tsx": "^4.19.2",
+        "yoctocolors": "^2.1.1",
         "zod": "^3.20.2",
       },
       "devDependencies": {
@@ -158,7 +159,7 @@
     },
     "packages/core": {
       "name": "@elizaos/core",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "dotenv": "16.4.5",
         "events": "^3.3.0",
@@ -197,7 +198,7 @@
     },
     "packages/create-eliza": {
       "name": "create-eliza",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "bin": {
         "create-eliza": "index.mjs",
       },
@@ -232,7 +233,7 @@
     },
     "packages/plugin-anthropic": {
       "name": "@elizaos/plugin-anthropic",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@ai-sdk/anthropic": "^1.1.6",
         "@elizaos/core": "workspace:*",
@@ -246,7 +247,7 @@
     },
     "packages/plugin-browser": {
       "name": "@elizaos/plugin-browser",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
@@ -270,7 +271,7 @@
     },
     "packages/plugin-discord": {
       "name": "@elizaos/plugin-discord",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@discordjs/opus": "github:discordjs/opus",
         "@discordjs/rest": "2.4.0",
@@ -292,7 +293,7 @@
     },
     "packages/plugin-elevenlabs": {
       "name": "@elizaos/plugin-elevenlabs",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "tsup": "8.4.0",
@@ -300,7 +301,7 @@
     },
     "packages/plugin-local-ai": {
       "name": "@elizaos/plugin-local-ai",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@huggingface/hub": "^1.0.1",
@@ -327,7 +328,7 @@
     },
     "packages/plugin-openai": {
       "name": "@elizaos/plugin-openai",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@ai-sdk/openai": "^1.1.9",
         "@ai-sdk/ui-utils": "1.1.9",
@@ -343,7 +344,7 @@
     },
     "packages/plugin-pdf": {
       "name": "@elizaos/plugin-pdf",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
@@ -367,7 +368,7 @@
     },
     "packages/plugin-solana": {
       "name": "@elizaos/plugin-solana",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@solana/spl-token": "0.4.9",
@@ -388,7 +389,7 @@
     },
     "packages/plugin-sql": {
       "name": "@elizaos/plugin-sql",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@electric-sql/pglite": "^0.2.17",
         "@elizaos/core": "workspace:*",
@@ -407,9 +408,9 @@
     },
     "packages/plugin-starter": {
       "name": "@elizaos/plugin-starter",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
-        "@elizaos/cli": "^1.0.0-alpha.29",
+        "@elizaos/cli": "^1.0.0-alpha.30",
         "@elizaos/core": "workspace:*",
         "zod": "3.21.4",
       },
@@ -419,7 +420,7 @@
     },
     "packages/plugin-storage-s3": {
       "name": "@elizaos/plugin-storage-s3",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
@@ -443,7 +444,7 @@
     },
     "packages/plugin-tee": {
       "name": "@elizaos/plugin-tee",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@phala/dstack-sdk": "^0.1.7",
@@ -458,7 +459,7 @@
     },
     "packages/plugin-telegram": {
       "name": "@elizaos/plugin-telegram",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@telegraf/types": "7.1.0",
         "strip-literal": "^3.0.0",
@@ -472,7 +473,7 @@
     },
     "packages/plugin-twitter": {
       "name": "@elizaos/plugin-twitter",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@roamhq/wrtc": "^0.8.0",
@@ -499,7 +500,7 @@
     },
     "packages/plugin-video-understanding": {
       "name": "@elizaos/plugin-video-understanding",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
@@ -523,12 +524,13 @@
     },
     "packages/project-starter": {
       "name": "@elizaos/project-starter",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
-        "@elizaos/cli": "^1.0.0-alpha.29",
+        "@elizaos/cli": "^1.0.0-alpha.30",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-sql": "workspace:*",
         "zod": "3.21.4",
       },
       "devDependencies": {
@@ -538,12 +540,15 @@
     },
     "packages/the-org": {
       "name": "@elizaos/the-org",
-      "version": "1.0.0-alpha.29",
+      "version": "1.0.0-alpha.30",
       "dependencies": {
-        "@elizaos/cli": "^1.0.0-alpha.29",
+        "@elizaos/cli": "workspace:*",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-tee": "^1.0.0-alpha.29",
-        "@elizaos/plugin-twitter": "^1.0.0-alpha.29",
+        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-openai": "workspace:*",
+        "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/plugin-tee": "workspace:*",
+        "@elizaos/plugin-twitter": "workspace:*",
         "@radix-ui/react-slot": "^1.1.1",
         "@radix-ui/react-tabs": "^1.1.2",
         "@solana/web3.js": "^1.87.6",

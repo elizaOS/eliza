@@ -43,7 +43,6 @@
 		"@elizaos/plugin-openai": "workspace:*",
 		"@elizaos/plugin-sql": "workspace:*",
 		"axios": "^1.7.9",
-		"chalk": "5.2.0",
 		"commander": "^10.0.0",
 		"diff": "^5.1.0",
 		"dotenv": "^16.4.5",
@@ -55,6 +54,7 @@
 		"recast": "^0.23.2",
 		"tsconfig-paths": "^4.2.0",
 		"tsx": "^4.19.2",
+		"yoctocolors": "^2.1.1",
 		"zod": "^3.20.2"
 	},
 	"devDependencies": {
