@@ -18,6 +18,7 @@ import { Book, Cog, Scroll, User } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 import ConnectionStatus from "./connection-status";
 import { AGENT_STATUS } from "@/types/index";
+import { formatAgentName } from "@/lib/utils";
 
 export function AppSidebar() {
 	const location = useLocation();
@@ -114,11 +115,20 @@ export function AppSidebar() {
 																isActive={location.pathname.includes(
 																	agent.id as string,
 																)}
-																className="transition-colors px-4 py-2 my-1 rounded-md"
+																className="transition-colors px-4 my-4 rounded-md"
 															>
 																<div className="flex items-center gap-2">
-																	<User className="size-5" />
-
+																	<div className="w-8 h-8 flex justify-center items-center">
+																		<div className="relative bg-muted rounded-full w-full h-full">
+																			{agent && <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
+																			{agent.thumbnail ?
+																				<img src={agent.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
+																				formatAgentName(agent.name)
+																			}
+																			<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-green-500`} />
+																		</div>}
+																		</div>
+																	</div>
 																	<span className="text-base">
 																		{agent.name}
 																	</span>
@@ -143,10 +153,24 @@ export function AppSidebar() {
 												{/* Render disabled agents */}
 												{inactiveAgents.map((agent) => (
 													<SidebarMenuItem key={agent.id}>
-														<div className="px-4 py-2 my-1 rounded-md">
+														<div
+															className="transition-colors px-4 my-4 rounded-md"
+														>
 															<div className="flex items-center gap-2">
-																<User className="size-5" />
-																<span className="text-base">{agent.name}</span>
+																<div className="w-8 h-8 flex justify-center items-center">
+																	<div className="relative bg-muted rounded-full w-full h-full">
+																		{agent && <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
+																		{agent.thumbnail ?
+																			<img src={agent.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
+																			formatAgentName(agent.name)
+																		}
+																		<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-muted-foreground`} />
+																	</div>}
+																	</div>
+																</div>
+																<span className="text-base">
+																	{agent.name}
+																</span>
 															</div>
 														</div>
 													</SidebarMenuItem>
