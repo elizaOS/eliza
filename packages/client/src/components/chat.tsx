@@ -202,7 +202,13 @@ export default function Page({ agentId }: { agentId: UUID }) {
 			<div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
 				<div className="flex items-center gap-3">
 					<Avatar className="size-10 border rounded-full">
-						<AvatarImage src="/elizaos-icon.png" />
+						<AvatarImage 
+							src={
+								agentData?.settings?.thumbnail ? 
+									agentData?.settings?.thumbnail : 
+									"/elizaos-icon.png"
+							} 
+						/>
 					</Avatar>
 					<div className="flex flex-col">
 						<div className="flex items-center gap-2">
