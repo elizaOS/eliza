@@ -15,6 +15,31 @@ const __dirname = path.dirname(__filename);
 // Define paths
 const ROOT_DIR = path.resolve(__dirname, "../../../..");
 const CLI_DIST_DIR = path.resolve(ROOT_DIR, "packages/cli/dist");
+const TEMPLATES_DIR = path.resolve(ROOT_DIR, "packages/cli/templates");
+
+/**
+ * Updates package.json with the CLI version and replaces workspace references
+ */
+async function updatePackageJson(packagePath, cliVersion) {
+	const packageJsonContent = await fs.readFile(packagePath, "utf-8");
+	const packageData = JSON.parse(packageJsonContent);
+	
+	// Update version
+	packageData.version = cliVersion;
+	
+	// Replace workspace references in dependencies
+	for (const section of ["dependencies", "devDependencies"]) {
+		if (packageData[section]) {
+			for (const [dep, version] of Object.entries(packageData[section])) {
+				if (version === "workspace:*") {
+					packageData[section][dep] = cliVersion;
+				}
+			}
+		}
+	}
+	
+	await fs.writeFile(packagePath, JSON.stringify(packageData, null, 2));
+}
 
 async function main() {
 	try {
@@ -25,8 +50,7 @@ async function main() {
 			process.exit(1);
 		}
 
-		// if templates directory doesn't exist, create it
-		const TEMPLATES_DIR = path.resolve(ROOT_DIR, "packages/cli/templates");
+		// Prepare templates directory
 		if (!fs.existsSync(TEMPLATES_DIR)) {
 			await fs.ensureDir(TEMPLATES_DIR);
 		} else {
@@ -34,41 +58,39 @@ async function main() {
 			await fs.emptyDir(TEMPLATES_DIR);
 		}
 
-		// Define source and destination paths with absolute paths
-		const projectStarterSrc = path.resolve(ROOT_DIR, "packages/project-starter");
-		const projectStarterDest = path.resolve(TEMPLATES_DIR, "project-starter");
-		
-		const pluginStarterSrc = path.resolve(ROOT_DIR, "packages/plugin-starter");
-		const pluginStarterDest = path.resolve(TEMPLATES_DIR, "plugin-starter");
+		// Get CLI version from package.json
+		const cliPackageJsonPath = path.resolve(ROOT_DIR, "packages/cli/package.json");
+		const cliPackageData = JSON.parse(await fs.readFile(cliPackageJsonPath, "utf-8"));
+		const cliVersion = cliPackageData.version;
+		console.log("CLI version:", cliVersion);
 
-		// Copy project-starter and plugin-starter from packages to packages/cli/templates
-		console.log(`Copying from ${projectStarterSrc} to ${projectStarterDest}`);
-		await fs.copy(projectStarterSrc, projectStarterDest);
-		
-		console.log(`Copying from ${pluginStarterSrc} to ${pluginStarterDest}`);
-		await fs.copy(pluginStarterSrc, pluginStarterDest);
+		// Define templates to copy
+		const templates = [
+			{
+				name: "project-starter",
+				src: path.resolve(ROOT_DIR, "packages/project-starter"),
+				dest: path.resolve(TEMPLATES_DIR, "project-starter")
+			},
+			{
+				name: "plugin-starter",
+				src: path.resolve(ROOT_DIR, "packages/plugin-starter"),
+				dest: path.resolve(TEMPLATES_DIR, "plugin-starter")
+			}
+		];
 
-		// get the version of our CLI, from the package.json
-		const CLI_PACKAGE_JSON = path.resolve(ROOT_DIR, "packages/cli/package.json");
-		const CLI_PACKAGE_JSON_CONTENT = await fs.readFile(CLI_PACKAGE_JSON, "utf-8");
-		const CLI_PACKAGE_JSON_DATA = JSON.parse(CLI_PACKAGE_JSON_CONTENT);
-		const CLI_VERSION = CLI_PACKAGE_JSON_DATA.version;
-
-		console.log("CLI version:", CLI_VERSION);
-		
-		const replacedStarter = await fs.readFile(path.resolve(projectStarterDest, "package.json"), "utf-8");
-		const replacedStarterData = JSON.parse(replacedStarter);
-		replacedStarterData.version = CLI_VERSION;
-		await fs.writeFile(path.resolve(projectStarterDest, "package.json"), JSON.stringify(replacedStarterData, null, 2));
-
-		const replacedPlugin = await fs.readFile(path.resolve(pluginStarterDest, "package.json"), "utf-8");
-		const replacedPluginData = JSON.parse(replacedPlugin);
-		replacedPluginData.version = CLI_VERSION;
-		await fs.writeFile(path.resolve(pluginStarterDest, "package.json"), JSON.stringify(replacedPluginData, null, 2));
+		// Copy each template and update its package.json
+		for (const template of templates) {
+			console.log(`Copying from ${template.src} to ${template.dest}`);
+			await fs.copy(template.src, template.dest);
+			
+			// Update package.json with correct version
+			const packageJsonPath = path.resolve(template.dest, "package.json");
+			await updatePackageJson(packageJsonPath, cliVersion);
+		}
 
 		console.log("Templates successfully copied to packages/cli/templates.");
 	} catch (error) {
-		console.error("Error copying templates:", error);	
+		console.error("Error copying templates:", error);
 		process.exit(1);
 	}
 }

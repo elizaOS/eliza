@@ -155,8 +155,6 @@ export async function copyClientDist() {
 	const srcClientDist = path.resolve(process.cwd(), "../client/dist");
 	const destClientDist = path.resolve(process.cwd(), "./dist");
 
-	console.log("*** srcClientDist", srcClientDist);
-
 	// Create destination directory
 	await fs.mkdir(destClientDist, { recursive: true });
 
@@ -166,7 +164,6 @@ export async function copyClientDist() {
 	const retryDelay = 1000; // 1 second
 
 	while (retries < maxRetries) {
-		console.log("*** srcClientDist", srcClientDist);
 		if (existsSync(srcClientDist)) {
 			const files = await fs.readdir(srcClientDist);
 			if (files.length > 0) {
@@ -177,7 +174,6 @@ export async function copyClientDist() {
 		logger.info(
 			`Waiting for client dist files to be built (attempt ${retries + 1}/${maxRetries})...`,
 		);
-		console.log("*** waiting for client dist files to be built");
 		await new Promise((resolve) => setTimeout(resolve, retryDelay));
 		retries++;
 	}
