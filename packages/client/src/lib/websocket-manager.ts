@@ -87,9 +87,18 @@ class WebSocketsManager extends EventEmitter {
 
     socket.onclose = (event: CloseEvent) => {
       console.log(`[WebSocket Client] WebSocket closed for agent ${agentId}. Reason:`, event.reason);
-      this.sockets.delete(agentId);
-      this.readyPromises.delete(agentId);
-      this.resolveReadyMap.delete(agentId);
+
+      if (this.sockets.has(agentId)) {
+        console.warn(`[WebSocket Client] Unexpected WebSocket closure for agent ${agentId}, attempting to reconnect...`);
+        this.cleanupWebSocket(agentId);
+
+        setTimeout(() => {
+          this.connect(agentId, roomId);
+        }, 3000);
+        
+      } else {
+        this.cleanupWebSocket(agentId);
+      }
     };
 
     this.sockets.set(agentId, socket);
@@ -111,6 +120,12 @@ class WebSocketsManager extends EventEmitter {
     } else {
       console.warn(`[WebSocket Client] WebSocket for agent ${agentId} is not open.`);
     }
+  }
+
+  private cleanupWebSocket(agentId: string): void {
+    this.sockets.delete(agentId);
+    this.readyPromises.delete(agentId);
+    this.resolveReadyMap.delete(agentId);
   }
 
   handleBroadcastMessage(senderId: string, senderName: string, text: string, roomId: string, source: string) {
@@ -149,12 +164,7 @@ class WebSocketsManager extends EventEmitter {
       console.log(`[WebSocket Client] Closing WebSocket for agent ${agentId}`);
       
       if (socket.readyState === WebSocket.OPEN) {
-        socket.onclose = () => {
-          console.log(`[WebSocket Client] WebSocket for agent ${agentId} disconnected.`);
-          this.sockets.delete(agentId);
-          this.readyPromises.delete(agentId);
-          this.resolveReadyMap.delete(agentId);
-        };
+        this.cleanupWebSocket(agentId);
         socket.close();
       } else {
         console.warn(`[WebSocket Client] WebSocket for agent ${agentId} is already closed or closing.`);
