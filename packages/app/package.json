@@ -1,9 +1,7 @@
 {
   "name": "@elizaos/app",
   "version": "1.0.0-alpha.42",
-  "publishConfig": {
-    "access": "public"
-  },
+  "private": true,
   "type": "module",
   "scripts": {
     "start": "tauri dev",
@@ -31,5 +29,5 @@
     "typescript": "~5.8.2",
     "vite": "^6.0.3"
   },
-  "gitHead": "e98c03cf7e76ba967b203fdc3fc07cb438797559"
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
 }

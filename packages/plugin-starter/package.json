@@ -2,6 +2,7 @@
 	"name": "@elizaos/plugin-starter",
 	"description": "Plugin starter for elizaOS",
 	"version": "1.0.0-alpha.42",
+	"private": true,
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -45,5 +46,5 @@
 	"resolutions": {
 		"zod": "3.24.1"
 	},
-	"gitHead": "e98c03cf7e76ba967b203fdc3fc07cb438797559"
+	"gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
 }

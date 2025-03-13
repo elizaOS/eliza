@@ -3,6 +3,7 @@
 	"description": "Project starter for elizaOS",
 	"version": "1.0.0-alpha.42",
 	"type": "module",
+	"private": true,
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -19,11 +20,11 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "^1.0.0-alpha.42",
-		"@elizaos/core": "^1.0.0-alpha.42",
-		"@elizaos/plugin-anthropic": "^1.0.0-alpha.42",
-		"@elizaos/plugin-openai": "^1.0.0-alpha.42",
-		"@elizaos/plugin-sql": "^1.0.0-alpha.42",
+		"@elizaos/cli": "workspace:*",
+		"@elizaos/core": "workspace:*",
+		"@elizaos/plugin-anthropic": "workspace:*",
+		"@elizaos/plugin-openai": "workspace:*",
+		"@elizaos/plugin-sql": "workspace:*",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
@@ -41,5 +42,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "e98c03cf7e76ba967b203fdc3fc07cb438797559"
+	"gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
 }

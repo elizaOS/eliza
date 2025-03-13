@@ -15,8 +15,8 @@ import type { Character } from "@elizaos/core";
 export const character: Character = {
 	name: "Eliza",
 	plugins: [
-		"@elizaos/plugin-anthropic",
 		"@elizaos/plugin-openai",
+		"@elizaos/plugin-anthropic",
 		"@elizaos/plugin-sql",
 	],
 	secrets: {},

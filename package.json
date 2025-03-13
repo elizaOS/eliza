@@ -11,7 +11,7 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* && turbo run clean --filter=./packages/*",
     "lint": "turbo run lint --filter=./packages/*",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
-    "release:alpha": "bun run build && bun lint && lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose && bun lint",
+    "release:alpha": "lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
     "docker:build": "bash ./scripts/docker.sh build",

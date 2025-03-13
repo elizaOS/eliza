@@ -130,6 +130,8 @@ async function startAgent(
 		version = packageJson.version;
 	}
 
+	const characterPlugins = []
+
 	// for each plugin, check if it installed, and install if it is not
 	for (const plugin of character.plugins) {
 		logger.info("Checking if plugin is installed: ", plugin);
@@ -140,8 +142,11 @@ async function startAgent(
 			logger.info(`Plugin ${plugin} not installed, installing into ${process.cwd()}...`);
 			await installPlugin(plugin, process.cwd(), version);
 		}
+		characterPlugins.push(plugin);
 	}
 
+	// remove the plugins from the character
+	character.plugins = character.plugins.filter((p) => !characterPlugins.includes(p));
 
 	const runtime = new AgentRuntime({
 		character,
@@ -209,7 +214,8 @@ async function startAgent(
 					}
 				} catch (error) {
 					logger.warn(`Failed to import local-ai plugin: ${error}`);
-					logger.warn(`You may need to install it with: npm install ${pluginName}`);
+					// try installing it
+					await installPlugin(pluginName, process.cwd(), version);
 				}
 			} catch (error) {
 				logger.warn(`Error loading local-ai plugin: ${error}`);
