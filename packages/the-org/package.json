@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/the-org",
-	"version": "1.0.0-alpha.32",
+	"version": "1.0.0-alpha.35",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -9,11 +9,11 @@
 		"access": "public"
 	},
 	"scripts": {
-		"start": "../cli/dist/index.js start",
+		"start": "npx elizaos start",
 		"build": "vite build && tsup",
 		"lint": "biome check --config-path=./ --write",
-		"dev": "../cli/dist/index.js dev",
-		"test": "../cli/dist/index.js test",
+		"dev": "npx elizaos dev",
+		"test": "npx elizaos test",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"nodemonConfig": {
@@ -28,11 +28,11 @@
 		"@elizaos/cli": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-anthropic": "workspace:*",
-		"@elizaos/plugin-openai": "workspace:*",
 		"@elizaos/plugin-discord": "workspace:*",
-		"@elizaos/plugin-telegram": "workspace:*",
+		"@elizaos/plugin-openai": "workspace:*",
 		"@elizaos/plugin-sql": "workspace:*",
 		"@elizaos/plugin-tee": "workspace:*",
+		"@elizaos/plugin-telegram": "workspace:*",
 		"@elizaos/plugin-twitter": "workspace:*",
 		"@radix-ui/react-slot": "^1.1.1",
 		"@radix-ui/react-tabs": "^1.1.2",
