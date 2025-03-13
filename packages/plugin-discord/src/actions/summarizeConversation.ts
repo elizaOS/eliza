@@ -149,7 +149,7 @@ const getDateRange = async (
  * @property {Function} handler - Asynchronous function to handle the action.
  * @property {ActionExample[][]} examples - Array of examples demonstrating the action.
  */
-const summarizeAction = {
+export const summarize: Action = {
 	name: "SUMMARIZE_CONVERSATION",
 	similes: [
 		"RECAP",
@@ -429,4 +429,4 @@ ${currentSummary.trim()}
 	] as ActionExample[][],
 } as Action;
 
-export default summarizeAction;
+export default summarize;

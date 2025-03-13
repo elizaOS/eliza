@@ -25,5 +25,6 @@ export default defineConfig({
 		// Add other modules you want to externalize
 		"@phala/dstack-sdk",
 		"undici",
+		"@elizaos/core",
 	],
 });

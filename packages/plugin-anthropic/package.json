@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-anthropic",
-	"version": "1.0.0-alpha.30",
+	"version": "1.0.0-alpha.32",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",

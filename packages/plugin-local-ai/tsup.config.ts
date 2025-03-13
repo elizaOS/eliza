@@ -15,6 +15,7 @@ export default defineConfig({
 		"https",
 		"http",
 		"events",
+		"@elizaos/core",
 		// Add other modules you want to externalize
 	],
 });

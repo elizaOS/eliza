@@ -20,7 +20,7 @@ import { MODEL_SPECS } from "../src/types";
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../");
 
 // During tests, we need to set cwd to agent directory since that's where the plugin runs from in production
-const AGENT_DIR = path.join(WORKSPACE_ROOT, "packages/agent");
+const AGENT_DIR = path.join(WORKSPACE_ROOT, "packages/project-starter");
 process.chdir(AGENT_DIR);
 
 // Create shared mock for download manager
@@ -192,7 +192,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 				};
 				logger.info("Generated mock description:", mockResult);
 
-				return JSON.stringify(mockResult) as R;
+				return mockResult as R;
 			} catch (error) {
 				logger.error("Image description failed:", {
 					error: error instanceof Error ? error.message : String(error),

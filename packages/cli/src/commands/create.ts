@@ -4,14 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { buildProject } from "@/src/utils/build-project";
 import { copyTemplate } from "@/src/utils/copy-template";
-import { rawConfigSchema } from "@/src/utils/get-config";
 import { handleError } from "@/src/utils/handle-error";
 import { runBunCommand } from "@/src/utils/run-bun";
 import { logger } from "@elizaos/core";
-import chalk from "chalk";
 import { Command } from "commander";
 import { execa } from "execa";
 import prompts from "prompts";
+import colors from "yoctocolors";
 import { z } from "zod";
 
 /**
@@ -239,9 +238,9 @@ export const create = new Command()
 				
 				logger.success("Plugin initialized successfully!");
 				logger.info(`\nYour plugin is ready! Here's what you can do next:
-1. \`${chalk.cyan("npx @elizaos/cli start")}\` to start development
-2. \`${chalk.cyan("npx @elizaos/cli test")}\` to test your plugin
-3. \`${chalk.cyan("npx @elizaos/cli plugins publish")}\` to publish your plugin to the registry`);
+1. \`${colors.cyan("npx @elizaos/cli start")}\` to start development
+2. \`${colors.cyan("npx @elizaos/cli test")}\` to test your plugin
+3. \`${colors.cyan("npx @elizaos/cli plugins publish")}\` to publish your plugin to the registry`);
 				return;
 			}
 

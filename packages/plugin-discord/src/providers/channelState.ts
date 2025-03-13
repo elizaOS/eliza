@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
-import type { DiscordService } from "../index";
+import type { DiscordService } from "../service";
 import { ServiceTypes } from "../types";
 
 /**
@@ -13,7 +13,7 @@ import { ServiceTypes } from "../types";
  * @param {State} [state] - Optional state object.
  * @returns {Promise<Object>} A promise that resolves to an object containing channel state data, values, and text.
  */
-const channelStateProvider: Provider = {
+export const channelStateProvider: Provider = {
 	name: "channelState",
 	get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
 		const room =

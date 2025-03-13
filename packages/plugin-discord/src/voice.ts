@@ -35,7 +35,7 @@ import {
 	type VoiceState,
 } from "discord.js";
 import prism from "prism-media";
-import type { DiscordService } from "./index";
+import type { DiscordService } from "./service";
 import { getWavHeader } from "./utils";
 
 // These values are chosen for compatibility with picovoice components
@@ -895,7 +895,7 @@ export class VoiceManager extends EventEmitter {
 				console.log(`Joining channel: ${chosenChannel.name}`);
 				await this.joinChannel(chosenChannel);
 			} else {
-				console.warn("No suitable voice channel found to join.");
+				logger.debug("Warning: No suitable voice channel found to join.");
 			}
 		} catch (error) {
 			console.error("Error selecting or joining a voice channel:", error);

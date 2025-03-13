@@ -111,7 +111,7 @@ describe("LocalAI Image Description", () => {
 		await plugin.init({
 			LLAMALOCAL_PATH: TEST_PATHS.MODELS_DIR,
 			CACHE_DIR: TEST_PATHS.CACHE_DIR,
-		});
+		}, mockRuntime);
 
 		logger.success("Test setup completed");
 	}, 300000);
@@ -128,14 +128,20 @@ describe("LocalAI Image Description", () => {
 				ModelTypes.IMAGE_DESCRIPTION,
 				imageUrl,
 			);
+
+			// if result is not an object, throw an error
+			if (typeof result !== "object") {
+				throw new Error("Result is not an object");
+			}
+
 			logger.info("Image description result:", {
 				resultType: typeof result,
-				resultLength: result.length,
+				resultLength: result.description.length,
 				rawResult: result,
 			});
 
 			expect(result).toBeDefined();
-			const parsed = JSON.parse(result);
+			const parsed = result;
 			logger.info("Parsed result:", parsed);
 
 			expect(parsed).toHaveProperty("title");
