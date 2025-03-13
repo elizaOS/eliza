@@ -39,7 +39,7 @@ export default function ProfileCard({
 	return (
 		<Card className="h-full">
 			<CardHeader className="pb-2 pt-3">
-				<CardTitle className="text-base">{title}</CardTitle>
+				<CardTitle className="text-base truncate max-w-48">{title}</CardTitle>
 			</CardHeader>
 			<CardContent className="p-3">
 				<div

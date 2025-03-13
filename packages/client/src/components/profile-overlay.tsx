@@ -82,7 +82,7 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
                                 <div className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-white ${isActive ? "bg-green-500" : "bg-muted-foreground"}`} />
                             </div>
                             <div className="flex justify-center items-center mr-4 font-bold">
-                                {agent && <div className="text-xl">{(agent.name)}</div>}
+                                {agent && <div className="text-xl truncate max-w-48">{(agent.name)}</div>}
                             </div>
                         </div>
 

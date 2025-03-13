@@ -168,7 +168,7 @@ export function AppSidebar() {
 																	</div>}
 																	</div>
 																</div>
-																<span className="text-base">
+																<span className="text-base truncate max-w-24">
 																	{agent.name}
 																</span>
 															</div>
