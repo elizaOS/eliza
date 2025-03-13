@@ -80,8 +80,9 @@ async function installDependencies(
 		await runBunCommand(["install", "--no-optional"], targetDir);
 		logger.success("Installed base dependencies");
 	} catch (error) {
-		logger.warn(`Initial dependency installation error: ${error.message}`);
-	}
+		logger.warn(
+			"Failed to install dependencies automatically. Please run 'bun install' manually.",
+		);	}
 }
 
 /**

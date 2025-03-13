@@ -2,6 +2,7 @@
 	"type": "module",
 	"name": "@elizaos/autodoc",
 	"version": "1.0.0-alpha.28",
+	"private": true,
 	"description": "",
 	"main": "dist/index.js",
 	"module": "dist/index.mjs",
@@ -32,5 +33,5 @@
 		"tsup": "8.4.0",
 		"typescript": "5.8.2"
 	},
-	"gitHead": "4396652e4e2e5b24c55e23c3b88a7446bbe003b1"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }
