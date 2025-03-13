@@ -97,11 +97,11 @@ export function AppSidebar() {
 											<>
 												{/* Render active section */}
 												{activeAgents.length > 0 && (
-													<div className="px-4 py-2 mt-4">
+													<div className="px-4 py-1 mt-4">
 														<div className="flex items-center space-x-2">
 															<div className="size-2.5 rounded-full bg-green-500" />
 															<span className="text-sm font-medium text-muted-foreground">
-																Active
+																Online
 															</span>
 														</div>
 													</div>
@@ -140,11 +140,11 @@ export function AppSidebar() {
 
 												{/* Render inactive section */}
 												{inactiveAgents.length > 0 && (
-													<div className="px-4 py-2 mt-4">
+													<div className="px-4 py-1 mt-12">
 														<div className="flex items-center space-x-2">
 															<div className="size-2.5 rounded-full bg-muted-foreground/50" />
 															<span className="text-sm font-medium text-muted-foreground">
-																Inactive
+																Offline
 															</span>
 														</div>
 													</div>
