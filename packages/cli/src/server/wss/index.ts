@@ -71,6 +71,9 @@ export class WebSocketRouter {
         const source = payload.source;
 
         const roomAgents = this.rooms.get(roomId);
+        if (!roomAgents) {
+            ws.send(JSON.stringify({ error: `No agents found.` }));
+        }
         // Broadcast the message to all agents in the room except the sender and save it to memory.
         for (const [clientWs, agentId] of this.connections.entries()) {
             if (roomAgents.includes(agentId) && agentId !== senderId) {
