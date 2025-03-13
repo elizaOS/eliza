@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { useAgents } from "@/hooks/use-query-hooks";
 import { formatAgentName } from "@/lib/utils";
 import type { Agent } from "@elizaos/core";
-import { Plus } from "lucide-react";
+import { Cog, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ProfileOverlay from "@/components/profile-overlay";
 import { useState } from "react";
@@ -66,9 +66,14 @@ export default function Home() {
 									key={agent.id}
 									title={agent.name}
 									content={
-										agent.thumbnail ?
-										<img src={agent.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
-										formatAgentName(agent.name)
+										<div className="cursor-pointer" onClick={() => openOverlay(agent)}>
+											{
+												agent.thumbnail ?
+													<img src={agent.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
+													formatAgentName(agent.name)
+											}
+										</div>
+										
 									}
 									buttons={[
 										{
@@ -78,7 +83,13 @@ export default function Home() {
 											},
 											className: `w-[80%]`,
 											variant: "default",
-										}
+										},
+										{
+											icon: <Cog style={{ height: 16, width: 16 }} />,
+											className: "w-10 h-10 rounded-full",
+											action: () => navigate(`/settings/${agent.id}`),
+											variant: "outline",
+										},
 									]} 
 								/>
 							)
