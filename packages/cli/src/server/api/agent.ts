@@ -65,13 +65,9 @@ export function agentRouter(
 
 			// returns minimal agent data
 			const response = allAgents
-				.map((agent: Agent) => ({
-					id: agent.id,
-					name: agent.name,
+				.map((agent: Agent) => ({ 
+					...agent,
 					status: runtimes.includes(agent.id) ? "active" : "inactive",
-					bio: agent.bio[0],
-					createdAt: agent.createdAt,
-					updatedAt: agent.updatedAt,
 				}))
 				.sort((a: any, b: any) => {
 					if (a.status === b.status) {
@@ -171,13 +167,12 @@ export function agentRouter(
 				throw new Error("Failed to create character configuration");
 			}
 
-			const agent = await server?.startAgent(character);
+			await db.ensureAgentExists(character);
 
 			res.status(201).json({
 				success: true,
 				data: {
-					id: agent.agentId,
-					character: agent.character,
+					character: character,
 				},
 			});
 			logger.success(

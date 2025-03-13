@@ -6,7 +6,6 @@ CREATE TABLE "agents" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"createdAt" timestamptz DEFAULT now() NOT NULL,
 	"updatedAt" timestamptz DEFAULT now() NOT NULL,
-	"enabled" boolean DEFAULT true NOT NULL,
 	"name" text,
 	"username" text,
 	"system" text,

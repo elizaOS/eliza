@@ -29,13 +29,6 @@
 			"notNull": true,
 			"default": "now()"
 		  },
-		  "enabled": {
-			"name": "enabled",
-			"type": "boolean",
-			"primaryKey": false,
-			"notNull": true,
-			"default": true
-		  },
 		  "name": {
 			"name": "name",
 			"type": "text",
