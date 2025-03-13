@@ -23,7 +23,7 @@ export const plugin = new Command()
 	
 /**
  * Note: The plugin creation functionality is now in the main create.ts file.
- * Use "npx elizaos create" and select "plugin" when prompted.
+ * Use "npx @elizaos/cli create" and select "plugin" when prompted.
  */
 
 plugin

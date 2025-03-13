@@ -17,7 +17,6 @@ export const character: Character = {
 	plugins: [
 		"@elizaos/plugin-anthropic",
 		"@elizaos/plugin-openai",
-		"@elizaos/plugin-discord",
 		"@elizaos/plugin-sql",
 	],
 	secrets: {},

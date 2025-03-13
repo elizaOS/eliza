@@ -31,13 +31,13 @@
 		"tsup": "8.4.0"
 	},
 	"scripts": {
-		"start": "npx elizaos start",
+		"start": "npx @elizaos/cli start",
 		"test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
-		"dev": "npx elizaos dev",
+		"dev": "npx @elizaos/cli dev",
 		"build": "tsup",
 		"lint": "biome check --config-path=./ --write",
-		"test": "npx elizaos test",
-		"deploy": "npx elizaos deploy"
+		"test": "npx @elizaos/cli test",
+		"deploy": "npx @elizaos/cli deploy"
 	},
 	"publishConfig": {
 		"access": "public"
