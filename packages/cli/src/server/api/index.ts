@@ -7,7 +7,7 @@ import path from "node:path";
 import type { AgentServer } from "..";
 import { agentRouter } from "./agent";
 import { teeRouter } from "./tee";
-import logger from "@elizaos/core"
+import { logger } from "@elizaos/core"
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
