@@ -91,4 +91,5 @@ jobs:
       - name: Test build (verify it compiles)
         run: |
           cd packages/app
+          bun run build
           bun run tauri build --debug 
