@@ -660,7 +660,7 @@ export interface Character {
 }
 
 export interface Agent extends Character {
-	thumbnail: string;
+	thumbnail: string | null;
 	createdAt: number;
 	updatedAt: number;
 }
