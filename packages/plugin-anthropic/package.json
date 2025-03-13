@@ -33,9 +33,6 @@
 		"dev": "tsup --watch",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
-	"peerDependencies": {
-		"whatwg-url": "7.1.0"
-	},
 	"publishConfig": {
 		"access": "public"
 	},
