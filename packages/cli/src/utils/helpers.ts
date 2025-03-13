@@ -1,6 +1,6 @@
 import type { Agent, MessageExample } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import chalk from "chalk";
+import colors from "yoctocolors";
 
 /**
  * Format message examples into readable conversation format
@@ -118,9 +118,9 @@ function logHeader(title) {
 	const borderLength = paddedTitle.length;
 
 	// Create top and bottom borders using Unicode box drawing characters
-	const topBorder = chalk.green(`┌${"─".repeat(borderLength)}┐`);
-	const bottomBorder = chalk.green(`└${"─".repeat(borderLength)}┘`);
-	const middleRow = chalk.green(`│${paddedTitle}│`);
+	const topBorder = colors.green(`┌${"─".repeat(borderLength)}┐`);
+	const bottomBorder = colors.green(`└${"─".repeat(borderLength)}┘`);
+	const middleRow = colors.green(`│${paddedTitle}│`);
 
 	// Log the rectangle with a leading new line for spacing
 	logger.info(`\n${topBorder}\n${middleRow}\n${bottomBorder}`);

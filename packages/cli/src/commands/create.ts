@@ -1,16 +1,15 @@
+import { buildProject } from "@/src/utils/build-project";
+import { copyTemplate } from "@/src/utils/copy-template";
+import { handleError } from "@/src/utils/handle-error";
+import { runBunCommand } from "@/src/utils/run-bun";
+import { logger } from "@elizaos/core";
+import colors from "yoctocolors";
+import { Command } from "commander";
+import { execa } from "execa";
 import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { buildProject } from "@/src/utils/build-project";
-import { copyTemplate } from "@/src/utils/copy-template";
-import { rawConfigSchema } from "@/src/utils/get-config";
-import { handleError } from "@/src/utils/handle-error";
-import { runBunCommand } from "@/src/utils/run-bun";
-import { logger } from "@elizaos/core";
-import chalk from "chalk";
-import { Command } from "commander";
-import { execa } from "execa";
 import prompts from "prompts";
 import { z } from "zod";
 
@@ -80,8 +79,9 @@ async function installDependencies(
 		await runBunCommand(["install", "--no-optional"], targetDir);
 		logger.success("Installed base dependencies");
 	} catch (error) {
-		logger.warn(`Initial dependency installation error: ${error.message}`);
-	}
+		logger.warn(
+			"Failed to install dependencies automatically. Please run 'bun install' manually.",
+		);	}
 }
 
 /**
@@ -238,9 +238,9 @@ export const create = new Command()
 				
 				logger.success("Plugin initialized successfully!");
 				logger.info(`\nYour plugin is ready! Here's what you can do next:
-1. \`${chalk.cyan("npx elizaos start")}\` to start development
-2. \`${chalk.cyan("npx elizaos test")}\` to test your plugin
-3. \`${chalk.cyan("npx elizaos plugins publish")}\` to publish your plugin to the registry`);
+1. \`${colors.cyan("npx @elizaos/cli start")}\` to start development
+2. \`${colors.cyan("npx @elizaos/cli test")}\` to test your plugin
+3. \`${colors.cyan("npx @elizaos/cli plugins publish")}\` to publish your plugin to the registry`);
 				return;
 			}
 
@@ -330,7 +330,7 @@ export const create = new Command()
 			// Show next steps with updated message
 			logger.info(`\nYour project is ready! Here's what you can do next:
 1. \`cd ${targetDir}\` to change into your project directory
-2. Run \`npx elizaos start\` to start your project
+2. Run \`npx @elizaos/cli start\` to start your project
 3. Visit \`http://localhost:3000\` to view your project in the browser`);
 
 			// exit successfully

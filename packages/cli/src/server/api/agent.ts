@@ -89,7 +89,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Error retrieving agents",
 					details: error.message,
 				},
@@ -139,7 +139,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Error getting agent",
 					details: error.message,
 				},
@@ -1230,7 +1230,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Failed to retrieve rooms",
 					details: error.message,
 				},
@@ -1364,7 +1364,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Failed to retrieve room",
 					details: error.message,
 				},
@@ -1533,7 +1533,7 @@ export function agentRouter(
 			res.status(500).json({
 				success: false,
 				error: {
-					code: "FETCH_ERROR",
+					code: 500,
 					message: "Failed to retrieve memories",
 					details: error.message,
 				},

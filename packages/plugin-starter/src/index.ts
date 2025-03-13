@@ -27,7 +27,7 @@ const configSchema = z.object({
 		.optional()
 		.transform((val) => {
 			if (!val) {
-				console.warn("Warning: Example plugin variable is not provided");
+				logger.warn("Example plugin variable is not provided (this is expected)");
 			}
 			return val;
 		}),

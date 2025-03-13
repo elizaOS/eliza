@@ -11,7 +11,7 @@ import { execa } from "execa";
 
 export const project = new Command()
 	.name("project")
-	.description("Manage ElizaOS plugins in a project");
+	.description("Manage an ElizaOS project");
 
 	project
 	.command("list-plugins")

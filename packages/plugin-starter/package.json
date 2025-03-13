@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/plugin-starter",
 	"description": "Plugin starter for elizaOS",
-	"version": "1.0.0-alpha.26",
+	"version": "1.0.0-alpha.32",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -23,7 +23,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "workspace:*",
+		"@elizaos/cli": "^1.0.0-alpha.32",
 		"@elizaos/core": "workspace:*",
 		"zod": "3.21.4"
 	},
@@ -31,13 +31,13 @@
 		"tsup": "8.4.0"
 	},
 	"scripts": {
-		"start": "npx elizaos start",
+		"start": "npx @elizaos/cli start",
 		"test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
-		"dev": "npx elizaos dev",
+		"dev": "npx @elizaos/cli dev",
 		"build": "tsup",
 		"lint": "biome check --config-path=./ --write",
-		"test": "npx elizaos test",
-		"deploy": "npx elizaos deploy"
+		"test": "npx @elizaos/cli test",
+		"deploy": "npx @elizaos/cli deploy"
 	},
 	"publishConfig": {
 		"access": "public"
@@ -45,5 +45,5 @@
 	"resolutions": {
 		"zod": "3.24.1"
 	},
-	"gitHead": "bc8404af5c9e930c2de5c426c4bf730b86aacf8c"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

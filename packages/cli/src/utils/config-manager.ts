@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import chalk from "chalk";
+import colors from "yoctocolors";
 import { checkEnvVarsForPlugin } from "./env-prompt.js";
 
 /**
@@ -113,7 +113,7 @@ export function displayConfigStatus(): void {
 	// Indicate if this is a default configuration
 	if (config.isDefault) {
 		logger.info(
-			chalk.yellow(
+			colors.yellow(
 				"Using default configuration - you will be prompted to customize your setup.",
 			),
 		);
@@ -124,12 +124,12 @@ export function displayConfigStatus(): void {
 	if (config.services.length) {
 		for (const service of config.services) {
 			const status = pluginStatus[service]
-				? chalk.green("✓ configured")
-				: chalk.yellow("⚠ missing environment variables");
-			logger.info(`  ${chalk.cyan(service)}: ${status}`);
+				? colors.green("✓ configured")
+				: colors.yellow("⚠ missing environment variables");
+			logger.info(`  ${colors.cyan(service)}: ${status}`);
 		}
 	} else {
-		logger.info(`  ${chalk.gray("No services configured")}`);
+		logger.info(`  ${colors.gray("No services configured")}`);
 	}
 
 	// Display AI models
@@ -137,18 +137,18 @@ export function displayConfigStatus(): void {
 	if (config.aiModels.length) {
 		for (const model of config.aiModels) {
 			const status = pluginStatus[model]
-				? chalk.green("✓ configured")
-				: chalk.yellow("⚠ missing environment variables");
-			logger.info(`  ${chalk.cyan(model)}: ${status}`);
+				? colors.green("✓ configured")
+				: colors.yellow("⚠ missing environment variables");
+			logger.info(`  ${colors.cyan(model)}: ${status}`);
 		}
 	} else {
-		logger.info(`  ${chalk.gray("No AI models configured")}`);
+		logger.info(`  ${colors.gray("No AI models configured")}`);
 	}
 
 	// Display last updated timestamp
 	if (config.lastUpdated && !config.isDefault) {
 		logger.info(
-			`Last updated: ${chalk.gray(new Date(config.lastUpdated).toLocaleString())}`,
+			`Last updated: ${colors.gray(new Date(config.lastUpdated).toLocaleString())}`,
 		);
 	}
 

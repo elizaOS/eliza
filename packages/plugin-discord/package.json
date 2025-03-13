@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-discord",
-	"version": "1.0.0-alpha.26",
+	"version": "1.0.0-alpha.32",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -53,5 +53,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "bc8404af5c9e930c2de5c426c4bf730b86aacf8c"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

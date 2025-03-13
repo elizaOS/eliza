@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-local-ai",
-	"version": "1.0.0-alpha.26",
+	"version": "1.0.0-alpha.32",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -22,7 +22,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "1.0.0-alpha.26",
+		"@elizaos/core": "workspace:*",
 		"@huggingface/hub": "^1.0.1",
 		"@huggingface/inference": "^3.3.4",
 		"@huggingface/transformers": "^3.3.3",
@@ -61,5 +61,5 @@
 		"pluginType": "elizaos:plugin:1.0.0",
 		"pluginParameters": {}
 	},
-	"gitHead": "bc8404af5c9e930c2de5c426c4bf730b86aacf8c"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }
