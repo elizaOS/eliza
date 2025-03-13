@@ -73,7 +73,7 @@ describe("LocalAI Text-to-Speech", () => {
 		await plugin.init({
 			LLAMALOCAL_PATH: TEST_PATHS.MODELS_DIR,
 			CACHE_DIR: TEST_PATHS.CACHE_DIR,
-		});
+		}, mockRuntime);
 
 		logger.success("Test setup completed");
 	}, 300000);
@@ -156,20 +156,20 @@ describe("LocalAI Text-to-Speech", () => {
 
 			// Test stream readability
 			let dataReceived = false;
-			result.on("data", (chunk) => {
+			(result as Readable).on("data", (chunk) => {
 				logger.info("Received audio data chunk:", { size: chunk.length });
 				dataReceived = true;
 			});
 
 			await new Promise((resolve, reject) => {
-				result.on("end", () => {
+				(result as Readable).on("end", () => {
 					if (!dataReceived) {
 						reject(new Error("No audio data received from stream"));
 					} else {
 						resolve(true);
 					}
 				});
-				result.on("error", reject);
+				(result as Readable).on("error", reject);
 			});
 
 			logger.success("Successful TTS test completed");

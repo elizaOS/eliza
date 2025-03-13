@@ -4,11 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { handleError } from "@/src/utils/handle-error";
 import { logger } from "@elizaos/core";
-import chalk from "chalk";
 import { Command } from "commander";
 import dotenv from "dotenv";
 import prompts from "prompts";
 import { rimraf } from "rimraf";
+import colors from "yoctocolors";
 
 // Path to store the custom env path setting in the config.json file
 const CONFIG_FILE = path.join(os.homedir(), ".eliza", "config.json");
@@ -148,30 +148,30 @@ async function listEnvVars(): Promise<void> {
     ? `Global environment variables (custom path: ${customPath})`
     : "Global environment variables (.eliza/.env)";
   
-  logger.info(chalk.bold(`\n${globalEnvLabel}:`));
+  logger.info(colors.bold(`\n${globalEnvLabel}:`));
   if (Object.keys(globalEnvVars).length === 0) {
     logger.info("  No global environment variables set");
   } else {
     Object.entries(globalEnvVars).forEach(([key, value]) => {
-      logger.info(`  ${chalk.green(key)}: ${maskedValue(value)}`);
+      logger.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
     });
   }
   
   if (localEnvPath) {
-    logger.info(chalk.bold("\nLocal environment variables (.env):"));
+    logger.info(colors.bold("\nLocal environment variables (.env):"));
     if (Object.keys(localEnvVars).length === 0) {
       logger.info("  No local environment variables set");
     } else {
       Object.entries(localEnvVars).forEach(([key, value]) => {
-        logger.info(`  ${chalk.green(key)}: ${maskedValue(value)}`);
+        logger.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
       });
     }
   } else {
-    logger.info(chalk.bold("\nNo local .env file found in the current directory"));
+    logger.info(colors.bold("\nNo local .env file found in the current directory"));
   }
   
   logger.info("\n");
-  logger.info(chalk.cyan("You can also edit environment variables in the web UI: http://localhost:3000/settings"));
+  logger.info(colors.cyan("You can also edit environment variables in the web UI: http://localhost:3000/settings"));
 }
 
 /**
@@ -221,7 +221,7 @@ async function editEnvVars(scope: "global" | "local", fromMainMenu = false): Pro
   const envVars = await parseEnvFile(envPath);
   
   // List current variables first
-  logger.info(chalk.bold(`\nCurrent ${scope} environment variables:`));
+  logger.info(colors.bold(`\nCurrent ${scope} environment variables:`));
   if (Object.keys(envVars).length === 0) {
     logger.info(`  No ${scope} environment variables set`);
     
@@ -557,7 +557,7 @@ env
 // Default command (show help if no subcommand provided)
 env.action(() => {
   // Show available subcommands
-  console.log(chalk.bold("\nEliza Environment Variable Manager"));
+  console.log(colors.bold("\nEliza Environment Variable Manager"));
   console.log("\nAvailable commands:");
   console.log("  list                  List all environment variables");
   console.log("  edit-global           Edit global environment variables");
@@ -610,7 +610,7 @@ async function showMainMenu(): Promise<void> {
         break;
       }
       case "set_path":
-        logger.info(chalk.yellow("\nTo set a custom path, run: eliza env set-path <path>"));
+        logger.info(colors.yellow("\nTo set a custom path, run: eliza env set-path <path>"));
         break;
       case "reset":
         await resetEnv();

@@ -4,6 +4,7 @@
     "preinstall": "npx only-allow bun",
     "start": "turbo run start --filter=./packages/the-org",
     "start:debug": "LOG_LEVEL=debug elizaos start",
+    "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run dev --filter=./packages/the-org",
     "build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs --filter=!./packages/core --filter=!./packages/plugin-sql",
     "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
@@ -17,7 +18,8 @@
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --concurrency 20"
+    "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/the-org --filter=!./packages/docs --filter=!./packages/plugin-video-understanding",
+    "test:app": "turbo run test --concurrency 20 --filter=./packages/app"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

@@ -82,7 +82,7 @@ const getMediaAttachmentId = async (
  * @property {Function} handler - Handler function for the action.
  * @property {ActionExample[][]} examples - Examples demonstrating the action.
  */
-const transcribeMediaAction = {
+export const transcribeMedia: Action = {
 	name: "TRANSCRIBE_MEDIA",
 	similes: [
 		"TRANSCRIBE_AUDIO",
@@ -253,4 +253,4 @@ ${mediaTranscript.trim()}
 	] as ActionExample[][],
 } as Action;
 
-export default transcribeMediaAction;
+export default transcribeMedia;

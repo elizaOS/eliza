@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/the-org",
-	"version": "1.0.0-alpha.30",
+	"version": "1.0.0-alpha.32",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -29,6 +29,8 @@
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-anthropic": "workspace:*",
 		"@elizaos/plugin-openai": "workspace:*",
+		"@elizaos/plugin-discord": "workspace:*",
+		"@elizaos/plugin-telegram": "workspace:*",
 		"@elizaos/plugin-sql": "workspace:*",
 		"@elizaos/plugin-tee": "workspace:*",
 		"@elizaos/plugin-twitter": "workspace:*",

@@ -11,8 +11,8 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "paths": {
-      "@elizaos/core": ["../core/dist"],
-      "@elizaos/core/*": ["../core/dist/*"]
+      "@elizaos/core": ["../core/src"],
+      "@elizaos/core/*": ["../core/src/*"]
     }
   },
   "ts-node": {

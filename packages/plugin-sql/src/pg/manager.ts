@@ -226,6 +226,7 @@ export class PostgresConnectionManager
 		} catch (error) {
 			logger.error("Failed to run database migrations (pg):", error);
 			// throw error;
+			console.trace(error);
 		}
 	}
 }

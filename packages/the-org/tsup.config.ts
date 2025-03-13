@@ -14,9 +14,6 @@ export default defineConfig({
 		"node:https",
 		"node:path", // Externalize other built-ins if necessary
 		"node:http",
-		"@elizaos/core",
-		"@elizaos/plugin-tee",
-		"@elizaos/plugin-twitter",
 		"@elizaos/plugin-cli",
 	],
 });

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-storage-s3",
-	"version": "1.0.0-alpha.30",
+	"version": "1.0.0-alpha.32",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -33,14 +33,8 @@
 		"capsolver-npm": "2.0.2",
 		"fluent-ffmpeg": "2.1.3",
 		"glob": "11.0.0",
-		"patchright": "1.50.1",
-		"pdfjs-dist": "4.7.76",
-		"uuid": "11.0.3",
-		"youtube-dl-exec": "3.0.15"
+		"uuid": "11.0.3"
 	},
-	"trustedDependencies": [
-		"youtube-dl-exec"
-	],
 	"devDependencies": {
 		"@types/node": "22.8.4",
 		"tsup": "8.4.0"

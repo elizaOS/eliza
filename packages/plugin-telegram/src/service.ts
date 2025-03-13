@@ -1,5 +1,5 @@
 import { type Context, Telegraf } from "telegraf";
-import { ChannelType, type Entity, EventTypes, type IAgentRuntime, Role, type Room, Service, type UUID, type World, createUniqueUuid, logger } from "../../core/src";
+import { ChannelType, type Entity, EventTypes, type IAgentRuntime, Role, type Room, Service, type UUID, type World, createUniqueUuid, logger } from "@elizaos/core";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { validateTelegramConfig } from "./environment";
 import { MessageManager } from "./messageManager";

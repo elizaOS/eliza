@@ -10,7 +10,7 @@ import { ChannelType } from "@elizaos/core";
  * @param {State} [state] - Optional state object for the user
  * @returns {Object} An object containing information about the voice state of the user
  */
-const voiceStateProvider: Provider = {
+export const voiceStateProvider: Provider = {
 	name: "voiceState",
 	get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
 		// Voice doesn't get a discord message, so we need to use the channel for guild data

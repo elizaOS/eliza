@@ -75,7 +75,7 @@ const getMediaUrl = async (
 	return null;
 };
 
-export default {
+export const downloadMedia: Action = {
 	name: "DOWNLOAD_MEDIA",
 	similes: [
 		"DOWNLOAD_VIDEO",
@@ -207,3 +207,5 @@ export default {
 		],
 	] as ActionExample[][],
 } as Action;
+
+export default downloadMedia;
