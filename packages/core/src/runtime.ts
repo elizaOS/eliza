@@ -142,6 +142,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		// Store plugins in the array but don't initialize them yet
 		this.plugins = plugins;
+		console.log(`Plugins: ${this.plugins}`);
 	}
 
 	/**
@@ -149,6 +150,7 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @param plugin The plugin to register
 	 */
 	async registerPlugin(plugin: Plugin): Promise<void> {
+		console.log(`Registering plugin ${plugin.name}`);
 		if (!plugin) {
 			throw new Error("*** registerPlugin plugin is undefined");
 		}
@@ -160,41 +162,12 @@ export class AgentRuntime implements IAgentRuntime {
 			this.plugins.push(plugin);
 		}
 
-		// Initialize the plugin if it has an init function
-		if (plugin.init) {
-			try {
-				await plugin.init(plugin.config || {}, this);
-			} catch (error) {
-				// Check if the error is related to missing API keys
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-
-				if (
-					errorMessage.includes("API key") ||
-					errorMessage.includes("environment variables") ||
-					errorMessage.includes("Invalid plugin configuration")
-				) {
-					// Instead of throwing an error, log a friendly message
-					console.warn(
-						`Plugin ${plugin.name} requires configuration. ${errorMessage}`,
-					);
-					console.warn(
-						"Please check your environment variables and ensure all required API keys are set.",
-					);
-					console.warn("You can set these in your .eliza/.env file.");
-
-					// We don't throw here, allowing the application to continue
-					// with reduced functionality
-				} else {
-					// For other types of errors, rethrow
-					throw error;
-				}
-			}
-		}
-
 		// Register plugin adapter
 		if (plugin.adapter) {
+			console.log(`Registering plugin adapter ${plugin.name}`);
 			this.registerDatabaseAdapter(plugin.adapter);
+		} else {
+			console.log(`No adapter found for plugin ${plugin.name}`);
 		}
 
 		// Register plugin actions
@@ -250,6 +223,39 @@ export class AgentRuntime implements IAgentRuntime {
 				plugin.services.map((service) => this.registerService(service)),
 			);
 		}
+
+		// Initialize the plugin if it has an init function
+		if (plugin.init) {
+			try {
+				await plugin.init(plugin.config || {}, this);
+				console.log(`Plugin ${plugin.name} initialized`);
+			} catch (error) {
+				// Check if the error is related to missing API keys
+				const errorMessage =
+					error instanceof Error ? error.message : String(error);
+
+				if (
+					errorMessage.includes("API key") ||
+					errorMessage.includes("environment variables") ||
+					errorMessage.includes("Invalid plugin configuration")
+				) {
+					// Instead of throwing an error, log a friendly message
+					console.warn(
+						`Plugin ${plugin.name} requires configuration. ${errorMessage}`,
+					);
+					console.warn(
+						"Please check your environment variables and ensure all required API keys are set.",
+					);
+					console.warn("You can set these in your .eliza/.env file.");
+
+					// We don't throw here, allowing the application to continue
+					// with reduced functionality
+				} else {
+					// For other types of errors, rethrow
+					throw error;
+				}
+			}
+		}
 	}
 
 	getAllServices(): Map<ServiceType, Service> {
@@ -282,7 +288,7 @@ export class AgentRuntime implements IAgentRuntime {
 			for (const plugin of characterPlugins) {
 				if (plugin && !registeredPluginNames.has(plugin.name)) {
 					registeredPluginNames.add(plugin.name);
-					pluginRegistrationPromises.push(this.registerPlugin(plugin));
+					pluginRegistrationPromises.push(await this.registerPlugin(plugin));
 				}
 			}
 		}
@@ -291,7 +297,7 @@ export class AgentRuntime implements IAgentRuntime {
 		for (const plugin of [...this.plugins]) {
 			if (plugin && !registeredPluginNames.has(plugin.name)) {
 				registeredPluginNames.add(plugin.name);
-				pluginRegistrationPromises.push(this.registerPlugin(plugin));
+				pluginRegistrationPromises.push(await this.registerPlugin(plugin));
 			}
 		}
 

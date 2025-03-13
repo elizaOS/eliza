@@ -135,14 +135,31 @@ async function startAgent(
 	// for each plugin, check if it installed, and install if it is not
 	for (const plugin of character.plugins) {
 		logger.info("Checking if plugin is installed: ", plugin);
+		let pluginModule: any;
 		// check if the plugin is installed by trying to import
 		try {
-			await import(plugin);
+			pluginModule = await import(plugin);
 		} catch (error) {
 			logger.info(`Plugin ${plugin} not installed, installing into ${process.cwd()}...`);
 			await installPlugin(plugin, process.cwd(), version);
+			try {
+				pluginModule = await import(plugin);
+			} catch (error) {
+				logger.error(`Failed to install plugin ${plugin}: ${error}`);
+			}
 		}
-		characterPlugins.push(plugin);
+		if (!pluginModule) {
+			logger.error(`Failed to load plugin ${plugin}`);
+			continue;
+		}
+		const functionName = `${plugin
+			.replace("@elizaos/plugin-", "")
+			.replace("@elizaos-plugins/", "")
+			.replace(/-./g, (x) => x[1].toUpperCase())}Plugin`; // Assumes plugin function is camelCased with Plugin suffix
+		const importedPlugin = pluginModule.default || pluginModule[functionName];
+		if (importedPlugin) {
+			characterPlugins.push(importedPlugin);
+		}
 	}
 
 	// remove the plugins from the character
@@ -150,7 +167,7 @@ async function startAgent(
 
 	const runtime = new AgentRuntime({
 		character,
-		plugins,
+		plugins: [...plugins, ...characterPlugins],
 	});
 	if (init) {
 		await init(runtime);
