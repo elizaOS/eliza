@@ -4,6 +4,7 @@
     "preinstall": "npx only-allow bun",
     "start": "turbo run start --filter=./packages/the-org",
     "start:debug": "LOG_LEVEL=debug elizaos start",
+    "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run dev --filter=./packages/the-org",
     "build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs --filter=!./packages/core --filter=!./packages/plugin-sql",
     "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
