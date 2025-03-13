@@ -65,13 +65,9 @@ export function agentRouter(
 
 			// returns minimal agent data
 			const response = allAgents
-				.map((agent: Agent) => ({
-					id: agent.id,
-					name: agent.name,
+				.map((agent: Agent) => ({ 
+					...agent,
 					status: runtimes.includes(agent.id) ? "active" : "inactive",
-					bio: agent.bio[0],
-					createdAt: agent.createdAt,
-					updatedAt: agent.updatedAt,
 				}))
 				.sort((a: any, b: any) => {
 					if (a.status === b.status) {
@@ -171,13 +167,12 @@ export function agentRouter(
 				throw new Error("Failed to create character configuration");
 			}
 
-			const agent = await server?.startAgent(character);
+			await db.ensureAgentExists(character);
 
 			res.status(201).json({
 				success: true,
 				data: {
-					id: agent.agentId,
-					character: agent.character,
+					character: character,
 				},
 			});
 			logger.success(
@@ -397,222 +392,6 @@ export function agentRouter(
 				error: {
 					code: "DELETE_ERROR",
 					message: "Error deleting agent",
-					details: error.message,
-				},
-			});
-		}
-	});
-
-	// Messages endpoints
-	router.post("/:agentId/messages", async (req: CustomRequest, res) => {
-		logger.info("[MESSAGES CREATE] Creating new message");
-		const agentId = validateUuid(req.params.agentId);
-		if (!agentId) {
-			res.status(400).json({
-				success: false,
-				error: {
-					code: "INVALID_ID",
-					message: "Invalid agent ID format",
-				},
-			});
-			return;
-		}
-
-		// get runtime
-		const runtime = agents.get(agentId);
-		if (!runtime) {
-			res.status(404).json({
-				success: false,
-				error: {
-					code: "NOT_FOUND",
-					message: "Agent not found",
-				},
-			});
-			return;
-		}
-
-		const text = req.body?.text?.trim();
-		if (!text) {
-			res.status(400).json({
-				success: false,
-				error: {
-					code: "INVALID_REQUEST",
-					message: "Text message is required",
-				},
-			});
-			return;
-		}
-
-		const roomId = createUniqueUuid(
-			runtime,
-			req.body.roomId ?? `default-room-${agentId}`,
-		);
-		const entityId = createUniqueUuid(runtime, req.body.entityId ?? "Anon");
-		const worldId = req.body.worldId;
-
-		try {
-			await runtime.ensureConnection({
-				entityId,
-				roomId,
-				userName: req.body.userName,
-				name: req.body.name,
-				source: "direct",
-				type: ChannelType.API,
-				worldId,
-			});
-
-			logger.info("entityId", entityId);
-			logger.info("runtime.agentId", runtime.agentId);
-
-			const existingRelationship = await runtime
-				.getRelationship({
-					sourceEntityId: entityId,
-					targetEntityId: runtime.agentId,
-				});
-
-			logger.info("existingRelationship", JSON.stringify(existingRelationship, null, 2));
-
-			if (!existingRelationship && entityId !== runtime.agentId) {
-				const createdRelationship = await runtime
-					.createRelationship({
-						sourceEntityId: entityId,
-						targetEntityId: runtime.agentId,
-						tags: ["message_interaction"],
-						metadata: {
-							lastInteraction: Date.now(),
-							channel: "direct",
-						},
-					});
-				logger.info("created relationship", JSON.stringify(createdRelationship, null, 2));
-			}
-
-			const messageId = createUniqueUuid(runtime, Date.now().toString());
-			const attachments: Media[] = [];
-
-			if (req.file) {
-				const filePath = path.join(
-					process.cwd(),
-					"data",
-					"uploads",
-					req.file.filename,
-				);
-				attachments.push({
-					id: Date.now().toString(),
-					url: filePath,
-					title: req.file.originalname,
-					source: "direct",
-					description: `Uploaded file: ${req.file.originalname}`,
-					text: "",
-					contentType: req.file.mimetype,
-				});
-			}
-
-			const content: Content = {
-				text,
-				attachments,
-				source: "direct",
-				inReplyTo: undefined,
-				channelType: ChannelType.API,
-			};
-
-			const userMessage = {
-				content,
-				entityId,
-				roomId,
-				agentId: runtime.agentId,
-			};
-
-			const memory: Memory = {
-				id: createUniqueUuid(runtime, messageId),
-				...userMessage,
-				agentId: runtime.agentId,
-				entityId,
-				roomId,
-				content,
-				createdAt: Date.now(),
-			};
-
-			await runtime.getMemoryManager("messages").addEmbeddingToMemory(memory);
-			logger.info("added embedding to memory");
-			await runtime.getMemoryManager("messages").createMemory(memory);
-			logger.info("created memory");
-
-			let state = await runtime.composeState(userMessage);
-
-			const prompt = composePrompt({
-				state,
-				template: messageHandlerTemplate,
-			});
-
-			const responseText = await runtime.useModel(ModelTypes.TEXT_LARGE, {
-				prompt,
-			});
-
-			logger.info("responseText", responseText);
-
-			const response = parseJSONObjectFromText(responseText) as Content;
-
-			logger.info("response", response);
-
-			if (!response) {
-				res.status(500).json({
-					success: false,
-					error: {
-						code: "MODEL_ERROR",
-						message: "No response from model",
-					},
-				});
-				return;
-			}
-
-			const responseMessage: Memory = {
-				id: createUniqueUuid(runtime, messageId),
-				...userMessage,
-				entityId: runtime.agentId,
-				content: response,
-				createdAt: Date.now(),
-			};
-
-			await runtime.getMemoryManager("messages").createMemory(responseMessage);
-
-			console.log("responseMessage", responseMessage);
-
-			state = await runtime.composeState(responseMessage, ["RECENT_MESSAGES"]);
-
-			console.log("state", state);
-
-			const replyHandler = async (message: Content) => {
-				res.status(201).json({
-					success: true,
-					data: {
-						message,
-						messageId,
-					},
-				});
-				return [memory];
-			};
-
-			await runtime.processActions(
-				memory,
-				[responseMessage],
-				state,
-				replyHandler,
-			);
-
-			logger.info("processed actions");
-
-			await runtime.evaluate(memory, state);
-
-			logger.info("evaluated");
-
-			res.status(202).json();
-		} catch (error) {
-			logger.error("Error processing message:", error.message);
-			res.status(500).json({
-				success: false,
-				error: {
-					code: "PROCESSING_ERROR",
-					message: "Error processing message",
 					details: error.message,
 				},
 			});
@@ -1535,6 +1314,150 @@ export function agentRouter(
 				error: {
 					code: 500,
 					message: "Failed to retrieve memories",
+					details: error.message,
+				},
+			});
+		}
+	});
+
+	router.post("/:agentId/message", async (req: CustomRequest, res) => {
+		logger.info("[MESSAGES CREATE] Creating new message");
+		const agentId = validateUuid(req.params.agentId);
+		if (!agentId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID format",
+				},
+			});
+			return;
+		}
+
+		// get runtime
+		const runtime = agents.get(agentId);
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+
+		const entityId = createUniqueUuid(runtime, req.body.senderId);
+		const roomId = createUniqueUuid(
+			runtime,
+			req.body.roomId,
+		);
+		
+		const source = req.body.source;
+		const text = req.body.text.trim();
+		
+		try {
+			const messageId = createUniqueUuid(runtime, Date.now().toString());
+
+			const content: Content = {
+				text,
+				attachments: [],
+				source,
+				inReplyTo: undefined,
+				channelType: ChannelType.API,
+			};
+
+			const userMessage = {
+				content,
+				entityId,
+				roomId,
+				agentId: runtime.agentId,
+			};
+
+			const memory: Memory = {
+				id: createUniqueUuid(runtime, messageId),
+				...userMessage,
+				agentId: runtime.agentId,
+				entityId,
+				roomId,
+				content,
+				createdAt: Date.now(),
+			};
+
+			let state = await runtime.composeState(userMessage);
+
+			const prompt = composePrompt({
+				state,
+				template: messageHandlerTemplate,
+			});
+
+			const responseText = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+				prompt,
+			});
+
+			const response = parseJSONObjectFromText(responseText) as Content;
+
+			if (!response) {
+				res.status(500).json({
+					success: false,
+					error: {
+						code: "MODEL_ERROR",
+						message: "No response from model",
+					},
+				});
+				return;
+			}
+
+			const responseMessage: Memory = {
+				id: createUniqueUuid(runtime, messageId),
+				...userMessage,
+				entityId: runtime.agentId,
+				content: response,
+				createdAt: Date.now(),
+			};
+
+			state = await runtime.composeState(responseMessage, ["RECENT_MESSAGES"]);
+
+			const replyHandler = async (message: Content) => {
+				await runtime.getMemoryManager("messages").createMemory({
+					...responseMessage,
+					content: {
+						...responseMessage.content,
+						...message
+					}
+				});
+				res.status(201).json({
+					success: true,
+					data: {
+						message,
+						messageId,
+						name: runtime.character.name,
+            			roomId: req.body.roomId,
+            			source,
+					},
+				});
+				return [memory];
+			};
+
+			await runtime.processActions(
+				memory,
+				[responseMessage],
+				state,
+				replyHandler,
+			);
+
+			await runtime.evaluate(memory, state);
+
+			if (!res.headersSent) {
+				res.status(202).json();
+			}
+		} catch (error) {
+			logger.error("Error processing message:", error.message);
+			res.status(500).json({
+				success: false,
+				error: {
+					code: "PROCESSING_ERROR",
+					message: "Error processing message",
 					details: error.message,
 				},
 			});
