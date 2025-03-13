@@ -1,3 +1,6 @@
+import { promises as fs, existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	getGitHubCredentials
 } from "@/src/utils/github";
@@ -12,9 +15,6 @@ import {
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
 import { execa } from "execa";
-import { existsSync, promises as fs } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import prompts from "prompts";
 
 export const plugin = new Command()

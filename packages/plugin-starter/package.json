@@ -23,8 +23,8 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "workspace:*",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/cli": "1.0.0-alpha.27",
+		"@elizaos/core": "1.0.0-alpha.27",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
@@ -45,5 +45,5 @@
 	"resolutions": {
 		"zod": "3.24.1"
 	},
-	"gitHead": "bc8404af5c9e930c2de5c426c4bf730b86aacf8c"
+	"gitHead": "4396652e4e2e5b24c55e23c3b88a7446bbe003b1"
 }
