@@ -81,9 +81,6 @@ export async function promptForProjectPlugins(
 		}
 	}
 
-	// Always prompt for database configuration
-	pluginsToPrompt.add("pglite");
-
 	// Prompt for each identified plugin
 	for (const pluginName of pluginsToPrompt) {
 		try {
@@ -278,13 +275,6 @@ const startAgents = async (options: {
 		dotenv.config({ path: envFilePath });
 	}
 
-	// Always ensure database configuration is set
-	try {
-		await promptForEnvVars("pglite");
-	} catch (error) {
-		logger.warn(`Error configuring database: ${error}`);
-	}
-
 	// Load existing configuration
 	const existingConfig = loadConfig();
 	const pluginStatus = getPluginStatus();
@@ -331,7 +321,6 @@ const startAgents = async (options: {
 	// Now handle environment variables for the selected plugins
 	// Prompt for environment variables for selected services and AI models
 	const pluginsToPrompt = [
-		"pglite",
 		...selectedServices,
 		...selectedAiModels,
 	].filter((plugin, index, self) => self.indexOf(plugin) === index); // Remove duplicates

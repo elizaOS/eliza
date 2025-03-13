@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/cli",
-	"version": "1.0.0-alpha.32",
+	"version": "1.0.0-alpha.35",
 	"description": "elizaOS CLI - Manage your AI agents and plugins",
 	"publishConfig": {
 		"access": "public"
@@ -66,5 +66,8 @@
 		"yoctocolors": "^2.1.1",
 		"zod": "^3.20.2"
 	},
-	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
+	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de",
+	"dependencies": {
+		"@electric-sql/pglite": "^0.2.17"
+	}
 }
