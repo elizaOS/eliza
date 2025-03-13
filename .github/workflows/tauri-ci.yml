@@ -1,5 +1,9 @@
 name: Native App
 
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+
 on:
   push:
     branches: [main, develop, v2-develop]
