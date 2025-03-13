@@ -11,8 +11,8 @@ import { joinVoice } from "./actions/voiceJoin";
 import { leaveVoice } from "./actions/voiceLeave";
 import { channelStateProvider } from "./providers/channelState";
 import { voiceStateProvider } from "./providers/voiceState";
-import { DiscordTestSuite } from "./tests";
 import { DiscordService } from "./service";
+import { DiscordTestSuite } from "./tests";
 
 const discordPlugin: Plugin = {
 	name: "discord",
