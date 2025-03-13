@@ -1,17 +1,12 @@
-export * from "./services/index";
-
 import type { Plugin } from "@elizaos/core";
 
-import {
-	AwsS3Service,
-	BrowserService,
-	PdfService,
-	VideoService,
-} from "./services/index";
+import { AwsS3Service } from "./services/awsS3";
 
-export const nodePlugin: Plugin = {
-	name: "default",
-	description: "Default plugin, with basic actions and evaluators",
-	services: [BrowserService, PdfService, VideoService, AwsS3Service],
+export const storageS3Plugin: Plugin = {
+	name: "storage-s3",
+	description: "Plugin for storage in S3",
+	services: [AwsS3Service],
 	actions: [],
 };
+
+export default storageS3Plugin;
