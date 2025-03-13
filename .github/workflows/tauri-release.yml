@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-latest, windows-latest]
+        platform: [macos-latest, ubuntu-latest] # , windows-latest]
         include:
           - platform: macos-latest
             target: universal-apple-darwin
@@ -30,10 +30,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
             output-dir: src-tauri/target/release/bundle
             asset-suffix: _amd64
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            output-dir: src-tauri/target/release/bundle/nsis
-            asset-suffix: _x64-setup.exe
+          # - platform: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   output-dir: src-tauri/target/release/bundle/nsis
+          #   asset-suffix: _x64-setup.exe
 
     runs-on: ${{ matrix.platform }}
     
