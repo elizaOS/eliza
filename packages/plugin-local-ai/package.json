@@ -22,7 +22,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.37",
 		"@huggingface/hub": "^1.0.1",
 		"@huggingface/inference": "^3.3.4",
 		"@huggingface/transformers": "^3.3.3",
@@ -61,5 +61,5 @@
 		"pluginType": "elizaos:plugin:1.0.0",
 		"pluginParameters": {}
 	},
-	"gitHead": "3ab6794ec27dfee9891ce79fcf7643aa8bc6b196"
+	"gitHead": "f66ec5b5830658a5b4f45e9369a00bbb1b81224e"
 }

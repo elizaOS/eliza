@@ -24,7 +24,7 @@
 	"dependencies": {
 		"@aws-sdk/client-s3": "^3.705.0",
 		"@aws-sdk/s3-request-presigner": "^3.705.0",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.37",
 		"@types/uuid": "10.0.0",
 		"capsolver-npm": "2.0.2",
 		"fluent-ffmpeg": "2.1.3",
@@ -54,5 +54,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "3ab6794ec27dfee9891ce79fcf7643aa8bc6b196"
+	"gitHead": "f66ec5b5830658a5b4f45e9369a00bbb1b81224e"
 }

@@ -22,7 +22,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "1.0.0-alpha.37",
 		"@solana/spl-token": "0.4.9",
 		"@solana/web3.js": "^1.98.0",
 		"bignumber.js": "9.1.2",
@@ -45,5 +45,5 @@
 		"form-data": "4.0.2",
 		"whatwg-url": "7.1.0"
 	},
-	"gitHead": "3ab6794ec27dfee9891ce79fcf7643aa8bc6b196"
+	"gitHead": "f66ec5b5830658a5b4f45e9369a00bbb1b81224e"
 }
