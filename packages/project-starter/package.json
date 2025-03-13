@@ -23,6 +23,7 @@
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-anthropic": "workspace:*",
 		"@elizaos/plugin-openai": "workspace:*",
+		"@elizaos/plugin-sql": "workspace:*",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
