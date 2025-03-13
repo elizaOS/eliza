@@ -29,12 +29,6 @@
 			"notNull": true,
 			"default": "now()"
 		  },
-		  "thumbnail": {
-			"name": "thumbnail",
-			"type": "text",
-			"primaryKey": false,
-			"notNull": false
-		  },
 		  "name": {
 			"name": "name",
 			"type": "text",

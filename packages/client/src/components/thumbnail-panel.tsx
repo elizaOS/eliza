@@ -13,7 +13,7 @@ export default function ThumbnailPanel({
   setCharacterValue,
 }: ThumbnailPanelProps) {
   const [thumbnail, setThumbnail] = useState<string | null>(
-    characterValue?.thumbnail || null
+    characterValue?.settings?.thumbnail || null
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -61,7 +61,10 @@ export default function ThumbnailPanel({
   useEffect(() => {
     setCharacterValue((prev) => ({
       ...prev,
-      thumbnail: thumbnail,
+	  settings: {
+		...prev.settings,
+		thumbnail: thumbnail,
+	  },
     }));
   }, [thumbnail, setCharacterValue]);
 

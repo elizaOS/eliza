@@ -74,8 +74,8 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
                         <div className="flex flex-col gap-2">
                             <div className="w-20 h-20 flex justify-center items-center relative">
                                 {agent && <div className="text-4xl bg-muted rounded-full h-full w-full flex justify-center items-center overflow-hidden">
-                                    {agent.thumbnail ?
-										<img src={agent.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
+                                    {agent.settings.thumbnail ?
+										<img src={agent.settings.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
 										formatAgentName(agent.name)
                                     }
                                 </div>}

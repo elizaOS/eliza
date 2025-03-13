@@ -121,8 +121,8 @@ export function AppSidebar() {
 																	<div className="w-8 h-8 flex justify-center items-center">
 																		<div className="relative bg-muted rounded-full w-full h-full">
 																			{agent && <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
-																			{agent.thumbnail ?
-																				<img src={agent.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
+																			{agent.settings.thumbnail ?
+																				<img src={agent.settings.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
 																				formatAgentName(agent.name)
 																			}
 																			<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-green-500`} />
@@ -160,8 +160,8 @@ export function AppSidebar() {
 																<div className="w-8 h-8 flex justify-center items-center">
 																	<div className="relative bg-muted rounded-full w-full h-full">
 																		{agent && <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
-																		{agent.thumbnail ?
-																			<img src={agent.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
+																		{agent.settings.thumbnail ?
+																			<img src={agent.settings.thumbnail} alt="Agent Thumbnail" className="w-full h-full object-contain" /> :
 																			formatAgentName(agent.name)
 																		}
 																		<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-muted-foreground`} />
