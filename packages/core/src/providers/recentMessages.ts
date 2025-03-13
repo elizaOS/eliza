@@ -181,19 +181,19 @@ export const recentMessagesProvider: Provider = {
 			entities: Entity[],
 		): Promise<string> => {
 			// Combine pre-loaded entities with any other entities
-			const combinedActors = [...entities];
+			const combinedEntities = [...entities];
 
 			// Add entities from interactionEntityMap that aren't already in entities
 			const actorIds = new Set(entities.map((entity) => entity.id));
 			for (const [id, entity] of interactionEntityMap.entries()) {
 				if (!actorIds.has(id)) {
-					combinedActors.push(entity);
+					combinedEntities.push(entity);
 				}
 			}
 
 			const formattedInteractions = formatPosts({
 				messages: recentInteractionsData,
-				entities: combinedActors,
+				entities: combinedEntities,
 				conversationHeader: true,
 			});
 

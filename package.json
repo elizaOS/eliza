@@ -4,7 +4,7 @@
     "preinstall": "npx only-allow bun",
     "start": "turbo run start --filter=./packages/the-org",
     "start:debug": "LOG_LEVEL=debug elizaos start",
-    "dev": "elizaos start",
+    "dev": "npx elizaos start",
     "build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs --filter=!./packages/core --filter=!./packages/plugin-sql",
     "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
     "lint": "turbo run lint --filter=./packages/*",
@@ -17,7 +17,7 @@
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --filter=@elizaos/the-org"
+    "test": "turbo run test --concurrency 20"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
@@ -58,6 +58,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@babel/generator": "^7.26.9",
+    "vittest": "^1.0.2",
     "zod": "3.24.1"
   },
   "packageManager": "bun@1.2.2",

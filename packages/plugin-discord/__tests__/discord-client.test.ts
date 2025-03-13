@@ -1,6 +1,6 @@
 import { Events } from "discord.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DiscordClient } from "../src";
+import { DiscordService } from "../src";
 
 // Mock @elizaos/core
 vi.mock("@elizaos/core", () => ({
@@ -16,15 +16,15 @@ vi.mock("@elizaos/core", () => ({
 	shouldRespondFooter: "# INSTRUCTIONS: Choose if the agent should respond.",
 	generateMessageResponse: vi.fn(),
 	generateShouldRespond: vi.fn(),
-	composeContext: vi.fn(),
+	composePrompt: vi.fn(),
 }));
 
-// Mock discord.js Client
+// Mock discord.js Service
 vi.mock("discord.js", () => {
 	const mockGuilds = {
 		fetch: vi.fn().mockResolvedValue(new Map()),
 	};
-	const mockClient = {
+	const mockService = {
 		login: vi.fn().mockResolvedValue("token"),
 		on: vi.fn(),
 		once: vi.fn(),
@@ -33,9 +33,9 @@ vi.mock("discord.js", () => {
 	};
 
 	return {
-		Client: vi.fn(() => mockClient),
+		Service: vi.fn(() => mockService),
 		Events: {
-			ClientReady: "ready",
+			ServiceReady: "ready",
 			MessageCreate: "messageCreate",
 			VoiceStateUpdate: "voiceStateUpdate",
 			MessageReactionAdd: "messageReactionAdd",
@@ -61,9 +61,9 @@ vi.mock("discord.js", () => {
 	};
 });
 
-describe("DiscordClient", () => {
+describe("DiscordService", () => {
 	let mockRuntime: any;
-	let discordClient: DiscordClient;
+	let discordService: DiscordService;
 
 	beforeEach(() => {
 		mockRuntime = {
@@ -87,43 +87,42 @@ describe("DiscordClient", () => {
 			},
 		};
 
-		discordClient = new DiscordClient(mockRuntime);
+		discordService = new DiscordService(mockRuntime);
 	});
 
 	it("should initialize with correct configuration", () => {
-		expect(discordClient.apiToken).toBe("mock-token");
-		expect(discordClient.client).toBeDefined();
+		expect(discordService.client).toBeDefined();
 	});
 
 	it("should login to Discord on initialization", () => {
-		expect(discordClient.client.login).toHaveBeenCalledWith("mock-token");
+		expect(discordService.client.login).toHaveBeenCalledWith("mock-token");
 	});
 
 	it("should register event handlers on initialization", () => {
-		expect(discordClient.client.once).toHaveBeenCalledWith(
+		expect(discordService.client.once).toHaveBeenCalledWith(
 			Events.ClientReady,
 			expect.any(Function),
 		);
-		expect(discordClient.client.on).toHaveBeenCalledWith(
+		expect(discordService.client.on).toHaveBeenCalledWith(
 			"guildCreate",
 			expect.any(Function),
 		);
-		expect(discordClient.client.on).toHaveBeenCalledWith(
+		expect(discordService.client.on).toHaveBeenCalledWith(
 			Events.MessageReactionAdd,
 			expect.any(Function),
 		);
-		expect(discordClient.client.on).toHaveBeenCalledWith(
+		expect(discordService.client.on).toHaveBeenCalledWith(
 			Events.MessageReactionRemove,
 			expect.any(Function),
 		);
-		expect(discordClient.client.on).toHaveBeenCalledWith(
+		expect(discordService.client.on).toHaveBeenCalledWith(
 			"voiceStateUpdate",
 			expect.any(Function),
 		);
 	});
 
 	it("should clean up resources when stopped", async () => {
-		await discordClient.stop();
-		expect(discordClient.client.destroy).toHaveBeenCalled();
+		await discordService.stop();
+		expect(discordService.client.destroy).toHaveBeenCalled();
 	});
 });

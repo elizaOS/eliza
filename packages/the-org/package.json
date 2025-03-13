@@ -9,11 +9,11 @@
 		"access": "public"
 	},
 	"scripts": {
-		"start": "elizaos start",
+		"start": "npx elizaos start",
 		"build": "vite build && tsup",
 		"lint": "biome check --config-path=./ --write",
-		"dev": "elizaos dev",
-		"test": "elizaos test",
+		"dev": "npx elizaos dev",
+		"test": "npx elizaos test",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"nodemonConfig": {
@@ -25,10 +25,10 @@
 		"exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
 	},
 	"dependencies": {
-		"@elizaos/cli": "1.0.0-alpha.26",
-		"@elizaos/core": "1.0.0-alpha.26",
-		"@elizaos/plugin-tee": "1.0.0-alpha.26",
-		"@elizaos/plugin-twitter": "1.0.0-alpha.26",
+		"@elizaos/cli": "workspace:*",
+		"@elizaos/core": "workspace:*",
+		"@elizaos/plugin-tee": "workspace:*",
+		"@elizaos/plugin-twitter": "workspace:*",
 		"@radix-ui/react-slot": "^1.1.1",
 		"@radix-ui/react-tabs": "^1.1.2",
 		"@solana/web3.js": "^1.87.6",

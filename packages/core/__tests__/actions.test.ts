@@ -13,20 +13,20 @@ describe("Actions", () => {
 			description: "Greet someone",
 			examples: [
 				[
-					{ user: "user1", content: { text: "Hello {{user2}}!" } },
+					{ name: "name1", content: { text: "Hello {{name2}}!" } },
 					{
-						user: "user2",
-						content: { text: "Hi {{user1}}!", action: "wave" },
+						name: "name2",
+						content: { text: "Hi {{name1}}!", action: "wave" },
 					},
 				],
 				[
 					{
-						user: "user1",
-						content: { text: "Hey {{user2}}, how are you?" },
+						name: "name1",
+						content: { text: "Hey {{name2}}, how are you?" },
 					},
 					{
-						user: "user2",
-						content: { text: "I'm good {{user1}}, thanks!" },
+						name: "name2",
+						content: { text: "I'm good {{name1}}, thanks!" },
 					},
 				],
 			],
@@ -43,8 +43,8 @@ describe("Actions", () => {
 			description: "Say goodbye",
 			examples: [
 				[
-					{ user: "user1", content: { text: "Goodbye {{user2}}!" } },
-					{ user: "user2", content: { text: "Bye {{user1}}!" } },
+					{ name: "name1", content: { text: "Goodbye {{name2}}!" } },
+					{ name: "name2", content: { text: "Bye {{name1}}!" } },
 				],
 			],
 			similes: ["say bye", "leave"],
@@ -61,13 +61,13 @@ describe("Actions", () => {
 			examples: [
 				[
 					{
-						user: "user1",
-						content: { text: "Can you help me {{user2}}?" },
+						name: "name1",
+						content: { text: "Can you help me {{name2}}?" },
 					},
 					{
-						user: "user2",
+						name: "name2",
 						content: {
-							text: "Of course {{user1}}, what do you need?",
+							text: "Of course {{name1}}, what do you need?",
 							action: "assist",
 						},
 					},
@@ -88,13 +88,13 @@ describe("Actions", () => {
 			const examples = composeActionExamples(mockActions, 1);
 			const lines = examples.trim().split("\n");
 			expect(lines.length).toBeGreaterThan(0);
-			expect(lines[0]).toMatch(/^user\d: .+/);
+			expect(lines[0]).toMatch(/^name\d: .+/);
 		});
 
-		it("should replace user placeholders with generated names", () => {
+		it("should replace name placeholders with generated names", () => {
 			const examples = composeActionExamples(mockActions, 1);
-			expect(examples).not.toContain("{{user1}}");
-			expect(examples).not.toContain("{{user2}}");
+			expect(examples).not.toContain("{{name1}}");
+			expect(examples).not.toContain("{{name2}}");
 		});
 
 		it("should handle empty actions array", () => {
@@ -161,9 +161,9 @@ describe("Actions", () => {
 
 		it("should validate example structure", () => {
 			for (const action of mockActions) {
-				for (const example of action.examples) {
+				for (const example of action.examples ?? []) {
 					for (const message of example) {
-						expect(message).toHaveProperty("user");
+						expect(message).toHaveProperty("name");
 						expect(message).toHaveProperty("content");
 						expect(message.content).toHaveProperty("text");
 					}

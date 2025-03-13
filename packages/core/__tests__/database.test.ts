@@ -63,14 +63,14 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 		throw new Error("Method not implemented.");
 	}
 	/**
-	 * Retrieve details of actors in a specific room.
+	 * Retrieve details of entities in a specific room.
 	 *
 	 * @param {Object} _params - The parameters for the method.
 	 * @param {UUID} _params.roomId - The UUID of the room to retrieve actor details from.
-	 * @returns {Promise<Entity[]>} - A promise that resolves to an array of Entity objects representing the details of actors in the specified room.
+	 * @returns {Promise<Entity[]>} - A promise that resolves to an array of Entity objects representing the details of entities in the specified room.
 	 * @throws {Error} - If the method is not implemented.
 	 */
-	getActorDetails(_params: { roomId: UUID }): Promise<Entity[]> {
+	getEntityDetails(_params: { roomId: UUID }): Promise<Entity[]> {
 		throw new Error("Method not implemented.");
 	}
 	/**
@@ -449,9 +449,9 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	}
 
 	/**
-	 * Asynchronously retrieves a list of actors based on the provided roomId.
+	 * Asynchronously retrieves a list of entities based on the provided roomId.
 	 * @param {Object} _params - The parameters object.
-	 * @param {UUID} _params.roomId - The roomId to filter actors by.
+	 * @param {UUID} _params.roomId - The roomId to filter entities by.
 	 * @returns {Promise<Entity[]>} - A promise that resolves to an array of Entity objects.
 	 */
 	async getEntities(_params: { roomId: UUID }): Promise<Entity[]> {
@@ -531,8 +531,8 @@ describe("DatabaseAdapter Tests", () => {
 		expect(result).toBe(true);
 	});
 
-	it("should return actors by room ID", async () => {
-		const actors = await adapter.getEntities({ roomId });
-		expect(actors).toHaveLength(1);
+	it("should return entities by room ID", async () => {
+		const entities = await adapter.getEntities({ roomId });
+		expect(entities).toHaveLength(1);
 	});
 });

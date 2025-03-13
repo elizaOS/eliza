@@ -19,8 +19,8 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "1.0.0-alpha.26",
-		"@elizaos/core": "1.0.0-alpha.26",
+		"@elizaos/cli": "workspace:*",
+		"@elizaos/core": "workspace:*",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
@@ -28,12 +28,12 @@
 		"tsup": "8.4.0"
 	},
 	"scripts": {
-		"start": "elizaos start",
-		"dev": "elizaos dev",
+		"start": "npx elizaos start",
+		"dev": "npx elizaos dev",
 		"build": "tsup",
 		"lint": "biome check --config-path=./ --write",
-		"test": "elizaos test",
-		"deploy": "elizaos deploy"
+		"test": "npx elizaos test",
+		"deploy": "npx elizaos deploy"
 	},
 	"publishConfig": {
 		"access": "public"

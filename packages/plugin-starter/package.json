@@ -23,21 +23,21 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "1.0.0-alpha.26",
-		"@elizaos/core": "1.0.0-alpha.26",
+		"@elizaos/cli": "workspace:*",
+		"@elizaos/core": "workspace:*",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
 		"tsup": "8.4.0"
 	},
 	"scripts": {
-		"start": "elizaos start",
+		"start": "npx elizaos start",
 		"test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
-		"dev": "elizaos dev",
+		"dev": "npx elizaos dev",
 		"build": "tsup",
 		"lint": "biome check --config-path=./ --write",
-		"test": "elizaos test",
-		"deploy": "elizaos deploy"
+		"test": "npx elizaos test",
+		"deploy": "npx elizaos deploy"
 	},
 	"publishConfig": {
 		"access": "public"

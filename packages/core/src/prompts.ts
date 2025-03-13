@@ -281,7 +281,7 @@ export const formatMessages = ({
 
 			const planString =
 				newestMessageWithContentPlan?.id === message.id
-					? `(${formattedName}'s plan: ${newestMessageWithContentPlan.content.plan})`
+					? `(${formattedName}'s plan: ${newestMessageWithContentPlan?.content?.plan})`
 					: null;
 
 			// for each thought, action, text or attachment, add a new line, with text first, then thought, then action, then attachment
@@ -481,7 +481,7 @@ export function parseJSONObjectFromText(
 	try {
 		if (jsonBlockMatch) {
 			// Parse the JSON from inside the code block
-			jsonData = JSON.parse(jsonBlockMatch[1].trim());
+			jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
 		} else {
 			// Try to parse the text directly if it's not in a code block
 			jsonData = JSON.parse(normalizeJsonString(text.trim()));

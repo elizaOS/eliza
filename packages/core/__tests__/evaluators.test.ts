@@ -1,9 +1,9 @@
+import { expect } from "vitest";
 import {
-	formatEvaluatorExampleDescriptions,
 	formatEvaluatorExamples,
 	formatEvaluatorNames,
 	formatEvaluators,
-} from "../src/evaluators";
+} from "../src/providers/evaluators";
 import type {
 	Evaluator,
 	HandlerCallback,
@@ -23,14 +23,14 @@ const mockEvaluators: Evaluator[] = [
 		description: "This is the first evaluator.",
 		examples: [
 			{
-				context: "Context 1 with {{user1}}.",
-				outcome: "Outcome 1 with {{user1}}.",
+				prompt: "Context 1 with {{name1}}.",
+				outcome: "Outcome 1 with {{name1}}.",
 				messages: [
 					{
-						user: "user1",
-						content: { text: "Message 1", action: "action1" },
+						name: "name1",
+						content: { text: "Message 1", actions: ["action1"] },
 					},
-					{ user: "user2", content: { text: "Message 2" } },
+					{ name: "name2", content: { text: "Message 2" } },
 				],
 			},
 		],
@@ -57,14 +57,14 @@ const mockEvaluators: Evaluator[] = [
 		description: "This is the second evaluator.",
 		examples: [
 			{
-				context: "Context 2 with {{user1}} and {{user2}}.",
-				outcome: "Outcome 2 with {{user1}} and {{user2}}.",
+				prompt: "Context 2 with {{name1}} and {{name2}}.",
+				outcome: "Outcome 2 with {{name1}} and {{name2}}.",
 				messages: [
 					{
-						user: "user1",
-						content: { text: "Message 1", action: "action1" },
+						name: "name1",
+						content: { text: "Message 1", actions: ["action1"] },
 					},
-					{ user: "user2", content: { text: "Message 2" } },
+					{ name: "name2", content: { text: "Message 2" } },
 				],
 			},
 		],
@@ -105,17 +105,7 @@ test("formats evaluators correctly", () => {
 // Unit test for formatEvaluatorExamples
 test("formats evaluator examples correctly", () => {
 	const result = formatEvaluatorExamples(mockEvaluators);
-	expect(result).toContain("Context:\nContext 1 with");
+	expect(result).toContain("Prompt:\nContext 1 with");
 	expect(result).toContain("Outcome:\nOutcome 1 with");
-	expect(result).toContain("Messages:\nuser1: Message 1 (action1)");
+	expect(result).toContain("Messages:\nname1: Message 1 (action1)");
 });
-
-// Unit test for formatEvaluatorExampleDescriptions
-test("formats evaluator example descriptions correctly", () => {
-	const result = formatEvaluatorExampleDescriptions(mockEvaluators);
-	expect(result).toBe(
-		"Evaluator1 Example 1: This is the first evaluator.\n\nEvaluator2 Example 1: This is the second evaluator.",
-	);
-});
-
-// Additional tests can be added to ensure edge cases and larger inputs are handled

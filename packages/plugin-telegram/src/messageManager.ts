@@ -183,7 +183,7 @@ export class MessageManager {
 	 *
 	 * @returns {Promise<void>} A Promise that resolves when the media is successfully sent.
 	 */
-	private async sendMedia(
+	async sendMedia(
 		ctx: Context,
 		mediaPath: string,
 		type: MediaType,
