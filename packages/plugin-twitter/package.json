@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-twitter",
-	"version": "1.0.0-alpha.31",
+	"version": "1.0.0-alpha.32",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
