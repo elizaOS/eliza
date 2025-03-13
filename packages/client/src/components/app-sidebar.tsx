@@ -24,6 +24,7 @@ export function AppSidebar() {
 		data: { data: agentsData } = {},
 		isPending: isAgentsPending,
 	} = useAgents();
+	
 	return (
 		<Sidebar className="bg-background">
 			<SidebarHeader className="pb-4">
@@ -71,13 +72,14 @@ export function AppSidebar() {
 										// Sort agents: enabled first, then disabled
 										const sortedAgents = [...(agentsData?.agents || [])].sort(
 											(a, b) => {
-												// Sort by enabled status (enabled agents first)
-												if (a.enabled && !b.enabled) return -1;
-												if (!a.enabled && b.enabled) return 1;
-												// If both have same enabled status, sort alphabetically by name
-												return a.name.localeCompare(b.name);
-											},
-										);
+											  // Sort by status (active agents first)
+											  if (a.status === "active" && b.status !== "active") return -1;
+											  if (a.status !== "active" && b.status === "active") return 1;
+											  // If both have the same status, sort alphabetically by name
+											  return a.name.localeCompare(b.name);
+											}
+										  );
+										  
 
 										// Split into enabled and disabled groups
 										const activeAgents = sortedAgents.filter(

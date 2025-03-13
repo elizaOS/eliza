@@ -208,7 +208,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 							<h2 className="font-semibold text-lg">
 								{agentData?.name || "Agent"}
 							</h2>
-							{agentData?.enabled ? (
+							{agentData?.status === "active" ? (
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />

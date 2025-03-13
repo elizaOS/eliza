@@ -65,13 +65,9 @@ export function agentRouter(
 
 			// returns minimal agent data
 			const response = allAgents
-				.map((agent: Agent) => ({
-					id: agent.id,
-					name: agent.name,
+				.map((agent: Agent) => ({ 
+					...agent,
 					status: runtimes.includes(agent.id) ? "active" : "inactive",
-					bio: agent.bio[0],
-					createdAt: agent.createdAt,
-					updatedAt: agent.updatedAt,
 				}))
 				.sort((a: any, b: any) => {
 					if (a.status === b.status) {

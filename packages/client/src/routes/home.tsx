@@ -51,7 +51,7 @@ export default function Home() {
 				<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
 					{agents
 						?.sort(
-							(a: Agent, b: Agent) => Number(b?.enabled) - Number(a?.enabled),
+							(a: Agent, b: Agent) => Number(b?.status === "active") - Number(a?.status === "active")
 						)
 						.map((agent: Agent) => {
 							// Use type assertion to access status property
@@ -79,7 +79,9 @@ export default function Home() {
 								<ProfileCard
 									key={agent.id}
 									title={agent.name}
-									content={formatAgentName(agent.name)}
+									content={
+										formatAgentName(agent.name) 
+									}
 									buttons={[
 										{
 											label: buttonLabel,
