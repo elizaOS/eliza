@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app",
-  "version": "1.0.0-alpha.41",
+  "version": "1.0.0-alpha.42",
   "publishConfig": {
     "access": "public"
   },
@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/cli": "^1.0.0-alpha.41",
+    "@elizaos/cli": "^1.0.0-alpha.42",
     "@tauri-apps/api": "^2.3.0",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-shell": "^2",
