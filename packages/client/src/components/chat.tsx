@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import WebSocketsManager from "@/lib/websocket-manager";
 import { getUserId } from "@/lib/utils";
 import { USER_NAME } from "@/constants";
+import { AGENT_STATUS } from "@/types/index";
 
 const SOURCE_NAME = "client_chat";
 
@@ -208,7 +209,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 							<h2 className="font-semibold text-lg">
 								{agentData?.name || "Agent"}
 							</h2>
-							{agentData?.status === "active" ? (
+							{agentData?.status === AGENT_STATUS.ACTIVE ? (
 								<Tooltip>
 									<TooltipTrigger asChild>
 										<div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />

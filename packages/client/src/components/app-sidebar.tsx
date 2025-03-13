@@ -17,6 +17,7 @@ import type { Agent } from "@elizaos/core";
 import { Book, Cog, Scroll, User } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 import ConnectionStatus from "./connection-status";
+import { AGENT_STATUS } from "@/types/index";
 
 export function AppSidebar() {
 	const location = useLocation();
@@ -73,8 +74,8 @@ export function AppSidebar() {
 										const sortedAgents = [...(agentsData?.agents || [])].sort(
 											(a, b) => {
 											  // Sort by status (active agents first)
-											  if (a.status === "active" && b.status !== "active") return -1;
-											  if (a.status !== "active" && b.status === "active") return 1;
+											  if (a.status === AGENT_STATUS.ACTIVE && b.status !== AGENT_STATUS.ACTIVE) return -1;
+											  if (a.status !== AGENT_STATUS.ACTIVE && b.status === AGENT_STATUS.ACTIVE) return 1;
 											  // If both have the same status, sort alphabetically by name
 											  return a.name.localeCompare(b.name);
 											}
@@ -84,11 +85,11 @@ export function AppSidebar() {
 										// Split into enabled and disabled groups
 										const activeAgents = sortedAgents.filter(
 											(agent: Partial<Agent & { status: string }>) =>
-												agent.status === "active",
+												agent.status === AGENT_STATUS.ACTIVE,
 										);
 										const inactiveAgents = sortedAgents.filter(
 											(agent: Partial<Agent & { status: string }>) =>
-												agent.status === "inactive",
+												agent.status === AGENT_STATUS.INACTIVE,
 										);
 
 										return (

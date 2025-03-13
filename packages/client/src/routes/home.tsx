@@ -7,6 +7,7 @@ import { formatAgentName } from "@/lib/utils";
 import type { Agent } from "@elizaos/core";
 import { Cog, Loader2, MessageSquare, Play, Plus, Square } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { AGENT_STATUS } from "@/types/index";
 
 export default function Home() {
 	const {
@@ -51,12 +52,12 @@ export default function Home() {
 				<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4">
 					{agents
 						?.sort(
-							(a: Agent, b: Agent) => Number(b?.status === "active") - Number(a?.status === "active")
+							(a: Agent, b: Agent) => Number(b?.status === AGENT_STATUS.ACTIVE) - Number(a?.status === AGENT_STATUS.ACTIVE)
 						)
 						.map((agent: Agent) => {
 							// Use type assertion to access status property
 							const isActive =
-								(agent as Agent & { status?: string }).status === "active";
+								(agent as Agent & { status?: string }).status === AGENT_STATUS.ACTIVE;
 							const isStarting = isAgentStarting(agent.id);
 							const isStopping = isAgentStopping(agent.id);
 							const isProcessing = isStarting || isStopping;
