@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/cli",
-	"version": "1.0.0-alpha.43",
+	"version": "1.0.0-alpha.44",
 	"description": "elizaOS CLI - Manage your AI agents and plugins",
 	"publishConfig": {
 		"access": "public"
@@ -17,7 +17,8 @@
 	},
 	"files": [
 		"dist",
-		"templates"
+		"templates",
+		"drizzle"
 	],
 	"keywords": [],
 	"type": "module",
