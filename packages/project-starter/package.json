@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/project-starter",
 	"description": "Project starter for elizaOS",
-	"version": "1.0.0-alpha.39",
+	"version": "1.0.0-alpha.40",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -19,11 +19,11 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "^1.0.0-alpha.39",
-		"@elizaos/core": "^1.0.0-alpha.39",
-		"@elizaos/plugin-anthropic": "^1.0.0-alpha.39",
-		"@elizaos/plugin-openai": "^1.0.0-alpha.39",
-		"@elizaos/plugin-sql": "^1.0.0-alpha.39",
+		"@elizaos/cli": "^1.0.0-alpha.40",
+		"@elizaos/core": "^1.0.0-alpha.40",
+		"@elizaos/plugin-anthropic": "^1.0.0-alpha.40",
+		"@elizaos/plugin-openai": "^1.0.0-alpha.40",
+		"@elizaos/plugin-sql": "^1.0.0-alpha.40",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
