@@ -7,7 +7,7 @@
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run dev --filter=./packages/the-org",
     "build:core": "turbo run build --filter=@elizaos/core --no-cache",
-    "build": "bun run build:core && turbo run build --filter=@elizaos/plugin-* --no-cache && turbo run build --filter=!@elizaos/core --filter=!@elizaos/plugin-* --filter=!@elizaos/docs --no-cache",
+    "build": "bun run build:core && turbo run build --filter=@elizaos/plugin-* --filter=@elizaos/client --no-cache && turbo run build --filter=!@elizaos/core --filter=!@elizaos/plugin-* --filter=!@elizaos/docs --no-cache",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* && turbo run clean --filter=./packages/*",
     "lint": "turbo run lint --filter=./packages/*",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
@@ -85,5 +85,30 @@
     "solana-bankrun": "0.3.1",
     "got": "12.6.1",
     "form-data": "4.0.2"
-  }
+  },
+  "trustedDependencies": [
+    "@biomejs/biome",
+    "@elizaos/plugin-browser",
+    "@elizaos/plugin-pdf",
+    "@elizaos/plugin-storage-s3",
+    "@elizaos/plugin-video-understanding",
+    "@swc/core",
+    "better-sqlite3",
+    "bigint-buffer",
+    "bufferutil",
+    "bun",
+    "canvas",
+    "core-js",
+    "core-js-pure",
+    "cpu-features",
+    "es5-ext",
+    "esbuild",
+    "node-llama-cpp",
+    "nx",
+    "onnxruntime-node",
+    "protobufjs",
+    "sharp",
+    "ssh2",
+    "utf-8-validate"
+  ]
 }
