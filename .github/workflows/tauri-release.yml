@@ -14,13 +14,21 @@ env:
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
   TURBO_REMOTE_ONLY: true # Enforces remote-only caching
   TURBO_CACHE: remote:rw # allow r/w to remote cache
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # Skip binary downloads during install
+  YOUTUBE_DL_SKIP_DOWNLOAD: true
+  ADBLOCK: true
+  PUPPETEER_SKIP_DOWNLOAD: true
+  CYPRESS_INSTALL_BINARY: 0
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
 
 jobs:
   build-and-publish:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-latest, windows-latest]
+        platform: [macos-latest, ubuntu-latest] # , windows-latest]
         include:
           - platform: macos-latest
             target: universal-apple-darwin
@@ -30,10 +38,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
             output-dir: src-tauri/target/release/bundle
             asset-suffix: _amd64
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            output-dir: src-tauri/target/release/bundle/nsis
-            asset-suffix: _x64-setup.exe
+          # - platform: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   output-dir: src-tauri/target/release/bundle/nsis
+          #   asset-suffix: _x64-setup.exe
 
     runs-on: ${{ matrix.platform }}
     
@@ -51,10 +59,12 @@ jobs:
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
           
-      - name: Rust setup
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - name: Setup Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+        shell: bash
           
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -66,18 +76,30 @@ jobs:
         if: matrix.platform == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libx11-dev libxdo-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libx11-dev libxdo-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
           
       - name: Install dependencies (mac only - for universal builds)
         if: matrix.platform == 'macos-latest'
         run: |
           rustup target add aarch64-apple-darwin
           
+      - name: Create .npmrc to skip postinstall scripts
+        run: |
+          echo "ignore-scripts=true" > .npmrc
+        shell: bash
+          
       - name: Install dependencies
         run: bun install --no-postinstall
+        env:
+          NPM_CONFIG_IGNORE_SCRIPTS: true
         
       - name: Build packages
         run: bun run build
+        
+      - name: Install Tauri CLI
+        run: |
+          bun install -g @tauri-apps/cli
+        shell: bash
           
       - name: Build the app (macOS)
         if: matrix.platform == 'macos-latest'
