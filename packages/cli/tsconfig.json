@@ -8,11 +8,15 @@
     "target": "ESNext",
     "paths": {
       "@/*": ["*"],
-      "@elizaos/core": ["../core/src"]
+      "@elizaos/core": ["../core/dist/index.js"]
     },
     "rootDir": "src",
     "moduleResolution": "Node",
     "outDir": "./dist"
+  },
+  "paths": {
+    "@elizaos/core": ["../core/src"],
+    "@elizaos/core/*": ["../core/src/*"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]

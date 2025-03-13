@@ -1,16 +1,16 @@
+import { existsSync, readFileSync } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { buildProject } from "@/src/utils/build-project";
 import { copyTemplate } from "@/src/utils/copy-template";
 import { handleError } from "@/src/utils/handle-error";
 import { runBunCommand } from "@/src/utils/run-bun";
 import { logger } from "@elizaos/core";
-import colors from "yoctocolors";
 import { Command } from "commander";
 import { execa } from "execa";
-import { existsSync, readFileSync } from "node:fs";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import prompts from "prompts";
+import colors from "yoctocolors";
 import { z } from "zod";
 
 /**

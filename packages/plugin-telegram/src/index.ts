@@ -1,5 +1,5 @@
 import type { Plugin } from "@elizaos/core";
-import { TelegramService } from "./TelegramService";
+import { TelegramService } from "./service";
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { TelegramTestSuite } from "./tests";
 

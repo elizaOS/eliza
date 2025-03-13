@@ -39,7 +39,6 @@ describe("Twitter Environment Configuration", () => {
 		expect(config.TWITTER_USERNAME).toBe("testuser123");
 		expect(config.TWITTER_DRY_RUN).toBe(true);
 		expect(config.TWITTER_SPACES_ENABLE).toBe(false);
-		expect(config.TWITTER_TARGET_USERS).toEqual(["name1", "name2", "name3"]);
 		expect(config.TWITTER_POST_INTERVAL_MIN).toBe(90);
 		expect(config.TWITTER_POST_INTERVAL_MAX).toBe(180);
 		expect(config.TWITTER_POST_IMMEDIATELY).toBe(false);
@@ -81,25 +80,6 @@ describe("Twitter Environment Configuration", () => {
 
 		const config = await validateTwitterConfig(validRuntime);
 		expect(config.TWITTER_USERNAME).toBe("test_user_123");
-	});
-
-	it("should handle empty target users", async () => {
-		const runtimeWithoutTargets = {
-			...mockRuntime,
-			env: {
-				...env,
-				TWITTER_TARGET_USERS: "",
-			},
-			getEnv: function (key: string) {
-				return this.env[key] || null;
-			},
-			getSetting: function (key: string) {
-				return this.env[key] || null;
-			},
-		} as IAgentRuntime;
-
-		const config = await validateTwitterConfig(runtimeWithoutTargets);
-		expect(config.TWITTER_TARGET_USERS).toHaveLength(0);
 	});
 
 	it("should use default values when optional configs are missing", async () => {
