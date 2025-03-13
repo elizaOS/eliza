@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/cli",
-	"version": "1.0.0-alpha.27",
+	"version": "1.0.0-alpha.28",
 	"description": "elizaOS CLI - Manage your AI agents and plugins",
 	"publishConfig": {
 		"access": "public"
@@ -31,7 +31,6 @@
 	"scripts": {
 		"cli": "bun run build && node dist/index.js",
 		"build": "tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-to-create-eliza.ts && bun run src/scripts/copy-templates.ts",
-		"release": "changeset version",
 		"test:dev": "REGISTRY_URL=http://localhost:3333 vitest run",
 		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
@@ -39,8 +38,11 @@
 	"dependencies": {
 		"@babel/core": "^7.22.1",
 		"@babel/parser": "^7.22.6",
-		"@elizaos/core": "^1.0.0-alpha.27",
-		"@elizaos/plugin-sql": "^1.0.0-alpha.27",
+		"@elizaos/core": "^1.0.0-alpha.28",
+		"@elizaos/plugin-anthropic": "^1.0.0-alpha.28",
+		"@elizaos/plugin-discord": "^1.0.0-alpha.28",
+		"@elizaos/plugin-openai": "^1.0.0-alpha.28",
+		"@elizaos/plugin-sql": "^1.0.0-alpha.28",
 		"axios": "^1.7.9",
 		"chalk": "5.2.0",
 		"commander": "^10.0.0",

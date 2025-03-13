@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/project-starter",
 	"description": "Project starter for elizaOS",
-	"version": "1.0.0-alpha.27",
+	"version": "1.0.0-alpha.28",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -19,8 +19,11 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "1.0.0-alpha.27",
-		"@elizaos/core": "1.0.0-alpha.27",
+		"@elizaos/cli": "^1.0.0-alpha.28",
+		"@elizaos/core": "^1.0.0-alpha.28",
+		"@elizaos/plugin-anthropic": "^1.0.0-alpha.28",
+		"@elizaos/plugin-discord": "^1.0.0-alpha.28",
+		"@elizaos/plugin-openai": "^1.0.0-alpha.28",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
