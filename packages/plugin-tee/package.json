@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-tee",
-	"version": "1.0.0-alpha.32",
+	"version": "1.0.0-alpha.34",
 	"main": "dist/index.js",
 	"type": "module",
 	"types": "dist/index.d.ts",
