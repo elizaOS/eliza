@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
-import path from "node:path";
+import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildProject } from "@/src/utils/build-project";
 import {
@@ -115,8 +115,20 @@ async function startAgent(
 ): Promise<IAgentRuntime> {
 	character.id ??= stringToUuid(character.name);
 
-	// get the cli version
-	const cliVersion = require("@elizaos/cli/package.json").version;
+	// For ESM modules we need to use import.meta.url instead of __dirname
+	const __filename = fileURLToPath(import.meta.url);
+	const __dirname = dirname(__filename);
+
+	// Find package.json relative to the current file
+	const packageJsonPath = path.resolve(__dirname, "../package.json");
+
+	// Add a simple check in case the path is incorrect
+	let version = "0.0.0"; // Fallback version
+	if (!fs.existsSync(packageJsonPath)) {
+	} else {
+		const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+		version = packageJson.version;
+	}
 
 	// for each plugin, check if it installed, and install if it is not
 	for (const plugin of character.plugins) {
@@ -125,8 +137,8 @@ async function startAgent(
 		try {
 			await import(plugin);
 		} catch (error) {
-			logger.info(`Plugin ${plugin} not installed, installing...`);
-			await installPlugin(plugin, process.cwd(), cliVersion);
+			logger.info(`Plugin ${plugin} not installed, installing into ${process.cwd()}...`);
+			await installPlugin(plugin, process.cwd(), version);
 		}
 	}
 

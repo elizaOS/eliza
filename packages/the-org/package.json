@@ -5,9 +5,7 @@
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"type": "module",
-	"publishConfig": {
-		"access": "public"
-	},
+	"private": true,
 	"scripts": {
 		"start": "bun ../cli/dist/index.js start",
 		"build": "vite build && tsup",
@@ -80,5 +78,5 @@
 		"typescript-eslint": "^8.18.2",
 		"vite": "^6.0.5"
 	},
-	"gitHead": "f66ec5b5830658a5b4f45e9369a00bbb1b81224e"
+	"gitHead": "e98c03cf7e76ba967b203fdc3fc07cb438797559"
 }
