@@ -197,7 +197,7 @@
       "name": "create-eliza",
       "version": "1.0.0-alpha.26",
       "bin": {
-        "create-eliza": "index.js",
+        "create-eliza": "index.mjs",
       },
     },
     "packages/docs": {

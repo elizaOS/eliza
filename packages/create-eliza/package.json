@@ -7,10 +7,10 @@
 		"access": "public"
 	},
 	"bin": {
-		"create-eliza": "index.js"
+		"create-eliza": "index.mjs"
 	},
 	"scripts": {
-		"create-eliza": "bun run cli/index.js init"
+		"create-eliza": "bun run index.mjs"
 	},
 	"license": "MIT",
 	"author": {
@@ -24,7 +24,7 @@
 	},
 	"files": [
 		"cli",
-		"index.js",
+		"index.mjs",
 		"package.json"
 	],
 	"keywords": [

@@ -1,18 +1,8 @@
-import { promises as fs, existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
-	branchExists,
-	createBranch,
-	createPullRequest,
-	forkExists,
-	forkRepository,
-	getFileContent,
-	getGitHubCredentials,
-	updateFile,
+	getGitHubCredentials
 } from "@/src/utils/github";
 import { handleError } from "@/src/utils/handle-error";
-import { publishToGitHub, publishToNpm, testPublishToGitHub, testPublishToNpm } from "@/src/utils/plugin-publisher";
+import { publishToGitHub, testPublishToGitHub, testPublishToNpm } from "@/src/utils/plugin-publisher";
 import {
 	getRegistrySettings,
 	initializeDataDir,
@@ -22,11 +12,14 @@ import {
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
 import { execa } from "execa";
+import { existsSync, promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import prompts from "prompts";
 
 export const plugin = new Command()
 	.name("plugin")
-	.description("Manage ElizaOS plugins in a project");
+	.description("Manage ElizaOS plugins, including publishing");
 	
 /**
  * Note: The plugin creation functionality is now in the main create.ts file.

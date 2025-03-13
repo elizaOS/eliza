@@ -77,7 +77,7 @@ export async function copyTemplate(
 	} else {
 		// In production, use the templates directory from the CLI package
 		templateDir = path.resolve(
-			path.dirname(require.resolve("elizaos/package.json")),
+			path.dirname(require.resolve("@elizaos/cli/package.json")),
 			"templates",
 			templateType === "project" ? "project-starter" : "plugin-starter",
 		);
@@ -97,7 +97,7 @@ export async function copyTemplate(
 
 		// get the package.json of this package
 		const cliPackageJsonPath = path.resolve(
-			path.dirname(require.resolve("elizaos/package.json")),
+			path.dirname(require.resolve("@elizaos/cli/package.json")),
 			"package.json",
 		);
 
