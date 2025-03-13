@@ -11,6 +11,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
+import { useAgents } from "../hooks/use-query-hooks";
 
 interface LogEntry {
 	level: number;
@@ -74,19 +75,10 @@ export function LogViewer() {
 		staleTime: 1000,
 	});
 
-	// Extract unique agent names from logs
-	const agentNames = useMemo(() => {
-		if (!data?.logs) return [];
-		const names = new Set<string>();
-		
-		data.logs.forEach((log) => {
-			if (log.agentName) {
-				names.add(log.agentName);
-			}
-		});
-		
-		return Array.from(names).sort();
-	}, [data?.logs]);
+
+	const {data: agents} = useAgents();
+	const agentNames = agents?.data?.agents?.map((agent) => agent.name) ?? [];
+
 
 	const scrollToBottom = () => {
 		if (!scrollAreaRef.current) return;
@@ -201,7 +193,7 @@ export function LogViewer() {
 						</SelectContent>
 					</Select>
 					
-					{agentNames.length > 0 && (
+					{agentNames && agentNames.length > 0 && (
 						<Select value={selectedAgentName} onValueChange={setSelectedAgentName}>
 							<SelectTrigger className="w-40">
 								<SelectValue placeholder="Filter by agent" />
