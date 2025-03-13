@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PluginsPanel from "./plugins-panel";
 import SecretPanel from "./secret-panel";
-import ThumbnailPanel from "./thumbnail-panel";
+import AvatarPanel from "./avatar-panel";
 
 const defaultCharacter = {
 	name: "",
@@ -101,9 +101,9 @@ export default function AgentCreator() {
 					),
 				},
 				{
-					name: "Thumbnail",
+					name: "Avatar",
 					component: (
-						<ThumbnailPanel
+						<AvatarPanel
 							characterValue={characterValue}
 							setCharacterValue={setCharacterValue}
 						/>

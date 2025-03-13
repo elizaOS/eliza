@@ -204,8 +204,8 @@ export default function Page({ agentId }: { agentId: UUID }) {
 					<Avatar className="size-10 border rounded-full">
 						<AvatarImage 
 							src={
-								agentData?.settings?.thumbnail ? 
-									agentData?.settings?.thumbnail : 
+								agentData?.settings?.avatar ? 
+									agentData?.settings?.avatar : 
 									"/elizaos-icon.png"
 							} 
 						/>
@@ -272,8 +272,8 @@ export default function Page({ agentId }: { agentId: UUID }) {
 										src={
 											isUser ? 
 												"/user-icon.png" : 
-												(agentData?.settings?.thumbnail ? 
-													agentData?.settings?.thumbnail : 
+												(agentData?.settings?.avatar ? 
+													agentData?.settings?.avatar : 
 													"/elizaos-icon.png")
 										} 
 									/>

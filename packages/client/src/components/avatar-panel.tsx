@@ -3,17 +3,17 @@ import type { Agent } from "@elizaos/core";
 import { Upload, Image as ImageIcon, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-interface ThumbnailPanelProps {
+interface AvatarPanelProps {
   characterValue: Agent;
   setCharacterValue: (value: (prev: Agent) => Agent) => void;
 }
 
-export default function ThumbnailPanel({
+export default function AvatarPanel({
   characterValue,
   setCharacterValue,
-}: ThumbnailPanelProps) {
-  const [thumbnail, setThumbnail] = useState<string | null>(
-    characterValue?.settings?.thumbnail || null
+}: AvatarPanelProps) {
+  const [avatar, setAvatar] = useState<string | null>(
+    characterValue?.settings?.avatar || null
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,7 +49,7 @@ export default function ThumbnailPanel({
 			ctx?.drawImage(img, 0, 0, width, height);
 			const resizedBase64 = canvas.toDataURL("image/jpeg", 0.8); // Reduce quality to 80%
   
-			setThumbnail(resizedBase64);
+			setAvatar(resizedBase64);
 		  };
 		}
 	  };
@@ -63,26 +63,26 @@ export default function ThumbnailPanel({
       ...prev,
 	  settings: {
 		...prev.settings,
-		thumbnail: thumbnail,
+		avatar: avatar,
 	  },
     }));
-  }, [thumbnail, setCharacterValue]);
+  }, [avatar, setCharacterValue]);
 
   return (
     <div className="rounded-lg w-full">
-      <h2 className="text-xl font-bold mb-4 pb-5 ml-1">Thumbnail Settings</h2>
+      <h2 className="text-xl font-bold mb-4 pb-5 ml-1">Avatar Settings</h2>
 
       <div className="flex flex-col items-center gap-4 pb-4">
-        {thumbnail ? (
+        {avatar ? (
           <div className="relative w-64 h-64">
             <img
-              src={thumbnail}
-              alt="Character Thumbnail"
+              src={avatar}
+              alt="Character Avatar"
               className="object-cover rounded-lg border"
             />
             <button
               className="absolute -top-2 -right-2 bg-white p-1 rounded-full shadow-md"
-              onClick={() => setThumbnail(null)}
+              onClick={() => setAvatar(null)}
             >
               <X className="w-5 h-5 text-card" />
             </button>
@@ -104,7 +104,7 @@ export default function ThumbnailPanel({
           className="flex items-center gap-2"
           onClick={() => fileInputRef.current?.click()}
         >
-          <Upload className="w-5 h-5" /> Upload Thumbnail
+          <Upload className="w-5 h-5" /> Upload Avatar
         </Button>
       </div>
     </div>
