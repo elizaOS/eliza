@@ -1,11 +1,12 @@
 {
-  "version": "1.0.0-alpha.29",
+  "version": "1.0.0-alpha.30",
   "packages": [
     "packages/*"
   ],
   "npmClient": "bun",
   "command": {
     "publish": {
+      "workspaceConfig": true,
       "ignoreChanges": [
         "packages/docs",
         "packages/client",

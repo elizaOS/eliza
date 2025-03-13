@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/plugin-starter",
 	"description": "Plugin starter for elizaOS",
-	"version": "1.0.0-alpha.29",
+	"version": "1.0.0-alpha.30",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -23,8 +23,8 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "^1.0.0-alpha.29",
-		"@elizaos/core": "^1.0.0-alpha.29",
+		"@elizaos/cli": "^1.0.0-alpha.30",
+		"@elizaos/core": "workspace:*",
 		"zod": "3.21.4"
 	},
 	"devDependencies": {
