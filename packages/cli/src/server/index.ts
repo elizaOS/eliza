@@ -94,23 +94,34 @@ export class AgentServer {
 				"00000000-0000-0000-0000-000000000002",
 			);
 
-			// Initialize the database
-			this.database
-				.init()
-				.then(() => {
-					logger.success("Database initialized successfully");
-					this.initializeServer(options);
-				})
-				.catch((error) => {
-					logger.error("Failed to initialize database:", error);
-					throw error;
-				});
+			// Database initialization moved to initialize() method
 		} catch (error) {
 			logger.error("Failed to initialize AgentServer:", error);
 			throw error;
 		}
+	}
 
-		logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
+	/**
+	 * Initializes the database and server.
+	 * 
+	 * @param {ServerOptions} [options] - Optional server options.
+	 * @returns {Promise<void>} A promise that resolves when initialization is complete.
+	 */
+	public async initialize(options?: ServerOptions): Promise<void> {
+		try {
+			// Initialize the database with await
+			await this.database.init();
+			logger.success("Database initialized successfully");
+			
+			// Only continue with server initialization after database is ready
+			await this.initializeServer(options);
+			
+			// Move this message here to be more accurate
+			logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
+		} catch (error) {
+			logger.error("Failed to initialize:", error);
+			throw error;
+		}
 	}
 
 	/**
