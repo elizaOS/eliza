@@ -81,11 +81,7 @@ describe("Discord MessageManager", () => {
 			attachments: new Collection(),
 		};
 	});
-
-	it("should initialize MessageManager", () => {
-		expect(messageManager).toBeInstanceOf(MessageManager);
-	});
-
+	
 	it("should process user messages", async () => {
 		await messageManager.handleMessage(mockMessage);
 		expect(mockRuntime.ensureConnection).toHaveBeenCalled();

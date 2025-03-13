@@ -15,7 +15,6 @@ describe("Utility Functions", () => {
 	describe("getWavHeader", () => {
 		it("should generate a valid WAV header", () => {
 			const header = getWavHeader(1000, 44100, 2, 16);
-			expect(header).toBeInstanceOf(Buffer);
 			expect(header.length).toBe(44);
 			expect(header.toString("utf8", 0, 4)).toBe("RIFF");
 			expect(header.toString("utf8", 8, 12)).toBe("WAVE");

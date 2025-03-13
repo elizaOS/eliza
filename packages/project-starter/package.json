@@ -19,7 +19,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "^1.0.0-alpha.32",
+		"@elizaos/cli": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"@elizaos/plugin-anthropic": "workspace:*",
 		"@elizaos/plugin-openai": "workspace:*",

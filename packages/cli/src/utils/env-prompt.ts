@@ -2,9 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import colors from "yoctocolors";
 import inquirer from "inquirer";
 import prompts from "prompts";
+import colors from "yoctocolors";
 
 /**
  * Interface for environment variable configuration
