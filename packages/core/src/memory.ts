@@ -1,21 +1,16 @@
 import logger from "./logger";
 import {
-	type Content,
-	createMessageMemory,
 	type EmbeddingSearchResult,
 	type IAgentRuntime,
 	type IMemoryManager,
-	isMessageMemory,
 	type Memory,
 	type MemoryMetadata,
 	type MemoryRetrievalOptions,
-	type MemoryScope,
 	type MemorySearchOptions,
-	type MessageMemory,
 	MemoryType,
-	type MultiRoomMemoryOptions,
 	ModelTypes,
-	type UUID,
+	type MultiRoomMemoryOptions,
+	type UUID
 } from "./types";
 
 const defaultMatchThreshold = 0.1;
