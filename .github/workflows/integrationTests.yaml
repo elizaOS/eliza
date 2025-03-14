@@ -38,10 +38,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Trust all package managers
-        run: |
-          bun pm trust --all
-
       - name: Build packages
         run: bun run build
 
