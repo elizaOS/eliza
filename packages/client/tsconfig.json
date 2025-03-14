@@ -1,18 +1,18 @@
 {
-	"files": [],
-	"references": [
-		{
-			"path": "./tsconfig.app.json"
-		},
-		{
-			"path": "./tsconfig.node.json"
-		}
-	],
-	"compilerOptions": {
-		"baseUrl": ".",
-		"paths": {
-			"@elizaos/core": ["../../packages/core/src"],
-			"@elizaos/core/*": ["../../packages/core/src/*"]
-		}
-	}
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["../core/src"],
+      "@elizaos/core/*": ["../core/src/*"]
+    }
+  }
 }

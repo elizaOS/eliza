@@ -1,13 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
-import type {
-	Character,
-	IAgentRuntime,
-	OnboardingConfig,
-	ProjectAgent,
+import { fileURLToPath } from 'node:url';
+import {
+	AgentRuntime,
 } from "@elizaos/core";
+import type { Character } from "@elizaos/core/src/types";
 import dotenv from "dotenv";
 import { initCharacter } from "../init";
+
+// Get the current file's directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const imagePath = path.resolve("./src/devRel/assets/portrait.jpg");
 
@@ -19,18 +22,146 @@ const avatar = fs.existsSync(imagePath)
 dotenv.config({ path: "../../.env" });
 
 /**
- * A character object representing Eddy, a developer support agent for ElizaOS.
- *
- * @typedef {Object} Character
- * @property {string} name - The name of the character
- * @property {string[]} plugins - List of plugins utilized by the character
- * @property {Object} secrets - Object containing sensitive information
- * @property {string} system - Description of the character's role and capabilities
- * @property {string[]} bio - List of bio information about the character
- * @property {string[]} messageExamples - List of message examples
- * @property {Object} style - Object containing style preferences for communication
+ * Recursively gets all files in a directory with the given extension
+ * 
+ * @param {string} dir - Directory to search
+ * @param {string[]} extensions - File extensions to look for
+ * @returns {string[]} - Array of file paths
  */
-const character: Character = {
+function getFilesRecursively(dir: string, extensions: string[]): string[] {
+    try {
+        const dirents = fs.readdirSync(dir, { withFileTypes: true });
+        
+        const files = dirents
+            .filter(dirent => !dirent.isDirectory())
+            .filter(dirent => extensions.some(ext => dirent.name.endsWith(ext)))
+            .map(dirent => path.join(dir, dirent.name));
+            
+        const folders = dirents
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => path.join(dir, dirent.name));
+            
+        const subFiles = folders.flatMap(folder => {
+            try {
+                return getFilesRecursively(folder, extensions);
+            } catch (error) {
+                console.warn(`Error accessing folder ${folder}:`, error);
+                return [];
+            }
+        });
+        
+        return [...files, ...subFiles];
+    } catch (error) {
+        console.warn(`Error reading directory ${dir}:`, error);
+        return [];
+    }
+}
+
+/**
+ * Recursively loads markdown files from the specified directory
+ * and its subdirectories synchronously.
+ * 
+ * @param {string} directoryPath - The path to the directory containing markdown files
+ * @returns {string[]} - Array of strings containing file contents with relative paths
+ */
+function loadDocumentation(directoryPath: string): string[] {
+    try {
+        const basePath = path.resolve(directoryPath);
+        const files = getFilesRecursively(basePath, ['.md']);
+        
+        return files.map((filePath) => {
+            try {
+                const relativePath = path.relative(basePath, filePath);
+                const content = fs.readFileSync(filePath, "utf-8");
+                return `Path: ${relativePath}\n\n${content}`;
+            } catch (error) {
+                console.warn(`Error reading file ${filePath}:`, error);
+                return `Path: ${path.relative(basePath, filePath)}\n\nError reading file: ${error}`;
+            }
+        });
+    } catch (error) {
+        console.error("Error loading documentation:", error);
+        return [];
+    }
+}
+
+/**
+ * Recursively loads TypeScript files from the source directories
+ * of all packages in the project synchronously.
+ * 
+ * @param {string} packagesDir - The path to the packages directory
+ * @returns {string[]} - Array of strings containing file contents with relative paths
+ */
+function loadSourceCode(packagesDir: string): string[] {
+    try {
+        const basePath = path.resolve(packagesDir);
+        // Get all package directories
+        const packages = fs.readdirSync(basePath, { withFileTypes: true })
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => path.join(basePath, dirent.name));
+            
+        // Find all src directories
+        const sourceFiles: string[] = [];
+        for (const pkg of packages) {
+            const srcPath = path.join(pkg, 'src');
+            if (fs.existsSync(srcPath)) {
+                const files = getFilesRecursively(srcPath, ['.ts', '.tsx']);
+                sourceFiles.push(...files);
+            }
+        }
+        
+        return sourceFiles.map((filePath) => {
+            try {
+                const relativePath = path.relative(basePath, filePath);
+                const content = fs.readFileSync(filePath, "utf-8");
+                return `Path: ${relativePath}\n\n${content}`;
+            } catch (error) {
+                console.warn(`Error reading file ${filePath}:`, error);
+                return `Path: ${path.relative(basePath, filePath)}\n\nError reading file: ${error}`;
+            }
+        });
+    } catch (error) {
+        console.error("Error loading source code:", error);
+        return [];
+    }
+}
+
+// Load knowledge synchronously before creating the character
+const knowledge = [];
+
+// Load documentation
+let docsPath = path.resolve(path.join(__dirname, "../../../docs/docs"));
+if (!fs.existsSync(docsPath)) {
+	docsPath = path.resolve(path.join(__dirname, "../../docs/docs"));
+}
+if (fs.existsSync(docsPath)) {
+	console.log("Loading documentation...");
+	const docKnowledge = loadDocumentation(docsPath);
+	knowledge.push(...docKnowledge);
+	console.log(`Loaded ${docKnowledge.length} documentation files into knowledge base`);
+} else {
+	console.warn("Documentation directory not found:", docsPath);
+}
+
+// Load source code
+let packagesPath = path.resolve(path.join(__dirname, "../../.."));
+// if it doesnt exist, try "../../"
+if (!fs.existsSync(packagesPath)) {
+	packagesPath = path.resolve(path.join(__dirname, "../.."));
+}
+if (fs.existsSync(packagesPath)) {
+	console.log("Loading source code...");
+	const sourceKnowledge = loadSourceCode(packagesPath);
+	knowledge.push(...sourceKnowledge);
+	console.log(`Loaded ${sourceKnowledge.length} source files into knowledge base`);
+} else {
+	console.warn("Packages directory not found:", packagesPath);
+}
+
+/**
+ * A character object representing Eddy, a developer support agent for ElizaOS.
+ */
+const character: Partial<Character> = {
 	name: "Eddy",
 	plugins: [
 		"@elizaos/plugin-sql",
@@ -39,7 +170,6 @@ const character: Character = {
 		"@elizaos/plugin-discord",
 		"@elizaos/plugin-pdf",
 		"@elizaos/plugin-video-understanding",
-		"@elizaos/plugin-storage-s3",
 	],
 	settings: {
 		secrets: {
@@ -61,22 +191,14 @@ const character: Character = {
 		],
 		chat: [],
 	},
+	knowledge
+	// Knowledge will be set after adapter initialization
 };
 
 /**
  * Configuration object for onboarding settings.
- * @typedef {Object} OnboardingConfig
- * @property {Object} settings - Object containing different onboarding settings.
- * @property {Object} settings.DOCUMENTATION_SOURCES - Object containing details about documentation sources setting.
- * @property {string} settings.DOCUMENTATION_SOURCES.name - Name of the setting.
- * @property {string} settings.DOCUMENTATION_SOURCES.description - Description of the setting.
- * @property {boolean} settings.DOCUMENTATION_SOURCES.required - Indicates if the setting is required.
- * @property {boolean} settings.DOCUMENTATION_SOURCES.public - Indicates if the setting is public.
- * @property {boolean} settings.DOCUMENTATION_SOURCES.secret - Indicates if the setting is secret.
- * @property {string} settings.DOCUMENTATION_SOURCES.usageDescription - Description of how the setting is used.
- * @property {Function} settings.DOCUMENTATION_SOURCES.validation - Function to validate the setting value.
  */
-const config: OnboardingConfig = {
+const config = {
 	settings: {
 		DOCUMENTATION_SOURCES: {
 			name: "Documentation Sources",
@@ -89,13 +211,26 @@ const config: OnboardingConfig = {
 				"Define which ElizaOS documentation sources Eddy should reference when helping developers",
 			validation: (value: string) => typeof value === "string",
 		},
+		ENABLE_SOURCE_CODE_KNOWLEDGE: {
+			name: "Enable Source Code Knowledge",
+			description: "Should Eddy have access to the ElizaOS source code?",
+			required: false,
+			public: true,
+			secret: false,
+			usageDescription: 
+				"If enabled, Eddy will have knowledge of the ElizaOS source code for better assistance",
+			validation: (value: boolean) => typeof value === "boolean",
+		},
 	},
 };
 
-export const devRel: ProjectAgent = {
+export const devRel = {
 	character,
-	init: async (runtime: IAgentRuntime) =>
-		await initCharacter({ runtime, config }),
+	init: async (runtime) => {
+		// Initialize the character
+		await initCharacter({ runtime, config });
+		console.log("Character initialized successfully");
+	},
 };
 
 export default devRel;

@@ -12,6 +12,7 @@ import {
 	type World,
 	logger
 } from "@elizaos/core";
+import type { Log } from "@elizaos/core";
 import {
 	and,
 	cosineDistance,
@@ -877,6 +878,41 @@ export abstract class BaseDrizzleAdapter<
 				});
 				throw error;
 			}
+		});
+	}
+
+	async getLogs(
+		params: {
+			entityId: UUID;
+			roomId?: UUID;
+			type?: string;
+			count?: number;
+			offset?: number;
+		},
+	): Promise<Log[]> {
+		const { entityId, roomId, type, count, offset } = params;
+		return this.withDatabase(async () => {
+			const result = await this.db
+				.select()
+				.from(logTable)
+				.where(
+					and(
+						eq(logTable.entityId, entityId),
+						roomId ? eq(logTable.roomId, roomId) : undefined,
+						type ? eq(logTable.type, type) : undefined,
+					),
+				)
+				.orderBy(desc(logTable.createdAt))
+				.limit(count ?? 10)
+				.offset(offset ?? 0);
+			return result;
+		});
+
+	}
+
+	async deleteLog(logId: UUID): Promise<void> {
+		return this.withDatabase(async () => {
+			await this.db.delete(logTable).where(eq(logTable.id, logId));
 		});
 	}
 

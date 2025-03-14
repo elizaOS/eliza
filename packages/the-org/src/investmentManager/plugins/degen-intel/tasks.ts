@@ -5,7 +5,7 @@ import BuySignal from "./providers/buy-signal";
 import CoinmarketCap from "./providers/coinmarketcap";
 import Twitter from "./providers/twitter";
 import TwitterParser from "./providers/twitter-parser";
-
+import type { Sentiment } from "./types";
 /**
  * Registers tasks for the agent to perform various Intel-related actions.
  * * @param { IAgentRuntime } runtime - The agent runtime object.
@@ -120,7 +120,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		validate: async () => true, // Always validate
 		execute: async (runtime, _options, _task) => {
 			const twitterService = runtime.getService("twitter");
-			const tasksWereRemoved = await runtime.getCache<boolean>("twitter_tasks_removed");
+			const tasksWereRemoved = await runtime.getCache("twitter_tasks_removed");
 			
 			// If Twitter service is now available and tasks were previously removed, recreate them
 			if (twitterService && tasksWereRemoved) {
@@ -221,7 +221,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 		name: "INTEL_GENERATE_BUY_SIGNAL",
 		validate: async (runtime, _message, _state) => {
 			// Check if we have some sentiment data before proceeding
-			const sentimentsData = await runtime.getCache<any[]>("sentiments") || [];
+			const sentimentsData = await runtime.getCache<Sentiment[]>("sentiments") || [];
 			if (sentimentsData.length === 0) {
 				logger.warn("No sentiment data available, skipping buy signal generation");
 				return false;
@@ -237,7 +237,8 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 				// Log the error but don't delete the task
 			}
 		},
-	});
+	}
+);
 
 	runtime.createTask({
 		name: "INTEL_GENERATE_BUY_SIGNAL",

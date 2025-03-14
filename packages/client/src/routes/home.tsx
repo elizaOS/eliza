@@ -4,7 +4,9 @@ import ProfileOverlay from "@/components/profile-overlay";
 import { Card } from "@/components/ui/card";
 import { useAgents } from "@/hooks/use-query-hooks";
 import { formatAgentName } from "@/lib/utils";
+import { AGENT_STATUS } from "@/types/index";
 import type { Agent } from "@elizaos/core";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@radix-ui/react-tooltip";
 import { Cog, Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -64,16 +66,42 @@ export default function Home() {
 							return (
 								<ProfileCard
 									key={agent.id}
-									title={agent.name}
-									content={
-										<div className="cursor-pointer h-full w-full flex items-center justify-center" onClick={() => openOverlay(agent)}>
-											{
-												agent.settings?.avatar ?
-													<img src={agent.settings.avatar} alt="Agent Avatar" className="w-full h-full object-contain" /> :
-													formatAgentName(agent.name)
-											}
+									title={
+										<div className="flex gap-2 items-center">
+											<div className="">{agent.name}</div>
+											{agent?.status === AGENT_STATUS.ACTIVE ? (
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse mt-[2px]" />
+													</TooltipTrigger>
+													<TooltipContent side="right">
+														<p>Agent is active</p>
+													</TooltipContent>
+												</Tooltip>
+											) : (
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20 mt-[2px]" />
+													</TooltipTrigger>
+													<TooltipContent side="right">
+														<p>Agent is inactive</p>
+													</TooltipContent>
+												</Tooltip>
+											)}
 										</div>
-										
+									}
+									content={
+										<div className="relative cursor-pointer h-full w-full flex items-center justify-center group" onClick={() => openOverlay(agent)}>
+											<div className={agent.status === AGENT_STATUS.ACTIVE ? "" : "grayscale brightness-75 opacity-50"}>
+												{agent.settings?.avatar ? <img src={agent.settings.avatar} alt="Agent Avatar" className="w-full h-full object-contain" /> : formatAgentName(agent.name)}
+											</div>
+											{agent.status !== AGENT_STATUS.ACTIVE && (
+												<span className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded-md opacity-60">
+													Offline
+												</span>
+											)}
+											
+										</div>
 									}
 									buttons={[
 										{

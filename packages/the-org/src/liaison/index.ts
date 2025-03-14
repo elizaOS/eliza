@@ -33,7 +33,6 @@ const character: Character = {
 		"@elizaos/plugin-discord",
 		"@elizaos/plugin-pdf",
 		"@elizaos/plugin-video-understanding",
-		"@elizaos/plugin-storage-s3",
 	],
 	settings: {
 		secrets: {

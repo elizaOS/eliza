@@ -46,7 +46,7 @@ function HomepageHeader() {
 						/>
 						<pre className={styles.codeBlock}>
 							<code className="language-bash">
-								{"npm install @elizaos/core"}
+								{"npm create eliza"}
 							</code>
 						</pre>
 					</div>
