@@ -59,9 +59,10 @@ const LOG_LEVEL_COLORS: Record<number, string> = {
 interface LogViewerProps {
 	agentName?: string;
 	level?: string;
+	title?: string;
 }
 
-export function LogViewer({ agentName, level }: LogViewerProps = {}) {
+export function LogViewer({ agentName, level, title }: LogViewerProps = {}) {
 	const [selectedLevel, setSelectedLevel] = useState(level || "all");
 	const [selectedAgentName, setSelectedAgentName] = useState(agentName || "all");
 	const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
@@ -174,7 +175,7 @@ export function LogViewer({ agentName, level }: LogViewerProps = {}) {
 	return (
 		<div className="p-4">
 			<div className="mb-4 flex items-center justify-between">
-				<PageTitle title={"System Logs"} />
+				{title ? <h3 className="text-xl font-medium tracking-tight">{title}</h3> : <PageTitle title={"System Logs"} />}
 				<div className="flex items-center gap-4">
 					{!shouldAutoScroll && (
 						<button
@@ -199,7 +200,7 @@ export function LogViewer({ agentName, level }: LogViewerProps = {}) {
 						</SelectContent>
 					</Select>
 					
-					{agentNames && agentNames.length > 0 && (
+					{agentNames && agentNames.length > 0 && !agentName && (
 						<Select value={selectedAgentName} onValueChange={setSelectedAgentName}>
 							<SelectTrigger className="w-40">
 								<SelectValue placeholder="Filter by agent" />

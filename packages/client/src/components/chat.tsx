@@ -14,9 +14,9 @@ import WebSocketsManager from "@/lib/websocket-manager";
 import { WorldManager } from "@/lib/world-manager";
 import type { IAttachment } from "@/types";
 import { AGENT_STATUS } from "@/types/index";
-import type { Content, UUID } from "@elizaos/core";
+import type { Content, Memory, UUID } from "@elizaos/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { Paperclip, Send, X } from "lucide-react";
+import { MenuIcon, Paperclip, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import AIWriter from "react-aiwriter";
 import { AudioRecorder } from "./audio-recorder";
@@ -26,6 +26,7 @@ import { Badge } from "./ui/badge";
 import ChatTtsButton from "./ui/chat/chat-tts-button";
 import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { LogViewer } from "./log-viewer";
 
 const SOURCE_NAME = "client_chat";
 
@@ -110,6 +111,7 @@ function MessageContent({
 export default function Page({ agentId }: { agentId: UUID }) {
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
 	const [input, setInput] = useState("");
+	const [showDetails, setShowDetails] = useState(false);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const formRef = useRef<HTMLFormElement>(null);
@@ -196,6 +198,10 @@ export default function Page({ agentId }: { agentId: UUID }) {
 		}
 	};
 
+	const toggleDetails = () => {
+		setShowDetails(!showDetails);
+	};
+
 	return (
 		<div className="flex flex-col w-full h-[calc(100dvh)] p-4">
 			{/* Agent Header */}
@@ -244,127 +250,156 @@ export default function Page({ agentId }: { agentId: UUID }) {
 						)}
 					</div>
 				</div>
+				
+		
+						<Button 
+							variant="outline" 
+							size="sm" 
+							onClick={toggleDetails}
+							className={cn(
+								"gap-1.5",
+								showDetails && "bg-secondary"
+							)}
+						>
+							<MenuIcon className="size-4" />
+						</Button>
+					
+					
+		
 			</div>
 
+			<div className="flex flex-row w-full h-full gap-4">
+				{/* Main Chat Area */}
+				<div className={cn(
+					"flex flex-col transition-all duration-300",
+					showDetails ? "w-3/5" : "w-full"
+				)}>
+					{/* Chat Messages */}
+					<ChatMessageList
+						scrollRef={scrollRef}
+						isAtBottom={isAtBottom}
+						scrollToBottom={scrollToBottom}
+						disableAutoScroll={disableAutoScroll}
+					>
+						{messages.map((message: Memory) => {
+							const isUser = message.name === USER_NAME;
 
-			{/* Chat Messages */}
-
-			<ChatMessageList
-				scrollRef={scrollRef}
-				isAtBottom={isAtBottom}
-				scrollToBottom={scrollToBottom}
-				disableAutoScroll={disableAutoScroll}
-			>
-				{messages.map((message: ContentWithUser) => {
-					const isUser = message.name === USER_NAME;
-
-					return (
-						<div
-							key={message.name + message.createdAt}
-							className={`flex flex-column gap-1 p-1 ${isUser ? "justify-end" : ""}`}
-						>
-							<ChatBubble
-								variant={getMessageVariant(message.name)}
-								className={`flex flex-row items-center gap-2 ${isUser ? "flex-row-reverse" : ""}`}
-							>
-								<Avatar className="size-8 border rounded-full select-none">
-									<AvatarImage 
-										src={
-											isUser ? 
-												"/user-icon.png" : 
-												(agentData?.settings?.avatar ? 
-													agentData?.settings?.avatar : 
-													"/elizaos-icon.png")
-										} 
-									/>
-									
-									{isUser && <AvatarFallback>U</AvatarFallback>}
-								</Avatar>
-								<MessageContent message={message} agentId={agentId} />
-							</ChatBubble>
-						</div>
-					);
-				})}
-			</ChatMessageList>
-
-			{/* Chat Input */}
-			<div className="px-4 pb-4">
-				<form
-					ref={formRef}
-					onSubmit={handleSendMessage}
-					className="relative rounded-md border bg-card"
-				>
-					{selectedFile ? (
-						<div className="p-3 flex">
-							<div className="relative rounded-md border p-2">
-								<Button
-									onClick={() => setSelectedFile(null)}
-									className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
-									variant="outline"
-									size="icon"
+							return (
+								<div
+									key={message.name + message.createdAt}
+									className={`flex flex-column gap-1 p-1 ${isUser ? "justify-end" : ""}`}
 								>
-									<X />
-								</Button>
-								<img
-									alt="Selected file"
-									src={URL.createObjectURL(selectedFile)}
-									height="100%"
-									width="100%"
-									className="aspect-square object-contain w-16"
-								/>
-							</div>
-						</div>
-					) : null}
-					<ChatInput
-						ref={inputRef}
-						onKeyDown={handleKeyDown}
-						value={input}
-						onChange={({ target }) => setInput(target.value)}
-						placeholder="Type your message here..."
-						className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-					/>
-					<div className="flex items-center p-3 pt-0">
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<div>
-									<Button
-										variant="ghost"
-										size="icon"
-										onClick={() => {
-											if (fileInputRef.current) {
-												fileInputRef.current.click();
-											}
-										}}
+									<ChatBubble
+										variant={getMessageVariant(message.name)}
+										className={`flex flex-row items-center gap-2 ${isUser ? "flex-row-reverse" : ""}`}
 									>
-										<Paperclip className="size-4" />
-										<span className="sr-only">Attach file</span>
-									</Button>
-									<input
-										type="file"
-										ref={fileInputRef}
-										onChange={handleFileChange}
-										accept="image/*"
-										className="hidden"
-									/>
+										<Avatar className="size-8 border rounded-full select-none">
+											<AvatarImage 
+												src={
+													isUser ? 
+														"/user-icon.png" : 
+														(agentData?.settings?.avatar ? 
+															agentData?.settings?.avatar : 
+															"/elizaos-icon.png")
+												} 
+											/>
+											
+											{isUser && <AvatarFallback>U</AvatarFallback>}
+										</Avatar>
+										<MessageContent message={message} agentId={agentId} />
+									</ChatBubble>
 								</div>
-							</TooltipTrigger>
-							<TooltipContent side="left">
-								<p>Attach file</p>
-							</TooltipContent>
-						</Tooltip>
-						<AudioRecorder
-							agentId={agentId}
-							onChange={(newInput: string) => setInput(newInput)}
-						/>
-						<Button
-							type="submit"
-							size="sm"
-							className="ml-auto gap-1.5 h-[30px]"
+							);
+						})}
+					</ChatMessageList>
+
+					{/* Chat Input */}
+					<div className="px-4 pb-4 mt-auto">
+						<form
+							ref={formRef}
+							onSubmit={handleSendMessage}
+							className="relative rounded-md border bg-card"
 						>
-							<Send className="size-3.5" />
-						</Button>
+							{selectedFile ? (
+								<div className="p-3 flex">
+									<div className="relative rounded-md border p-2">
+										<Button
+											onClick={() => setSelectedFile(null)}
+											className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
+											variant="outline"
+											size="icon"
+										>
+											<X />
+										</Button>
+										<img
+											alt="Selected file"
+											src={URL.createObjectURL(selectedFile)}
+											height="100%"
+											width="100%"
+											className="aspect-square object-contain w-16"
+										/>
+									</div>
+								</div>
+							) : null}
+							<ChatInput
+								ref={inputRef}
+								onKeyDown={handleKeyDown}
+								value={input}
+								onChange={({ target }) => setInput(target.value)}
+								placeholder="Type your message here..."
+								className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
+							/>
+							<div className="flex items-center p-3 pt-0">
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<div>
+											<Button
+												variant="ghost"
+												size="icon"
+												onClick={() => {
+													if (fileInputRef.current) {
+														fileInputRef.current.click();
+													}
+												}}
+											>
+												<Paperclip className="size-4" />
+												<span className="sr-only">Attach file</span>
+											</Button>
+											<input
+												type="file"
+												ref={fileInputRef}
+												onChange={handleFileChange}
+												accept="image/*"
+												className="hidden"
+											/>
+										</div>
+									</TooltipTrigger>
+									<TooltipContent side="left">
+										<p>Attach file</p>
+									</TooltipContent>
+								</Tooltip>
+								<AudioRecorder
+									agentId={agentId}
+									onChange={(newInput: string) => setInput(newInput)}
+								/>
+								<Button
+									type="submit"
+									size="sm"
+									className="ml-auto gap-1.5 h-[30px]"
+								>
+									<Send className="size-3.5" />
+								</Button>
+							</div>
+						</form>
 					</div>
-				</form>
+				</div>
+
+				{/* Details Column */}
+				{showDetails && (
+					<div className="w-2/5 border rounded-lg overflow-hidden pb-4 bg-background flex flex-col">
+						<LogViewer agentName={agentData?.name} level="all" title="Agent Logs" />
+					</div>
+				)}
 			</div>
 		</div>
 	);
