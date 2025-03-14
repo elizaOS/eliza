@@ -1419,13 +1419,6 @@ export function agentRouter(
 			state = await runtime.composeState(responseMessage, ["RECENT_MESSAGES"]);
 
 			const replyHandler = async (message: Content) => {
-				await runtime.getMemoryManager("messages").createMemory({
-					...responseMessage,
-					content: {
-						...responseMessage.content,
-						...message
-					}
-				});
 				res.status(201).json({
 					success: true,
 					data: {
