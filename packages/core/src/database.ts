@@ -204,6 +204,13 @@ export abstract class DatabaseAdapter<DB = unknown>
 	): Promise<Log[]>;
 
 	/**
+	 * Deletes a log from the database.
+	 * @param logId The UUID of the log to delete.
+	 * @returns A Promise that resolves when the log has been deleted.
+	 */
+	abstract deleteLog(logId: UUID): Promise<void>;
+
+	/**
 	 * Searches for memories based on embeddings and other specified parameters.
 	 * @param params An object containing parameters for the memory search.
 	 * @returns A Promise that resolves to an array of Memory objects.

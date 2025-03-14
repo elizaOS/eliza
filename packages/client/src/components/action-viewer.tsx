@@ -1,9 +1,12 @@
 import type { UUID } from "@elizaos/core";
-import { useAgentActions } from "../hooks/use-query-hooks";
+import { Bot, Brain, ImagePlusIcon, Trash2 } from "lucide-react";
+import { useAgentActions, useDeleteLog } from "../hooks/use-query-hooks";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 
 export function AgentActionViewer({ agentId, roomId }: { agentId: UUID; roomId?: UUID }) {
 	const { data: actions = [], isLoading, error } = useAgentActions(agentId, roomId);
+	const { mutate: deleteLog } = useDeleteLog();
 	
 	if (isLoading && (!actions || actions.length === 0)) {
 		return <div className="flex items-center justify-center h-40">Loading actions...</div>;
@@ -23,10 +26,16 @@ export function AgentActionViewer({ agentId, roomId }: { agentId: UUID; roomId?:
 	};
 
 	const getModelIcon = (modelType: string) => {
-		if (modelType?.includes("TEXT_EMBEDDING")) return "🧠";
-		if (modelType?.includes("LLM")) return "💬";
-		if (modelType?.includes("IMAGE")) return "🖼️";
-		return "🤖";
+		if (modelType?.includes("TEXT_EMBEDDING")) return <Brain className="w-4 h-4" />;
+		if (modelType?.includes("LLM")) return <Bot className="w-4 h-4" />;
+		if (modelType?.includes("IMAGE")) return <ImagePlusIcon className="w-4 h-4" />;
+		return <Brain className="w-4 h-4" />;
+	};
+
+	const handleDelete = (logId: string) => {
+		if (logId && window.confirm("Are you sure you want to delete this log entry?")) {
+			deleteLog({ agentId, logId });
+		}
 	};
 
 	return (
@@ -41,17 +50,32 @@ export function AgentActionViewer({ agentId, roomId }: { agentId: UUID; roomId?:
 						const actionType = action.type || "Action";
 						
 						return (
-							<div key={action.id || index} className="border rounded-md p-3 bg-card hover:bg-accent/10 transition-colors">
+							<div 
+								key={action.id || index} 
+								className="border rounded-md p-3 bg-card hover:bg-accent/10 transition-colors relative group"
+							>
+								{action.id && (
+									<Button
+										variant="secondary"
+										size="icon"
+										className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-50"
+										onClick={() => handleDelete(action.id!)}
+										title="Delete log entry"
+									>
+										<Trash2 className="h-4 w-4 text-regular" />
+									</Button>
+								)}
+								
 								<div className="flex items-center justify-between">
 									<span className="text-sm font-medium flex items-center gap-2">
 										{getModelIcon(modelType)} {actionType}
 									</span>
-									<Badge variant="outline" className="text-xs">
+									<Badge variant="outline" className="text-xs group-hover:mr-8 transition-all">
 										{formatDate(action.createdAt)}
 									</Badge>
 								</div>
 								
-								<div className="mt-2 grid gap-2">
+								<div className="mt-2 grid gap-2 rounded-full">
 									{action.body?.modelKey && (
 										<div className="text-xs bg-muted px-2 py-1 rounded">
 											<span className="font-semibold">Model: </span>
@@ -68,20 +92,25 @@ export function AgentActionViewer({ agentId, roomId }: { agentId: UUID; roomId?:
 										</div>
 									)}
 									
-									{action.body?.response && action.body.response !== "[array]" && (
-										<div className="text-xs overflow-hidden max-h-24 overflow-y-auto">
-											<span className="font-semibold">Response: </span>
-											{typeof action.body.response === 'object'
-												? JSON.stringify(action.body.response, null, 2)
-												: action.body.response}
-										</div>
-									)}
-									
-									{action.body?.response === "[array]" && (
-										<div className="text-xs italic text-muted-foreground">
-											Response contains array data
-										</div>
-									)}
+							{action.body?.response && (
+								<div className={action.body.response === "[array]" 
+									? "text-xs italic text-muted-foreground" 
+									: "text-xs overflow-hidden max-h-24 overflow-y-auto"
+								}>
+									{action.body.response === "[array]" 
+									? "Response contains array data"
+									: (
+										<>
+										<span className="font-semibold">Response: </span>
+										{typeof action.body.response === 'object'
+											? JSON.stringify(action.body.response, null, 2)
+											: action.body.response}
+										</>
+									)
+									}
+								</div>
+								)}
+
 								</div>
 							</div>
 						);

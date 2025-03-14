@@ -145,6 +145,7 @@ interface AgentLog {
  * 		deleteRoom: (agentId: string, roomId: string) => Promise<any>;
  * 		getLogs: (level: string) => Promise<LogResponse>;
  * 		getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }) => Promise<{ success: boolean; data: AgentLog[] }>;
+ * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
  * 	}
  * }}
  */
@@ -359,7 +360,7 @@ export const apiClient = {
 			});
 		},
 
-	// Add this new method
+	// Agent Log/Action endpoints
 	getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }): Promise<{ success: boolean; data: AgentLog[] }> => {
 		const params = new URLSearchParams();
 		
@@ -371,6 +372,13 @@ export const apiClient = {
 		return fetcher({
 			url: `/agents/${agentId}/logs${params.toString() ? `?${params.toString()}` : ''}`,
 			method: "GET"
+		});
+	},
+
+	deleteLog: (agentId: string, logId: string): Promise<void> => {
+		return fetcher({
+			url: `/agents/${agentId}/logs/${logId}`,
+			method: "DELETE"
 		});
 	},
 };

@@ -454,6 +454,38 @@ export function agentRouter(
 		});
 	});
 
+
+	router.delete("/:agentId/logs/:logId", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+		const logId = validateUuid(req.params.logId);
+		if (!agentId || !logId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent or log ID format",
+				},
+			});
+			return;
+		}
+
+		const runtime = agents.get(agentId);
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+
+		await runtime.deleteLog(logId);
+
+		res.status(204).send();
+	});
+
 	// Audio messages endpoints
 	router.post(
 		"/:agentId/audio-messages",

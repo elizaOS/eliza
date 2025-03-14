@@ -797,6 +797,9 @@ export interface IDatabaseAdapter {
 		count?: number;
 		offset?: number;
 	}): Promise<Log[]>;
+
+	deleteLog(logId: UUID): Promise<void>;
+
 	searchMemories(params: {
 		embedding: number[];
 		match_threshold?: number;
