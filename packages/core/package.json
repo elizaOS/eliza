@@ -44,6 +44,7 @@
         "@ai-sdk/openai": "1.1.9",
         "@electric-sql/pglite": "^0.2.17",
         "@fal-ai/client": "1.2.3",
+        "@mem0/vercel-ai-provider": "^0.0.14",
         "@supabase/supabase-js": "^2.49.1",
         "@types/uuid": "10.0.0",
         "ai": "4.1.54",

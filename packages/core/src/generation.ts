@@ -4,6 +4,7 @@ import { createMistral } from "@ai-sdk/mistral";
 import { createGroq } from "@ai-sdk/groq";
 import { createOpenAI } from "@ai-sdk/openai";
 import { bedrock } from "@ai-sdk/amazon-bedrock";
+import { createMem0 } from "@mem0/vercel-ai-provider";
 import {
     generateObject as aiGenerateObject,
     generateText as aiGenerateText,
@@ -823,6 +824,44 @@ export async function generateText({
 
                 response = grokResponse;
                 elizaLogger.debug("Received response from Grok model.");
+                break;
+            }
+
+            case ModelProviderName.MEM0: {
+                elizaLogger.debug(
+                    "Initializing Mem0 model with Cloudflare check"
+                );
+                const baseURL = endpoint || getCloudflareGatewayBaseURL(runtime, "openai");
+
+                const mem0 = createMem0({
+                    provider: runtime.getSetting("MEM0_PROVIDER") || "openai",
+                    apiKey: runtime.getSetting("MEM0_PROVIDER_API_KEY"),
+                    fetch: runtime.fetch,
+                    mem0ApiKey: runtime.getSetting("MEM0_API_KEY"),
+                    mem0Config: {
+                        user_id: runtime.getSetting("MEM0_USER_ID") || "eliza-os-user"
+                    }
+                });
+
+                const { text: mem0Response } = await aiGenerateText({
+                    model: mem0.languageModel(model),
+                    prompt: context,
+                    system:
+                        runtime.character.system ??
+                        settings.SYSTEM_PROMPT ??
+                        undefined,
+                    tools: tools,
+                    onStepFinish: onStepFinish,
+                    maxSteps: maxSteps,
+                    temperature: temperature,
+                    maxTokens: max_response_length,
+                    frequencyPenalty: frequency_penalty,
+                    presencePenalty: presence_penalty,
+                    experimental_telemetry: experimental_telemetry,
+                });
+
+                response = mem0Response;
+                elizaLogger.debug("Received response from Mem0 Provider.");
                 break;
             }
 
