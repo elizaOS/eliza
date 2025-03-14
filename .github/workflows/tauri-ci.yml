@@ -67,12 +67,16 @@ jobs:
         run: |
           echo "ignore-scripts=true" > .npmrc
         shell: bash
-          
+     
+      - name: Trust all package managers
+        run: |
+           bun pm trust --all
+      
       - name: Install dependencies 
         run: bun install
         env:
           NPM_CONFIG_IGNORE_SCRIPTS: true
-        
+      
       - name: Build packages
         run: bun run build
           
