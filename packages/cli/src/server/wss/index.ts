@@ -162,9 +162,9 @@ export class WebSocketRouter {
                         createdAt: Date.now(),
                     };
 
-                    await runtime.getMemoryManager("messages").addEmbeddingToMemory(memory);
+                    await runtime.addEmbeddingToMemory(memory);
                     logger.info("added embedding to memory");
-                    await runtime.getMemoryManager("messages").createMemory(memory);
+                    await runtime.createMemory(memory, "messages");
                     logger.info("created memory");
                 } catch (error) {
                     logger.error("Error processing message:", error.message);

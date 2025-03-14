@@ -1,13 +1,11 @@
 import {
 	type Entity,
 	type IAgentRuntime,
-	type IMemoryManager,
 	type Memory,
-	MemoryManager,
 	ModelTypes,
 	Service,
 	type UUID,
-	logger,
+	logger
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -70,23 +68,12 @@ export type TradingEvent =
  * @extends Service
  * @property {string} serviceType - The type of service, set to ServiceTypes.COMMUNITY_INVESTOR.
  * @property {string} capabilityDescription - Description of the agent's ability to trade on the Solana blockchain.
- * @property {IMemoryManager} tokenMemoryManager - Memory manager for tokens.
- * @property {IMemoryManager} positionMemoryManager - Memory manager for positions.
- * @property {IMemoryManager} transactionMemoryManager - Memory manager for transactions.
- * @property {IMemoryManager} recommendationMemoryManager - Memory manager for recommendations.
  * @method storeRecommenderMetrics - Store entity metrics and cache for 5 minutes.
  * @method storeRecommenderMetricsHistory - Store entity metrics history.
  */
 export class CommunityInvestorService extends Service {
 	static serviceType = ServiceTypes.COMMUNITY_INVESTOR;
 	capabilityDescription = "The agent is able to trade on the Solana blockchain";
-
-	// Memory managers
-	private tokenMemoryManager: IMemoryManager;
-	private positionMemoryManager: IMemoryManager;
-	private transactionMemoryManager: IMemoryManager;
-	private recommendationMemoryManager: IMemoryManager;
-	private recommenderMemoryManager: IMemoryManager;
 
 	// Client instances
 	private birdeyeClient: BirdeyeClient;
@@ -1408,7 +1395,8 @@ export class CommunityInvestorService extends Service {
 				query,
 			);
 
-			const memories = await this.transactionMemoryManager.searchMemories({
+			const memories = await this.runtime.searchMemories({
+				tableName: "transactions",
 				embedding,
 				match_threshold: 0.7,
 				count: 20,
@@ -1445,7 +1433,8 @@ export class CommunityInvestorService extends Service {
 				query,
 			);
 
-			const memories = await this.transactionMemoryManager.searchMemories({
+			const memories = await this.runtime.searchMemories({
+				tableName: "transactions",
 				embedding,
 				match_threshold: 0.7,
 				count: 50,
@@ -1491,7 +1480,8 @@ export class CommunityInvestorService extends Service {
 				query,
 			);
 
-			const memories = await this.positionMemoryManager.searchMemories({
+			const memories = await this.runtime.searchMemories({
+				tableName: "positions",
 				embedding,
 				match_threshold: 0.7,
 				count: 1,
@@ -1530,7 +1520,8 @@ export class CommunityInvestorService extends Service {
 				query,
 			);
 
-			const memories = await this.recommendationMemoryManager.searchMemories({
+			const memories = await this.runtime.searchMemories({
+				tableName: "recommendations",
 				embedding,
 				match_threshold: 0.7,
 				count: 50,
@@ -1540,12 +1531,11 @@ export class CommunityInvestorService extends Service {
 
 			for (const memory of memories) {
 				if (
-					memory.metadata.recommendation &&
-					(memory.metadata.recommendation as TokenRecommendation).entityId ===
-						entityId
+					(memory.metadata as any).recommendation &&
+					(memory.metadata as any).recommendation.entityId === entityId
 				) {
 					recommendations.push(
-						memory.metadata.recommendation as TokenRecommendation,
+						(memory.metadata as any).recommendation as TokenRecommendation,
 					);
 				}
 			}
@@ -1657,7 +1647,7 @@ export class CommunityInvestorService extends Service {
 			const memoryWithEmbedding = { ...memory, embedding };
 
 			// Store in memory manager
-			await this.tokenMemoryManager.createMemory(memoryWithEmbedding, true);
+			await this.runtime.createMemory(memoryWithEmbedding, "tokens", true);
 
 			// Also cache for quick access
 			const cacheKey = `token:${token.chain}:${token.address}:performance`;
@@ -1698,7 +1688,7 @@ export class CommunityInvestorService extends Service {
 			const memoryWithEmbedding = { ...memory, embedding };
 
 			// Store in memory manager
-			await this.positionMemoryManager.createMemory(memoryWithEmbedding, true);
+			await this.runtime.createMemory(memoryWithEmbedding, "positions", true);
 
 			// Also cache for quick access
 			const cacheKey = `position:${position.id}`;
@@ -1739,8 +1729,9 @@ export class CommunityInvestorService extends Service {
 			const memoryWithEmbedding = { ...memory, embedding };
 
 			// Store in memory manager
-			await this.transactionMemoryManager.createMemory(
+			await this.runtime.createMemory(
 				memoryWithEmbedding,
+				"transactions",
 				true,
 			);
 
@@ -1795,8 +1786,9 @@ export class CommunityInvestorService extends Service {
 			const memoryWithEmbedding = { ...memory, embedding };
 
 			// Store in memory manager
-			await this.recommendationMemoryManager.createMemory(
+			await this.runtime.createMemory(
 				memoryWithEmbedding,
+				"recommendations",
 				true,
 			);
 
@@ -1841,8 +1833,9 @@ export class CommunityInvestorService extends Service {
 			const memoryWithEmbedding = { ...memory, embedding };
 
 			// Store in memory manager
-			await this.recommenderMemoryManager.createMemory(
+			await this.runtime.createMemory(
 				memoryWithEmbedding,
+				"recommender_metrics",
 				true,
 			);
 
@@ -1887,8 +1880,9 @@ export class CommunityInvestorService extends Service {
 			const memoryWithEmbedding = { ...memory, embedding };
 
 			// Store in memory manager
-			await this.recommenderMemoryManager.createMemory(
+			await this.runtime.createMemory(
 				memoryWithEmbedding,
+				"recommender_metrics_history",
 				true,
 			);
 
@@ -1942,7 +1936,8 @@ export class CommunityInvestorService extends Service {
 				query,
 			);
 
-			const memories = await this.recommenderMemoryManager.searchMemories({
+			const memories = await this.runtime.searchMemories({
+				tableName: "recommender_metrics",
 				embedding,
 				match_threshold: 0.7,
 				count: 1,
@@ -1989,7 +1984,8 @@ export class CommunityInvestorService extends Service {
 				query,
 			);
 
-			const memories = await this.recommenderMemoryManager.searchMemories({
+			const memories = await this.runtime.searchMemories({
+				tableName: "recommender_metrics_history",
 				embedding,
 				match_threshold: 0.7,
 				count: 10,
@@ -2091,7 +2087,8 @@ export class CommunityInvestorService extends Service {
 				query,
 			);
 
-			const memories = await this.tokenMemoryManager.searchMemories({
+			const memories = await this.runtime.searchMemories({
+				tableName: "tokens",
 				embedding,
 				match_threshold: 0.7,
 				count: 1,
@@ -2139,7 +2136,8 @@ export class CommunityInvestorService extends Service {
 				query,
 			);
 
-			const memories = await this.positionMemoryManager.searchMemories({
+			const memories = await this.runtime.searchMemories({
+				tableName: "positions",
 				embedding,
 				match_threshold: 0.7,
 				count: 50,

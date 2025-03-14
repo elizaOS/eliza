@@ -168,7 +168,7 @@ export const chatWithAttachments: Action = {
 		const attachmentData = await getAttachmentIds(runtime, message, state);
 		if (!attachmentData) {
 			console.error("Couldn't get attachment IDs from message");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -181,7 +181,7 @@ export const chatWithAttachments: Action = {
 				metadata: {
 					type: "CHAT_WITH_ATTACHMENTS",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
@@ -236,7 +236,7 @@ export const chatWithAttachments: Action = {
 
 		if (!currentSummary) {
 			console.error("No summary found, that's not good!");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -249,7 +249,7 @@ export const chatWithAttachments: Action = {
 				metadata: {
 					type: "CHAT_WITH_ATTACHMENTS",
 				},
-			});
+			}, "messages");
 			return;
 		}
 

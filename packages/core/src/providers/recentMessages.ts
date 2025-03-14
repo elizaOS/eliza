@@ -31,7 +31,8 @@ const getRecentInteractions = async (
 		.getRoomsForParticipants([sourceEntityId, targetEntityId]);
 
 	// Check the existing memories in the database
-	return runtime.getMemoryManager("messages").getMemoriesByRoomIds({
+	return runtime.getMemoriesByRoomIds({
+		tableName: "messages",
 		// filter out the current room id from rooms
 		roomIds: rooms.filter((room) => room !== excludeRoomId),
 		limit: 20,
@@ -62,7 +63,8 @@ export const recentMessagesProvider: Provider = {
 			await Promise.all([
 				getEntityDetails({ runtime, roomId }),
 				runtime.getRoom(roomId),
-				runtime.getMemoryManager("messages").getMemories({
+				runtime.getMemories({
+			tableName: "messages",
 					roomId,
 					count: conversationLength,
 					unique: false,

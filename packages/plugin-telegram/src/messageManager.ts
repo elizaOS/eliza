@@ -421,8 +421,7 @@ export class MessageManager {
 						};
 
 						await this.runtime
-							.getMemoryManager("messages")
-							.createMemory(responseMemory);
+											.createMemory(responseMemory);
 						memories.push(responseMemory);
 					}
 
@@ -613,7 +612,7 @@ export class MessageManager {
 					createdAt: sentMessage.date * 1000
 				};
 				
-				await this.runtime.getMemoryManager("messages").createMemory(memory);
+				await this.runtime.createMemory(memory, "messages");
 				memories.push(memory);
 			}
 

@@ -225,7 +225,7 @@ export const summarize: Action = {
 		const dateRange = await getDateRange(runtime, message, state);
 		if (!dateRange) {
 			console.error("Couldn't get date range from message");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -237,14 +237,15 @@ export const summarize: Action = {
 				metadata: {
 					type: "SUMMARIZE_CONVERSATION",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
 		const { objective, start, end } = dateRange;
 
 		// 2. get these memories from the database
-		const memories = await runtime.getMemoryManager("messages").getMemories({
+		const memories = await runtime.getMemories({
+			tableName: "messages",
 			roomId,
 			// subtract start from current time
 			start: Number.parseInt(start as string),
@@ -306,7 +307,7 @@ export const summarize: Action = {
 
 		if (!currentSummary) {
 			console.error("No summary found, that's not good!");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -318,7 +319,7 @@ export const summarize: Action = {
 				metadata: {
 					type: "SUMMARIZE_CONVERSATION",
 				},
-			});
+			}, "messages");
 			return;
 		}
 

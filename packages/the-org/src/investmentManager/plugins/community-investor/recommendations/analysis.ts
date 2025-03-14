@@ -271,7 +271,8 @@ export const getTokenDetails: any = {
 		}
 
 		// Get a users most recent message containing a token
-		const rawMessages = await runtime.getMemoryManager("messages").getMemories({
+		const rawMessages = await runtime.getMemories({
+			tableName: "messages",
 			roomId: message.roomId,
 			count: 10,
 			unique: true,

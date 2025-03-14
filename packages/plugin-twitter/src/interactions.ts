@@ -152,8 +152,7 @@ export class TwitterInteractionClient {
 
 					// Check if we've already processed this tweet
 					const existingResponse = await this.runtime
-						.getMemoryManager("messages")
-						.getMemoryById(tweetId);
+									.getMemoryById(tweetId);
 
 					if (existingResponse) {
 						logger.log(`Already responded to tweet ${tweet.id}, skipping`);
@@ -290,7 +289,7 @@ export class TwitterInteractionClient {
 						interaction.targetTweet.conversationId
 					);
 
-					await this.runtime.getMemoryManager("interactions").createMemory(memory);
+					await this.runtime.createMemory(memory, "messages");
 
 					// Create message for reaction
 					const reactionMessage: TwitterMemory = {
@@ -416,7 +415,7 @@ export class TwitterInteractionClient {
 						profileId
 					);
 
-					await this.runtime.getMemoryManager("follower-changes").createMemory(followerMemory);
+					await this.runtime.createMemory(followerMemory, "follower-changes");
 				}
 			};
 
@@ -428,7 +427,6 @@ export class TwitterInteractionClient {
 				
 				// Skip if we've already processed this change
 				const existingChange = await this.runtime
-					.getMemoryManager("follower-changes")
 					.getMemoryById(changeId);
 				
 				if (existingChange) continue;
@@ -554,7 +552,6 @@ export class TwitterInteractionClient {
 		// check if the tweet exists, save if it doesn't
 		const tweetId = createUniqueUuid(this.runtime, tweet.id);
 		const tweetExists = await this.runtime
-			.getMemoryManager("messages")
 			.getMemoryById(tweetId);
 
 		if (!tweetExists) {
@@ -671,9 +668,7 @@ export class TwitterInteractionClient {
 				};
 
 				// Save the response to memory
-				await this.runtime
-					.getMemoryManager("messages")
-					.createMemory(responseMemory);
+				await this.runtime.createMemory(responseMemory, "messages");
 
 				return [responseMemory];
 			} catch (error) {
@@ -726,8 +721,7 @@ export class TwitterInteractionClient {
 
 			// Handle memory storage
 			const memory = await this.runtime
-				.getMemoryManager("messages")
-				.getMemoryById(createUniqueUuid(this.runtime, currentTweet.id));
+					.getMemoryById(createUniqueUuid(this.runtime, currentTweet.id));
 			if (!memory) {
 				const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
 				const entityId = createUniqueUuid(this.runtime, currentTweet.userId);
@@ -741,7 +735,7 @@ export class TwitterInteractionClient {
 					type: ChannelType.GROUP,
 				});
 
-				this.runtime.getMemoryManager("messages").createMemory({
+				this.runtime.createMemory({
 					id: createUniqueUuid(this.runtime, currentTweet.id),
 					agentId: this.runtime.agentId,
 					content: {
@@ -759,7 +753,7 @@ export class TwitterInteractionClient {
 						currentTweet.userId === this.twitterUserId
 							? this.runtime.agentId
 							: createUniqueUuid(this.runtime, currentTweet.userId),
-				});
+				}, "messages");
 			}
 
 			if (visited.has(currentTweet.id)) {

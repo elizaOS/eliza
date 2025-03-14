@@ -37,8 +37,8 @@ All adapters extend the [`DatabaseAdapter`](/api/classes/DatabaseAdapter) base c
 | | `getMemoriesByRoomIds()` | Get memories from multiple rooms | `{ agentId: UUID, roomIds: UUID[], tableName: string, limit?: number }` |
 | | `searchMemories()` | Search with vector similarity | `{ tableName: string, agentId: UUID, roomId: UUID, embedding: number[], match_threshold: number, match_count: number, unique: boolean }` |
 | | `searchMemoriesByEmbedding()` | Search memories by embedding vector | `embedding: number[], { match_threshold?: number, count?: number, roomId?: UUID, agentId?: UUID, unique?: boolean, tableName: string }` |
-| | `removeMemory()` | Remove specific memory | `memoryId: UUID, tableName: string` |
-| | `removeAllMemories()` | Remove all memories in room | `roomId: UUID, tableName: string` |
+| | `deleteMemory()` | Remove specific memory | `memoryId: UUID, tableName: string` |
+| | `deleteAllMemories()` | Remove all memories in room | `roomId: UUID, tableName: string` |
 | | `countMemories()` | Count memories in room | `roomId: UUID, unique?: boolean, tableName?: string` |
 | **Knowledge Management** |
 | | `createKnowledge()` | Store new knowledge item | `knowledge: RAGKnowledgeItem` |
@@ -98,7 +98,7 @@ interface IDatabaseAdapter {
     createMemory(memory: Memory, tableName: string): Promise<void>;
     getMemories(params: { roomId: UUID; count?: number }): Promise<Memory[]>;
     searchMemories(params: SearchParams): Promise<Memory[]>;
-    removeMemory(memoryId: UUID): Promise<void>;
+    deleteMemory(memoryId: UUID): Promise<void>;
     
     // Account & Room Management
     createAccount(account: Account): Promise<boolean>;

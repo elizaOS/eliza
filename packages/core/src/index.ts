@@ -8,7 +8,6 @@ export * from "./entities";
 export * from "./environment";
 export * from "./import";
 export * from "./logger";
-export * from "./memory";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";

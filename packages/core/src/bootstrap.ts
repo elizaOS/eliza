@@ -165,8 +165,8 @@ const messageReceivedHandler = async ({
 
 			// First, save the incoming message
 			await Promise.all([
-				runtime.getMemoryManager("messages").addEmbeddingToMemory(message),
-				runtime.getMemoryManager("messages").createMemory(message),
+				runtime.addEmbeddingToMemory(message),
+				runtime.createMemory(message, "messages"),
 			]);
 
 			const agentUserState = await runtime.getParticipantUserState(message.roomId, runtime.agentId);
@@ -281,7 +281,7 @@ const messageReceivedHandler = async ({
 					];
 
 					// save the plan to a new reply memory
-					await runtime.getMemoryManager("messages").createMemory({
+					await runtime.createMemory({
 						entityId: runtime.agentId,
 						agentId: runtime.agentId,
 						content: {
@@ -292,7 +292,7 @@ const messageReceivedHandler = async ({
 						},
 						roomId: message.roomId,
 						createdAt: Date.now(),
-					});
+					}, "messages");
 				}
 
 				// Clean up the response ID
@@ -367,7 +367,7 @@ const reactionReceivedHandler = async ({
 	message: Memory;
 }) => {
 	try {
-		await runtime.getMemoryManager("messages").createMemory(message);
+		await runtime.createMemory(message, "messages");
 	} catch (error) {
 		if (error.code === "23505") {
 			logger.warn("Duplicate reaction memory, skipping");
@@ -393,8 +393,8 @@ const postGeneratedHandler = async ({
 }: MessageReceivedHandlerParams) => {
 	// First, save the post to memory
 	await Promise.all([
-		runtime.getMemoryManager("messages").addEmbeddingToMemory(message),
-		runtime.getMemoryManager("messages").createMemory(message),
+		runtime.addEmbeddingToMemory(message),
+		runtime.createMemory(message, "messages"),
 	]);
 
 	// Compose state with providers for generating content
@@ -462,7 +462,7 @@ const postGeneratedHandler = async ({
 	];
 
 	// Save the response plan to memory
-	await runtime.getMemoryManager("messages").createMemory({
+	await runtime.createMemory({
 		entityId: runtime.agentId,
 		agentId: runtime.agentId,
 		content: {
@@ -473,7 +473,7 @@ const postGeneratedHandler = async ({
 		},
 		roomId: message.roomId,
 		createdAt: Date.now(),
-	});
+	}, "messages");
 
 	// Process the actions and execute the callback
 	await runtime.processActions(message, responseMessages, state, callback);

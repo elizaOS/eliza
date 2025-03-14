@@ -198,7 +198,7 @@ const twitterPostAction: Action = {
 
 			if (room.type !== ChannelType.GROUP) {
 				// only handle in a group scenario for now
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: message.entityId,
 					agentId: message.agentId,
 					roomId: message.roomId,
@@ -210,7 +210,7 @@ const twitterPostAction: Action = {
 					metadata: {
 						type: "TWITTER_POST",
 					},
-				});
+				}, "messages");
 				return false;
 			}
 

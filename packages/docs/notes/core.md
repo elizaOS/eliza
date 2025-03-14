@@ -330,7 +330,7 @@ const similar = await memoryManager.searchMemoriesByEmbedding(embedding, {
 });
 
 // Clean up old memories periodically
-await memoryManager.removeAllMemories(roomId, tableName);
+await memoryManager.deleteAllMemories(roomId, tableName);
 ```
 
 ### State Composition

@@ -816,7 +816,7 @@ export function agentRouter(
 			};
 
 			logger.debug("[SPEECH CONVERSATION] Creating memory");
-			await runtime.getMemoryManager("messages").createMemory(memory);
+			await runtime.createMemory(memory, "messages");
 
 			logger.debug("[SPEECH CONVERSATION] Composing state");
 			const state = await runtime.composeState(userMessage);
@@ -862,7 +862,7 @@ export function agentRouter(
 			};
 
 
-			await runtime.getMemoryManager("messages").createMemory(responseMessage);
+			await runtime.createMemory(responseMessage, "messages");
 			await runtime.evaluate(memory, state);
 
 
@@ -1383,7 +1383,8 @@ export function agentRouter(
 				: Date.now();
 			const _worldId = req.query.worldId as string;
 
-			const memories = await runtime.getMemoryManager("messages").getMemories({
+			const memories = await runtime.getMemories({
+				tableName: "messages",
 				roomId,
 				count: limit,
 				end: before,

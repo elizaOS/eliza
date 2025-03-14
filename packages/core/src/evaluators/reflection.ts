@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { getEntityDetails } from "../entities";
 import logger from "../logger";
-import { MemoryManager } from "../memory";
 import { composePrompt } from "../prompts";
 import {
 	type Entity,
@@ -246,11 +245,6 @@ const generateObject = async ({
 async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 	const { agentId, roomId } = message;
 
-	// Get known facts
-	const factsManager = new MemoryManager({
-		runtime,
-		tableName: "facts",
-	});
 
 	// Run all queries in parallel
 	const [existingRelationships, entities, knownFacts] = await Promise.all([
@@ -258,9 +252,9 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 			entityId: message.entityId,
 		}),
 		getEntityDetails({ runtime, roomId }),
-		factsManager.getMemories({
+		runtime.getMemories({
+			tableName: "facts",
 			roomId,
-			agentId,
 			count: 30,
 			unique: true,
 		}),
@@ -303,14 +297,14 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
 	await Promise.all(
 		newFacts.map(async (fact) => {
-			const factMemory = await factsManager.addEmbeddingToMemory({
+			const factMemory = await runtime.addEmbeddingToMemory({
 				entityId: agentId,
 				agentId,
 				content: { text: fact.claim },
 				roomId,
 				createdAt: Date.now(),
 			});
-			return factsManager.createMemory(factMemory, true);
+			return runtime.createMemory(factMemory, "facts", true);
 		}),
 	);
 
@@ -385,7 +379,8 @@ export const reflectionEvaluator: Evaluator = {
 		const lastMessageId = await runtime
 			
 			.getCache<string>(`${message.roomId}-reflection-last-processed`);
-		const messages = await runtime.getMemoryManager("messages").getMemories({
+		const messages = await runtime.getMemories({
+			tableName: "messages",
 			roomId: message.roomId,
 			count: runtime.getConversationLength(),
 		});

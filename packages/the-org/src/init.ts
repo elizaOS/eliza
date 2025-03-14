@@ -173,7 +173,7 @@ export async function startOnboardingDM(
 			});
 		}
 		// Create memory of the initial message
-		await runtime.getMemoryManager("messages").createMemory({
+		await runtime.createMemory({
 			agentId: runtime.agentId,
 			entityId: runtime.agentId,
 			roomId: roomId,
@@ -182,7 +182,7 @@ export async function startOnboardingDM(
 				actions: ["BEGIN_ONBOARDING"],
 			},
 			createdAt: Date.now(),
-		});
+		}, "messages");
 
 		logger.info(
 			`Started settings DM with owner ${owner.id} for server ${guild.id}`,

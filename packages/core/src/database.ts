@@ -10,8 +10,7 @@ import type {
 	Room,
 	Task,
 	UUID,
-	World,
-	IMemoryManager,
+	World
 } from "./types";
 
 /**
@@ -241,10 +240,9 @@ export abstract class DatabaseAdapter<DB = unknown>
 	/**
 	 * Removes a specific memory from the database.
 	 * @param memoryId The UUID of the memory to remove.
-	 * @param tableName The table from which the memory should be removed.
 	 * @returns A Promise that resolves when the memory has been removed.
 	 */
-	abstract removeMemory(memoryId: UUID, tableName: string): Promise<void>;
+	abstract deleteMemory(memoryId: UUID): Promise<void>;
 
 	/**
 	 * Removes all memories associated with a specific room.
@@ -252,7 +250,7 @@ export abstract class DatabaseAdapter<DB = unknown>
 	 * @param tableName The table from which the memories should be removed.
 	 * @returns A Promise that resolves when all memories have been removed.
 	 */
-	abstract removeAllMemories(roomId: UUID, tableName: string): Promise<void>;
+	abstract deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
 
 	/**
 	 * Counts the number of memories in a specific room.
@@ -558,6 +556,4 @@ export abstract class DatabaseAdapter<DB = unknown>
 	 * @returns Promise resolving when the deletion is complete
 	 */
 	abstract deleteTask(id: UUID): Promise<void>;
-
-	abstract getMemoryManager<T extends Memory = Memory>(tableName: string): IMemoryManager<T> | null;
 }

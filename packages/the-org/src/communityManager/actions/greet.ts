@@ -90,7 +90,7 @@ export const greetAction: Action = {
 
 			if (!settings?.enabled || !settings.channelId) {
 				logger.error("Greeting settings not properly configured");
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: runtime.agentId,
 					agentId: runtime.agentId,
 					roomId: message.roomId,
@@ -100,7 +100,7 @@ export const greetAction: Action = {
 						actions: ["GREET_NEW_PERSON"],
 						result: "failed",
 					},
-				});
+				}, "messages");
 				return;
 			}
 
@@ -116,13 +116,13 @@ export const greetAction: Action = {
 			};
 
 			// Create memory of greeting
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: runtime.agentId,
 				agentId: runtime.agentId,
 				roomId: message.roomId,
 				content,
 				createdAt: Date.now(),
-			});
+			}, "messages");
 
 			// Send greeting
 			await callback(content);

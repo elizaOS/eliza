@@ -95,7 +95,7 @@ export const leaveVoice: Action = {
 		if (!guild) {
 			console.warn("Bot is not in any voice channel.");
 			// create a memory with thought to self to self
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -108,7 +108,7 @@ export const leaveVoice: Action = {
 				metadata: {
 					type: "LEAVE_VOICE",
 				},
-			});
+			}, "messages");
 			return false;
 		}
 
@@ -116,7 +116,7 @@ export const leaveVoice: Action = {
 
 		if (!voiceChannel || !(voiceChannel instanceof BaseGuildVoiceChannel)) {
 			console.warn("Could not retrieve the voice channel.");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -128,14 +128,14 @@ export const leaveVoice: Action = {
 				metadata: {
 					type: "LEAVE_VOICE",
 				},
-			});
+			}, "messages");
 			return false;
 		}
 
 		const connection = voiceManager.getVoiceConnection(guild.id);
 		if (!connection) {
 			console.warn("No active voice connection found for the bot.");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -148,13 +148,13 @@ export const leaveVoice: Action = {
 				metadata: {
 					type: "LEAVE_VOICE",
 				},
-			});
+			}, "messages");
 			return false;
 		}
 
 		voiceManager.leaveChannel(voiceChannel);
 		// save a memory for the new channel as well
-		await runtime.getMemoryManager("messages").createMemory({
+		await runtime.createMemory({
 			entityId: message.entityId,
 			agentId: message.agentId,
 			roomId: createUniqueUuid(runtime, voiceChannel.id),
@@ -166,7 +166,7 @@ export const leaveVoice: Action = {
 			metadata: {
 				type: "LEAVE_VOICE",
 			},
-		});
+		}, "messages");
 
 		return true;
 	},

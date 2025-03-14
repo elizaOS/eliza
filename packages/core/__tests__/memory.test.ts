@@ -23,8 +23,8 @@ describe("MemoryManager", () => {
 		mockRuntime = {
 			getMemories: vi.fn(),
 			createMemory: vi.fn(),
-			removeMemory: vi.fn(),
-			removeAllMemories: vi.fn(),
+			deleteMemory: vi.fn(),
+			deleteAllMemories: vi.fn(),
 			countMemories: vi.fn(),
 			getCachedEmbeddings: vi.fn(),
 			searchMemories: vi.fn(),
@@ -33,11 +33,6 @@ describe("MemoryManager", () => {
 			agentId: AGENT_UUID,
 			useModel: vi.fn(() => Promise.resolve([])),
 		} as unknown as IAgentRuntime;
-
-		memoryManager = new MemoryManager({
-			tableName: "documents",
-			runtime: mockRuntime,
-		});
 	});
 
 	describe("addEmbeddingToMemory", () => {
@@ -52,7 +47,7 @@ describe("MemoryManager", () => {
 				embedding: existingEmbedding,
 			};
 
-			const result = await memoryManager.addEmbeddingToMemory(memory);
+			const result = await mockRuntime.addEmbeddingToMemory(memory);
 			expect(result.embedding).toBe(existingEmbedding);
 		});
 
@@ -65,7 +60,7 @@ describe("MemoryManager", () => {
 				content: { text: "" },
 			};
 
-			await expect(memoryManager.addEmbeddingToMemory(memory)).rejects.toThrow(
+			await expect(mockRuntime.addEmbeddingToMemory(memory)).rejects.toThrow(
 				"Cannot generate embedding: Memory content is empty",
 			);
 		});
@@ -353,11 +348,6 @@ describe("MemoryManager", () => {
 
 	describe("Document Fragmentation", () => {
 		it("should handle different token size configurations", async () => {
-			const documentsManager = new MemoryManager({
-				tableName: "documents",
-				runtime: mockRuntime,
-			});
-
 			const largeText = "a".repeat(10000);
 			const memory: Memory = {
 				id: TEST_UUID_1,
@@ -370,7 +360,7 @@ describe("MemoryManager", () => {
 				},
 			};
 
-			await documentsManager.createMemory(memory);
+			await memoryManager.createMemory(memory, "documents");
 			// Verify fragments were created with correct sizes
 		});
 

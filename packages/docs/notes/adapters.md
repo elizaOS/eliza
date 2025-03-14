@@ -244,7 +244,6 @@ const db = new PGLiteDatabaseAdapter(
 // Create memory
 await db.createMemory({
     id: uuid(),
-    type: "messages",
     content: {
         text: "Hello world",
         attachments: [],

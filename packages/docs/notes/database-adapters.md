@@ -361,7 +361,7 @@ const db = new PostgresDatabaseAdapter({
 
 ```typescript
 // Clean up old memories periodically
-await db.removeAllMemories(roomId, tableName);
+await db.deleteAllMemories(roomId, tableName);
 ```
 
 3. **Vector Search Performance**

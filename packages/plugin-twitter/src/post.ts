@@ -171,7 +171,7 @@ export class TwitterPostClient {
 		await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
 
 		// Create a memory for the tweet
-		await runtime.getMemoryManager("messages").createMemory({
+		await runtime.createMemory({
 			id: createUniqueUuid(this.runtime, tweet.id),
 			entityId: runtime.agentId,
 			agentId: runtime.agentId,
@@ -182,7 +182,7 @@ export class TwitterPostClient {
 			},
 			roomId,
 			createdAt: tweet.timestamp,
-		});
+		}, "messages");
 	}
 
 	/**
@@ -430,8 +430,7 @@ export class TwitterPostClient {
 						};
 						
 						await this.runtime
-							.getMemoryManager("messages")
-							.createMemory(postedMemory);
+											.createMemory(postedMemory);
 							
 						return [postedMemory];
 					}

@@ -67,9 +67,7 @@ The Eliza framework uses multiple types of memory to support an agent's long-ter
 The Eliza framework uses multiple specialized memory managers to support different aspects of agent functionality:
 
 ```typescript
-// Example memory manager usage
-const memoryManager = runtime.getMemoryManager("messages");
-await memoryManager.createMemory({
+await runtime.createMemory({
     id: messageId,
     content: { text: "Message content" },
     userId: userId,

@@ -103,7 +103,7 @@ export const downloadMedia: Action = {
 		const mediaUrl = await getMediaUrl(runtime, message, state);
 		if (!mediaUrl) {
 			console.error("Couldn't get media URL from messages");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -115,7 +115,7 @@ export const downloadMedia: Action = {
 				metadata: {
 					type: "DOWNLOAD_MEDIA",
 				},
-			});
+			}, "messages");
 			return;
 		}
 

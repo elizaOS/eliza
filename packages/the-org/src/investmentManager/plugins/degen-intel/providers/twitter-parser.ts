@@ -214,8 +214,8 @@ export default class TwitterParser {
 
 		/** Retrieve tweets from message manager */
 		const memories = await this.runtime
-			.getMemoryManager("messages")
 			.getMemories({
+				tableName: "messages",
 				roomId: this.roomId,
 				start: fromDate.getTime(),
 				end: timeslot.getTime(),

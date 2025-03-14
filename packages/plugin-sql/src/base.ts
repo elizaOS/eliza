@@ -1065,7 +1065,7 @@ export abstract class BaseDrizzleAdapter<
 		return memoryId;
 	}
 
-	async removeMemory(memoryId: UUID, tableName: string): Promise<void> {
+	async deleteMemory(memoryId: UUID, tableName: string): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db.transaction(async (tx) => {
 				await tx
@@ -1086,7 +1086,7 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
-	async removeAllMemories(roomId: UUID, tableName: string): Promise<void> {
+	async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db.transaction(async (tx) => {
 				const memoryIds = await tx

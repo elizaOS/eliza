@@ -1,4 +1,5 @@
 /* eslint-disable no-dupe-class-members */
+import { expect } from "bun:test";
 import { DatabaseAdapter } from "../src/database";
 import type {
 	ChannelType,
@@ -84,17 +85,16 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 		_memory: Memory,
 		_tableName: string,
 		_unique?: boolean,
-	): Promise<void> {
+	): Promise<UUID> {
 		throw new Error("Method not implemented.");
 	}
 	/**
 	 * Removes a memory from a specific table.
 	 *
 	 * @param {UUID} _memoryId - The ID of the memory to be removed.
-	 * @param {string} _tableName - The name of the table from which the memory will be removed.
 	 * @returns {Promise<void>} A promise that resolves when the memory is successfully removed.
 	 */
-	removeMemory(_memoryId: UUID, _tableName: string): Promise<void> {
+	deleteMemory(_memoryId: UUID): Promise<void> {
 		throw new Error("Method not implemented.");
 	}
 	/**
@@ -104,7 +104,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	 * @param {string} _tableName - The name of the table containing the memories.
 	 * @returns {Promise<void>} A promise that resolves when all memories are successfully removed.
 	 */
-	removeAllMemories(_roomId: UUID, _tableName: string): Promise<void> {
+	deleteAllMemories(_roomId: UUID, _tableName: string): Promise<void> {
 		throw new Error("Method not implemented.");
 	}
 	/**
@@ -482,7 +482,7 @@ describe("DatabaseAdapter Tests", () => {
 			tableName: "test_table",
 		});
 		expect(memories).toHaveLength(1);
-		expect(memories[0].roomId).toBe("room-id");
+		expect(memories[0].roomId).toBe("room-id" as UUID);
 	});
 
 	it("should return cached embeddings", async () => {
@@ -508,7 +508,7 @@ describe("DatabaseAdapter Tests", () => {
 			unique: true,
 		});
 		expect(memories).toHaveLength(1);
-		expect(memories[0].roomId).toBe("room-id");
+		expect(memories[0].roomId).toBe("room-id" as UUID);
 	});
 
 	it("should get an account by user ID", async () => {

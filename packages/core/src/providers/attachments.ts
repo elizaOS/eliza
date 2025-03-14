@@ -20,12 +20,11 @@ export const attachmentsProvider: Provider = {
 		const { roomId } = message;
 		const conversationLength = runtime.getConversationLength();
 
-		const recentMessagesData = await runtime
-			.getMemoryManager("messages")
-			.getMemories({
+		const recentMessagesData = await runtime.getMemories({
 				roomId,
 				count: conversationLength,
 				unique: false,
+				tableName: "messages",
 			});
 		// Process attachments from recent messages
 		if (recentMessagesData && Array.isArray(recentMessagesData)) {
