@@ -36,6 +36,10 @@
 		"cli": "bun run build && node dist/index.js",
 		"build": "tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts && bun run src/scripts/copy-drizzle.ts",
 		"test:dev": "REGISTRY_URL=http://localhost:3333 vitest run",
+		"test:plugin-publisher": "vitest run test/plugin-publisher.test.js",
+		"test:plugin-command": "vitest run test/plugin-command.test.js",
+		"test:publish-plugins": "vitest run test/publish-plugins.test.js",
+		"test:registry": "vitest run 'test/**/*.test.js'",
 		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
@@ -49,6 +53,7 @@
 		"@types/babel__core": "^7.20.1",
 		"@types/diff": "^5.0.3",
 		"@types/fs-extra": "^11.0.1",
+		"@types/node": "^20.11.27",
 		"@types/lodash": "^4.17.7",
 		"@types/prompts": "^2.4.2",
 		"axios": "^1.7.9",
@@ -67,6 +72,7 @@
 		"tsx": "^4.19.2",
 		"type-fest": "^3.8.0",
 		"typescript": "5.8.2",
+		"vitest": "^1.3.1",
 		"yoctocolors": "^2.1.1"
 	},
 	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b",

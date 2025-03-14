@@ -1245,7 +1245,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// Log response
 		logger.debug(
 			`[useModel] ${modelKey} output:`,
-			JSON.stringify(response, null, 2)
+			JSON.stringify(response)
 		);
 
 		// Log the model usage

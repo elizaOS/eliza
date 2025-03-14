@@ -10,6 +10,7 @@ import { create } from "./commands/create.js";
 import devCommand from "./commands/dev.js";
 import envCommand from "./commands/env.js";
 import { plugin } from "./commands/plugin.js";
+import publishCommand from "./commands/publish.js";
 import { project } from "./commands/project.js";
 import { start } from "./commands/start.js";
 import { teeCommand as tee } from "./commands/tee.js";
@@ -66,6 +67,9 @@ async function main() {
 	
 	// Register the dev command
 	devCommand(program);
+	
+	// Register the publish command
+	publishCommand(program);
 
 	await program.parseAsync();
 }

@@ -17,18 +17,9 @@ import { Command } from "commander";
 import { execa } from "execa";
 import prompts from "prompts";
 
-export const plugin = new Command()
-	.name("plugin")
-	.description("Manage ElizaOS plugins, including publishing");
-	
-/**
- * Note: The plugin creation functionality is now in the main create.ts file.
- * Use "npx @elizaos/cli create" and select "plugin" when prompted.
- */
-
-plugin
-	.command("publish")
-	.description("publish a plugin to a registry")
+export const publish = new Command()
+	.name("publish")
+	.description("Publish a plugin or project to the registry")
 	.option("-r, --registry <registry>", "target registry", "elizaos/registry")
 	.option("-n, --npm", "publish to npm instead of GitHub", false)
 	.option("-t, --test", "test publish process without making changes", false)
@@ -64,7 +55,7 @@ plugin
 				}
 			}
 
-			// Check if this is a plugin directory
+			// Check if this is a valid directory with package.json
 			const packageJsonPath = path.join(cwd, "package.json");
 			if (!existsSync(packageJsonPath)) {
 				logger.error("No package.json found in current directory.");
@@ -80,6 +71,73 @@ plugin
 				process.exit(1);
 			}
 
+			// Auto-detect whether this is a plugin or project
+			let detectedType = 'plugin'; // Default to plugin
+			
+			// Check if this is a plugin or project based on package.json
+			if (packageJson.agentConfig?.pluginType) {
+				// Check if explicitly defined in the agentConfig section
+				const pluginType = packageJson.agentConfig.pluginType.toLowerCase();
+				if (pluginType.includes('plugin')) {
+					detectedType = 'plugin';
+					logger.info("Detected Eliza plugin in current directory");
+				} else if (pluginType.includes('project')) {
+					detectedType = 'project';
+					logger.info("Detected Eliza project in current directory");
+				}
+			} else if (packageJson.eliza?.type) {
+				// For backward compatibility, also check eliza.type
+				if (packageJson.eliza.type === 'plugin') {
+					detectedType = 'plugin';
+					logger.info("Detected Eliza plugin in current directory (legacy format)");
+				} else if (packageJson.eliza.type === 'project') {
+					detectedType = 'project';
+					logger.info("Detected Eliza project in current directory (legacy format)");
+				}
+			} else {
+				// Use heuristics to detect the type
+				// Check if name contains plugin
+				if (packageJson.name.includes("plugin-")) {
+					detectedType = 'plugin';
+					logger.info("Detected plugin based on package name");
+				} else if (packageJson.description?.toLowerCase().includes("project")) {
+					detectedType = 'project';
+					logger.info("Detected project based on package description");
+				} else {
+					// Additional heuristics from start.ts
+					try {
+						// If the package has a main entry, check if it exports a Project
+						const mainEntry = packageJson.main;
+						if (mainEntry) {
+							const mainPath = path.resolve(cwd, mainEntry);
+							if (existsSync(mainPath)) {
+								try {
+									// Try to import the module to see if it's a project or plugin
+									const importedModule = await import(mainPath);
+									
+									// Check for project indicators (agents array or agent property)
+									if (importedModule.default?.agents || importedModule.default?.agent) {
+										detectedType = 'project';
+										logger.info("Detected project based on exports");
+									}
+									// Check for plugin indicators
+									else if (importedModule.default?.name && typeof importedModule.default?.init === 'function') {
+										detectedType = 'plugin';
+										logger.info("Detected plugin based on exports");
+									}
+								} catch (importError) {
+									logger.debug(`Error importing module: ${importError}`);
+									// Continue with default type
+								}
+							}
+						}
+					} catch (error) {
+						logger.debug(`Error during type detection: ${error}`);
+						// Continue with default type
+					}
+				}
+			}
+
 			// Validate platform option
 			const validPlatforms = ['node', 'browser', 'universal'];
 			if (opts.platform && !validPlatforms.includes(opts.platform)) {
@@ -87,13 +145,23 @@ plugin
 				process.exit(1);
 			}
 
-			// Add platform to package.json if specified
-			if (opts.platform) {
-				packageJson.platform = opts.platform;
+			// Add type and platform to package.json for publishing
+			packageJson.type = detectedType;
+			packageJson.platform = opts.platform;
+			
+			// Preserve agentConfig if it exists or create it
+			if (!packageJson.agentConfig) {
+				packageJson.agentConfig = {
+					pluginType: detectedType === 'plugin' ? 'elizaos:plugin:1.0.0' : 'elizaos:project:1.0.0',
+					pluginParameters: {}
+				};
+			} else if (!packageJson.agentConfig.pluginType) {
+				// Ensure pluginType is set based on detection
+				packageJson.agentConfig.pluginType = detectedType === 'plugin' ? 'elizaos:plugin:1.0.0' : 'elizaos:project:1.0.0';
 			}
 
-			// Check if it's an ElizaOS plugin
-			if (!packageJson.name.includes("plugin-")) {
+			// For plugin type, validate naming convention
+			if (detectedType === 'plugin' && !packageJson.name.includes("plugin-")) {
 				logger.warn(
 					"This doesn't appear to be an ElizaOS plugin. Package name should include 'plugin-'.",
 				);
@@ -155,7 +223,7 @@ plugin
 			await saveRegistrySettings(settings);
 
 			if (opts.test) {
-				logger.info("Running publish tests...");
+				logger.info(`Running ${detectedType} publish tests...`);
 
 				if (opts.npm) {
 					logger.info("\nTesting npm publishing:");
@@ -184,7 +252,7 @@ plugin
 
 			// Handle npm publishing
 			if (opts.npm) {
-				logger.info("Publishing to npm...");
+				logger.info(`Publishing ${detectedType} to npm...`);
 
 				// Check if logged in to npm
 				try {
@@ -222,9 +290,13 @@ plugin
 			}
 
 			logger.success(
-				`Successfully published ${packageJson.name}@${packageJson.version}`,
+				`Successfully published ${detectedType} ${packageJson.name}@${packageJson.version}`,
 			);
 		} catch (error) {
 			handleError(error);
 		}
 	});
+
+export default function registerCommand(cli: Command) {
+	return cli.addCommand(publish);
+} 

@@ -121,9 +121,6 @@ export function createApiRouter(
 					}
 				}
 
-				console.log("routePath", routePath);
-				console.log("reqPath", reqPath);
-
 				// Handle wildcard paths (e.g., /portal/*)
 				if (
 					routePath.endsWith("*") &&
