@@ -944,7 +944,6 @@ export type CacheOptions = {
 export interface IAgentRuntime extends IDatabaseAdapter {
 	// Properties
 	agentId: UUID;
-	databaseAdapter: IDatabaseAdapter;
 	character: Character;
 	providers: Provider[];
 	actions: Action[];

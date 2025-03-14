@@ -51,7 +51,7 @@ import { stringToUuid } from "./uuid";
  * @property { number } #conversationLength - The maximum length of a conversation.
  * @property { UUID } agentId - The unique identifier for the agent.
  * @property { Character } character - The character associated with the agent.
- * @property { IDatabaseAdapter } databaseAdapter - The adapter for interacting with the database.
+ * @property { IDatabaseAdapter } adapter - The adapter for interacting with the database.
  * @property {Action[]} actions - The list of actions available to the agent.
  * @property {Evaluator[]} evaluators - The list of evaluators for decision making.
  * @property {Provider[]} providers - The list of providers for external services.
@@ -61,7 +61,7 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly #conversationLength = 32 as number;
 	readonly agentId: UUID;
 	readonly character: Character;
-	public databaseAdapter!: IDatabaseAdapter;
+	public adapter!: IDatabaseAdapter;
 	readonly actions: Action[] = [];
 	readonly evaluators: Evaluator[] = [];
 	readonly providers: Provider[] = [];
@@ -79,10 +79,6 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly fetch = fetch;
 	services: Map<ServiceType, Service> = new Map();
 
-	public adapter: IDatabaseAdapter;
-
-	private readonly knowledgeRoot: string;
-
 	models = new Map<string, ((params: any) => Promise<any>)[]>();
 	routes: Route[] = [];
 
@@ -97,7 +93,6 @@ export class AgentRuntime implements IAgentRuntime {
 		character?: Character;
 		plugins?: Plugin[];
 		fetch?: typeof fetch;
-		databaseAdapter?: IDatabaseAdapter;
 		adapter?: IDatabaseAdapter;
 		events?: { [key: string]: ((params: any) => void)[] };
 		ignoreBootstrap?: boolean;
@@ -111,26 +106,16 @@ export class AgentRuntime implements IAgentRuntime {
 
 		logger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
 
-		this.knowledgeRoot =
-			typeof process !== "undefined" && process.cwd
-				? join(process.cwd(), "..", "characters", "knowledge")
-				: "./characters/knowledge";
-
-		logger.debug(`[AgentRuntime] Process knowledgeRoot: ${this.knowledgeRoot}`);
-
 		this.#conversationLength =
 			opts.conversationLength ?? this.#conversationLength;
 
-		if (opts.databaseAdapter) {
-			this.registerDatabaseAdapter(opts.databaseAdapter);
+		if (opts.adapter) {
+			this.registerDatabaseAdapter(opts.adapter);
 		}
 
 		logger.success(`Agent ID: ${this.agentId}`);
 
 		this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
-
-		// Initialize adapter from options or empty array if not provided
-		this.adapter = opts.adapter;
 
 		// Register plugins from options or empty array
 		const plugins = opts?.plugins ?? [];
@@ -390,13 +375,8 @@ export class AgentRuntime implements IAgentRuntime {
 			throw error;
 		}
 
-		// Process character knowledge
-		if (this.character?.knowledge && this.character.knowledge.length > 0) {
-			const stringKnowledge = this.character.knowledge.filter(
-				(item): item is string => typeof item === "string",
-			);
-			await this.processCharacterKnowledge(stringKnowledge);
-		}
+		console.log("this.character?.knowledge is", this.character?.knowledge)
+		console.trace()
 
 		// Check if TEXT_EMBEDDING model is registered
 		const embeddingModel = this.getModel(ModelTypes.TEXT_EMBEDDING);
@@ -408,6 +388,15 @@ export class AgentRuntime implements IAgentRuntime {
 			// Only run ensureEmbeddingDimension if we have an embedding model
 			await this.ensureEmbeddingDimension();
 		}
+
+		// Process character knowledge
+		if (this.character?.knowledge && this.character.knowledge.length > 0) {
+			const stringKnowledge = this.character.knowledge.filter(
+				(item): item is string => typeof item === "string",
+			);
+			await this.processCharacterKnowledge(stringKnowledge);
+		}
+
 	}
 
 	private async handleProcessingError(error: any, context: string) {
@@ -1245,7 +1234,10 @@ export class AgentRuntime implements IAgentRuntime {
 		// Log response
 		logger.debug(
 			`[useModel] ${modelKey} output:`,
-			JSON.stringify(response, null, 2)
+			// if response is an array, should the first and last 5 items with a "..." in the middle, and a (x items) at the end
+			Array.isArray(response)
+				? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${response.length} items)`
+				: JSON.stringify(response)
 		);
 
 		// Log the model usage
