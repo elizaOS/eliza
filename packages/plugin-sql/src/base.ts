@@ -12,6 +12,7 @@ import {
 	type World,
 	logger
 } from "@elizaos/core";
+import type { Log } from "@elizaos/core";
 import {
 	and,
 	cosineDistance,
@@ -44,7 +45,6 @@ import {
 	worldTable
 } from "./schema/index";
 import type { DrizzleOperations } from "./types";
-import { Log } from "@elizaos/core";
 
 // Define the metadata type inline since we can't import it
 /**

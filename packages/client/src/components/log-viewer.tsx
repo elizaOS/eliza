@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useEffect, useRef, useState } from "react";
+import { useAgents } from "../hooks/use-query-hooks";
 import { apiClient } from "../lib/api";
 import PageTitle from "./page-title";
 import { ScrollArea } from "./ui/scroll-area";
@@ -11,7 +12,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "./ui/select";
-import { useAgents } from "../hooks/use-query-hooks";
 
 interface LogEntry {
 	level: number;

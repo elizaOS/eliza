@@ -24,6 +24,7 @@ import type {
 	IDatabaseAdapter,
 	IMemoryManager,
 	KnowledgeItem,
+	Log,
 	Memory,
 	ModelParamsMap,
 	ModelResultMap,
@@ -43,11 +44,6 @@ import type {
 	World
 } from "./types";
 import { stringToUuid } from "./uuid";
-
-// TODO: Create a proper chunking module
-const ChunkingStrategy = {
-	DEFAULT: "default",
-};
 
 /**
  * Represents the runtime environment for an agent, handling message processing,
