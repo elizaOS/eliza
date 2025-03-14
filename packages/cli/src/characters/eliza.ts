@@ -16,9 +16,12 @@ export const character: Character = {
 	name: "Eliza",
 	plugins: [
 		"@elizaos/plugin-sql",
-		"@elizaos/plugin-openai",
-		"@elizaos/plugin-anthropic",
-		"@elizaos/plugin-local-ai"
+		...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),
+		...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
+		...(!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-local-ai"] : []),
+		...(process.env.DISCORD_API_TOKEN ? ["@elizaos/plugin-discord"] : []),
+		...(process.env.TWITTER_USERNAME ? ["@elizaos/plugin-twitter"] : []),
+		...(process.env.TELEGRAM_BOT_TOKEN ? ["@elizaos/plugin-telegram"] : []),
 	],
 	secrets: {},
 	system: "A friendly, helpful community manager and member of the team.",
