@@ -276,37 +276,59 @@ export function createApiRouter(
 		const requestedLevel = (req.query.level?.toString().toLowerCase() ||
 			"info") as LogLevel;
 		const agentName = req.query.agentName?.toString();
+		const agentId = req.query.agentId?.toString();  // Add support for agentId parameter
 		const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
-
+	
 		// Access the underlying logger instance
 		const destination = (logger as unknown)[Symbol.for("pino-destination")];
-
+	
 		if (!destination?.recentLogs) {
 			return res.status(500).json({
 				error: "Logger destination not available",
 				message: "The logger is not configured to maintain recent logs",
 			});
 		}
-
+	
 		try {
 			// Get logs from the destination's buffer
 			const recentLogs: LogEntry[] = destination.recentLogs();
 			const requestedLevelValue = LOG_LEVELS[requestedLevel] || LOG_LEVELS.info;
-
+	
 			const filtered = recentLogs
 				.filter((log) => {
+					// Filter by time always
+					const timeMatch = log.time >= since;
+					
 					// Filter by level
-					const levelMatch = log.time >= since && log.level >= requestedLevelValue;
+					let levelMatch = true;
+					if (requestedLevel && requestedLevel !== 'all') {
+						levelMatch = log.level === requestedLevelValue;
+					}
 					
 					// Filter by agentName if provided
 					const agentNameMatch = agentName 
 						? log.agentName === agentName 
 						: true;
 					
-					return levelMatch && agentNameMatch;
+					// Filter by agentId if provided
+					const agentIdMatch = agentId
+						? log.agentId === agentId
+						: true;
+					
+					return timeMatch && levelMatch && agentNameMatch && agentIdMatch;
 				})
 				.slice(-limit);
-
+	
+			// Add debug log to help troubleshoot
+			logger.debug('Logs request processed', { 
+				requestedLevel, 
+				requestedLevelValue,
+				agentName,
+				agentId,
+				filteredCount: filtered.length, 
+				totalLogs: recentLogs.length 
+			});
+	
 			res.json({
 				logs: filtered,
 				count: filtered.length,

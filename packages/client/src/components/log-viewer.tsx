@@ -56,9 +56,14 @@ const LOG_LEVEL_COLORS: Record<number, string> = {
 	60: "text-red-600",
 };
 
-export function LogViewer() {
-	const [selectedLevel, setSelectedLevel] = useState("all");
-	const [selectedAgentName, setSelectedAgentName] = useState("all");
+interface LogViewerProps {
+	agentName?: string;
+	level?: string;
+}
+
+export function LogViewer({ agentName, level }: LogViewerProps = {}) {
+	const [selectedLevel, setSelectedLevel] = useState(level || "all");
+	const [selectedAgentName, setSelectedAgentName] = useState(agentName || "all");
 	const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 	const scrollAreaRef = useRef<HTMLDivElement>(null);
 	const isUserScrolling = useRef(false);
@@ -67,10 +72,10 @@ export function LogViewer() {
 	const { data, error, isLoading } = useQuery<LogResponse>({
 		queryKey: ["logs", selectedLevel, selectedAgentName],
 		queryFn: () =>
-			apiClient.getLogs(
-				selectedLevel === "all" ? "" : selectedLevel,
-				selectedAgentName === "all" ? undefined : selectedAgentName
-			),
+			apiClient.getLogs({
+				level: selectedLevel === "all" ? "" : selectedLevel,
+				agentName: selectedAgentName === "all" ? undefined : selectedAgentName,
+			}),
 		refetchInterval: 1000,
 		staleTime: 1000,
 	});
@@ -158,6 +163,7 @@ export function LogViewer() {
 				className="whitespace-pre-wrap font-mono"
 			>
 				<span className="text-gray-500">[{timestamp}]</span>{" "}
+				{log.agentName && <span className="text-gray-500">[{log.agentName}]</span>}{" "}
 				<span className={getLevelColor(log.level)}>{level}:</span>{" "}
 				<span className="text-white">{log.msg}</span>
 				<span className="text-gray-300">{extraFields}</span>
