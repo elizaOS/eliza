@@ -1532,6 +1532,10 @@ export class AgentRuntime implements IAgentRuntime {
 		return await this.adapter.getLogs(params);
 	}
 
+	async deleteLog(logId: UUID): Promise<void> {
+		await this.adapter.deleteLog(logId);
+	}
+
 	async createWorld(world: World): Promise<UUID> {
 		return await this.adapter.createWorld(world);
 	}

@@ -907,7 +907,15 @@ export abstract class BaseDrizzleAdapter<
 				.offset(offset ?? 0);
 			return result;
 		});
+
 	}
+
+	async deleteLog(logId: UUID): Promise<void> {
+		return this.withDatabase(async () => {
+			await this.db.delete(logTable).where(eq(logTable.id, logId));
+		});
+	}
+
 	async searchMemories(params: {
 		tableName: string;
 		roomId: UUID;
