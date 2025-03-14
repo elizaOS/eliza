@@ -44,6 +44,7 @@ import {
 	worldTable
 } from "./schema/index";
 import type { DrizzleOperations } from "./types";
+import { Log } from "@elizaos/core";
 
 // Define the metadata type inline since we can't import it
 /**
@@ -880,6 +881,33 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	async getLogs(
+		params: {
+			entityId: UUID;
+			roomId?: UUID;
+			type?: string;
+			count?: number;
+			offset?: number;
+		},
+	): Promise<Log[]> {
+		const { entityId, roomId, type, count, offset } = params;
+		return this.withDatabase(async () => {
+			const result = await this.db
+				.select()
+				.from(logTable)
+				.where(
+					and(
+						eq(logTable.entityId, entityId),
+						roomId ? eq(logTable.roomId, roomId) : undefined,
+						type ? eq(logTable.type, type) : undefined,
+					),
+				)
+				.orderBy(desc(logTable.createdAt))
+				.limit(count ?? 10)
+				.offset(offset ?? 0);
+			return result;
+		});
+	}
 	async searchMemories(params: {
 		tableName: string;
 		roomId: UUID;

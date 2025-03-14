@@ -397,6 +397,63 @@ export function agentRouter(
 		}
 	});
 
+
+	// Get Agent Logs
+	router.get("/:agentId/logs", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+		const { roomId, type, count, offset } = req.query;
+		if (!agentId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID format",
+				},
+			});
+			return;
+		}
+
+		const runtime = agents.get(agentId);
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+
+		if(roomId) {
+			const roomIdValidated = validateUuid(roomId);
+			if (!roomIdValidated) {
+				res.status(400).json({
+					success: false,
+					error: {
+						code: "INVALID_ID",
+						message: "Invalid room ID format",
+					},
+				});
+				return;
+			}
+		}
+		
+
+		const logs = await runtime.getLogs({
+			entityId: agentId,
+			roomId: roomId ? (roomId as UUID) : undefined,
+			type: type ? (type as string) : undefined,
+			count: count ? Number(count) : undefined,
+			offset: offset ? Number(offset) : undefined,
+		});
+
+		res.json({
+			success: true,
+			data: logs,
+		});
+	});
+
 	// Audio messages endpoints
 	router.post(
 		"/:agentId/audio-messages",

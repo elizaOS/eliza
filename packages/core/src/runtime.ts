@@ -36,7 +36,8 @@ import {
 	type Task,
 	type TaskWorker,
 	type UUID,
-	type World
+	type World,
+	type Log,
 } from "./types";
 import { stringToUuid } from "./uuid";
 
@@ -1519,6 +1520,18 @@ export class AgentRuntime implements IAgentRuntime {
 		return await this.adapter.countMemories(roomId, unique, tableName);
 	}
 	
+	async getLogs(
+		params: {
+			entityId: UUID;
+			roomId?: UUID;
+			type?: string;
+			count?: number;
+			offset?: number;
+		}
+	): Promise<Log[]> {
+		return await this.adapter.getLogs(params);
+	}
+
 	async createWorld(world: World): Promise<UUID> {
 		return await this.adapter.createWorld(world);
 	}

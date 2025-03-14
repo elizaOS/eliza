@@ -3,6 +3,7 @@ import type {
 	Component,
 	Entity,
 	IDatabaseAdapter,
+	Log,
 	Memory,
 	Participant,
 	Relationship,
@@ -186,6 +187,21 @@ export abstract class DatabaseAdapter<DB = unknown>
 		roomId: UUID;
 		type: string;
 	}): Promise<void>;
+
+	/**
+	 * Retrieves logs based on the specified parameters.
+	 * @param params An object containing parameters for the log retrieval.
+	 * @returns A Promise that resolves to an array of Log objects.
+	 */
+	abstract getLogs(
+		params: {
+			entityId: UUID;
+			roomId?: UUID;
+			type?: string;
+			count?: number;
+			offset?: number;
+		},
+	): Promise<Log[]>;
 
 	/**
 	 * Searches for memories based on embeddings and other specified parameters.
