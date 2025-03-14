@@ -275,7 +275,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 		
 			</div>
 
-			<div className="flex flex-row w-full h-full gap-4">
+			<div className="flex flex-row w-full overflow-y-auto gap-4">
 				{/* Main Chat Area */}
 				<div className={cn(
 					"flex flex-col transition-all duration-300",
