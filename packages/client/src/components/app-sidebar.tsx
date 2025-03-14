@@ -29,7 +29,7 @@ export function AppSidebar() {
 	
 	return (
 		<Sidebar className="bg-background">
-			<SidebarHeader className="pb-4">
+			<SidebarHeader>
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton size="lg" asChild>
@@ -51,9 +51,6 @@ export function AppSidebar() {
 			</SidebarHeader>
 			<SidebarContent>
 				<SidebarGroup>
-					<SidebarGroupLabel className="px-6 py-2 text-sm font-medium text-muted-foreground">
-						<NavLink to={"/"}>AGENTS</NavLink>
-					</SidebarGroupLabel>
 					<SidebarGroupContent className="px-2">
 						<SidebarMenu>
 							{isAgentsPending ? (
@@ -93,7 +90,7 @@ export function AppSidebar() {
 											<>
 												{/* Render active section */}
 												{activeAgents.length > 0 && (
-													<div className="px-4 py-1 mt-4">
+													<div className="px-4 py-1">
 														<div className="flex items-center space-x-2">
 															<span className="text-sm font-medium text-muted-foreground">
 																Online
