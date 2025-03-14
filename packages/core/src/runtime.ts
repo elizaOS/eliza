@@ -496,6 +496,8 @@ export class AgentRuntime implements IAgentRuntime {
 
 		await this.getMemoryManager("documents").createMemory(documentMemory);
 
+		console.log("Chunking and storing document...")
+
 		// Create fragments using splitChunks
 		const fragments = await splitChunks(
 			item.content.text,
@@ -505,11 +507,13 @@ export class AgentRuntime implements IAgentRuntime {
 
 		// Store each fragment with link to source document
 		for (let i = 0; i < fragments.length; i++) {
+			const embedding = await this.useModel(ModelTypes.TEXT_EMBEDDING, fragments[i]);
 			const fragmentMemory: Memory = {
 				id: createUniqueUuid(this, `${item.id}-fragment-${i}`),
 				agentId: this.agentId,
 				roomId: this.agentId,
 				entityId: this.agentId,
+				embedding,
 				content: { text: fragments[i] },
 				metadata: {
 					type: MemoryType.FRAGMENT,

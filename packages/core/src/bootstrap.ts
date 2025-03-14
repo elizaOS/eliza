@@ -585,6 +585,9 @@ const handleServerSync = async ({
 }: WorldPayload) => {
 	logger.info(`Handling server sync event for server: ${world.name}`);
 	try {
+		console.log("world.id", world.id)
+		console.log("agentId", runtime.agentId)
+		console.log("runtime.serverId", runtime.agentId)
 		// Create/ensure the world exists for this server
 		await runtime.ensureWorldExists({
 			id: world.id,
