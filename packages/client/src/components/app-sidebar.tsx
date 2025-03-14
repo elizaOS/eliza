@@ -16,7 +16,7 @@ import info from "@/lib/info.json";
 import { formatAgentName } from "@/lib/utils";
 import { AGENT_STATUS } from "@/types/index";
 import type { Agent } from "@elizaos/core";
-import { Book, Cog, Scroll, User } from "lucide-react";
+import { Book, Cog, TerminalIcon } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 import ConnectionStatus from "./connection-status";
 
@@ -29,22 +29,18 @@ export function AppSidebar() {
 	
 	return (
 		<Sidebar className="bg-background">
-			<SidebarHeader className="pb-4">
+			<SidebarHeader>
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton size="lg" asChild>
-							<NavLink to="/" className="px-6 py-4">
+							<NavLink to="/" className="px-6 py-2 h-full">
+								<div className="flex flex-col pt-2 gap-1 items-start justify-center">
 								<img
-									alt="elizaos-icon"
-									src="/elizaos-icon.png"
-									width="100%"
-									height="100%"
-									className="size-9"
+									alt="elizaos-logo"
+									src="/elizaos-logo-light.png"
+									width="90%"
 								/>
-
-								<div className="flex flex-col leading-none ">
-									<span className="font-semibold text-lg">ElizaOS</span>
-									<span className="text-sm -mt-0.5 text-muted-foreground">
+									<span className="text-xs font-mono text-muted-foreground text-center">
 										v{info?.version}
 									</span>
 								</div>
@@ -55,9 +51,6 @@ export function AppSidebar() {
 			</SidebarHeader>
 			<SidebarContent>
 				<SidebarGroup>
-					<SidebarGroupLabel className="px-6 py-2 text-sm font-medium text-muted-foreground">
-						<NavLink to={"/"}>AGENTS</NavLink>
-					</SidebarGroupLabel>
 					<SidebarGroupContent className="px-2">
 						<SidebarMenu>
 							{isAgentsPending ? (
@@ -97,9 +90,8 @@ export function AppSidebar() {
 											<>
 												{/* Render active section */}
 												{activeAgents.length > 0 && (
-													<div className="px-4 py-1 mt-4">
+													<div className="px-4 py-1">
 														<div className="flex items-center space-x-2">
-															<div className="size-2.5 rounded-full bg-green-500" />
 															<span className="text-sm font-medium text-muted-foreground">
 																Online
 															</span>
@@ -125,7 +117,7 @@ export function AppSidebar() {
 																				<img src={agent.settings?.avatar} alt="Agent Avatar" className="w-full h-full object-contain" /> :
 																				formatAgentName(agent.name)
 																			}
-																			<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-green-500`} />
+																			<div className={`absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border-[1px] border-white bg-green-500`} />
 																		</div>}
 																		</div>
 																	</div>
@@ -140,9 +132,8 @@ export function AppSidebar() {
 
 												{/* Render inactive section */}
 												{inactiveAgents.length > 0 && (
-													<div className="px-4 py-1 mt-12">
+													<div className="px-4 py-1 mt-8">
 														<div className="flex items-center space-x-2">
-															<div className="size-2.5 rounded-full bg-muted-foreground/50" />
 															<span className="text-sm font-medium text-muted-foreground">
 																Offline
 															</span>
@@ -164,7 +155,7 @@ export function AppSidebar() {
 																			<img src={agent.settings.avatar} alt="Agent Avatar" className="w-full h-full object-contain" /> :
 																			formatAgentName(agent.name)
 																		}
-																		<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-muted-foreground`} />
+																		<div className={`absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border-[1px] border-white bg-muted-foreground`} />
 																	</div>}
 																	</div>
 																</div>
@@ -200,7 +191,7 @@ export function AppSidebar() {
 					<SidebarMenuItem>
 						<NavLink to="/logs">
 							<SidebarMenuButton className="text-muted-foreground rounded-md">
-								<Scroll className="size-5" />
+								<TerminalIcon className="size-5" />
 								<span>Logs</span>
 							</SidebarMenuButton>
 						</NavLink>

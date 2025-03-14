@@ -32,9 +32,7 @@ export const walletProvider: Provider = {
 		state?: State,
 	): Promise<ProviderResult> => {
 		try {
-			const portfolioCache = await runtime
-				
-				.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
+			const portfolioCache = await runtime.getCache<WalletPortfolio>(SOLANA_WALLET_DATA_CACHE_KEY);
 			if (!portfolioCache) {
 				return { data: null, values: {}, text: "" };
 			}
