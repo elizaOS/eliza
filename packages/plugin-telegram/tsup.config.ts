@@ -18,6 +18,6 @@ export default defineConfig({
 		"http",
 		"agentkeepalive",
 		"@elizaos/core",
-		// Add other modules you want to externalize
+		"zod",
 	],
 });

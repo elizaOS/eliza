@@ -10,14 +10,13 @@ import {
 	logger
 } from "@elizaos/core";
 import { generateText } from "ai";
-import { z } from "zod";
 
 // Define a configuration schema for the Anthropics plugin.
-const configSchema = z.object({
-	ANTHROPIC_API_KEY: z.string().min(1, "Anthropic API key is required"),
-	ANTHROPIC_SMALL_MODEL: z.string().optional(),
-	ANTHROPIC_LARGE_MODEL: z.string().optional(),
-});
+// const configSchema = z.object({
+// 	ANTHROPIC_API_KEY: z.string().min(1, "Anthropic API key is required"),
+// 	ANTHROPIC_SMALL_MODEL: z.string().optional(),
+// 	ANTHROPIC_LARGE_MODEL: z.string().optional(),
+// });
 
 /**
  * Plugin for Anthropic.
@@ -40,12 +39,12 @@ export const anthropicPlugin: Plugin = {
 	},
 	async init(config: Record<string, string>) {
 		try {
-			const validatedConfig = await configSchema.parseAsync(config);
+			// const validatedConfig = await configSchema.parseAsync(config);
 
 			// Set all environment variables at once
-			for (const [key, value] of Object.entries(validatedConfig)) {
-				if (value) process.env[key] = value;
-			}
+			// for (const [key, value] of Object.entries(validatedConfig)) {
+			// 	if (value) process.env[key] = value;
+			// }
 
 			// If API key is not set, we'll show a warning but continue
 			if (!process.env.ANTHROPIC_API_KEY) {

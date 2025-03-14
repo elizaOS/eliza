@@ -1,4 +1,4 @@
-import path from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite, type PGliteOptions } from "@electric-sql/pglite";
 import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
@@ -7,9 +7,6 @@ import { logger } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import type { IDatabaseClientManager } from "../types";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 /**
  * Class representing a database client manager for PGlite.
@@ -151,8 +148,12 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 	async runMigrations(): Promise<void> {
 		try {
 			const db = drizzle(this.client);
+
+			const __filename = fileURLToPath(import.meta.url);
+			const __dirname = dirname(__filename);
+
 			await migrate(db, {
-				migrationsFolder: path.resolve(__dirname, "../drizzle/migrations"),
+				migrationsFolder: resolve(__dirname, "../drizzle/migrations"),
 			});
 		} catch (error) {
 			logger.error("Failed to run database migrations (pglite):", error);

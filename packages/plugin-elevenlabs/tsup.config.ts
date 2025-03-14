@@ -16,5 +16,6 @@ export default defineConfig({
 		"http",
 		"events",
 		"@elizaos/core",
+		"zod",
 	],
 });

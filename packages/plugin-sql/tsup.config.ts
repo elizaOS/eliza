@@ -10,16 +10,15 @@ export default defineConfig({
 	tsconfig: "./tsconfig.build.json", // Use build-specific tsconfig
 	external: [
 		"dotenv", // Externalize dotenv to prevent bundling
-		"fs", // Externalize fs to use Node.js built-in module
-		"path", // Externalize other built-ins if necessary
 		"@reflink/reflink",
 		"@node-llama-cpp",
 		"https",
 		"http",
 		"agentkeepalive",
 		"uuid",
-		"@elizaos/core", // Also externalize the core package
-		// Add other modules you want to externalize
+		"@elizaos/core",
+		"@electric-sql/pglite",
+		"zod",
 	],
 	// Improve source map configuration
 	esbuildOptions(options) {
