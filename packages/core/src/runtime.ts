@@ -114,13 +114,6 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.runtimeLogger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
 
-		this.knowledgeRoot =
-			typeof process !== "undefined" && process.cwd
-				? join(process.cwd(), "..", "characters", "knowledge")
-				: "./characters/knowledge";
-
-		this.runtimeLogger.debug(`[AgentRuntime] Process knowledgeRoot: ${this.knowledgeRoot}`);
-
 		this.#conversationLength =
 			opts.conversationLength ?? this.#conversationLength;
 
@@ -394,8 +387,6 @@ export class AgentRuntime implements IAgentRuntime {
 			throw error;
 		}
 
-		console.log("this.character?.knowledge is", this.character?.knowledge)
-		console.trace()
 
 		// Check if TEXT_EMBEDDING model is registered
 		const embeddingModel = this.getModel(ModelTypes.TEXT_EMBEDDING);
