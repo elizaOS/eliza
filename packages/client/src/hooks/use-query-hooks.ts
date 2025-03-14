@@ -433,3 +433,80 @@ export function useMessages(
 		isLoadingMore,
 	};
 }
+
+// Hook for fetching agent actions
+/**
+ * Custom hook to fetch agent actions for a specific agent and room.
+ * @param {UUID} agentId - The ID of the agent.
+ * @param {UUID} roomId - The ID of the room.
+ * @returns {QueryResult} The result of the query containing agent actions.
+ */
+export function useAgentActions(agentId: UUID, roomId?: UUID) {
+	return useQuery({
+		queryKey: ["agentActions", agentId, roomId],
+		queryFn: async () => {
+			const response = await apiClient.getAgentLogs(agentId, { 
+				roomId,
+				count: 50
+			});
+			return response.data || [];
+		},
+		refetchInterval: 1000, 
+		staleTime: 1000, 
+	});
+}
+
+/**
+ * Hook to delete an agent log/action.
+ * @returns {UseMutationResult} - Object containing the mutation function and its handlers.
+ */
+export function useDeleteLog() {
+	const queryClient = useQueryClient();
+	const { toast } = useToast();
+
+	return useMutation({
+		mutationFn: ({ agentId, logId }: { agentId: string; logId: string }) => 
+			apiClient.deleteLog(agentId, logId),
+		
+		onMutate: async ({ agentId, logId }) => {
+			// Optimistically update the UI by removing the log from the cache
+			const previousLogs = queryClient.getQueryData(["agentActions", agentId]);
+			
+			// Update cache if we have the data
+			if (previousLogs) {
+				queryClient.setQueryData(
+					["agentActions", agentId],
+					(oldData: any) => oldData.filter((log: any) => log.id !== logId)
+				);
+			}
+			
+			return { previousLogs, agentId, logId };
+		},
+		
+		onSuccess: (_, { agentId }) => {
+			// Invalidate relevant queries to refetch the latest data
+			queryClient.invalidateQueries({ queryKey: ["agentActions", agentId] });
+			
+			toast({
+				title: "Log Deleted",
+				description: "The log entry has been successfully removed",
+			});
+		},
+		
+		onError: (error, { agentId }, context) => {
+			// Revert the optimistic update on error
+			if (context?.previousLogs) {
+				queryClient.setQueryData(["agentActions", agentId], context.previousLogs);
+			}
+			
+			toast({
+				title: "Error",
+				description: error instanceof Error ? error.message : "Failed to delete log",
+				variant: "destructive",
+			});
+			
+			// Force invalidate on error to ensure data is fresh
+			queryClient.invalidateQueries({ queryKey: ["agentActions", agentId] });
+		}
+	});
+}

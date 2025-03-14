@@ -216,6 +216,29 @@ export interface Memory {
 }
 
 /**
+ * Represents a log entry
+ */
+export interface Log {
+	/** Optional unique identifier */
+	id?: UUID;
+
+	/** Associated entity ID */
+	entityId: UUID;
+
+	/** Associated room ID */
+	roomId?: UUID;
+
+	/** Log body */
+	body: { [key: string]: unknown };
+
+	/** Log type */
+	type: string;
+
+	/** Log creation timestamp */
+	createdAt: Date;
+}
+
+/**
  * Example message for demonstration
  */
 export interface MessageExample {
@@ -768,6 +791,16 @@ export interface IDatabaseAdapter {
 		type: string;
 	}): Promise<void>;
 
+	getLogs(params: {
+		entityId: UUID;
+		roomId?: UUID;
+		type?: string;
+		count?: number;
+		offset?: number;
+	}): Promise<Log[]>;
+
+	deleteLog(logId: UUID): Promise<void>;
+
 	searchMemories(params: {
 		embedding: number[];
 		match_threshold?: number;
@@ -1108,7 +1141,6 @@ export type CacheOptions = {
 export interface IAgentRuntime extends IDatabaseAdapter {
 	// Properties
 	agentId: UUID;
-	databaseAdapter: IDatabaseAdapter;
 	character: Character;
 	providers: Provider[];
 	actions: Action[];

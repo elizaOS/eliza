@@ -115,6 +115,8 @@ export async function initializeAllSystems(
 
 			await runtime.ensureWorldExists(world);
 			await initializeOnboarding(runtime, world, config);
+			// Start onboarding DM with server owner
+			await startOnboardingDM(runtime, server, worldId);
 		}
 	} catch (error) {
 		logger.error("Error initializing systems:", error);
