@@ -131,7 +131,7 @@ class WebSocketsManager extends EventEmitter {
   handleBroadcastMessage(senderId: string, senderName: string, text: string, roomId: string, source: string) {
     console.log(`[WebSocket Client] broadcast: ${senderId} broadcast ${text} to ${roomId}`)
     
-    this.emit("messageBroadcast", { senderId, senderName, text, roomId, createdAt: Date.now()});
+    this.emit("messageBroadcast", { senderId, senderName, text, roomId, createdAt: Date.now(), source});
     this.sendMessage(senderId, {
       type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
       payload: {
