@@ -1,10 +1,19 @@
 import logger from "./logger";
 import {
+	type Content,
+	createMessageMemory,
+	type EmbeddingSearchResult,
 	type IAgentRuntime,
 	type IMemoryManager,
+	isMessageMemory,
 	type Memory,
 	type MemoryMetadata,
+	type MemoryRetrievalOptions,
+	type MemoryScope,
+	type MemorySearchOptions,
+	type MessageMemory,
 	MemoryType,
+	type MultiRoomMemoryOptions,
 	ModelTypes,
 	type UUID,
 } from "./types";
@@ -22,12 +31,12 @@ export class MemoryManager implements IMemoryManager {
 	/**
 	 * The AgentRuntime instance associated with this manager.
 	 */
-	runtime: IAgentRuntime;
+	readonly runtime: IAgentRuntime;
 
 	/**
 	 * The name of the database table this manager operates on.
 	 */
-	tableName: string;
+	readonly tableName: string;
 
 	/**
 	 * Constructs a new MemoryManager instance.
@@ -67,11 +76,6 @@ export class MemoryManager implements IMemoryManager {
 		}
 	}
 
-	/**
-	 * Adds an embedding vector to a memory object. If the memory already has an embedding, it is returned as is.
-	 * @param memory The memory object to add an embedding to.
-	 * @returns A Promise resolving to the memory object, potentially updated with an embedding vector.
-	 */
 	/**
 	 * Adds an embedding vector to a memory object if one doesn't already exist.
 	 * The embedding is generated from the memory's text content using the runtime's
@@ -115,21 +119,11 @@ export class MemoryManager implements IMemoryManager {
 	}
 
 	/**
-	 * Retrieves a list of memories by user IDs, with optional deduplication.
-	 * @param opts Options including user IDs, count, and uniqueness.
-	 * @param opts.roomId The room ID to retrieve memories for.
-	 * @param opts.count The number of memories to retrieve.
-	 * @param opts.unique Whether to retrieve unique memories only.
+	 * Retrieves a list of memories for a specific room, with optional deduplication.
+	 * @param opts Options for memory retrieval
 	 * @returns A Promise resolving to an array of Memory objects.
 	 */
-	async getMemories(opts: {
-		roomId: UUID;
-		count?: number;
-		unique?: boolean;
-		start?: number;
-		end?: number;
-		agentId?: UUID;
-	}): Promise<Memory[]> {
+	async getMemories(opts: MemoryRetrievalOptions): Promise<Memory[]> {
 		return await this.runtime.getMemories({
 			roomId: opts.roomId,
 			count: opts.count,
@@ -140,12 +134,12 @@ export class MemoryManager implements IMemoryManager {
 		});
 	}
 
-	async getCachedEmbeddings(content: string): Promise<
-		{
-			embedding: number[];
-			levenshtein_score: number;
-		}[]
-	> {
+	/**
+	 * Gets cached embeddings for a given content string.
+	 * @param content The content to find similar embeddings for
+	 * @returns Promise resolving to array of embeddings with similarity scores
+	 */
+	async getCachedEmbeddings(content: string): Promise<EmbeddingSearchResult[]> {
 		return await this.runtime.getCachedEmbeddings({
 			query_table_name: this.tableName,
 			query_threshold: 2,
@@ -159,21 +153,9 @@ export class MemoryManager implements IMemoryManager {
 	/**
 	 * Searches for memories similar to a given embedding vector.
 	 * @param opts Options for the memory search
-	 * @param opts.match_threshold The similarity threshold for matching memories.
-	 * @param opts.count The maximum number of memories to retrieve.
-	 * @param opts.roomId The room ID to retrieve memories for.
-	 * @param opts.agentId The agent ID to retrieve memories for.
-	 * @param opts.unique Whether to retrieve unique memories only.
 	 * @returns A Promise resolving to an array of Memory objects that match the embedding.
 	 */
-	async searchMemories(opts: {
-		embedding: number[];
-		match_threshold?: number;
-		count?: number;
-		roomId: UUID;
-		agentId?: UUID;
-		unique?: boolean;
-	}): Promise<Memory[]> {
+	async searchMemories(opts: MemorySearchOptions): Promise<Memory[]> {
 		const {
 			match_threshold = defaultMatchThreshold,
 			embedding,
@@ -197,20 +179,18 @@ export class MemoryManager implements IMemoryManager {
 	 * Creates a new memory in the database, with an option to check for similarity before insertion.
 	 * @param memory The memory object to create.
 	 * @param unique Whether to check for similarity before insertion.
-	 * @returns A Promise that resolves when the operation completes.
+	 * @returns A Promise that resolves to the UUID of the created memory.
 	 */
 	async createMemory(memory: Memory, unique = false): Promise<UUID> {
 		if (memory.metadata) {
 			this.validateMetadata(memory.metadata); // This will check type first
 			this.validateMetadataRequirements(memory.metadata);
 		}
-		const existingMessage = await this.runtime
-			
-			.getMemoryById(memory.id);
+		const existingMessage = await this.runtime.getMemoryById(memory.id);
 
 		if (existingMessage) {
 			logger.debug("Memory already exists, skipping");
-			return;
+			return memory.id;
 		}
 
 		if (!memory.metadata) {
@@ -246,18 +226,17 @@ export class MemoryManager implements IMemoryManager {
 			);
 		}
 
-		const memoryId = await this.runtime
-			
-			.createMemory(memory, this.tableName, unique);
+		const memoryId = await this.runtime.createMemory(memory, this.tableName, unique);
 
 		return memoryId;
 	}
 
-	async getMemoriesByRoomIds(params: {
-		roomIds: UUID[];
-		limit?: number;
-		agentId?: UUID;
-	}): Promise<Memory[]> {
+	/**
+	 * Gets memories for multiple rooms.
+	 * @param params Parameters for retrieval
+	 * @returns Promise resolving to array of memories
+	 */
+	async getMemoriesByRoomIds(params: MultiRoomMemoryOptions): Promise<Memory[]> {
 		return await this.runtime.getMemoriesByRoomIds({
 			tableName: this.tableName,
 			roomIds: params.roomIds,
@@ -265,6 +244,11 @@ export class MemoryManager implements IMemoryManager {
 		});
 	}
 
+	/**
+	 * Gets a memory by its ID.
+	 * @param id The UUID of the memory to retrieve
+	 * @returns Promise resolving to the memory or null if not found
+	 */
 	async getMemoryById(id: UUID): Promise<Memory | null> {
 		const result = await this.runtime.getMemoryById(id);
 		if (result && result.agentId !== this.runtime.agentId) return null;
@@ -277,35 +261,34 @@ export class MemoryManager implements IMemoryManager {
 	 * @returns A Promise that resolves when the operation completes.
 	 */
 	async removeMemory(memoryId: UUID): Promise<void> {
-		await this.runtime
-			
-			.removeMemory(memoryId, this.tableName);
+		await this.runtime.removeMemory(memoryId, this.tableName);
 	}
 
 	/**
-	 * Removes all memories associated with a set of user IDs.
+	 * Removes all memories associated with a room.
 	 * @param roomId The room ID to remove memories for.
 	 * @returns A Promise that resolves when the operation completes.
 	 */
 	async removeAllMemories(roomId: UUID): Promise<void> {
-		await this.runtime
-			
-			.removeAllMemories(roomId, this.tableName);
+		await this.runtime.removeAllMemories(roomId, this.tableName);
 	}
 
 	/**
-	 * Counts the number of memories associated with a set of user IDs, with an option for uniqueness.
+	 * Counts the number of memories associated with a room, with an option for uniqueness.
 	 * @param roomId The room ID to count memories for.
 	 * @param unique Whether to count unique memories only.
 	 * @returns A Promise resolving to the count of memories.
 	 */
 	async countMemories(roomId: UUID, unique = true): Promise<number> {
-		return await this.runtime
-			
-			.countMemories(roomId, unique, this.tableName);
+		return await this.runtime.countMemories(roomId, unique, this.tableName);
 	}
 
-	private validateMetadataRequirements(metadata: MemoryMetadata) {
+	/**
+	 * Validates that a metadata object meets the requirements for its type.
+	 * @param metadata The metadata to validate
+	 * @throws Error if metadata doesn't meet requirements for its type
+	 */
+	private validateMetadataRequirements(metadata: MemoryMetadata): void {
 		if (metadata.type === MemoryType.FRAGMENT) {
 			if (!metadata.documentId) {
 				throw new Error("Fragment metadata must include documentId");

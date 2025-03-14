@@ -45,9 +45,7 @@ export const greetAction: Action = {
 
 		try {
 			// Check if greeting is enabled for this server
-			const settings = await runtime
-				
-				.getCache<any>(`server_${serverId}_settings_greet`);
+			const settings = await runtime.getCache<any>(`server_${serverId}_settings_greet`);
 
 			if (!settings?.enabled) {
 				return false;
@@ -88,9 +86,7 @@ export const greetAction: Action = {
 
 		try {
 			// Get greeting settings
-			const settings = await runtime
-				
-				.getCache<any>(`server_${serverId}_settings_greet`);
+			const settings = await runtime.getCache<any>(`server_${serverId}_settings_greet`);
 
 			if (!settings?.enabled || !settings.channelId) {
 				logger.error("Greeting settings not properly configured");

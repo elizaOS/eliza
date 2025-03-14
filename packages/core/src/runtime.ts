@@ -1,44 +1,64 @@
 import { join } from "node:path";
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4, v4 } from "uuid";
 import { bootstrapPlugin } from "./bootstrap";
 import { settings } from "./environment";
-import { createUniqueUuid, handlePluginImporting, logger } from "./index";
-import { MemoryManager } from "./memory";
+import { handlePluginImporting } from "./index";
 import { splitChunks } from "./prompts";
-import {
-	type Action,
-	type Agent,
-	ChannelType,
-	type Character,
-	type Component,
-	type Entity,
-	type Evaluator,
-	type HandlerCallback,
-	type IAgentRuntime,
-	type IDatabaseAdapter,
-	type IMemoryManager,
-	type KnowledgeItem,
-	type Memory,
-	MemoryType,
-	type ModelParamsMap,
-	type ModelResultMap,
-	type ModelType,
-	ModelTypes,
-	type Participant,
-	type Plugin,
-	type Provider,
-	type Relationship,
-	type Room,
-	type Route,
-	type Service,
-	type ServiceType,
-	type State,
-	type Task,
-	type TaskWorker,
-	type UUID,
-	type World
-} from "./types";
 import { stringToUuid } from "./uuid";
+import { createUniqueUuid } from "./entities";
+import logger from "./logger";
+import { MemoryManager } from "./memory";
+import { composePromptFromState, parseJSONObjectFromText } from "./prompts";
+// Import enums and values that are used as values
+import { 
+	ChannelType,
+	EventTypes,
+	MemoryType, 
+	ModelTypes, 
+	ServiceTypes 
+} from "./types";
+// Import types with the 'type' keyword
+import type {
+	Action,
+	Agent,
+	BaseModelParams,
+	Character,
+	Component,
+	Entity,
+	Evaluator,
+	EventPayload,
+	HandlerCallback,
+	IDatabaseAdapter,
+	IAgentRuntime,
+	IMemoryManager,
+	KnowledgeItem,
+	KnowledgeScope,
+	Media,
+	Memory,
+	MemoryMetadata,
+	ModelParamsMap,
+	ModelResultMap,
+	ModelType,
+	Participant,
+	Plugin,
+	Provider,
+	ProviderResult,
+	Relationship,
+	Room,
+	Route,
+	Service,
+	ServiceType,
+	State,
+	Task,
+	TaskWorker,
+	UUID,
+	World,
+} from "./types";
+
+// TODO: Create a proper chunking module
+const ChunkingStrategy = {
+	DEFAULT: "default",
+};
 
 /**
  * Represents the runtime environment for an agent, handling message processing,
@@ -77,13 +97,13 @@ export class AgentRuntime implements IAgentRuntime {
 	>();
 
 	readonly fetch = fetch;
-	services: Map<ServiceType, Service> = new Map();
+	services = new Map<ServiceType, Service>();
 
-	public adapter: IDatabaseAdapter;
+	public adapter!: IDatabaseAdapter;
 
 	private readonly knowledgeRoot: string;
 
-	models = new Map<string, ((params: any) => Promise<any>)[]>();
+	models = new Map<string, Array<(runtime: IAgentRuntime, params: any) => Promise<any>>>();
 	routes: Route[] = [];
 
 	private taskWorkers = new Map<string, TaskWorker>();
@@ -118,7 +138,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		logger.debug(`[AgentRuntime] Process knowledgeRoot: ${this.knowledgeRoot}`);
 
-		this.#conversationLength =
+	this.#conversationLength =
 			opts.conversationLength ?? this.#conversationLength;
 
 		if (opts.databaseAdapter) {
@@ -1121,11 +1141,8 @@ export class AgentRuntime implements IAgentRuntime {
 		return newState;
 	}
 
-	getMemoryManager(tableName: string): IMemoryManager | null {
-		return new MemoryManager({
-			runtime: this,
-			tableName: tableName,
-		});
+	getMemoryManager<T extends Memory = Memory>(tableName: string): IMemoryManager<T> | null {
+		return this.adapter.getMemoryManager(tableName) as IMemoryManager<T> | null;
 	}
 
 	getService<T extends Service>(service: ServiceType): T | null {

@@ -10,6 +10,7 @@ import type {
 	Task,
 	UUID,
 	World,
+	IMemoryManager,
 } from "./types";
 
 /**
@@ -534,4 +535,6 @@ export abstract class DatabaseAdapter<DB = unknown>
 	 * @returns Promise resolving when the deletion is complete
 	 */
 	abstract deleteTask(id: UUID): Promise<void>;
+
+	abstract getMemoryManager<T extends Memory = Memory>(tableName: string): IMemoryManager<T> | null;
 }

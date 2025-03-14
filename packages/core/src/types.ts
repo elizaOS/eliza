@@ -1,30 +1,40 @@
 import type { Readable } from "node:stream";
 
 /**
- * Represents a UUID string in the format "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
- */
-/**
  * Type definition for a Universally Unique Identifier (UUID) using a specific format.
  * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
  */
 export type UUID = `${string}-${string}-${string}-${string}-${string}`;
 
 /**
- * Represents the content of a message or communication
+ * Helper function to safely cast a string to strongly typed UUID
+ * @param id The string UUID to validate and cast
+ * @returns The same UUID with branded type information
+ */
+export function asUUID(id: string): UUID {
+	if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+		throw new Error(`Invalid UUID format: ${id}`);
+	}
+	return id as UUID;
+}
+
+/**
+ * Represents the content of a memory, message, or other information
  */
 export interface Content {
+	/** The agent's internal thought process */
 	thought?: string;
 
 	/** The agent's plan for the next message */
 	plan?: string;
 
-	/** The main text content */
+	/** The main text content visible to users */
 	text?: string;
 
-	/** Optional action associated with the message */
+	/** Optional actions to be performed */
 	actions?: string[];
 
-	/** Optional providers associated with the message */
+	/** Optional providers to use for context generation */
 	providers?: string[];
 
 	/** Optional source/origin of the content */
@@ -39,7 +49,10 @@ export interface Content {
 	/** Array of media attachments */
 	attachments?: Media[];
 
-	/** Additional dynamic properties */
+	/** 
+	 * Additional dynamic properties
+	 * Use specific properties above instead of this when possible
+	 */
 	[key: string]: unknown;
 }
 
@@ -51,17 +64,6 @@ export interface ActionExample {
 	name: string;
 
 	/** Content of the example */
-	content: Content;
-}
-
-/**
- * Example conversation content with user ID
- */
-export interface ConversationExample {
-	/** UUID of user in conversation */
-	entityId: UUID;
-
-	/** Content of the conversation */
 	content: Content;
 }
 
@@ -121,6 +123,9 @@ export interface State {
 	text: string;
 }
 
+/**
+ * Memory type enumeration for built-in memory types
+ */
 export type MemoryTypeAlias = string;
 
 export enum MemoryType {
@@ -131,11 +136,16 @@ export enum MemoryType {
 	CUSTOM = "custom",
 }
 
+export type MemoryScope = "shared" | "private" | "room";
+
+/**
+ * Base interface for all memory metadata types
+ */
 export interface BaseMetadata {
 	type: MemoryTypeAlias;
 	source?: string;
 	sourceId?: UUID;
-	scope?: string;
+	scope?: MemoryScope;
 	timestamp?: number;
 	tags?: string[];
 }
@@ -168,8 +178,7 @@ export type MemoryMetadata =
 	| FragmentMetadata
 	| MessageMetadata
 	| DescriptionMetadata
-	| CustomMetadata
-	| any;
+	| CustomMetadata;
 
 /**
  * Represents a stored memory/message
@@ -184,25 +193,25 @@ export interface Memory {
 	/** Associated agent ID */
 	agentId?: UUID;
 
-	/** Optional creation timestamp */
+	/** Optional creation timestamp in milliseconds since epoch */
 	createdAt?: number;
 
 	/** Memory content */
 	content: Content;
 
-	/** Optional embedding vector */
+	/** Optional embedding vector for semantic search */
 	embedding?: number[];
 
 	/** Associated room ID */
 	roomId: UUID;
 
-	/** Whether memory is unique */
+	/** Whether memory is unique (used to prevent duplicates) */
 	unique?: boolean;
 
-	/** Embedding similarity score */
+	/** Embedding similarity score (set when retrieved via search) */
 	similarity?: number;
 
-	/** Metadata for the knowledge */
+	/** Metadata for the memory */
 	metadata?: MemoryMetadata;
 }
 
@@ -587,14 +596,6 @@ export interface Project {
 	agents: ProjectAgent[];
 }
 
-export interface ModelConfiguration {
-	temperature?: number;
-	maxOutputTokens?: number;
-	frequency_penalty?: number;
-	presence_penalty?: number;
-	maxInputTokens?: number;
-}
-
 export type TemplateType =
 	| string
 	| ((options: { state: State | { [key: string]: string } }) => string);
@@ -893,48 +894,211 @@ export interface IDatabaseAdapter {
 	getTasksByName(name: string): Promise<Task[]>;
 	updateTask(id: UUID, task: Partial<Task>): Promise<void>;
 	deleteTask(id: UUID): Promise<void>;
+
+	getMemoryManager<T extends Memory = Memory>(tableName: string): IMemoryManager<T> | null;
 }
 
-export interface IMemoryManager {
-	runtime: IAgentRuntime;
-	tableName: string;
+/**
+ * Result interface for embedding similarity searches
+ */
+export interface EmbeddingSearchResult {
+	embedding: number[];
+	levenshtein_score: number;
+}
 
-	addEmbeddingToMemory(memory: Memory): Promise<Memory>;
+/**
+ * Options for memory retrieval operations
+ */
+export interface MemoryRetrievalOptions {
+	roomId: UUID;
+	count?: number;
+	unique?: boolean;
+	start?: number;
+	end?: number;
+	agentId?: UUID;
+}
 
-	getMemories(opts: {
-		roomId: UUID;
-		count?: number;
-		unique?: boolean;
-		start?: number;
-		end?: number;
-	}): Promise<Memory[]>;
+/**
+ * Options for memory search operations
+ */
+export interface MemorySearchOptions {
+	embedding: number[];
+	match_threshold?: number;
+	count?: number;
+	roomId: UUID;
+	agentId?: UUID;
+	unique?: boolean;
+	metadata?: Partial<MemoryMetadata>;
+}
 
-	searchMemories(params: {
-		embedding: number[];
-		match_threshold?: number;
-		count?: number;
-		roomId?: UUID;
-		unique?: boolean;
-		metadata?: MemoryMetadata;
-	}): Promise<Memory[]>;
+/**
+ * Options for multi-room memory retrieval
+ */
+export interface MultiRoomMemoryOptions {
+	roomIds: UUID[];
+	limit?: number;
+	agentId?: UUID;
+}
 
+/**
+ * Unified options pattern for memory operations
+ * Provides a simpler, more consistent interface
+ */
+export interface UnifiedMemoryOptions {
+	roomId: UUID;
+	limit?: number;        // Unified naming (replacing 'count')
+	agentId?: UUID;        // Common optional parameter 
+	unique?: boolean;      // Common flag for duplication control
+	start?: number;        // Pagination start
+	end?: number;          // Pagination end
+}
+
+/**
+ * Specialized memory search options
+ */
+export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
+	embedding: number[];
+	similarity?: number;   // Clearer name than 'match_threshold'
+}
+
+/**
+ * Generic interface for a memory manager handling a specific type of memories
+ * @template T The specific Memory subtype this manager handles
+ */
+export interface IMemoryManager<T extends Memory = Memory> {
+	readonly runtime: IAgentRuntime;
+	readonly tableName: string;
+	
+	/**
+	 * Adds an embedding vector to a memory
+	 * @param memory Memory to add embedding to
+	 * @returns The memory with embedding added
+	 */
+	addEmbeddingToMemory(memory: T): Promise<T>;
+
+	/**
+	 * Gets memories for a room
+	 * @param opts Memory retrieval options
+	 * @returns Array of memories
+	 */
+	getMemories(opts: MemoryRetrievalOptions | UnifiedMemoryOptions): Promise<T[]>;
+
+	/**
+	 * Searches for memories using embedding vector
+	 * @param params Search options
+	 * @returns Array of matching memories
+	 */
+	searchMemories(params: MemorySearchOptions | UnifiedSearchOptions): Promise<T[]>;
+
+	/**
+	 * Gets cached embeddings for content
+	 * @param content Content to get embeddings for
+	 * @returns Array of embedding results
+	 */
 	getCachedEmbeddings(
 		content: string,
-	): Promise<{ embedding: number[]; levenshtein_score: number }[]>;
+	): Promise<EmbeddingSearchResult[]>;
 
-	getMemoryById(id: UUID): Promise<Memory | null>;
-	getMemoriesByRoomIds(params: {
-		roomIds: UUID[];
-		limit?: number;
-	}): Promise<Memory[]>;
+	/**
+	 * Gets a memory by its ID
+	 * @param id Memory ID
+	 * @returns Memory or null if not found
+	 */
+	getMemoryById(id: UUID): Promise<T | null>;
+	
+	/**
+	 * Gets memories for multiple rooms
+	 * @param params Multi-room options
+	 * @returns Array of memories
+	 */
+	getMemoriesByRoomIds(params: MultiRoomMemoryOptions): Promise<T[]>;
 
-	createMemory(memory: Memory, unique?: boolean): Promise<UUID>;
+	/**
+	 * Creates a new memory
+	 * @param memory Memory to create
+	 * @param unique Whether to enforce uniqueness
+	 * @returns ID of created memory
+	 */
+	createMemory(memory: T, unique?: boolean): Promise<UUID>;
 
+	/**
+	 * Removes a memory
+	 * @param memoryId ID of memory to remove
+	 */
 	removeMemory(memoryId: UUID): Promise<void>;
 
+	/**
+	 * Removes all memories for a room
+	 * @param roomId Room ID
+	 */
 	removeAllMemories(roomId: UUID): Promise<void>;
 
+	/**
+	 * Counts memories for a room
+	 * @param roomId Room ID
+	 * @param unique Whether to count unique memories only
+	 * @returns Memory count
+	 */
 	countMemories(roomId: UUID, unique?: boolean): Promise<number>;
+}
+
+/**
+ * Specialized message memory manager interface
+ */
+export interface MessageManager extends IMemoryManager<MessageMemory> {
+	/**
+	 * Creates a new message with proper typing and defaults
+	 */
+	createMessage(params: {
+		entityId: UUID;
+		roomId: UUID;
+		content: Content & { text: string };
+	}): Promise<UUID>;
+	
+	/**
+	 * Gets recent messages for a room with proper typing
+	 */
+	getRecentMessages(options: MemoryRetrievalOptions | UnifiedMemoryOptions): Promise<MessageMemory[]>;
+}
+
+/**
+ * Get a strongly-typed message memory manager
+ */
+export function getMessageManager(runtime: IAgentRuntime): MessageManager | null {
+	const manager = runtime.getMemoryManager(MemoryType.MESSAGE);
+	if (!manager) return null;
+	
+	// Add specialized methods to the base manager
+	const messageManager = Object.create(manager) as MessageManager;
+	
+	// Implement createMessage if not already defined
+	messageManager.createMessage = async (params) => {
+		const message = createMessageMemory({
+			...params,
+			agentId: runtime.agentId,
+		});
+		return manager.createMemory(message);
+	};
+	
+	// Implement getRecentMessages if not already defined
+	messageManager.getRecentMessages = async (options) => {
+		// Support both old and new option formats
+		const opts = 'limit' in options 
+			? {
+				roomId: options.roomId,
+				count: options.limit,
+				unique: options.unique,
+				start: options.start,
+				end: options.end,
+				agentId: options.agentId
+			} 
+			: options;
+		
+		const memories = await manager.getMemories(opts);
+		return memories.filter(isMessageMemory);
+	};
+	
+	return messageManager;
 }
 
 export type CacheOptions = {
@@ -970,7 +1134,12 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 		},
 	): Promise<void>;
 
-	getMemoryManager(tableName: string): IMemoryManager | null;
+	/**
+	 * Gets a memory manager for the specified table name
+	 * @param tableName The name of the table to get a memory manager for
+	 * @returns A memory manager for the specified table, or null if not found
+	 */
+	getMemoryManager<T extends Memory = Memory>(tableName: string): IMemoryManager<T> | null;
 
 	getService<T extends Service>(service: ServiceType | string): T | null;
 
@@ -1728,3 +1897,339 @@ export enum SOCKET_MESSAGE_TYPE {
     ROOM_JOINING = 1,
     SEND_MESSAGE = 2
 }
+
+/**
+ * Specialized memory type for messages with enhanced type checking
+ */
+export interface MessageMemory extends Memory {
+	metadata: MessageMetadata;
+	content: Content & {
+		text: string; // Message memories must have text content
+	};
+}
+
+/**
+ * Type guard to check if a memory is a MessageMemory
+ * @param memory The memory to check
+ * @returns True if the memory is a message memory
+ */
+export function isMessageMemory(memory: Memory): memory is MessageMemory {
+	return (
+		memory.metadata?.type === MemoryType.MESSAGE && 
+		typeof memory.content.text === 'string'
+	);
+}
+
+/**
+ * Factory function to create a new message memory with proper defaults
+ */
+export function createMessageMemory(params: {
+	id?: UUID;
+	entityId: UUID;
+	agentId?: UUID;
+	roomId: UUID;
+	content: Content & { text: string };
+	embedding?: number[];
+}): MessageMemory {
+	return {
+		...params,
+		createdAt: Date.now(),
+		metadata: {
+			type: MemoryType.MESSAGE,
+			timestamp: Date.now(),
+			scope: params.agentId ? "private" : "shared",
+		}
+	};
+}
+
+/**
+ * Generic service interface that provides better type checking for services
+ * @template ConfigType The configuration type for this service
+ * @template ResultType The result type returned by the service operations
+ */
+export interface TypedService<ConfigType = unknown, ResultType = unknown> extends Service {
+	/**
+	 * The configuration for this service instance
+	 */
+	config: ConfigType;
+
+	/**
+	 * Process an input with this service
+	 * @param input The input to process
+	 * @returns A promise resolving to the result
+	 */
+	process(input: unknown): Promise<ResultType>;
+}
+
+/**
+ * Generic factory function to create a typed service instance
+ * @param runtime The agent runtime
+ * @param serviceType The type of service to get
+ * @returns The service instance or null if not available
+ */
+export function getTypedService<T extends TypedService<any, any>>(
+	runtime: IAgentRuntime,
+	serviceType: ServiceType
+): T | null {
+	return runtime.getService<T>(serviceType);
+}
+
+/**
+ * Represents the result of an operation that can succeed or fail
+ * @template T The type of the successful result value
+ * @template E The type of the error
+ */
+export type Result<T, E = Error> = Success<T> | Failure<E>;
+
+/**
+ * Represents a successful operation with a value
+ * @template T The type of the value
+ */
+export class Success<T> {
+	readonly value: T;
+	readonly isSuccess = true;
+	readonly isFailure = false;
+
+	constructor(value: T) {
+		this.value = value;
+	}
+
+	/**
+	 * Maps the value inside this Success to a new value
+	 * @param fn Mapping function
+	 * @returns A new Success containing the mapped value
+	 */
+	map<U>(fn: (value: T) => U): Success<U> {
+		return new Success(fn(this.value));
+	}
+
+	/**
+	 * Unwraps the value or returns a default if this is a Failure
+	 * @param defaultValue The default value to return if this is a Failure
+	 * @returns The wrapped value
+	 */
+	unwrapOr(_defaultValue: T): T {
+		return this.value;
+	}
+}
+
+/**
+ * Represents a failed operation with an error
+ * @template E The type of the error
+ */
+export class Failure<E = Error> {
+	readonly error: E;
+	readonly isSuccess = false;
+	readonly isFailure = true;
+
+	constructor(error: E) {
+		this.error = error;
+	}
+
+	/**
+	 * Maps the error inside this Failure to a new error
+	 * @param fn Mapping function
+	 * @returns A new Failure containing the mapped error
+	 */
+	mapError<F>(fn: (error: E) => F): Failure<F> {
+		return new Failure(fn(this.error));
+	}
+  
+	/**
+	 * Unwraps the value or returns a default if this is a Failure
+	 * @param defaultValue The default value to return
+	 * @returns The default value
+	 */
+	unwrapOr<T>(defaultValue: T): T {
+		return defaultValue;
+	}
+}
+
+/**
+ * Creates a Success result
+ * @param value The value to wrap
+ * @returns A new Success containing the value
+ */
+export function success<T>(value: T): Success<T> {
+	return new Success(value);
+}
+
+/**
+ * Creates a Failure result
+ * @param error The error to wrap
+ * @returns A new Failure containing the error
+ */
+export function failure<E = Error>(error: E): Failure<E> {
+	return new Failure(error);
+}
+
+/**
+ * Type guard to check if a memory metadata is a DocumentMetadata
+ * @param metadata The metadata to check
+ * @returns True if the metadata is a DocumentMetadata
+ */
+export function isDocumentMetadata(metadata: MemoryMetadata): metadata is DocumentMetadata {
+	return metadata.type === MemoryType.DOCUMENT;
+}
+
+/**
+ * Type guard to check if a memory metadata is a FragmentMetadata
+ * @param metadata The metadata to check
+ * @returns True if the metadata is a FragmentMetadata
+ */
+export function isFragmentMetadata(metadata: MemoryMetadata): metadata is FragmentMetadata {
+	return metadata.type === MemoryType.FRAGMENT;
+}
+
+/**
+ * Type guard to check if a memory metadata is a MessageMetadata
+ * @param metadata The metadata to check
+ * @returns True if the metadata is a MessageMetadata
+ */
+export function isMessageMetadata(metadata: MemoryMetadata): metadata is MessageMetadata {
+	return metadata.type === MemoryType.MESSAGE;
+}
+
+/**
+ * Type guard to check if a memory metadata is a DescriptionMetadata
+ * @param metadata The metadata to check
+ * @returns True if the metadata is a DescriptionMetadata
+ */
+export function isDescriptionMetadata(metadata: MemoryMetadata): metadata is DescriptionMetadata {
+	return metadata.type === MemoryType.DESCRIPTION;
+}
+
+/**
+ * Type guard to check if a memory metadata is a CustomMetadata
+ * @param metadata The metadata to check
+ * @returns True if the metadata is a CustomMetadata
+ */
+export function isCustomMetadata(metadata: MemoryMetadata): metadata is CustomMetadata {
+	return metadata.type !== MemoryType.DOCUMENT && 
+		   metadata.type !== MemoryType.FRAGMENT &&
+		   metadata.type !== MemoryType.MESSAGE &&
+		   metadata.type !== MemoryType.DESCRIPTION;
+}
+
+/**
+ * Standardized service error type for consistent error handling
+ */
+export interface ServiceError {
+	code: string;
+	message: string;
+	details?: unknown;
+	cause?: Error;
+}
+
+/**
+ * Type-safe helper for accessing the video service
+ */
+export function getVideoService(runtime: IAgentRuntime): IVideoService | null {
+	return runtime.getService<IVideoService>(ServiceTypes.VIDEO);
+}
+
+/**
+ * Type-safe helper for accessing the browser service
+ */
+export function getBrowserService(runtime: IAgentRuntime): IBrowserService | null {
+	return runtime.getService<IBrowserService>(ServiceTypes.BROWSER);
+}
+
+/**
+ * Type-safe helper for accessing the PDF service
+ */
+export function getPdfService(runtime: IAgentRuntime): IPdfService | null {
+	return runtime.getService<IPdfService>(ServiceTypes.PDF);
+}
+
+/**
+ * Type-safe helper for accessing the file service
+ */
+export function getFileService(runtime: IAgentRuntime): IFileService | null {
+	return runtime.getService<IFileService>(ServiceTypes.REMOTE_FILES);
+}
+
+/**
+ * Memory type guard for document memories
+ */
+export function isDocumentMemory(memory: Memory): memory is Memory & { metadata: DocumentMetadata } {
+	return memory.metadata?.type === MemoryType.DOCUMENT;
+}
+
+/**
+ * Memory type guard for fragment memories
+ */
+export function isFragmentMemory(memory: Memory): memory is Memory & { metadata: FragmentMetadata } {
+	return memory.metadata?.type === MemoryType.FRAGMENT;
+}
+
+/**
+ * Safely access the text content of a memory
+ * @param memory The memory to extract text from
+ * @param defaultValue Optional default value if no text is found
+ * @returns The text content or default value
+ */
+export function getMemoryText(memory: Memory, defaultValue = ""): string {
+	return memory.content.text ?? defaultValue;
+}
+
+/**
+ * Safely create a ServiceError from any caught error
+ */
+export function createServiceError(error: unknown, code = "UNKNOWN_ERROR"): ServiceError {
+	if (error instanceof Error) {
+		return {
+			code,
+			message: error.message,
+			cause: error
+		};
+	}
+	
+	return {
+		code,
+		message: String(error)
+	};
+}
+
+/**
+ * Replace 'any' types with more specific types
+ */
+
+// Replace 'any' in State interface components
+export type StateValue = string | number | boolean | null | StateObject | StateArray;
+export interface StateObject { [key: string]: StateValue }
+export type StateArray = StateValue[];
+
+/**
+ * Enhanced State interface with more specific types
+ */
+export interface EnhancedState {
+  values: StateObject;
+  data: StateObject;
+  text: string;
+  [key: string]: StateValue;
+}
+
+// Replace 'any' in component data
+export type ComponentData = Record<string, unknown>;
+
+// Replace 'any' in event handlers
+export type EventDataObject = Record<string, unknown>;
+export type TypedEventHandler = (data: EventDataObject) => Promise<void> | void;
+
+// Replace 'any' in database adapter
+export type DbConnection = unknown;
+export type MetadataObject = Record<string, unknown>;
+
+// Replace 'any' in model handlers
+export type ModelHandler = (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>;
+
+// Replace 'any' for service configuration
+export type ServiceConfig = Record<string, unknown>;
+
+/**
+ * Type aliases for common memory manager types
+ */
+export type MessageMemoryManager = IMemoryManager<MessageMemory>;
+export type DocumentMemoryManager = IMemoryManager<Memory & { metadata: DocumentMetadata }>;
+export type FragmentMemoryManager = IMemoryManager<Memory & { metadata: FragmentMetadata }>;

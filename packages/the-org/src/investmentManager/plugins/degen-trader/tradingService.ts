@@ -410,9 +410,7 @@ export class DegenTradingService extends Service {
 		try {
 			// Get trending tokens from cache (updated by degen-intel service)
 			const trendingTokens =
-				(await this.runtime
-					
-					.getCache<any[]>("birdeye_trending_tokens")) || [];
+				(await this.runtime.getCache<any[]>("birdeye_trending_tokens")) || [];
 
 			return Promise.all(
 				trendingTokens.map(async (token) => {
@@ -889,7 +887,6 @@ export class DegenTradingService extends Service {
 					roomId: `trade-0000-0000-0000-${Date.now().toString(16)}`,
 					entities: JSON.stringify(["trader"]),
 					recentMessages: JSON.stringify([""]),
-					recentMessagesData: [],
 					walletBalance: walletBalance.toString(),
 					api_data: JSON.stringify(
 						{
@@ -902,10 +899,7 @@ export class DegenTradingService extends Service {
 						},
 						null,
 						2,
-					), // Pretty print with 2 spaces indentation
-					values: {},
-					data: {},
-					text: ""
+					)
 				},
 			});
 
@@ -2478,9 +2472,7 @@ export class DegenTradingService extends Service {
 	): Promise<void> {
 		try {
 			// Get existing statistics
-			const stats = (await this.runtime
-				
-				.getCache<any>(`token_stats:${tokenAddress}`)) || {
+			const stats = (await this.runtime.getCache<any>(`token_stats:${tokenAddress}`)) || {
 				trades: 0,
 				total_profit_usd: 0,
 				average_profit_percent: 0,
@@ -2532,9 +2524,7 @@ export class DegenTradingService extends Service {
 		try {
 			// Get the existing trade performance record
 			const tradeKey = `trade_performance:${tokenAddress}:${buyTimestamp}`;
-			const existingTrade = await this.runtime
-				
-				.getCache<any>(tradeKey);
+			const existingTrade = await this.runtime.getCache<any>(tradeKey);
 
 			if (!existingTrade) {
 				logger.warn("Trade performance record not found for update", {
@@ -3642,9 +3632,7 @@ export class DegenTradingService extends Service {
 			}
 
 			// Check data freshness
-			const cacheMetadata = await this.runtime
-				
-				.getCache<any>("twitter_signals_metadata");
+			const cacheMetadata = await this.runtime.getCache<any>("twitter_signals_metadata");
 			if (!cacheMetadata || !cacheMetadata.updatedAt) {
 				issues.push("Twitter signal metadata missing");
 			} else {
@@ -3690,9 +3678,7 @@ export class DegenTradingService extends Service {
 			}
 
 			// Check data freshness
-			const cacheMetadata = await this.runtime
-				
-				.getCache<any>("cmc_tokens_metadata");
+			const cacheMetadata = await this.runtime.getCache<any>("cmc_tokens_metadata");
 			if (!cacheMetadata || !cacheMetadata.updatedAt) {
 				issues.push("CMC token metadata missing");
 			} else {
@@ -3954,9 +3940,7 @@ export class DegenTradingService extends Service {
 	): Promise<boolean> {
 		// Check cache for known special tokens
 		const specialTokens =
-			(await this.runtime
-				
-				.getCache<string[]>("special_slippage_tokens")) || [];
+			(await this.runtime.getCache<string[]>("special_slippage_tokens")) || [];
 		return specialTokens.includes(tokenAddress);
 	}
 
@@ -4099,9 +4083,7 @@ export class DegenTradingService extends Service {
 	private async maybeOptimizeSlippageParameters(): Promise<void> {
 		try {
 			// Only run this occasionally to avoid excessive processing
-			const lastOptimizationTime = await this.runtime
-				
-				.getCache<number>("last_slippage_optimization");
+			const lastOptimizationTime = await this.runtime.getCache<number>("last_slippage_optimization");
 			const now = Date.now();
 
 			if (
