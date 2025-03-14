@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-import { Readable } from "node:stream";
 import type {
 	Agent,
 	Character,
@@ -15,15 +12,17 @@ import {
 	ModelTypes,
 	composePrompt,
 	createUniqueUuid,
-	logger,
 	messageHandlerTemplate,
 	parseJSONObjectFromText,
-	stringToUuid,
-	validateUuid,
+	validateUuid
 } from "@elizaos/core";
 import express from "express";
+import fs from "node:fs";
+import path from "node:path";
+import { Readable } from "node:stream";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
+import { logger} from "@elizaos/core";
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -396,6 +395,95 @@ export function agentRouter(
 				},
 			});
 		}
+	});
+
+
+	// Get Agent Logs
+	router.get("/:agentId/logs", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+		const { roomId, type, count, offset } = req.query;
+		if (!agentId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID format",
+				},
+			});
+			return;
+		}
+
+		const runtime = agents.get(agentId);
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+
+		if(roomId) {
+			const roomIdValidated = validateUuid(roomId);
+			if (!roomIdValidated) {
+				res.status(400).json({
+					success: false,
+					error: {
+						code: "INVALID_ID",
+						message: "Invalid room ID format",
+					},
+				});
+				return;
+			}
+		}
+		
+
+		const logs = await runtime.getLogs({
+			entityId: agentId,
+			roomId: roomId ? (roomId as UUID) : undefined,
+			type: type ? (type as string) : undefined,
+			count: count ? Number(count) : undefined,
+			offset: offset ? Number(offset) : undefined,
+		});
+
+		res.json({
+			success: true,
+			data: logs,
+		});
+	});
+
+
+	router.delete("/:agentId/logs/:logId", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+		const logId = validateUuid(req.params.logId);
+		if (!agentId || !logId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent or log ID format",
+				},
+			});
+			return;
+		}
+
+		const runtime = agents.get(agentId);
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+
+		await runtime.deleteLog(logId);
+
+		res.status(204).send();
 	});
 
 	// Audio messages endpoints
