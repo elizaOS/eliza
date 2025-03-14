@@ -16,7 +16,7 @@ import info from "@/lib/info.json";
 import { formatAgentName } from "@/lib/utils";
 import { AGENT_STATUS } from "@/types/index";
 import type { Agent } from "@elizaos/core";
-import { Book, Cog, Scroll, User } from "lucide-react";
+import { Book, Cog, TerminalIcon } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
 import ConnectionStatus from "./connection-status";
 
@@ -200,7 +200,7 @@ export function AppSidebar() {
 					<SidebarMenuItem>
 						<NavLink to="/logs">
 							<SidebarMenuButton className="text-muted-foreground rounded-md">
-								<Scroll className="size-5" />
+								<TerminalIcon className="size-5" />
 								<span>Logs</span>
 							</SidebarMenuButton>
 						</NavLink>

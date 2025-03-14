@@ -111,6 +111,17 @@ interface LogResponse {
 	levels: string[];
 }
 
+// Add this interface for agent logs
+interface AgentLog {
+	id?: string;
+	type?: string;
+	timestamp?: number;
+	message?: string;
+	details?: string;
+	roomId?: string;
+	[key: string]: any;
+}
+
 /**
  * Library for interacting with the API to perform various actions related to agents, messages, rooms, logs, etc.
  * @type {{
@@ -134,6 +145,7 @@ interface LogResponse {
  * 		updateRoom: (agentId: string, roomId: string, updates: { name?: string; worldId?: string; }) => Promise<any>;
  * 		deleteRoom: (agentId: string, roomId: string) => Promise<any>;
  * 		getLogs: (level: string) => Promise<LogResponse>;
+ * 		getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }) => Promise<{ success: boolean; data: AgentLog[] }>;
  * 	}
  * }}
  */
@@ -347,4 +359,19 @@ export const apiClient = {
 				},
 			});
 		},
+
+	// Add this new method
+	getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }): Promise<{ success: boolean; data: AgentLog[] }> => {
+		const params = new URLSearchParams();
+		
+		if (options?.roomId) params.append('roomId', options.roomId);
+		if (options?.type) params.append('type', options.type);
+		if (options?.count) params.append('count', options.count.toString());
+		if (options?.offset) params.append('offset', options.offset.toString());
+		
+		return fetcher({
+			url: `/agents/${agentId}/logs${params.toString() ? `?${params.toString()}` : ''}`,
+			method: "GET"
+		});
+	},
 };

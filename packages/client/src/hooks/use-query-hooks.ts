@@ -433,3 +433,25 @@ export function useMessages(
 		isLoadingMore,
 	};
 }
+
+// Hook for fetching agent actions
+/**
+ * Custom hook to fetch agent actions for a specific agent and room.
+ * @param {UUID} agentId - The ID of the agent.
+ * @param {UUID} roomId - The ID of the room.
+ * @returns {QueryResult} The result of the query containing agent actions.
+ */
+export function useAgentActions(agentId: UUID, roomId?: UUID) {
+	return useQuery({
+		queryKey: ["agentActions", agentId, roomId],
+		queryFn: async () => {
+			const response = await apiClient.getAgentLogs(agentId, { 
+				roomId,
+				count: 50
+			});
+			return response.data || [];
+		},
+		refetchInterval: 1000, 
+		staleTime: 1000, 
+	});
+}

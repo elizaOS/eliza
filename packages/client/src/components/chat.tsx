@@ -27,6 +27,9 @@ import ChatTtsButton from "./ui/chat/chat-tts-button";
 import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { LogViewer } from "./log-viewer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Activity, Terminal } from "lucide-react";
+import { AgentActionViewer } from "./action-viewer";
 
 const SOURCE_NAME = "client_chat";
 
@@ -108,10 +111,14 @@ function MessageContent({
 	);
 }
 
+
+
+
 export default function Page({ agentId }: { agentId: UUID }) {
 	const [selectedFile, setSelectedFile] = useState<File | null>(null);
 	const [input, setInput] = useState("");
 	const [showDetails, setShowDetails] = useState(false);
+	const [detailsTab, setDetailsTab] = useState<"actions" | "logs">("actions");
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const formRef = useRef<HTMLFormElement>(null);
@@ -203,7 +210,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 	};
 
 	return (
-		<div className="flex flex-col w-full h-[calc(100dvh)] p-4">
+		<div className="flex flex-col w-full h-screen p-4">
 			{/* Agent Header */}
 			<div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
 				<div className="flex items-center gap-3">
@@ -396,8 +403,28 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
 				{/* Details Column */}
 				{showDetails && (
-					<div className="w-2/5 border rounded-lg overflow-hidden pb-4 bg-background flex flex-col">
-						<LogViewer agentName={agentData?.name} level="all" title="Agent Logs" />
+					<div className="w-2/5 border rounded-lg overflow-hidden pb-4 bg-background flex flex-col h-full">
+						<Tabs defaultValue="actions" value={detailsTab} onValueChange={(v) => setDetailsTab(v as "actions" | "logs")} className="flex flex-col h-full">
+							<div className="border-b px-4 py-2">
+								<TabsList className="grid grid-cols-2">
+									<TabsTrigger value="actions" className="flex items-center gap-1.5">
+										<Activity className="h-4 w-4" />
+										<span>Agent Actions</span>
+									</TabsTrigger>
+									<TabsTrigger value="logs" className="flex items-center gap-1.5">
+										<Terminal className="h-4 w-4" />
+										<span>Logs</span>
+									</TabsTrigger>
+								</TabsList>
+							</div>
+
+							<TabsContent value="actions" className="overflow-y-scroll">
+								<AgentActionViewer agentId={agentId} roomId={roomId}/>
+							</TabsContent>
+							<TabsContent value="logs">
+								<LogViewer agentName={agentData?.name} level="all" hideTitle />
+							</TabsContent>
+						</Tabs>
 					</div>
 				)}
 			</div>
