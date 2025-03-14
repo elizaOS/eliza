@@ -1,17 +1,17 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { getEnvVariable, logger } from "@elizaos/core";
+import { getEnvVariable, logger  as Logger} from "@elizaos/core";
 import * as bodyParser from "body-parser";
 import cors from "cors";
 import express from "express";
+import path from "node:path";
 import type { AgentServer } from "..";
 import { agentRouter } from "./agent";
 import { teeRouter } from "./tee";
+import { logger } from "@elizaos/core"
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
-	...logger.levels.values,
+	...Logger.levels.values,
 } as const;
 
 /**
@@ -33,6 +33,7 @@ interface LogEntry {
 	msg: string;
 	[key: string]: string | number | boolean | null | undefined;
 }
+
 
 /**
  * Creates an API router with various endpoints and middleware.
@@ -57,6 +58,7 @@ export function createApiRouter(
 	);
 
 	router.get("/hello", (_req, res) => {
+		logger.log({apiRoute: "/hello"})
 		res.json({ message: "Hello World!" });
 	});
 
@@ -260,6 +262,9 @@ export function createApiRouter(
 
 	router.get("/stop", (_req, res) => {
 		server.stop();
+		logger.log({
+			apiRoute: '/stop'
+		}, "Server stopping...")
 		res.json({ message: "Server stopping..." });
 	});
 
@@ -270,29 +275,60 @@ export function createApiRouter(
 			: Date.now() - 3600000; // Default 1 hour
 		const requestedLevel = (req.query.level?.toString().toLowerCase() ||
 			"info") as LogLevel;
+		const agentName = req.query.agentName?.toString();
+		const agentId = req.query.agentId?.toString();  // Add support for agentId parameter
 		const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
-
+	
 		// Access the underlying logger instance
 		const destination = (logger as unknown)[Symbol.for("pino-destination")];
-
+	
 		if (!destination?.recentLogs) {
 			return res.status(500).json({
 				error: "Logger destination not available",
 				message: "The logger is not configured to maintain recent logs",
 			});
 		}
-
+	
 		try {
 			// Get logs from the destination's buffer
 			const recentLogs: LogEntry[] = destination.recentLogs();
 			const requestedLevelValue = LOG_LEVELS[requestedLevel] || LOG_LEVELS.info;
-
+	
 			const filtered = recentLogs
 				.filter((log) => {
-					return log.time >= since && log.level >= requestedLevelValue;
+					// Filter by time always
+					const timeMatch = log.time >= since;
+					
+					// Filter by level
+					let levelMatch = true;
+					if (requestedLevel && requestedLevel !== 'all') {
+						levelMatch = log.level === requestedLevelValue;
+					}
+					
+					// Filter by agentName if provided
+					const agentNameMatch = agentName 
+						? log.agentName === agentName 
+						: true;
+					
+					// Filter by agentId if provided
+					const agentIdMatch = agentId
+						? log.agentId === agentId
+						: true;
+					
+					return timeMatch && levelMatch && agentNameMatch && agentIdMatch;
 				})
 				.slice(-limit);
-
+	
+			// Add debug log to help troubleshoot
+			logger.debug('Logs request processed', { 
+				requestedLevel, 
+				requestedLevelValue,
+				agentName,
+				agentId,
+				filteredCount: filtered.length, 
+				totalLogs: recentLogs.length 
+			});
+	
 			res.json({
 				logs: filtered,
 				count: filtered.length,
@@ -313,6 +349,7 @@ export function createApiRouter(
 
 	// Health check endpoints
 	router.get("/health", (_req, res) => {
+		logger.log({apiRoute: "/health"}, "Health check route hit")
 		const healthcheck = {
 			status: "OK",
 			version: process.env.APP_VERSION || "unknown",
@@ -329,6 +366,7 @@ export function createApiRouter(
 
 	// Status endpoint
 	router.get("/status", (_req, res) => {
+		logger.log({apiRoute: "/status"}, "Status route hit")
 		res.json({ status: "ok" });
 	});
 

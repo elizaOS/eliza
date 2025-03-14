@@ -111,6 +111,16 @@ interface LogResponse {
 	levels: string[];
 }
 
+interface AgentLog {
+	id?: string;
+	type?: string;
+	timestamp?: number;
+	message?: string;
+	details?: string;
+	roomId?: string;
+	[key: string]: any;
+}
+
 /**
  * Library for interacting with the API to perform various actions related to agents, messages, rooms, logs, etc.
  * @type {{
@@ -134,6 +144,8 @@ interface LogResponse {
  * 		updateRoom: (agentId: string, roomId: string, updates: { name?: string; worldId?: string; }) => Promise<any>;
  * 		deleteRoom: (agentId: string, roomId: string) => Promise<any>;
  * 		getLogs: (level: string) => Promise<LogResponse>;
+ * 		getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }) => Promise<{ success: boolean; data: AgentLog[] }>;
+ * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
  * 	}
  * }}
  */
@@ -315,11 +327,19 @@ export const apiClient = {
 	},
 
 	// Add this new method
-	getLogs: (level: string): Promise<LogResponse> =>
-		fetcher({
-			url: `/logs?level=${level}`,
+	getLogs: ({level = "", agentName = "all", agentId = "all"}): Promise<LogResponse> => {
+		const params = new URLSearchParams();
+
+		if (level && level !== "all") params.append("level", level);
+		if (agentName && agentName !== "all") params.append("agentName", agentName);
+		if (agentId && agentId !== "all") params.append("agentId", agentId);
+
+		const url = `/logs${params.toString() ? `?${params.toString()}` : ""}`;
+		return fetcher({
+			url,
 			method: "GET",
-		}),
+		});
+	},
 
 	getAgentCompletion: (
 			agentId: string,
@@ -339,4 +359,26 @@ export const apiClient = {
 				},
 			});
 		},
+
+	// Agent Log/Action endpoints
+	getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }): Promise<{ success: boolean; data: AgentLog[] }> => {
+		const params = new URLSearchParams();
+		
+		if (options?.roomId) params.append('roomId', options.roomId);
+		if (options?.type) params.append('type', options.type);
+		if (options?.count) params.append('count', options.count.toString());
+		if (options?.offset) params.append('offset', options.offset.toString());
+		
+		return fetcher({
+			url: `/agents/${agentId}/logs${params.toString() ? `?${params.toString()}` : ''}`,
+			method: "GET"
+		});
+	},
+
+	deleteLog: (agentId: string, logId: string): Promise<void> => {
+		return fetcher({
+			url: `/agents/${agentId}/logs/${logId}`,
+			method: "DELETE"
+		});
+	},
 };
