@@ -72,10 +72,6 @@ jobs:
         run: bun install
         env:
           NPM_CONFIG_IGNORE_SCRIPTS: true
-
-      - name: Trust all package managers
-        run: |
-           bun pm trust --all
         
       - name: Build packages
         run: bun run build
