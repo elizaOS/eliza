@@ -12,7 +12,6 @@ env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-  TURBO_CACHE: remote:rw # allow r/w to remote cache
 
 jobs:
   integration-tests:
