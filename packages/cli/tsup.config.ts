@@ -6,8 +6,11 @@ export default defineConfig({
 	format: ["esm"],
 	dts: false,
 	sourcemap: false,
-	external: ["@electric-sql/pglite"],
-	noExternal: [/^(?!@electric-sql\/pglite).*/],
+	external: [
+		"@electric-sql/pglite",
+		"zod",
+	],
+	noExternal: [/^(?!(@electric-sql\/pglite|zod)).*/],
 	platform: "node",
 	minify: false,
 	target: "esnext",

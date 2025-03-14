@@ -16,7 +16,7 @@ import {
 } from "@elizaos/core";
 import { generateText } from "ai";
 import { type TiktokenModel, encodingForModel } from "js-tiktoken";
-import { z } from "zod";
+// import { z } from "zod";
 
 /**
  * Asynchronously tokenizes the given text based on the specified model and prompt.
@@ -55,14 +55,14 @@ async function detokenizeText(model: ModelType, tokens: number[]) {
 	return encoding.decode(tokens);
 }
 
-const configSchema = z.object({
-	OPENAI_API_KEY: z.string().min(1, "OpenAI API key is required"),
-	OPENAI_BASE_URL: z.string().url().optional(),
-	OPENAI_SMALL_MODEL: z.string().optional(),
-	OPENAI_LARGE_MODEL: z.string().optional(),
-	SMALL_MODEL: z.string().optional(),
-	LARGE_MODEL: z.string().optional(),
-});
+// const configSchema = z.object({
+// 	OPENAI_API_KEY: z.string().min(1, "OpenAI API key is required"),
+// 	OPENAI_BASE_URL: z.string().url().optional(),
+// 	OPENAI_SMALL_MODEL: z.string().optional(),
+// 	OPENAI_LARGE_MODEL: z.string().optional(),
+// 	SMALL_MODEL: z.string().optional(),
+// 	LARGE_MODEL: z.string().optional(),
+// });
 
 /**
  * Defines the OpenAI plugin with its name, description, and configuration options.
@@ -81,12 +81,12 @@ export const openaiPlugin: Plugin = {
 	},
 	async init(config: Record<string, string>) {
 		try {
-			const validatedConfig = await configSchema.parseAsync(config);
+			// const validatedConfig = await configSchema.parseAsync(config);
 
-			// Set all environment variables at once
-			for (const [key, value] of Object.entries(validatedConfig)) {
-				if (value) process.env[key] = value;
-			}
+			// // Set all environment variables at once
+			// for (const [key, value] of Object.entries(validatedConfig)) {
+			// 	if (value) process.env[key] = value;
+			// }
 
 			// If API key is not set, we'll show a warning but continue
 			if (!process.env.OPENAI_API_KEY) {
@@ -124,7 +124,6 @@ export const openaiPlugin: Plugin = {
 				// Continue execution instead of throwing
 			}
 		} catch (error) {
-			if (error instanceof z.ZodError) {
 				// Convert to warning instead of error
 				logger.warn(
 					`OpenAI plugin configuration issue: ${error.errors
@@ -133,11 +132,6 @@ export const openaiPlugin: Plugin = {
 							", ",
 						)} - You need to configure the OPENAI_API_KEY in your environment variables`,
 				);
-				// Continue execution instead of throwing
-			} else {
-				// For unexpected errors, still throw
-				throw error;
-			}
 		}
 	},
 	models: {

@@ -26,6 +26,7 @@ export default defineConfig({
 		"https",
 		"sharp",
 		"@solana/web3.js",
+		"zod",
 	],
 	sourcemap: true
 });
