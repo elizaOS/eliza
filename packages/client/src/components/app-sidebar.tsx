@@ -33,18 +33,14 @@ export function AppSidebar() {
 				<SidebarMenu>
 					<SidebarMenuItem>
 						<SidebarMenuButton size="lg" asChild>
-							<NavLink to="/" className="px-6 py-4">
+							<NavLink to="/" className="px-6 py-2 h-full">
+								<div className="flex flex-col pt-2 gap-1 items-start justify-center">
 								<img
-									alt="elizaos-icon"
-									src="/elizaos-icon.png"
-									width="100%"
-									height="100%"
-									className="size-9"
+									alt="elizaos-logo"
+									src="/elizaos-logo-light.png"
+									width="90%"
 								/>
-
-								<div className="flex flex-col leading-none ">
-									<span className="font-semibold text-lg">ElizaOS</span>
-									<span className="text-sm -mt-0.5 text-muted-foreground">
+									<span className="text-xs font-mono text-muted-foreground text-center">
 										v{info?.version}
 									</span>
 								</div>
