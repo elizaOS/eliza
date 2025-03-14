@@ -682,7 +682,15 @@ export interface Character {
   };
 }
 
+export enum AgentStatus {
+	ACTIVE = "active",
+	INACTIVE = "inactive"
+}
+
+
 export interface Agent extends Character {
+  enabled?: boolean;
+  status?: AgentStatus;
   createdAt: number;
   updatedAt: number;
 }

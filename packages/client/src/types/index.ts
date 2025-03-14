@@ -16,8 +16,3 @@ export enum SOCKET_MESSAGE_TYPE {
     ROOM_JOINING = 1,
     SEND_MESSAGE = 2
 }
-
-export enum AGENT_STATUS {
-	ACTIVE = "active",
-	INACTIVE = "inactive"
-}
