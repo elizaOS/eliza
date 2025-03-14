@@ -1372,6 +1372,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 	
 	async close(): Promise<void> {
+		console.log("Closing adapter");
 		await this.adapter.close();
 	}
 	

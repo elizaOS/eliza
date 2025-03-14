@@ -55,7 +55,7 @@ export const anthropicPlugin: Plugin = {
 				return;
 			}
 		} catch (error) {
-			if (error instanceof z.ZodError) {
+			// if (error instanceof z.ZodError) {
 				// Convert to warning instead of error
 				logger.warn(
 					`Anthropic plugin configuration issue: ${error.errors
@@ -65,10 +65,10 @@ export const anthropicPlugin: Plugin = {
 						)} - You need to configure the ANTHROPIC_API_KEY in your environment variables`,
 				);
 				// Continue execution instead of throwing
-			} else {
+			// } else {
 				// For unexpected errors, still throw
-				throw error;
-			}
+				// throw error;
+			// }
 		}
 	},
 	models: {

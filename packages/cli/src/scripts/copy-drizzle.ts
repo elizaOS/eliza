@@ -1,10 +1,5 @@
 #!/usr/bin/env node
 
-/**
- * This script copies the built CLI files into the create-eliza package
- * It should be run as part of the CLI build process
- */
-
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "fs-extra";
