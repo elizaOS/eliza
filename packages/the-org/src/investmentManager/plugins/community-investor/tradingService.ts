@@ -604,9 +604,7 @@ export class CommunityInvestorService extends Service {
 		try {
 			// Check cache first
 			const cacheKey = `token:${chain}:${tokenAddress}:price`;
-			const cachedPrice = await this.runtime
-				
-				.getCache<string>(cacheKey);
+			const cachedPrice = await this.runtime.getCache<string>(cacheKey);
 
 			if (cachedPrice) {
 				return Number.parseFloat(cachedPrice);
@@ -715,9 +713,7 @@ export class CommunityInvestorService extends Service {
 		try {
 			// Check cache first
 			const cacheKey = `token:${chain}:${tokenAddress}:processed`;
-			const cachedData = await this.runtime
-				
-				.getCache<ProcessedTokenData>(cacheKey);
+			const cachedData = await this.runtime.getCache<ProcessedTokenData>(cacheKey);
 
 			if (cachedData) {
 				return cachedData;
@@ -1482,9 +1478,7 @@ export class CommunityInvestorService extends Service {
 		try {
 			// Check cache first
 			const cacheKey = `position:${positionId}`;
-			const cachedPosition = await this.runtime
-				
-				.getCache<Position>(cacheKey);
+			const cachedPosition = await this.runtime.getCache<Position>(cacheKey);
 
 			if (cachedPosition) {
 				return cachedPosition;
@@ -1752,9 +1746,7 @@ export class CommunityInvestorService extends Service {
 
 			// Also cache transaction list for position
 			const cacheKey = `position:${transaction.positionId}:transactions`;
-			const cachedTxs = await this.runtime
-				
-				.getCache<Transaction[]>(cacheKey);
+			const cachedTxs = await this.runtime.getCache<Transaction[]>(cacheKey);
 
 			if (cachedTxs) {
 				const txs = cachedTxs as Transaction[];
@@ -1902,9 +1894,7 @@ export class CommunityInvestorService extends Service {
 
 			// Also update history list in cache
 			const cacheKey = `entity:${history.entityId}:history`;
-			const cachedHistory = await this.runtime
-				
-				.getCache<RecommenderMetricsHistory[]>(cacheKey);
+			const cachedHistory = await this.runtime.getCache<RecommenderMetricsHistory[]>(cacheKey);
 
 			if (cachedHistory) {
 				const histories = cachedHistory as RecommenderMetricsHistory[];
@@ -1939,9 +1929,7 @@ export class CommunityInvestorService extends Service {
 		try {
 			// Check cache first
 			const cacheKey = `entity:${entityId}:metrics`;
-			const cachedMetrics = await this.runtime
-				
-				.getCache<RecommenderMetrics>(cacheKey);
+			const cachedMetrics = await this.runtime.getCache<RecommenderMetrics>(cacheKey);
 
 			if (cachedMetrics) {
 				return cachedMetrics as RecommenderMetrics;
@@ -1988,9 +1976,7 @@ export class CommunityInvestorService extends Service {
 		try {
 			// Check cache first
 			const cacheKey = `entity:${entityId}:history`;
-			const cachedHistory = await this.runtime
-				
-				.getCache<RecommenderMetricsHistory[]>(cacheKey);
+			const cachedHistory = await this.runtime.getCache<RecommenderMetricsHistory[]>(cacheKey);
 
 			if (cachedHistory) {
 				return cachedHistory as RecommenderMetricsHistory[];
@@ -2092,9 +2078,7 @@ export class CommunityInvestorService extends Service {
 		try {
 			// Check cache first
 			const cacheKey = `token:${chain}:${tokenAddress}:performance`;
-			const cachedToken = await this.runtime
-				
-				.getCache<TokenPerformance>(cacheKey);
+			const cachedToken = await this.runtime.getCache<TokenPerformance>(cacheKey);
 
 			if (cachedToken) {
 				return cachedToken as TokenPerformance;
@@ -2142,9 +2126,7 @@ export class CommunityInvestorService extends Service {
 		try {
 			// Check cache first
 			const cacheKey = "positions:open:with-balance";
-			const cachedPositions = await this.runtime
-				
-				.getCache<PositionWithBalance[]>(cacheKey);
+			const cachedPositions = await this.runtime.getCache<PositionWithBalance[]>(cacheKey);
 
 			if (cachedPositions) {
 				return cachedPositions as PositionWithBalance[];

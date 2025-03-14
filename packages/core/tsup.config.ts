@@ -28,5 +28,5 @@ export default defineConfig({
 		"@solana/web3.js",
 		"zod",
 	],
-	sourcemap: true
+	sourcemap: false,
 });

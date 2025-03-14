@@ -1,43 +1,47 @@
-import { join } from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import { bootstrapPlugin } from "./bootstrap";
+import { createUniqueUuid } from "./entities";
 import { settings } from "./environment";
-import { createUniqueUuid, handlePluginImporting, logger } from "./index";
-import { MemoryManager } from "./memory";
+import { handlePluginImporting } from "./index";
+import logger from "./logger";
 import { splitChunks } from "./prompts";
+// Import enums and values that are used as values
 import {
-	type Action,
-	type Agent,
 	ChannelType,
-	type Character,
-	type Component,
-	type Entity,
-	type Evaluator,
-	type HandlerCallback,
-	type IAgentRuntime,
-	type IDatabaseAdapter,
-	type IMemoryManager,
-	type KnowledgeItem,
-	type Memory,
 	MemoryType,
-	type ModelParamsMap,
-	type ModelResultMap,
-	type ModelType,
-	ModelTypes,
-	type Participant,
-	type Plugin,
-	type Provider,
-	type Relationship,
-	type Room,
-	type Route,
-	type Service,
-	type ServiceType,
-	type State,
-	type Task,
-	type TaskWorker,
-	type UUID,
-	type World,
-	type Log,
+	ModelTypes
+} from "./types";
+// Import types with the 'type' keyword
+import type {
+	Action,
+	Agent,
+	Character,
+	Component,
+	Entity,
+	Evaluator,
+	HandlerCallback,
+	IAgentRuntime,
+	IDatabaseAdapter,
+	IMemoryManager,
+	KnowledgeItem,
+	Log,
+	Memory,
+	ModelParamsMap,
+	ModelResultMap,
+	ModelType,
+	Participant,
+	Plugin,
+	Provider,
+	Relationship,
+	Room,
+	Route,
+	Service,
+	ServiceType,
+	State,
+	Task,
+	TaskWorker,
+	UUID,
+	World
 } from "./types";
 import { stringToUuid } from "./uuid";
 
@@ -78,9 +82,8 @@ export class AgentRuntime implements IAgentRuntime {
 	>();
 
 	readonly fetch = fetch;
-	services: Map<ServiceType, Service> = new Map();
-
-	models = new Map<string, ((params: any) => Promise<any>)[]>();
+	services = new Map<ServiceType, Service>();
+	models = new Map<string, Array<(runtime: IAgentRuntime, params: any) => Promise<any>>>();
 	routes: Route[] = [];
 
 	private taskWorkers = new Map<string, TaskWorker>();
@@ -115,7 +118,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.runtimeLogger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
 
-		this.#conversationLength =
+	this.#conversationLength =
 			opts.conversationLength ?? this.#conversationLength;
 
 		if (opts.adapter) {
@@ -1132,11 +1135,8 @@ export class AgentRuntime implements IAgentRuntime {
 		return newState;
 	}
 
-	getMemoryManager(tableName: string): IMemoryManager | null {
-		return new MemoryManager({
-			runtime: this,
-			tableName: tableName,
-		});
+	getMemoryManager<T extends Memory = Memory>(tableName: string): IMemoryManager<T> | null {
+		return this.adapter.getMemoryManager(tableName) as IMemoryManager<T> | null;
 	}
 
 	getService<T extends Service>(service: ServiceType): T | null {

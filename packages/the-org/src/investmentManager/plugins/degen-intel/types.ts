@@ -1,3 +1,5 @@
+import type { Content } from "@elizaos/core";
+
 /**
  * Represents a type that can be one of four values: "solana", "base", "ethereum", or "L1".
  */
@@ -108,3 +110,46 @@ export type Job = {
 	name: string;
 	data: any;
 };
+
+
+/**
+ * Interface representing a sentiment object.
+ * @interface
+ * @property {string} timeslot - The timeslot of the sentiment.
+ * @property {boolean} processed - Indicates if the sentiment has been processed.
+ * @property {string} [text] - The text associated with the sentiment.
+ * @property {Array<{ token: string; sentiment: number; reason: string; }>} [occuringTokens] - The array of tokens with their sentiment and reason.
+ */
+export interface Sentiment {
+	timeslot: string;
+	processed: boolean;
+	text?: string;
+	occuringTokens?: Array<{
+		token: string;
+		sentiment: number;
+		reason: string;
+	}>;
+}
+
+/**
+ * Interface representing content from Twitter.
+ * Extends the Content interface.
+ * @property {string} text - The text content of the tweet.
+ * @property {"twitter"} source - The source of the content, always "twitter".
+ * @property {string} [url] - Optional URL of the tweet.
+ * @property {Object} tweet - Object containing tweet details.
+ * @property {string} tweet.username - The username of the tweet author.
+ * @property {number} [tweet.likes] - Optional number of likes on the tweet.
+ * @property {number} [tweet.retweets] - Optional number of retweets of the tweet.
+ */
+
+export interface TwitterContent extends Content {
+	text: string;
+	source: "twitter";
+	url?: string;
+	tweet?: {
+		username: string;
+		likes?: number;
+		retweets?: number;
+	};
+}

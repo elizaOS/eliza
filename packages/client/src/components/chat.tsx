@@ -17,19 +17,19 @@ import { AGENT_STATUS } from "@/types/index";
 import type { Content, Memory, UUID } from "@elizaos/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { MenuIcon, Paperclip, Send, X } from "lucide-react";
+import { Activity, Terminal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import AIWriter from "react-aiwriter";
+import { AgentActionViewer } from "./action-viewer";
 import { AudioRecorder } from "./audio-recorder";
 import CopyButton from "./copy-button";
+import { LogViewer } from "./log-viewer";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import ChatTtsButton from "./ui/chat/chat-tts-button";
 import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-import { LogViewer } from "./log-viewer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Activity, Terminal } from "lucide-react";
-import { AgentActionViewer } from "./action-viewer";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const SOURCE_NAME = "client_chat";
 

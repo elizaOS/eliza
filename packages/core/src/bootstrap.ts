@@ -41,10 +41,12 @@ import { ScenarioService } from "./services/scenario";
 import { TaskService } from "./services/task";
 import {
 	type ActionEventPayload,
+	asUUID,
 	type ChannelType,
 	type Content,
 	type Entity,
 	type EntityPayload,
+	type EventHandler,
 	type EvaluatorEventPayload,
 	EventTypes,
 	type HandlerCallback,
@@ -57,37 +59,6 @@ import {
 	type World,
 	type WorldPayload,
 } from "./types";
-
-/**
- * Represents the parameters passed when a server is joined.
- * @typedef {Object} ServerJoinedParams
- * @property {IAgentRuntime} runtime - The agent runtime object.
- * @property {any} world - The platform-specific server object.
- * @property {string} source - The source platform of the server (e.g. "discord", "telegram").
- */
-type ServerJoinedParams = {
-	runtime: IAgentRuntime;
-	world: any; // Platform-specific server object
-	source: string; // "discord", "telegram", etc.
-};
-
-// Add this to your types.ts file
-/**
- * Represents the parameters required when a server is connected.
- * @typedef { Object } ServerConnectedParams
- * @property { IAgentRuntime } runtime - The runtime of the agent.
- * @property { World } world - The world connected to the server.
- * @property {Room[]} rooms - The array of rooms connected to the server.
- * @property {Entity[]} users - The array of users connected to the server.
- * @property { string } source - The source of the connection.
- */
-type ServerConnectedParams = {
-	runtime: IAgentRuntime;
-	world: World;
-	rooms: Room[];
-	users: Entity[];
-	source: string;
-};
 
 /**
  * Represents the parameters when a user joins a server.
@@ -135,12 +106,12 @@ const messageReceivedHandler = async ({
 	runtime,
 	message,
 	callback,
-}: MessageReceivedHandlerParams) => {
+}: MessageReceivedHandlerParams): Promise<void> => {
 	// Generate a new response ID
 	const responseId = v4();
 	// Get or create the agent-specific map
 	if (!latestResponseIds.has(runtime.agentId)) {
-		latestResponseIds.set(runtime.agentId, new Map());
+		latestResponseIds.set(runtime.agentId, new Map<string, string>());
 	}
 	const agentResponses = latestResponseIds.get(runtime.agentId)!;
 
@@ -148,7 +119,7 @@ const messageReceivedHandler = async ({
 	agentResponses.set(message.roomId, responseId);
 
 	// Generate a unique run ID for tracking this message handler execution
-	const runId = v4() as UUID;
+	const runId = asUUID(v4());
 	const startTime = Date.now();
 
 	// Emit run started event
@@ -167,7 +138,7 @@ const messageReceivedHandler = async ({
 	const timeoutDuration = 5 * 60 * 1000; // 5 minutes
 	let timeoutId: NodeJS.Timer;
 	
-	const timeoutPromise = new Promise((_, reject) => {
+	const timeoutPromise = new Promise<never>((_, reject) => {
 		timeoutId = setTimeout(async () => {
 			await runtime.emitEvent(EventTypes.RUN_TIMEOUT, {
 				runtime,
@@ -203,7 +174,7 @@ const messageReceivedHandler = async ({
 			if (
 				agentUserState === "MUTED" &&
 				!message.content.text
-					.toLowerCase()
+					?.toLowerCase()
 					.includes(runtime.character.name.toLowerCase())
 			) {
 				console.log("Ignoring muted room");
@@ -241,7 +212,7 @@ const messageReceivedHandler = async ({
 
 			const responseObject = parseJSONObjectFromText(response);
 
-			const providers = responseObject.providers;
+			const providers = responseObject.providers as string[] | undefined;
 
 			const shouldRespond =
 				responseObject?.action && responseObject.action === "RESPOND";
@@ -258,7 +229,7 @@ const messageReceivedHandler = async ({
 						messageHandlerTemplate,
 				});
 
-				let responseContent = null;
+				let responseContent: Content | null = null;
 
 				// Retry if missing required fields
 				let retries = 0;
@@ -294,33 +265,35 @@ const messageReceivedHandler = async ({
 					return;
 				}
 
-				responseContent.plan = responseContent.plan?.trim();
-				responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
+				if (responseContent) {
+					responseContent.plan = responseContent.plan?.trim();
+					responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
-				responseMessages = [
-					{
-						id: v4() as UUID,
+					responseMessages = [
+						{
+							id: asUUID(v4()),
+							entityId: runtime.agentId,
+							agentId: runtime.agentId,
+							content: responseContent,
+							roomId: message.roomId,
+							createdAt: Date.now(),
+						},
+					];
+
+					// save the plan to a new reply memory
+					await runtime.getMemoryManager("messages").createMemory({
 						entityId: runtime.agentId,
 						agentId: runtime.agentId,
-						content: responseContent,
+						content: {
+							thought: responseContent.thought,
+							plan: responseContent.plan,
+							actions: responseContent.actions,
+							providers: responseContent.providers,
+						},
 						roomId: message.roomId,
 						createdAt: Date.now(),
-					},
-				];
-
-				// save the plan to a new reply memory
-				await runtime.getMemoryManager("messages").createMemory({
-					entityId: runtime.agentId,
-					agentId: runtime.agentId,
-					content: {
-						thought: responseContent.thought,
-						plan: responseContent.plan,
-						actions: responseContent.actions,
-						providers: responseContent.providers,
-					},
-					roomId: message.roomId,
-					createdAt: Date.now(),
-				});
+					});
+				}
 
 				// Clean up the response ID
 				agentResponses.delete(message.roomId);
