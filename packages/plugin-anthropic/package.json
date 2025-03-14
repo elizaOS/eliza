@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-anthropic",
-	"version": "1.0.0-alpha.48",
+	"version": "1.0.0-alpha.49",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -23,7 +23,7 @@
 	],
 	"dependencies": {
 		"@ai-sdk/anthropic": "^1.1.6",
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "^1.0.0-alpha.49",
 		"fastembed": "^1.0.0",
 		"tsup": "8.4.0"
 	},
@@ -44,5 +44,5 @@
 			}
 		}
 	},
-	"gitHead": "7db4b2e5470792cca1e8d1c5dcc20aaabc59326c"
+	"gitHead": "a23660bd00aced4cd4104d0a61faef1436de7b0d"
 }

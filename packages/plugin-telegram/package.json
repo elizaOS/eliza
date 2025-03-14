@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-telegram",
-	"version": "1.0.0-alpha.48",
+	"version": "1.0.0-alpha.49",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -38,5 +38,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "7db4b2e5470792cca1e8d1c5dcc20aaabc59326c"
+	"gitHead": "a23660bd00aced4cd4104d0a61faef1436de7b0d"
 }
