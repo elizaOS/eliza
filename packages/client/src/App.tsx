@@ -79,16 +79,14 @@ function App() {
 						<SidebarProvider>
 							<AppSidebar />
 							<SidebarInset>
-								<div className="flex flex-1 flex-col gap-4 size-full container">
-									<Routes>
-										<Route path="/" element={<Home />} />
-										<Route path="chat/:agentId" element={<Chat />} />
-										<Route path="settings/:agentId" element={<Settings />} />
-										<Route path="agents/new" element={<AgentCreatorRoute />} />
-										<Route path="/create" element={<AgentCreator />} />
-										<Route path="/logs" element={<LogViewer />} />
-									</Routes>
-								</div>
+								<Routes>
+									<Route path="/" element={<Home />} />
+									<Route path="chat/:agentId" element={<Chat />} />
+									<Route path="settings/:agentId" element={<Settings />} />
+									<Route path="agents/new" element={<AgentCreatorRoute />} />
+									<Route path="/create" element={<AgentCreator />} />
+									<Route path="/logs" element={<LogViewer />} />
+								</Routes>
 							</SidebarInset>
 						</SidebarProvider>
 						<Toaster />
