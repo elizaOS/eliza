@@ -6,48 +6,67 @@
 
 /* You can override the default Infima variables here. */
 :root {
-	--ifm-color-primary: #ffa600;
-	--ifm-color-primary-dark: #29784c;
-	--ifm-color-primary-darker: #277148;
-	--ifm-color-primary-darkest: #205d3b;
-	--ifm-color-primary-light: #33925d;
-	--ifm-color-primary-lighter: #359962;
-	--ifm-color-primary-lightest: #3cad6e;
-	--ifm-code-font-size: 95%;
-	--docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+    --ifm-color-primary: #ffa600;
+    --ifm-color-primary-dark: #29784c;
+    --ifm-color-primary-darker: #277148;
+    --ifm-color-primary-darkest: #205d3b;
+    --ifm-color-primary-light: #33925d;
+    --ifm-color-primary-lighter: #359962;
+    --ifm-color-primary-lightest: #3cad6e;
+    --ifm-code-font-size: 95%;
+    --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme="dark"] {
-	--ifm-color-primary: lightblue;
-	--ifm-color-primary-dark: #21af90;
-	--ifm-color-primary-darker: #1fa588;
-	--ifm-color-primary-darkest: #1a8870;
-	--ifm-color-primary-light: #29d5b0;
-	--ifm-color-primary-lighter: #32d8b4;
-	--ifm-color-primary-lightest: #4fddbf;
-	--docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
-	--ifm-footer-background-color: #ffa600;
+    --ifm-color-primary: lightblue;
+    --ifm-color-primary-dark: #21af90;
+    --ifm-color-primary-darker: #1fa588;
+    --ifm-color-primary-darkest: #1a8870;
+    --ifm-color-primary-light: #29d5b0;
+    --ifm-color-primary-lighter: #32d8b4;
+    --ifm-color-primary-lightest: #4fddbf;
+    --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+    --ifm-footer-background-color: #ffa600;
 }
 
 .footer {
-	background-color: #242736;
+    background-color: #242736;
 }
 
 .button--primary {
-	background: linear-gradient(
-		180deg,
-		var(--token-e94f1f99-3833-4c15-8d11-a67e80285705, rgb(249, 140, 19))
-			/* {"name":"Orange"} */ 0%,
-		rgb(255, 166, 0) 100%
-	);
-	border: none;
-	padding: 1rem 2rem;
-	font-size: 1.2rem;
-	transition: background 0.3s;
-	color: white;
+    background: linear-gradient(
+        180deg,
+        var(--token-e94f1f99-3833-4c15-8d11-a67e80285705, rgb(249, 140, 19))
+            /* {"name":"Orange"} */ 0%,
+        rgb(255, 166, 0) 100%
+    );
+    border: none;
+    padding: 1rem 2rem;
+    font-size: 1.2rem;
+    transition: background 0.3s;
+    color: white;
 }
 
 .button--primary:hover {
-	background: linear-gradient(rgb(255, 156, 43) 0%, rgb(255, 166, 0) 100%);
+    background: linear-gradient(rgb(255, 156, 43) 0%, rgb(255, 166, 0) 100%);
 }
+
+.responsive-iframe {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  height: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.responsive-iframe iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+

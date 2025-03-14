@@ -53,10 +53,10 @@ nvm install 23
 nvm use 23
 ```
 
-4. Install bun:
+4. Install pnpm:
 
 ```bash
-curl -fsSL https://get.bun.io/install.sh | sh -
+curl -fsSL https://get.pnpm.io/install.sh | sh -
 source ~/.bashrc
 ```
 
