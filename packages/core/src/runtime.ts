@@ -40,6 +40,36 @@ import type {
 } from "./types";
 import { stringToUuid } from "./uuid";
 
+// Semaphore implementation for controlling concurrent operations
+export class Semaphore {
+  private permits: number;
+  private waiting: Array<() => void> = [];
+
+  constructor(count: number) {
+    this.permits = count;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.permits > 0) {
+      this.permits -= 1;
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.waiting.push(resolve);
+    });
+  }
+
+  release(): void {
+    this.permits += 1;
+    const nextResolve = this.waiting.shift();
+    if (nextResolve && this.permits > 0) {
+      this.permits -= 1;
+      nextResolve();
+    }
+  }
+}
+
 /**
  * Represents the runtime environment for an agent, handling message processing,
  * action registration, and interaction with external services like OpenAI and Supabase.
@@ -90,6 +120,8 @@ export class AgentRuntime implements IAgentRuntime {
   private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
 
   private runtimeLogger;
+  private knowledgeProcessingSemaphore = new Semaphore(10);
+
   constructor(opts: {
     conversationLength?: number;
     agentId?: UUID;
@@ -111,10 +143,6 @@ export class AgentRuntime implements IAgentRuntime {
       agentName: this.character?.name,
       agentId: this.agentId,
     });
-
-    this.runtimeLogger.debug(
-      `[AgentRuntime] Process working directory: ${process.cwd()}`
-    );
 
     this.#conversationLength =
       opts.conversationLength ?? this.#conversationLength;
@@ -539,11 +567,12 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async processCharacterKnowledge(items: string[]) {
-    for (const item of items) {
+    const processingPromises = items.map(async (item) => {
+      await this.knowledgeProcessingSemaphore.acquire();
       try {
         const knowledgeId = createUniqueUuid(this, item);
         if (await this.checkExistingKnowledge(knowledgeId)) {
-          continue;
+          return;
         }
 
         this.runtimeLogger.info(
@@ -564,8 +593,12 @@ export class AgentRuntime implements IAgentRuntime {
           error,
           "processing character knowledge"
         );
+      } finally {
+        this.knowledgeProcessingSemaphore.release();
       }
-    }
+    });
+
+    await Promise.all(processingPromises);
   }
 
   setSetting(
