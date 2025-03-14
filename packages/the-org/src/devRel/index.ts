@@ -126,52 +126,14 @@ function loadSourceCode(packagesDir: string): string[] {
     }
 }
 
-/**
- * Test function to demonstrate how knowledge loading works
- */
-function testKnowledgeLoading(): void {
-    try {
-        // Test documentation loading
-        console.log("Loading documentation...");
-        const docsPath = path.resolve(path.join(__dirname, "../../../docs/docs"));
-        if (fs.existsSync(docsPath)) {
-            const docKnowledge = loadDocumentation(docsPath);
-            console.log(`Loaded ${docKnowledge.length} documentation files.`);
-            // Print the first document as an example
-            if (docKnowledge.length > 0) {
-                const firstDoc = docKnowledge[0];
-                console.log("\nExample document:");
-                console.log(firstDoc.slice(0, 500) + "...");
-            }
-        } else {
-            console.warn("Documentation directory not found:", docsPath);
-        }
-        
-        // Test source code loading
-        console.log("\nLoading source code...");
-        const packagesPath = path.resolve(path.join(__dirname, "../../.."));
-        if (fs.existsSync(packagesPath)) {
-            const sourceKnowledge = loadSourceCode(packagesPath);
-            console.log(`Loaded ${sourceKnowledge.length} source files.`);
-            // Print the first source file as an example
-            if (sourceKnowledge.length > 0) {
-                const firstSource = sourceKnowledge[0];
-                console.log("\nExample source file:");
-                console.log(firstSource.slice(0, 500) + "...");
-            }
-        } else {
-            console.warn("Packages directory not found:", packagesPath);
-        }
-    } catch (error) {
-        console.error("Error in testKnowledgeLoading:", error);
-    }
-}
-
 // Load knowledge synchronously before creating the character
 const knowledge = [];
 
 // Load documentation
-const docsPath = path.resolve(path.join(__dirname, "../../docs/docs"));
+let docsPath = path.resolve(path.join(__dirname, "../../../docs/docs"));
+if (!fs.existsSync(docsPath)) {
+	docsPath = path.resolve(path.join(__dirname, "../../docs/docs"));
+}
 if (fs.existsSync(docsPath)) {
 	console.log("Loading documentation...");
 	const docKnowledge = loadDocumentation(docsPath);
@@ -182,7 +144,11 @@ if (fs.existsSync(docsPath)) {
 }
 
 // Load source code
-const packagesPath = path.resolve(path.join(__dirname, "../.."));
+let packagesPath = path.resolve(path.join(__dirname, "../../.."));
+// if it doesnt exist, try "../../"
+if (!fs.existsSync(packagesPath)) {
+	packagesPath = path.resolve(path.join(__dirname, "../.."));
+}
 if (fs.existsSync(packagesPath)) {
 	console.log("Loading source code...");
 	const sourceKnowledge = loadSourceCode(packagesPath);
