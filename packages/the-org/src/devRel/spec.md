@@ -63,7 +63,6 @@ const character: Character = {
     "@elizaos/plugin-openai",
     "@elizaos/plugin-discord",
     "@elizaos/plugin-telegram",
-    "@elizaos/plugin-rag",
     "@elizaos/plugin-node",
     "@elizaos/plugin-sql",
   ],

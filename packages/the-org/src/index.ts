@@ -9,13 +9,13 @@ import liaison from "./liaison";
 import projectManager from "./projectManager";
 import socialMediaManager from "./socialMediaManager";
 
-export const project: Project = {
+export const project = {
 	agents: [
-		// devRel,
-		communityManager,
-		investmentManager,
-		liaison,
-		projectManager,
+		devRel,
+		// communityManager,
+		// investmentManager,
+		// liaison,
+		// projectManager,
 		// socialMediaManager,
 	],
 };
