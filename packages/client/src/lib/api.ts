@@ -111,7 +111,6 @@ interface LogResponse {
 	levels: string[];
 }
 
-// Add this interface for agent logs
 interface AgentLog {
 	id?: string;
 	type?: string;
