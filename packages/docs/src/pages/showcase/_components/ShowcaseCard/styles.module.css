@@ -1,0 +1,114 @@
+/* In src/pages/showcase/_components/ShowcaseCard/styles.module.css */
+
+/* Add to the existing CSS file */
+.cardFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tagContainer {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.readmeBtn {
+  margin-left: 8px;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  margin-bottom: 12px;
+  padding: 4px 8px;
+}
+
+.showcaseCardImage {
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  border-bottom: 2px solid var(--ifm-color-emphasis-200);
+}
+
+.cardImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.showcaseCardHeader {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.showcaseCardTitle {
+  margin-bottom: 0;
+  flex: 1 1 auto;
+  margin-right: 8px;
+}
+
+.showcaseCardTitle a {
+  text-decoration: none;
+  background: linear-gradient(
+      var(--ifm-color-primary),
+      var(--ifm-color-primary)
+    )
+    0% 100% / 0% 1px no-repeat;
+  transition: background-size ease-out 200ms;
+}
+
+.showcaseCardTitle a:not(:focus):hover {
+  background-size: 100% 1px;
+}
+
+.showcaseCardSrcBtn {
+  margin-left: 6px;
+  padding-left: 12px;
+  padding-right: 12px;
+  border: none;
+}
+
+.showcaseCardSrcBtn:focus-visible {
+  background-color: var(--ifm-color-secondary-dark);
+}
+
+[data-theme='dark'] .showcaseCardSrcBtn {
+  background-color: var(--ifm-color-emphasis-200) !important;
+  color: inherit;
+}
+
+[data-theme='dark'] .showcaseCardSrcBtn:hover {
+  background-color: var(--ifm-color-emphasis-300) !important;
+}
+
+.showcaseCardBody {
+  font-size: smaller;
+  line-height: 1.66;
+}
+
+
+/* Base tag styling */
+.tag {
+  font-size: 0.675rem;
+  cursor: default;
+  margin-right: 6px;
+  margin-bottom: 6px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  /* Width is controlled by content */
+}
+
+/* Make the text label for all tags exactly the same width */
+.textLabel {
+  width: 40px; /* Fixed width for all text labels */
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Specific fix for the TagIcon spacing */
+.tag span:first-child {
+  margin-right: 4px;
+}
