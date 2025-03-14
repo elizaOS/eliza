@@ -1,7 +1,7 @@
 import type { Agent, Character, UUID } from "@elizaos/core";
 import { WorldManager } from "./world-manager";
 
-const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
+//const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 
 /**
  * A function that handles fetching data from a specified URL with various options.
@@ -49,7 +49,7 @@ const fetcher = async ({
 		}
 	}
 
-	return fetch(`${BASE_URL}${url}`, options).then(async (resp) => {
+	return fetch(`${url}`, options).then(async (resp) => {
 		const contentType = resp.headers.get("Content-Type");
 		if (contentType === "audio/mpeg") {
 			return await resp.blob();
