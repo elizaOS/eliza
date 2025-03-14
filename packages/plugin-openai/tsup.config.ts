@@ -15,6 +15,6 @@ export default defineConfig({
 		"https",
 		"http",
 		"@elizaos/core",
-		// Add other modules you want to externalize
+		"zod",
 	],
 });

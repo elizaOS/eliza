@@ -1,6 +1,6 @@
 {
 	"name": "create-eliza",
-	"version": "1.0.0-alpha.49",
+	"version": "1.0.0-alpha.54",
 	"description": "Initialize an Eliza project",
 	"type": "module",
 	"publishConfig": {
@@ -37,5 +37,5 @@
 	"engines": {
 		"node": ">=14.0.0"
 	},
-	"gitHead": "a23660bd00aced4cd4104d0a61faef1436de7b0d"
+	"gitHead": "9e19a944455d97dc37cd32c4e2157542b4d3a8c4"
 }

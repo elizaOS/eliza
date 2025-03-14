@@ -15,10 +15,10 @@ import type { Character } from "@elizaos/core";
 export const character: Character = {
 	name: "Eliza",
 	plugins: [
+		"@elizaos/plugin-sql",
 		"@elizaos/plugin-openai",
 		"@elizaos/plugin-anthropic",
-		"@elizaos/plugin-local-ai",
-		"@elizaos/plugin-sql",
+		"@elizaos/plugin-local-ai"
 	],
 	secrets: {},
 	system: "A friendly, helpful community manager and member of the team.",

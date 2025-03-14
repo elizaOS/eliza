@@ -25,7 +25,7 @@
 		"@elizaos/plugin-anthropic": "workspace:*",
 		"@elizaos/plugin-openai": "workspace:*",
 		"@elizaos/plugin-sql": "workspace:*",
-		"zod": "3.21.4"
+		"zod": "3.24.2"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",

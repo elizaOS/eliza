@@ -8,9 +8,6 @@ import type { IDatabaseClientManager } from "../types";
 
 const { Pool } = pkg;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 /**
  * Manages connections to a PostgreSQL database using a connection pool.
  * Implements IDatabaseClientManager interface.
@@ -201,10 +198,12 @@ export class PostgresConnectionManager
 	 * @returns {Promise<void>} A Promise that resolves once the migrations are completed successfully.
 	 */
 	async runMigrations(): Promise<void> {
-		logger.info("Running database migrations (pg)");
-		console.trace();
 		try {
 			const db = drizzle(this.pool);
+
+			const __filename = fileURLToPath(import.meta.url);
+			const __dirname = path.dirname(__filename);
+
 			await migrate(db, {
 				migrationsFolder: path.resolve(__dirname, "../drizzle/migrations"),
 			});
