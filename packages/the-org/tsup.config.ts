@@ -15,5 +15,7 @@ export default defineConfig({
 		"node:path", // Externalize other built-ins if necessary
 		"node:http",
 		"@elizaos/plugin-cli",
+		"@elizaos/core",
+		"zod",
 	],
 });

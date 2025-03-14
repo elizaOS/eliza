@@ -294,7 +294,7 @@ export class AgentRuntime implements IAgentRuntime {
 			for (const plugin of characterPlugins) {
 				if (plugin && !registeredPluginNames.has(plugin.name)) {
 					registeredPluginNames.add(plugin.name);
-					pluginRegistrationPromises.push(this.registerPlugin(plugin));
+					pluginRegistrationPromises.push(await this.registerPlugin(plugin));
 				}
 			}
 		}
@@ -303,7 +303,7 @@ export class AgentRuntime implements IAgentRuntime {
 		for (const plugin of [...this.plugins]) {
 			if (plugin && !registeredPluginNames.has(plugin.name)) {
 				registeredPluginNames.add(plugin.name);
-				pluginRegistrationPromises.push(this.registerPlugin(plugin));
+				pluginRegistrationPromises.push(await this.registerPlugin(plugin));
 			}
 		}
 
@@ -1391,6 +1391,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 	
 	async close(): Promise<void> {
+		console.log("Closing adapter");
 		await this.adapter.close();
 	}
 	

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	Character,
 	IAgentRuntime,
@@ -10,6 +12,14 @@ import dotenv from "dotenv";
 import { v4 as uuidv4 } from "uuid";
 import { initCharacter } from "../init";
 import twitterPostAction from "./actions/post";
+
+const imagePath = path.resolve("./src/socialMediaManager/assets/portrait.jpg");
+
+// Read and convert to Base64
+const avatar = fs.existsSync(imagePath)
+	? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString("base64")}`
+	: "";
+
 dotenv.config({ path: "../../.env" });
 
 /**
@@ -45,6 +55,7 @@ const character: Character = {
 			DISCORD_API_TOKEN: process.env.SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN,
 		},
 		TWITTER_ENABLE_POST_GENERATION: false,
+		avatar
 	},
 	system:
 		"Respond as a marketing professional specializing in crypto projects and open communities, with an edgy, modern voice. Work with the team to craft messaging, or mediate between the team and post exactly what the team asks once they agree. Ignore messages addressed to other people.",

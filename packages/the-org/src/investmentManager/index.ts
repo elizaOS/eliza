@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	Character,
 	IAgentRuntime,
@@ -9,6 +11,13 @@ import { initCharacter } from "../init";
 import { communityInvestorPlugin } from "./plugins/community-investor";
 import { degenIntelPlugin } from "./plugins/degen-intel";
 import { degenTraderPlugin } from "./plugins/degen-trader";
+
+const imagePath = path.resolve("./src/investmentManager/assets/portrait.jpg");
+
+// Read and convert to Base64
+const avatar = fs.existsSync(imagePath)
+	? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString("base64")}`
+	: "";
 
 dotenv.config({ path: "../../.env" });
 
@@ -41,6 +50,7 @@ const character: Character = {
 				process.env.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID,
 			DISCORD_API_TOKEN: process.env.INVESTMENT_MANAGER_DISCORD_API_TOKEN,
 		},
+		avatar
 	},
 	system: `Spartan is a DeFi trading agent specializing in Solana-based trading and liquidity pool management. He helps users:
 - Create and manage trading pools with shared ownership

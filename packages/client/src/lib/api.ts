@@ -1,7 +1,7 @@
 import type { Agent, Character, UUID } from "@elizaos/core";
 import { WorldManager } from "./world-manager";
 
-const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
+//const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 
 /**
  * A function that handles fetching data from a specified URL with various options.
@@ -49,7 +49,7 @@ const fetcher = async ({
 		}
 	}
 
-	return fetch(`${BASE_URL}${url}`, options).then(async (resp) => {
+	return fetch(`${url}`, options).then(async (resp) => {
 		const contentType = resp.headers.get("Content-Type");
 		if (contentType === "audio/mpeg") {
 			return await resp.blob();
@@ -133,50 +133,11 @@ interface LogResponse {
  * 		getRoom: (agentId: string, roomId: string) => Promise<any>;
  * 		updateRoom: (agentId: string, roomId: string, updates: { name?: string; worldId?: string; }) => Promise<any>;
  * 		deleteRoom: (agentId: string, roomId: string) => Promise<any>;
- * 		getLogs: (level: string, agentName?: string) => Promise<LogResponse>;
+ * 		getLogs: (level: string) => Promise<LogResponse>;
  * 	}
  * }}
  */
 export const apiClient = {
-	sendMessage: (
-		agentId: string,
-		message: string,
-		selectedFile?: File | null,
-		roomId?: UUID,
-	) => {
-		const worldId = WorldManager.getWorldId();
-
-		if (selectedFile) {
-			// Use FormData only when there's a file
-			const formData = new FormData();
-			formData.append("text", message);
-			formData.append("name", "Anon");
-			formData.append("file", selectedFile);
-			// Add roomId if provided
-			if (roomId) {
-				formData.append("roomId", roomId);
-			}
-			// Add worldId
-			formData.append("worldId", worldId);
-
-			return fetcher({
-				url: `/agents/${agentId}/messages`,
-				method: "POST",
-				body: formData,
-			});
-		}
-		// Use JSON when there's no file
-		return fetcher({
-			url: `/agents/${agentId}/messages`,
-			method: "POST",
-			body: {
-				text: message,
-				name: "Anon",
-				roomId: roomId || undefined,
-				worldId,
-			},
-		});
-	},
 	getAgents: () => fetcher({ url: "/agents" }),
 	getAgent: (agentId: string): Promise<{ data: Agent }> =>
 		fetcher({ url: `/agents/${agentId}` }),
@@ -354,14 +315,28 @@ export const apiClient = {
 	},
 
 	// Add this new method
-	getLogs: (level: string, agentName?: string): Promise<LogResponse> => {
-		let url = `/logs?level=${level}`;
-		if (agentName) {
-			url += `&agentName=${encodeURIComponent(agentName)}`;
-		}
-		return fetcher({
-			url,
+	getLogs: (level: string): Promise<LogResponse> =>
+		fetcher({
+			url: `/logs?level=${level}`,
 			method: "GET",
-		});
-	},
+		}),
+
+	getAgentCompletion: (
+			agentId: string,
+			senderId: string,
+			message: string,
+			roomId: UUID,
+			source: string,
+		) => {
+			return fetcher({
+				url: `/agents/${agentId}/message`,
+				method: "POST",
+				body: {
+					text: message,
+					roomId: roomId,
+					senderId,
+					source,
+				},
+			});
+		},
 };

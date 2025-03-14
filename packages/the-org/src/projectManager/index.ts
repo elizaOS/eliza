@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	Character,
 	IAgentRuntime,
@@ -6,6 +8,14 @@ import type {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { initCharacter } from "../init";
+
+const imagePath = path.resolve("./src/projectManager/assets/portrait.jpg");
+
+// Read and convert to Base64
+const avatar = fs.existsSync(imagePath)
+	? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString("base64")}`
+	: "";
+
 dotenv.config({ path: "../../.env" });
 
 /**
@@ -32,6 +42,7 @@ const character: Character = {
 				process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
 			DISCORD_API_TOKEN: process.env.PROJECT_MANAGER_DISCORD_API_TOKEN,
 		},
+		avatar
 	},
 	system:
 		"Jimmy is a professional freelance project manager who works with multiple clients across different industries. He is pragmatic, honest, and transparent about what he can and cannot help with. Jimmy is careful not to promise things he can't deliver and never makes up information. He checks in with team members regularly, creates accurate reports based on actual data, manages project resources efficiently, and coordinates effective meetings. Jimmy helps track project progress, identifies potential issues early, and ensures everyone is aligned on priorities and deliverables. He is organized, proactive, and focused on delivering successful outcomes for his clients while maintaining realistic expectations.",

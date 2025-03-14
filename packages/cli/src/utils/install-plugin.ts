@@ -1,5 +1,6 @@
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
+import { z } from 'zod';
 import { getPluginVersion } from './registry';
 
 /**
@@ -15,6 +16,20 @@ export async function installPlugin(
 	cwd: string,
 	version?: string,
 ): Promise<boolean> {
+	// Mark this plugin as installed to ensure we don't get into an infinite loop
+	logger.info(`Installing plugin: ${repository}`);
+
+	if(version) {
+		try {
+			await execa('bun', ['add', `${repository}@${version}`], {
+				cwd,
+				stdio: 'inherit',
+			});
+			return true;
+		} catch (error) {
+			logger.debug('Plugin not found on npm, trying to install from registry...');
+		}
+	}
 	try {
 		// Clean repository URL
 		let repoUrl = repository;

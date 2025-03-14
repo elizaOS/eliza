@@ -23,8 +23,6 @@ export const agentTable = pgTable(
 
 		updatedAt: numberTimestamp("updatedAt").default(sql`now()`).notNull(),
 
-		enabled: boolean("enabled").default(true).notNull(),
-
 		// Character
 		name: text("name"),
 		username: text("username"),

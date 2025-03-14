@@ -1,19 +1,17 @@
 {
 	"name": "@elizaos/the-org",
-	"version": "1.0.0-alpha.35",
+	"version": "1.0.0-alpha.38",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"type": "module",
-	"publishConfig": {
-		"access": "public"
-	},
+	"private": true,
 	"scripts": {
-		"start": "npx elizaos start",
+		"start": "bun ../cli/dist/index.js start",
 		"build": "vite build && tsup",
 		"lint": "biome check --config-path=./ --write",
-		"dev": "npx elizaos dev",
-		"test": "npx elizaos test",
+		"dev": "bun ../cli/dist/index.js dev",
+		"test": "bun ../cli/dist/index.js test",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"nodemonConfig": {
@@ -58,7 +56,7 @@
 		"ts-node": "^10.9.2",
 		"typescript": "5.8.2",
 		"ws": "8.18.0",
-		"zod": "^3.22.4"
+		"zod": "3.24.2"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.17.0",
@@ -80,5 +78,5 @@
 		"typescript-eslint": "^8.18.2",
 		"vite": "^6.0.5"
 	},
-	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
+	"gitHead": "e98c03cf7e76ba967b203fdc3fc07cb438797559"
 }

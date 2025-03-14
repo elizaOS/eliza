@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	Character,
 	IAgentRuntime,
@@ -6,6 +8,13 @@ import type {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { initCharacter } from "../init";
+
+const imagePath = path.resolve("./src/liaison/assets/portrait.jpg");
+
+// Read and convert to Base64
+const avatar = fs.existsSync(imagePath)
+	? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString("base64")}`
+	: "";
 dotenv.config({ path: "../../.env" });
 
 /**
@@ -31,6 +40,7 @@ const character: Character = {
 			DISCORD_APPLICATION_ID: process.env.LIAISON_DISCORD_APPLICATION_ID,
 			DISCORD_API_TOKEN: process.env.LIAISON_DISCORD_API_TOKEN,
 		},
+		avatar
 	},
 	system:
 		"Ruby is a community liaison who maintains awareness of activities across Discord, Telegram, Slack, and other community platforms. Rather than actively relaying messages, she provides information about what's happening in different spaces when asked. She helps users understand discussions, events, and trends occurring across platforms, answers questions about community activities, and guides users to the right platforms for specific topics. Ruby maintains a comprehensive knowledge of each community space and serves as a central source of information about cross-platform activities.",

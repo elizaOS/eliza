@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-local-ai",
-	"version": "1.0.0-alpha.35",
+	"version": "1.0.0-alpha.58",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -22,7 +22,7 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "^1.0.0-alpha.58",
 		"@huggingface/hub": "^1.0.1",
 		"@huggingface/inference": "^3.3.4",
 		"@huggingface/transformers": "^3.3.3",
@@ -39,7 +39,7 @@
 		"srt": "0.0.3",
 		"tsup": "8.4.0",
 		"uuid": "11.0.3",
-		"zod": "3.21.4"
+		"zod": "3.24.2"
 	},
 	"scripts": {
 		"build": "tsup",
@@ -55,11 +55,11 @@
 		"access": "public"
 	},
 	"resolutions": {
-		"zod": "3.24.1"
+		"zod": "3.24.2"
 	},
 	"agentConfig": {
 		"pluginType": "elizaos:plugin:1.0.0",
 		"pluginParameters": {}
 	},
-	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
+	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
 }

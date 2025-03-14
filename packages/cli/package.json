@@ -1,9 +1,12 @@
 {
 	"name": "@elizaos/cli",
-	"version": "1.0.0-alpha.35",
+	"version": "1.0.0-alpha.58",
 	"description": "elizaOS CLI - Manage your AI agents and plugins",
 	"publishConfig": {
-		"access": "public"
+		"access": "public",
+		"workspaces": {
+			"preserveIfPresent": true
+		}
 	},
 	"license": "MIT",
 	"author": {
@@ -17,7 +20,8 @@
 	},
 	"files": [
 		"dist",
-		"templates"
+		"templates",
+		"drizzle"
 	],
 	"keywords": [],
 	"type": "module",
@@ -30,7 +34,7 @@
 	},
 	"scripts": {
 		"cli": "bun run build && node dist/index.js",
-		"build": "tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-to-create-eliza.ts && bun run src/scripts/copy-templates.ts",
+		"build": "tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts && bun run src/scripts/copy-drizzle.ts",
 		"test:dev": "REGISTRY_URL=http://localhost:3333 vitest run",
 		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
 		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
@@ -38,10 +42,10 @@
 	"devDependencies": {
 		"@babel/core": "^7.22.1",
 		"@babel/parser": "^7.22.6",
-		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-anthropic": "workspace:*",
-		"@elizaos/plugin-openai": "workspace:*",
-		"@elizaos/plugin-sql": "workspace:*",
+		"@elizaos/core": "^1.0.0-alpha.58",
+		"@elizaos/plugin-anthropic": "^1.0.0-alpha.58",
+		"@elizaos/plugin-openai": "^1.0.0-alpha.58",
+		"@elizaos/plugin-sql": "^1.0.0-alpha.58",
 		"@types/babel__core": "^7.20.1",
 		"@types/diff": "^5.0.3",
 		"@types/fs-extra": "^11.0.1",
@@ -63,11 +67,11 @@
 		"tsx": "^4.19.2",
 		"type-fest": "^3.8.0",
 		"typescript": "5.8.2",
-		"yoctocolors": "^2.1.1",
-		"zod": "^3.20.2"
+		"yoctocolors": "^2.1.1"
 	},
-	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de",
+	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b",
 	"dependencies": {
-		"@electric-sql/pglite": "^0.2.17"
+		"@electric-sql/pglite": "^0.2.17",
+		"zod": "3.24.2"
 	}
 }

@@ -26,5 +26,6 @@ export default defineConfig({
 		"@phala/dstack-sdk",
 		"undici",
 		"@elizaos/core",
+		"zod",
 	],
 });

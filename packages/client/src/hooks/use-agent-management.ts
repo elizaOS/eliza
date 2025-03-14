@@ -57,8 +57,6 @@ export function useAgentManagement() {
 			// Refresh active agents list
 			queryClient.invalidateQueries({ queryKey: ["active-agents"] });
 
-			// Navigate to chat
-			navigate(`/chat/${agentId}`);
 		} catch (error) {
 			console.error("Failed to start agent:", error);
 

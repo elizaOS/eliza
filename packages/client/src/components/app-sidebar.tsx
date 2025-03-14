@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/sidebar";
 import { useAgents } from "@/hooks/use-query-hooks";
 import info from "@/lib/info.json";
+import { formatAgentName } from "@/lib/utils";
+import { AGENT_STATUS } from "@/types/index";
 import type { Agent } from "@elizaos/core";
 import { Book, Cog, Scroll, User } from "lucide-react";
 import { NavLink, useLocation } from "react-router";
@@ -24,6 +26,7 @@ export function AppSidebar() {
 		data: { data: agentsData } = {},
 		isPending: isAgentsPending,
 	} = useAgents();
+	
 	return (
 		<Sidebar className="bg-background">
 			<SidebarHeader className="pb-4">
@@ -71,33 +74,34 @@ export function AppSidebar() {
 										// Sort agents: enabled first, then disabled
 										const sortedAgents = [...(agentsData?.agents || [])].sort(
 											(a, b) => {
-												// Sort by enabled status (enabled agents first)
-												if (a.enabled && !b.enabled) return -1;
-												if (!a.enabled && b.enabled) return 1;
-												// If both have same enabled status, sort alphabetically by name
-												return a.name.localeCompare(b.name);
-											},
-										);
+											  // Sort by status (active agents first)
+											  if (a.status === AGENT_STATUS.ACTIVE && b.status !== AGENT_STATUS.ACTIVE) return -1;
+											  if (a.status !== AGENT_STATUS.ACTIVE && b.status === AGENT_STATUS.ACTIVE) return 1;
+											  // If both have the same status, sort alphabetically by name
+											  return a.name.localeCompare(b.name);
+											}
+										  );
+										  
 
 										// Split into enabled and disabled groups
 										const activeAgents = sortedAgents.filter(
 											(agent: Partial<Agent & { status: string }>) =>
-												agent.status === "active",
+												agent.status === AGENT_STATUS.ACTIVE,
 										);
 										const inactiveAgents = sortedAgents.filter(
 											(agent: Partial<Agent & { status: string }>) =>
-												agent.status === "inactive",
+												agent.status === AGENT_STATUS.INACTIVE,
 										);
 
 										return (
 											<>
 												{/* Render active section */}
 												{activeAgents.length > 0 && (
-													<div className="px-4 py-2 mt-4">
+													<div className="px-4 py-1 mt-4">
 														<div className="flex items-center space-x-2">
 															<div className="size-2.5 rounded-full bg-green-500" />
 															<span className="text-sm font-medium text-muted-foreground">
-																Active
+																Online
 															</span>
 														</div>
 													</div>
@@ -111,11 +115,20 @@ export function AppSidebar() {
 																isActive={location.pathname.includes(
 																	agent.id as string,
 																)}
-																className="transition-colors px-4 py-2 my-1 rounded-md"
+																className="transition-colors px-4 my-4 rounded-md"
 															>
 																<div className="flex items-center gap-2">
-																	<User className="size-5" />
-
+																	<div className="w-8 h-8 flex justify-center items-center">
+																		<div className="relative bg-muted rounded-full w-full h-full">
+																			{agent && <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
+																			{agent.settings?.avatar ?
+																				<img src={agent.settings?.avatar} alt="Agent Avatar" className="w-full h-full object-contain" /> :
+																				formatAgentName(agent.name)
+																			}
+																			<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-green-500`} />
+																		</div>}
+																		</div>
+																	</div>
 																	<span className="text-base">
 																		{agent.name}
 																	</span>
@@ -127,11 +140,11 @@ export function AppSidebar() {
 
 												{/* Render inactive section */}
 												{inactiveAgents.length > 0 && (
-													<div className="px-4 py-2 mt-4">
+													<div className="px-4 py-1 mt-12">
 														<div className="flex items-center space-x-2">
 															<div className="size-2.5 rounded-full bg-muted-foreground/50" />
 															<span className="text-sm font-medium text-muted-foreground">
-																Inactive
+																Offline
 															</span>
 														</div>
 													</div>
@@ -140,10 +153,24 @@ export function AppSidebar() {
 												{/* Render disabled agents */}
 												{inactiveAgents.map((agent) => (
 													<SidebarMenuItem key={agent.id}>
-														<div className="px-4 py-2 my-1 rounded-md">
+														<div
+															className="transition-colors px-4 my-4 rounded-md"
+														>
 															<div className="flex items-center gap-2">
-																<User className="size-5" />
-																<span className="text-base">{agent.name}</span>
+																<div className="w-8 h-8 flex justify-center items-center">
+																	<div className="relative bg-muted rounded-full w-full h-full">
+																		{agent && <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
+																		{agent.settings?.avatar ?
+																			<img src={agent.settings.avatar} alt="Agent Avatar" className="w-full h-full object-contain" /> :
+																			formatAgentName(agent.name)
+																		}
+																		<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-muted-foreground`} />
+																	</div>}
+																	</div>
+																</div>
+																<span className="text-base truncate max-w-24">
+																	{agent.name}
+																</span>
 															</div>
 														</div>
 													</SidebarMenuItem>

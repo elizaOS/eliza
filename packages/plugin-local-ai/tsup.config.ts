@@ -16,6 +16,6 @@ export default defineConfig({
 		"http",
 		"events",
 		"@elizaos/core",
-		// Add other modules you want to externalize
+		"zod",
 	],
 });

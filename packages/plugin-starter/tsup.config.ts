@@ -15,5 +15,6 @@ export default defineConfig({
 		"https",
 		"http",
 		"@elizaos/core",
+		"zod",
 	],
 });

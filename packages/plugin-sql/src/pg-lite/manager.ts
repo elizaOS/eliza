@@ -1,4 +1,4 @@
-import path from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite, type PGliteOptions } from "@electric-sql/pglite";
 import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
@@ -7,9 +7,6 @@ import { logger } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import type { IDatabaseClientManager } from "../types";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 /**
  * Class representing a database client manager for PGlite.
@@ -104,23 +101,6 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 	}
 
 	/**
-	 * Asynchronously checks if migrations exist in the database.
-	 * @returns {Promise<boolean>} A Promise that resolves to true if migrations exist, otherwise false.
-	 */
-	private async hasMigrations(): Promise<boolean> {
-		try {
-			const result = await this.client.query(
-				"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '__drizzle_migrations')"
-			);
-			return (result.rows[0] as any).exists;
-		} catch (error) {
-			logger.error("Failed to check migrations:", error);
-			return false;
-		}
-	}
-
-
-	/**
 	 * Initializes the client for PGlite.
 	 *
 	 * @returns {Promise<void>} A Promise that resolves when the client is initialized successfully
@@ -158,20 +138,23 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
 	/**
 	 * Asynchronously runs database migrations using Drizzle.
+	 * 
+	 * Drizzle will first check if the migrations are already applied.
+	 * If there is a diff between database schema and migrations, it will apply the migrations.
+	 * If they are already applied, it will skip them.
 	 *
 	 * @returns {Promise<void>} A Promise that resolves once the migrations are completed successfully.
 	 */
 	async runMigrations(): Promise<void> {
 		try {
 			const db = drizzle(this.client);
-			if (await this.hasMigrations()) {
-				logger.info("Migrations already exist, skipping...");
-				return;
-			}
+
+			const __filename = fileURLToPath(import.meta.url);
+			const __dirname = dirname(__filename);
+
 			await migrate(db, {
-				migrationsFolder: path.resolve(__dirname, "../drizzle/migrations"),
+				migrationsFolder: resolve(__dirname, "../drizzle/migrations"),
 			});
-			logger.info("Migrations completed successfully!");
 		} catch (error) {
 			logger.error("Failed to run database migrations (pglite):", error);
 			// throw error;

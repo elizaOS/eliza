@@ -1,6 +1,6 @@
 {
 	"name": "create-eliza",
-	"version": "1.0.0-alpha.35",
+	"version": "1.0.0-alpha.58",
 	"description": "Initialize an Eliza project",
 	"type": "module",
 	"publishConfig": {
@@ -16,6 +16,9 @@
 	"author": {
 		"name": "elizaOS",
 		"url": "https://twitter.com/eliza_OS"
+	},
+	"dependencies": {
+		"@elizaos/cli": "^1.0.0-alpha.58"
 	},
 	"repository": {
 		"type": "git",
@@ -37,5 +40,5 @@
 	"engines": {
 		"node": ">=14.0.0"
 	},
-	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
+	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
 }

@@ -13,7 +13,9 @@ import * as bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import { WebSocketServer } from "ws";
 import { createApiRouter } from "./api/index.js";
+import { WebSocketRouter } from "./wss/index.js";
 
 // Load environment variables
 dotenv.config();
@@ -48,7 +50,6 @@ export interface ServerOptions {
 const AGENT_RUNTIME_URL =
 	process.env.AGENT_RUNTIME_URL?.replace(/\/$/, "") || "http://localhost:3000";
 
-
 /**
  * Class representing an agent server.
  */ /**
@@ -64,9 +65,7 @@ export class AgentServer {
 	public stopAgent!: (runtime: IAgentRuntime) => void;
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
-	
-
-	
+	private wss: WebSocketServer;
 
 	/**
 	 * Constructor for AgentServer class.
@@ -75,7 +74,6 @@ export class AgentServer {
 	 * @constructor
 	 */
 	constructor(options?: ServerOptions) {
-		
 		try {
 			logger.log("Initializing AgentServer...");
 			this.app = express();
@@ -99,23 +97,34 @@ export class AgentServer {
 				"00000000-0000-0000-0000-000000000002",
 			);
 
-			// Initialize the database
-			this.database
-				.init()
-				.then(() => {
-					logger.success("Database initialized successfully");
-					this.initializeServer(options);
-				})
-				.catch((error) => {
-					logger.error("Failed to initialize database:", error);
-					throw error;
-				});
+			// Database initialization moved to initialize() method
 		} catch (error) {
 			logger.error("Failed to initialize AgentServer:", error);
 			throw error;
 		}
+	}
 
-		logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
+	/**
+	 * Initializes the database and server.
+	 * 
+	 * @param {ServerOptions} [options] - Optional server options.
+	 * @returns {Promise<void>} A promise that resolves when initialization is complete.
+	 */
+	public async initialize(options?: ServerOptions): Promise<void> {
+		try {
+			// Initialize the database with await
+			await this.database.init();
+			logger.success("Database initialized successfully");
+			
+			// Only continue with server initialization after database is ready
+			await this.initializeServer(options);
+			
+			// Move this message here to be more accurate
+			logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
+		} catch (error) {
+			logger.error("Failed to initialize:", error);
+			throw error;
+		}
 	}
 
 	/**
@@ -202,10 +211,14 @@ export class AgentServer {
 				},
 			};
 
+			console.log("Serving static assets from the client dist path");
+
 			// Serve static assets from the client dist path
 			const clientPath = path.join(__dirname, "..", "dist");
 			logger.info(`Client build path: ${clientPath}`);
 			this.app.use("/", express.static(clientPath, staticOptions));
+
+			
 
 			// Serve static assets from plugins
 			// Look for well-known static asset directories in plugins
@@ -489,6 +502,23 @@ export class AgentServer {
 				logger.debug(`Active agents: ${this.agents.size}`);
 				this.agents.forEach((agent, id) => {
 					logger.debug(`- Agent ${id}: ${agent.character.name}`);
+				});
+			});
+
+			this.wss = new WebSocketServer({ server: this.server });
+			
+			const wsRouter = new WebSocketRouter(this.agents, this);
+
+			this.wss.on("connection", (ws) => {
+				logger.info("New WebSocket connection established");
+
+				ws.on("message", (message) => {
+					wsRouter.handleMessage(ws, message.toString());
+				});
+
+				ws.on("close", () => {
+					logger.info("WebSocket closed");
+					wsRouter.handleClose(ws);
 				});
 			});
 

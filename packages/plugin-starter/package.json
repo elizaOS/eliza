@@ -1,7 +1,8 @@
 {
 	"name": "@elizaos/plugin-starter",
 	"description": "Plugin starter for elizaOS",
-	"version": "1.0.0-alpha.35",
+	"version": "1.0.0-alpha.42",
+	"private": true,
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -23,9 +24,9 @@
 		"dist"
 	],
 	"dependencies": {
-		"@elizaos/cli": "workspace:*",
-		"@elizaos/core": "workspace:*",
-		"zod": "3.21.4"
+		"@elizaos/cli": "^1.0.0-alpha.42",
+		"@elizaos/core": "^1.0.0-alpha.42",
+		"zod": "3.24.2"
 	},
 	"devDependencies": {
 		"tsup": "8.4.0"
@@ -43,7 +44,7 @@
 		"access": "public"
 	},
 	"resolutions": {
-		"zod": "3.24.1"
+		"zod": "3.24.2"
 	},
-	"gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
+	"gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
 }

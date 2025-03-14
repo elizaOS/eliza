@@ -1,3 +1,4 @@
+import { USER_NAME } from "@/constants";
 import { apiClient } from "@/lib/api";
 import { WorldManager } from "@/lib/world-manager";
 import type { Agent, Content, Media, UUID } from "@elizaos/core";
@@ -333,26 +334,21 @@ export function useMessages(
 	// Initial fetch of messages
 	const messagesQuery = useQuery({
 		queryKey: ["messages", agentId, roomId, worldId],
-		queryFn: () => apiClient.getMemories(agentId, roomId),
-		select: (data: { memories: Memory[] }): Memory[] => {
-			if (!data?.memories) return [];
-
-			// Update the oldest message timestamp if we have messages
-			if (data.memories.length > 0) {
-				const timestamps: number[] = data.memories.map(
-					(msg): number => msg.createdAt,
-				);
-				const oldest: number = Math.min(...timestamps);
-				setOldestMessageTimestamp(oldest);
-
-				// If we got less than the expected page size, there are probably no more messages
-				setHasMoreMessages(data.memories.length >= 20); // Assuming default page size is 20
-			} else {
-				setHasMoreMessages(false);
-			}
-
-			return data.memories;
+		queryFn: async () => {
+			const result = await apiClient.getMemories(agentId, roomId);
+			return result.data.memories.map((memory: Memory) => ({
+			  text: memory.content.text,
+			  user: memory.entityId === agentId ? 'agent' : USER_NAME,
+			  name: memory.entityId === agentId ? 'agent' : USER_NAME,
+			  createdAt: memory.createdAt,
+			  attachments: memory.content.attachments,
+			  source: memory.content.source,
+			  // action: memory.content.action,
+			  worldId: memory.worldId || worldId,
+			  id: memory.id,
+			})).sort((a: Memory, b: Memory) => a.createdAt - b.createdAt);
 		},
+		enabled: Boolean(agentId && roomId),
 		staleTime: STALE_TIMES.FREQUENT,
 	});
 
