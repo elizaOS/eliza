@@ -26,7 +26,7 @@ interface ButtonConfig {
 }
 
 interface ProfileCardProps {
-	title: string;
+	title: React.ReactNode;
 	content: React.ReactNode;
 	buttons: ButtonConfig[];
 }
