@@ -101,15 +101,20 @@ export class WebSocketRouter {
                 const entityId = createUniqueUuid(runtime, senderId);
                 
                 try {
-                    await runtime.ensureConnection({
-                        entityId,
-                        roomId: uniqueRoomId,
-                        userName: senderName,
-                        name: senderName,
-                        source,
-                        type: ChannelType.API,
-                        worldId,
-                    });
+                    try {
+                        await runtime.ensureConnection({
+                            entityId,
+                            roomId: uniqueRoomId,
+                            userName: senderName,
+                            name: senderName,
+                            source,
+                            type: ChannelType.API,
+                            worldId,
+                        });
+                    } catch (error) {
+                        console.warn(`[WebSocket server] error in ensureConnection`)
+                    }
+                    
 
                     const existingRelationship = await runtime
                         .getRelationship({

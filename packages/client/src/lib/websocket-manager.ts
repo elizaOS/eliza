@@ -167,6 +167,7 @@ class WebSocketsManager extends EventEmitter {
         this.cleanupWebSocket(agentId);
         socket.close();
       } else {
+        this.cleanupWebSocket(agentId);
         console.warn(`[WebSocket Client] WebSocket for agent ${agentId} is already closed or closing.`);
       }
     });
