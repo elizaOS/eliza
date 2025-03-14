@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/cli",
-	"version": "1.0.0-alpha.49",
+	"version": "1.0.0-alpha.50",
 	"description": "elizaOS CLI - Manage your AI agents and plugins",
 	"publishConfig": {
 		"access": "public",
@@ -42,10 +42,10 @@
 	"devDependencies": {
 		"@babel/core": "^7.22.1",
 		"@babel/parser": "^7.22.6",
-		"@elizaos/core": "^1.0.0-alpha.49",
-		"@elizaos/plugin-anthropic": "^1.0.0-alpha.49",
-		"@elizaos/plugin-openai": "^1.0.0-alpha.49",
-		"@elizaos/plugin-sql": "^1.0.0-alpha.49",
+		"@elizaos/core": "^1.0.0-alpha.50",
+		"@elizaos/plugin-anthropic": "^1.0.0-alpha.50",
+		"@elizaos/plugin-openai": "^1.0.0-alpha.50",
+		"@elizaos/plugin-sql": "^1.0.0-alpha.50",
 		"@types/babel__core": "^7.20.1",
 		"@types/diff": "^5.0.3",
 		"@types/fs-extra": "^11.0.1",
@@ -69,7 +69,7 @@
 		"typescript": "5.8.2",
 		"yoctocolors": "^2.1.1"
 	},
-	"gitHead": "a23660bd00aced4cd4104d0a61faef1436de7b0d",
+	"gitHead": "79b275447cd382a6037a05bf022a6a97b4dd6c8e",
 	"dependencies": {
 		"@electric-sql/pglite": "^0.2.17",
 		"zod": "3.24.2"
