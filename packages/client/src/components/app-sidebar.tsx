@@ -99,7 +99,6 @@ export function AppSidebar() {
 												{activeAgents.length > 0 && (
 													<div className="px-4 py-1 mt-4">
 														<div className="flex items-center space-x-2">
-															<div className="size-2.5 rounded-full bg-green-500" />
 															<span className="text-sm font-medium text-muted-foreground">
 																Online
 															</span>
@@ -125,7 +124,7 @@ export function AppSidebar() {
 																				<img src={agent.settings?.avatar} alt="Agent Avatar" className="w-full h-full object-contain" /> :
 																				formatAgentName(agent.name)
 																			}
-																			<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-green-500`} />
+																			<div className={`absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border-[1px] border-white bg-green-500`} />
 																		</div>}
 																		</div>
 																	</div>
@@ -140,9 +139,8 @@ export function AppSidebar() {
 
 												{/* Render inactive section */}
 												{inactiveAgents.length > 0 && (
-													<div className="px-4 py-1 mt-12">
+													<div className="px-4 py-1 mt-8">
 														<div className="flex items-center space-x-2">
-															<div className="size-2.5 rounded-full bg-muted-foreground/50" />
 															<span className="text-sm font-medium text-muted-foreground">
 																Offline
 															</span>
@@ -164,7 +162,7 @@ export function AppSidebar() {
 																			<img src={agent.settings.avatar} alt="Agent Avatar" className="w-full h-full object-contain" /> :
 																			formatAgentName(agent.name)
 																		}
-																		<div className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border-[1px] border-white bg-muted-foreground`} />
+																		<div className={`absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border-[1px] border-white bg-muted-foreground`} />
 																	</div>}
 																	</div>
 																</div>
