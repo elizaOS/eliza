@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
+import semver from 'semver';
 import {
   branchExists,
   createBranch,
@@ -12,7 +13,6 @@ import {
   updateFile,
 } from './github';
 import { getGitHubToken, getRegistrySettings } from './registry';
-import semver from 'semver';
 
 interface PackageJson {
   name: string;
