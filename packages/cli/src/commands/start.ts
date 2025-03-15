@@ -944,7 +944,7 @@ const startAgents = async (options: {
 	server.start(serverPort);
 
 	if (serverPort !== Number.parseInt(settings.SERVER_PORT || "3000")) {
-		logger.log(`Server started on alternate port ${serverPort}`);
+		logger.info(`Server started on alternate port ${serverPort}`);
 	}
 
 	// Display link to the client UI

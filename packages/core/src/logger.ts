@@ -1,4 +1,5 @@
 import pino, { type LogFn, type DestinationStream } from "pino";
+import pretty from "pino-pretty";
 
 function parseBooleanFromText(
 	value: string | undefined | null,
@@ -105,18 +106,14 @@ const customLevels: Record<string, number> = {
 
 const raw = parseBooleanFromText(process?.env?.LOG_JSON_FORMAT) || false;
 
-const createStream = async () => {
-	if (raw) {
-		return undefined;
-	}
-	// dynamically import pretty to avoid importing it in the browser
-	const pretty = await import("pino-pretty");
-	return pretty.default({
-		colorize: true,
-		translateTime: "yyyy-mm-dd HH:MM:ss",
-		ignore: "pid,hostname",
-	});
-};
+// Load pino-pretty synchronously
+const prettyStream = raw
+	? undefined
+	: pretty({
+			colorize: true,
+			translateTime: "yyyy-mm-dd HH:MM:ss",
+			ignore: "pid,hostname",
+	  });
 
 const defaultLevel =
 	process?.env?.DEFAULT_LOG_LEVEL || process?.env?.LOG_LEVEL || "info";
@@ -171,18 +168,13 @@ const options = {
 // Create basic logger initially
 let logger = pino(options);
 
-// Enhance logger with custom destination in Node.js environment
-if (typeof process !== 'undefined') {
-  // Create the destination with in-memory logging
-  createStream().then(stream => {
-    const destination = new InMemoryDestination(stream);
-    
-    // Create enhanced logger with custom destination
-    logger = pino(options, destination);
 
-    // Expose the destination for accessing recent logs
-    (logger as unknown)[Symbol.for("pino-destination")] = destination;
-  });
+// Create logger synchronously
+if (typeof process !== 'undefined') {
+	// Create the destination with in-memory logging
+	const destination = new InMemoryDestination(prettyStream);
+	logger = pino(options, destination);
+	(logger as unknown)[Symbol.for("pino-destination")] = destination;
 }
 
 export { logger };
