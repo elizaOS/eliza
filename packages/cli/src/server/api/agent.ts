@@ -1,12 +1,10 @@
 import fs from "node:fs";
-import path from "node:path";
 import { Readable } from "node:stream";
 import type {
 	Agent,
 	Character,
 	Content,
 	IAgentRuntime,
-	Media,
 	Memory,
 	UUID,
 } from "@elizaos/core";
@@ -22,8 +20,7 @@ import {
 import { logger} from "@elizaos/core";
 import express from "express";
 import type { AgentServer } from "..";
-import multer from "multer";
-import os from "node:os";
+import { upload } from "../loader";
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -45,41 +42,6 @@ interface CustomRequest extends express.Request {
 }
 
 /**
- * Cleans up old temporary files in the uploads directory.
- * Files older than the specified maxAge (in milliseconds) will be deleted.
- * 
- * @param uploadsDir - The directory containing temporary upload files
- * @param maxAge - Maximum age of files in milliseconds before they're deleted (default: 24 hours)
- */
-function cleanupTempFiles(uploadsDir: string, maxAge: number = 24 * 60 * 60 * 1000): void {
-	if (!fs.existsSync(uploadsDir)) {
-		return;
-	}
-	
-	try {
-		const now = Date.now();
-		const files = fs.readdirSync(uploadsDir);
-		
-		for (const file of files) {
-			const filePath = path.join(uploadsDir, file);
-			const stats = fs.statSync(filePath);
-			
-			// If the file is older than maxAge, delete it
-			if (now - stats.mtimeMs > maxAge) {
-				try {
-					fs.unlinkSync(filePath);
-					logger.debug(`[CLEANUP] Deleted old temporary file: ${file}`);
-				} catch (error) {
-					logger.error(`[CLEANUP] Error deleting temporary file ${file}: ${error}`);
-				}
-			}
-		}
-	} catch (error) {
-		logger.error(`[CLEANUP] Error cleaning up temporary files: ${error}`);
-	}
-}
-
-/**
  * Creates an express Router for handling agent-related routes.
  *
  * @param agents - Map of UUID to agent runtime instances.
@@ -92,32 +54,6 @@ export function agentRouter(
 ): express.Router {
 	const router = express.Router();
 	const db = server?.database;
-
-	// Configure multer for file uploads
-	const uploadsDir = path.join(os.tmpdir(), "elizaos-uploads");
-	const storage = multer.diskStorage({
-		destination: (_, __, cb) => {
-			if (!fs.existsSync(uploadsDir)) {
-				fs.mkdirSync(uploadsDir, { recursive: true });
-			}
-			cb(null, uploadsDir);
-		},
-		filename: (_, file, cb) => {
-			cb(null, `${Date.now()}-${file.originalname}`);
-		},
-	});
-
-	const upload = multer({ storage });
-	
-	// Set up periodic cleanup of temporary files (run every hour)
-	const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
-	setInterval(() => {
-		logger.debug("[CLEANUP] Running scheduled cleanup of temporary files");
-		cleanupTempFiles(uploadsDir);
-	}, CLEANUP_INTERVAL);
-	
-	// Run initial cleanup on startup
-	cleanupTempFiles(uploadsDir);
 
 	// List all agents
 	router.get("/", async (_, res) => {
@@ -1756,7 +1692,6 @@ export function agentRouter(
 		
 		try {
 			const results = [];
-			const processedFiles = new Set<string>(); // Track successfully processed files
 			
 			for (const file of files) {
 				try {
@@ -1788,9 +1723,10 @@ export function agentRouter(
 						modelContextSize: 4096,
 					});
 					
-					// Clean up temp file
-					fs.unlinkSync(file.path);
-					processedFiles.add(file.path);
+					// Clean up temp file immediately after successful processing
+					if (file.path && fs.existsSync(file.path)) {
+						fs.unlinkSync(file.path);
+					}
 					
 					// Extract preview from the content
 					const preview = content.length > 0 ? 
@@ -1807,10 +1743,9 @@ export function agentRouter(
 					});
 				} catch (fileError) {
 					logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
-					// Clean up this file if it hasn't been processed yet
-					if (file.path && fs.existsSync(file.path) && !processedFiles.has(file.path)) {
+					// Clean up this file if it exists
+					if (file.path && fs.existsSync(file.path)) {
 						fs.unlinkSync(file.path);
-						processedFiles.add(file.path);
 					}
 					// Continue with other files even if one fails
 				}
@@ -1823,7 +1758,7 @@ export function agentRouter(
 		} catch (error) {
 			logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
 			
-			// Clean up any remaining files that weren't processed
+			// Clean up any remaining files
 			if (files) {
 				for (const file of files) {
 					if (file.path && fs.existsSync(file.path)) {

@@ -4,9 +4,20 @@ import { fileURLToPath } from "node:url";
 import { type Character, logger, validateCharacterConfig } from "@elizaos/core";
 import multer from "multer";
 import { character as defaultCharacter } from "../characters/eliza";
+import os from "node:os";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Define directory for uploads
+export const UPLOADS_DIR = path.join(os.tmpdir(), "elizaos-uploads");
+
+// Ensure directory exists
+function ensureDirectoryExists(dir: string): void {
+	if (!fs.existsSync(dir)) {
+		fs.mkdirSync(dir, { recursive: true });
+	}
+}
 
 /**
  * Attempts to load a file from the given file path.
