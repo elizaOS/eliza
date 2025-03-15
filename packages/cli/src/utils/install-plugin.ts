@@ -1,6 +1,5 @@
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
-import { z } from 'zod';
 import { getPluginVersion } from './registry';
 
 /**
