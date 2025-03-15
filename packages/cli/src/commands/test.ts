@@ -221,7 +221,7 @@ const runAgentTests = async (options: {
 		server.jsonToCharacter = jsonToCharacter;
 		logger.info("Server properties set up");
 
-		let serverPort = options.port || Number.parseInt(settings.SERVER_PORT || "3000");
+		const serverPort = options.port || Number.parseInt(settings.SERVER_PORT || "3000");
 		
 		let project;
 		try {
@@ -252,13 +252,6 @@ const runAgentTests = async (options: {
 			}
 			process.exit(1);
 		}
-
-		logger.info("Checking port availability...");
-		while (!(await checkPortAvailable(serverPort))) {
-			logger.warn(`Port ${serverPort} is in use, trying ${serverPort + 1}`);
-			serverPort++;
-		}
-		logger.info(`Using port ${serverPort}`);
 
 		logger.info("Starting server...");
 		try {

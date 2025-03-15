@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import type { GenerateTextParams, ModelTypeName } from "@elizaos/core";
+import type { GenerateTextParams, ModelTypeName, TextEmbeddingParams } from "@elizaos/core";
 import {
 	type IAgentRuntime,
 	ModelType,
@@ -1164,8 +1164,9 @@ export const localAIPlugin: Plugin = {
 
 		[ModelType.TEXT_EMBEDDING]: async (
 			_runtime: IAgentRuntime,
-			text: string | null,
+			params: TextEmbeddingParams
 		) => {
+			const { text } = params;
 			try {
 				// Add detailed logging of the input text and its structure
 				logger.info("TEXT_EMBEDDING handler - Initial input:", {
