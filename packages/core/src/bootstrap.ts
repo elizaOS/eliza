@@ -248,11 +248,12 @@ const messageReceivedHandler = async ({
 
 					retries++;
 					if (
-						!responseContent?.thought ||
-						!responseContent?.plan ||
+						(!responseContent?.thought ||
+						!responseContent?.plan) &&
 						!responseContent?.actions
 					) {
 						logger.warn("*** Missing required fields, retrying... ***");
+						console.log('*** responseContent is', responseContent)
 					}
 				}
 

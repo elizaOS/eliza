@@ -14,9 +14,9 @@ import {
 	type TokenizeTextParams,
 	logger,
 } from "@elizaos/core";
-import { generateText } from "ai";
+import { generateText, generateObject } from "ai";
 import { type TiktokenModel, encodingForModel } from "js-tiktoken";
-// import { z } from "zod";
+import { z } from "zod";
 
 /**
  * Asynchronously tokenizes the given text based on the specified model and prompt.
@@ -54,15 +54,6 @@ async function detokenizeText(model: ModelType, tokens: number[]) {
 	const encoding = encodingForModel(modelName as TiktokenModel);
 	return encoding.decode(tokens);
 }
-
-// const configSchema = z.object({
-// 	OPENAI_API_KEY: z.string().min(1, "OpenAI API key is required"),
-// 	OPENAI_BASE_URL: z.string().url().optional(),
-// 	OPENAI_SMALL_MODEL: z.string().optional(),
-// 	OPENAI_LARGE_MODEL: z.string().optional(),
-// 	SMALL_MODEL: z.string().optional(),
-// 	LARGE_MODEL: z.string().optional(),
-// });
 
 /**
  * Defines the OpenAI plugin with its name, description, and configuration options.
@@ -448,17 +439,67 @@ export const openaiPlugin: Plugin = {
 			const data = (await response.json()) as { text: string };
 			return data.text;
 		},
-		[ModelTypes.OBJECT_SMALL]: async (runtime, params) => {
-			return await generateObject(runtime, {
-				...params,
-				modelType: ModelTypes.OBJECT_SMALL,
+		[ModelTypes.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
+			const baseURL = runtime.getSetting("OPENAI_BASE_URL") ?? "https://api.openai.com/v1";
+			const openai = createOpenAI({
+				apiKey: runtime.getSetting("OPENAI_API_KEY"),
+				baseURL,
 			});
+			const model = runtime.getSetting("OPENAI_SMALL_MODEL") ?? runtime.getSetting("SMALL_MODEL") ?? "gpt-4o-mini";
+			
+			try {
+				if (params.schema) {
+					const { object } = await generateObject({
+						model: openai.languageModel(model),
+						schema: z.object(params.schema),
+						prompt: params.prompt,
+						temperature: params.temperature,
+					});
+					return object;
+				}
+				
+				const { object } = await generateObject({
+					model: openai.languageModel(model),
+					output: 'no-schema',
+					prompt: params.prompt,
+					temperature: params.temperature,
+				});
+				return object;
+			} catch (error) {
+				logger.error("Error generating object:", error);
+				throw error;
+			}
 		},
-		[ModelTypes.OBJECT_LARGE]: async (runtime, params) => {
-			return await generateObject(runtime, {
-				...params,
-				modelType: ModelTypes.OBJECT_LARGE,
+		[ModelTypes.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
+			const baseURL = runtime.getSetting("OPENAI_BASE_URL") ?? "https://api.openai.com/v1";
+			const openai = createOpenAI({
+				apiKey: runtime.getSetting("OPENAI_API_KEY"),
+				baseURL,
 			});
+			const model = runtime.getSetting("OPENAI_LARGE_MODEL") ?? runtime.getSetting("LARGE_MODEL") ?? "gpt-4o";
+			
+			try {
+				if (params.schema) {
+					const { object } = await generateObject({
+						model: openai.languageModel(model),
+						schema: z.object(params.schema),
+						prompt: params.prompt,
+						temperature: params.temperature,
+					});
+					return object;
+				}
+				
+				const { object } = await generateObject({
+					model: openai.languageModel(model),
+					output: 'no-schema',
+					prompt: params.prompt,
+					temperature: params.temperature,
+				});
+				return object;
+			} catch (error) {
+				logger.error("Error generating object:", error);
+				throw error;
+			}
 		},
 	},
 	tests: [
@@ -649,162 +690,3 @@ export const openaiPlugin: Plugin = {
 	],
 };
 export default openaiPlugin;
-
-/**
- * Generates a structured object from a prompt using OpenAI's function calling capabilities.
- *
- * @param runtime The agent runtime
- * @param params The generation parameters
- * @returns The generated object
- */
-async function generateObject(
-	runtime: IAgentRuntime,
-	params: ObjectGenerationParams,
-) {
-	const {
-		prompt,
-		schema,
-		output = "object",
-		enumValues = [],
-		modelType = ModelTypes.OBJECT_SMALL,
-		temperature = 0.7,
-	} = params;
-
-	// Determine which model to use
-	const modelName =
-		modelType === ModelTypes.OBJECT_SMALL
-			? (process.env.OPENAI_SMALL_MODEL ??
-				process.env.SMALL_MODEL ??
-				"gpt-4o-mini")
-			: (process.env.OPENAI_LARGE_MODEL ?? process.env.LARGE_MODEL ?? "gpt-4o");
-
-	const baseURL = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
-
-	// Handle enum types specifically
-	if (output === "enum" && enumValues.length) {
-		try {
-			const response = await fetch(`${baseURL}/chat/completions`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-				},
-				body: JSON.stringify({
-					model: modelName,
-					messages: [{ role: "user", content: prompt }],
-					temperature,
-					tools: [
-						{
-							type: "function",
-							function: {
-								name: "select_value",
-								description:
-									"Select the most appropriate value from the provided options",
-								parameters: {
-									type: "object",
-									properties: {
-										value: {
-											type: "string",
-											enum: enumValues,
-											description: "The selected value",
-										},
-									},
-									required: ["value"],
-								},
-							},
-						},
-					],
-					tool_choice: { type: "function", function: { name: "select_value" } },
-				}),
-			});
-
-			if (!response.ok) {
-				throw new Error(`API error: ${response.status}`);
-			}
-
-			const result: any = await response.json();
-			const toolCalls = result.choices?.[0]?.message?.tool_calls;
-
-			if (toolCalls && toolCalls.length > 0) {
-				try {
-					const functionArgs = JSON.parse(toolCalls[0].function.arguments);
-					return functionArgs.value;
-				} catch (err) {
-					logger.error("Failed to parse function arguments:", err);
-					return null;
-				}
-			}
-
-			return null;
-		} catch (error) {
-			logger.error("Error generating enum value:", error);
-			return null;
-		}
-	}
-
-	// Handle regular object generation with schema
-	try {
-		// Determine the appropriate JSON schema
-		let functionSchema: any;
-
-		if (schema) {
-			// Use provided schema
-			functionSchema = schema;
-		} else {
-			// Default schema based on output type
-			functionSchema = {
-				type: output === "array" ? "array" : "object",
-				...(output === "array" ? { items: { type: "object" } } : {}),
-			};
-		}
-
-		// Call the OpenAI API directly
-		const response = await fetch(`${baseURL}/chat/completions`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-			},
-			body: JSON.stringify({
-				model: modelName,
-				messages: [{ role: "user", content: prompt }],
-				temperature,
-				tools: [
-					{
-						type: "function",
-						function: {
-							name: "generate_structured_data",
-							description: "Generate structured data based on the prompt",
-							parameters: functionSchema,
-						},
-					},
-				],
-				tool_choice: {
-					type: "function",
-					function: { name: "generate_structured_data" },
-				},
-			}),
-		});
-
-		if (!response.ok) {
-			throw new Error(`API error: ${response.status}`);
-		}
-
-		const result: any = await response.json();
-		const toolCalls = result.choices?.[0]?.message?.tool_calls;
-
-		if (toolCalls && toolCalls.length > 0) {
-			try {
-				return JSON.parse(toolCalls[0].function.arguments);
-			} catch (err) {
-				logger.error("Failed to parse function arguments:", err);
-				return null;
-			}
-		}
-
-		return null;
-	} catch (error) {
-		logger.error("Error generating object:", error);
-		return null;
-	}
-}
