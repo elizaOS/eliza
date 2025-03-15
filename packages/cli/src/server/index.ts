@@ -75,7 +75,7 @@ export class AgentServer {
 	 */
 	constructor(options?: ServerOptions) {
 		try {
-			logger.log("Initializing AgentServer...");
+			logger.info("Initializing AgentServer...");
 			this.app = express();
 			this.agents = new Map();
 
