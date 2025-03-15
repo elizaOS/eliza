@@ -521,7 +521,7 @@ export class AgentServer {
 
 			// Enhanced graceful shutdown
 			const gracefulShutdown = async () => {
-				logger.log("Received shutdown signal, initiating graceful shutdown...");
+				logger.info("Received shutdown signal, initiating graceful shutdown...");
 
 				// Stop all agents first
 				logger.debug("Stopping all agents...");
