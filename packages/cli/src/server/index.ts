@@ -85,9 +85,6 @@ export class AgentServer {
 			// Expand tilde in database directory path
 			dataDir = expandTildePath(dataDir);
 
-			console.log("Using database directory:", dataDir);
-			console.log("postgresUrl", options?.postgresUrl?.slice(0, 20));
-
 			// Use the async database adapter
 			this.database = createDatabaseAdapter(
 				{
