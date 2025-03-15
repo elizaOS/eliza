@@ -6,6 +6,7 @@
     "start:debug": "LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run dev --filter=./packages/the-org",
+    "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
     "build:core": "turbo run build --filter=@elizaos/core --no-cache",
     "build": "bun run build:core && turbo run build --filter=@elizaos/plugin-* --filter=@elizaos/client --no-cache && turbo run build --filter=!@elizaos/core --filter=!@elizaos/plugin-* --filter=!@elizaos/docs --no-cache",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* && turbo run clean --filter=./packages/*",
