@@ -1003,6 +1003,8 @@ export abstract class BaseDrizzleAdapter<
 		memory: Memory & { metadata?: MemoryMetadata },
 		tableName: string,
 	): Promise<UUID> {
+		logger.trace("DrizzleAdapter createMemory");
+		console.log("memory.id is", memory.id)
 		logger.debug("DrizzleAdapter createMemory:", {
 			memoryId: memory.id,
 			embeddingLength: memory.embedding?.length,

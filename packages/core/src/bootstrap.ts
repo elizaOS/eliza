@@ -1,4 +1,6 @@
 import type { UUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { v4 } from "uuid";
 import { choiceAction } from "./actions/choice";
 import { followRoomAction } from "./actions/followRoom";
@@ -16,10 +18,13 @@ import { createUniqueUuid } from "./entities";
 import { reflectionEvaluator } from "./evaluators/reflection";
 import { logger } from "./logger";
 import {
+	composePrompt,
 	composePromptFromState,
 	messageHandlerTemplate,
 	parseJSONObjectFromText,
+	postCreationTemplate,
 	shouldRespondTemplate,
+	truncateToCompleteSentence,
 } from "./prompts";
 import { actionsProvider } from "./providers/actions";
 import { anxietyProvider } from "./providers/anxiety";
@@ -41,60 +46,68 @@ import { ScenarioService } from "./services/scenario";
 import { TaskService } from "./services/task";
 import {
 	type ActionEventPayload,
-	asUUID,
-	type ChannelType,
+	ChannelType,
 	type Content,
 	type Entity,
 	type EntityPayload,
-	type EventHandler,
 	type EvaluatorEventPayload,
 	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
+	type InvokePayload,
+	type Media,
 	type Memory,
 	type MessagePayload,
+	type MessageReceivedHandlerParams,
 	ModelTypes,
 	type Plugin,
-	type Room,
-	type World,
 	type WorldPayload,
+	asUUID
 } from "./types";
 
-/**
- * Represents the parameters when a user joins a server.
- * @typedef {Object} UserJoinedParams
- * @property {IAgentRuntime} runtime - The runtime object for the agent.
- * @property {any} user - The user who joined.
- * @property {string} serverId - The ID of the server the user joined.
- * @property {UUID} entityId - The entity ID of the user.
- * @property {string} channelId - The ID of the channel the user joined.
- * @property {ChannelType} channelType - The type of channel the user joined.
- * @property {string} source - The source of the user joining.
- */
-type UserJoinedParams = {
-	runtime: IAgentRuntime;
-	user: any;
-	serverId: string;
-	entityId: UUID;
-	channelId: string;
-	channelType: ChannelType;
-	source: string;
-};
 
-/**
- * Represents the parameters for a message received handler.
- * @typedef {Object} MessageReceivedHandlerParams
- * @property {IAgentRuntime} runtime - The agent runtime associated with the message.
- * @property {Memory} message - The message received.
- * @property {HandlerCallback} callback - The callback function to be executed after handling the message.
- */
-type MessageReceivedHandlerParams = {
-	runtime: IAgentRuntime;
-	message: Memory;
-	callback: HandlerCallback;
+type MediaData = {
+	data: Buffer;
+	mediaType: string;
 };
 
 const latestResponseIds = new Map<string, Map<string, string>>();
+
+/**
+ * Fetches media data from a list of attachments, supporting both HTTP URLs and local file paths.
+ *
+ * @param attachments Array of Media objects containing URLs or file paths to fetch media from
+ * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
+ */
+export async function fetchMediaData(
+	attachments: Media[],
+): Promise<MediaData[]> {
+	return Promise.all(
+		attachments.map(async (attachment: Media) => {
+			if (/^(http|https):\/\//.test(attachment.url)) {
+				// Handle HTTP URLs
+				const response = await fetch(attachment.url);
+				if (!response.ok) {
+					throw new Error(`Failed to fetch file: ${attachment.url}`);
+				}
+				const mediaBuffer = Buffer.from(await response.arrayBuffer());
+				const mediaType = attachment.contentType || "image/png";
+				return { data: mediaBuffer, mediaType };
+			}
+			if (fs.existsSync(attachment.url)) {
+				// Handle local file paths
+				const mediaBuffer = await fs.promises.readFile(
+					path.resolve(attachment.url),
+				);
+				const mediaType = attachment.contentType || "image/png";
+				return { data: mediaBuffer, mediaType };
+			}
+			throw new Error(
+				`File not found: ${attachment.url}. Make sure the path is correct.`,
+			);
+		}),
+	);
+}
 
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
@@ -389,104 +402,134 @@ const reactionReceivedHandler = async ({
  */
 const postGeneratedHandler = async ({
 	runtime,
-	message,
 	callback,
-}: MessageReceivedHandlerParams) => {
-	// First, save the post to memory
-	await Promise.all([
-		runtime.addEmbeddingToMemory(message),
-		runtime.createMemory(message, "messages"),
-	]);
+	worldId,
+	userId,
+	roomId,
+}: InvokePayload) => {
+	logger.info("Generating new tweet...");
+	// Ensure world exists first
+	await runtime.ensureWorldExists({
+		id: worldId,
+		name: `${runtime.character.name}'s Feed`,
+		agentId: runtime.agentId,
+		serverId: userId
+	});
 
-	// Compose state with providers for generating content
-	let state = await runtime.composeState(message, [
-		"PROVIDERS",
+	// Ensure timeline room exists
+	await runtime.ensureRoomExists({
+		id: roomId,
+		name: `${runtime.character.name}'s Feed`,
+		source: "twitter",
+		type: ChannelType.FEED,
+		channelId: `${userId}-home`,
+		serverId: userId,
+		worldId: worldId,
+	});
+	
+	const message = {
+		id: createUniqueUuid(runtime, `tweet-${Date.now()}`) as UUID,
+		entityId: runtime.agentId,
+		agentId: runtime.agentId,
+		roomId: roomId,
+		content: {}
+	}
+
+	// Compose state with relevant context for tweet generation
+	const state = await runtime.composeState(message, null, [
 		"CHARACTER",
 		"RECENT_MESSAGES",
 		"ENTITIES",
 	]);
-
-	// Since posts are agent-generated content, we always respond
-	const providers = state.providers || [];
-
-	// Update state with additional providers
-	state = await runtime.composeState(message, null, providers);
-
-	// Get prompt template - use post template if available, otherwise default to messageHandler
-	const promptTemplate = 
-		runtime.character.templates?.postTemplate || 
-		runtime.character.templates?.messageHandlerTemplate || 
-		messageHandlerTemplate;
-
-	const prompt = composePromptFromState({
+	
+	// Generate prompt for tweet content
+	const tweetPrompt = composePrompt({
 		state,
-		template: promptTemplate,
+		template: runtime.character.templates?.postCreationTemplate || postCreationTemplate,
 	});
-
-	let responseContent = null;
-
-	// Retry if missing required fields
-	let retries = 0;
-	const maxRetries = 3;
-	while (
-		retries < maxRetries &&
-		(!responseContent?.thought ||
-			!responseContent?.plan ||
-			!responseContent?.text)
-	) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
-			prompt,
-		});
-
-		responseContent = parseJSONObjectFromText(response) as Content;
-
-		retries++;
-		if (
-			!responseContent?.thought ||
-			!responseContent?.plan ||
-			!responseContent?.text
-		) {
-			logger.warn("*** Missing required fields, retrying... ***");
+	
+	const jsonResponse = await runtime.useModel(ModelTypes.OBJECT_LARGE, {
+		prompt: tweetPrompt,
+		output: "no-schema",
+	});
+		
+	/**
+	 * Cleans up a tweet text by removing quotes and fixing newlines
+	 */
+	function cleanupTweetText(text: string): string {
+		// Remove quotes
+		let cleanedText = text.replace(/^['"](.*)['"]$/, "$1");
+		// Fix newlines
+		cleanedText = cleanedText.replaceAll(/\\n/g, "\n\n");
+		// Truncate to Twitter's character limit (280)
+		if (cleanedText.length > 280) {
+			cleanedText = truncateToCompleteSentence(cleanedText, 280);
 		}
+		return cleanedText;
 	}
+	
+	// Cleanup the tweet text
+	const cleanedText = cleanupTweetText(jsonResponse.post);
 
+	// Prepare media if included
+	// const mediaData: MediaData[] = [];
+	// if (jsonResponse.imagePrompt) {
+	// 	const images = await runtime.useModel(ModelTypes.IMAGE, {
+	// 		prompt: jsonResponse.imagePrompt,
+	// 		output: "no-schema",
+	// 	});
+	// 	try {
+	// 		// Convert image prompt to Media format for fetchMediaData
+	// 		const imagePromptMedia: any[] = images
+			
+	// 		// Fetch media using the utility function
+	// 		const fetchedMedia = await fetchMediaData(imagePromptMedia);
+	// 		mediaData.push(...fetchedMedia);
+	// 	} catch (error) {
+	// 		logger.error("Error fetching media for tweet:", error);
+	// 	}
+	// }
+
+	// console.log("mediaData is", mediaData)
+
+	console.log("creating memory")
+	
 	// Create the response memory
 	const responseMessages = [
 		{
 			id: v4() as UUID,
 			entityId: runtime.agentId,
 			agentId: runtime.agentId,
-			content: responseContent,
+			content: {
+				text: cleanedText,
+				source: "twitter",
+				channelType: ChannelType.FEED,
+				thought: jsonResponse.thought || "",
+				plan: jsonResponse.plan || "",
+				type: "post",
+			},
 			roomId: message.roomId,
 			createdAt: Date.now(),
 		},
 	];
 
-	// Save the response plan to memory
-	await runtime.createMemory({
-		entityId: runtime.agentId,
-		agentId: runtime.agentId,
-		content: {
-			thought: responseContent.thought,
-			plan: responseContent.plan,
-			text: responseContent.text,
-			providers: responseContent.providers,
-		},
-		roomId: message.roomId,
-		createdAt: Date.now(),
-	}, "messages");
+	for (const message of responseMessages) {
+		console.log("message is", message)
+		console.log("message.content is", message.content)
+		await callback(message.content);
+	}
 
 	// Process the actions and execute the callback
-	await runtime.processActions(message, responseMessages, state, callback);
+	// await runtime.processActions(message, responseMessages, state, callback);
 
-	// Run any configured evaluators
-	await runtime.evaluate(
-		message,
-		state,
-		true, // Post generation is always a "responding" scenario
-		callback,
-		responseMessages,
-	);
+	// // Run any configured evaluators
+	// await runtime.evaluate(
+	// 	message,
+	// 	state,
+	// 	true, // Post generation is always a "responding" scenario
+	// 	callback,
+	// 	responseMessages,
+	// );
 };
 
 /**
@@ -671,12 +714,8 @@ const events = {
 	],
 	
 	[EventTypes.POST_GENERATED]: [
-		async (payload: MessagePayload) => {
-			await postGeneratedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
+		async (payload: InvokePayload) => {
+			await postGeneratedHandler(payload);
 		},
 	],
 	
