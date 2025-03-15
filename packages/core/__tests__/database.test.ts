@@ -1,5 +1,4 @@
-/* eslint-disable no-dupe-class-members */
-import { expect } from "bun:test";
+import { expect } from "vitest";
 import { DatabaseAdapter } from "../src/database";
 import type {
 	Agent,
