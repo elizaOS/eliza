@@ -426,6 +426,13 @@ export default function Page({ agentId }: { agentId: UUID }) {
                     <Terminal className="h-4 w-4" />
                     <span>Logs</span>
                   </TabsTrigger>
+                  <TabsTrigger
+                    value="memories"
+                    className="flex items-center gap-1.5"
+                  >
+                    <Terminal className="h-4 w-4" />
+                    <span>Memories</span>
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -433,6 +440,9 @@ export default function Page({ agentId }: { agentId: UUID }) {
                 <AgentActionViewer agentId={agentId} roomId={roomId} />
               </TabsContent>
               <TabsContent value="logs">
+                <LogViewer agentName={agentData?.name} level="all" hideTitle />
+              </TabsContent>
+              <TabsContent value="memories">
                 <LogViewer agentName={agentData?.name} level="all" hideTitle />
               </TabsContent>
             </Tabs>
