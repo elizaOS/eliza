@@ -375,11 +375,11 @@ export class ClientBase extends EventEmitter {
     }
 
     const maxRetries = 3;
-    const retryCount = 0;
-    const lastError: Error | null = null;
+    let retryCount = 0;
+    let lastError: Error | null = null;
 
     while (retryCount < maxRetries) {
-      // try {
+      try {
         const authToken =
           this.state?.TWITTER_COOKIES_AUTH_TOKEN ||
           this.runtime.getSetting("TWITTER_COOKIES_AUTH_TOKEN");
@@ -434,19 +434,19 @@ export class ClientBase extends EventEmitter {
           );
           break;
         }
-      // } catch (error) {
-      //   lastError = error instanceof Error ? error : new Error(String(error));
-      //   logger.error(
-      //     `Login attempt ${retryCount + 1} failed: ${lastError.message}`
-      //   );
-      //   retryCount++;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        logger.error(
+          `Login attempt ${retryCount + 1} failed: ${lastError.message}`
+        );
+        retryCount++;
 
-      //   if (retryCount < maxRetries) {
-      //     const delay = 2 ** retryCount * 1000; // Exponential backoff
-      //     logger.info(`Retrying in ${delay / 1000} seconds...`);
-      //     await new Promise((resolve) => setTimeout(resolve, delay));
-      //   }
-      // }
+        if (retryCount < maxRetries) {
+          const delay = 2 ** retryCount * 1000; // Exponential backoff
+          logger.info(`Retrying in ${delay / 1000} seconds...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
     }
 
     if (retryCount >= maxRetries) {

@@ -311,7 +311,7 @@ export class TwitterPostClient {
 	 * This approach aligns with our platform-independent architecture.
 	 */
 	async generateNewTweet() {
-		// try {
+		try {
 						
 			// Create the timeline room ID for storing the post
 			const userId = this.client.profile?.id;
@@ -325,7 +325,7 @@ export class TwitterPostClient {
 			const roomId = createUniqueUuid(this.runtime, `${userId}-home`) as UUID;
 			// Create a callback for handling the actual posting
 			const callback: HandlerCallback = async (content: Content) => {
-				// try {
+				try {
 					if (this.isDryRun) {
 						logger.info(`[DRY RUN] Would post tweet: ${content.text}`);
 						return [];
@@ -365,10 +365,10 @@ export class TwitterPostClient {
 					}
 					
 					return [];
-				// } catch (error) {
-				// 	logger.error("Error posting tweet:", error);
-				// 	return [];
-				// }
+				} catch (error) {
+					logger.error("Error posting tweet:", error);
+					return [];
+				}
 			};
 
 			console.log("emitting event")
@@ -382,9 +382,9 @@ export class TwitterPostClient {
 				roomId
 			} as InvokePayload);
 			
-		// } catch (error) {
-		// 	logger.error("Error generating tweet:", error);
-		// }
+		} catch (error) {
+			logger.error("Error generating tweet:", error);
+		}
 	}
 	
 	/**
