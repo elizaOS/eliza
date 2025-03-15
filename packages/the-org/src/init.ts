@@ -7,15 +7,17 @@ import {
 	type Provider,
 	Role,
 	type UUID,
+	type World,
 	createUniqueUuid,
 	initializeOnboarding,
-	logger,
+	logger
 } from "@elizaos/core";
+
 import type { Guild } from "discord.js";
 
 /**
  * Initializes the character with the provided runtime, configuration, actions, providers, and evaluators.
- * Registers actions, providers, and evaluators to the runtime. Registers runtime events for "DISCORD_SERVER_JOINED" and "DISCORD_SERVER_CONNECTED".
+ * Registers actions, providers, and evaluators to the runtime. Registers runtime events for "DISCORD_WORLD_JOINED" and "DISCORD_SERVER_CONNECTED".
  *
  * @param {Object} param - Object containing runtime, config, actions, providers, and evaluators.
  * @param {IAgentRuntime} param.runtime - The runtime instance to use.
@@ -24,7 +26,7 @@ import type { Guild } from "discord.js";
  * @param {Provider[]} [param.providers] - Optional array of providers to register.
  * @param {Evaluator[]} [param.evaluators] - Optional array of evaluators to register.
  */
-export const initCharacter = ({
+export const initCharacter = async ({
 	runtime,
 	config,
 	actions,
@@ -36,7 +38,7 @@ export const initCharacter = ({
 	actions?: Action[];
 	providers?: Provider[];
 	evaluators?: Evaluator[];
-}) => {
+}): Promise<void> => {
 	if (actions) {
 		for (const action of actions) {
 			runtime.registerAction(action);
@@ -57,7 +59,7 @@ export const initCharacter = ({
 
 	// Register runtime events
 	runtime.registerEvent(
-		"DISCORD_SERVER_JOINED",
+		"DISCORD_WORLD_JOINED",
 		async (params: { server: Guild }) => {
 			// TODO: Save settings config to runtime
 			await initializeAllSystems(runtime, [params.server], config);
@@ -73,9 +75,6 @@ export const initCharacter = ({
 	);
 };
 
-/**
- * Initializes all systems for a server
- */
 /**
  * Initializes all systems for the given servers with the provided runtime, servers, and onboarding configuration.
  *
@@ -98,38 +97,37 @@ export async function initializeAllSystems(
 			const worldId = createUniqueUuid(runtime, server.id);
 			const ownerId = createUniqueUuid(runtime, server.ownerId);
 
-			await runtime.ensureWorldExists({
+			const existingWorld = await runtime.getWorld(worldId);
+			if (existingWorld.metadata?.settings) {
+				logger.info("Onboarding already initialized for server", server.id);
+				continue;
+			}
+
+			// Initialize onboarding for this server
+			const world: World = {
 				id: worldId,
 				name: server.name,
-				agentId: runtime.agentId,
 				serverId: server.id,
+				agentId: runtime.agentId,
 				metadata: {
-					ownership: server.ownerId ? { ownerId } : undefined,
 					roles: {
 						[ownerId]: Role.OWNER,
 					},
+					ownership: {
+						ownerId: ownerId,
+					},
 				},
-			});
+			};
 
-			const world = await runtime.getWorld(worldId);
-
-			if (world.metadata?.settings) {
-				continue;
-			}
-
-			// Initialize settings configuration
-			const worldSettings = await initializeOnboarding(runtime, world, config);
-
-			if (!worldSettings) {
-				logger.error(`Failed to initialize settings for server ${server.id}`);
-				continue;
-			}
-
-			// Start settings DM with server owner
+			await runtime.ensureWorldExists(world);
+			await initializeOnboarding(runtime, world, config);
+			// Start onboarding DM with server owner
+			console.log("starting onboarding DM");
 			await startOnboardingDM(runtime, server, worldId);
 		}
 	} catch (error) {
-		logger.error(`Error initializing systems: ${error}`);
+		logger.error("Error initializing systems:", error);
+		throw error;
 	}
 }
 
@@ -172,9 +170,7 @@ export async function startOnboardingDM(
 			worldId: worldId,
 		});
 
-		const entity = await runtime
-			
-			.getEntityById(runtime.agentId);
+		const entity = await runtime.getEntityById(runtime.agentId);
 
 		if (!entity) {
 			await runtime.createEntity({
@@ -184,7 +180,7 @@ export async function startOnboardingDM(
 			});
 		}
 		// Create memory of the initial message
-		await runtime.getMemoryManager("messages").createMemory({
+		await runtime.createMemory({
 			agentId: runtime.agentId,
 			entityId: runtime.agentId,
 			roomId: roomId,
@@ -193,7 +189,7 @@ export async function startOnboardingDM(
 				actions: ["BEGIN_ONBOARDING"],
 			},
 			createdAt: Date.now(),
-		});
+		}, "messages");
 
 		logger.info(
 			`Started settings DM with owner ${owner.id} for server ${guild.id}`,

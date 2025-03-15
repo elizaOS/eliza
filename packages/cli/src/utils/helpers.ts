@@ -1,31 +1,6 @@
 import type { Agent, MessageExample } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import chalk from "chalk";
-
-/**
- * Format message examples into readable conversation format
- */
-/**
- * Formats an array of message examples into a string representation of conversations.
- * If no examples are provided, returns "No message examples".
- * @param {MessageExample[][]} examples - The array of message examples to format.
- * @returns {string} The formatted string representation of conversations from the message examples.
- */
-export function formatMessageExamples(examples: MessageExample[][]): string {
-	if (!examples || examples.length === 0) return "No message examples";
-
-	return examples
-		.map((conversation, i) => {
-			const messages = conversation
-				.map((msg) => {
-					const user = msg.name === "{{name1}}" ? "Anon" : msg.name;
-					return `  ${user}: ${msg.content.text}`;
-				})
-				.join("\n");
-			return `\nConversation ${i + 1}:\n${messages}`;
-		})
-		.join("\n");
-}
+import colors from "yoctocolors";
 
 /**
  * Display character
@@ -103,7 +78,16 @@ export function displayAgent(
 	// Display message examples
 	if (data.messageExamples && data.messageExamples.length > 0) {
 		logger.info("\nMessage Examples:");
-		logger.info(formatMessageExamples(data.messageExamples));
+		logger.info(data.messageExamples.map((conversation, i) => {
+			const messages = conversation
+				.map((msg) => {
+					const user = msg.name === "{{name1}}" ? "Anon" : msg.name;
+					return `${user}: ${msg.content.text}`;
+				})
+				.join("\n");
+			return `\nConversation ${i + 1}:\n${messages}`;
+		})
+		.join("\n"));
 	}
 }
 
@@ -118,9 +102,9 @@ function logHeader(title) {
 	const borderLength = paddedTitle.length;
 
 	// Create top and bottom borders using Unicode box drawing characters
-	const topBorder = chalk.green(`┌${"─".repeat(borderLength)}┐`);
-	const bottomBorder = chalk.green(`└${"─".repeat(borderLength)}┘`);
-	const middleRow = chalk.green(`│${paddedTitle}│`);
+	const topBorder = colors.green(`┌${"─".repeat(borderLength)}┐`);
+	const bottomBorder = colors.green(`└${"─".repeat(borderLength)}┘`);
+	const middleRow = colors.green(`│${paddedTitle}│`);
 
 	// Log the rectangle with a leading new line for spacing
 	logger.info(`\n${topBorder}\n${middleRow}\n${bottomBorder}`);

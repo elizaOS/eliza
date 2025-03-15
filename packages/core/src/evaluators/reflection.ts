@@ -1,14 +1,13 @@
 import { z } from "zod";
 import { getEntityDetails } from "../entities";
 import logger from "../logger";
-import { MemoryManager } from "../memory";
 import { composePrompt } from "../prompts";
 import {
 	type Entity,
 	type Evaluator,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	type UUID,
 } from "../types";
@@ -150,107 +149,9 @@ function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
 
 	throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
 }
-
-const generateObject = async ({
-	runtime,
-	prompt,
-	modelType = ModelTypes.TEXT_SMALL,
-	stopSequences = [],
-	output = "object",
-	enumValues = [],
-	schema,
-}): Promise<any> => {
-	if (!prompt) {
-		const errorMessage = "generateObject prompt is empty";
-		console.error(errorMessage);
-		throw new Error(errorMessage);
-	}
-
-	// Special handling for enum output type
-	if (output === "enum" && enumValues) {
-		const response = await runtime.useModel(modelType, {
-			runtime,
-			prompt,
-			modelType,
-			stopSequences,
-			maxTokens: 8,
-			object: true,
-		});
-
-		// Clean up the response to extract just the enum value
-		const cleanedResponse = response.trim();
-
-		// Verify the response is one of the allowed enum values
-		if (enumValues.includes(cleanedResponse)) {
-			return cleanedResponse;
-		}
-
-		// If the response includes one of the enum values (case insensitive)
-		const matchedValue = enumValues.find((value) =>
-			cleanedResponse.toLowerCase().includes(value.toLowerCase()),
-		);
-
-		if (matchedValue) {
-			return matchedValue;
-		}
-
-		logger.error(`Invalid enum value received: ${cleanedResponse}`);
-		logger.error(`Expected one of: ${enumValues.join(", ")}`);
-		return null;
-	}
-
-	// Regular object/array generation
-	const response = await runtime.useModel(modelType, {
-		runtime,
-		prompt,
-		modelType,
-		stopSequences,
-		object: true,
-	});
-
-	let jsonString = response;
-
-	// Find appropriate brackets based on expected output type
-	const firstChar = output === "array" ? "[" : "{";
-	const lastChar = output === "array" ? "]" : "}";
-
-	const firstBracket = response.indexOf(firstChar);
-	const lastBracket = response.lastIndexOf(lastChar);
-
-	if (firstBracket !== -1 && lastBracket !== -1 && firstBracket < lastBracket) {
-		jsonString = response.slice(firstBracket, lastBracket + 1);
-	}
-
-	if (jsonString.length === 0) {
-		logger.error(`Failed to extract JSON ${output} from model response`);
-		return null;
-	}
-
-	// Parse the JSON string
-	try {
-		const json = JSON.parse(jsonString);
-
-		// Validate against schema if provided
-		if (schema) {
-			return schema.parse(json);
-		}
-
-		return json;
-	} catch (_error) {
-		logger.error(`Failed to parse JSON ${output}`);
-		logger.error(jsonString);
-		return null;
-	}
-};
-
 async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 	const { agentId, roomId } = message;
 
-	// Get known facts
-	const factsManager = new MemoryManager({
-		runtime,
-		tableName: "facts",
-	});
 
 	// Run all queries in parallel
 	const [existingRelationships, entities, knownFacts] = await Promise.all([
@@ -258,9 +159,9 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 			entityId: message.entityId,
 		}),
 		getEntityDetails({ runtime, roomId }),
-		factsManager.getMemories({
+		runtime.getMemories({
+			tableName: "facts",
 			roomId,
-			agentId,
 			count: 30,
 			unique: true,
 		}),
@@ -279,15 +180,13 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 			runtime.character.templates?.reflectionTemplate || reflectionTemplate,
 	});
 
-	const reflection = await generateObject({
-		runtime,
+	const reflection = await runtime.useModel(ModelType.OBJECT_SMALL, {
 		prompt,
-		modelType: ModelTypes.TEXT_SMALL,
 		schema: reflectionSchema,
 	});
 	if (!reflection) {
 		// seems like we're failing JSON parsing
-		logger.warn("generateObject failed", prompt);
+		logger.warn("Getting reflection failed", prompt);
 		return;
 	}
 
@@ -303,14 +202,14 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
 	await Promise.all(
 		newFacts.map(async (fact) => {
-			const factMemory = await factsManager.addEmbeddingToMemory({
+			const factMemory = await runtime.addEmbeddingToMemory({
 				entityId: agentId,
 				agentId,
 				content: { text: fact.claim },
 				roomId,
 				createdAt: Date.now(),
 			});
-			return factsManager.createMemory(factMemory, true);
+			return runtime.createMemory(factMemory, "facts", true);
 		}),
 	);
 
@@ -385,7 +284,8 @@ export const reflectionEvaluator: Evaluator = {
 		const lastMessageId = await runtime
 			
 			.getCache<string>(`${message.roomId}-reflection-last-processed`);
-		const messages = await runtime.getMemoryManager("messages").getMemories({
+		const messages = await runtime.getMemories({
+			tableName: "messages",
 			roomId: message.roomId,
 			count: runtime.getConversationLength(),
 		});

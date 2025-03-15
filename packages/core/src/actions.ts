@@ -45,7 +45,7 @@ export const composeActionExamples = (actionsData: Action[], count: number) => {
 
 		return `\n${example
 			.map((message) => {
-				let messageString = `${message.name}: ${message.content.text}${message.content.actions ? ` (actions: ${message.content.actions.join(", ")})` : ""}`;
+				let messageString = `${message.name}: ${message.content.text}${message.content.action ? ` (action: ${message.content.action})` : ""}${message.content.actions ? ` (actions: ${message.content.actions.join(", ")})` : ""}`;
 				for (let i = 0; i < exampleNames.length; i++) {
 					messageString = messageString.replaceAll(
 						`{{name${i + 1}}}`,

@@ -7,7 +7,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	parseJSONObjectFromText,
@@ -65,7 +65,7 @@ const getAttachmentIds = async (
 	});
 
 	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 		console.log("response", response);
@@ -94,7 +94,7 @@ const getAttachmentIds = async (
  * @property {Object[]} examples - Examples demonstrating how to use the action with message content and expected responses
  */
 
-const summarizeAction = {
+export const chatWithAttachments: Action = {
 	name: "CHAT_WITH_ATTACHMENTS",
 	similes: [
 		"CHAT_WITH_ATTACHMENT",
@@ -147,7 +147,7 @@ const summarizeAction = {
 			"watch",
 		];
 		return keywords.some((keyword) =>
-			message.content.text.toLowerCase().includes(keyword.toLowerCase()),
+			message.content.text?.toLowerCase().includes(keyword.toLowerCase()),
 		);
 	},
 	handler: async (
@@ -168,7 +168,7 @@ const summarizeAction = {
 		const attachmentData = await getAttachmentIds(runtime, message, state);
 		if (!attachmentData) {
 			console.error("Couldn't get attachment IDs from message");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -181,7 +181,7 @@ const summarizeAction = {
 				metadata: {
 					type: "CHAT_WITH_ATTACHMENTS",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
@@ -228,7 +228,7 @@ const summarizeAction = {
 			template,
 		});
 
-		const summary = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const summary = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 
@@ -236,7 +236,7 @@ const summarizeAction = {
 
 		if (!currentSummary) {
 			console.error("No summary found, that's not good!");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -249,7 +249,7 @@ const summarizeAction = {
 				metadata: {
 					type: "CHAT_WITH_ATTACHMENTS",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
@@ -370,4 +370,4 @@ ${currentSummary.trim()}
 	] as ActionExample[][],
 } as Action;
 
-export default summarizeAction;
+export default chatWithAttachments;

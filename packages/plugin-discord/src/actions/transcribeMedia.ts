@@ -5,7 +5,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	createUniqueUuid,
@@ -55,7 +55,7 @@ const getMediaAttachmentId = async (
 	});
 
 	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 		console.log("response", response);
@@ -82,7 +82,7 @@ const getMediaAttachmentId = async (
  * @property {Function} handler - Handler function for the action.
  * @property {ActionExample[][]} examples - Examples demonstrating the action.
  */
-const transcribeMediaAction = {
+export const transcribeMedia: Action = {
 	name: "TRANSCRIBE_MEDIA",
 	similes: [
 		"TRANSCRIBE_AUDIO",
@@ -116,7 +116,7 @@ const transcribeMediaAction = {
 			"presentation",
 		];
 		return keywords.some((keyword) =>
-			message.content.text.toLowerCase().includes(keyword.toLowerCase()),
+			message.content.text?.toLowerCase().includes(keyword.toLowerCase()),
 		);
 	},
 	handler: async (
@@ -136,7 +136,7 @@ const transcribeMediaAction = {
 		const attachmentId = await getMediaAttachmentId(runtime, message, state);
 		if (!attachmentId) {
 			console.error("Couldn't get media attachment ID from message");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -148,7 +148,7 @@ const transcribeMediaAction = {
 				metadata: {
 					type: "TRANSCRIBE_MEDIA",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
@@ -164,7 +164,7 @@ const transcribeMediaAction = {
 
 		if (!attachment) {
 			console.error(`Couldn't find attachment with ID ${attachmentId}`);
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -176,7 +176,7 @@ const transcribeMediaAction = {
 				metadata: {
 					type: "TRANSCRIBE_MEDIA",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
@@ -253,4 +253,4 @@ ${mediaTranscript.trim()}
 	] as ActionExample[][],
 } as Action;
 
-export default transcribeMediaAction;
+export default transcribeMedia;

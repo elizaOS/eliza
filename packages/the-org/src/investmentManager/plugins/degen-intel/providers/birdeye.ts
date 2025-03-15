@@ -2,7 +2,7 @@ import {
 	type Content,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type UUID,
 	createUniqueUuid,
 	logger,
@@ -286,8 +286,8 @@ export default class Birdeye {
 	async fillTimeframe() {
 		// Get the latest sentiment analysis
 		const memories = await this.runtime
-			.getMemoryManager("messages")
 			.getMemories({
+				tableName: "messages",
 				roomId: this.sentimentRoomId,
 				end: Date.now(),
 				count: 1,
@@ -322,7 +322,7 @@ export default class Birdeye {
 				}
 
 				// Create memory for this timeslot
-				await this.runtime.getMemoryManager("messages").createMemory({
+				await this.runtime.createMemory({
 					id: createUniqueUuid(
 						this.runtime,
 						`sentiment-${timeslot.toISOString()}`,
@@ -339,7 +339,7 @@ export default class Birdeye {
 					},
 					roomId: this.sentimentRoomId,
 					createdAt: timeslot.getTime(),
-				});
+				}, "messages");
 			}
 		}
 
@@ -355,8 +355,8 @@ export default class Birdeye {
 		const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
 
 		const memories = await this.runtime
-			.getMemoryManager("messages")
 			.getMemories({
+				tableName: "messages",
 				roomId: this.sentimentRoomId,
 				start: twoDaysAgo.getTime(),
 				end: oneHourAgo.getTime(),
@@ -378,7 +378,8 @@ export default class Birdeye {
 		const toDate = timeslot;
 
 		// Get tweets from the twitter feed room
-		const tweets = await this.runtime.getMemoryManager("messages").getMemories({
+		const tweets = await this.runtime.getMemories({
+			tableName: "messages",
 			roomId: this.twitterFeedRoomId,
 			start: fromDate.getTime(),
 			end: toDate.getTime(),
@@ -390,7 +391,7 @@ export default class Birdeye {
 			);
 
 			// Mark as processed even if no tweets
-			await this.runtime.getMemoryManager("messages").createMemory({
+			await this.runtime.createMemory({
 				id: sentiment.id,
 				entityId: sentiment.entityId,
 				agentId: sentiment.agentId,
@@ -403,7 +404,7 @@ export default class Birdeye {
 				},
 				roomId: sentiment.roomId,
 				createdAt: sentiment.createdAt,
-			});
+			}, "messages");
 			return true;
 		}
 
@@ -417,7 +418,7 @@ export default class Birdeye {
 		const bulletpointTweets = makeBulletpointList(tweetArray);
 		const prompt = template.replace("{{tweets}}", bulletpointTweets);
 
-		const response = await this.runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 			system: rolePrompt,
 			temperature: 0.2,
@@ -429,7 +430,7 @@ export default class Birdeye {
 		const json = JSON.parse(response || "{}");
 
 		// Update the sentiment analysis
-		await this.runtime.getMemoryManager("messages").createMemory({
+		await this.runtime.createMemory({
 			id: sentiment.id,
 			entityId: sentiment.entityId,
 			agentId: sentiment.agentId,
@@ -444,7 +445,7 @@ export default class Birdeye {
 			},
 			roomId: sentiment.roomId,
 			createdAt: sentiment.createdAt,
-		});
+		}, "messages");
 
 		logger.info(
 			`Successfully processed timeslot ${sentiment.content.metadata.timeslot}`,

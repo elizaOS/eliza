@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { Media, ModelType, State } from "@elizaos/core";
+import type { Media, ModelTypeName, State } from "@elizaos/core";
 import {
 	ChannelType,
 	type Content,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type UUID,
 	composePrompt,
 	createUniqueUuid,
@@ -14,9 +14,9 @@ import {
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
+import type { Tweet as ClientTweet } from "./client/tweets";
 import type { SttTtsPlugin } from "./sttTtsSpaces";
 import type { ActionResponse, MediaData } from "./types";
-import type { Tweet as ClientTweet } from "./client/tweets";
 import type { Tweet as CoreTweet } from "./types";
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
@@ -72,7 +72,6 @@ export async function buildConversationThread(
 
 		// Handle memory storage
 		const memory = await client.runtime
-			.getMemoryManager("messages")
 			.getMemoryById(createUniqueUuid(this.runtime, currentTweet.id));
 		if (!memory) {
 			const roomId = createUniqueUuid(
@@ -90,7 +89,7 @@ export async function buildConversationThread(
 				type: ChannelType.GROUP,
 			});
 
-			await client.runtime.getMemoryManager("messages").createMemory({
+			await client.runtime.createMemory({
 				id: createUniqueUuid(this.runtime, currentTweet.id),
 				agentId: client.runtime.agentId,
 				content: {
@@ -108,7 +107,7 @@ export async function buildConversationThread(
 					currentTweet.userId === client.profile.id
 						? client.runtime.agentId
 						: createUniqueUuid(this.runtime, currentTweet.userId),
-			});
+			}, "messages");
 		}
 
 		if (visited.has(currentTweet.id)) {
@@ -187,7 +186,7 @@ export async function fetchMediaData(
 					throw new Error(`Failed to fetch file: ${attachment.url}`);
 				}
 				const mediaBuffer = Buffer.from(await response.arrayBuffer());
-				const mediaType = attachment.contentType;
+				const mediaType = attachment.contentType || "image/png";
 				return { data: mediaBuffer, mediaType };
 			}
 			if (fs.existsSync(attachment.url)) {
@@ -195,7 +194,7 @@ export async function fetchMediaData(
 				const mediaBuffer = await fs.promises.readFile(
 					path.resolve(attachment.url),
 				);
-				const mediaType = attachment.contentType;
+				const mediaType = attachment.contentType || "image/png";
 				return { data: mediaBuffer, mediaType };
 			}
 			throw new Error(
@@ -560,7 +559,7 @@ export const parseActionResponseFromText = (
  * @param {{
  *     runtime: IAgentRuntime;
  *     prompt: string;
- *     modelType: ModelType;
+ *     modelType: ModelTypeName;
  * }} params - Parameters including the runtime, prompt, and model type.
  * @returns {Promise<ActionResponse | null>} The generated actions or null if no valid response.
  */
@@ -571,7 +570,7 @@ export async function generateTweetActions({
 }: {
 	runtime: IAgentRuntime;
 	prompt: string;
-	modelType: ModelType;
+	modelType: ModelTypeName;
 }): Promise<ActionResponse | null> {
 	let retryDelay = 1000;
 	while (true) {
@@ -636,7 +635,7 @@ Only return the text, no additional formatting.
 ---
 `,
 		});
-		const output = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const output = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 		return output.trim();
@@ -686,7 +685,7 @@ Example:
 ---
 `,
 		});
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 		const topics = response

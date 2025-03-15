@@ -3,16 +3,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { agent } from "@/src/commands/agent";
-import { init } from "@/src/commands/init";
-import { plugins } from "@/src/commands/plugins";
-import { start } from "@/src/commands/start";
-import { teeCommand as tee } from "@/src/commands/tee";
-import { test } from "@/src/commands/test";
-import { loadEnvironment } from "@/src/utils/get-config";
 import { logger } from "@elizaos/core";
 import { Command } from "commander";
-
+import { agent } from "./commands/agent.js";
+import { create } from "./commands/create.js";
+import { dev } from "./commands/dev.js";
+import { env } from "./commands/env.js";
+import { plugin } from "./commands/plugin.js";
+import { project } from "./commands/project.js";
+import { publish } from "./commands/publish.js";
+import { start } from "./commands/start.js";
+import { teeCommand as tee } from "./commands/tee.js";
+import { test } from "./commands/test.js";
+import { update } from "./commands/update.js";
+import { loadEnvironment } from "./utils/get-config.js";
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
 
@@ -42,17 +46,24 @@ async function main() {
 
 	const program = new Command()
 		.name("eliza")
-		.description("elizaOS CLI - Manage your AI agents and plugins")
+		.description("elizaOS CLI - Manage your project and plugins")
 		.version(version);
 
 	program
-		.addCommand(init)
-		.addCommand(plugins)
+		.addCommand(create)
+		.addCommand(project)
+		.addCommand(plugin)
 		.addCommand(agent)
 		.addCommand(tee)
 		.addCommand(start)
-		.addCommand(test);
-	program.parse(process.argv);
+		.addCommand(update)
+		.addCommand(test)
+		.addCommand(env)
+		.addCommand(dev)
+		.addCommand(publish)
+	
+
+	await program.parseAsync();
 }
 
 main().catch((error) => {

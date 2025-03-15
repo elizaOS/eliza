@@ -5,14 +5,35 @@ import {
 	type Plugin,
 	logger
 } from "@elizaos/core";
-import { PgliteDatabaseAdapter } from "./pg-lite/adapter";
-import { PGliteClientManager } from "./pg-lite/manager";
+import { PgliteDatabaseAdapter } from "./pglite/adapter";
+import { PGliteClientManager } from "./pglite/manager";
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 
-// Singleton connection managers
-let pgLiteClientManager: PGliteClientManager;
-let postgresConnectionManager: PostgresConnectionManager;
+/**
+ * Global Singleton Instances (Package-scoped)
+ *
+ * These instances are stored globally within the package scope to ensure a single shared instance across multiple adapters within this package.
+ * This approach prevents multiple instantiations due to module caching or multiple imports within the same process.
+ *
+ * IMPORTANT:
+ * - Do NOT directly modify these instances outside their intended initialization logic.
+ * - These instances are NOT exported and should NOT be accessed outside this package.
+ */
+const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
+
+interface GlobalSingletons {
+	pgLiteClientManager?: PGliteClientManager;
+	postgresConnectionManager?: PostgresConnectionManager;
+}
+
+const globalSymbols = global as unknown as Record<symbol, GlobalSingletons>;
+
+if (!globalSymbols[GLOBAL_SINGLETONS]) {
+	globalSymbols[GLOBAL_SINGLETONS] = {};
+}
+
+const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
 /**
  * Helper function to expand tilde in paths
@@ -42,26 +63,26 @@ export function createDatabaseAdapter(
 	},
 	agentId: UUID,
 ): IDatabaseAdapter {
-	// Expand tilde in database directory path if provided
 	if (config.dataDir) {
 		config.dataDir = expandTildePath(config.dataDir);
 	}
 
 	if (config.postgresUrl) {
-		if (!postgresConnectionManager) {
-			postgresConnectionManager = new PostgresConnectionManager(
+		if (!globalSingletons.postgresConnectionManager) {
+			globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
 				config.postgresUrl,
 			);
 		}
-		return new PgDatabaseAdapter(agentId, postgresConnectionManager);
+		return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
 	}
 
 	const dataDir = config.dataDir ?? "./elizadb";
 
-	if (!pgLiteClientManager) {
-		pgLiteClientManager = new PGliteClientManager({ dataDir });
+	if (!globalSingletons.pgLiteClientManager) {
+		globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
 	}
-	return new PgliteDatabaseAdapter(agentId, pgLiteClientManager);
+
+	return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
 }
 
 /**

@@ -7,7 +7,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 } from "../types";
 
@@ -70,7 +70,7 @@ export const unmuteRoomAction: Action = {
 				template: shouldUnmuteTemplate, // Define this template separately
 			});
 
-			const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 				runtime,
 				prompt: shouldUnmutePrompt,
 				stopSequences: [],
@@ -86,7 +86,7 @@ export const unmuteRoomAction: Action = {
 				cleanedResponse.includes("true") ||
 				cleanedResponse.includes("yes")
 			) {
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: message.entityId,
 					agentId: message.agentId,
 					roomId: message.roomId,
@@ -99,7 +99,7 @@ export const unmuteRoomAction: Action = {
 					metadata: {
 						type: "UNMUTE_ROOM",
 					},
-				});
+				}, "messages");
 				return true;
 			}
 
@@ -111,7 +111,7 @@ export const unmuteRoomAction: Action = {
 				cleanedResponse.includes("false") ||
 				cleanedResponse.includes("no")
 			) {
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: message.entityId,
 					agentId: message.agentId,
 					roomId: message.roomId,
@@ -123,7 +123,7 @@ export const unmuteRoomAction: Action = {
 					metadata: {
 						type: "UNMUTE_ROOM",
 					},
-				});
+				}, "messages");
 				return false;
 			}
 
@@ -140,7 +140,7 @@ export const unmuteRoomAction: Action = {
 
 		const room = await runtime.getRoom(message.roomId);
 
-		await runtime.getMemoryManager("messages").createMemory({
+		await runtime.createMemory({
 			entityId: message.entityId,
 			agentId: message.agentId,
 			roomId: message.roomId,
@@ -148,7 +148,7 @@ export const unmuteRoomAction: Action = {
 				thought: `I unmuted the room ${room.name}`,
 				actions: ["UNMUTE_ROOM_START"],
 			},
-		});
+		}, "messages");
 	},
 	examples: [
 		[

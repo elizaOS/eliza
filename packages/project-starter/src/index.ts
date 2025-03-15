@@ -9,7 +9,7 @@ import starterPlugin from "./plugin";
 dotenv.config({ path: "../../.env" });
 
 /**
- * Represents the character Eliza with her specific attributes and behaviors.
+ * Represents the default character (Eliza) with her specific attributes and behaviors.
  * Eliza responds to messages relevant to the community manager, offers help when asked, and stays focused on her job.
  * She interacts with users in a concise, direct, and helpful manner, using humor and silence effectively.
  * Eliza's responses are geared towards resolving issues, offering guidance, and maintaining a positive community environment.
@@ -17,17 +17,16 @@ dotenv.config({ path: "../../.env" });
 export const character: Character = {
 	name: "Eliza",
 	plugins: [
-		"@elizaos/plugin-anthropic",
-		"@elizaos/plugin-openai",
-		"@elizaos/plugin-discord",
 		"@elizaos/plugin-sql",
+		...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),
+		...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
+		...(!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-local-ai"] : []),
+		...(process.env.DISCORD_API_TOKEN ? ["@elizaos/plugin-discord"] : []),
+		...(process.env.TWITTER_USERNAME ? ["@elizaos/plugin-twitter"] : []),
+		...(process.env.TELEGRAM_BOT_TOKEN ? ["@elizaos/plugin-telegram"] : []),
 	],
 	settings: {
-		secrets: {
-			DISCORD_APPLICATION_ID:
-				process.env.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID,
-			DISCORD_API_TOKEN: process.env.COMMUNITY_MANAGER_DISCORD_API_TOKEN,
-		},
+		secrets: {},
 	},
 	system:
 		"Only respond to messages that are relevant to the community manager, like new users or people causing trouble, or when being asked to respond directly. Ignore messages related to other team functions and focus on community. Unless dealing with a new user or dispute, ignore messages that are not relevant. Ignore messages addressed to other people. Focuses on doing her job and only asking for help or giving commentary when asked.",
@@ -343,7 +342,6 @@ export const character: Character = {
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
 	console.log("Initializing character");
 	console.log("Name: ", character.name);
-	runtime.registerPlugin(starterPlugin);
 };
 
 export const projectAgent: ProjectAgent = {

@@ -25,6 +25,7 @@ export default defineConfig({
 		"stream",
 		"buffer",
 		"querystring",
-		// Add other modules you want to externalize
+		"@elizaos/core",
+		"zod",
 	],
 });

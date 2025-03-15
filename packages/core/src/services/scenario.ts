@@ -1,14 +1,37 @@
+// TODO: Review ensureConnection and other runtime helper methods and their usage and implement, they may be helpful
+
 import { v4 as uuidv4 } from "uuid";
-import { createUniqueUuid } from "../entities";
-import { logger } from "../logger";
 import {
 	ChannelType,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
 	Service,
 	type UUID,
+	type ActionEventPayload,
+	type EvaluatorEventPayload,
+	type World,
+	type Room,
 } from "../types";
+import { createUniqueUuid } from "../entities";
+import logger from "../logger";
+
+interface ActionTracker {
+	actionId: UUID;
+	actionName: string;
+	startTime: number;
+	completed: boolean;
+	error?: Error;
+}
+
+interface EvaluatorTracker {
+	evaluatorId: UUID;
+	evaluatorName: string;
+	startTime: number;
+	completed: boolean;
+	error?: Error;
+}
 
 /**
  * Represents a service that allows the agent to interact in a scenario testing environment.
@@ -20,7 +43,9 @@ export class ScenarioService extends Service {
 	capabilityDescription =
 		"The agent is currently in a scenario testing environment. It can create rooms, send messages, and talk to other agents in a live interactive testing environment.";
 	private messageHandlers: Map<UUID, HandlerCallback[]> = new Map();
-	private rooms: Map<string, { roomId: UUID }> = new Map();
+	private worlds: Map<UUID, World> = new Map();
+	private activeActions: Map<UUID, ActionTracker> = new Map();
+	private activeEvaluators: Map<UUID, EvaluatorTracker> = new Map();
 
 	/**
 	 * Constructor for creating a new instance of the class.
@@ -29,6 +54,51 @@ export class ScenarioService extends Service {
 	 */
 	constructor(protected runtime: IAgentRuntime) {
 		super(runtime);
+		this.setupEventListeners();
+	}
+
+	private setupEventListeners() {
+		// Track action start/completion
+		this.runtime.registerEvent(EventTypes.ACTION_STARTED, async (data: ActionEventPayload) => {
+			this.activeActions.set(data.actionId, {
+				actionId: data.actionId,
+				actionName: data.actionName,
+				startTime: Date.now(),
+				completed: false
+			});
+			return Promise.resolve();
+		});
+
+		this.runtime.registerEvent(EventTypes.ACTION_COMPLETED, async (data: ActionEventPayload) => {
+			const action = this.activeActions.get(data.actionId);
+			if (action) {
+				action.completed = true;
+				action.error = data.error;
+			}
+			return Promise.resolve();
+		});
+
+		// Track evaluator start/completion
+		this.runtime.registerEvent(EventTypes.EVALUATOR_STARTED, async (data: EvaluatorEventPayload) => {
+			this.activeEvaluators.set(data.evaluatorId, {
+				evaluatorId: data.evaluatorId,
+				evaluatorName: data.evaluatorName,
+				startTime: Date.now(),
+				completed: false
+			});
+			logger.debug("Evaluator started", data);
+			return Promise.resolve();
+		});
+
+		this.runtime.registerEvent(EventTypes.EVALUATOR_COMPLETED, async (data: EvaluatorEventPayload) => {
+			const evaluator = this.activeEvaluators.get(data.evaluatorId);
+			if (evaluator) {
+				evaluator.completed = true;
+				evaluator.error = data.error;
+			}
+			logger.debug("Evaluator completed", data);
+			return Promise.resolve();
+		});
 	}
 
 	/**
@@ -48,7 +118,6 @@ export class ScenarioService extends Service {
 	 * @throws {Error} When the Scenario service is not found.
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		// get the service from the runtime
 		const service = runtime.getService(ScenarioService.serviceType);
 		if (!service) {
 			throw new Error("Scenario service not found");
@@ -57,174 +126,186 @@ export class ScenarioService extends Service {
 	}
 
 	/**
-	 * Asynchronously stops the current process by clearing all message handlers and rooms.
+	 * Asynchronously stops the current process by clearing all message handlers and worlds.
 	 */
 	async stop() {
 		this.messageHandlers.clear();
-		this.rooms.clear();
+		this.worlds.clear();
+		this.activeActions.clear();
+		this.activeEvaluators.clear();
 	}
 
-	// Create a room for an agent
 	/**
-	 * Creates a room for the specified agent with the given agentId and optional name.
-	 *
-	 * @param {string} agentId The ID of the agent for whom the room is being created.
-	 * @param {string} [name] Optional. The name of the room. If not provided, a default name will be generated.
-	 * @returns {Promise<void>} A promise that resolves once the room has been created.
+	 * Creates a new world with the specified name and owner.
+	 * @param name The name of the world
+	 * @param ownerName The name of the world owner
+	 * @returns The created world's ID
 	 */
-	async createRoom(agentId: string, name?: string) {
+	async createWorld(name: string, ownerName: string): Promise<UUID> {
+		const serverId = createUniqueUuid(this.runtime.agentId, name);
+		const worldId = uuidv4() as UUID;
+		const ownerId = uuidv4() as UUID;
+
+		const world: World = {
+			id: worldId,
+			name,
+			serverId,
+			agentId: this.runtime.agentId,
+			// TODO: get the server id, create it or whatever
+			metadata: {
+				// this is wrong, the owner needs to be tracked by scenario and similar to how we do it with Discord etc
+				owner: {
+					id: ownerId,
+					name: ownerName
+				}
+			}
+		};
+
+		this.worlds.set(worldId, world);
+		return worldId;
+	}
+
+	/**
+	 * Creates a room in the specified world.
+	 * @param worldId The ID of the world to create the room in
+	 * @param name The name of the room
+	 * @returns The created room's ID
+	 */
+	async createRoom(worldId: UUID, name: string): Promise<UUID> {
+		const world = this.worlds.get(worldId);
+		if (!world) {
+			throw new Error(`World ${worldId} not found`);
+		}
+
 		const roomId = uuidv4() as UUID;
 
+		// worlds do not have rooms on them, we'll need to use runtime.getRooms(worldId) from the runtime
+
 		await this.runtime.ensureRoomExists({
-			id: roomId as UUID,
-			name: name || `Room for ${agentId}`,
+			id: roomId,
+			name,
 			source: "scenario",
 			type: ChannelType.GROUP,
 			channelId: roomId,
-			serverId: null,
+			serverId: worldId
 		});
 
-		this.rooms.set(agentId, { roomId: roomId as UUID });
+		return roomId;
 	}
 
-	// Save a message in all agents' memory without emitting events
 	/**
-	 * Saves a message from a sender to multiple receivers.
-	 *
-	 * @param {IAgentRuntime} sender - The agent sending the message.
-	 * @param {IAgentRuntime[]} receivers - The agents receiving the message.
-	 * @param {string} text - The text of the message.
-	 * @returns {Promise<void>} - A Promise that resolves when the message is successfully saved for all receivers.
+	 * Adds a participant to a room
+	 * @param worldId The world ID
+	 * @param roomId The room ID
+	 * @param participantId The participant's ID
 	 */
-	async saveMessage(
-		sender: IAgentRuntime,
-		receivers: IAgentRuntime[],
-		text: string,
-	) {
-		for (const receiver of receivers) {
-			const roomData = this.rooms.get(receiver.agentId);
-			if (!roomData) continue;
-			const entityId = createUniqueUuid(receiver, sender.agentId);
-
-			// Ensure connection exists
-			await receiver.ensureConnection({
-				entityId,
-				roomId: roomData.roomId,
-				userName: sender.character.name,
-				name: sender.character.name,
-				source: "scenario",
-				type: ChannelType.GROUP,
-			});
-
-			const memory: Memory = {
-				entityId,
-				agentId: receiver.agentId,
-				roomId: roomData.roomId,
-				content: {
-					text,
-					source: "scenario",
-					name: sender.character.name,
-					userName: sender.character.name,
-					channelType: ChannelType.GROUP,
-				},
-			};
-
-			await receiver.getMemoryManager("messages").createMemory(memory);
+	async addParticipant(worldId: UUID, roomId: UUID, participantId: UUID) {
+		const world = this.worlds.get(worldId);
+		if (!world) {
+			throw new Error(`World ${worldId} not found`);
 		}
+
+		const room = this.runtime.getRoom(roomId);
+		if (!room) {
+			throw new Error(`Room ${roomId} not found in world ${worldId}`);
+		}
+
+		await this.runtime.addParticipant(roomId, participantId);
+
+
+		// TODO: This could all be rewritten like an ensureConnection approach
 	}
 
-	// Send a live message that triggers handlers
 	/**
-	 * Send a message to the specified receivers.
-	 *
-	 * @param {IAgentRuntime} sender - The agent sending the message.
-	 * @param {IAgentRuntime[]} receivers - The agents receiving the message.
-	 * @param {string} text - The text content of the message.
+	 * Sends a message in a specific room
+	 * @param sender The runtime of the sending agent
+	 * @param worldId The world ID
+	 * @param roomId The room ID
+	 * @param text The message text
 	 */
 	async sendMessage(
 		sender: IAgentRuntime,
-		receivers: IAgentRuntime[],
+		worldId: UUID,
+		roomId: UUID,
 		text: string,
 	) {
-		for (const receiver of receivers) {
-			const roomData = this.rooms.get(receiver.agentId);
-			if (!roomData) continue;
+		const world = this.worlds.get(worldId);
+		if (!world) {
+			throw new Error(`World ${worldId} not found`);
+		}
 
-			const entityId = createUniqueUuid(receiver, sender.agentId);
+		const memory: Memory = {
+			entityId: sender.agentId,
+			agentId: sender.agentId,
+			roomId,
+			content: {
+				text,
+				source: "scenario",
+				name: sender.character.name,
+				userName: sender.character.name,
+				channelType: ChannelType.GROUP,
+			},
+		};
 
-			if (receiver.agentId !== sender.agentId) {
-				// Ensure connection exists
-				await receiver.ensureConnection({
-					entityId,
-					roomId: roomData.roomId,
-					userName: sender.character.name,
-					name: sender.character.name,
-					source: "scenario",
-					type: ChannelType.GROUP,
-				});
-			} else {
-				await receiver.ensureConnection({
-					entityId: sender.agentId,
-					roomId: roomData.roomId,
-					userName: sender.character.name,
-					name: sender.character.name,
-					source: "scenario",
-					type: ChannelType.GROUP,
-				});
-			}
+		const participants = await this.runtime.getParticipantsForRoom(roomId);
 
-			const memory: Memory = {
-				entityId:
-					receiver.agentId !== sender.agentId ? entityId : sender.agentId,
-				agentId: receiver.agentId,
-				roomId: roomData.roomId,
-				content: {
-					text,
-					source: "scenario",
-					name: sender.character.name,
-					userName: sender.character.name,
-					channelType: ChannelType.GROUP,
-				},
-			};
-
-			receiver.emitEvent("MESSAGE_RECEIVED", {
-				runtime: receiver,
+		// Emit message received event for all participants
+		for (const participantId of participants) {
+			this.runtime.emitEvent("MESSAGE_RECEIVED", {
+				runtime: this.runtime,
 				message: memory,
-				roomId: roomData.roomId,
-				entityId:
-					receiver.agentId !== sender.agentId ? entityId : sender.agentId,
+				roomId,
+				entityId: participantId,
 				source: "scenario",
 				type: ChannelType.GROUP,
 			});
 		}
 	}
 
-	// Get conversation history for all participants
 	/**
-	 * Asynchronously retrieves conversations for the given participants.
-	 * @param {IAgentRuntime[]} participants - List of participants for whom to retrieve conversations
-	 * @returns {Promise<IMessageMemory[][]>} - Promise that resolves to an array of arrays of message memories for each participant
+	 * Waits for all active actions and evaluators to complete
+	 * @param timeout Maximum time to wait in milliseconds
+	 * @returns True if all completed successfully, false if timeout occurred
 	 */
-	async getConversations(participants: IAgentRuntime[]) {
-		const conversations = await Promise.all(
-			participants.map(async (member) => {
-				const roomData = this.rooms.get(member.agentId);
-				if (!roomData) return [];
-				return member.getMemoryManager("messages").getMemories({
-					roomId: roomData.roomId,
-				});
-			}),
-		);
+	async waitForCompletion(timeout = 30000): Promise<boolean> {
+		const startTime = Date.now();
 
-		logger.info("\nConversation logs per agent:");
-		conversations.forEach((convo, i) => {
-			logger.info(`\n${participants[i].character.name}'s perspective:`);
-			convo.forEach((msg) =>
-				logger.info(`${msg.content.name}: ${msg.content.text}`),
+		while (Date.now() - startTime < timeout) {
+			const allActionsComplete = Array.from(this.activeActions.values()).every(
+				action => action.completed
 			);
-		});
+			const allEvaluatorsComplete = Array.from(this.activeEvaluators.values()).every(
+				evaluator => evaluator.completed
+			);
 
-		return conversations;
+			if (allActionsComplete && allEvaluatorsComplete) {
+				return true;
+			}
+
+			await new Promise(resolve => setTimeout(resolve, 100));
+		}
+
+		return false;
+	}
+
+	/**
+	 * Gets the current state of all active actions and evaluators
+	 */
+	getActiveState() {
+		return {
+			actions: Array.from(this.activeActions.values()),
+			evaluators: Array.from(this.activeEvaluators.values())
+		};
+	}
+
+	/**
+	 * Cleans up the scenario state
+	 */
+	async cleanup() {
+		this.worlds.clear();
+		this.activeActions.clear();
+		this.activeEvaluators.clear();
+		this.messageHandlers.clear();
 	}
 }
 
@@ -237,40 +318,37 @@ export class ScenarioService extends Service {
  */
 const scenarios = [
 	async function scenario1(members: IAgentRuntime[]) {
-		// Create and register test client
-		const service = await ScenarioService.start(members[0]);
-		members[0].registerService(ScenarioService);
-
-		// Create rooms for all members
-		for (const member of members) {
-			await service.createRoom(
-				member.agentId,
-				`Test Room for ${member.character.name}`,
-			);
+		const service = members[0].getService("scenario") as ScenarioService;
+		if (!service) {
+			throw new Error("Scenario service not found");
 		}
 
-		// Set up conversation history
-		await service.saveMessage(
+		// Create a test world
+		const worldId = await service.createWorld("Test Server", "Test Owner");
+
+		// Create rooms for each member
+		const roomIds = [];
+		for (const member of members) {
+			const roomId = await service.createRoom(worldId, `Test Room for ${member.character.name}`);
+			roomIds.push(roomId);
+			await service.addParticipant(worldId, roomId, member.agentId);
+		}
+
+		// Set up conversation history in the first room
+		await service.sendMessage(
 			members[0],
-			members,
-			"Earlier message from conversation...",
+			worldId,
+			roomIds[0],
+			"Earlier message from conversation..."
 		);
-		// await client.saveMessage(
-		//   members[1],
-		//   members,
-		//   "Previous reply in history..."
-		// );
 
-		// // Send live message that triggers handlers
-		// await client.sendMessage(members[0], members, "Hello everyone!");
-
-		// // Get and display conversation logs
-		// // wait 5 seconds
-		// await new Promise((resolve) => setTimeout(resolve, 5000));
-		// await client.getConversations(members);
-
-		// Send a message to all members
-		//   await client.sendMessage(members[0], members, "Hello everyone!");
+		// Send live message that triggers handlers
+		await service.sendMessage(
+			members[0],
+			worldId,
+			roomIds[0],
+			"Hello everyone!"
+		);
 	},
 ];
 

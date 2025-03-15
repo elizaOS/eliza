@@ -5,74 +5,16 @@ import {
 	type Content,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type UUID,
 	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
+import type { Sentiment, TwitterContent } from "../types";
 
 const makeBulletpointList = (array: string[]) => {
 	return array.map((a) => ` - ${a}`).join("\n");
 };
-
-/**
- * Interface representing a sentiment object.
- * @interface
- * @property {string} timeslot - The timeslot of the sentiment.
- * @property {boolean} processed - Indicates if the sentiment has been processed.
- * @property {string} [text] - The text associated with the sentiment.
- * @property {Array<{ token: string; sentiment: number; reason: string; }>} [occuringTokens] - The array of tokens with their sentiment and reason.
- */
-interface Sentiment {
-	timeslot: string;
-	processed: boolean;
-	text?: string;
-	occuringTokens?: Array<{
-		token: string;
-		sentiment: number;
-		reason: string;
-	}>;
-}
-
-/**
- * Interface representing a tweet object.
- * @typedef {Object} Tweet
- * @property {string} text - The text content of the tweet.
- * @property {string} username - The username of the user who posted the tweet.
- * @property {number} [likes] - The number of likes the tweet has (optional).
- * @property {number} [retweets] - The number of retweets the tweet has (optional).
- * @property {number} timestamp - The timestamp when the tweet was posted.
- */
-interface Tweet {
-	text: string;
-	username: string;
-	likes?: number;
-	retweets?: number;
-	timestamp: number;
-}
-
-/**
- * Interface representing content from Twitter.
- * Extends the Content interface.
- * @property {string} text - The text content of the tweet.
- * @property {"twitter"} source - The source of the content, always "twitter".
- * @property {string} [url] - Optional URL of the tweet.
- * @property {Object} tweet - Object containing tweet details.
- * @property {string} tweet.username - The username of the tweet author.
- * @property {number} [tweet.likes] - Optional number of likes on the tweet.
- * @property {number} [tweet.retweets] - Optional number of retweets of the tweet.
- */
-
-interface TwitterContent extends Content {
-	text: string;
-	source: "twitter";
-	url?: string;
-	tweet?: {
-		username: string;
-		likes?: number;
-		retweets?: number;
-	};
-}
 
 /**
  * Array of examples containing information about various tokens and developments in the crypto industry.
@@ -272,8 +214,8 @@ export default class TwitterParser {
 
 		/** Retrieve tweets from message manager */
 		const memories = await this.runtime
-			.getMemoryManager("messages")
 			.getMemories({
+				tableName: "messages",
 				roomId: this.roomId,
 				start: fromDate.getTime(),
 				end: timeslot.getTime(),
@@ -312,7 +254,7 @@ export default class TwitterParser {
 		const bulletpointTweets = makeBulletpointList(tweetArray);
 		const prompt = template.replace("{{tweets}}", bulletpointTweets);
 
-		const response = await this.runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 			system: rolePrompt,
 			temperature: 0.2,

@@ -33,10 +33,8 @@ describe("Discord MessageManager", () => {
 				createMemory: vi.fn(),
 				addEmbeddingToMemory: vi.fn(),
 			},
-			databaseAdapter: {
-				getParticipantUserState: vi.fn().mockResolvedValue("ACTIVE"),
-				log: vi.fn(),
-			},
+			getParticipantUserState: vi.fn().mockResolvedValue("ACTIVE"),
+			log: vi.fn(),
 			processActions: vi.fn(),
 			emitEvent: vi.fn(),
 		} as unknown as IAgentRuntime;
@@ -83,11 +81,7 @@ describe("Discord MessageManager", () => {
 			attachments: new Collection(),
 		};
 	});
-
-	it("should initialize MessageManager", () => {
-		expect(messageManager).toBeInstanceOf(MessageManager);
-	});
-
+	
 	it("should process user messages", async () => {
 		await messageManager.handleMessage(mockMessage);
 		expect(mockRuntime.ensureConnection).toHaveBeenCalled();

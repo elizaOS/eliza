@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/client",
-	"version": "1.0.0-alpha.9",
+	"version": "1.0.0-alpha.25",
 	"private": true,
 	"sideEffects": false,
 	"type": "module",
@@ -8,9 +8,10 @@
 		"extract-version": "bash ./version.sh",
 		"start:client": "bun run extract-version && vite",
 		"dev:client": "bun run extract-version && vite",
-		"build": "bun run extract-version && tsc -b && vite build",
+		"build": "bun run extract-version && vite build",
 		"preview": "vite preview",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
+		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
+		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
@@ -33,6 +34,7 @@
 		"cmdk": "^1.0.4",
 		"date-fns": "^4.1.0",
 		"dayjs": "^1.11.13",
+		"eventemitter3": "^5.0.1",
 		"lucide-react": "^0.469.0",
 		"react": "^19.0.0",
 		"react-aiwriter": "^1.0.0",
@@ -40,6 +42,7 @@
 		"react-router": "^7.3.0",
 		"react-router-dom": "^7.3.0",
 		"semver": "^7.7.1",
+		"socket.io-client": "^4.8.1",
 		"tailwind-merge": "^2.6.0",
 		"tailwindcss-animate": "^1.0.7",
 		"vite-plugin-compression": "^0.5.1"

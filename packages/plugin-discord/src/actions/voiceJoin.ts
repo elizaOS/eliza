@@ -6,7 +6,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	createUniqueUuid,
@@ -18,11 +18,11 @@ import {
 	ChannelType as DiscordChannelType,
 	type Guild,
 } from "discord.js";
-import type { DiscordService } from "../index";
-import { ServiceTypes } from "../types";
+import type { DiscordService } from "../service";
+import { ServiceType } from "../types";
 import type { VoiceManager } from "../voice";
 
-export default {
+export const joinVoice: Action = {
 	name: "JOIN_VOICE",
 	similes: [
 		"JOIN_VOICE",
@@ -46,7 +46,7 @@ export default {
 			return false;
 		}
 
-		const client = runtime.getService(ServiceTypes.DISCORD);
+		const client = runtime.getService(ServiceType.DISCORD);
 
 		if (!client) {
 			logger.error("Discord client not found");
@@ -84,7 +84,7 @@ export default {
 		}
 
 		const discordClient = runtime.getService(
-			ServiceTypes.DISCORD,
+			ServiceType.DISCORD,
 		) as DiscordService;
 		const client = discordClient.client;
 		const voiceManager = discordClient.voiceManager as VoiceManager;
@@ -128,7 +128,7 @@ export default {
 
 		if (member?.voice?.channel) {
 			voiceManager.joinChannel(member?.voice?.channel as BaseGuildVoiceChannel);
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -140,10 +140,10 @@ export default {
 				metadata: {
 					type: "JOIN_VOICE",
 				},
-			});
+			}, "messages");
 
 			// save a memory for the new channel as well
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: createUniqueUuid(runtime, targetChannel.id),
@@ -155,7 +155,7 @@ export default {
 				metadata: {
 					type: "JOIN_VOICE",
 				},
-			});
+			}, "messages");
 			return true;
 		}
 
@@ -183,7 +183,7 @@ You should only respond with the name of the voice channel or none, no commentar
 			state: guessState as unknown as State,
 		});
 
-		const responseContent = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const responseContent = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 
@@ -207,7 +207,7 @@ You should only respond with the name of the voice channel or none, no commentar
 
 			if (targetChannel) {
 				voiceManager.joinChannel(targetChannel as BaseGuildVoiceChannel);
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: message.entityId,
 					agentId: message.agentId,
 					roomId: message.roomId,
@@ -219,10 +219,10 @@ You should only respond with the name of the voice channel or none, no commentar
 					metadata: {
 						type: "JOIN_VOICE",
 					},
-				});
+				}, "messages");
 
 				// save a memory for the new channel as well
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: message.entityId,
 					agentId: message.agentId,
 					roomId: createUniqueUuid(runtime, targetChannel.id),
@@ -234,7 +234,7 @@ You should only respond with the name of the voice channel or none, no commentar
 					metadata: {
 						type: "JOIN_VOICE",
 					},
-				});
+				}, "messages");
 				return true;
 			}
 		}
@@ -368,3 +368,5 @@ You should only respond with the name of the voice channel or none, no commentar
 		],
 	] as ActionExample[][],
 } as Action;
+
+export default joinVoice;

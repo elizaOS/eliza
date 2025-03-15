@@ -2,9 +2,11 @@
 
 import {
 	type IAgentRuntime,
-	ModelTypes,
+	ModelType,
 	Service,
+	type Task,
 	type UUID,
+	composePrompt,
 	logger,
 	parseJSONObjectFromText,
 } from "@elizaos/core";
@@ -14,7 +16,7 @@ import {
 	type BuySignalMessage,
 	type PriceSignalMessage,
 	type SellSignalMessage,
-	ServiceTypes,
+	ServiceType,
 } from "./types";
 import { tradeAnalysisTemplate } from "./utils/analyzeTrade";
 import {
@@ -156,55 +158,6 @@ interface CacheEntry<T> {
 }
 
 /**
- * Class representing a Cache Manager.
- */
-
-class CacheManager {
-	private cache: Map<string, CacheEntry<any>> = new Map();
-	private defaultTTL = 60000; // 60 seconds default TTL
-
-	/**
-	 * Retrieve the value associated with the specified key from the cache.
-	 * @template T - The type of the value to retrieve
-	 * @param {string} key - The key to look up in the cache
-	 * @returns {Promise<T | null>} - The value associated with the key, or null if the key does not exist or has expired
-	 */
-	async get<T>(key: string): Promise<T | null> {
-		const entry = this.cache.get(key);
-		if (!entry) return null;
-
-		if (Date.now() > entry.expiry) {
-			this.cache.delete(key);
-			return null;
-		}
-
-		return entry.value as T;
-	}
-
-	/**
-	 * Set a value in the cache with the specified key.
-	 *
-	 * @template T - The type of the value being stored
-	 * @param {string} key - The key to store the value with
-	 * @param {T} value - The value to store in the cache
-	 * @param {number} [ttl=this.defaultTTL] - The time-to-live (in milliseconds) for the cached entry
-	 * @returns {Promise<void>} - A promise that resolves once the value is set in the cache
-	 */
-	async set<T>(
-		key: string,
-		value: T,
-		ttl: number = this.defaultTTL,
-	): Promise<void> {
-		const entry: CacheEntry<T> = {
-			value,
-			timestamp: Date.now(),
-			expiry: Date.now() + ttl,
-		};
-		this.cache.set(key, entry);
-	}
-}
-
-/**
  * Interface representing the status of a portfolio.
  * @property {number} totalValue - The total value of the portfolio.
  * @property {Object.<string, { amount: number; value: number }>} positions - The positions in the portfolio, with token addresses as keys and amount and value as values.
@@ -224,12 +177,11 @@ interface PortfolioStatus {
 export class DegenTradingService extends Service {
 	private isRunning = false;
 	private processId: string;
-	private cacheManager: CacheManager;
 
 	// For tracking pending sells
 	private pendingSells: { [tokenAddress: string]: bigint } = {};
 
-	static serviceType = ServiceTypes.DEGEN_TRADING;
+	static serviceType = ServiceType.DEGEN_TRADING;
 	capabilityDescription = "The agent is able to trade on the Solana blockchain";
 
 	private tradingConfig: TradingConfig = {
@@ -265,7 +217,6 @@ export class DegenTradingService extends Service {
 	constructor(protected runtime: IAgentRuntime) {
 		super(runtime);
 		this.processId = `sol-process-${Date.now()}`;
-		this.cacheManager = new CacheManager();
 	}
 
 	/**
@@ -320,7 +271,7 @@ export class DegenTradingService extends Service {
 	 * @returns {Promise<void>} - A Promise that resolves when the service is successfully stopped.
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = runtime.getService(ServiceTypes.DEGEN_TRADING);
+		const service = runtime.getService(ServiceType.DEGEN_TRADING);
 		if (service) {
 			await service.stop();
 		}
@@ -408,9 +359,7 @@ export class DegenTradingService extends Service {
 		try {
 			// Get trending tokens from cache (updated by degen-intel service)
 			const trendingTokens =
-				(await this.runtime
-					
-					.getCache<any[]>("birdeye_trending_tokens")) || [];
+				(await this.runtime.getCache<any[]>("birdeye_trending_tokens")) || [];
 
 			return Promise.all(
 				trendingTokens.map(async (token) => {
@@ -630,7 +579,7 @@ export class DegenTradingService extends Service {
 		try {
 			// Try to get from cache first
 			const cacheKey = `token_metadata_${tokenAddress}`;
-			const cached = await this.cacheManager.get<any>(cacheKey);
+			const cached = await this.runtime.getCache<any>(cacheKey);
 			if (cached) return cached;
 
 			// In a real implementation, this would call the blockchain API
@@ -687,7 +636,7 @@ export class DegenTradingService extends Service {
 			};
 
 			// Cache the result
-			await this.cacheManager.set(cacheKey, result, 300000); // 5 minute TTL
+			await this.runtime.setCache(cacheKey, result); // TODO: 5 minute TTL
 			return result;
 		} catch (error) {
 			logger.error("Error fetching token metadata:", error);
@@ -887,7 +836,6 @@ export class DegenTradingService extends Service {
 					roomId: `trade-0000-0000-0000-${Date.now().toString(16)}`,
 					entities: JSON.stringify(["trader"]),
 					recentMessages: JSON.stringify([""]),
-					recentMessagesData: [],
 					walletBalance: walletBalance.toString(),
 					api_data: JSON.stringify(
 						{
@@ -900,7 +848,7 @@ export class DegenTradingService extends Service {
 						},
 						null,
 						2,
-					), // Pretty print with 2 spaces indentation
+					)
 				},
 			});
 
@@ -908,7 +856,7 @@ export class DegenTradingService extends Service {
 			logger.info("Generated prompt:", { prompt });
 
 			// Generate analysis
-			const content = await this.runtime.useModel(ModelTypes.TEXT_LARGE, {
+			const content = await this.runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt,
 			});
 
@@ -1199,9 +1147,15 @@ export class DegenTradingService extends Service {
 		// Register BUY_SIGNAL task worker
 		this.runtime.registerTaskWorker({
 			name: "BUY_SIGNAL",
-			execute: async (_runtime: IAgentRuntime, _options: any) => {
+			execute: async (_runtime: IAgentRuntime, _options: any, task: Task) => {
 				logger.debug("*** BUY_SIGNAL ***");
-				await this.executeBuyTask();
+				try {
+					await this.executeBuyTask();
+				} catch (error) {
+					logger.error("Failed to execute buy task", error);
+					logger.warn("BUY_SIGNAL task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1209,7 +1163,7 @@ export class DegenTradingService extends Service {
 		// Register EXECUTE_BUY_SIGNAL task worker
 		this.runtime.registerTaskWorker({
 			name: "EXECUTE_BUY_SIGNAL",
-			execute: async (_runtime: IAgentRuntime, options: any) => {
+			execute: async (_runtime: IAgentRuntime, options: any, task: Task) => {
 				logger.info("*** EXECUTE_BUY_SIGNAL ***", options);
 
 				const { signal, tradeAmount, reason } = options.metadata || {};
@@ -1235,6 +1189,7 @@ export class DegenTradingService extends Service {
 					});
 				} else {
 					logger.error("Buy failed", { error: result.error });
+					await _runtime.deleteTask(task.id);
 				}
 			},
 			validate: async () => true,
@@ -1243,9 +1198,15 @@ export class DegenTradingService extends Service {
 		// Register SELL_SIGNAL task worker
 		this.runtime.registerTaskWorker({
 			name: "SELL_SIGNAL",
-			execute: async (_runtime: IAgentRuntime, options: any) => {
+			execute: async (_runtime: IAgentRuntime, options: any, task: Task) => {
 				logger.info("*** SELL_SIGNAL ***");
-				await this.executeSellTask(options);
+				try {
+					await this.executeSellTask(options);
+				} catch (error) {
+					logger.error("Failed to execute sell task", error);
+					logger.warn("SELL_SIGNAL task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1253,9 +1214,15 @@ export class DegenTradingService extends Service {
 		// Register MONITOR_TOKEN task worker
 		this.runtime.registerTaskWorker({
 			name: "MONITOR_TOKEN",
-			execute: async (_runtime: IAgentRuntime, options: any) => {
+			execute: async (_runtime: IAgentRuntime, options: any, task: Task) => {
 				logger.info("*** MONITOR_TOKEN ***");
-				await this.monitorToken(options);
+				try {
+					await this.monitorToken(options);
+				} catch (error) {
+					logger.error("Failed to monitor token", error);
+					logger.warn("MONITOR_TOKEN task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1263,9 +1230,15 @@ export class DegenTradingService extends Service {
 		// Register MONITOR_TRAILING_STOP task worker
 		this.runtime.registerTaskWorker({
 			name: "MONITOR_TRAILING_STOP",
-			execute: async (_runtime: IAgentRuntime, options: any) => {
+			execute: async (_runtime: IAgentRuntime, options: any, task: Task) => {
 				logger.debug("*** MONITOR_TRAILING_STOP ***");
-				await this.monitorTrailingStop(options);
+				try {
+					await this.monitorTrailingStop(options);
+				} catch (error) {
+					logger.error("Failed to monitor trailing stop", error);
+					logger.warn("MONITOR_TRAILING_STOP task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1273,9 +1246,15 @@ export class DegenTradingService extends Service {
 		// Register VALIDATE_DATA_SOURCES task worker
 		this.runtime.registerTaskWorker({
 			name: "VALIDATE_DATA_SOURCES",
-			execute: async (_runtime: IAgentRuntime) => {
+			execute: async (_runtime: IAgentRuntime, _options, task: Task) => {
 				logger.debug("*** VALIDATE_DATA_SOURCES ***");
-				await this.validateDataSources();
+				try {
+					await this.validateDataSources();
+				} catch (error) {
+					logger.error("Failed to validate data sources", error);
+					logger.warn("VALIDATE_DATA_SOURCES task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1283,9 +1262,15 @@ export class DegenTradingService extends Service {
 		// Register CIRCUIT_BREAKER_CHECK task worker
 		this.runtime.registerTaskWorker({
 			name: "CIRCUIT_BREAKER_CHECK",
-			execute: async (_runtime: IAgentRuntime) => {
+			execute: async (_runtime: IAgentRuntime, _options, task: Task) => {
 				logger.debug("*** CIRCUIT_BREAKER_CHECK ***");
-				await this.checkCircuitBreaker();
+				try {
+					await this.checkCircuitBreaker();
+				} catch (error) {
+					logger.error("Failed to check circuit breaker", error);
+					logger.warn("CIRCUIT_BREAKER_CHECK task has been cancelled");
+					await _runtime.deleteTask(task.id);
+				}
 			},
 			validate: async () => true,
 		});
@@ -1298,7 +1283,7 @@ export class DegenTradingService extends Service {
 		logger.info("Creating scheduled tasks...");
 
 		const tasks = await this.runtime.getTasks({
-			tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
+			tags: ["queue", "repeat", ServiceType.DEGEN_TRADING],
 		});
 
 		if (!tasks.find((task) => task.name === "BUY_SIGNAL")) {
@@ -1307,7 +1292,7 @@ export class DegenTradingService extends Service {
 				roomId: this.runtime.agentId,
 				name: "BUY_SIGNAL",
 				description: "Generate buy signals",
-				tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
+				tags: ["queue", "repeat", ServiceType.DEGEN_TRADING],
 				metadata: {
 					updatedAt: Date.now(),
 					updateInterval: this.tradingConfig.intervals.priceCheck,
@@ -1322,7 +1307,7 @@ export class DegenTradingService extends Service {
 				roomId: this.runtime.agentId,
 				name: "VALIDATE_DATA_SOURCES",
 				description: "Validate data sources quality",
-				tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
+				tags: ["queue", "repeat", ServiceType.DEGEN_TRADING],
 				metadata: {
 					updatedAt: Date.now(),
 					updateInterval: 900000, // Check every 15 minutes
@@ -1337,7 +1322,7 @@ export class DegenTradingService extends Service {
 				roomId: this.runtime.agentId,
 				name: "CIRCUIT_BREAKER_CHECK",
 				description: "Check for circuit breaker conditions",
-				tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
+				tags: ["queue", "repeat", ServiceType.DEGEN_TRADING],
 				metadata: {
 					updatedAt: Date.now(),
 					updateInterval: 300000, // Check every 5 minutes
@@ -1367,9 +1352,6 @@ export class DegenTradingService extends Service {
 		try {
 			// Validate configuration
 			this.validateConfiguration();
-
-			// Initialize cache manager
-			this.cacheManager = new CacheManager();
 
 			// Generate a unique process ID
 			this.processId = uuidv4() as UUID;
@@ -1478,7 +1460,7 @@ export class DegenTradingService extends Service {
 
 			// Clean up scheduled tasks
 			const tasks = await this.runtime.getTasks({
-				tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
+				tags: ["queue", "repeat", ServiceType.DEGEN_TRADING],
 			});
 
 			for (const task of tasks) {
@@ -1629,7 +1611,7 @@ export class DegenTradingService extends Service {
 				roomId: this.runtime.agentId,
 				name: "MONITOR_TOKEN",
 				description: `Monitor token ${data.tokenAddress}`,
-				tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
+				tags: ["queue", "repeat", ServiceType.DEGEN_TRADING],
 				metadata: {
 					tokenAddress: data.tokenAddress,
 					initialPrice,
@@ -1665,7 +1647,7 @@ export class DegenTradingService extends Service {
 		try {
 			// Find monitoring tasks for this process
 			const tasks = await this.runtime.getTasks({
-				tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
+				tags: ["queue", "repeat", ServiceType.DEGEN_TRADING],
 			});
 
 			// Delete all related monitoring tasks
@@ -1923,7 +1905,7 @@ export class DegenTradingService extends Service {
 				roomId: this.runtime.agentId,
 				name: "MONITOR_TRAILING_STOP",
 				description: `Monitor trailing stop for ${tokenAddress}`,
-				tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
+				tags: ["queue", "repeat", ServiceType.DEGEN_TRADING],
 				metadata: {
 					tokenAddress,
 					updatedAt: Date.now(),
@@ -2291,7 +2273,7 @@ export class DegenTradingService extends Service {
 					tags: [
 						"queue",
 						"repeat",
-						ServiceTypes.DEGEN_TRADING,
+						ServiceType.DEGEN_TRADING,
 						"monitor",
 						tokenAddress,
 					],
@@ -2436,9 +2418,7 @@ export class DegenTradingService extends Service {
 	): Promise<void> {
 		try {
 			// Get existing statistics
-			const stats = (await this.runtime
-				
-				.getCache<any>(`token_stats:${tokenAddress}`)) || {
+			const stats = (await this.runtime.getCache<any>(`token_stats:${tokenAddress}`)) || {
 				trades: 0,
 				total_profit_usd: 0,
 				average_profit_percent: 0,
@@ -2490,9 +2470,7 @@ export class DegenTradingService extends Service {
 		try {
 			// Get the existing trade performance record
 			const tradeKey = `trade_performance:${tokenAddress}:${buyTimestamp}`;
-			const existingTrade = await this.runtime
-				
-				.getCache<any>(tradeKey);
+			const existingTrade = await this.runtime.getCache<any>(tradeKey);
 
 			if (!existingTrade) {
 				logger.warn("Trade performance record not found for update", {
@@ -3120,7 +3098,7 @@ export class DegenTradingService extends Service {
 		volumeHistory: number[];
 	}> {
 		const cacheKey = `market_data_${tokenAddress}`;
-		const cached = await this.cacheManager.get<any>(cacheKey);
+		const cached = await this.runtime.getCache<any>(cacheKey);
 		if (cached) return cached;
 
 		try {
@@ -3191,7 +3169,7 @@ export class DegenTradingService extends Service {
 			};
 
 			// Cache the result
-			await this.cacheManager.set(cacheKey, result, 60000); // 1 minute TTL
+			await this.runtime.setCache(cacheKey, result); // 1 minute TTL
 			return result;
 		} catch (error) {
 			logger.error("Error fetching token market data:", error);
@@ -3362,7 +3340,7 @@ export class DegenTradingService extends Service {
 	 */
 	private async getHighWaterMark(): Promise<number> {
 		const key = "portfolio_high_water_mark";
-		const cached = await this.cacheManager.get<number>(key);
+		const cached = await this.runtime.getCache<number>(key);
 		return cached || 0;
 	}
 
@@ -3373,7 +3351,7 @@ export class DegenTradingService extends Service {
 		Array<{ address: string; symbol: string }>
 	> {
 		try {
-			return (await this.cacheManager.get("monitored_tokens")) || [];
+			return (await this.runtime.getCache("monitored_tokens")) || [];
 		} catch (error) {
 			logger.error("Error getting monitored tokens:", error);
 			return [];
@@ -3387,7 +3365,7 @@ export class DegenTradingService extends Service {
 		volume24h: number;
 	}> {
 		const cacheKey = `price:${tokenAddress}`;
-		const cached = await this.cacheManager.get<{
+		const cached = await this.runtime.getCache<{
 			price: number;
 			marketCap: number;
 			liquidity: number;
@@ -3413,7 +3391,7 @@ export class DegenTradingService extends Service {
 			volume24h: data?.data?.volume24h || 0,
 		};
 
-		await this.cacheManager.set(cacheKey, result);
+		await this.runtime.setCache(cacheKey, result);
 		return result;
 	}
 
@@ -3600,9 +3578,7 @@ export class DegenTradingService extends Service {
 			}
 
 			// Check data freshness
-			const cacheMetadata = await this.runtime
-				
-				.getCache<any>("twitter_signals_metadata");
+			const cacheMetadata = await this.runtime.getCache<any>("twitter_signals_metadata");
 			if (!cacheMetadata || !cacheMetadata.updatedAt) {
 				issues.push("Twitter signal metadata missing");
 			} else {
@@ -3648,9 +3624,7 @@ export class DegenTradingService extends Service {
 			}
 
 			// Check data freshness
-			const cacheMetadata = await this.runtime
-				
-				.getCache<any>("cmc_tokens_metadata");
+			const cacheMetadata = await this.runtime.getCache<any>("cmc_tokens_metadata");
 			if (!cacheMetadata || !cacheMetadata.updatedAt) {
 				issues.push("CMC token metadata missing");
 			} else {
@@ -3912,9 +3886,7 @@ export class DegenTradingService extends Service {
 	): Promise<boolean> {
 		// Check cache for known special tokens
 		const specialTokens =
-			(await this.runtime
-				
-				.getCache<string[]>("special_slippage_tokens")) || [];
+			(await this.runtime.getCache<string[]>("special_slippage_tokens")) || [];
 		return specialTokens.includes(tokenAddress);
 	}
 
@@ -4057,9 +4029,7 @@ export class DegenTradingService extends Service {
 	private async maybeOptimizeSlippageParameters(): Promise<void> {
 		try {
 			// Only run this occasionally to avoid excessive processing
-			const lastOptimizationTime = await this.runtime
-				
-				.getCache<number>("last_slippage_optimization");
+			const lastOptimizationTime = await this.runtime.getCache<number>("last_slippage_optimization");
 			const now = Date.now();
 
 			if (
@@ -4508,7 +4478,7 @@ export class DegenTradingService extends Service {
 				roomId: this.runtime.agentId,
 				name: "BUY_SIGNAL",
 				description: `Buy token ${signal.tokenAddress}`,
-				tags: ["queue", ServiceTypes.DEGEN_TRADING],
+				tags: ["queue", ServiceType.DEGEN_TRADING],
 				metadata: {
 					signal,
 					tradeAmount,
@@ -4533,7 +4503,7 @@ export class DegenTradingService extends Service {
 			// Fetch pending buy tasks
 			const pendingTasks = await this.runtime.getTasks({
 				roomId: this.runtime.agentId,
-				tags: [ServiceTypes.DEGEN_TRADING, "queue"],
+				tags: [ServiceType.DEGEN_TRADING, "queue"],
 				// We can't filter by name in the getTasks query, so we'll filter manually
 			});
 
@@ -4667,7 +4637,7 @@ export class DegenTradingService extends Service {
 				id: taskId,
 				name: "EXECUTE_SELL",
 				description: `Execute sell for ${signal.tokenAddress}`,
-				tags: ["queue", "repeat", ServiceTypes.DEGEN_TRADING],
+				tags: ["queue", "repeat", ServiceType.DEGEN_TRADING],
 				metadata: {
 					signal,
 					expectedReceiveAmount,

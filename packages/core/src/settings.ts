@@ -42,7 +42,7 @@ function createSettingFromConfig(
  * @returns {string} The salt for the agent.
  */
 function getSalt(runtime: IAgentRuntime): string {
-	const secretSalt = process.env.SECRET_SALT || "secretsalt";
+	const secretSalt = (typeof process !== 'undefined' ? process.env.SECRET_SALT : (import.meta as any).env.SECRET_SALT) || "secretsalt";
 	const agentId = runtime.agentId;
 
 	if (!agentId) {

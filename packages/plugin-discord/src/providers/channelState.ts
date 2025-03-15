@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
-import type { DiscordService } from "../index";
-import { ServiceTypes } from "../types";
+import type { DiscordService } from "../service";
+import { ServiceType } from "../types";
 
 /**
  * Represents a provider for retrieving channel state information.
@@ -13,7 +13,7 @@ import { ServiceTypes } from "../types";
  * @param {State} [state] - Optional state object.
  * @returns {Promise<Object>} A promise that resolves to an object containing channel state data, values, and text.
  */
-const channelStateProvider: Provider = {
+export const channelStateProvider: Provider = {
 	name: "channelState",
 	get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
 		const room =
@@ -64,7 +64,7 @@ const channelStateProvider: Provider = {
 			channelId = room.channelId;
 
 			const discordService = runtime.getService(
-				ServiceTypes.DISCORD,
+				ServiceType.DISCORD,
 			) as DiscordService;
 			if (!discordService) {
 				console.warn("No discord client found");

@@ -2,14 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import {
+	type Agent,
 	type Character,
 	type IAgentRuntime,
-	type IDatabaseAdapter,
-	type IMemoryManager,
-	type ModelType,
-	ModelTypes,
+	type ModelResultMap,
+	type ModelTypeName,
+	ModelType,
 	type State,
-	logger,
+	type UUID,
+	logger
 } from "@elizaos/core";
 import { vi } from "vitest";
 import { MODEL_SPECS } from "../src/types";
@@ -18,7 +19,7 @@ import { MODEL_SPECS } from "../src/types";
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../");
 
 // During tests, we need to set cwd to agent directory since that's where the plugin runs from in production
-const AGENT_DIR = path.join(WORKSPACE_ROOT, "packages/agent");
+const AGENT_DIR = path.join(WORKSPACE_ROOT, "packages/project-starter");
 process.chdir(AGENT_DIR);
 
 // Create shared mock for download manager
@@ -31,7 +32,6 @@ export const TEST_PATHS = {
 
 export const createMockRuntime = (): IAgentRuntime => ({
 	agentId: "12345678-1234-1234-1234-123456789012",
-	databaseAdapter: {} as IDatabaseAdapter,
 	character: {} as Character,
 	providers: [],
 	actions: [],
@@ -41,50 +41,47 @@ export const createMockRuntime = (): IAgentRuntime => ({
 	routes: [],
 	getService: () => null,
 	getAllServices: () => new Map(),
-	initialize: async () => {},
-	getMemoryManager: () => null,
-	registerService: () => {},
-	setSetting: () => {},
+	initialize: async () => { },
+	registerService: () => { },
+	setSetting: () => { },
 	getSetting: () => null,
 	getConversationLength: () => 0,
-	processActions: async () => {},
+	processActions: async () => { },
 	evaluate: async () => null,
-	registerProvider: () => {},
-	registerAction: () => {},
-	ensureConnection: async () => {},
-	ensureParticipantInRoom: async () => {},
-	ensureRoomExists: async () => {},
+	registerProvider: () => { },
+	registerAction: () => { },
+	ensureConnection: async () => { },
+	ensureParticipantInRoom: async () => { },
+	ensureRoomExists: async () => { },
 	composeState: async () => ({}) as State,
-	useModel: async <T>(
-		modelType: ModelType,
-		params: T,
-	): Promise<string | Readable> => {
+	useModel: async <T extends ModelTypeName, R = ModelResultMap[T]>(
+		modelType: T,
+		params: any
+	): Promise<R> => {
 		// Check if there are any pending mock rejections
 		const mockCalls = downloadModelMock.mock.calls;
-		if (
-			mockCalls.length > 0 &&
-			downloadModelMock.mock.results[mockCalls.length - 1].type === "throw"
-		) {
+		if (mockCalls.length > 0 &&
+			downloadModelMock.mock.results[mockCalls.length - 1].type === "throw") {
 			// Rethrow the error from the mock
 			throw downloadModelMock.mock.results[mockCalls.length - 1].value;
 		}
 
 		// Call downloadModel based on the model class
-		if (modelType === ModelTypes.TEXT_SMALL) {
+		if (modelType === ModelType.TEXT_SMALL) {
 			await downloadModelMock(
 				MODEL_SPECS.small,
-				path.join(TEST_PATHS.MODELS_DIR, MODEL_SPECS.small.name),
+				path.join(TEST_PATHS.MODELS_DIR, MODEL_SPECS.small.name)
 			);
-			return "This is a test response from the small model.";
+			return "The small language model generated this response." as R;
 		}
-		if (modelType === ModelTypes.TEXT_LARGE) {
+		if (modelType === ModelType.TEXT_LARGE) {
 			await downloadModelMock(
 				MODEL_SPECS.medium,
-				path.join(TEST_PATHS.MODELS_DIR, MODEL_SPECS.medium.name),
+				path.join(TEST_PATHS.MODELS_DIR, MODEL_SPECS.medium.name)
 			);
-			return "Artificial intelligence is a transformative technology that continues to evolve.";
+			return "Artificial intelligence is a transformative technology that continues to evolve." as R;
 		}
-		if (modelType === ModelTypes.TRANSCRIPTION) {
+		if (modelType === ModelType.TRANSCRIPTION) {
 			// For transcription, we expect a Buffer as the parameter
 			const audioBuffer = params as unknown as Buffer;
 			if (!Buffer.isBuffer(audioBuffer)) {
@@ -102,7 +99,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 			const tempPath = path.join(
 				TEST_PATHS.CACHE_DIR,
 				"whisper",
-				`temp_${Date.now()}.wav`,
+				`temp_${Date.now()}.wav`
 			);
 
 			// Mock the file system operations
@@ -119,7 +116,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 						(error, stdout, stderr) => {
 							if (error) reject(error);
 							else resolve({ stdout, stderr });
-						},
+						}
 					);
 				});
 
@@ -134,7 +131,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 					fs.unlinkSync(tempPath);
 				}
 
-				return result;
+				return result as R;
 			} catch (error) {
 				// Clean up on error
 				if (fs.existsSync(tempPath)) {
@@ -143,7 +140,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 				throw error;
 			}
 		}
-		if (modelType === ModelTypes.IMAGE_DESCRIPTION) {
+		if (modelType === ModelType.IMAGE_DESCRIPTION) {
 			// For image description, we expect a URL as the parameter
 			const imageUrl = params as unknown as string;
 			if (typeof imageUrl !== "string") {
@@ -164,7 +161,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 
 				if (!response.ok) {
 					const error = new Error(
-						`Failed to fetch image: ${response.statusText}`,
+						`Failed to fetch image: ${response.statusText}`
 					);
 					logger.error("Fetch failed:", {
 						error: error.message,
@@ -188,12 +185,11 @@ export const createMockRuntime = (): IAgentRuntime => ({
 				// For successful responses, return mock description
 				const mockResult = {
 					title: "A test image from Picsum",
-					description:
-						"This is a detailed description of a randomly generated test image from Picsum Photos, showing various visual elements in high quality.",
+					description: "This is a detailed description of a randomly generated test image from Picsum Photos, showing various visual elements in high quality.",
 				};
 				logger.info("Generated mock description:", mockResult);
 
-				return JSON.stringify(mockResult);
+				return mockResult as R;
 			} catch (error) {
 				logger.error("Image description failed:", {
 					error: error instanceof Error ? error.message : String(error),
@@ -203,7 +199,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 				throw error;
 			}
 		}
-		if (modelType === ModelTypes.TEXT_TO_SPEECH) {
+		if (modelType === ModelType.TEXT_TO_SPEECH) {
 			// For TTS, we expect a string as the parameter
 			const text = params as unknown as string;
 			if (typeof text !== "string") {
@@ -246,14 +242,14 @@ export const createMockRuntime = (): IAgentRuntime => ({
 								0x6d,
 								0x74,
 								0x20, // "fmt "
-							]),
+							])
 						);
 						this.push(null); // End of stream
 					},
 				});
 
 				logger.success("TTS generation successful");
-				return mockAudioStream;
+				return mockAudioStream as R;
 			} catch (error) {
 				logger.error("TTS generation failed:", {
 					error: error instanceof Error ? error.message : String(error),
@@ -264,15 +260,82 @@ export const createMockRuntime = (): IAgentRuntime => ({
 		}
 		throw new Error(`Unexpected model class: ${modelType}`);
 	},
-	registerModel: () => {},
+	registerModel: () => { },
 	getModel: () => undefined,
-	registerEvent: () => {},
+	registerEvent: () => { },
 	getEvent: () => undefined,
-	emitEvent: () => {},
-	createTask: () => "12345678-1234-1234-1234-123456789012",
-	getTasks: () => undefined,
-	getTask: () => undefined,
-	updateTask: () => {},
-	deleteTask: () => {},
-	stop: async () => {},
+	emitEvent: () => Promise.resolve(),
+	createTask: () => Promise.resolve("12345678-1234-1234-1234-123456789012"),
+	getTasks: () => Promise.resolve([]),
+	getTask: () => Promise.resolve(null),
+	updateTask: () => Promise.resolve(),
+	deleteTask: () => Promise.resolve(),
+	stop: async () => { },
+	services: new Map(),
+	events: new Map(),
+	registerPlugin: () => Promise.resolve(),
+	getKnowledge: () => Promise.resolve([]),
+	addKnowledge: () => Promise.resolve(),
+	registerDatabaseAdapter: () => { },
+	registerEvaluator: () => { },
+	ensureWorldExists: () => Promise.resolve(),
+	registerTaskWorker: () => { },
+	getTaskWorker: () => undefined,
+	db: undefined,
+	init: () => Promise.resolve(),
+	close: () => Promise.resolve(),
+	getAgent: () => Promise.resolve(null),
+	getAgents: () => Promise.resolve([]),
+	createAgent: () => Promise.resolve(false),
+	updateAgent: (agentId: UUID, agent: Partial<Agent>) => Promise.resolve(false),
+	deleteAgent: (agentId: UUID) => Promise.resolve(false),
+	ensureAgentExists: (agent: Partial<Agent>) => Promise.resolve(),
+	ensureEmbeddingDimension: (dimension: number) => Promise.resolve(),
+	getEntityById: (entityId: UUID) => Promise.resolve(null),
+	getEntitiesForRoom: () => Promise.resolve([]),
+	createEntity: () => Promise.resolve(false),
+	updateEntity: () => Promise.resolve(),
+	getComponent: () => Promise.resolve(null),
+	getComponents: () => Promise.resolve([]),
+	createComponent: () => Promise.resolve(false),
+	updateComponent: () => Promise.resolve(),
+	deleteComponent: () => Promise.resolve(),
+	getMemories: () => Promise.resolve([]),
+	getMemoryById: () => Promise.resolve(null),
+	getMemoriesByIds: () => Promise.resolve([]),
+	getMemoriesByRoomIds: () => Promise.resolve([]),
+	getCachedEmbeddings: () => Promise.resolve([]),
+	log: () => Promise.resolve(),
+	searchMemories: () => Promise.resolve([]),
+	createMemory: () => Promise.resolve("12345678-1234-1234-1234-123456789012"),
+	deleteMemory: () => Promise.resolve(),
+	deleteAllMemories: () => Promise.resolve(),
+	countMemories: () => Promise.resolve(0),
+	createWorld: () => Promise.resolve("12345678-1234-1234-1234-123456789012"),
+	getWorld: () => Promise.resolve(null),
+	getAllWorlds: () => Promise.resolve([]),
+	updateWorld: () => Promise.resolve(),
+	getRoom: () => Promise.resolve(null),
+	createRoom: () => Promise.resolve("12345678-1234-1234-1234-123456789012"),
+	deleteRoom: () => Promise.resolve(),
+	updateRoom: () => Promise.resolve(),
+	getRoomsForParticipant: () => Promise.resolve([]),
+	getRoomsForParticipants: () => Promise.resolve([]),
+	getRooms: () => Promise.resolve([]),
+	addParticipant: () => Promise.resolve(false),
+	removeParticipant: () => Promise.resolve(false),
+	getParticipantsForEntity: () => Promise.resolve([]),
+	getParticipantsForRoom: () => Promise.resolve([]),
+	getParticipantUserState: () => Promise.resolve(null),
+	setParticipantUserState: () => Promise.resolve(),
+	createRelationship: () => Promise.resolve(false),
+	updateRelationship: () => Promise.resolve(),
+	getRelationship: () => Promise.resolve(null),
+	getRelationships: () => Promise.resolve([]),
+	getCache: () => Promise.resolve(undefined),
+	setCache: () => Promise.resolve(false),
+	deleteCache: () => Promise.resolve(false),
+	getTasksByName: () => Promise.resolve([]),
+	getLogs: () => Promise.resolve([]),
+	deleteLog: () => Promise.resolve(),
 });

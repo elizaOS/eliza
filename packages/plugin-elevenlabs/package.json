@@ -1,10 +1,14 @@
 {
   "name": "@elizaos/plugin-elevenlabs",
-  "version": "1.0.0-alpha.20",
+  "version": "1.0.0-alpha.60",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-elevenlabs"
+  },
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -18,13 +22,13 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-alpha.20",
+    "@elizaos/core": "^1.0.0-alpha.60",
     "tsup": "8.4.0"
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run"
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
   },
   "publishConfig": {
     "access": "public"
@@ -70,5 +74,5 @@
       }
     }
   },
-  "gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+  "gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
 }

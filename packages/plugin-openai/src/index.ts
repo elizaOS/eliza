@@ -1,8 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import type {
-	IAgentRuntime,
 	ImageDescriptionParams,
-	ModelType,
+	ModelTypeName,
 	ObjectGenerationParams,
 	Plugin,
 	TextEmbeddingParams,
@@ -10,24 +9,24 @@ import type {
 import {
 	type DetokenizeTextParams,
 	type GenerateTextParams,
-	ModelTypes,
+	ModelType,
 	type TokenizeTextParams,
 	logger,
 } from "@elizaos/core";
-import { generateText } from "ai";
+import { generateObject, generateText } from "ai";
 import { type TiktokenModel, encodingForModel } from "js-tiktoken";
 import { z } from "zod";
 
 /**
  * Asynchronously tokenizes the given text based on the specified model and prompt.
  *
- * @param {ModelType} model - The type of model to use for tokenization.
+ * @param {ModelTypeName} model - The type of model to use for tokenization.
  * @param {string} prompt - The text prompt to tokenize.
  * @returns {number[]} - An array of tokens representing the encoded prompt.
  */
-async function tokenizeText(model: ModelType, prompt: string) {
+async function tokenizeText(model: ModelTypeName, prompt: string) {
 	const modelName =
-		model === ModelTypes.TEXT_SMALL
+		model === ModelType.TEXT_SMALL
 			? (process.env.OPENAI_SMALL_MODEL ??
 				process.env.SMALL_MODEL ??
 				"gpt-4o-mini")
@@ -40,13 +39,13 @@ async function tokenizeText(model: ModelType, prompt: string) {
 /**
  * Detokenize a sequence of tokens back into text using the specified model.
  *
- * @param {ModelType} model - The type of model to use for detokenization.
+ * @param {ModelTypeName} model - The type of model to use for detokenization.
  * @param {number[]} tokens - The sequence of tokens to detokenize.
  * @returns {string} The detokenized text.
  */
-async function detokenizeText(model: ModelType, tokens: number[]) {
+async function detokenizeText(model: ModelTypeName, tokens: number[]) {
 	const modelName =
-		model === ModelTypes.TEXT_SMALL
+		model === ModelType.TEXT_SMALL
 			? (process.env.OPENAI_SMALL_MODEL ??
 				process.env.SMALL_MODEL ??
 				"gpt-4o-mini")
@@ -54,15 +53,6 @@ async function detokenizeText(model: ModelType, tokens: number[]) {
 	const encoding = encodingForModel(modelName as TiktokenModel);
 	return encoding.decode(tokens);
 }
-
-const configSchema = z.object({
-	OPENAI_API_KEY: z.string().min(1, "OpenAI API key is required"),
-	OPENAI_BASE_URL: z.string().url().optional(),
-	OPENAI_SMALL_MODEL: z.string().optional(),
-	OPENAI_LARGE_MODEL: z.string().optional(),
-	SMALL_MODEL: z.string().optional(),
-	LARGE_MODEL: z.string().optional(),
-});
 
 /**
  * Defines the OpenAI plugin with its name, description, and configuration options.
@@ -81,12 +71,12 @@ export const openaiPlugin: Plugin = {
 	},
 	async init(config: Record<string, string>) {
 		try {
-			const validatedConfig = await configSchema.parseAsync(config);
+			// const validatedConfig = await configSchema.parseAsync(config);
 
-			// Set all environment variables at once
-			for (const [key, value] of Object.entries(validatedConfig)) {
-				if (value) process.env[key] = value;
-			}
+			// // Set all environment variables at once
+			// for (const [key, value] of Object.entries(validatedConfig)) {
+			// 	if (value) process.env[key] = value;
+			// }
 
 			// If API key is not set, we'll show a warning but continue
 			if (!process.env.OPENAI_API_KEY) {
@@ -114,7 +104,7 @@ export const openaiPlugin: Plugin = {
 					);
 					// Continue execution instead of throwing
 				} else {
-					logger.log("OpenAI API key validated successfully");
+					// logger.log("OpenAI API key validated successfully");
 				}
 			} catch (fetchError) {
 				logger.warn(`Error validating OpenAI API key: ${fetchError}`);
@@ -124,7 +114,6 @@ export const openaiPlugin: Plugin = {
 				// Continue execution instead of throwing
 			}
 		} catch (error) {
-			if (error instanceof z.ZodError) {
 				// Convert to warning instead of error
 				logger.warn(
 					`OpenAI plugin configuration issue: ${error.errors
@@ -133,21 +122,16 @@ export const openaiPlugin: Plugin = {
 							", ",
 						)} - You need to configure the OPENAI_API_KEY in your environment variables`,
 				);
-				// Continue execution instead of throwing
-			} else {
-				// For unexpected errors, still throw
-				throw error;
-			}
 		}
 	},
 	models: {
-		[ModelTypes.TEXT_EMBEDDING]: async (
+		[ModelType.TEXT_EMBEDDING]: async (
 			runtime,
 			params: TextEmbeddingParams | string | null,
 		): Promise<number[]> => {
 			// Handle null input (initialization case)
 			if (params === null) {
-				logger.log("Creating test embedding for initialization");
+				logger.debug("Creating test embedding for initialization");
 				// Return a consistent vector for null input
 				const testVector = Array(1536).fill(0);
 				testVector[0] = 0.1; // Make it non-zero
@@ -223,19 +207,19 @@ export const openaiPlugin: Plugin = {
 				return errorVector;
 			}
 		},
-		[ModelTypes.TEXT_TOKENIZER_ENCODE]: async (
+		[ModelType.TEXT_TOKENIZER_ENCODE]: async (
 			_runtime,
-			{ prompt, modelType = ModelTypes.TEXT_LARGE }: TokenizeTextParams,
+			{ prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams,
 		) => {
-			return await tokenizeText(modelType ?? ModelTypes.TEXT_LARGE, prompt);
+			return await tokenizeText(modelType ?? ModelType.TEXT_LARGE, prompt);
 		},
-		[ModelTypes.TEXT_TOKENIZER_DECODE]: async (
+		[ModelType.TEXT_TOKENIZER_DECODE]: async (
 			_runtime,
-			{ tokens, modelType = ModelTypes.TEXT_LARGE }: DetokenizeTextParams,
+			{ tokens, modelType = ModelType.TEXT_LARGE }: DetokenizeTextParams,
 		) => {
-			return await detokenizeText(modelType ?? ModelTypes.TEXT_LARGE, tokens);
+			return await detokenizeText(modelType ?? ModelType.TEXT_LARGE, tokens);
 		},
-		[ModelTypes.TEXT_SMALL]: async (
+		[ModelType.TEXT_SMALL]: async (
 			runtime,
 			{ prompt, stopSequences = [] }: GenerateTextParams,
 		) => {
@@ -273,7 +257,7 @@ export const openaiPlugin: Plugin = {
 
 			return openaiResponse;
 		},
-		[ModelTypes.TEXT_LARGE]: async (
+		[ModelType.TEXT_LARGE]: async (
 			runtime,
 			{
 				prompt,
@@ -310,7 +294,7 @@ export const openaiPlugin: Plugin = {
 
 			return openaiResponse;
 		},
-		[ModelTypes.IMAGE]: async (
+		[ModelType.IMAGE]: async (
 			runtime,
 			params: {
 				prompt: string;
@@ -339,7 +323,7 @@ export const openaiPlugin: Plugin = {
 			const typedData = data as { data: { url: string }[] };
 			return typedData.data;
 		},
-		[ModelTypes.IMAGE_DESCRIPTION]: async (
+		[ModelType.IMAGE_DESCRIPTION]: async (
 			runtime,
 			params: ImageDescriptionParams | string,
 		) => {
@@ -431,7 +415,7 @@ export const openaiPlugin: Plugin = {
 				};
 			}
 		},
-		[ModelTypes.TRANSCRIPTION]: async (runtime, audioBuffer: Buffer) => {
+		[ModelType.TRANSCRIPTION]: async (runtime, audioBuffer: Buffer) => {
 			logger.log("audioBuffer", audioBuffer);
 			const baseURL =
 				runtime.getSetting("OPENAI_BASE_URL") ?? "https://api.openai.com/v1";
@@ -454,17 +438,67 @@ export const openaiPlugin: Plugin = {
 			const data = (await response.json()) as { text: string };
 			return data.text;
 		},
-		[ModelTypes.OBJECT_SMALL]: async (runtime, params) => {
-			return await generateObject(runtime, {
-				...params,
-				modelType: ModelTypes.OBJECT_SMALL,
+		[ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
+			const baseURL = runtime.getSetting("OPENAI_BASE_URL") ?? "https://api.openai.com/v1";
+			const openai = createOpenAI({
+				apiKey: runtime.getSetting("OPENAI_API_KEY"),
+				baseURL,
 			});
+			const model = runtime.getSetting("OPENAI_SMALL_MODEL") ?? runtime.getSetting("SMALL_MODEL") ?? "gpt-4o-mini";
+			
+			try {
+				if (params.schema) {
+					const { object } = await generateObject({
+						model: openai.languageModel(model),
+						schema: z.object(params.schema),
+						prompt: params.prompt,
+						temperature: params.temperature,
+					});
+					return object;
+				}
+				
+				const { object } = await generateObject({
+					model: openai.languageModel(model),
+					output: 'no-schema',
+					prompt: params.prompt,
+					temperature: params.temperature,
+				});
+				return object;
+			} catch (error) {
+				logger.error("Error generating object:", error);
+				throw error;
+			}
 		},
-		[ModelTypes.OBJECT_LARGE]: async (runtime, params) => {
-			return await generateObject(runtime, {
-				...params,
-				modelType: ModelTypes.OBJECT_LARGE,
+		[ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
+			const baseURL = runtime.getSetting("OPENAI_BASE_URL") ?? "https://api.openai.com/v1";
+			const openai = createOpenAI({
+				apiKey: runtime.getSetting("OPENAI_API_KEY"),
+				baseURL,
 			});
+			const model = runtime.getSetting("OPENAI_LARGE_MODEL") ?? runtime.getSetting("LARGE_MODEL") ?? "gpt-4o";
+			
+			try {
+				if (params.schema) {
+					const { object } = await generateObject({
+						model: openai.languageModel(model),
+						schema: z.object(params.schema),
+						prompt: params.prompt,
+						temperature: params.temperature,
+					});
+					return object;
+				}
+				
+				const { object } = await generateObject({
+					model: openai.languageModel(model),
+					output: 'no-schema',
+					prompt: params.prompt,
+					temperature: params.temperature,
+				});
+				return object;
+			} catch (error) {
+				logger.error("Error generating object:", error);
+				throw error;
+			}
 		},
 	},
 	tests: [
@@ -496,7 +530,7 @@ export const openaiPlugin: Plugin = {
 					fn: async (runtime) => {
 						try {
 							const embedding = await runtime.useModel(
-								ModelTypes.TEXT_EMBEDDING,
+								ModelType.TEXT_EMBEDDING,
 								{
 									text: "Hello, world!",
 								},
@@ -512,7 +546,7 @@ export const openaiPlugin: Plugin = {
 					name: "openai_test_text_large",
 					fn: async (runtime) => {
 						try {
-							const text = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+							const text = await runtime.useModel(ModelType.TEXT_LARGE, {
 								prompt: "What is the nature of reality in 10 words?",
 							});
 							if (text.length === 0) {
@@ -529,7 +563,7 @@ export const openaiPlugin: Plugin = {
 					name: "openai_test_text_small",
 					fn: async (runtime) => {
 						try {
-							const text = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+							const text = await runtime.useModel(ModelType.TEXT_SMALL, {
 								prompt: "What is the nature of reality in 10 words?",
 							});
 							if (text.length === 0) {
@@ -547,7 +581,7 @@ export const openaiPlugin: Plugin = {
 					fn: async (runtime) => {
 						logger.log("openai_test_image_generation");
 						try {
-							const image = await runtime.useModel(ModelTypes.IMAGE, {
+							const image = await runtime.useModel(ModelType.IMAGE, {
 								prompt: "A beautiful sunset over a calm ocean",
 								n: 1,
 								size: "1024x1024",
@@ -566,7 +600,7 @@ export const openaiPlugin: Plugin = {
 							logger.log("openai_test_image_description");
 							try {
 								const result = await runtime.useModel(
-									ModelTypes.IMAGE_DESCRIPTION,
+									ModelType.IMAGE_DESCRIPTION,
 									"https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Vitalik_Buterin_TechCrunch_London_2015_%28cropped%29.jpg/537px-Vitalik_Buterin_TechCrunch_London_2015_%28cropped%29.jpg",
 								);
 
@@ -602,7 +636,7 @@ export const openaiPlugin: Plugin = {
 							);
 							const arrayBuffer = await response.arrayBuffer();
 							const transcription = await runtime.useModel(
-								ModelTypes.TRANSCRIPTION,
+								ModelType.TRANSCRIPTION,
 								Buffer.from(new Uint8Array(arrayBuffer)),
 							);
 							logger.log("generated with test_transcription:", transcription);
@@ -617,7 +651,7 @@ export const openaiPlugin: Plugin = {
 					fn: async (runtime) => {
 						const prompt = "Hello tokenizer encode!";
 						const tokens = await runtime.useModel(
-							ModelTypes.TEXT_TOKENIZER_ENCODE,
+							ModelType.TEXT_TOKENIZER_ENCODE,
 							{ prompt },
 						);
 						if (!Array.isArray(tokens) || tokens.length === 0) {
@@ -634,12 +668,12 @@ export const openaiPlugin: Plugin = {
 						const prompt = "Hello tokenizer decode!";
 						// Encode the string into tokens first
 						const tokens = await runtime.useModel(
-							ModelTypes.TEXT_TOKENIZER_ENCODE,
+							ModelType.TEXT_TOKENIZER_ENCODE,
 							{ prompt },
 						);
 						// Now decode tokens back into text
 						const decodedText = await runtime.useModel(
-							ModelTypes.TEXT_TOKENIZER_DECODE,
+							ModelType.TEXT_TOKENIZER_DECODE,
 							{ tokens },
 						);
 						if (decodedText !== prompt) {
@@ -655,162 +689,3 @@ export const openaiPlugin: Plugin = {
 	],
 };
 export default openaiPlugin;
-
-/**
- * Generates a structured object from a prompt using OpenAI's function calling capabilities.
- *
- * @param runtime The agent runtime
- * @param params The generation parameters
- * @returns The generated object
- */
-async function generateObject(
-	runtime: IAgentRuntime,
-	params: ObjectGenerationParams,
-) {
-	const {
-		prompt,
-		schema,
-		output = "object",
-		enumValues = [],
-		modelType = ModelTypes.OBJECT_SMALL,
-		temperature = 0.7,
-	} = params;
-
-	// Determine which model to use
-	const modelName =
-		modelType === ModelTypes.OBJECT_SMALL
-			? (process.env.OPENAI_SMALL_MODEL ??
-				process.env.SMALL_MODEL ??
-				"gpt-4o-mini")
-			: (process.env.OPENAI_LARGE_MODEL ?? process.env.LARGE_MODEL ?? "gpt-4o");
-
-	const baseURL = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
-
-	// Handle enum types specifically
-	if (output === "enum" && enumValues.length) {
-		try {
-			const response = await fetch(`${baseURL}/chat/completions`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-				},
-				body: JSON.stringify({
-					model: modelName,
-					messages: [{ role: "user", content: prompt }],
-					temperature,
-					tools: [
-						{
-							type: "function",
-							function: {
-								name: "select_value",
-								description:
-									"Select the most appropriate value from the provided options",
-								parameters: {
-									type: "object",
-									properties: {
-										value: {
-											type: "string",
-											enum: enumValues,
-											description: "The selected value",
-										},
-									},
-									required: ["value"],
-								},
-							},
-						},
-					],
-					tool_choice: { type: "function", function: { name: "select_value" } },
-				}),
-			});
-
-			if (!response.ok) {
-				throw new Error(`API error: ${response.status}`);
-			}
-
-			const result: any = await response.json();
-			const toolCalls = result.choices?.[0]?.message?.tool_calls;
-
-			if (toolCalls && toolCalls.length > 0) {
-				try {
-					const functionArgs = JSON.parse(toolCalls[0].function.arguments);
-					return functionArgs.value;
-				} catch (err) {
-					logger.error("Failed to parse function arguments:", err);
-					return null;
-				}
-			}
-
-			return null;
-		} catch (error) {
-			logger.error("Error generating enum value:", error);
-			return null;
-		}
-	}
-
-	// Handle regular object generation with schema
-	try {
-		// Determine the appropriate JSON schema
-		let functionSchema: any;
-
-		if (schema) {
-			// Use provided schema
-			functionSchema = schema;
-		} else {
-			// Default schema based on output type
-			functionSchema = {
-				type: output === "array" ? "array" : "object",
-				...(output === "array" ? { items: { type: "object" } } : {}),
-			};
-		}
-
-		// Call the OpenAI API directly
-		const response = await fetch(`${baseURL}/chat/completions`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-				Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-			},
-			body: JSON.stringify({
-				model: modelName,
-				messages: [{ role: "user", content: prompt }],
-				temperature,
-				tools: [
-					{
-						type: "function",
-						function: {
-							name: "generate_structured_data",
-							description: "Generate structured data based on the prompt",
-							parameters: functionSchema,
-						},
-					},
-				],
-				tool_choice: {
-					type: "function",
-					function: { name: "generate_structured_data" },
-				},
-			}),
-		});
-
-		if (!response.ok) {
-			throw new Error(`API error: ${response.status}`);
-		}
-
-		const result: any = await response.json();
-		const toolCalls = result.choices?.[0]?.message?.tool_calls;
-
-		if (toolCalls && toolCalls.length > 0) {
-			try {
-				return JSON.parse(toolCalls[0].function.arguments);
-			} catch (err) {
-				logger.error("Failed to parse function arguments:", err);
-				return null;
-			}
-		}
-
-		return null;
-	} catch (error) {
-		logger.error("Error generating object:", error);
-		return null;
-	}
-}

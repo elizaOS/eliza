@@ -1,24 +1,20 @@
 import {
 	ChannelType,
-	EventTypes,
 	type Content,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Media,
 	type Memory,
-	ModelTypes,
-	type MessageReceivedPayload,
-	type MessageSentPayload,
-	type ReactionReceivedPayload,
-	Role,
+	ModelType,
 	type UUID,
 	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
 import type { Chat, Message, ReactionType, Update } from "@telegraf/types";
 import type { Context, NarrowedContext, Telegraf } from "telegraf";
-import { escapeMarkdown } from "./utils";
 import { TelegramEventTypes, type TelegramMessageReceivedPayload, type TelegramMessageSentPayload, type TelegramReactionReceivedPayload } from "./types";
+import { escapeMarkdown } from "./utils";
 
 import fs from "node:fs";
 
@@ -94,7 +90,7 @@ export class MessageManager {
 
 			if (imageUrl) {
 				const { title, description } = await this.runtime.useModel(
-					ModelTypes.IMAGE_DESCRIPTION,
+					ModelType.IMAGE_DESCRIPTION,
 					imageUrl,
 				);
 				return { description: `[Image: ${title}\n${description}]` };
@@ -187,7 +183,7 @@ export class MessageManager {
 	 *
 	 * @returns {Promise<void>} A Promise that resolves when the media is successfully sent.
 	 */
-	private async sendMedia(
+	async sendMedia(
 		ctx: Context,
 		mediaPath: string,
 		type: MediaType,
@@ -287,8 +283,7 @@ export class MessageManager {
 			) as UUID;
 			const userName =
 				ctx.from.username || ctx.from.first_name || "Unknown User";
-			const chatId = createUniqueUuid(this.runtime, ctx.chat?.id.toString());
-			const roomId = chatId;
+			const roomId = createUniqueUuid(this.runtime, ctx.chat?.id.toString());
 
 			// Get message ID
 			const messageId = createUniqueUuid(
@@ -317,6 +312,14 @@ export class MessageManager {
 			const chat = message.chat as Chat;
 			const channelType = getChannelType(chat);
 
+			// Get world and room IDs
+			// For private chats, the world is the chat itself
+			// For groups/channels, the world is the supergroup/channel
+			const worldId = createUniqueUuid(
+				this.runtime,
+				chat.type === "private" ? `private_${chat.id}` : chat.id.toString()
+			);
+
 			// Get world and room names
 			const worldName =
 				chat.type === "supergroup"
@@ -338,10 +341,7 @@ export class MessageManager {
 								? (chat as Chat.GroupChat).title
 								: "Unknown Group";
 
-			// Create the standardized world ID for this chat
-			const worldId = createUniqueUuid(this.runtime, chat.id.toString());
-
-			// Ensure entity connection
+			// Ensure entity connection with proper world/server ID handling
 			await this.runtime.ensureConnection({
 				entityId,
 				roomId,
@@ -349,7 +349,7 @@ export class MessageManager {
 				name: userName,
 				source: "telegram",
 				channelId: ctx.chat.id.toString(),
-				serverId: chat.id.toString(),
+				serverId: chat.type === "private" ? undefined : chat.id.toString(), // Only set serverId for non-private chats
 				type: channelType,
 				worldId: worldId
 			});
@@ -361,7 +361,7 @@ export class MessageManager {
 				source: "telegram",
 				type: channelType,
 				channelId: ctx.chat.id.toString(),
-				serverId: ctx.chat.id.toString(),
+				serverId: chat.type === "private" ? undefined : chat.id.toString(),
 				worldId: worldId,
 			};
 			
@@ -424,9 +424,7 @@ export class MessageManager {
 							createdAt: sentMessage.date * 1000,
 						};
 
-						await this.runtime
-							.getMemoryManager("messages")
-							.createMemory(responseMemory);
+						await this.runtime.createMemory(responseMemory, "messages");
 						memories.push(responseMemory);
 					}
 
@@ -461,8 +459,12 @@ export class MessageManager {
 				} as TelegramMessageReceivedPayload
 			);
 		} catch (error) {
-			logger.error("❌ Error handling message:", error);
-			logger.error("Error sending message:", error);
+			logger.error("Error handling Telegram message:", {
+				error,
+				chatId: ctx.chat?.id,
+				messageId: ctx.message?.message_id,
+				from: ctx.from?.username || ctx.from?.id
+			});
 			throw error;
 		}
 	}
@@ -617,7 +619,7 @@ export class MessageManager {
 					createdAt: sentMessage.date * 1000
 				};
 				
-				await this.runtime.getMemoryManager("messages").createMemory(memory);
+				await this.runtime.createMemory(memory, "messages");
 				memories.push(memory);
 			}
 
@@ -636,10 +638,6 @@ export class MessageManager {
 			this.runtime.emitEvent(
 				TelegramEventTypes.MESSAGE_SENT,
 				{
-					runtime: this.runtime,
-					messages: memories,
-					roomId,
-					source: "telegram",
 					originalMessages: sentMessages,
 					chatId
 				} as TelegramMessageSentPayload

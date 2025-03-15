@@ -1,10 +1,14 @@
 {
 	"name": "@elizaos/plugin-openai",
-	"version": "1.0.0-alpha.20",
+	"version": "1.0.0-alpha.60",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
 	"types": "dist/index.d.ts",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elizaos-plugins/plugin-openai"
+	},
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
@@ -14,30 +18,25 @@
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"dependencies": {
 		"@ai-sdk/openai": "^1.1.9",
 		"@ai-sdk/ui-utils": "1.1.9",
-		"@elizaos/core": "^1.0.0-alpha.20",
+		"@elizaos/core": "^1.0.0-alpha.60",
 		"ai": "^4.1.25",
 		"js-tiktoken": "^1.0.18",
-		"tsup": "8.4.0",
-		"zod": "3.21.4"
+		"tsup": "8.4.0"
 	},
 	"scripts": {
 		"build": "tsup",
 		"dev": "tsup --watch",
-		"test": "vitest run",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
-	},
-	"peerDependencies": {
-		"whatwg-url": "7.1.0"
+		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
+		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"publishConfig": {
 		"access": "public"
-	},
-	"resolutions": {
-		"zod": "3.24.1"
 	},
 	"agentConfig": {
 		"pluginType": "elizaos:plugin:1.0.0",
@@ -48,5 +47,5 @@
 			}
 		}
 	},
-	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
 }

@@ -19,7 +19,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type UUID,
 	createUniqueUuid,
 	logger,
@@ -35,7 +35,7 @@ import {
 	type VoiceState,
 } from "discord.js";
 import prism from "prism-media";
-import type { DiscordService } from "./index";
+import type { DiscordService } from "./service";
 import { getWavHeader } from "./utils";
 
 // These values are chosen for compatibility with picovoice components
@@ -225,7 +225,7 @@ export class VoiceManager extends EventEmitter {
 	private setReady(status: boolean) {
 		this.ready = status;
 		this.emit("ready");
-		logger.success(`VoiceManager is now ready: ${this.ready}`);
+		logger.debug(`VoiceManager is now ready: ${this.ready}`);
 	}
 
 	/**
@@ -689,7 +689,7 @@ export class VoiceManager extends EventEmitter {
 			console.log("Starting transcription...");
 
 			const transcriptionText = await this.runtime.useModel(
-				ModelTypes.TRANSCRIPTION,
+				ModelType.TRANSCRIPTION,
 				wavBuffer,
 			);
 			function isValidTranscription(text: string): boolean {
@@ -802,11 +802,10 @@ export class VoiceManager extends EventEmitter {
 
 					if (responseMemory.content.text?.trim()) {
 						await this.runtime
-							.getMemoryManager("messages")
-							.createMemory(responseMemory);
+											.createMemory(responseMemory);
 
 						const responseStream = await this.runtime.useModel(
-							ModelTypes.TEXT_TO_SPEECH,
+							ModelType.TEXT_TO_SPEECH,
 							content.text,
 						);
 						if (responseStream) {
@@ -895,7 +894,7 @@ export class VoiceManager extends EventEmitter {
 				console.log(`Joining channel: ${chosenChannel.name}`);
 				await this.joinChannel(chosenChannel);
 			} else {
-				console.warn("No suitable voice channel found to join.");
+				logger.debug("Warning: No suitable voice channel found to join.");
 			}
 		} catch (error) {
 			console.error("Error selecting or joining a voice channel:", error);

@@ -9,7 +9,7 @@ export function usePlugins() {
 		queryKey: ["plugins"],
 		queryFn: async () => {
 			const response = await fetch(
-				"https://raw.githubusercontent.com/elizaos-plugins/registry/refs/heads/main/index.json",
+				"https://raw.githubusercontent.com/elizaos/registry/refs/heads/main/index.json",
 			);
 			return response.json();
 		},

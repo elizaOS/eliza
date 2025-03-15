@@ -10,7 +10,7 @@ import type {
 	State,
 	TemplateType,
 } from "./types";
-import { ModelTypes } from "./types";
+import { ModelType } from "./types";
 
 /**
  * Composes a context string by replacing placeholders in a template with corresponding values from the state.
@@ -281,7 +281,7 @@ export const formatMessages = ({
 
 			const planString =
 				newestMessageWithContentPlan?.id === message.id
-					? `(${formattedName}'s plan: ${newestMessageWithContentPlan.content.plan})`
+					? `(${formattedName}'s plan: ${newestMessageWithContentPlan?.content?.plan})`
 					: null;
 
 			// for each thought, action, text or attachment, add a new line, with text first, then thought, then action, then attachment
@@ -365,6 +365,40 @@ Response format should be formatted in a valid JSON block like this:
 \`\`\`
 
 Your response should include the valid JSON block and nothing else.`;
+
+export const postCreationTemplate = `# Task: Create a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
+
+Example task outputs:
+1. A post about the importance of AI in our lives
+\`\`\`json
+{ "thought": "I am thinking about writing a post about the importance of AI in our lives", "post": "AI is changing the world and it is important to understand how it works", "imagePrompt": "A futuristic cityscape with flying cars and people using AI to do things" }
+\`\`\`
+
+2. A post about dogs
+\`\`\`json
+{ "thought": "I am thinking about writing a post about dogs", "post": "Dogs are man's best friend and they are loyal and loving", "imagePrompt": "A dog playing with a ball in a park" }
+\`\`\`
+
+3. A post about finding a new job
+\`\`\`json
+{ "thought": "Getting a job is hard, I bet there's a good tweet in that", "post": "Just keep going!", "imagePrompt": "A person looking at a computer screen with a job search website" }
+\`\`\`
+
+{{providers}}
+
+Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
+Your response should be 1, 2, or 3 sentences (choose the length at random).
+Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.
+
+Your output should be formatted in a valid JSON block like this:
+\`\`\`json
+{ "thought": "<string>", "post": "<string>", "imagePrompt": "<string>" }
+\`\`\`
+The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
+The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
+The "thought" field should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
+Your reponse should ONLY contain a valid JSON block and nothing else.`;
+
 
 export const booleanFooter = "Respond with only a YES or a NO.";
 
@@ -481,7 +515,7 @@ export function parseJSONObjectFromText(
 	try {
 		if (jsonBlockMatch) {
 			// Parse the JSON from inside the code block
-			jsonData = JSON.parse(jsonBlockMatch[1].trim());
+			jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
 		} else {
 			// Try to parse the text directly if it's not in a code block
 			jsonData = JSON.parse(normalizeJsonString(text.trim()));
@@ -711,7 +745,7 @@ export async function trimTokens(
 	if (maxTokens <= 0) throw new Error("maxTokens must be positive");
 
 	try {
-		const tokens = await runtime.useModel(ModelTypes.TEXT_TOKENIZER_ENCODE, {
+		const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
 			prompt,
 		});
 
@@ -724,7 +758,7 @@ export async function trimTokens(
 		const truncatedTokens = tokens.slice(-maxTokens);
 
 		// Decode back to text
-		return await runtime.useModel(ModelTypes.TEXT_TOKENIZER_DECODE, {
+		return await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
 			tokens: truncatedTokens,
 		});
 	} catch (error) {

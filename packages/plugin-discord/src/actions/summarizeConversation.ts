@@ -7,7 +7,7 @@ import {
 	type IAgentRuntime,
 	type Media,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	getEntityDetails,
@@ -69,7 +69,7 @@ const getDateRange = async (
 	});
 
 	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 		console.log("response", response);
@@ -149,7 +149,7 @@ const getDateRange = async (
  * @property {Function} handler - Asynchronous function to handle the action.
  * @property {ActionExample[][]} examples - Array of examples demonstrating the action.
  */
-const summarizeAction = {
+export const summarize: Action = {
 	name: "SUMMARIZE_CONVERSATION",
 	similes: [
 		"RECAP",
@@ -203,7 +203,7 @@ const summarizeAction = {
 			"catch me up",
 		];
 		return keywords.some((keyword) =>
-			message.content.text.toLowerCase().includes(keyword.toLowerCase()),
+			message.content.text?.toLowerCase().includes(keyword.toLowerCase()),
 		);
 	},
 	handler: async (
@@ -225,7 +225,7 @@ const summarizeAction = {
 		const dateRange = await getDateRange(runtime, message, state);
 		if (!dateRange) {
 			console.error("Couldn't get date range from message");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -237,14 +237,15 @@ const summarizeAction = {
 				metadata: {
 					type: "SUMMARIZE_CONVERSATION",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
 		const { objective, start, end } = dateRange;
 
 		// 2. get these memories from the database
-		const memories = await runtime.getMemoryManager("messages").getMemories({
+		const memories = await runtime.getMemories({
+			tableName: "messages",
 			roomId,
 			// subtract start from current time
 			start: Number.parseInt(start as string),
@@ -297,7 +298,7 @@ const summarizeAction = {
 				template,
 			});
 
-			const summary = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			const summary = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt,
 			});
 
@@ -306,7 +307,7 @@ const summarizeAction = {
 
 		if (!currentSummary) {
 			console.error("No summary found, that's not good!");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -318,7 +319,7 @@ const summarizeAction = {
 				metadata: {
 					type: "SUMMARIZE_CONVERSATION",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
@@ -429,4 +430,4 @@ ${currentSummary.trim()}
 	] as ActionExample[][],
 } as Action;
 
-export default summarizeAction;
+export default summarize;

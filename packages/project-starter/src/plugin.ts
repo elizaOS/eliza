@@ -6,7 +6,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type Provider,
 	type ProviderResult,
 	Service,
@@ -14,6 +14,7 @@ import {
 	logger,
 } from "@elizaos/core";
 import { z } from "zod";
+import starterTestSuite from "./tests";
 
 /**
  * Define the configuration schema for the plugin with the following properties:
@@ -160,9 +161,9 @@ export class StarterService extends Service {
 	}
 }
 
-export const starterPlugin: Plugin = {
-	name: "plugin-starter",
-	description: "Plugin starter for elizaOS",
+const plugin: Plugin = {
+	name: "starter",
+	description: "A starter plugin for Eliza",
 	config: {
 		EXAMPLE_PLUGIN_VARIABLE: process.env.EXAMPLE_PLUGIN_VARIABLE,
 	},
@@ -187,13 +188,13 @@ export const starterPlugin: Plugin = {
 		}
 	},
 	models: {
-		[ModelTypes.TEXT_SMALL]: async (
+		[ModelType.TEXT_SMALL]: async (
 			_runtime,
 			{ prompt, stopSequences = [] }: GenerateTextParams,
 		) => {
 			return "Never gonna give you up, never gonna let you down, never gonna run around and desert you...";
 		},
-		[ModelTypes.TEXT_LARGE]: async (
+		[ModelType.TEXT_LARGE]: async (
 			_runtime,
 			{
 				prompt,
@@ -207,19 +208,7 @@ export const starterPlugin: Plugin = {
 			return "Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...";
 		},
 	},
-	tests: [
-		{
-			name: "plugin_starter_test_suite",
-			tests: [
-				{
-					name: "example_test",
-					fn: async (runtime) => {
-						console.log("example_test run by ", runtime.character.name);
-					},
-				},
-			],
-		},
-	],
+	tests: [starterTestSuite],
 	routes: [
 		{
 			path: "/helloworld",
@@ -247,16 +236,16 @@ export const starterPlugin: Plugin = {
 				console.log(Object.keys(params));
 			},
 		],
-		SERVER_CONNECTED: [
+		WORLD_CONNECTED: [
 			async (params) => {
-				console.log("SERVER_CONNECTED event received");
+				console.log("WORLD_CONNECTED event received");
 				// print the keys
 				console.log(Object.keys(params));
 			},
 		],
-		SERVER_JOINED: [
+		WORLD_JOINED: [
 			async (params) => {
-				console.log("SERVER_JOINED event received");
+				console.log("WORLD_JOINED event received");
 				// print the keys
 				console.log(Object.keys(params));
 			},
@@ -266,4 +255,5 @@ export const starterPlugin: Plugin = {
 	actions: [helloWorldAction],
 	providers: [helloWorldProvider],
 };
-export default starterPlugin;
+
+export default plugin;

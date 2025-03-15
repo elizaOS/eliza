@@ -6,7 +6,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 } from "../types";
 
@@ -69,7 +69,7 @@ export const unfollowRoomAction: Action = {
 				template: shouldUnfollowTemplate, // Define this template separately
 			});
 
-			const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt: shouldUnfollowPrompt,
 			});
 
@@ -87,7 +87,7 @@ export const unfollowRoomAction: Action = {
 				state.data.room ??
 				(await runtime.getRoom(message.roomId));
 
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -95,9 +95,9 @@ export const unfollowRoomAction: Action = {
 					thought: `I unfollowed the room ${room.name}`,
 					actions: ["UNFOLLOW_ROOM_START"],
 				},
-			});
+			}, "messages");
 		} else {
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -109,7 +109,7 @@ export const unfollowRoomAction: Action = {
 				metadata: {
 					type: "UNFOLLOW_ROOM",
 				},
-			});
+			}, "messages");
 		}
 	},
 	examples: [

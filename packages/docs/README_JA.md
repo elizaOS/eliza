@@ -24,7 +24,7 @@
 **必須条件:**
 
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [bun](https://bun.io/installation)
+- [pnpm](https://pnpm.io/installation)
 
 ### .envファイルの編集
 
@@ -34,13 +34,13 @@
 ### キャラクターファイルの編集
 
 - `packages/core/src/defaultCharacter.ts`ファイルを確認 - これを変更可能
-- `bun start --characters="path/to/your/character.json"`を使用してキャラクターをロードし、複数のボットを同時に実行可能
+- `pnpm start --characters="path/to/your/character.json"`を使用してキャラクターをロードし、複数のボットを同時に実行可能
 
 .envファイルとキャラクターファイルを設定した後、以下のコマンドでボットを起動可能:
 
 ```
-bun i
-bun start
+pnpm i
+pnpm start
 ```
 
 # Elizaのカスタマイズ
@@ -68,7 +68,7 @@ bun start
 Sharpをインストールする必要があるかもしれません。起動時にエラーが表示された場合は、以下のコマンドでインストールを試みてください:
 
 ```
-bun install --include=optional sharp
+pnpm install --include=optional sharp
 ```
 
 # 環境設定
@@ -80,7 +80,7 @@ bun install --include=optional sharp
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # ボットトークン
 OPENAI_API_KEY=sk-* # OpenAI APIキー、sk-で始まる
-ELEVENLABS_API_KEY= # elevenlabsからのAPIキー
+ELEVENLABS_XI_API_KEY= # elevenlabsからのAPIキー
 
 # ELEVENLABS設定
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
@@ -136,7 +136,7 @@ TOGETHER_API_KEY=
 NVIDIA GPUを持っている場合、CUDAをインストールしてローカル推論を大幅に高速化可能
 
 ```
-bun install
+pnpm install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 
@@ -159,15 +159,15 @@ Discordボットの設定に関するヘルプについては、こちらを参�
 テストスイートを実行するには:
 
 ```bash
-bun test           # テストを一度実行
-bun test:watch    # ウォッチモードでテストを実行
+pnpm test           # テストを一度実行
+pnpm test:watch    # ウォッチモードでテストを実行
 ```
 
 データベース固有のテストの場合:
 
 ```bash
-bun test:sqlite   # SQLiteでテストを実行
-bun test:sqljs    # SQL.jsでテストを実行
+pnpm test:sqlite   # SQLiteでテストを実行
+pnpm test:sqljs    # SQL.jsでテストを実行
 ```
 
 テストはJestを使用して記述されており、`src/**/*.test.ts`ファイルにあります。テスト環境は次のように構成されています:

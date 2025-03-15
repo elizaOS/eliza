@@ -1,12 +1,14 @@
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
-import path from "node:path";
+import path, { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildProject } from "@/src/utils/build-project";
 import {
 	AgentRuntime,
 	type Character,
 	type IAgentRuntime,
+	ModelType,
 	type Plugin,
 	logger,
 	settings,
@@ -14,20 +16,19 @@ import {
 } from "@elizaos/core";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
+import { character as defaultCharacter } from "../characters/eliza";
 import { AgentServer } from "../server/index";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
-import { generateCustomCharacter } from "../utils/character-generator.js";
 import {
 	displayConfigStatus,
-	getPluginStatus,
 	loadConfig,
-	saveConfig,
+	saveConfig
 } from "../utils/config-manager.js";
 import {
 	promptForEnvVars,
-	promptForServices
 } from "../utils/env-prompt.js";
 import { handleError } from "../utils/handle-error";
+import { installPlugin } from "../utils/install-plugin";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,7 +42,7 @@ export const wait = (minTime = 1000, maxTime = 3000) => {
 /**
  * Analyzes project agents and their plugins to determine which environment variables to prompt for
  */
-async function promptForProjectPlugins(
+export async function promptForProjectPlugins(
 	project: any,
 	pluginToLoad?: { name: string },
 ): Promise<void> {
@@ -79,9 +80,6 @@ async function promptForProjectPlugins(
 		}
 	}
 
-	// Always prompt for database configuration
-	pluginsToPrompt.add("pglite");
-
 	// Prompt for each identified plugin
 	for (const pluginName of pluginsToPrompt) {
 		try {
@@ -104,7 +102,7 @@ async function promptForProjectPlugins(
  * @param options Additional options for starting the agent, such as data directory and postgres URL.
  * @returns A promise that resolves to the agent runtime object.
  */
-async function startAgent(
+export async function startAgent(
 	character: Character,
 	server: AgentServer,
 	init?: (runtime: IAgentRuntime) => void,
@@ -112,13 +110,177 @@ async function startAgent(
 	options: {
 		dataDir?: string;
 		postgresUrl?: string;
+		isPluginTestMode?: boolean;
 	} = {},
 ): Promise<IAgentRuntime> {
 	character.id ??= stringToUuid(character.name);
 
+	// For ESM modules we need to use import.meta.url instead of __dirname
+	const __filename = fileURLToPath(import.meta.url);
+	const __dirname = dirname(__filename);
+
+	// Find package.json relative to the current file
+	const packageJsonPath = path.resolve(__dirname, "../package.json");
+
+	// Add a simple check in case the path is incorrect
+	let version = "0.0.0"; // Fallback version
+	if (!fs.existsSync(packageJsonPath)) {
+	} else {
+		const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+		version = packageJson.version;
+	}
+
+	const characterPlugins: Plugin[] = []
+
+	// for each plugin, check if it installed, and install if it is not
+	for (const plugin of character.plugins) {
+		logger.info("Checking if plugin is installed: ", plugin);
+		let pluginModule: any;
+		
+		// Try to load the plugin
+		try {
+			// For local plugins, use regular import
+			pluginModule = await import(plugin);
+		logger.debug(`Successfully loaded plugin ${plugin}`);
+		} catch (error) {
+			logger.info(`Plugin ${plugin} not installed, installing into ${process.cwd()}...`);
+			await installPlugin(plugin, process.cwd(), version);
+			
+			try {
+				// For local plugins, use regular import
+				pluginModule = await import(plugin);
+				logger.debug(`Successfully loaded plugin ${plugin} after installation`);
+			} catch (error) {
+				if (error.message && 
+					(error.message.includes('base64 is not a function') || 
+					error.message.includes('z8.string'))) {
+					logger.warn(`Plugin ${plugin} has Zod validation issue: ${error.message}`);
+					logger.warn('This is likely due to bundled Zod (z8). Creating a stub implementation.');
+					
+					// For any plugin, provide a basic stub to prevent crashes
+					const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
+					pluginModule = {
+						default: {
+							name: pluginName,
+							description: `${pluginName} plugin (stub)`,
+							init: async () => {
+								logger.warn(`Using stub ${pluginName} plugin due to import error`);
+								return {};
+							}
+						}
+					};
+					
+					// Special handling for Anthropic
+					if (plugin.includes('anthropic')) {
+						pluginModule = {
+							default: {
+								name: 'anthropic',
+								description: 'Anthropic plugin (stub)',
+								models: {
+									[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
+									[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
+								},
+								init: async () => {
+									logger.warn('Using stub Anthropic plugin due to Zod validation error');
+									return {};
+								}
+							},
+							anthropicPlugin: {
+								name: 'anthropic',
+								description: 'Anthropic plugin (stub)',
+								models: {
+									[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
+									[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
+								},
+								init: async () => {
+									logger.warn('Using stub Anthropic plugin due to Zod validation error');
+									return {};
+								}
+							}
+						};
+					}
+				} else {
+					logger.error(`Failed to install plugin ${plugin}: ${error}`);
+					
+					// Create a minimal stub to keep things running
+					const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
+					pluginModule = {
+						default: {
+							name: pluginName,
+							description: `${pluginName} plugin (error stub)`,
+							init: async () => {
+								logger.warn(`Using minimal stub for ${pluginName} plugin due to import error`);
+								return {};
+							}
+						}
+					};
+				}
+			}
+		}
+		
+		if (!pluginModule) {
+			logger.error(`Failed to load plugin ${plugin}, using minimal stub`);
+			
+			// Create a minimal stub to prevent undefined errors
+			const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
+			pluginModule = {
+				default: {
+					name: pluginName,
+					description: `${pluginName} plugin (minimal stub)`,
+					init: async () => {
+						logger.warn(`Using minimal stub for ${pluginName} plugin`);
+						return {};
+					}
+				}
+			};
+		}
+		
+		// Process the plugin to get the actual plugin object
+		const functionName = `${plugin
+			.replace("@elizaos/plugin-", "")
+			.replace("@elizaos-plugins/", "")
+			.replace(/-./g, (x) => x[1].toUpperCase())}Plugin`; // Assumes plugin function is camelCased with Plugin suffix
+			
+		// Add detailed logging to debug plugin loading
+		logger.debug(`Looking for plugin export: ${functionName}`);
+		logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
+		logger.debug(`Has default export: ${!!pluginModule.default}`);
+		
+		// Check if the plugin is available as a default export or named export
+		const importedPlugin = pluginModule.default || pluginModule[functionName];
+		
+		if (importedPlugin) {
+			logger.debug(`Found plugin: ${importedPlugin.name}`);
+			characterPlugins.push(importedPlugin);
+		} else {
+			// Try more aggressively to find a suitable plugin export
+			let foundPlugin = null;
+			
+			// Look for any object with a name and init function
+			for (const key of Object.keys(pluginModule)) {
+				const potentialPlugin = pluginModule[key];
+				if (potentialPlugin && 
+					typeof potentialPlugin === 'object' && 
+					potentialPlugin.name && 
+					typeof potentialPlugin.init === 'function') {
+					logger.debug(`Found alternative plugin export under key: ${key}`);
+					foundPlugin = potentialPlugin;
+					break;
+				}
+			}
+			
+			if (foundPlugin) {
+				logger.debug(`Using alternative plugin: ${foundPlugin.name}`);
+				characterPlugins.push(foundPlugin);
+			} else {
+				logger.warn(`Could not find plugin export in ${plugin}. Available exports: ${Object.keys(pluginModule).join(', ')}`);
+			}
+		}
+	}
+
 	const runtime = new AgentRuntime({
 		character,
-		plugins,
+		plugins: [...plugins, ...characterPlugins],
 	});
 	if (init) {
 		await init(runtime);
@@ -210,22 +372,8 @@ const startAgents = async (options: {
 		dotenv.config({ path: envFilePath });
 	}
 
-	// Always ensure database configuration is set
-	try {
-		await promptForEnvVars("pglite");
-	} catch (error) {
-		logger.warn(`Error configuring database: ${error}`);
-	}
-
 	// Load existing configuration
 	const existingConfig = loadConfig();
-	const pluginStatus = getPluginStatus();
-
-	// Variables to store the selected plugins
-	let selectedServices: string[] = [];
-	let selectedAiModels: string[] = [];
-
-	console.log("*** existingConfig", existingConfig);
 
 	// Check if we should reconfigure based on command-line option or if using default config
 	const shouldConfigure = options.configure || existingConfig.isDefault;
@@ -241,60 +389,11 @@ const startAgents = async (options: {
 		} else {
 			logger.info("Reconfiguration requested.");
 		}
-
-		await new Promise((resolve) => setTimeout(resolve, 100));
-
-		// Prompt for services and AI models first
-		const userSelections = await promptForServices();
-		selectedServices = userSelections.services;
-		selectedAiModels = userSelections.aiModels;
-
 		// Save the configuration AFTER user has made selections
 		saveConfig({
-			services: selectedServices,
-			aiModels: selectedAiModels,
 			lastUpdated: new Date().toISOString(),
-			// isDefault is not included to indicate this is now a user-configured setup
 		});
-	} else {
-		// Use existing configuration
-		selectedServices = existingConfig.services;
-		selectedAiModels = existingConfig.aiModels;
 	}
-
-	// Now handle environment variables for the selected plugins
-	// Prompt for environment variables for selected services and AI models
-	const pluginsToPrompt = [
-		"pglite",
-		...selectedServices,
-		...selectedAiModels,
-	].filter((plugin, index, self) => self.indexOf(plugin) === index); // Remove duplicates
-
-	// Check which plugins are missing environment variables
-	const missingEnvVars = pluginsToPrompt.filter(
-		(plugin) => !pluginStatus[plugin],
-	);
-
-	// Prompt for missing environment variables
-	if (missingEnvVars.length > 0) {
-		logger.info(
-			`${missingEnvVars.length} plugins need configuration. Let's set them up.`,
-		);
-
-		for (const plugin of missingEnvVars) {
-			logger.info(`Configuring ${plugin}...`);
-			await promptForEnvVars(plugin);
-		}
-
-		logger.info("All required plugin configurations complete!");
-	}
-
-	// Create a custom character with the selected plugins
-	const customCharacter = generateCustomCharacter(
-		selectedServices,
-		selectedAiModels,
-	);
-
 	// Look for PostgreSQL URL in environment variables
 	const postgresUrl = process.env.POSTGRES_URL;
 
@@ -324,16 +423,16 @@ const startAgents = async (options: {
 	let pluginModule: Plugin | null = null;
 	let projectModule: any = null;
 
-	logger.info("Checking for project or plugin in current directory...");
 	const currentDir = process.cwd();
-	logger.info(`Current directory: ${currentDir}`);
-
 	try {
 		// Check if we're in a project with a package.json
 		const packageJsonPath = path.join(process.cwd(), "package.json");
+		logger.debug(`Checking for package.json at: ${packageJsonPath}`);
+		
 		if (fs.existsSync(packageJsonPath)) {
 			// Read and parse package.json to check if it's a project or plugin
 			const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+			logger.debug(`Found package.json with name: ${packageJson.name || 'unnamed'}`);
 
 			// Check if this is a plugin (package.json contains 'eliza' section with type='plugin')
 			if (packageJson.eliza?.type && packageJson.eliza.type === "plugin") {
@@ -418,42 +517,14 @@ const startAgents = async (options: {
 					logger.error(`Main entry point ${mainPath} does not exist`);
 				}
 			}
-		} else {
-			// Look for specific project files
-			const projectFiles = ["project.json", "eliza.json", "agents.json"];
-
-			for (const file of projectFiles) {
-				const filePath = path.join(process.cwd(), file);
-				if (fs.existsSync(filePath)) {
-					try {
-						const fileContent = fs.readFileSync(filePath, "utf-8");
-						const projectData = JSON.parse(fileContent);
-
-						if (projectData.agents || projectData.agent) {
-							isProject = true;
-							projectModule = { default: projectData };
-							logger.info(`Found project in ${file}`);
-							break;
-						}
-					} catch (error) {
-						logger.warn(
-							`Error reading possible project file ${file}: ${error}`,
-						);
-					}
-				}
-			}
-
-			if (!isProject && !isPlugin) {
-				logger.info(
-					"No package.json or project files found, using custom character",
-				);
-			}
 		}
 	} catch (error) {
 		logger.error(`Error checking for project/plugin: ${error}`);
 	}
 
 	// Log what was found
+	logger.debug(`Classification results - isProject: ${isProject}, isPlugin: ${isPlugin}`);
+	
 	if (isProject) {
 		logger.info("Found project configuration");
 		if (projectModule?.default) {
@@ -477,8 +548,14 @@ const startAgents = async (options: {
 	} else if (isPlugin) {
 		logger.info(`Found plugin: ${pluginModule?.name || "unnamed"}`);
 	} else {
-		logger.info("No project or plugin found, will use custom character");
+		// Change the log message to be clearer about what we're doing
+		logger.info("Running in standalone mode - using default Eliza character");
+		logger.debug("Will load the default Eliza character from ../characters/eliza");
 	}
+
+	await server.initialize();
+
+	server.start(serverPort);
 
 	// Start agents based on project, plugin, or custom configuration
 	if (isProject && projectModule?.default) {
@@ -528,7 +605,7 @@ const startAgents = async (options: {
 				logger.warn(
 					"Failed to start any agents from project, falling back to custom character",
 				);
-				await startAgent(customCharacter, server);
+				await startAgent(defaultCharacter, server);
 			} else {
 				logger.info(
 					`Successfully started ${startedAgents.length} agents from project`,
@@ -538,7 +615,7 @@ const startAgents = async (options: {
 			logger.warn(
 				"Project found but no agents defined, falling back to custom character",
 			);
-			await startAgent(customCharacter, server);
+			await startAgent(defaultCharacter, server);
 		}
 	} else if (isPlugin && pluginModule) {
 		// Before starting with the plugin, prompt for any environment variables it needs
@@ -552,20 +629,32 @@ const startAgents = async (options: {
 			}
 		}
 
-		// Load the custom character and add the plugin to it
+		// Load the default character with all its default plugins, then add the test plugin
 		logger.info(
-			`Starting custom character with plugin: ${pluginModule.name || "unnamed plugin"}`,
+			`Starting default Eliza character with plugin: ${pluginModule.name || "unnamed plugin"}`,
 		);
 
-		// Create a proper array of plugins, including the explicitly loaded one
+		// Import the default character with all its plugins
+		const { character: defaultElizaCharacter } = await import("../characters/eliza");
+		
+		// Create an array of plugins, including the explicitly loaded one
+		// We're using our test plugin plus all the plugins from the default character
 		const pluginsToLoad = [pluginModule];
+		
+		logger.debug(`Using default character with plugins: ${defaultElizaCharacter.plugins.join(", ")}`);
+		logger.info("Plugin test mode: Using default character's plugins plus the plugin being tested");
 
-		// Start the agent with our custom character and plugins
-		await startAgent(customCharacter, server, undefined, pluginsToLoad);
+		// Start the agent with the default character and our test plugin
+		// We're in plugin test mode, so we should skip auto-loading embedding models
+		await startAgent(defaultElizaCharacter, server, undefined, pluginsToLoad, {
+			isPluginTestMode: true
+		});
 		logger.info("Character started with plugin successfully");
 	} else {
-		logger.info("Starting with custom character");
-		await startAgent(customCharacter, server);
+		// When not in a project or plugin, load the default character with all plugins
+		const { character: defaultElizaCharacter } = await import("../characters/eliza");
+		logger.info("Using default Eliza character with all plugins");
+		await startAgent(defaultElizaCharacter, server);
 	}
 
 	// Rest of the function remains the same...
@@ -574,10 +663,8 @@ const startAgents = async (options: {
 		serverPort++;
 	}
 
-	server.start(serverPort);
-
 	if (serverPort !== Number.parseInt(settings.SERVER_PORT || "3000")) {
-		logger.log(`Server started on alternate port ${serverPort}`);
+		logger.info(`Server started on alternate port ${serverPort}`);
 	}
 
 	// Display link to the client UI
@@ -586,24 +673,7 @@ const startAgents = async (options: {
 
 	// If not found, fall back to the old relative path for development
 	if (!fs.existsSync(clientPath)) {
-		clientPath = path.join(__dirname, "../../../../..", "packages/client/dist");
-	}
-
-	if (fs.existsSync(clientPath)) {
-		logger.success(
-			`Client UI is available at http://localhost:${serverPort}/client`,
-		);
-	} else {
-		const clientSrcPath = path.join(
-			__dirname,
-			"../../../..",
-			"packages/client",
-		);
-		if (fs.existsSync(clientSrcPath)) {
-			logger.info(
-				"Client build not found. You can build it with: cd packages/client && npm run build",
-			);
-		}
+		clientPath = path.join(__dirname, "../../../..", "client/dist");
 	}
 };
 
@@ -618,13 +688,18 @@ export const start = new Command()
 		"-c, --configure",
 		"Reconfigure services and AI models (skips using saved configuration)",
 	)
-	.option("--dev", "Start with development settings")
 	.option(
 		"--character <character>",
 		"Path or URL to character file to use instead of default",
 	)
+	.option("--build", "Build the project before starting")
 	.action(async (options) => {
 		try {
+			// Build the project first unless skip-build is specified
+			if (options.build) {
+				await buildProject(process.cwd());
+			}
+			
 			// Collect server options
 			const characterPath = options.character;
 

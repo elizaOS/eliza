@@ -12,11 +12,11 @@ import {
 } from "@elizaos/core";
 import { BaseGuildVoiceChannel } from "discord.js";
 
-import type { DiscordService } from "../index";
-import { ServiceTypes } from "../types";
+import type { DiscordService } from "../service";
+import { ServiceType } from "../types";
 import type { VoiceManager } from "../voice";
 
-export default {
+export const leaveVoice: Action = {
 	name: "LEAVE_VOICE",
 	similes: [
 		"LEAVE_VOICE",
@@ -32,7 +32,7 @@ export default {
 			return false;
 		}
 
-		const service = runtime.getService(ServiceTypes.DISCORD) as DiscordService;
+		const service = runtime.getService(ServiceType.DISCORD) as DiscordService;
 
 		if (!service) {
 			logger.error("Discord client not found");
@@ -75,7 +75,7 @@ export default {
 			throw new Error("No server ID found 9");
 		}
 		const discordClient = runtime.getService(
-			ServiceTypes.DISCORD,
+			ServiceType.DISCORD,
 		) as DiscordService;
 		const voiceManager = discordClient.voiceManager as VoiceManager;
 		const client = discordClient.client;
@@ -95,7 +95,7 @@ export default {
 		if (!guild) {
 			console.warn("Bot is not in any voice channel.");
 			// create a memory with thought to self to self
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -108,7 +108,7 @@ export default {
 				metadata: {
 					type: "LEAVE_VOICE",
 				},
-			});
+			}, "messages");
 			return false;
 		}
 
@@ -116,7 +116,7 @@ export default {
 
 		if (!voiceChannel || !(voiceChannel instanceof BaseGuildVoiceChannel)) {
 			console.warn("Could not retrieve the voice channel.");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -128,14 +128,14 @@ export default {
 				metadata: {
 					type: "LEAVE_VOICE",
 				},
-			});
+			}, "messages");
 			return false;
 		}
 
 		const connection = voiceManager.getVoiceConnection(guild.id);
 		if (!connection) {
 			console.warn("No active voice connection found for the bot.");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -148,13 +148,13 @@ export default {
 				metadata: {
 					type: "LEAVE_VOICE",
 				},
-			});
+			}, "messages");
 			return false;
 		}
 
 		voiceManager.leaveChannel(voiceChannel);
 		// save a memory for the new channel as well
-		await runtime.getMemoryManager("messages").createMemory({
+		await runtime.createMemory({
 			entityId: message.entityId,
 			agentId: message.agentId,
 			roomId: createUniqueUuid(runtime, voiceChannel.id),
@@ -166,7 +166,7 @@ export default {
 			metadata: {
 				type: "LEAVE_VOICE",
 			},
-		});
+		}, "messages");
 
 		return true;
 	},
@@ -294,3 +294,5 @@ export default {
 		],
 	] as ActionExample[][],
 } as Action;
+
+export default leaveVoice;

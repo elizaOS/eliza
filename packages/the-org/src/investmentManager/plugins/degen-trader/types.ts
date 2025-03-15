@@ -320,6 +320,6 @@ export interface StartDegenProcessParams extends StartProcessParams {
 	initialPrice: string;
 }
 
-export const ServiceTypes = {
+export const ServiceType = {
 	DEGEN_TRADING: "degen_trader",
 } as const;

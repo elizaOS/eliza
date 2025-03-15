@@ -1,9 +1,7 @@
-import { MemoryManager } from "../memory";
-import { formatMessages } from "../prompts";
 import {
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type Provider,
 	type State,
 } from "../types";
@@ -35,8 +33,8 @@ const factsProvider: Provider = {
 	get: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
 		// Parallelize initial data fetching operations including recentInteractions
 		const recentMessages = await runtime
-			.getMemoryManager("messages")
 			.getMemories({
+				tableName: "messages",
 				roomId: message.roomId,
 				count: 10,
 				unique: false,
@@ -48,23 +46,19 @@ const factsProvider: Provider = {
 			.map((message) => message.content.text)
 			.join("\n");
 
-		const embedding = await runtime.useModel(ModelTypes.TEXT_EMBEDDING, {
+		const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
 			text: last5Messages,
 		});
 
-		const memoryManager = new MemoryManager({
-			runtime,
-			tableName: "facts",
-		});
-
 		const [relevantFacts, recentFactsData] = await Promise.all([
-			memoryManager.searchMemories({
+			runtime.searchMemories({
+				tableName: "facts",
 				embedding,
 				roomId: message.roomId,
 				count: 10,
-				agentId: runtime.agentId,
 			}),
-			memoryManager.getMemories({
+			runtime.getMemories({
+				tableName: "facts",
 				roomId: message.roomId,
 				count: 10,
 				start: 0,

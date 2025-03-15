@@ -1,11 +1,11 @@
 {
 	"name": "@elizaos/plugin-tee",
-	"version": "1.0.0-alpha.20",
+	"version": "1.0.0-alpha.60",
 	"main": "dist/index.js",
 	"type": "module",
 	"types": "dist/index.d.ts",
 	"dependencies": {
-		"@elizaos/core": "^1.0.0-alpha.20",
+		"@elizaos/core": "^1.0.0-alpha.60",
 		"@phala/dstack-sdk": "^0.1.7",
 		"@solana/web3.js": "^1.98.0",
 		"better-sqlite3": "11.8.1",
@@ -18,10 +18,11 @@
 	"scripts": {
 		"build": "tsup",
 		"dev": "tsup --watch",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
+		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
+		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
 }

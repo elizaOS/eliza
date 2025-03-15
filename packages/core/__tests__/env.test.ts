@@ -12,9 +12,6 @@ describe("Environment Setup", () => {
 			path.join(__dirname, ".env.test"),
 		];
 
-		console.log("Current working directory:", process.cwd());
-		console.log("__dirname:", __dirname);
-
 		const existingPaths = possiblePaths.filter((p) => {
 			const exists = fs.existsSync(p);
 			console.log(`Path ${p} exists: ${exists}`);

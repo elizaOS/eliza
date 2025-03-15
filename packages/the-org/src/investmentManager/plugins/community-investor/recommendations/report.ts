@@ -2,7 +2,7 @@ import { type Action, type Memory, type UUID, logger } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { formatRecommenderReport } from "../reports";
 import type { CommunityInvestorService } from "../tradingService";
-import { ServiceTypes } from "../types";
+import { ServiceType } from "../types";
 
 /**
  * Action for getting a entity's report scoring their recommendations
@@ -96,7 +96,7 @@ export const getRecommenderReport: Action = {
 			return;
 		}
 		const tradingService = runtime.getService<CommunityInvestorService>(
-			ServiceTypes.COMMUNITY_INVESTOR,
+			ServiceType.COMMUNITY_INVESTOR,
 		);
 
 		const metrics = entity

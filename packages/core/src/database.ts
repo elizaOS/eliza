@@ -3,13 +3,14 @@ import type {
 	Component,
 	Entity,
 	IDatabaseAdapter,
+	Log,
 	Memory,
 	Participant,
 	Relationship,
 	Room,
 	Task,
 	UUID,
-	World,
+	World
 } from "./types";
 
 /**
@@ -188,6 +189,28 @@ export abstract class DatabaseAdapter<DB = unknown>
 	}): Promise<void>;
 
 	/**
+	 * Retrieves logs based on the specified parameters.
+	 * @param params An object containing parameters for the log retrieval.
+	 * @returns A Promise that resolves to an array of Log objects.
+	 */
+	abstract getLogs(
+		params: {
+			entityId: UUID;
+			roomId?: UUID;
+			type?: string;
+			count?: number;
+			offset?: number;
+		},
+	): Promise<Log[]>;
+
+	/**
+	 * Deletes a log from the database.
+	 * @param logId The UUID of the log to delete.
+	 * @returns A Promise that resolves when the log has been deleted.
+	 */
+	abstract deleteLog(logId: UUID): Promise<void>;
+
+	/**
 	 * Searches for memories based on embeddings and other specified parameters.
 	 * @param params An object containing parameters for the memory search.
 	 * @returns A Promise that resolves to an array of Memory objects.
@@ -217,10 +240,9 @@ export abstract class DatabaseAdapter<DB = unknown>
 	/**
 	 * Removes a specific memory from the database.
 	 * @param memoryId The UUID of the memory to remove.
-	 * @param tableName The table from which the memory should be removed.
 	 * @returns A Promise that resolves when the memory has been removed.
 	 */
-	abstract removeMemory(memoryId: UUID, tableName: string): Promise<void>;
+	abstract deleteMemory(memoryId: UUID): Promise<void>;
 
 	/**
 	 * Removes all memories associated with a specific room.
@@ -228,7 +250,7 @@ export abstract class DatabaseAdapter<DB = unknown>
 	 * @param tableName The table from which the memories should be removed.
 	 * @returns A Promise that resolves when all memories have been removed.
 	 */
-	abstract removeAllMemories(roomId: UUID, tableName: string): Promise<void>;
+	abstract deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
 
 	/**
 	 * Counts the number of memories in a specific room.

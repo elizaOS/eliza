@@ -6,7 +6,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 } from "../types";
 
@@ -49,7 +49,7 @@ Your response should include the valid JSON block and nothing else.`;
  */
 export const replyAction = {
 	name: "REPLY",
-	similes: ["REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND"],
+	similes: ["GREET", "REPLY_TO_MESSAGE", "SEND_REPLY", "RESPOND"],
 	description:
 		"Replies to the current conversation with the text from the generated message. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response.",
 	validate: async (_runtime: IAgentRuntime) => {
@@ -72,7 +72,7 @@ export const replyAction = {
 			template: replyTemplate,
 		});
 
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 

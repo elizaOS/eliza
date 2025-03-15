@@ -410,9 +410,7 @@ export class DexscreenerClient {
 			.join("/");
 
 		if (options?.expires) {
-			const cached = await this.runtime
-				
-				.getCache<T>(cacheKey);
+			const cached = await this.runtime.getCache<T>(cacheKey);
 			if (cached) return cached;
 		}
 
@@ -546,9 +544,7 @@ export class HeliusClient {
 		options?: { expires?: string | CacheOptions["expires"] },
 	): Promise<HolderData[]> {
 		if (options?.expires) {
-			const cached = await this.runtime
-				
-				.getCache<HolderData[]>(`helius/token-holders/${address}`);
+			const cached = await this.runtime.getCache<HolderData[]>(`helius/token-holders/${address}`);
 
 			if (cached) return cached;
 		}
@@ -695,9 +691,7 @@ export class CoingeckoClient {
 			.join("/");
 
 		if (options?.expires) {
-			const cached = await this.runtime
-				
-				.getCache<T>(cacheKey);
+			const cached = await this.runtime.getCache<T>(cacheKey);
 			if (cached) return cached;
 		}
 
@@ -924,9 +918,7 @@ export class BirdeyeClient {
 			.join("/");
 
 		if (options?.expires && !forceRefresh) {
-			const cached = await this.runtime
-				
-				.getCache<T>(cacheKey);
+			const cached = await this.runtime.getCache<T>(cacheKey);
 			if (cached) return cached;
 		}
 
@@ -1126,7 +1118,6 @@ export class BirdeyeClient {
 	}
 }
 
-// todo: maybe move this into the cacheManager
 const units = {
 	ms: 1,
 	s: 1000,

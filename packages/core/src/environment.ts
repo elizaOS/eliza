@@ -95,14 +95,17 @@ export function loadEnvConfig(): Settings {
 	}
 
 	// Parse namespaced settings
-	const namespacedSettings = parseNamespacedSettings(process.env as Settings);
+	const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+	const namespacedSettings = parseNamespacedSettings(env as Settings);
 
-	// Attach to process.env for backward compatibility
-	Object.entries(namespacedSettings).forEach(([namespace, settings]) => {
-		process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
-	});
+	// Attach to process.env for backward compatibility if available
+	if (typeof process !== 'undefined') {
+		Object.entries(namespacedSettings).forEach(([namespace, settings]) => {
+			process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
+		});
+	}
 
-	return process.env as Settings;
+	return env as Settings;
 }
 
 /**
@@ -118,7 +121,8 @@ export function getEnvVariable(
 	if (isBrowser()) {
 		return environmentSettings[key] || defaultValue;
 	}
-	return process.env[key] || defaultValue;
+	const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+	return env[key] || defaultValue;
 }
 
 /**
@@ -130,7 +134,8 @@ export function hasEnvVariable(key: string): boolean {
 	if (isBrowser()) {
 		return key in environmentSettings;
 	}
-	return key in process.env;
+	const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+	return key in env;
 }
 
 // Add this function to parse namespaced settings

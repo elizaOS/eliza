@@ -1,13 +1,14 @@
 import {
 	ChannelType,
 	type Content,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type IBrowserService,
 	type IVideoService,
 	type Media,
 	type Memory,
-	ServiceTypes,
+	ServiceType,
 	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
@@ -19,6 +20,7 @@ import {
 	type TextChannel,
 } from "discord.js";
 import { AttachmentManager } from "./attachments";
+import { DiscordEventTypes } from "./types";
 import { canSendMessage, sendMessageInChunks } from "./utils";
 
 /**
@@ -193,7 +195,7 @@ export class MessageManager {
 					}
 
 					for (const m of memories) {
-						await this.runtime.getMemoryManager("messages").createMemory(m);
+						await this.runtime.createMemory(m, "messages");
 					}
 					return memories;
 				} catch (error) {
@@ -202,7 +204,7 @@ export class MessageManager {
 				}
 			};
 
-			this.runtime.emitEvent(["DISCORD_MESSAGE_RECEIVED", "MESSAGE_RECEIVED"], {
+			this.runtime.emitEvent([DiscordEventTypes.MESSAGE_RECEIVED, EventTypes.MESSAGE_RECEIVED], {
 				runtime: this.runtime,
 				message: newMessage,
 				callback,
@@ -273,11 +275,11 @@ export class MessageManager {
 		for (const url of urls) {
 			if (
 				this.runtime
-					.getService<IVideoService>(ServiceTypes.VIDEO)
+					.getService<IVideoService>(ServiceType.VIDEO)
 					?.isVideoUrl(url)
 			) {
 				const videoService = this.runtime.getService<IVideoService>(
-					ServiceTypes.VIDEO,
+					ServiceType.VIDEO,
 				);
 				if (!videoService) {
 					throw new Error("Video service not found");
@@ -294,7 +296,7 @@ export class MessageManager {
 				});
 			} else {
 				const browserService = this.runtime.getService<IBrowserService>(
-					ServiceTypes.BROWSER,
+					ServiceType.BROWSER,
 				);
 				if (!browserService) {
 					throw new Error("Browser service not found");

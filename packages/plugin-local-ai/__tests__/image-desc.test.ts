@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ModelClass, type Plugin } from "@elizaos/core";
+import { ModelTypes, type Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
 	Florence2ForConditionalGeneration,
@@ -111,7 +111,7 @@ describe("LocalAI Image Description", () => {
 		await plugin.init({
 			LLAMALOCAL_PATH: TEST_PATHS.MODELS_DIR,
 			CACHE_DIR: TEST_PATHS.CACHE_DIR,
-		});
+		}, mockRuntime);
 
 		logger.success("Test setup completed");
 	}, 300000);
@@ -125,17 +125,23 @@ describe("LocalAI Image Description", () => {
 
 		try {
 			const result = await mockRuntime.useModel(
-				ModelClass.IMAGE_DESCRIPTION,
+				ModelTypes.IMAGE_DESCRIPTION,
 				imageUrl,
 			);
+
+			// if result is not an object, throw an error
+			if (typeof result !== "object") {
+				throw new Error("Result is not an object");
+			}
+
 			logger.info("Image description result:", {
 				resultType: typeof result,
-				resultLength: result.length,
+				resultLength: result.description.length,
 				rawResult: result,
 			});
 
 			expect(result).toBeDefined();
-			const parsed = JSON.parse(result);
+			const parsed = result;
 			logger.info("Parsed result:", parsed);
 
 			expect(parsed).toHaveProperty("title");
@@ -162,7 +168,7 @@ describe("LocalAI Image Description", () => {
 		logger.info("Testing with invalid URL:", invalidUrl);
 
 		try {
-			await mockRuntime.useModel(ModelClass.IMAGE_DESCRIPTION, invalidUrl);
+			await mockRuntime.useModel(ModelTypes.IMAGE_DESCRIPTION, invalidUrl);
 			throw new Error("Should have failed but didn't");
 		} catch (error) {
 			logger.info("Invalid URL test failed as expected:", {
@@ -181,7 +187,7 @@ describe("LocalAI Image Description", () => {
 
 		try {
 			await mockRuntime.useModel(
-				ModelClass.IMAGE_DESCRIPTION,
+				ModelTypes.IMAGE_DESCRIPTION,
 				invalidInput as unknown,
 			);
 			throw new Error("Should have failed but didn't");
@@ -217,7 +223,7 @@ describe("LocalAI Image Description", () => {
 		});
 
 		try {
-			await mockRuntime.useModel(ModelClass.IMAGE_DESCRIPTION, imageUrl);
+			await mockRuntime.useModel(ModelTypes.IMAGE_DESCRIPTION, imageUrl);
 			throw new Error("Should have failed but didn't");
 		} catch (error) {
 			logger.info("Vision model failure test failed as expected:", {
@@ -239,7 +245,7 @@ describe("LocalAI Image Description", () => {
 			"https://raw.githubusercontent.com/microsoft/FLAML/main/README.md";
 
 		try {
-			await mockRuntime.useModel(ModelClass.IMAGE_DESCRIPTION, textUrl);
+			await mockRuntime.useModel(ModelTypes.IMAGE_DESCRIPTION, textUrl);
 			throw new Error("Should have failed but didn't");
 		} catch (error) {
 			logger.info("Non-image content test failed as expected:", {

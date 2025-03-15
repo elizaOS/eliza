@@ -1,16 +1,17 @@
 {
-  "version": "1.0.0-alpha.20",
+  "version": "1.0.0-alpha.60",
   "packages": [
     "packages/*"
   ],
   "npmClient": "bun",
   "command": {
     "publish": {
-      "ignoreChanges": [
-        "packages/docs",
-        "packages/client",
-        "packages/autodoc"
-      ]
+      "workspaceConfig": true,
+      "preserveWorkspacePackageVersions": true
+    },
+    "version": {
+      "workspaceConfig": true,
+      "preserveWorkspacePackageVersions": true
     }
   }
 }

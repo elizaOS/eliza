@@ -1,7 +1,7 @@
 import { Readable } from "node:stream";
 import {
 	type IAgentRuntime,
-	ModelTypes,
+	ModelType,
 	type Plugin,
 	logger,
 } from "@elizaos/core";
@@ -89,7 +89,7 @@ export const elevenLabsPlugin: Plugin = {
 	name: "elevenLabs",
 	description: "ElevenLabs plugin",
 	models: {
-		[ModelTypes.TEXT_TO_SPEECH]: async (runtime, text) => {
+		[ModelType.TEXT_TO_SPEECH]: async (runtime, text) => {
 			try {
 				const stream = await fetchSpeech(runtime, text);
 				return getVoiceSettings(runtime).outputFormat.startsWith("pcm_")

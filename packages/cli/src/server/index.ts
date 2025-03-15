@@ -1,7 +1,6 @@
-import fs from "node:fs";
-import { Server as HttpServer } from "node:http";
+import * as fs from "node:fs";
 import * as os from "node:os";
-import path from "node:path";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type Character,
@@ -9,31 +8,14 @@ import {
 	type UUID,
 	logger,
 } from "@elizaos/core";
-import { createUniqueUuid } from "@elizaos/core";
 import { createDatabaseAdapter } from "@elizaos/plugin-sql";
 import * as bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import multer from "multer";
-import type { Server as SocketIoServer } from "socket.io";
-import character from "../default/character.js";
-import { charactersDirectory } from "../default/default-characters.js";
-import { downloadTemplate } from "../utils/download-template.js";
-import { parseArgs } from "../utils/parse-args.js";
-import { formatUrl } from "../utils/url-format.js";
-import type { AgentManager } from "./agent-manager.js";
+import { Server as SocketIOServer } from "socket.io";
 import { createApiRouter } from "./api/index.js";
-import type { CacheStore } from "./cache-store.js";
-import { requestHandlers } from "./lib/request-handlers.js";
-import { createCorsMiddleware } from "./middleware/cors.js";
-import { createAgentsRouter } from "./routes/agents.js";
-import { createCacheStoreRouter } from "./routes/cache-store.js";
-import { createCharacterRouter } from "./routes/character.js";
-import { createFileRouter } from "./routes/files.js";
-import { createMultiplayerRouter } from "./routes/multiplayer.js";
-import { createPromptsRouter } from "./routes/prompts.js";
-import { createSessionRouter } from "./routes/session.js";
+import { SocketIORouter } from "./socketio/index.js";
 
 // Load environment variables
 dotenv.config();
@@ -83,10 +65,7 @@ export class AgentServer {
 	public stopAgent!: (runtime: IAgentRuntime) => void;
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
-	private io: SocketIoServer;
-	private soundGenerator?: SoundGenerator;
-	private cacheStore: CacheStore;
-	private agentManager: AgentManager;
+	private socketIO: SocketIOServer;
 
 	/**
 	 * Constructor for AgentServer class.
@@ -96,7 +75,7 @@ export class AgentServer {
 	 */
 	constructor(options?: ServerOptions) {
 		try {
-			logger.log("Initializing AgentServer...");
+			logger.info("Initializing AgentServer...");
 			this.app = express();
 			this.agents = new Map();
 
@@ -105,9 +84,6 @@ export class AgentServer {
 
 			// Expand tilde in database directory path
 			dataDir = expandTildePath(dataDir);
-
-			console.log("Using database directory:", dataDir);
-			console.log("postgresUrl", options?.postgresUrl?.slice(0, 20));
 
 			// Use the async database adapter
 			this.database = createDatabaseAdapter(
@@ -118,23 +94,34 @@ export class AgentServer {
 				"00000000-0000-0000-0000-000000000002",
 			);
 
-			// Initialize the database
-			this.database
-				.init()
-				.then(() => {
-					logger.success("Database initialized successfully");
-					this.initializeServer(options);
-				})
-				.catch((error) => {
-					logger.error("Failed to initialize database:", error);
-					throw error;
-				});
+			// Database initialization moved to initialize() method
 		} catch (error) {
 			logger.error("Failed to initialize AgentServer:", error);
 			throw error;
 		}
+	}
 
-		logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
+	/**
+	 * Initializes the database and server.
+	 * 
+	 * @param {ServerOptions} [options] - Optional server options.
+	 * @returns {Promise<void>} A promise that resolves when initialization is complete.
+	 */
+	public async initialize(options?: ServerOptions): Promise<void> {
+		try {
+			// Initialize the database with await
+			await this.database.init();
+			logger.success("Database initialized successfully");
+			
+			// Only continue with server initialization after database is ready
+			await this.initializeServer(options);
+			
+			// Move this message here to be more accurate
+			logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
+		} catch (error) {
+			logger.error("Failed to initialize:", error);
+			throw error;
+		}
 	}
 
 	/**
@@ -221,10 +208,14 @@ export class AgentServer {
 				},
 			};
 
+			console.log("Serving static assets from the client dist path");
+
 			// Serve static assets from the client dist path
 			const clientPath = path.join(__dirname, "..", "dist");
 			logger.info(`Client build path: ${clientPath}`);
 			this.app.use("/", express.static(clientPath, staticOptions));
+
+			
 
 			// Serve static assets from plugins
 			// Look for well-known static asset directories in plugins
@@ -511,9 +502,14 @@ export class AgentServer {
 				});
 			});
 
+			this.socketIO = new SocketIOServer(this.server);
+			
+			const socketIORouter = new SocketIORouter(this.agents, this);
+			socketIORouter.setupListeners(this.socketIO);
+
 			// Enhanced graceful shutdown
 			const gracefulShutdown = async () => {
-				logger.log("Received shutdown signal, initiating graceful shutdown...");
+				logger.info("Received shutdown signal, initiating graceful shutdown...");
 
 				// Stop all agents first
 				logger.debug("Stopping all agents...");
@@ -556,6 +552,7 @@ export class AgentServer {
 	public async stop() {
 		if (this.server) {
 			this.server.close(() => {
+				this.database.stop();
 				logger.success("Server stopped");
 			});
 		}

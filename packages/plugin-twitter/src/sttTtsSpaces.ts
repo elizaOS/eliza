@@ -5,10 +5,11 @@ import type { Readable } from "node:stream";
 import {
 	ChannelType,
 	type Content,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type Plugin,
 	createUniqueUuid,
 	logger,
@@ -245,7 +246,7 @@ export class SttTtsPlugin implements Plugin {
 
 			// Whisper STT
 			const sttText = await this.runtime.useModel(
-				ModelTypes.TRANSCRIPTION,
+				ModelType.TRANSCRIPTION,
 				wavBuffer,
 			);
 
@@ -292,7 +293,7 @@ export class SttTtsPlugin implements Plugin {
 
 			try {
 				const responseStream = await this.runtime.useModel(
-					ModelTypes.TEXT_TO_SPEECH,
+					ModelType.TEXT_TO_SPEECH,
 					text,
 				);
 				if (!responseStream) {
@@ -341,10 +342,9 @@ export class SttTtsPlugin implements Plugin {
 		const userUuid = createUniqueUuid(this.runtime, numericId);
 
 		const entity = await this.runtime
-			.getDatabaseAdapter()
 			.getEntityById(userUuid);
 		if (!entity) {
-			await this.runtime.getDatabaseAdapter().createEntity({
+			await this.runtime.createEntity({
 				id: userUuid,
 				names: [userId],
 				agentId: this.runtime.agentId,
@@ -401,8 +401,7 @@ export class SttTtsPlugin implements Plugin {
 
 				if (responseMemory.content.text?.trim()) {
 					await this.runtime
-						.getMemoryManager("messages")
-						.createMemory(responseMemory);
+									.createMemory(responseMemory);
 					this.isProcessingAudio = false;
 					this.volumeBuffers.clear();
 					await this.speakText(content.text);
@@ -416,7 +415,7 @@ export class SttTtsPlugin implements Plugin {
 		};
 
 		// Emit voice-specific events
-		this.runtime.emitEvent(["VOICE_MESSAGE_RECEIVED"], {
+		this.runtime.emitEvent(EventTypes.VOICE_MESSAGE_RECEIVED, {
 			runtime: this.runtime,
 			message: memory,
 			callback,

@@ -6,8 +6,8 @@ import {
 	type IAgentRuntime,
 	type IVideoService,
 	type Memory,
-	ModelTypes,
-	ServiceTypes,
+	ModelType,
+	ServiceType,
 	type State,
 	composePromptFromState,
 	parseJSONObjectFromText,
@@ -60,7 +60,7 @@ const getMediaUrl = async (
 	});
 
 	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 
@@ -75,7 +75,7 @@ const getMediaUrl = async (
 	return null;
 };
 
-export default {
+export const downloadMedia: Action = {
 	name: "DOWNLOAD_MEDIA",
 	similes: [
 		"DOWNLOAD_VIDEO",
@@ -98,12 +98,12 @@ export default {
 		_options: any,
 		callback: HandlerCallback,
 	) => {
-		const videoService = runtime.getService<IVideoService>(ServiceTypes.VIDEO);
+		const videoService = runtime.getService<IVideoService>(ServiceType.VIDEO);
 
 		const mediaUrl = await getMediaUrl(runtime, message, state);
 		if (!mediaUrl) {
 			console.error("Couldn't get media URL from messages");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -115,7 +115,7 @@ export default {
 				metadata: {
 					type: "DOWNLOAD_MEDIA",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
@@ -207,3 +207,5 @@ export default {
 		],
 	] as ActionExample[][],
 } as Action;
+
+export default downloadMedia;

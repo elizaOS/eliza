@@ -2,7 +2,7 @@ import {
 	type Evaluator,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	type UUID,
 	composePrompt,
@@ -10,7 +10,7 @@ import {
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import type { CommunityInvestorService } from "../tradingService.js";
-import { type RecommendationMemory, ServiceTypes } from "../types.js";
+import { type RecommendationMemory, ServiceType } from "../types.js";
 import {
 	extractXMLFromResponse,
 	getZodJsonSchema,
@@ -374,7 +374,7 @@ const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 export const formatRecommendations = (recommendations: Memory[]) => {
 	return recommendations
 		.reverse()
-		.map((rec: Memory) => `${JSON.stringify(rec.metadata.recommendation)}`)
+		.map((rec: Memory) => `${JSON.stringify((rec.metadata as any).recommendation)}`)
 		.join("\n");
 };
 
@@ -444,13 +444,13 @@ async function handler(
 
 	const { agentId, roomId } = message;
 
-	if (!runtime.getService(ServiceTypes.COMMUNITY_INVESTOR)) {
+	if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
 		console.log("no trading service");
 		return;
 	}
 
 	const tradingService = runtime.getService<CommunityInvestorService>(
-		ServiceTypes.COMMUNITY_INVESTOR,
+		ServiceType.COMMUNITY_INVESTOR,
 	)!;
 
 	if (!tradingService.hasWallet("solana")) {
@@ -470,7 +470,7 @@ async function handler(
 		},
 	});
 
-	const sentimentText = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+	const sentimentText = await runtime.useModel(ModelType.TEXT_LARGE, {
 		prompt: sentimentPrompt,
 	});
 
@@ -503,11 +503,9 @@ async function handler(
 		console.log("signal is 3, skipping not related to tokens at all");
 		return;
 	}
-
-	// Get recent recommendations
-	const recommendationsManager = runtime.getMemoryManager("recommendations")!;
 	// Get recommendations from trust db by user that sent the message
-	const recentRecommendations = (await recommendationsManager.getMemories({
+	const recentRecommendations = (await runtime.getMemories({
+		tableName: "recommendations",
 		roomId,
 		count: 10,
 	})) as RecommendationMemory[];
@@ -516,7 +514,7 @@ async function handler(
 	Promise.all(
 		await recentRecommendations
 			.filter((r) => r.createdAt && Date.now() - r.createdAt > 10 * 60 * 1000)
-			.map((r) => recommendationsManager.removeMemory(r.id as UUID)),
+			.map((r) => runtime.deleteMemory(r.id as UUID)),
 	);
 
 	console.log("message", message);
@@ -544,7 +542,7 @@ async function handler(
 
 	// Only function slowing us down: generateText
 	const [text, participants] = await Promise.all([
-		runtime.useModel(ModelTypes.TEXT_LARGE, {
+		runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 			stopSequences: [],
 		}),
@@ -577,8 +575,8 @@ async function handler(
 
 	const tokenRecommendationsSet = new Set(
 		recentRecommendations
-			.filter((r) => r.metadata.recommendation.confirmed)
-			.map((r) => r.metadata.recommendation.tokenAddress),
+			.filter((r) => (r.metadata as any).recommendation.confirmed)
+			.map((r) => (r.metadata as any).recommendation.tokenAddress),
 	);
 
 	const filteredRecommendations = recommendations
@@ -651,7 +649,7 @@ async function handler(
 					template: recommendationFormatTemplate,
 				});
 
-				const text = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+				const text = await runtime.useModel(ModelType.TEXT_SMALL, {
 					prompt,
 				});
 
@@ -691,7 +689,7 @@ async function handler(
 		};
 
 		// Store Recommendation
-		await Promise.all([recommendationsManager.createMemory(recMemory, true)]);
+		await Promise.all([runtime.createMemory(recMemory, "recommendations", true)]);
 
 		const tokenString = JSON.stringify(token, (_, v) => {
 			if (typeof v === "bigint") return v.toString();
@@ -761,7 +759,7 @@ async function handler(
 
 			console.log("prompt", prompt);
 
-			const res = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+			const res = await runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt,
 			});
 

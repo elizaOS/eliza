@@ -5,7 +5,7 @@ import BuySignal from "./providers/buy-signal";
 import CoinmarketCap from "./providers/coinmarketcap";
 import Twitter from "./providers/twitter";
 import TwitterParser from "./providers/twitter-parser";
-
+import type { Sentiment } from "./types";
 /**
  * Registers tasks for the agent to perform various Intel-related actions.
  * * @param { IAgentRuntime } runtime - The agent runtime object.
@@ -64,7 +64,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 			} catch (error) {
 				logger.error("Failed to sync tokens", error);
 				// kill this task
-				runtime.deleteTask(task.id);
+				await runtime.deleteTask(task.id);
 			}
 		},
 	});
@@ -82,31 +82,112 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 
 	runtime.registerTaskWorker({
 		name: "INTEL_SYNC_RAW_TWEETS",
-		validate: async (_runtime, _message, _state) => {
-			return true; // TODO: validate after certain time
+		validate: async (runtime, _message, _state) => {
+			// Check if Twitter service exists and return false if it doesn't
+			const twitterService = runtime.getService("twitter");
+			if (!twitterService) {
+				// Log only once when we'll be removing the task
+				logger.warn("Twitter service not available, removing INTEL_SYNC_RAW_TWEETS task");
+				
+				// Get all tasks of this type
+				const tasks = await runtime.getTasksByName("INTEL_SYNC_RAW_TWEETS");
+				
+				// Delete all these tasks
+				for (const task of tasks) {
+					await runtime.deleteTask(task.id);
+				}
+				
+				// Set a flag to indicate we've removed these tasks
+				await runtime.setCache("twitter_tasks_removed", true);
+				
+				return false;
+			}
+			return true;
 		},
 		execute: async (runtime, _options, task) => {
-			const twitter = new Twitter(runtime);
 			try {
+				const twitter = new Twitter(runtime);
 				await twitter.syncRawTweets();
 			} catch (error) {
 				logger.error("Failed to sync raw tweets", error);
-				// kill this task
-				runtime.deleteTask(task.id);
 			}
 		},
 	});
 
+	// Create a task to check for Twitter service availability and recreate tasks if needed
+	runtime.registerTaskWorker({
+		name: "CHECK_TWITTER_SERVICE_AVAILABILITY",
+		validate: async () => true, // Always validate
+		execute: async (runtime, _options, _task) => {
+			const twitterService = runtime.getService("twitter");
+			const tasksWereRemoved = await runtime.getCache("twitter_tasks_removed");
+			
+			// If Twitter service is now available and tasks were previously removed, recreate them
+			if (twitterService && tasksWereRemoved) {
+				logger.info("Twitter service is now available, recreating Twitter-related tasks");
+				
+				// Create the tasks
+				runtime.createTask({
+					name: "INTEL_SYNC_RAW_TWEETS",
+					description: "Sync raw tweets from Twitter",
+					worldId,
+					metadata: {
+						updatedAt: Date.now(),
+						updateInterval: 1000 * 60 * 15, // 15 minutes
+					},
+					tags: ["queue", "repeat", "degen_intel"],
+				});
+				
+				runtime.createTask({
+					name: "INTEL_PARSE_TWEETS",
+					description: "Parse tweets",
+					worldId,
+					metadata: {
+						updatedAt: Date.now(),
+						updateInterval: 1000 * 60 * 60 * 24, // 24 hours
+					},
+					tags: ["queue", "repeat", "degen_intel"],
+				});
+				
+				// Clear the removal flag
+				await runtime.setCache("twitter_tasks_removed", false);
+			}
+		}
+	});
+	
+	// Always create the service checker task
 	runtime.createTask({
-		name: "INTEL_SYNC_RAW_TWEETS",
-		description: "Sync raw tweets from Twitter",
+		name: "CHECK_TWITTER_SERVICE_AVAILABILITY",
+		description: "Check if Twitter service is available and recreate tasks if needed",
 		worldId,
 		metadata: {
 			updatedAt: Date.now(),
-			updateInterval: 1000 * 60 * 15, // 15 minutes
+			updateInterval: 1000 * 60 * 5, // Check every 5 minutes
 		},
 		tags: ["queue", "repeat", "degen_intel"],
 	});
+
+	// Only create the Twitter sync task if the Twitter service exists
+	const twitterService = runtime.getService("twitter");
+	if (twitterService) {
+		// Clear the removal flag since we're creating the tasks
+		await runtime.setCache("twitter_tasks_removed", false);
+		
+		runtime.createTask({
+			name: "INTEL_SYNC_RAW_TWEETS",
+			description: "Sync raw tweets from Twitter",
+			worldId,
+			metadata: {
+				updatedAt: Date.now(),
+				updateInterval: 1000 * 60 * 15, // 15 minutes
+			},
+			tags: ["queue", "repeat", "degen_intel"],
+		});
+	} else {
+		// Set the flag to indicate tasks haven't been created
+		await runtime.setCache("twitter_tasks_removed", true);
+		logger.warn("Twitter service not found, skipping creation of INTEL_SYNC_RAW_TWEETS task");
+	}
 
 	runtime.registerTaskWorker({
 		name: "INTEL_SYNC_WALLET",
@@ -120,7 +201,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 			} catch (error) {
 				logger.error("Failed to sync wallet", error);
 				// kill this task
-				runtime.deleteTask(task.id);
+				await runtime.deleteTask(task.id);
 			}
 		},
 	});
@@ -138,8 +219,14 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 
 	runtime.registerTaskWorker({
 		name: "INTEL_GENERATE_BUY_SIGNAL",
-		validate: async (_runtime, _message, _state) => {
-			return true; // TODO: validate after certain time
+		validate: async (runtime, _message, _state) => {
+			// Check if we have some sentiment data before proceeding
+			const sentimentsData = await runtime.getCache<Sentiment[]>("sentiments") || [];
+			if (sentimentsData.length === 0) {
+				logger.warn("No sentiment data available, skipping buy signal generation");
+				return false;
+			}
+			return true;
 		},
 		execute: async (runtime, _options, task) => {
 			const signal = new BuySignal(runtime);
@@ -147,11 +234,11 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 				await signal.generateSignal();
 			} catch (error) {
 				logger.error("Failed to generate buy signal", error);
-				// kill this task
-				runtime.deleteTask(task.id);
+				// Log the error but don't delete the task
 			}
 		},
-	});
+	}
+);
 
 	runtime.createTask({
 		name: "INTEL_GENERATE_BUY_SIGNAL",
@@ -166,8 +253,14 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 
 	runtime.registerTaskWorker({
 		name: "INTEL_PARSE_TWEETS",
-		validate: async (_runtime, _message, _state) => {
-			return true; // TODO: validate after certain time
+		validate: async (runtime, _message, _state) => {
+			// Check if Twitter service exists and return false if it doesn't
+			const twitterService = runtime.getService("twitter");
+			if (!twitterService) {
+				// The main task handler above will take care of removing all Twitter tasks
+				return false; // This will prevent execution
+			}
+			return true;
 		},
 		execute: async (runtime, _options, task) => {
 			const twitterParser = new TwitterParser(runtime);
@@ -175,20 +268,21 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
 				await twitterParser.parseTweets();
 			} catch (error) {
 				logger.error("Failed to parse tweets", error);
-				// kill this task
-				runtime.deleteTask(task.id);
 			}
 		},
 	});
 
-	runtime.createTask({
-		name: "INTEL_PARSE_TWEETS",
-		description: "Parse tweets",
-		worldId,
-		metadata: {
-			updatedAt: Date.now(),
-			updateInterval: 1000 * 60 * 60 * 24, // 24 hours
-		},
-		tags: ["queue", "repeat", "degen_intel"],
-	});
+	// Only create the tweet parsing task if the Twitter service exists
+	if (twitterService) {
+		runtime.createTask({
+			name: "INTEL_PARSE_TWEETS",
+			description: "Parse tweets",
+			worldId,
+			metadata: {
+				updatedAt: Date.now(),
+				updateInterval: 1000 * 60 * 60 * 24, // 24 hours
+			},
+			tags: ["queue", "repeat", "degen_intel"],
+		});
+	}
 };

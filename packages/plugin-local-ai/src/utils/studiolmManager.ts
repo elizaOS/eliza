@@ -1,5 +1,4 @@
-import { type GenerateTextParams, ModelTypes, logger } from "@elizaos/core";
-import fetch from "node-fetch";
+import { type GenerateTextParams, ModelType, logger } from "@elizaos/core";
 
 /**
  * Represents a StudioLMModel object with the following properties:
@@ -338,7 +337,7 @@ export class StudioLMManager {
 
 			logger.info("StudioLM preparing request:", {
 				model:
-					params.modelType === ModelTypes.TEXT_LARGE
+					params.modelType === ModelType.TEXT_LARGE
 						? this.configuredModels.medium
 						: this.configuredModels.small,
 				messageCount: messages.length,
@@ -354,7 +353,7 @@ export class StudioLMManager {
 
 			const request: ChatCompletionRequest = {
 				model:
-					params.modelType === ModelTypes.TEXT_LARGE
+					params.modelType === ModelType.TEXT_LARGE
 						? this.configuredModels.medium
 						: this.configuredModels.small,
 				messages,

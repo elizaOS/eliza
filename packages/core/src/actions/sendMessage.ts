@@ -10,7 +10,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 } from "../types";
 
@@ -169,7 +169,7 @@ export const sendMessageAction: Action = {
 				template: targetExtractionTemplate,
 			});
 
-			const targetResult = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			const targetResult = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt: targetPrompt,
 				stopSequences: [],
 			});

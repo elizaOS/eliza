@@ -1,327 +1,181 @@
 # 🔌 Providers
 
-[Providers](/api/interfaces/provider) are core modules that inject dynamic context and real-time information into agent interactions. They serve as a bridge between the agent and various external systems, enabling access to market data, wallet information, sentiment analysis, and temporal context.
+[Providers](/packages/core/src/providers.ts) are the sources of information for the agent. They provide data or state while acting as the agent's "senses", injecting real-time information into the agent's context. They serve as the eyes, ears, and other sensory inputs that allow the agent to perceive and interact with its environment, like a bridge between the agent and various external systems such as market data, wallet information, sentiment analysis, and temporal context. Anything that the agent knows is either coming from like the built-in context or from a provider. For more info, see the [providers API page](/api/interfaces/provider).
+
+Here's an example of how providers work within ElizaOS:
+
+- A news provider could fetch and format news.
+- A computer terminal provider in a game could feed the agent information when the player is near a terminal.
+- A wallet provider can provide the agent with the current assets in a wallet.
+- A time provider injects the current date and time into the context.
 
 ---
 
 ## Overview
 
-A provider's primary purpose is to:
+A provider's primary purpose is to supply dynamic contextual information that integrates with the agent's runtime. They format information for conversation templates and maintain consistent data access. For example:
 
-- Supply dynamic contextual information
-- Integrate with the agent runtime
-- Format information for conversation templates
-- Maintain consistent data access
+- **Function:** Providers run during or before an action is executed.
+- **Purpose:** They allow for fetching information from other APIs or services to provide different context or ways for an action to be performed.
+- **Example:** Before a "Mars rover action" is executed, a provider could fetch information from another API. This fetched information can then be used to enrich the context of the Mars rover action.
 
-### Core Structure
+The provider interface is defined in [types.ts](/packages/core/src/types.ts):
 
 ```typescript
 interface Provider {
     get: (
-        runtime: IAgentRuntime,
-        message: Memory,
-        state?: State,
-    ) => Promise<string>;
+        runtime: IAgentRuntime, // Which agent is calling the provider
+        message: Memory,        // Last message received 
+        state?: State          // Current conversation state
+    ) => Promise<string>;      // Returns info to inject into context
 }
 ```
 
+The `get` function takes:
+- `runtime`: The agent instance calling the provider
+- `message`: The last message received 
+- `state`: Current conversation state (optional)
+
+It returns a string that gets injected into the agent's context. The function can return null if there is no reason to validate.
+
+
 ---
 
-## Built-in Providers
+## Examples
+
+ElizaOS providers typically fall into these categories, with examples from the ecosystem:
+
+### System & Integration
+- **Time Provider**: Injects current date/time for temporal awareness
+- **Giphy Provider**: Provides GIF responses using Giphy API
+- **GitBook Provider**: Supplies documentation context from GitBook
+- **Topics Provider**: Caches and serves Allora Network topic information
+
+### Blockchain & DeFi
+- **Wallet Provider**: Portfolio data from Zerion, balances and prices
+- **DePIN Provider**: Network metrics via DePINScan API
+- **Chain Providers**: Data from Abstract, Fuel, ICP, EVM networks
+- **Market Provider**: Token data from DexScreener, Birdeye APIs
+
+### Knowledge & Data
+- **DKG Provider**: OriginTrail decentralized knowledge integration
+- **News Provider**: Current events via NewsAPI
+- **Trust Provider**: Calculates and injects trust scores
+
+Visit the [ElizaOS Plugin Registry](https://github.com/elizaos-plugins/registry) for a complete list of available plugins and providers.
 
 ### Time Provider
+[Source: packages/plugin-bootstrap/src/providers/time.ts](/packages/plugin-bootstrap/src/providers/time.ts)
 
-Provides temporal context for agent interactions:
+Provides temporal awareness by injecting current date/time information:
 
 ```typescript
 const timeProvider: Provider = {
     get: async (_runtime: IAgentRuntime, _message: Memory) => {
         const currentDate = new Date();
-        const currentTime = currentDate.toLocaleTimeString("en-US");
-        const currentYear = currentDate.getFullYear();
-        return `The current time is: ${currentTime}, ${currentYear}`;
-    },
+        const options = {
+            timeZone: "UTC",
+            dateStyle: "full" as const,
+            timeStyle: "long" as const
+        };
+        const humanReadable = new Intl.DateTimeFormat("en-US", options)
+            .format(currentDate);
+        return `The current date and time is ${humanReadable}. Please use this as your reference for any time-based operations or responses.`;
+    }
 };
 ```
 
-### Facts Provider
+### Facts Provider 
+[Source: packages/plugin-bootstrap/src/providers/facts.ts](/packages/plugin-bootstrap/src/providers/facts.ts)
 
-From bootstrap plugin - maintains conversation facts:
+Manages and serves conversation facts and knowledge:
 
 ```typescript
 const factsProvider: Provider = {
     get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-        // Create embedding for recent messages and retrieve relevant facts
+        // Get recent messages
+        const recentMessagesData = state?.recentMessagesData?.slice(-10);
         const recentMessages = formatMessages({
-            messages: state?.recentMessagesData?.slice(-10),
-            actors: state?.actorsData,
+            messages: recentMessagesData,
+            actors: state?.actorsData
         });
+
+        // Generate embedding for semantic search
         const embedding = await embed(runtime, recentMessages);
+        
         const memoryManager = new MemoryManager({
             runtime,
-            tableName: "facts",
+            tableName: "facts"
         });
-        const recentFactsData = await memoryManager.getMemories({
+
+        // Retrieve relevant facts
+        const facts = await memoryManager.getMemories({
             roomId: message.roomId,
             count: 10,
-            agentId: runtime.agentId,
+            agentId: runtime.agentId
         });
 
-        // Combine and format facts
-        const allFacts = [...recentFactsData]; // Deduplication can be skipped if no overlap
-        const formattedFacts = formatFacts(allFacts);
+        if (facts.length === 0) return "";
 
+        const formattedFacts = formatFacts(facts);
         return `Key facts that ${runtime.character.name} knows:\n${formattedFacts}`;
-    },
+    }
 };
-
-export { factsProvider };
 ```
 
 ### Boredom Provider
+[Source: packages/plugin-bootstrap/src/providers/boredom.ts](/packages/plugin-bootstrap/src/providers/boredom.ts)
 
-From bootstrap plugin - manages conversation dynamics and engagement by calculating the boredom level of an agent based on recent messages in a chat room.
+Manages conversation dynamics and engagement by calculating a "boredom score". The provider helps agents maintain appropriate conversation engagement levels by analyzing recent messages (last 15 minutes) and tracking conversational dynamics through keywords and pattern detection that then generates status messages reflecting interaction quality.
 
-1. **Data Structures**:
+#### Scoring Mechanisms
 
-    - **boredomLevels**: An array of objects, each representing a boredom level with a minimum score and a set of status messages that reflect the agent's current engagement.
-    - **interestWords**, **cringeWords**, and **negativeWords**: Arrays of words that influence the boredom score based on their presence in messages.
+**Increases Boredom**:
+- Excessive punctuation
+- Negative or dismissive language
+- Repetitive conversation patterns
 
-2. **Boredom Calculation**:
-
-- The `boredomProvider` gets recent messages from the agent’s conversation over the last 15 minutes.
-- It calculates a **boredom score** by analyzing the text of these messages. The score is influenced by:
-    - **Interest words**: Decrease boredom (subtract 1 point).
-    - **Cringe words**: Increase boredom (add 1 point).
-    - **Negative words**: Increase boredom (add 1 point).
-    - **Exclamation marks**: Increase boredom (add 1 point).
-    - **Question marks**: Increase or decrease boredom depending on the sender.
-
-3. **Boredom Level**:
-    - The boredom score is matched to a level from the `boredomLevels` array, which defines how engaged the agent feels.
-    - A random status message from the selected boredom level is chosen and the agent’s name is inserted into the message.
+**Decreases Boredom**:
+- Substantive discussion topics
+- Engaging questions
+- Research-related keywords
 
 ```typescript
-interface BoredomLevel {
-    minScore: number;
-    statusMessages: string[];
+// Sample scoring logic
+if (interestWords.some((word) => messageText.includes(word))) {
+    boredomScore -= 1;
 }
 ```
 
-The result is a message that reflects the agent's perceived level of engagement in the conversation, based on their recent interactions.
-
-```typescript
-const boredomProvider: Provider = {
-    get: async (runtime: IAgentRuntime, message: Memory) => {
-        const messages = await runtime.messageManager.getMemories({
-            roomId: message.roomId,
-            count: 10,
-        });
-
-        return messages.length > 0
-            ? "Actively engaged in conversation"
-            : "No recent interactions";
-    },
-};
-```
-
-Features:
-
-- Engagement tracking
-- Conversation flow management
-- Natural disengagement
-- Sentiment analysis
-- Response adaptation
-
 ---
 
-## Implementation
+## FAQ
 
-### Basic Provider Template
+### What's a good caching strategy for providers?
+Cache expensive operations with an appropriate TTL based on data freshness requirements - for example, the Topics Provider uses 30-minute caching.
 
-```typescript
-import { Provider, IAgentRuntime, Memory, State } from "@elizaos/core";
+### How should providers handle missing data?
+Return an empty string for missing or invalid data rather than null or undefined.
 
-const customProvider: Provider = {
-    get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-        // Get relevant data using runtime services
-        const memories = await runtime.messageManager.getMemories({
-            roomId: message.roomId,
-            count: 5,
-        });
+### What's the best way to format provider output?
+Keep context strings concise and consistently formatted, using clear templates when possible.
 
-        // Format and return context
-        return formatContextString(memories);
-    },
-};
-```
+### When should I use a provider vs a service?
+Use a provider when you need to inject information into the agent's context, and a service when the functionality doesn't need to be part of the conversation.
 
-### Memory Integration
+### Can providers access service functionality?
+Yes, providers can use services through the runtime. For example, a wallet provider might use a blockchain service to fetch data.
 
-```typescript
-const memoryProvider: Provider = {
-    get: async (runtime: IAgentRuntime, message: Memory) => {
-        // Get recent messages
-        const messages = await runtime.messageManager.getMemories({
-            roomId: message.roomId,
-            count: 5,
-            unique: true,
-        });
+### How should providers handle failures?
+Providers should handle failures gracefully and return an empty string or implement retries for external API calls. Never throw errors that would break the agent's context composition.
 
-        // Get user descriptions
-        const descriptions = await runtime.descriptionManager.getMemories({
-            roomId: message.roomId,
-            userId: message.userId,
-        });
-
-        // Combine and format
-        return `
-Recent Activity:
-${formatMessages(messages)}
-
-User Context:
-${formatDescriptions(descriptions)}
-    `.trim();
-    },
-};
-```
-
----
-
-## Best Practices
-
-### 1. Data Management
-
-- Implement robust caching strategies
-- Use appropriate TTL for different data types
-- Validate data before caching
-
-### 2. Performance
-
-```typescript
-// Example of optimized data fetching
-async function fetchDataWithCache<T>(
-    key: string,
-    fetcher: () => Promise<T>,
-): Promise<T> {
-    const cached = await cache.get(key);
-    if (cached) return cached;
-
-    const data = await fetcher();
-    await cache.set(key, data);
-    return data;
-}
-```
-
-### 3. Error Handling
-
-- Implement retry mechanisms
-- Provide fallback values
-- Log errors comprehensively
-- Handle API timeouts
-
-### 4. Security
-
-- Validate input parameters
-- Sanitize returned data
-- Implement rate limiting
-- Handle sensitive data appropriately
-
----
-
-## Integration with Runtime
-
-Providers are registered with the [AgentRuntime](/api/classes/AgentRuntime):
-
-```typescript
-// Register provider
-runtime.registerContextProvider(customProvider);
-
-// Providers are accessed through composeState
-const state = await runtime.composeState(message);
-```
-
-## Example: Complete Provider
-
-```typescript
-import { Provider, IAgentRuntime, Memory, State } from "@elizaos/core";
-
-const comprehensiveProvider: Provider = {
-    get: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-        try {
-            // Get recent messages
-            const messages = await runtime.messageManager.getMemories({
-                roomId: message.roomId,
-                count: 5,
-            });
-
-            // Get user context
-            const userContext = await runtime.descriptionManager.getMemories({
-                roomId: message.roomId,
-                userId: message.userId,
-            });
-
-            // Get relevant facts
-            const facts = await runtime.messageManager.getMemories({
-                roomId: message.roomId,
-                tableName: "facts",
-                count: 3,
-            });
-
-            // Format comprehensive context
-            return `
-# Conversation Context
-${messages.map((m) => `- ${m.content.text}`).join("\n")}
-
-# User Information
-${userContext.map((c) => c.content.text).join("\n")}
-
-# Related Facts
-${facts.map((f) => `- ${f.content.text}`).join("\n")}
-      `.trim();
-        } catch (error) {
-            console.error("Provider error:", error);
-            return "Context temporarily unavailable";
-        }
-    },
-};
-```
-
----
-
-## Troubleshooting
-
-1. **Stale Data**
-
-    ```typescript
-    // Implement cache invalidation
-    const invalidateCache = async (pattern: string) => {
-        const keys = await cache.keys(pattern);
-        await Promise.all(keys.map((k) => cache.del(k)));
-    };
-    ```
-
-2. **Rate Limiting**
-
-    ```typescript
-    // Implement backoff strategy
-    const backoff = async (attempt: number) => {
-        const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-    };
-    ```
-
-3. **API Failures**
-    ```typescript
-    // Implement fallback data sources
-    const getFallbackData = async () => {
-        // Attempt alternative data sources
-    };
-    ```
+### Can providers maintain state?
+While providers can maintain internal state, it's better to use the runtime's state management facilities for persistence.
 
 ---
 
 ## Further Reading
 
-- [Agent Runtime](./agents.md)
-- [Memory System](../../packages/core)
+- [Provider Implementation](/packages/core/src/providers.ts)
+- [Types Reference](/packages/core/src/types.ts)
+- [Runtime Integration](/packages/core/src/runtime.ts)

@@ -1,6 +1,6 @@
 import { logger } from "@elizaos/core";
 import { config } from "dotenv";
-import { PGliteClientManager } from "./pg-lite/manager.js";
+import { PGliteClientManager } from "./pglite/manager.js";
 import { PostgresConnectionManager } from "./pg/manager.js";
 
 config({ path: "../../.env" });
@@ -19,7 +19,7 @@ async function runMigrations() {
 			);
 			await connectionManager.initialize();
 			await connectionManager.runMigrations();
-			await connectionManager.close();
+			// await connectionManager.close();
 			logger.success("PostgreSQL migrations completed successfully");
 			process.exit(0);
 		} catch (error) {

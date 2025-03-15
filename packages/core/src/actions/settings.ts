@@ -15,8 +15,8 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	type ModelType,
-	ModelTypes,
+	type ModelTypeName,
+	ModelType,
 	type Setting,
 	type State,
 	type WorldSettings,
@@ -377,9 +377,9 @@ async function extractSettingValues(
 	try {
 		// Use runtime.useModel directly with strong typing
 		const result = await runtime.useModel<
-			typeof ModelTypes.OBJECT_LARGE,
+			typeof ModelType.OBJECT_LARGE,
 			SettingUpdate[]
-		>(ModelTypes.OBJECT_LARGE, {
+		>(ModelType.OBJECT_LARGE, {
 			prompt: basePrompt,
 			output: "array",
 			schema: {
@@ -508,7 +508,7 @@ async function handleOnboardingComplete(
 			template: completionTemplate,
 		});
 
-		const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 		});
 
@@ -563,7 +563,7 @@ async function generateSuccessResponse(
 			template: successTemplate,
 		});
 
-		const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 		});
 
@@ -616,7 +616,7 @@ async function generateFailureResponse(
 			template: failureTemplate,
 		});
 
-		const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 		});
 
@@ -651,7 +651,7 @@ async function generateErrorResponse(
 			template: errorTemplate,
 		});
 
-		const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 		});
 

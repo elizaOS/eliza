@@ -8,7 +8,7 @@ import {
 } from "@elizaos/core";
 import { v4 as uuid } from "uuid";
 import type { CommunityInvestorService } from "../tradingService";
-import { Conviction, RecommendationType, ServiceTypes } from "../types";
+import { Conviction, RecommendationType, ServiceType } from "../types";
 import type { MessageRecommendation } from "./schema";
 
 // Use type intersection for extended metadata
@@ -93,9 +93,9 @@ export const confirmRecommendation: Action = {
 		callback: any,
 	) {
 		console.log("confirmRecommendation is running");
-		if (!runtime.getService(ServiceTypes.COMMUNITY_INVESTOR)) {
+		if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
 			console.log("no trading service");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: runtime.agentId,
 				agentId: runtime.agentId,
 				roomId: message.roomId,
@@ -103,7 +103,7 @@ export const confirmRecommendation: Action = {
 					thought: "No trading service found",
 					actions: ["CONFIRM_RECOMMENDATION_FAILED"],
 				},
-			});
+			}, "messages");
 			return;
 		}
 
@@ -122,6 +122,7 @@ export const confirmRecommendation: Action = {
 				agentId: message.agentId,
 				roomId: message.roomId,
 				metadata: {
+					type: "reaction",
 					reaction: {
 						type: [{ type: "emoji", emoji: "👍" }],
 						onlyReaction: true,
@@ -133,12 +134,12 @@ export const confirmRecommendation: Action = {
 		}
 
 		const tradingService = runtime.getService<CommunityInvestorService>(
-			ServiceTypes.COMMUNITY_INVESTOR,
+			ServiceType.COMMUNITY_INVESTOR,
 		)!;
 
 		if (!tradingService.hasWallet("solana")) {
 			console.log("no registered solana wallet in trading service");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: runtime.agentId,
 				agentId: runtime.agentId,
 				roomId: message.roomId,
@@ -146,13 +147,12 @@ export const confirmRecommendation: Action = {
 					thought: "No registered solana wallet in trading service",
 					actions: ["CONFIRM_RECOMMENDATION_FAILED"],
 				},
-			});
+			}, "messages");
 			return;
 		}
 
-		const recommendationsManager = runtime.getMemoryManager("recommendations")!;
-
-		const recentRecommendations = await recommendationsManager.getMemories({
+		const recentRecommendations = await runtime.getMemories({
+			tableName: "recommendations",
 			roomId: message.roomId,
 			count: 20,
 		});
@@ -175,14 +175,14 @@ export const confirmRecommendation: Action = {
 		//     const text = await generateText({
 		//         runtime,
 		//         prompt,
-		//         modelType: ModelTypes.TEXT_SMALL,
+		//         modelType: ModelType.TEXT_SMALL,
 		//         stop: [],
 		//     });
 		//     const xmlResponse = extractXMLFromResponse(text, "tokens");
 		//const tokens = parseTokensResponse(xmlResponse);
 
 		const tokens = [
-			newUserRecommendations[0]?.metadata?.recommendation?.tokenAddress ?? "",
+			(newUserRecommendations[0]?.metadata as any).recommendation?.tokenAddress ?? "",
 		];
 
 		if (!Array.isArray(tokens) || tokens[0] === "") return;
@@ -202,14 +202,12 @@ export const confirmRecommendation: Action = {
 			for (const tokenAddress of [tokens[tokens.length - 1]]) {
 				const memory = newUserRecommendations.find(
 					(r) =>
-						(r.metadata.recommendation as MessageRecommendation)
-							.tokenAddress === tokenAddress,
+						(r.metadata as any).recommendation.tokenAddress === tokenAddress,
 				);
 
 				if (!memory) continue;
 
-				const recommendation = memory.metadata
-					.recommendation as MessageRecommendation;
+				const recommendation = (memory.metadata as any).recommendation as MessageRecommendation;
 
 				const participant = entities.find((participant) => {
 					return (

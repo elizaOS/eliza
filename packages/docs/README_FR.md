@@ -20,7 +20,7 @@ _Utilisée dans [@DegenSpartanAI](https://x.com/degenspartanai) et [@MarcAIndree
 
 - [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 22+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [bun](https://bun.io/installation)
+- [pnpm](https://pnpm.io/installation)
 
 ### Éditer le fichier .env
 
@@ -32,7 +32,7 @@ _Utilisée dans [@DegenSpartanAI](https://x.com/degenspartanai) et [@MarcAIndree
 1. Ouvrir le document `packages/core/src/defaultCharacter.ts` afin de modifier le personnage par défaut
 
 2. Pour ajouter des personnages personnalisés :
-    - Lancer la commande `bun start --characters="path/to/your/character.json"`
+    - Lancer la commande `pnpm start --characters="path/to/your/character.json"`
     - Plusieurs fichiers personnages peuvent être ajoutés en même temps
 
 ### Lancer Eliza
@@ -40,9 +40,12 @@ _Utilisée dans [@DegenSpartanAI](https://x.com/degenspartanai) et [@MarcAIndree
 Après avoir terminé la configuration et les fichiers personnage, lancer le bot en tapant la ligne de commande suivante:
 
 ```bash
-bun i
-bun run build
-bun start
+pnpm i
+pnpm build
+pnpm start
+
+# Le projet étant régulièrement mis à jour, il vous faudra parfois le nettoyer avant de recommencer à travailler dessus
+pnpm clean
 ```
 
 # Personnaliser Eliza
@@ -71,7 +74,7 @@ Il vous faudra peut-être installer Sharp.
 Si il y a une erreur lors du lancement du bot, essayez d'installer Sharp comme ceci :
 
 ```
-bun install --include=optional sharp
+pnpm install --include=optional sharp
 ```
 
 # Paramètres
@@ -83,7 +86,7 @@ Vous devez ajouter certaines variables à votre fichier .env pour vous connecter
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Bot token
 OPENAI_API_KEY=sk-* # OpenAI API key, starting with sk-
-ELEVENLABS_API_KEY= # API key from elevenlabs
+ELEVENLABS_XI_API_KEY= # API key from elevenlabs
 
 # Paramètres ELEVENLABS
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
@@ -132,7 +135,7 @@ TOGETHER_API_KEY=
 Si vous avez une carte graphique NVIDIA, vous pouvez installer CUDA afin de grandement améliorer les performances :
 
 ```
-bun install
+pnpm install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 
@@ -156,15 +159,15 @@ Pour savoir comment configurer votre bot Discord, vous pouvez consulter la docum
 Ligne de commande pour lancer les tests :
 
 ```bash
-bun test          # Lance les tests
-bun test:watch    # Lance les tests en mode observation
+pnpm test          # Lance les tests
+pnpm test:watch    # Lance les tests en mode observation
 ```
 
 Pour les tests spécifiques à la base de données :
 
 ```bash
-bun test:sqlite   # Lance les tests avec SQLite
-bun test:sqljs    # Lance les tests avec SQL.js
+pnpm test:sqlite   # Lance les tests avec SQLite
+pnpm test:sqljs    # Lance les tests avec SQL.js
 ```
 
 Les tests sont écrits en Jest et se trouvent ici : `src/**/*.test.ts`. L’environnement de test est configuré pour :

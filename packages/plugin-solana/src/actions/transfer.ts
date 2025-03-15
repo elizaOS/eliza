@@ -5,7 +5,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	logger,
@@ -161,7 +161,7 @@ export default {
 			template: transferTemplate,
 		});
 
-		const result = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const result = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt: transferPrompt,
 		});
 

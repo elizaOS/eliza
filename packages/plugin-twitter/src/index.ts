@@ -1,14 +1,15 @@
 import {
+	ChannelType,
+	type Entity,
+	EventTypes,
 	type IAgentRuntime,
 	type Plugin,
+	Role,
+	type Room,
 	Service,
 	type UUID,
-	createUniqueUuid,
-	ChannelType,
 	type World,
-	type Room,
-	type Entity,
-	Role,
+	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
 import spaceJoin from "./actions/spaceJoin";
@@ -19,7 +20,7 @@ import { TwitterInteractionClient } from "./interactions";
 import { TwitterPostClient } from "./post";
 import { TwitterSpaceClient } from "./spaces";
 import { TwitterTestSuite } from "./tests";
-import type { ITwitterClient } from "./types";
+import { type ITwitterClient, TwitterEventTypes } from "./types";
 
 /**
  * A manager that orchestrates all specialized Twitter logic:
@@ -118,7 +119,7 @@ export class TwitterService extends Service {
 			// Store the client instance
 			this.clients.set(this.getClientKey(clientId, runtime.agentId), client);
 
-			// Emit standardized SERVER_JOINED event once we have client profile
+			// Emit standardized WORLD_JOINED event once we have client profile
 			await this.emitServerJoinedEvent(runtime, client);
 
 			logger.info(`Created Twitter client for ${clientId}`);
@@ -130,7 +131,7 @@ export class TwitterService extends Service {
 	}
 
 	/**
-	 * Emits a standardized SERVER_JOINED event for Twitter
+	 * Emits a standardized WORLD_JOINED event for Twitter
 	 * @param runtime The agent runtime
 	 * @param client The Twitter client instance
 	 */
@@ -140,7 +141,7 @@ export class TwitterService extends Service {
 	): Promise<void> {
 		try {
 			if (!client.client.profile) {
-				logger.warn("Twitter profile not available yet, can't emit SERVER_JOINED event");
+				logger.warn("Twitter profile not available yet, can't emit WORLD_JOINED event");
 				return;
 			}
 
@@ -209,8 +210,8 @@ export class TwitterService extends Service {
 				}
 			};
 			
-			// Emit the SERVER_JOINED event
-			runtime.emitEvent(["TWITTER_SERVER_JOINED", "SERVER_JOINED"], {
+			// Emit the WORLD_JOINED event
+			runtime.emitEvent([TwitterEventTypes.WORLD_JOINED, EventTypes.WORLD_JOINED], {
 				runtime: runtime,
 				world: world,
 				rooms: [homeTimelineRoom, mentionsRoom],
@@ -218,9 +219,9 @@ export class TwitterService extends Service {
 				source: "twitter",
 			});
 			
-			logger.info(`Emitted SERVER_JOINED event for Twitter account ${username}`);
+			logger.info(`Emitted WORLD_JOINED event for Twitter account ${username}`);
 		} catch (error) {
-			logger.error("Failed to emit SERVER_JOINED event for Twitter:", error);
+			logger.error("Failed to emit WORLD_JOINED event for Twitter:", error);
 		}
 	}
 
@@ -286,6 +287,7 @@ export class TwitterService extends Service {
 				//  config.TWITTER_ACCESS_TOKEN && config.TWITTER_ACCESS_TOKEN_SECRET)
 			) {
 				logger.info("Creating default Twitter client from character settings");
+				console.log("runtime is", runtime)
 				await twitterClientManager.createClient(
 					runtime,
 					runtime.agentId,

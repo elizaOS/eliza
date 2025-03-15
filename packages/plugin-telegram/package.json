@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-telegram",
-	"version": "1.0.0-alpha.20",
+	"version": "1.0.0-alpha.60",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -9,16 +9,19 @@
 		"./package.json": "./package.json",
 		".": {
 			"import": {
-				"@elizaos/source": "./src/index.ts",
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
 			}
 		}
 	},
-	"files": ["dist"],
+	"files": [
+		"dist"
+	],
 	"dependencies": {
 		"@telegraf/types": "7.1.0",
-		"telegraf": "4.16.3"
+		"strip-literal": "^3.0.0",
+		"telegraf": "4.16.3",
+		"type-detect": "^4.1.0"
 	},
 	"devDependencies": {
 		"tsup": "8.4.0",
@@ -29,10 +32,11 @@
 		"dev": "tsup --watch",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
+		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
+		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
 	},
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
 }

@@ -5,11 +5,10 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	Service,
-	type ServiceType,
-	ServiceTypes,
+	type ServiceTypeName,
+	ServiceType,
 	type State,
-	type Task,
-	type UUID,
+	type Task
 } from "../types";
 
 /**
@@ -17,7 +16,7 @@ import {
  * @extends Service
  * @property {NodeJS.Timeout|null} timer - Timer for executing tasks
  * @property {number} TICK_INTERVAL - Interval in milliseconds to check for tasks
- * @property {ServiceType} serviceType - Service type of TASK
+ * @property {ServiceTypeName} serviceType - Service type of TASK
  * @property {string} capabilityDescription - Description of the service's capability
  * @static
  * @method start - Static method to start the TaskService
@@ -33,7 +32,7 @@ import {
 export class TaskService extends Service {
 	private timer: NodeJS.Timeout | null = null;
 	private readonly TICK_INTERVAL = 1000; // Check every second
-	static serviceType: ServiceType = ServiceTypes.TASK;
+	static serviceType: ServiceTypeName = ServiceType.TASK;
 	capabilityDescription = "The agent is able to schedule and execute tasks";
 
 	/**
@@ -78,9 +77,7 @@ export class TaskService extends Service {
 		});
 
 		// check if the task exists
-		const tasks = await this.runtime
-			
-			.getTasksByName("REPEATING_TEST_TASK");
+		const tasks = await this.runtime.getTasksByName("REPEATING_TEST_TASK");
 
 		if (tasks.length === 0) {
 			// Create repeating task
@@ -115,8 +112,12 @@ export class TaskService extends Service {
 		}
 
 		this.timer = setInterval(async () => {
-			await this.checkTasks();
-		}, this.TICK_INTERVAL);
+			try {
+				await this.checkTasks();
+			} catch (error) {
+				logger.error("Error checking tasks:", error);
+			}
+		}, this.TICK_INTERVAL) as unknown as NodeJS.Timeout;
 	}
 
 	/**
@@ -189,10 +190,23 @@ export class TaskService extends Service {
 			const now = Date.now();
 
 			for (const task of tasks) {
-				const taskStartTime = new Date(task.updatedAt || 0).getTime();
-
-				// convert updatedAt which is an ISO string to a number
-				const updateIntervalMs = task.metadata.updateInterval ?? 0; // update immediately
+				// First check task.updatedAt (for newer task format)
+				// Then fall back to task.metadata.updatedAt (for older tasks)
+				// Finally default to 0 if neither exists
+				let taskStartTime: number;
+				
+				if (typeof task.updatedAt === 'number') {
+					taskStartTime = task.updatedAt;
+				} else if (task.metadata?.updatedAt && typeof task.metadata.updatedAt === 'number') {
+					taskStartTime = task.metadata.updatedAt;
+				} else if (task.updatedAt) {
+					taskStartTime = new Date(task.updatedAt).getTime();
+				} else {
+					taskStartTime = 0; // Default to immediate execution if no timestamp found
+				}
+				
+				// Get updateInterval from metadata
+				const updateIntervalMs = task.metadata?.updateInterval ?? 0; // update immediately
 
 				// if tags does not contain "repeat", execute immediately
 				if (!task.tags?.includes("repeat")) {
@@ -265,7 +279,7 @@ export class TaskService extends Service {
 	 * @returns {Promise<void>} - A promise that resolves once the service has been stopped.
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = runtime.getService(ServiceTypes.TASK);
+		const service = runtime.getService(ServiceType.TASK);
 		if (service) {
 			await service.stop();
 		}

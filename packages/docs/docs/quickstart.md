@@ -8,135 +8,184 @@ sidebar_position: 2
 
 Before getting started with Eliza, ensure you have:
 
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) (using [nvm](https://github.com/nvm-sh/nvm) is recommended)
-- [bun 9+](https://bun.io/installation)
+- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) (using [nvm](https://github.com/nvm-sh/nvm?tab=readme-ov-file#installing-and-updating) is recommended)
+- [pnpm 9+](https://pnpm.io/installation)
 - Git for version control
 - A code editor ([VS Code](https://code.visualstudio.com/), [Cursor](https://cursor.com/) or [VSCodium](https://vscodium.com) recommended)
-- [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (optional, for GPU acceleration)
+- Python (mainly for installing NPM)
+- (Optional) FFmpeg (for audio/video handling)
+- (Optional) [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit) (for GPU acceleration)
 
-## Installation
+> On Windows? See here before continuing to make life easier: [WSL setup guide](/docs/guides/wsl)
 
-Clone the repository
+---
+
+## Automated Installation
+
+1. Use https://github.com/elizaOS/eliza-starter
 
 ```bash
-git clone https://github.com/elizaOS/eliza.git
+git clone git@github.com:elizaos/eliza-starter.git
+cd eliza-starter
+cp .env.example .env
+pnpm i && pnpm build && pnpm start
 ```
 
-Enter directory
+2. Use the [start script](https://howieduhzit.best/start-sh/)
 
 ```bash
+git clone git@github.com:elizaOS/eliza.git
+cd eliza
+
+# usage start.sh [-v|--verbose] [--skip-nvm]
+./scripts/start.sh
+```
+
+
+3. Using Docker
+
+Prerequisites:
+- A Linux-based server (Ubuntu/Debian recommended)
+- Git installed
+- [Docker](https://docs.docker.com/get-started/get-docker/)
+
+```bash
+git clone git@github.com:elizaOS/eliza.git
+cd eliza
+docker-compose build
+docker-compose up
+```
+
+> Note: If you get permission issues run the docker-compose commands with sudo or add yourself to the docker group
+
+<details>
+<summary>Troubleshooting</summary>
+#### Common Error
+```bash
+- "characters not found": Check working directory
+- `./scripts/start.sh -v` Run with logging
+- Check console output
+- [Open an issue](https://github.com/elizaOS/eliza/issues)
+```
+
+#### Permission Issues
+```
+sudo chmod +x scripts/start.sh  # Linux/macOS
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser  # Windows
+```
+
+#### Package Issues
+> Note: Always verify scripts before running it
+```
+## Linux
+sudo apt update
+
+## MacOS
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew update
+
+## Windows
+# Run as admin
+```
+
+#### Node.js Issues
+- Ensure Node.js 23.3.0 is installed
+- Use `node -v` to check version
+- Consider using [nvm](https://github.com/nvm-sh/nvm) to manage Node versions
+- Use `--skip-nvm` for system Node
+- Check PATH configuration
+
+If you see Sharp-related errors, try this:
+
+```bash
+pnpm install --include=optional sharp
+```
+
+If you see errors about better-sqlite3, try `pnpm rebuild better-sqlite3` or go into `node_modules/better-sqlite3` and run `pnpm i`
+
+You can also add a postinstall script in your `package.json` if you want to automate this:
+```json
+scripts: {
+    "postinstall": "npm rebuild better-sqlite3"
+}
+```
+
+pnpm may be bundled with a different node version, ignoring nvm. If this is the case, try:
+
+```bash
+pnpm env use --global 23.3.0
+```
+
+#### Docker issues
+
+Some tips on cleaning your working directory before rebuilding:
+- List all docker images: `sudo docker images`
+- Reomove all Docker images: `docker rmi -f $(docker images -aq)`
+- Remove all build cache: `docker builder prune -a -f`
+- Verify cleanup: `docker system df`
+</details>
+
+---
+
+## Manual Installation
+
+After installing the prerequisites, clone the repository and enter the directory:
+
+```bash
+git clone git@github.com:elizaOS/eliza.git
 cd eliza
 ```
 
-Switch to latest [stable version tag](https://github.com/elizaOS/eliza/tags)
-
+:::tip
+If you're planning on doing development, we suggest using the code on the develop branch:
 ```bash
-# This project moves quickly, check out the latest release known to work
-git checkout $(git describe --tags --abbrev=0)
+git checkout develop
 ```
 
-Install dependencies
+From the main repo you can also download [sample character files](https://github.com/elizaos/characters) this way:
+```bash
+git submodule update --init
+```
+:::
+
+Install the dependencies
 
 ```bash
-bun install
+pnpm install
 ```
 
-**Note:** Please only use the `--no-frozen-lockfile` option when you're initially instantiating the repo or are bumping the version of a package or adding a new package to your package.json. This practice helps maintain consistency in your project's dependencies and prevents unintended changes to the lockfile.
+> **Note:** you may need to use --no-frozen-lockfile if it gives a message about the frozen lock file being out of date.
 
-Build the local libraries
+Compile the typescript:
 
 ```bash
-bun run build
+pnpm build
 ```
 
-## **Configure Environment**
+---
 
-Copy example environment file
+## Start the Agent
 
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and add your values. Do NOT add this file to version control.
+[Character files](./core/characterfile.md) are where you can configure your agent's personality, lore, and capabilities via plugins. Inform eliza which character you want to run:
 
 ```bash
-# Suggested quickstart environment variables
-DISCORD_APPLICATION_ID=  # For Discord integration
-DISCORD_API_TOKEN=      # Bot token
-HEURIST_API_KEY=       # Heurist API key for LLM and image generation
-OPENAI_API_KEY=        # OpenAI API key
-GROK_API_KEY=          # Grok API key
-ELEVENLABS_API_KEY= # API key from elevenlabs (for voice)
-LIVEPEER_GATEWAY_URL=  # Livepeer gateway URL
-```
-
-## Choose Your Model
-
-Eliza supports multiple AI models and you set which model to use inside the character JSON file.
-
-- **Heurist**: Set `modelProvider: "heurist"` in your character file. Most models are uncensored.
-- LLM: Select available LLMs [here](https://docs.heurist.ai/dev-guide/supported-models#large-language-models-llms) and configure `SMALL_HEURIST_MODEL`,`MEDIUM_HEURIST_MODEL`,`LARGE_HEURIST_MODEL`
-- Image Generation: Select available Stable Diffusion or Flux models [here](https://docs.heurist.ai/dev-guide/supported-models#image-generation-models) and configure `HEURIST_IMAGE_MODEL` (default is FLUX.1-dev)
-- **Llama**: Set `OLLAMA_MODEL` to your chosen model
-- **Grok**: Set `GROK_API_KEY` to your Grok API key and set `modelProvider: "grok"` in your character file
-- **OpenAI**: Set `OPENAI_API_KEY` to your OpenAI API key and set `modelProvider: "openai"` in your character file
-- **Livepeer**: Set `LIVEPEER_IMAGE_MODEL` to your chosen Livepeer image model, available models [here](https://livepeer-eliza.com/)
-
-- **Llama**: Set `XAI_MODEL=meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo`
-- **Grok**: Set `XAI_MODEL=grok-beta`
-- **OpenAI**: Set `XAI_MODEL=gpt-4o-mini` or `gpt-4o`
-- **Livepeer**: Set `SMALL_LIVEPEER_MODEL`,`MEDIUM_LIVEPEER_MODEL`,`LARGE_LIVEPEER_MODEL` and `IMAGE_LIVEPEER_MODEL` to your desired models listed [here](https://livepeer-eliza.com/).
-
-## Local inference
-
-### For llama_local inference:
-
-- The system will automatically download the model from Hugging Face
-- `LOCAL_LLAMA_PROVIDER` can be blank
-
-Note: llama_local requires a GPU, it currently will not work with CPU inference
-
-### For Ollama inference:
-
-- If `OLLAMA_SERVER_URL` is left blank, it defaults to `localhost:11434`
-- If `OLLAMA_EMBEDDING_MODE` is left blank, it defaults to `mxbai-embed-large`
-
-## Create Your First Agent
-
-**Create a Character File**
-
-Check out the `characters/` directory for a number of character files to try out.
-Additionally you can read `packages/core/src/defaultCharacter.ts`.
-
-Copy one of the example character files and make it your own
-
-```bash
-cp characters/sbf.character.json characters/deep-thought.character.json
-```
-📝 [Character Documentation](./core/characterfile.md)
-
-**Start the Agent**
-
-Inform it which character you want to run:
-
-```bash
-bun start --character="characters/deep-thought.character.json"
+pnpm start --character="characters/deep-thought.character.json"
 ```
 
 You can load multiple characters with a comma-separated list:
 
 ```bash
-bun start --characters="characters/deep-thought.character.json, characters/sbf.character.json"
+pnpm start --characters="characters/deep-thought.character.json,characters/sbf.character.json"
 ```
 
-**Interact with the Agent**
+By default the agent will be accessible via the terminal and REST API.
 
-Now you're ready to start a conversation with your agent.
+#### Chat Client
 
-Open a new terminal window and run the client's http server.
+If you're using the main [eliza repo](https://github.com/elizaos/eliza) and want to use the chat client, open a new terminal window and run the client's http server:
 
 ```bash
-bun start:client
+pnpm start:client
 ```
 
 Once the client is running, you'll see a message like this:
@@ -147,16 +196,96 @@ Once the client is running, you'll see a message like this:
 
 Simply click the link or open your browser to `http://localhost:5173/`. You'll see the chat interface connect to the system, and you can begin interacting with your character.
 
-## Platform Integration
+---
 
-### Discord Bot Setup
+## Additional Configuration
+
+You can load plugins or additional client support with your character file to unlock more capabilities for your agent. 
+
+### Add Plugins and Clients
+
+Here's how to import and register plugins in your character file:
+
+```typescript
+{
+    "name": "Eliza",
+    "clients": ["telegram"],
+    // ... other config options
+    "plugins": ["@elizaos/plugin-image"],
+}
+```
+
+There are two ways to get a list of available plugins:
+
+1. Web Interface
+
+Go https://elizaos.github.io/registry/ or the [Showcase](/showcase) and search for plugins
+
+2. CLI Interface
+
+```bash
+$ npx elizaos plugins list
+```
+
+Here's a sample list of plugins you can check out!
+
+| plugin name | Description |
+| ----------- | ----------- |
+| [`@elizaos/plugin-llama`](https://github.com/elizaos-plugins/plugin-llama) | Run LLM models on your local machine
+| [`@elizaos/client-twitter`](https://github.com/elizaos-plugins/client-twitter) | Twitter bot integration
+| [`@elizaos/client-discord`](https://github.com/elizaos-plugins/client-discord) | Discord bot integration
+| [`@elizaos/client-telegram`](https://github.com/elizaos-plugins/client-telegram) | Telegram integration
+| [`@elizaos/plugin-image`](https://github.com/elizaos-plugins/plugin-image) | Image processing and analysis
+| [`@elizaos/plugin-video`](https://github.com/elizaos-plugins/plugin-video) | Video processing capabilities
+| [`@elizaos/plugin-browser`](https://github.com/elizaos-plugins/plugin-browser) | Web scraping capabilities
+| [`@elizaos/plugin-pdf`](https://github.com/elizaos-plugins/plugin-pdf) | PDF processing
+
+
+
+### Configure Environment
+
+There are two ways to configure elizaOS
+
+### Option 1: Default .env file
+
+Copying the `.example.env` file and editing is the simpler option especially if you plan to just host one agent:
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+### Option 2: Secrets in the character file
+
+This option allows you finer grain control over which character uses what resources and is required if you want multiple agents but using different keys. For example:
+
+
+```typescript
+{
+  "name": "eliza",
+  // ... other config options
+  "settings": {
+    "secrets": {
+      "DISCORD_APPLICATION_ID": "1234",
+      "DISCORD_API_TOKEN": "xxxx",
+      "OPENAI_API_KEY": "sk-proj-xxxxxxxxx-..."
+    }
+  }
+```
+
+Watch the commas to make sure it's valid json! Here's a few more config tips:
+
+<details>
+<summary>Discord Bot Setup</summary>
 
 1. Create a new application at [Discord Developer Portal](https://discord.com/developers/applications)
 2. Create a bot and get your token
 3. Add bot to your server using OAuth2 URL generator
 4. Set `DISCORD_API_TOKEN` and `DISCORD_APPLICATION_ID` in your `.env`
+</details>
 
-### Twitter Integration
+<details>
+<summary>Twitter Integration</summary>
 
 Add to your `.env`:
 
@@ -164,11 +293,14 @@ Add to your `.env`:
 TWITTER_USERNAME=  # Account username
 TWITTER_PASSWORD=  # Account password
 TWITTER_EMAIL=    # Account email
+TWITTER_2FA_SECRET=    # In order to avoid X preventing the login, it is better to activate 2fa in the target account, copy the 2fa secret and paste it here
 ```
 
 **Important:** Log in to the [Twitter Developer Portal](https://developer.twitter.com) and enable the "Automated" label for your account to avoid being flagged as inauthentic.
+</details>
 
-### Telegram Bot
+<details>
+<summary>Telegram Bot</summary>
 
 1. Create a bot
 2. Add your bot token to `.env`:
@@ -176,122 +308,35 @@ TWITTER_EMAIL=    # Account email
 ```bash
 TELEGRAM_BOT_TOKEN=your_token_here
 ```
+</details>
 
-## Optional: GPU Acceleration
 
-If you have an NVIDIA GPU:
 
-```bash
-# Install CUDA support
-npx --no node-llama-cpp source download --gpu cuda
 
-# Ensure CUDA Toolkit, cuDNN, and cuBLAS are installed
-```
+### GPU Acceleration
 
-## Basic Usage Examples
+If you have a Nvidia GPU you can enable CUDA support. First ensure CUDA Toolkit, cuDNN, and cuBLAS are first installed, then: `npx --no node-llama-cpp source download --gpu cuda`
 
-### Chat with Your Agent
 
-```bash
-# Start chat interface
-bun start
-```
 
-### Run Multiple Agents
+---
 
-```bash
-bun start --characters="characters/trump.character.json,characters/tate.character.json"
-```
+## FAQ
 
-## Common Issues & Solutions
+### What's the difference between eliza and eliza-starter?
+Eliza-starter is a lightweight version for simpler setups, while the main eliza repository includes all advanced features and a web client.
 
-1. **Node.js Version**
+### How do I fix build/installation issues?
+Use Node v23.3.0, run `pnpm clean`, then `pnpm install --no-frozen-lockfile`, followed by `pnpm build`. If issues persist, checkout the latest stable tag.
 
-- Ensure Node.js 23.3.0 is installed
-- Use `node -v` to check version
-- Consider using [nvm](https://github.com/nvm-sh/nvm) to manage Node versions
+### What are the minimum system requirements?
+8GB RAM recommended for build process. For deployment, a t2.large instance on AWS with 20GB storage running Ubuntu is the minimum tested configuration.
 
-NOTE: bun may be bundled with a different node version, ignoring nvm. If this is the case, you can use
-
-```bash
-bun env use --global 23.3.0
-```
-
-to force it to use the correct one.
-
-2. **Sharp Installation**
-If you see Sharp-related errors:
-
-```bash
-bun install --include=optional sharp
-```
-
-3. **CUDA Setup**
-
-- Verify CUDA Toolkit installation
-- Check GPU compatibility with toolkit
-- Ensure proper environment variables are set
-
-4. **Exit Status 1**
-If you see
-
-```
-triggerUncaughtException(
-^
-[Object: null prototype] {
-[Symbol(nodejs.util.inspect.custom)]: [Function: [nodejs.util.inspect.custom]]
-}
-```
-
-You can try these steps, which aim to add `@types/node` to various parts of the project
-
-```
-# Add dependencies to workspace root
-bun add -w -D ts-node typescript @types/node
-
-# Add dependencies to the agent package specifically
-bun add -D ts-node typescript @types/node --filter "@elizaos/agent"
-
-# Also add to the core package since it's needed there too
-bun add -D ts-node typescript @types/node --filter "@elizaos/core"
-
-# Install all dependencies recursively
-bun install -r
-
-# Build the project
-bun run build
-
-# Then try to start
-bun start
-```
-
-5. **Better sqlite3 was compiled against a different Node.js version**
-If you see
-
-```
-Error starting agents: Error: The module '.../eliza-agents/dv/eliza/node_modules/better-sqlite3/build/Release/better_sqlite3.node'
-was compiled against a different Node.js version using
-NODE_MODULE_VERSION 131. This version of Node.js requires
-NODE_MODULE_VERSION 127. Please try re-compiling or re-installing
-```
-
-You can try this, which will attempt to rebuild better-sqlite3.
-
-```bash
-bun rebuild better-sqlite3
-```
-
-If that doesn't work, try clearing your node_modules in the root folder
-
-```bash
-rm -fr node_modules; bun store prune
-```
-
-Then reinstall the requirements
-
-```bash
-bun i
-```
+### How do I fix "Exit Status 1" errors?
+If you see `triggerUncaughtException` errors, try:
+1. Add dependencies to workspace root
+2. Add dependencies to specific packages
+3. Clean and rebuild
 
 ## Next Steps
 
@@ -302,6 +347,4 @@ Once you have your agent running, explore:
 3. ⚡ [Add Custom Actions](./core/actions.md)
 4. 🔧 [Advanced Configuration](./guides/configuration.md)
 
-For detailed API documentation, troubleshooting, and advanced features, check out our [full documentation](https://elizaos.github.io/eliza/).
-
-Join our [Discord community](https://discord.gg/ai16z) for support and updates!
+Join the [Discord community](https://discord.gg/elizaOS) for support and to share what you're building!

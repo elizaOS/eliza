@@ -1,26 +1,21 @@
 import {
 	ChannelType,
-	type IAgentRuntime,
-	ModelTypes,
-	type UUID,
-	cleanJsonResponse,
-	composePrompt,
-	createUniqueUuid,
-	extractAttributes,
-	logger,
-	parseJSONObjectFromText,
-	truncateToCompleteSentence,
 	type Content,
-	type Memory,
+	EventTypes,
 	type HandlerCallback,
-	type PostGeneratedPayload,
+	type IAgentRuntime,
+	type InvokePayload,
+	type Memory,
+	ModelType,
+	type UUID,
+	createUniqueUuid,
+	logger,
+	truncateToCompleteSentence
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client/index";
-import { twitterPostTemplate } from "./templates";
 import type { MediaData } from "./types";
-import { fetchMediaData } from "./utils";
-
+import { TwitterEventTypes } from "./types";
 /**
  * Class representing a Twitter post client for generating and posting tweets.
  */
@@ -54,7 +49,7 @@ export class TwitterPostClient {
 		logger.log(`- Dry Run Mode: ${this.isDryRun ? "Enabled" : "Disabled"}`);
 
 		logger.log(
-			`- Disable Post: ${this.state?.TWITTER_ENABLE_POST_GENERATION || this.runtime.getSetting("TWITTER_ENABLE_POST_GENERATION") ? "disabled" : "enabled"}`,
+			`- Auto-post: ${this.state?.TWITTER_ENABLE_POST_GENERATION || this.runtime.getSetting("TWITTER_ENABLE_POST_GENERATION") ? "disabled" : "enabled"}`,
 		);
 
 		logger.log(
@@ -100,6 +95,11 @@ export class TwitterPostClient {
 
 		// Start the loop after a 1 minute delay to allow other services to initialize
 		setTimeout(generateNewTweetLoop, 60 * 1000);
+		if(this.runtime.getSetting("TWITTER_POST_IMMEDIATELY")) {
+			// await 1 second
+			await new Promise(resolve => setTimeout(resolve, 1000));
+			this.generateNewTweet();
+		}
 	}
 
 	/**
@@ -152,8 +152,7 @@ export class TwitterPostClient {
 		rawTweetContent: string,
 	) {
 		// Cache the last post details
-		await runtime
-			.setCache<any>(`twitter/${client.profile.username}/lastPost`, {
+		await runtime.setCache<any>(`twitter/${client.profile.username}/lastPost`, {
 				id: tweet.id,
 				timestamp: Date.now(),
 			});
@@ -174,7 +173,7 @@ export class TwitterPostClient {
 		await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
 
 		// Create a memory for the tweet
-		await runtime.getMemoryManager("messages").createMemory({
+		await runtime.createMemory({
 			id: createUniqueUuid(this.runtime, tweet.id),
 			entityId: runtime.agentId,
 			agentId: runtime.agentId,
@@ -185,7 +184,7 @@ export class TwitterPostClient {
 			},
 			roomId,
 			createdAt: tweet.timestamp,
-		});
+		}, "messages");
 	}
 
 	/**
@@ -315,8 +314,7 @@ export class TwitterPostClient {
 	 */
 	async generateNewTweet() {
 		try {
-			logger.log("Generating new tweet...");
-			
+						
 			// Create the timeline room ID for storing the post
 			const userId = this.client.profile?.id;
 			if (!userId) {
@@ -324,78 +322,9 @@ export class TwitterPostClient {
 				return;
 			}
 			
+			// Create standardized world and room IDs
 			const worldId = createUniqueUuid(this.runtime, userId) as UUID;
-			const timelineRoomId = createUniqueUuid(this.runtime, `${userId}-home`) as UUID;
-			
-			// Compose state with relevant context for tweet generation
-			const state = await this.runtime.composeState(null, [
-				"CHARACTER",
-				"RECENT_MESSAGES",
-				"TIME",
-			]);
-			
-			// Generate prompt for tweet content
-			const tweetPrompt = composePrompt({
-				state,
-				template: this.runtime.character.templates?.twitterPostTemplate || twitterPostTemplate,
-			});
-			
-			const response = await this.runtime.useModel(ModelTypes.TEXT_LARGE, {
-				prompt: tweetPrompt,
-			});
-			
-			// Extract the tweet content from the model response
-			const jsonResponse = parseJSONObjectFromText(response);
-			
-			if (!jsonResponse || !jsonResponse.text) {
-				logger.error("Failed to generate valid tweet content");
-				return;
-			}
-			
-			// Cleanup the tweet text
-			const cleanedText = this.cleanupTweetText(jsonResponse.text);
-			
-			// Prepare media if included
-			const mediaData: MediaData[] = [];
-			if (jsonResponse.imagePrompt) {
-				try {
-					// Convert image prompt to Media format for fetchMediaData
-					const imagePromptMedia: any[] = Array.isArray(jsonResponse.imagePrompt) 
-						? jsonResponse.imagePrompt.map((prompt: string) => ({ 
-							url: prompt, 
-							contentType: 'image/png' 
-						}))
-						: [{ 
-							url: jsonResponse.imagePrompt, 
-							contentType: 'image/png' 
-						}];
-					
-					// Fetch media using the utility function
-					const fetchedMedia = await fetchMediaData(imagePromptMedia);
-					mediaData.push(...fetchedMedia);
-				} catch (error) {
-					logger.error("Error fetching media for tweet:", error);
-				}
-			}
-			
-			// Create the memory object for the tweet
-			const tweetId = createUniqueUuid(this.runtime, `tweet-${Date.now()}`) as UUID;
-			const memory: Memory = {
-				id: tweetId,
-				entityId: this.runtime.agentId,
-				agentId: this.runtime.agentId,
-				roomId: timelineRoomId,
-				content: {
-					text: cleanedText,
-					source: "twitter",
-					channelType: ChannelType.FEED,
-					thought: jsonResponse.thought || "",
-					plan: jsonResponse.plan || "",
-					type: "post",
-				},
-				createdAt: Date.now(),
-			};
-			
+			const roomId = createUniqueUuid(this.runtime, `${userId}-home`) as UUID;
 			// Create a callback for handling the actual posting
 			const callback: HandlerCallback = async (content: Content) => {
 				try {
@@ -405,12 +334,16 @@ export class TwitterPostClient {
 					}
 					
 					// Post the tweet
-					const result = await this.postToTwitter(content.text, mediaData);
+					const result = await this.postToTwitter(content.text, content.mediaData as MediaData[]);
+
+					console.log("result is", result)
+
+					const tweetId = (result as any).rest_id || (result as any).id_str || (result as any).legacy?.id_str;
 					
 					if (result) {
 						const postedTweetId = createUniqueUuid(
 							this.runtime,
-							(result as any).id_str
+							tweetId
 						);
 						
 						// Create memory for the posted tweet
@@ -418,23 +351,21 @@ export class TwitterPostClient {
 							id: postedTweetId,
 							entityId: this.runtime.agentId,
 							agentId: this.runtime.agentId,
-							roomId: timelineRoomId,
+							roomId,
 							content: {
 								...content,
 								source: "twitter",
 								channelType: ChannelType.FEED,
 								type: "post",
 								metadata: {
-									tweetId: (result as any).id_str,
+									tweetId,
 									postedAt: Date.now(),
 								},
 							},
 							createdAt: Date.now(),
 						};
 						
-						await this.runtime
-							.getMemoryManager("messages")
-							.createMemory(postedMemory);
+						await this.runtime.createMemory(postedMemory, "messages");
 							
 						return [postedMemory];
 					}
@@ -445,14 +376,17 @@ export class TwitterPostClient {
 					return [];
 				}
 			};
+
+			console.log("emitting event")
 			
 			// Emit event to handle the post generation using standard handlers
-			this.runtime.emitEvent(["TWITTER_POST_GENERATED", "POST_GENERATED"], {
+			this.runtime.emitEvent([EventTypes.POST_GENERATED, TwitterEventTypes.POST_GENERATED], {
 				runtime: this.runtime,
-				message: memory,
 				callback,
-				source: "twitter"
-			} as PostGeneratedPayload);
+				worldId,
+				userId,
+				roomId
+			} as InvokePayload);
 			
 		} catch (error) {
 			logger.error("Error generating tweet:", error);
@@ -473,59 +407,32 @@ export class TwitterPostClient {
 			if (mediaData && mediaData.length > 0) {
 				for (const media of mediaData) {
 					try {
-						// Upload the media and get the media ID
-						const uploadResult = await this.client.requestQueue.add(() =>
-							(this.client.twitterClient as any).post("media/upload", {
-								media_data: Buffer.isBuffer(media.data) 
-									? media.data 
-									: Buffer.from(String(media.data).split(",")[1], 'base64')
-							})
-						);
-						
-						if (uploadResult && (uploadResult as any).media_id_string) {
-							mediaIds.push((uploadResult as any).media_id_string);
-						}
+						// TODO: Media upload will need to be updated to use the new API
+						// For now, just log a warning that media upload is not supported
+						logger.warn("Media upload not currently supported with the modern Twitter API");
 					} catch (error) {
 						logger.error("Error uploading media:", error);
 					}
 				}
 			}
 			
-			// Prepare the tweet parameters
-			const tweetParams: any = {
-				status: text.substring(0, 280), // Twitter's character limit
-			};
-			
-			// Add media if available
-			if (mediaIds.length > 0) {
-				tweetParams.media_ids = mediaIds.join(",");
-			}
-			
-			// Post the tweet
+			// Use the modern sendTweet method instead of the old post method
 			const result = await this.client.requestQueue.add(() =>
-				(this.client.twitterClient as any).post("statuses/update", tweetParams)
+				this.client.twitterClient.sendTweet(text.substring(0, 280))
 			);
 			
-			return result;
+			// Handle response based on the new API format
+			const body = await result.json();
+			if (!body?.data?.create_tweet?.tweet_results?.result) {
+				logger.error("Error sending tweet; Bad response:", body);
+				return null;
+			}
+			
+			return body.data.create_tweet.tweet_results.result;
 		} catch (error) {
 			logger.error("Error posting to Twitter:", error);
 			throw error;
 		}
-	}
-	
-	/**
-	 * Cleans up a tweet text by removing quotes and fixing newlines
-	 */
-	private cleanupTweetText(text: string): string {
-		// Remove quotes
-		let cleanedText = text.replace(/^['"](.*)['"]$/, "$1");
-		// Fix newlines
-		cleanedText = cleanedText.replaceAll(/\\n/g, "\n\n");
-		// Truncate to Twitter's character limit (280)
-		if (cleanedText.length > 280) {
-			cleanedText = truncateToCompleteSentence(cleanedText, 280);
-		}
-		return cleanedText;
 	}
 
 	async stop() {

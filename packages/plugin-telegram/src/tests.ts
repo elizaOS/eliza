@@ -2,8 +2,8 @@ import { type IAgentRuntime, type TestSuite, logger } from "@elizaos/core";
 import type { Chat, User } from "@telegraf/types";
 import type { Telegraf } from "telegraf";
 import type { Context } from "telegraf";
-import type { TelegramService } from ".";
 import type { MessageManager } from "./messageManager";
+import type { TelegramService } from "./service";
 
 const TEST_IMAGE_URL =
 	"https://github.com/elizaOS/awesome-eliza/blob/main/assets/eliza-logo.jpg?raw=true";

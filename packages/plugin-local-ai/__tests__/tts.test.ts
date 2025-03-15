@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { ModelClass, type Plugin } from "@elizaos/core";
+import { ModelTypes, type Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
 	LlamaContext,
@@ -73,7 +73,7 @@ describe("LocalAI Text-to-Speech", () => {
 		await plugin.init({
 			LLAMALOCAL_PATH: TEST_PATHS.MODELS_DIR,
 			CACHE_DIR: TEST_PATHS.CACHE_DIR,
-		});
+		}, mockRuntime);
 
 		logger.success("Test setup completed");
 	}, 300000);
@@ -93,7 +93,7 @@ describe("LocalAI Text-to-Speech", () => {
 		);
 
 		try {
-			await mockRuntime.useModel(ModelClass.TEXT_TO_SPEECH, "Test text");
+			await mockRuntime.useModel(ModelTypes.TEXT_TO_SPEECH, "Test text");
 			throw new Error("Should have failed but didn't");
 		} catch (error) {
 			logger.info("Model initialization failure test failed as expected:", {
@@ -122,7 +122,7 @@ describe("LocalAI Text-to-Speech", () => {
 		llamaMock.mockRejectedValueOnce(new Error("Audio generation failed"));
 
 		try {
-			await mockRuntime.useModel(ModelClass.TEXT_TO_SPEECH, "Test text");
+			await mockRuntime.useModel(ModelTypes.TEXT_TO_SPEECH, "Test text");
 			throw new Error("Should have failed but didn't");
 		} catch (error) {
 			logger.info("Audio generation failure test failed as expected:", {
@@ -146,7 +146,7 @@ describe("LocalAI Text-to-Speech", () => {
 
 		try {
 			const result = await mockRuntime.useModel(
-				ModelClass.TEXT_TO_SPEECH,
+				ModelTypes.TEXT_TO_SPEECH,
 				testText,
 			);
 			logger.info("TTS generation result type:", typeof result);
@@ -156,20 +156,20 @@ describe("LocalAI Text-to-Speech", () => {
 
 			// Test stream readability
 			let dataReceived = false;
-			result.on("data", (chunk) => {
+			(result as Readable).on("data", (chunk) => {
 				logger.info("Received audio data chunk:", { size: chunk.length });
 				dataReceived = true;
 			});
 
 			await new Promise((resolve, reject) => {
-				result.on("end", () => {
+				(result as Readable).on("end", () => {
 					if (!dataReceived) {
 						reject(new Error("No audio data received from stream"));
 					} else {
 						resolve(true);
 					}
 				});
-				result.on("error", reject);
+				(result as Readable).on("error", reject);
 			});
 
 			logger.success("Successful TTS test completed");
@@ -187,7 +187,7 @@ describe("LocalAI Text-to-Speech", () => {
 		const emptyText = "";
 
 		try {
-			await mockRuntime.useModel(ModelClass.TEXT_TO_SPEECH, emptyText);
+			await mockRuntime.useModel(ModelTypes.TEXT_TO_SPEECH, emptyText);
 			throw new Error("Should have failed but didn't");
 		} catch (error) {
 			logger.info("Empty text test failed as expected:", {
@@ -204,7 +204,7 @@ describe("LocalAI Text-to-Speech", () => {
 
 		try {
 			await mockRuntime.useModel(
-				ModelClass.TEXT_TO_SPEECH,
+				ModelTypes.TEXT_TO_SPEECH,
 				invalidInput as unknown as string,
 			);
 			throw new Error("Should have failed but didn't");

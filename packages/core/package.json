@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/core",
-	"version": "1.0.0-alpha.20",
+	"version": "1.0.0-alpha.60",
 	"description": "",
 	"type": "module",
 	"main": "dist/index.js",
@@ -10,7 +10,6 @@
 		"./package.json": "./package.json",
 		".": {
 			"import": {
-				"@elizaos/source": "./src/index.ts",
 				"types": "./dist/index.d.ts",
 				"default": "./dist/index.js"
 			}
@@ -22,6 +21,7 @@
 	"scripts": {
 		"build": "tsup && tsc -p tsconfig.build.json",
 		"watch": "tsc --watch",
+		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
 		"dev": "tsup --watch",
 		"build:docs": "cd docs && bun run build",
 		"test": "vitest run",
@@ -34,7 +34,6 @@
 		"@eslint/js": "9.16.0",
 		"@rollup/plugin-commonjs": "25.0.8",
 		"@rollup/plugin-json": "6.1.0",
-		"@rollup/plugin-node-resolve": "15.3.0",
 		"@rollup/plugin-replace": "5.0.7",
 		"@rollup/plugin-terser": "0.1.0",
 		"@rollup/plugin-typescript": "11.1.6",
@@ -69,5 +68,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
 }

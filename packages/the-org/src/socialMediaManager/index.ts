@@ -1,12 +1,25 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
 	Character,
 	IAgentRuntime,
 	OnboardingConfig,
 	ProjectAgent,
+	TestSuite,
+	UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
+import { v4 as uuidv4 } from "uuid";
 import { initCharacter } from "../init";
 import twitterPostAction from "./actions/post";
+
+const imagePath = path.resolve("./src/socialMediaManager/assets/portrait.jpg");
+
+// Read and convert to Base64
+const avatar = fs.existsSync(imagePath)
+	? `data:image/jpeg;base64,${fs.readFileSync(imagePath).toString("base64")}`
+	: "";
+
 dotenv.config({ path: "../../.env" });
 
 /**
@@ -26,12 +39,13 @@ dotenv.config({ path: "../../.env" });
 const character: Character = {
 	name: "Laura",
 	plugins: [
-		// "@elizaos/plugin-anthropic",
+		"@elizaos/plugin-sql",
+		"@elizaos/plugin-anthropic",
 		"@elizaos/plugin-openai",
 		"@elizaos/plugin-discord",
 		"@elizaos/plugin-twitter",
-		"@elizaos/plugin-node",
-		"@elizaos/plugin-sql",
+		"@elizaos/plugin-pdf",
+		"@elizaos/plugin-video-understanding",
 	],
 	settings: {
 		secrets: {
@@ -40,6 +54,7 @@ const character: Character = {
 			DISCORD_API_TOKEN: process.env.SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN,
 		},
 		TWITTER_ENABLE_POST_GENERATION: false,
+		avatar
 	},
 	system:
 		"Respond as a marketing professional specializing in crypto projects and open communities, with an edgy, modern voice. Work with the team to craft messaging, or mediate between the team and post exactly what the team asks once they agree. Ignore messages addressed to other people.",
@@ -294,10 +309,128 @@ export const config: OnboardingConfig = {
 		},
 	},
 };
+
+/**
+ * Test suite for the Social Media Manager agent
+ * Tests onboarding and cross-platform functionality
+ */
+class SocialMediaManagerTestSuite implements TestSuite {
+	name = "social-media-manager";
+	description = "Tests for the social media manager agent";
+	private scenarioService: any;
+	tests = [
+		{
+			name: "Test Onboarding Process",
+			fn: async (runtime: IAgentRuntime) => {
+				// Initialize scenario service
+				this.scenarioService = runtime.getService("scenario");
+				if (!this.scenarioService) {
+					throw new Error("Scenario service not found");
+				}
+
+				// Create test world with owner
+				const worldId = await this.scenarioService.createWorld(
+					"Test Organization",
+					"Test Owner"
+				);
+
+				// Create main room for onboarding
+				const mainRoomId = await this.scenarioService.createRoom(
+					worldId,
+					"general"
+				);
+
+				// Add the agent and owner to the room
+				await this.scenarioService.addParticipant(worldId, mainRoomId, runtime.agentId);
+				const ownerId = uuidv4() as UUID;
+				await this.scenarioService.addParticipant(worldId, mainRoomId, ownerId);
+
+				// Simulate owner sending onboarding message
+				await this.scenarioService.sendMessage(
+					runtime,
+					worldId,
+					mainRoomId,
+					"Hi! I'd like to set up social media management for my organization."
+				);
+
+				// Wait for agent to process and respond
+				const completed = await this.scenarioService.waitForCompletion(5000);
+				if (!completed) {
+					throw new Error("Agent did not complete onboarding response in time");
+				}
+			}
+		},
+		{
+			name: "Test Cross-Platform Post Creation",
+			fn: async (runtime: IAgentRuntime) => {
+				// Create test world and room
+				const worldId = await this.scenarioService.createWorld(
+					"Cross-Platform Test",
+					"Test Owner"
+				);
+				const roomId = await this.scenarioService.createRoom(worldId, "social-media");
+
+				// Add participants
+				await this.scenarioService.addParticipant(worldId, roomId, runtime.agentId);
+				const ownerId = uuidv4() as UUID;
+				await this.scenarioService.addParticipant(worldId, roomId, ownerId);
+
+				// Request cross-platform post
+				await this.scenarioService.sendMessage(
+					runtime,
+					worldId,
+					roomId,
+					"Please create a post about our new product launch for Twitter and Discord"
+				);
+
+				// Wait for agent to process request and generate posts
+				const completed = await this.scenarioService.waitForCompletion(10000);
+				if (!completed) {
+					throw new Error("Agent did not complete post creation in time");
+				}
+			}
+		},
+		{
+			name: "Test Response to User Queries",
+			fn: async (runtime: IAgentRuntime) => {
+				// Create test environment
+				const worldId = await this.scenarioService.createWorld(
+					"Query Test",
+					"Test Owner"
+				);
+				const roomId = await this.scenarioService.createRoom(worldId, "help");
+
+				// Add participants
+				await this.scenarioService.addParticipant(worldId, roomId, runtime.agentId);
+				const ownerId = uuidv4() as UUID;
+				await this.scenarioService.addParticipant(worldId, roomId, ownerId);
+
+				// Send test queries
+				const queries = [
+					"What social media platforms do you support?",
+					"Can you help me schedule posts?",
+					"How do you handle engagement metrics?"
+				];
+
+				for (const query of queries) {
+					await this.scenarioService.sendMessage(runtime, worldId, roomId, query);
+					
+					// Wait for agent to process and respond to each query
+					const completed = await this.scenarioService.waitForCompletion(5000);
+					if (!completed) {
+						throw new Error(`Agent did not respond to query in time: ${query}`);
+					}
+				}
+			}
+		}
+	];
+}
+
 export const socialMediaManager: ProjectAgent = {
 	character,
 	init: async (runtime: IAgentRuntime) =>
 		await initCharacter({ runtime, config, actions: [twitterPostAction] }),
+	tests: [new SocialMediaManagerTestSuite()]
 };
 
 export default socialMediaManager;

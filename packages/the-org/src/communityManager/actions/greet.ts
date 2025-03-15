@@ -45,9 +45,7 @@ export const greetAction: Action = {
 
 		try {
 			// Check if greeting is enabled for this server
-			const settings = await runtime
-				
-				.getCache<any>(`server_${serverId}_settings_greet`);
+			const settings = await runtime.getCache<any>(`server_${serverId}_settings_greet`);
 
 			if (!settings?.enabled) {
 				return false;
@@ -56,8 +54,8 @@ export const greetAction: Action = {
 			// Check if this is a new user join event or command to greet
 			const isNewUser = message.content.text.includes("joined the server");
 			const isGreetCommand =
-				message.content.text.toLowerCase().includes("greet") ||
-				message.content.text.toLowerCase().includes("welcome");
+				message.content.text?.toLowerCase().includes("greet") ||
+				message.content.text?.toLowerCase().includes("welcome");
 
 			return isNewUser || isGreetCommand;
 		} catch (error) {
@@ -88,13 +86,11 @@ export const greetAction: Action = {
 
 		try {
 			// Get greeting settings
-			const settings = await runtime
-				
-				.getCache<any>(`server_${serverId}_settings_greet`);
+			const settings = await runtime.getCache<any>(`server_${serverId}_settings_greet`);
 
 			if (!settings?.enabled || !settings.channelId) {
 				logger.error("Greeting settings not properly configured");
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: runtime.agentId,
 					agentId: runtime.agentId,
 					roomId: message.roomId,
@@ -104,7 +100,7 @@ export const greetAction: Action = {
 						actions: ["GREET_NEW_PERSON"],
 						result: "failed",
 					},
-				});
+				}, "messages");
 				return;
 			}
 
@@ -120,13 +116,13 @@ export const greetAction: Action = {
 			};
 
 			// Create memory of greeting
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: runtime.agentId,
 				agentId: runtime.agentId,
 				roomId: message.roomId,
 				content,
 				createdAt: Date.now(),
-			});
+			}, "messages");
 
 			// Send greeting
 			await callback(content);
