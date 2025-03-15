@@ -102,7 +102,7 @@ export async function promptForProjectPlugins(
  * @param options Additional options for starting the agent, such as data directory and postgres URL.
  * @returns A promise that resolves to the agent runtime object.
  */
-async function startAgent(
+export async function startAgent(
 	character: Character,
 	server: AgentServer,
 	init?: (runtime: IAgentRuntime) => void,

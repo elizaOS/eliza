@@ -245,7 +245,7 @@ export class ClientBase {
       conversationId: raw.conversationId ?? raw.legacy?.conversation_id_str,
       hashtags: raw.hashtags ?? raw.legacy?.entities?.hashtags ?? [],
       html: raw.html,
-      id: raw.id ?? raw.rest_id ?? raw.id_str ?? undefined,
+      id: raw.id ?? raw.rest_id ?? raw.legacy.id_str ?? raw.id_str ?? undefined,
       inReplyToStatus: raw.inReplyToStatus,
       inReplyToStatusId:
         raw.inReplyToStatusId ??
@@ -273,7 +273,7 @@ export class ClientBase {
         (raw.legacy?.entities?.media
           ?.filter((media: any) => media.type === "photo")
           .map((media: any) => ({
-            id: media.id_str,
+            id: media.id_str || media.rest_id || media.legacy.id_str,
             url: media.media_url_https,
             alt_text: media.alt_text,
           })) ||
@@ -933,85 +933,5 @@ export class ClientBase {
       logger.error("Error fetching Twitter interactions:", error);
       return [];
     }
-  }
-
-  /**
-   * Fetches recent follower changes (new followers and unfollowers)
-   */
-  async fetchFollowerChanges() {
-    try {
-      // Get current followers
-      const currentFollowers = (await this.requestQueue.add(() =>
-        (this.twitterClient as any).get("followers/list", {
-          count: 200,
-          include_user_entities: false,
-        })
-      )) as TwitterFollowersResponse;
-
-      // Get cached followers
-      const cachedFollowers = await this.getCachedFollowers();
-
-      // Compare and find changes
-      const changes = [];
-
-      // Find new followers
-      for (const follower of currentFollowers.users) {
-        if (
-          !cachedFollowers.some(
-            (f: TwitterUser) => f.id_str === follower.id_str
-          )
-        ) {
-          changes.push({
-            type: "followed",
-            userId: follower.id_str,
-            username: follower.screen_name,
-            name: follower.name,
-            user: follower,
-          });
-        }
-      }
-
-      // Find unfollowers
-      for (const cached of cachedFollowers) {
-        if (!currentFollowers.users.some((f) => f.id_str === cached.id_str)) {
-          changes.push({
-            type: "unfollowed",
-            userId: cached.id_str,
-            username: cached.screen_name,
-            name: cached.name,
-            user: cached,
-          });
-        }
-      }
-
-      // Cache current followers
-      await this.cacheFollowers(currentFollowers.users);
-
-      return changes;
-    } catch (error) {
-      logger.error("Error fetching Twitter follower changes:", error);
-      return [];
-    }
-  }
-
-  /**
-   * Gets cached followers from the database
-   */
-  private async getCachedFollowers(): Promise<TwitterUser[]> {
-    const cached = await this.runtime.getCache<TwitterUser[]>(
-      `twitter/${this.profile.username}/followers`
-    );
-
-    return cached || [];
-  }
-
-  /**
-   * Caches current followers in the database
-   */
-  private async cacheFollowers(followers: TwitterUser[]): Promise<void> {
-    await this.runtime.setCache(
-      `twitter/${this.profile.username}/followers`,
-      followers
-    );
   }
 }
