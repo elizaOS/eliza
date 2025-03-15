@@ -151,88 +151,37 @@ export async function startAgent(
 				pluginModule = await import(plugin);
 				logger.debug(`Successfully loaded plugin ${plugin} after installation`);
 			} catch (error) {
-				if (error.message && 
-					(error.message.includes('base64 is not a function') || 
-					error.message.includes('z8.string'))) {
-					logger.warn(`Plugin ${plugin} has Zod validation issue: ${error.message}`);
-					logger.warn('This is likely due to bundled Zod (z8). Creating a stub implementation.');
-					
-					// For any plugin, provide a basic stub to prevent crashes
-					const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
-					pluginModule = {
-						default: {
-							name: pluginName,
-							description: `${pluginName} plugin (stub)`,
-							init: async () => {
-								logger.warn(`Using stub ${pluginName} plugin due to import error`);
-								return {};
-							}
-						}
-					};
-					
-					// Special handling for Anthropic
-					if (plugin.includes('anthropic')) {
+				// Try to import from the project's node_modules directory
+				try {
+					const projectNodeModulesPath = path.join(process.cwd(), 'node_modules', plugin);
+					logger.debug(`Attempting to import from project path: ${projectNodeModulesPath}`);
+					pluginModule = await import(projectNodeModulesPath);
+					logger.debug(`Successfully loaded plugin from project node_modules: ${plugin}`);
+				} catch (projectImportError) {
+					if (error.message && 
+						(error.message.includes('base64 is not a function') || 
+						error.message.includes('z8.string'))) {
+						logger.warn(`Plugin ${plugin} has Zod validation issue: ${error.message}`);
+						logger.warn('This is likely due to bundled Zod (z8). Creating a stub implementation.');
+						
+						// For any plugin, provide a basic stub to prevent crashes
+						const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
 						pluginModule = {
 							default: {
-								name: 'anthropic',
-								description: 'Anthropic plugin (stub)',
-								models: {
-									[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-									[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
-								},
+								name: pluginName,
+								description: `${pluginName} plugin (stub)`,
 								init: async () => {
-									logger.warn('Using stub Anthropic plugin due to Zod validation error');
-									return {};
-								}
-							},
-							anthropicPlugin: {
-								name: 'anthropic',
-								description: 'Anthropic plugin (stub)',
-								models: {
-									[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-									[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
-								},
-								init: async () => {
-									logger.warn('Using stub Anthropic plugin due to Zod validation error');
+									logger.warn(`Using stub ${pluginName} plugin due to import error`);
 									return {};
 								}
 							}
 						};
+					} else {
+						logger.error(`Failed to install plugin ${plugin}: ${error}`);
+						logger.error(`Also failed to import from project node_modules: ${projectImportError.message}`);
 					}
-				} else {
-					logger.error(`Failed to install plugin ${plugin}: ${error}`);
-					
-					// Create a minimal stub to keep things running
-					const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
-					pluginModule = {
-						default: {
-							name: pluginName,
-							description: `${pluginName} plugin (error stub)`,
-							init: async () => {
-								logger.warn(`Using minimal stub for ${pluginName} plugin due to import error`);
-								return {};
-							}
-						}
-					};
 				}
 			}
-		}
-		
-		if (!pluginModule) {
-			logger.error(`Failed to load plugin ${plugin}, using minimal stub`);
-			
-			// Create a minimal stub to prevent undefined errors
-			const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
-			pluginModule = {
-				default: {
-					name: pluginName,
-					description: `${pluginName} plugin (minimal stub)`,
-					init: async () => {
-						logger.warn(`Using minimal stub for ${pluginName} plugin`);
-						return {};
-					}
-				}
-			};
 		}
 		
 		// Process the plugin to get the actual plugin object
