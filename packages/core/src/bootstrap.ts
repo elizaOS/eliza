@@ -407,7 +407,7 @@ const postGeneratedHandler = async ({
 	userId,
 	roomId,
 }: InvokePayload) => {
-	logger.log("Generating new tweet...");
+	logger.info("Generating new tweet...");
 	// Ensure world exists first
 	await runtime.ensureWorldExists({
 		id: worldId,
@@ -436,7 +436,7 @@ const postGeneratedHandler = async ({
 	}
 
 	// Compose state with relevant context for tweet generation
-	let state = await runtime.composeState(message, null, [
+	const state = await runtime.composeState(message, null, [
 		"CHARACTER",
 		"RECENT_MESSAGES",
 		"ENTITIES",
@@ -452,11 +452,6 @@ const postGeneratedHandler = async ({
 		prompt: tweetPrompt,
 		output: "no-schema",
 	});
-
-	console.log("response is", jsonResponse)
-
-	console.log("post is", jsonResponse.post)
-
 		
 	/**
 	 * Cleans up a tweet text by removing quotes and fixing newlines

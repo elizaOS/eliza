@@ -1,6 +1,7 @@
 import {
 	ChannelType,
 	type Content,
+	EventTypes,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type InvokePayload,
@@ -13,7 +14,7 @@ import {
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client/index";
 import type { MediaData } from "./types";
-
+import { TwitterEventTypes } from "./types";
 /**
  * Class representing a Twitter post client for generating and posting tweets.
  */
@@ -333,11 +334,15 @@ export class TwitterPostClient {
 					
 					// Post the tweet
 					const result = await this.postToTwitter(content.text, content.mediaData as MediaData[]);
+
+					console.log("result is", result)
+
+					const tweetId = (result as any).rest_id || (result as any).id_str || (result as any).legacy?.id_str;
 					
 					if (result) {
 						const postedTweetId = createUniqueUuid(
 							this.runtime,
-							(result as any).id_str
+							tweetId
 						);
 						
 						// Create memory for the posted tweet
@@ -352,7 +357,7 @@ export class TwitterPostClient {
 								channelType: ChannelType.FEED,
 								type: "post",
 								metadata: {
-									tweetId: (result as any).id_str,
+									tweetId,
 									postedAt: Date.now(),
 								},
 							},
@@ -374,7 +379,7 @@ export class TwitterPostClient {
 			console.log("emitting event")
 			
 			// Emit event to handle the post generation using standard handlers
-			this.runtime.emitEvent(["TWITTER_POST_GENERATED", "POST_GENERATED"], {
+			this.runtime.emitEvent([EventTypes.POST_GENERATED, TwitterEventTypes.POST_GENERATED], {
 				runtime: this.runtime,
 				callback,
 				worldId,
