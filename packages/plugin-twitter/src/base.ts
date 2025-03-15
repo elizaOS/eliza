@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events";
 import {
   ChannelType,
   type Content,
@@ -20,16 +19,6 @@ interface TwitterUser {
   id_str: string;
   screen_name: string;
   name: string;
-}
-
-interface TwitterInteraction {
-  id_str: string;
-  user: TwitterUser;
-  in_reply_to_status_id_str?: string;
-  quoted_status_id_str?: string;
-  quoted_status?: any;
-  retweeted_status?: any;
-  is_quote_status: boolean;
 }
 
 interface TwitterFollowersResponse {
@@ -145,7 +134,7 @@ class RequestQueue {
  * Class representing a base client for interacting with Twitter.
  * @extends EventEmitter
  */
-export class ClientBase extends EventEmitter {
+export class ClientBase {
   static _twitterClients: { [accountIdentifier: string]: Client } = {};
   twitterClient: Client;
   runtime: IAgentRuntime;
@@ -333,7 +322,6 @@ export class ClientBase extends EventEmitter {
   state: any;
 
   constructor(runtime: IAgentRuntime, state: any) {
-    super();
     this.runtime = runtime;
     this.state = state;
     const username =

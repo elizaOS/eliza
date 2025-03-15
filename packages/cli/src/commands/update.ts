@@ -216,8 +216,3 @@ export const update = new Command()
       handleError(error);
     }
   });
-
-// This is the function that registers the command with the CLI
-export default function registerCommand(cli: Command) {
-  return cli.addCommand(update);
-} 
