@@ -68,7 +68,7 @@ export class PluginDocumentationGenerator {
 		);
 
 		// Only commit the file if we're in a branch
-		if (branchName) {
+		if (branchName && this.configuration.createBranch) {
 			// Use the configuration's relative path to determine the correct README location
 			const relativeReadmePath = path.join(
 				this.configuration.relativePath,

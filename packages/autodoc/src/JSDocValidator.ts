@@ -54,6 +54,7 @@ export class JSDocValidator {
 			);
 			return fixedComment;
 		}
+	    //console.log("DEBUG2",codeWithFixedComment);
 		console.log(
 			`❌JSDoc comment in ${fileName} regex patterns failed, making AI call for help`,
 		);
