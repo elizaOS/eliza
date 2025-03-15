@@ -1,7 +1,6 @@
 import type { MessageExample } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import {
-	boolean,
 	jsonb,
 	pgTable,
 	text,
