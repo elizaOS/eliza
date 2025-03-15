@@ -19,6 +19,7 @@ export const agentTable = pgTable(
 	"agents",
 	{
 		id: uuid("id").primaryKey().defaultRandom(),
+		enabled: boolean("enabled").default(true).notNull(),
 		createdAt: numberTimestamp("createdAt").default(sql`now()`).notNull(),
 
 		updatedAt: numberTimestamp("updatedAt").default(sql`now()`).notNull(),

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import type { GenerateTextParams, ModelTypeName } from "@elizaos/core";
+import type { GenerateTextParams, ModelTypeName, TextEmbeddingParams, ObjectGenerationParams } from "@elizaos/core";
 import {
 	type IAgentRuntime,
 	ModelType,
@@ -370,19 +370,18 @@ class LocalAIManager {
 	 *
 	 * @returns A Promise that resolves to a boolean indicating whether the model download was successful.
 	 */
-	private async downloadModel(): Promise<boolean> {
+	private async downloadModel(modelType: ModelTypeName): Promise<boolean> {
+		const modelSpec = modelType === ModelType.TEXT_LARGE ? MODEL_SPECS.medium : MODEL_SPECS.small;
+		const modelPath = modelType === ModelType.TEXT_LARGE ? this.mediumModelPath : this.modelPath;
 		try {
-			// Determine which model to download based on current modelPath
-			const isLargeModel = this.modelPath === this.mediumModelPath;
-			const modelSpec = isLargeModel ? MODEL_SPECS.medium : MODEL_SPECS.small;
 			return await this.downloadManager.downloadModel(
 				modelSpec,
-				this.modelPath,
+				modelPath,
 			);
 		} catch (error) {
 			logger.error("Model download failed:", {
 				error: error instanceof Error ? error.message : String(error),
-				modelPath: this.modelPath,
+				modelPath,
 			});
 			throw error;
 		}
@@ -865,7 +864,7 @@ class LocalAIManager {
 				await this.checkPlatformCapabilities();
 
 				// Download model if needed
-				await this.downloadModel();
+				await this.downloadModel(ModelType.TEXT_SMALL);
 
 				// Initialize Llama and small model
 				try {
@@ -911,6 +910,8 @@ class LocalAIManager {
 				if (!this.llama) {
 					await this.lazyInitSmallModel();
 				}
+
+				await this.downloadModel(ModelType.TEXT_LARGE);
 
 				// Initialize medium model
 				try {
@@ -1164,8 +1165,9 @@ export const localAIPlugin: Plugin = {
 
 		[ModelType.TEXT_EMBEDDING]: async (
 			_runtime: IAgentRuntime,
-			text: string | null,
+			params: TextEmbeddingParams
 		) => {
+			const text = params?.text;
 			try {
 				// Add detailed logging of the input text and its structure
 				logger.info("TEXT_EMBEDDING handler - Initial input:", {
@@ -1202,6 +1204,249 @@ export const localAIPlugin: Plugin = {
 					textStructure: text !== null ? JSON.stringify(text, null, 2) : "null",
 				});
 				return new Array(384).fill(0);
+			}
+		},
+
+		[ModelType.OBJECT_SMALL]: async (
+			runtime: IAgentRuntime,
+			params: ObjectGenerationParams
+		) => {
+			try {
+				logger.info("OBJECT_SMALL handler - Processing request:", {
+					prompt: params.prompt,
+					hasSchema: !!params.schema,
+					temperature: params.temperature,
+				});
+
+				// Enhance the prompt to request JSON output
+				let jsonPrompt = params.prompt;
+				if (!jsonPrompt.includes("```json") && !jsonPrompt.includes("respond with valid JSON")) {
+					jsonPrompt += "\nPlease respond with valid JSON only, without any explanations, markdown formatting, or additional text.";
+				}
+
+				const modelConfig = localAIManager.getTextModelSource();
+
+				// Generate text based on the configured model source
+				let textResponse: string;
+				if (modelConfig.source !== "local") {
+					textResponse = await localAIManager.generateTextOllamaStudio({
+						prompt: jsonPrompt,
+						stopSequences: params.stopSequences,
+						runtime,
+						modelType: ModelType.TEXT_SMALL,
+					});
+				} else {
+					textResponse = await localAIManager.generateText({
+						prompt: jsonPrompt,
+						stopSequences: params.stopSequences,
+						runtime,
+						modelType: ModelType.TEXT_SMALL,
+					});
+				}
+
+				// Extract and parse JSON from the text response
+				try {
+					// Function to extract JSON content from text
+					const extractJSON = (text: string): string => {
+						// Try to find content between JSON codeblocks or markdown blocks
+						const jsonBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
+						const match = text.match(jsonBlockRegex);
+						
+						if (match && match[1]) {
+							return match[1].trim();
+						}
+						
+						// If no code blocks, try to find JSON-like content
+						// This regex looks for content that starts with { and ends with }
+						const jsonContentRegex = /\s*(\{[\s\S]*\})\s*$/;
+						const contentMatch = text.match(jsonContentRegex);
+						
+						if (contentMatch && contentMatch[1]) {
+							return contentMatch[1].trim();
+						}
+						
+						// If no JSON-like content found, return the original text
+						return text.trim();
+					};
+					
+					const extractedJsonText = extractJSON(textResponse);
+					logger.debug("Extracted JSON text:", extractedJsonText);
+					
+					let jsonObject;
+					try {
+						jsonObject = JSON.parse(extractedJsonText);
+					} catch (parseError) {
+						// Try fixing common JSON issues
+						logger.debug("Initial JSON parse failed, attempting to fix common issues");
+						
+						// Replace any unescaped newlines in string values
+						const fixedJson = extractedJsonText
+							.replace(/:\s*"([^"]*)(?:\n)([^"]*)"/g, ': "$1\\n$2"')
+							// Remove any non-JSON text that might have gotten mixed into string values
+							.replace(/"([^"]*?)[^a-zA-Z0-9\s\.,;:\-_\(\)"'\[\]{}]([^"]*?)"/g, '"$1$2"')
+							// Fix missing quotes around property names
+							.replace(/(\s*)(\w+)(\s*):/g, '$1"$2"$3:')
+							// Fix trailing commas in arrays and objects
+							.replace(/,(\s*[\]}])/g, '$1');
+						
+						try {
+							jsonObject = JSON.parse(fixedJson);
+						} catch (finalError) {
+							logger.error("Failed to parse JSON after fixing:", finalError);
+							throw new Error("Invalid JSON returned from model");
+						}
+					}
+					
+					// Validate against schema if provided
+					if (params.schema) {
+						try {
+							// Simplistic schema validation - check if all required properties exist
+							for (const key of Object.keys(params.schema)) {
+								if (!(key in jsonObject)) {
+									jsonObject[key] = null; // Add missing properties with null value
+								}
+							}
+						} catch (schemaError) {
+							logger.error("Schema validation failed:", schemaError);
+						}
+					}
+					
+					return jsonObject;
+				} catch (parseError) {
+					logger.error("Failed to parse JSON:", parseError);
+					logger.error("Raw response:", textResponse);
+					throw new Error("Invalid JSON returned from model");
+				}
+			} catch (error) {
+				logger.error("Error in OBJECT_SMALL handler:", error);
+				throw error;
+			}
+		},
+
+		[ModelType.OBJECT_LARGE]: async (
+			runtime: IAgentRuntime,
+			params: ObjectGenerationParams
+		) => {
+			try {
+				logger.info("OBJECT_LARGE handler - Processing request:", {
+					prompt: params.prompt,
+					hasSchema: !!params.schema,
+					temperature: params.temperature,
+				});
+
+				// Enhance the prompt to request JSON output
+				let jsonPrompt = params.prompt;
+				if (!jsonPrompt.includes("```json") && !jsonPrompt.includes("respond with valid JSON")) {
+					jsonPrompt += "\nPlease respond with valid JSON only, without any explanations, markdown formatting, or additional text.";
+				}
+
+				const modelConfig = localAIManager.getTextModelSource();
+
+				// Generate text based on the configured model source
+				let textResponse: string;
+				if (modelConfig.source !== "local") {
+					textResponse = await localAIManager.generateTextOllamaStudio({
+						prompt: jsonPrompt,
+						stopSequences: params.stopSequences,
+						runtime,
+						modelType: ModelType.TEXT_LARGE,
+					});
+				} else {
+					textResponse = await localAIManager.generateText({
+						prompt: jsonPrompt,
+						stopSequences: params.stopSequences,
+						runtime,
+						modelType: ModelType.TEXT_LARGE,
+					});
+				}
+
+				// Extract and parse JSON from the text response
+				try {
+					// Function to extract JSON content from text
+					const extractJSON = (text: string): string => {
+						// Try to find content between JSON codeblocks or markdown blocks
+						const jsonBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
+						const match = text.match(jsonBlockRegex);
+						
+						if (match && match[1]) {
+							return match[1].trim();
+						}
+						
+						// If no code blocks, try to find JSON-like content
+						// This regex looks for content that starts with { and ends with }
+						const jsonContentRegex = /\s*(\{[\s\S]*\})\s*$/;
+						const contentMatch = text.match(jsonContentRegex);
+						
+						if (contentMatch && contentMatch[1]) {
+							return contentMatch[1].trim();
+						}
+						
+						// If no JSON-like content found, return the original text
+						return text.trim();
+					};
+					
+					// Clean up the extracted JSON to handle common formatting issues
+					const cleanupJSON = (jsonText: string): string => {
+						// Remove common logging/debugging patterns that might get mixed into the JSON
+						return jsonText
+							// Remove any lines that look like log statements
+							.replace(/\[DEBUG\].*?(\n|$)/g, '\n')
+							.replace(/\[LOG\].*?(\n|$)/g, '\n')
+							.replace(/console\.log.*?(\n|$)/g, '\n');
+					};
+					
+					const extractedJsonText = extractJSON(textResponse);
+					const cleanedJsonText = cleanupJSON(extractedJsonText);
+					logger.debug("Extracted JSON text:", cleanedJsonText);
+					
+					let jsonObject;
+					try {
+						jsonObject = JSON.parse(cleanedJsonText);
+					} catch (parseError) {
+						// Try fixing common JSON issues
+						logger.debug("Initial JSON parse failed, attempting to fix common issues");
+						
+						// Replace any unescaped newlines in string values
+						const fixedJson = cleanedJsonText
+							.replace(/:\s*"([^"]*)(?:\n)([^"]*)"/g, ': "$1\\n$2"')
+							// Remove any non-JSON text that might have gotten mixed into string values
+							.replace(/"([^"]*?)[^a-zA-Z0-9\s\.,;:\-_\(\)"'\[\]{}]([^"]*?)"/g, '"$1$2"')
+							// Fix missing quotes around property names
+							.replace(/(\s*)(\w+)(\s*):/g, '$1"$2"$3:')
+							// Fix trailing commas in arrays and objects
+							.replace(/,(\s*[\]}])/g, '$1');
+						
+						try {
+							jsonObject = JSON.parse(fixedJson);
+						} catch (finalError) {
+							logger.error("Failed to parse JSON after fixing:", finalError);
+							throw new Error("Invalid JSON returned from model");
+						}
+					}
+					
+					// Validate against schema if provided
+					if (params.schema) {
+						try {
+							// Simplistic schema validation - check if all required properties exist
+							for (const key of Object.keys(params.schema)) {
+								if (!(key in jsonObject)) {
+									jsonObject[key] = null; // Add missing properties with null value
+								}
+							}
+						} catch (schemaError) {
+							logger.error("Schema validation failed:", schemaError);
+						}
+					}
+					
+					return jsonObject;
+				} catch (parseError) {
+					logger.error("Failed to parse JSON:", parseError);
+					logger.error("Raw response:", textResponse);
+					throw new Error("Invalid JSON returned from model");
+				}
+			} catch (error) {
+				logger.error("Error in OBJECT_LARGE handler:", error);
+				throw error;
 			}
 		},
 

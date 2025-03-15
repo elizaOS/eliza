@@ -126,7 +126,7 @@ export const openaiPlugin: Plugin = {
 	},
 	models: {
 		[ModelType.TEXT_EMBEDDING]: async (
-			runtime,
+			_runtime,
 			params: TextEmbeddingParams | string | null,
 		): Promise<number[]> => {
 			// Handle null input (initialization case)

@@ -34,8 +34,7 @@ RUN bun install
 RUN bun add better-sqlite3
 
 # Build the project
-RUN bun run build:core
-RUN bun run build:docker
+RUN bun run build
 
 # Create a new stage for the final image
 FROM node:23.3.0-slim

@@ -4,6 +4,7 @@ CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
 --> statement-breakpoint
 CREATE TABLE "agents" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"enabled" boolean DEFAULT true NOT NULL,
 	"createdAt" timestamptz DEFAULT now() NOT NULL,
 	"updatedAt" timestamptz DEFAULT now() NOT NULL,
 	"name" text,

@@ -16,6 +16,338 @@ import { logger } from "@elizaos/core";
 import { Command } from "commander";
 import { execa } from "execa";
 import prompts from "prompts";
+import { Octokit } from "@octokit/rest";
+import axios from "axios";
+
+// Registry integration constants
+const REGISTRY_REPO = "elizaos/registry";
+const REGISTRY_PACKAGES_PATH = "packages";
+const LOCAL_REGISTRY_PATH = "packages/registry";
+
+/**
+ * Package metadata interface
+ */
+interface PackageMetadata {
+	name: string;
+	version: string;
+	description: string;
+	type: string;
+	platform: string;
+	runtimeVersion: string;
+	repository: string;
+	maintainers: string[];
+	publishedAt: string;
+	publishedBy: string;
+	dependencies: Record<string, string>;
+	tags: string[];
+	license: string;
+	npmPackage?: string;
+	githubRepo?: string;
+}
+
+/**
+ * Check if the current CLI version is up to date
+ */
+async function checkCliVersion() {
+	try {
+		const cliPackageJsonPath = path.resolve(
+			path.dirname(fileURLToPath(import.meta.url)),
+			'../package.json'
+		);
+		
+		const cliPackageJsonContent = await fs.readFile(
+			cliPackageJsonPath,
+			"utf-8",
+		);
+		const cliPackageJson = JSON.parse(cliPackageJsonContent);
+		const currentVersion = cliPackageJson.version || '0.0.0';
+		
+		// Check NPM for latest version
+		const { stdout } = await execa("npm", ["view", "@elizaos/cli", "version"]);
+		const latestVersion = stdout.trim();
+		
+		// Compare versions
+		if (latestVersion !== currentVersion) {
+			logger.warn(`You are using CLI version ${currentVersion}, but the latest is ${latestVersion}`);
+			logger.info("Run 'npx @elizaos/cli update' to update to the latest version");
+			
+			const { update } = await prompts({
+				type: "confirm",
+				name: "update",
+				message: "Would you like to update now before proceeding?",
+				initial: false,
+			});
+			
+			if (update) {
+				logger.info("Updating CLI...");
+				await execa("npx", ["@elizaos/cli", "update"], { stdio: "inherit" });
+				process.exit(0);
+			}
+		}
+		
+		return currentVersion;
+	} catch (error) {
+		logger.warn("Could not check for CLI updates");
+		return null;
+	}
+}
+
+/**
+ * Generate package metadata for the registry
+ */
+async function generatePackageMetadata(packageJson, cliVersion, username): Promise<PackageMetadata> {
+	const metadata: PackageMetadata = {
+		name: packageJson.name,
+		version: packageJson.version,
+		description: packageJson.description || "",
+		type: packageJson.type || "plugin", // plugin or project
+		platform: packageJson.platform || "universal", // node, browser, or universal
+		runtimeVersion: cliVersion, // Compatible CLI/runtime version
+		repository: packageJson.repository?.url || "",
+		maintainers: packageJson.maintainers || [username],
+		publishedAt: new Date().toISOString(),
+		publishedBy: username,
+		dependencies: packageJson.dependencies || {},
+		tags: packageJson.keywords || [],
+		license: packageJson.license || "UNLICENSED"
+	};
+	
+	// Add npm or GitHub specific data
+	if (packageJson.npmPackage) {
+		metadata.npmPackage = packageJson.npmPackage;
+	}
+	
+	if (packageJson.githubRepo) {
+		metadata.githubRepo = packageJson.githubRepo;
+	}
+	
+	return metadata;
+}
+
+/**
+ * Check if user is a maintainer for the package
+ */
+function isMaintainer(packageJson, username) {
+	if (!packageJson.maintainers) {
+		// If no maintainers specified, the publisher becomes the first maintainer
+		return true;
+	}
+	
+	return packageJson.maintainers.includes(username);
+}
+
+/**
+ * Update the registry index with the package information
+ */
+async function updateRegistryIndex(packageMetadata, dryRun = false) {
+	try {
+		const indexPath = dryRun 
+			? path.join(process.cwd(), LOCAL_REGISTRY_PATH, "index.json") 
+			: path.join(process.cwd(), "temp-registry", "index.json");
+		
+		// Create registry directory if it doesn't exist in dry run
+		if (dryRun && !existsSync(path.dirname(indexPath))) {
+			await fs.mkdir(path.dirname(indexPath), { recursive: true });
+			// Create empty index file if it doesn't exist
+			if (!existsSync(indexPath)) {
+				await fs.writeFile(indexPath, JSON.stringify({
+					v1: { packages: {} },
+					v2: { packages: {} }
+				}, null, 2));
+			}
+		}
+		
+		// Read current index
+		let indexContent;
+		try {
+			indexContent = await fs.readFile(indexPath, "utf-8");
+		} catch (error) {
+			// Create default index if it doesn't exist
+			indexContent = JSON.stringify({
+				v1: { packages: {} },
+				v2: { packages: {} }
+			});
+		}
+		
+		const index = JSON.parse(indexContent);
+		
+		// Update v2 section of index
+		if (!index.v2) {
+			index.v2 = { packages: {} };
+		}
+		
+		if (!index.v2.packages) {
+			index.v2.packages = {};
+		}
+		
+		if (!index.v2.packages[packageMetadata.name]) {
+			index.v2.packages[packageMetadata.name] = {
+				name: packageMetadata.name,
+				description: packageMetadata.description,
+				type: packageMetadata.type,
+				versions: {}
+			};
+		}
+		
+		// Update package info
+		const packageInfo = index.v2.packages[packageMetadata.name];
+		packageInfo.description = packageMetadata.description;
+		packageInfo.type = packageMetadata.type;
+		
+		// Add version
+		packageInfo.versions[packageMetadata.version] = {
+			version: packageMetadata.version,
+			runtimeVersion: packageMetadata.runtimeVersion,
+			platform: packageMetadata.platform,
+			publishedAt: packageMetadata.publishedAt,
+			published: !dryRun
+		};
+		
+		// Write updated index
+		await fs.writeFile(indexPath, JSON.stringify(index, null, 2));
+		logger.info(`Registry index ${dryRun ? "(dry run) " : ""}updated with ${packageMetadata.name}@${packageMetadata.version}`);
+		
+		return true;
+	} catch (error) {
+		logger.error(`Failed to update registry index: ${error.message}`);
+		return false;
+	}
+}
+
+/**
+ * Save package metadata to registry
+ */
+async function savePackageToRegistry(packageMetadata, dryRun = false) {
+	try {
+		// Define paths
+		const packageDir = dryRun
+			? path.join(process.cwd(), LOCAL_REGISTRY_PATH, REGISTRY_PACKAGES_PATH, packageMetadata.name)
+			: path.join(process.cwd(), "temp-registry", REGISTRY_PACKAGES_PATH, packageMetadata.name);
+		const metadataPath = path.join(packageDir, `${packageMetadata.version}.json`);
+		
+		// Create directory if it doesn't exist
+		await fs.mkdir(packageDir, { recursive: true });
+		
+		// Write metadata file
+		await fs.writeFile(
+			metadataPath,
+			JSON.stringify(packageMetadata, null, 2)
+		);
+		
+		logger.info(`Package metadata ${dryRun ? "(dry run) " : ""}saved to ${metadataPath}`);
+		
+		// Update index file
+		await updateRegistryIndex(packageMetadata, dryRun);
+		
+		return true;
+	} catch (error) {
+		logger.error(`Failed to save package metadata: ${error.message}`);
+		return false;
+	}
+}
+
+/**
+ * Fork the registry repository if needed and create pull request
+ */
+async function createRegistryPullRequest(packageJson, packageMetadata, username, token) {
+	try {
+		const octokit = new Octokit({ auth: token });
+		const [registryOwner, registryRepo] = REGISTRY_REPO.split('/');
+		
+		// Check if user already has a fork
+		logger.info("Checking for existing fork of registry...");
+		let fork;
+		try {
+			const { data: repos } = await octokit.repos.listForUser({
+				username,
+				sort: "updated",
+				per_page: 100
+			});
+			
+			fork = repos.find(repo => repo.name === registryRepo);
+		} catch (error) {
+			logger.debug(`Error checking for existing fork: ${error.message}`);
+		}
+		
+		// Create fork if it doesn't exist
+		if (!fork) {
+			logger.info(`Creating fork of ${REGISTRY_REPO}...`);
+			const { data: newFork } = await octokit.repos.createFork({
+				owner: registryOwner,
+				repo: registryRepo
+			});
+			fork = newFork;
+			
+			// Wait for fork creation to complete
+			logger.info("Waiting for fork to be ready...");
+			await new Promise(resolve => setTimeout(resolve, 5000));
+		}
+		
+		// Clone the forked repo
+		const tempDir = path.join(process.cwd(), "temp-registry");
+		if (existsSync(tempDir)) {
+			await fs.rm(tempDir, { recursive: true, force: true });
+		}
+		
+		logger.info(`Cloning registry fork...`);
+		await execa("git", ["clone", `https://${username}:${token}@github.com/${username}/${registryRepo}.git`, "temp-registry"], { cwd: process.cwd() });
+		
+		// Create a new branch
+		const branchName = `plugin-${packageJson.name}-${packageJson.version}`.replace(/[^a-zA-Z0-9-_]/g, "-");
+		logger.info(`Creating branch ${branchName}...`);
+		await execa("git", ["checkout", "-b", branchName], { cwd: tempDir });
+		
+		// Save package metadata and update index
+		await savePackageToRegistry(packageMetadata, false);
+		
+		// Commit changes
+		logger.info("Committing changes...");
+		await execa("git", ["add", "."], { cwd: tempDir });
+		await execa("git", ["commit", "-m", `Add ${packageJson.name}@${packageJson.version}`], { cwd: tempDir });
+		
+		// Push branch
+		logger.info("Pushing changes...");
+		await execa("git", ["push", "origin", branchName], { cwd: tempDir });
+		
+		// Create pull request
+		logger.info("Creating pull request...");
+		const { data: pullRequest } = await octokit.pulls.create({
+			owner: registryOwner,
+			repo: registryRepo,
+			title: `Add ${packageJson.name}@${packageJson.version}`,
+			head: `${username}:${branchName}`,
+			base: "main",
+			body: `
+## New Plugin/Project Submission
+
+- Name: ${packageJson.name}
+- Version: ${packageJson.version}
+- Type: ${packageJson.type || "plugin"}
+- Platform: ${packageJson.platform || "universal"}
+- Description: ${packageJson.description || ""}
+- Runtime Version: ${packageMetadata.runtimeVersion}
+
+Submitted by: @${username}
+			`
+		});
+		
+		logger.success(`Pull request created: ${pullRequest.html_url}`);
+		return pullRequest.html_url;
+	} catch (error) {
+		logger.error(`Failed to create pull request: ${error.message}`);
+		return null;
+	} finally {
+		// Clean up temp directory
+		try {
+			const tempDir = path.join(process.cwd(), "temp-registry");
+			if (existsSync(tempDir)) {
+				await fs.rm(tempDir, { recursive: true, force: true });
+			}
+		} catch (error) {
+			logger.debug(`Error cleaning up temp directory: ${error.message}`);
+		}
+	}
+}
 
 export const publish = new Command()
 	.name("publish")
@@ -24,9 +356,14 @@ export const publish = new Command()
 	.option("-n, --npm", "publish to npm instead of GitHub", false)
 	.option("-t, --test", "test publish process without making changes", false)
 	.option("-p, --platform <platform>", "specify platform compatibility (node, browser, universal)", "universal")
+	.option("--dry-run", "generate registry files locally without publishing", false)
+	.option("--skip-registry", "skip publishing to the registry", false)
 	.action(async (opts) => {
 		try {
 			const cwd = process.cwd();
+
+			// Check for CLI updates
+			const cliVersion = await checkCliVersion();
 
 			// Validate data directory and settings
 			const isValid = await validateDataDir();
@@ -177,24 +514,6 @@ export const publish = new Command()
 				}
 			}
 
-			// Get CLI version for runtime compatibility
-			const cliPackageJsonPath = path.resolve(
-				path.dirname(fileURLToPath(import.meta.url)),
-				'../package.json'
-			);
-
-			let cliVersion = '0.0.0';
-			try {
-				const cliPackageJsonContent = await fs.readFile(
-					cliPackageJsonPath,
-					"utf-8",
-				);
-				const cliPackageJson = JSON.parse(cliPackageJsonContent);
-				cliVersion = cliPackageJson.version || '0.0.0';
-			} catch (error) {
-				logger.warn('Could not determine CLI version, using 0.0.0');
-			}
-
 			// Get or prompt for GitHub credentials
 			let credentials = await getGitHubCredentials();
 			if (!credentials) {
@@ -222,6 +541,32 @@ export const publish = new Command()
 			};
 			await saveRegistrySettings(settings);
 
+			// Generate package metadata
+			const packageMetadata = await generatePackageMetadata(packageJson, cliVersion, credentials.username);
+			logger.debug("Generated package metadata:", packageMetadata);
+
+			// Check if user is a maintainer
+			const userIsMaintainer = isMaintainer(packageJson, credentials.username);
+			logger.info(`User ${credentials.username} is ${userIsMaintainer ? 'a maintainer' : 'not a maintainer'} of this package`);
+
+			// Handle dry run mode (create local registry files)
+			if (opts.dryRun) {
+				logger.info(`Running dry run for ${detectedType} registry publication...`);
+				
+				// Save package to local registry
+				const success = await savePackageToRegistry(packageMetadata, true);
+				
+				if (success) {
+					logger.success(`Dry run successful: Registry metadata generated for ${packageJson.name}@${packageJson.version}`);
+					logger.info(`Files created in ${LOCAL_REGISTRY_PATH}`);
+				} else {
+					logger.error("Dry run failed");
+					process.exit(1);
+				}
+				
+				return;
+			}
+
 			if (opts.test) {
 				logger.info(`Running ${detectedType} publish tests...`);
 
@@ -246,9 +591,22 @@ export const publish = new Command()
 					process.exit(1);
 				}
 
+				// Test registry publishing
+				if (!opts.skipRegistry) {
+					logger.info("\nTesting registry publishing:");
+					const registryTestSuccess = await savePackageToRegistry(packageMetadata, true);
+					
+					if (!registryTestSuccess) {
+						logger.error("Registry publishing test failed");
+						process.exit(1);
+					}
+				}
+
 				logger.success("All tests passed successfully!");
 				return;
 			}
+
+			// Handle actual publishing
 
 			// Handle npm publishing
 			if (opts.npm) {
@@ -273,20 +631,58 @@ export const publish = new Command()
 				logger.success(
 					`Successfully published ${packageJson.name}@${packageJson.version} to npm`,
 				);
-				return;
+				
+				// Add npm package info to metadata
+				packageMetadata.npmPackage = packageJson.name;
+			} else {
+				// Handle GitHub publishing
+				const success = await publishToGitHub(
+					cwd,
+					packageJson,
+					cliVersion,
+					credentials.username,
+					false,
+				);
+
+				if (!success) {
+					process.exit(1);
+				}
+
+				logger.success(
+					`Successfully published ${detectedType} ${packageJson.name}@${packageJson.version} to GitHub`,
+				);
+				
+				// Add GitHub repo info to metadata
+				packageMetadata.githubRepo = `${credentials.username}/${packageJson.name}`;
 			}
-
-			// Handle GitHub publishing
-			const success = await publishToGitHub(
-				cwd,
-				packageJson,
-				cliVersion,
-				credentials.username,
-				false,
-			);
-
-			if (!success) {
-				process.exit(1);
+			
+			// Handle registry publication
+			if (!opts.skipRegistry) {
+				logger.info("Publishing to registry...");
+				
+				if (userIsMaintainer) {
+					// For maintainers, create a PR to the registry
+					logger.info("Creating pull request to registry as maintainer...");
+					const prUrl = await createRegistryPullRequest(
+						packageJson, 
+						packageMetadata, 
+						credentials.username,
+						credentials.token
+					);
+					
+					if (prUrl) {
+						logger.success(`Registry pull request created: ${prUrl}`);
+					} else {
+						logger.error("Failed to create registry pull request");
+					}
+				} else {
+					// For non-maintainers, just show a message about how to request inclusion
+					logger.info("Package published, but you're not a maintainer of this package.");
+					logger.info("To include this package in the registry, please:");
+					logger.info("1. Fork the registry repository at https://github.com/elizaos/registry");
+					logger.info("2. Add your package metadata");
+					logger.info("3. Submit a pull request to the main repository");
+				}
 			}
 
 			logger.success(

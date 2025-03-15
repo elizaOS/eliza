@@ -1,5 +1,14 @@
 import { customType } from "drizzle-orm/pg-core";
 
+/**
+ * Represents a custom type for converting a string to a JSONB format and vice versa.
+ * @param {Object} options - The options for the custom type.
+ * @param {Function} options.dataType - A function that returns the data type as "jsonb".
+ * @param {Function} options.toDriver - A function that converts a string to a JSON string.
+ * @param {Function} options.fromDriver - A function that converts a JSON string back to a string.
+ * @returns {Object} - The custom type for string to JSONB conversion.
+ */
+
 export const stringJsonb = customType<{ data: string; driverData: string }>({
 	dataType() {
 		return "jsonb";
