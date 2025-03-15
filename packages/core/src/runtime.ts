@@ -1006,23 +1006,23 @@ export class AgentRuntime implements IAgentRuntime {
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
     console.trace("ensureWorldExists");
     // try {
-      const world = await this.getWorld(id);
-      if (!world) {
-        this.runtimeLogger.info("Creating world:", {
-          id,
-          name,
-          serverId,
-          agentId: this.agentId,
-        });
-        await this.adapter.createWorld({
-          id,
-          name,
-          agentId: this.agentId,
-          serverId: serverId || "default",
-          metadata,
-        });
-        this.runtimeLogger.info(`World ${id} created successfully.`);
-      }
+    const world = await this.getWorld(id);
+    if (!world) {
+      this.runtimeLogger.info("Creating world:", {
+        id,
+        name,
+        serverId,
+        agentId: this.agentId,
+      });
+      await this.adapter.createWorld({
+        id,
+        name,
+        agentId: this.agentId,
+        serverId: serverId || "default",
+        metadata,
+      });
+      this.runtimeLogger.info(`World ${id} created successfully.`);
+    }
     // } catch (error) {
     //   this.runtimeLogger.error(
     //     `Failed to ensure world exists: ${
