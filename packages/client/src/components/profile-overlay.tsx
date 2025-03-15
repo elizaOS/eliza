@@ -50,7 +50,6 @@ export default function ProfileOverlay({
     buttonLabel = "Stopping...";
     buttonIcon = <Loader2 className="animate-spin" />;
   } else if (isActive) {
-    buttonLabel = "Stop";
     buttonIcon = <Square fill="#EF4444" size={16} />;
   }
 
@@ -109,8 +108,8 @@ export default function ProfileOverlay({
               </div>
             </div>
 
-            <div className="flex flex-col items-end justify-between h-full">
-              <div className="flex gap-2">
+            <div className="flex flex-col items-end justify-end h-full">
+              <div className="flex gap-1">
                 <Button
                   variant={"secondary"}
                   className={`mr-4`}

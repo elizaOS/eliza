@@ -11,9 +11,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@radix-ui/react-tooltip";
-import { Cog, Plus } from "lucide-react";
+import { Cog, Info, InfoIcon, Plus } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAgentManagement } from "../hooks/use-agent-management";
 
 export default function Home() {
   const {
@@ -29,6 +30,7 @@ export default function Home() {
 
   const [isOverlayOpen, setOverlayOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const { startAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
   const openOverlay = (agent: Agent) => {
     setSelectedAgent(agent);
@@ -128,13 +130,27 @@ export default function Home() {
                       </div>
                     }
                     buttons={[
+                      (
+                        agent.status === AgentStatus.ACTIVE ? 
                       {
-                        label: "View",
+                        label: "Message",
+                        action: () => navigate(`/chat/${agent.id}`),
+                        className: `w-[80%]`,
+                        variant: "default",
+                      } : {
+                        label: isAgentStarting(agent.id) ? "Starting..." : isAgentStopping(agent.id) ? "Stopping..." : "Start",
+                        action: () => startAgent(agent),
+                        className: `w-[80%]`,
+                        variant: "default",
+                        disabled: isAgentStarting(agent.id) || isAgentStopping(agent.id),
+                      }),
+                      {
+                        icon: <InfoIcon style={{ height: 16, width: 16 }} />,
+                        className: "w-10 h-10 rounded-full",
                         action: () => {
                           openOverlay(agent);
                         },
-                        className: `w-[80%]`,
-                        variant: "default",
+                        variant: "outline",
                       },
                       {
                         icon: <Cog style={{ height: 16, width: 16 }} />,

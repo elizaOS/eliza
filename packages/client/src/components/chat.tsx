@@ -42,9 +42,11 @@ type ContentWithUser = Content & ExtraContentFields;
 function MessageContent({
   message,
   agentId,
+  isLastMessage,
 }: {
   message: ContentWithUser;
   agentId: UUID;
+  isLastMessage: boolean;
 }) {
   return (
     <div className="flex flex-col">
@@ -52,11 +54,12 @@ function MessageContent({
         isLoading={message.isLoading}
         {...(message.name === USER_NAME ? { variant: "sent" } : {})}
       >
-        {message.name === USER_NAME ? (
-          message.text
-        ) : (
-          <AIWriter>{message.text}</AIWriter>
-        )}
+        {message.name === USER_NAME ? 
+          message.text :
+          (isLastMessage && message.name !== USER_NAME) ? 
+            <AIWriter>{message.text}</AIWriter> : 
+            message.text
+        }
         {/* Attachments */}
         <div>
           {message.attachments?.map((attachment: IAttachment) => (
@@ -159,7 +162,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [queryClient.getQueryData(["messages", agentId, roomId, worldId])]);
+  }, [messages!.length]);
 
   useEffect(() => {
     scrollToBottom();
@@ -281,7 +284,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
             scrollToBottom={scrollToBottom}
             disableAutoScroll={disableAutoScroll}
           >
-            {messages.map((message: ContentWithUser) => {
+            {messages.map((message: ContentWithUser, index: number) => {
               const isUser = message.name === USER_NAME;
 
               return (
@@ -310,7 +313,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
                       {isUser && <AvatarFallback>U</AvatarFallback>}
                     </Avatar>
-                    <MessageContent message={message} agentId={agentId} />
+                    <MessageContent message={message} agentId={agentId} isLastMessage={index === messages.length - 1}/>
                   </ChatBubble>
                 </div>
               );
