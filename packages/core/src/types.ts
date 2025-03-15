@@ -1715,6 +1715,16 @@ export interface MessagePayload extends EventPayload {
 }
 
 /**
+ * Payload for events that are invoked without a message
+ */
+export interface InvokePayload extends EventPayload {
+  worldId: UUID;
+  userId: string;
+  roomId: UUID;
+  callback?: HandlerCallback;
+}
+
+/**
  * Run event payload type
  */
 export interface RunEventPayload extends EventPayload {
@@ -1752,6 +1762,19 @@ export interface EvaluatorEventPayload extends EventPayload {
 }
 
 /**
+ * Represents the parameters for a message received handler.
+ * @typedef {Object} MessageReceivedHandlerParams
+ * @property {IAgentRuntime} runtime - The agent runtime associated with the message.
+ * @property {Memory} message - The message received.
+ * @property {HandlerCallback} callback - The callback function to be executed after handling the message.
+ */
+export type MessageReceivedHandlerParams = {
+	runtime: IAgentRuntime;
+	message: Memory;
+	callback: HandlerCallback;
+};
+
+/**
  * Maps event types to their corresponding payload types
  */
 export interface EventPayloadMap {
@@ -1764,7 +1787,7 @@ export interface EventPayloadMap {
   [EventTypes.MESSAGE_RECEIVED]: MessagePayload;
   [EventTypes.MESSAGE_SENT]: MessagePayload;
   [EventTypes.REACTION_RECEIVED]: MessagePayload;
-  [EventTypes.POST_GENERATED]: MessagePayload;
+  [EventTypes.POST_GENERATED]: InvokePayload;
   [EventTypes.INTERACTION_RECEIVED]: MessagePayload;
   [EventTypes.RUN_STARTED]: RunEventPayload;
   [EventTypes.RUN_ENDED]: RunEventPayload;

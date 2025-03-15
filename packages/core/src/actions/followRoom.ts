@@ -62,7 +62,7 @@ export const followRoomAction: Action = {
 		];
 		if (
 			!keywords.some((keyword) =>
-				message.content.text.toLowerCase().includes(keyword),
+				message.content.text?.toLowerCase().includes(keyword),
 			)
 		) {
 			return false;
