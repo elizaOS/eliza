@@ -156,7 +156,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Ensure that an agent exists by checking if an agent with the same name already exists in the system.
+	 * Asynchronously ensures that an agent exists by checking if an agent with the same name already exists in the system.
 	 * If the agent does not exist, it will be created with the provided data.
 	 *
 	 * @param {Partial<Agent>} agent - The partial data of the agent to ensure its existence.
@@ -179,7 +179,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Ensure that the given embedding dimension is valid for the agent.
+	 * Asynchronously ensures that the given embedding dimension is valid for the agent.
 	 *
 	 * @param {number} dimension - The dimension to ensure for the embedding.
 	 * @returns {Promise<void>} - Resolves once the embedding dimension is ensured.
@@ -363,7 +363,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Retrieves an entity and its components by entity ID.
+	 * Asynchronously retrieves an entity and its components by entity ID.
 	 * @param {UUID} entityId - The unique identifier of the entity to retrieve.
 	 * @returns {Promise<Entity | null>} A Promise that resolves to the entity with its components if found, null otherwise.
 	 */
@@ -396,7 +396,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Retrieves all entities for a given room, optionally including their components.
+	 * Asynchronously retrieves all entities for a given room, optionally including their components.
 	 * @param {UUID} roomId - The unique identifier of the room to get entities for
 	 * @param {boolean} [includeComponents] - Whether to include component data for each entity
 	 * @returns {Promise<Entity[]>} A Promise that resolves to an array of entities in the room
@@ -490,7 +490,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Ensures an entity exists, creating it if it doesn't
+	 * Asynchronously ensures an entity exists, creating it if it doesn't
 	 * @param entity The entity to ensure exists
 	 * @returns Promise resolving to boolean indicating success
 	 */
@@ -2018,7 +2018,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Retrieves tasks based on specified parameters.
+	 * Asynchronously retrieves tasks based on specified parameters.
 	 * @param params Object containing optional roomId and tags to filter tasks
 	 * @returns Promise resolving to an array of Task objects
 	 */
@@ -2062,7 +2062,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Retrieves a specific task by its name.
+	 * Asynchronously retrieves a specific task by its name.
 	 * @param name The name of the task to retrieve
 	 * @returns Promise resolving to the Task object if found, null otherwise
 	 */
@@ -2090,7 +2090,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Retrieves a specific task by its ID.
+	 * Asynchronously retrieves a specific task by its ID.
 	 * @param id The UUID of the task to retrieve
 	 * @returns Promise resolving to the Task object if found, null otherwise
 	 */
@@ -2122,7 +2122,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Updates an existing task in the database.
+	 * Asynchronously updates an existing task in the database.
 	 * @param id The UUID of the task to update
 	 * @param task Partial Task object containing the fields to update
 	 * @returns Promise resolving when the update is complete
@@ -2171,7 +2171,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Deletes a task from the database.
+	 * Asynchronously deletes a task from the database.
 	 * @param id The UUID of the task to delete
 	 * @returns Promise resolving when the deletion is complete
 	 */
