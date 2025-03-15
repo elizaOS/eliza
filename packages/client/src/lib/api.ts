@@ -381,4 +381,33 @@ export const apiClient = {
 			method: "DELETE"
 		});
 	},
+
+	// Knowledge management functions
+	getKnowledge: (agentId: string): Promise<any> => {
+		return fetcher({
+			url: `/agents/${agentId}/knowledge`,
+			method: "GET"
+		});
+	},
+
+	uploadKnowledge: async (agentId: string, files: File[]): Promise<any> => {
+		const formData = new FormData();
+		
+		for (const file of files) {
+			formData.append("files", file);
+		}
+		
+		return fetcher({
+			url: `/agents/${agentId}/knowledge`,
+			method: "POST",
+			body: formData
+		});
+	},
+
+	deleteKnowledge: (agentId: string, knowledgeId: string): Promise<any> => {
+		return fetcher({
+			url: `/agents/${agentId}/knowledge/${knowledgeId}`,
+			method: "DELETE"
+		});
+	}
 };

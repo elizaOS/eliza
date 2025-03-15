@@ -15,7 +15,7 @@ import type { IAttachment } from "@/types";
 import type { Content, UUID } from "@elizaos/core";
 import { AgentStatus } from "@elizaos/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, MenuIcon, Paperclip, Send, Terminal, X } from "lucide-react";
+import { Activity, Book, MenuIcon, Paperclip, Send, Terminal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import AIWriter from "react-aiwriter";
 import { AgentActionViewer } from "./action-viewer";
@@ -28,6 +28,7 @@ import ChatTtsButton from "./ui/chat/chat-tts-button";
 import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { KnowledgeViewer } from "./knowledge-viewer";
 
 const SOURCE_NAME = "client_chat";
 
@@ -113,7 +114,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState("");
   const [showDetails, setShowDetails] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<"actions" | "logs">("actions");
+  const [detailsTab, setDetailsTab] = useState<"actions" | "logs" | "knowledge">("actions");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -404,11 +405,11 @@ export default function Page({ agentId }: { agentId: UUID }) {
             <Tabs
               defaultValue="actions"
               value={detailsTab}
-              onValueChange={(v) => setDetailsTab(v as "actions" | "logs")}
+              onValueChange={(v) => setDetailsTab(v as "actions" | "logs" | "knowledge")}
               className="flex flex-col h-full"
             >
               <div className="border-b px-4 py-2">
-                <TabsList className="grid grid-cols-2">
+                <TabsList className="grid grid-cols-3">
                   <TabsTrigger
                     value="actions"
                     className="flex items-center gap-1.5"
@@ -423,6 +424,13 @@ export default function Page({ agentId }: { agentId: UUID }) {
                     <Terminal className="h-4 w-4" />
                     <span>Logs</span>
                   </TabsTrigger>
+                  <TabsTrigger
+                    value="knowledge"
+                    className="flex items-center gap-1.5"
+                  >
+                    <Book className="h-4 w-4" />
+                    <span>Knowledge</span>
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -431,6 +439,9 @@ export default function Page({ agentId }: { agentId: UUID }) {
               </TabsContent>
               <TabsContent value="logs">
                 <LogViewer agentName={agentData?.name} level="all" hideTitle />
+              </TabsContent>
+              <TabsContent value="knowledge" className="h-full overflow-y-auto">
+                <KnowledgeViewer agentId={agentId} />
               </TabsContent>
             </Tabs>
           </div>

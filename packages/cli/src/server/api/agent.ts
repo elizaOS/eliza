@@ -22,21 +22,61 @@ import {
 import { logger} from "@elizaos/core";
 import express from "express";
 import type { AgentServer } from "..";
-import { upload } from "../loader";
+import multer from "multer";
+import os from "node:os";
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
  * @interface CustomRequest
  * @extends express.Request
  * @property {Express.Multer.File} [file] - Optional property representing a file uploaded with the request
+ * @property {Express.Multer.File[]} [files] - Optional property representing multiple files uploaded with the request
  * @property {Object} params - Object representing parameters included in the request
  * @property {string} params.agentId - The unique identifier for the agent associated with the request
+ * @property {string} [params.knowledgeId] - Optional knowledge ID parameter
  */
 interface CustomRequest extends express.Request {
 	file?: Express.Multer.File;
+	files?: Express.Multer.File[];
 	params: {
 		agentId: string;
+		knowledgeId?: string;
 	};
+}
+
+/**
+ * Cleans up old temporary files in the uploads directory.
+ * Files older than the specified maxAge (in milliseconds) will be deleted.
+ * 
+ * @param uploadsDir - The directory containing temporary upload files
+ * @param maxAge - Maximum age of files in milliseconds before they're deleted (default: 24 hours)
+ */
+function cleanupTempFiles(uploadsDir: string, maxAge: number = 24 * 60 * 60 * 1000): void {
+	if (!fs.existsSync(uploadsDir)) {
+		return;
+	}
+	
+	try {
+		const now = Date.now();
+		const files = fs.readdirSync(uploadsDir);
+		
+		for (const file of files) {
+			const filePath = path.join(uploadsDir, file);
+			const stats = fs.statSync(filePath);
+			
+			// If the file is older than maxAge, delete it
+			if (now - stats.mtimeMs > maxAge) {
+				try {
+					fs.unlinkSync(filePath);
+					logger.debug(`[CLEANUP] Deleted old temporary file: ${file}`);
+				} catch (error) {
+					logger.error(`[CLEANUP] Error deleting temporary file ${file}: ${error}`);
+				}
+			}
+		}
+	} catch (error) {
+		logger.error(`[CLEANUP] Error cleaning up temporary files: ${error}`);
+	}
 }
 
 /**
@@ -52,6 +92,32 @@ export function agentRouter(
 ): express.Router {
 	const router = express.Router();
 	const db = server?.database;
+
+	// Configure multer for file uploads
+	const uploadsDir = path.join(os.tmpdir(), "elizaos-uploads");
+	const storage = multer.diskStorage({
+		destination: (_, __, cb) => {
+			if (!fs.existsSync(uploadsDir)) {
+				fs.mkdirSync(uploadsDir, { recursive: true });
+			}
+			cb(null, uploadsDir);
+		},
+		filename: (_, file, cb) => {
+			cb(null, `${Date.now()}-${file.originalname}`);
+		},
+	});
+
+	const upload = multer({ storage });
+	
+	// Set up periodic cleanup of temporary files (run every hour)
+	const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
+	setInterval(() => {
+		logger.debug("[CLEANUP] Running scheduled cleanup of temporary files");
+		cleanupTempFiles(uploadsDir);
+	}, CLEANUP_INTERVAL);
+	
+	// Run initial cleanup on startup
+	cleanupTempFiles(uploadsDir);
 
 	// List all agents
 	router.get("/", async (_, res) => {
@@ -1540,6 +1606,292 @@ export function agentRouter(
 				error: {
 					code: "PROCESSING_ERROR",
 					message: "Error processing message",
+					details: error.message,
+				},
+			});
+		}
+	});
+
+	// Knowledge management routes
+	router.get("/:agentId/knowledge", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+
+		if (!agentId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID format",
+				},
+			});
+			return;
+		}
+
+		const runtime = agents.get(agentId);
+
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+
+		try {
+			// Get knowledge documents from the agent's database
+			const memories = await runtime.getMemories({
+				roomId: agentId,
+				tableName: "documents",
+			});
+			
+			res.json({ 
+				success: true, 
+				data: memories.map(memory => {
+					// Access metadata safely
+					const metadata = memory.metadata || {};
+					// Access content metadata for filename, type, and size
+					const contentMetadata = memory.content?.metadata as Record<string, any> || {};
+					
+					// Extract filename from content text if available
+					let filename = contentMetadata.filename || "Unknown Document";
+					let preview = 'No preview available';
+					
+					// Try to extract path/filename from content text
+					if (memory.content?.text) {
+						const pathMatch = memory.content?.text.match(/Path: ([^\n]+)/);
+						if (pathMatch?.[1]) {
+							filename = pathMatch[1];
+						}
+						
+						// Get preview text - skip the Path: line and empty lines
+						const textLines = memory.content?.text.split('\n');
+						const startIndex = textLines.findIndex(line => line.startsWith('Path:')) + 1;
+						// Skip empty lines after the Path: line
+						let contentStartIndex = startIndex;
+						while (contentStartIndex < textLines.length && textLines[contentStartIndex].trim() === '') {
+							contentStartIndex++;
+						}
+						
+						const previewText = textLines.slice(contentStartIndex).join('\n').trim();
+						preview = previewText.length > 0 ? 
+							`${previewText.substring(0, 150)}${previewText.length > 150 ? '...' : ''}` : 
+							'No preview available';
+					}
+					
+					// Determine file type based on filename extension
+					const fileExt = filename.split('.').pop()?.toLowerCase() || '';
+					let fileType = contentMetadata.fileType || "text/plain";
+					
+					if (fileExt === 'md') {
+						fileType = "text/markdown";
+					} else if (fileExt === 'ts' || fileExt === 'tsx') {
+						fileType = "application/typescript";
+					}
+					
+					return {
+						id: memory.id,
+						filename: filename,
+						type: fileType,
+						size: contentMetadata.size || memory.content?.text?.length || 0,
+						uploadedAt: (metadata as any).timestamp || Date.now(),
+						preview: preview
+					};
+				})
+			});
+		} catch (error) {
+			logger.error(`[KNOWLEDGE GET] Error retrieving knowledge: ${error}`);
+			res.status(500).json({
+				success: false,
+				error: {
+					code: 500,
+					message: "Failed to retrieve knowledge",
+					details: error.message,
+				},
+			});
+		}
+	});
+
+	router.post("/:agentId/knowledge", upload.array("files"), async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+
+		if (!agentId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID format",
+				},
+			});
+			return;
+		}
+
+		const runtime = agents.get(agentId);
+
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+		
+		const files = req.files as Express.Multer.File[];
+		
+		if (!files || files.length === 0) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "NO_FILES",
+					message: "No files uploaded",
+				},
+			});
+			return;
+		}
+		
+		try {
+			const results = [];
+			const processedFiles = new Set<string>(); // Track successfully processed files
+			
+			for (const file of files) {
+				try {
+					// Read file content
+					const content = fs.readFileSync(file.path, 'utf8');
+					
+					// Format the content with Path: prefix like in the devRel/index.ts example
+					const relativePath = file.originalname;
+					const formattedContent = `Path: ${relativePath}\n\n${content}`;
+					
+					// Create knowledge item
+					const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
+					const knowledgeItem = {
+						id: knowledgeId,
+						content: {
+							text: formattedContent,
+							metadata: {
+								filename: file.originalname,
+								fileType: file.mimetype,
+								size: file.size,
+							}
+						}
+					};
+					
+					// Add knowledge to agent
+					await runtime.addKnowledge(knowledgeItem, {
+						targetTokens: 3000,
+						overlap: 200,
+						modelContextSize: 4096,
+					});
+					
+					// Clean up temp file
+					fs.unlinkSync(file.path);
+					processedFiles.add(file.path);
+					
+					// Extract preview from the content
+					const preview = content.length > 0 ? 
+						`${content.substring(0, 150)}${content.length > 150 ? '...' : ''}` : 
+						'No preview available';
+					
+					results.push({
+						id: knowledgeId,
+						filename: relativePath,
+						type: file.mimetype,
+						size: file.size,
+						uploadedAt: Date.now(),
+						preview: preview
+					});
+				} catch (fileError) {
+					logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
+					// Clean up this file if it hasn't been processed yet
+					if (file.path && fs.existsSync(file.path) && !processedFiles.has(file.path)) {
+						fs.unlinkSync(file.path);
+						processedFiles.add(file.path);
+					}
+					// Continue with other files even if one fails
+				}
+			}
+			
+			res.json({
+				success: true,
+				data: results,
+			});
+		} catch (error) {
+			logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
+			
+			// Clean up any remaining files that weren't processed
+			if (files) {
+				for (const file of files) {
+					if (file.path && fs.existsSync(file.path)) {
+						try {
+							fs.unlinkSync(file.path);
+						} catch (cleanupError) {
+							logger.error(`[KNOWLEDGE POST] Error cleaning up file ${file.originalname}: ${cleanupError}`);
+						}
+					}
+				}
+			}
+			
+			res.status(500).json({
+				success: false,
+				error: {
+					code: 500,
+					message: "Failed to upload knowledge",
+					details: error.message,
+				},
+			});
+		}
+	});
+
+	router.delete("/:agentId/knowledge/:knowledgeId", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+		const knowledgeId = validateUuid(req.params.knowledgeId);
+
+		if (!agentId || !knowledgeId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID or knowledge ID format",
+				},
+			});
+			return;
+		}
+
+		const runtime = agents.get(agentId);
+
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+		
+		try {
+			// Delete the main document
+			await runtime.deleteMemory(knowledgeId);
+			
+			res.json({
+				success: true,
+				data: {
+					message: "Knowledge item and its fragments deleted successfully",
+				},
+			});
+		} catch (error) {
+			logger.error(`[KNOWLEDGE DELETE] Error deleting knowledge: ${error}`);
+			res.status(500).json({
+				success: false,
+				error: {
+					code: 500,
+					message: "Failed to delete knowledge",
 					details: error.message,
 				},
 			});

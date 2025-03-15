@@ -492,15 +492,19 @@ export class AgentRuntime implements IAgentRuntime {
       count: 5,
       match_threshold: 0.1,
     });
-
+    
     const uniqueSources = [
       ...new Set(
-        fragments.map((memory) => {
-          this.runtimeLogger.log(
-            `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
-          );
-          return memory.content.source;
-        })
+        fragments
+          .map((memory) => {
+            this.runtimeLogger.log(
+              `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
+            );
+            return memory?.metadata?.type === MemoryType.FRAGMENT 
+              ? memory?.metadata?.documentId 
+              : undefined;
+          })
+          .filter(Boolean)
       ),
     ];
 
