@@ -1,11 +1,9 @@
 import { DirectClient } from "@elizaos/client-direct";
-import { ProxyAgent, setGlobalDispatcher } from "undici";
 import {
     type Adapter,
     AgentRuntime,
     CacheManager,
     CacheStore,
-    type Plugin,
     type Character,
     type ClientInstance,
     DbCacheAdapter,
@@ -18,8 +16,9 @@ import {
     parseBooleanFromText,
     settings,
     stringToUuid,
-    validateCharacterConfig,
+    validateCharacterConfig
 } from "@elizaos/core";
+import { ProxyAgent, setGlobalDispatcher } from "undici";
 import { defaultCharacter } from "./defaultCharacter.ts";
 
 import { bootstrapPlugin } from "@elizaos/plugin-bootstrap";
@@ -220,7 +219,13 @@ async function jsonToCharacter(
     const getSetting = (key: string) => settings[key];
     character.plugins = [];
     for (const pluginConstructor of pluginConstructors) {
-        character.plugins.push(await pluginConstructor(getSetting));
+        if (typeof pluginConstructor === 'function') {
+            // Handle function-style plugins
+            character.plugins.push(await pluginConstructor(getSetting));
+        } else {
+            // Handle object-style plugins
+            character.plugins.push(pluginConstructor);
+        }
     }
     elizaLogger.info(
         character.name,
@@ -397,28 +402,35 @@ async function handlePluginImporting(plugins: string[]) {
         const importedPlugins = await Promise.all(
             plugins.map(async (plugin) => {
                 try {
-                    const importedPlugin: Plugin = await import(plugin);
+                    const importedPlugin = await import(plugin);
+                    // Assumes plugin function is camelCased with Plugin suffix
                     const functionName =
                         plugin
                             .replace("@elizaos/plugin-", "")
                             .replace("@elizaos-plugins/plugin-", "")
                             .replace(/-./g, (x) => x[1].toUpperCase()) +
-                        "Plugin"; // Assumes plugin function is camelCased with Plugin suffix
-                    if (
-                        !importedPlugin[functionName] &&
-                        !importedPlugin.default
-                    ) {
-                        elizaLogger.warn(
-                            plugin,
-                            "does not have an default export or",
-                            functionName
-                        );
+                        "Plugin";
+
+                    // If it's a function export, return it directly
+                    if (typeof importedPlugin[functionName] === 'function') {
+                        return {
+                            ...importedPlugin[functionName],
+                            npmName: plugin,
+                        };
                     }
-                    return {
-                        ...(importedPlugin.default ||
-                            importedPlugin[functionName]),
-                        npmName: plugin,
-                    };
+
+                    // If it's a default export object, return it
+                    if (importedPlugin.default) {
+                        return {
+                            ...importedPlugin.default,
+                            npmName: plugin,
+                        };
+                    }
+
+                    elizaLogger.warn(
+                        `Plugin ${plugin} does not have a valid export (neither ${functionName} nor default)`
+                    );
+                    return false; // Return false for failed imports
                 } catch (importError) {
                     console.error(
                         `Failed to import plugin: ${plugin}`,
