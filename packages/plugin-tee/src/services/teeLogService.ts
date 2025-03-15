@@ -3,8 +3,8 @@ import {
 	type IAgentRuntime,
 	type ITeeLogService,
 	Service,
-	type ServiceType,
-	ServiceTypes,
+	type ServiceTypeName,
+	ServiceType,
 	TEEMode,
 	type TeeAgent,
 	type TeeLog,
@@ -32,7 +32,7 @@ export class TeeLogService extends Service implements ITeeLogService {
 	private teeLogDAO: TeeLogDAO<Database.Database>;
 	private teeLogManager: TeeLogManager;
 
-	static serviceType: ServiceType = ServiceTypes.TEE;
+	static serviceType: ServiceTypeName = ServiceType.TEE;
 	capabilityDescription =
 		"The agent is able to log TEE attestation events and is probably running in a TEE";
 
@@ -120,7 +120,7 @@ export class TeeLogService extends Service implements ITeeLogService {
 	 * @returns {Promise<void>} - A promise that resolves once the TEE service has stopped.
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = runtime.getService(ServiceTypes.TEE);
+		const service = runtime.getService(ServiceType.TEE);
 		if (service) {
 			await service.stop();
 		}

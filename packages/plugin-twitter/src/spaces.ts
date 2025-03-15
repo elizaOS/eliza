@@ -1,4 +1,4 @@
-import { type IAgentRuntime, ModelTypes, logger } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, logger } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import {
 	type Client,
@@ -233,8 +233,8 @@ export class TwitterSpaceClient {
 			this.spaceId = broadcastInfo.room_id;
 
 			if (
-				this.runtime.getModel(ModelTypes.TEXT_TO_SPEECH) &&
-				this.runtime.getModel(ModelTypes.TRANSCRIPTION)
+				this.runtime.getModel(ModelType.TEXT_TO_SPEECH) &&
+				this.runtime.getModel(ModelType.TRANSCRIPTION)
 			) {
 				logger.log("[Space] Using SttTtsPlugin");
 				// TODO: There is an error here, onAttach is incompatible

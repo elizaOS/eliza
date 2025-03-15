@@ -11,7 +11,7 @@ import { formatRecommenderReport } from "../reports";
 import type { CommunityInvestorService } from "../tradingService";
 import {
 	type PositionWithBalance,
-	ServiceTypes,
+	ServiceType,
 	type TokenPerformance,
 	type RecommenderMetrics as TypesRecommenderMetrics,
 	type TokenPerformance as TypesTokenPerformance,
@@ -134,7 +134,7 @@ async function runActions(
 	transactions: TypesTransaction[],
 ) {
 	const tradingService = runtime.getService<CommunityInvestorService>(
-		ServiceTypes.COMMUNITY_INVESTOR,
+		ServiceType.COMMUNITY_INVESTOR,
 	);
 
 	return Promise.all(
@@ -197,7 +197,7 @@ export const dataProvider: Provider = {
 				
 				.getEntityById(clientUserId as UUID);
 			const tradingService = runtime.getService<CommunityInvestorService>(
-				ServiceTypes.COMMUNITY_INVESTOR,
+				ServiceType.COMMUNITY_INVESTOR,
 			);
 
 			// Add updatedAt to RecommenderMetrics to make it compatible

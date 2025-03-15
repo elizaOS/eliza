@@ -9,7 +9,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type Plugin,
 	createUniqueUuid,
 	logger,
@@ -246,7 +246,7 @@ export class SttTtsPlugin implements Plugin {
 
 			// Whisper STT
 			const sttText = await this.runtime.useModel(
-				ModelTypes.TRANSCRIPTION,
+				ModelType.TRANSCRIPTION,
 				wavBuffer,
 			);
 
@@ -293,7 +293,7 @@ export class SttTtsPlugin implements Plugin {
 
 			try {
 				const responseStream = await this.runtime.useModel(
-					ModelTypes.TEXT_TO_SPEECH,
+					ModelType.TEXT_TO_SPEECH,
 					text,
 				);
 				if (!responseStream) {

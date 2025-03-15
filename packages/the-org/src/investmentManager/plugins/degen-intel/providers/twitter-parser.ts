@@ -5,7 +5,7 @@ import {
 	type Content,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type UUID,
 	createUniqueUuid,
 	logger,
@@ -254,7 +254,7 @@ export default class TwitterParser {
 		const bulletpointTweets = makeBulletpointList(tweetArray);
 		const prompt = template.replace("{{tweets}}", bulletpointTweets);
 
-		const response = await this.runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 			system: rolePrompt,
 			temperature: 0.2,

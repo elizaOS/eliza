@@ -51,7 +51,7 @@ export interface ITwitterClient {
 	service: TwitterService;
 }
 
-export const ServiceTypes = {
+export const ServiceType = {
 	TWITTER: "twitter",
 } as const;
 

@@ -855,6 +855,6 @@ export interface TradePerformance {
 	rapidDump: boolean;
 }
 
-export const ServiceTypes = {
+export const ServiceType = {
 	COMMUNITY_INVESTOR: "community_investor",
 } as const;

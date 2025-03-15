@@ -114,6 +114,6 @@ export interface IDiscordService {
 	character: Character;
 }
 
-export const ServiceTypes = {
+export const ServiceType = {
 	DISCORD: "discord",
 } as const;

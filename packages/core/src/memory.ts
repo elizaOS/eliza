@@ -8,7 +8,7 @@ import {
 	type MemoryRetrievalOptions,
 	type MemorySearchOptions,
 	MemoryType,
-	ModelTypes,
+	ModelType,
 	type MultiRoomMemoryOptions,
 	type UUID
 } from "./types";
@@ -96,7 +96,7 @@ export class MemoryManager implements IMemoryManager {
 		try {
 			// Generate embedding from text content
 			memory.embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				{
 					text: memoryText,
 				},
@@ -105,7 +105,7 @@ export class MemoryManager implements IMemoryManager {
 			logger.error("Failed to generate embedding:", error);
 			// Fallback to zero vector if embedding fails
 			memory.embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				null,
 			);
 		}
@@ -216,7 +216,7 @@ export class MemoryManager implements IMemoryManager {
 
 		if (!memory.embedding) {
 			memory.embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				null,
 			);
 		}

@@ -2,10 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import type { GenerateTextParams, ModelType } from "@elizaos/core";
+import type { GenerateTextParams, ModelTypeName } from "@elizaos/core";
 import {
 	type IAgentRuntime,
-	ModelTypes,
+	ModelType,
 	type Plugin,
 	logger,
 } from "@elizaos/core";
@@ -100,11 +100,11 @@ type TextModelSource = "local" | "studiolm" | "ollama";
  * Interface representing the configuration for a text model.
  *
  * @property {TextModelSource} source - The source of the text model.
- * @property {ModelType} modelType - The type of the model.
+ * @property {ModelTypeName} modelType - The type of the model.
  */
 interface TextModelConfig {
 	source: TextModelSource;
-	modelType: ModelType;
+	modelType: ModelTypeName;
 }
 
 /**
@@ -413,13 +413,13 @@ class LocalAIManager {
 	/**
 	 * Initializes the LocalAI Manager for a given model type.
 	 *
-	 * @param {ModelType} modelType - The type of model to initialize (default: ModelTypes.TEXT_SMALL)
+	 * @param {ModelTypeName} modelType - The type of model to initialize (default: ModelType.TEXT_SMALL)
 	 * @returns {Promise<void>} A promise that resolves when initialization is complete or rejects if an error occurs
 	 */
 	async initialize(
-		modelType: ModelType = ModelTypes.TEXT_SMALL,
+		modelType: ModelTypeName = ModelType.TEXT_SMALL,
 	): Promise<void> {
-		if (modelType === ModelTypes.TEXT_LARGE) {
+		if (modelType === ModelType.TEXT_LARGE) {
 			await this.lazyInitMediumModel();
 		} else {
 			await this.lazyInitSmallModel();
@@ -584,7 +584,7 @@ class LocalAIManager {
 	async generateText(params: GenerateTextParams): Promise<string> {
 		try {
 			// Lazy initialize the appropriate model
-			if (params.modelType === ModelTypes.TEXT_LARGE) {
+			if (params.modelType === ModelType.TEXT_LARGE) {
 				await this.lazyInitMediumModel();
 
 				if (!this.mediumModel) {
@@ -802,7 +802,7 @@ class LocalAIManager {
 			// Default configuration
 			const config: TextModelConfig = {
 				source: "local",
-				modelType: ModelTypes.TEXT_SMALL,
+				modelType: ModelType.TEXT_SMALL,
 			};
 
 			// Check environment configuration and manager existence
@@ -823,7 +823,7 @@ class LocalAIManager {
 		} catch (error) {
 			logger.error("Error determining text model source:", error);
 			// Fallback to local models
-			return { source: "local", modelType: ModelTypes.TEXT_SMALL };
+			return { source: "local", modelType: ModelType.TEXT_SMALL };
 		}
 	}
 
@@ -1106,7 +1106,7 @@ export const localAIPlugin: Plugin = {
 		}
 	},
 	models: {
-		[ModelTypes.TEXT_SMALL]: async (
+		[ModelType.TEXT_SMALL]: async (
 			runtime: IAgentRuntime,
 			{ prompt, stopSequences = [] }: GenerateTextParams,
 		) => {
@@ -1118,7 +1118,7 @@ export const localAIPlugin: Plugin = {
 						prompt,
 						stopSequences,
 						runtime,
-						modelType: ModelTypes.TEXT_SMALL,
+						modelType: ModelType.TEXT_SMALL,
 					});
 				}
 
@@ -1126,7 +1126,7 @@ export const localAIPlugin: Plugin = {
 					prompt,
 					stopSequences,
 					runtime,
-					modelType: ModelTypes.TEXT_SMALL,
+					modelType: ModelType.TEXT_SMALL,
 				});
 			} catch (error) {
 				logger.error("Error in TEXT_SMALL handler:", error);
@@ -1134,7 +1134,7 @@ export const localAIPlugin: Plugin = {
 			}
 		},
 
-		[ModelTypes.TEXT_LARGE]: async (
+		[ModelType.TEXT_LARGE]: async (
 			runtime: IAgentRuntime,
 			{ prompt, stopSequences = [] }: GenerateTextParams,
 		) => {
@@ -1146,7 +1146,7 @@ export const localAIPlugin: Plugin = {
 						prompt,
 						stopSequences,
 						runtime,
-						modelType: ModelTypes.TEXT_LARGE,
+						modelType: ModelType.TEXT_LARGE,
 					});
 				}
 
@@ -1154,7 +1154,7 @@ export const localAIPlugin: Plugin = {
 					prompt,
 					stopSequences,
 					runtime,
-					modelType: ModelTypes.TEXT_LARGE,
+					modelType: ModelType.TEXT_LARGE,
 				});
 			} catch (error) {
 				logger.error("Error in TEXT_LARGE handler:", error);
@@ -1162,7 +1162,7 @@ export const localAIPlugin: Plugin = {
 			}
 		},
 
-		[ModelTypes.TEXT_EMBEDDING]: async (
+		[ModelType.TEXT_EMBEDDING]: async (
 			_runtime: IAgentRuntime,
 			text: string | null,
 		) => {
@@ -1205,7 +1205,7 @@ export const localAIPlugin: Plugin = {
 			}
 		},
 
-		[ModelTypes.TEXT_TOKENIZER_ENCODE]: async (
+		[ModelType.TEXT_TOKENIZER_ENCODE]: async (
 			_runtime: IAgentRuntime,
 			{ text }: { text: string },
 		) => {
@@ -1219,7 +1219,7 @@ export const localAIPlugin: Plugin = {
 			}
 		},
 
-		[ModelTypes.TEXT_TOKENIZER_DECODE]: async (
+		[ModelType.TEXT_TOKENIZER_DECODE]: async (
 			_runtime: IAgentRuntime,
 			{ tokens }: { tokens: number[] },
 		) => {
@@ -1233,7 +1233,7 @@ export const localAIPlugin: Plugin = {
 			}
 		},
 
-		[ModelTypes.IMAGE_DESCRIPTION]: async (
+		[ModelType.IMAGE_DESCRIPTION]: async (
 			_runtime: IAgentRuntime,
 			imageUrl: string,
 		) => {
@@ -1259,7 +1259,7 @@ export const localAIPlugin: Plugin = {
 			}
 		},
 
-		[ModelTypes.TRANSCRIPTION]: async (
+		[ModelType.TRANSCRIPTION]: async (
 			_runtime: IAgentRuntime,
 			audioBuffer: Buffer,
 		) => {
@@ -1278,7 +1278,7 @@ export const localAIPlugin: Plugin = {
 			}
 		},
 
-		[ModelTypes.TEXT_TO_SPEECH]: async (
+		[ModelType.TEXT_TO_SPEECH]: async (
 			_runtime: IAgentRuntime,
 			text: string,
 		) => {
@@ -1304,7 +1304,7 @@ export const localAIPlugin: Plugin = {
 							logger.info("Starting initialization test");
 
 							// Test TEXT_SMALL model initialization
-							const result = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+							const result = await runtime.useModel(ModelType.TEXT_SMALL, {
 								prompt:
 									"Debug Mode: Test initialization. Respond with 'Initialization successful' if you can read this.",
 								stopSequences: [],
@@ -1336,7 +1336,7 @@ export const localAIPlugin: Plugin = {
 						try {
 							logger.info("Starting TEXT_LARGE model test");
 
-							const result = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+							const result = await runtime.useModel(ModelType.TEXT_LARGE, {
 								prompt:
 									"Debug Mode: Generate a one-sentence response about artificial intelligence.",
 								stopSequences: [],
@@ -1370,7 +1370,7 @@ export const localAIPlugin: Plugin = {
 
 							// Test with normal text
 							const embedding = await runtime.useModel(
-								ModelTypes.TEXT_EMBEDDING,
+								ModelType.TEXT_EMBEDDING,
 								{
 									text: "This is a test of the text embedding model.",
 								},
@@ -1395,7 +1395,7 @@ export const localAIPlugin: Plugin = {
 
 							// Test with null input (should return zero vector)
 							const nullEmbedding = await runtime.useModel(
-								ModelTypes.TEXT_EMBEDDING,
+								ModelType.TEXT_EMBEDDING,
 								null,
 							);
 							if (
@@ -1423,7 +1423,7 @@ export const localAIPlugin: Plugin = {
 							const text = "Hello tokenizer test!";
 
 							const tokens = await runtime.useModel(
-								ModelTypes.TEXT_TOKENIZER_ENCODE,
+								ModelType.TEXT_TOKENIZER_ENCODE,
 								{ text },
 							);
 							logger.info("Encoded tokens:", { count: tokens.length });
@@ -1461,13 +1461,13 @@ export const localAIPlugin: Plugin = {
 							// First encode some text
 							const originalText = "Hello tokenizer test!";
 							const tokens = await runtime.useModel(
-								ModelTypes.TEXT_TOKENIZER_ENCODE,
+								ModelType.TEXT_TOKENIZER_ENCODE,
 								{ text: originalText },
 							);
 
 							// Then decode it back
 							const decodedText = await runtime.useModel(
-								ModelTypes.TEXT_TOKENIZER_DECODE,
+								ModelType.TEXT_TOKENIZER_DECODE,
 								{ tokens },
 							);
 							logger.info("Round trip tokenization:", {
@@ -1500,7 +1500,7 @@ export const localAIPlugin: Plugin = {
 							const imageUrl =
 								"https://raw.githubusercontent.com/microsoft/FLAML/main/website/static/img/flaml.png";
 							const result = await runtime.useModel(
-								ModelTypes.IMAGE_DESCRIPTION,
+								ModelType.IMAGE_DESCRIPTION,
 								imageUrl,
 							);
 
@@ -1559,7 +1559,7 @@ export const localAIPlugin: Plugin = {
 							const audioBuffer = Buffer.from(audioData);
 
 							const transcription = await runtime.useModel(
-								ModelTypes.TRANSCRIPTION,
+								ModelType.TRANSCRIPTION,
 								audioBuffer,
 							);
 							logger.info("Transcription result:", transcription);
@@ -1586,7 +1586,7 @@ export const localAIPlugin: Plugin = {
 
 							const testText = "This is a test of the text to speech system.";
 							const audioStream = await runtime.useModel(
-								ModelTypes.TEXT_TO_SPEECH,
+								ModelType.TEXT_TO_SPEECH,
 								testText,
 							);
 

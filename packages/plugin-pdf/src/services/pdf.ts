@@ -2,8 +2,8 @@ import {
 	type IAgentRuntime,
 	type IPdfService,
 	Service,
-	type ServiceType,
-	ServiceTypes,
+	type ServiceTypeName,
+	ServiceType,
 } from "@elizaos/core";
 import { type PDFDocumentProxy, getDocument } from "pdfjs-dist";
 import type {
@@ -17,7 +17,7 @@ import type {
  * @implements IPdfService
  */
 export class PdfService extends Service implements IPdfService {
-	static serviceType: ServiceType = ServiceTypes.PDF;
+	static serviceType: ServiceTypeName = ServiceType.PDF;
 	capabilityDescription = "The agent is able to convert PDF files to text";
 
 	/**
@@ -47,7 +47,7 @@ export class PdfService extends Service implements IPdfService {
 	 * @returns {Promise<void>} - A promise that resolves once the PDF service is stopped.
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = runtime.getService(ServiceTypes.PDF);
+		const service = runtime.getService(ServiceType.PDF);
 		if (service) {
 			await service.stop();
 		}

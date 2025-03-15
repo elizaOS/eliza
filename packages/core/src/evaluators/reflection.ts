@@ -8,7 +8,7 @@ import {
 	type Evaluator,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	type UUID,
 } from "../types";
@@ -154,7 +154,7 @@ function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
 const generateObject = async ({
 	runtime,
 	prompt,
-	modelType = ModelTypes.TEXT_SMALL,
+	modelType = ModelType.TEXT_SMALL,
 	stopSequences = [],
 	output = "object",
 	enumValues = [],
@@ -282,7 +282,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 	const reflection = await generateObject({
 		runtime,
 		prompt,
-		modelType: ModelTypes.TEXT_SMALL,
+		modelType: ModelType.TEXT_SMALL,
 		schema: reflectionSchema,
 	});
 	if (!reflection) {

@@ -53,7 +53,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	type MessagePayload,
-	ModelTypes,
+	ModelType,
 	type Plugin,
 	type Room,
 	type World,
@@ -201,7 +201,7 @@ const messageReceivedHandler = async ({
 				shouldRespondPrompt,
 			);
 
-			const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt: shouldRespondPrompt,
 			});
 
@@ -240,7 +240,7 @@ const messageReceivedHandler = async ({
 						!responseContent?.plan ||
 						!responseContent?.actions)
 				) {
-					const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+					const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 						prompt,
 					});
 
@@ -433,7 +433,7 @@ const postGeneratedHandler = async ({
 			!responseContent?.plan ||
 			!responseContent?.text)
 	) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 

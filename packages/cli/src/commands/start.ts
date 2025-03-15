@@ -8,7 +8,7 @@ import {
 	AgentRuntime,
 	type Character,
 	type IAgentRuntime,
-	ModelTypes,
+	ModelType,
 	type Plugin,
 	logger,
 	settings,
@@ -200,8 +200,8 @@ async function startAgent(
 										name: 'anthropic',
 										description: 'Anthropic plugin (stub)',
 										models: {
-											[ModelTypes.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-											[ModelTypes.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
+											[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
+											[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
 										},
 										init: async () => {
 											logger.warn('Using stub Anthropic plugin due to Zod validation error');
@@ -212,8 +212,8 @@ async function startAgent(
 										name: 'anthropic',
 										description: 'Anthropic plugin (stub)',
 										models: {
-											[ModelTypes.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-											[ModelTypes.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
+											[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
+											[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
 										},
 										init: async () => {
 											logger.warn('Using stub Anthropic plugin due to Zod validation error');
@@ -280,8 +280,8 @@ async function startAgent(
 									name: 'anthropic',
 									description: 'Anthropic plugin (stub)',
 									models: {
-										[ModelTypes.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-										[ModelTypes.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
+										[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
+										[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
 									},
 									init: async () => {
 										logger.warn('Using stub Anthropic plugin due to Zod validation error');
@@ -292,8 +292,8 @@ async function startAgent(
 									name: 'anthropic',
 									description: 'Anthropic plugin (stub)',
 									models: {
-										[ModelTypes.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-										[ModelTypes.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
+										[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
+										[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
 									},
 									init: async () => {
 										logger.warn('Using stub Anthropic plugin due to Zod validation error');
@@ -389,8 +389,8 @@ async function startAgent(
 								name: 'anthropic',
 								description: 'Anthropic plugin (stub)',
 								models: {
-									[ModelTypes.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-									[ModelTypes.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
+									[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
+									[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
 								},
 								init: async () => {
 									logger.warn('Using stub Anthropic plugin due to Zod validation error');
@@ -401,8 +401,8 @@ async function startAgent(
 								name: 'anthropic',
 								description: 'Anthropic plugin (stub)',
 								models: {
-									[ModelTypes.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-									[ModelTypes.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
+									[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
+									[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
 								},
 								init: async () => {
 									logger.warn('Using stub Anthropic plugin due to Zod validation error');
@@ -506,7 +506,7 @@ async function startAgent(
 
 	// Check if TEXT_EMBEDDING model is registered, if not, try to load one
 	// Skip auto-loading embedding models if we're in plugin test mode
-	const embeddingModel = runtime.getModel(ModelTypes.TEXT_EMBEDDING);
+	const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
 	if (!embeddingModel && !options.isPluginTestMode) {
 		logger.info("No TEXT_EMBEDDING model registered. Attempting to load one automatically...");
 		

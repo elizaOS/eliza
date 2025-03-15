@@ -8,7 +8,7 @@ import {
 	type IVideoService,
 	type Media,
 	type Memory,
-	ServiceTypes,
+	ServiceType,
 	createUniqueUuid,
 	logger,
 } from "@elizaos/core";
@@ -275,11 +275,11 @@ export class MessageManager {
 		for (const url of urls) {
 			if (
 				this.runtime
-					.getService<IVideoService>(ServiceTypes.VIDEO)
+					.getService<IVideoService>(ServiceType.VIDEO)
 					?.isVideoUrl(url)
 			) {
 				const videoService = this.runtime.getService<IVideoService>(
-					ServiceTypes.VIDEO,
+					ServiceType.VIDEO,
 				);
 				if (!videoService) {
 					throw new Error("Video service not found");
@@ -296,7 +296,7 @@ export class MessageManager {
 				});
 			} else {
 				const browserService = this.runtime.getService<IBrowserService>(
-					ServiceTypes.BROWSER,
+					ServiceType.BROWSER,
 				);
 				if (!browserService) {
 					throw new Error("Browser service not found");

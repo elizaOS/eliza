@@ -6,8 +6,8 @@ import {
 	type IPdfService,
 	type IVideoService,
 	type Media,
-	ModelTypes,
-	ServiceTypes,
+	ModelType,
+	ServiceType,
 } from "@elizaos/core";
 import { type Attachment, Collection } from "discord.js";
 import ffmpeg from "fluent-ffmpeg";
@@ -41,7 +41,7 @@ async function generateSummary(
   }
   \`\`\``;
 
-	const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
 	});
 
@@ -129,7 +129,7 @@ export class AttachmentManager {
 		} else if (
 			attachment.contentType?.startsWith("video/") ||
 			this.runtime
-				.getService<IVideoService>(ServiceTypes.VIDEO)
+				.getService<IVideoService>(ServiceType.VIDEO)
 				.isVideoUrl(attachment.url)
 		) {
 			media = await this.processVideoAttachment(attachment);
@@ -165,7 +165,7 @@ export class AttachmentManager {
 			}
 
 			const transcription = await this.runtime.useModel(
-				ModelTypes.TRANSCRIPTION,
+				ModelType.TRANSCRIPTION,
 				audioBuffer,
 			);
 			const { title, description } = await generateSummary(
@@ -264,7 +264,7 @@ export class AttachmentManager {
 			const response = await fetch(attachment.url);
 			const pdfBuffer = await response.arrayBuffer();
 			const text = await this.runtime
-				.getService<IPdfService>(ServiceTypes.PDF)
+				.getService<IPdfService>(ServiceType.PDF)
 				.convertPdfToText(Buffer.from(pdfBuffer));
 			const { title, description } = await generateSummary(this.runtime, text);
 
@@ -334,7 +334,7 @@ export class AttachmentManager {
 	private async processImageAttachment(attachment: Attachment): Promise<Media> {
 		try {
 			const { description, title } = await this.runtime.useModel(
-				ModelTypes.IMAGE_DESCRIPTION,
+				ModelType.IMAGE_DESCRIPTION,
 				attachment.url,
 			);
 			return {
@@ -377,7 +377,7 @@ export class AttachmentManager {
 	 */
 	private async processVideoAttachment(attachment: Attachment): Promise<Media> {
 		const videoService = this.runtime.getService<IVideoService>(
-			ServiceTypes.VIDEO,
+			ServiceType.VIDEO,
 		);
 
 		if (!videoService) {

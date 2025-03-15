@@ -1,6 +1,6 @@
 import {
 	type IAgentRuntime,
-	ModelTypes,
+	ModelType,
 	type TestSuite,
 	createUniqueUuid,
 	logger,
@@ -8,7 +8,7 @@ import {
 } from "@elizaos/core";
 import { SearchMode } from "./client/index";
 import type { TwitterClient } from "./index";
-import { ServiceTypes } from "./types";
+import { ServiceType } from "./types";
 import { fetchMediaData } from "./utils";
 
 const TEST_IMAGE_URL =
@@ -74,7 +74,7 @@ export class TwitterTestSuite implements TestSuite {
 	 */
 	async testInitializingClient(runtime: IAgentRuntime) {
 		try {
-			const manager = runtime.getService(ServiceTypes.TWITTER);
+			const manager = runtime.getService(ServiceType.TWITTER);
 			if (!manager) {
 				throw new Error("Twitter client manager not found");
 			}
@@ -325,7 +325,7 @@ export class TwitterTestSuite implements TestSuite {
       Do not include hashtags or emojis.`;
 		}
 
-		return await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		return await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 	}

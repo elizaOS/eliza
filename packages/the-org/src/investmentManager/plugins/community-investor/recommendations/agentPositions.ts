@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { formatFullReport } from "../reports";
 import {
-	ServiceTypes,
+	ServiceType,
 	type TokenPerformance,
 	type Transaction,
 } from "../types";
@@ -63,7 +63,7 @@ export const getAgentPositions: any = {
 	) {
 		console.log("getAgentPositions is running");
 
-		const tradingService = runtime.getService(ServiceTypes.COMMUNITY_INVESTOR);
+		const tradingService = runtime.getService(ServiceType.COMMUNITY_INVESTOR);
 
 		try {
 			const positions = await tradingService.getOpenPositionsWithBalance();

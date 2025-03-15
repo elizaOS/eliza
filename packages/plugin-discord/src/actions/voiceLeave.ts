@@ -13,7 +13,7 @@ import {
 import { BaseGuildVoiceChannel } from "discord.js";
 
 import type { DiscordService } from "../service";
-import { ServiceTypes } from "../types";
+import { ServiceType } from "../types";
 import type { VoiceManager } from "../voice";
 
 export const leaveVoice: Action = {
@@ -32,7 +32,7 @@ export const leaveVoice: Action = {
 			return false;
 		}
 
-		const service = runtime.getService(ServiceTypes.DISCORD) as DiscordService;
+		const service = runtime.getService(ServiceType.DISCORD) as DiscordService;
 
 		if (!service) {
 			logger.error("Discord client not found");
@@ -75,7 +75,7 @@ export const leaveVoice: Action = {
 			throw new Error("No server ID found 9");
 		}
 		const discordClient = runtime.getService(
-			ServiceTypes.DISCORD,
+			ServiceType.DISCORD,
 		) as DiscordService;
 		const voiceManager = discordClient.voiceManager as VoiceManager;
 		const client = discordClient.client;

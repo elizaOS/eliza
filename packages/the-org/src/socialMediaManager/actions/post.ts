@@ -5,7 +5,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	getUserServerRole,
@@ -232,7 +232,7 @@ const twitterPostAction: Action = {
 				template: tweetGenerationTemplate,
 			});
 
-			const tweetContent = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			const tweetContent = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt,
 			});
 

@@ -10,8 +10,8 @@ import {
 	type IAgentRuntime,
 	type IFileService,
 	Service,
-	type ServiceType,
-	ServiceTypes,
+	type ServiceTypeName,
+	ServiceType,
 	logger,
 } from "@elizaos/core";
 
@@ -43,7 +43,7 @@ interface JsonUploadResult extends UploadResult {
  * @implements {IFileService}
  */
 export class AwsS3Service extends Service implements IFileService {
-	static serviceType: ServiceType = ServiceTypes.REMOTE_FILES;
+	static serviceType: ServiceTypeName = ServiceType.REMOTE_FILES;
 	capabilityDescription =
 		"The agent is able to upload and download files from AWS S3";
 
@@ -82,7 +82,7 @@ export class AwsS3Service extends Service implements IFileService {
 	 * @returns {Promise<void>} - A promise that resolves once the service is stopped
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = runtime.getService(ServiceTypes.REMOTE_FILES);
+		const service = runtime.getService(ServiceType.REMOTE_FILES);
 		if (service) {
 			await service.stop();
 		}

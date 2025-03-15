@@ -9,7 +9,7 @@ import { splitChunks } from "./prompts";
 import {
 	ChannelType,
 	MemoryType,
-	ModelTypes
+	ModelType
 } from "./types";
 // Import types with the 'type' keyword
 import type {
@@ -28,7 +28,7 @@ import type {
 	Memory,
 	ModelParamsMap,
 	ModelResultMap,
-	ModelType,
+	ModelTypeName,
 	Participant,
 	Plugin,
 	Provider,
@@ -36,7 +36,7 @@ import type {
 	Room,
 	Route,
 	Service,
-	ServiceType,
+	ServiceTypeName,
 	State,
 	Task,
 	TaskWorker,
@@ -82,7 +82,7 @@ export class AgentRuntime implements IAgentRuntime {
 	>();
 
 	readonly fetch = fetch;
-	services = new Map<ServiceType, Service>();
+	services = new Map<ServiceTypeName, Service>();
 	models = new Map<string, Array<(runtime: IAgentRuntime, params: any) => Promise<any>>>();
 	routes: Route[] = [];
 
@@ -223,7 +223,7 @@ export class AgentRuntime implements IAgentRuntime {
 		if (plugin.models) {
 			for (const [modelType, handler] of Object.entries(plugin.models)) {
 				this.registerModel(
-					modelType as ModelType,
+					modelType as ModelTypeName,
 					handler as (params: any) => Promise<any>,
 				);
 			}
@@ -253,7 +253,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	getAllServices(): Map<ServiceType, Service> {
+	getAllServices(): Map<ServiceTypeName, Service> {
 		return this.services;
 	}
 
@@ -393,7 +393,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 
 		// Check if TEXT_EMBEDDING model is registered
-		const embeddingModel = this.getModel(ModelTypes.TEXT_EMBEDDING);
+		const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
 		if (!embeddingModel) {
 			this.runtimeLogger.warn(
 				`[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`,
@@ -444,7 +444,7 @@ export class AgentRuntime implements IAgentRuntime {
 			return [];
 		}
 
-		const embedding = await this.useModel(ModelTypes.TEXT_EMBEDDING, {
+		const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
 			text: message?.content?.text,
 		});
 		const fragments = await this.getMemoryManager("knowledge").searchMemories({
@@ -1135,7 +1135,7 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.adapter.getMemoryManager(tableName) as IMemoryManager<T> | null;
 	}
 
-	getService<T extends Service>(service: ServiceType): T | null {
+	getService<T extends Service>(service: ServiceTypeName): T | null {
 		const serviceInstance = this.services.get(service);
 		if (!serviceInstance) {
 			this.runtimeLogger.warn(`Service ${service} not found`);
@@ -1145,7 +1145,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	async registerService(service: typeof Service): Promise<void> {
-		const serviceType = service.serviceType as ServiceType;
+		const serviceType = service.serviceType as ServiceTypeName;
 		if (!serviceType) {
 			return;
 		}
@@ -1170,9 +1170,9 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
-	registerModel(modelType: ModelType, handler: (params: any) => Promise<any>) {
+	registerModel(modelType: ModelTypeName, handler: (params: any) => Promise<any>) {
 		const modelKey =
-			typeof modelType === "string" ? modelType : ModelTypes[modelType];
+			typeof modelType === "string" ? modelType : ModelType[modelType];
 		if (!this.models.has(modelKey)) {
 			this.models.set(modelKey, []);
 		}
@@ -1180,10 +1180,10 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	getModel(
-		modelType: ModelType,
+		modelType: ModelTypeName,
 	): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined {
 		const modelKey =
-			typeof modelType === "string" ? modelType : ModelTypes[modelType];
+			typeof modelType === "string" ? modelType : ModelType[modelType];
 		const models = this.models.get(modelKey);
 		if (!models?.length) {
 			return undefined;
@@ -1199,12 +1199,12 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @param {ModelParamsMap[T] | any} params - The parameters for the model, typed based on model type
 	 * @returns {Promise<R>} - The model result, typed based on the provided generic type parameter
 	 */
-	async useModel<T extends ModelType, R = ModelResultMap[T]>(
+	async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
 		modelType: T,
 		params: Omit<ModelParamsMap[T], "runtime"> | any,
 	): Promise<R> {
 		const modelKey =
-			typeof modelType === "string" ? modelType : ModelTypes[modelType];
+			typeof modelType === "string" ? modelType : ModelType[modelType];
 		const model = this.getModel(modelKey);
 		if (!model) {
 			throw new Error(`No handler found for delegate type: ${modelKey}`);
@@ -1319,7 +1319,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		try {
-			const model = this.getModel(ModelTypes.TEXT_EMBEDDING);
+			const model = this.getModel(ModelType.TEXT_EMBEDDING);
 			if (!model) {
 				throw new Error(
 					`[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered`,
@@ -1329,7 +1329,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.runtimeLogger.debug(
 				`[AgentRuntime][${this.character.name}] Getting embedding dimensions`,
 			);
-			const embedding = await this.useModel(ModelTypes.TEXT_EMBEDDING, null);
+			const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
 
 			if (!embedding || !embedding.length) {
 				throw new Error(

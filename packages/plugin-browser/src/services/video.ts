@@ -5,10 +5,10 @@ import {
 	type IAgentRuntime,
 	type IVideoService,
 	type Media,
-	ModelTypes,
+	ModelType,
 	Service,
-	type ServiceType,
-	ServiceTypes,
+	type ServiceTypeName,
+	ServiceType,
 	logger,
 	stringToUuid,
 } from "@elizaos/core";
@@ -46,7 +46,7 @@ function getYoutubeDL() {
  * Maintains a queue of video processing tasks and tracks processing status.
  */
 export class VideoService extends Service implements IVideoService {
-	static serviceType: ServiceType = ServiceTypes.VIDEO;
+	static serviceType: ServiceTypeName = ServiceType.VIDEO;
 	capabilityDescription = "The agent is able to download and process videos";
 	private cacheKey = "content/video";
 	private dataDir = "./cache";
@@ -83,7 +83,7 @@ export class VideoService extends Service implements IVideoService {
 	 * @returns {Promise<void>} A promise that resolves once the video service is stopped
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = runtime.getService(ServiceTypes.VIDEO);
+		const service = runtime.getService(ServiceType.VIDEO);
 		if (service) {
 			await service.stop();
 		}
@@ -504,7 +504,7 @@ export class VideoService extends Service implements IVideoService {
 		logger.log("Starting transcription...");
 		const startTime = Date.now();
 		const transcript = await runtime.useModel(
-			ModelTypes.TRANSCRIPTION,
+			ModelType.TRANSCRIPTION,
 			audioBuffer,
 		);
 

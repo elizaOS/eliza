@@ -6,7 +6,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type Provider,
 	type ProviderResult,
 	Service,
@@ -185,13 +185,13 @@ export const starterPlugin: Plugin = {
 		}
 	},
 	models: {
-		[ModelTypes.TEXT_SMALL]: async (
+		[ModelType.TEXT_SMALL]: async (
 			_runtime,
 			{ prompt, stopSequences = [] }: GenerateTextParams,
 		) => {
 			return "Never gonna give you up, never gonna let you down, never gonna run around and desert you...";
 		},
-		[ModelTypes.TEXT_LARGE]: async (
+		[ModelType.TEXT_LARGE]: async (
 			_runtime,
 			{
 				prompt,

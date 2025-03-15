@@ -1,4 +1,4 @@
-import { type GenerateTextParams, ModelTypes, logger } from "@elizaos/core";
+import { type GenerateTextParams, ModelType, logger } from "@elizaos/core";
 
 /**
  * Interface representing the structure of an Ollama model.
@@ -294,7 +294,7 @@ export class OllamaManager {
 
 			logger.info("Ollama preparing request:", {
 				model:
-					params.modelType === ModelTypes.TEXT_LARGE
+					params.modelType === ModelType.TEXT_LARGE
 						? this.configuredModels.medium
 						: this.configuredModels.small,
 				contextLength: params.prompt.length,
@@ -303,7 +303,7 @@ export class OllamaManager {
 
 			const request = {
 				model:
-					params.modelType === ModelTypes.TEXT_LARGE
+					params.modelType === ModelType.TEXT_LARGE
 						? this.configuredModels.medium
 						: this.configuredModels.small,
 				prompt: params.prompt,

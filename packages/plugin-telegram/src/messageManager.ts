@@ -6,7 +6,7 @@ import {
 	type IAgentRuntime,
 	type Media,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type UUID,
 	createUniqueUuid,
 	logger,
@@ -90,7 +90,7 @@ export class MessageManager {
 
 			if (imageUrl) {
 				const { title, description } = await this.runtime.useModel(
-					ModelTypes.IMAGE_DESCRIPTION,
+					ModelType.IMAGE_DESCRIPTION,
 					imageUrl,
 				);
 				return { description: `[Image: ${title}\n${description}]` };

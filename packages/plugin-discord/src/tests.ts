@@ -9,13 +9,13 @@ import {
 } from "@discordjs/voice";
 import {
 	type IAgentRuntime,
-	ModelTypes,
+	ModelType,
 	type TestSuite,
 	logger,
 } from "@elizaos/core";
 import { ChannelType, Events, type TextChannel } from "discord.js";
 import type { DiscordService } from "./service";
-import { ServiceTypes } from "./types";
+import { ServiceType } from "./types";
 import { sendMessageInChunks } from "./utils";
 
 const TEST_IMAGE_URL =
@@ -79,7 +79,7 @@ export class DiscordTestSuite implements TestSuite {
 	async testCreatingDiscordClient(runtime: IAgentRuntime) {
 		try {
 			this.discordClient = runtime.getService(
-				ServiceTypes.DISCORD,
+				ServiceType.DISCORD,
 			) as DiscordService;
 
 			// Wait for the bot to be ready before proceeding
@@ -205,7 +205,7 @@ export class DiscordTestSuite implements TestSuite {
 
 			try {
 				responseStream = await runtime.useModel(
-					ModelTypes.TEXT_TO_SPEECH,
+					ModelType.TEXT_TO_SPEECH,
 					`Hi! I'm ${runtime.character.name}! How are you doing today?`,
 				);
 			} catch (_error) {

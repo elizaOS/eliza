@@ -1118,7 +1118,6 @@ export class BirdeyeClient {
 	}
 }
 
-// todo: maybe move this into the cacheManager
 const units = {
 	ms: 1,
 	s: 1000,

@@ -1,6 +1,6 @@
 import {
 	type IAgentRuntime,
-	ModelTypes,
+	ModelType,
 	logger,
 	parseJSONObjectFromText,
 	trimTokens,
@@ -74,7 +74,7 @@ export async function generateSummary(
   }
   \`\`\``;
 
-	const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
 	});
 

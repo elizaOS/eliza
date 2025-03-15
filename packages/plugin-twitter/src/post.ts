@@ -5,7 +5,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	type MessagePayload,
-	ModelTypes,
+	ModelType,
 	type UUID,
 	composePrompt,
 	createUniqueUuid,
@@ -337,7 +337,7 @@ export class TwitterPostClient {
 				template: this.runtime.character.templates?.twitterPostTemplate || twitterPostTemplate,
 			});
 			
-			const response = await this.runtime.useModel(ModelTypes.TEXT_LARGE, {
+			const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt: tweetPrompt,
 			});
 			

@@ -6,7 +6,7 @@ import type {
 } from "@elizaos/core";
 import {
 	type GenerateTextParams,
-	ModelTypes,
+	ModelType,
 	logger
 } from "@elizaos/core";
 import { generateText } from "ai";
@@ -72,7 +72,7 @@ export const anthropicPlugin: Plugin = {
 		}
 	},
 	models: {
-		[ModelTypes.TEXT_SMALL]: async (
+		[ModelType.TEXT_SMALL]: async (
 			runtime,
 			{ prompt, stopSequences = [] }: GenerateTextParams,
 		) => {
@@ -95,7 +95,7 @@ export const anthropicPlugin: Plugin = {
 		},
 
 		// TEXT_LARGE generation using Anthropics (e.g. using a "claude-3" model).
-		[ModelTypes.TEXT_LARGE]: async (
+		[ModelType.TEXT_LARGE]: async (
 			runtime,
 			{
 				prompt,
@@ -124,17 +124,17 @@ export const anthropicPlugin: Plugin = {
 		},
 
 		// Add new model handlers for object generation
-		[ModelTypes.OBJECT_SMALL]: async (runtime, params) => {
+		[ModelType.OBJECT_SMALL]: async (runtime, params) => {
 			return await generateObject(runtime, {
 				...params,
-				modelType: ModelTypes.OBJECT_SMALL,
+				modelType: ModelType.OBJECT_SMALL,
 			});
 		},
 
-		[ModelTypes.OBJECT_LARGE]: async (runtime, params) => {
+		[ModelType.OBJECT_LARGE]: async (runtime, params) => {
 			return await generateObject(runtime, {
 				...params,
-				modelType: ModelTypes.OBJECT_LARGE,
+				modelType: ModelType.OBJECT_LARGE,
 			});
 		},
 	},
@@ -146,7 +146,7 @@ export const anthropicPlugin: Plugin = {
 					name: "anthropic_test_text_small",
 					fn: async (runtime) => {
 						try {
-							const text = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+							const text = await runtime.useModel(ModelType.TEXT_SMALL, {
 								prompt: "What is the nature of reality in 10 words?",
 							});
 							if (text.length === 0) {
@@ -163,7 +163,7 @@ export const anthropicPlugin: Plugin = {
 					name: "anthropic_test_text_large",
 					fn: async (runtime) => {
 						try {
-							const text = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+							const text = await runtime.useModel(ModelType.TEXT_LARGE, {
 								prompt: "What is the nature of reality in 10 words?",
 							});
 							if (text.length === 0) {
@@ -199,7 +199,7 @@ async function generateObject(
 		schema,
 		output = "object",
 		enumValues = [],
-		modelType = ModelTypes.OBJECT_SMALL,
+		modelType = ModelType.OBJECT_SMALL,
 		temperature = 0.7,
 	} = params;
 
@@ -209,7 +209,7 @@ async function generateObject(
 	const largeModel =
 		runtime.getSetting("ANTHROPIC_LARGE_MODEL") ?? "claude-3-opus-20240229";
 	const modelName =
-		modelType === ModelTypes.OBJECT_SMALL ? smallModel : largeModel;
+		modelType === ModelType.OBJECT_SMALL ? smallModel : largeModel;
 
 	const apiKey = process.env.ANTHROPIC_API_KEY;
 	if (!apiKey) {

@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import { formatFullReport } from "../reports";
 import type { CommunityInvestorService } from "../tradingService";
 import {
-	ServiceTypes,
+	ServiceType,
 	type TokenPerformance,
 	type Transaction,
 } from "../types";
@@ -49,7 +49,7 @@ export const getPositions: Action = {
 	async handler(runtime, message, _state, _options, callback: any) {
 		console.log("getPositions is running");
 		const tradingService = runtime.getService<CommunityInvestorService>(
-			ServiceTypes.COMMUNITY_INVESTOR,
+			ServiceType.COMMUNITY_INVESTOR,
 		);
 
 		if (!tradingService) {

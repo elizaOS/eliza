@@ -12,7 +12,7 @@ import type {
 } from "@elizaos/core";
 import {
 	ChannelType,
-	ModelTypes,
+	ModelType,
 	composePrompt,
 	createUniqueUuid,
 	messageHandlerTemplate,
@@ -532,7 +532,7 @@ export function agentRouter(
 			try {
 				const audioBuffer = fs.readFileSync(audioFile.path);
 				const transcription = await runtime.useModel(
-					ModelTypes.TRANSCRIPTION,
+					ModelType.TRANSCRIPTION,
 					audioBuffer,
 				);
 
@@ -602,7 +602,7 @@ export function agentRouter(
 
 		try {
 			const speechResponse = await runtime.useModel(
-				ModelTypes.TEXT_TO_SPEECH,
+				ModelType.TEXT_TO_SPEECH,
 				text,
 			);
 			
@@ -688,7 +688,7 @@ export function agentRouter(
 		try {
 			logger.info("[SPEECH GENERATE] Using text-to-speech model");
 			const speechResponse = await runtime.useModel(
-				ModelTypes.TEXT_TO_SPEECH,
+				ModelType.TEXT_TO_SPEECH,
 				text,
 			);
 			
@@ -828,7 +828,7 @@ export function agentRouter(
 			});
 
 			logger.info("[SPEECH CONVERSATION] Using LLM for response");
-			const response = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+			const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 				messages: [
 					{
 						role: "system",
@@ -876,7 +876,7 @@ export function agentRouter(
 			logger.info("[SPEECH CONVERSATION] Generating speech response");
 			
 			const speechResponse = await runtime.useModel(
-				ModelTypes.TEXT_TO_SPEECH,
+				ModelType.TEXT_TO_SPEECH,
 				text,
 			);
 			
@@ -979,7 +979,7 @@ export function agentRouter(
 
 				logger.info("[TRANSCRIPTION] Transcribing audio");
 				const transcription = await runtime.useModel(
-					ModelTypes.TRANSCRIPTION,
+					ModelType.TRANSCRIPTION,
 					audioBuffer,
 				);
 
@@ -1479,7 +1479,7 @@ export function agentRouter(
 				template: messageHandlerTemplate,
 			});
 
-			const responseText = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+			const responseText = await runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt,
 			});
 

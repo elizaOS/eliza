@@ -8,7 +8,7 @@ import {
 	AgentRuntime,
 	type Character,
 	type IAgentRuntime,
-	ModelTypes,
+	ModelType,
 	type ProjectAgent,
 	logger,
 	settings,
@@ -94,7 +94,7 @@ async function startAgent(
 
 		// Check if TEXT_EMBEDDING model is registered, if not, try to load one
 		// Skip auto-loading embedding models if we're in plugin test mode
-		const embeddingModel = runtime.getModel(ModelTypes.TEXT_EMBEDDING);
+		const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
 		if (!embeddingModel && !options.isPluginTestMode) {
 			logger.info("No TEXT_EMBEDDING model registered. Attempting to load one automatically...");
 			

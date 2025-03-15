@@ -7,7 +7,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	parseJSONObjectFromText,
@@ -65,7 +65,7 @@ const getAttachmentIds = async (
 	});
 
 	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 		console.log("response", response);
@@ -228,7 +228,7 @@ export const chatWithAttachments: Action = {
 			template,
 		});
 
-		const summary = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const summary = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 

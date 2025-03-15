@@ -4,7 +4,7 @@ import {
 	type Entity,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type Relationship,
 	type State,
 	type UUID,
@@ -225,7 +225,7 @@ export async function findEntityByName(
 		});
 
 		// Use LLM to analyze and resolve the entity
-		const result = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const result = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 			stopSequences: [],
 		});

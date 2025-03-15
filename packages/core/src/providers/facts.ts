@@ -3,7 +3,7 @@ import { formatMessages } from "../prompts";
 import {
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type Provider,
 	type State,
 } from "../types";
@@ -48,7 +48,7 @@ const factsProvider: Provider = {
 			.map((message) => message.content.text)
 			.join("\n");
 
-		const embedding = await runtime.useModel(ModelTypes.TEXT_EMBEDDING, {
+		const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
 			text: last5Messages,
 		});
 

@@ -6,7 +6,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	type MessagePayload,
-	ModelTypes,
+	ModelType,
 	composePrompt,
 	createUniqueUuid,
 	logger
@@ -531,7 +531,7 @@ export class TwitterInteractionClient {
 		try {
 			for (const photo of tweet.photos) {
 				const description = await this.runtime.useModel(
-					ModelTypes.IMAGE_DESCRIPTION,
+					ModelType.IMAGE_DESCRIPTION,
 					photo.url,
 				);
 				imageDescriptionsArray.push(description);
@@ -608,7 +608,7 @@ export class TwitterInteractionClient {
 			template: this.runtime.character.templates?.shouldRespondTemplate || "",
 		});
 
-		const response = await this.runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt: shouldRespondPrompt,
 		});
 
