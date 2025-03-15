@@ -1065,7 +1065,7 @@ export abstract class BaseDrizzleAdapter<
 		return memoryId;
 	}
 
-	async deleteMemory(memoryId: UUID, tableName: string): Promise<void> {
+	async deleteMemory(memoryId: UUID): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db.transaction(async (tx) => {
 				await tx
@@ -1075,13 +1075,12 @@ export abstract class BaseDrizzleAdapter<
 				await tx
 					.delete(memoryTable)
 					.where(
-						and(eq(memoryTable.id, memoryId), eq(memoryTable.type, tableName)),
+						and(eq(memoryTable.id, memoryId)),
 					);
 			});
 
 			logger.debug("Memory removed successfully:", {
-				memoryId,
-				tableName,
+				memoryId
 			});
 		});
 	}
