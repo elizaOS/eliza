@@ -15,7 +15,7 @@ import type {
 import { addApiFeatures, requestApi } from "./api";
 import { apiRequestFactory } from "./api-data";
 import type { TwitterAuth } from "./auth";
-import { getUserIdByScreenName } from "./profile";
+import { getEntityIdByScreenName } from "./profile";
 import { updateCookieJar } from "./requests";
 import { getTweetTimeline } from "./timeline-async";
 import { type ListTimeline, parseListTimelineTweets } from "./timeline-list";
@@ -823,7 +823,7 @@ export function getTweets(
 	auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
 	return getTweetTimeline(user, maxTweets, async (q, mt, c) => {
-		const userIdRes = await getUserIdByScreenName(q, auth);
+		const userIdRes = await getEntityIdByScreenName(q, auth);
 
 		if (!userIdRes.success) {
 			throw (userIdRes as any).err;
@@ -851,7 +851,7 @@ export function getTweetsAndReplies(
 	auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
 	return getTweetTimeline(user, maxTweets, async (q, mt, c) => {
-		const userIdRes = await getUserIdByScreenName(q, auth);
+		const userIdRes = await getEntityIdByScreenName(q, auth);
 
 		if (!userIdRes.success) {
 			throw (userIdRes as any).err;

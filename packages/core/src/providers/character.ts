@@ -112,8 +112,9 @@ export const characterProvider: Provider = {
 						return example
 							.map((message) => {
 								let messageString = `${message.name}: ${message.content.text}${
-									message.content.actions
-										? ` (actions: ${message.content.actions.join(", ")})`
+									(message.content.action ||
+									message.content.actions)
+										? ` (actions: ${message.content.action || message.content.actions.join(", ")})`
 										: ""
 								}`;
 								exampleNames.forEach((name, index) => {

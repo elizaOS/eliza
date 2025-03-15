@@ -102,7 +102,7 @@ export async function promptForProjectPlugins(
  * @param options Additional options for starting the agent, such as data directory and postgres URL.
  * @returns A promise that resolves to the agent runtime object.
  */
-async function startAgent(
+export async function startAgent(
 	character: Character,
 	server: AgentServer,
 	init?: (runtime: IAgentRuntime) => void,
@@ -130,237 +130,25 @@ async function startAgent(
 		version = packageJson.version;
 	}
 
-	const characterPlugins = []
+	const characterPlugins: Plugin[] = []
 
 	// for each plugin, check if it installed, and install if it is not
 	for (const plugin of character.plugins) {
 		logger.info("Checking if plugin is installed: ", plugin);
 		let pluginModule: any;
 		
-		// Helper function to load a plugin directly from its installed location
-		const loadPluginFromDisk = async (pluginName: string) => {
-			try {
-				// For npm packages, first check package.json for the correct main entry point
-				const pluginDir = path.join(process.cwd(), 'node_modules', pluginName);
-				const pkgJsonPath = path.join(pluginDir, 'package.json');
-				
-				logger.debug(`Checking for package.json at: ${pkgJsonPath}`);
-				
-				if (fs.existsSync(pkgJsonPath)) {
-					try {
-						// Read and parse the plugin's package.json
-						const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
-						logger.debug(`Plugin package.json found, exports: ${JSON.stringify(pkgJson.exports || {})}`);
-						
-						// Get the correct main entry point
-						// Try module or main or default export path
-						let mainEntryPath = null;
-						
-						// Check exports field first (modern ESM packages)
-						if (pkgJson.exports) {
-							// Handle different exports formats
-							if (typeof pkgJson.exports === 'string') {
-								mainEntryPath = pkgJson.exports;
-							} else if (pkgJson.exports['.']) {
-								// Handle subpath exports
-								if (typeof pkgJson.exports['.'] === 'string') {
-									mainEntryPath = pkgJson.exports['.'];
-								} else if (pkgJson.exports['.'].import) {
-									// Handle conditional exports
-									if (typeof pkgJson.exports['.'].import === 'string') {
-										mainEntryPath = pkgJson.exports['.'].import;
-									} else if (pkgJson.exports['.'].import.default) {
-										mainEntryPath = pkgJson.exports['.'].import.default;
-									}
-								}
-							}
-						}
-						
-						// Fall back to module or main if exports not found
-						if (!mainEntryPath) {
-							mainEntryPath = pkgJson.module || pkgJson.main || './dist/index.js';
-						}
-						
-						logger.debug(`Main entry path from package.json: ${mainEntryPath}`);
-						
-						// Resolve the actual file path
-						const resolvedPath = path.resolve(pluginDir, mainEntryPath);
-						logger.info(`Attempting to load plugin from resolved path: ${resolvedPath}`);
-						
-						if (fs.existsSync(resolvedPath)) {
-							// Use file:// protocol for the import
-							const fileUrl = `file://${resolvedPath}`;
-							logger.debug(`Loading plugin with file URL: ${fileUrl}`);
-							
-							// Create a function to generate a stub for the Anthropic plugin
-							const createAnthropicStub = () => {
-								logger.info('Creating stub implementation for Anthropic plugin');
-								return {
-									default: {
-										name: 'anthropic',
-										description: 'Anthropic plugin (stub)',
-										models: {
-											[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-											[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
-										},
-										init: async () => {
-											logger.warn('Using stub Anthropic plugin due to Zod validation error');
-											return {};
-										}
-									},
-									anthropicPlugin: {
-										name: 'anthropic',
-										description: 'Anthropic plugin (stub)',
-										models: {
-											[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-											[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
-										},
-										init: async () => {
-											logger.warn('Using stub Anthropic plugin due to Zod validation error');
-											return {};
-										}
-									}
-								};
-							};
-							
-							// Special handling for plugins that may have Zod validation issues
-							try {
-								return await import(fileUrl);
-							} catch (error) {
-								// Check if this is a Zod validation error
-								if (error.message && 
-									(error.message.includes('base64 is not a function') || 
-									error.message.includes('z8.string'))) {
-									logger.warn(`Plugin ${pluginName} has Zod validation issue: ${error.message}`);
-									logger.warn('This is likely due to bundled Zod (z8) - using a stub implementation');
-									
-									// For Anthropic plugin, return a stub to prevent crashes
-									if (pluginName.includes('anthropic')) {
-										const stub = createAnthropicStub();
-										logger.debug(`Created Anthropic plugin stub with exports: ${Object.keys(stub).join(', ')}`);
-										return stub;
-									}
-								}
-								
-								// Log general information about the error
-								logger.debug(`Error importing plugin: ${error.message}`);
-								
-								// Rethrow the error
-								throw error;
-							}
-						}
-						
-						logger.warn(`Resolved path does not exist: ${resolvedPath}`);
-					} catch (pkgJsonError) {
-						logger.warn(`Error parsing plugin package.json: ${pkgJsonError}`);
-					}
-				}
-				
-				// Fall back to conventional paths if package.json approach fails
-				const commonPaths = [
-					path.join(pluginDir, 'dist', 'index.js'),
-					path.join(pluginDir, 'dist', 'index.cjs'),
-					path.join(pluginDir, 'dist', 'index.mjs'),
-					path.join(pluginDir, 'index.js'),
-					path.join(pluginDir, 'index.cjs'),
-					path.join(pluginDir, 'index.mjs')
-				];
-				
-				// Try each common path
-				for (const tryPath of commonPaths) {
-					if (fs.existsSync(tryPath)) {
-						logger.info(`Found plugin at fallback path: ${tryPath}`);
-						const fileUrl = `file://${tryPath}`;
-						
-						// Create a function to generate a stub for the Anthropic plugin
-						const createAnthropicStub = () => {
-							logger.info('Creating stub implementation for Anthropic plugin at fallback path');
-							return {
-								default: {
-									name: 'anthropic',
-									description: 'Anthropic plugin (stub)',
-									models: {
-										[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-										[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
-									},
-									init: async () => {
-										logger.warn('Using stub Anthropic plugin due to Zod validation error');
-										return {};
-									}
-								},
-								anthropicPlugin: {
-									name: 'anthropic',
-									description: 'Anthropic plugin (stub)',
-									models: {
-										[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-										[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
-									},
-									init: async () => {
-										logger.warn('Using stub Anthropic plugin due to Zod validation error');
-										return {};
-									}
-								}
-							};
-						};
-						
-						// Handle potential Zod errors consistently
-						try {
-							return await import(fileUrl);
-						} catch (error) {
-							// Check if this is a Zod validation error
-							if (error.message && 
-								(error.message.includes('base64 is not a function') || 
-								error.message.includes('z8.string'))) {
-								logger.warn(`Plugin ${pluginName} has Zod validation issue at fallback path: ${error.message}`);
-								
-								// For Anthropic plugin, return a stub to prevent crashes
-								if (pluginName.includes('anthropic')) {
-									const stub = createAnthropicStub();
-									logger.debug(`Created Anthropic plugin stub with exports: ${Object.keys(stub).join(', ')}`);
-									return stub;
-								}
-							}
-							
-							// Log general information about the error
-							logger.debug(`Error importing plugin from fallback path: ${error.message}`);
-							
-							// Rethrow the error
-							throw error;
-						}
-					}
-				}
-				
-				// If all disk-based approaches fail, try normal import
-				logger.debug(`Could not find plugin files on disk for ${pluginName}, trying normal import`);
-				return import(pluginName);
-			} catch (error) {
-				logger.debug(`Direct disk import failed: ${error.message}`);
-				throw error;
-			}
-		};
-		
 		// Try to load the plugin
 		try {
-			if (plugin.startsWith('@')) {
-				// For NPM packages, try loading from disk
-				pluginModule = await loadPluginFromDisk(plugin);
-			} else {
-				// For local plugins, use regular import
-				pluginModule = await import(plugin);
-			}
-			logger.debug(`Successfully loaded plugin ${plugin}`);
+			// For local plugins, use regular import
+			pluginModule = await import(plugin);
+		logger.debug(`Successfully loaded plugin ${plugin}`);
 		} catch (error) {
 			logger.info(`Plugin ${plugin} not installed, installing into ${process.cwd()}...`);
 			await installPlugin(plugin, process.cwd(), version);
 			
 			try {
-				if (plugin.startsWith('@')) {
-					// For npm packages, try loading from disk after installation
-					pluginModule = await loadPluginFromDisk(plugin);
-				} else {
-					// For local plugins, use regular import
-					pluginModule = await import(plugin);
-				}
+				// For local plugins, use regular import
+				pluginModule = await import(plugin);
 				logger.debug(`Successfully loaded plugin ${plugin} after installation`);
 			} catch (error) {
 				if (error.message && 
@@ -490,9 +278,6 @@ async function startAgent(
 		}
 	}
 
-	// remove the plugins from the character
-	character.plugins = character.plugins.filter((p) => !characterPlugins.includes(p));
-
 	const runtime = new AgentRuntime({
 		character,
 		plugins: [...plugins, ...characterPlugins],
@@ -503,71 +288,6 @@ async function startAgent(
 
 	// start services/plugins/process knowledge
 	await runtime.initialize();
-
-	// Check if TEXT_EMBEDDING model is registered, if not, try to load one
-	// Skip auto-loading embedding models if we're in plugin test mode
-	const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
-	if (!embeddingModel && !options.isPluginTestMode) {
-		logger.info("No TEXT_EMBEDDING model registered. Attempting to load one automatically...");
-		
-		// First check if OpenAI API key exists
-		if (process.env.OPENAI_API_KEY) {
-			logger.info("Found OpenAI API key. Loading OpenAI plugin for embeddings...");
-			
-			try {
-				// Use Node's require mechanism to dynamically load the plugin
-				const pluginName = "@elizaos/plugin-openai";
-				
-				try {
-					// Using require for dynamic imports in Node.js is safer than eval
-					// This is a CommonJS approach that works in Node.js
-					// @ts-ignore - Ignoring TypeScript's static checking for dynamic requires
-					const pluginModule = require(pluginName);
-					const plugin = pluginModule.default || pluginModule.openaiPlugin;
-					
-					if (plugin) {
-						await runtime.registerPlugin(plugin);
-						logger.success("Successfully loaded OpenAI plugin for embeddings");
-					} else {
-						logger.warn(`Could not find a valid plugin export in ${pluginName}`);
-					}
-				} catch (error) {
-					logger.warn(`Failed to import OpenAI plugin: ${error}`);
-				}
-			} catch (error) {
-				logger.warn(`Error loading OpenAI plugin: ${error}`);
-			}
-		} else {
-			logger.info("No OpenAI API key found. Loading local-ai plugin for embeddings...");
-			
-			try {
-				// Use Node's require mechanism to dynamically load the plugin
-				const pluginName = "@elizaos/plugin-local-ai";
-				
-				try {
-					// Using require for dynamic imports in Node.js is safer than eval
-					// @ts-ignore - Ignoring TypeScript's static checking for dynamic requires
-					const pluginModule = require(pluginName);
-					const plugin = pluginModule.default || pluginModule.localAIPlugin;
-					
-					if (plugin) {
-						await runtime.registerPlugin(plugin);
-						logger.success("Successfully loaded local-ai plugin for embeddings");
-					} else {
-						logger.warn(`Could not find a valid plugin export in ${pluginName}`);
-					}
-				} catch (error) {
-					logger.warn(`Failed to import local-ai plugin: ${error}`);
-					// try installing it
-					await installPlugin(pluginName, process.cwd(), version);
-				}
-			} catch (error) {
-				logger.warn(`Error loading local-ai plugin: ${error}`);
-			}
-		}
-	} else if (!embeddingModel && options.isPluginTestMode) {
-		logger.info("No TEXT_EMBEDDING model registered, but running in plugin test mode - skipping auto-loading");
-	}
 
 	// add to container
 	server.registerAgent(runtime);
@@ -833,6 +553,10 @@ const startAgents = async (options: {
 		logger.debug("Will load the default Eliza character from ../characters/eliza");
 	}
 
+	await server.initialize();
+
+	server.start(serverPort);
+
 	// Start agents based on project, plugin, or custom configuration
 	if (isProject && projectModule?.default) {
 		// Load all project agents, call their init and register their plugins
@@ -939,12 +663,8 @@ const startAgents = async (options: {
 		serverPort++;
 	}
 
-	await server.initialize();
-
-	server.start(serverPort);
-
 	if (serverPort !== Number.parseInt(settings.SERVER_PORT || "3000")) {
-		logger.log(`Server started on alternate port ${serverPort}`);
+		logger.info(`Server started on alternate port ${serverPort}`);
 	}
 
 	// Display link to the client UI

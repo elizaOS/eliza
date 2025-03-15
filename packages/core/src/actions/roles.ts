@@ -227,6 +227,7 @@ const updateRoleAction: Action = {
 					required: ["entityId", "newRole"],
 				},
 			},
+			output: "array",
 		});
 
 		if (!result?.length) {

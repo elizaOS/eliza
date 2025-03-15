@@ -172,7 +172,6 @@ export interface DescriptionMetadata extends BaseMetadata {
 }
 
 export interface CustomMetadata extends BaseMetadata {
-  type: MemoryTypeAlias;
   [key: string]: unknown;
 }
 
@@ -582,9 +581,6 @@ export interface Plugin {
   // Configuration
   config?: { [key: string]: any };
 
-  // Core plugin components
-  memoryManagers?: IMemoryManager[];
-
   services?: (typeof Service)[];
 
   // Entity component definitions
@@ -686,7 +682,15 @@ export interface Character {
   };
 }
 
+export enum AgentStatus {
+	ACTIVE = "active",
+	INACTIVE = "inactive"
+}
+
+
 export interface Agent extends Character {
+  enabled?: boolean;
+  status?: AgentStatus;
   createdAt: number;
   updatedAt: number;
 }
@@ -819,9 +823,9 @@ export interface IDatabaseAdapter {
     unique?: boolean
   ): Promise<UUID>;
 
-  removeMemory(memoryId: UUID, tableName: string): Promise<void>;
+  deleteMemory(memoryId: UUID): Promise<void>;
 
-  removeAllMemories(roomId: UUID, tableName: string): Promise<void>;
+  deleteAllMemories(roomId: UUID, tableName: string): Promise<void>;
 
   countMemories(
     roomId: UUID,
@@ -930,10 +934,6 @@ export interface IDatabaseAdapter {
   getTasksByName(name: string): Promise<Task[]>;
   updateTask(id: UUID, task: Partial<Task>): Promise<void>;
   deleteTask(id: UUID): Promise<void>;
-
-  getMemoryManager<T extends Memory = Memory>(
-    tableName: string
-  ): IMemoryManager<T> | null;
 }
 
 /**
@@ -999,88 +999,6 @@ export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
   similarity?: number; // Clearer name than 'match_threshold'
 }
 
-/**
- * Generic interface for a memory manager handling a specific type of memories
- * @template T The specific Memory subtype this manager handles
- */
-export interface IMemoryManager<T extends Memory = Memory> {
-  readonly runtime: IAgentRuntime;
-  readonly tableName: string;
-
-  /**
-   * Adds an embedding vector to a memory
-   * @param memory Memory to add embedding to
-   * @returns The memory with embedding added
-   */
-  addEmbeddingToMemory(memory: T): Promise<T>;
-
-  /**
-   * Gets memories for a room
-   * @param opts Memory retrieval options
-   * @returns Array of memories
-   */
-  getMemories(
-    opts: MemoryRetrievalOptions | UnifiedMemoryOptions
-  ): Promise<T[]>;
-
-  /**
-   * Searches for memories using embedding vector
-   * @param params Search options
-   * @returns Array of matching memories
-   */
-  searchMemories(
-    params: MemorySearchOptions | UnifiedSearchOptions
-  ): Promise<T[]>;
-
-  /**
-   * Gets cached embeddings for content
-   * @param content Content to get embeddings for
-   * @returns Array of embedding results
-   */
-  getCachedEmbeddings(content: string): Promise<EmbeddingSearchResult[]>;
-
-  /**
-   * Gets a memory by its ID
-   * @param id Memory ID
-   * @returns Memory or null if not found
-   */
-  getMemoryById(id: UUID): Promise<T | null>;
-
-  /**
-   * Gets memories for multiple rooms
-   * @param params Multi-room options
-   * @returns Array of memories
-   */
-  getMemoriesByRoomIds(params: MultiRoomMemoryOptions): Promise<T[]>;
-
-  /**
-   * Creates a new memory
-   * @param memory Memory to create
-   * @param unique Whether to enforce uniqueness
-   * @returns ID of created memory
-   */
-  createMemory(memory: T, unique?: boolean): Promise<UUID>;
-
-  /**
-   * Removes a memory
-   * @param memoryId ID of memory to remove
-   */
-  removeMemory(memoryId: UUID): Promise<void>;
-
-  /**
-   * Removes all memories for a room
-   * @param roomId Room ID
-   */
-  removeAllMemories(roomId: UUID): Promise<void>;
-
-  /**
-   * Counts memories for a room
-   * @param roomId Room ID
-   * @param unique Whether to count unique memories only
-   * @returns Memory count
-   */
-  countMemories(roomId: UUID, unique?: boolean): Promise<number>;
-}
 
 export type CacheOptions = {
   expires?: number;
@@ -1113,15 +1031,6 @@ export interface IAgentRuntime extends IDatabaseAdapter {
       modelContextSize: number;
     }
   ): Promise<void>;
-
-  /**
-   * Gets a memory manager for the specified table name
-   * @param tableName The name of the table to get a memory manager for
-   * @returns A memory manager for the specified table, or null if not found
-   */
-  getMemoryManager<T extends Memory = Memory>(
-    tableName: string
-  ): IMemoryManager<T> | null;
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
 
@@ -1230,6 +1139,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getTaskWorker(name: string): TaskWorker | undefined;
 
   stop(): Promise<void>;
+
+  addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 }
 
 export type KnowledgeItem = {
@@ -1804,6 +1715,16 @@ export interface MessagePayload extends EventPayload {
 }
 
 /**
+ * Payload for events that are invoked without a message
+ */
+export interface InvokePayload extends EventPayload {
+  worldId: UUID;
+  userId: string;
+  roomId: UUID;
+  callback?: HandlerCallback;
+}
+
+/**
  * Run event payload type
  */
 export interface RunEventPayload extends EventPayload {
@@ -1841,6 +1762,19 @@ export interface EvaluatorEventPayload extends EventPayload {
 }
 
 /**
+ * Represents the parameters for a message received handler.
+ * @typedef {Object} MessageReceivedHandlerParams
+ * @property {IAgentRuntime} runtime - The agent runtime associated with the message.
+ * @property {Memory} message - The message received.
+ * @property {HandlerCallback} callback - The callback function to be executed after handling the message.
+ */
+export type MessageReceivedHandlerParams = {
+	runtime: IAgentRuntime;
+	message: Memory;
+	callback: HandlerCallback;
+};
+
+/**
  * Maps event types to their corresponding payload types
  */
 export interface EventPayloadMap {
@@ -1853,7 +1787,7 @@ export interface EventPayloadMap {
   [EventTypes.MESSAGE_RECEIVED]: MessagePayload;
   [EventTypes.MESSAGE_SENT]: MessagePayload;
   [EventTypes.REACTION_RECEIVED]: MessagePayload;
-  [EventTypes.POST_GENERATED]: MessagePayload;
+  [EventTypes.POST_GENERATED]: InvokePayload;
   [EventTypes.INTERACTION_RECEIVED]: MessagePayload;
   [EventTypes.RUN_STARTED]: RunEventPayload;
   [EventTypes.RUN_ENDED]: RunEventPayload;
@@ -1943,95 +1877,6 @@ export function getTypedService<T extends TypedService<any, any>>(
   serviceType: ServiceTypeName
 ): T | null {
   return runtime.getService<T>(serviceType);
-}
-
-/**
- * Represents the result of an operation that can succeed or fail
- * @template T The type of the successful result value
- * @template E The type of the error
- */
-export type Result<T, E = Error> = Success<T> | Failure<E>;
-
-/**
- * Represents a successful operation with a value
- * @template T The type of the value
- */
-export class Success<T> {
-  readonly value: T;
-  readonly isSuccess = true;
-  readonly isFailure = false;
-
-  constructor(value: T) {
-    this.value = value;
-  }
-
-  /**
-   * Maps the value inside this Success to a new value
-   * @param fn Mapping function
-   * @returns A new Success containing the mapped value
-   */
-  map<U>(fn: (value: T) => U): Success<U> {
-    return new Success(fn(this.value));
-  }
-
-  /**
-   * Unwraps the value or returns a default if this is a Failure
-   * @param defaultValue The default value to return if this is a Failure
-   * @returns The wrapped value
-   */
-  unwrapOr(_defaultValue: T): T {
-    return this.value;
-  }
-}
-
-/**
- * Represents a failed operation with an error
- * @template E The type of the error
- */
-export class Failure<E = Error> {
-  readonly error: E;
-  readonly isSuccess = false;
-  readonly isFailure = true;
-
-  constructor(error: E) {
-    this.error = error;
-  }
-
-  /**
-   * Maps the error inside this Failure to a new error
-   * @param fn Mapping function
-   * @returns A new Failure containing the mapped error
-   */
-  mapError<F>(fn: (error: E) => F): Failure<F> {
-    return new Failure(fn(this.error));
-  }
-
-  /**
-   * Unwraps the value or returns a default if this is a Failure
-   * @param defaultValue The default value to return
-   * @returns The default value
-   */
-  unwrapOr<T>(defaultValue: T): T {
-    return defaultValue;
-  }
-}
-
-/**
- * Creates a Success result
- * @param value The value to wrap
- * @returns A new Success containing the value
- */
-export function success<T>(value: T): Success<T> {
-  return new Success(value);
-}
-
-/**
- * Creates a Failure result
- * @param error The error to wrap
- * @returns A new Failure containing the error
- */
-export function failure<E = Error>(error: E): Failure<E> {
-  return new Failure(error);
 }
 
 /**
@@ -2229,14 +2074,3 @@ export type ModelHandler = (
 
 // Replace 'any' for service configurationa
 export type ServiceConfig = Record<string, unknown>;
-
-/**
- * Type aliases for common memory manager types
- */
-export type MessageMemoryManager = IMemoryManager<MessageMemory>;
-export type DocumentMemoryManager = IMemoryManager<
-  Memory & { metadata: DocumentMetadata }
->;
-export type FragmentMemoryManager = IMemoryManager<
-  Memory & { metadata: FragmentMetadata }
->;

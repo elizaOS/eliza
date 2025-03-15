@@ -802,8 +802,7 @@ export class VoiceManager extends EventEmitter {
 
 					if (responseMemory.content.text?.trim()) {
 						await this.runtime
-							.getMemoryManager("messages")
-							.createMemory(responseMemory);
+											.createMemory(responseMemory);
 
 						const responseStream = await this.runtime.useModel(
 							ModelType.TEXT_TO_SPEECH,

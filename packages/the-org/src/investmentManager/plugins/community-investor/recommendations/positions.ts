@@ -65,7 +65,7 @@ export const getPositions: Action = {
 
 			if (!user) {
 				logger.error("No User Found, no entity score can be generated");
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: runtime.agentId,
 					agentId: runtime.agentId,
 					roomId: message.roomId,
@@ -73,7 +73,7 @@ export const getPositions: Action = {
 						thought: "No user found",
 						actions: ["GET_POSITIONS_FAILED"],
 					},
-				});
+				}, "messages");
 				return;
 			}
 

@@ -32,6 +32,7 @@ plugin
 	.option("-r, --registry <registry>", "target registry", "elizaos/registry")
 	.option("-n, --npm", "publish to npm instead of GitHub", false)
 	.option("-t, --test", "test publish process without making changes", false)
+	.option("-p, --platform <platform>", "specify platform compatibility (node, browser, universal)", "universal")
 	.action(async (opts) => {
 		try {
 			const cwd = process.cwd();
@@ -77,6 +78,18 @@ plugin
 			if (!packageJson.name || !packageJson.version) {
 				logger.error("Invalid package.json: missing name or version.");
 				process.exit(1);
+			}
+
+			// Validate platform option
+			const validPlatforms = ['node', 'browser', 'universal'];
+			if (opts.platform && !validPlatforms.includes(opts.platform)) {
+				logger.error(`Invalid platform: ${opts.platform}. Valid options are: ${validPlatforms.join(', ')}`);
+				process.exit(1);
+			}
+
+			// Add platform to package.json if specified
+			if (opts.platform) {
+				packageJson.platform = opts.platform;
 			}
 
 			// Check if it's an ElizaOS plugin
@@ -137,6 +150,7 @@ plugin
 				registry: opts.registry,
 				username: credentials.username,
 				useNpm: opts.npm,
+				platform: opts.platform,
 			};
 			await saveRegistrySettings(settings);
 

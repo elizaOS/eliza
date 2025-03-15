@@ -374,7 +374,7 @@ const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 export const formatRecommendations = (recommendations: Memory[]) => {
 	return recommendations
 		.reverse()
-		.map((rec: Memory) => `${JSON.stringify(rec.metadata.recommendation)}`)
+		.map((rec: Memory) => `${JSON.stringify((rec.metadata as any).recommendation)}`)
 		.join("\n");
 };
 
@@ -503,11 +503,9 @@ async function handler(
 		console.log("signal is 3, skipping not related to tokens at all");
 		return;
 	}
-
-	// Get recent recommendations
-	const recommendationsManager = runtime.getMemoryManager("recommendations")!;
 	// Get recommendations from trust db by user that sent the message
-	const recentRecommendations = (await recommendationsManager.getMemories({
+	const recentRecommendations = (await runtime.getMemories({
+		tableName: "recommendations",
 		roomId,
 		count: 10,
 	})) as RecommendationMemory[];
@@ -516,7 +514,7 @@ async function handler(
 	Promise.all(
 		await recentRecommendations
 			.filter((r) => r.createdAt && Date.now() - r.createdAt > 10 * 60 * 1000)
-			.map((r) => recommendationsManager.removeMemory(r.id as UUID)),
+			.map((r) => runtime.deleteMemory(r.id as UUID)),
 	);
 
 	console.log("message", message);
@@ -577,8 +575,8 @@ async function handler(
 
 	const tokenRecommendationsSet = new Set(
 		recentRecommendations
-			.filter((r) => r.metadata.recommendation.confirmed)
-			.map((r) => r.metadata.recommendation.tokenAddress),
+			.filter((r) => (r.metadata as any).recommendation.confirmed)
+			.map((r) => (r.metadata as any).recommendation.tokenAddress),
 	);
 
 	const filteredRecommendations = recommendations
@@ -691,7 +689,7 @@ async function handler(
 		};
 
 		// Store Recommendation
-		await Promise.all([recommendationsManager.createMemory(recMemory, true)]);
+		await Promise.all([runtime.createMemory(recMemory, "recommendations", true)]);
 
 		const tokenString = JSON.stringify(token, (_, v) => {
 			if (typeof v === "bigint") return v.toString();

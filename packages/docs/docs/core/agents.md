@@ -1,10 +1,18 @@
----
-sidebar_position: 2
----
+# 🤖 Agent Runtime
 
-# 🤖 Agents
+The `AgentRuntime` is the core runtime environment for Eliza agents. It handles message processing, state management, plugin integration, and interaction with external services. You can think of it as the brains that provide the high-level orchestration layer for Eliza agents.
 
-Agents are the core components of the Eliza framework that handle autonomous interactions. Each agent runs in a runtime environment and can interact through various clients (Discord, Telegram, etc.) while maintaining consistent behavior and memory.
+![](/img/eliza-architecture.jpg)
+
+The runtime follows this general flow:
+1. Agent loads character config, plugins, and services
+	- Processes knowledge sources (e.g., documents, directories)
+2. Receives a message, composes the state
+3. Processes actions and then evaluates
+	- Retrieves relevant knowledge fragments using RAG
+4. Generates and executes responses, then evaluates
+5. Updates memory and state
+
 
 ---
 
@@ -12,252 +20,230 @@ Agents are the core components of the Eliza framework that handle autonomous int
 
 The [AgentRuntime](/api/classes/AgentRuntime) class is the primary implementation of the [IAgentRuntime](/api/interfaces/IAgentRuntime) interface, which manages the agent's core functions, including:
 
-- **Message and Memory Processing**: Storing, retrieving, and managing conversation data and contextual memory.
-- **State Management**: Composing and updating the agent’s state for a coherent, ongoing interaction.
-- **Action Execution**: Handling behaviors such as transcribing media, generating images, and following rooms.
-- **Evaluation and Response**: Assessing responses, managing goals, and extracting relevant information.
 
----
+| Component | Description | API Reference | Related Files |
+|---------|-------------|---------------|---------------|
+| **Clients** | Supports multiple communication platforms for seamless interaction. | [Clients API](/api/interfaces/IAgentRuntime/#clients) | [`clients.ts`](https://github.com/elizaos-plugins/client-discord/blob/main/__tests__/discord-client.test.ts), [`Discord`](https://github.com/elizaos-plugins/client-discord), [`Telegram`](https://github.com/elizaos-plugins/client-telegram), [`Twitter`](https://github.com/elizaos-plugins/client-twitter), [`Farcaster`](https://github.com/elizaos-plugins/client-farcaster), [`Lens`](https://github.com/elizaos-plugins/client-lens), [`Slack`](https://github.com/elizaos-plugins/client-slack), [`Auto`](https://github.com/elizaos-plugins/client-auto), [`GitHub`](https://github.com/elizaos-plugins/client-github) |
+| **State** | Maintains context for coherent cross-platform interactions, updates dynamically. Also tracks goals, knowledge, and recent interactions | [State API](/api/interfaces/State) | [`state.ts`](https://github.com/elizaos/runtime/state.ts) |
+| **Plugins** | Dynamic extensions of agent functionalities using custom actions, evaluators, providers, and adapters | [Plugins API](/api/type-aliases/Plugin/) | [`plugins.ts`](https://github.com/elizaos/runtime/plugins.ts), [actions](../actions), [evaluators](../evaluators), [providers](../providers) |
+| **Services** | Connects with external services for `IMAGE_DESCRIPTION`, `TRANSCRIPTION`, `TEXT_GENERATION`, `SPEECH_GENERATION`, `VIDEO`, `PDF`, `BROWSER`, `WEB_SEARCH`, `EMAIL_AUTOMATION`, and more | [Services API](/api/interfaces/IAgentRuntime/#services) | [`services.ts`](https://github.com/elizaos/runtime/services.ts) |
+| **Memory Systems** | Creates, retrieves, and embeds memories and manages conversation history. | [Memory API](/api/interfaces/IMemoryManager) | [`memory.ts`](https://github.com/elizaos/runtime/memory.ts) |
+| **Database Adapters** | Persistent storage and retrieval for memories and knowledge | [databaseAdapter](api/interfaces/IAgentRuntime/#databaseAdapter) | [`MongoDB`](https://github.com/elizaos-plugins/adapter-mongodb), [`PostgreSQL`](https://github.com/elizaos-plugins/adapter-postgres), [`SQLite`](https://github.com/elizaos-plugins/adapter-sqlite), [`Supabase`](https://github.com/elizaos-plugins/adapter-supabase), [`PGLite`](https://github.com/elizaos-plugins/adapter-pglite), [`Qdrant`](https://github.com/elizaos-plugins/adapter-qdrant), [`SQL.js`](https://github.com/elizaos-plugins/adapter-sqljs) |
+| **Cache Management** | Provides flexible storage and retrieval via various caching methods. | [Cache API](/api/interfaces/ICacheManager) | [`cache.ts`](https://github.com/elizaos/runtime/cache.ts) |
 
-## Core Components
 
-Each agent runtime consists of key components that enable flexible and extensible functionality:
 
-1. **Clients**: Enable communication across platforms such as Discord, Telegram, and Direct (REST API), with features tailored for each platform.
-2. **Providers**: Extend the agent’s capabilities by integrating with additional services (e.g., time, wallet, or custom data).
-3. **Actions**: Define agent behaviors, such as following rooms, generating images, or processing attachments. Custom actions can be created to tailor behaviors to specific needs.
-4. **Evaluators**: Manage agent responses by assessing message relevance, managing goals, extracting facts, and building long-term memory.
-
-### AgentRuntime Interface
-
-The `IAgentRuntime` interface defines the main structure of the runtime environment, specifying the configuration and essential components:
-
+<details>
+<summary>Advanced: IAgentRuntime Interface</summary>
 ```typescript
 interface IAgentRuntime {
     // Core identification
     agentId: UUID;
-    serverUrl: string;
     token: string;
+    serverUrl: string;
 
     // Configuration
-    character: Character;
-    modelProvider: ModelProviderName;
-
+    character: Character;                          // Personality and behavior settings
+    modelProvider: ModelProviderName;              // AI model to use
+    imageModelProvider: ModelProviderName;
+    imageVisionModelProvider: ModelProviderName;
+    
     // Components
-    actions: Action[];
-    evaluators: Evaluator[];
-    providers: Provider[];
-
-    // Database & Memory
-    databaseAdapter: IDatabaseAdapter;
-    messageManager: IMemoryManager;
+    plugins: Plugin[];                             // Additional capabilities
+    clients: Record<string, Client>;               // Platform connections
+    providers: Provider[];                         // Real-time data sources
+    actions: Action[];                             // Available behaviors
+    evaluators: Evaluator[];                       // Analysis & learning
+    
+    // Memory Management
+    messageManager: IMemoryManager;                // Conversation history
     descriptionManager: IMemoryManager;
-    loreManager: IMemoryManager;
+    documentsManager: IMemoryManager;              // Large documents
+    knowledgeManager: IMemoryManager;              // Search & retrieval
+    ragKnowledgeManager: IRAGKnowledgeManager;     // RAG integration
+    loreManager: IMemoryManager;                   // Character background
+    
+    // Storage & Caching
+    databaseAdapter: IDatabaseAdapter;            // Data persistence
+    cacheManager: ICacheManager;                  // Performance optimization
+    
+    // Services
+    services: Map<ServiceType, Service>;          // External integrations
+    
+    // Networking
+    fetch: (url: string, options: any) => Promise<Response>;
 }
 ```
+Source: [/api/interfaces/IAgentRuntime/](/api/interfaces/IAgentRuntime/)
 
-Each element in the runtime interface plays a crucial role:
+</details>
 
-- **Identification**: Agent ID, server URL, and token for authentication and identification.
-- **Configuration**: Character profile and model provider define the agent's personality and language model.
-- **Components**: Actions, evaluators, and providers support extensible behaviors, response evaluation, and service integration.
-- **Memory Management**: Specialized memory managers track conversations, descriptions, and static knowledge to enable contextual and adaptive responses.
 
 ---
 
-## Creating an Agent Runtime
+### **Key Methods**
+- **`initialize()`**: Sets up the agent's runtime environment, including services, plugins, and knowledge processing.
+- **`processActions()`**: Executes actions based on message content and state.
+- **`evaluate()`**: Assesses messages and state using registered evaluators.
+- **`composeState()`**: Constructs the agent's state object for response generation.
+- **`updateRecentMessageState()`**: Updates the state with recent messages and attachments.
+- **`registerService()`**: Adds a service to the runtime.
+- **`registerMemoryManager()`**: Registers a memory manager for specific types of memories.
+- **`ensureRoomExists()` / `ensureUserExists()`**: Ensures the existence of rooms and users in the database.
 
-This section demonstrates setting up an agent with basic and optional configurations. It provides a working example and sample code that helps users quickly start building:
+WIP
+
+
+---
+
+## Service System
+
+Services provide specialized functionality with standardized interfaces that can be accessed cross-platform:
+
+<details>
+<summary>See Example</summary>
 
 ```typescript
-import { AgentRuntime, ModelProviderName } from "@elizaos/core";
+// Speech Generation
+const speechService = runtime.getService<ISpeechService>(
+    ServiceType.SPEECH_GENERATION
+);
+const audioStream = await speechService.generate(runtime, text);
 
-// Configuration example
-const runtime = new AgentRuntime({
-    token: "auth-token",
-    modelProvider: ModelProviderName.ANTHROPIC,
-    character: characterConfig,
-    databaseAdapter: new DatabaseAdapter(),
-    conversationLength: 32,
-    serverUrl: "http://localhost:7998",
-    actions: customActions,
-    evaluators: customEvaluators,
-    providers: customProviders,
-});
+// PDF Processing
+const pdfService = runtime.getService<IPdfService>(ServiceType.PDF);
+const textContent = await pdfService.convertPdfToText(pdfBuffer);
 ```
+</details>
+
 
 ---
 
 ## State Management
 
-This section covers how agents manage and update state, with a focus on initial state composition and updating methods. The runtime maintains state through the [State](/api/interfaces/state) interface:
+The runtime maintains comprehensive state through the State interface:
 
 ```typescript
 interface State {
+    // Core identifiers
     userId?: UUID;
     agentId?: UUID;
     roomId: UUID;
+
+    // Character information
     bio: string;
     lore: string;
-    agentName?: string;
-    senderName?: string;
+    messageDirections: string;
+    postDirections: string;
+
+    // Conversation context
     actors: string;
     actorsData?: Actor[];
     recentMessages: string;
     recentMessagesData: Memory[];
+
+    // Goals and knowledge
     goals?: string;
     goalsData?: Goal[];
-    actions?: string;
-    actionNames?: string;
-    providers?: string;
+    knowledge?: string;
+    knowledgeData?: KnowledgeItem[];
+    ragKnowledgeData?: RAGKnowledgeItem[];
+}
+
+// State management methods
+async function manageState() {
+    // Initial state composition
+    const state = await runtime.composeState(message, {
+        additionalContext: "custom context"
+    });
+
+    // Update state with new messages
+    const updatedState = await runtime.updateRecentMessageState(state);
 }
 ```
 
-State composition and updates are handled through dedicated methods:
+---
+
+## Plugin System
+
+Plugins extend agent functionality through a modular interface. The runtime supports various types of plugins including clients, services, adapters, and more:
 
 ```typescript
-// Compose initial state
-const state = await runtime.composeState(message, {
-    additionalContext: "custom-context",
-});
-
-// Update message state
-const updatedState = await runtime.updateRecentMessageState(state);
+interface Plugin {
+    name: string;
+    description: string;
+    actions?: Action[];        // Custom behaviors
+    providers?: Provider[];    // Data providers
+    evaluators?: Evaluator[]; // Response assessment
+    services?: Service[];     // Background processes
+    clients?: Client[];       // Platform integrations
+    adapters?: Adapter[];    // Database/cache adapters
+}
 ```
 
-**Best practices**
+Plugins can be configured through [characterfile](./characterfile) settings:
 
-- Keep state immutable where possible
-- Use `composeState` for initial state creation
-- Use `updateRecentMessageState` for updates
-- Cache frequently accessed state data
+```json
+{
+  "name": "MyAgent",
+  "plugins": [
+    "@elizaos/plugin-solana",
+    "@elizaos/plugin-twitter"
+  ]
+}
+```
 
----
-
-## Memory Systems
-
-The Eliza framework uses multiple types of memory to support an agent's long-term engagement, contextual understanding, and adaptive responses. Each type of memory serves a specific purpose:
-
-- **Message History**: Stores recent conversations to provide continuity within a session. This helps the agent maintain conversational context and avoid repetitive responses within short-term exchanges.
-
-- **Factual Memory**: Holds specific, context-based facts about the user or environment, such as user preferences, recent activities, or specific details mentioned in previous interactions. This type of memory enables the agent to recall user-specific information across sessions.
-
-- **Knowledge Base**: Contains general knowledge the agent might need to respond to broader queries or provide informative answers. This memory is more static, helping the agent retrieve pre-defined data, common responses, or static character lore.
-
-- **Relationship Tracking**: Manages the agent’s understanding of its relationship with users, including details like user-agent interaction frequency, sentiment, and connection history. It is particularly useful for building rapport and providing a more personalized interaction experience over time.
-
-- **RAG Integration**: Uses a vector search to perform contextual recall based on similarity matching. This enables the agent to retrieve relevant memory snippets or knowledge based on the content and intent of the current conversation, making its responses more contextually relevant.
-
-The runtime uses multiple specialized [IMemoryManager](/api/interfaces/IMemoryManager) instances:
-
-- `messageManager` - conversation messages and responses
-- `descriptionManager` - user descriptions and profiles
-- `loreManager` - static character knowledge
+For detailed information about plugin development and usage, see the [ElizaOS Registry](https://github.com/elizaos-plugins).
 
 ---
 
-## Message Processing
+## Running Multiple Agents
 
-The runtime's message processing is handled through the [processActions](/api/classes/AgentRuntime#processactions) method:
+To run multiple agents:
 
-```typescript
-// Process message with actions
-await runtime.processActions(message, responses, state, async (newMessages) => {
-    // Handle new messages
-    return [message];
-});
+```bash
+pnpm start --characters="characters/agent1.json,characters/agent2.json"
+```
+
+Or use environment variables:
+```
+REMOTE_CHARACTER_URLS=https://example.com/characters.json
 ```
 
 ---
 
-## Services and Memory Management
+## FAQ
 
-Services are managed through the [getService](/api/classes/AgentRuntime#getservice) and [registerService](/api/classes/AgentRuntime#registerservice) methods:
+### What's the difference between an agent and a character?
 
-```typescript
-// Register service
-runtime.registerService(new TranscriptionService());
+A character defines personality and knowledge, while an agent provides the runtime environment and capabilities to bring that character to life.
 
-// Get service
-const service = runtime.getService<ITranscriptionService>(
-    ServiceType.TRANSCRIPTION,
-);
-```
+### How do I choose the right database adapter?
 
-### Memory Management
+Choose based on your needs:
+- MongoDB: For scalable, document-based storage
+- PostgreSQL: For relational data with complex queries
+- SQLite: For simple, file-based storage
+- Qdrant: For vector search capabilities
 
-Memory managers are accessed via [getMemoryManager](/api/classes/AgentRuntime#getmemorymanager):
+### How do I implement custom plugins?
 
-```typescript
-// Get memory manager
-const memoryManager = runtime.getMemoryManager("messages");
+Create a plugin that follows the plugin interface and register it with the runtime. See the plugin documentation for detailed examples.
 
-// Create memory
-await memoryManager.createMemory({
-    id: messageId,
-    content: { text: "Message content" },
-    userId: userId,
-    roomId: roomId,
-});
-```
+### Do agents share memory across platforms?
+By default, agents maintain separate memory contexts for different platforms to avoid mixing conversations. Use the memory management system and database adapters to persist and retrieve state information.
 
-**Best practices**
+### How do I handle multiple authentication methods?
 
-- Use appropriate memory managers for different data types
-- Consider memory limits when storing data, regularly clean up memory
-- Use the `unique` flag for deduplicated storage
-- Clean up old memories periodically
-- Use immutability in state management.
-- Log errors and maintain stability during service failures.
+Use the character configuration to specify different authentication methods for different services. The runtime will handle the appropriate authentication flow.
 
----
+### How do I manage environment variables?
 
-## Evaluation System
+Use a combination of:
+- `.env` files for local development
+- Character-specific settings for per-agent configuration
+- Environment variables for production deployment
 
-The runtime's [evaluate](/api/classes/AgentRuntime#evaluate) method processes evaluations:
+### Can agents communicate with each other?
 
-```typescript
-// Evaluate message
-const evaluationResults = await runtime.evaluate(message, state, didRespond);
-```
-
----
-
-## Usage Examples
-
-1. **Message Processing**:
-
-```typescript
-await runtime.processActions(message, responses, state, (newMessages) => {
-    return [message];
-});
-```
-
-2. **State Management**:
-
-```typescript
-const state = await runtime.composeState(message, {
-    additionalContext: "custom-context",
-});
-```
-
-3. **Memory Management**:
-
-```typescript
-const memoryManager = runtime.getMemoryManager("messages");
-await memoryManager.createMemory({
-    id: messageId,
-    content: { text: "Message content" },
-    userId,
-    roomId,
-});
-```
-
----
-
-## Further Reading
-
-- [Actions Documentation](./actions.md)
-- [Evaluators Documentation](./evaluators.md)
-- [Providers Documentation](./providers.md)
-- [Full API Reference](/api)
+Yes, through the message system and shared memory spaces when configured appropriately.

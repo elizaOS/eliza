@@ -1,5 +1,5 @@
+import { SOCKET_MESSAGE_TYPE } from "@elizaos/core";
 import EventEmitter from 'eventemitter3';
-import { SOCKET_MESSAGE_TYPE } from "../types/index"; // TODO: Import from core instead of local types
 import { apiClient } from "./api";
 import { WorldManager } from "./world-manager";
 

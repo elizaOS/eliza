@@ -1,7 +1,7 @@
 import { USER_NAME } from "@/constants";
 import { apiClient } from "@/lib/api";
 import { WorldManager } from "@/lib/world-manager";
-import type { Agent, Content, Media, UUID } from "@elizaos/core";
+import type { Agent, Content, Memory, UUID } from "@elizaos/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useToast } from "./use-toast";
@@ -22,34 +22,6 @@ type ContentWithUser = Content & {
 	isLoading?: boolean;
 	worldId?: string;
 	id?: string; // Add optional ID field
-};
-
-// Define the Memory type needed for the useMessages hook
-/**
- * Represents a memory object with the following properties:
- * @typedef {Object} Memory
- * @property {UUID} id - The unique identifier of the memory
- * @property {string} entityId - The identifier of the entity associated with the memory
- * @property {Object} content - The content of the memory
- * @property {string} content.text - The text content of the memory
- * @property {Media[]} [content.attachments] - Optional array of media attachments
- * @property {string} [content.source] - Optional source of the memory
- * @property {string[]} [content.actions] - Optional array of actions related to the memory
- * @property {number} createdAt - The timestamp when the memory was created
- * @property {string} [worldId] - Optional identifier of the world associated with the memory
- */
-
-type Memory = {
-	id: UUID;
-	entityId: string;
-	content: {
-		text: string;
-		attachments?: Media[];
-		source?: string;
-		actions?: string[];
-	};
-	createdAt: number;
-	worldId?: string;
 };
 
 // Constants for stale times
@@ -315,7 +287,7 @@ export function useMessages(
 	agentId: UUID,
 	roomId: UUID,
 ): {
-	data: Memory[] | undefined;
+	data: ContentWithUser[] | undefined;
 	isLoading: boolean;
 	isError: boolean;
 	error: unknown;
@@ -336,17 +308,36 @@ export function useMessages(
 		queryKey: ["messages", agentId, roomId, worldId],
 		queryFn: async () => {
 			const result = await apiClient.getMemories(agentId, roomId);
-			return result.data.memories.map((memory: Memory) => ({
-			  text: memory.content.text,
-			  user: memory.entityId === agentId ? 'agent' : USER_NAME,
-			  name: memory.entityId === agentId ? 'agent' : USER_NAME,
-			  createdAt: memory.createdAt,
-			  attachments: memory.content.attachments,
-			  source: memory.content.source,
-			  // action: memory.content.action,
-			  worldId: memory.worldId || worldId,
-			  id: memory.id,
-			})).sort((a: Memory, b: Memory) => a.createdAt - b.createdAt);
+			return result.data.memories.map((memory: Memory): ContentWithUser => {
+				// Convert Memory to ContentWithUser
+				const contentWithUser: ContentWithUser = {
+					text: memory.content.text,
+					roomId: memory.roomId,
+					user: memory.entityId === agentId ? 'agent' : USER_NAME,
+					name: memory.entityId === agentId ? 'agent' : USER_NAME,
+					createdAt: memory.createdAt || 0,
+					attachments: memory.content.attachments,
+					source: memory.content.source,
+					worldId,
+					id: memory.id,
+				};
+				
+				// Copy any additional properties from memory.content to preserve index signature
+				if (memory.content) {
+					Object.keys(memory.content).forEach(key => {
+						if (!contentWithUser[key] && memory.content[key] !== undefined) {
+							contentWithUser[key] = memory.content[key];
+						}
+					});
+				}
+				
+				return contentWithUser;
+			}).sort((a: ContentWithUser, b: ContentWithUser) => {
+				if (a.createdAt === undefined || b.createdAt === undefined) {
+					return 0;
+				}
+				return a.createdAt - b.createdAt;
+			});
 		},
 		enabled: Boolean(agentId && roomId),
 		staleTime: STALE_TIMES.FREQUENT,
@@ -369,14 +360,14 @@ export function useMessages(
 			if (response?.memories && response.memories.length > 0) {
 				// Update the oldest message timestamp
 				const timestamps: number[] = response.memories.map(
-					(msg: Memory): number => msg.createdAt,
+					(msg: Memory): number => msg.createdAt ?? 0,
 				);
 				const oldest: number = Math.min(...timestamps);
 				setOldestMessageTimestamp(oldest);
 
 				// Merge with existing messages
-				const existingMessages: Memory[] =
-					queryClient.getQueryData<Memory[]>([
+				const existingMessages: ContentWithUser[] =
+					queryClient.getQueryData<ContentWithUser[]>([
 						"messages",
 						agentId,
 						roomId,
@@ -384,22 +375,44 @@ export function useMessages(
 					]) || [];
 
 				// Create a Map with message ID as key to filter out any potential duplicates
-				const messageMap = new Map<string, Memory>();
+				const messageMap = new Map<string, ContentWithUser>();
 
 				// Add existing messages to the map
-				existingMessages.forEach((msg: Memory): void => {
-					messageMap.set(msg.id, msg);
+				existingMessages.forEach((msg: ContentWithUser): void => {
+					messageMap.set(msg.id as string, msg);
 				});
 
 				// Add new messages to the map, overwriting any with the same ID
-				response.memories.forEach((msg: Memory): void => {
-					messageMap.set(msg.id, msg);
+				response.memories.forEach((memory: Memory): void => {
+					// Convert Memory to ContentWithUser
+					const contentWithUser: ContentWithUser = {
+						text: memory.content.text,
+						roomId: memory.roomId,
+						user: memory.entityId === agentId ? 'agent' : USER_NAME,
+						name: memory.entityId === agentId ? 'agent' : USER_NAME,
+						createdAt: memory.createdAt || 0,
+						attachments: memory.content.attachments,
+						source: memory.content.source,
+						worldId,
+						id: memory.id,
+					};
+					
+					// Copy any additional properties from memory.content to preserve index signature
+					if (memory.content) {
+						Object.keys(memory.content).forEach(key => {
+							if (!contentWithUser[key] && memory.content[key] !== undefined) {
+								contentWithUser[key] = memory.content[key];
+							}
+						});
+					}
+					
+					messageMap.set(memory.id as string, contentWithUser);
 				});
 
 				// Convert back to array and sort
-				const mergedMessages: Memory[] = Array.from(messageMap.values());
+				const mergedMessages: ContentWithUser[] = Array.from(messageMap.values());
 				mergedMessages.sort(
-					(a: Memory, b: Memory): number => a.createdAt - b.createdAt,
+					(a: ContentWithUser, b: ContentWithUser): number => (a.createdAt ?? 0) - (b.createdAt ?? 0),
 				);
 
 				// Update the cache

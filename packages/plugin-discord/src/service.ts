@@ -78,77 +78,9 @@ export class DiscordService extends Service implements IDiscordService {
 			});
 
 			this.setupEventListeners();
-
-			// give it to the
-			const ensureAllServersExist = async (runtime: IAgentRuntime) => {
-				const guilds = await this.client.guilds.fetch();
-				for (const [, guild] of guilds) {
-					await this.ensureAllChannelsExist(runtime, guild);
-				}
-			};
-
-			ensureAllServersExist(this.runtime);
 		} catch (error) {
 			logger.error(`Error initializing Discord client: ${error.message}`);
 			this.client = null;
-		}
-	}
-
-	/**
-	 * Ensures that all channels exist in the database for a given guild.
-	 * @param {IAgentRuntime} runtime - The agent runtime object.
-	 * @param {OAuth2Guild} guild - The OAuth2Guild object for which channels need to be ensured.
-	 * @returns {Promise<void>} - A Promise that resolves once all channels are ensured.
-	 */
-	async ensureAllChannelsExist(runtime: IAgentRuntime, guild: OAuth2Guild) {
-		// fetch the owning member from the OAuth2Guild object
-		let guildObj;
-		let guildChannels;
-		let retries = 3;
-		while (retries > 0) {
-			try {
-				guildObj = await guild.fetch();
-				guildChannels = await guild.fetch();
-				break;
-			} catch (error) {
-				retries--;
-				if (retries === 0) {
-					throw error;
-				}
-				await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
-			}
-		}
-		// for channel in channels
-		for (const [, channel] of guildChannels.channels.cache) {
-			const roomId = createUniqueUuid(this.runtime, channel.id);
-			const room = await runtime.getRoom(roomId);
-			// if the room already exists, skip
-			if (room) {
-				continue;
-			}
-			const worldId = createUniqueUuid(runtime, guild.id);
-			const ownerId = createUniqueUuid(this.runtime, guildObj.ownerId);
-			await runtime.ensureWorldExists({
-				id: worldId,
-				name: guild.name,
-				serverId: guild.id,
-				agentId: runtime.agentId,
-				metadata: {
-					ownership: guildObj.ownerId ? { ownerId } : undefined,
-					roles: {
-						[ownerId]: Role.OWNER,
-					},
-				},
-			});
-			await runtime.ensureRoomExists({
-				id: roomId,
-				name: channel.name,
-				source: "discord",
-				type: ChannelType.GROUP,
-				channelId: channel.id,
-				serverId: guild.id,
-				worldId,
-			});
 		}
 	}
 

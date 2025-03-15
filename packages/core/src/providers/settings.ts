@@ -171,6 +171,9 @@ export const settingsProvider: Provider = {
 				// For non-onboarding, we need to get the world associated with the room
 				try {
 					world = await runtime.getWorld(room.worldId);
+					console.log("*** world", world);
+					console.log("*** room", room);
+					
 					serverId = world.serverId;
 
 					// Once we have the serverId, get the settings

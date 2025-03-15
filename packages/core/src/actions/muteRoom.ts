@@ -92,7 +92,7 @@ export const muteRoomAction: Action = {
 				cleanedResponse.includes("true") ||
 				cleanedResponse.includes("yes")
 			) {
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: message.entityId,
 					agentId: message.agentId,
 					roomId: message.roomId,
@@ -104,7 +104,7 @@ export const muteRoomAction: Action = {
 					metadata: {
 						type: "MUTE_ROOM",
 					},
-				});
+				}, "messages");
 				return true;
 			}
 
@@ -116,7 +116,7 @@ export const muteRoomAction: Action = {
 				cleanedResponse.includes("false") ||
 				cleanedResponse.includes("no")
 			) {
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: message.entityId,
 					agentId: message.agentId,
 					roomId: message.roomId,
@@ -128,7 +128,7 @@ export const muteRoomAction: Action = {
 					metadata: {
 						type: "MUTE_ROOM",
 					},
-				});
+				}, "messages");
 			}
 
 			// Default to false if response is unclear
@@ -146,7 +146,7 @@ export const muteRoomAction: Action = {
 			state.data.room ??
 			(await runtime.getRoom(message.roomId));
 
-		await runtime.getMemoryManager("messages").createMemory({
+		await runtime.createMemory({
 			entityId: message.entityId,
 			agentId: message.agentId,
 			roomId: message.roomId,
@@ -154,7 +154,7 @@ export const muteRoomAction: Action = {
 				thought: `I muted the room ${room.name}`,
 				actions: ["MUTE_ROOM_START"],
 			},
-		});
+		}, "messages");
 	},
 	examples: [
 		[

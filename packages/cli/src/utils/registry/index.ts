@@ -15,6 +15,7 @@ import { REGISTRY_URL } from "./constants";
 const ELIZA_DIR = path.join(os.homedir(), '.eliza');
 const REGISTRY_SETTINGS_FILE = path.join(ELIZA_DIR, 'registrysettings.json');
 const ENV_FILE = path.join(ELIZA_DIR, '.env');
+const REGISTRY_CACHE_FILE = path.join(ELIZA_DIR, 'registry-cache.json');
 
 const REQUIRED_ENV_VARS = ['GITHUB_TOKEN'] as const;
 const REQUIRED_SETTINGS = ['defaultRegistry'] as const;
@@ -25,6 +26,7 @@ export interface RegistrySettings {
 		registry: string;
 		username?: string;
 		useNpm?: boolean;
+		platform?: 'node' | 'browser' | 'universal';
 	};
 }
 
@@ -501,7 +503,14 @@ export async function getPackageDetails(packageName: string): Promise<{
 		// Get package details from registry
 		const packageUrl = `${REGISTRY_URL.replace("index.json", "")}packages/${normalizedName}.json`;
 
-		const response = await fetch(packageUrl, { agent });
+		// Use agent only if https_proxy is defined
+		const requestOptions: RequestInit = {};
+		if (process.env.https_proxy) {
+			// @ts-ignore - HttpsProxyAgent is not in the RequestInit type, but is used by node-fetch
+			requestOptions.agent = new HttpsProxyAgent(process.env.https_proxy);
+		}
+
+		const response = await fetch(packageUrl, requestOptions);
 		if (response.status !== 200) {
 			return null;
 		}

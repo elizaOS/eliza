@@ -18,7 +18,6 @@ import type {
   HandlerCallback,
   IAgentRuntime,
   IDatabaseAdapter,
-  IMemoryManager,
   KnowledgeItem,
   Log,
   Memory,
@@ -40,6 +39,36 @@ import type {
   World,
 } from "./types";
 import { stringToUuid } from "./uuid";
+
+// Semaphore implementation for controlling concurrent operations
+export class Semaphore {
+  private permits: number;
+  private waiting: Array<() => void> = [];
+
+  constructor(count: number) {
+    this.permits = count;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.permits > 0) {
+      this.permits -= 1;
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      this.waiting.push(resolve);
+    });
+  }
+
+  release(): void {
+    this.permits += 1;
+    const nextResolve = this.waiting.shift();
+    if (nextResolve && this.permits > 0) {
+      this.permits -= 1;
+      nextResolve();
+    }
+  }
+}
 
 /**
  * Represents the runtime environment for an agent, handling message processing,
@@ -91,6 +120,8 @@ export class AgentRuntime implements IAgentRuntime {
   private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
 
   private runtimeLogger;
+  private knowledgeProcessingSemaphore = new Semaphore(10);
+
   constructor(opts: {
     conversationLength?: number;
     agentId?: UUID;
@@ -430,9 +461,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   private async checkExistingKnowledge(knowledgeId: UUID): Promise<boolean> {
-    const existingDocument = await this.getMemoryManager(
-      "documents"
-    ).getMemoryById(knowledgeId);
+    const existingDocument = await this.getMemoryById(knowledgeId);
     return !!existingDocument;
   }
 
@@ -456,7 +485,8 @@ export class AgentRuntime implements IAgentRuntime {
     const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
       text: message?.content?.text,
     });
-    const fragments = await this.getMemoryManager("knowledge").searchMemories({
+    const fragments = await this.searchMemories({
+      tableName: "knowledge",
       embedding,
       roomId: message.agentId,
       count: 5,
@@ -475,9 +505,7 @@ export class AgentRuntime implements IAgentRuntime {
     ];
 
     const knowledgeDocuments = await Promise.all(
-      uniqueSources.map((source) =>
-        this.getMemoryManager("documents").getMemoryById(source as UUID)
-      )
+      uniqueSources.map((source) => this.getMemoryById(source as UUID))
     );
 
     return knowledgeDocuments
@@ -506,7 +534,7 @@ export class AgentRuntime implements IAgentRuntime {
       },
     };
 
-    await this.getMemoryManager("documents").createMemory(documentMemory);
+    await this.createMemory(documentMemory, "documents");
 
     // Create fragments using splitChunks
     const fragments = await splitChunks(
@@ -517,11 +545,16 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Store each fragment with link to source document
     for (let i = 0; i < fragments.length; i++) {
+      const embedding = await this.useModel(
+        ModelType.TEXT_EMBEDDING,
+        fragments[i]
+      );
       const fragmentMemory: Memory = {
         id: createUniqueUuid(this, `${item.id}-fragment-${i}`),
         agentId: this.agentId,
         roomId: this.agentId,
         entityId: this.agentId,
+        embedding,
         content: { text: fragments[i] },
         metadata: {
           type: MemoryType.FRAGMENT,
@@ -531,16 +564,17 @@ export class AgentRuntime implements IAgentRuntime {
         },
       };
 
-      await this.getMemoryManager("knowledge").createMemory(fragmentMemory);
+      await this.createMemory(fragmentMemory, "knowledge");
     }
   }
 
   async processCharacterKnowledge(items: string[]) {
-    for (const item of items) {
+    const processingPromises = items.map(async (item) => {
+      await this.knowledgeProcessingSemaphore.acquire();
       try {
         const knowledgeId = createUniqueUuid(this, item);
         if (await this.checkExistingKnowledge(knowledgeId)) {
-          continue;
+          return;
         }
 
         this.runtimeLogger.info(
@@ -561,8 +595,12 @@ export class AgentRuntime implements IAgentRuntime {
           error,
           "processing character knowledge"
         );
+      } finally {
+        this.knowledgeProcessingSemaphore.release();
       }
-    }
+    });
+
+    await Promise.all(processingPromises);
   }
 
   setSetting(
@@ -571,8 +609,14 @@ export class AgentRuntime implements IAgentRuntime {
     secret = false
   ) {
     if (secret) {
+      if (!this.character.secrets) {
+        this.character.secrets = {};
+      }
       this.character.secrets[key] = value;
     } else {
+      if (!this.character.settings) {
+        this.character.settings = {};
+      }
       this.character.settings[key] = value;
     }
   }
@@ -964,32 +1008,33 @@ export class AgentRuntime implements IAgentRuntime {
    * Ensure the existence of a world.
    */
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
-    try {
-      const world = await this.adapter.getWorld(id);
-      if (!world) {
-        this.runtimeLogger.info("Creating world:", {
-          id,
-          name,
-          serverId,
-          agentId: this.agentId,
-        });
-        await this.adapter.createWorld({
-          id,
-          name,
-          agentId: this.agentId,
-          serverId: serverId || "default",
-          metadata,
-        });
-        this.runtimeLogger.info(`World ${id} created successfully.`);
-      }
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to ensure world exists: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      throw error;
+    console.trace("ensureWorldExists");
+    // try {
+    const world = await this.getWorld(id);
+    if (!world) {
+      this.runtimeLogger.info("Creating world:", {
+        id,
+        name,
+        serverId,
+        agentId: this.agentId,
+      });
+      await this.adapter.createWorld({
+        id,
+        name,
+        agentId: this.agentId,
+        serverId: serverId || "default",
+        metadata,
+      });
+      this.runtimeLogger.info(`World ${id} created successfully.`);
     }
+    // } catch (error) {
+    //   this.runtimeLogger.error(
+    //     `Failed to ensure world exists: ${
+    //       error instanceof Error ? error.message : String(error)
+    //     }`
+    //   );
+    //   throw error;
+    // }
   }
 
   /**
@@ -1149,12 +1194,6 @@ export class AgentRuntime implements IAgentRuntime {
     return newState;
   }
 
-  getMemoryManager<T extends Memory = Memory>(
-    tableName: string
-  ): IMemoryManager<T> | null {
-    return this.adapter.getMemoryManager(tableName) as IMemoryManager<T> | null;
-  }
-
   getService<T extends Service>(service: ServiceTypeName): T | null {
     const serviceInstance = this.services.get(service);
     if (!serviceInstance) {
@@ -1247,7 +1286,8 @@ export class AgentRuntime implements IAgentRuntime {
       params === null ||
       params === undefined ||
       typeof params !== "object" ||
-      Array.isArray(params)
+      Array.isArray(params) ||
+      (typeof Buffer !== "undefined" && Buffer.isBuffer(params))
     ) {
       paramsWithRuntime = params;
     } else {
@@ -1405,7 +1445,6 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async close(): Promise<void> {
-    console.log("Closing adapter");
     await this.adapter.close();
   }
 
@@ -1486,6 +1525,33 @@ export class AgentRuntime implements IAgentRuntime {
     await this.adapter.deleteComponent(componentId);
   }
 
+  async addEmbeddingToMemory(memory: Memory): Promise<Memory> {
+    // Return early if embedding already exists
+    if (memory.embedding) {
+      return memory;
+    }
+
+    const memoryText = memory.content.text;
+
+    // Validate memory has text content
+    if (!memoryText) {
+      throw new Error("Cannot generate embedding: Memory content is empty");
+    }
+
+    try {
+      // Generate embedding from text content
+      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
+        text: memoryText,
+      });
+    } catch (error) {
+      logger.error("Failed to generate embedding:", error);
+      // Fallback to zero vector if embedding fails
+      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
+    }
+
+    return memory;
+  }
+
   async getMemories(params: {
     roomId: UUID;
     count?: number;
@@ -1552,12 +1618,12 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.createMemory(memory, tableName, unique);
   }
 
-  async removeMemory(memoryId: UUID, tableName: string): Promise<void> {
-    await this.adapter.removeMemory(memoryId, tableName);
+  async deleteMemory(memoryId: UUID): Promise<void> {
+    await this.adapter.deleteMemory(memoryId);
   }
 
-  async removeAllMemories(roomId: UUID, tableName: string): Promise<void> {
-    await this.adapter.removeAllMemories(roomId, tableName);
+  async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
+    await this.adapter.deleteAllMemories(roomId, tableName);
   }
 
   async countMemories(

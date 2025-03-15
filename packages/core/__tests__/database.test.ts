@@ -1,13 +1,18 @@
-/* eslint-disable no-dupe-class-members */
+import { expect } from "vitest";
 import { DatabaseAdapter } from "../src/database";
 import type {
+	Agent,
 	ChannelType,
+	Component,
 	Entity,
+	Log,
 	Memory,
 	Participant,
 	Relationship,
 	Room,
-	UUID
+	Task,
+	UUID,
+	World
 } from "../src/types";
 
 /**
@@ -15,6 +20,117 @@ import type {
  * @extends {DatabaseAdapter}
  */
 class MockDatabaseAdapter extends DatabaseAdapter {
+	init(): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	close(): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
+		throw new Error("Method not implemented.");
+	}
+	updateEntity(entity: Entity): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	getComponent(entityId: UUID, type: string, worldId?: UUID, sourceEntityId?: UUID): Promise<Component | null> {
+		throw new Error("Method not implemented.");
+	}
+	getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
+		throw new Error("Method not implemented.");
+	}
+	createComponent(component: Component): Promise<boolean> {
+		throw new Error("Method not implemented.");
+	}
+	updateComponent(component: Component): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	deleteComponent(componentId: UUID): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	getLogs(params: { entityId: UUID; roomId?: UUID; type?: string; count?: number; offset?: number; }): Promise<Log[]> {
+		throw new Error("Method not implemented.");
+	}
+	deleteLog(logId: UUID): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	getWorld(id: UUID): Promise<World | null> {
+		throw new Error("Method not implemented.");
+	}
+	getAllWorlds(): Promise<World[]> {
+		throw new Error("Method not implemented.");
+	}
+	createWorld(world: World): Promise<UUID> {
+		throw new Error("Method not implemented.");
+	}
+	updateWorld(world: World): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	removeWorld(id: UUID): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	getRooms(worldId: UUID): Promise<Room[]> {
+		throw new Error("Method not implemented.");
+	}
+	updateRoom(room: Room): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	deleteRoom(roomId: UUID): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
+		throw new Error("Method not implemented.");
+	}
+	updateRelationship(params: { sourceEntityId: UUID; targetEntityId: UUID; tags?: string[]; metadata?: Record<string, unknown>; }): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	getAgent(agentId: UUID): Promise<Agent | null> {
+		throw new Error("Method not implemented.");
+	}
+	getAgents(): Promise<Agent[]> {
+		throw new Error("Method not implemented.");
+	}
+	createAgent(agent: Partial<Agent>): Promise<boolean> {
+		throw new Error("Method not implemented.");
+	}
+	updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
+		throw new Error("Method not implemented.");
+	}
+	deleteAgent(agentId: UUID): Promise<boolean> {
+		throw new Error("Method not implemented.");
+	}
+	ensureAgentExists(agent: Partial<Agent>): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	ensureEmbeddingDimension(dimension: number): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	getCache<T>(key: string): Promise<T | undefined> {
+		throw new Error("Method not implemented.");
+	}
+	setCache<T>(key: string, value: T): Promise<boolean> {
+		throw new Error("Method not implemented.");
+	}
+	deleteCache(key: string): Promise<boolean> {
+		throw new Error("Method not implemented.");
+	}
+	createTask(task: Task): Promise<UUID> {
+		throw new Error("Method not implemented.");
+	}
+	getTasks(params: { roomId?: UUID; tags?: string[]; }): Promise<Task[]> {
+		throw new Error("Method not implemented.");
+	}
+	getTask(id: UUID): Promise<Task | null> {
+		throw new Error("Method not implemented.");
+	}
+	getTasksByName(name: string): Promise<Task[]> {
+		throw new Error("Method not implemented.");
+	}
+	updateTask(id: UUID, task: Partial<Task>): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
+	deleteTask(id: UUID): Promise<void> {
+		throw new Error("Method not implemented.");
+	}
 	/**
 	 * Asynchronous function to retrieve a Memory object by its unique ID.
 	 *
@@ -84,17 +200,16 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 		_memory: Memory,
 		_tableName: string,
 		_unique?: boolean,
-	): Promise<void> {
+	): Promise<UUID> {
 		throw new Error("Method not implemented.");
 	}
 	/**
 	 * Removes a memory from a specific table.
 	 *
 	 * @param {UUID} _memoryId - The ID of the memory to be removed.
-	 * @param {string} _tableName - The name of the table from which the memory will be removed.
 	 * @returns {Promise<void>} A promise that resolves when the memory is successfully removed.
 	 */
-	removeMemory(_memoryId: UUID, _tableName: string): Promise<void> {
+	deleteMemory(_memoryId: UUID): Promise<void> {
 		throw new Error("Method not implemented.");
 	}
 	/**
@@ -104,7 +219,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
 	 * @param {string} _tableName - The name of the table containing the memories.
 	 * @returns {Promise<void>} A promise that resolves when all memories are successfully removed.
 	 */
-	removeAllMemories(_roomId: UUID, _tableName: string): Promise<void> {
+	deleteAllMemories(_roomId: UUID, _tableName: string): Promise<void> {
 		throw new Error("Method not implemented.");
 	}
 	/**
@@ -482,7 +597,7 @@ describe("DatabaseAdapter Tests", () => {
 			tableName: "test_table",
 		});
 		expect(memories).toHaveLength(1);
-		expect(memories[0].roomId).toBe("room-id");
+		expect(memories[0].roomId).toBe("room-id" as UUID);
 	});
 
 	it("should return cached embeddings", async () => {
@@ -508,7 +623,7 @@ describe("DatabaseAdapter Tests", () => {
 			unique: true,
 		});
 		expect(memories).toHaveLength(1);
-		expect(memories[0].roomId).toBe("room-id");
+		expect(memories[0].roomId).toBe("room-id" as UUID);
 	});
 
 	it("should get an account by user ID", async () => {

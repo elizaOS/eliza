@@ -1,4 +1,10 @@
-import { type IAgentRuntime, ModelType, logger } from "@elizaos/core";
+import {
+	ChannelType,
+	type IAgentRuntime,
+	ModelType,
+	createUniqueUuid,
+	logger
+} from "@elizaos/core";
 import type { ClientBase } from "./base";
 import {
 	type Client,
@@ -232,12 +238,52 @@ export class TwitterSpaceClient {
 			const broadcastInfo = await this.currentSpace.initialize(config);
 			this.spaceId = broadcastInfo.room_id;
 
+			// Create standardized world and room IDs for the space
+			const userId = this.client.profile.id;
+			const worldId = createUniqueUuid(this.runtime, userId);
+			const spaceRoomId = createUniqueUuid(this.runtime, `${userId}-space-${this.spaceId}`);
+
+			// Ensure world exists first
+			await this.runtime.ensureWorldExists({
+				id: worldId,
+				name: `${this.client.profile.username}'s Twitter`,
+				agentId: this.runtime.agentId,
+				serverId: userId,
+				metadata: {
+					ownership: { ownerId: userId },
+					twitter: {
+						username: this.client.profile.username,
+						id: userId
+					}
+				}
+			});
+
+			// Ensure space room exists
+			await this.runtime.ensureRoomExists({
+				id: spaceRoomId,
+				name: config.title || "Twitter Space",
+				source: "twitter",
+				type: ChannelType.GROUP,
+				channelId: this.spaceId,
+				serverId: userId,
+				worldId: worldId,
+				metadata: {
+					spaceInfo: {
+						title: config.title,
+						description: config.description,
+						startedAt: Date.now(),
+						mode: config.mode,
+						languages: config.languages,
+						isRecording: config.record
+					}
+				}
+			});
+
 			if (
 				this.runtime.getModel(ModelType.TEXT_TO_SPEECH) &&
 				this.runtime.getModel(ModelType.TRANSCRIPTION)
 			) {
 				logger.log("[Space] Using SttTtsPlugin");
-				// TODO: There is an error here, onAttach is incompatible
 				this.currentSpace.use(this.sttTtsPlugin as any, {
 					runtime: this.runtime,
 					spaceId: this.spaceId,
@@ -254,11 +300,11 @@ export class TwitterSpaceClient {
 				);
 			}
 			this.spaceStatus = SpaceActivity.HOSTING;
-			await this.twitterClient.sendTweet(
-				broadcastInfo.share_url.replace("broadcasts", "spaces"),
-			);
 
+			// Create tweet announcing the space
 			const spaceUrl = broadcastInfo.share_url.replace("broadcasts", "spaces");
+			await this.twitterClient.sendTweet(spaceUrl);
+
 			logger.log(`[Space] Space started => ${spaceUrl}`);
 
 			// Greet

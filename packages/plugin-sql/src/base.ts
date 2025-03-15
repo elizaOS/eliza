@@ -1003,6 +1003,7 @@ export abstract class BaseDrizzleAdapter<
 		memory: Memory & { metadata?: MemoryMetadata },
 		tableName: string,
 	): Promise<UUID> {
+		console.log("memory.id is", memory.id)
 		logger.debug("DrizzleAdapter createMemory:", {
 			memoryId: memory.id,
 			embeddingLength: memory.embedding?.length,
@@ -1065,7 +1066,7 @@ export abstract class BaseDrizzleAdapter<
 		return memoryId;
 	}
 
-	async removeMemory(memoryId: UUID, tableName: string): Promise<void> {
+	async deleteMemory(memoryId: UUID): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db.transaction(async (tx) => {
 				await tx
@@ -1075,18 +1076,17 @@ export abstract class BaseDrizzleAdapter<
 				await tx
 					.delete(memoryTable)
 					.where(
-						and(eq(memoryTable.id, memoryId), eq(memoryTable.type, tableName)),
+						and(eq(memoryTable.id, memoryId)),
 					);
 			});
 
 			logger.debug("Memory removed successfully:", {
-				memoryId,
-				tableName,
+				memoryId
 			});
 		});
 	}
 
-	async removeAllMemories(roomId: UUID, tableName: string): Promise<void> {
+	async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db.transaction(async (tx) => {
 				const memoryIds = await tx
@@ -1635,6 +1635,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	async createWorld(world: World): Promise<UUID> {
+		console.trace("*** creating world", world, "with id", world.id);
 		return this.withDatabase(async () => {
 			const newWorldId = world.id || v4();
 			await this.db.insert(worldTable).values({
@@ -1666,6 +1667,7 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	async updateWorld(world: World): Promise<void> {
+		console.trace("*** updating world", world, "with id", world.id);
 		return this.withDatabase(async () => {
 			await this.db
 				.update(worldTable)

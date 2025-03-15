@@ -5,7 +5,6 @@ import {
 	type Agent,
 	type Character,
 	type IAgentRuntime,
-	type IDatabaseAdapter,
 	type ModelResultMap,
 	type ModelTypeName,
 	ModelType,
@@ -33,7 +32,6 @@ export const TEST_PATHS = {
 
 export const createMockRuntime = (): IAgentRuntime => ({
 	agentId: "12345678-1234-1234-1234-123456789012",
-	databaseAdapter: {} as IDatabaseAdapter,
 	character: {} as Character,
 	providers: [],
 	actions: [],
@@ -44,7 +42,6 @@ export const createMockRuntime = (): IAgentRuntime => ({
 	getService: () => null,
 	getAllServices: () => new Map(),
 	initialize: async () => { },
-	getMemoryManager: () => null,
 	registerService: () => { },
 	setSetting: () => { },
 	getSetting: () => null,
@@ -311,8 +308,8 @@ export const createMockRuntime = (): IAgentRuntime => ({
 	log: () => Promise.resolve(),
 	searchMemories: () => Promise.resolve([]),
 	createMemory: () => Promise.resolve("12345678-1234-1234-1234-123456789012"),
-	removeMemory: () => Promise.resolve(),
-	removeAllMemories: () => Promise.resolve(),
+	deleteMemory: () => Promise.resolve(),
+	deleteAllMemories: () => Promise.resolve(),
 	countMemories: () => Promise.resolve(0),
 	createWorld: () => Promise.resolve("12345678-1234-1234-1234-123456789012"),
 	getWorld: () => Promise.resolve(null),
@@ -338,5 +335,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 	getCache: () => Promise.resolve(undefined),
 	setCache: () => Promise.resolve(false),
 	deleteCache: () => Promise.resolve(false),
-	getTasksByName: () => Promise.resolve([])
+	getTasksByName: () => Promise.resolve([]),
+	getLogs: () => Promise.resolve([]),
+	deleteLog: () => Promise.resolve(),
 });

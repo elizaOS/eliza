@@ -70,8 +70,8 @@ async function getRecentInteractions(
 
 	// Get recent messages from the room - just for context
 	const recentMessages = await runtime
-		.getMemoryManager("messages")
 		.getMemories({
+			tableName: "messages",
 			roomId,
 			count: 20, // Reduced from 100 since we only need context
 		});

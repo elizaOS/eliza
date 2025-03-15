@@ -337,7 +337,7 @@ export async function getScreenNameByUserId(
 	};
 }
 
-export async function getUserIdByScreenName(
+export async function getEntityIdByScreenName(
 	screenName: string,
 	auth: TwitterAuth,
 ): Promise<RequestApiResult<string>> {

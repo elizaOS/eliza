@@ -1,0 +1,204 @@
+.filtersWrapper {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  height: 40px; /* Match the height of the search bar */
+}
+
+.filterHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  height: 40px;
+}
+
+.filterTitle {
+  margin: 0;
+  font-size: 1.2rem;
+  margin-right: 16px;
+  white-space: nowrap;
+  font-weight: bold;
+}
+
+.operatorToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+
+.operatorSwitch {
+  position: relative;
+  display: inline-block;
+  width: 80px;
+  height: 30px;
+  background-color: var(--ifm-color-emphasis-200);
+  border-radius: 15px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s;
+  padding: 0;
+  overflow: hidden;
+}
+
+.operatorSwitchAnd {
+  background-color: var(--ifm-color-primary-darker);
+}
+
+.switchKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 40px;
+  height: 26px;
+  background-color: white;
+  border-radius: 13px;
+  transition: transform 0.3s;
+  z-index: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.operatorSwitchAnd .switchKnob {
+  transform: translateX(36px);
+}
+
+.switchLabel {
+  position: absolute;
+  top: 0;
+  width: 40px;
+  height: 30px;
+  line-height: 30px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  text-align: center;
+  transition: color 0.3s;
+}
+
+.switchLabel:first-of-type {
+  left: 0;
+}
+
+.switchLabel:last-of-type {
+  right: 0;
+}
+
+/* OR label color when OR is selected */
+.operatorSwitch:not(.operatorSwitchAnd) .switchLabel:first-of-type {
+  color: var(--ifm-color-emphasis-800);
+}
+
+/* OR label color when AND is selected */
+.operatorSwitchAnd .switchLabel:first-of-type {
+  color: white;
+}
+
+/* AND label color when OR is selected */
+.operatorSwitch:not(.operatorSwitchAnd) .switchLabel:last-of-type {
+  color: var(--ifm-color-emphasis-600);
+}
+
+/* AND label color when AND is selected */
+.operatorSwitchAnd .switchLabel:last-of-type {
+  color: var(--ifm-color-emphasis-800);
+}
+
+.tagList {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.tagListItem {
+  user-select: none;
+  white-space: nowrap;
+}
+
+.tagButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 16px;
+  border: 2px solid;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all 200ms ease-out;
+  background-color: transparent;
+}
+
+.tagButton:hover {
+  opacity: 0.8;
+}
+
+.tagButtonSelected {
+  color: white;
+}
+
+.filterControls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 16px;
+}
+
+.clearButton {
+  display: inline-flex;
+  align-items: center;
+  margin-left:6px;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: 15px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  background-color: transparent;
+  color: var(--ifm-color-emphasis-700);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clearButton:hover {
+  background-color: var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-emphasis-900);
+}
+
+.clearButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 992px) {
+  .filtersWrapper {
+    height: auto;
+    width: 100%;
+  }
+  
+  .filterHeader {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 768px) {
+  .filterHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .filterControls {
+    margin-left: 0;
+  }
+  
+  .tagList {
+    margin-top: 16px;
+  }
+}

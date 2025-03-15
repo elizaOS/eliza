@@ -97,6 +97,12 @@ export async function initializeAllSystems(
 			const worldId = createUniqueUuid(runtime, server.id);
 			const ownerId = createUniqueUuid(runtime, server.ownerId);
 
+			const existingWorld = await runtime.getWorld(worldId);
+			if (existingWorld.metadata?.settings) {
+				logger.info("Onboarding already initialized for server", server.id);
+				continue;
+			}
+
 			// Initialize onboarding for this server
 			const world: World = {
 				id: worldId,
@@ -116,6 +122,7 @@ export async function initializeAllSystems(
 			await runtime.ensureWorldExists(world);
 			await initializeOnboarding(runtime, world, config);
 			// Start onboarding DM with server owner
+			console.log("starting onboarding DM");
 			await startOnboardingDM(runtime, server, worldId);
 		}
 	} catch (error) {
@@ -173,7 +180,7 @@ export async function startOnboardingDM(
 			});
 		}
 		// Create memory of the initial message
-		await runtime.getMemoryManager("messages").createMemory({
+		await runtime.createMemory({
 			agentId: runtime.agentId,
 			entityId: runtime.agentId,
 			roomId: roomId,
@@ -182,7 +189,7 @@ export async function startOnboardingDM(
 				actions: ["BEGIN_ONBOARDING"],
 			},
 			createdAt: Date.now(),
-		});
+		}, "messages");
 
 		logger.info(
 			`Started settings DM with owner ${owner.id} for server ${guild.id}`,

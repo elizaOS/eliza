@@ -619,7 +619,4 @@ async function showMainMenu(): Promise<void> {
   }
 }
 
-// Register command with the CLI
-export default function registerCommand(cli: Command) {
-  return cli.addCommand(env);
-} 
+ 

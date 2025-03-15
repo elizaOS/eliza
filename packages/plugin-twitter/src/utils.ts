@@ -72,7 +72,6 @@ export async function buildConversationThread(
 
 		// Handle memory storage
 		const memory = await client.runtime
-			.getMemoryManager("messages")
 			.getMemoryById(createUniqueUuid(this.runtime, currentTweet.id));
 		if (!memory) {
 			const roomId = createUniqueUuid(
@@ -90,7 +89,7 @@ export async function buildConversationThread(
 				type: ChannelType.GROUP,
 			});
 
-			await client.runtime.getMemoryManager("messages").createMemory({
+			await client.runtime.createMemory({
 				id: createUniqueUuid(this.runtime, currentTweet.id),
 				agentId: client.runtime.agentId,
 				content: {
@@ -108,7 +107,7 @@ export async function buildConversationThread(
 					currentTweet.userId === client.profile.id
 						? client.runtime.agentId
 						: createUniqueUuid(this.runtime, currentTweet.userId),
-			});
+			}, "messages");
 		}
 
 		if (visited.has(currentTweet.id)) {
@@ -187,7 +186,7 @@ export async function fetchMediaData(
 					throw new Error(`Failed to fetch file: ${attachment.url}`);
 				}
 				const mediaBuffer = Buffer.from(await response.arrayBuffer());
-				const mediaType = attachment.contentType;
+				const mediaType = attachment.contentType || "image/png";
 				return { data: mediaBuffer, mediaType };
 			}
 			if (fs.existsSync(attachment.url)) {
@@ -195,7 +194,7 @@ export async function fetchMediaData(
 				const mediaBuffer = await fs.promises.readFile(
 					path.resolve(attachment.url),
 				);
-				const mediaType = attachment.contentType;
+				const mediaType = attachment.contentType || "image/png";
 				return { data: mediaBuffer, mediaType };
 			}
 			throw new Error(

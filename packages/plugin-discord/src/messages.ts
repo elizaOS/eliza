@@ -195,7 +195,7 @@ export class MessageManager {
 					}
 
 					for (const m of memories) {
-						await this.runtime.getMemoryManager("messages").createMemory(m);
+						await this.runtime.createMemory(m, "messages");
 					}
 					return memories;
 				} catch (error) {

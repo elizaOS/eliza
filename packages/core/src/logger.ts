@@ -1,5 +1,4 @@
 import pino, { type LogFn, type DestinationStream } from "pino";
-import pretty from "pino-pretty";
 
 function parseBooleanFromText(
 	value: string | undefined | null,
@@ -106,11 +105,13 @@ const customLevels: Record<string, number> = {
 
 const raw = parseBooleanFromText(process?.env?.LOG_JSON_FORMAT) || false;
 
-const createStream = () => {
+const createStream = async () => {
 	if (raw) {
 		return undefined;
 	}
-	return pretty({
+	// dynamically import pretty to avoid importing it in the browser
+	const pretty = await import("pino-pretty");
+	return pretty.default({
 		colorize: true,
 		translateTime: "yyyy-mm-dd HH:MM:ss",
 		ignore: "pid,hostname",
@@ -167,15 +168,24 @@ const options = {
 	},
 };
 
-// Create the destination with in-memory logging
-const stream = createStream();
-const destination = new InMemoryDestination(stream);
+// Create basic logger initially
+let logger = pino(options);
 
-// Create logger with custom destination
-export const logger = pino(options, destination);
+// Enhance logger with custom destination in Node.js environment
+if (typeof process !== 'undefined') {
+  // Create the destination with in-memory logging
+  createStream().then(stream => {
+    const destination = new InMemoryDestination(stream);
+    
+    // Create enhanced logger with custom destination
+    logger = pino(options, destination);
 
-// Expose the destination for accessing recent logs
-(logger as unknown)[Symbol.for("pino-destination")] = destination;
+    // Expose the destination for accessing recent logs
+    (logger as unknown)[Symbol.for("pino-destination")] = destination;
+  });
+}
+
+export { logger };
 
 // for backward compatibility
 export const elizaLogger = logger;

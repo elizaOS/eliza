@@ -12,9 +12,9 @@ const recommendationsPrompt = `<user_recommendations_provider>
 export const recommendationsProvider: Provider = {
 	name: "recommendations",
 	async get(runtime, message) {
-		const recommendationsManager = runtime.getMemoryManager("recommendations")!;
 
-		const recentRecommendations = await recommendationsManager.getMemories({
+		const recentRecommendations = await runtime.getMemories({
+			tableName: "recommendations",
 			roomId: message.roomId,
 			count: 5,
 		});
@@ -22,7 +22,7 @@ export const recommendationsProvider: Provider = {
 		const newUserRecommendation = recentRecommendations.filter(
 			(m) =>
 				m.entityId === message.entityId &&
-				m.metadata.recommendation.confirmed !== true,
+				(m.metadata as any).recommendation.confirmed !== true,
 		);
 
 		if (newUserRecommendation.length === 0) {

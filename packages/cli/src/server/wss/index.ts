@@ -84,7 +84,7 @@ export class WebSocketRouter {
                 const runtime = this.agents.get(agentId) || this.agents.get(senderId);
                 if (!runtime) {
                     ws.send(JSON.stringify({ error: `[WebSocket server] No runtime found.` }));
-                    return;
+                    continue;
                 }
 
                 const text = message.trim();
@@ -162,9 +162,9 @@ export class WebSocketRouter {
                         createdAt: Date.now(),
                     };
 
-                    await runtime.getMemoryManager("messages").addEmbeddingToMemory(memory);
+                    await runtime.addEmbeddingToMemory(memory);
                     logger.info("added embedding to memory");
-                    await runtime.getMemoryManager("messages").createMemory(memory);
+                    await runtime.createMemory(memory, "messages");
                     logger.info("created memory");
                 } catch (error) {
                     logger.error("Error processing message:", error.message);

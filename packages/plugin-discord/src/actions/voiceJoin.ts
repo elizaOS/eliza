@@ -128,7 +128,7 @@ export const joinVoice: Action = {
 
 		if (member?.voice?.channel) {
 			voiceManager.joinChannel(member?.voice?.channel as BaseGuildVoiceChannel);
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -140,10 +140,10 @@ export const joinVoice: Action = {
 				metadata: {
 					type: "JOIN_VOICE",
 				},
-			});
+			}, "messages");
 
 			// save a memory for the new channel as well
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: createUniqueUuid(runtime, targetChannel.id),
@@ -155,7 +155,7 @@ export const joinVoice: Action = {
 				metadata: {
 					type: "JOIN_VOICE",
 				},
-			});
+			}, "messages");
 			return true;
 		}
 
@@ -207,7 +207,7 @@ You should only respond with the name of the voice channel or none, no commentar
 
 			if (targetChannel) {
 				voiceManager.joinChannel(targetChannel as BaseGuildVoiceChannel);
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: message.entityId,
 					agentId: message.agentId,
 					roomId: message.roomId,
@@ -219,10 +219,10 @@ You should only respond with the name of the voice channel or none, no commentar
 					metadata: {
 						type: "JOIN_VOICE",
 					},
-				});
+				}, "messages");
 
 				// save a memory for the new channel as well
-				await runtime.getMemoryManager("messages").createMemory({
+				await runtime.createMemory({
 					entityId: message.entityId,
 					agentId: message.agentId,
 					roomId: createUniqueUuid(runtime, targetChannel.id),
@@ -234,7 +234,7 @@ You should only respond with the name of the voice channel or none, no commentar
 					metadata: {
 						type: "JOIN_VOICE",
 					},
-				});
+				}, "messages");
 				return true;
 			}
 		}

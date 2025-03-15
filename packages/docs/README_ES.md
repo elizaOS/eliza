@@ -30,7 +30,7 @@ _Respaldado por [@DegenSpartanAI](https://x.com/degenspartanai) y [@MarcAIndrees
 **Prerrequisitos (OBLIGATORIOS):**
 
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [bun](https://bun.io/installation)
+- [pnpm](https://pnpm.io/installation)
 
 ### Edita el archivo .env
 
@@ -40,13 +40,13 @@ _Respaldado por [@DegenSpartanAI](https://x.com/degenspartanai) y [@MarcAIndrees
 ### Edita el archivo del character
 
 - Mira el archivo `packages/core/src/defaultCharacter.ts` - tú puedes modificarlo
-- También puede cargar caracteres con el comando `bun start --characters="path/to/your/character.json"` y ejecutar múltiples bots al mismo tiempo.
+- También puede cargar caracteres con el comando `pnpm start --characters="path/to/your/character.json"` y ejecutar múltiples bots al mismo tiempo.
 
 Después de configurar el archivo .env y el archivo de caracteres, puedes iniciar el bot con el siguiente comando:
 
 ```
-bun i
-bun start
+pnpm i
+pnpm start
 ```
 
 # Personalizando Eliza
@@ -74,7 +74,7 @@ Tú puedes ejecutar modelos OpenAI configurando el ambiente `XAI_MODEL` en la va
 Puede que necesite instalar Sharp. Si aparece un error al arrancar, intente instalarlo con el siguiente comando:
 
 ```
-bun install --include=optional sharp
+pnpm install --include=optional sharp
 ```
 
 # Configuración del entorno
@@ -86,7 +86,7 @@ Tendrás que añadir variables de entorno a tu archivo .env para conectarte a di
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Bot token
 OPENAI_API_KEY=sk-* # OpenAI API key, starting with sk-
-ELEVENLABS_API_KEY= # API key from elevenlabs
+ELEVENLABS_XI_API_KEY= # API key from elevenlabs
 
 # CONFIGURACION DE ELEVENLABS
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
@@ -135,7 +135,7 @@ TOGETHER_API_KEY=
 Si tienes una GPU NVIDIA, puedes instalar CUDA para acelerar drásticamente la inferencia local.
 
 ```
-bun install
+pnpm install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 
@@ -158,15 +158,15 @@ Para obtener ayuda con la configuración de su Bot Discord, echa un vistazo aqu�
 Para ejecutar el conjunto de pruebas:
 
 ```bash
-bun test           # Ejecutar las pruebas una vez
-bun test:watch    # Ejecutar pruebas en modo vigilancia
+pnpm test           # Ejecutar las pruebas una vez
+pnpm test:watch    # Ejecutar pruebas en modo vigilancia
 ```
 
 Para pruebas database-specific:
 
 ```bash
-bun test:sqlite   # Ejecuta pruebas con SQLite
-bun test:sqljs    # Ejecuta pruebas con with SQL.js
+pnpm test:sqlite   # Ejecuta pruebas con SQLite
+pnpm test:sqljs    # Ejecuta pruebas con with SQL.js
 ```
 
 Las pruebas se escriben usando Jest y se encuentran en los archivos `src/**/*.test.ts`. El entorno de pruebas está configurado para:

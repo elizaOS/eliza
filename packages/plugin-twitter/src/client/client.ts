@@ -33,9 +33,9 @@ import {
 } from "./messages";
 import {
 	type Profile,
+	getEntityIdByScreenName,
 	getProfile,
 	getScreenNameByUserId,
-	getUserIdByScreenName,
 } from "./profile";
 import {
 	fetchProfileFollowers,
@@ -177,8 +177,8 @@ export class Client {
 	 * @param screenName The Twitter screen name of the profile to fetch.
 	 * @returns The ID of the corresponding account.
 	 */
-	public async getUserIdByScreenName(screenName: string): Promise<string> {
-		const res = await getUserIdByScreenName(screenName, this.auth);
+	public async getEntityIdByScreenName(screenName: string): Promise<string> {
+		const res = await getEntityIdByScreenName(screenName, this.auth);
 		return this.handleResponse(res);
 	}
 

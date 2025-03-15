@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
+import semver from 'semver';
 import {
   branchExists,
   createBranch,
@@ -21,19 +22,43 @@ interface PackageJson {
   repository?: {
     url?: string;
   };
+  keywords?: string[];
+  categories?: string[];
+  platform?: 'node' | 'browser' | 'universal';
+  type?: 'plugin' | 'project';
 }
 
 interface PluginMetadata {
   name: string;
   description: string;
-  author: string;
-  repository: string;
-  versions: string[];
+  repository: {
+    type: 'git' | 'npm';
+    url: string;
+  };
+  maintainers: Array<{
+    name: string;
+    github: string;
+  }>;
+  categories: string[];
+  tags: string[];
+  versions: Array<{
+    version: string;
+    gitBranch?: string;
+    gitTag?: string;
+    npmVersion?: string;
+    runtimeVersion: string;
+    releaseDate: string;
+    deprecated?: boolean;
+  }>;
+  latestStable: string | null;
   latestVersion: string;
-  runtimeVersion: string;
-  maintainer: string;
-  tags?: string[];
-  categories?: string[];
+  npm?: {
+    name: string;
+    url: string;
+  };
+  platform?: 'node' | 'browser' | 'universal';
+  type: 'plugin' | 'project';
+  installable?: boolean;
 }
 
 interface PublishTestResult {
@@ -234,8 +259,9 @@ export async function publishToGitHub(
     logger.info(`Using existing fork: ${forkFullName}`);
   }
 
-  // Create version branch
-  const branchName = `plugin-${packageJson.name.replace(/^@elizaos\//, '')}-${packageJson.version}`;
+  // Create version branch - use type in branch name
+  const entityType = packageJson.type || 'plugin';
+  const branchName = `${entityType}-${packageJson.name.replace(/^@elizaos\//, '')}-${packageJson.version}`;
   const hasBranch = await branchExists(token, username, registryRepo, branchName);
 
   if (!hasBranch && !isTest) {
@@ -248,34 +274,101 @@ export async function publishToGitHub(
   }
 
   // Update package metadata
-  const packagePath = `packages/${packageJson.name.replace(/^@elizaos\//, '')}.json`;
+  const packageName = packageJson.name.replace(/^@elizaos\//, '');
+  const packagePath = `packages/${packageName}.json`;
   const existingContent = await getFileContent(token, registryOwner, registryRepo, packagePath);
 
   let metadata: PluginMetadata;
+  const currentDate = new Date().toISOString();
+  const repositoryUrl = packageJson.repository?.url || `github:${username}/${packageName}`;
+  
   if (existingContent) {
-    metadata = JSON.parse(existingContent);
-    
-    if (metadata.versions.includes(packageJson.version)) {
-      logger.error(`Version ${packageJson.version} already exists in registry.`);
-      return false;
-    }
+    try {
+      metadata = JSON.parse(existingContent);
+      
+      if (metadata.versions.some(v => v.version === packageJson.version)) {
+        logger.error(`Version ${packageJson.version} already exists in registry.`);
+        return false;
+      }
 
-    metadata.versions.push(packageJson.version);
-    metadata.latestVersion = packageJson.version;
-    metadata.runtimeVersion = cliVersion;
-  } else {
+      // Add new version information
+      metadata.versions.push({
+        version: packageJson.version,
+        gitBranch: packageJson.version,
+        gitTag: `v${packageJson.version}`,
+        runtimeVersion: cliVersion,
+        releaseDate: currentDate,
+        deprecated: false
+      });
+      
+      metadata.latestVersion = packageJson.version;
+      
+      // Update latestStable if this is a stable release
+      if (!semver.prerelease(packageJson.version) && 
+          (!metadata.latestStable || semver.gt(packageJson.version, metadata.latestStable))) {
+        metadata.latestStable = packageJson.version;
+      }
+      
+      // Update type if specified
+      if (packageJson.type) {
+        metadata.type = packageJson.type;
+        // Projects are not installable in agents
+        metadata.installable = packageJson.type === 'plugin';
+      }
+      
+      // Update platform if specified
+      if (packageJson.platform) {
+        metadata.platform = packageJson.platform;
+      }
+      
+      // Update tags and categories if changed
+      if (packageJson.keywords?.length) {
+        metadata.tags = packageJson.keywords;
+      }
+      
+      if (packageJson.categories?.length) {
+        metadata.categories = packageJson.categories;
+      }
+    } catch (error) {
+      logger.error(`Error parsing existing metadata: ${error.message}`);
+      logger.info('Creating new metadata');
+      metadata = null;
+    }
+  }
+
+  if (!metadata) {
+    // Create new metadata in V2 format
     metadata = {
       name: packageJson.name,
       description: packageJson.description || '',
-      author: packageJson.author || '',
-      repository: packageJson.repository?.url || '',
-      versions: [packageJson.version],
+      repository: {
+        type: repositoryUrl.startsWith('npm:') ? 'npm' : 'git',
+        url: repositoryUrl
+      },
+      maintainers: [{
+        name: username,
+        github: username
+      }],
+      categories: packageJson.categories || [],
+      tags: packageJson.keywords || [],
+      versions: [{
+        version: packageJson.version,
+        gitBranch: packageJson.version,
+        gitTag: `v${packageJson.version}`,
+        runtimeVersion: cliVersion,
+        releaseDate: currentDate,
+        deprecated: false
+      }],
+      latestStable: semver.prerelease(packageJson.version) ? null : packageJson.version,
       latestVersion: packageJson.version,
-      runtimeVersion: cliVersion,
-      maintainer: username,
-      tags: [],
-      categories: [],
+      type: entityType,
+      installable: entityType === 'plugin' // Only plugins are installable
     };
+    
+    // Add platform if specified
+    if (packageJson.platform) {
+      metadata.platform = packageJson.platform;
+    }
   }
 
   if (!isTest) {
@@ -295,6 +388,75 @@ export async function publishToGitHub(
       return false;
     }
 
+    // Update index.json for V2 registry
+    try {
+      const indexContent = await getFileContent(token, username, registryRepo, 'index.json');
+      if (indexContent) {
+        const index = JSON.parse(indexContent);
+        const isNew = !index.__v2?.packages?.[packageJson.name];
+        
+        // Ensure v2 structure exists
+        if (!index.__v2) {
+          index.__v2 = {
+            version: '2.0.0',
+            packages: {},
+            categories: {},
+            types: {
+              plugin: [],
+              project: []
+            }
+          };
+        }
+        
+        // Ensure types collection exists
+        if (!index.__v2.types) {
+          index.__v2.types = {
+            plugin: [],
+            project: []
+          };
+        }
+        
+        // Update package entry
+        index.__v2.packages[packageJson.name] = packagePath;
+        
+        // Update type collections
+        const type = packageJson.type || 'plugin';
+        if (!index.__v2.types[type]) {
+          index.__v2.types[type] = [];
+        }
+        if (!index.__v2.types[type].includes(packageJson.name)) {
+          index.__v2.types[type].push(packageJson.name);
+        }
+        
+        // Update categories
+        metadata.categories.forEach(category => {
+          if (!index.__v2.categories[category]) {
+            index.__v2.categories[category] = [];
+          }
+          if (!index.__v2.categories[category].includes(packageJson.name)) {
+            index.__v2.categories[category].push(packageJson.name);
+          }
+        });
+        
+        // Update index.json
+        const indexUpdated = await updateFile(
+          token,
+          username,
+          registryRepo,
+          'index.json',
+          JSON.stringify(index, null, 2),
+          `${isNew ? 'Add' : 'Update'} ${packageJson.name} in registry index`,
+          branchName,
+        );
+        
+        if (!indexUpdated) {
+          logger.warn('Failed to update registry index.');
+        }
+      }
+    } catch (error) {
+      logger.warn(`Failed to update index.json: ${error.message}`);
+    }
+
     // Create pull request
     const prCreated = await createPullRequest(
       token,
@@ -303,11 +465,16 @@ export async function publishToGitHub(
       `Add ${packageJson.name}@${packageJson.version} to registry`,
       `This PR adds ${packageJson.name} version ${packageJson.version} to the registry.
 
+- Type: ${packageJson.type || 'plugin'}
+- Installable: ${(packageJson.type || 'plugin') === 'plugin' ? 'Yes' : 'No - Project type'}
 - Package name: ${packageJson.name}
 - Version: ${packageJson.version}
 - Runtime version: ${cliVersion}
 - Description: ${packageJson.description || 'No description provided'}
-- Repository: ${metadata.repository}
+- Repository: ${metadata.repository.url}
+- Platform: ${metadata.platform || 'not specified'}
+- Categories: ${metadata.categories.join(', ') || 'none'}
+- Tags: ${metadata.tags.join(', ') || 'none'}
 
 Submitted by: @${username}`,
       `${username}:${branchName}`,
@@ -325,6 +492,7 @@ Submitted by: @${username}`,
     logger.info('Would create:');
     logger.info(`- Branch: ${branchName}`);
     logger.info(`- Package file: ${packagePath}`);
+    logger.info(`- Type: ${packageJson.type || 'plugin'} (${(packageJson.type || 'plugin') === 'plugin' ? 'installable' : 'not installable'})`);
     logger.info(`- Pull request: Add ${packageJson.name}@${packageJson.version} to registry`);
   }
 

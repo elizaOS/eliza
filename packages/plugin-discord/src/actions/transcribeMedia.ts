@@ -116,7 +116,7 @@ export const transcribeMedia: Action = {
 			"presentation",
 		];
 		return keywords.some((keyword) =>
-			message.content.text.toLowerCase().includes(keyword.toLowerCase()),
+			message.content.text?.toLowerCase().includes(keyword.toLowerCase()),
 		);
 	},
 	handler: async (
@@ -136,7 +136,7 @@ export const transcribeMedia: Action = {
 		const attachmentId = await getMediaAttachmentId(runtime, message, state);
 		if (!attachmentId) {
 			console.error("Couldn't get media attachment ID from message");
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -148,7 +148,7 @@ export const transcribeMedia: Action = {
 				metadata: {
 					type: "TRANSCRIBE_MEDIA",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
@@ -164,7 +164,7 @@ export const transcribeMedia: Action = {
 
 		if (!attachment) {
 			console.error(`Couldn't find attachment with ID ${attachmentId}`);
-			await runtime.getMemoryManager("messages").createMemory({
+			await runtime.createMemory({
 				entityId: message.entityId,
 				agentId: message.agentId,
 				roomId: message.roomId,
@@ -176,7 +176,7 @@ export const transcribeMedia: Action = {
 				metadata: {
 					type: "TRANSCRIBE_MEDIA",
 				},
-			});
+			}, "messages");
 			return;
 		}
 
