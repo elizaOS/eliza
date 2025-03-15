@@ -14,7 +14,7 @@ import {
 	type TokenizeTextParams,
 	logger,
 } from "@elizaos/core";
-import { generateText, generateObject } from "ai";
+import { generateObject, generateText } from "ai";
 import { type TiktokenModel, encodingForModel } from "js-tiktoken";
 import { z } from "zod";
 

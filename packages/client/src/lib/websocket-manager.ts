@@ -1,5 +1,5 @@
-import EventEmitter from 'eventemitter3';
 import { SOCKET_MESSAGE_TYPE } from "@elizaos/core";
+import EventEmitter from 'eventemitter3';
 import { apiClient } from "./api";
 import { WorldManager } from "./world-manager";
 

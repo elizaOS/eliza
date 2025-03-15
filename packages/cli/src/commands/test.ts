@@ -1,3 +1,8 @@
+import * as fs from "node:fs";
+import { existsSync } from 'node:fs';
+import * as net from "node:net";
+import * as os from "node:os";
+import path from "node:path";
 import { buildProject } from "@/src/utils/build-project";
 import {
 	type IAgentRuntime,
@@ -7,11 +12,6 @@ import {
 } from "@elizaos/core";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
-import * as fs from "node:fs";
-import { existsSync } from 'node:fs';
-import * as net from "node:net";
-import * as os from "node:os";
-import path from "node:path";
 import { loadProject } from "../project.js";
 import { AgentServer } from "../server/index.js";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";

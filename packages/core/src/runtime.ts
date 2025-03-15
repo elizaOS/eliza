@@ -532,8 +532,6 @@ export class AgentRuntime implements IAgentRuntime {
 
     await this.createMemory(documentMemory, "documents");
 
-    console.log("Chunking and storing document...");
-
     // Create fragments using splitChunks
     const fragments = await splitChunks(
       item.content.text,
@@ -1006,8 +1004,9 @@ export class AgentRuntime implements IAgentRuntime {
    * Ensure the existence of a world.
    */
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
-    try {
-      const world = await this.adapter.getWorld(id);
+    console.trace("ensureWorldExists");
+    // try {
+      const world = await this.getWorld(id);
       if (!world) {
         this.runtimeLogger.info("Creating world:", {
           id,
@@ -1024,14 +1023,14 @@ export class AgentRuntime implements IAgentRuntime {
         });
         this.runtimeLogger.info(`World ${id} created successfully.`);
       }
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to ensure world exists: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      throw error;
-    }
+    // } catch (error) {
+    //   this.runtimeLogger.error(
+    //     `Failed to ensure world exists: ${
+    //       error instanceof Error ? error.message : String(error)
+    //     }`
+    //   );
+    //   throw error;
+    // }
   }
 
   /**
@@ -1439,7 +1438,6 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async close(): Promise<void> {
-    console.log("Closing adapter");
     await this.adapter.close();
   }
 
@@ -1610,6 +1608,7 @@ export class AgentRuntime implements IAgentRuntime {
     tableName: string,
     unique?: boolean
   ): Promise<UUID> {
+    logger.trace("*** createMemory", this.character.name, memory.content);
     return await this.adapter.createMemory(memory, tableName, unique);
   }
 

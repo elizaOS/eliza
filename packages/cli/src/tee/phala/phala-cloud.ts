@@ -379,13 +379,13 @@ async function getUserInfo(): Promise<GetUserInfoResponse | null> {
 			},
 		);
 		const username = getUserAuth.data.username;
-		const getUserId = await axios.get(
+		const getEntityId = await axios.get(
 			`${PHALA_CLOUD_API_URL}/api/v1/users/search?q=${username}`,
 			{
 				headers: { ...headers, "X-API-Key": await retrieveApiKey() },
 			},
 		);
-		const userId = getUserId.data.users[0].id;
+		const userId = getEntityId.data.users[0].id;
 		return { id: userId, username: username };
 	} catch (error: any) {
 		console.error(

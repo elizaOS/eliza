@@ -120,6 +120,7 @@ const messageReceivedHandler = async ({
 	message,
 	callback,
 }: MessageReceivedHandlerParams): Promise<void> => {
+	console.log('*** messageReceivedHandler for ' + runtime.character.name + ' ***', message)
 	// Generate a new response ID
 	const responseId = v4();
 	// Get or create the agent-specific map

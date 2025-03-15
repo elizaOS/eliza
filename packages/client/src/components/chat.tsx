@@ -8,7 +8,7 @@ import { ChatInput } from "@/components/ui/chat/chat-input";
 import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
 import { USER_NAME } from "@/constants";
 import { useAgent, useMessages } from "@/hooks/use-query-hooks";
-import { cn, getUserId, moment } from "@/lib/utils";
+import { cn, getEntityId, moment } from "@/lib/utils";
 import WebSocketsManager from "@/lib/websocket-manager";
 import { WorldManager } from "@/lib/world-manager";
 import type { IAttachment } from "@/types";
@@ -98,9 +98,6 @@ function MessageContent({
           {message.plan ? (
             <Badge variant="outline">{message.plan}</Badge>
           ) : null}
-          {message.actions ? (
-            <Badge variant="outline">{message.actions.join(", ")}</Badge>
-          ) : null}
           {message.createdAt ? (
             <ChatBubbleTimestamp
               timestamp={moment(message.createdAt).format("LT")}
@@ -124,7 +121,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
   const worldId = WorldManager.getWorldId();
 
   const agentData = useAgent(agentId)?.data?.data;
-  const userId = getUserId();
+  const entityId = getEntityId();
   const roomId = agentId;
 
   const { data: messages = [] } = useMessages(agentId, roomId);
@@ -133,7 +130,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
   useEffect(() => {
     wsManager.connect(agentId, roomId);
-    wsManager.connect(userId, roomId);
+    wsManager.connect(entityId, roomId);
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
       queryClient.setQueryData(
@@ -152,8 +149,8 @@ export default function Page({ agentId }: { agentId: UUID }) {
     };
   }, [roomId]);
 
-  const getMessageVariant = (role: string) =>
-    role !== USER_NAME ? "received" : "sent";
+  const getMessageVariant = (id: UUID) =>
+    id !== entityId ? "received" : "sent";
 
   const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } =
     useAutoScroll({
@@ -181,7 +178,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
     if (!input) return;
 
     wsManager.handleBroadcastMessage(
-      userId,
+      entityId,
       USER_NAME,
       input,
       roomId,
@@ -284,18 +281,18 @@ export default function Page({ agentId }: { agentId: UUID }) {
             scrollToBottom={scrollToBottom}
             disableAutoScroll={disableAutoScroll}
           >
-            {messages.map((message: Memory) => {
+            {messages.map((message: ContentWithUser) => {
               const isUser = message.name === USER_NAME;
 
               return (
                 <div
-                  key={message.name + message.createdAt}
+                  key={`${message.id as string}-${message.createdAt}`}
                   className={`flex flex-column gap-1 p-1 ${
                     isUser ? "justify-end" : ""
                   }`}
                 >
                   <ChatBubble
-                    variant={getMessageVariant(message.name)}
+                    variant={getMessageVariant(isUser ? entityId : agentId)}
                     className={`flex flex-row items-center gap-2 ${
                       isUser ? "flex-row-reverse" : ""
                     }`}

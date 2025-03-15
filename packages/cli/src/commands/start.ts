@@ -553,6 +553,10 @@ const startAgents = async (options: {
 		logger.debug("Will load the default Eliza character from ../characters/eliza");
 	}
 
+	await server.initialize();
+
+	server.start(serverPort);
+
 	// Start agents based on project, plugin, or custom configuration
 	if (isProject && projectModule?.default) {
 		// Load all project agents, call their init and register their plugins
@@ -658,10 +662,6 @@ const startAgents = async (options: {
 		logger.warn(`Port ${serverPort} is in use, trying ${serverPort + 1}`);
 		serverPort++;
 	}
-
-	await server.initialize();
-
-	server.start(serverPort);
 
 	if (serverPort !== Number.parseInt(settings.SERVER_PORT || "3000")) {
 		logger.info(`Server started on alternate port ${serverPort}`);

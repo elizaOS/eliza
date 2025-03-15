@@ -1,9 +1,9 @@
 import {
+	ChannelType,
 	type IAgentRuntime,
 	ModelTypes,
-	logger,
 	createUniqueUuid,
-	ChannelType
+	logger
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import {

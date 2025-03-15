@@ -15,7 +15,7 @@ import publishCommand from "./commands/publish.js";
 import { start } from "./commands/start.js";
 import { teeCommand as tee } from "./commands/tee.js";
 import { test } from "./commands/test.js";
-import updateCommand, { update } from "./commands/update.js";
+import { update } from "./commands/update.js";
 import { loadEnvironment } from "./utils/get-config.js";
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
@@ -58,9 +58,6 @@ async function main() {
 		.addCommand(start)
 		.addCommand(update)
 		.addCommand(test);
-
-	// Register the update command
-	updateCommand(program);
 	
 	// Register the env command
 	envCommand(program);

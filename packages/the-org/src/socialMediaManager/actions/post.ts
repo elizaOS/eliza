@@ -98,7 +98,7 @@ async function ensureTwitterClient(
 	serverId: string,
 	worldSettings: { [key: string]: string | boolean | number | null },
 ) {
-	const manager = runtime.getService("twitter") as TwitterService;
+	const manager = runtime.getService("twitter") as any;
 	if (!manager) {
 		throw new Error("Twitter client manager not found");
 	}

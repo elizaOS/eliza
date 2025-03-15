@@ -41,7 +41,7 @@ export function urlToCharacterName(urlName: string): string {
 	return urlName.replace(/-+/g, " ");
 }
 
-export function getUserId(): UUID {
+export function getEntityId(): UUID {
 	const USER_ID_KEY = "elizaos-client-user-id";
     const existingUserId = localStorage.getItem(USER_ID_KEY);
 
