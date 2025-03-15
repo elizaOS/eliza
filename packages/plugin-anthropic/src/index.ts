@@ -1,15 +1,8 @@
 import { anthropic } from "@ai-sdk/anthropic";
-import type {
-	IAgentRuntime,
-	ObjectGenerationParams,
-	Plugin
-} from "@elizaos/core";
-import {
-	type GenerateTextParams,
-	ModelTypes,
-	logger
-} from "@elizaos/core";
-import { generateText } from "ai";
+import { ModelTypes, logger } from "@elizaos/core";
+import type { IAgentRuntime, ObjectGenerationParams, Plugin, GenerateTextParams } from "@elizaos/core";
+import { generateText, generateObject } from "ai";
+import { z } from "zod";
 
 // Define a configuration schema for the Anthropics plugin.
 // const configSchema = z.object({
@@ -123,19 +116,60 @@ export const anthropicPlugin: Plugin = {
 			return text;
 		},
 
-		// Add new model handlers for object generation
-		[ModelTypes.OBJECT_SMALL]: async (runtime, params) => {
-			return await generateObject(runtime, {
-				...params,
-				modelType: ModelTypes.OBJECT_SMALL,
-			});
+		[ModelTypes.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
+			const smallModel = runtime.getSetting("ANTHROPIC_SMALL_MODEL") ?? "claude-3-5-haiku-latest";
+			try {
+				if (params.schema) {
+					const { object } = await generateObject({
+						model: anthropic(smallModel),
+						schema: z.object(params.schema),
+						prompt: params.prompt,
+						temperature: params.temperature,
+						system: runtime.character.system ?? undefined,
+					});
+					return object;
+				}
+				
+				const { object } = await generateObject({
+					model: anthropic(smallModel),
+					output: 'no-schema',
+					prompt: params.prompt,
+					temperature: params.temperature,
+					system: runtime.character.system ?? undefined,
+				});
+				return object;
+			} catch (error) {
+				logger.error("Error generating object:", error);
+				throw error;
+			}
 		},
 
-		[ModelTypes.OBJECT_LARGE]: async (runtime, params) => {
-			return await generateObject(runtime, {
-				...params,
-				modelType: ModelTypes.OBJECT_LARGE,
-			});
+		[ModelTypes.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
+			const largeModel = runtime.getSetting("ANTHROPIC_LARGE_MODEL") ?? "claude-3-5-sonnet-latest";
+			try {
+				if (params.schema) {
+					const { object } = await generateObject({
+						model: anthropic(largeModel),
+						schema: z.object(params.schema),
+						prompt: params.prompt,
+						temperature: params.temperature,
+						system: runtime.character.system ?? undefined,
+					});
+					return object;
+				}
+				
+				const { object } = await generateObject({
+					model: anthropic(largeModel),
+					output: 'no-schema',
+					prompt: params.prompt,
+					temperature: params.temperature,
+					system: runtime.character.system ?? undefined,
+				});
+				return object;
+			} catch (error) {
+				logger.error("Error generating object:", error);
+				throw error;
+			}
 		},
 	},
 	tests: [
@@ -182,160 +216,3 @@ export const anthropicPlugin: Plugin = {
 };
 
 export default anthropicPlugin;
-
-/**
- * Generates a structured object from a prompt using Anthropic's tool use capabilities.
- *
- * @param runtime The agent runtime
- * @param params The generation parameters
- * @returns The generated object
- */
-async function generateObject(
-	runtime: IAgentRuntime,
-	params: ObjectGenerationParams,
-) {
-	const {
-		prompt,
-		schema,
-		output = "object",
-		enumValues = [],
-		modelType = ModelTypes.OBJECT_SMALL,
-		temperature = 0.7,
-	} = params;
-
-	// Determine which model to use
-	const smallModel =
-		runtime.getSetting("ANTHROPIC_SMALL_MODEL") ?? "claude-3-5-haiku-latest";
-	const largeModel =
-		runtime.getSetting("ANTHROPIC_LARGE_MODEL") ?? "claude-3-opus-20240229";
-	const modelName =
-		modelType === ModelTypes.OBJECT_SMALL ? smallModel : largeModel;
-
-	const apiKey = process.env.ANTHROPIC_API_KEY;
-	if (!apiKey) {
-		logger.error("ANTHROPIC_API_KEY is not set");
-		return null;
-	}
-
-	// Handle direct API call to Claude
-	const apiUrl = "https://api.anthropic.com/v1/messages";
-	const headers = {
-		"Content-Type": "application/json",
-		"x-api-key": apiKey,
-		"anthropic-version": "2023-06-01",
-	};
-
-	// Handle enum types specifically
-	if (output === "enum" && enumValues.length) {
-		try {
-			const response = await fetch(apiUrl, {
-				method: "POST",
-				headers,
-				body: JSON.stringify({
-					model: modelName,
-					temperature,
-					system: runtime.character.system ?? "",
-					messages: [{ role: "user", content: prompt }],
-					tools: [
-						{
-							name: "select_value",
-							description:
-								"Select the most appropriate value from the provided options",
-							input_schema: {
-								type: "object",
-								properties: {
-									value: {
-										type: "string",
-										enum: enumValues,
-										description: "The selected value",
-									},
-								},
-								required: ["value"],
-							},
-						},
-					],
-					tool_choice: { type: "any" },
-				}),
-			});
-
-			if (!response.ok) {
-				throw new Error(`API error: ${response.status}`);
-			}
-
-			const data = await response.json();
-
-			// Check for tool use in the response
-			if (data.content && Array.isArray(data.content)) {
-				for (const block of data.content) {
-					if (block.type === "tool_use" && block.name === "select_value") {
-						return block.input?.value || null;
-					}
-				}
-			}
-
-			return null;
-		} catch (error) {
-			logger.error("Error generating enum value:", error);
-			return null;
-		}
-	}
-
-	// Handle regular object generation with schema
-	try {
-		// Determine the appropriate JSON schema
-		let toolSchema: any;
-
-		if (schema) {
-			// Use provided schema
-			toolSchema = schema;
-		} else {
-			// Default schema based on output type
-			toolSchema = {
-				type: output === "array" ? "array" : "object",
-				...(output === "array" ? { items: { type: "object" } } : {}),
-			};
-		}
-
-		const response = await fetch(apiUrl, {
-			method: "POST",
-			headers,
-			body: JSON.stringify({
-				model: modelName,
-				temperature,
-				system: runtime.character.system ?? "",
-				messages: [{ role: "user", content: prompt }],
-				tools: [
-					{
-						name: "generate_structured_data",
-						description: "Generate structured data based on the prompt",
-						input_schema: toolSchema,
-					},
-				],
-				tool_choice: { type: "any" },
-			}),
-		});
-
-		if (!response.ok) {
-			throw new Error(`API error: ${response.status}`);
-		}
-
-		const data = await response.json();
-
-		// Check for tool use in the response
-		if (data.content && Array.isArray(data.content)) {
-			for (const block of data.content) {
-				if (
-					block.type === "tool_use" &&
-					block.name === "generate_structured_data"
-				) {
-					return block.input || null;
-				}
-			}
-		}
-
-		return null;
-	} catch (error) {
-		logger.error("Error generating object:", error);
-		return null;
-	}
-}

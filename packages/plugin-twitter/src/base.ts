@@ -372,11 +372,11 @@ export class ClientBase extends EventEmitter {
     }
 
     const maxRetries = 3;
-    let retryCount = 0;
-    let lastError: Error | null = null;
+    const retryCount = 0;
+    const lastError: Error | null = null;
 
     while (retryCount < maxRetries) {
-      try {
+      // try {
         const authToken =
           this.state?.TWITTER_COOKIES_AUTH_TOKEN ||
           this.runtime.getSetting("TWITTER_COOKIES_AUTH_TOKEN");
@@ -431,19 +431,19 @@ export class ClientBase extends EventEmitter {
           );
           break;
         }
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        logger.error(
-          `Login attempt ${retryCount + 1} failed: ${lastError.message}`
-        );
-        retryCount++;
+      // } catch (error) {
+      //   lastError = error instanceof Error ? error : new Error(String(error));
+      //   logger.error(
+      //     `Login attempt ${retryCount + 1} failed: ${lastError.message}`
+      //   );
+      //   retryCount++;
 
-        if (retryCount < maxRetries) {
-          const delay = 2 ** retryCount * 1000; // Exponential backoff
-          logger.info(`Retrying in ${delay / 1000} seconds...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-      }
+      //   if (retryCount < maxRetries) {
+      //     const delay = 2 ** retryCount * 1000; // Exponential backoff
+      //     logger.info(`Retrying in ${delay / 1000} seconds...`);
+      //     await new Promise((resolve) => setTimeout(resolve, delay));
+      //   }
+      // }
     }
 
     if (retryCount === maxRetries) {
@@ -868,7 +868,7 @@ export class ClientBase extends EventEmitter {
    * Fetches recent interactions (likes, retweets, quotes) for the authenticated user's tweets
    */
   async fetchInteractions() {
-    try {
+    // try {
       // Get recent interactions from Twitter API
       const interactions = (await this.requestQueue.add(() =>
         (this.twitterClient as any).get("statuses/mentions_timeline", {
@@ -891,10 +891,10 @@ export class ClientBase extends EventEmitter {
         quoteTweet: interaction.is_quote_status ? interaction : undefined,
         retweetId: interaction.retweeted_status?.id_str,
       }));
-    } catch (error) {
-      logger.error("Error fetching Twitter interactions:", error);
-      return [];
-    }
+    // } catch (error) {
+    //   logger.error("Error fetching Twitter interactions:", error);
+    //   return [];
+    // }
   }
 
   /**

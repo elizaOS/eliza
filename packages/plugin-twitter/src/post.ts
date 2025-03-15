@@ -98,6 +98,11 @@ export class TwitterPostClient {
 
 		// Start the loop after a 1 minute delay to allow other services to initialize
 		setTimeout(generateNewTweetLoop, 60 * 1000);
+		if(this.runtime.getSetting("TWITTER_POST_IMMEDIATELY")) {
+			// await 1 second
+			await new Promise(resolve => setTimeout(resolve, 1000));
+			this.generateNewTweet();
+		}
 	}
 
 	/**
@@ -311,7 +316,7 @@ export class TwitterPostClient {
 	 * This approach aligns with our platform-independent architecture.
 	 */
 	async generateNewTweet() {
-		try {
+		// try {
 			logger.log("Generating new tweet...");
 			
 			// Create the timeline room ID for storing the post
@@ -321,11 +326,46 @@ export class TwitterPostClient {
 				return;
 			}
 			
+			// Create standardized world and room IDs
 			const worldId = createUniqueUuid(this.runtime, userId) as UUID;
 			const timelineRoomId = createUniqueUuid(this.runtime, `${userId}-home`) as UUID;
+
+			// Ensure world exists first
+			await this.runtime.ensureWorldExists({
+				id: worldId,
+				name: `${this.client.profile.username}'s Twitter`,
+				agentId: this.runtime.agentId,
+				serverId: userId,
+				metadata: {
+					ownership: { ownerId: userId },
+					twitter: {
+						username: this.client.profile.username,
+						id: userId
+					}
+				}
+			});
+
+			// Ensure timeline room exists
+			await this.runtime.ensureRoomExists({
+				id: timelineRoomId,
+				name: `${this.client.profile.username}'s Timeline`,
+				source: "twitter",
+				type: ChannelType.FEED,
+				channelId: `${userId}-home`,
+				serverId: userId,
+				worldId: worldId,
+			});
 			
+			const message = {
+				id: createUniqueUuid(this.runtime, `tweet-${Date.now()}`) as UUID,
+				entityId: this.runtime.agentId,
+				agentId: this.runtime.agentId,
+				roomId: timelineRoomId,
+				content: {}
+			}
+
 			// Compose state with relevant context for tweet generation
-			const state = await this.runtime.composeState(null, [
+			const state = await this.runtime.composeState(message, [
 				"CHARACTER",
 				"RECENT_MESSAGES",
 				"TIME",
@@ -337,20 +377,17 @@ export class TwitterPostClient {
 				template: this.runtime.character.templates?.twitterPostTemplate || twitterPostTemplate,
 			});
 			
-			const response = await this.runtime.useModel(ModelTypes.TEXT_LARGE, {
+			const jsonResponse = await this.runtime.useModel(ModelTypes.OBJECT_LARGE, {
 				prompt: tweetPrompt,
+				output: "no-schema",
 			});
-			
-			// Extract the tweet content from the model response
-			const jsonResponse = parseJSONObjectFromText(response);
-			
-			if (!jsonResponse || !jsonResponse.text) {
-				logger.error("Failed to generate valid tweet content");
-				return;
-			}
+
+			console.log("response is", jsonResponse)
+
+			console.log("post is", jsonResponse.post)
 			
 			// Cleanup the tweet text
-			const cleanedText = this.cleanupTweetText(jsonResponse.text);
+			const cleanedText = this.cleanupTweetText(jsonResponse.post);
 			
 			// Prepare media if included
 			const mediaData: MediaData[] = [];
@@ -429,8 +466,7 @@ export class TwitterPostClient {
 							createdAt: Date.now(),
 						};
 						
-						await this.runtime
-											.createMemory(postedMemory);
+						await this.runtime.createMemory(postedMemory, "messages");
 							
 						return [postedMemory];
 					}
@@ -450,9 +486,9 @@ export class TwitterPostClient {
 				source: "twitter"
 			} as MessagePayload);
 			
-		} catch (error) {
-			logger.error("Error generating tweet:", error);
-		}
+		// } catch (error) {
+		// 	logger.error("Error generating tweet:", error);
+		// }
 	}
 	
 	/**

@@ -149,99 +149,6 @@ function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
 
 	throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
 }
-
-const generateObject = async ({
-	runtime,
-	prompt,
-	modelType = ModelTypes.TEXT_SMALL,
-	stopSequences = [],
-	output = "object",
-	enumValues = [],
-	schema,
-}): Promise<any> => {
-	if (!prompt) {
-		const errorMessage = "generateObject prompt is empty";
-		console.error(errorMessage);
-		throw new Error(errorMessage);
-	}
-
-	// Special handling for enum output type
-	if (output === "enum" && enumValues) {
-		const response = await runtime.useModel(modelType, {
-			runtime,
-			prompt,
-			modelType,
-			stopSequences,
-			maxTokens: 8,
-			object: true,
-		});
-
-		// Clean up the response to extract just the enum value
-		const cleanedResponse = response.trim();
-
-		// Verify the response is one of the allowed enum values
-		if (enumValues.includes(cleanedResponse)) {
-			return cleanedResponse;
-		}
-
-		// If the response includes one of the enum values (case insensitive)
-		const matchedValue = enumValues.find((value) =>
-			cleanedResponse.toLowerCase().includes(value.toLowerCase()),
-		);
-
-		if (matchedValue) {
-			return matchedValue;
-		}
-
-		logger.error(`Invalid enum value received: ${cleanedResponse}`);
-		logger.error(`Expected one of: ${enumValues.join(", ")}`);
-		return null;
-	}
-
-	// Regular object/array generation
-	const response = await runtime.useModel(modelType, {
-		runtime,
-		prompt,
-		modelType,
-		stopSequences,
-		object: true,
-	});
-
-	let jsonString = response;
-
-	// Find appropriate brackets based on expected output type
-	const firstChar = output === "array" ? "[" : "{";
-	const lastChar = output === "array" ? "]" : "}";
-
-	const firstBracket = response.indexOf(firstChar);
-	const lastBracket = response.lastIndexOf(lastChar);
-
-	if (firstBracket !== -1 && lastBracket !== -1 && firstBracket < lastBracket) {
-		jsonString = response.slice(firstBracket, lastBracket + 1);
-	}
-
-	if (jsonString.length === 0) {
-		logger.error(`Failed to extract JSON ${output} from model response`);
-		return null;
-	}
-
-	// Parse the JSON string
-	try {
-		const json = JSON.parse(jsonString);
-
-		// Validate against schema if provided
-		if (schema) {
-			return schema.parse(json);
-		}
-
-		return json;
-	} catch (_error) {
-		logger.error(`Failed to parse JSON ${output}`);
-		logger.error(jsonString);
-		return null;
-	}
-};
-
 async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 	const { agentId, roomId } = message;
 
@@ -273,15 +180,13 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 			runtime.character.templates?.reflectionTemplate || reflectionTemplate,
 	});
 
-	const reflection = await generateObject({
-		runtime,
+	const reflection = await runtime.useModel(ModelTypes.OBJECT_SMALL, {
 		prompt,
-		modelType: ModelTypes.TEXT_SMALL,
 		schema: reflectionSchema,
 	});
 	if (!reflection) {
 		// seems like we're failing JSON parsing
-		logger.warn("generateObject failed", prompt);
+		logger.warn("Getting reflection failed", prompt);
 		return;
 	}
 
