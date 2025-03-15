@@ -78,6 +78,7 @@
 	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b",
 	"dependencies": {
 		"@electric-sql/pglite": "^0.2.17",
+		"socket.io": "^4.8.1",
 		"zod": "3.24.2"
 	}
 }
