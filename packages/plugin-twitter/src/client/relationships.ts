@@ -2,7 +2,7 @@ import { Headers } from "headers-polyfill";
 import stringify from "json-stable-stringify";
 import { addApiFeatures, bearerToken, requestApi } from "./api";
 import type { TwitterAuth } from "./auth";
-import { type Profile, getUserIdByScreenName } from "./profile";
+import { type Profile, getEntityIdByScreenName } from "./profile";
 import { getUserTimeline } from "./timeline-async";
 import {
 	type RelationshipTimeline,
@@ -223,7 +223,7 @@ export async function followUser(
 		throw new Error("Must be logged in to follow users");
 	}
 	// Get user ID from username
-	const userIdResult = await getUserIdByScreenName(username, auth);
+	const userIdResult = await getEntityIdByScreenName(username, auth);
 
 	if (!userIdResult.success) {
 		throw new Error(`Failed to get user ID: ${userIdResult.err.message}`);

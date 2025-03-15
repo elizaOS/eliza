@@ -7,15 +7,15 @@ import { logger } from "@elizaos/core";
 import { Command } from "commander";
 import { agent } from "./commands/agent.js";
 import { create } from "./commands/create.js";
-import devCommand from "./commands/dev.js";
-import envCommand from "./commands/env.js";
+import { dev } from "./commands/dev.js";
+import { env } from "./commands/env.js";
 import { plugin } from "./commands/plugin.js";
 import { project } from "./commands/project.js";
-import publishCommand from "./commands/publish.js";
+import { publish } from "./commands/publish.js";
 import { start } from "./commands/start.js";
 import { teeCommand as tee } from "./commands/tee.js";
 import { test } from "./commands/test.js";
-import updateCommand, { update } from "./commands/update.js";
+import { update } from "./commands/update.js";
 import { loadEnvironment } from "./utils/get-config.js";
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
@@ -57,19 +57,11 @@ async function main() {
 		.addCommand(tee)
 		.addCommand(start)
 		.addCommand(update)
-		.addCommand(test);
-
-	// Register the update command
-	updateCommand(program);
+		.addCommand(test)
+		.addCommand(env)
+		.addCommand(dev)
+		.addCommand(publish)
 	
-	// Register the env command
-	envCommand(program);
-	
-	// Register the dev command
-	devCommand(program);
-	
-	// Register the publish command
-	publishCommand(program);
 
 	await program.parseAsync();
 }

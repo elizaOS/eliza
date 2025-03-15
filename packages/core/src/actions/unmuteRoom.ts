@@ -7,7 +7,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 } from "../types";
 
@@ -70,7 +70,7 @@ export const unmuteRoomAction: Action = {
 				template: shouldUnmuteTemplate, // Define this template separately
 			});
 
-			const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 				runtime,
 				prompt: shouldUnmutePrompt,
 				stopSequences: [],

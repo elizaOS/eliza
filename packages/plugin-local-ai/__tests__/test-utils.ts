@@ -6,8 +6,8 @@ import {
 	type Character,
 	type IAgentRuntime,
 	type ModelResultMap,
-	type ModelType,
-	ModelTypes,
+	type ModelTypeName,
+	ModelType,
 	type State,
 	type UUID,
 	logger
@@ -54,7 +54,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 	ensureParticipantInRoom: async () => { },
 	ensureRoomExists: async () => { },
 	composeState: async () => ({}) as State,
-	useModel: async <T extends ModelType, R = ModelResultMap[T]>(
+	useModel: async <T extends ModelTypeName, R = ModelResultMap[T]>(
 		modelType: T,
 		params: any
 	): Promise<R> => {
@@ -67,21 +67,21 @@ export const createMockRuntime = (): IAgentRuntime => ({
 		}
 
 		// Call downloadModel based on the model class
-		if (modelType === ModelTypes.TEXT_SMALL) {
+		if (modelType === ModelType.TEXT_SMALL) {
 			await downloadModelMock(
 				MODEL_SPECS.small,
 				path.join(TEST_PATHS.MODELS_DIR, MODEL_SPECS.small.name)
 			);
 			return "The small language model generated this response." as R;
 		}
-		if (modelType === ModelTypes.TEXT_LARGE) {
+		if (modelType === ModelType.TEXT_LARGE) {
 			await downloadModelMock(
 				MODEL_SPECS.medium,
 				path.join(TEST_PATHS.MODELS_DIR, MODEL_SPECS.medium.name)
 			);
 			return "Artificial intelligence is a transformative technology that continues to evolve." as R;
 		}
-		if (modelType === ModelTypes.TRANSCRIPTION) {
+		if (modelType === ModelType.TRANSCRIPTION) {
 			// For transcription, we expect a Buffer as the parameter
 			const audioBuffer = params as unknown as Buffer;
 			if (!Buffer.isBuffer(audioBuffer)) {
@@ -140,7 +140,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 				throw error;
 			}
 		}
-		if (modelType === ModelTypes.IMAGE_DESCRIPTION) {
+		if (modelType === ModelType.IMAGE_DESCRIPTION) {
 			// For image description, we expect a URL as the parameter
 			const imageUrl = params as unknown as string;
 			if (typeof imageUrl !== "string") {
@@ -199,7 +199,7 @@ export const createMockRuntime = (): IAgentRuntime => ({
 				throw error;
 			}
 		}
-		if (modelType === ModelTypes.TEXT_TO_SPEECH) {
+		if (modelType === ModelType.TEXT_TO_SPEECH) {
 			// For TTS, we expect a string as the parameter
 			const text = params as unknown as string;
 			if (typeof text !== "string") {

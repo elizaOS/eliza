@@ -1,4 +1,4 @@
-import { type IAgentRuntime, ModelTypes, logger } from "@elizaos/core";
+import { type IAgentRuntime, ModelType, logger } from "@elizaos/core";
 import type { Sentiment } from "../schemas";
 import type { IToken } from "../types";
 
@@ -124,7 +124,7 @@ export default class BuySignal {
 			`;
 
 		// Use the runtime model service instead of direct API calls
-		const responseText = await this.runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const responseText = await this.runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 			system:
 				"You are a token recommender bot for a trading bot. Only respond with valid JSON.",
@@ -172,14 +172,14 @@ export default class BuySignal {
 
 		// Create a buy task to execute the trade
 		const { v4: uuidv4 } = require("uuid");
-		const { ServiceTypes } = require("../../degen-trader/types");
+		const { ServiceType } = require("../../degen-trader/types");
 
 		await this.runtime.createTask({
 			id: uuidv4(),
 			roomId: this.runtime.agentId,
 			name: "EXECUTE_BUY_SIGNAL",
 			description: `Buy token ${data.recommended_buy} (${data.recommend_buy_address})`,
-			tags: ["queue", ServiceTypes.DEGEN_TRADING],
+			tags: ["queue", ServiceType.DEGEN_TRADING],
 			metadata: {
 				signal: {
 					positionId: uuidv4(),

@@ -2,7 +2,7 @@ import {
 	type Evaluator,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	type UUID,
 	composePrompt,
@@ -10,7 +10,7 @@ import {
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import type { CommunityInvestorService } from "../tradingService.js";
-import { type RecommendationMemory, ServiceTypes } from "../types.js";
+import { type RecommendationMemory, ServiceType } from "../types.js";
 import {
 	extractXMLFromResponse,
 	getZodJsonSchema,
@@ -444,13 +444,13 @@ async function handler(
 
 	const { agentId, roomId } = message;
 
-	if (!runtime.getService(ServiceTypes.COMMUNITY_INVESTOR)) {
+	if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
 		console.log("no trading service");
 		return;
 	}
 
 	const tradingService = runtime.getService<CommunityInvestorService>(
-		ServiceTypes.COMMUNITY_INVESTOR,
+		ServiceType.COMMUNITY_INVESTOR,
 	)!;
 
 	if (!tradingService.hasWallet("solana")) {
@@ -470,7 +470,7 @@ async function handler(
 		},
 	});
 
-	const sentimentText = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+	const sentimentText = await runtime.useModel(ModelType.TEXT_LARGE, {
 		prompt: sentimentPrompt,
 	});
 
@@ -542,7 +542,7 @@ async function handler(
 
 	// Only function slowing us down: generateText
 	const [text, participants] = await Promise.all([
-		runtime.useModel(ModelTypes.TEXT_LARGE, {
+		runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt,
 			stopSequences: [],
 		}),
@@ -649,7 +649,7 @@ async function handler(
 					template: recommendationFormatTemplate,
 				});
 
-				const text = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+				const text = await runtime.useModel(ModelType.TEXT_SMALL, {
 					prompt,
 				});
 
@@ -759,7 +759,7 @@ async function handler(
 
 			console.log("prompt", prompt);
 
-			const res = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+			const res = await runtime.useModel(ModelType.TEXT_LARGE, {
 				prompt,
 			});
 

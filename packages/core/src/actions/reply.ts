@@ -6,7 +6,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 } from "../types";
 
@@ -72,7 +72,7 @@ export const replyAction = {
 			template: replyTemplate,
 		});
 
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 

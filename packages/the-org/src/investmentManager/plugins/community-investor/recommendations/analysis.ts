@@ -1,13 +1,13 @@
 import {
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePrompt,
 	logger,
 } from "@elizaos/core";
 import type { CommunityInvestorService } from "../tradingService.js";
-import { ServiceTypes } from "../types.js";
+import { ServiceType } from "../types.js";
 import {
 	extractXMLFromResponse,
 	parseConfirmationResponse,
@@ -257,13 +257,13 @@ export const getTokenDetails: any = {
 		_options,
 		callback: any,
 	) {
-		if (!runtime.getService(ServiceTypes.COMMUNITY_INVESTOR)) {
+		if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
 			console.log("no trading service");
 			return;
 		}
 
 		const tradingService = runtime.getService<CommunityInvestorService>(
-			ServiceTypes.COMMUNITY_INVESTOR,
+			ServiceType.COMMUNITY_INVESTOR,
 		);
 
 		if (!tradingService) {
@@ -302,7 +302,7 @@ export const getTokenDetails: any = {
 			template: extractLatestTicketTemplate,
 		});
 
-		const text = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const text = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 
@@ -340,7 +340,7 @@ export const getTokenDetails: any = {
 			template: tokenDetailsTemplate,
 		});
 
-		const tokenDetails = await runtime.useModel(ModelTypes.TEXT_LARGE, {
+		const tokenDetails = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt: tokenDetailsPrompt,
 		});
 

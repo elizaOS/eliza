@@ -2,7 +2,7 @@ import {
 	type Entity,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	Service,
 	type UUID,
 	logger
@@ -32,7 +32,7 @@ import {
 	RecommendationType,
 	type RecommenderMetrics,
 	type RecommenderMetricsHistory,
-	ServiceTypes,
+	ServiceType,
 	type TokenMarketData,
 	type TokenMetadata,
 	type TokenPerformance,
@@ -66,13 +66,13 @@ export type TradingEvent =
 /**
  * CommunityInvestorService class representing a service for trading on the Solana blockchain.
  * @extends Service
- * @property {string} serviceType - The type of service, set to ServiceTypes.COMMUNITY_INVESTOR.
+ * @property {string} serviceType - The type of service, set to ServiceType.COMMUNITY_INVESTOR.
  * @property {string} capabilityDescription - Description of the agent's ability to trade on the Solana blockchain.
  * @method storeRecommenderMetrics - Store entity metrics and cache for 5 minutes.
  * @method storeRecommenderMetricsHistory - Store entity metrics history.
  */
 export class CommunityInvestorService extends Service {
-	static serviceType = ServiceTypes.COMMUNITY_INVESTOR;
+	static serviceType = ServiceType.COMMUNITY_INVESTOR;
 	capabilityDescription = "The agent is able to trade on the Solana blockchain";
 
 	// Client instances
@@ -1391,7 +1391,7 @@ export class CommunityInvestorService extends Service {
 			// Search for transactions with this position ID
 			const query = `transactions for position ${positionId}`;
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				query,
 			);
 
@@ -1429,7 +1429,7 @@ export class CommunityInvestorService extends Service {
 			// Search for transactions with this token address
 			const query = `transactions for token ${tokenAddress}`;
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				query,
 			);
 
@@ -1476,7 +1476,7 @@ export class CommunityInvestorService extends Service {
 			// Search for position in memory
 			const query = `position with ID ${positionId}`;
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				query,
 			);
 
@@ -1516,7 +1516,7 @@ export class CommunityInvestorService extends Service {
 			// Search for recommendations by this entity
 			const query = `recommendations by entity ${entityId}`;
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				query,
 			);
 
@@ -1641,7 +1641,7 @@ export class CommunityInvestorService extends Service {
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				memory.content.text,
 			);
 			const memoryWithEmbedding = { ...memory, embedding };
@@ -1682,7 +1682,7 @@ export class CommunityInvestorService extends Service {
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				memory.content.text,
 			);
 			const memoryWithEmbedding = { ...memory, embedding };
@@ -1723,7 +1723,7 @@ export class CommunityInvestorService extends Service {
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				memory.content.text,
 			);
 			const memoryWithEmbedding = { ...memory, embedding };
@@ -1780,7 +1780,7 @@ export class CommunityInvestorService extends Service {
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				memory.content.text,
 			);
 			const memoryWithEmbedding = { ...memory, embedding };
@@ -1827,7 +1827,7 @@ export class CommunityInvestorService extends Service {
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				memory.content.text,
 			);
 			const memoryWithEmbedding = { ...memory, embedding };
@@ -1874,7 +1874,7 @@ export class CommunityInvestorService extends Service {
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				memory.content.text,
 			);
 			const memoryWithEmbedding = { ...memory, embedding };
@@ -1932,7 +1932,7 @@ export class CommunityInvestorService extends Service {
 			// Search for metrics in memory
 			const query = `entity metrics for entity ${entityId}`;
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				query,
 			);
 
@@ -1980,7 +1980,7 @@ export class CommunityInvestorService extends Service {
 			// Search for history in memory
 			const query = `entity metrics history for entity ${entityId}`;
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				query,
 			);
 
@@ -2083,7 +2083,7 @@ export class CommunityInvestorService extends Service {
 			// Search for token in memory
 			const query = `token performance for ${tokenAddress}`;
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				query,
 			);
 
@@ -2132,7 +2132,7 @@ export class CommunityInvestorService extends Service {
 			// Search for open positions in memory
 			const query = "open positions with balance";
 			const embedding = await this.runtime.useModel(
-				ModelTypes.TEXT_EMBEDDING,
+				ModelType.TEXT_EMBEDDING,
 				query,
 			);
 

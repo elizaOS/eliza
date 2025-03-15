@@ -5,8 +5,8 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	Service,
-	type ServiceType,
-	ServiceTypes,
+	type ServiceTypeName,
+	ServiceType,
 	type State,
 	type Task
 } from "../types";
@@ -16,7 +16,7 @@ import {
  * @extends Service
  * @property {NodeJS.Timeout|null} timer - Timer for executing tasks
  * @property {number} TICK_INTERVAL - Interval in milliseconds to check for tasks
- * @property {ServiceType} serviceType - Service type of TASK
+ * @property {ServiceTypeName} serviceType - Service type of TASK
  * @property {string} capabilityDescription - Description of the service's capability
  * @static
  * @method start - Static method to start the TaskService
@@ -32,7 +32,7 @@ import {
 export class TaskService extends Service {
 	private timer: NodeJS.Timeout | null = null;
 	private readonly TICK_INTERVAL = 1000; // Check every second
-	static serviceType: ServiceType = ServiceTypes.TASK;
+	static serviceType: ServiceTypeName = ServiceType.TASK;
 	capabilityDescription = "The agent is able to schedule and execute tasks";
 
 	/**
@@ -279,7 +279,7 @@ export class TaskService extends Service {
 	 * @returns {Promise<void>} - A promise that resolves once the service has been stopped.
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = runtime.getService(ServiceTypes.TASK);
+		const service = runtime.getService(ServiceType.TASK);
 		if (service) {
 			await service.stop();
 		}

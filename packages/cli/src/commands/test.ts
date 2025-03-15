@@ -1,18 +1,15 @@
 import * as fs from "node:fs";
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import * as net from "node:net";
 import * as os from "node:os";
 import path from "node:path";
 import { buildProject } from "@/src/utils/build-project";
 import {
-	AgentRuntime,
-	type Character,
 	type IAgentRuntime,
-	ModelTypes,
+	ModelType,
 	type ProjectAgent,
 	logger,
-	settings,
-	stringToUuid
+	settings
 } from "@elizaos/core";
 import { Command } from "commander";
 import * as dotenv from "dotenv";
@@ -21,9 +18,7 @@ import { AgentServer } from "../server/index.js";
 import { jsonToCharacter, loadCharacterTryPath } from "../server/loader";
 import { TestRunner } from "../testRunner.js";
 import { promptForEnvVars } from "../utils/env-prompt.js";
-import { handleError } from "../utils/handle-error";
-import { installPlugin } from "../utils/install-plugin";
-import { runBunCommand } from "../utils/run-bun";
+import { startAgent } from "./start.js";
 
 // Helper function to check port availability
 async function checkPortAvailable(port: number): Promise<boolean> {
@@ -38,177 +33,6 @@ async function checkPortAvailable(port: number): Promise<boolean> {
 		});
 		server.listen(port);
 	});
-}
-
-/**
- * Helper function to start an agent
- */
-async function startAgent(
-	character: Character,
-	server: AgentServer,
-	init?: (runtime: IAgentRuntime) => void,
-	plugins: any[] = [],
-	options: {
-		dataDir?: string;
-		postgresUrl?: string;
-		isPluginTestMode?: boolean;
-	} = {}
-): Promise<IAgentRuntime> {
-	character.id ??= stringToUuid(character.name);
-
-	try {
-		// Filter out any undefined or null plugins
-		const validPlugins = plugins.filter(plugin => plugin != null);
-		const pluginsToInstall = [];
-		
-		// first, try importing the plugins, and if they fail, add them to the list of plugins to install
-		for (const plugin of validPlugins) {
-			try {
-				await import(plugin);
-			} catch (error) {
-				pluginsToInstall.push(plugin);
-			}
-		}
-
-		// if there are any plugins to install, install them
-		if (pluginsToInstall.length > 0) {
-			logger.info("Installing plugins...");
-			for (const plugin of pluginsToInstall) {
-				await runBunCommand(["add", plugin], process.cwd());
-			}
-		}
-		
-		// Create runtime
-		const runtime = new AgentRuntime({
-			character,
-			plugins: validPlugins,
-		});
-
-		// Call init if provided
-		if (init) {
-			await init(runtime);
-		}
-
-		// start services/plugins/process knowledge
-		await runtime.initialize();
-
-		// Check if TEXT_EMBEDDING model is registered, if not, try to load one
-		// Skip auto-loading embedding models if we're in plugin test mode
-		const embeddingModel = runtime.getModel(ModelTypes.TEXT_EMBEDDING);
-		if (!embeddingModel && !options.isPluginTestMode) {
-			logger.info("No TEXT_EMBEDDING model registered. Attempting to load one automatically...");
-			
-			// First check if OpenAI API key exists
-			if (process.env.OPENAI_API_KEY) {
-				logger.info("Found OpenAI API key. Loading OpenAI plugin for embeddings...");
-				
-				try {
-					// Use Node's require mechanism to dynamically load the plugin
-					const pluginName = "@elizaos/plugin-openai";
-					
-					try {
-						// Using require for dynamic imports in Node.js is safer than eval
-						// @ts-ignore - Ignoring TypeScript's static checking for dynamic requires
-						const pluginModule = require(pluginName);
-						const plugin = pluginModule.default || pluginModule.openaiPlugin;
-						
-						if (plugin) {
-							await runtime.registerPlugin(plugin);
-							logger.success("Successfully loaded OpenAI plugin for embeddings");
-						} else {
-							logger.warn(`Could not find a valid plugin export in ${pluginName}`);
-						}
-					} catch (error) {
-						logger.warn(`Failed to import OpenAI plugin: ${error}`);
-						logger.warn(`You may need to install it with: npm install ${pluginName}`);
-					}
-				} catch (error) {
-					logger.warn(`Error loading OpenAI plugin: ${error}`);
-				}
-			} else {
-				logger.info("No OpenAI API key found. Loading local-ai plugin for embeddings...");
-				
-				try {
-					// Use Node's require mechanism to dynamically load the plugin
-					const pluginName = "@elizaos/plugin-local-ai";
-					
-					try {
-						// @ts-ignore - Ignoring TypeScript's static checking for dynamic requires
-						const pluginModule = require(pluginName);
-						const plugin = pluginModule.default || pluginModule.localAIPlugin;
-						
-						if (plugin) {
-							await runtime.registerPlugin(plugin);
-							logger.success("Successfully loaded local-ai plugin for embeddings");
-						} else {
-							logger.warn(`Could not find a valid plugin export in ${pluginName}`);
-						}
-					} catch (error) {
-						logger.warn(`Failed to import local-ai plugin: ${error}`);
-						logger.warn(`You may need to install it with: npm install ${pluginName}`);
-					}
-				} catch (error) {
-					logger.warn(`Error loading local-ai plugin: ${error}`);
-				}
-			}
-		} else if (!embeddingModel && options.isPluginTestMode) {
-			logger.info("No TEXT_EMBEDDING model registered, but running in plugin test mode - skipping auto-loading");
-		}
-
-		// add to container
-		server.registerAgent(runtime);
-
-		// report to console
-		logger.debug(`Started ${runtime.character.name} as ${runtime.agentId}`);
-
-		return runtime;
-	} catch (error) {
-		// Handle database constraint errors gracefully
-		if (error instanceof Error && 
-			(error.message.includes('foreign key constraint') || 
-			  error.message.includes('does not exist in database') ||
-			  error.message.includes('violates unique constraint'))) {
-			
-			logger.warn(`Database constraint error detected. Creating a unique agent with preserved properties`);
-			
-			// Make a deep copy with a unique ID to avoid database constraints
-			const uniqueCharacter = JSON.parse(JSON.stringify(character));
-			const originalName = uniqueCharacter.name;
-			
-			// Use a timestamp to make the ID unique but deterministic
-			uniqueCharacter.id = stringToUuid(`${originalName}-test-${Date.now()}`);
-			
-			// Add a bio field to the character if not present (needed for database)
-			uniqueCharacter.bio = uniqueCharacter.bio || "Test agent for plugin testing";
-			
-			// Get valid plugins again inside this scope
-			const retryPlugins = plugins.filter(plugin => plugin != null);
-			
-			// Try again with the unique character
-			const runtime = new AgentRuntime({
-				character: uniqueCharacter,
-				plugins: retryPlugins,
-			});
-			
-			if (init) {
-				await init(runtime);
-			}
-			
-			await runtime.initialize();
-			
-			// Restore original name if needed
-			runtime.character.name = originalName;
-			
-			server.registerAgent(runtime);
-			logger.debug(`Started ${runtime.character.name} as ${runtime.agentId} (with unique ID)`);
-			
-			return runtime;
-		}
-		
-		// For other errors, log and rethrow
-		logger.error(`Error starting agent ${character.name}:`, error);
-		throw error;
-	}
 }
 
 /**

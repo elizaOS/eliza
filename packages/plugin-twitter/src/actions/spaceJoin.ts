@@ -51,7 +51,7 @@ export default {
 			await callback(response.content);
 		}
 
-		const manager = runtime.getService(ServiceTypes.TWITTER);
+		const manager = runtime.getService(ServiceType.TWITTER);
 		if (!manager) {
 			throw new Error("Twitter client manager not found");
 		}

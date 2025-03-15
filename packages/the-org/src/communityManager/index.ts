@@ -37,6 +37,7 @@ export const character: Character = {
 		"@elizaos/plugin-anthropic",
 		"@elizaos/plugin-openai",
 		"@elizaos/plugin-discord",
+		"@elizaos/plugin-twitter",
 		"@elizaos/plugin-pdf",
 		"@elizaos/plugin-video-understanding",
 	],

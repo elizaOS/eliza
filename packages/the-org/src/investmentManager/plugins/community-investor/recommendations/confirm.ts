@@ -8,7 +8,7 @@ import {
 } from "@elizaos/core";
 import { v4 as uuid } from "uuid";
 import type { CommunityInvestorService } from "../tradingService";
-import { Conviction, RecommendationType, ServiceTypes } from "../types";
+import { Conviction, RecommendationType, ServiceType } from "../types";
 import type { MessageRecommendation } from "./schema";
 
 // Use type intersection for extended metadata
@@ -93,7 +93,7 @@ export const confirmRecommendation: Action = {
 		callback: any,
 	) {
 		console.log("confirmRecommendation is running");
-		if (!runtime.getService(ServiceTypes.COMMUNITY_INVESTOR)) {
+		if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
 			console.log("no trading service");
 			await runtime.createMemory({
 				entityId: runtime.agentId,
@@ -134,7 +134,7 @@ export const confirmRecommendation: Action = {
 		}
 
 		const tradingService = runtime.getService<CommunityInvestorService>(
-			ServiceTypes.COMMUNITY_INVESTOR,
+			ServiceType.COMMUNITY_INVESTOR,
 		)!;
 
 		if (!tradingService.hasWallet("solana")) {
@@ -175,7 +175,7 @@ export const confirmRecommendation: Action = {
 		//     const text = await generateText({
 		//         runtime,
 		//         prompt,
-		//         modelType: ModelTypes.TEXT_SMALL,
+		//         modelType: ModelType.TEXT_SMALL,
 		//         stop: [],
 		//     });
 		//     const xmlResponse = extractXMLFromResponse(text, "tokens");

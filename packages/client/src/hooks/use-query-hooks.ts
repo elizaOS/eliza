@@ -287,7 +287,7 @@ export function useMessages(
 	agentId: UUID,
 	roomId: UUID,
 ): {
-	data: Memory[] | undefined;
+	data: ContentWithUser[] | undefined;
 	isLoading: boolean;
 	isError: boolean;
 	error: unknown;
@@ -308,18 +308,31 @@ export function useMessages(
 		queryKey: ["messages", agentId, roomId, worldId],
 		queryFn: async () => {
 			const result = await apiClient.getMemories(agentId, roomId);
-			return result.data.memories.map((memory: Memory) => ({
-			  text: memory.content.text,
-			  roomId: memory.roomId,
-			  user: memory.entityId === agentId ? 'agent' : USER_NAME,
-			  name: memory.entityId === agentId ? 'agent' : USER_NAME,
-			  createdAt: memory.createdAt,
-			  attachments: memory.content.attachments,
-			  source: memory.content.source,
-			  // action: memory.content.action,
-			  worldId,
-			  id: memory.id,
-			})).sort((a: Memory, b: Memory) => {
+			return result.data.memories.map((memory: Memory): ContentWithUser => {
+				// Convert Memory to ContentWithUser
+				const contentWithUser: ContentWithUser = {
+					text: memory.content.text,
+					roomId: memory.roomId,
+					user: memory.entityId === agentId ? 'agent' : USER_NAME,
+					name: memory.entityId === agentId ? 'agent' : USER_NAME,
+					createdAt: memory.createdAt || 0,
+					attachments: memory.content.attachments,
+					source: memory.content.source,
+					worldId,
+					id: memory.id,
+				};
+				
+				// Copy any additional properties from memory.content to preserve index signature
+				if (memory.content) {
+					Object.keys(memory.content).forEach(key => {
+						if (!contentWithUser[key] && memory.content[key] !== undefined) {
+							contentWithUser[key] = memory.content[key];
+						}
+					});
+				}
+				
+				return contentWithUser;
+			}).sort((a: ContentWithUser, b: ContentWithUser) => {
 				if (a.createdAt === undefined || b.createdAt === undefined) {
 					return 0;
 				}
@@ -353,8 +366,8 @@ export function useMessages(
 				setOldestMessageTimestamp(oldest);
 
 				// Merge with existing messages
-				const existingMessages: Memory[] =
-					queryClient.getQueryData<Memory[]>([
+				const existingMessages: ContentWithUser[] =
+					queryClient.getQueryData<ContentWithUser[]>([
 						"messages",
 						agentId,
 						roomId,
@@ -362,22 +375,44 @@ export function useMessages(
 					]) || [];
 
 				// Create a Map with message ID as key to filter out any potential duplicates
-				const messageMap = new Map<string, Memory>();
+				const messageMap = new Map<string, ContentWithUser>();
 
 				// Add existing messages to the map
-				existingMessages.forEach((msg: Memory): void => {
+				existingMessages.forEach((msg: ContentWithUser): void => {
 					messageMap.set(msg.id as string, msg);
 				});
 
 				// Add new messages to the map, overwriting any with the same ID
-				response.memories.forEach((msg: Memory): void => {
-					messageMap.set(msg.id as string, msg);
+				response.memories.forEach((memory: Memory): void => {
+					// Convert Memory to ContentWithUser
+					const contentWithUser: ContentWithUser = {
+						text: memory.content.text,
+						roomId: memory.roomId,
+						user: memory.entityId === agentId ? 'agent' : USER_NAME,
+						name: memory.entityId === agentId ? 'agent' : USER_NAME,
+						createdAt: memory.createdAt || 0,
+						attachments: memory.content.attachments,
+						source: memory.content.source,
+						worldId,
+						id: memory.id,
+					};
+					
+					// Copy any additional properties from memory.content to preserve index signature
+					if (memory.content) {
+						Object.keys(memory.content).forEach(key => {
+							if (!contentWithUser[key] && memory.content[key] !== undefined) {
+								contentWithUser[key] = memory.content[key];
+							}
+						});
+					}
+					
+					messageMap.set(memory.id as string, contentWithUser);
 				});
 
 				// Convert back to array and sort
-				const mergedMessages: Memory[] = Array.from(messageMap.values());
+				const mergedMessages: ContentWithUser[] = Array.from(messageMap.values());
 				mergedMessages.sort(
-					(a: Memory, b: Memory): number => (a.createdAt ?? 0) - (b.createdAt ?? 0),
+					(a: ContentWithUser, b: ContentWithUser): number => (a.createdAt ?? 0) - (b.createdAt ?? 0),
 				);
 
 				// Update the cache

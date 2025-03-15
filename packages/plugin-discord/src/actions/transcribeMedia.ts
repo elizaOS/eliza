@@ -5,7 +5,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	createUniqueUuid,
@@ -55,7 +55,7 @@ const getMediaAttachmentId = async (
 	});
 
 	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 		console.log("response", response);
@@ -116,7 +116,7 @@ export const transcribeMedia: Action = {
 			"presentation",
 		];
 		return keywords.some((keyword) =>
-			message.content.text.toLowerCase().includes(keyword.toLowerCase()),
+			message.content.text?.toLowerCase().includes(keyword.toLowerCase()),
 		);
 	},
 	handler: async (

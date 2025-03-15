@@ -7,7 +7,7 @@ import {
 	type Evaluator,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	type UUID,
 } from "../types";
@@ -180,7 +180,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 			runtime.character.templates?.reflectionTemplate || reflectionTemplate,
 	});
 
-	const reflection = await runtime.useModel(ModelTypes.OBJECT_SMALL, {
+	const reflection = await runtime.useModel(ModelType.OBJECT_SMALL, {
 		prompt,
 		schema: reflectionSchema,
 	});

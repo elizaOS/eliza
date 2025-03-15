@@ -6,7 +6,7 @@ import {
 	type IAgentRuntime,
 	type Memory,
 	type MessagePayload,
-	ModelTypes,
+	ModelType,
 	composePrompt,
 	createUniqueUuid,
 	logger
@@ -449,55 +449,6 @@ export class TwitterInteractionClient {
 				}
 			};
 
-			// Check for new followers/unfollowers
-			const followerChanges = await this.client.fetchFollowerChanges();
-			
-			for (const change of followerChanges) {
-				const changeId = createUniqueUuid(this.runtime, `${change.type}-${change.userId}`);
-				
-				// Skip if we've already processed this change
-				const existingChange = await this.runtime
-					.getMemoryById(changeId);
-				
-				if (existingChange) continue;
-
-				const entityId = createUniqueUuid(this.runtime, change.userId);
-				
-				// Create base payload
-				const basePayload = {
-					runtime: this.runtime,
-					user: {
-						id: change.userId,
-						username: change.username,
-						name: change.name
-					},
-					source: "twitter"
-				};
-
-				if (change.type === 'followed') {
-					// Emit platform-specific USER_FOLLOWED event
-					const userFollowedPayload: TwitterUserFollowedPayload = {
-						...basePayload,
-						follower: change.user,
-						entityId: createUniqueUuid(this.runtime, change.userId),
-						roomId: createUniqueUuid(this.runtime, this.client.profile.id)
-					};
-					this.runtime.emitEvent(TwitterEventTypes.USER_FOLLOWED, userFollowedPayload);
-				} else if (change.type === 'unfollowed') {
-					// Emit platform-specific USER_UNFOLLOWED event
-					const userUnfollowedPayload: TwitterUserUnfollowedPayload = {
-						...basePayload,
-						unfollower: change.user,
-						entityId: createUniqueUuid(this.runtime, change.userId),
-						roomId: createUniqueUuid(this.runtime, this.client.profile.id)
-					};
-					this.runtime.emitEvent(TwitterEventTypes.USER_UNFOLLOWED, userUnfollowedPayload);
-				}
-
-				// For follower changes:
-				await processFollowerChange(change, this.client.profile.id);
-			}
-
 			// Save the latest checked tweet ID to the file
 			await this.client.cacheLatestCheckedTweetId();
 
@@ -559,7 +510,7 @@ export class TwitterInteractionClient {
 		try {
 			for (const photo of tweet.photos) {
 				const description = await this.runtime.useModel(
-					ModelTypes.IMAGE_DESCRIPTION,
+					ModelType.IMAGE_DESCRIPTION,
 					photo.url,
 				);
 				imageDescriptionsArray.push(description);
@@ -635,7 +586,7 @@ export class TwitterInteractionClient {
 			template: this.runtime.character.templates?.shouldRespondTemplate || "",
 		});
 
-		const response = await this.runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt: shouldRespondPrompt,
 		});
 
@@ -683,7 +634,7 @@ export class TwitterInteractionClient {
 				// Create memory for our response
 				const responseId = createUniqueUuid(
 					this.runtime,
-					(replyTweetResult as any).id_str
+					(replyTweetResult as any).id_str || (replyTweetResult as any).rest_id || (replyTweetResult as any).legacy.id_str || (replyTweetResult as any).id
 				);
 				const responseMemory: Memory = {
 					id: responseId,

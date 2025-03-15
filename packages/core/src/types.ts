@@ -70,12 +70,12 @@ export interface ActionExample {
   content: Content;
 }
 
-export type ModelType = (typeof ModelTypes)[keyof typeof ModelTypes] | string;
+export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
 
 /**
  * Model size/type classification
  */
-export const ModelTypes = {
+export const ModelType = {
   SMALL: "TEXT_SMALL", // kept for backwards compatibility
   MEDIUM: "TEXT_LARGE", // kept for backwards compatibility
   LARGE: "TEXT_LARGE", // kept for backwards compatibility
@@ -97,9 +97,9 @@ export const ModelTypes = {
   OBJECT_LARGE: "OBJECT_LARGE",
 } as const;
 
-export type ServiceType = (typeof ServiceTypes)[keyof typeof ServiceTypes];
+export type ServiceTypeName = (typeof ServiceType)[keyof typeof ServiceType];
 
-export const ServiceTypes = {
+export const ServiceType = {
   TRANSCRIPTION: "transcription",
   VIDEO: "video",
   BROWSER: "browser",
@@ -1012,7 +1012,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   actions: Action[];
   evaluators: Evaluator[];
   plugins: Plugin[];
-  services: Map<ServiceType, Service>;
+  services: Map<ServiceTypeName, Service>;
   events: Map<string, ((params: any) => Promise<void>)[]>;
   fetch?: typeof fetch | null;
   routes: Route[];
@@ -1032,9 +1032,9 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     }
   ): Promise<void>;
 
-  getService<T extends Service>(service: ServiceType | string): T | null;
+  getService<T extends Service>(service: ServiceTypeName | string): T | null;
 
-  getAllServices(): Map<ServiceType, Service>;
+  getAllServices(): Map<ServiceTypeName, Service>;
 
   registerService(service: typeof Service): void;
 
@@ -1114,18 +1114,18 @@ export interface IAgentRuntime extends IDatabaseAdapter {
    * @param {ModelParamsMap[T] | any} params - The parameters for the model, typed based on model type
    * @returns {Promise<R>} - The model result, typed based on the provided generic type parameter
    */
-  useModel<T extends ModelType, R = ModelResultMap[T]>(
+  useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
     params: Omit<ModelParamsMap[T], "runtime"> | any
   ): Promise<R>;
 
   registerModel(
-    modelType: ModelType | string,
+    modelType: ModelTypeName | string,
     handler: (params: any) => Promise<any>
   ): void;
 
   getModel(
-    modelType: ModelType | string
+    modelType: ModelTypeName | string
   ): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined;
 
   registerEvent(event: string, handler: (params: any) => Promise<void>): void;
@@ -1170,7 +1170,7 @@ export interface ChunkRow {
 export type GenerateTextParams = {
   runtime: IAgentRuntime;
   prompt: string;
-  modelType: ModelType;
+  modelType: ModelTypeName;
   maxTokens?: number;
   temperature?: number;
   frequencyPenalty?: number;
@@ -1180,12 +1180,12 @@ export type GenerateTextParams = {
 
 export interface TokenizeTextParams {
   prompt: string;
-  modelType: ModelType;
+  modelType: ModelTypeName;
 }
 
 export interface DetokenizeTextParams {
   tokens: number[];
-  modelType: ModelType;
+  modelType: ModelTypeName;
 }
 
 export interface IVideoService extends Service {
@@ -1465,7 +1465,7 @@ export interface TokenizeTextParams extends BaseModelParams {
   /** The text to tokenize */
   prompt: string;
   /** The model type to use for tokenization */
-  modelType: ModelType;
+  modelType: ModelTypeName;
 }
 
 /**
@@ -1475,7 +1475,7 @@ export interface DetokenizeTextParams extends BaseModelParams {
   /** The tokens to convert back to text */
   tokens: number[];
   /** The model type to use for detokenization */
-  modelType: ModelType;
+  modelType: ModelTypeName;
 }
 
 /**
@@ -1567,7 +1567,7 @@ export interface ObjectGenerationParams<T = any> extends BaseModelParams {
   /** For enum type, the allowed values */
   enumValues?: string[];
   /** Model type to use */
-  modelType?: ModelType;
+  modelType?: ModelTypeName;
   /** Model temperature (0.0 to 1.0) */
   temperature?: number;
   /** Sequences that should stop generation */
@@ -1578,21 +1578,21 @@ export interface ObjectGenerationParams<T = any> extends BaseModelParams {
  * Map of model types to their parameter types
  */
 export interface ModelParamsMap {
-  [ModelTypes.TEXT_SMALL]: TextGenerationParams;
-  [ModelTypes.TEXT_LARGE]: TextGenerationParams;
-  [ModelTypes.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
-  [ModelTypes.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
-  [ModelTypes.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
-  [ModelTypes.TEXT_REASONING_SMALL]: TextGenerationParams;
-  [ModelTypes.TEXT_REASONING_LARGE]: TextGenerationParams;
-  [ModelTypes.IMAGE]: ImageGenerationParams;
-  [ModelTypes.IMAGE_DESCRIPTION]: ImageDescriptionParams | string;
-  [ModelTypes.TRANSCRIPTION]: TranscriptionParams | Buffer | string;
-  [ModelTypes.TEXT_TO_SPEECH]: TextToSpeechParams | string;
-  [ModelTypes.AUDIO]: AudioProcessingParams;
-  [ModelTypes.VIDEO]: VideoProcessingParams;
-  [ModelTypes.OBJECT_SMALL]: ObjectGenerationParams<any>;
-  [ModelTypes.OBJECT_LARGE]: ObjectGenerationParams<any>;
+  [ModelType.TEXT_SMALL]: TextGenerationParams;
+  [ModelType.TEXT_LARGE]: TextGenerationParams;
+  [ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
+  [ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
+  [ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
+  [ModelType.TEXT_REASONING_SMALL]: TextGenerationParams;
+  [ModelType.TEXT_REASONING_LARGE]: TextGenerationParams;
+  [ModelType.IMAGE]: ImageGenerationParams;
+  [ModelType.IMAGE_DESCRIPTION]: ImageDescriptionParams | string;
+  [ModelType.TRANSCRIPTION]: TranscriptionParams | Buffer | string;
+  [ModelType.TEXT_TO_SPEECH]: TextToSpeechParams | string;
+  [ModelType.AUDIO]: AudioProcessingParams;
+  [ModelType.VIDEO]: VideoProcessingParams;
+  [ModelType.OBJECT_SMALL]: ObjectGenerationParams<any>;
+  [ModelType.OBJECT_LARGE]: ObjectGenerationParams<any>;
   // Allow string index for custom model types
   [key: string]: BaseModelParams | any;
 }
@@ -1601,21 +1601,21 @@ export interface ModelParamsMap {
  * Map of model types to their return value types
  */
 export interface ModelResultMap {
-  [ModelTypes.TEXT_SMALL]: string;
-  [ModelTypes.TEXT_LARGE]: string;
-  [ModelTypes.TEXT_EMBEDDING]: number[];
-  [ModelTypes.TEXT_TOKENIZER_ENCODE]: number[];
-  [ModelTypes.TEXT_TOKENIZER_DECODE]: string;
-  [ModelTypes.TEXT_REASONING_SMALL]: string;
-  [ModelTypes.TEXT_REASONING_LARGE]: string;
-  [ModelTypes.IMAGE]: { url: string }[];
-  [ModelTypes.IMAGE_DESCRIPTION]: { title: string; description: string };
-  [ModelTypes.TRANSCRIPTION]: string;
-  [ModelTypes.TEXT_TO_SPEECH]: Readable | Buffer;
-  [ModelTypes.AUDIO]: any; // Specific return type depends on processing type
-  [ModelTypes.VIDEO]: any; // Specific return type depends on processing type
-  [ModelTypes.OBJECT_SMALL]: any;
-  [ModelTypes.OBJECT_LARGE]: any;
+  [ModelType.TEXT_SMALL]: string;
+  [ModelType.TEXT_LARGE]: string;
+  [ModelType.TEXT_EMBEDDING]: number[];
+  [ModelType.TEXT_TOKENIZER_ENCODE]: number[];
+  [ModelType.TEXT_TOKENIZER_DECODE]: string;
+  [ModelType.TEXT_REASONING_SMALL]: string;
+  [ModelType.TEXT_REASONING_LARGE]: string;
+  [ModelType.IMAGE]: { url: string }[];
+  [ModelType.IMAGE_DESCRIPTION]: { title: string; description: string };
+  [ModelType.TRANSCRIPTION]: string;
+  [ModelType.TEXT_TO_SPEECH]: Readable | Buffer;
+  [ModelType.AUDIO]: any; // Specific return type depends on processing type
+  [ModelType.VIDEO]: any; // Specific return type depends on processing type
+  [ModelType.OBJECT_SMALL]: any;
+  [ModelType.OBJECT_LARGE]: any;
   // Allow string index for custom model types
   [key: string]: any;
 }
@@ -1715,6 +1715,16 @@ export interface MessagePayload extends EventPayload {
 }
 
 /**
+ * Payload for events that are invoked without a message
+ */
+export interface InvokePayload extends EventPayload {
+  worldId: UUID;
+  userId: string;
+  roomId: UUID;
+  callback?: HandlerCallback;
+}
+
+/**
  * Run event payload type
  */
 export interface RunEventPayload extends EventPayload {
@@ -1752,6 +1762,19 @@ export interface EvaluatorEventPayload extends EventPayload {
 }
 
 /**
+ * Represents the parameters for a message received handler.
+ * @typedef {Object} MessageReceivedHandlerParams
+ * @property {IAgentRuntime} runtime - The agent runtime associated with the message.
+ * @property {Memory} message - The message received.
+ * @property {HandlerCallback} callback - The callback function to be executed after handling the message.
+ */
+export type MessageReceivedHandlerParams = {
+	runtime: IAgentRuntime;
+	message: Memory;
+	callback: HandlerCallback;
+};
+
+/**
  * Maps event types to their corresponding payload types
  */
 export interface EventPayloadMap {
@@ -1764,7 +1787,7 @@ export interface EventPayloadMap {
   [EventTypes.MESSAGE_RECEIVED]: MessagePayload;
   [EventTypes.MESSAGE_SENT]: MessagePayload;
   [EventTypes.REACTION_RECEIVED]: MessagePayload;
-  [EventTypes.POST_GENERATED]: MessagePayload;
+  [EventTypes.POST_GENERATED]: InvokePayload;
   [EventTypes.INTERACTION_RECEIVED]: MessagePayload;
   [EventTypes.RUN_STARTED]: RunEventPayload;
   [EventTypes.RUN_ENDED]: RunEventPayload;
@@ -1851,7 +1874,7 @@ export interface TypedService<ConfigType = unknown, ResultType = unknown>
  */
 export function getTypedService<T extends TypedService<any, any>>(
   runtime: IAgentRuntime,
-  serviceType: ServiceType
+  serviceType: ServiceTypeName
 ): T | null {
   return runtime.getService<T>(serviceType);
 }
@@ -1930,7 +1953,7 @@ export interface ServiceError {
  * Type-safe helper for accessing the video service
  */
 export function getVideoService(runtime: IAgentRuntime): IVideoService | null {
-  return runtime.getService<IVideoService>(ServiceTypes.VIDEO);
+  return runtime.getService<IVideoService>(ServiceType.VIDEO);
 }
 
 /**
@@ -1939,21 +1962,21 @@ export function getVideoService(runtime: IAgentRuntime): IVideoService | null {
 export function getBrowserService(
   runtime: IAgentRuntime
 ): IBrowserService | null {
-  return runtime.getService<IBrowserService>(ServiceTypes.BROWSER);
+  return runtime.getService<IBrowserService>(ServiceType.BROWSER);
 }
 
 /**
  * Type-safe helper for accessing the PDF service
  */
 export function getPdfService(runtime: IAgentRuntime): IPdfService | null {
-  return runtime.getService<IPdfService>(ServiceTypes.PDF);
+  return runtime.getService<IPdfService>(ServiceType.PDF);
 }
 
 /**
  * Type-safe helper for accessing the file service
  */
 export function getFileService(runtime: IAgentRuntime): IFileService | null {
-  return runtime.getService<IFileService>(ServiceTypes.REMOTE_FILES);
+  return runtime.getService<IFileService>(ServiceType.REMOTE_FILES);
 }
 
 /**

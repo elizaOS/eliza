@@ -6,7 +6,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	createUniqueUuid,
@@ -19,7 +19,7 @@ import {
 	type Guild,
 } from "discord.js";
 import type { DiscordService } from "../service";
-import { ServiceTypes } from "../types";
+import { ServiceType } from "../types";
 import type { VoiceManager } from "../voice";
 
 export const joinVoice: Action = {
@@ -46,7 +46,7 @@ export const joinVoice: Action = {
 			return false;
 		}
 
-		const client = runtime.getService(ServiceTypes.DISCORD);
+		const client = runtime.getService(ServiceType.DISCORD);
 
 		if (!client) {
 			logger.error("Discord client not found");
@@ -84,7 +84,7 @@ export const joinVoice: Action = {
 		}
 
 		const discordClient = runtime.getService(
-			ServiceTypes.DISCORD,
+			ServiceType.DISCORD,
 		) as DiscordService;
 		const client = discordClient.client;
 		const voiceManager = discordClient.voiceManager as VoiceManager;
@@ -183,7 +183,7 @@ You should only respond with the name of the voice channel or none, no commentar
 			state: guessState as unknown as State,
 		});
 
-		const responseContent = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const responseContent = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 

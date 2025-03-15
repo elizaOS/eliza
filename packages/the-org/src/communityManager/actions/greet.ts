@@ -54,8 +54,8 @@ export const greetAction: Action = {
 			// Check if this is a new user join event or command to greet
 			const isNewUser = message.content.text.includes("joined the server");
 			const isGreetCommand =
-				message.content.text.toLowerCase().includes("greet") ||
-				message.content.text.toLowerCase().includes("welcome");
+				message.content.text?.toLowerCase().includes("greet") ||
+				message.content.text?.toLowerCase().includes("welcome");
 
 			return isNewUser || isGreetCommand;
 		} catch (error) {

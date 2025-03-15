@@ -52,8 +52,8 @@ export function formatEvaluatorExamples(evaluators: Evaluator[]) {
 							});
 							return (
 								messageString +
-								(message.content.actions
-									? ` (${message.content.actions.join(", ")})`
+								((message.content.action || message.content.actions)
+									? ` (${message.content.action || message.content.actions.join(", ")})`
 									: "")
 							);
 						})

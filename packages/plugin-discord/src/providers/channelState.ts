@@ -1,7 +1,7 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ChannelType } from "@elizaos/core";
 import type { DiscordService } from "../service";
-import { ServiceTypes } from "../types";
+import { ServiceType } from "../types";
 
 /**
  * Represents a provider for retrieving channel state information.
@@ -64,7 +64,7 @@ export const channelStateProvider: Provider = {
 			channelId = room.channelId;
 
 			const discordService = runtime.getService(
-				ServiceTypes.DISCORD,
+				ServiceType.DISCORD,
 			) as DiscordService;
 			if (!discordService) {
 				console.warn("No discord client found");

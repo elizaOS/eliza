@@ -1149,6 +1149,7 @@ export abstract class BaseDrizzleAdapter<
 		memory: Memory & { metadata?: MemoryMetadata },
 		tableName: string,
 	): Promise<UUID> {
+		console.log("memory.id is", memory.id)
 		logger.debug("DrizzleAdapter createMemory:", {
 			memoryId: memory.id,
 			embeddingLength: memory.embedding?.length,
@@ -1917,6 +1918,7 @@ export abstract class BaseDrizzleAdapter<
 	 * @returns {Promise<UUID>} A Promise that resolves to the ID of the created world.
 	 */
 	async createWorld(world: World): Promise<UUID> {
+		console.trace("*** creating world", world, "with id", world.id);
 		return this.withDatabase(async () => {
 			const newWorldId = world.id || v4();
 			await this.db.insert(worldTable).values({
@@ -1962,6 +1964,7 @@ export abstract class BaseDrizzleAdapter<
 	 * @returns {Promise<void>} A Promise that resolves when the world is updated.
 	 */
 	async updateWorld(world: World): Promise<void> {
+		console.trace("*** updating world", world, "with id", world.id);
 		return this.withDatabase(async () => {
 			await this.db
 				.update(worldTable)

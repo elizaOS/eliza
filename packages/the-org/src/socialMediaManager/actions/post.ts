@@ -5,7 +5,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type State,
 	composePromptFromState,
 	getUserServerRole,
@@ -98,7 +98,7 @@ async function ensureTwitterClient(
 	serverId: string,
 	worldSettings: { [key: string]: string | boolean | number | null },
 ) {
-	const manager = runtime.getService("twitter") as TwitterService;
+	const manager = runtime.getService("twitter") as any;
 	if (!manager) {
 		throw new Error("Twitter client manager not found");
 	}
@@ -232,7 +232,7 @@ const twitterPostAction: Action = {
 				template: tweetGenerationTemplate,
 			});
 
-			const tweetContent = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+			const tweetContent = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt,
 			});
 

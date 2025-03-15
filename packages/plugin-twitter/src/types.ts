@@ -51,21 +51,9 @@ export interface ITwitterClient {
 	service: TwitterService;
 }
 
-export const ServiceTypes = {
+export const ServiceType = {
 	TWITTER: "twitter",
 } as const;
-
-interface TwitterHashtag {
-	text: string;
-}
-
-interface TwitterUrl {
-	expanded_url: string;
-}
-
-interface TwitterMention {
-	username: string;
-}
 
 /**
  * Twitter-specific tweet type

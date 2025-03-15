@@ -1,10 +1,10 @@
 import {
 	type IAgentRuntime,
 	type IBrowserService,
-	ModelTypes,
+	ModelType,
 	Service,
-	type ServiceType,
-	ServiceTypes,
+	type ServiceTypeName,
+	ServiceType,
 	logger,
 	parseJSONObjectFromText,
 	settings,
@@ -47,7 +47,7 @@ async function generateSummary(
   }
   \`\`\``;
 
-	const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+	const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,
 	});
 
@@ -91,7 +91,7 @@ export class BrowserService extends Service implements IBrowserService {
 	private captchaSolver: CaptchaSolver;
 	private cacheKey = "content/browser";
 
-	static serviceType: ServiceType = ServiceTypes.BROWSER;
+	static serviceType: ServiceTypeName = ServiceType.BROWSER;
 	capabilityDescription =
 		"The agent is able to browse the web and fetch content";
 
@@ -125,7 +125,7 @@ export class BrowserService extends Service implements IBrowserService {
 	 * @param {IAgentRuntime} runtime - The runtime environment for the agent.
 	 */
 	static async stop(runtime: IAgentRuntime) {
-		const service = runtime.getService(ServiceTypes.BROWSER);
+		const service = runtime.getService(ServiceType.BROWSER);
 		if (service) {
 			await service.stop();
 		}

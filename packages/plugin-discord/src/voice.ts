@@ -19,7 +19,7 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	ModelTypes,
+	ModelType,
 	type UUID,
 	createUniqueUuid,
 	logger,
@@ -689,7 +689,7 @@ export class VoiceManager extends EventEmitter {
 			console.log("Starting transcription...");
 
 			const transcriptionText = await this.runtime.useModel(
-				ModelTypes.TRANSCRIPTION,
+				ModelType.TRANSCRIPTION,
 				wavBuffer,
 			);
 			function isValidTranscription(text: string): boolean {
@@ -805,7 +805,7 @@ export class VoiceManager extends EventEmitter {
 											.createMemory(responseMemory);
 
 						const responseStream = await this.runtime.useModel(
-							ModelTypes.TEXT_TO_SPEECH,
+							ModelType.TEXT_TO_SPEECH,
 							content.text,
 						);
 						if (responseStream) {

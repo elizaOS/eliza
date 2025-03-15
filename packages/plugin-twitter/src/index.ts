@@ -90,7 +90,7 @@ export class TwitterService extends Service {
 		if (runtime.getSetting("TWITTER_2FA_SECRET") === null) {
 			runtime.setSetting("TWITTER_2FA_SECRET", undefined, false);
 		}
-		// try {
+		try {
 			// Check if client already exists
 			const existingClient = this.getClient(clientId, runtime.agentId);
 			if (existingClient) {
@@ -124,10 +124,10 @@ export class TwitterService extends Service {
 
 			logger.info(`Created Twitter client for ${clientId}`);
 			return client;
-		// } catch (error) {
-		// 	logger.error(`Failed to create Twitter client for ${clientId}:`, error);
-		// 	throw error;
-		// }
+		} catch (error) {
+			logger.error(`Failed to create Twitter client for ${clientId}:`, error);
+			throw error;
+		}
 	}
 
 	/**
@@ -275,7 +275,7 @@ export class TwitterService extends Service {
 		) as TwitterConfig;
 
 		// If we have enough settings to create a client, do so
-		// try {
+		try {
 			if (
 				config.TWITTER_USERNAME &&
 				// Basic auth
@@ -294,9 +294,9 @@ export class TwitterService extends Service {
 					config,
 				);
 			}
-		// } catch (error) {
-		// 	logger.error("Failed to create default Twitter client:", error);
-		// }
+		} catch (error) {
+			logger.error("Failed to create default Twitter client:", error);
+		}
 
 		return twitterClientManager;
 	}

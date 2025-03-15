@@ -1,9 +1,9 @@
 import {
+	ChannelType,
 	type IAgentRuntime,
-	ModelTypes,
-	logger,
+	ModelType,
 	createUniqueUuid,
-	ChannelType
+	logger
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import {
@@ -280,8 +280,8 @@ export class TwitterSpaceClient {
 			});
 
 			if (
-				this.runtime.getModel(ModelTypes.TEXT_TO_SPEECH) &&
-				this.runtime.getModel(ModelTypes.TRANSCRIPTION)
+				this.runtime.getModel(ModelType.TEXT_TO_SPEECH) &&
+				this.runtime.getModel(ModelType.TRANSCRIPTION)
 			) {
 				logger.log("[Space] Using SttTtsPlugin");
 				this.currentSpace.use(this.sttTtsPlugin as any, {

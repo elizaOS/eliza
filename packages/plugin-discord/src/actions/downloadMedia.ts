@@ -6,8 +6,8 @@ import {
 	type IAgentRuntime,
 	type IVideoService,
 	type Memory,
-	ModelTypes,
-	ServiceTypes,
+	ModelType,
+	ServiceType,
 	type State,
 	composePromptFromState,
 	parseJSONObjectFromText,
@@ -60,7 +60,7 @@ const getMediaUrl = async (
 	});
 
 	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
+		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 		});
 
@@ -98,7 +98,7 @@ export const downloadMedia: Action = {
 		_options: any,
 		callback: HandlerCallback,
 	) => {
-		const videoService = runtime.getService<IVideoService>(ServiceTypes.VIDEO);
+		const videoService = runtime.getService<IVideoService>(ServiceType.VIDEO);
 
 		const mediaUrl = await getMediaUrl(runtime, message, state);
 		if (!mediaUrl) {

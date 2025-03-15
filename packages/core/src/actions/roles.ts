@@ -9,8 +9,8 @@ import {
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
-	type ModelType,
-	ModelTypes,
+	type ModelTypeName,
+	ModelType,
 	Role,
 	type State,
 	type UUID,
@@ -209,9 +209,9 @@ const updateRoleAction: Action = {
 
 		// Extract role assignments using type-safe model call
 		const result = await runtime.useModel<
-			typeof ModelTypes.OBJECT_LARGE,
+			typeof ModelType.OBJECT_LARGE,
 			RoleAssignment[]
-		>(ModelTypes.OBJECT_LARGE, {
+		>(ModelType.OBJECT_LARGE, {
 			prompt: extractionPrompt,
 			schema: {
 				type: "array",
