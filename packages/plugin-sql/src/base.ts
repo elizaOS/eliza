@@ -701,6 +701,7 @@ export abstract class BaseDrizzleAdapter<
 						agentId: memoryTable.agentId,
 						roomId: memoryTable.roomId,
 						unique: memoryTable.unique,
+						metadata: memoryTable.metadata,
 					},
 					embedding: embeddingTable[this.embeddingDimension],
 				})
@@ -723,6 +724,7 @@ export abstract class BaseDrizzleAdapter<
 				agentId: row.memory.agentId as UUID,
 				roomId: row.memory.roomId as UUID,
 				unique: row.memory.unique,
+				metadata: row.memory.metadata,
 				embedding: row.embedding ? Array.from(row.embedding) : undefined,
 			}));
 		});

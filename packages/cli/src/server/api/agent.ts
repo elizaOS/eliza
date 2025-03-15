@@ -396,6 +396,40 @@ export function agentRouter(
 	});
 
 
+	// Delete Memory
+	router.delete("/:agentId/memories/:memoryId", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+		const memoryId = validateUuid(req.params.memoryId);
+		
+		if (!agentId || !memoryId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID or memory ID format",
+				},
+			});
+			return;
+		}
+		
+
+		const runtime = agents.get(agentId);
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+
+		await runtime.deleteMemory(memoryId);
+		
+		res.status(204).send();
+	});
+
 	// Get Agent Logs
 	router.get("/:agentId/logs", async (req, res) => {
 		const agentId = validateUuid(req.params.agentId);
@@ -1446,9 +1480,16 @@ export function agentRouter(
 			tableName: "messages",
 		});
 
+		const cleanMemories = memories.map((memory) => {
+			return {
+				...memory,
+				embedding: undefined,
+			};
+		});
+
 		res.json({
 			success: true,
-			data: memories,
+			data: cleanMemories,
 		});
 	})
 
