@@ -7,7 +7,7 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"start": "node ../cli/dist/index.js start",
+		"start": "bun ../cli/dist/index.js start",
 		"build": "vite build && tsup",
 		"lint": "biome check --config-path=./ --write",
 		"dev": "bun ../cli/dist/index.js dev",

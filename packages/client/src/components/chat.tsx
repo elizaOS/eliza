@@ -9,10 +9,10 @@ import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
 import { USER_NAME } from "@/constants";
 import { useAgent, useMessages } from "@/hooks/use-query-hooks";
 import { cn, getEntityId, moment } from "@/lib/utils";
-import WebSocketsManager from "@/lib/websocket-manager";
+import SocketIOManager from "@/lib/socketio-manager";
 import { WorldManager } from "@/lib/world-manager";
 import type { IAttachment } from "@/types";
-import type { Content, Memory, UUID } from "@elizaos/core";
+import type { Content, UUID } from "@elizaos/core";
 import { AgentStatus } from "@elizaos/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { Activity, MenuIcon, Paperclip, Send, Terminal, X } from "lucide-react";
@@ -126,11 +126,11 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
   const { data: messages = [] } = useMessages(agentId, roomId);
 
-  const wsManager = WebSocketsManager.getInstance();
+  const socketIOManager = SocketIOManager.getInstance();
 
   useEffect(() => {
-    wsManager.connect(agentId, roomId);
-    wsManager.connect(entityId, roomId);
+    socketIOManager.connect(agentId, roomId);
+    socketIOManager.connect(entityId, roomId);
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
       queryClient.setQueryData(
@@ -141,11 +141,11 @@ export default function Page({ agentId }: { agentId: UUID }) {
         ]
       );
     };
-    wsManager.on("messageBroadcast", handleMessageBroadcasting);
+    socketIOManager.on("messageBroadcast", handleMessageBroadcasting);
 
     return () => {
-      wsManager.disconnectAll();
-      wsManager.off("messageBroadcast", handleMessageBroadcasting);
+      socketIOManager.disconnectAll();
+      socketIOManager.off("messageBroadcast", handleMessageBroadcasting);
     };
   }, [roomId]);
 
@@ -177,7 +177,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
     e.preventDefault();
     if (!input) return;
 
-    wsManager.handleBroadcastMessage(
+    socketIOManager.handleBroadcastMessage(
       entityId,
       USER_NAME,
       input,

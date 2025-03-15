@@ -13,9 +13,9 @@ import * as bodyParser from "body-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import { WebSocketServer } from "ws";
+import { Server as SocketIOServer } from "socket.io";
 import { createApiRouter } from "./api/index.js";
-import { WebSocketRouter } from "./wss/index.js";
+import { SocketIORouter } from "./socketio/index.js";
 
 // Load environment variables
 dotenv.config();
@@ -65,7 +65,7 @@ export class AgentServer {
 	public stopAgent!: (runtime: IAgentRuntime) => void;
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
-	private wss: WebSocketServer;
+	private socketIO: SocketIOServer;
 
 	/**
 	 * Constructor for AgentServer class.
@@ -502,22 +502,10 @@ export class AgentServer {
 				});
 			});
 
-			this.wss = new WebSocketServer({ server: this.server });
+			this.socketIO = new SocketIOServer(this.server);
 			
-			const wsRouter = new WebSocketRouter(this.agents, this);
-
-			this.wss.on("connection", (ws) => {
-				logger.info("New WebSocket connection established");
-
-				ws.on("message", (message) => {
-					wsRouter.handleMessage(ws, message.toString());
-				});
-
-				ws.on("close", () => {
-					logger.info("WebSocket closed");
-					wsRouter.handleClose(ws);
-				});
-			});
+			const socketIORouter = new SocketIORouter(this.agents, this);
+			socketIORouter.setupListeners(this.socketIO);
 
 			// Enhanced graceful shutdown
 			const gracefulShutdown = async () => {
