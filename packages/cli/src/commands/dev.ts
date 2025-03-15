@@ -372,8 +372,3 @@ export const dev = new Command()
       handleError(error);
     }
   });
-
-// Function to register the command with the CLI
-export default function registerCommand(cli: Command) {
-  return cli.addCommand(dev);
-} 
