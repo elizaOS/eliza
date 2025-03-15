@@ -297,6 +297,3 @@ export const publish = new Command()
 		}
 	});
 
-export default function registerCommand(cli: Command) {
-	return cli.addCommand(publish);
-} 
