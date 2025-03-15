@@ -36,6 +36,26 @@ Important Note: Once an agent is initialized with a specific embedding dimension
 - Room and participant management
 - Goal tracking system
 
+## Database Schema
+
+The plugin uses a structured schema with the following main tables:
+
+### Core Tables
+- **Agent**: Stores agent information and configurations
+- **Room**: Manages conversation rooms and their settings
+- **Participant**: Tracks participants in rooms
+- **Memory**: Stores agent memories with vector embeddings for semantic search
+- **Embedding**: Manages vector embeddings for various entities
+- **Entity**: Represents entities that agents can interact with
+- **Relationship**: Tracks relationships between entities
+- **Component**: Stores agent components and their configurations
+- **Tasks**: Manages tasks and goals for agents
+- **Log**: Stores system logs
+- **Cache**: Provides a caching mechanism for frequently accessed data
+- **World**: Manages world settings and configurations
+
+Each table is defined using Drizzle ORM schema definitions in the `src/schema` directory. The schema is designed to support the ElizaOS ecosystem's requirements for agent-based systems.
+
 ## Usage
 
 The adapter is typically used as part of the ElizaOS runtime:
@@ -80,6 +100,16 @@ The adapter implements the following error handling configurations:
 
 - PostgreSQL with vector extension installed
 - Node.js or Bun (≥1.2.2)
+
+## Environment Variables
+
+The plugin uses the following environment variables:
+
+- `POSTGRES_URL`: Connection string for PostgreSQL database (e.g., `postgresql://user:password@localhost:5432/dbname`)
+  - If not provided, the plugin will use PGlite as a fallback
+- `PGLITE_DATA_DIR`: (Optional) Directory for PGlite data storage (default: `../../pglite`)
+
+These variables should be defined in a `.env` file at the root of your project.
 
 ## Database Pool Configuration
 
@@ -148,6 +178,50 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 await migrate(db, { migrationsFolder: "./drizzle" });
 ```
+
+c. Using the provided migration script:
+```bash
+npm run migrate
+# or
+pnpm migrate
+```
+
+d. Using drizzle-kit migrate command:
+```bash
+npx drizzle-kit migrate
+```
+
+This command will read the configuration from `drizzle.config.ts` and pull the PostgreSQL URI from the `.env` file. Make sure your `.env` file contains the `POSTGRES_URL` variable with the correct connection string.
+
+### Migration Configuration
+
+The plugin uses a `drizzle.config.ts` file to configure migrations:
+
+```typescript
+import { config } from "dotenv";
+import { defineConfig } from "drizzle-kit";
+
+config({ path: "../../.env" });
+
+export default defineConfig({
+  dialect: "postgresql",
+  schema: "./src/schema/index.ts",
+  out: "./drizzle/migrations",
+  dbCredentials: {
+    url: process.env.POSTGRES_URL || "file://../../pglite",
+  },
+  breakpoints: true,
+});
+```
+
+### Database Support
+
+The plugin supports two database backends:
+
+1. **PostgreSQL**: Used when `POSTGRES_URL` environment variable is provided
+2. **PGlite**: Used as a fallback when no PostgreSQL URL is provided
+
+Both backends use the same migration files, ensuring consistent schema across environments.
 
 ### Note on Vector Support
 Make sure the PostgreSQL vector extension is installed before running migrations. The adapter will validate vector setup during initialization.

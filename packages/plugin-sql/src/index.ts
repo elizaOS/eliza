@@ -5,8 +5,8 @@ import {
 	type Plugin,
 	logger
 } from "@elizaos/core";
-import { PgliteDatabaseAdapter } from "./pg-lite/adapter";
-import { PGliteClientManager } from "./pg-lite/manager";
+import { PgliteDatabaseAdapter } from "./pglite/adapter";
+import { PGliteClientManager } from "./pglite/manager";
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
 

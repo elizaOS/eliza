@@ -73,6 +73,15 @@ type MemoryMetadata = {
 
 /**
  * Abstract class representing a base Drizzle adapter for working with databases.
+ * This adapter provides a comprehensive set of methods for interacting with a database
+ * using Drizzle ORM. It implements the DatabaseAdapter interface and handles operations
+ * for various entity types including agents, entities, components, memories, rooms,
+ * participants, relationships, tasks, and more.
+ * 
+ * The adapter includes built-in retry logic for database operations, embedding dimension
+ * management, and transaction support. Concrete implementations must provide the
+ * withDatabase method to execute operations against their specific database.
+ * 
  * @template TDatabase - The type of Drizzle operations supported by the adapter.
  */
 export abstract class BaseDrizzleAdapter<
@@ -353,6 +362,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Retrieves an entity and its components by entity ID.
+	 * @param {UUID} entityId - The unique identifier of the entity to retrieve.
+	 * @returns {Promise<Entity | null>} A Promise that resolves to the entity with its components if found, null otherwise.
+	 */
 	async getEntityById(entityId: UUID): Promise<Entity | null> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -381,6 +395,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Retrieves all entities for a given room, optionally including their components.
+	 * @param {UUID} roomId - The unique identifier of the room to get entities for
+	 * @param {boolean} [includeComponents] - Whether to include component data for each entity
+	 * @returns {Promise<Entity[]>} A Promise that resolves to an array of entities in the room
+	 */
 	async getEntitiesForRoom(
 		roomId: UUID,
 		includeComponents?: boolean,
@@ -439,6 +459,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously creates a new entity in the database.
+	 * @param {Entity} entity - The entity object to be created.
+	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating the success of the operation.
+	 */
 	async createEntity(entity: Entity): Promise<boolean> {
 		return this.withDatabase(async () => {
 			try {
@@ -492,6 +517,11 @@ export abstract class BaseDrizzleAdapter<
 		}
 	}
 
+	/**
+	 * Asynchronously updates an entity in the database.
+	 * @param {Entity} entity - The entity object to be updated.
+	 * @returns {Promise<void>} A Promise that resolves when the entity is updated.
+	 */
 	async updateEntity(entity: Entity): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db
