@@ -564,6 +564,13 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves all components for a given entity, optionally filtered by world and source entity.
+	 * @param {UUID} entityId - The unique identifier of the entity to retrieve components for
+	 * @param {UUID} [worldId] - Optional world ID to filter components by
+	 * @param {UUID} [sourceEntityId] - Optional source entity ID to filter components by
+	 * @returns {Promise<Component[]>} A Promise that resolves to an array of components
+	 */
 	async getComponents(
 		entityId: UUID,
 		worldId?: UUID,
@@ -596,6 +603,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously creates a new component in the database.
+	 * @param {Component} component - The component object to be created.
+	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating the success of the operation.
+	 */
 	async createComponent(component: Component): Promise<boolean> {
 		return this.withDatabase(async () => {
 			await this.db.insert(componentTable).values(component);
@@ -603,6 +615,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously updates an existing component in the database.
+	 * @param {Component} component - The component object to be updated.
+	 * @returns {Promise<void>} A Promise that resolves when the component is updated.
+	 */
 	async updateComponent(component: Component): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db
@@ -612,6 +629,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously deletes a component from the database.
+	 * @param {UUID} componentId - The unique identifier of the component to delete.
+	 * @returns {Promise<void>} A Promise that resolves when the component is deleted.
+	 */
 	async deleteComponent(componentId: UUID): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db
@@ -620,6 +642,17 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves memories from the database based on the provided parameters.
+	 * @param {Object} params - The parameters for retrieving memories.
+	 * @param {UUID} params.roomId - The ID of the room to retrieve memories for.
+	 * @param {number} [params.count] - The maximum number of memories to retrieve.
+	 * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
+	 * @param {string} [params.tableName] - The name of the table to retrieve memories from.
+	 * @param {number} [params.start] - The start date to retrieve memories from.
+	 * @param {number} [params.end] - The end date to retrieve memories from.
+	 * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
+	 */
 	async getMemories(params: {
 		roomId: UUID;
 		count?: number;
@@ -689,6 +722,14 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves memories from the database based on the provided parameters.
+	 * @param {Object} params - The parameters for retrieving memories.
+	 * @param {UUID[]} params.roomIds - The IDs of the rooms to retrieve memories for.
+	 * @param {string} params.tableName - The name of the table to retrieve memories from.
+	 * @param {number} [params.limit] - The maximum number of memories to retrieve.
+	 * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
+	 */
 	async getMemoriesByRoomIds(params: {
 		roomIds: UUID[];
 		tableName: string;
@@ -736,6 +777,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves a memory by its unique identifier.
+	 * @param {UUID} id - The unique identifier of the memory to retrieve.
+	 * @returns {Promise<Memory | null>} A Promise that resolves to the memory if found, null otherwise.
+	 */
 	async getMemoryById(id: UUID): Promise<Memory | null> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -767,6 +813,13 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves memories from the database based on the provided parameters.
+	 * @param {Object} params - The parameters for retrieving memories.
+	 * @param {UUID[]} params.memoryIds - The IDs of the memories to retrieve.
+	 * @param {string} [params.tableName] - The name of the table to retrieve memories from.
+	 * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.	
+	 */
 	async getMemoriesByIds(
 		memoryIds: UUID[],
 		tableName?: string,
@@ -806,6 +859,17 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves cached embeddings from the database based on the provided parameters.
+	 * @param {Object} opts - The parameters for retrieving cached embeddings.
+	 * @param {string} opts.query_table_name - The name of the table to retrieve embeddings from.
+	 * @param {number} opts.query_threshold - The threshold for the levenshtein distance.
+	 * @param {string} opts.query_input - The input string to search for.
+	 * @param {string} opts.query_field_name - The name of the field to retrieve embeddings from.
+	 * @param {string} opts.query_field_sub_name - The name of the sub-field to retrieve embeddings from.
+	 * @param {number} opts.query_match_count - The maximum number of matches to retrieve.
+	 * @returns {Promise<{ embedding: number[]; levenshtein_score: number }[]>} A Promise that resolves to an array of cached embeddings.
+	 */
 	async getCachedEmbeddings(opts: {
 		query_table_name: string;
 		query_threshold: number;
@@ -883,6 +947,15 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously logs an event in the database.
+	 * @param {Object} params - The parameters for logging an event.
+	 * @param {Object} params.body - The body of the event to log.
+	 * @param {UUID} params.entityId - The ID of the entity associated with the event.
+	 * @param {UUID} params.roomId - The ID of the room associated with the event.
+	 * @param {string} params.type - The type of the event to log.
+	 * @returns {Promise<void>} A Promise that resolves when the event is logged.
+	 */
 	async log(params: {
 		body: { [key: string]: unknown };
 		entityId: UUID;
@@ -911,6 +984,16 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves logs from the database based on the provided parameters.
+	 * @param {Object} params - The parameters for retrieving logs.
+	 * @param {UUID} params.entityId - The ID of the entity associated with the logs.
+	 * @param {UUID} [params.roomId] - The ID of the room associated with the logs.
+	 * @param {string} [params.type] - The type of the logs to retrieve.
+	 * @param {number} [params.count] - The maximum number of logs to retrieve.
+	 * @param {number} [params.offset] - The offset to retrieve logs from.
+	 * @returns {Promise<Log[]>} A Promise that resolves to an array of logs.
+	 */
 	async getLogs(
 		params: {
 			entityId: UUID;
@@ -940,12 +1023,28 @@ export abstract class BaseDrizzleAdapter<
 
 	}
 
+	/**
+	 * Asynchronously deletes a log from the database based on the provided parameters.
+	 * @param {UUID} logId - The ID of the log to delete.
+	 * @returns {Promise<void>} A Promise that resolves when the log is deleted.
+	 */
 	async deleteLog(logId: UUID): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db.delete(logTable).where(eq(logTable.id, logId));
 		});
 	}
 
+	/**
+	 * Asynchronously searches for memories in the database based on the provided parameters.
+	 * @param {Object} params - The parameters for searching for memories.
+	 * @param {string} params.tableName - The name of the table to search for memories in.
+	 * @param {UUID} params.roomId - The ID of the room to search for memories in.
+	 * @param {number[]} params.embedding - The embedding to search for.
+	 * @param {number} [params.match_threshold] - The threshold for the cosine distance.
+	 * @param {number} [params.count] - The maximum number of memories to retrieve.
+	 * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
+	 * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
+	 */
 	async searchMemories(params: {
 		tableName: string;
 		roomId: UUID;
@@ -963,6 +1062,17 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously searches for memories in the database based on the provided parameters.
+	 * @param {number[]} embedding - The embedding to search for.
+	 * @param {Object} params - The parameters for searching for memories.
+	 * @param {number} [params.match_threshold] - The threshold for the cosine distance.
+	 * @param {number} [params.count] - The maximum number of memories to retrieve.
+	 * @param {UUID} [params.roomId] - The ID of the room to search for memories in.
+	 * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
+	 * @param {string} [params.tableName] - The name of the table to search for memories in.
+	 * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
+	 */
 	async searchMemoriesByEmbedding(
 		embedding: number[],
 		params: {
@@ -1029,6 +1139,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously creates a new memory in the database.
+	 * @param {Memory & { metadata?: MemoryMetadata }} memory - The memory object to create.
+	 * @param {string} tableName - The name of the table to create the memory in.
+	 * @returns {Promise<UUID>} A Promise that resolves to the ID of the created memory.
+	 */
 	async createMemory(
 		memory: Memory & { metadata?: MemoryMetadata },
 		tableName: string,
@@ -1095,6 +1211,11 @@ export abstract class BaseDrizzleAdapter<
 		return memoryId;
 	}
 
+	/**
+	 * Asynchronously deletes a memory from the database based on the provided parameters.
+	 * @param {UUID} memoryId - The ID of the memory to delete.
+	 * @returns {Promise<void>} A Promise that resolves when the memory is deleted.
+	 */
 	async deleteMemory(memoryId: UUID): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db.transaction(async (tx) => {
@@ -1115,6 +1236,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously deletes all memories from the database based on the provided parameters.
+	 * @param {UUID} roomId - The ID of the room to delete memories from.
+	 * @param {string} tableName - The name of the table to delete memories from.
+	 * @returns {Promise<void>} A Promise that resolves when the memories are deleted.
+	 */
 	async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db.transaction(async (tx) => {
@@ -1154,6 +1281,13 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously counts the number of memories in the database based on the provided parameters.
+	 * @param {UUID} roomId - The ID of the room to count memories in.
+	 * @param {boolean} [unique] - Whether to count unique memories only.
+	 * @param {string} [tableName] - The name of the table to count memories in.
+	 * @returns {Promise<number>} A Promise that resolves to the number of memories.
+	 */
 	async countMemories(
 		roomId: UUID,
 		unique = true,
@@ -1180,6 +1314,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves a room from the database based on the provided parameters.
+	 * @param {UUID} roomId - The ID of the room to retrieve.
+	 * @returns {Promise<Room | null>} A Promise that resolves to the room if found, null otherwise.
+	 */
 	async getRoom(roomId: UUID): Promise<Room | null> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -1202,6 +1341,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves all rooms from the database based on the provided parameters.
+	 * @param {UUID} worldId - The ID of the world to retrieve rooms from.
+	 * @returns {Promise<Room[]>} A Promise that resolves to an array of rooms.
+	 */
 	async getRooms(worldId: UUID): Promise<Room[]> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -1212,6 +1356,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously updates a room in the database based on the provided parameters.
+	 * @param {Room} room - The room object to update.
+	 * @returns {Promise<void>} A Promise that resolves when the room is updated.
+	 */
 	async updateRoom(room: Room): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db
@@ -1221,6 +1370,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously creates a new room in the database based on the provided parameters.
+	 * @param {Room} room - The room object to create.
+	 * @returns {Promise<UUID>} A Promise that resolves to the ID of the created room.
+	 */
 	async createRoom({
 		id,
 		name,
@@ -1249,6 +1403,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously deletes a room from the database based on the provided parameters.
+	 * @param {UUID} roomId - The ID of the room to delete.
+	 * @returns {Promise<void>} A Promise that resolves when the room is deleted.
+	 */
 	async deleteRoom(roomId: UUID): Promise<void> {
 		if (!roomId) throw new Error("Room ID is required");
 		return this.withDatabase(async () => {
@@ -1258,6 +1417,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves all rooms for a participant from the database based on the provided parameters.
+	 * @param {UUID} entityId - The ID of the entity to retrieve rooms for.
+	 * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
+	 */
 	async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -1275,6 +1439,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves all rooms for a list of participants from the database based on the provided parameters.
+	 * @param {UUID[]} entityIds - The IDs of the entities to retrieve rooms for.
+	 * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
+	 */
 	async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -1292,6 +1461,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously adds a participant to a room in the database based on the provided parameters.
+	 * @param {UUID} entityId - The ID of the entity to add to the room.
+	 * @param {UUID} roomId - The ID of the room to add the entity to.
+	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the participant was added successfully.
+	 */
 	async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
 		return this.withDatabase(async () => {
 			try {
@@ -1316,6 +1491,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously removes a participant from a room in the database based on the provided parameters.
+	 * @param {UUID} entityId - The ID of the entity to remove from the room.
+	 * @param {UUID} roomId - The ID of the room to remove the entity from.
+	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the participant was removed successfully.
+	 */
 	async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
 		return this.withDatabase(async () => {
 			try {
@@ -1350,6 +1531,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves all participants for an entity from the database based on the provided parameters.
+	 * @param {UUID} entityId - The ID of the entity to retrieve participants for.
+	 * @returns {Promise<Participant[]>} A Promise that resolves to an array of participants.
+	 */
 	async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -1374,6 +1560,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves all participants for a room from the database based on the provided parameters.
+	 * @param {UUID} roomId - The ID of the room to retrieve participants for.
+	 * @returns {Promise<UUID[]>} A Promise that resolves to an array of entity IDs.
+	 */
 	async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -1390,6 +1581,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves the user state for a participant in a room from the database based on the provided parameters.
+	 * @param {UUID} roomId - The ID of the room to retrieve the participant's user state for.
+	 * @param {UUID} entityId - The ID of the entity to retrieve the user state for.
+	 * @returns {Promise<"FOLLOWED" | "MUTED" | null>} A Promise that resolves to the participant's user state.
+	 */
 	async getParticipantUserState(
 		roomId: UUID,
 		entityId: UUID,
@@ -1411,6 +1608,13 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously sets the user state for a participant in a room in the database based on the provided parameters.
+	 * @param {UUID} roomId - The ID of the room to set the participant's user state for.
+	 * @param {UUID} entityId - The ID of the entity to set the user state for.
+	 * @param {string} state - The state to set the participant's user state to.
+	 * @returns {Promise<void>} A Promise that resolves when the participant's user state is set.
+	 */
 	async setParticipantUserState(
 		roomId: UUID,
 		entityId: UUID,
@@ -1442,6 +1646,15 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously creates a new relationship in the database based on the provided parameters.
+	 * @param {Object} params - The parameters for creating a new relationship.
+	 * @param {UUID} params.sourceEntityId - The ID of the source entity.
+	 * @param {UUID} params.targetEntityId - The ID of the target entity.
+	 * @param {string[]} [params.tags] - The tags for the relationship.
+	 * @param {Object} [params.metadata] - The metadata for the relationship.
+	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the relationship was created successfully.
+	 */
 	async createRelationship(params: {
 		sourceEntityId: UUID;
 		targetEntityId: UUID;
@@ -1471,6 +1684,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously updates an existing relationship in the database based on the provided parameters.
+	 * @param {Relationship} relationship - The relationship object to update.
+	 * @returns {Promise<void>} A Promise that resolves when the relationship is updated.
+	 */
 	async updateRelationship(relationship: Relationship): Promise<void> {
 		return this.withDatabase(async () => {
 			try {
@@ -1491,6 +1709,13 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves a relationship from the database based on the provided parameters.
+	 * @param {Object} params - The parameters for retrieving a relationship.
+	 * @param {UUID} params.sourceEntityId - The ID of the source entity.
+	 * @param {UUID} params.targetEntityId - The ID of the target entity.
+	 * @returns {Promise<Relationship | null>} A Promise that resolves to the relationship if found, null otherwise.
+	 */
 	async getRelationship(params: {
 		sourceEntityId: UUID;
 		targetEntityId: UUID;
@@ -1532,6 +1757,13 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves all relationships from the database based on the provided parameters.
+	 * @param {Object} params - The parameters for retrieving relationships.
+	 * @param {UUID} params.entityId - The ID of the entity to retrieve relationships for.
+	 * @param {string[]} [params.tags] - The tags to filter relationships by.
+	 * @returns {Promise<Relationship[]>} A Promise that resolves to an array of relationships.
+	 */
 	async getRelationships(params: {
 		entityId: UUID;
 		tags?: string[];
@@ -1586,6 +1818,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves a cache value from the database based on the provided key.
+	 * @param {string} key - The key to retrieve the cache value for.
+	 * @returns {Promise<T | undefined>} A Promise that resolves to the cache value if found, undefined otherwise.
+	 */
 	async getCache<T>(key: string): Promise<T | undefined> {
 		return this.withDatabase(async () => {
 			try {
@@ -1608,6 +1845,12 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously sets a cache value in the database based on the provided key and value.
+	 * @param {string} key - The key to set the cache value for.
+	 * @param {T} value - The value to set in the cache.
+	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the cache value was set successfully.
+	 */
 	async setCache<T>(key: string, value: T): Promise<boolean> {
 		return this.withDatabase(async () => {
 			try {
@@ -1638,6 +1881,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously deletes a cache value from the database based on the provided key.
+	 * @param {string} key - The key to delete the cache value for.
+	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the cache value was deleted successfully.
+	 */
 	async deleteCache(key: string): Promise<boolean> {
 		return this.withDatabase(async () => {
 			try {
@@ -1663,6 +1911,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously creates a new world in the database based on the provided parameters.
+	 * @param {World} world - The world object to create.
+	 * @returns {Promise<UUID>} A Promise that resolves to the ID of the created world.
+	 */
 	async createWorld(world: World): Promise<UUID> {
 		return this.withDatabase(async () => {
 			const newWorldId = world.id || v4();
@@ -1674,6 +1927,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves a world from the database based on the provided parameters.
+	 * @param {UUID} id - The ID of the world to retrieve.
+	 * @returns {Promise<World | null>} A Promise that resolves to the world if found, null otherwise.
+	 */
 	async getWorld(id: UUID): Promise<World | null> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -1684,6 +1942,10 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously retrieves all worlds from the database based on the provided parameters.
+	 * @returns {Promise<World[]>} A Promise that resolves to an array of worlds.
+	 */
 	async getAllWorlds(): Promise<World[]> {
 		return this.withDatabase(async () => {
 			const result = await this.db
@@ -1694,6 +1956,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously updates an existing world in the database based on the provided parameters.
+	 * @param {World} world - The world object to update.
+	 * @returns {Promise<void>} A Promise that resolves when the world is updated.
+	 */
 	async updateWorld(world: World): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db
@@ -1703,6 +1970,11 @@ export abstract class BaseDrizzleAdapter<
 		});
 	}
 
+	/**
+	 * Asynchronously removes a world from the database based on the provided parameters.
+	 * @param {UUID} id - The ID of the world to remove.
+	 * @returns {Promise<void>} A Promise that resolves when the world is removed.
+	 */
 	async removeWorld(id: UUID): Promise<void> {
 		return this.withDatabase(async () => {
 			await this.db.delete(worldTable).where(eq(worldTable.id, id));
@@ -1710,9 +1982,9 @@ export abstract class BaseDrizzleAdapter<
 	}
 
 	/**
-	 * Creates a new task in the database.
-	 * @param task The task object to create
-	 * @returns Promise resolving to the UUID of the created task
+	 * Asynchronously creates a new task in the database based on the provided parameters.
+	 * @param {Task} task - The task object to create.
+	 * @returns {Promise<UUID>} A Promise that resolves to the ID of the created task.
 	 */
 	async createTask(task: Task): Promise<UUID> {
 		return this.withRetry(async () => {
