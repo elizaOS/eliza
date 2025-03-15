@@ -25,8 +25,8 @@
 
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - Nodejs安装
-- [pnpm](https://pnpm.io/installation)
-- 使用pnpm
+- [bun](https://bun.sh/)
+- 使用bun
 
 ### 编辑.env文件
 
@@ -41,8 +41,8 @@
 在完成账号和角色文件的配置后，输入以下命令行启动你的bot：
 
 ```
-pnpm i
-pnpm start
+bun i
+bun start
 ```
 
 # 自定义Eliza
@@ -66,7 +66,7 @@ pnpm start
 您可能需要安装 Sharp。如果在启动时看到错误，请尝试使用以下命令安装：
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 # 环境设置
@@ -78,7 +78,7 @@ pnpm install --include=optional sharp
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Bot token
 OPENAI_API_KEY=sk-* # OpenAI API key, starting with sk-
-ELEVENLABS_XI_API_KEY= # API key from elevenlabs
+ELEVENLABS_API_KEY= # API key from elevenlabs
 
 # ELEVENLABS SETTINGS
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
@@ -134,7 +134,7 @@ TOGETHER_API_KEY=
 如果你有高性能的英伟达显卡，你可以以下命令行通过CUDA来做本地加速
 
 ```
-pnpm install
+bun install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 
@@ -156,15 +156,15 @@ npx --no node-llama-cpp source download --gpu cuda
 几种测试方法的命令行：
 
 ```bash
-pnpm test           # Run tests once
-pnpm test:watch    # Run tests in watch mode
+bun test           # Run tests once
+bun test:watch    # Run tests in watch mode
 ```
 
 对于数据库特定的测试：
 
 ```bash
-pnpm test:sqlite   # Run tests with SQLite
-pnpm test:sqljs    # Run tests with SQL.js
+bun test:sqlite   # Run tests with SQLite
+bun test:sqljs    # Run tests with SQL.js
 ```
 
 测试使用 Jest 编写，位于 src/\*_/_.test.ts 文件中。测试环境配置如下：

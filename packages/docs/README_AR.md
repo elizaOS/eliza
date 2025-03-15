@@ -42,7 +42,7 @@ _كما يُشاهَد في تشغيل [@DegenSpartanAI](https://x.com/degenspar
 
 -   [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 
--   [pnpm](https://pnpm.io/installation)
+-   [bun](https://bun.io/installation)
 
 ### تعديل ملف .env
 
@@ -54,13 +54,13 @@ _كما يُشاهَد في تشغيل [@DegenSpartanAI](https://x.com/degenspar
 
 -   تحقق من الملف `packages/core/src/defaultCharacter.ts` - يمكنك تعديله
 
--   يمكنك أيضًا تحميل الشخصيات باستخدام الأمر `pnpm start --characters="path/to/your/character.json"` وتشغيل عدة بوتات في نفس الوقت.
+-   يمكنك أيضًا تحميل الشخصيات باستخدام الأمر `bun start --characters="path/to/your/character.json"` وتشغيل عدة بوتات في نفس الوقت.
 
 بعد إعداد ملف .env وملف الشخصية، يمكنك بدء تشغيل البوت باستخدام الأمر التالي:
 
 ```
-pnpm i
-pnpm start
+bun i
+bun start
 ```
 
 # تخصيص إليزا
@@ -88,7 +88,7 @@ pnpm start
 قد تحتاج إلى تثبيت Sharp. إذا رأيت خطأ عند البدء، حاول تثبيته باستخدام الأمر التالي:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 # إعداد البيئة
@@ -103,7 +103,7 @@ DISCORD_API_TOKEN= # رمز البوت
 
 OPENAI_API_KEY=sk-* # مفتاح OpenAI API، يبدأ بـ sk-
 
-ELEVENLABS_XI_API_KEY= # مفتاح API من elevenlabs
+ELEVENLABS_API_KEY= # مفتاح API من elevenlabs
 
 # إعدادات ELEVENLABS
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
@@ -162,7 +162,7 @@ TOGETHER_API_KEY=
 إذا كان لديك معالج رسوميات NVIDIA، يمكنك تثبيت CUDA لتسريع الاستدلال المحلي بشكل كبير.
 
 ```
-pnpm install
+bun install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 
@@ -185,17 +185,17 @@ npx --no node-llama-cpp source download --gpu cuda
 لتشغيل مجموعة الاختبارات:
 
 ```bash
-pnpm test           # تشغيل الاختبارات مرة واحدة
+bun test           # تشغيل الاختبارات مرة واحدة
 
-pnpm test:watch    # تشغيل الاختبارات في وضع المراقبة
+bun test:watch    # تشغيل الاختبارات في وضع المراقبة
 ```
 
 للاختبارات الخاصة بقواعد البيانات:
 
 ```bash
-pnpm test:sqlite   # تشغيل الاختبارات مع SQLite
+bun test:sqlite   # تشغيل الاختبارات مع SQLite
 
-pnpm test:sqljs    # تشغيل الاختبارات مع SQL.js
+bun test:sqljs    # تشغيل الاختبارات مع SQL.js
 ```
 
 تم كتابة الاختبارات باستخدام Jest ويمكن العثور عليها في ملفات `src/**/*.test.ts`. تم تكوين بيئة الاختبار ل:

@@ -26,7 +26,7 @@ _Wie gesehen bei [@DegenSpartanAI](https://x.com/degenspartanai) und [@MarcAIndr
 **Voraussetzungen (ERFORDERLICH):**
 
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- [bun](https://bun.io/installation)
 
 ### .env-Datei bearbeiten
 
@@ -36,13 +36,13 @@ _Wie gesehen bei [@DegenSpartanAI](https://x.com/degenspartanai) und [@MarcAIndr
 ### Charakterdatei bearbeiten
 
 - Überprüfen Sie die Datei `packages/core/src/defaultCharacter.ts` - Sie können diese modifizieren
-- Sie können auch Charaktere mit dem Befehl `pnpm start --characters="path/to/your/character.json"` laden und mehrere Bots gleichzeitig ausführen
+- Sie können auch Charaktere mit dem Befehl `bun start --characters="path/to/your/character.json"` laden und mehrere Bots gleichzeitig ausführen
 
 Nach dem Einrichten der .env-Datei und der Charakterdatei können Sie den Bot mit folgendem Befehl starten:
 
 ```
-pnpm i
-pnpm start
+bun i
+bun start
 ```
 
 # Eliza anpassen
@@ -70,7 +70,7 @@ Sie können OpenAI-Modelle verwenden, indem Sie die `XAI_MODEL` Umgebungsvariabl
 Möglicherweise müssen Sie Sharp installieren. Wenn Sie beim Start einen Fehler sehen, versuchen Sie es mit folgendem Befehl zu installieren:
 
 ```
-pnpm install --include=optional sharp
+bun install --include=optional sharp
 ```
 
 # Umgebungseinrichtung
@@ -82,7 +82,7 @@ Sie müssen Umgebungsvariablen in Ihrer .env-Datei hinzufügen, um sich mit vers
 DISCORD_APPLICATION_ID=
 DISCORD_API_TOKEN= # Bot-Token
 OPENAI_API_KEY=sk-* # OpenAI API-Schlüssel, beginnt mit sk-
-ELEVENLABS_XI_API_KEY= # API-Schlüssel von Elevenlabs
+ELEVENLABS_API_KEY= # API-Schlüssel von Elevenlabs
 
 # ELEVENLABS EINSTELLUNGEN
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
@@ -130,7 +130,7 @@ TOGETHER_API_KEY=
 Wenn Sie eine NVIDIA-GPU haben, können Sie CUDA installieren, um die lokale Inferenz drastisch zu beschleunigen.
 
 ```
-pnpm install
+bun install
 npx --no node-llama-cpp source download --gpu cuda
 ```
 
@@ -153,15 +153,15 @@ Hilfe beim Einrichten Ihres Discord-Bots finden Sie hier: https://discordjs.guid
 Um die Testsuite auszuführen:
 
 ```bash
-pnpm test           # Tests einmal ausführen
-pnpm test:watch    # Tests im Watch-Modus ausführen
+bun test           # Tests einmal ausführen
+bun test:watch    # Tests im Watch-Modus ausführen
 ```
 
 Für datenbankspezifische Tests:
 
 ```bash
-pnpm test:sqlite   # Tests mit SQLite ausführen
-pnpm test:sqljs    # Tests mit SQL.js ausführen
+bun test:sqlite   # Tests mit SQLite ausführen
+bun test:sqljs    # Tests mit SQL.js ausführen
 ```
 
 Tests werden mit Jest geschrieben und befinden sich in `src/**/*.test.ts`-Dateien. Die Testumgebung ist konfiguriert für:

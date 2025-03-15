@@ -160,9 +160,9 @@ To set up your environment for TEE development:
     Make sure to set the `TEE_MODE` environment variable to `LOCAL`. Then you can install the dependencies and run the agent locally:
 
     ```bash
-    pnpm i
-    pnpm build
-    pnpm start --character=./characters/yourcharacter.character.json
+    bun i
+    bun run build
+    bun start --character=./characters/yourcharacter.character.json
     ```
 
 4. **Verify TEE Attestation**
@@ -245,7 +245,7 @@ services:
     tee:
         command:
             [
-                "pnpm",
+                "bun",
                 "start",
                 "--character=./characters/yourcharacter.character.json",
             ]
@@ -261,7 +261,7 @@ services:
             - SMALL_REDPILL_MODEL=anthropic/claude-3-5-sonnet
             - MEDIUM_REDPILL_MODEL=anthropic/claude-3-5-sonnet
             - LARGE_REDPILL_MODEL=anthropic/claude-3-opus
-            - ELEVENLABS_XI_API_KEY=$ELEVENLABS_XI_API_KEY
+            - ELEVENLABS_API_KEY=$ELEVENLABS_API_KEY
             - ELEVENLABS_MODEL_ID=eleven_multilingual_v2
             - ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
             - ELEVENLABS_VOICE_STABILITY=0.5
