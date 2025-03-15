@@ -24,6 +24,7 @@ export const messageHandlerTemplate =
 About {{agentName}}:
 {{bio}}
 {{lore}}
+{{permanentKnowledge}}
 {{knowledge}}
 
 {{providers}}

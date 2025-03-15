@@ -12,10 +12,10 @@ Character files are JSON-formatted configurations that define an AI character's 
 
 A `characterfile` implements the [Character](/api/type-aliases/character) type and defines the character's:
 
-- Core identity and behavior
-- Model provider configuration
-- Client settings and capabilities
-- Interaction examples and style guidelines
+-   Core identity and behavior
+-   Model provider configuration
+-   Client settings and capabilities
+-   Interaction examples and style guidelines
 
 **Example:**
 
@@ -33,6 +33,9 @@ A `characterfile` implements the [Character](/api/type-aliases/character) type a
     "lore": [
         "Secret Service allocations used for election interference.",
         "Promotes WorldLibertyFi for crypto leadership."
+    ],
+    "permanentKnowledge": [
+        "Knows that america always comes first, regardless of the situation."
     ],
     "knowledge": [
         "Understands border issues, Secret Service dynamics, and financial impacts on families."
@@ -102,9 +105,9 @@ Array of supported client types from [Clients](/api/enumerations/clients) e.g., 
 
 Character background as a string or array of statements.
 
-- Contains biographical information about the character
-- Can be a single comprehensive biography or multiple shorter statements
-- Multiple statements are randomized to create variety in responses
+-   Contains biographical information about the character
+-   Can be a single comprehensive biography or multiple shorter statements
+-   Multiple statements are randomized to create variety in responses
 
 Example:
 
@@ -134,9 +137,13 @@ Example:
 
 Array used for Retrieval Augmented Generation (RAG), containing facts or references to ground the character's responses.
 
-- Can contain chunks of text from articles, books, or other sources
-- Helps ground the character's responses in factual information
-- Knowledge can be generated from PDFs or other documents using provided tools
+-   Can contain chunks of text from articles, books, or other sources
+-   Helps ground the character's responses in factual information
+-   Knowledge can be generated from PDFs or other documents using provided tools
+
+#### `permanentKnowledge`
+
+Similiar to knowledge but always available for the agent to keep in mind and reference in its responses.
 
 #### `messageExamples`
 
@@ -184,15 +191,15 @@ The `style` object defines behavior patterns across contexts:
 
 ### Topics Array
 
-- List of subjects the character is interested in or knowledgeable about
-- Used to guide conversations and generate relevant content
-- Helps maintain character consistency
+-   List of subjects the character is interested in or knowledgeable about
+-   Used to guide conversations and generate relevant content
+-   Helps maintain character consistency
 
 ### Adjectives Array
 
-- Words that describe the character's traits and personality
-- Used for generating responses with a consistent tone
-- Can be used in "Mad Libs" style content generation
+-   Words that describe the character's traits and personality
+-   Used for generating responses with a consistent tone
+-   Can be used in "Mad Libs" style content generation
 
 ### Settings Configuration
 
@@ -211,21 +218,21 @@ The `settings` object defines additional configurations like secrets and voice m
 
 The `templates` object defines customizable prompt templates used for various tasks and interactions. Below is the list of available templates:
 
-- `goalsTemplate`
-- `factsTemplate`
-- `messageHandlerTemplate`
-- `shouldRespondTemplate`
-- `continueMessageHandlerTemplate`
-- `evaluationTemplate`
-- `twitterSearchTemplate`
-- `twitterPostTemplate`
-- `twitterMessageHandlerTemplate`
-- `twitterShouldRespondTemplate`
-- `telegramMessageHandlerTemplate`
-- `telegramShouldRespondTemplate`
-- `discordVoiceHandlerTemplate`
-- `discordShouldRespondTemplate`
-- `discordMessageHandlerTemplate`
+-   `goalsTemplate`
+-   `factsTemplate`
+-   `messageHandlerTemplate`
+-   `shouldRespondTemplate`
+-   `continueMessageHandlerTemplate`
+-   `evaluationTemplate`
+-   `twitterSearchTemplate`
+-   `twitterPostTemplate`
+-   `twitterMessageHandlerTemplate`
+-   `twitterShouldRespondTemplate`
+-   `telegramMessageHandlerTemplate`
+-   `telegramShouldRespondTemplate`
+-   `discordVoiceHandlerTemplate`
+-   `discordShouldRespondTemplate`
+-   `discordMessageHandlerTemplate`
 
 ### Example: Twitter Post Template
 
@@ -313,17 +320,17 @@ Your response should not contain any questions. Brief, concise statements only. 
 
 1. **Randomization for Variety**
 
-- Break bio and lore into smaller chunks
-- This creates more natural, varied responses
-- Prevents repetitive or predictable behavior
+-   Break bio and lore into smaller chunks
+-   This creates more natural, varied responses
+-   Prevents repetitive or predictable behavior
 
 2. **Knowledge Management**
 
 Use the provided tools to convert documents into knowledge:
 
-- [folder2knowledge](https://github.com/elizaos/characterfile/blob/main/scripts/folder2knowledge.js)
-- [knowledge2character](https://github.com/elizaos/characterfile/blob/main/scripts/knowledge2character.js)
-- [tweets2character](https://github.com/elizaos/characterfile/blob/main/scripts/tweets2character.js)
+-   [folder2knowledge](https://github.com/elizaos/characterfile/blob/main/scripts/folder2knowledge.js)
+-   [knowledge2character](https://github.com/elizaos/characterfile/blob/main/scripts/knowledge2character.js)
+-   [tweets2character](https://github.com/elizaos/characterfile/blob/main/scripts/tweets2character.js)
 
 Example:
 
@@ -334,15 +341,15 @@ npx knowledge2character <character-file> <knowledge-file>
 
 3. **Style Instructions**
 
-- Be specific about communication patterns
-- Include both dos and don'ts
-- Consider platform-specific behavior (chat vs posts)
+-   Be specific about communication patterns
+-   Include both dos and don'ts
+-   Consider platform-specific behavior (chat vs posts)
 
 4. **Message Examples**
 
-- Include diverse scenarios
-- Show character-specific responses
-- Demonstrate typical interaction patterns
+-   Include diverse scenarios
+-   Show character-specific responses
+-   Demonstrate typical interaction patterns
 
 ---
 
@@ -350,32 +357,32 @@ npx knowledge2character <character-file> <knowledge-file>
 
 1. **Bio and Lore**
 
-- Mix factual and personality-defining information
-- Include both historical and current details
-- Break into modular, reusable pieces
+-   Mix factual and personality-defining information
+-   Include both historical and current details
+-   Break into modular, reusable pieces
 
 2. **Style Instructions**
 
-- Be specific about tone and mannerisms
-- Include platform-specific guidance
-- Define clear boundaries and limitations
+-   Be specific about tone and mannerisms
+-   Include platform-specific guidance
+-   Define clear boundaries and limitations
 
 3. **Examples**
 
-- Cover common scenarios
-- Show character-specific reactions
-- Demonstrate proper tone and style
+-   Cover common scenarios
+-   Show character-specific reactions
+-   Demonstrate proper tone and style
 
 4. **Knowledge**
 
-- Focus on relevant information
-- Organize in digestible chunks
-- Update regularly to maintain relevance
+-   Focus on relevant information
+-   Organize in digestible chunks
+-   Update regularly to maintain relevance
 
 ---
 
 ## Further Reading
 
-- [Agents Documentation](../core/agents)
-- [Model Providers](./fine-tuning)
-- [Client Integration](../core/clients)
+-   [Agents Documentation](../core/agents)
+-   [Model Providers](./fine-tuning)
+-   [Client Integration](../core/clients)

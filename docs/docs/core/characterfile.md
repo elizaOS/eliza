@@ -153,6 +153,9 @@ Define interaction patterns:
         { "path": "file/path.md", "shared": false },
         { "directory": "knowledge/path", "shared": false }
     ],
+    "permanentKnowledge": [
+        "Permanent string knowledge", // Always available to the agent
+    ],
     "messageExamples": [],           // Example conversations
     "postExamples": [],             // Example social posts
     "topics": [],                  // Areas of expertise

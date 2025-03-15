@@ -360,6 +360,8 @@ export interface State {
     knowledgeData?: KnowledgeItem[];
     /** Optional knowledge data */
     ragKnowledgeData?: RAGKnowledgeItem[];
+    /** Optional permanent knowledge */
+    permanentKnowledge?: string;
 
     /** Additional dynamic properties */
     [key: string]: unknown;
@@ -815,6 +817,9 @@ export type Character = {
 
     /** Optional knowledge base */
     knowledge?: (string | { path: string; shared?: boolean } | { directory: string; shared?: boolean })[];
+
+    /** Permanent knowledge that should always be available to the agent */
+    permanentKnowledge?: string[];
 
     /** Available plugins */
     plugins: Plugin[];
