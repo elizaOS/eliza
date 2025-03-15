@@ -106,8 +106,8 @@ export default function Home() {
                         <div
                           className={
                             agent.status === AgentStatus.ACTIVE
-                              ? ""
-                              : "grayscale brightness-75 opacity-50"
+                              ? "brightness-[100%] hover:brightness-[107%]"
+                              : "grayscale brightness-[75%] opacity-50 hover:brightness-[85%]"
                           }
                         >
                           {agent.settings?.avatar ? (

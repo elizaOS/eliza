@@ -1280,7 +1280,8 @@ export class AgentRuntime implements IAgentRuntime {
       params === null ||
       params === undefined ||
       typeof params !== "object" ||
-      Array.isArray(params)
+      Array.isArray(params) ||
+      (typeof Buffer !== "undefined" && Buffer.isBuffer(params))
     ) {
       paramsWithRuntime = params;
     } else {
