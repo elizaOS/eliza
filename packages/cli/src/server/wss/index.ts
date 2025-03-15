@@ -84,7 +84,7 @@ export class WebSocketRouter {
                 const runtime = this.agents.get(agentId) || this.agents.get(senderId);
                 if (!runtime) {
                     ws.send(JSON.stringify({ error: `[WebSocket server] No runtime found.` }));
-                    return;
+                    continue;
                 }
 
                 const text = message.trim();
