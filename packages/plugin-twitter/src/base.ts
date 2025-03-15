@@ -348,6 +348,9 @@ export class ClientBase extends EventEmitter {
   }
 
   async init() {
+    // First ensure the agent exists in the database
+    await this.runtime.ensureAgentExists(this.runtime.character);
+
     const username =
       this.state?.TWITTER_USERNAME ||
       this.runtime.getSetting("TWITTER_USERNAME");
@@ -446,7 +449,7 @@ export class ClientBase extends EventEmitter {
       // }
     }
 
-    if (retryCount === maxRetries) {
+    if (retryCount >= maxRetries) {
       throw new Error(
         `Twitter login failed after ${maxRetries} attempts. Last error: ${lastError?.message}`
       );
@@ -496,7 +499,6 @@ export class ClientBase extends EventEmitter {
       ? await this.twitterClient.fetchFollowingTimeline(count, [])
       : await this.twitterClient.fetchHomeTimeline(count, []);
 
-    logger.debug(homeTimeline);
     const processedTimeline = homeTimeline
       .filter((t) => t.__typename !== "TweetWithVisibilityResults") // what's this about?
       .map((tweet) => this.parseTweet(tweet));
@@ -588,15 +590,40 @@ export class ClientBase extends EventEmitter {
             continue;
           }
 
+          // Create a world for this Twitter user if it doesn't exist
+          const worldId = createUniqueUuid(this.runtime, tweet.userId) as UUID;
+          await this.runtime.ensureWorldExists({
+            id: worldId,
+            name: `${tweet.username}'s Twitter`,
+            agentId: this.runtime.agentId,
+            serverId: tweet.userId,
+            metadata: {
+              ownership: { ownerId: tweet.userId },
+              twitter: {
+                username: tweet.username,
+                id: tweet.userId
+              }
+            }
+          });
+
           const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
 
-          const entityId = createUniqueUuid(
-            this.runtime,
-            tweet.userId === this.profile.id
-              ? this.runtime.agentId
-              : tweet.userId
-          );
+          // Ensure the room exists with proper world association
+          await this.runtime.ensureRoomExists({
+            id: roomId,
+            name: `${tweet.username}'s Thread`,
+            source: "twitter",
+            type: ChannelType.FEED,
+            channelId: tweet.conversationId,
+            serverId: tweet.userId,
+            worldId: worldId,
+          });
 
+          const entityId = tweet.userId === this.profile.id
+            ? this.runtime.agentId
+            : createUniqueUuid(this.runtime, tweet.userId);
+
+          // Ensure the entity exists with proper world association
           await this.runtime.ensureConnection({
             entityId,
             roomId,
@@ -604,6 +631,7 @@ export class ClientBase extends EventEmitter {
             name: tweet.name,
             source: "twitter",
             type: ChannelType.FEED,
+            worldId: worldId,
           });
 
           const content = {
@@ -614,16 +642,6 @@ export class ClientBase extends EventEmitter {
               ? createUniqueUuid(this.runtime, tweet.inReplyToStatusId)
               : undefined,
           } as Content;
-
-          logger.log("Creating memory for tweet", tweet.id);
-
-          // check if it already exists
-          const memory = await this.runtime.getMemoryById(createUniqueUuid(this.runtime, tweet.id));
-
-          if (memory) {
-            logger.log("Memory already exists, skipping timeline population");
-            break;
-          }
 
           await this.runtime.createMemory({
             id: createUniqueUuid(this.runtime, tweet.id),
@@ -698,13 +716,40 @@ export class ClientBase extends EventEmitter {
         continue;
       }
 
+      // Create a world for this Twitter user if it doesn't exist
+      const worldId = createUniqueUuid(this.runtime, tweet.userId) as UUID;
+      await this.runtime.ensureWorldExists({
+        id: worldId,
+        name: `${tweet.username}'s Twitter`,
+        agentId: this.runtime.agentId,
+        serverId: tweet.userId,
+        metadata: {
+          ownership: { ownerId: tweet.userId },
+          twitter: {
+            username: tweet.username,
+            id: tweet.userId
+          }
+        }
+      });
+
       const roomId = createUniqueUuid(this.runtime, tweet.conversationId);
 
-      const entityId =
-        tweet.userId === this.profile.id
-          ? this.runtime.agentId
-          : createUniqueUuid(this.runtime, tweet.userId);
+      // Ensure the room exists with proper world association
+      await this.runtime.ensureRoomExists({
+        id: roomId,
+        name: `${tweet.username}'s Thread`,
+        source: "twitter",
+        type: ChannelType.FEED,
+        channelId: tweet.conversationId,
+        serverId: tweet.userId,
+        worldId: worldId,
+      });
 
+      const entityId = tweet.userId === this.profile.id
+        ? this.runtime.agentId
+        : createUniqueUuid(this.runtime, tweet.userId);
+
+      // Ensure the entity exists with proper world association
       await this.runtime.ensureConnection({
         entityId,
         roomId,
@@ -712,6 +757,7 @@ export class ClientBase extends EventEmitter {
         name: tweet.name,
         source: "twitter",
         type: ChannelType.FEED,
+        worldId: worldId,
       });
 
       const content = {
@@ -868,46 +914,37 @@ export class ClientBase extends EventEmitter {
    * Fetches recent interactions (likes, retweets, quotes) for the authenticated user's tweets
    */
   async fetchInteractions() {
-    // try {
-      // Get recent interactions from Twitter API
-      const interactions = (await this.requestQueue.add(() =>
-        (this.twitterClient as any).get("statuses/mentions_timeline", {
-          count: 100,
-          include_entities: true,
-        })
-      )) as TwitterInteraction[];
-
-      // Process and categorize interactions
-      return interactions.map((interaction) => ({
-        id: interaction.id_str,
-        type: this.getInteractionType(interaction),
-        userId: interaction.user.id_str,
-        username: interaction.user.screen_name,
-        name: interaction.user.name,
-        targetTweetId:
-          interaction.in_reply_to_status_id_str ||
-          interaction.quoted_status_id_str,
-        targetTweet: interaction.quoted_status || interaction,
-        quoteTweet: interaction.is_quote_status ? interaction : undefined,
-        retweetId: interaction.retweeted_status?.id_str,
+    try {
+      const username = this.profile.username;
+      // Use fetchSearchTweets to get mentions instead of the non-existent get method
+      const mentionsResponse = await this.requestQueue.add(() => 
+        this.twitterClient.fetchSearchTweets(
+          `@${username}`, 
+          100,
+          SearchMode.Latest
+        )
+      );
+      
+      // Process tweets directly into the expected interaction format
+      return mentionsResponse.tweets.map(tweet => ({
+        id: tweet.id,
+        type: tweet.isQuoted 
+              ? "quote" 
+              : tweet.retweetedStatus 
+                ? "retweet" 
+                : "like",
+        userId: tweet.userId,
+        username: tweet.username,
+        name: tweet.name || tweet.username,
+        targetTweetId: tweet.inReplyToStatusId || tweet.quotedStatusId,
+        targetTweet: tweet.quotedStatus || tweet,
+        quoteTweet: tweet.isQuoted ? tweet : undefined,
+        retweetId: tweet.retweetedStatus?.id,
       }));
-    // } catch (error) {
-    //   logger.error("Error fetching Twitter interactions:", error);
-    //   return [];
-    // }
-  }
-
-  /**
-   * Determines the type of interaction from a Twitter API response
-   */
-  private getInteractionType(interaction: any): "like" | "retweet" | "quote" {
-    if (interaction.retweeted_status) {
-      return "retweet";
+    } catch (error) {
+      logger.error("Error fetching Twitter interactions:", error);
+      return [];
     }
-    if (interaction.is_quote_status) {
-      return "quote";
-    }
-    return "like";
   }
 
   /**

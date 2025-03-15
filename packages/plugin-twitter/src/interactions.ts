@@ -120,7 +120,7 @@ export class TwitterInteractionClient {
 		logger.log("Checking Twitter interactions");
 
 		const twitterUsername = this.client.profile?.username;
-		try {
+		// try {
 			// Check for mentions
 			const mentionCandidates = (
 				await this.client.fetchSearchTweets(
@@ -502,9 +502,9 @@ export class TwitterInteractionClient {
 			await this.client.cacheLatestCheckedTweetId();
 
 			logger.log("Finished checking Twitter interactions");
-		} catch (error) {
-			logger.error("Error handling Twitter interactions:", error);
-		}
+		// } catch (error) {
+		// 	logger.error("Error handling Twitter interactions:", error);
+		// }
 	}
 
 	/**
