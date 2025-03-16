@@ -1,208 +1,199 @@
 # Frequently Asked Questions
 
-### What is Eliza?
+## General
 
-Eliza is an open-source framework for building AI agents that can interact on platforms like Twitter, Discord, and Telegram. It was created by Shaw and is maintained by the community.
+### What is ElizaOS?
+
+ElizaOS is an open-source framework for creating AI agents that can interact across multiple platforms through a consistent, extensible architecture. It features a modular design with plugin-based capabilities, entity-component architecture, vector-based memory, and cross-platform integration.
 
 ### What's the difference between v1 and v2?
 
-Note: It's recommended for devs to keep working with v1, v2 will be mostly backwards compatible
-
-**What's Wrong with V1:**
-
-1. Cluttered: Too many packages directly in the core codebase
-2. Message Handling: Isolated and limited message routing between platforms
-3. Wallet Confusion: Separate wallets for different chains adds friction
-4. Limited Planning: Limited action planning abilities
+**Note**: For developers currently using v1, it's recommended to continue with v1 until v2 is fully stable. V2 is designed to be mostly backwards compatible.
 
 **What's New in V2:**
 
-1. Better Organization
+1. **Improved Architecture**
 
-- New package registry system to submit packages without core code changes
-- More modular and maintainable architecture
-- CLI tool for package management
+   - Modular package registry system
+   - CLI tool for project and plugin management
+   - Better organized codebase structure
 
-2. Smarter Communication
+2. **Enhanced Communication**
 
-- Agents can more easily route messages across different platforms
-- Better support for autonomous actions
+   - Cross-platform message routing
+   - Better support for autonomous agent actions
+   - More consistent interaction models
 
-3. Simplified Wallet System
+3. **Advanced Entity-Component System**
 
-- One unified wallet system (like a video game inventory)
-- Better at handling transactions across different blockchains
-- Each "inventory provider" can have its own unique actions
+   - Flexible data modeling for agents and users
+   - Dynamic composition of objects without complex inheritance
+   - Better relationship tracking between entities
 
-4. Character Improvements
+4. **Memory and Knowledge Improvements**
 
-- Characters can now evolve and learn over time
-- All character data stored in a database instead of static files
-- Can grow and change based on community interactions
+   - Semantic retrieval of conversations and knowledge
+   - More efficient vector-based memory organization
+   - Better integration of knowledge across contexts
 
-5. Advanced Planning
-
-- Agents can now plan out a series of actions in advance
-- More strategic and autonomous behavior
+5. **Worlds and Rooms**
+   - Structured container model for organizing interactions
+   - More consistent participant management
+   - Cross-platform space mapping
 
 ---
 
 ## Installation and Setup
 
-### What are the system requirements for running Eliza?
+### What are the system requirements for running ElizaOS?
 
-- Node.js version 23+ (specifically 23.3.0 is recommended)
-- pnpm package manager
+- Node.js version 23+ (version 23.3.0 is recommended)
+- pnpm package manager (for development) or npx (for using CLI tools)
 - At least 2GB RAM
-- For Windows users: WSL2 (Windows Subsystem for Linux)
+- Windows users: WSL2 (Windows Subsystem for Linux) is recommended
 
-### How do I get started with Eliza?
+### How do I get started with ElizaOS?
 
-1. Follow the [quick start guide](/docs/quickstart.md) in the README
-2. Watch the AI Agent Dev School videos on YouTube for step-by-step guidance
-3. Join the Discord community for support
+1. Use the CLI create command to scaffold a new project:
+   ```bash
+   npx @elizaos/cli create
+   ```
+2. Follow the interactive prompts to set up your project
+3. Navigate to your project directory and start the agent:
+   ```bash
+   cd my-project
+   npx @elizaos/cli start
+   ```
 
 ### How do I fix common installation issues?
 
 If you encounter build failures or dependency errors:
 
 1. Ensure you're using Node.js v23.3.0: `nvm install 23.3.0 && nvm use 23.3.0`
-2. Clean your environment: `pnpm clean`
-3. Install dependencies: `pnpm install --no-frozen-lockfile`
-4. Rebuild: `pnpm build`
-5. If issues persist, try checking out the latest release:
-   ```bash
-   git checkout $(git describe --tags --abbrev=0)
+2. Try creating a fresh project using `npx @elizaos/cli create`
+3. Verify your database connection settings
+4. Check the logs for specific error messages
+5. Join the Discord community for support
+
+### How do I use local models with ElizaOS?
+
+Use **Ollama** for local models:
+
+1. Install Ollama on your system
+2. Download your preferred model (e.g., `ollama pull llama3.1`)
+3. Set the model configuration in your project:
+   ```json
+   {
+     "modelProvider": "ollama",
+     "settings": {
+       "OLLAMA_BASE_URL": "http://localhost:11434"
+     }
+   }
    ```
 
-### How do I use local models with Eliza?
+### How do I update my ElizaOS project?
 
-Use **Ollama** for local models. Install Ollama, download the desired model (e.g., `llama3.1`), set `modelProvider` to `"ollama"` in the character file, and configure `OLLAMA` settings in `.env`.
-
-### How do I update Eliza to the latest version?
-
-1. Pull the latest changes
-2. Clean your environment: `pnpm clean`
-3. Reinstall dependencies: `pnpm install --no-frozen-lockfile`
-4. Rebuild: `pnpm build`
+1. Update the CLI: `npm install -g @elizaos/cli@latest`
+2. Update dependencies in your project:
+   ```bash
+   cd my-project
+   npm update @elizaos/core @elizaos/cli
+   ```
 
 ---
 
-## Running Multiple Agents
+## Running Agents
+
+### How do I run my agent in production?
+
+Use the `start` command for production:
+
+```bash
+npx @elizaos/cli start
+```
+
+This command will:
+
+1. Load your project configuration
+2. Initialize the database
+3. Load all plugins
+4. Start the HTTP API server
+5. Begin processing messages and events
+
+### How do I run my agent in development mode?
+
+Use the `dev` command during development:
+
+```bash
+npx @elizaos/cli dev
+```
+
+This provides hot reloading and more verbose logging.
 
 ### How do I run multiple agents simultaneously?
 
-You have several options:
+1. Create separate project directories for each agent
+2. Run each project on a different port:
 
-1. Use the command line:
    ```bash
-   pnpm start --characters="characters/agent1.json,characters/agent2.json"
+   cd agent1-project
+   npx @elizaos/cli start --port 3000
+
+   # In another terminal
+   cd agent2-project
+   npx @elizaos/cli start --port 3001
    ```
-2. Create separate projects for each agent with their own configurations
-3. For production, use separate Docker containers for each agent
 
-### Can I run multiple agents on one machine?
+3. For production, consider using separate Docker containers or PM2 instances
 
-Yes, but consider:
+### Can I test a specific character configuration?
 
-- Each agent needs its own port configuration
-- Separate the .env files or use character-specific secrets
-- Monitor memory usage (2-4GB RAM per agent recommended)
+Yes, use the `--character` flag with the `start` command:
+
+```bash
+npx @elizaos/cli start --character path/to/character.json
+```
 
 ---
 
-## Twitter/X Integration
+## Platform Integration
 
-### How do I prevent my agent from spamming or posting duplicates?
+### How do I connect my agent to Discord?
 
-Configure your .env file:
-
-```
-ENABLE_ACTION_PROCESSING=false
-POST_INTERVAL_MIN=900  # 15 minutes minimum
-POST_INTERVAL_MAX=1200 # 20 minutes maximum
-TWITTER_DRY_RUN=true   # Test mode
-```
-
-### How do I control which tweets my agent responds to?
-
-1. Configure target users in .env:
+1. Install the Discord plugin:
+   ```bash
+   npm install @elizaos/plugin-discord
    ```
-   TWITTER_TARGET_USERS="user1,user2,user3"
-   ```
-2. Control specific actions:
-   ```
-   TWITTER_LIKES_ENABLE=false
-   TWITTER_RETWEETS_ENABLE=false
-   TWITTER_REPLY_ENABLE=true
-   TWITTER_FOLLOW_ENABLE=false
-   ```
+2. Add the plugin to your project configuration
+3. Configure your Discord credentials in the environment or settings
+4. Start your agent with `npx @elizaos/cli start`
 
-### How do I fix Twitter authentication issues?
+### How do I control platform-specific behaviors?
 
-1. Mark your account as "Automated" in Twitter settings
-2. Ensure proper credentials in .env file
-3. Consider using a residential IP or VPN as Twitter may block cloud IPs
-4. Set up proper rate limiting to avoid suspensions
-
-### How do I prevent unwanted Twitter interactions?
-
-To better control what tweets your agent responds to, configure `TWITTER_TARGET_USERS` in `.env` and set specific action flags like `TWITTER_LIKES_ENABLE=false` to control interaction types.
-
-### How do I troubleshoot Twitter authentication issues?
-
-Ensure correct credentials in `.env`, mark account as "Automated" in Twitter settings, and consider using a residential IP to avoid blocks.
-
-### How do I make my agent respond to Twitter replies?
-
-Set `ENABLE_ACTION_PROCESSING=true` and configure `TWITTER_POLL_INTERVAL`. Target specific users for guaranteed responses.
-
-### How do I avoid Twitter bot suspensions?
-
-- Mark account as automated in Twitter settings
-- Space out posts (15-20 minutes between interactions)
-- Avoid using proxies
-
-### How do I fix Twitter authentication issues?
-
-- Ensure correct credentials in .env file
-- Use valid TWITTER_COOKIES format
-- Turn on "Automated" in Twitter profile settings
-
----
-
-## Model Configuration
-
-### How do I switch between different AI models?
-
-In your character.json file:
+Each platform plugin has its own configuration options. For example, to control Discord interactions:
 
 ```json
 {
-  "modelProvider": "openai", // or "anthropic", "deepseek", etc.
+  "plugins": ["@elizaos/plugin-discord"],
   "settings": {
-    "model": "gpt-4",
-    "maxInputTokens": 200000,
-    "maxOutputTokens": 8192
+    "DISCORD_TOKEN": "your-token",
+    "DISCORD_MENTIONS_ONLY": true,
+    "DISCORD_CHANNELS": "general,bot-chat"
   }
 }
 ```
 
-### How do I manage API keys and secrets?
+### How do I connect to multiple platforms at once?
 
-Two options:
+Add multiple platform plugins to your project:
 
-1. Global .env file for shared settings
-2. Character-specific secrets in character.json:
-   ```json
-   {
-     "settings": {
-       "secrets": {
-         "OPENAI_API_KEY": "your-key-here"
-       }
-     }
-   }
-   ```
+```json
+{
+  "plugins": ["@elizaos/plugin-discord", "@elizaos/plugin-telegram"]
+}
+```
+
+Each plugin will handle connections to its respective platform.
 
 ---
 
@@ -210,144 +201,180 @@ Two options:
 
 ### How does memory management work in ElizaOS?
 
-ElizaOS uses RAG (Retrieval-Augmented Generation) to convert prompts into vector embeddings for efficient context retrieval and memory storage.
+ElizaOS uses a vector-based memory system with different types:
 
-### How do I fix "Cannot generate embedding: Memory content is empty"?
+- Messages: Conversations stored with embeddings for semantic search
+- Facts: Extracted knowledge from conversations
+- Documents: External knowledge processed into fragments
 
-Check your database for null memory entries and ensure proper content formatting when storing new memories.
+Memory is retrieved contextually based on relevance to current conversations.
 
-### How do I manage my agent's memory?
+### How do I add external knowledge to my agent?
 
-- To reset memory: Delete the db.sqlite file and restart
-- To add documents: Specify path to file / folder in the characterfile
-- For large datasets: Consider using a vector database
-
-### How much does it cost to run an agent?
-
-- OpenAI API: Approximately 500 simple replies for $1
-- Server hosting: $5-20/month depending on provider
-- Optional: Twitter API costs if using premium features
-- Local deployment can reduce costs but requires 24/7 uptime
+1. Add knowledge files to your project's `knowledge` directory
+2. Ensure your project configuration includes these paths:
+   ```json
+   {
+     "knowledge": ["./knowledge/documents", { "path": "./knowledge/private", "shared": false }]
+   }
+   ```
+3. Start your agent, which will process and embed this knowledge
 
 ### How do I clear or reset my agent's memory?
 
-1. Delete the db.sqlite file in the agent/data directory
-2. Restart your agent
-3. Alternatively, use `pnpm cleanstart`
+1. For PGLite: Delete the db.sqlite file in your project directory
+2. For PostgreSQL: Use database tools to clear specific tables
+3. Restart your agent with `npx @elizaos/cli start`
 
-### How do I add custom knowledge or use RAG with my agent?
+### How much does it cost to run an agent?
 
-1. Convert documents to txt/md format
-2. Use the [folder2knowledge](https://github.com/elizaOS/characterfile/tree/main/scripts) tool
-3. Add to the knowledge section in your character file, [see docs](docs/core/characterfile.md) via `"ragKnowledge": true`
+Costs vary based on:
+
+- Model provider (OpenAI, Anthropic, etc.) and usage
+- Server hosting ($5-20/month depending on provider)
+- Database hosting (if using external PostgreSQL)
+- Platform API costs (if using premium features)
+
+Using local models can significantly reduce costs.
 
 ---
 
 ## Plugins and Extensions
 
-### How do I add plugins to my agent?
+### How do I create a new plugin?
 
-1. Add the plugin to your character.json:
+Use the CLI create command with the plugin type:
+
+```bash
+npx @elizaos/cli create --type plugin
+```
+
+This will scaffold a plugin project with the necessary structure.
+
+### How do I add plugins to my project?
+
+1. Install the plugin: `npm install @elizaos/plugin-name`
+2. Add it to your project configuration:
    ```json
    {
      "plugins": ["@elizaos/plugin-name"]
    }
    ```
-2. Install the plugin: `pnpm install @elizaos/plugin-name`
-3. Rebuild: `pnpm build`
-4. Configure any required plugin settings in .env or character file
+3. Configure any plugin-specific settings
+4. Restart your agent
 
-### How do I create custom plugins?
+### How do I publish my plugin?
 
-1. Create a new directory in packages/plugins
-2. Implement required interfaces (actions, providers, evaluators)
-3. Add to your character's plugins array
-4. Test locally before deployment
+Use the plugins publish command:
+
+```bash
+npx @elizaos/cli plugin publish
+```
+
+This validates your plugin and publishes it to the registry.
 
 ---
 
-## Production Deployment
+## Worlds and Rooms
 
-### What's the recommended way to deploy Eliza?
+### What are worlds and rooms in ElizaOS?
 
-1. Use a VPS or cloud provider (DigitalOcean, AWS, Hetzner)
-2. Requirements:
-   - Minimum 2GB RAM
-   - 20GB storage
-   - Ubuntu or Debian recommended
-3. Use PM2 or Docker for process management
-4. Consider using residential IPs for Twitter bots
+- **Worlds** are containers for entities and rooms, similar to Discord servers or Slack workspaces
+- **Rooms** are interaction spaces within worlds, like channels or direct messages
+- Entities (users and agents) participate in rooms and can belong to worlds
 
-### How do I ensure my agent runs continuously?
+### How do I create a world programmatically?
 
-1. Use a process manager like PM2:
-   ```bash
-   npm install -g pm2
-   pm2 start "pnpm start" --name eliza
-   pm2 save
-   ```
-2. Set up monitoring and automatic restarts
-3. Use proper error handling and logging
+```typescript
+const worldId = await runtime.createWorld({
+  name: 'My Project Space',
+  agentId: runtime.agentId,
+  serverId: 'external-system-id',
+});
+```
+
+### How do I manage rooms in a world?
+
+```typescript
+// Create a room in a world
+const roomId = await runtime.createRoom({
+  name: 'general-chat',
+  source: 'discord',
+  type: ChannelType.GROUP,
+  worldId: parentWorldId,
+});
+
+// Add participants to a room
+await runtime.addParticipant(entityId, roomId);
+```
 
 ---
 
 ## Troubleshooting
 
-### How do I fix database connection issues?
-
-1. For SQLite:
-   - Delete db.sqlite and restart
-   - Check file permissions
-2. For PostgreSQL:
-   - Verify connection string
-   - Check database exists
-   - Ensure proper credentials
-
 ### How do I debug when my agent isn't responding?
 
-1. Enable debug logging in .env:
+1. Check the console logs for error messages
+2. Verify your database connection is working
+3. Ensure model API keys are valid
+4. Check platform-specific configurations
+5. Try running with `--configure` to reset configurations:
+   ```bash
+   npx @elizaos/cli start --configure
    ```
-   DEBUG=eliza:*
-   ```
-2. Check the database for saved messages
-3. Verify API keys and model provider status
-4. Check client-specific settings (Twitter, Discord, etc.)
 
-### How do I resolve embedding dimension mismatch errors?
+### How do I resolve database connection issues?
 
-1. Set `USE_OPENAI_EMBEDDING=true` in .env
-2. Delete db.sqlite to reset embeddings
-3. Ensure consistent embedding models across your setup
+1. For PGLite:
+   - Check file permissions
+   - Try deleting and recreating the database
+2. For PostgreSQL:
+   - Verify connection string
+   - Check database exists and is accessible
+   - Ensure proper credentials
 
-### Why does my agent post in JSON format sometimes?
+### Why am I seeing model API errors?
 
-This usually happens due to incorrect output formatting or template issues. Check your character file's templates and ensure the text formatting is correct without raw JSON objects.
+Common causes:
 
-### How do I make my agent only respond to mentions?
+1. Invalid or expired API key
+2. Rate limiting or quota exceeded
+3. Incompatible model parameters
+4. Network connectivity issues
 
-Add a mention filter to your character's configuration and set `ENABLE_ACTION_PROCESSING=false` in your .env file.
+Try setting `--configure` to update your model settings:
+
+```bash
+npx @elizaos/cli start --configure
+```
+
+### How do I fix "Cannot generate embedding" errors?
+
+1. Check that your model provider supports embeddings
+2. Verify API keys for the embedding model
+3. Ensure content being embedded is not empty or malformed
+4. For consistency, use the same embedding model throughout your project
 
 ---
 
-## How can I contribute?
+## Contributing
 
-Eliza welcomes contributions from individuals with a wide range of skills:
+### How can I contribute to ElizaOS?
 
-- **Participate in community discussions**: Share your memecoin insights, propose new ideas, and engage with other community members.
-- **Contribute to the development of the Eliza platform**: https://github.com/elizaOS/eliza
-- **Help build the Eliza ecosystem**: Create applications / tools, resources, and memes. Give feedback, and spread the word
+ElizaOS welcomes contributions from individuals with various skills:
 
 #### Technical Contributions
 
-- **Develop new actions, clients, providers, and evaluators**: Extend Eliza's functionality by creating new modules or enhancing existing ones.
-- **Contribute to database management**: Improve or expand Eliza's database capabilities using PostgreSQL, SQLite, or SQL.js.
-- **Enhance local development workflows**: Improve documentation and tools for local development using SQLite and VS Code.
-- **Fine-tune models**: Optimize existing models or implement new models for specific tasks and personalities.
-- **Contribute to the autonomous trading system and trust engine**: Leverage expertise in market analysis, technical analysis, and risk management to enhance these features.
+- **Core Framework Development**: Improve the ElizaOS architecture
+- **Plugin Development**: Create new plugins for platforms or capabilities
+- **Documentation**: Enhance tutorials, examples, and reference docs
+- **Testing**: Write tests and identify issues
 
 #### Non-Technical Contributions
 
-- **Community Management**: Onboard new members, organize events, moderate discussions, and foster a welcoming community.
-- **Content Creation**: Create memes, tutorials, documentation, and videos to share project updates.
-- **Translation**: Translate documentation and other materials to make Eliza accessible to a global audience.
-- **Domain Expertise**: Provide insights and feedback on specific applications of Eliza in various fields.
+- **Community Support**: Help other users in Discord or forums
+- **Content Creation**: Create tutorials, videos, or blog posts
+- **Feedback**: Report bugs and suggest improvements
+- **Use Cases**: Share how you're using ElizaOS
+
+To get started, visit the GitHub repository: https://github.com/elizaOS/eliza
