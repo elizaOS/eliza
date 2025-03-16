@@ -6,12 +6,10 @@
   "npmClient": "bun",
   "command": {
     "publish": {
-      "workspaceConfig": true,
-      "preserveWorkspacePackageVersions": true
+      "workspaceConfig": true
     },
     "version": {
-      "workspaceConfig": true,
-      "preserveWorkspacePackageVersions": true
+      "workspaceConfig": true
     }
   }
 }
