@@ -8,6 +8,7 @@ import express from "express";
 import type { AgentServer } from "..";
 import { agentRouter } from "./agent";
 import { teeRouter } from "./tee";
+import { roomsRouter } from "./rooms";
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -256,6 +257,7 @@ export function createApiRouter(
 	// Mount sub-routers
 	router.use("/agents", agentRouter(agents, server));
 	router.use("/tee", teeRouter(agents));
+	router.use("/rooms", roomsRouter(agents));
 
 	router.get("/stop", (_req, res) => {
 		server.stop();

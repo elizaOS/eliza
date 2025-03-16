@@ -5,7 +5,7 @@ import { getWavHeader, sendMessageInChunks } from "../src/utils";
 vi.mock("@elizaos/core", () => ({
 	trimTokens: vi.fn((text) => Promise.resolve(text)),
 	parseJSONObjectFromText: vi.fn((text) => JSON.parse(text)),
-	ModelTypes: { TEXT_SMALL: "TEXT_SMALL" },
+	ModelType: { TEXT_SMALL: "TEXT_SMALL" },
 	logger: {
 		error: vi.fn(),
 	},

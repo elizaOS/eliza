@@ -24,6 +24,57 @@ export function AppSidebar() {
   const { data: { data: agentsData } = {}, isPending: isAgentsPending } =
     useAgents();
 
+  const handleCreateRoom = async () => {
+    if (!newRoomName.trim() || !selectedAgentId) return;
+
+    try {
+      console.log(`Creating room with agent ID: ${selectedAgentId}`);
+
+      const response = await fetch(
+        `http://localhost:3000/agents/${selectedAgentId}/rooms`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: newRoomName,
+            type: ChannelType.GROUP,
+            entityId: "10000000-0000-0000-0000-000000000000", // Fixed user ID
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        console.error(
+          `Error creating room: ${response.status} ${response.statusText}`
+        );
+        const text = await response.text();
+        console.error(`Response body: ${text}`);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        setIsCreateDialogOpen(false);
+        setNewRoomName("");
+
+        // Navigate to the new room
+        const newRoomId = data.data.id;
+        console.log(`Created room with ID: ${newRoomId}, navigating to it`);
+
+        // Navigate to the chat page with the new room
+        navigate(`/chat/${selectedAgentId}/${newRoomId}`);
+
+        // Update rooms list
+        fetchRooms();
+      }
+    } catch (error) {
+      console.error("Error creating room:", error);
+    }
+  };
+
   return (
     <Sidebar className="bg-background">
       <SidebarHeader>

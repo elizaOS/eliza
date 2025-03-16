@@ -287,7 +287,6 @@ export class TwitterService extends Service {
 				//  config.TWITTER_ACCESS_TOKEN && config.TWITTER_ACCESS_TOKEN_SECRET)
 			) {
 				logger.info("Creating default Twitter client from character settings");
-				console.log("runtime is", runtime)
 				await twitterClientManager.createClient(
 					runtime,
 					runtime.agentId,

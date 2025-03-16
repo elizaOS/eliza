@@ -278,7 +278,7 @@ export const anthropicPlugin: Plugin = {
 			}
 		},
 
-		[ModelTypes.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
+		[ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
 			const largeModel = runtime.getSetting("ANTHROPIC_LARGE_MODEL") ?? "claude-3-5-sonnet-latest";
 			try {
 				// Check if this is a reflection schema request (has specific format)

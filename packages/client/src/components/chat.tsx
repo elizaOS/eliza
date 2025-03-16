@@ -1,35 +1,35 @@
 import { Button } from "@/components/ui/button";
 import {
-  ChatBubble,
   ChatBubbleMessage,
   ChatBubbleTimestamp,
 } from "@/components/ui/chat/chat-bubble";
-import { ChatInput } from "@/components/ui/chat/chat-input";
 import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
+import { Skeleton } from "@/components/ui/skeleton";
 import { USER_NAME } from "@/constants";
 import { useAgent, useMessages } from "@/hooks/use-query-hooks";
-import { cn, getEntityId, moment } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
 import SocketIOManager from "@/lib/socketio-manager";
+import { cn, formatAgentName, getEntityId, moment } from "@/lib/utils";
 import { WorldManager } from "@/lib/world-manager";
 import type { IAttachment } from "@/types";
 import type { Content, UUID } from "@elizaos/core";
-import { AgentStatus } from "@elizaos/core";
+import { type Agent, AgentStatus } from "@elizaos/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, MenuIcon, Paperclip, Send, Terminal, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Hash, Paperclip, Send } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import AIWriter from "react-aiwriter";
-import { AgentActionViewer } from "./action-viewer";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { type Socket, io } from "socket.io-client";
+import { v4 as uuidv4 } from "uuid";
 import { AudioRecorder } from "./audio-recorder";
 import CopyButton from "./copy-button";
 import { LogViewer } from "./log-viewer";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Badge } from "./ui/badge";
 import ChatTtsButton from "./ui/chat/chat-tts-button";
 import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Textarea } from "./ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
-
-const SOURCE_NAME = "client_chat";
+import { validateUuid, stringToUuid } from "@elizaos/core";
 
 type ExtraContentFields = {
   name: string;
@@ -113,63 +113,133 @@ function MessageContent({
   );
 }
 
-export default function Page({ agentId }: { agentId: UUID }) {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [input, setInput] = useState("");
-  const [showDetails, setShowDetails] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<"actions" | "logs">("actions");
+export default function Chat() {
+  const { agentId } = useParams() as { agentId: string };
+  const [searchParams] = useSearchParams();
+  const roomIdParam = searchParams.get("roomId");
+  const userChatId = "10000000-0000-0000-0000-000000000000";
+  const userMessageColor = useId();
+  const { data: agentData, isPending } = useAgent(agentId as UUID);
+  const agent = agentData?.data;
+  const agentName = agent?.name;
+  const agentAvatar = agent?.settings?.avatar;
+  const agentInitials = agentName ? formatAgentName(agentName) : undefined;
+  const agentIsActive = agent?.status === AgentStatus.ACTIVE;
+  const [isTyping, setIsTyping] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [inputMessage, setInputMessage] = useState("");
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [submittedMessage, setSubmittedMessage] = useState(false);
+  const [showAudio, setShowAudio] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showLogs, setShowLogs] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
+  const messageEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const formRef = useRef<HTMLFormElement>(null);
+  const [isError, setIsError] = useState<{
+    response: { message: string };
+  } | null>(null);
+  const navigate = useNavigate();
+  const lastMessageTimestamp = useRef<number | null>(null);
+  const ws = useRef<Socket | null>(null);
+  const sessionRef = useRef<string | null>(null);
+
+  // Get valid room ID
+  const roomId = roomIdParam
+    ? validateUuid(roomIdParam) || stringToUuid(roomIdParam)
+    : stringToUuid(agentId);
+
   const queryClient = useQueryClient();
   const worldId = WorldManager.getWorldId();
-
-  const agentData = useAgent(agentId)?.data?.data;
   const entityId = getEntityId();
-  const roomId = agentId;
-
-  const { data: messages = [] } = useMessages(agentId, roomId);
 
   const socketIOManager = SocketIOManager.getInstance();
 
+  // socket client setup
   useEffect(() => {
-    // Only connect with the agent's ID to the room
-    // The user ID will be set in the message payload when sending
-    socketIOManager.connect(agentId, roomId);
+    if (!agentName || !agentIsActive) return;
 
-    const handleMessageBroadcasting = (data: ContentWithUser) => {
-      // Only add messages from other users (the agent) to the UI
-      // User's own messages are added directly in handleSendMessage
-      if (data.entityId !== entityId) {
-        queryClient.setQueryData(
-          ["messages", agentId, roomId, worldId],
-          (old: ContentWithUser[] = []) => [
-            ...old,
-            { ...data, name: data.userName },
-          ]
-        );
+    // Create WebSocket connection with explicit server URL
+    const wsClient = io("http://localhost:3000", {
+      path: "/socket.io",
+      transports: ["websocket"],
+    });
+
+    ws.current = wsClient;
+
+    // Join the room
+    wsClient.emit("join", {
+      id: roomId,
+      entityId: agentId,
+      roomId: roomId,
+    });
+
+    setIsConnecting(true);
+
+    // Connection opened
+    wsClient.on("connect", () => {
+      setIsConnected(true);
+      setIsConnecting(false);
+    });
+
+    // Connection closed
+    wsClient.on("disconnect", () => {
+      setIsConnected(false);
+    });
+
+    // Listen for messages from the agent or other room members
+    wsClient.on("messageBroadcast", (message) => {
+      // Don't add messages sent by this user to avoid duplication
+      if (message.sender?.id === userChatId) return;
+
+      const newMessage = {
+        id: message.id || uuidv4(),
+        content: message.content,
+        timestamp: message.timestamp || Date.now(),
+        sender: message.sender || { id: agentId, name: agentName },
+        session: message.session,
+      };
+
+      setMessages((prevMessages) => [...prevMessages, newMessage]);
+
+      // Scroll to the bottom when new messages are received
+      scrollToBottom();
+    });
+
+    // Listen for typing notifications
+    wsClient.on("typing", (data) => {
+      if (data.sender.id !== userChatId) {
+        setIsTyping(true);
+        setTimeout(() => setIsTyping(false), 2000);
       }
-    };
-
-    socketIOManager.on("messageBroadcast", handleMessageBroadcasting);
+    });
 
     return () => {
-      socketIOManager.disconnectAll();
-      socketIOManager.off("messageBroadcast", handleMessageBroadcasting);
+      wsClient.off("messageBroadcast");
+      wsClient.off("typing");
+      wsClient.off("connect");
+      wsClient.off("disconnect");
+      wsClient.disconnect();
     };
-  }, [roomId]);
+  }, [agentName, agentId, agentIsActive, roomId]);
 
   const getMessageVariant = (id: UUID) =>
     id !== entityId ? "received" : "sent";
 
-  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } =
-    useAutoScroll({
-      smooth: true,
-    });
+  const {
+    scrollRef: autoScrollRef,
+    isAtBottom: autoScrollIsAtBottom,
+    scrollToBottom,
+    disableAutoScroll,
+  } = useAutoScroll({
+    smooth: true,
+  });
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages!.length]);
+  }, [messages.length]);
 
   useEffect(() => {
     scrollToBottom();
@@ -178,295 +248,293 @@ export default function Page({ agentId }: { agentId: UUID }) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (e.nativeEvent.isComposing) return;
-      handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
+      handleSendMessage();
     }
   };
 
-  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!input) return;
+  const handleSendMessage = () => {
+    if (inputMessage.trim() === "" || !ws.current) return;
 
-    // Immediately add the user's message to the UI
-    const userMessage = {
-      entityId,
-      userName: USER_NAME,
-      text: input,
+    // If still connecting, show an error
+    if (isConnecting) {
+      toast({
+        title: "Error",
+        description: "Still connecting to the agent...",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Create a message object with a unique ID
+    const message = {
+      id: uuidv4(),
+      content: inputMessage,
+      timestamp: Date.now(),
+      sender: {
+        id: userChatId,
+        name: "You",
+      },
       roomId,
-      createdAt: Date.now(),
-      source: SOURCE_NAME,
-      name: USER_NAME,
+      session: sessionRef.current,
     };
 
-    // Add to the UI
-    queryClient.setQueryData(
-      ["messages", agentId, roomId, worldId],
-      (old: ContentWithUser[] = []) => [...old, userMessage]
-    );
+    // Add the message to the UI
+    setMessages((prevMessages) => [...prevMessages, message]);
 
-    // Send via WebSocket to the agent
-    socketIOManager.handleBroadcastMessage(
-      entityId,
-      USER_NAME,
-      input,
-      roomId,
-      SOURCE_NAME
-    );
+    // Send the message through WebSocket
+    ws.current.emit("message", message);
 
-    setSelectedFile(null);
-    setInput("");
-    formRef.current?.reset();
+    // Clear the input field
+    setInputMessage("");
+    setSubmittedMessage(true);
+
+    // Scroll to the bottom
+    scrollToBottom();
   };
 
-  useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, []);
+  const renderMessages = () => {
+    return messages.map((message, index) => (
+      <div key={message.id} className="flex flex-col">
+        <div
+          className={`flex items-start gap-2 ${
+            message.sender?.id === userChatId ? "justify-end" : "justify-start"
+          }`}
+        >
+          {message.sender?.id !== userChatId && (
+            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+              {message.sender?.id === agentId && agentAvatar ? (
+                <img
+                  src={agentAvatar}
+                  alt={agentName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-xs">
+                  {message.sender?.name?.substring(0, 2).toUpperCase()}
+                </span>
+              )}
+            </div>
+          )}
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file?.type.startsWith("image/")) {
-      setSelectedFile(file);
-    }
-  };
-
-  const toggleDetails = () => {
-    setShowDetails(!showDetails);
+          <div
+            className={`max-w-[80%] rounded-lg p-3 ${
+              message.sender?.id === userChatId
+                ? "bg-primary text-primary-foreground ml-auto"
+                : "bg-muted"
+            }`}
+          >
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-xs font-medium">
+                {message.sender?.name}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {new Date(message.timestamp).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            </div>
+            <p>{message.content}</p>
+          </div>
+        </div>
+      </div>
+    ));
   };
 
   return (
-    <div className="flex flex-col w-full h-screen p-4">
-      {/* Agent Header */}
-      <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
-        <div className="flex items-center gap-3">
-          <Avatar className="size-10 border rounded-full">
-            <AvatarImage
-              src={
-                agentData?.settings?.avatar
-                  ? agentData?.settings?.avatar
-                  : "/elizaos-icon.png"
-              }
-            />
-          </Avatar>
-          <div className="flex flex-col">
+    <div className="relative flex h-full w-full flex-col overflow-hidden">
+      <ChatHeader
+        agent={agent}
+        isPending={isPending}
+        isConnected={isConnected}
+        isGroup={!!roomId}
+        room={roomId}
+      />
+
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto p-4"
+        onScroll={() => {
+          if (
+            scrollRef.current &&
+            scrollRef.current.scrollTop ===
+              scrollRef.current.scrollHeight - scrollRef.current.clientHeight
+          ) {
+            setIsAtBottom(true);
+          } else {
+            setIsAtBottom(false);
+          }
+        }}
+      >
+        <div className="mx-auto max-w-3xl space-y-4">
+          {renderMessages()}
+          {isTyping && (
             <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-lg">
-                {agentData?.name || "Agent"}
-              </h2>
-              {agentData?.status === AgentStatus.ACTIVE ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Agent is active</p>
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Agent is inactive</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
+              <div className="size-8 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+                {agentAvatar ? (
+                  <img
+                    src={agentAvatar}
+                    alt="Agent Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xs">{agentInitials}</span>
+                )}
+              </div>
+              <div className="rounded-2xl rounded-tl-none bg-muted p-3">
+                <div className="flex gap-1">
+                  <div className="size-1.5 animate-typing-dot rounded-full bg-current opacity-60" />
+                  <div className="size-1.5 animate-typing-dot animation-delay-150 rounded-full bg-current opacity-60" />
+                  <div className="size-1.5 animate-typing-dot animation-delay-300 rounded-full bg-current opacity-60" />
+                </div>
+              </div>
             </div>
-            {agentData?.bio && (
-              <p className="text-sm text-muted-foreground line-clamp-1">
-                {Array.isArray(agentData.bio)
-                  ? agentData.bio[0]
-                  : agentData.bio}
+          )}
+          <div ref={messageEndRef} />
+        </div>
+      </div>
+
+      <div className="border-t bg-background p-4">
+        <div className="mx-auto max-w-3xl">
+          <form
+            className="flex items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSendMessage();
+            }}
+          >
+            <div className="relative flex-1">
+              <Textarea
+                ref={inputRef}
+                placeholder={`Message ${agentName}`}
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={!agentIsActive}
+                className="min-h-20 resize-none py-3 pr-16 scrollbar-thin"
+              />
+              <div className="absolute bottom-3 right-3 flex items-center gap-1">
+                {showAudio && (
+                  <AudioRecorder
+                    agentId={agentId as UUID}
+                    onChange={(newInput: string) => setInputMessage(newInput)}
+                  />
+                )}
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="size-8"
+                      type="button"
+                      disabled={true}
+                    >
+                      <Paperclip className="size-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Attach file</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+            <Button
+              size="icon"
+              variant="default"
+              disabled={!agentIsActive || !inputMessage.trim()}
+            >
+              <Send className="size-4" />
+            </Button>
+          </form>
+        </div>
+      </div>
+
+      {showLogs && (
+        <div className="absolute inset-0 bg-background">
+          <LogViewer agentName={agentName || ""} />
+          <Button
+            className="absolute right-4 top-4"
+            onClick={() => setShowLogs(false)}
+          >
+            Close
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ChatHeaderProps {
+  agent: Agent | undefined;
+  isPending: boolean;
+  isConnected: boolean;
+  isGroup?: boolean;
+  room?: string | null;
+}
+
+function ChatHeader({
+  agent,
+  isPending,
+  isConnected,
+  isGroup,
+  room,
+}: ChatHeaderProps) {
+  return (
+    <div className="z-10 flex items-center justify-between border-b bg-background px-6 py-2">
+      <div className="flex items-center space-x-4">
+        {isPending ? (
+          <Skeleton className="h-10 w-10 rounded-full" />
+        ) : (
+          <>
+            {isGroup ? (
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                <Hash className="h-5 w-5 text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="relative h-10 w-10">
+                <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-muted">
+                  {agent?.settings?.avatar ? (
+                    <img
+                      src={agent.settings.avatar}
+                      alt={agent.name}
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <div className="text-sm">
+                      {agent?.name && formatAgentName(agent.name)}
+                    </div>
+                  )}
+                </div>
+                <div
+                  className={cn(
+                    "absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-background",
+                    isConnected ? "bg-green-500" : "bg-orange-500"
+                  )}
+                />
+              </div>
+            )}
+          </>
+        )}
+        <div className="space-y-1">
+          {isPending ? (
+            <Skeleton className="h-4 w-24" />
+          ) : (
+            <p className="text-sm font-medium leading-none">
+              {isGroup ? room : agent?.name}
+            </p>
+          )}
+          <div className="flex items-center">
+            {isPending ? (
+              <Skeleton className="h-3 w-32" />
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {isConnected ? "Connected" : "Connecting..."}
               </p>
             )}
           </div>
         </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={toggleDetails}
-          className={cn("gap-1.5", showDetails && "bg-secondary")}
-        >
-          <MenuIcon className="size-4" />
-        </Button>
       </div>
-
-      <div className="flex flex-row w-full overflow-y-auto grow gap-4">
-        {/* Main Chat Area */}
-        <div
-          className={cn(
-            "flex flex-col transition-all duration-300",
-            showDetails ? "w-3/5" : "w-full"
-          )}
-        >
-          {/* Chat Messages */}
-          <ChatMessageList
-            scrollRef={scrollRef}
-            isAtBottom={isAtBottom}
-            scrollToBottom={scrollToBottom}
-            disableAutoScroll={disableAutoScroll}
-          >
-            {messages.map((message: ContentWithUser, index: number) => {
-              const isUser = message.name === USER_NAME;
-
-              return (
-                <div
-                  key={`${message.id as string}-${message.createdAt}`}
-                  className={`flex flex-column gap-1 p-1 ${
-                    isUser ? "justify-end" : ""
-                  }`}
-                >
-                  <ChatBubble
-                    variant={getMessageVariant(isUser ? entityId : agentId)}
-                    className={`flex flex-row items-center gap-2 ${
-                      isUser ? "flex-row-reverse" : ""
-                    }`}
-                  >
-                    <Avatar className="size-8 border rounded-full select-none">
-                      <AvatarImage
-                        src={
-                          isUser
-                            ? "/user-icon.png"
-                            : agentData?.settings?.avatar
-                            ? agentData?.settings?.avatar
-                            : "/elizaos-icon.png"
-                        }
-                      />
-
-                      {isUser && <AvatarFallback>U</AvatarFallback>}
-                    </Avatar>
-                    <MessageContent
-                      message={message}
-                      agentId={agentId}
-                      isLastMessage={index === messages.length - 1}
-                    />
-                  </ChatBubble>
-                </div>
-              );
-            })}
-          </ChatMessageList>
-
-          {/* Chat Input */}
-          <div className="px-4 pb-4 mt-auto">
-            <form
-              ref={formRef}
-              onSubmit={handleSendMessage}
-              className="relative rounded-md border bg-card"
-            >
-              {selectedFile ? (
-                <div className="p-3 flex">
-                  <div className="relative rounded-md border p-2">
-                    <Button
-                      onClick={() => setSelectedFile(null)}
-                      className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
-                      variant="outline"
-                      size="icon"
-                    >
-                      <X />
-                    </Button>
-                    <img
-                      alt="Selected file"
-                      src={URL.createObjectURL(selectedFile)}
-                      height="100%"
-                      width="100%"
-                      className="aspect-square object-contain w-16"
-                    />
-                  </div>
-                </div>
-              ) : null}
-              <ChatInput
-                ref={inputRef}
-                onKeyDown={handleKeyDown}
-                value={input}
-                onChange={({ target }) => setInput(target.value)}
-                placeholder="Type your message here..."
-                className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-              />
-              <div className="flex items-center p-3 pt-0">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          if (fileInputRef.current) {
-                            fileInputRef.current.click();
-                          }
-                        }}
-                      >
-                        <Paperclip className="size-4" />
-                        <span className="sr-only">Attach file</span>
-                      </Button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        accept="image/*"
-                        className="hidden"
-                      />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p>Attach file</p>
-                  </TooltipContent>
-                </Tooltip>
-                <AudioRecorder
-                  agentId={agentId}
-                  onChange={(newInput: string) => setInput(newInput)}
-                />
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="ml-auto gap-1.5 h-[30px]"
-                >
-                  <Send className="size-3.5" />
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        {/* Details Column */}
-        {showDetails && (
-          <div className="w-2/5 border rounded-lg overflow-hidden pb-4 bg-background flex flex-col h-full">
-            <Tabs
-              defaultValue="actions"
-              value={detailsTab}
-              onValueChange={(v) => setDetailsTab(v as "actions" | "logs")}
-              className="flex flex-col h-full"
-            >
-              <div className="border-b px-4 py-2">
-                <TabsList className="grid grid-cols-2">
-                  <TabsTrigger
-                    value="actions"
-                    className="flex items-center gap-1.5"
-                  >
-                    <Activity className="h-4 w-4" />
-                    <span>Agent Actions</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="logs"
-                    className="flex items-center gap-1.5"
-                  >
-                    <Terminal className="h-4 w-4" />
-                    <span>Logs</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent value="actions" className="overflow-y-scroll">
-                <AgentActionViewer agentId={agentId} roomId={roomId} />
-              </TabsContent>
-              <TabsContent value="logs">
-                <LogViewer agentName={agentData?.name} level="all" hideTitle />
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
+      <div className="flex items-center space-x-2">
+        {/* Add group chat actions here if needed */}
       </div>
     </div>
   );

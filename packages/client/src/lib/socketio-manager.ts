@@ -76,7 +76,7 @@ class SocketIOManager extends EventEmitter {
     }
 
     // Use a simple fixed user ID instead of a random one
-    const clientId = "user-00000000-0000-0000-0000-000000000000";
+    const clientId = "10000000-0000-0000-0000-000000000000";
     console.log(`[SocketIO] Using client ID ${clientId} for connecting to agent ${agentId} in room ${roomId}`);
 
     try {
@@ -107,12 +107,68 @@ class SocketIOManager extends EventEmitter {
         .then(() => {
           console.log(`[SocketIO] Connected for entity ${clientId} to agent ${agentId} in room ${roomId}`);
           this.services.set(serviceKey, service);
+          
+          // After connection, explicitly join the room
+          try {
+            console.log(`[SocketIO] Explicitly joining room ${roomId} after connection`);
+            const joinMessage = {
+              type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
+              payload: {
+                entityId: clientId,
+                roomId: roomId,
+                userName: "User"
+              }
+            };
+            
+            // Try to send join message through the socket directly if available
+            if ((service as any).socket && typeof (service as any).socket.emit === 'function') {
+              console.log('[SocketIO] Sending join message via direct socket emit:', joinMessage);
+              (service as any).socket.emit('message', joinMessage);
+            } else {
+              console.log('[SocketIO] Using service joinRoom method');
+              service.joinRoom(roomId);
+            }
+            
+            // Also try adding the user to the room via API
+            this.ensureUserInRoom(clientId, agentId, roomId);
+          } catch (joinError) {
+            console.error(`[SocketIO] Error joining room ${roomId}:`, joinError);
+          }
         })
         .catch((error: Error) => {
           console.error(`[SocketIO] Connection error for entity ${clientId} to agent ${agentId}:`, error);
         });
     } catch (error) {
       console.error(`[SocketIO] Error creating service:`, error);
+    }
+  }
+
+  // New method to ensure the user is added to the room via API
+  private async ensureUserInRoom(userId: string, agentId: string, roomId: string): Promise<void> {
+    try {
+      console.log(`[SocketIO] Ensuring user ${userId} is in room ${roomId} via API`);
+      
+      // Call the API to add the user to the room
+      const response = await fetch(`${BASE_URL}/agents/${agentId}/rooms/${roomId}/participants`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          participantId: userId
+        })
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[SocketIO] API error adding user to room: ${response.status}`, errorText);
+        return;
+      }
+      
+      const result = await response.json();
+      console.log(`[SocketIO] User added to room via API:`, result);
+    } catch (error) {
+      console.error(`[SocketIO] Error ensuring user in room:`, error);
     }
   }
 
@@ -127,14 +183,44 @@ class SocketIOManager extends EventEmitter {
     }
 
     if (!service.isConnected()) {
-      console.warn(`[SocketIO] Service for agent ${agentId} is not connected.`);
-      return;
+      console.warn(`[SocketIO] Service for agent ${agentId} is not connected. Attempting to reconnect...`);
+      try {
+        await service.connect();
+        console.log(`[SocketIO] Successfully reconnected service for agent ${agentId}`);
+      } catch (error) {
+        console.error(`[SocketIO] Failed to reconnect service for agent ${agentId}:`, error);
+        return;
+      }
     }
 
     // IMPORTANT: Use the entityId from options, not the agentId
     // This ensures the message sender ID is correctly set to the user, not the agent
     console.log(`[SocketIO] Sending message to room ${roomId} from ${options.entityId}`);
+    
+    // Send the message through the service's method
     service.sendTextMessage(options);
+    
+    // Also try direct socket emit with proper message type envelope
+    try {
+      const formattedMessage = {
+        type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
+        payload: {
+          messageId: Math.random().toString(36).substring(2, 15),
+          timestamp: new Date().toISOString(),
+          ...options
+        }
+      };
+      
+      console.log('[SocketIO] Also sending message with formatted envelope:', formattedMessage);
+      
+      // Try to access the underlying socket if available
+      if ((service as any).socket && typeof (service as any).socket.emit === 'function') {
+        (service as any).socket.emit('message', formattedMessage);
+        console.log('[SocketIO] Direct socket message sent');
+      }
+    } catch (error) {
+      console.error('[SocketIO] Error sending direct socket message:', error);
+    }
   }
 
   private getServiceKey(agentId: string, roomId: string): string {
@@ -158,18 +244,58 @@ class SocketIOManager extends EventEmitter {
     const agentId = serviceKey.split(':')[0];
     
     // Always use the fixed user ID to ensure consistency
-    const userEntityId = "user-00000000-0000-0000-0000-000000000000";
+    const userEntityId = "10000000-0000-0000-0000-000000000000";
     
     console.log(`[SocketIO] Found agent ${agentId} for room ${roomId}, sending message as user ${userEntityId}`);
     
-    this.sendMessage(agentId, {
+    // Get the service to check if it's connected
+    const service = this.services.get(serviceKey);
+    if (!service) {
+      console.error(`[SocketIO] Service not found for key ${serviceKey}`);
+      return;
+    }
+    
+    if (!service.isConnected()) {
+      console.error(`[SocketIO] Service for agent ${agentId} is not connected. Attempting reconnect...`);
+      service.connect().catch(err => console.error('[SocketIO] Reconnect failed:', err));
+      return;
+    }
+    
+    // Format the message properly
+    const messagePayload = {
       entityId: userEntityId,  // Use fixed user ID
       userName,
       text,
       roomId,
       worldId: WorldManager.getWorldId(),
       source,
-    });
+    };
+    
+    // Try to send as a properly formatted message using both methods
+    // Method 1: Use the service's sendTextMessage method
+    service.sendTextMessage(messagePayload);
+    
+    // Method 2: Use direct socket emit with typed message envelope
+    try {
+      if ((service as any).socket && typeof (service as any).socket.emit === 'function') {
+        console.log('[SocketIO] Sending message directly via socket.emit');
+        
+        // First try the message event with type envelope
+        (service as any).socket.emit('message', {
+          type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
+          payload: {
+            ...messagePayload,
+            messageId: Math.random().toString(36).substring(2, 15),
+            timestamp: new Date().toISOString(),
+          }
+        });
+        
+        // Also try direct event type for backward compatibility
+        (service as any).socket.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), messagePayload);
+      }
+    } catch (err) {
+      console.error('[SocketIO] Error sending direct socket message:', err);
+    }
   }
 
   disconnect(agentId: string, roomId: string): void {
