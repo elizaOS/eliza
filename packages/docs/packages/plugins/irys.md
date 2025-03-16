@@ -11,7 +11,7 @@ This plugin integrates Irys functionality into ElizaOS, allowing agents to store
 To install this plugin, run the following command:
 
 ```bash
-pnpm add @elizaos/plugin-irys
+bun add @elizaos/plugin-irys
 ```
 
 ## Features
@@ -37,26 +37,33 @@ For this plugin to work, you need to have an EVM (Base network) wallet with a pr
 The system consists of three main components that work together to enable decentralized multi-agent operations:
 
 ### 1. Providers
+
 Providers are the data management layer of the system. They:
+
 - Interact with the Orchestrator to store data
 - Aggregate information from multiple sources to enhance context
 - Support agents with enriched data for better decision-making
 
 ### 2. Orchestrators
+
 Orchestrators manage the flow of communication and requests. They:
+
 - Interact with the Irys datachain to store and retrieve data
 - Implement a tagging system for request categorization
 - Validate data integrity and authenticity
 - Coordinate the overall system workflow
 
 ### 3. Workers
+
 Workers are specialized agents that execute specific tasks. They:
+
 - Perform autonomous operations (e.g., social media interactions, DeFi operations)
 - Interact with Orchestrators to get contextual data from Providers
 - Interact with Orchestrators to store execution results on the Irys datachain
 - Maintain transparency by documenting all actions
 
 This architecture ensures a robust, transparent, and efficient system where:
+
 - Data is securely stored and verified on the blockchain
 - Requests are properly routed and managed
 - Operations are executed autonomously
@@ -73,14 +80,14 @@ As a worker, you can store data on the Irys network using the `workerUploadDataO
 ```typescript
 const { IrysService } = require('@elizaos/plugin-irys');
 
-const irysService : IrysService = runtime.getService(ServiceType.IRYS)
-const data = "Provide Liquidity to the ETH pool on Stargate";
+const irysService: IrysService = runtime.getService(ServiceType.IRYS);
+const data = 'Provide Liquidity to the ETH pool on Stargate';
 const result = await irysService.workerUploadDataOnIrys(
-    data,
-    IrysDataType.OTHER,
-    IrysMessageType.DATA_STORAGE,
-    ["DeFi"],
-    ["Stargate", "LayerZero"]
+  data,
+  IrysDataType.OTHER,
+  IrysMessageType.DATA_STORAGE,
+  ['DeFi'],
+  ['Stargate', 'LayerZero']
 );
 console.log(`Data uploaded successfully at the following url: ${result.url}`);
 ```
@@ -90,15 +97,18 @@ To upload files or images :
 ```typescript
 const { IrysService } = require('@elizaos/plugin-irys');
 
-const irysService : IrysService = runtime.getService(ServiceType.IRYS)
-const userAttachmentToStore = state.recentMessagesData[1].content.attachments[0].url.replace("agent\\agent", "agent");
+const irysService: IrysService = runtime.getService(ServiceType.IRYS);
+const userAttachmentToStore = state.recentMessagesData[1].content.attachments[0].url.replace(
+  'agent\\agent',
+  'agent'
+);
 
 const result = await irysService.workerUploadDataOnIrys(
-    userAttachmentToStore,
-    IrysDataType.IMAGE,
-    IrysMessageType.DATA_STORAGE,
-    ["Social Media"],
-    ["X", "Twitter"]
+  userAttachmentToStore,
+  IrysDataType.IMAGE,
+  IrysMessageType.DATA_STORAGE,
+  ['Social Media'],
+  ['X', 'Twitter']
 );
 console.log(`Data uploaded successfully at the following url: ${result.url}`);
 ```
@@ -108,18 +118,18 @@ To store a request to get data from the Orchestrator to enhance your context, yo
 ```typescript
 const { IrysService } = require('@elizaos/plugin-irys');
 
-const irysService : IrysService = runtime.getService(ServiceType.IRYS)
-const data = "Which Pool farm has the highest APY on Stargate?";
+const irysService: IrysService = runtime.getService(ServiceType.IRYS);
+const data = 'Which Pool farm has the highest APY on Stargate?';
 const result = await irysService.workerUploadDataOnIrys(
-    data,
-    IrysDataType.OTHER,
-    IrysMessageType.REQUEST,
-    ["DeFi"],
-    ["Stargate", "LayerZero"],
-    [0.5], // Validation Threshold - Not implemented yet
-    [1], // Minimum Providers
-    [false], // Test Provider - Not implemented yet
-    [0.5] // Reputation - Not implemented yet
+  data,
+  IrysDataType.OTHER,
+  IrysMessageType.REQUEST,
+  ['DeFi'],
+  ['Stargate', 'LayerZero'],
+  [0.5], // Validation Threshold - Not implemented yet
+  [1], // Minimum Providers
+  [false], // Test Provider - Not implemented yet
+  [0.5] // Reputation - Not implemented yet
 );
 console.log(`Data uploaded successfully at the following url: ${result.url}`);
 console.log(`Response from the Orchestrator: ${result.data}`);
@@ -132,13 +142,13 @@ As a provider, you can store data on the Irys network using the `providerUploadD
 ```typescript
 const { IrysService } = require('@elizaos/plugin-irys');
 
-const irysService : IrysService = runtime.getService(ServiceType.IRYS)
-const data = "ETH Pool Farm APY : 6,86%";
+const irysService: IrysService = runtime.getService(ServiceType.IRYS);
+const data = 'ETH Pool Farm APY : 6,86%';
 const result = await irysService.providerUploadDataOnIrys(
-    data,
-    IrysDataType.OTHER,
-    ["DeFi"],
-    ["Stargate", "LayerZero"]
+  data,
+  IrysDataType.OTHER,
+  ['DeFi'],
+  ['Stargate', 'LayerZero']
 );
 console.log(`Data uploaded successfully at the following url: ${result.url}`);
 ```
@@ -148,14 +158,17 @@ To upload files or images :
 ```typescript
 const { IrysService } = require('@elizaos/plugin-irys');
 
-const irysService : IrysService = runtime.getService(ServiceType.IRYS)
-const userAttachmentToStore = state.recentMessagesData[1].content.attachments[0].url.replace("agent\\agent", "agent");
+const irysService: IrysService = runtime.getService(ServiceType.IRYS);
+const userAttachmentToStore = state.recentMessagesData[1].content.attachments[0].url.replace(
+  'agent\\agent',
+  'agent'
+);
 
 const result = await irysService.providerUploadDataOnIrys(
-    userAttachmentToStore,
-    IrysDataType.IMAGE,
-    ["Social Media"],
-    ["X", "Twitter"]
+  userAttachmentToStore,
+  IrysDataType.IMAGE,
+  ['Social Media'],
+  ['X', 'Twitter']
 );
 console.log(`Data uploaded successfully at the following url: ${result.url}`);
 ```
@@ -179,8 +192,8 @@ By using only the provider address you want to retrieve data from :
 ```typescript
 const { IrysService } = require('@elizaos/plugin-irys');
 
-const irysService = runtime.getService(ServiceType.IRYS)
-const agentsWalletPublicKeys = runtime.getSetting("AGENTS_WALLET_PUBLIC_KEYS").split(",");
+const irysService = runtime.getService(ServiceType.IRYS);
+const agentsWalletPublicKeys = runtime.getSetting('AGENTS_WALLET_PUBLIC_KEYS').split(',');
 const data = await irysService.getDataFromAnAgent(agentsWalletPublicKeys);
 console.log(`Data retrieved successfully. Data: ${data}`);
 ```
@@ -190,11 +203,11 @@ By using tags and timestamp:
 ```typescript
 const { IrysService } = require('@elizaos/plugin-irys');
 
-const irysService = runtime.getService(ServiceType.IRYS)
+const irysService = runtime.getService(ServiceType.IRYS);
 const tags = [
-    { name: "Message-Type", values: [IrysMessageType.DATA_STORAGE] },
-    { name: "Service-Category", values: ["DeFi"] },
-    { name: "Protocol", values: ["Stargate", "LayerZero"] },
+  { name: 'Message-Type', values: [IrysMessageType.DATA_STORAGE] },
+  { name: 'Service-Category', values: ['DeFi'] },
+  { name: 'Protocol', values: ['Stargate', 'LayerZero'] },
 ];
 const timestamp = { from: 1710000000, to: 1710000000 };
 const data = await irysService.getDataFromAnAgent(null, tags, timestamp);
@@ -222,23 +235,23 @@ The plugin uses GraphQL to retrieve transaction metadata. Here's an example quer
 
 ```typescript
 const QUERY = gql`
-    query($owners: [String!], $tags: [TagFilter!], $timestamp: TimestampFilter) {
-        transactions(owners: $owners, tags: $tags, timestamp: $timestamp) {
-            edges {
-                node {
-                    id,
-                    address
-                }
-            }
+  query ($owners: [String!], $tags: [TagFilter!], $timestamp: TimestampFilter) {
+    transactions(owners: $owners, tags: $tags, timestamp: $timestamp) {
+      edges {
+        node {
+          id
+          address
         }
+      }
     }
+  }
 `;
 
 const variables = {
-    owners: owners,
-    tags: tags,
-    timestamp: timestamp
-}
+  owners: owners,
+  tags: tags,
+  timestamp: timestamp,
+};
 
 const data: TransactionGQL = await graphQLClient.request(QUERY, variables);
 ```
@@ -250,46 +263,64 @@ const data: TransactionGQL = await graphQLClient.request(QUERY, variables);
 The main service provided by this plugin implements the following interface:
 
 ```typescript
-
 interface UploadIrysResult {
-    success: boolean;
-    url?: string;
-    error?: string;
-    data?: any;
+  success: boolean;
+  url?: string;
+  error?: string;
+  data?: any;
 }
 
 interface DataIrysFetchedFromGQL {
-    success: boolean;
-    data: any;
-    error?: string;
+  success: boolean;
+  data: any;
+  error?: string;
 }
 
 interface GraphQLTag {
-    name: string;
-    values: any[];
+  name: string;
+  values: any[];
 }
 
 const enum IrysMessageType {
-    REQUEST = "REQUEST",
-    DATA_STORAGE = "DATA_STORAGE",
-    REQUEST_RESPONSE = "REQUEST_RESPONSE",
+  REQUEST = 'REQUEST',
+  DATA_STORAGE = 'DATA_STORAGE',
+  REQUEST_RESPONSE = 'REQUEST_RESPONSE',
 }
 
 const enum IrysDataType {
-    FILE = "FILE",
-    IMAGE = "IMAGE",
-    OTHER = "OTHER",
+  FILE = 'FILE',
+  IMAGE = 'IMAGE',
+  OTHER = 'OTHER',
 }
 
 interface IrysTimestamp {
-    from: number;
-    to: number;
+  from: number;
+  to: number;
 }
 
 interface IIrysService extends Service {
-    getDataFromAnAgent(agentsWalletPublicKeys: string[], tags: GraphQLTag[], timestamp: IrysTimestamp): Promise<DataIrysFetchedFromGQL>;
-    workerUploadDataOnIrys(data: any, dataType: IrysDataType, messageType: IrysMessageType, serviceCategory: string[], protocol: string[], validationThreshold: number[], minimumProviders: number[], testProvider: boolean[], reputation: number[]): Promise<UploadIrysResult>;
-    providerUploadDataOnIrys(data: any, dataType: IrysDataType, serviceCategory: string[], protocol: string[]): Promise<UploadIrysResult>;
+  getDataFromAnAgent(
+    agentsWalletPublicKeys: string[],
+    tags: GraphQLTag[],
+    timestamp: IrysTimestamp
+  ): Promise<DataIrysFetchedFromGQL>;
+  workerUploadDataOnIrys(
+    data: any,
+    dataType: IrysDataType,
+    messageType: IrysMessageType,
+    serviceCategory: string[],
+    protocol: string[],
+    validationThreshold: number[],
+    minimumProviders: number[],
+    testProvider: boolean[],
+    reputation: number[]
+  ): Promise<UploadIrysResult>;
+  providerUploadDataOnIrys(
+    data: any,
+    dataType: IrysDataType,
+    serviceCategory: string[],
+    protocol: string[]
+  ): Promise<UploadIrysResult>;
 }
 ```
 
@@ -304,7 +335,7 @@ interface IIrysService extends Service {
 To run the tests, you can use the following command:
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## Contributing

@@ -7,6 +7,7 @@ A plugin for interacting with [Mind Network Hubs](https://dapp.mindnetwork.xyz/v
 The [Mind Network](https://www.mindnetwork.xyz/) plugin empowers users to participate in secure, privacy-preserving voting on the Mind Network. Leveraging [Fully Homomorphic Encryption (FHE)](https://docs.mindnetwork.xyz/minddocs/developer-guide/fhe-validation), it ensures encrypted votes while allowing users to track rewards earned for their participation. Designed for seamless integration with the [Eliza AI agent](https://elizaos.github.io/), this plugin enables interactive and guided actions for an enhanced user experience.
 
 ## Features
+
 - **Web3 Wallet:** contribute eliza agent interaction with enriched web3 wallet functionality. Both Metamask and OKX web3 wallets have been tested and more to come.
 - **Voter Registration:** Join the Mind Network's Randgen Hub and other hubs to participate in secure voting, validation and consensus.
 - **FHE Encryption:** Safeguard vote content using Fully Homomorphic Encryption. The key difference is encryption key is never shared but still be able to run computation over encrypted data.
@@ -16,6 +17,7 @@ The [Mind Network](https://www.mindnetwork.xyz/) plugin empowers users to partic
 ## Installation
 
 Dependency for the plugin:
+
 - [mind-randgen-sdk](https://github.com/mind-network/mind-sdk-randgen-ts)
 - [mind-sdk-hubs](https://github.com/mind-network/mind-sdk-hubs-ts)
 - [elizaos](https://github.com/elizaOS/eliza)
@@ -23,7 +25,7 @@ Dependency for the plugin:
 To install the plugin, use the following command:
 
 ```bash
-pnpm install @elizaos/plugin-mind-network
+bun install @elizaos/plugin-mind-network
 ```
 
 ## Configuration
@@ -46,9 +48,11 @@ The plugin provides several key actions to interact with the Mind Network:
 Registers the user as a voter in the Mind Network's Randgen Hub. The hub is live and accessible at [Randgen Hub](https://dapp.mindnetwork.xyz/votetoearn/voteonhubs/3). You can participant or create more function hubs in Mind Network for your eliza agents.
 
 **Prompt Example:**
+
 ```text
 "Register me as a voter in Mind Network."
 ```
+
 **Response:** Confirmation of successful voter registration.
 
 #### **MIND_CHECK_VOTING_REWARD**
@@ -56,9 +60,11 @@ Registers the user as a voter in the Mind Network's Randgen Hub. The hub is live
 Retrieves the amount of vFHE rewards earned through voting.
 
 **Prompt Example:**
+
 ```text
 "How much reward have I earned in Mind Network?"
 ```
+
 **Response:** Total vFHE rewards earned.
 
 #### **MIND_FHE_ENCRYPT**
@@ -66,9 +72,11 @@ Retrieves the amount of vFHE rewards earned through voting.
 Encrypts a user-provided number using Fully Homomorphic Encryption (FHE).
 
 **Prompt Example:**
+
 ```text
 "Encrypt the number 88 for voting."
 ```
+
 **Response:** A secure URL containing the encrypted number.
 
 #### **MIND_FHE_VOTE**
@@ -76,9 +84,11 @@ Encrypts a user-provided number using Fully Homomorphic Encryption (FHE).
 Submits an encrypted vote to the Mind Network's Randgen Hub.
 
 **Prompt Example:**
+
 ```text
 "Submit my encrypted vote to Mind Network."
 ```
+
 **Response:** Confirmation of successful vote submission.
 
 ## Usage Examples

@@ -14,7 +14,7 @@ This plugin integrates the GOAT Zilliqa plugin and wallet with Eliza.
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-zilliqa
+bun install @elizaos/plugin-zilliqa
 ```
 
 ## Configuration
@@ -31,19 +31,19 @@ ENABLE_ZILLIQA=1
 
 1. **Agent not executing an action**:
 
-    - If you are also using the EVM Plugin, sometimes the agent might confuse the action name with an EVM Plugin action name instead of the GOAT Plugin action. Removing the EVM Plugin should fix this issue. There is no need for you to use both plugins at the same time.
-    - If you are using Trump as a character it might be tricky to get them to perform any action since the character is full of prompts that aim to change the topic of the conversation. To fix this try using a different character or create your own with prompts that are more suitable to what the agent is supposed to do.
+   - If you are also using the EVM Plugin, sometimes the agent might confuse the action name with an EVM Plugin action name instead of the GOAT Plugin action. Removing the EVM Plugin should fix this issue. There is no need for you to use both plugins at the same time.
+   - If you are using Trump as a character it might be tricky to get them to perform any action since the character is full of prompts that aim to change the topic of the conversation. To fix this try using a different character or create your own with prompts that are more suitable to what the agent is supposed to do.
 
 2. **Wallet Connection Issues**
 
-    - Verify private key is correctly formatted
-    - Check RPC endpoint availability
-    - Ensure sufficient network balance
+   - Verify private key is correctly formatted
+   - Check RPC endpoint availability
+   - Ensure sufficient network balance
 
 3. **Transaction Issues**
-    - Verify gas availability
-    - Check network congestion
-    - Confirm transaction parameters
+   - Verify gas availability
+   - Check network congestion
+   - Confirm transaction parameters
 
 ## License
 

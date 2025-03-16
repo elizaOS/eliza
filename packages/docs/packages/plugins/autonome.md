@@ -5,7 +5,7 @@ A plugin that enables launching new Eliza agents through the [Autonome platform]
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-autonome
+bun add @elizaos/plugin-autonome
 ```
 
 ## Configuration
@@ -21,6 +21,7 @@ AUTONOME_RPC=https://wizard-bff-rpc.alt.technology/v1/bff/aaa/apps
 ```
 
 To get your JWT token:
+
 1. Login to [dev.autonome.fun](https://dev.autonome.fun)
 2. Open browser developer console
 3. Extract your JWT token
@@ -30,10 +31,10 @@ To get your JWT token:
 Add the plugin to your character's configuration:
 
 ```typescript
-import { autonomePlugin } from "@elizaos/plugin-autonome";
+import { autonomePlugin } from '@elizaos/plugin-autonome';
 
 const character = {
-    plugins: [autonomePlugin]
+  plugins: [autonomePlugin],
 };
 ```
 
@@ -55,6 +56,7 @@ The plugin responds to various deployment commands:
 ```
 
 Upon successful deployment, you'll receive a dashboard link:
+
 ```
 https://dev.autonome.fun/autonome/[app-id]/details
 ```
@@ -64,21 +66,24 @@ https://dev.autonome.fun/autonome/[app-id]/details
 ### Actions
 
 #### LAUNCH_AGENT
+
 Creates and deploys a new agent to the Autonome platform.
 
 Aliases:
+
 - CREATE_AGENT
 - DEPLOY_AGENT
 - DEPLOY_ELIZA
 - DEPLOY_BOT
 
 Parameters:
+
 - `name`: Name of the agent to deploy
 - `config`: Agent configuration in JSON format
 
 ## Dependencies
 
 - @coral-xyz/anchor: 0.30.1
-- @elizaos/plugin-tee: workspace:*
-- @elizaos/plugin-trustdb: workspace:*
+- @elizaos/plugin-tee: workspace:\*
+- @elizaos/plugin-trustdb: workspace:\*
 - axios: ^1.7.9

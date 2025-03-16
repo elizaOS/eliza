@@ -1,3 +1,3 @@
-import { VideoService } from "./video";
+import { VideoService } from './video';
 
 export { VideoService };

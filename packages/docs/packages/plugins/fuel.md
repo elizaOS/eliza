@@ -9,7 +9,7 @@ This plugin provides essential functionality for interacting with the Fuel block
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-fuel
+bun install @elizaos/plugin-fuel
 ```
 
 ## Configuration
@@ -26,7 +26,7 @@ FUEL_PROVIDER_URL=<Custom RPC endpoint URL (optional, defaults to "https://mainn
 ### Basic Integration
 
 ```typescript
-import { fuelPlugin } from "@elizaos/plugin-fuel";
+import { fuelPlugin } from '@elizaos/plugin-fuel';
 ```
 
 ### Example Usage
@@ -34,7 +34,7 @@ import { fuelPlugin } from "@elizaos/plugin-fuel";
 The plugin supports natural language commands for ETH transfers:
 
 ```typescript
-"Transfer 1 ETH to 0x8F8afB12402C9a4bD9678Bec363E51360142f8443FB171655eEd55dB298828D1";
+'Transfer 1 ETH to 0x8F8afB12402C9a4bD9678Bec363E51360142f8443FB171655eEd55dB298828D1';
 ```
 
 ## API Reference
@@ -54,8 +54,8 @@ Transfers ETH between addresses on the Fuel Ignition network.
 
 ```typescript
 interface TransferParams {
-    toAddress: string; // Recipient's Fuel address
-    amount: string; // Amount of ETH to transfer
+  toAddress: string; // Recipient's Fuel address
+  amount: string; // Amount of ETH to transfer
 }
 ```
 
@@ -63,33 +63,33 @@ interface TransferParams {
 
 1. **Connection Issues**
 
-    - Verify provider URL is accessible
-    - Check network connectivity
-    - Ensure proper network configuration
+   - Verify provider URL is accessible
+   - Check network connectivity
+   - Ensure proper network configuration
 
 2. **Transaction Failures**
 
-    - Verify sufficient balance for transfers
-    - Check correct address format
-    - Ensure gas fees can be covered
+   - Verify sufficient balance for transfers
+   - Check correct address format
+   - Ensure gas fees can be covered
 
 3. **Authentication Issues**
-    - Validate private key format
-    - Verify wallet configuration
-    - Check network permissions
+   - Validate private key format
+   - Verify wallet configuration
+   - Check network permissions
 
 ## Security Best Practices
 
 1. **Key Management**
 
-    - Store private keys securely
-    - Use environment variables for sensitive data
-    - Never expose private keys in code or logs
+   - Store private keys securely
+   - Use environment variables for sensitive data
+   - Never expose private keys in code or logs
 
 2. **Transaction Safety**
-    - Validate recipient addresses
-    - Implement proper error handling
-    - Double-check transaction amounts
+   - Validate recipient addresses
+   - Implement proper error handling
+   - Double-check transaction amounts
 
 ## Development Guide
 
@@ -99,19 +99,19 @@ interface TransferParams {
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run tests:
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## Future Enhancements

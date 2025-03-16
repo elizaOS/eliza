@@ -10,12 +10,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Colors for console output
 const colors = {
-  reset: "\x1b[0m",
-  bright: "\x1b[1m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
-  cyan: "\x1b[36m"
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  cyan: '\x1b[36m',
 };
 
 // Get arguments
@@ -28,9 +28,7 @@ const watch = args.includes('--watch');
 console.log(`${colors.bright}${colors.cyan}Running Registry Publishing Tests${colors.reset}\n`);
 
 // Determine test files to run
-const testFiles = [
-  'registry-publishing.test.js',
-];
+const testFiles = ['registry-publishing.test.js'];
 
 // If --all flag is used, run both unit and E2E tests
 if (runAll || runE2E) {
@@ -86,7 +84,7 @@ const env = {
 const options = {
   env,
   stdio: 'inherit',
-  cwd: path.resolve(__dirname, '..')
+  cwd: path.resolve(__dirname, '..'),
 };
 
 try {
@@ -96,4 +94,4 @@ try {
 } catch (error) {
   console.error(`\n${colors.red}${colors.bright}✗ Tests failed!${colors.reset}`);
   process.exit(1);
-} 
+}

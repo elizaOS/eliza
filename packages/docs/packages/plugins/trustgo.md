@@ -16,7 +16,7 @@ The TrustGo plugin enables fetching EVM account information from the TrustGo web
 ## Installation
 
 ```bash
-pnpm install @toddli/plugin-trustgo
+bun install @toddli/plugin-trustgo
 ```
 
 ## Configuration
@@ -44,7 +44,6 @@ The TrustGo Provider integrates the EVM Wallet Provider. It performs the followi
 - Fetch Multi-Chain MEDIA Score: Retrieve MEDIA scores from multiple blockchain networks.
 - List User Attestations: Display user attestations.
 - Mint MEDIA Attestation: Mint MEDIA attestations on the blockchain.
-
 
 ## Actions
 
@@ -75,7 +74,6 @@ show my attestations
 ### 4. mint attestation
 
 Mint an on-chain reputation attestation.
-
 
 ```typescript
 mint my linea media score

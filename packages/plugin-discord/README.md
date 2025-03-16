@@ -16,7 +16,7 @@ A Discord client implementation for ElizaOS, enabling rich integration with Disc
 As this is a workspace package, it's installed as part of the ElizaOS monorepo:
 
 ```bash
-pnpm install
+bun install
 ```
 
 ## Configuration
@@ -51,8 +51,8 @@ await discordManager.command.registerCommands([
   {
     name: 'example',
     description: 'An example slash command',
-    options: []
-  }
+    options: [],
+  },
 ]);
 ```
 
@@ -62,7 +62,7 @@ await discordManager.command.registerCommands([
 // Listen for new messages
 await discordManager.message.handleNewMessage({
   channelId: 'channel-id',
-  content: 'Hello Discord!'
+  content: 'Hello Discord!',
 });
 ```
 
@@ -75,27 +75,30 @@ await discordManager.voice.joinChannel('channel-id');
 // Handle voice interactions
 await discordManager.voice.handleInteraction({
   userId: 'user-id',
-  action: 'speak'
+  action: 'speak',
 });
 ```
 
 ## Key Components
 
 1. **ClientBase**
-    - Handles authentication and session management.
-    - Manages websocket connections.
+
+   - Handles authentication and session management.
+   - Manages websocket connections.
 
 2. **MessageManager**
-    - Processes incoming messages and responses.
-    - Supports message formatting and templating.
+
+   - Processes incoming messages and responses.
+   - Supports message formatting and templating.
 
 3. **VoiceManager**
-    - Manages voice interactions and events.
-    - Handles joining and leaving voice channels.
+
+   - Manages voice interactions and events.
+   - Handles joining and leaving voice channels.
 
 4. **CommandManager**
-    - Registers and processes slash commands.
-    - Ensures permissions are validated.
+   - Registers and processes slash commands.
+   - Ensures permissions are validated.
 
 ## Notes
 

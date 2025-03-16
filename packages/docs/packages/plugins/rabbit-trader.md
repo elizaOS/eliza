@@ -40,10 +40,7 @@ The following environment variables need to be configured:
 import createRabbiTraderPlugin from '@elizaos/plugin-rabbi-trader';
 import { IAgentRuntime } from '@elizaos/core';
 
-const plugin = await createRabbiTraderPlugin(
-  (key: string) => process.env[key],
-  runtime
-);
+const plugin = await createRabbiTraderPlugin((key: string) => process.env[key], runtime);
 
 // Plugin will automatically start monitoring and trading if enabled
 ```
@@ -56,15 +53,15 @@ The plugin includes built-in safety limits that can be configured:
 
 ```typescript
 export const SAFETY_LIMITS = {
-  MINIMUM_TRADE: 0.01,        // Minimum SOL per trade
-  MAX_POSITION_SIZE: 0.1,     // Maximum 10% of token liquidity
-  MAX_SLIPPAGE: 0.05,        // Maximum 5% slippage allowed
-  MIN_LIQUIDITY: 1000,       // Minimum $1000 liquidity required
-  MIN_VOLUME: 2000,          // Minimum $2000 24h volume required
-  MIN_TRUST_SCORE: 0.4,      // Minimum trust score to trade
-  STOP_LOSS: 0.2,           // 20% stop loss trigger
-  TAKE_PROFIT: 0.12,        // Take profit at 12% gain
-  TRAILING_STOP: 0.2        // 20% trailing stop from highest
+  MINIMUM_TRADE: 0.01, // Minimum SOL per trade
+  MAX_POSITION_SIZE: 0.1, // Maximum 10% of token liquidity
+  MAX_SLIPPAGE: 0.05, // Maximum 5% slippage allowed
+  MIN_LIQUIDITY: 1000, // Minimum $1000 liquidity required
+  MIN_VOLUME: 2000, // Minimum $2000 24h volume required
+  MIN_TRUST_SCORE: 0.4, // Minimum trust score to trade
+  STOP_LOSS: 0.2, // 20% stop loss trigger
+  TAKE_PROFIT: 0.12, // Take profit at 12% gain
+  TRAILING_STOP: 0.2, // 20% trailing stop from highest
 };
 ```
 
@@ -97,14 +94,14 @@ The plugin includes comprehensive error handling for common scenarios:
 ```typescript
 export const ERROR_SIGNATURES = [
   {
-    sig: "0x13be252b",
-    name: "InsufficientAllowance",
-    description: "Token allowance too low"
+    sig: '0x13be252b',
+    name: 'InsufficientAllowance',
+    description: 'Token allowance too low',
   },
   {
-    sig: "0xf4d678b8",
-    name: "InsufficientBalance",
-    description: "Insufficient token balance"
+    sig: '0xf4d678b8',
+    name: 'InsufficientBalance',
+    description: 'Insufficient token balance',
   },
   // ... additional error signatures
 ];

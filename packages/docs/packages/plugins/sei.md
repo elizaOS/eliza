@@ -1,6 +1,7 @@
 # @elizaos/plugin-sei
 
 Sei Network plugin for Eliza OS that enables Eliza agents to perform actions on the Sei blockchain.
+
 ## Overview
 
 This plugin provides functionality to:
@@ -11,7 +12,7 @@ This plugin provides functionality to:
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-sei
+bun install @elizaos/plugin-sei
 ```
 
 ## Configuration
@@ -28,11 +29,11 @@ SEI_NETWORK= #"mainnet","testnet", or "devnet"
 Import and register the plugin in your Eliza configuration:
 
 ```typescript
-import { seiPlugin } from "@elizaos/plugin-sei";
+import { seiPlugin } from '@elizaos/plugin-sei';
 
 export default {
-    plugins: [seiPlugin],
-    // ... other configuration
+  plugins: [seiPlugin],
+  // ... other configuration
 };
 ```
 
@@ -44,13 +45,13 @@ Transfer SEI tokens to another address:
 
 ```typescript
 // Example conversation
-User: "Send 1 SEI to 0xD5ca6eA5e33606554F746606157a7512FA738A12";
+User: 'Send 1 SEI to 0xD5ca6eA5e33606554F746606157a7512FA738A12';
 Assistant: "I'll send 1 SEI token now...";
 ```
 
 ```typescript
 // Example conversation
-User: "Send 1 SEI to sei1vpz36punknkdjfs7ew2vkdwws8ydcquy00hhsd";
+User: 'Send 1 SEI to sei1vpz36punknkdjfs7ew2vkdwws8ydcquy00hhsd';
 Assistant: "I'll send 1 SEI token now...";
 ```
 
@@ -61,7 +62,7 @@ Query wallet balance and portfolio value:
 ```typescript
 // Example conversation
 User: "What's my wallet balance?";
-Assistant: "Your wallet contains 10.5 SEI ($5.25 USD)...";
+Assistant: 'Your wallet contains 10.5 SEI ($5.25 USD)...';
 ```
 
 ## API Reference
@@ -79,18 +80,19 @@ Assistant: "Your wallet contains 10.5 SEI ($5.25 USD)...";
 ### Building
 
 ```bash
-pnpm build
+bun build
 ```
 
 ### Testing
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## Future Enhancements
 
 Some features planned for future releases include:
+
 - On chain actions such as Staking and Unstaking, Governance, and native token creation
 - Complex queries and transaction history tracking
 - Smart contract deployment and interaction

@@ -41,7 +41,7 @@ export async function buildProject(cwd: string, isPlugin = false) {
       if (packageJson.scripts?.build) {
         // Package has a build script, use it
         logger.info('Using build script from package.json');
-        
+
         try {
           // Try with bun first
           logger.debug('Attempting to build with bun...');
@@ -50,7 +50,7 @@ export async function buildProject(cwd: string, isPlugin = false) {
           return;
         } catch (bunError) {
           logger.debug(`Bun build failed, falling back to npm: ${bunError}`);
-          
+
           try {
             // Fall back to npm if bun fails
             logger.debug('Attempting to build with npm...');
@@ -64,10 +64,10 @@ export async function buildProject(cwd: string, isPlugin = false) {
         }
       }
     }
-    
+
     // If we get here, no build script was found or it failed
     logger.warn('No build script found in package.json, trying default build commands');
-    
+
     // For TypeScript projects, try tsc
     const tsconfigPath = path.join(cwd, 'tsconfig.json');
     if (fs.existsSync(tsconfigPath)) {
@@ -80,12 +80,11 @@ export async function buildProject(cwd: string, isPlugin = false) {
         logger.debug(`tsc build failed: ${tscError}`);
       }
     }
-    
+
     // If all else fails, throw an error
     throw new Error('Could not determine how to build the project');
-    
   } catch (error) {
     logger.error(`Failed to build ${isPlugin ? 'plugin' : 'project'}: ${error}`);
     throw error;
   }
-} 
+}

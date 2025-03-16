@@ -11,7 +11,7 @@ The Bootstrap plugin enables fundamental agent behaviors including conversation 
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-bootstrap
+bun install @elizaos/plugin-bootstrap
 ```
 
 ## Features
@@ -36,10 +36,10 @@ pnpm install @elizaos/plugin-bootstrap
 - Categorization of claims
 - Deduplication of known information
 - Support for multiple fact types:
-    - Permanent facts
-    - Status updates
-    - Opinions
-    - Biographical information
+  - Permanent facts
+  - Status updates
+  - Opinions
+  - Biographical information
 
 ### 4. Goal Tracking
 
@@ -76,19 +76,19 @@ pnpm install @elizaos/plugin-bootstrap
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run linting:
 
 ```bash
-pnpm run lint
+bun run lint
 ```
 
 ## Dependencies
@@ -99,68 +99,68 @@ pnpm run lint
 
 1. **Enhanced Conversation Management**
 
-    - Advanced context tracking
-    - Multi-thread conversation support
-    - Conversation state persistence
-    - Improved conversation flow control
-    - Natural language understanding improvements
+   - Advanced context tracking
+   - Multi-thread conversation support
+   - Conversation state persistence
+   - Improved conversation flow control
+   - Natural language understanding improvements
 
 2. **Advanced Room Control**
 
-    - Dynamic room creation and management
-    - Room permission system
-    - Advanced moderation tools
-    - Room analytics and insights
-    - Cross-room communication features
+   - Dynamic room creation and management
+   - Room permission system
+   - Advanced moderation tools
+   - Room analytics and insights
+   - Cross-room communication features
 
 3. **Expanded Fact Management**
 
-    - Enhanced fact verification system
-    - Fact relationship mapping
-    - Automated fact updating
-    - Fact confidence scoring
-    - Cross-reference system
-    - Fact expiration management
+   - Enhanced fact verification system
+   - Fact relationship mapping
+   - Automated fact updating
+   - Fact confidence scoring
+   - Cross-reference system
+   - Fact expiration management
 
 4. **Goal System Improvements**
 
-    - Multi-step goal planning
-    - Goal dependency tracking
-    - Progress visualization
-    - Goal priority management
-    - Automated milestone tracking
-    - Goal optimization suggestions
+   - Multi-step goal planning
+   - Goal dependency tracking
+   - Progress visualization
+   - Goal priority management
+   - Automated milestone tracking
+   - Goal optimization suggestions
 
 5. **Provider Enhancements**
 
-    - Improved boredom detection
-    - Advanced engagement metrics
-    - Enhanced fact retrieval algorithms
-    - Real-time status updates
-    - Provider performance analytics
+   - Improved boredom detection
+   - Advanced engagement metrics
+   - Enhanced fact retrieval algorithms
+   - Real-time status updates
+   - Provider performance analytics
 
 6. **Memory Management**
 
-    - Enhanced memory prioritization
-    - Memory compression techniques
-    - Long-term memory storage
-    - Memory relationship mapping
-    - Context-aware recall
+   - Enhanced memory prioritization
+   - Memory compression techniques
+   - Long-term memory storage
+   - Memory relationship mapping
+   - Context-aware recall
 
 7. **Developer Tools**
 
-    - Enhanced debugging capabilities
-    - Testing framework improvements
-    - Plugin development templates
-    - Documentation generator
-    - Performance profiling tools
+   - Enhanced debugging capabilities
+   - Testing framework improvements
+   - Plugin development templates
+   - Documentation generator
+   - Performance profiling tools
 
 8. **Integration Features**
-    - Enhanced plugin interoperability
-    - External service connectors
-    - API gateway integration
-    - Webhook system improvements
-    - Third-party platform support
+   - Enhanced plugin interoperability
+   - External service connectors
+   - API gateway integration
+   - Webhook system improvements
+   - Third-party platform support
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 

@@ -11,7 +11,7 @@ The Football plugin integrates with the [Football-Data.org API](https://www.foot
 To install the plugin, use the following command:
 
 ```bash
-pnpm install @elizaos/plugin-football
+bun install @elizaos/plugin-football
 ```
 
 ## Features
@@ -19,27 +19,27 @@ pnpm install @elizaos/plugin-football
 ### 1. Live Match Data
 
 - **Action**: `fetchMatchAction`
-    - Retrieves live football match data, including:
-        - Teams
-        - Scores
-        - Game events
-    - Provides real-time updates for ongoing matches.
+  - Retrieves live football match data, including:
+    - Teams
+    - Scores
+    - Game events
+  - Provides real-time updates for ongoing matches.
 
 ### 2. League Standings
 
 - **Action**: `fetchStandingsAction`
-    - Fetches league standings for a specified competition, including:
-        - Team rankings
-        - Points
-        - Goals scored
-        - Other league statistics.
+  - Fetches league standings for a specified competition, including:
+    - Team rankings
+    - Points
+    - Goals scored
+    - Other league statistics.
 
 ### 3. Flexible Integration
 
 - Extendable for additional football data, such as:
-    - Player statistics
-    - Match schedules
-    - Historical match data.
+  - Player statistics
+  - Match schedules
+  - Historical match data.
 
 ## API Key Configuration
 
@@ -48,9 +48,9 @@ To use this plugin, you need an API key from [Football-Data.org](https://www.foo
 1. Register and obtain your API key from Football-Data.org.
 2. Add the API key to your `.env` file:
 
-    ```env
-    FOOTBALL_API_KEY=your_api_key_here
-    ```
+   ```env
+   FOOTBALL_API_KEY=your_api_key_here
+   ```
 
 The plugin will use this key to authenticate requests.
 
@@ -63,7 +63,7 @@ The plugin will use this key to authenticate requests.
 **Code Example**:
 
 ```javascript
-import { fetchMatchAction } from "@elizaos/plugin-football";
+import { fetchMatchAction } from '@elizaos/plugin-football';
 
 const result = await fetchMatchAction.handler(runtime, message, state);
 console.log(result);
@@ -73,15 +73,15 @@ console.log(result);
 
 ```json
 {
-    "matches": [
-        {
-            "homeTeam": { "name": "Chelsea" },
-            "awayTeam": { "name": "Arsenal" },
-            "score": {
-                "fullTime": { "homeTeam": 1, "awayTeam": 2 }
-            }
-        }
-    ]
+  "matches": [
+    {
+      "homeTeam": { "name": "Chelsea" },
+      "awayTeam": { "name": "Arsenal" },
+      "score": {
+        "fullTime": { "homeTeam": 1, "awayTeam": 2 }
+      }
+    }
+  ]
 }
 ```
 
@@ -92,7 +92,7 @@ console.log(result);
 **Code Example**:
 
 ```javascript
-import { fetchStandingsAction } from "@elizaos/plugin-football";
+import { fetchStandingsAction } from '@elizaos/plugin-football';
 
 const result = await fetchStandingsAction.handler(runtime, message, state);
 console.log(result);
@@ -102,18 +102,18 @@ console.log(result);
 
 ```json
 {
-    "standings": [
+  "standings": [
+    {
+      "table": [
         {
-            "table": [
-                {
-                    "position": 1,
-                    "team": { "name": "Manchester City" },
-                    "points": 45
-                },
-                { "position": 2, "team": { "name": "Arsenal" }, "points": 42 }
-            ]
-        }
-    ]
+          "position": 1,
+          "team": { "name": "Manchester City" },
+          "points": 45
+        },
+        { "position": 2, "team": { "name": "Arsenal" }, "points": 42 }
+      ]
+    }
+  ]
 }
 ```
 
@@ -123,35 +123,35 @@ console.log(result);
 
 1. Clone the repository:
 
-    ```bash
-    git clone https://github.com/elizaOS/eliza.git
-    ```
+   ```bash
+   git clone https://github.com/elizaOS/eliza.git
+   ```
 
 2. Navigate to the `plugin-football` directory and install dependencies:
 
-    ```bash
-    cd packages/plugin-football
-    pnpm install
-    ```
+   ```bash
+   cd packages/plugin-football
+   bun install
+   ```
 
 3. Build the plugin:
 
-    ```bash
-    pnpm run build
-    ```
+   ```bash
+   bun run build
+   ```
 
 4. Run linting:
 
-    ```bash
-    pnpm run lint
-    ```
+   ```bash
+   bun run lint
+   ```
 
 5. Test the plugin:
 
-    ```bash
-    pnpm vitest src/tests/match-action.test.ts
-    pnpm vitest src/tests/fetch-standings-action.test.ts
-    ```
+   ```bash
+   bun vitest src/tests/match-action.test.ts
+   bun vitest src/tests/fetch-standings-action.test.ts
+   ```
 
 ## Dependencies
 

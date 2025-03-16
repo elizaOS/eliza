@@ -1,4 +1,3 @@
-
 ## Ankr Plugin Guide
 
 <div align="center">
@@ -10,6 +9,7 @@
 The Ankr plugin provides comprehensive blockchain data querying capabilities through natural language prompts. Below are the supported actions and their usage:
 
 #### 1. Blockchain Information
+
 ```bash
 # Get blockchain stats
 Show me stats for [chain]eth[/chain]
@@ -19,6 +19,7 @@ Show me the top currencies on [chain]eth[/chain]
 ```
 
 #### 2. Wallet & Balance Queries
+
 ```bash
 # Check wallet balance
 Show me the balance for wallet [wallet]0x6B0031518934952C485d5a7E76f1729B50e67486[/wallet] on [chain]eth[/chain]
@@ -28,6 +29,7 @@ Show me interactions for the wallet [wallet]0x68b3465833fb72A70ecDF485E0e4C7bD86
 ```
 
 #### 3. NFT Operations
+
 ```bash
 # Get NFT holders
 Show me holders of NFT contract [contract]0x34d85c9cdeb23fa97cb08333b511ac86e1c4e258[/contract] token [token]112234[/token] on [chain]eth[/chain]
@@ -43,6 +45,7 @@ Show me NFT transfers for contract [contract]0xd8da6bf26964af9d7eed9e03e53415d37
 ```
 
 #### 4. Token Operations
+
 ```bash
 # Get token holders
 Show me holders for contract [contract]0xf307910A4c7bbc79691fD374889b36d8531B08e3[/contract] on [chain]bsc[/chain]
@@ -58,6 +61,7 @@ Show me recent contract [contract]0xd8da6bf26964af9d7eed9e03e53415d37aa96045[/co
 ```
 
 #### 5. Transaction Queries
+
 ```bash
 # Get transactions by address
 Show me the latest transactions for address [contract]0xd8da6bf26964af9d7eed9e03e53415d37aa96045[/contract] [chain]eth[/chain]
@@ -68,15 +72,15 @@ Show me details for transaction [txHash]0x748eeb4a15ba05736a9397a07ca86f0184c0c1
 
 ### Tag Reference
 
-| Tag | Description | Example |
-|-----|-------------|---------|
-| `[chain]` | Blockchain identifier | eth, bsc |
-| `[wallet]` | Wallet address | 0x1234... |
-| `[contract]` | Contract address | 0xabcd... |
-| `[token]` | Token ID | 1234 |
-| `[txHash]` | Transaction hash | 0x748e... |
-| `[fromtimestamp]` | Start timestamp | 1655197483 |
-| `[totimestamp]` | End timestamp | 1656061483 |
+| Tag               | Description           | Example    |
+| ----------------- | --------------------- | ---------- |
+| `[chain]`         | Blockchain identifier | eth, bsc   |
+| `[wallet]`        | Wallet address        | 0x1234...  |
+| `[contract]`      | Contract address      | 0xabcd...  |
+| `[token]`         | Token ID              | 1234       |
+| `[txHash]`        | Transaction hash      | 0x748e...  |
+| `[fromtimestamp]` | Start timestamp       | 1655197483 |
+| `[totimestamp]`   | End timestamp         | 1656061483 |
 
 ### Important Notes
 

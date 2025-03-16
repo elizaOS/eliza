@@ -11,7 +11,7 @@ Movement Network plugin for Eliza OS. This plugin enables Movement Network block
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-movement
+bun add @elizaos/plugin-movement
 ```
 
 ## Instructions
@@ -22,14 +22,14 @@ pnpm add @elizaos/plugin-movement
 
 ```json
 {
-"name": "Movement Agent",
-"plugins": ["@elizaos/plugin-movement"],
-"settings": {
-"secrets": {
-"MOVEMENT_PRIVATE_KEY": "your_private_key_here",
-"MOVEMENT_NETWORK": "bardock"
-}
-}
+  "name": "Movement Agent",
+  "plugins": ["@elizaos/plugin-movement"],
+  "settings": {
+    "secrets": {
+      "MOVEMENT_PRIVATE_KEY": "your_private_key_here",
+      "MOVEMENT_NETWORK": "bardock"
+    }
+  }
 }
 ```
 
@@ -39,5 +39,3 @@ Set up your environment variables in the `.env` file:
 MOVEMENT_PRIVATE_KEY=your_private_key_here
 MOVEMENT_NETWORK=bardock
 ```
-
-

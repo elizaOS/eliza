@@ -9,21 +9,21 @@ The Plugin Stargaze provides a simple interface to get NFT data from Stargaze co
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-stargaze
+bun add @elizaos/plugin-stargaze
 ```
 
 ## Configuration
 
 Set up your environment with the required Stargaze API endpoint, currently Stargaze offers https://graphql.mainnet.stargaze-apis.com/graphql publicly.
 
-| Variable Name | Description |
-| ------------- | ----------- |
+| Variable Name       | Description                   |
+| ------------------- | ----------------------------- |
 | `STARGAZE_ENDPOINT` | Stargaze GraphQL API endpoint |
 
 ## Usage
 
 ```typescript
-import { stargazePlugin } from "@elizaos/plugin-stargaze";
+import { stargazePlugin } from '@elizaos/plugin-stargaze';
 
 // Initialize the plugin
 const plugin = stargazePlugin;

@@ -9,7 +9,7 @@ This plugin provides essential functionality for interacting with the Flow block
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-flow
+bun install @elizaos/plugin-flow
 ```
 
 ## Configuration
@@ -28,7 +28,7 @@ FLOW_ENDPOINT_URL=<Custom RPC endpoint URL (optional)>
 ### Basic Integration
 
 ```typescript
-import { flowPlugin } from "@elizaos/plugin-flow";
+import { flowPlugin } from '@elizaos/plugin-flow';
 ```
 
 ### Example Usage
@@ -36,9 +36,9 @@ import { flowPlugin } from "@elizaos/plugin-flow";
 The plugin supports natural language commands for token transfers:
 
 ```typescript
-"Send 5 FLOW to 0xa51d7fe9e0080662";
-"Send 1 FLOW - A.1654653399040a61.FlowToken to 0xa2de93114bae3e73";
-"Send 1000 FROTH - 0xb73bf8e6a4477a952e0338e6cc00cc0ce5ad04ba to 0x000000000000000000000002e44fbfbd00395de5";
+'Send 5 FLOW to 0xa51d7fe9e0080662';
+'Send 1 FLOW - A.1654653399040a61.FlowToken to 0xa2de93114bae3e73';
+'Send 1000 FROTH - 0xb73bf8e6a4477a952e0338e6cc00cc0ce5ad04ba to 0x000000000000000000000002e44fbfbd00395de5';
 ```
 
 ## API Reference
@@ -63,10 +63,10 @@ Transfers native FLOW tokens, Cadence fungible tokens, or EVM tokens to specifie
 
 ```typescript
 interface TransferContent {
-    token: string | null; // null for native FLOW, Cadence identifier, or EVM address
-    amount: string; // Amount to transfer
-    to: string; // Recipient address (Flow or EVM)
-    matched: boolean; // Indicates if token and address types match
+  token: string | null; // null for native FLOW, Cadence identifier, or EVM address
+  amount: string; // Amount to transfer
+  to: string; // Recipient address (Flow or EVM)
+  matched: boolean; // Indicates if token and address types match
 }
 ```
 
@@ -74,33 +74,33 @@ interface TransferContent {
 
 1. **Connection Issues**
 
-    - Verify network configuration (mainnet/testnet/emulator)
-    - Check RPC endpoint availability
-    - Ensure proper wallet configuration
+   - Verify network configuration (mainnet/testnet/emulator)
+   - Check RPC endpoint availability
+   - Ensure proper wallet configuration
 
 2. **Transaction Failures**
 
-    - Verify sufficient balance for transfers
-    - Check correct address format (Flow vs EVM)
-    - Confirm token contract compatibility
+   - Verify sufficient balance for transfers
+   - Check correct address format (Flow vs EVM)
+   - Confirm token contract compatibility
 
 3. **Authentication Issues**
-    - Validate private key format
-    - Verify wallet address matches private key
-    - Check network permissions
+   - Validate private key format
+   - Verify wallet address matches private key
+   - Check network permissions
 
 ## Security Best Practices
 
 1. **Key Management**
 
-    - Store private keys securely
-    - Use environment variables for sensitive data
-    - Never expose private keys in code or logs
+   - Store private keys securely
+   - Use environment variables for sensitive data
+   - Never expose private keys in code or logs
 
 2. **Transaction Safety**
-    - Validate all addresses before transfers
-    - Implement proper error handling
-    - Check token compatibility before transfers
+   - Validate all addresses before transfers
+   - Implement proper error handling
+   - Check token compatibility before transfers
 
 ## Development Guide
 
@@ -110,19 +110,19 @@ interface TransferContent {
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run tests:
 
 ```bash
-pnpm run test
+bun run test
 ```
 
 ## Future Enhancements

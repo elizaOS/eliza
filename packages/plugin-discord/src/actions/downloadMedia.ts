@@ -1,17 +1,17 @@
 import {
-	type Action,
-	type ActionExample,
-	type Content,
-	type HandlerCallback,
-	type IAgentRuntime,
-	type IVideoService,
-	type Memory,
-	ModelType,
-	ServiceType,
-	type State,
-	composePromptFromState,
-	parseJSONObjectFromText,
-} from "@elizaos/core";
+  type Action,
+  type ActionExample,
+  type Content,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type IVideoService,
+  type Memory,
+  ModelType,
+  ServiceType,
+  type State,
+  composePromptFromState,
+  parseJSONObjectFromText,
+} from '@elizaos/core';
 
 /**
  * Template for generating a media URL for a requested media file.
@@ -50,162 +50,163 @@ Your response must be formatted as a JSON block with this structure:
  * @returns {Promise<string | null>} The media URL provided by the user or null if no valid URL is provided.
  */
 const getMediaUrl = async (
-	runtime: IAgentRuntime,
-	_message: Memory,
-	state: State,
+  runtime: IAgentRuntime,
+  _message: Memory,
+  state: State
 ): Promise<string | null> => {
-	const prompt = composePromptFromState({
-		state,
-		template: mediaUrlTemplate,
-	});
+  const prompt = composePromptFromState({
+    state,
+    template: mediaUrlTemplate,
+  });
 
-	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-		});
+  for (let i = 0; i < 5; i++) {
+    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
 
-		const parsedResponse = parseJSONObjectFromText(response) as {
-			mediaUrl: string;
-		} | null;
+    const parsedResponse = parseJSONObjectFromText(response) as {
+      mediaUrl: string;
+    } | null;
 
-		if (parsedResponse?.mediaUrl) {
-			return parsedResponse.mediaUrl;
-		}
-	}
-	return null;
+    if (parsedResponse?.mediaUrl) {
+      return parsedResponse.mediaUrl;
+    }
+  }
+  return null;
 };
 
 export const downloadMedia: Action = {
-	name: "DOWNLOAD_MEDIA",
-	similes: [
-		"DOWNLOAD_VIDEO",
-		"DOWNLOAD_AUDIO",
-		"GET_MEDIA",
-		"DOWNLOAD_PODCAST",
-		"DOWNLOAD_YOUTUBE",
-	],
-	description:
-		"Downloads a video or audio file from a URL and attaches it to the response message.",
-	validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
-		if (message.content.source !== "discord") {
-			return false;
-		}
-	},
-	handler: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-		_options: any,
-		callback: HandlerCallback,
-	) => {
-		const videoService = runtime.getService<IVideoService>(ServiceType.VIDEO);
+  name: 'DOWNLOAD_MEDIA',
+  similes: [
+    'DOWNLOAD_VIDEO',
+    'DOWNLOAD_AUDIO',
+    'GET_MEDIA',
+    'DOWNLOAD_PODCAST',
+    'DOWNLOAD_YOUTUBE',
+  ],
+  description:
+    'Downloads a video or audio file from a URL and attaches it to the response message.',
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+    if (message.content.source !== 'discord') {
+      return false;
+    }
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    _options: any,
+    callback: HandlerCallback
+  ) => {
+    const videoService = runtime.getService<IVideoService>(ServiceType.VIDEO);
 
-		const mediaUrl = await getMediaUrl(runtime, message, state);
-		if (!mediaUrl) {
-			console.error("Couldn't get media URL from messages");
-			await runtime.createMemory({
-				entityId: message.entityId,
-				agentId: message.agentId,
-				roomId: message.roomId,
-				content: {
-					source: "discord",
-					thought: `I couldn't find the media URL in the message`,
-					actions: ["DOWNLOAD_MEDIA_FAILED"],
-				},
-				metadata: {
-					type: "DOWNLOAD_MEDIA",
-				},
-			}, "messages");
-			return;
-		}
+    const mediaUrl = await getMediaUrl(runtime, message, state);
+    if (!mediaUrl) {
+      console.error("Couldn't get media URL from messages");
+      await runtime.createMemory(
+        {
+          entityId: message.entityId,
+          agentId: message.agentId,
+          roomId: message.roomId,
+          content: {
+            source: 'discord',
+            thought: `I couldn't find the media URL in the message`,
+            actions: ['DOWNLOAD_MEDIA_FAILED'],
+          },
+          metadata: {
+            type: 'DOWNLOAD_MEDIA',
+          },
+        },
+        'messages'
+      );
+      return;
+    }
 
-		const videoInfo = await videoService.fetchVideoInfo(mediaUrl);
-		const mediaPath = await videoService.downloadVideo(videoInfo);
+    const videoInfo = await videoService.fetchVideoInfo(mediaUrl);
+    const mediaPath = await videoService.downloadVideo(videoInfo);
 
-		const response: Content = {
-			text: `I downloaded the video "${videoInfo.title}" and attached it below.`,
-			actions: ["DOWNLOAD_MEDIA_RESPONSE"],
-			source: message.content.source,
-			attachments: [],
-		};
+    const response: Content = {
+      text: `I downloaded the video "${videoInfo.title}" and attached it below.`,
+      actions: ['DOWNLOAD_MEDIA_RESPONSE'],
+      source: message.content.source,
+      attachments: [],
+    };
 
-		const maxRetries = 3;
-		let retries = 0;
+    const maxRetries = 3;
+    let retries = 0;
 
-		while (retries < maxRetries) {
-			try {
-				await callback(
-					{
-						...response,
-					},
-					[mediaPath],
-				);
-				break;
-			} catch (error) {
-				retries++;
-				console.error(`Error sending message (attempt ${retries}):`, error);
+    while (retries < maxRetries) {
+      try {
+        await callback(
+          {
+            ...response,
+          },
+          [mediaPath]
+        );
+        break;
+      } catch (error) {
+        retries++;
+        console.error(`Error sending message (attempt ${retries}):`, error);
 
-				if (retries === maxRetries) {
-					console.error(
-						"Max retries reached. Failed to send message with attachment.",
-					);
-					break;
-				}
+        if (retries === maxRetries) {
+          console.error('Max retries reached. Failed to send message with attachment.');
+          break;
+        }
 
-				// Wait for a short delay before retrying
-				await new Promise((resolve) => setTimeout(resolve, 2000));
-			}
-		}
+        // Wait for a short delay before retrying
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
 
-		return response;
-	},
-	examples: [
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-				},
-			},
-			{
-				name: "{{name2}}",
-				content: {
-					text: "Downloading the YouTube video now, one sec",
-					actions: ["DOWNLOAD_MEDIA"],
-				},
-			},
-		],
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "Can you grab this video for me? https://vimeo.com/123456789",
-				},
-			},
-			{
-				name: "{{name2}}",
-				content: {
-					text: "Sure thing, I'll download that Vimeo video for you",
-					actions: ["DOWNLOAD_MEDIA"],
-				},
-			},
-		],
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "I need this video downloaded: https://www.youtube.com/watch?v=abcdefg",
-				},
-			},
-			{
-				name: "{{name2}}",
-				content: {
-					text: "No problem, I'm on it. I'll have that YouTube video downloaded in a jiffy",
-					actions: ["DOWNLOAD_MEDIA"],
-				},
-			},
-		],
-	] as ActionExample[][],
+    return response;
+  },
+  examples: [
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        },
+      },
+      {
+        name: '{{name2}}',
+        content: {
+          text: 'Downloading the YouTube video now, one sec',
+          actions: ['DOWNLOAD_MEDIA'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'Can you grab this video for me? https://vimeo.com/123456789',
+        },
+      },
+      {
+        name: '{{name2}}',
+        content: {
+          text: "Sure thing, I'll download that Vimeo video for you",
+          actions: ['DOWNLOAD_MEDIA'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'I need this video downloaded: https://www.youtube.com/watch?v=abcdefg',
+        },
+      },
+      {
+        name: '{{name2}}',
+        content: {
+          text: "No problem, I'm on it. I'll have that YouTube video downloaded in a jiffy",
+          actions: ['DOWNLOAD_MEDIA'],
+        },
+      },
+    ],
+  ] as ActionExample[][],
 } as Action;
 
 export default downloadMedia;

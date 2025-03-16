@@ -6,11 +6,11 @@
     "start:debug": "LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run dev --filter=./packages/the-org",
-    "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
-    "build:core": "turbo run build --filter=@elizaos/core --no-cache",
-    "build": "bun run build:core && turbo run build --filter=@elizaos/plugin-* --filter=@elizaos/client --no-cache && turbo run build --filter=!@elizaos/core --filter=!@elizaos/plugin-* --no-cache",
+    "build:docs": "turbo run build --filter=@elizaos/docs",
+    "build": "turbo run build --filter=!@elizaos/docs",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* && turbo run clean --filter=./packages/*",
-    "lint": "turbo run lint --filter=./packages/*",
+    "lint": "turbo run lint --filter=./packages/* && prettier --write . && prettier --check .",
+    "pre-commit": "bun run scripts/pre-commit-lint.js",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
     "release:alpha": "lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
@@ -21,27 +21,28 @@
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
     "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/the-org --filter=!./packages/docs --filter=!./packages/plugin-video-understanding",
-    "test:app": "turbo run test --concurrency 20 --filter=./packages/app"
+    "test:app": "turbo run test --concurrency 20 --filter=./packages/app",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
     "@types/bun": "latest",
     "@types/node": "^22.13.10",
+    "@types/uuid": "^9.0.8",
     "@vitest/eslint-plugin": "1.0.1",
     "bun": "1.2.5",
     "concurrently": "9.1.0",
     "cross-env": "7.0.3",
-    "husky": "9.1.7",
+    "husky": "^9.1.7",
     "lerna": "8.1.4",
+    "lint-staged": "^15.5.0",
     "only-allow": "^1.2.1",
     "sharp": "0.33.5",
+    "tsup": "8.4.0",
     "turbo": "^2.4.4",
     "typedoc": "0.27.9",
     "typescript": "5.8.2",
     "vite": "5.4.12",
-    "vitest": "3.0.5",
-    "@types/uuid": "^9.0.8",
-    "tsup": "8.4.0"
+    "vitest": "3.0.5"
   },
   "bun": {
     "overrides": {
@@ -88,7 +89,6 @@
     "form-data": "4.0.2"
   },
   "trustedDependencies": [
-    "@biomejs/biome",
     "@elizaos/plugin-browser",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-storage-s3",
@@ -102,7 +102,6 @@
     "core-js",
     "core-js-pure",
     "cpu-features",
-    "es5-ext",
     "esbuild",
     "node-llama-cpp",
     "nx",

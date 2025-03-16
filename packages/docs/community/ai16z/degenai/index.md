@@ -9,9 +9,9 @@ We can rebuild him
 ## Trading strategy
 
 - ai16z is the biggest holder of degenai (a pumpfun coin)
-    - Current plan for ai16z still is buybacks of degenai
-        - To-do: We need to surface this better (like a website)
-    - DegenSpartanAI also stacks his own coin as well
+  - Current plan for ai16z still is buybacks of degenai
+    - To-do: We need to surface this better (like a website)
+  - DegenSpartanAI also stacks his own coin as well
 - Shitposting while trading
 - He might just dump your shit
 - May do psyops like self fuds his own bags

@@ -7,7 +7,7 @@ This adapter integrates Opacity proofs into ElizaOS, enabling verifiable inferen
 ## Installation
 
 ```bash
-pnpm add @elizaos/adapter-opacity
+bun add @elizaos/adapter-opacity
 ```
 
 ## Configuration
@@ -22,47 +22,44 @@ OPACITY_PROVER_URL=https://opacity-ai-zktls-demo.vercel.app
 VERIFIABLE_INFERENCE_ENABLED=true # Set to true to enable verifiable inference
 VERIFIABLE_INFERENCE_PROVIDER=opacity # Options: opacity
 ```
+
 (make sure to VERIFIABLE_INFERENCE_ENABLED to true!)
 
 ## Usage
 
 ```typescript
-import { OpacityAdapter } from "@elizaos/adapter-opacity";
-import { VerifiableInferenceOptions } from "@elizaos/core";
+import { OpacityAdapter } from '@elizaos/adapter-opacity';
+import { VerifiableInferenceOptions } from '@elizaos/core';
 
 // Initialize the adapter
 const opacityAdapter = new OpacityAdapter(runtime, {
-    teamId: process.env.OPACITY_TEAM_ID,
-    teamName: process.env.OPACITY_CLOUDFLARE_NAME,
-    baseUrl: process.env.OPACITY_PROVER_URL
+  teamId: process.env.OPACITY_TEAM_ID,
+  teamName: process.env.OPACITY_CLOUDFLARE_NAME,
+  baseUrl: process.env.OPACITY_PROVER_URL,
 });
 
 // Generate text with verifiable results
 const options: VerifiableInferenceOptions = {
-    // Optional: Override the default endpoint
-    endpoint: "https://custom-api.example.com",
-    // Optional: Add custom headers
-    headers: {
-        "X-Custom-Header": "value",
-    },
-    // Optional: Provider-specific options
-    providerOptions: {
-        temperature: 0.7,
-    },
+  // Optional: Override the default endpoint
+  endpoint: 'https://custom-api.example.com',
+  // Optional: Add custom headers
+  headers: {
+    'X-Custom-Header': 'value',
+  },
+  // Optional: Provider-specific options
+  providerOptions: {
+    temperature: 0.7,
+  },
 };
 
-const result = await opacityAdapter.generateText(
-    "What is Rust?",
-    "gpt-4",
-    options
-);
+const result = await opacityAdapter.generateText('What is Rust?', 'gpt-4', options);
 
-console.log("Response:", result.text);
-console.log("Proof:", result.proof);
+console.log('Response:', result.text);
+console.log('Proof:', result.proof);
 
 // Verify the proof
 const isValid = await opacityAdapter.verifyProof(result);
-console.log("Proof is valid:", isValid);
+console.log('Proof is valid:', isValid);
 ```
 
 ## Features
@@ -94,14 +91,15 @@ The adapter returns a `VerifiableInferenceResult` object containing:
 
 The Opacity adapter wraps AI model API calls to CloudFlare, then performs MPC-TLS on the logged responses.
 
-
 This allows you to:
+
 1. Make verifiable API calls to AI model providers
 2. Generate proofs of the responses
 3. Verify the authenticity of the responses
 4. Ensure the responses haven't been tampered with
 
 ## Step By Step
+
 ```mermaid
 sequenceDiagram
     autonumber

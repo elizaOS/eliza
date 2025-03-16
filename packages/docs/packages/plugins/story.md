@@ -26,10 +26,10 @@ Install the plugin via npm:
 npm install @elizaos-plugins/plugin-story
 ```
 
-Or using pnpm:
+Or using bun:
 
 ```bash
-pnpm add @elizaos-plugins/plugin-story
+bun add @elizaos-plugins/plugin-story
 ```
 
 ## Configuration
@@ -40,20 +40,20 @@ Add the plugin to your ElizaOS agent configuration and provide the necessary cre
 // agent.config.js
 export default {
   // Other ElizaOS configuration
-  plugins: ["story"],
+  plugins: ['story'],
   settings: {
-    STORY_PRIVATE_KEY: "0x...",  // Your Story Protocol private key
-    PINATA_JWT: "..."            // Your Pinata JWT token
-  }
-}
+    STORY_PRIVATE_KEY: '0x...', // Your Story Protocol private key
+    PINATA_JWT: '...', // Your Pinata JWT token
+  },
+};
 ```
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `STORY_PRIVATE_KEY` | Yes | Private key for Story Protocol (Odyssey testnet) |
-| `PINATA_JWT` | Yes | JWT token for Pinata IPFS storage |
+| Variable            | Required | Description                                      |
+| ------------------- | -------- | ------------------------------------------------ |
+| `STORY_PRIVATE_KEY` | Yes      | Private key for Story Protocol (Odyssey testnet) |
+| `PINATA_JWT`        | Yes      | JWT token for Pinata IPFS storage                |
 
 ## Usage
 
@@ -117,13 +117,13 @@ Agent: I'll mint that license for you.
 
 ## Supported Actions
 
-| Action | Description |
-|---|---|
-| `REGISTER_IP` | Register a new IP asset on Story Protocol |
-| `ATTACH_TERMS` | Attach license terms to an existing IP asset |
-| `LICENSE_IP` | Mint license tokens for an IP asset |
-| `GET_IP_DETAILS` | Fetch details about an IP asset |
-| `GET_AVAILABLE_LICENSES` | List available licenses for an IP asset |
+| Action                   | Description                                  |
+| ------------------------ | -------------------------------------------- |
+| `REGISTER_IP`            | Register a new IP asset on Story Protocol    |
+| `ATTACH_TERMS`           | Attach license terms to an existing IP asset |
+| `LICENSE_IP`             | Mint license tokens for an IP asset          |
+| `GET_IP_DETAILS`         | Fetch details about an IP asset              |
+| `GET_AVAILABLE_LICENSES` | List available licenses for an IP asset      |
 
 ## Story Protocol Integration
 
@@ -157,11 +157,13 @@ When attaching license terms, you can configure:
 
 ### Common Issues
 
-1. **Transaction Errors**: 
+1. **Transaction Errors**:
+
    - Ensure your private key has sufficient funds on the Odyssey testnet
    - Check for valid IP IDs and license term IDs
 
-2. **IPFS Upload Failures**: 
+2. **IPFS Upload Failures**:
+
    - Verify your Pinata JWT token is valid and has not expired
    - Ensure proper network connectivity
 
@@ -175,19 +177,19 @@ For developers wanting to extend the plugin:
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Run tests
-pnpm test
+bun test
 
 # Build the plugin
-pnpm build
+bun build
 
 # Lint code
-pnpm lint
+bun lint
 
 # Format code
-pnpm format:fix
+bun format:fix
 ```
 
 ## Links and Resources

@@ -16,7 +16,7 @@ Intiface/Buttplug.io integration plugin for Eliza OS that enables control of int
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-intiface
+bun install @elizaos/plugin-intiface
 ```
 
 ## Configuration
@@ -34,21 +34,21 @@ DEVICE_NAME=Lovense Nora
 ### Basic Device Control
 
 ```typescript
-import { intifacePlugin } from "@elizaos/plugin-intiface";
+import { intifacePlugin } from '@elizaos/plugin-intiface';
 
 // Vibrate device
 const result = await eliza.execute({
-    action: "VIBRATE",
-    content: {
-        strength: 0.5, // 0.0 to 1.0
-        duration: 1000, // milliseconds
-    },
+  action: 'VIBRATE',
+  content: {
+    strength: 0.5, // 0.0 to 1.0
+    duration: 1000, // milliseconds
+  },
 });
 
 // Check battery level
 const battery = await eliza.execute({
-    action: "BATTERY",
-    content: {},
+  action: 'BATTERY',
+  content: {},
 });
 ```
 
@@ -57,11 +57,11 @@ const battery = await eliza.execute({
 ```typescript
 // Rotation control (for supported devices)
 const result = await eliza.execute({
-    action: "ROTATE",
-    content: {
-        strength: 0.7,
-        duration: 2000,
-    },
+  action: 'ROTATE',
+  content: {
+    strength: 0.7,
+    duration: 2000,
+  },
 });
 ```
 
@@ -80,7 +80,7 @@ The plugin supports various devices through the Buttplug protocol, including but
 The plugin includes a simulation mode for testing without physical hardware:
 
 ```bash
-pnpm test-via-bun
+bun test-via-bun
 ```
 
 ## Dependencies
@@ -95,59 +95,59 @@ pnpm test-via-bun
 
 1. **Connection Problems**
 
-    - Verify Intiface Engine is running (`ws://localhost:12345` by default)
-    - Check device Bluetooth is enabled and in pairing mode
-    - Ensure device is charged and within range
-    - Try restarting both device and Intiface Engine
+   - Verify Intiface Engine is running (`ws://localhost:12345` by default)
+   - Check device Bluetooth is enabled and in pairing mode
+   - Ensure device is charged and within range
+   - Try restarting both device and Intiface Engine
 
 2. **Device Not Found**
 
-    - Confirm device is supported by Buttplug.io
-    - Try manual device pairing through Intiface Central first
-    - Check if device requires specific firmware version
-    - Verify device is not connected to another application
+   - Confirm device is supported by Buttplug.io
+   - Try manual device pairing through Intiface Central first
+   - Check if device requires specific firmware version
+   - Verify device is not connected to another application
 
 3. **Command Failures**
 
-    - Check battery level is sufficient
-    - Ensure device is within supported range for command values
-    - Verify device supports the specific command (vibrate/rotate)
-    - Monitor Intiface Engine logs for detailed error messages
+   - Check battery level is sufficient
+   - Ensure device is within supported range for command values
+   - Verify device supports the specific command (vibrate/rotate)
+   - Monitor Intiface Engine logs for detailed error messages
 
 4. **Performance Issues**
-    - Reduce command frequency if experiencing lag
-    - Check for Bluetooth interference
-    - Monitor system resources for potential bottlenecks
-    - Consider using wired connection if available
+   - Reduce command frequency if experiencing lag
+   - Check for Bluetooth interference
+   - Monitor system resources for potential bottlenecks
+   - Consider using wired connection if available
 
 ## Security Best Practices
 
 1. **Device Privacy**
 
-    - Use secure WebSocket connections (wss://) when possible
-    - Don't expose Intiface Engine to public networks
-    - Regularly check for and apply firmware updates
-    - Monitor device connection status
+   - Use secure WebSocket connections (wss://) when possible
+   - Don't expose Intiface Engine to public networks
+   - Regularly check for and apply firmware updates
+   - Monitor device connection status
 
 2. **Data Protection**
 
-    - Clear device pairing history when needed
-    - Don't store sensitive device information
-    - Use unique device names for identification
-    - Implement timeouts for idle connections
+   - Clear device pairing history when needed
+   - Don't store sensitive device information
+   - Use unique device names for identification
+   - Implement timeouts for idle connections
 
 3. **Access Control**
 
-    - Limit device control to authenticated users
-    - Implement command rate limiting
-    - Use device-specific permissions where applicable
-    - Monitor and log unusual command patterns
+   - Limit device control to authenticated users
+   - Implement command rate limiting
+   - Use device-specific permissions where applicable
+   - Monitor and log unusual command patterns
 
 4. **Network Security**
-    - Keep Intiface Engine behind firewall
-    - Use local connections when possible
-    - Implement connection timeouts
-    - Regular security audits of configurations
+   - Keep Intiface Engine behind firewall
+   - Use local connections when possible
+   - Implement connection timeouts
+   - Regular security audits of configurations
 
 ## Contributing
 

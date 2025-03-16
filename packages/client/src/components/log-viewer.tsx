@@ -1,247 +1,233 @@
-import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { useEffect, useRef, useState } from "react";
-import { useAgents } from "../hooks/use-query-hooks";
-import { apiClient } from "../lib/api";
-import PageTitle from "./page-title";
-import { ScrollArea } from "./ui/scroll-area";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "./ui/select";
+import { useQuery } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import { useEffect, useRef, useState } from 'react';
+import { useAgents } from '../hooks/use-query-hooks';
+import { apiClient } from '../lib/api';
+import PageTitle from './page-title';
+import { ScrollArea } from './ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 interface LogEntry {
-	level: number;
-	time: number;
-	msg: string;
-	agentId?: string;
-	agentName?: string;
-	roomId?: string;
-	
-	[key: string]: string | number | boolean | null | undefined;
+  level: number;
+  time: number;
+  msg: string;
+  agentId?: string;
+  agentName?: string;
+  roomId?: string;
+
+  [key: string]: string | number | boolean | null | undefined;
 }
 
 interface LogResponse {
-	logs: LogEntry[];
-	count: number;
-	total: number;
-	level: string;
-	levels: string[];
+  logs: LogEntry[];
+  count: number;
+  total: number;
+  level: string;
+  levels: string[];
 }
 
 const LOG_LEVEL_NUMBERS = {
-	10: "TRACE",
-	20: "DEBUG",
-	27: "SUCCESS",
-	28: "PROGRESS",
-	29: "LOG",
-	30: "INFO",
-	40: "WARN",
-	50: "ERROR",
-	60: "FATAL",
+  10: 'TRACE',
+  20: 'DEBUG',
+  27: 'SUCCESS',
+  28: 'PROGRESS',
+  29: 'LOG',
+  30: 'INFO',
+  40: 'WARN',
+  50: 'ERROR',
+  60: 'FATAL',
 } as const;
 
 const LOG_LEVEL_COLORS: Record<number, string> = {
-	10: "text-gray-400",
-	20: "text-blue-400",
-	27: "text-green-600",
-	28: "text-purple-400",
-	29: "text-gray-300",
-	30: "text-emerald-400",
-	40: "text-yellow-400",
-	50: "text-red-400",
-	60: "text-red-600",
+  10: 'text-gray-400',
+  20: 'text-blue-400',
+  27: 'text-green-600',
+  28: 'text-purple-400',
+  29: 'text-gray-300',
+  30: 'text-emerald-400',
+  40: 'text-yellow-400',
+  50: 'text-red-400',
+  60: 'text-red-600',
 };
 
 interface LogViewerProps {
-	agentName?: string;
-	level?: string;
-	hideTitle?: boolean;
+  agentName?: string;
+  level?: string;
+  hideTitle?: boolean;
 }
 
 export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) {
-	const [selectedLevel, setSelectedLevel] = useState(level || "all");
-	const [selectedAgentName, setSelectedAgentName] = useState(agentName || "all");
-	const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
-	const scrollAreaRef = useRef<HTMLDivElement>(null);
-	const isUserScrolling = useRef(false);
-	const lastLogId = useRef<string>("");
+  const [selectedLevel, setSelectedLevel] = useState(level || 'all');
+  const [selectedAgentName, setSelectedAgentName] = useState(agentName || 'all');
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const isUserScrolling = useRef(false);
+  const lastLogId = useRef<string>('');
 
-	const { data, error, isLoading } = useQuery<LogResponse>({
-		queryKey: ["logs", selectedLevel, selectedAgentName],
-		queryFn: () =>
-			apiClient.getLogs({
-				level: selectedLevel === "all" ? "" : selectedLevel,
-				agentName: selectedAgentName === "all" ? undefined : selectedAgentName,
-			}),
-		refetchInterval: 1000,
-		staleTime: 1000,
-	});
+  const { data, error, isLoading } = useQuery<LogResponse>({
+    queryKey: ['logs', selectedLevel, selectedAgentName],
+    queryFn: () =>
+      apiClient.getLogs({
+        level: selectedLevel === 'all' ? '' : selectedLevel,
+        agentName: selectedAgentName === 'all' ? undefined : selectedAgentName,
+      }),
+    refetchInterval: 1000,
+    staleTime: 1000,
+  });
 
+  const { data: agents } = useAgents();
+  const agentNames = agents?.data?.agents?.map((agent) => agent.name) ?? [];
 
-	const {data: agents} = useAgents();
-	const agentNames = agents?.data?.agents?.map((agent) => agent.name) ?? [];
+  const scrollToBottom = () => {
+    if (!scrollAreaRef.current) return;
 
+    const scrollArea = scrollAreaRef.current;
+    const scrollHeight = scrollArea.scrollHeight;
+    const clientHeight = scrollArea.clientHeight;
 
-	const scrollToBottom = () => {
-		if (!scrollAreaRef.current) return;
+    scrollArea.scrollTo({
+      top: scrollHeight - clientHeight,
+      behavior: 'instant',
+    });
+  };
 
-		const scrollArea = scrollAreaRef.current;
-		const scrollHeight = scrollArea.scrollHeight;
-		const clientHeight = scrollArea.clientHeight;
+  useEffect(() => {
+    if (!data?.logs?.length) return;
 
-		scrollArea.scrollTo({
-			top: scrollHeight - clientHeight,
-			behavior: "instant",
-		});
-	};
+    const currentLastLog = data.logs[data.logs.length - 1];
+    const currentLastLogId = `${currentLastLog.time}-${currentLastLog.msg}`;
 
-	useEffect(() => {
-		if (!data?.logs?.length) return;
+    if (shouldAutoScroll && currentLastLogId !== lastLogId.current) {
+      setTimeout(scrollToBottom, 0);
+      lastLogId.current = currentLastLogId;
+    }
+  }, [data?.logs, shouldAutoScroll]);
 
-		const currentLastLog = data.logs[data.logs.length - 1];
-		const currentLastLogId = `${currentLastLog.time}-${currentLastLog.msg}`;
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    if (isUserScrolling.current) return;
 
-		if (shouldAutoScroll && currentLastLogId !== lastLogId.current) {
-			setTimeout(scrollToBottom, 0);
-			lastLogId.current = currentLastLogId;
-		}
-	}, [data?.logs, shouldAutoScroll]);
+    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    const isNearBottom = distanceFromBottom < 100;
 
-	const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
-		if (isUserScrolling.current) return;
+    setShouldAutoScroll(isNearBottom);
+    isUserScrolling.current = true;
 
-		const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
-		const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
-		const isNearBottom = distanceFromBottom < 100;
+    setTimeout(() => {
+      isUserScrolling.current = false;
+    }, 150);
+  };
 
-		setShouldAutoScroll(isNearBottom);
-		isUserScrolling.current = true;
+  const handleResumeAutoScroll = () => {
+    setShouldAutoScroll(true);
+    scrollToBottom();
+  };
 
-		setTimeout(() => {
-			isUserScrolling.current = false;
-		}, 150);
-	};
+  useEffect(() => {
+    setTimeout(scrollToBottom, 100);
+  }, [data?.logs]);
 
-	const handleResumeAutoScroll = () => {
-		setShouldAutoScroll(true);
-		scrollToBottom();
-	};
+  const getLevelName = (level: number) => {
+    return LOG_LEVEL_NUMBERS[level as keyof typeof LOG_LEVEL_NUMBERS] || 'UNKNOWN';
+  };
 
-	useEffect(() => {
-		setTimeout(scrollToBottom, 100);
-	}, [data?.logs]);
+  const getLevelColor = (level: number) => {
+    return LOG_LEVEL_COLORS[level] || 'text-gray-400';
+  };
 
-	const getLevelName = (level: number) => {
-		return (
-			LOG_LEVEL_NUMBERS[level as keyof typeof LOG_LEVEL_NUMBERS] || "UNKNOWN"
-		);
-	};
+  const formatLogEntry = (log: LogEntry) => {
+    const timestamp = format(log.time, 'yyyy-MM-dd HH:mm:ss');
+    const level = getLevelName(log.level);
 
-	const getLevelColor = (level: number) => {
-		return LOG_LEVEL_COLORS[level] || "text-gray-400";
-	};
+    const numberedFields = Object.entries(log)
+      .filter(([key]) => !Number.isNaN(Number(key)))
+      .sort((a, b) => Number(a[0]) - Number(b[0]));
 
-	const formatLogEntry = (log: LogEntry) => {
-		const timestamp = format(log.time, "yyyy-MM-dd HH:mm:ss");
-		const level = getLevelName(log.level);
+    const extraFields =
+      numberedFields.length > 0
+        ? `\n    ${numberedFields.map(([_, value]) => value).join('\n    ')}`
+        : '';
 
-		const numberedFields = Object.entries(log)
-			.filter(([key]) => !Number.isNaN(Number(key)))
-			.sort((a, b) => Number(a[0]) - Number(b[0]));
+    return (
+      <div key={`${log.time}-${log.msg}`} className="whitespace-pre-wrap font-mono">
+        <span className="text-gray-500">[{timestamp}]</span>{' '}
+        {log.agentName && <span className="text-gray-500">[{log.agentName}]</span>}{' '}
+        <span className={getLevelColor(log.level)}>{level}:</span>{' '}
+        <span className="text-white">{log.msg}</span>
+        <span className="text-gray-300">{extraFields}</span>
+      </div>
+    );
+  };
 
-		const extraFields =
-			numberedFields.length > 0
-				? `\n    ${numberedFields.map(([_, value]) => value).join("\n    ")}`
-				: "";
+  return (
+    <div className="p-4">
+      <div className="mb-4 flex items-center justify-between">
+        {!hideTitle && <PageTitle title={'System Logs'} />}
+        <div className="flex items-center gap-4">
+          {!shouldAutoScroll && (
+            <button
+              type="button"
+              onClick={handleResumeAutoScroll}
+              className="text-xs text-gray-400 hover:text-white transition-colors"
+            >
+              Resume auto-scroll
+            </button>
+          )}
+          <Select value={selectedLevel} onValueChange={setSelectedLevel}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Select level" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">ALL</SelectItem>
+              {data?.levels.map((level) => (
+                <SelectItem key={level} value={level}>
+                  {level.toUpperCase()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-		return (
-			<div
-				key={`${log.time}-${log.msg}`}
-				className="whitespace-pre-wrap font-mono"
-			>
-				<span className="text-gray-500">[{timestamp}]</span>{" "}
-				{log.agentName && <span className="text-gray-500">[{log.agentName}]</span>}{" "}
-				<span className={getLevelColor(log.level)}>{level}:</span>{" "}
-				<span className="text-white">{log.msg}</span>
-				<span className="text-gray-300">{extraFields}</span>
-			</div>
-		);
-	};
+          {agentNames && agentNames.length > 0 && !agentName && (
+            <Select value={selectedAgentName} onValueChange={setSelectedAgentName}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Filter by agent" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ALL AGENTS</SelectItem>
+                {agentNames.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </div>
 
-	return (
-		<div className="p-4">
-			<div className="mb-4 flex items-center justify-between">
-				{!hideTitle && <PageTitle title={"System Logs"} />}
-				<div className="flex items-center gap-4">
-					{!shouldAutoScroll && (
-						<button
-							type="button"
-							onClick={handleResumeAutoScroll}
-							className="text-xs text-gray-400 hover:text-white transition-colors"
-						>
-							Resume auto-scroll
-						</button>
-					)}
-					<Select value={selectedLevel} onValueChange={setSelectedLevel}>
-						<SelectTrigger className="w-32">
-							<SelectValue placeholder="Select level" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">ALL</SelectItem>
-							{data?.levels.map((level) => (
-								<SelectItem key={level} value={level}>
-									{level.toUpperCase()}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					
-					{agentNames && agentNames.length > 0 && !agentName && (
-						<Select value={selectedAgentName} onValueChange={setSelectedAgentName}>
-							<SelectTrigger className="w-40">
-								<SelectValue placeholder="Filter by agent" />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="all">ALL AGENTS</SelectItem>
-								{agentNames.map((name) => (
-									<SelectItem key={name} value={name}>
-										{name}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					)}
-				</div>
-			</div>
-
-			{isLoading ? (
-				<div className="font-mono p-4">Loading logs...</div>
-			) : error ? (
-				<div className="text-red-500 font-mono p-4">
-					{error instanceof Error ? error.message : "Failed to fetch logs"}
-				</div>
-			) : (
-				<ScrollArea className="h-[600px] rounded-md border bg-black">
-					<div
-						ref={scrollAreaRef}
-						onScroll={handleScroll}
-						className="p-4 text-sm space-y-1 h-full overflow-auto"
-					>
-						{data?.logs.length === 0 ? (
-							<div className="text-gray-500 font-mono">
-								No {selectedLevel === "all" ? "" : selectedLevel.toUpperCase()}{" "}
-								logs found
-							</div>
-						) : (
-							data?.logs.map((log) => formatLogEntry(log))
-						)}
-					</div>
-				</ScrollArea>
-			)}
-		</div>
-	);
+      {isLoading ? (
+        <div className="font-mono p-4">Loading logs...</div>
+      ) : error ? (
+        <div className="text-red-500 font-mono p-4">
+          {error instanceof Error ? error.message : 'Failed to fetch logs'}
+        </div>
+      ) : (
+        <ScrollArea className="h-[600px] rounded-md border bg-black">
+          <div
+            ref={scrollAreaRef}
+            onScroll={handleScroll}
+            className="p-4 text-sm space-y-1 h-full overflow-auto"
+          >
+            {data?.logs.length === 0 ? (
+              <div className="text-gray-500 font-mono">
+                No {selectedLevel === 'all' ? '' : selectedLevel.toUpperCase()} logs found
+              </div>
+            ) : (
+              data?.logs.map((log) => formatLogEntry(log))
+            )}
+          </div>
+        </ScrollArea>
+      )}
+    </div>
+  );
 }

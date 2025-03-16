@@ -1,17 +1,20 @@
-import path from "node:path";
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { logger  as Logger, getEnvVariable } from "@elizaos/core";
-import { logger } from "@elizaos/core"
-import * as bodyParser from "body-parser";
-import cors from "cors";
-import express from "express";
-import type { AgentServer } from "..";
-import { agentRouter } from "./agent";
-import { teeRouter } from "./tee";
+import type { IAgentRuntime, UUID } from '@elizaos/core';
+import { logger as Logger, logger } from '@elizaos/core';
+import * as bodyParser from 'body-parser';
+import cors from 'cors';
+import express from 'express';
+import path from 'node:path';
+import type { AgentServer } from '..';
+import { agentRouter } from './agent';
+import { teeRouter } from './tee';
+import { Server as SocketIOServer } from 'socket.io';
+import { SOCKET_MESSAGE_TYPE, EventType, ChannelType } from '@elizaos/core';
+import http from 'node:http';
+import crypto from 'node:crypto';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
-	...Logger.levels.values,
+  ...Logger.levels.values,
 } as const;
 
 /**
@@ -28,12 +31,257 @@ type LogLevel = keyof typeof LOG_LEVELS;
  * @property {string | number | boolean | null | undefined} [key] - Additional key-value pairs for the log entry.
  */
 interface LogEntry {
-	level: number;
-	time: number;
-	msg: string;
-	[key: string]: string | number | boolean | null | undefined;
+  level: number;
+  time: number;
+  msg: string;
+  [key: string]: string | number | boolean | null | undefined;
 }
 
+/**
+ * Sets up Socket.io server for real-time messaging
+ * @param server HTTP Server instance
+ * @param agents Map of agent runtimes
+ */
+export function setupSocketIO(
+  server: http.Server,
+  agents: Map<UUID, IAgentRuntime>
+): SocketIOServer {
+  // Map to track which agents are in which rooms
+  const roomParticipants: Map<string, Set<UUID>> = new Map();
+
+  const io = new SocketIOServer(server, {
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST'],
+    },
+  });
+
+  // Handle socket connections
+  io.on('connection', (socket) => {
+    const { agentId, roomId } = socket.handshake.query as { agentId: string; roomId: string };
+
+    logger.info('Socket connected', { agentId, roomId, socketId: socket.id });
+
+    // Join the specified room
+    if (roomId) {
+      socket.join(roomId);
+      logger.debug(`Socket ${socket.id} joined room ${roomId}`);
+    }
+
+    // Handle messages from clients
+    socket.on('message', async (messageData) => {
+      logger.debug('Socket message received', { messageData, socketId: socket.id });
+
+      if (messageData.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
+        const payload = messageData.payload;
+        const targetRoomId = payload.roomId;
+        const worldId = payload.worldId;
+
+        // Get all agents in this room
+        const agentsInRoom = roomParticipants.get(targetRoomId) || new Set([targetRoomId as UUID]);
+
+        // Find the primary agent for this room (for simple 1:1 chats)
+        // In more complex implementations, we'd have a proper room management system
+        const primaryAgentId = targetRoomId as UUID;
+        const agentRuntime = agents.get(primaryAgentId);
+
+        if (!agentRuntime) {
+          logger.warn(`Agent runtime not found for ${primaryAgentId}`);
+          return;
+        }
+
+        try {
+          // Ensure world exists first (similar to Discord plugin)
+          await agentRuntime.ensureWorldExists({
+            id: worldId,
+            name: `Client Chat World`,
+            agentId: agentRuntime.agentId,
+            serverId: 'client-chat', // Using a constant server ID for client chat
+          });
+
+          // Ensure room exists
+          await agentRuntime.ensureRoomExists({
+            id: targetRoomId,
+            name: `Chat with ${agentRuntime.character.name}`,
+            source: 'client_chat',
+            type: ChannelType.DM, // Using DM as the channel type
+            channelId: targetRoomId,
+            serverId: 'client-chat',
+            worldId: worldId,
+          });
+
+          // Ensure connection between entity and room (just like Discord)
+          await agentRuntime.ensureConnection({
+            entityId: payload.senderId,
+            roomId: targetRoomId,
+            userName: payload.senderName || 'User',
+            name: payload.senderName || 'User',
+            source: 'client_chat',
+            channelId: targetRoomId,
+            serverId: 'client-chat',
+            type: ChannelType.DM,
+            worldId: worldId,
+          });
+
+          // Create unique message ID
+          const messageId = crypto.randomUUID() as UUID;
+
+          // Create message object for the agent
+          const newMessage = {
+            id: messageId,
+            entityId: payload.senderId,
+            agentId: agentRuntime.agentId,
+            roomId: targetRoomId,
+            content: {
+              text: payload.message,
+              source: payload.source || 'client_chat',
+            },
+            createdAt: Date.now(),
+          };
+
+          // No need to save the message here, the bootstrap handler will do it
+          // Let the messageReceivedHandler in bootstrap.ts handle the memory creation
+
+          // Define callback for agent responses (pattern matching Discord's approach)
+          const callback = async (content) => {
+            try {
+              // Log the content object we received
+              logger.debug('Callback received content:', {
+                contentType: typeof content,
+                contentKeys: content ? Object.keys(content) : 'null',
+                content: JSON.stringify(content),
+              });
+
+              // Make sure we have inReplyTo set correctly
+              if (messageId && !content.inReplyTo) {
+                content.inReplyTo = messageId;
+              }
+
+              // Prepare broadcast data - more direct and explicit
+              // Only include required fields to avoid schema validation issues
+              const broadcastData: Record<string, any> = {
+                senderId: agentRuntime.agentId,
+                senderName: agentRuntime.character.name,
+                text: content.text || '',
+                roomId: targetRoomId,
+                createdAt: Date.now(),
+                source: content.source || 'agent',
+              };
+
+              // Add optional fields only if they exist in the original content
+              if (content.thought) broadcastData.thought = content.thought;
+              if (content.plan) broadcastData.plan = content.plan;
+              if (content.actions) broadcastData.actions = content.actions;
+
+              // Log exact broadcast data
+              logger.info(`Broadcasting message to room ${targetRoomId}`, {
+                room: targetRoomId,
+                clients: io.sockets.adapter.rooms.get(targetRoomId)?.size || 0,
+                messageText: broadcastData.text?.substring(0, 50),
+              });
+
+              logger.debug('Broadcasting data:', JSON.stringify(broadcastData));
+
+              // Send to specific room first
+              io.to(targetRoomId).emit('messageBroadcast', broadcastData);
+
+              // Also send to all connected clients as a fallback
+              logger.info('Also broadcasting to all clients as fallback');
+              io.emit('messageBroadcast', broadcastData);
+
+              // Create memory for the response message (matching Discord's pattern)
+              const memory = {
+                id: crypto.randomUUID() as UUID,
+                entityId: agentRuntime.agentId,
+                agentId: agentRuntime.agentId,
+                content: {
+                  ...content,
+                  inReplyTo: messageId,
+                  channelType: ChannelType.DM,
+                },
+                roomId: targetRoomId,
+                createdAt: Date.now(),
+              };
+
+              // Log the memory object we're creating
+              logger.debug('Memory object for response:', {
+                memoryId: memory.id,
+                contentKeys: Object.keys(memory.content),
+              });
+
+              // Save the memory for the response
+              await agentRuntime.createMemory(memory, 'messages');
+
+              // Return content for bootstrap's processing
+              logger.debug('Returning content directly');
+              return [content];
+            } catch (error) {
+              logger.error('Error in socket message callback:', error);
+              return [];
+            }
+          };
+
+          // Log the message and runtime details before calling emitEvent
+          logger.debug('Emitting MESSAGE_RECEIVED with:', {
+            messageId: newMessage.id,
+            entityId: newMessage.entityId,
+            agentId: newMessage.agentId,
+            text: newMessage.content.text,
+            callbackType: typeof callback,
+          });
+
+          // Monkey-patch the emitEvent method to log its arguments
+          const originalEmitEvent = agentRuntime.emitEvent;
+          agentRuntime.emitEvent = function (eventType, payload) {
+            logger.debug('emitEvent called with eventType:', eventType);
+            logger.debug('emitEvent payload structure:', {
+              hasRuntime: !!payload.runtime,
+              hasMessage: !!payload.message,
+              hasCallback: !!payload.callback,
+              callbackType: typeof payload.callback,
+            });
+            return originalEmitEvent.call(this, eventType, payload);
+          };
+
+          // Emit message received event to trigger agent's message handler
+          agentRuntime.emitEvent(EventType.MESSAGE_RECEIVED, {
+            runtime: agentRuntime,
+            message: newMessage,
+            callback,
+          });
+        } catch (error) {
+          logger.error('Error processing message:', error);
+        }
+      } else if (messageData.type === SOCKET_MESSAGE_TYPE.ROOM_JOINING) {
+        const payload = messageData.payload;
+        const roomId = payload.roomId;
+        const entityId = payload.entityId;
+
+        // Add entity to room participants if it's an agent
+        if (agents.has(entityId as UUID)) {
+          // Initialize Set if not exists
+          if (!roomParticipants.has(roomId)) {
+            roomParticipants.set(roomId, new Set());
+          }
+          // Add agent to room participants
+          roomParticipants.get(roomId)!.add(entityId as UUID);
+          logger.debug(`Agent ${entityId} joined room ${roomId}`);
+        }
+
+        logger.debug(`Client ${socket.id} joining room ${roomId}`);
+      }
+    });
+
+    // Handle disconnections
+    socket.on('disconnect', () => {
+      logger.info('Socket disconnected', { socketId: socket.id });
+      // Note: We're not removing agents from rooms on disconnect
+      // as they should remain participants even when not connected
+    });
+  });
+
+  return io;
+}
 
 /**
  * Creates an API router with various endpoints and middleware.
@@ -42,330 +290,333 @@ interface LogEntry {
  * @returns {express.Router} The configured API router.
  */
 export function createApiRouter(
-	agents: Map<UUID, IAgentRuntime>,
-	server?: AgentServer,
+  agents: Map<UUID, IAgentRuntime>,
+  server?: AgentServer
 ): express.Router {
-	const router = express.Router();
+  const router = express.Router();
 
-	// Setup middleware
-	router.use(cors());
-	router.use(bodyParser.json());
-	router.use(bodyParser.urlencoded({ extended: true }));
-	router.use(
-		express.json({
-			limit: getEnvVariable("EXPRESS_MAX_PAYLOAD") || "100kb",
-		}),
-	);
+  // Setup middleware
+  router.use(cors());
+  router.use(bodyParser.json());
+  router.use(bodyParser.urlencoded({ extended: true }));
+  router.use(
+    express.json({
+      limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
+    })
+  );
 
-	router.get("/hello", (_req, res) => {
-		logger.log({apiRoute: "/hello"})
-		res.json({ message: "Hello World!" });
-	});
+  // Explicitly define the hello endpoint with strict JSON response
+  router.get('/hello', (_req, res) => {
+    logger.info('Hello endpoint hit');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({ message: 'Hello World!' }));
+  });
 
-	// Plugin routes handling middleware
-	// This middleware needs to be registered before the other routes
-	// to ensure plugin routes take precedence
-	router.use('/', (req, res, next) => {
-		// Debug output for all JavaScript requests to help diagnose MIME type issues
-		if (
-			req.path.endsWith(".js") ||
-			req.path.includes(".js?") ||
-			req.path.match(/index-[A-Za-z0-9]{8}\.js/)
-		) {
-			logger.debug(`JavaScript request: ${req.method} ${req.path}`);
+  // Add a basic API test endpoint that returns the agent count
+  router.get('/status', (_req, res) => {
+    logger.info('Status endpoint hit');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(
+      JSON.stringify({
+        status: 'ok',
+        agentCount: agents.size,
+        timestamp: new Date().toISOString(),
+      })
+    );
+  });
 
-			// Pre-emptively set the correct MIME type for all JavaScript files
-			// This ensures even files served by the static middleware get the right type
-			res.setHeader("Content-Type", "application/javascript");
-		}
+  // Define plugin routes middleware function
+  const handlePluginRoutes = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    // Debug output for all JavaScript requests to help diagnose MIME type issues
+    if (
+      req.path.endsWith('.js') ||
+      req.path.includes('.js?') ||
+      req.path.match(/index-[A-Za-z0-9]{8}\.js/)
+    ) {
+      logger.debug(`JavaScript request: ${req.method} ${req.path}`);
 
-		// Skip if we don't have an agent server or no agents
-		if (!server || agents.size === 0) {
-			return next();
-		}
+      // Pre-emptively set the correct MIME type for all JavaScript files
+      // This ensures even files served by the static middleware get the right type
+      res.setHeader('Content-Type', 'application/javascript');
+    }
 
-		// Attempt to match the request with a plugin route
-		let handled = false;
+    // Skip if we don't have an agent server or no agents
+    if (!server || agents.size === 0) {
+      return next();
+    }
 
-		// Check each agent for matching plugin routes
-		for (const [, runtime] of agents) {
-			if (handled) break;
+    // Attempt to match the request with a plugin route
+    let handled = false;
 
-			// Check each plugin route
-			for (const route of runtime.routes) {
-				// Skip if method doesn't match
-				if (req.method.toLowerCase() !== route.type.toLowerCase()) {
-					continue;
-				}
+    // Check each agent for matching plugin routes
+    for (const [, runtime] of agents) {
+      if (handled) break;
 
-				// Check if path matches
-				// Make sure we're comparing the path properly
-				const routePath = route.path.startsWith("/")
-					? route.path
-					: `/${route.path}`;
-				const reqPath = req.path;
+      // Check each plugin route
+      for (const route of runtime.routes) {
+        // Skip if method doesn't match
+        if (req.method.toLowerCase() !== route.type.toLowerCase()) {
+          continue;
+        }
 
-				// Handle exact matches
-				if (reqPath === routePath) {
-					try {
-						route.handler(req, res, runtime);
-						handled = true;
-						break;
-					} catch (error) {
-						logger.error("Error handling plugin route", {
-							error,
-							path: reqPath,
-							agent: runtime.agentId,
-						});
-						res.status(500).json({ error: "Internal Server Error" });
-						handled = true;
-						break;
-					}
-				}
+        // Check if path matches
+        // Make sure we're comparing the path properly
+        const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
+        const reqPath = req.path;
 
-				// Handle wildcard paths (e.g., /portal/*)
-				if (
-					routePath.endsWith("*") &&
-					reqPath.startsWith(routePath.slice(0, -1))
-				) {
-					try {
-						// Set the correct MIME type based on the file extension
-						// This is important for any static files served by plugin routes
-						const ext = path.extname(reqPath).toLowerCase();
+        // Handle exact matches
+        if (reqPath === routePath) {
+          try {
+            route.handler(req, res, runtime);
+            handled = true;
+            break;
+          } catch (error) {
+            logger.error('Error handling plugin route', {
+              error,
+              path: reqPath,
+              agent: runtime.agentId,
+            });
+            res.status(500).json({ error: 'Internal Server Error' });
+            handled = true;
+            break;
+          }
+        }
 
-						// Map extensions to content types
-						const contentTypes: Record<string, string> = {
-							".js": "application/javascript",
-							".mjs": "application/javascript",
-							".css": "text/css",
-							".html": "text/html",
-							".json": "application/json",
-							".png": "image/png",
-							".jpg": "image/jpeg",
-							".jpeg": "image/jpeg",
-							".gif": "image/gif",
-							".svg": "image/svg+xml",
-							".ico": "image/x-icon",
-							".webp": "image/webp",
-							".woff": "font/woff",
-							".woff2": "font/woff2",
-							".ttf": "font/ttf",
-							".eot": "application/vnd.ms-fontobject",
-							".otf": "font/otf",
-						};
+        // Handle wildcard paths (e.g., /portal/*)
+        if (routePath.endsWith('*') && reqPath.startsWith(routePath.slice(0, -1))) {
+          try {
+            // Set the correct MIME type based on the file extension
+            // This is important for any static files served by plugin routes
+            const ext = path.extname(reqPath).toLowerCase();
 
-						// Set content type if we have a mapping for this extension
-						if (ext && contentTypes[ext]) {
-							res.setHeader("Content-Type", contentTypes[ext]);
-							logger.debug(
-								`Set MIME type for ${reqPath}: ${contentTypes[ext]}`,
-							);
-						}
+            // Map extensions to content types
+            const contentTypes: Record<string, string> = {
+              '.js': 'application/javascript',
+              '.mjs': 'application/javascript',
+              '.css': 'text/css',
+              '.html': 'text/html',
+              '.json': 'application/json',
+              '.png': 'image/png',
+              '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg',
+              '.gif': 'image/gif',
+              '.svg': 'image/svg+xml',
+              '.ico': 'image/x-icon',
+              '.webp': 'image/webp',
+              '.woff': 'font/woff',
+              '.woff2': 'font/woff2',
+              '.ttf': 'font/ttf',
+              '.eot': 'application/vnd.ms-fontobject',
+              '.otf': 'font/otf',
+            };
 
-						// Check for Vite's hashed filenames pattern (common in assets directories)
-						if (reqPath.match(/[a-zA-Z0-9]+-[a-zA-Z0-9]{8}\.[a-z]{2,4}$/)) {
-							// Ensure JS modules get the correct MIME type
-							if (reqPath.endsWith(".js")) {
-								res.setHeader("Content-Type", "application/javascript");
-							} else if (reqPath.endsWith(".css")) {
-								res.setHeader("Content-Type", "text/css");
-							}
-						}
+            // Set content type if we have a mapping for this extension
+            if (ext && contentTypes[ext]) {
+              res.setHeader('Content-Type', contentTypes[ext]);
+              logger.debug(`Set MIME type for ${reqPath}: ${contentTypes[ext]}`);
+            }
 
-						// Now let the route handler process the request
-						// The plugin's handler is responsible for finding and sending the file
-						route.handler(req, res, runtime);
-						handled = true;
-						break;
-					} catch (error) {
-						logger.error("Error handling plugin wildcard route", {
-							error,
-							path: reqPath,
-							agent: runtime.agentId,
-						});
+            // Check for Vite's hashed filenames pattern (common in assets directories)
+            if (reqPath.match(/[a-zA-Z0-9]+-[a-zA-Z0-9]{8}\.[a-z]{2,4}$/)) {
+              // Ensure JS modules get the correct MIME type
+              if (reqPath.endsWith('.js')) {
+                res.setHeader('Content-Type', 'application/javascript');
+              } else if (reqPath.endsWith('.css')) {
+                res.setHeader('Content-Type', 'text/css');
+              }
+            }
 
-						// Handle errors for different file types appropriately
-						const ext = path.extname(reqPath).toLowerCase();
+            // Now let the route handler process the request
+            // The plugin's handler is responsible for finding and sending the file
+            route.handler(req, res, runtime);
+            handled = true;
+            break;
+          } catch (error) {
+            logger.error('Error handling plugin wildcard route', {
+              error,
+              path: reqPath,
+              agent: runtime.agentId,
+            });
 
-						// If the error was from trying to find a static file that doesn't exist,
-						// we should return a response with the appropriate MIME type based on file extension
-						if (
-							error.code === "ENOENT" ||
-							error.message?.includes("not found") ||
-							error.message?.includes("cannot find")
-						) {
-							logger.debug(`File not found: ${reqPath}`);
+            // Handle errors for different file types appropriately
+            const ext = path.extname(reqPath).toLowerCase();
 
-							// Return responses with the correct MIME type
-							// This prevents browsers from misinterpreting the response type
-							if (ext === ".js" || ext === ".mjs") {
-								res.setHeader("Content-Type", "application/javascript");
-								return res
-									.status(404)
-									.send(`// JavaScript file not found: ${reqPath}`);
-							}
+            // If the error was from trying to find a static file that doesn't exist,
+            // we should return a response with the appropriate MIME type based on file extension
+            if (
+              error.code === 'ENOENT' ||
+              error.message?.includes('not found') ||
+              error.message?.includes('cannot find')
+            ) {
+              logger.debug(`File not found: ${reqPath}`);
 
-							if (ext === ".css") {
-								res.setHeader("Content-Type", "text/css");
-								return res
-									.status(404)
-									.send(`/* CSS file not found: ${reqPath} */`);
-							}
+              // Return responses with the correct MIME type
+              // This prevents browsers from misinterpreting the response type
+              if (ext === '.js' || ext === '.mjs') {
+                res.setHeader('Content-Type', 'application/javascript');
+                return res.status(404).send(`// JavaScript file not found: ${reqPath}`);
+              }
 
-							if (ext === ".svg") {
-								res.setHeader("Content-Type", "image/svg+xml");
-								return res
-									.status(404)
-									.send(`<!-- SVG not found: ${reqPath} -->`);
-							}
+              if (ext === '.css') {
+                res.setHeader('Content-Type', 'text/css');
+                return res.status(404).send(`/* CSS file not found: ${reqPath} */`);
+              }
 
-							if (ext === ".json") {
-								res.setHeader("Content-Type", "application/json");
-								return res
-									.status(404)
-									.send(`{ "error": "File not found", "path": "${reqPath}" }`);
-							}
+              if (ext === '.svg') {
+                res.setHeader('Content-Type', 'image/svg+xml');
+                return res.status(404).send(`<!-- SVG not found: ${reqPath} -->`);
+              }
 
-							// Generic 404 for other file types
-							res.status(404).send(`File not found: ${reqPath}`);
-							handled = true;
-							break;
-						}
+              if (ext === '.json') {
+                res.setHeader('Content-Type', 'application/json');
+                return res.status(404).send(`{ "error": "File not found", "path": "${reqPath}" }`);
+              }
 
-						// Return a 500 error for other types of errors
-						res.status(500).json({
-							error: "Internal Server Error",
-							message: error.message || "Unknown error",
-						});
-						handled = true;
-						break;
-					}
-				}
-			}
-		}
+              // Generic 404 for other file types
+              res.status(404).send(`File not found: ${reqPath}`);
+              handled = true;
+              break;
+            }
 
-		// If a plugin route handled the request, stop here
-		if (handled) {
-			return;
-		}
+            // Return a 500 error for other types of errors
+            res.status(500).json({
+              error: 'Internal Server Error',
+              message: error.message || 'Unknown error',
+            });
+            handled = true;
+            break;
+          }
+        }
+      }
+    }
 
-		// Otherwise, continue to the next middleware
-		next();
-	});
+    // If a plugin route handled the request, stop here
+    if (handled) {
+      return;
+    }
 
-	// Mount sub-routers
-	router.use("/agents", agentRouter(agents, server));
-	router.use("/tee", teeRouter(agents));
+    // Otherwise, continue to the next middleware
+    next();
+  };
 
-	router.get("/stop", (_req, res) => {
-		server.stop();
-		logger.log({
-			apiRoute: '/stop'
-		}, "Server stopping...")
-		res.json({ message: "Server stopping..." });
-	});
+  // Add the plugin routes middleware directly to the router
+  // We'll do this by handling all routes with a wildcard
+  router.all('*', (req, res, next) => {
+    // Skip for sub-routes that are already handled
+    if (req.path.startsWith('/agents/') || req.path.startsWith('/tee/')) {
+      return next();
+    }
 
-	// Logs endpoint
-	const logsHandler = (req, res) => {
-		const since = req.query.since
-			? Number(req.query.since)
-			: Date.now() - 3600000; // Default 1 hour
-		const requestedLevel = (req.query.level?.toString().toLowerCase() ||
-			"info") as LogLevel;
-		const agentName = req.query.agentName?.toString();
-		const agentId = req.query.agentId?.toString();  // Add support for agentId parameter
-		const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
-	
-		// Access the underlying logger instance
-		const destination = (logger as unknown)[Symbol.for("pino-destination")];
-	
-		if (!destination?.recentLogs) {
-			return res.status(500).json({
-				error: "Logger destination not available",
-				message: "The logger is not configured to maintain recent logs",
-			});
-		}
-	
-		try {
-			// Get logs from the destination's buffer
-			const recentLogs: LogEntry[] = destination.recentLogs();
-			const requestedLevelValue = LOG_LEVELS[requestedLevel] || LOG_LEVELS.info;
-	
-			const filtered = recentLogs
-				.filter((log) => {
-					// Filter by time always
-					const timeMatch = log.time >= since;
-					
-					// Filter by level
-					let levelMatch = true;
-					if (requestedLevel && requestedLevel !== 'all') {
-						levelMatch = log.level === requestedLevelValue;
-					}
-					
-					// Filter by agentName if provided
-					const agentNameMatch = agentName 
-						? log.agentName === agentName 
-						: true;
-					
-					// Filter by agentId if provided
-					const agentIdMatch = agentId
-						? log.agentId === agentId
-						: true;
-					
-					return timeMatch && levelMatch && agentNameMatch && agentIdMatch;
-				})
-				.slice(-limit);
-	
-			// Add debug log to help troubleshoot
-			logger.debug('Logs request processed', { 
-				requestedLevel, 
-				requestedLevelValue,
-				agentName,
-				agentId,
-				filteredCount: filtered.length, 
-				totalLogs: recentLogs.length 
-			});
-	
-			res.json({
-				logs: filtered,
-				count: filtered.length,
-				total: recentLogs.length,
-				level: requestedLevel,
-				levels: Object.keys(LOG_LEVELS),
-			});
-		} catch (error) {
-			res.status(500).json({
-				error: "Failed to retrieve logs",
-				message: error instanceof Error ? error.message : "Unknown error",
-			});
-		}
-	};
+    // Otherwise run our plugin handler
+    handlePluginRoutes(req, res, next);
+  });
 
-	router.get("/logs", logsHandler);
-	router.post("/logs", logsHandler);
+  // Mount sub-routers
+  router.use('/agents', agentRouter(agents, server));
+  router.use('/tee', teeRouter(agents));
 
-	// Health check endpoints
-	router.get("/health", (_req, res) => {
-		logger.log({apiRoute: "/health"}, "Health check route hit")
-		const healthcheck = {
-			status: "OK",
-			version: process.env.APP_VERSION || "unknown",
-			timestamp: new Date().toISOString(),
-			dependencies: {
-				agents: agents.size > 0 ? "healthy" : "no_agents",
-			},
-		};
+  router.get('/stop', (_req, res) => {
+    server.stop();
+    logger.log(
+      {
+        apiRoute: '/stop',
+      },
+      'Server stopping...'
+    );
+    res.json({ message: 'Server stopping...' });
+  });
 
-		const statusCode =
-			healthcheck.dependencies.agents === "healthy" ? 200 : 503;
-		res.status(statusCode).json(healthcheck);
-	});
+  // Logs endpoint
+  const logsHandler = (req, res) => {
+    const since = req.query.since ? Number(req.query.since) : Date.now() - 3600000; // Default 1 hour
+    const requestedLevel = (req.query.level?.toString().toLowerCase() || 'info') as LogLevel;
+    const agentName = req.query.agentName?.toString();
+    const agentId = req.query.agentId?.toString(); // Add support for agentId parameter
+    const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
 
-	// Status endpoint
-	router.get("/status", (_req, res) => {
-		logger.log({apiRoute: "/status"}, "Status route hit")
-		res.json({ status: "ok" });
-	});
+    // Access the underlying logger instance
+    const destination = (logger as unknown)[Symbol.for('pino-destination')];
 
-	return router;
+    if (!destination?.recentLogs) {
+      return res.status(500).json({
+        error: 'Logger destination not available',
+        message: 'The logger is not configured to maintain recent logs',
+      });
+    }
+
+    try {
+      // Get logs from the destination's buffer
+      const recentLogs: LogEntry[] = destination.recentLogs();
+      const requestedLevelValue = LOG_LEVELS[requestedLevel] || LOG_LEVELS.info;
+
+      const filtered = recentLogs
+        .filter((log) => {
+          // Filter by time always
+          const timeMatch = log.time >= since;
+
+          // Filter by level
+          let levelMatch = true;
+          if (requestedLevel && requestedLevel !== 'all') {
+            levelMatch = log.level === requestedLevelValue;
+          }
+
+          // Filter by agentName if provided
+          const agentNameMatch = agentName ? log.agentName === agentName : true;
+
+          // Filter by agentId if provided
+          const agentIdMatch = agentId ? log.agentId === agentId : true;
+
+          return timeMatch && levelMatch && agentNameMatch && agentIdMatch;
+        })
+        .slice(-limit);
+
+      // Add debug log to help troubleshoot
+      logger.debug('Logs request processed', {
+        requestedLevel,
+        requestedLevelValue,
+        agentName,
+        agentId,
+        filteredCount: filtered.length,
+        totalLogs: recentLogs.length,
+      });
+
+      res.json({
+        logs: filtered,
+        count: filtered.length,
+        total: recentLogs.length,
+        level: requestedLevel,
+        levels: Object.keys(LOG_LEVELS),
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to retrieve logs',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  };
+
+  router.get('/logs', logsHandler);
+  router.post('/logs', logsHandler);
+
+  // Health check endpoints
+  router.get('/health', (_req, res) => {
+    logger.log({ apiRoute: '/health' }, 'Health check route hit');
+    const healthcheck = {
+      status: 'OK',
+      version: process.env.APP_VERSION || 'unknown',
+      timestamp: new Date().toISOString(),
+      dependencies: {
+        agents: agents.size > 0 ? 'healthy' : 'no_agents',
+      },
+    };
+
+    const statusCode = healthcheck.dependencies.agents === 'healthy' ? 200 : 503;
+    res.status(statusCode).json(healthcheck);
+  });
+
+  return router;
 }

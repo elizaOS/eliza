@@ -29,7 +29,7 @@ export OPENAI_API_KEY=""
 # from https://t.me/toncenter to get your testnet apikey
 export TON_RPC_API_KEY=""
 
-# nvm use 23 && npm install -g pnpm
+# nvm use 23 && npm install -g bun
 bash ./packages/plugin-ton/scripts/debug.sh
 ```
 
@@ -56,7 +56,7 @@ TON_BRIDGE_URL=your_bridge_url  # Optional - defaults to https://bridge.tonapi.i
 Import and register the plugin in your Eliza configuration:
 
 ```typescript
-import { tonPlugin } from "@elizaos/plugin-ton";
+import { tonPlugin } from '@elizaos/plugin-ton';
 
 export default {
   plugins: [tonPlugin],
@@ -71,7 +71,7 @@ export default {
 The `WalletProvider` manages wallet operations and portfolio tracking:
 
 ```typescript
-import { WalletProvider } from "@elizaos/plugin-ton";
+import { WalletProvider } from '@elizaos/plugin-ton';
 
 // Initialize the provider
 const provider = await initWalletProvider(runtime);
@@ -88,7 +88,7 @@ const portfolio = await provider.getFormattedPortfolio(runtime);
 The `TonConnectProvider` manages wallet connection operations:
 
 ```typescript
-import { TonConnectProvider } from "@elizaos/plugin-ton-connect";
+import { TonConnectProvider } from '@elizaos/plugin-ton-connect';
 
 // Initialize provider
 const provider = await initTonConnectProvider(runtime);
@@ -108,41 +108,42 @@ await provider.disconnect();
 The `TransferAction` handles token transfers:
 
 ```typescript
-import { TransferAction } from "@elizaos/plugin-ton";
+import { TransferAction } from '@elizaos/plugin-ton';
 
 // Initialize transfer action
 const action = new TransferAction(walletProvider);
 
 // Execute transfer
 const hash = await action.transfer({
-  recipient: "EQCGScrZe1xbyWqWDvdI6mzP-GAcAWFv6ZXuaJOuSqemxku4",
-  amount: "1.5",
+  recipient: 'EQCGScrZe1xbyWqWDvdI6mzP-GAcAWFv6ZXuaJOuSqemxku4',
+  amount: '1.5',
 });
 ```
 
 ### BatchTransferAction
+
 The `BatchTransferAction` handles transfers of NFTs, Jettons and TON in a single transaction:
 
 ```typescript
-import { BatchTransferTokens } from "@elizaos/plugin-ton";
+import { BatchTransferTokens } from '@elizaos/plugin-ton';
 
 // Initialize transfer action
 const action = new BatchTransferTokens(walletProvider);
 const batchTransfers = {
-    transfers: [
-        {
-            type: "ton",
-            recipientAddress: "0QBLy_5Fr6f8NSpMt8SmPGiItnUE0JxgTJZ6m6E8aXoLtJHB",
-            amount: "0.1"
-        },
-        {
-            type: "token",
-            recipientAddress: "0QBLy_5Fr6f8NSpMt8SmPGiItnUE0JxgTJZ6m6E8aXoLtJHB",
-            tokenInd: "0QDIUnzAEsgHLL7YSrvm_u7OYSKw93AQbtdidRdcbm7tQep5",
-            amount: "1"
-        }
-    ]
-}
+  transfers: [
+    {
+      type: 'ton',
+      recipientAddress: '0QBLy_5Fr6f8NSpMt8SmPGiItnUE0JxgTJZ6m6E8aXoLtJHB',
+      amount: '0.1',
+    },
+    {
+      type: 'token',
+      recipientAddress: '0QBLy_5Fr6f8NSpMt8SmPGiItnUE0JxgTJZ6m6E8aXoLtJHB',
+      tokenInd: '0QDIUnzAEsgHLL7YSrvm_u7OYSKw93AQbtdidRdcbm7tQep5',
+      amount: '1',
+    },
+  ],
+};
 const reports = await batchTransferAction.createBatchTransfer(batchTransfers);
 ```
 
@@ -151,29 +152,31 @@ const reports = await batchTransferAction.createBatchTransfer(batchTransfers);
 The `CreateTonWallet` action handles on-demand wallet creation with encrypted key storage from user-supplied encryption key:
 
 ```typescript
-import { CreateTonWallet } from "@elizaos/plugin-ton";
+import { CreateTonWallet } from '@elizaos/plugin-ton';
 
 // Initialize transfer action
 const action = new CreateTonWallet(runtime);
 
 // Execute transfer
 const { walletAddress, mnemonic } = await action.createNewWallet({
-    rpcUrl: "https://toncenter.com/api/v2/jsonRPC",
-    encryptionPassword: "GAcAWFv6ZXuaJOuSqemxku4",
+  rpcUrl: 'https://toncenter.com/api/v2/jsonRPC',
+  encryptionPassword: 'GAcAWFv6ZXuaJOuSqemxku4',
 });
 ```
 
 ### Auction Interaction Action
+
 The `AuctionInteractionTon` action handles Auction interactions
 
 ```typescript
-import { AuctionInteractionActionTon } from "@elizaos/plugin-ton";
+import { AuctionInteractionActionTon } from '@elizaos/plugin-ton';
 
 // Initialize transfer action
 const action = new AuctionInteractionActionTon(walletProvider);
 
 result = await auctionAction.getAuctionData(auctionAddress);
 ```
+
 ## Development
 
 ### Building
@@ -225,9 +228,9 @@ interface Prices {
 
 ```typescript
 const PROVIDER_CONFIG = {
-  MAINNET_RPC: "https://toncenter.com/api/v2/jsonRPC",
-  STONFI_TON_USD_POOL: "EQCGScrZe1xbyWqWDvdI6mzP-GAcAWFv6ZXuaJOuSqemxku4",
-  CHAIN_NAME_IN_DEXSCREENER: "ton",
+  MAINNET_RPC: 'https://toncenter.com/api/v2/jsonRPC',
+  STONFI_TON_USD_POOL: 'EQCGScrZe1xbyWqWDvdI6mzP-GAcAWFv6ZXuaJOuSqemxku4',
+  CHAIN_NAME_IN_DEXSCREENER: 'ton',
   MAX_RETRIES: 3,
   RETRY_DELAY: 2000,
   TON_DECIMAL: BigInt(1000000000),

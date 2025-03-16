@@ -8,4 +8,4 @@ console.warn = jest.fn();
 console.info = jest.fn();
 
 // Define a global fixtures path
-global.FIXTURES_PATH = new URL('./fixtures', import.meta.url).pathname; 
+global.FIXTURES_PATH = new URL('./fixtures', import.meta.url).pathname;

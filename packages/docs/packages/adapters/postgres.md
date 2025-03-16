@@ -25,10 +25,10 @@ Install the adapter via npm:
 npm install @elizaos-plugins/adapter-postgres
 ```
 
-Or using pnpm:
+Or using bun:
 
 ```bash
-pnpm add @elizaos-plugins/adapter-postgres
+bun add @elizaos-plugins/adapter-postgres
 ```
 
 ## Configuration
@@ -39,12 +39,12 @@ Add the adapter to your ElizaOS configuration and provide the necessary connecti
 // agent.config.js
 export default {
   // Other ElizaOS configuration
-  adapters: ["postgres"],
+  adapters: ['postgres'],
   // PostgreSQL connection environment variables
   settings: {
-    POSTGRES_URL: "postgresql://username:password@localhost:5432/elizaos"
-  }
-}
+    POSTGRES_URL: 'postgresql://username:password@localhost:5432/elizaos',
+  },
+};
 ```
 
 ### Environment Variables
@@ -60,6 +60,7 @@ The adapter automatically initializes the required database schema when first co
 - Configuring indexes for vector search
 
 The schema includes tables for:
+
 - `accounts` - User and agent profiles
 - `rooms` - Conversation containers
 - `memories` - Messages and other memory objects with vector embeddings
@@ -104,10 +105,10 @@ await adapter.createKnowledge(knowledgeItem);
 // Search knowledge by vector similarity and text
 await adapter.searchKnowledge({
   agentId,
-  embedding, 
+  embedding,
   match_threshold: 0.8,
   match_count: 10,
-  searchText: "optional text"
+  searchText: 'optional text',
 });
 
 // Remove knowledge
@@ -155,7 +156,7 @@ Tests require Docker to spin up a PostgreSQL instance with pgvector support.
 ### Building
 
 ```bash
-pnpm build
+bun build
 ```
 
 ## Troubleshooting
@@ -163,11 +164,13 @@ pnpm build
 ### Common Issues
 
 1. **Connection errors**:
+
    - Verify your PostgreSQL connection string
    - Ensure PostgreSQL is running and accessible
    - Check network connectivity and firewall settings
 
 2. **Vector search issues**:
+
    - Verify pgvector extension is installed in your PostgreSQL database
    - Ensure embedding dimensions match your model
 

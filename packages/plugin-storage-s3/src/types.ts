@@ -1,7 +1,7 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 export const FileLocationResultSchema = z.object({
-	fileLocation: z.string().min(1),
+  fileLocation: z.string().min(1),
 });
 
 /**
@@ -15,5 +15,5 @@ export type FileLocationResult = z.infer<typeof FileLocationResultSchema>;
  * @returns {boolean} - True if the object is a FileLocationResult, false otherwise.
  */
 export function isFileLocationResult(obj: unknown): obj is FileLocationResult {
-	return FileLocationResultSchema.safeParse(obj).success;
+  return FileLocationResultSchema.safeParse(obj).success;
 }

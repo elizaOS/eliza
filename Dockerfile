@@ -21,7 +21,6 @@ COPY package.json .
 COPY turbo.json .
 COPY tsconfig.json .
 COPY lerna.json .
-COPY biome.json .
 COPY renovate.json .
 COPY scripts ./scripts
 # Copy source code
@@ -56,7 +55,6 @@ COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/turbo.json ./
 COPY --from=builder /app/lerna.json ./
 COPY --from=builder /app/renovate.json ./
-COPY --from=builder /app/biome.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages ./packages
 COPY --from=builder /app/scripts ./scripts

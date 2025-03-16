@@ -88,7 +88,7 @@ A powerful plugin for interacting with NFT collections, providing comprehensive 
 ### Installation
 
 ```bash
-pnpm add @elizaos/plugin-nft-collections
+bun add @elizaos/plugin-nft-collections
 ```
 
 ## Configuration
@@ -103,24 +103,24 @@ RESERVOIR_API_KEY=your-reservoir-api-key
 ### Optional Configuration
 
 ```typescript
-import { NFTCollectionsPlugin } from "@elizaos/plugin-nft-collections";
+import { NFTCollectionsPlugin } from '@elizaos/plugin-nft-collections';
 
 const plugin = new NFTCollectionsPlugin({
-    caching: {
-        enabled: true,
-        ttl: 3600000, // 1 hour
-        maxSize: 1000,
+  caching: {
+    enabled: true,
+    ttl: 3600000, // 1 hour
+    maxSize: 1000,
+  },
+  security: {
+    rateLimit: {
+      enabled: true,
+      maxRequests: 100,
+      windowMs: 60000,
     },
-    security: {
-        rateLimit: {
-            enabled: true,
-            maxRequests: 100,
-            windowMs: 60000,
-        },
-    },
-    maxConcurrent: 5, // Maximum concurrent requests
-    maxRetries: 3, // Maximum retry attempts
-    batchSize: 20, // Batch size for collection requests
+  },
+  maxConcurrent: 5, // Maximum concurrent requests
+  maxRetries: 3, // Maximum retry attempts
+  batchSize: 20, // Batch size for collection requests
 });
 
 // Register with your agent
@@ -158,24 +158,23 @@ TELEGRAM_API_KEY=your-telegram-api-key
 const collections = await nftService.getTopCollections();
 
 // Get market intelligence with caching
-const intelligence =
-    await marketIntelligenceService.getMarketIntelligence("0x1234");
+const intelligence = await marketIntelligenceService.getMarketIntelligence('0x1234');
 
 // Get social metrics with rate limiting
-const metrics = await socialAnalyticsService.getSocialMetrics("0x1234");
+const metrics = await socialAnalyticsService.getSocialMetrics('0x1234');
 ```
 
 ### Error Handling
 
 ```typescript
 try {
-    const collections = await nftService.getTopCollections();
+  const collections = await nftService.getTopCollections();
 } catch (error) {
-    if (error.code === ErrorCode.RATE_LIMIT_EXCEEDED) {
-        // Handle rate limiting
-    } else if (error.code === ErrorCode.API_ERROR) {
-        // Handle API errors
-    }
+  if (error.code === ErrorCode.RATE_LIMIT_EXCEEDED) {
+    // Handle rate limiting
+  } else if (error.code === ErrorCode.API_ERROR) {
+    // Handle API errors
+  }
 }
 ```
 
@@ -183,8 +182,8 @@ try {
 
 ```typescript
 // Listen for performance alerts
-performanceMonitor.on("alert", (alert) => {
-    console.log(`Performance alert: ${alert.type} for ${alert.operation}`);
+performanceMonitor.on('alert', (alert) => {
+  console.log(`Performance alert: ${alert.type} for ${alert.operation}`);
 });
 
 // Get performance summary
@@ -207,7 +206,7 @@ Social Metrics       350ms     60ms     2.8s
 ### Building
 
 ```bash
-pnpm build
+bun build
 ```
 
 ### Resource Usage
@@ -223,26 +222,26 @@ Requests/s  10      100      1000
 
 1. **API Keys**
 
-    - Secure storage of API keys
-    - Regular key rotation
-    - Use fallback keys for high availability
+   - Secure storage of API keys
+   - Regular key rotation
+   - Use fallback keys for high availability
 
 2. **Error Handling**
 
-    - Implement retry strategies
-    - Handle rate limits gracefully
-    - Log errors with context
+   - Implement retry strategies
+   - Handle rate limits gracefully
+   - Log errors with context
 
 3. **Performance**
 
-    - Use batch operations when possible
-    - Implement appropriate caching
-    - Monitor resource usage
+   - Use batch operations when possible
+   - Implement appropriate caching
+   - Monitor resource usage
 
 4. **Data Validation**
-    - Validate all input data
-    - Sanitize API responses
-    - Check Ethereum addresses
+   - Validate all input data
+   - Sanitize API responses
+   - Check Ethereum addresses
 
 ## Architecture
 
@@ -314,7 +313,7 @@ GRAPHQL_API_KEY=your-graphql-key
 ```typescript
 // Query collections using GraphQL
 const collections = await plugin.graphql.query(
-    `
+  `
   query GetCollections($first: Int!) {
     collections(first: $first) {
       id
@@ -324,12 +323,12 @@ const collections = await plugin.graphql.query(
     }
   }
 `,
-    { first: 10 }
+  { first: 10 }
 );
 
 // Subscribe to collection updates
 const subscription = plugin.graphql.subscribe(
-    `
+  `
   subscription OnFloorPriceChange($collectionId: ID!) {
     floorPriceChanged(collectionId: $collectionId) {
       newPrice
@@ -338,7 +337,7 @@ const subscription = plugin.graphql.subscribe(
     }
   }
 `,
-    { collectionId: "0x1234" }
+  { collectionId: '0x1234' }
 );
 ```
 
@@ -352,29 +351,26 @@ WS_API_KEY=your-websocket-key
 
 ```typescript
 // Subscribe to real-time collection updates
-plugin.ws.subscribe("collection:0x1234", (update) => {
-    console.log("New floor price:", update.floorPrice);
+plugin.ws.subscribe('collection:0x1234', (update) => {
+  console.log('New floor price:', update.floorPrice);
 });
 
 // Subscribe to multiple events
-plugin.ws.subscribeMany(
-    ["sales:0x1234", "listings:0x1234", "transfers:0x1234"],
-    (event) => {
-        console.log("Event type:", event.type);
-        console.log("Event data:", event.data);
-    }
-);
+plugin.ws.subscribeMany(['sales:0x1234', 'listings:0x1234', 'transfers:0x1234'], (event) => {
+  console.log('Event type:', event.type);
+  console.log('Event data:', event.data);
+});
 
 // Custom event filters
 plugin.ws.subscribe(
-    "sales:*",
-    {
-        priceAbove: "10 ETH",
-        marketplace: ["opensea", "blur"],
-    },
-    (sale) => {
-        console.log("Whale sale detected:", sale);
-    }
+  'sales:*',
+  {
+    priceAbove: '10 ETH',
+    marketplace: ['opensea', 'blur'],
+  },
+  (sale) => {
+    console.log('Whale sale detected:', sale);
+  }
 );
 ```
 
@@ -389,26 +385,26 @@ IPFS_FALLBACK_GATEWAYS=["https://ipfs.io", "https://cloudflare-ipfs.com"]
 
 ```typescript
 // Fetch metadata from IPFS
-const metadata = await plugin.ipfs.getMetadata("ipfs://Qm...");
+const metadata = await plugin.ipfs.getMetadata('ipfs://Qm...');
 
 // Upload metadata to IPFS
 const cid = await plugin.ipfs.uploadMetadata({
-    name: "Cool NFT",
-    description: "Very cool NFT",
-    image: "ipfs://Qm...",
+  name: 'Cool NFT',
+  description: 'Very cool NFT',
+  image: 'ipfs://Qm...',
 });
 
 // Pin content across multiple providers
 await plugin.ipfs.pin(cid, {
-    providers: ["pinata", "web3.storage"],
-    replicas: 3,
+  providers: ['pinata', 'web3.storage'],
+  replicas: 3,
 });
 
 // Smart gateway selection
 const image = await plugin.ipfs.getImage(cid, {
-    preferredGateway: "cloudflare",
-    size: "thumbnail",
-    format: "webp",
+  preferredGateway: 'cloudflare',
+  size: 'thumbnail',
+  format: 'webp',
 });
 ```
 
@@ -416,25 +412,25 @@ const image = await plugin.ipfs.getImage(cid, {
 
 1. **GraphQL**
 
-    - Use fragments for reusable queries
-    - Implement proper error boundaries
-    - Cache complex queries
-    - Use persisted queries for production
+   - Use fragments for reusable queries
+   - Implement proper error boundaries
+   - Cache complex queries
+   - Use persisted queries for production
 
 2. **WebSocket**
 
-    - Implement reconnection logic
-    - Handle backpressure
-    - Use heartbeats
-    - Batch small updates
-    - Implement message queue for offline scenarios
+   - Implement reconnection logic
+   - Handle backpressure
+   - Use heartbeats
+   - Batch small updates
+   - Implement message queue for offline scenarios
 
 3. **IPFS**
-    - Use multiple gateway fallbacks
-    - Implement proper timeout handling
-    - Cache frequently accessed content
-    - Use appropriate gateway for content type
-    - Monitor gateway health
+   - Use multiple gateway fallbacks
+   - Implement proper timeout handling
+   - Cache frequently accessed content
+   - Use appropriate gateway for content type
+   - Monitor gateway health
 
 ### Integration Architecture
 
@@ -474,41 +470,41 @@ WEBHOOK_TIMEOUT=5000
 ```typescript
 // Register webhook endpoints
 const webhook = plugin.webhooks.create({
-    url: "https://api.yourdomain.com/webhooks/nft",
-    events: ["floor_change", "volume_spike", "whale_transfer"],
-    secret: process.env.WEBHOOK_SECRET,
-    metadata: {
-        name: "Price Monitor",
-        description: "Monitor floor price changes",
-    },
+  url: 'https://api.yourdomain.com/webhooks/nft',
+  events: ['floor_change', 'volume_spike', 'whale_transfer'],
+  secret: process.env.WEBHOOK_SECRET,
+  metadata: {
+    name: 'Price Monitor',
+    description: 'Monitor floor price changes',
+  },
 });
 
 // Configure event filters
 webhook.addFilter({
-    event: "floor_change",
-    conditions: {
-        percentageChange: ">5%",
-        timeWindow: "1h",
-        minVolume: "10 ETH",
-    },
+  event: 'floor_change',
+  conditions: {
+    percentageChange: '>5%',
+    timeWindow: '1h',
+    minVolume: '10 ETH',
+  },
 });
 
 webhook.addFilter({
-    event: "whale_transfer",
-    conditions: {
-        value: ">100 ETH",
-        fromAddress: ["!0x0000000000000000000000000000000000000000"],
-        toAddress: ["!0x0000000000000000000000000000000000000000"],
-    },
+  event: 'whale_transfer',
+  conditions: {
+    value: '>100 ETH',
+    fromAddress: ['!0x0000000000000000000000000000000000000000'],
+    toAddress: ['!0x0000000000000000000000000000000000000000'],
+  },
 });
 
 // Handle webhook delivery status
-webhook.on("delivered", (event) => {
-    console.log("Webhook delivered:", event.id);
+webhook.on('delivered', (event) => {
+  console.log('Webhook delivered:', event.id);
 });
 
-webhook.on("failed", (event, error) => {
-    console.error("Webhook failed:", error);
+webhook.on('failed', (event, error) => {
+  console.error('Webhook failed:', error);
 });
 ```
 
@@ -516,49 +512,49 @@ webhook.on("failed", (event, error) => {
 
 ```typescript
 // Get price prediction for a collection
-const prediction = await plugin.ml.predictPrice("0x1234", {
-    timeframe: "24h",
-    confidence: 0.8,
-    includeFactors: true,
+const prediction = await plugin.ml.predictPrice('0x1234', {
+  timeframe: '24h',
+  confidence: 0.8,
+  includeFactors: true,
 });
 
 // Response type
 interface PricePrediction {
-    timeframe: "1h" | "24h" | "7d";
-    currentPrice: number;
-    predictedPrice: number;
+  timeframe: '1h' | '24h' | '7d';
+  currentPrice: number;
+  predictedPrice: number;
+  confidence: number;
+  factors: {
+    reason: string;
+    impact: number;
     confidence: number;
-    factors: {
-        reason: string;
-        impact: number;
-        confidence: number;
-    }[];
-    marketConditions: {
-        trend: "bullish" | "bearish" | "neutral";
-        volatility: "high" | "medium" | "low";
-        liquidity: "high" | "medium" | "low";
-    };
+  }[];
+  marketConditions: {
+    trend: 'bullish' | 'bearish' | 'neutral';
+    volatility: 'high' | 'medium' | 'low';
+    liquidity: 'high' | 'medium' | 'low';
+  };
 }
 
 // Batch predictions for multiple collections
 const predictions = await plugin.ml.batchPredictPrice([
-    { address: "0x1234", timeframe: "1h" },
-    { address: "0x5678", timeframe: "24h" },
+  { address: '0x1234', timeframe: '1h' },
+  { address: '0x5678', timeframe: '24h' },
 ]);
 
 // Get historical prediction accuracy
-const accuracy = await plugin.ml.getPredictionAccuracy("0x1234", {
-    timeframe: "7d",
-    startDate: "2024-01-01",
-    endDate: "2024-01-07",
+const accuracy = await plugin.ml.getPredictionAccuracy('0x1234', {
+  timeframe: '7d',
+  startDate: '2024-01-01',
+  endDate: '2024-01-07',
 });
 
 // Train custom prediction model
 const model = await plugin.ml.trainCustomModel({
-    collections: ["0x1234", "0x5678"],
-    features: ["volume", "social_sentiment", "whale_activity"],
-    timeframe: "24h",
-    trainingPeriod: "30d",
+  collections: ['0x1234', '0x5678'],
+  features: ['volume', 'social_sentiment', 'whale_activity'],
+  timeframe: '24h',
+  trainingPeriod: '30d',
 });
 ```
 
@@ -566,22 +562,22 @@ const model = await plugin.ml.trainCustomModel({
 
 ```typescript
 // Rarity analysis with ML
-const rarityScore = await plugin.ml.analyzeRarity("0x1234", "tokenId", {
-    method: "trait_rarity" | "statistical" | "neural",
-    includeExplanation: true,
+const rarityScore = await plugin.ml.analyzeRarity('0x1234', 'tokenId', {
+  method: 'trait_rarity' | 'statistical' | 'neural',
+  includeExplanation: true,
 });
 
 // Wash trading detection
-const tradeAnalysis = await plugin.ml.analyzeTrades("0x1234", {
-    timeframe: "24h",
-    minConfidence: 0.8,
-    includeEvidence: true,
+const tradeAnalysis = await plugin.ml.analyzeTrades('0x1234', {
+  timeframe: '24h',
+  minConfidence: 0.8,
+  includeEvidence: true,
 });
 
 // Market manipulation detection
-const manipulationScore = await plugin.ml.detectManipulation("0x1234", {
-    indicators: ["wash_trading", "price_manipulation", "fake_volume"],
-    sensitivity: "high" | "medium" | "low",
+const manipulationScore = await plugin.ml.detectManipulation('0x1234', {
+  indicators: ['wash_trading', 'price_manipulation', 'fake_volume'],
+  sensitivity: 'high' | 'medium' | 'low',
 });
 ```
 
@@ -590,41 +586,41 @@ const manipulationScore = await plugin.ml.detectManipulation("0x1234", {
 ```typescript
 // Set up custom alerts
 const alert = plugin.alerts.create({
-    name: "Whale Alert",
-    conditions: {
-        event: "transfer",
-        filters: {
-            value: ">50 ETH",
-            collectionAddress: "0x1234",
-        },
+  name: 'Whale Alert',
+  conditions: {
+    event: 'transfer',
+    filters: {
+      value: '>50 ETH',
+      collectionAddress: '0x1234',
     },
-    actions: [
-        {
-            type: "webhook",
-            url: "https://api.yourdomain.com/alerts",
-        },
-        {
-            type: "email",
-            to: "trader@domain.com",
-        },
-    ],
+  },
+  actions: [
+    {
+      type: 'webhook',
+      url: 'https://api.yourdomain.com/alerts',
+    },
+    {
+      type: 'email',
+      to: 'trader@domain.com',
+    },
+  ],
 });
 
 // Alert with ML insights
 const smartAlert = plugin.alerts.createWithML({
-    name: "Smart Price Alert",
-    conditions: {
-        event: "price_prediction",
-        filters: {
-            confidence: ">0.8",
-            priceChange: ">10%",
-            timeframe: "24h",
-        },
+  name: 'Smart Price Alert',
+  conditions: {
+    event: 'price_prediction',
+    filters: {
+      confidence: '>0.8',
+      priceChange: '>10%',
+      timeframe: '24h',
     },
-    mlConfig: {
-        model: "price_prediction",
-        features: ["market_sentiment", "whale_activity"],
-    },
+  },
+  mlConfig: {
+    model: 'price_prediction',
+    features: ['market_sentiment', 'whale_activity'],
+  },
 });
 ```
 
@@ -632,30 +628,30 @@ const smartAlert = plugin.alerts.createWithML({
 
 ```typescript
 interface ExtendedFeatureConfig {
-    webhooks: {
-        maxRetries: number;
-        timeout: number;
-        batchSize: number;
-        rateLimits: {
-            perSecond: number;
-            perMinute: number;
-        };
+  webhooks: {
+    maxRetries: number;
+    timeout: number;
+    batchSize: number;
+    rateLimits: {
+      perSecond: number;
+      perMinute: number;
     };
-    ml: {
-        models: {
-            price: string;
-            rarity: string;
-            manipulation: string;
-        };
-        updateFrequency: number;
-        minConfidence: number;
-        maxBatchSize: number;
+  };
+  ml: {
+    models: {
+      price: string;
+      rarity: string;
+      manipulation: string;
     };
-    alerts: {
-        maxPerUser: number;
-        cooldown: number;
-        maxActions: number;
-    };
+    updateFrequency: number;
+    minConfidence: number;
+    maxBatchSize: number;
+  };
+  alerts: {
+    maxPerUser: number;
+    cooldown: number;
+    maxActions: number;
+  };
 }
 ```
 
@@ -695,32 +691,32 @@ graph TD
 ```typescript
 // Generate mock collections and transactions
 const mockData = await plugin.testing.generateMockData({
-    collections: 10,
-    transactions: 1000,
-    timeRange: [new Date("2024-01-01"), new Date("2024-01-07")],
-    options: {
-        priceRange: [0.1, 100],
-        traits: ["background", "body", "eyes", "mouth"],
-        rarityDistribution: "normal",
-        marketplaces: ["opensea", "blur", "x2y2"],
-    },
+  collections: 10,
+  transactions: 1000,
+  timeRange: [new Date('2024-01-01'), new Date('2024-01-07')],
+  options: {
+    priceRange: [0.1, 100],
+    traits: ['background', 'body', 'eyes', 'mouth'],
+    rarityDistribution: 'normal',
+    marketplaces: ['opensea', 'blur', 'x2y2'],
+  },
 });
 
 // Generate realistic market activity
 const marketActivity = await plugin.testing.generateMarketActivity({
-    collection: "0x1234",
-    activityType: ["sales", "listings", "offers"],
-    volumeProfile: "whale_accumulation",
-    priceVolatility: "high",
-    duration: "7d",
+  collection: '0x1234',
+  activityType: ['sales', 'listings', 'offers'],
+  volumeProfile: 'whale_accumulation',
+  priceVolatility: 'high',
+  duration: '7d',
 });
 
 // Generate social signals
 const socialData = await plugin.testing.generateSocialData({
-    sentiment: "bullish",
-    engagement: "viral",
-    platforms: ["twitter", "discord"],
-    influencerActivity: true,
+  sentiment: 'bullish',
+  engagement: 'viral',
+  platforms: ['twitter', 'discord'],
+  influencerActivity: true,
 });
 ```
 
@@ -728,54 +724,51 @@ const socialData = await plugin.testing.generateSocialData({
 
 ```typescript
 // Validate collection contract
-const validation = await plugin.validation.validateContract("0x1234", {
-    checkERC: ["721", "1155"],
-    securityCheck: true,
-    options: {
-        checkOwnership: true,
-        checkRoyalties: true,
-        checkMetadata: true,
-        checkPermissions: true,
-    },
+const validation = await plugin.validation.validateContract('0x1234', {
+  checkERC: ['721', '1155'],
+  securityCheck: true,
+  options: {
+    checkOwnership: true,
+    checkRoyalties: true,
+    checkMetadata: true,
+    checkPermissions: true,
+  },
 });
 
 // Response type
 interface ValidationResult {
+  isValid: boolean;
+  standards: {
+    erc721: boolean;
+    erc1155: boolean;
+    erc2981: boolean; // Royalties
+  };
+  security: {
+    maliciousCode: boolean;
+    knownExploits: boolean;
+    upgradeability: {
+      isUpgradeable: boolean;
+      adminAddress: string;
+      timelock: number;
+    };
+    permissions: {
+      owner: string;
+      minter: string[];
+      pauser: string[];
+    };
+  };
+  metadata: {
     isValid: boolean;
-    standards: {
-        erc721: boolean;
-        erc1155: boolean;
-        erc2981: boolean; // Royalties
-    };
-    security: {
-        maliciousCode: boolean;
-        knownExploits: boolean;
-        upgradeability: {
-            isUpgradeable: boolean;
-            adminAddress: string;
-            timelock: number;
-        };
-        permissions: {
-            owner: string;
-            minter: string[];
-            pauser: string[];
-        };
-    };
-    metadata: {
-        isValid: boolean;
-        baseURI: string;
-        frozen: boolean;
-    };
+    baseURI: string;
+    frozen: boolean;
+  };
 }
 
 // Batch validate multiple contracts
-const batchValidation = await plugin.validation.batchValidateContracts(
-    ["0x1234", "0x5678"],
-    {
-        checkERC: ["721"],
-        securityCheck: true,
-    }
-);
+const batchValidation = await plugin.validation.batchValidateContracts(['0x1234', '0x5678'], {
+  checkERC: ['721'],
+  securityCheck: true,
+});
 ```
 
 ### Testing Utilities
@@ -783,29 +776,29 @@ const batchValidation = await plugin.validation.batchValidateContracts(
 ```typescript
 // Time travel for testing
 await plugin.testing.timeTravel({
-    collection: "0x1234",
-    destination: new Date("2024-06-01"),
-    preserveState: true,
+  collection: '0x1234',
+  destination: new Date('2024-06-01'),
+  preserveState: true,
 });
 
 // Market simulation
 await plugin.testing.simulateMarket({
-    scenario: "bear_market",
-    duration: "30d",
-    collections: ["0x1234"],
-    variables: {
-        priceDecline: 0.5,
-        volumeReduction: 0.7,
-        sellerPanic: true,
-    },
+  scenario: 'bear_market',
+  duration: '30d',
+  collections: ['0x1234'],
+  variables: {
+    priceDecline: 0.5,
+    volumeReduction: 0.7,
+    sellerPanic: true,
+  },
 });
 
 // Load testing
 const loadTest = await plugin.testing.runLoadTest({
-    concurrent: 100,
-    duration: "5m",
-    operations: ["getFloor", "getMetadata", "getTrades"],
-    targetRPS: 50,
+  concurrent: 100,
+  duration: '5m',
+  operations: ['getFloor', 'getMetadata', 'getTrades'],
+  targetRPS: 50,
 });
 ```
 
@@ -814,31 +807,31 @@ const loadTest = await plugin.testing.runLoadTest({
 ```typescript
 // Collection fixture
 const fixture = plugin.testing.createFixture({
-    type: "collection",
-    traits: {
-        background: ["red", "blue", "green"],
-        body: ["type1", "type2"],
-        accessory: ["hat", "glasses"],
-    },
-    supply: 1000,
-    distribution: "random",
+  type: 'collection',
+  traits: {
+    background: ['red', 'blue', 'green'],
+    body: ['type1', 'type2'],
+    accessory: ['hat', 'glasses'],
+  },
+  supply: 1000,
+  distribution: 'random',
 });
 
 // Market fixture
 const marketFixture = plugin.testing.createMarketFixture({
-    floorPrice: 1.5,
-    listings: 50,
-    topBid: 2.0,
-    volume24h: 100,
-    holders: 500,
+  floorPrice: 1.5,
+  listings: 50,
+  topBid: 2.0,
+  volume24h: 100,
+  holders: 500,
 });
 
 // Event fixture
 const eventFixture = plugin.testing.createEventFixture({
-    type: "sale",
-    price: 5.0,
-    marketplace: "opensea",
-    timestamp: new Date(),
+  type: 'sale',
+  price: 5.0,
+  marketplace: 'opensea',
+  timestamp: new Date(),
 });
 ```
 
@@ -846,22 +839,22 @@ const eventFixture = plugin.testing.createEventFixture({
 
 ```typescript
 interface TestConfig {
-    mock: {
-        seed?: string;
-        deterministic: boolean;
-        networkLatency: number;
-        errorRate: number;
-    };
-    validation: {
-        timeout: number;
-        retries: number;
-        concurrency: number;
-    };
-    fixtures: {
-        cleanup: boolean;
-        persistence: "memory" | "disk";
-        sharing: boolean;
-    };
+  mock: {
+    seed?: string;
+    deterministic: boolean;
+    networkLatency: number;
+    errorRate: number;
+  };
+  validation: {
+    timeout: number;
+    retries: number;
+    concurrency: number;
+  };
+  fixtures: {
+    cleanup: boolean;
+    persistence: 'memory' | 'disk';
+    sharing: boolean;
+  };
 }
 ```
 
@@ -869,27 +862,27 @@ interface TestConfig {
 
 ```typescript
 // Snapshot testing
-const snapshot = await plugin.testing.createSnapshot("0x1234");
+const snapshot = await plugin.testing.createSnapshot('0x1234');
 await plugin.testing.compareSnapshots(snapshot, latestSnapshot);
 
 // Event assertions
 await plugin.testing.assertEvent({
-    type: "sale",
-    collection: "0x1234",
-    matcher: {
-        price: ">1 ETH",
-        buyer: "0x5678",
-    },
+  type: 'sale',
+  collection: '0x1234',
+  matcher: {
+    price: '>1 ETH',
+    buyer: '0x5678',
+  },
 });
 
 // Market assertions
 await plugin.testing.assertMarketState({
-    collection: "0x1234",
-    conditions: {
-        floorPrice: ">1 ETH",
-        listings: ">10",
-        volume24h: ">100 ETH",
-    },
+  collection: '0x1234',
+  conditions: {
+    floorPrice: '>1 ETH',
+    listings: '>10',
+    volume24h: '>100 ETH',
+  },
 });
 ```
 
@@ -933,35 +926,35 @@ graph TD
 ```typescript
 // Configure API keys with rotation and fallback
 const apiConfig = plugin.auth.configureAPI({
-    primary: {
-        key: process.env.PRIMARY_API_KEY,
-        rotationSchedule: "0 0 * * *", // Daily rotation
-        rotationCallback: async (oldKey) => {
-            await notifyKeyExpiry(oldKey);
-        },
+  primary: {
+    key: process.env.PRIMARY_API_KEY,
+    rotationSchedule: '0 0 * * *', // Daily rotation
+    rotationCallback: async (oldKey) => {
+      await notifyKeyExpiry(oldKey);
     },
-    fallback: {
-        key: process.env.FALLBACK_API_KEY,
-        useCondition: (error) => error.status === 429 || error.status === 503,
-    },
-    rotation: {
-        enabled: true,
-        interval: 86400000, // 24 hours in ms
-        strategy: "gradual", // or "immediate"
-    },
+  },
+  fallback: {
+    key: process.env.FALLBACK_API_KEY,
+    useCondition: (error) => error.status === 429 || error.status === 503,
+  },
+  rotation: {
+    enabled: true,
+    interval: 86400000, // 24 hours in ms
+    strategy: 'gradual', // or "immediate"
+  },
 });
 
 // Key rotation handlers
 plugin.auth.onKeyRotation(async (newKey, oldKey) => {
-    await updateKeyInVault(newKey);
-    await invalidateOldKey(oldKey);
+  await updateKeyInVault(newKey);
+  await invalidateOldKey(oldKey);
 });
 
 // Automatic key validation
 await plugin.auth.validateKeys({
-    checkInterval: 3600000, // 1 hour
-    healthEndpoint: "/health",
-    timeout: 5000,
+  checkInterval: 3600000, // 1 hour
+  healthEndpoint: '/health',
+  timeout: 5000,
 });
 ```
 
@@ -970,46 +963,46 @@ await plugin.auth.validateKeys({
 ```typescript
 // Configure rate limits
 const rateLimiter = plugin.security.configureRateLimits({
-    global: {
-        maxRequests: 1000,
-        windowMs: 60000, // 1 minute
-        retryAfter: 60000,
+  global: {
+    maxRequests: 1000,
+    windowMs: 60000, // 1 minute
+    retryAfter: 60000,
+  },
+  endpoints: {
+    '/collections': {
+      maxRequests: 100,
+      windowMs: 60000,
+      retryAfter: 30000,
     },
-    endpoints: {
-        "/collections": {
-            maxRequests: 100,
-            windowMs: 60000,
-            retryAfter: 30000,
-        },
-        "/market-data": {
-            maxRequests: 50,
-            windowMs: 60000,
-            retryAfter: 60000,
-        },
+    '/market-data': {
+      maxRequests: 50,
+      windowMs: 60000,
+      retryAfter: 60000,
     },
-    strategies: {
-        type: "sliding-window",
-        errorHandling: "queue", // or "reject"
-    },
+  },
+  strategies: {
+    type: 'sliding-window',
+    errorHandling: 'queue', // or "reject"
+  },
 });
 
 // Custom rate limit handlers
 rateLimiter.onLimitReached(async (context) => {
-    await notifyRateLimitExceeded(context);
-    return plugin.security.getBackoffStrategy(context);
+  await notifyRateLimitExceeded(context);
+  return plugin.security.getBackoffStrategy(context);
 });
 
 // Distributed rate limiting with Redis
 const distributedLimiter = plugin.security.createDistributedRateLimiter({
-    redis: {
-        host: process.env.REDIS_HOST,
-        port: 6379,
-        password: process.env.REDIS_PASSWORD,
-    },
-    sync: {
-        interval: 1000,
-        strategy: "eventual-consistency",
-    },
+  redis: {
+    host: process.env.REDIS_HOST,
+    port: 6379,
+    password: process.env.REDIS_PASSWORD,
+  },
+  sync: {
+    interval: 1000,
+    strategy: 'eventual-consistency',
+  },
 });
 ```
 
@@ -1018,41 +1011,41 @@ const distributedLimiter = plugin.security.createDistributedRateLimiter({
 ```typescript
 // Enable security features
 const security = plugin.security.configure({
-    encryption: {
-        algorithm: "aes-256-gcm",
-        keyRotation: true,
-        rotationInterval: 7776000000, // 90 days
+  encryption: {
+    algorithm: 'aes-256-gcm',
+    keyRotation: true,
+    rotationInterval: 7776000000, // 90 days
+  },
+  authentication: {
+    type: 'jwt',
+    expiresIn: '24h',
+    refreshToken: true,
+  },
+  headers: {
+    helmet: true,
+    cors: {
+      origin: ['https://yourdomain.com'],
+      methods: ['GET', 'POST'],
     },
-    authentication: {
-        type: "jwt",
-        expiresIn: "24h",
-        refreshToken: true,
-    },
-    headers: {
-        helmet: true,
-        cors: {
-            origin: ["https://yourdomain.com"],
-            methods: ["GET", "POST"],
-        },
-    },
+  },
 });
 
 // Request signing
 const signedRequest = plugin.security.signRequest({
-    method: "POST",
-    url: "/api/v1/trades",
-    body: tradeData,
-    nonce: Date.now(),
-    expiry: "5m",
+  method: 'POST',
+  url: '/api/v1/trades',
+  body: tradeData,
+  nonce: Date.now(),
+  expiry: '5m',
 });
 
 // Payload encryption
 const encryptedData = await plugin.security.encryptPayload(sensitiveData, {
-    algorithm: "aes-256-gcm",
-    keyId: "current",
-    metadata: {
-        purpose: "api-communication",
-    },
+  algorithm: 'aes-256-gcm',
+  keyId: 'current',
+  metadata: {
+    purpose: 'api-communication',
+  },
 });
 ```
 
@@ -1061,35 +1054,35 @@ const encryptedData = await plugin.security.encryptPayload(sensitiveData, {
 ```typescript
 // Configure access control
 const accessControl = plugin.security.configureAccess({
-    roles: {
-        admin: {
-            permissions: ["read", "write", "delete"],
-            rateLimit: { multiplier: 2 },
-        },
-        user: {
-            permissions: ["read"],
-            rateLimit: { multiplier: 1 },
-        },
+  roles: {
+    admin: {
+      permissions: ['read', 'write', 'delete'],
+      rateLimit: { multiplier: 2 },
     },
-    resources: {
-        collections: ["read", "write"],
-        trades: ["read", "write", "delete"],
-        analytics: ["read"],
+    user: {
+      permissions: ['read'],
+      rateLimit: { multiplier: 1 },
     },
+  },
+  resources: {
+    collections: ['read', 'write'],
+    trades: ['read', 'write', 'delete'],
+    analytics: ['read'],
+  },
 });
 
 // Role-based middleware
 const authMiddleware = plugin.security.createAuthMiddleware({
-    validateToken: true,
-    checkPermissions: true,
-    auditLog: true,
+  validateToken: true,
+  checkPermissions: true,
+  auditLog: true,
 });
 
 // IP allowlisting
 const ipFilter = plugin.security.createIPFilter({
-    allowlist: ["192.168.1.0/24"],
-    denylist: ["10.0.0.0/8"],
-    mode: "strict",
+  allowlist: ['192.168.1.0/24'],
+  denylist: ['10.0.0.0/8'],
+  mode: 'strict',
 });
 ```
 
@@ -1098,46 +1091,46 @@ const ipFilter = plugin.security.createIPFilter({
 ```typescript
 // Configure audit logging
 const auditLogger = plugin.security.configureAuditLog({
-    storage: {
-        type: "elasticsearch",
-        config: {
-            node: process.env.ELASTICSEARCH_URL,
-            index: "nft-audit-logs",
-        },
+  storage: {
+    type: 'elasticsearch',
+    config: {
+      node: process.env.ELASTICSEARCH_URL,
+      index: 'nft-audit-logs',
     },
-    retention: {
-        duration: "90d",
-        archival: true,
-    },
-    events: {
-        "api.request": true,
-        "auth.login": true,
-        "data.modification": true,
-    },
+  },
+  retention: {
+    duration: '90d',
+    archival: true,
+  },
+  events: {
+    'api.request': true,
+    'auth.login': true,
+    'data.modification': true,
+  },
 });
 
 // Log security events
 await auditLogger.log({
-    action: "api.request",
-    actor: "user-123",
-    resource: "collection-456",
-    details: {
-        method: "GET",
-        path: "/api/v1/collections",
-        status: 200,
-    },
+  action: 'api.request',
+  actor: 'user-123',
+  resource: 'collection-456',
+  details: {
+    method: 'GET',
+    path: '/api/v1/collections',
+    status: 200,
+  },
 });
 
 // Query audit logs
 const auditTrail = await auditLogger.query({
-    timeRange: {
-        start: "2024-01-01",
-        end: "2024-01-07",
-    },
-    filters: {
-        action: ["api.request", "auth.login"],
-        actor: "user-123",
-    },
+  timeRange: {
+    start: '2024-01-01',
+    end: '2024-01-07',
+  },
+  filters: {
+    action: ['api.request', 'auth.login'],
+    actor: 'user-123',
+  },
 });
 ```
 
@@ -1145,37 +1138,37 @@ const auditTrail = await auditLogger.query({
 
 ```typescript
 interface SecurityConfig {
-    api: {
-        keys: {
-            rotation: {
-                enabled: boolean;
-                interval: number;
-                strategy: "gradual" | "immediate";
-            };
-            validation: {
-                interval: number;
-                timeout: number;
-            };
-        };
-        rateLimit: {
-            global: RateLimitConfig;
-            endpoints: Record<string, RateLimitConfig>;
-            distributed: boolean;
-        };
+  api: {
+    keys: {
+      rotation: {
+        enabled: boolean;
+        interval: number;
+        strategy: 'gradual' | 'immediate';
+      };
+      validation: {
+        interval: number;
+        timeout: number;
+      };
     };
-    encryption: {
-        algorithm: string;
-        keyRotation: boolean;
-        rotationInterval: number;
+    rateLimit: {
+      global: RateLimitConfig;
+      endpoints: Record<string, RateLimitConfig>;
+      distributed: boolean;
     };
-    access: {
-        roles: Record<string, RoleConfig>;
-        resources: Record<string, string[]>;
-        audit: {
-            enabled: boolean;
-            retention: string;
-        };
+  };
+  encryption: {
+    algorithm: string;
+    keyRotation: boolean;
+    rotationInterval: number;
+  };
+  access: {
+    roles: Record<string, RoleConfig>;
+    resources: Record<string, string[]>;
+    audit: {
+      enabled: boolean;
+      retention: string;
     };
+  };
 }
 ```
 
@@ -1215,51 +1208,51 @@ graph TD
 ```typescript
 // Configure a trading agent
 const tradingAgent = plugin.agents.createTradingAgent({
-    name: "WhaleWatcher",
-    personality: {
-        style: "aggressive",
-        riskTolerance: "high",
-        tradingHours: "24/7",
+  name: 'WhaleWatcher',
+  personality: {
+    style: 'aggressive',
+    riskTolerance: 'high',
+    tradingHours: '24/7',
+  },
+  strategies: [
+    {
+      name: 'whale_following',
+      config: {
+        minTransactionValue: '100 ETH',
+        followDelay: '1m',
+        maxExposure: '500 ETH',
+      },
     },
-    strategies: [
-        {
-            name: "whale_following",
-            config: {
-                minTransactionValue: "100 ETH",
-                followDelay: "1m",
-                maxExposure: "500 ETH",
-            },
-        },
-        {
-            name: "floor_sweeping",
-            config: {
-                targetCollections: ["0x1234", "0x5678"],
-                maxPricePerItem: "2 ETH",
-                totalBudget: "50 ETH",
-            },
-        },
-    ],
+    {
+      name: 'floor_sweeping',
+      config: {
+        targetCollections: ['0x1234', '0x5678'],
+        maxPricePerItem: '2 ETH',
+        totalBudget: '50 ETH',
+      },
+    },
+  ],
 });
 
 // Configure agent communication
 const agentNetwork = plugin.agents.createNetwork({
-    agents: [tradingAgent, otherAgent],
-    communicationRules: {
-        shareMarketInsights: true,
-        coordinateTrading: true,
-        profitSharing: 0.5,
-    },
+  agents: [tradingAgent, otherAgent],
+  communicationRules: {
+    shareMarketInsights: true,
+    coordinateTrading: true,
+    profitSharing: 0.5,
+  },
 });
 
 // Set up agent behaviors
-tradingAgent.on("whale_movement", async (event) => {
-    const analysis = await plugin.ml.analyzeWhaleMovement(event);
-    if (analysis.confidence > 0.8) {
-        await tradingAgent.executeStrategy("whale_following", {
-            collection: event.collection,
-            amount: analysis.recommendedAmount,
-        });
-    }
+tradingAgent.on('whale_movement', async (event) => {
+  const analysis = await plugin.ml.analyzeWhaleMovement(event);
+  if (analysis.confidence > 0.8) {
+    await tradingAgent.executeStrategy('whale_following', {
+      collection: event.collection,
+      amount: analysis.recommendedAmount,
+    });
+  }
 });
 ```
 
@@ -1268,38 +1261,38 @@ tradingAgent.on("whale_movement", async (event) => {
 ```typescript
 // Collaborative floor sweeping
 const floorSweepTeam = plugin.agents.createTeam({
-    name: "FloorSweepers",
-    members: [agent1, agent2, agent3],
-    strategy: {
-        type: "distributed_sweep",
-        config: {
-            totalBudget: "100 ETH",
-            maxPricePerAgent: "35 ETH",
-            targetCollections: ["0x1234"],
-            coordination: {
-                type: "price_zones",
-                zones: [
-                    { range: "0-1 ETH", agent: "agent1" },
-                    { range: "1-2 ETH", agent: "agent2" },
-                    { range: "2+ ETH", agent: "agent3" },
-                ],
-            },
-        },
+  name: 'FloorSweepers',
+  members: [agent1, agent2, agent3],
+  strategy: {
+    type: 'distributed_sweep',
+    config: {
+      totalBudget: '100 ETH',
+      maxPricePerAgent: '35 ETH',
+      targetCollections: ['0x1234'],
+      coordination: {
+        type: 'price_zones',
+        zones: [
+          { range: '0-1 ETH', agent: 'agent1' },
+          { range: '1-2 ETH', agent: 'agent2' },
+          { range: '2+ ETH', agent: 'agent3' },
+        ],
+      },
     },
+  },
 });
 
 // Market making strategy
 const marketMaker = plugin.agents.createMarketMaker({
-    collections: ["0x1234"],
-    strategy: {
-        spreadTarget: 0.05,
-        maxInventory: "10 ETH",
-        rebalanceThreshold: 0.02,
-        hedging: {
-            enabled: true,
-            instruments: ["wETH", "NFT indexes"],
-        },
+  collections: ['0x1234'],
+  strategy: {
+    spreadTarget: 0.05,
+    maxInventory: '10 ETH',
+    rebalanceThreshold: 0.02,
+    hedging: {
+      enabled: true,
+      instruments: ['wETH', 'NFT indexes'],
     },
+  },
 });
 ```
 
@@ -1308,30 +1301,30 @@ const marketMaker = plugin.agents.createMarketMaker({
 ```typescript
 // Train agent on historical data
 await tradingAgent.learn({
-    dataset: "historical_trades",
-    timeframe: "90d",
-    features: ["whale_movements", "price_action", "social_sentiment"],
-    reinforcementConfig: {
-        rewardFunction: "profit_and_risk",
-        episodes: 1000,
-        batchSize: 64,
-    },
+  dataset: 'historical_trades',
+  timeframe: '90d',
+  features: ['whale_movements', 'price_action', 'social_sentiment'],
+  reinforcementConfig: {
+    rewardFunction: 'profit_and_risk',
+    episodes: 1000,
+    batchSize: 64,
+  },
 });
 
 // Adaptive strategy adjustment
 tradingAgent.enableAdaptation({
-    metrics: ["profit_loss", "win_rate", "drawdown"],
-    adjustmentPeriod: "1d",
-    thresholds: {
-        drawdown: {
-            max: 0.1,
-            action: "reduce_exposure",
-        },
-        profitTarget: {
-            min: 0.2,
-            action: "increase_aggression",
-        },
+  metrics: ['profit_loss', 'win_rate', 'drawdown'],
+  adjustmentPeriod: '1d',
+  thresholds: {
+    drawdown: {
+      max: 0.1,
+      action: 'reduce_exposure',
     },
+    profitTarget: {
+      min: 0.2,
+      action: 'increase_aggression',
+    },
+  },
 });
 ```
 
@@ -1340,25 +1333,25 @@ tradingAgent.enableAdaptation({
 ```typescript
 // Monitor agent performance
 const performance = await plugin.agents.getPerformance({
-    agentId: tradingAgent.id,
-    timeframe: "30d",
-    metrics: ["total_profit", "win_rate", "avg_position_size", "max_drawdown"],
+  agentId: tradingAgent.id,
+  timeframe: '30d',
+  metrics: ['total_profit', 'win_rate', 'avg_position_size', 'max_drawdown'],
 });
 
 // Agent activity dashboard
 const dashboard = plugin.agents.createDashboard({
-    agents: [tradingAgent, marketMaker],
-    realtime: true,
-    metrics: {
-        performance: true,
-        activities: true,
-        insights: true,
-    },
-    alerts: {
-        profitThreshold: "5 ETH",
-        lossThreshold: "2 ETH",
-        unusualActivity: true,
-    },
+  agents: [tradingAgent, marketMaker],
+  realtime: true,
+  metrics: {
+    performance: true,
+    activities: true,
+    insights: true,
+  },
+  alerts: {
+    profitThreshold: '5 ETH',
+    lossThreshold: '2 ETH',
+    unusualActivity: true,
+  },
 });
 ```
 
@@ -1402,57 +1395,57 @@ graph TD
 ```typescript
 // Configure multi-level caching
 const cacheConfig = plugin.cache.configure({
-    layers: {
-        memory: {
-            type: "memory",
-            maxSize: "1GB",
-            ttl: "1m",
-            priority: 1,
-        },
-        redis: {
-            type: "redis",
-            connection: {
-                host: process.env.REDIS_HOST,
-                port: 6379,
-                password: process.env.REDIS_PASSWORD,
-            },
-            ttl: "5m",
-            priority: 2,
-        },
-        disk: {
-            type: "disk",
-            path: "./cache",
-            maxSize: "10GB",
-            ttl: "1h",
-            priority: 3,
-        },
+  layers: {
+    memory: {
+      type: 'memory',
+      maxSize: '1GB',
+      ttl: '1m',
+      priority: 1,
     },
-    strategies: {
-        preload: ["top_collections", "trending_collections"],
-        warmup: {
-            interval: "10m",
-            concurrency: 5,
-        },
+    redis: {
+      type: 'redis',
+      connection: {
+        host: process.env.REDIS_HOST,
+        port: 6379,
+        password: process.env.REDIS_PASSWORD,
+      },
+      ttl: '5m',
+      priority: 2,
     },
+    disk: {
+      type: 'disk',
+      path: './cache',
+      maxSize: '10GB',
+      ttl: '1h',
+      priority: 3,
+    },
+  },
+  strategies: {
+    preload: ['top_collections', 'trending_collections'],
+    warmup: {
+      interval: '10m',
+      concurrency: 5,
+    },
+  },
 });
 
 // Configure per-collection caching
 const collectionCache = plugin.cache.createCollectionCache({
-    collection: "0x1234",
-    rules: {
-        metadata: {
-            ttl: "1d",
-            invalidateOn: ["metadata_update"],
-        },
-        floorPrice: {
-            ttl: "30s",
-            invalidateOn: ["new_listing", "sale"],
-        },
-        holders: {
-            ttl: "1h",
-            invalidateOn: ["transfer"],
-        },
+  collection: '0x1234',
+  rules: {
+    metadata: {
+      ttl: '1d',
+      invalidateOn: ['metadata_update'],
     },
+    floorPrice: {
+      ttl: '30s',
+      invalidateOn: ['new_listing', 'sale'],
+    },
+    holders: {
+      ttl: '1h',
+      invalidateOn: ['transfer'],
+    },
+  },
 });
 ```
 
@@ -1461,33 +1454,33 @@ const collectionCache = plugin.cache.createCollectionCache({
 ```typescript
 // Implement predictive caching
 const predictiveCache = plugin.cache.enablePredictiveCaching({
-    features: {
-        userBehavior: true,
-        timePatterns: true,
-        marketActivity: true,
-    },
-    ml: {
-        model: "cache_prediction",
-        updateInterval: "1h",
-        minConfidence: 0.8,
-    },
+  features: {
+    userBehavior: true,
+    timePatterns: true,
+    marketActivity: true,
+  },
+  ml: {
+    model: 'cache_prediction',
+    updateInterval: '1h',
+    minConfidence: 0.8,
+  },
 });
 
 // Configure cache warming
 const cacheWarmer = plugin.cache.createWarmer({
-    schedule: "*/10 * * * *", // Every 10 minutes
-    strategy: {
-        type: "smart",
-        priorities: {
-            popularity: 0.4,
-            recentActivity: 0.3,
-            userRequests: 0.3,
-        },
+  schedule: '*/10 * * * *', // Every 10 minutes
+  strategy: {
+    type: 'smart',
+    priorities: {
+      popularity: 0.4,
+      recentActivity: 0.3,
+      userRequests: 0.3,
     },
-    limits: {
-        maxConcurrent: 5,
-        maxItems: 1000,
-    },
+  },
+  limits: {
+    maxConcurrent: 5,
+    maxItems: 1000,
+  },
 });
 ```
 
@@ -1496,33 +1489,33 @@ const cacheWarmer = plugin.cache.createWarmer({
 ```typescript
 // Monitor cache performance
 const cacheMetrics = plugin.cache.monitor({
-    metrics: ["hit_rate", "miss_rate", "latency", "size"],
-    alerts: {
-        hitRate: {
-            threshold: 0.8,
-            window: "5m",
-            action: "adjust_ttl",
-        },
-        latency: {
-            threshold: 100,
-            window: "1m",
-            action: "scale_cache",
-        },
+  metrics: ['hit_rate', 'miss_rate', 'latency', 'size'],
+  alerts: {
+    hitRate: {
+      threshold: 0.8,
+      window: '5m',
+      action: 'adjust_ttl',
     },
+    latency: {
+      threshold: 100,
+      window: '1m',
+      action: 'scale_cache',
+    },
+  },
 });
 
 // Cache analytics dashboard
 const cacheDashboard = plugin.cache.createDashboard({
-    realtime: true,
-    metrics: {
-        performance: true,
-        storage: true,
-        invalidations: true,
-    },
-    visualization: {
-        graphs: true,
-        heatmaps: true,
-    },
+  realtime: true,
+  metrics: {
+    performance: true,
+    storage: true,
+    invalidations: true,
+  },
+  visualization: {
+    graphs: true,
+    heatmaps: true,
+  },
 });
 ```
 
@@ -1531,26 +1524,26 @@ const cacheDashboard = plugin.cache.createDashboard({
 ```typescript
 // Optimize cache storage
 const storageOptimizer = plugin.cache.optimizeStorage({
-    compression: {
-        enabled: true,
-        algorithm: "lz4",
-        level: "medium",
-    },
-    deduplication: true,
-    partitioning: {
-        strategy: "access_pattern",
-        shards: 4,
-    },
+  compression: {
+    enabled: true,
+    algorithm: 'lz4',
+    level: 'medium',
+  },
+  deduplication: true,
+  partitioning: {
+    strategy: 'access_pattern',
+    shards: 4,
+  },
 });
 
 // Implement cache coherency
 const coherencyManager = plugin.cache.manageCoherency({
-    strategy: "write_through",
-    consistency: "eventual",
-    propagation: {
-        method: "pub_sub",
-        maxDelay: "100ms",
-    },
+  strategy: 'write_through',
+  consistency: 'eventual',
+  propagation: {
+    method: 'pub_sub',
+    maxDelay: '100ms',
+  },
 });
 ```
 

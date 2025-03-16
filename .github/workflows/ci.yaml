@@ -18,15 +18,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "23"
+          node-version: '23'
 
       - name: Install dependencies
         run: bun install
-
-      - name: Setup Biome CLI
-        uses: biomejs/setup-biome@v2
-        with:
-          version: latest
 
       - name: Create test env file
         run: |
@@ -36,11 +31,14 @@ jobs:
       - name: Run tests
         run: cd packages/core && bun test:coverage
 
+      - name: Check format
+        run: bun run format:check
+
       - name: Run lint
         run: bun run lint
 
       - name: Build packages
-        run: bun run build
+        run: bun run build && bun run build:docs
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5

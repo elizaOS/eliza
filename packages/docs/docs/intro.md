@@ -23,11 +23,11 @@ Eliza is a powerful multi-agent simulation framework designed to create, deploy,
 - **Memory Management**: Easily ingest and interact with documents using RAG
 - **Media Processing**: PDF, URLs, Audio transcription, Video processing, Image analysis, Conversation summarization
 - **Technical Foundation**:
-    - 100% TypeScript implementation
-    - Modular architecture
-    - Highly extensible action and plugin system
-    - Custom client support
-    - Comprehensive API
+  - 100% TypeScript implementation
+  - Modular architecture
+  - Highly extensible action and plugin system
+  - Custom client support
+  - Comprehensive API
 
 ## Use Cases
 
@@ -57,34 +57,88 @@ For a more detailed guide, check out our [Quickstart Guide](./quickstart.md) to 
 
 ### Prerequisites
 
-- [Python 2.7+](https://www.python.org/downloads/)
 - [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [pnpm](https://pnpm.io/installation)
+- Git for version control
+- For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
 
-> **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
+### Multiple Paths to Start
 
-The start script provides an automated way to set up and run Eliza:
+Eliza offers different paths depending on your goals:
 
-### Automated Start
+#### 1. Simple Start - Run Quickly
 
 ```bash
-git clone https://github.com/elizaos/eliza-starter.git
-cd eliza-starter
-cp .env.example .env
-pnpm i && pnpm build && pnpm start
+# Install globally (optional but recommended)
+npm install -g @elizaos/cli
+
+# Start with default settings
+npx elizaos start
 ```
 
-OR
+Visit https://localhost:3000 to interact with your agent through a web interface.
+
+````
+
+#### 2. Create Your Own Project
 
 ```bash
-git clone https://github.com/elizaos/eliza
+# Create a new project through interactive setup
+npx elizaos create
+
+# Navigate to your project directory
+cd my-project-name
+
+# Start your project
+npx elizaos start
+````
+
+Add plugins to your project:
+
+```bash
+# List available plugins
+npx elizaos project list-plugins
+
+# Add a plugin
+npx elizaos project add-plugin @elizaos/plugin-discord
+```
+
+#### 3. Develop a Custom Plugin
+
+```bash
+# Create a plugin project
+npx elizaos create --type plugin
+
+# Follow the interactive prompts
+```
+
+Develop and test your plugin:
+
+```bash
+# Test your plugin
+npx elizaos start
+
+# Publish your plugin when ready
+npx elizaos plugin publish
+```
+
+#### 4. Contribute to ElizaOS Core
+
+```bash
+# Clone the repository
+git clone git@github.com:elizaOS/eliza.git
 cd eliza
-sh scripts/start.sh
+
+# Install dependencies and build
+bun install
+bun build
+
+# Start ElizaOS
+bun start
 ```
 
-For detailed instructions on using the start script, including character management and troubleshooting, see our [Quickstart Guide](./quickstart).
+Visit https://localhost:3000 to interact with your agent through a web interface.
 
-> **Note**: The start script handles all dependencies, environment setup, and character management automatically.
+For detailed instructions on each path, including configuration options and extended capabilities, see our [Quickstart Guide](./quickstart.md).
 
 ---
 
@@ -100,5 +154,6 @@ Join us in building the future of autonomous AI agents with Eliza!
 
 ## Next Steps
 
-- [Create Your First Agent](../quickstart)
-- [Understand Core Concepts](../core/agents)
+- [Quickstart Guide](./quickstart.md)
+- [Understand Core Concepts](./core/agents.md)
+- [Create Custom Characters](./core/characterfile.md)

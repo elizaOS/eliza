@@ -1,55 +1,58 @@
 {
-	"name": "@elizaos/plugin-twitter",
-	"version": "1.0.0-alpha.63",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"dependencies": {
-		"@elizaos/core": "^1.0.0-alpha.63",
-		"@roamhq/wrtc": "^0.8.0",
-		"@sinclair/typebox": "^0.32.20",
-		"glob": "11.0.0",
-		"headers-polyfill": "^3.1.2",
-		"json-stable-stringify": "^1.0.2",
-		"otpauth": "^9.2.2",
-		"set-cookie-parser": "^2.6.0",
-		"tough-cookie": "^4.1.2",
-		"twitter-api-v2": "^1.18.2",
-		"undici": "^7.1.1",
-		"undici-types": "^7.2.0",
-		"ws": "^8.18.0"
-	},
-	"devDependencies": {
-		"@vitest/coverage-v8": "1.1.3",
-		"tsup": "8.4.0",
-		"vitest": "1.6.1"
-	},
-	"scripts": {
-		"build": "tsup",
-		"dev": "tsup --watch",
-		"test": "vitest run",
-		"test:coverage": "vitest run --coverage",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
-	},
-	"peerDependencies": {
-		"whatwg-url": "7.1.0"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
+  "name": "@elizaos/plugin-twitter",
+  "version": "1.0.0-alpha.63",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.0.0-alpha.63",
+    "@roamhq/wrtc": "^0.8.0",
+    "@sinclair/typebox": "^0.32.20",
+    "glob": "11.0.0",
+    "headers-polyfill": "^3.1.2",
+    "json-stable-stringify": "^1.0.2",
+    "otpauth": "^9.2.2",
+    "set-cookie-parser": "^2.6.0",
+    "tough-cookie": "^4.1.2",
+    "twitter-api-v2": "^1.18.2",
+    "undici": "^7.1.1",
+    "undici-types": "^7.2.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "1.1.3",
+    "tsup": "8.4.0",
+    "vitest": "1.6.1",
+    "prettier": "3.5.3"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
 }

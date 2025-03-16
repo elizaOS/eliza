@@ -35,7 +35,7 @@ Add the adapter to your ElizaOS configuration:
   "plugins": ["@elizaos-plugins/adapter-mongodb"],
   "settings": {
     "MONGODB_CONNECTION_STRING": "your_mongodb_connection_string",
-    "MONGODB_DATABASE": "your_database_name"  // Optional, defaults to "elizaAgent"
+    "MONGODB_DATABASE": "your_database_name" // Optional, defaults to "elizaAgent"
   }
 }
 ```
@@ -107,6 +107,7 @@ cd src/__tests__
 ```
 
 This will:
+
 1. Start a MongoDB container
 2. Run the test suite
 3. Clean up resources automatically
@@ -133,4 +134,3 @@ The adapter includes comprehensive error handling:
 - Implements efficient batch processing
 - Supports sharding for horizontal scaling
 - Includes index optimization
-

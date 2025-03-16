@@ -36,7 +36,7 @@ AWS_S3_FORCE_PATH_STYLE=boolean(true|false)
 ## Usage
 
 ```typescript
-import { createNodePlugin } from "@elizaos/plugin-node";
+import { createNodePlugin } from '@elizaos/plugin-node';
 
 // Initialize the plugin
 const nodePlugin = createNodePlugin();

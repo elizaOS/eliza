@@ -5,6 +5,7 @@ A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.
 ## Features
 
 - 📱 SMS Messaging
+
   - Send SMS messages
   - Receive and respond to SMS messages
   - Natural conversation handling
@@ -18,30 +19,31 @@ A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.
 ## Installation
 
 ```bash
-pnpm add @elizaos-plugins/plugin-twilio
+bun add @elizaos-plugins/plugin-twilio
 ```
 
 ## Configuration
 
 1. Add the plugin to your character file:
+
 ```json
 {
-    "name": "your_character",
-    "plugins": ["@elizaos-plugins/plugin-twilio"],
-    "settings": {
-        "actions": {
-            "enabled": ["sms", "call"]
-        },
-        "voice": {
-            "elevenlabs": {
-                "voiceId": "your_voice_id",
-                "stability": 0.3,
-                "similarityBoost": 0.5,
-                "style": 0.5,
-                "useSpeakerBoost": false
-            }
-        }
+  "name": "your_character",
+  "plugins": ["@elizaos-plugins/plugin-twilio"],
+  "settings": {
+    "actions": {
+      "enabled": ["sms", "call"]
+    },
+    "voice": {
+      "elevenlabs": {
+        "voiceId": "your_voice_id",
+        "stability": 0.3,
+        "similarityBoost": 0.5,
+        "style": 0.5,
+        "useSpeakerBoost": false
+      }
     }
+  }
 }
 ```
 
@@ -65,6 +67,7 @@ ELEVENLABS_XI_API_KEY=your_elevenlabs_api_key
 ### Webhook Configuration
 
 1. Set up your webhook base URL in `.env`:
+
 ```env
 WEBHOOK_BASE_URL=your_webhook_url  # e.g., https://your-domain.com
 WEBHOOK_PORT=3004
@@ -82,28 +85,34 @@ WEBHOOK_PORT=3004
      - Method: HTTP POST
 
 Example webhook URLs:
+
 ```
 Voice: https://your-domain.com/webhook/voice
 SMS: https://your-domain.com/webhook/sms
 ```
 
 For local development:
+
 1. Use ngrok to expose your local server:
+
 ```bash
 ngrok http 3004
 ```
+
 2. Update your `WEBHOOK_BASE_URL` with the ngrok URL
 3. Update webhook URLs in Twilio Console with the ngrok URL
 
 ## Security
 
 ### Environment Variables
+
 - Never commit `.env` files to version control
 - Use secrets management in production (AWS Secrets Manager, Vault)
 - Rotate credentials regularly
 - Use environment-specific configurations
 
 ### Webhook Security
+
 - Enable Twilio's request validation
 - Use HTTPS for webhook endpoints
 - Implement rate limiting
@@ -117,12 +126,14 @@ ngrok http 3004
 You can interact with the agent in two ways:
 
 #### Via SMS
+
 1. Save the Twilio phone number: TWILIO_PHONE_NUMBER
 2. Send a text message to start a conversation
 3. The agent will respond based on its character configuration
 4. Continue the natural conversation via SMS
 
 #### Via Voice Call
+
 1. Call the Twilio phone number: TWILIO_PHONE_NUMBER
 2. The agent will answer and start a conversation
 3. Speak naturally - the agent uses speech recognition
@@ -131,6 +142,7 @@ You can interact with the agent in two ways:
 ### Sending Messages Through the Agent
 
 Best Practices:
+
 1. For direct messages, use "saying" or "telling"
 2. For AI-generated content, use "about"
 3. Always include the full phone number with "+" prefix
@@ -154,10 +166,10 @@ Call +1234567890 to say that we need to schedule a meeting
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Build the plugin
-pnpm build
+bun build
 ```
 
 ## Webhook Setup
@@ -195,4 +207,3 @@ See [Twilio's A2P 10DLC Documentation](https://www.twilio.com/docs/messaging/com
 ## License
 
 This plugin is part of the Eliza project. See the main project repository for license information.
-

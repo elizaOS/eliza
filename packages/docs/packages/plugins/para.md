@@ -27,8 +27,8 @@ You can install the plugin using your preferred package manager:
 # npm
 npm install @elizaos/plugin-para
 
-# pnpm
-pnpm add @elizaos/plugin-para
+# bun
+bun add @elizaos/plugin-para
 
 # yarn
 yarn add @elizaos/plugin-para
@@ -58,9 +58,9 @@ export const characterConfig = {
   settings: {
     secrets: {
       PARA_API_KEY: process.env.PARA_API_KEY,
-      PARA_ENV: process.env.PARA_ENV || 'production'
-    }
-  }
+      PARA_ENV: process.env.PARA_ENV || 'production',
+    },
+  },
 };
 ```
 
@@ -72,8 +72,8 @@ The plugin adds several capabilities to your Eliza agent:
 
 ```typescript
 // The agent can create wallets in response to user requests
-await runtime.triggerAction("CREATE_PARA_WALLET", {
-  type: "EVM"
+await runtime.triggerAction('CREATE_PARA_WALLET', {
+  type: 'EVM',
 });
 ```
 
@@ -81,9 +81,9 @@ await runtime.triggerAction("CREATE_PARA_WALLET", {
 
 ```typescript
 // Create a wallet for a user before they sign up
-await runtime.triggerAction("CREATE_PREGEN_WALLET", {
-  pregenIdentifier: "user@example.com",
-  pregenIdentifierType: "EMAIL"
+await runtime.triggerAction('CREATE_PREGEN_WALLET', {
+  pregenIdentifier: 'user@example.com',
+  pregenIdentifierType: 'EMAIL',
 });
 ```
 
@@ -91,9 +91,9 @@ await runtime.triggerAction("CREATE_PREGEN_WALLET", {
 
 ```typescript
 // Sign a message with a user's wallet
-await runtime.triggerAction("SIGN_PARA_MESSAGE", {
-  walletId: "wallet-id",
-  message: "Hello, World!"
+await runtime.triggerAction('SIGN_PARA_MESSAGE', {
+  walletId: 'wallet-id',
+  message: 'Hello, World!',
 });
 ```
 
@@ -101,13 +101,13 @@ await runtime.triggerAction("SIGN_PARA_MESSAGE", {
 
 ```typescript
 // Sign and submit an EVM transaction
-await runtime.triggerAction("SIGN_PARA_TRANSACTION", {
-  walletId: "wallet-id",
+await runtime.triggerAction('SIGN_PARA_TRANSACTION', {
+  walletId: 'wallet-id',
   transaction: {
-    to: "0x1234567890123456789012345678901234567890",
-    value: "0.01"
+    to: '0x1234567890123456789012345678901234567890',
+    value: '0.01',
   },
-  chainId: "1" // Ethereum mainnet
+  chainId: '1', // Ethereum mainnet
 });
 ```
 
@@ -115,9 +115,9 @@ await runtime.triggerAction("SIGN_PARA_TRANSACTION", {
 
 ```typescript
 // Users can claim their pre-generated wallets
-await runtime.triggerAction("CLAIM_PARA_WALLET", {
-  pregenIdentifier: "user@example.com",
-  pregenIdentifierType: "EMAIL"
+await runtime.triggerAction('CLAIM_PARA_WALLET', {
+  pregenIdentifier: 'user@example.com',
+  pregenIdentifierType: 'EMAIL',
 });
 ```
 
@@ -125,36 +125,36 @@ await runtime.triggerAction("CLAIM_PARA_WALLET", {
 
 ```typescript
 // Get current wallet status through the provider
-const walletInfo = await runtime.getContextFromProvider("paraWalletProvider");
+const walletInfo = await runtime.getContextFromProvider('paraWalletProvider');
 ```
 
 ## Actions
 
 The plugin provides the following actions:
 
-| Action | Description |
-|--------|-------------|
-| `CREATE_PARA_WALLET` | Creates a new Para wallet |
-| `CREATE_PREGEN_WALLET` | Creates a pre-generated wallet associated with an identifier |
-| `CLAIM_PARA_WALLET` | Claims a pre-generated wallet |
-| `SIGN_PARA_MESSAGE` | Signs a message using a Para wallet |
-| `SIGN_PARA_TRANSACTION` | Signs and submits a transaction using a Para wallet |
-| `UPDATE_PREGEN_IDENTIFIER` | Updates the identifier for a pre-generated wallet |
+| Action                     | Description                                                  |
+| -------------------------- | ------------------------------------------------------------ |
+| `CREATE_PARA_WALLET`       | Creates a new Para wallet                                    |
+| `CREATE_PREGEN_WALLET`     | Creates a pre-generated wallet associated with an identifier |
+| `CLAIM_PARA_WALLET`        | Claims a pre-generated wallet                                |
+| `SIGN_PARA_MESSAGE`        | Signs a message using a Para wallet                          |
+| `SIGN_PARA_TRANSACTION`    | Signs and submits a transaction using a Para wallet          |
+| `UPDATE_PREGEN_IDENTIFIER` | Updates the identifier for a pre-generated wallet            |
 
 ## Providers
 
 Available providers for context and status:
 
-| Provider | Description |
-|----------|-------------|
+| Provider             | Description                                    |
+| -------------------- | ---------------------------------------------- |
 | `paraWalletProvider` | Provides current wallet information and status |
 
 ## Services
 
 The plugin registers the following services in the Eliza runtime:
 
-| Service | Description |
-|---------|-------------|
+| Service             | Description                                |
+| ------------------- | ------------------------------------------ |
 | `ParaWalletService` | Core service handling Para SDK integration |
 
 ## Viem Integration
@@ -168,14 +168,14 @@ The plugin uses Viem for Ethereum transactions, offering:
 
 ```typescript
 // Example of transaction handling with Viem
-await runtime.triggerAction("SIGN_PARA_TRANSACTION", {
-  walletId: "wallet-id",
+await runtime.triggerAction('SIGN_PARA_TRANSACTION', {
+  walletId: 'wallet-id',
   transaction: {
-    to: "0x1234567890123456789012345678901234567890",
-    value: "0.05",
-    data: "0x..." // Optional contract interaction data
+    to: '0x1234567890123456789012345678901234567890',
+    value: '0.05',
+    data: '0x...', // Optional contract interaction data
   },
-  chainId: "137" // Polygon
+  chainId: '137', // Polygon
 });
 ```
 
@@ -204,8 +204,8 @@ Secure handling of user shares for pre-generated wallets:
 ```typescript
 // Get user share after wallet creation
 const { wallet, userShare } = await paraService.createPregenWallet({
-  pregenIdentifier: "user@example.com",
-  pregenIdentifierType: "EMAIL"
+  pregenIdentifier: 'user@example.com',
+  pregenIdentifierType: 'EMAIL',
 });
 
 // Store user share securely
@@ -213,7 +213,7 @@ await secureStorage.set(`user-share-${wallet.id}`, userShare);
 
 // Restore user share when needed
 await paraService.setUserShare({
-  userShare: await secureStorage.get(`user-share-${walletId}`)
+  userShare: await secureStorage.get(`user-share-${walletId}`),
 });
 ```
 
@@ -223,17 +223,17 @@ The plugin implements comprehensive error handling following Eliza's patterns:
 
 ```typescript
 try {
-  await runtime.triggerAction("SIGN_PARA_TRANSACTION", params);
+  await runtime.triggerAction('SIGN_PARA_TRANSACTION', params);
 } catch (error) {
   if (error instanceof TransactionReviewDenied) {
     // Handle user denial
-    console.log("User denied the transaction");
+    console.log('User denied the transaction');
   } else if (error instanceof TransactionReviewTimeout) {
     // Handle timeout
-    console.log("Transaction review timed out", error.transactionReviewUrl);
+    console.log('Transaction review timed out', error.transactionReviewUrl);
   } else {
     // Handle other errors
-    console.error("Transaction error:", error);
+    console.error('Transaction error:', error);
   }
 }
 ```
@@ -242,30 +242,33 @@ try {
 
 The plugin supports a variety of EVM-compatible networks:
 
-| Chain ID | Network |
-|----------|---------|
-| 1 | Ethereum Mainnet |
-| 11155111 | Sepolia Testnet |
-| 137 | Polygon |
-| 42161 | Arbitrum |
+| Chain ID | Network          |
+| -------- | ---------------- |
+| 1        | Ethereum Mainnet |
+| 11155111 | Sepolia Testnet  |
+| 137      | Polygon          |
+| 42161    | Arbitrum         |
 
 Additional networks can be added by extending the chain configuration.
 
 ## Best Practices
 
 1. **Security**
+
    - Store API keys securely in environment variables
    - Implement proper user authentication before wallet operations
    - Use secure storage for user shares
    - Follow Para's recommendations for session management
 
 2. **Error Handling**
+
    - Implement proper error handling for all wallet operations
    - Handle transaction rejections and timeouts gracefully
    - Provide clear feedback to users when operations fail
    - Log errors appropriately for debugging
 
 3. **Performance**
+
    - Keep track of session status to avoid unnecessary refreshes
    - Implement proper caching for wallet information
    - Use appropriate gas parameters for transactions

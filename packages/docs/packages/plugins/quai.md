@@ -19,7 +19,7 @@ This plugin provides core functionality for interacting with the Quai Network, o
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-quai
+bun install @elizaos/plugin-quai
 ```
 
 ## Configuration
@@ -43,8 +43,8 @@ const result = await eliza.execute({
   action: 'SEND_TOKEN',
   content: {
     recipient: '0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7',
-    amount: '10'
-  }
+    amount: '10',
+  },
 });
 ```
 
@@ -53,6 +53,7 @@ const result = await eliza.execute({
 ### Actions
 
 #### `SEND_TOKEN`
+
 Transfers QUAI tokens to another address.
 
 ```typescript
@@ -80,12 +81,14 @@ const provider = getQuaiProvider(runtime);
 ### Common Issues
 
 1. **Transaction Failures**
+
    - Check account balance
    - Verify recipient address format
    - Ensure sufficient gas
    - Confirm network connection
 
 2. **Connection Problems**
+
    - Verify RPC endpoint
    - Check network status
    - Ensure valid credentials
@@ -100,12 +103,14 @@ const provider = getQuaiProvider(runtime);
 ## Security Best Practices
 
 1. **Key Management**
+
    - Store private keys securely
    - Use environment variables
    - Never expose private keys in code
    - Monitor account activity
 
 2. **Transaction Safety**
+
    - Validate all addresses
    - Implement amount validation
    - Double-check recipients
@@ -122,13 +127,13 @@ const provider = getQuaiProvider(runtime);
 Run the test suite:
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## Dependencies
 
 - quais: ^1.0.0-alpha.25
-- @elizaos/core: workspace:*
+- @elizaos/core: workspace:\*
 
 ## Contributing
 
@@ -137,10 +142,12 @@ Contributions are welcome! Please ensure your code follows the existing patterns
 ## Credits
 
 This plugin integrates with:
+
 - [Quai Network](https://qu.ai/)
 - [Quai JavaScript API](https://www.npmjs.com/package/quais)
 
 For more information about Quai Network capabilities:
+
 - [Quai Documentation](https://docs.qu.ai/)
 - [Quai Network GitHub](https://github.com/dominant-strategies)
 

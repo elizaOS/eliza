@@ -1,8 +1,8 @@
-import type { UUID } from "@elizaos/core";
-import { type ClassValue, clsx } from "clsx";
-import dayjs from "dayjs";
-import localizedFormat from "dayjs/plugin/localizedFormat";
-import { twMerge } from "tailwind-merge";
+import type { UUID } from '@elizaos/core';
+import { type ClassValue, clsx } from 'clsx';
+import dayjs from 'dayjs';
+import localizedFormat from 'dayjs/plugin/localizedFormat';
+import { twMerge } from 'tailwind-merge';
 
 /**
  * Combines multiple class names into a single string.
@@ -10,7 +10,7 @@ import { twMerge } from "tailwind-merge";
  * @returns { string } - Combined class names as a single string.
  */
 export function cn(...inputs: ClassValue[]) {
-	return twMerge(clsx(inputs));
+  return twMerge(clsx(inputs));
 }
 
 dayjs.extend(localizedFormat);
@@ -18,7 +18,7 @@ dayjs.extend(localizedFormat);
 export const moment = dayjs;
 
 export const formatAgentName = (name: string) => {
-	return name.substring(0, 2);
+  return name.substring(0, 2);
 };
 
 /**
@@ -31,26 +31,26 @@ export const formatAgentName = (name: string) => {
  * @returns {string} The URL-friendly version of the character name.
  */
 export function characterNameToUrl(name: string): string {
-	return name.replace(/\s+/g, "-");
+  return name.replace(/\s+/g, '-');
 }
 
 /**
  * Converts a URL-friendly character name back to its original format by replacing hyphens with spaces
  */
 export function urlToCharacterName(urlName: string): string {
-	return urlName.replace(/-+/g, " ");
+  return urlName.replace(/-+/g, ' ');
 }
 
 export function getEntityId(): UUID {
-	const USER_ID_KEY = "elizaos-client-user-id";
-    const existingUserId = localStorage.getItem(USER_ID_KEY);
+  const USER_ID_KEY = 'elizaos-client-user-id';
+  const existingUserId = localStorage.getItem(USER_ID_KEY);
 
-    if (existingUserId) {
-      return existingUserId as UUID;
-    }
+  if (existingUserId) {
+    return existingUserId as UUID;
+  }
 
-    const newUserId = crypto.randomUUID() as UUID;
-    localStorage.setItem(USER_ID_KEY, newUserId);
+  const newUserId = crypto.randomUUID() as UUID;
+  localStorage.setItem(USER_ID_KEY, newUserId);
 
-    return newUserId;
+  return newUserId;
 }

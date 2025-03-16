@@ -5,7 +5,7 @@ Devin API integration plugin for Eliza, providing automated engineering assistan
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-devin
+bun add @elizaos/plugin-devin
 ```
 
 ## Configuration
@@ -19,7 +19,7 @@ DEVIN_API_TOKEN=your_api_token_here
 Or configure it in your Eliza runtime settings:
 
 ```typescript
-runtime.setSetting("DEVIN_API_TOKEN", "your_api_token_here");
+runtime.setSetting('DEVIN_API_TOKEN', 'your_api_token_here');
 ```
 
 ## Features
@@ -39,8 +39,8 @@ runtime.setSetting("DEVIN_API_TOKEN", "your_api_token_here");
 Creates a new Devin session with the specified prompt.
 
 ```typescript
-const result = await runtime.runAction("START_DEVIN_SESSION", {
-    content: { text: "Help me refactor this code" }
+const result = await runtime.runAction('START_DEVIN_SESSION', {
+  content: { text: 'Help me refactor this code' },
 });
 ```
 
@@ -65,12 +65,13 @@ console.log(devinState.url);
 Run the test suite:
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## API Documentation
 
 For detailed API documentation, visit:
+
 - [Devin API Integration Guide](https://docs.devin.ai/tutorials/api-integration)
 - [External API Reference](https://docs.devin.ai/external-api/)
 

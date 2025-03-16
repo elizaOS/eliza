@@ -36,7 +36,7 @@ The plugin requires the following environment variables:
 ```typescript
 STARKNET_ADDRESS = your_starknet_address;
 STARKNET_PRIVATE_KEY = your_private_key;
-STARKNET_RPC_URL = your_rpc_url;  // e.g. https://rpc.starknet.lava.build
+STARKNET_RPC_URL = your_rpc_url; // e.g. https://rpc.starknet.lava.build
 ```
 
 ## Actions
@@ -47,15 +47,12 @@ Deploys a new unruggable token on Starknet.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction(
-    "DEPLOY_STARKNET_UNRUGGABLE_MEME_TOKEN",
-    {
-        name: "TokenName",
-        symbol: "TKN",
-        owner: "OwnerAddressHere",
-        initialSupply: "1000000000000000000",
-    }
-);
+const result = await runtime.executeAction('DEPLOY_STARKNET_UNRUGGABLE_MEME_TOKEN', {
+  name: 'TokenName',
+  symbol: 'TKN',
+  owner: 'OwnerAddressHere',
+  initialSupply: '1000000000000000000',
+});
 ```
 
 ### transferToken
@@ -64,10 +61,10 @@ Transfers tokens between wallets.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("TRANSFER_TOKEN", {
-    tokenAddress: "TokenAddressHere",
-    recipient: "RecipientAddressHere",
-    amount: "1000",
+const result = await runtime.executeAction('TRANSFER_TOKEN', {
+  tokenAddress: 'TokenAddressHere',
+  recipient: 'RecipientAddressHere',
+  amount: '1000',
 });
 ```
 
@@ -77,10 +74,10 @@ Executes a token swap on Starknet.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("EXECUTE_STARKNET_SWAP", {
-    sellTokenAddress: "SellTokenAddressHere",
-    buyTokenAddress: "BuyTokenAddressHere",
-    sellAmount: "1000000000000000000",
+const result = await runtime.executeAction('EXECUTE_STARKNET_SWAP', {
+  sellTokenAddress: 'SellTokenAddressHere',
+  buyTokenAddress: 'BuyTokenAddressHere',
+  sellAmount: '1000000000000000000',
 });
 ```
 
@@ -90,9 +87,9 @@ Creates and transfers a subdomain.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("CREATE_SUBDOMAIN", {
-    subdomain: "subdomain.domain.stark",
-    recipient: "RecipientAddressHere",
+const result = await runtime.executeAction('CREATE_SUBDOMAIN', {
+  subdomain: 'subdomain.domain.stark',
+  recipient: 'RecipientAddressHere',
 });
 ```
 
@@ -100,45 +97,45 @@ const result = await runtime.executeAction("CREATE_SUBDOMAIN", {
 
 1. **Access Control**
 
-    - Validate transaction signers
-    - Implement role-based permissions
-    - Secure private key storage
+   - Validate transaction signers
+   - Implement role-based permissions
+   - Secure private key storage
 
 2. **Transaction Limits**
 
-    - Set maximum transaction amounts
-    - Implement daily trading limits
-    - Configure per-token restrictions
+   - Set maximum transaction amounts
+   - Implement daily trading limits
+   - Configure per-token restrictions
 
 3. **Monitoring**
 
-    - Track failed transaction attempts
-    - Monitor unusual trading patterns
-    - Log security-relevant events
+   - Track failed transaction attempts
+   - Monitor unusual trading patterns
+   - Log security-relevant events
 
 4. **Recovery**
-    - Implement transaction rollback mechanisms
-    - Maintain backup RPC endpoints
-    - Document recovery procedures
+   - Implement transaction rollback mechanisms
+   - Maintain backup RPC endpoints
+   - Document recovery procedures
 
 ## Performance Optimization
 
 1. **Cache Management**
 
-    - Implement token data caching
-    - Configure cache TTL settings
-    - Monitor cache hit rates
+   - Implement token data caching
+   - Configure cache TTL settings
+   - Monitor cache hit rates
 
 2. **RPC Optimization**
 
-    - Use connection pooling
-    - Implement request batching
-    - Monitor RPC usage
+   - Use connection pooling
+   - Implement request batching
+   - Monitor RPC usage
 
 3. **Transaction Management**
-    - Batch similar transactions
-    - Optimize gas usage
-    - Handle transaction retries
+   - Batch similar transactions
+   - Optimize gas usage
+   - Handle transaction retries
 
 ## Contributing
 

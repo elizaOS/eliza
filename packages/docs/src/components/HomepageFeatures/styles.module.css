@@ -1,59 +1,59 @@
 .features {
-    display: flex;
-    align-items: center;
-    padding: 2rem 0;
-    width: 100%;
-    flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  padding: 2rem 0;
+  width: 100%;
+  flex-wrap: wrap;
 }
 
 .featureSvg {
-    height: 200px;
-    width: 200px;
+  height: 200px;
+  width: 200px;
 }
 
 .featureIcon {
-    height: 100px;
-    width: 100px;
-    font-size: 2rem;
+  height: 100px;
+  width: 100px;
+  font-size: 2rem;
 }
 
 .featureGrid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
 }
 
 @media (max-width: 768px) {
-    .featureGrid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 0rem;
-    }
+  .featureGrid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0rem;
+  }
 
-    .featureSvg {
-        height: 150px;
-        width: 150px;
-    }
+  .featureSvg {
+    height: 150px;
+    width: 150px;
+  }
 
-    .featureIcon {
-        height: 80px;
-        width: 80px;
-        font-size: 1.5rem;
-    }
+  .featureIcon {
+    height: 80px;
+    width: 80px;
+    font-size: 1.5rem;
+  }
 }
 
 @media (max-width: 480px) {
-    .featureGrid {
-        grid-template-columns: 1fr;
-    }
+  .featureGrid {
+    grid-template-columns: 1fr;
+  }
 
-    .featureSvg {
-        height: 100px;
-        width: 100px;
-    }
+  .featureSvg {
+    height: 100px;
+    width: 100px;
+  }
 
-    .featureIcon {
-        height: 60px;
-        width: 60px;
-        font-size: 1.2rem;
-    }
+  .featureIcon {
+    height: 60px;
+    width: 60px;
+    font-size: 1.2rem;
+  }
 }

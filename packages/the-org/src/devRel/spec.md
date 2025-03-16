@@ -7,18 +7,21 @@ Eddy is an AI-powered developer support agent designed to help developers by pro
 ## 2. Core Functionality
 
 ### Documentation Support
+
 - Answer questions using project documentation
 - Provide relevant code examples and explanations
 - Link to official documentation sources
 - Keep track of frequently accessed documentation sections
 
 ### Code Assistance
+
 - Generate code examples using RAG search
 - Provide code explanations and best practices
 - Suggest code improvements and optimizations
 - Help debug common issues
 
 ### Knowledge Management
+
 - Extract problems and solutions from chat discussions
 - Build and maintain a searchable knowledge base
 - Track common issues and their resolutions
@@ -32,8 +35,8 @@ Eddy is an AI-powered developer support agent designed to help developers by pro
 const config: OnboardingConfig = {
   settings: {
     DOCUMENTATION_SOURCES: {
-      name: "Documentation Sources",
-      description: "List of documentation sources to index",
+      name: 'Documentation Sources',
+      description: 'List of documentation sources to index',
       required: true,
       public: true,
       secret: false,
@@ -41,15 +44,15 @@ const config: OnboardingConfig = {
       validation: (value: DocumentationConfig[]) => Array.isArray(value),
     },
     KNOWLEDGE_BASE: {
-      name: "Knowledge Base Configuration",
-      description: "Knowledge base settings and categories",
+      name: 'Knowledge Base Configuration',
+      description: 'Knowledge base settings and categories',
       required: true,
       public: true,
       secret: false,
       value: {} as KnowledgeBaseConfig,
-      validation: (value: KnowledgeBaseConfig) => typeof value === "object",
-    }
-  }
+      validation: (value: KnowledgeBaseConfig) => typeof value === 'object',
+    },
+  },
 };
 ```
 
@@ -79,6 +82,7 @@ const character: Character = {
 ## 4. Workflows
 
 ### Documentation Search
+
 1. Receive developer question
 2. Use RAG to search documentation
 3. Generate contextual response
@@ -86,7 +90,8 @@ const character: Character = {
 5. Track question for knowledge base
 
 ### Code Generation
-```
+
+````
 Developer: How do I implement authentication using your SDK?
 
 Eddy: I found some relevant documentation about authentication. Here's an example:
@@ -111,14 +116,16 @@ async function authenticate() {
     console.error('Authentication failed:', error);
   }
 }
-```
+````
 
 This example shows the basic authentication flow. You'll need to:
+
 1. Install the SDK: `npm install @your-sdk/auth`
 2. Set up your API key in environment variables
 3. Implement error handling for your use case
 
 Would you like me to explain any part in more detail?
+
 ```
 
 ### Knowledge Extraction
@@ -135,3 +142,4 @@ Would you like me to explain any part in more detail?
 - Automated documentation updates based on common questions
 - AI-powered code review suggestions
 - Integration with issue tracking systems
+```

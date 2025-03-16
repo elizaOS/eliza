@@ -32,7 +32,7 @@ ZKSYNC_PRIVATE_KEY=your_private_key  # Required: Your wallet's private key
 ### Basic Setup
 
 ```typescript
-import { zksyncEraPlugin } from "@elizaos/plugin-zksync-era";
+import { zksyncEraPlugin } from '@elizaos/plugin-zksync-era';
 
 const plugin = zksyncEraPlugin;
 ```
@@ -42,15 +42,15 @@ const plugin = zksyncEraPlugin;
 ```typescript
 // Transfer tokens
 await transfer.handler(
-    runtime,
-    {
-        content: {
-            tokenAddress: "0x1d17CBcF0D6D143135aE902365D2E5e2A16538D4", // USDC
-            recipient: "0xCCa8009f5e09F8C5dB63cb0031052F9CB635Af62",
-            amount: "100",
-        },
+  runtime,
+  {
+    content: {
+      tokenAddress: '0x1d17CBcF0D6D143135aE902365D2E5e2A16538D4', // USDC
+      recipient: '0xCCa8009f5e09F8C5dB63cb0031052F9CB635Af62',
+      amount: '100',
     },
-    state
+  },
+  state
 );
 ```
 
@@ -62,9 +62,9 @@ The plugin includes pre-configured addresses for common tokens:
 
 ```typescript
 const TOKENS = {
-    ZK: "0x5A7d6b2F92C77FAD6CCaBd7EE0624E64907Eaf3E",
-    ETH: "0x000000000000000000000000000000000000800A",
-    USDC: "0x1d17CBcF0D6D143135aE902365D2E5e2A16538D4",
+  ZK: '0x5A7d6b2F92C77FAD6CCaBd7EE0624E64907Eaf3E',
+  ETH: '0x000000000000000000000000000000000000800A',
+  USDC: '0x1d17CBcF0D6D143135aE902365D2E5e2A16538D4',
 };
 ```
 
@@ -72,15 +72,11 @@ const TOKENS = {
 
 ```typescript
 const web3 = new Web3();
-web3.registerPlugin(
-    new ZKsyncPlugin(
-        Web3ZKsyncL2.initWithDefaultProvider(types.Network.Mainnet)
-    )
-);
+web3.registerPlugin(new ZKsyncPlugin(Web3ZKsyncL2.initWithDefaultProvider(types.Network.Mainnet)));
 
 const smartAccount = new web3.ZKsync.SmartAccount({
-    address: PUBLIC_KEY,
-    secret: PRIVATE_KEY,
+  address: PUBLIC_KEY,
+  secret: PRIVATE_KEY,
 });
 ```
 
@@ -90,14 +86,14 @@ The plugin includes comprehensive error handling:
 
 ```typescript
 try {
-    const transferTx = await smartAccount.transfer({
-        to: recipient,
-        token: tokenAddress,
-        amount: amount,
-    });
-    const receipt = await transferTx.wait();
+  const transferTx = await smartAccount.transfer({
+    to: recipient,
+    token: tokenAddress,
+    amount: amount,
+  });
+  const receipt = await transferTx.wait();
 } catch (error) {
-    console.error("Transfer failed:", error.message);
+  console.error('Transfer failed:', error.message);
 }
 ```
 
@@ -124,14 +120,14 @@ Common error cases:
 
 ```typescript
 interface TransferContent {
-    tokenAddress: string;
-    recipient: string;
-    amount: string | number;
+  tokenAddress: string;
+  recipient: string;
+  amount: string | number;
 }
 
 interface ZKsyncConfig {
-    ZKSYNC_ADDRESS: string;
-    ZKSYNC_PRIVATE_KEY: string;
+  ZKSYNC_ADDRESS: string;
+  ZKSYNC_PRIVATE_KEY: string;
 }
 ```
 
@@ -174,19 +170,19 @@ const zksync = zksyncEraPlugin;
 
 // Execute transfer
 try {
-    await transfer.handler(
-        runtime,
-        {
-            content: {
-                tokenAddress: TOKENS.USDC,
-                recipient: "0xCCa8009f5e09F8C5dB63cb0031052F9CB635Af62",
-                amount: "100",
-            },
-        },
-        state
-    );
+  await transfer.handler(
+    runtime,
+    {
+      content: {
+        tokenAddress: TOKENS.USDC,
+        recipient: '0xCCa8009f5e09F8C5dB63cb0031052F9CB635Af62',
+        amount: '100',
+      },
+    },
+    state
+  );
 } catch (error) {
-    console.error("Transfer failed:", error.message);
+  console.error('Transfer failed:', error.message);
 }
 ```
 

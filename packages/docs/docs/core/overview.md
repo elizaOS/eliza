@@ -4,218 +4,267 @@ sidebar_position: 1
 
 # Overview
 
+ElizaOS is a framework for creating AI agents that can interact across multiple platforms through a consistent, extensible architecture.
 
-Eliza is a framework for creating AI agents that can interact across multiple platforms.
+## Core Features
 
- **Features**
-- **Modular Design**: Plugins and services allow for flexible customization.
-- **Knowledge**: Supports both RAG-based and direct knowledge processing.
-- **Stateful Interactions**: Maintains context across conversations.
-- **Multi-Agent Support**: Supports running multiple agents with distinct configurations.
-- **Multi-Platform Support**: Integrates with various clients (e.g., Discord, Telegram).
+- **Modular Architecture**: A plugin-based system for extending functionality
+- **Entity-Component System**: Flexible data modeling for agents and users
+- **Vector-Based Memory**: Semantic retrieval of conversations and knowledge
+- **Multi-Modal Interactions**: Support for text, voice, images, and other media formats
+- **Reflection & Self-Improvement**: Agents learn from interactions and adapt over time
+- **Cross-Platform Integration**: Connect to multiple services through a unified interface
 
-Eliza consists of these core components:
-- **Agents (Runtime)**: AI personalities that interact with users and platforms
-- **Actions**: Executable behaviors that agents can perform in response to messages
-- **Clients**: Platform connectors for services like Discord, Twitter, and Telegram 
-- **Plugins**: Modular extensions that add new features and capabilities
-- **Providers**: Services that supply contextual information to agents
-- **Evaluators**: Modules that analyze conversations and track agent goals
-- **Character Files**: JSON configurations that define agent personalities
-- **Memory System**: Database that stores and manages agent information using vector embeddings
+## Key Components
 
-Here's an overview of how eliza works from user input to response generation:
-![](/img/overview.png)
-Source: https://x.com/gelatonetwork/status/1894408632915169618
+ElizaOS consists of these core architectural components:
 
+![](/img/eliza-architecture.jpg)
 
----
+### [Agent Runtime](./agents.md)
 
-## [Agent Runtime](./agents.md)
+The Agent Runtime is the central nervous system of ElizaOS. It orchestrates all components, manages state, processes messages, and coordinates the agent's behavior.
 
-**The Brain**
+**Responsibilities:**
 
-The Runtime (`src/runtime.ts`) acts as the control tower for your AI agents. Think of it as a conductor leading an orchestra - it ensures all parts work together harmoniously. It serves as the central coordination layer for message processing, memory management, state composition, action execution, and integration with AI models and external services.
+- Lifecycle management
+- Service coordination
+- Memory management
+- State composition
+- Action execution
+- Model integration
 
-- **Core Functions**: 
-  - Coordinates message processing
-  - Manages the agent's lifecycle
-  - Handles integration with AI models
-  - Orchestrates plugins and services
+### [Projects](./project.md)
 
-## [Character Files](./characterfile.md)
+Projects are the top-level containers that define one or more agents, their configurations, and shared resources. A project:
 
-**The Personality**
+- Defines agent characters and behavior
+- Configures plugins and services
+- Sets up knowledge and memory systems
+- Establishes shared worlds and environments
 
-[Character Files](./characterfile.md) (`src/types.ts`) define agent **personalities** and **capabilities** including biographical information, interaction styles, plugin configurations, and platform integrations.
+### [Entities & Components](./entities.md)
 
-The character file defines who your agent is - like a script for an actor. It includes:
+ElizaOS uses an entity-component architecture for flexible data modeling:
 
-- Biographical information and backstory
-- Topics the agent can discuss
-- Writing style and tone
-- Which AI models to use
-- Which plugins to load
-- Which platforms to connect to
+- **Entities**: Base objects with unique identifiers (agents, users, etc.)
+- **Components**: Modular data attached to entities (profiles, settings, etc.)
 
+This architecture allows for dynamic composition of objects and extensible data models without complex inheritance hierarchies.
 
-## [Clients](./clients.md)
+### [Services](./services.md)
 
-**The Interface**
+Services connect agents to different platforms (Discord, X/Twitter, Telegram, etc.) and provide specialized capabilities:
 
-Clients connect your agent to different platforms (Discord, Twitter, Slack, Farcaster, etc.) while maintaining consistent behavior across all interfaces. Each client can handle different types of interactions:
-- Chat messages
-- Social media posts
-- Voice conversations
-- Platform-specific features
+- **Platform Services**: Connect to external platforms
+- **Core Services**: Provide essential functionality (speech, vision, etc.)
+- **Extension Services**: Add specialized capabilities
 
+Services use a consistent interface but can provide platform-specific features when needed.
 
-## [Actions](./actions.md)
+### [Actions](./actions.md)
 
-**What Agents Can Do**
+Actions define how agents respond to messages and interact with the world:
 
-Actions (`src/actions.ts`) are like tools in a toolbox. They define how agents respond and interact with messages, enabling custom behaviors, external system interactions, media processing, and platform-specific features.
+- **Communication Actions**: Generate responses and engage in conversation
+- **Integration Actions**: Interact with external systems and APIs
+- **Media Actions**: Generate and process images, audio, and other media
+- **Platform Actions**: Leverage platform-specific features
 
-## [Evaluators](./evaluators.md)
+Each action includes validation logic, a handler function, and thought processes that explain the agent's reasoning.
 
-**Quality Control**
+### [Providers](./providers.md)
 
-Evaluators (`src/evaluators.ts`) act like referees, making sure the agent follows rules and guidelines. They monitor conversations and help improve agent responses over time by assessing conversations and maintaining agent knowledge through fact extraction, goal tracking, memory building, and relationship management.
+Providers supply contextual information to agents as they make decisions:
 
-## [Providers](./providers.ts)
+- **Memory Providers**: Access relevant conversation history
+- **Knowledge Providers**: Supply factual information
+- **State Providers**: Provide current context and environment details
+- **Temporal Providers**: Manage time-based awareness
 
-**Information Flow**
+Providers are dynamically composed to create a comprehensive context for agent decision-making.
 
-Providers (`src/providers.ts`) are the agent's eyes and ears, like a newsroom keeping them informed about the world. They supply real-time information to agents by integrating external APIs, managing temporal awareness, and providing system status updates to help agents make better decisions.
+### [Evaluators](./evaluators.md)
 
+Evaluators analyze conversations after they happen, helping agents learn and improve:
 
-## Memory & Knowledge Systems
+- **Reflection Evaluator**: Enables self-awareness and improvement
+- **Fact Evaluator**: Extracts factual information from conversations
+- **Goal Evaluator**: Tracks progress on objectives
+- **Relationship Evaluator**: Models connections between entities
 
-The framework implements specialized memory systems through:
+Evaluators create a feedback loop for continuous agent improvement.
 
-### Memory Manager
+### [Plugins](./plugins.md)
 
-The Memory Manager (`src/memory.ts`) acts like a personal diary and helps agents remember:
-- Recent conversations
-- Important facts
-- User interactions
-- Immediate context for current discussions
+Plugins extend ElizaOS with new capabilities by adding services, actions, providers, evaluators, and more:
 
-### Knowledge Systems
-Think of this as the agent's library (`src/knowledge.ts`, `src/ragknowledge.ts`), where information is:
-- Organized into searchable chunks
-- Converted into vector embeddings
-- Retrieved based on relevance
-- Used to enhance responses
+- **Core Plugins**: Essential functionality for all agents
+- **Platform Plugins**: Integrations with external platforms
+- **Capability Plugins**: Special abilities like blockchain interaction
+- **Utility Plugins**: Tools for specific tasks or domains
 
-## Data Management
-The data layer provides robust storage and caching through:
+Plugins use a consistent installation and configuration pattern.
 
-### Database System
+## Data Systems
 
-The database (`src/database.ts`) acts as a filing cabinet, storing:
-- Conversation histories
-- User interactions
-- Transaction management
-- Vector storage
-- Relationship tracking
-- Embedded knowledge
-- Agent state
+### [Database System](./database.md)
 
-See also: [Memory Management](../guides/memory-management.md)
+ElizaOS uses a flexible adapter-based database system:
 
-## Cache System
+- **Entity Storage**: Manages entity and component data
+- **Memory System**: Stores conversations and extracted facts
+- **Vector Search**: Enables semantic retrieval of information
+- **Relationship Tracking**: Maps connections between entities
+- **World & Room Management**: Organizes conversation spaces
 
-**Performance Optimization**
+The current implementation supports PGLite (for development) and PostgreSQL (for production) using Drizzle ORM.
 
-The Cache System (`src/cache.ts`) creates shortcuts for frequently accessed information, making agents respond faster and more efficiently.
+### [Knowledge System](./knowledge.md)
 
+The knowledge system enables agents to access and use structured information:
+
+- **Document Processing**: Converts various file formats into usable knowledge
+- **RAG Implementation**: Retrieval-Augmented Generation for contextual responses
+- **Semantic Search**: Finds relevant information through vector similarity
+- **Memory Integration**: Combines knowledge with conversation memory
+
+## Structural Elements
+
+### [Worlds](./worlds.md)
+
+Worlds are containers for agents, rooms, and shared resources that provide:
+
+- Namespace isolation
+- Resource sharing
+- Multi-agent environments
+- Context boundaries
+
+### [Rooms](./rooms.md)
+
+Rooms are conversation spaces where entities interact:
+
+- Direct messages between entities
+- Group conversations
+- Platform-specific channels
+- Persistent conversation history
+
+### [Tasks](./tasks.md)
+
+The task system enables asynchronous processing and scheduled operations:
+
+- Background processing
+- Scheduled activities
+- Workflow management
+- Event-driven operations
 
 ## System Flow
 
-When someone interacts with your agent, the Client receives the message and forwards it to the Runtime which processes it with the characterfile configuration. The Runtime loads relevant memories and knowledge, uses actions and evaluators to determine how to response, gets additional context through providers. Then the Runtime generates a response using the AI model, stores new memories, and sends the response back through the client.
+When a message is received:
 
+1. The **Service** receives the input and forwards it to the **Runtime**
+2. The **Runtime** loads the agent configuration from the **Project**
+3. **Providers** supply context (memories, knowledge, state)
+4. Valid **Actions** are identified through validation functions
+5. The agent decides on a response, including internal **thoughts**
+6. The response is returned through the **Service**
+7. **Evaluators** analyze the conversation for insights
+8. New memories and relationships are stored in the **Database**
 
----
+This creates a continuous cycle of interaction, reflection, and improvement.
 
 ## Common Patterns
 
-### Memory Usage (`src/memory.ts`)
+### Creating an Agent Response
+
 ```typescript
-// Store conversation data
-await messageManager.createMemory({
-    id: messageId,
-    content: { text: "Message content" },
-    userId: userId,
-    roomId: roomId
+// The agent runtime processes a message and generates a response
+const result = await runtime.processMessage({
+  entityId: senderId,
+  roomId: channelId,
+  content: { text: 'Hello, how are you?' },
 });
 
-// Retrieve context
-const recentMessages = await messageManager.getMemories({
-    roomId: roomId,
-    count: 10
+// The response includes thought process and actions
+console.log(result.thought); // Internal reasoning (not shown to user)
+console.log(result.text); // The actual response
+console.log(result.actions); // Actions performed
+```
+
+### Storing and Retrieving Memories
+
+```typescript
+// Store a memory
+await runtime.createMemory(
+  {
+    entityId: userId,
+    roomId: channelId,
+    content: { text: 'Important information' },
+    embedding: await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+      text: 'Important information',
+    }),
+  },
+  'facts'
+);
+
+// Retrieve relevant memories
+const memories = await runtime.searchMemories({
+  tableName: 'messages',
+  roomId: channelId,
+  embedding: embedding,
+  count: 5,
 });
 ```
 
-### Action Implementation (`src/actions.ts`)
-```typescript
-const customAction: Action = {
-    name: "CUSTOM_ACTION",
-    similes: ["ALTERNATE_NAME"],
-    description: "Action description",
-    validate: async (runtime, message) => {
-        // Validation logic
-        return true;
-    },
-    handler: async (runtime, message) => {
-        // Implementation logic
-        return true;
-    }
-};
-```
+### Creating a Relationship Between Entities
 
-### Provider Integration (`src/providers.ts`)
 ```typescript
-const dataProvider: Provider = {
-    get: async (runtime: IAgentRuntime, message: Memory) => {
-        // Fetch and format data
-        return "Formatted context string";
-    }
-};
+// Establish a relationship
+await runtime.createRelationship({
+  sourceEntityId: userEntityId,
+  targetEntityId: agentEntityId,
+  tags: ['friend', 'frequent_interaction'],
+  metadata: {
+    interactions: 12,
+    trust_level: 'high',
+  },
+});
 ```
-
----
 
 ## FAQ
 
 ### What's the difference between Actions, Evaluators, and Providers?
 
-Actions define what an agent can do, Evaluators analyze what happened, and Providers supply information to help make decisions.
+**Actions** define what an agent can do and are executed during response generation. **Evaluators** analyze conversations after they happen to extract insights and improve future responses. **Providers** supply contextual information before the agent decides how to respond.
 
-### Can I use multiple AI models with one agent?
+### How do agent thoughts relate to evaluator reflections?
 
-Yes, agents can be configured to use different models for different tasks (chat, image generation, embeddings) through the modelProvider settings.
+Agent **thoughts** are generated during response creation to explain reasoning in the moment. Evaluator **reflections** happen after responses, analyzing longer-term patterns and extracting insights for future interactions.
 
-### How does memory persistence work?
+### How is memory organized in ElizaOS?
 
-Memory is stored through database adapters which can use SQLite, PostgreSQL, or other backends, with each type (messages, facts, knowledge) managed separately.
+Memory is organized into different types (messages, facts, knowledge) and stored with vector embeddings for semantic search. This allows agents to retrieve relevant memories based on context rather than just recency.
 
-### What's the difference between Lore and Knowledge?
+### How does the entity-component system work?
 
-Lore defines the character's background and history, while Knowledge represents factual information the agent can reference and use.
+The entity-component system provides a flexible way to model data. **Entities** are base objects with unique IDs, while **Components** are pieces of data attached to entities. This allows for dynamic composition without complex inheritance.
 
-### How do I add custom functionality?
+### How do I extend an agent with new capabilities?
 
-Create plugins that implement the Action, Provider, or Evaluator interfaces and register them with the runtime.
+Create or install plugins that provide new actions, services, providers, or evaluators. Plugins can be registered in the project configuration and will be automatically loaded when the agent starts.
 
-### Do I need to implement all components?
+### What model providers are supported?
 
-No, each component is optional. Start with basic Actions and add Evaluators and Providers as needed.
+ElizaOS supports multiple model providers including OpenAI, Anthropic, and local models. The model provider is configured at the project level and can be overridden for specific operations.
 
-### How does RAG integration work?
+### How do I configure the database?
 
-Documents are chunked, embedded, and stored in the knowledge base for semantic search during conversations via the RAGKnowledgeManager.
+ElizaOS currently supports PostgreSQL (recommended for production) and PGLite (for development). Configure the connection using environment variables like `POSTGRES_URL` or `PGLITE_DATA_DIR`.
 
-### What's the recommended database for production?
+### How do services differ from the old "clients"?
 
-PostgreSQL with vector extensions is recommended for production, though SQLite works well for development and testing.
+Services provide a more comprehensive integration model than the previous "clients" concept. They offer standardized interfaces for various platforms while allowing for platform-specific features and optimizations.
+
+## Getting Started
+
+To create your first ElizaOS project, see the [Quick Start Guide](../quickstart.md)

@@ -34,11 +34,11 @@ MINA_NETWORK=mainnet|devnet
 Import and register the plugin in your Eliza configuration:
 
 ```typescript
-import { minaPlugin } from "@elizaos/plugin-mina";
+import { minaPlugin } from '@elizaos/plugin-mina';
 
 export default {
-    plugins: [minaPlugin],
-    // ... other configuration
+  plugins: [minaPlugin],
+  // ... other configuration
 };
 ```
 
@@ -50,7 +50,7 @@ Transfer MINA tokens to another address:
 
 ```typescript
 // Example conversation
-User: "Send 1 MINA to B62qkGSBuLmqYApYoWTmAzUtwFVx6Fe9ZStJVPzCwLjWZ5NQDYTiqEU";
+User: 'Send 1 MINA to B62qkGSBuLmqYApYoWTmAzUtwFVx6Fe9ZStJVPzCwLjWZ5NQDYTiqEU';
 Assistant: "I'll send 1 MINA token now...";
 ```
 
@@ -61,7 +61,7 @@ Query wallet balance and portfolio value:
 ```typescript
 // Example conversation
 User: "What's my wallet balance?";
-Assistant: "Your wallet contains 299 MINA ($150 USD)...";
+Assistant: 'Your wallet contains 299 MINA ($150 USD)...';
 ```
 
 ## Get Faucet Tokens
@@ -70,7 +70,7 @@ Request faucet tokens for testing:
 
 ```typescript
 // Example conversation
-User: "Get faucet to B62qqLnFfhYvMkFD2nUeLX1bCHtDQH3edRVtvENtwAfn2KTCFxYRjtM";
+User: 'Get faucet to B62qqLnFfhYvMkFD2nUeLX1bCHtDQH3edRVtvENtwAfn2KTCFxYRjtM';
 Assistant: "I'll send you some faucet tokens...";
 ```
 

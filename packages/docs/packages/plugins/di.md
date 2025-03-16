@@ -38,17 +38,16 @@ The following decorators are provided by the [inversify](https://inversify.io/) 
 This decorator marks a class as injectable. This means that you can inject this class into other classes using the `@inject` decorator.
 
 ```typescript
-import { injectable } from "inversify";
+import { injectable } from 'inversify';
 
 @injectable()
-class SampleClass {
-}
+class SampleClass {}
 ```
 
 Remember to register the class with the container before injecting it into other classes.
 
 ```typescript
-import { globalContainer } from "@elizaos/plugin-di";
+import { globalContainer } from '@elizaos/plugin-di';
 
 // Register the class with the container as a singleton, this means that the class will be instantiated only once.
 globalContainer.bind(SingletonClass).toSelf().inSingletonScope();
@@ -63,13 +62,13 @@ globalContainer.bind(CharactorContextClass).toSelf().inRequestScope();
 This decorator marks a parameter as an injection target. This means that the parameter will be injected with the appropriate dependency when the class is instantiated.
 
 ```typescript
-import { injectable, inject } from "inversify";
+import { injectable, inject } from 'inversify';
 
 @injectable()
 class SampleClass {
   constructor(
     // Inject the SampleDependency as a public property of the class.
-    @inject("SampleDependency") public sampleDependency: SampleDependency
+    @inject('SampleDependency') public sampleDependency: SampleDependency
   ) {}
 }
 ```
@@ -83,15 +82,15 @@ And that provides the following decorators to improve the readability of the cod
 
 > Category: Property Decorator
 
-This decorator is used to define a property in an action content class  which will be used to generate the action content object Schema and content description template for LLM object generation.
+This decorator is used to define a property in an action content class which will be used to generate the action content object Schema and content description template for LLM object generation.
 
 ```typescript
 import { z } from 'zod';
-import { property } from "@elizaos/plugin-di";
+import { property } from '@elizaos/plugin-di';
 
 class SampleActionContent {
   @property({
-    description: "Sample property description",
+    description: 'Sample property description',
     schema: z.string(),
   })
   sampleProperty: string;
@@ -114,37 +113,37 @@ You don't need to think about the template for content generation, it will be ge
 What you need to implement is the `execute` method.
 
 ```typescript
-import { injectable } from "inversify";
-import { BaseInjectableAction } from "@elizaos/plugin-di";
+import { injectable } from 'inversify';
+import { BaseInjectableAction } from '@elizaos/plugin-di';
 
 class SampleActionContent {
-    @property({
-        description: "Sample property description",
-        schema: z.string(),
-    })
-    property1: string;
+  @property({
+    description: 'Sample property description',
+    schema: z.string(),
+  })
+  property1: string;
 }
 
 @injectable()
 class SampleAction extends BaseInjectableAction<SampleActionContent> {
-    constructor() {
-        super({
-            /** general action constent options */
-            contentClass: SampleActionContent,
-        });
-    }
+  constructor() {
+    super({
+      /** general action constent options */
+      contentClass: SampleActionContent,
+    });
+  }
 
-    /**
-     * It will be called by `handler` function when the action is triggered.
-     */
-    async execute(
-        content: SampleActionContent | null,
-        runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        callback?: HandlerCallback
-    ): Promise<void> {
-        // Your action logic here
-    }
+  /**
+   * It will be called by `handler` function when the action is triggered.
+   */
+  async execute(
+    content: SampleActionContent | null,
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    callback?: HandlerCallback
+  ): Promise<void> {
+    // Your action logic here
+  }
 }
 ```

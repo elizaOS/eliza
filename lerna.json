@@ -1,17 +1,13 @@
 {
   "version": "1.0.0-alpha.63",
-  "packages": [
-    "packages/*"
-  ],
+  "packages": ["packages/*"],
   "npmClient": "bun",
   "command": {
     "publish": {
-      "workspaceConfig": true,
-      "preserveWorkspacePackageVersions": true
+      "workspaceConfig": true
     },
     "version": {
-      "workspaceConfig": true,
-      "preserveWorkspacePackageVersions": true
+      "workspaceConfig": true
     }
   }
 }

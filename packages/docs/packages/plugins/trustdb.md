@@ -23,10 +23,10 @@ npm install @elizaos/plugin-trustdb
 The plugin uses SQLite as its database backend and requires proper initialization:
 
 ```typescript
-import { TrustScoreDatabase } from "@elizaos/plugin-trustdb";
-import Database from "better-sqlite3";
+import { TrustScoreDatabase } from '@elizaos/plugin-trustdb';
+import Database from 'better-sqlite3';
 
-const db = new Database("path/to/database.sqlite");
+const db = new Database('path/to/database.sqlite');
 const trustDB = new TrustScoreDatabase(db);
 ```
 
@@ -35,25 +35,25 @@ const trustDB = new TrustScoreDatabase(db);
 Import and use the TrustDB functionality in your application:
 
 ```typescript
-import { TrustScoreDatabase } from "@elizaos/plugin-trustdb";
+import { TrustScoreDatabase } from '@elizaos/plugin-trustdb';
 
 // Initialize database
 const trustDB = new TrustScoreDatabase(db);
 
 // Add a recommender
 const recommender = {
-    id: "uuid",
-    address: "wallet-address",
-    telegramId: "telegram-id",
+  id: 'uuid',
+  address: 'wallet-address',
+  telegramId: 'telegram-id',
 };
 trustDB.addRecommender(recommender);
 
 // Track token performance
 const performance = {
-    tokenAddress: "token-address",
-    priceChange24h: 10.5,
-    volumeChange24h: 25.3,
-    // ... other metrics
+  tokenAddress: 'token-address',
+  priceChange24h: 10.5,
+  volumeChange24h: 25.3,
+  // ... other metrics
 };
 trustDB.upsertTokenPerformance(performance);
 ```
@@ -67,16 +67,16 @@ The main database manager providing comprehensive tracking and analysis:
 ```typescript
 // Get or create a recommender
 const recommender = await trustDB.getOrCreateRecommender({
-    address: "wallet-address",
-    telegramId: "user-id",
+  address: 'wallet-address',
+  telegramId: 'user-id',
 });
 
 // Update recommender metrics
 trustDB.updateRecommenderMetrics({
-    recommenderId: "uuid",
-    trustScore: 85.5,
-    totalRecommendations: 10,
-    // ... other metrics
+  recommenderId: 'uuid',
+  trustScore: 85.5,
+  totalRecommendations: 10,
+  // ... other metrics
 });
 ```
 
@@ -85,17 +85,17 @@ trustDB.updateRecommenderMetrics({
 ```typescript
 // Add trade performance
 trustDB.addTradePerformance(
-    {
-        token_address: "address",
-        recommender_id: "uuid",
-        buy_price: 1.0,
-        // ... other trade details
-    },
-    false
+  {
+    token_address: 'address',
+    recommender_id: 'uuid',
+    buy_price: 1.0,
+    // ... other trade details
+  },
+  false
 );
 
 // Get token performance
-const tokenMetrics = trustDB.getTokenPerformance("token-address");
+const tokenMetrics = trustDB.getTokenPerformance('token-address');
 ```
 
 ## Development
@@ -131,35 +131,35 @@ npm run lint
 
 ```typescript
 interface Recommender {
-    id: string;
-    address: string;
-    solanaPubkey?: string;
-    telegramId?: string;
-    discordId?: string;
-    twitterId?: string;
-    ip?: string;
+  id: string;
+  address: string;
+  solanaPubkey?: string;
+  telegramId?: string;
+  discordId?: string;
+  twitterId?: string;
+  ip?: string;
 }
 
 interface RecommenderMetrics {
-    recommenderId: string;
-    trustScore: number;
-    totalRecommendations: number;
-    successfulRecs: number;
-    avgTokenPerformance: number;
-    riskScore: number;
-    consistencyScore: number;
-    virtualConfidence: number;
-    lastActiveDate: Date;
-    trustDecay: number;
-    lastUpdated: Date;
+  recommenderId: string;
+  trustScore: number;
+  totalRecommendations: number;
+  successfulRecs: number;
+  avgTokenPerformance: number;
+  riskScore: number;
+  consistencyScore: number;
+  virtualConfidence: number;
+  lastActiveDate: Date;
+  trustDecay: number;
+  lastUpdated: Date;
 }
 
 interface TokenPerformance {
-    tokenAddress: string;
-    symbol: string;
-    priceChange24h: number;
-    volumeChange24h: number;
-    // ... other performance metrics
+  tokenAddress: string;
+  symbol: string;
+  priceChange24h: number;
+  volumeChange24h: number;
+  // ... other performance metrics
 }
 ```
 

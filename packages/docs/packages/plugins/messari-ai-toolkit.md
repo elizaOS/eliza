@@ -24,13 +24,14 @@ https://github.com/messari/plugin-messari-ai-toolkit/blob/master/.github/assets/
 ### Setup
 
 1. First, clone either:
+
    - The main Eliza repository: [github.com/elizaOS/eliza](https://github.com/elizaOS/eliza)
    - OR the Eliza starter repository: [github.com/elizaOS/eliza-starter](https://github.com/elizaOS/eliza-starter)
 
 2. Install dependencies and build the project:
    ```bash
-   pnpm install
-   pnpm build
+   bun install
+   bun build
    ```
 
 ### Installing the Messari Plugin
@@ -38,19 +39,20 @@ https://github.com/messari/plugin-messari-ai-toolkit/blob/master/.github/assets/
 Depending on which repository you cloned, use one of the following commands:
 
 **For Main Eliza Repository:**
+
 ```bash
-pnpm --filter agent add github:messari/plugin-messari-ai-toolkit
+bun --filter agent add github:messari/plugin-messari-ai-toolkit
 ```
 
 **For Eliza Starter:**
+
 ```bash
-pnpm add github:messari/plugin-messari-ai-toolkit
+bun add github:messari/plugin-messari-ai-toolkit
 ```
 
 > Note: For the latest plugin mappings and compatibility information, refer to the [eliza-plugins registry](https://github.com/elizaos-plugins/registry/blob/645ba61508a7404c5b890f47e43c005448592510/index.json#L60).
 
 to use, import into `agent/index.ts` and add as a plugin
-
 
 ## Configuration
 
@@ -63,6 +65,7 @@ To use this plugin, you'll need a Messari API key. The Messari AI Toolkit is an 
 ### Enterprise Access
 
 The AI Toolkit subscription includes access to Messari's base package:
+
 - Asset API
 - News API
 - Marketdata API

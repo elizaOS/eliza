@@ -1,4 +1,3 @@
-
 # @elizaos/plugin-attps
 
 Foundation plugin that enables advanced agent interactions, data verification, and price queries on the Eliza OS platform. It streamlines agent creation, verification processes, and provides a flexible framework for building robust agent-based solutions.
@@ -10,17 +9,20 @@ The ATTPs plugin bridges agent-based logic with the Eliza ecosystem. It handles 
 ## Features
 
 ### Agent Operations
+
 - **Agent Creation**: Deploy new agents with custom settings
 - **Registration**: Register agents on-chain or via standardized processes
 - **Multi-Signer Framework**: Supports threshold-based approval flows
 
 ### Data Verification
+
 - **Chain Validation**: Verify data authenticity on-chain
 - **Transaction Execution**: Handle verification logic with built-in security checks
 - **Auto-Hashing**: Convert raw data to hashed formats when needed
 - **Metadata Parsing**: Validate content type, encoding, and compression
 
 ### Price Queries
+
 - **Live Price Data**: Fetch price information for various pairs
 - **Format Validation**: Normalize user query inputs to standard trading-pair formats
 - **APIs Integration**: Retrieve real-time or near-real-time pricing information
@@ -28,11 +30,13 @@ The ATTPs plugin bridges agent-based logic with the Eliza ecosystem. It handles 
 ## Security Features
 
 ### Access Control
+
 - **Private Key Management**: Safe usage of private keys for transaction signing
 - **Environment Variables**: Secure injection of credentials
 - **On-Chain Validation**: Leverage on-chain contract checks
 
 ### Verification
+
 - **Input Validation**: Strict schema checks before on-chain operations
 - **Transaction Receipts**: Provide verifiable transaction details
 - **Error Handling**: Detailed error logs for quick debugging
@@ -46,6 +50,7 @@ npm install @elizaos/plugin-attps
 ## Configuration
 
 Configure the plugin by setting environment variables or runtime settings:
+
 - ATTPS_RPC_URL
 - ATTPS_PROXY_ADDRESS
 - ATTPS_PRIVATE_KEY
@@ -55,18 +60,20 @@ Configure the plugin by setting environment variables or runtime settings:
 ## Usage
 
 ### Basic Setup
+
 ```typescript
-import { attpsPlugin } from "@elizaos/plugin-attps";
+import { attpsPlugin } from '@elizaos/plugin-attps';
 
 // Initialize the plugin
 const runtime = await initializeRuntime({
-    plugins: [attpsPlugin],
+  plugins: [attpsPlugin],
 });
 ```
 
 ### Actions
 
 #### CREATE_AND_REGISTER_AGENT
+
 Creates and registers an agent using specified settings.
 
 ```typescript
@@ -79,6 +86,7 @@ const result = await runtime.executeAction("CREATE_AND_REGISTER_AGENT", {
 ```
 
 #### VERIFY
+
 Verifies data on-chain via the Agent SDK.
 
 ```typescript
@@ -93,17 +101,19 @@ const result = await runtime.executeAction("VERIFY", {
 ```
 
 #### PRICE_QUERY
+
 Fetches live price data for a specified trading pair.
 
 ```typescript
-const result = await runtime.executeAction("PRICE_QUERY", {
-    pair: "BTC/USD",
+const result = await runtime.executeAction('PRICE_QUERY', {
+  pair: 'BTC/USD',
 });
 ```
 
 ## Performance Optimization
 
 1. **Cache Management**
+
    - Implement caching for frequent queries
    - Monitor retrieval times and cache hits
 
@@ -112,6 +122,7 @@ const result = await runtime.executeAction("PRICE_QUERY", {
    - Validate response parsing to reduce overhead
 
 ## System Requirements
+
 - Node.js 16.x or higher
 - Sufficient network access to on-chain endpoints
 - Basic configuration of environment variables
@@ -120,10 +131,12 @@ const result = await runtime.executeAction("PRICE_QUERY", {
 ## Troubleshooting
 
 1. **Invalid Agent Settings**
+
    - Ensure signers and threshold are correct
    - Validate agentHeader for proper UUIDs and numeric values
 
 2. **Verification Failures**
+
    - Check the input data formats
    - Confirm environment variables are set
 
@@ -134,10 +147,12 @@ const result = await runtime.executeAction("PRICE_QUERY", {
 ## Safety & Security
 
 1. **Credential Management**
+
    - Store private keys securely
    - Do not commit secrets to version control
 
 2. **Transaction Limits**
+
    - Configure thresholds to mitigate abuse
    - Log transaction attempts and failures
 
@@ -148,6 +163,7 @@ const result = await runtime.executeAction("PRICE_QUERY", {
 ## Support
 
 For issues or feature requests:
+
 1. Check existing documentation
 2. Submit a GitHub issue with relevant details
 3. Include transaction logs and system info if applicable

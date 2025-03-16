@@ -21,7 +21,7 @@ This plugin provides comprehensive NFT functionality, including collection creat
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-nft-generation
+bun install @elizaos/plugin-nft-generation
 ```
 
 ## Configuration
@@ -54,9 +54,9 @@ Creates a new NFT collection with an AI-generated logo.
 
 ```typescript
 const result = await createCollection({
-    runtime: runtimeInstance,
-    collectionName: "MyCollection",
-    fee: 0.01, // Optional: royalty fee percentage
+  runtime: runtimeInstance,
+  collectionName: 'MyCollection',
+  fee: 0.01, // Optional: royalty fee percentage
 });
 ```
 
@@ -66,12 +66,12 @@ Mints a new NFT in an existing collection.
 
 ```typescript
 const nft = await createNFT({
-    runtime: runtimeInstance,
-    collectionName: "MyCollection",
-    collectionAddress: "collection123",
-    collectionAdminPublicKey: "admin123",
-    collectionFee: 0.01,
-    tokenId: 1,
+  runtime: runtimeInstance,
+  collectionName: 'MyCollection',
+  collectionAddress: 'collection123',
+  collectionAdminPublicKey: 'admin123',
+  collectionFee: 0.01,
+  tokenId: 1,
 });
 ```
 
@@ -81,9 +81,9 @@ Verifies an NFT as part of a collection.
 
 ```typescript
 const verification = await verifyNFT({
-    runtime: runtimeInstance,
-    collectionAddress: "collection123",
-    NFTAddress: "nft123",
+  runtime: runtimeInstance,
+  collectionAddress: 'collection123',
+  NFTAddress: 'nft123',
 });
 ```
 
@@ -110,39 +110,38 @@ Verifies an NFT's collection membership.
 The plugin provides a streamlined process for generating and verifying NFT collections:
 
 ```typescript
-import { createCollection, createNFT, verifyNFT } from "./handlers";
+import { createCollection, createNFT, verifyNFT } from './handlers';
 
 const runtime = initializeRuntime(); // Replace with actual IAgentRuntime initialization
 
 (async () => {
-    // Step 1: Create Collection
-    const collectionResult = await createCollection({
-        runtime,
-        collectionName: "MyUniqueCollection",
-    });
+  // Step 1: Create Collection
+  const collectionResult = await createCollection({
+    runtime,
+    collectionName: 'MyUniqueCollection',
+  });
 
-    console.log("Collection created:", collectionResult);
+  console.log('Collection created:', collectionResult);
 
-    // Step 2: Create an NFT in the Collection
-    const nftResult = await createNFT({
-        runtime,
-        collectionName: "MyUniqueCollection",
-        collectionAddress: collectionResult.address,
-        collectionAdminPublicKey:
-            collectionResult.collectionInfo.adminPublicKey,
-        collectionFee: 0.01,
-        tokenId: 1,
-    });
+  // Step 2: Create an NFT in the Collection
+  const nftResult = await createNFT({
+    runtime,
+    collectionName: 'MyUniqueCollection',
+    collectionAddress: collectionResult.address,
+    collectionAdminPublicKey: collectionResult.collectionInfo.adminPublicKey,
+    collectionFee: 0.01,
+    tokenId: 1,
+  });
 
-    console.log("NFT created:", nftResult);
+  console.log('NFT created:', nftResult);
 
-    // Step 3: Verify the NFT
-    const verificationResult = await verifyNFT({
-        runtime,
-        collectionAddress: collectionResult.address,
-        NFTAddress: nftResult.address,
-    });
-    console.log("NFT verified:", verificationResult);
+  // Step 3: Verify the NFT
+  const verificationResult = await verifyNFT({
+    runtime,
+    collectionAddress: collectionResult.address,
+    NFTAddress: nftResult.address,
+  });
+  console.log('NFT verified:', verificationResult);
 })();
 ```
 
@@ -181,30 +180,30 @@ DSTACK_SIMULATOR_ENDPOINT="http://localhost:8090"
 
 1. **Key Management**
 
-    - Store private keys securely
-    - Use environment variables
-    - Implement key rotation
-    - Monitor wallet activity
+   - Store private keys securely
+   - Use environment variables
+   - Implement key rotation
+   - Monitor wallet activity
 
 2. **Asset Security**
 
-    - Secure S3 bucket configuration
-    - Implement proper CORS policies
-    - Use secure URLs for metadata
-    - Regular backup of assets
+   - Secure S3 bucket configuration
+   - Implement proper CORS policies
+   - Use secure URLs for metadata
+   - Regular backup of assets
 
 3. **Transaction Safety**
 
-    - Validate all inputs
-    - Implement fee limits
-    - Double-check collection ownership
-    - Monitor transaction status
+   - Validate all inputs
+   - Implement fee limits
+   - Double-check collection ownership
+   - Monitor transaction status
 
 4. **Error Handling**
-    - Log all operations
-    - Handle timeouts gracefully
-    - Validate metadata
-    - Provide clear error messages
+   - Log all operations
+   - Handle timeouts gracefully
+   - Validate metadata
+   - Provide clear error messages
 
 ## Dependencies
 

@@ -3,18 +3,18 @@ services:
   postgres:
     image: postgres:15
     environment:
-        - POSTGRES_PASSWORD=postgres
-        - POSTGRES_USER=postgres
-        - POSTGRES_DB=eliza
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=eliza
     volumes:
-        - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
     ports:
-        - "127.0.0.1:5432:5432"
+      - '127.0.0.1:5432:5432'
     healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U postgres"]
-        interval: 5s
-        timeout: 5s
-        retries: 5
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: always
   eliza:
     build:
@@ -46,14 +46,14 @@ services:
       - INVESTMENT_MANAGER_DISCORD_APPLICATION_ID=${INVESTMENT_MANAGER_DISCORD_APPLICATION_ID}
       - INVESTMENT_MANAGER_DISCORD_API_TOKEN=${INVESTMENT_MANAGER_DISCORD_API_TOKEN}
     ports:
-      - "3000:3000"
-      - "5173:5173"
+      - '3000:3000'
+      - '5173:5173'
     depends_on:
       postgres:
         condition: service_healthy
     restart: always
     networks:
-            - eliza-network
+      - eliza-network
 
 networks:
   eliza-network:

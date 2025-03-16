@@ -54,7 +54,7 @@ Analyzes and generates descriptions for images.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("DESCRIBE_IMAGE", {
-    imageUrl: "path/to/image.jpg",
+const result = await runtime.executeAction('DESCRIBE_IMAGE', {
+  imageUrl: 'path/to/image.jpg',
 });
 ```

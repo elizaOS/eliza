@@ -11,6 +11,6 @@ Reuse providers and utilities from the existing actions where possible. Add more
 1. Add the action to the `actions` directory. Try to follow the naming convention of the other actions.
 2. Export the action in the `index.ts` file.
 
-
 ## MASSA documentation
+
 [https://docs.massa.net/](https://docs.massa.net/)

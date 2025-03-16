@@ -8,9 +8,13 @@
       "cache": false
     },
     "lint": {
-      "dependsOn": ["build", "^lint"],
-      "outputs": ["dist/**"],
       "cache": false
+    },
+    "format": {
+      "outputs": []
+    },
+    "format:check": {
+      "outputs": []
     },
     "start": {
       "dependsOn": ["@elizaos/core#build"],

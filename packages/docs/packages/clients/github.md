@@ -19,27 +19,28 @@ This client leverages GitHub's REST API via the `@octokit/rest` library and incl
 
 Install the package as part of the Eliza framework:
 bash
-pnpm add @elizaos/client-github
+bun add @elizaos/client-github
 
 ## Configuration
 
 The GitHub client requires the following environment variables:
 
-| Variable           | Description                        | Required |
-|-------------------|------------------------------------|----------|
-| `GITHUB_OWNER`    | Owner of the GitHub repository     | Yes      |
-| `GITHUB_REPO`     | Repository name                    | Yes      |
-| `GITHUB_BRANCH`   | Target branch (default: `main`)    | Yes      |
-| `GITHUB_PATH`     | Path to focus on within the repo   | Yes      |
-| `GITHUB_API_TOKEN`| GitHub API token for authentication| Yes      |
+| Variable           | Description                         | Required |
+| ------------------ | ----------------------------------- | -------- |
+| `GITHUB_OWNER`     | Owner of the GitHub repository      | Yes      |
+| `GITHUB_REPO`      | Repository name                     | Yes      |
+| `GITHUB_BRANCH`    | Target branch (default: `main`)     | Yes      |
+| `GITHUB_PATH`      | Path to focus on within the repo    | Yes      |
+| `GITHUB_API_TOKEN` | GitHub API token for authentication | Yes      |
 
 ## Usage
 
 ### Initialization
+
 typescript:packages/client-github/README.md
 
 ```typescript
-import { GitHubClientInterface } from "@elizaos/client-github";
+import { GitHubClientInterface } from '@elizaos/client-github';
 // Initialize the client
 const client = await GitHubClientInterface.start(runtime);
 ```
@@ -58,42 +59,39 @@ await client.createMemoriesFromFiles();
 
 ```typescript
 await client.createPullRequest(
-    "Feature: Add new functionality",
-    "feature/new-feature",
-    [
-        {
-            path: "src/feature.ts",
-            content: "// New feature implementation"
-        }
-    ],
-    "Implements new functionality with tests"
+  'Feature: Add new functionality',
+  'feature/new-feature',
+  [
+    {
+      path: 'src/feature.ts',
+      content: '// New feature implementation',
+    },
+  ],
+  'Implements new functionality with tests'
 );
 
 await client.createPullRequest(
-"Feature: Add new functionality",
-"feature/new-feature",
-[
-{
-path: "src/feature.ts",
-content: "// New feature implementation"
-}
-],
-"Implements new functionality with tests"
+  'Feature: Add new functionality',
+  'feature/new-feature',
+  [
+    {
+      path: 'src/feature.ts',
+      content: '// New feature implementation',
+    },
+  ],
+  'Implements new functionality with tests'
 );
 ```
 
 ### Direct Commits
 
 ```typescript
-await client.createCommit(
-    "Update configuration",
-    [
-        {
-            path: "config.json",
-            content: JSON.stringify(config, null, 2)
-        }
-    ]
-);
+await client.createCommit('Update configuration', [
+  {
+    path: 'config.json',
+    content: JSON.stringify(config, null, 2),
+  },
+]);
 ```
 
 ## API Reference
@@ -114,13 +112,13 @@ await client.createCommit(
 
 ```bash
 # Build the project
-pnpm run build
+bun run build
 
 # Development with watch mode
-pnpm run dev
+bun run dev
 
 # Lint the codebase
-pnpm run lint
+bun run lint
 ```
 
 ## Dependencies

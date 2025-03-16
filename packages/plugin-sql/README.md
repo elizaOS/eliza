@@ -12,15 +12,16 @@ bun add @elizaos/plugin-sql
 ## Vector Dimensions
 
 The adapter supports the following vector dimensions:
+
 ```typescript
 VECTOR_DIMS = {
-    SMALL: 384,
-    MEDIUM: 512,
-    LARGE: 768,
-    XL: 1024,
-    XXL: 1536,
-    XXXL: 3072
-}
+  SMALL: 384,
+  MEDIUM: 512,
+  LARGE: 768,
+  XL: 1024,
+  XXL: 1536,
+  XXXL: 3072,
+};
 ```
 
 Important Note: Once an agent is initialized with a specific embedding dimension, it cannot be changed. Attempting to change the dimension will result in an error: "Cannot change embedding dimension for agent"
@@ -41,6 +42,7 @@ Important Note: Once an agent is initialized with a specific embedding dimension
 The plugin uses a structured schema with the following main tables:
 
 ### Core Tables
+
 - **Agent**: Stores agent information and configurations
 - **Room**: Manages conversation rooms and their settings
 - **Participant**: Tracks participants in rooms
@@ -62,27 +64,30 @@ The adapter is typically used as part of the ElizaOS runtime:
 
 ```typescript
 async function findDatabaseAdapter(runtime: IAgentRuntime) {
-    let adapter = runtime;
-    
+  let adapter = runtime;
+
+  if (!adapter) {
+    const drizzleAdapterPlugin = await import('@elizaos/plugin-sql');
+    const drizzleAdapterPluginDefault = drizzleAdapterPlugin.default;
+    adapter = drizzleAdapterPluginDefault.adapter;
     if (!adapter) {
-        const drizzleAdapterPlugin = await import('@elizaos/plugin-sql');
-        const drizzleAdapterPluginDefault = drizzleAdapterPlugin.default;
-        adapter = drizzleAdapterPluginDefault.adapter;
-        if (!adapter) {
-            throw new Error("Internal error: No database adapter found for default plugin-sql");
-        }
-    } else if (!adapter) {
-        throw new Error("Multiple database adapters found. You must have no more than one. Adjust your plugins configuration.");
+      throw new Error('Internal error: No database adapter found for default plugin-sql');
     }
-    
-    const adapterInterface = await adapter?.init(runtime);
-    return adapterInterface;
+  } else if (!adapter) {
+    throw new Error(
+      'Multiple database adapters found. You must have no more than one. Adjust your plugins configuration.'
+    );
+  }
+
+  const adapterInterface = await adapter?.init(runtime);
+  return adapterInterface;
 }
 ```
 
 ## Error Handling Configuration
 
 The adapter implements the following error handling configurations:
+
 ```typescript
 {
     failureThreshold: 5,
@@ -114,6 +119,7 @@ These variables should be defined in a `.env` file at the root of your project.
 ## Database Pool Configuration
 
 Default pool configuration:
+
 ```typescript
 {
     max: 20,
@@ -127,38 +133,45 @@ Default pool configuration:
 The adapter supports two approaches to managing database schema:
 
 ### 1. Initial Setup
+
 Migrations are automatically run during initialization if:
+
 - Database tables don't exist
 - Vector extension is not found
 
 This is handled internally by:
+
 ```typescript
 await runMigrations(pgPool);
 ```
 
 ### 2. Schema Updates
+
 To update the schema:
 
 1. Install drizzle-kit (if not already installed):
+
 ```bash
-pnpm add -D drizzle-kit
+bun add -D drizzle-kit
 ```
 
 2. Create or update your schema files (e.g., `schema/account.ts`):
-```typescript
-import { pgTable, text, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
-export const accountTable = pgTable("accounts", {
-    id: uuid("id").primaryKey().notNull(),
-    name: text("name"),
-    email: text("email").notNull(),
-    // Add new fields here
-    newField: text("newField"),
+```typescript
+import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+
+export const accountTable = pgTable('accounts', {
+  id: uuid('id').primaryKey().notNull(),
+  name: text('name'),
+  email: text('email').notNull(),
+  // Add new fields here
+  newField: text('newField'),
 });
 ```
 
 3. Generate migrations:
+
 ```bash
 npx drizzle-kit generate:pg
 ```
@@ -168,25 +181,29 @@ This will create SQL migration files in your migrations directory.
 4. Apply migrations using one of these methods:
 
 a. Using drizzle-kit:
+
 ```bash
 npx drizzle-kit push:pg
 ```
 
 b. Through your application code:
-```typescript
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 
-await migrate(db, { migrationsFolder: "./drizzle" });
+```typescript
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+
+await migrate(db, { migrationsFolder: './drizzle' });
 ```
 
 c. Using the provided migration script:
+
 ```bash
 npm run migrate
 # or
-pnpm migrate
+bun migrate
 ```
 
 d. Using drizzle-kit migrate command:
+
 ```bash
 npx drizzle-kit migrate
 ```
@@ -198,17 +215,17 @@ This command will read the configuration from `drizzle.config.ts` and pull the P
 The plugin uses a `drizzle.config.ts` file to configure migrations:
 
 ```typescript
-import { config } from "dotenv";
-import { defineConfig } from "drizzle-kit";
+import { config } from 'dotenv';
+import { defineConfig } from 'drizzle-kit';
 
-config({ path: "../../.env" });
+config({ path: '../../.env' });
 
 export default defineConfig({
-  dialect: "postgresql",
-  schema: "./src/schema/index.ts",
-  out: "./drizzle/migrations",
+  dialect: 'postgresql',
+  schema: './src/schema/index.ts',
+  out: './drizzle/migrations',
   dbCredentials: {
-    url: process.env.POSTGRES_URL || "file://../../pglite",
+    url: process.env.POSTGRES_URL || 'file://../../pglite',
   },
   breakpoints: true,
 });
@@ -224,11 +241,13 @@ The plugin supports two database backends:
 Both backends use the same migration files, ensuring consistent schema across environments.
 
 ### Note on Vector Support
+
 Make sure the PostgreSQL vector extension is installed before running migrations. The adapter will validate vector setup during initialization.
 
 ## Clean Shutdown
 
 The adapter implements cleanup handlers for:
+
 - SIGINT
 - SIGTERM
 - beforeExit
@@ -253,7 +272,7 @@ This pattern is particularly important in monorepo setups or when the package is
 
 ```typescript
 // Example of the singleton pattern implementation
-const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
+const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
 
 // Store managers in a global symbol registry
 if (!globalSymbols[GLOBAL_SINGLETONS]) {

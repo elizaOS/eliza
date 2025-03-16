@@ -64,5 +64,5 @@ The plugin contains tests. Whether you're using **TDD** or not, please make sure
 Navigate to the `plugin-arthera` directory and run:
 
 ```bash
-pnpm test
+bun test
 ```

@@ -27,7 +27,7 @@ This plugin serves as a unified interface for cross-chain interactions, allowing
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-multichain
+bun install @elizaos/plugin-multichain
 ```
 
 ## Configuration
@@ -60,18 +60,18 @@ DEFAULT_SLIPPAGE=0.01  # 1% slippage tolerance
 ### Multi-Chain Transfer
 
 ```typescript
-import { multichainPlugin } from "@elizaos/plugin-multichain";
+import { multichainPlugin } from '@elizaos/plugin-multichain';
 
 // Transfer tokens across chains
 const result = await eliza.execute({
-    action: "MULTI_CHAIN_TRANSFER",
-    content: {
-        chain: "BTC",
-        networkId: "testnet",
-        token: null,  // Native BTC
-        amount: "0.1",
-        recipient: "tb1qmw3xw3y8jtm4054w02kfz58tmf6pcse02twrh8"
-    },
+  action: 'MULTI_CHAIN_TRANSFER',
+  content: {
+    chain: 'BTC',
+    networkId: 'testnet',
+    token: null, // Native BTC
+    amount: '0.1',
+    recipient: 'tb1qmw3xw3y8jtm4054w02kfz58tmf6pcse02twrh8',
+  },
 });
 ```
 
@@ -79,15 +79,15 @@ const result = await eliza.execute({
 
 ```typescript
 const result = await eliza.execute({
-    action: "CROSS_CHAIN_SWAP",
-    content: {
-        sourceChain: "ETH",
-        targetChain: "COSMOS",
-        inputToken: "ETH",
-        outputToken: "ATOM",
-        amount: "1.0",
-        recipient: "cosmos1..."
-    },
+  action: 'CROSS_CHAIN_SWAP',
+  content: {
+    sourceChain: 'ETH',
+    targetChain: 'COSMOS',
+    inputToken: 'ETH',
+    outputToken: 'ATOM',
+    amount: '1.0',
+    recipient: 'cosmos1...',
+  },
 });
 ```
 
@@ -138,7 +138,7 @@ Executes a token swap across different chains.
 Provides cross-chain portfolio tracking and network status.
 
 ```typescript
-const portfolioInfo = await eliza.getProvider("multichain");
+const portfolioInfo = await eliza.getProvider('multichain');
 // Returns consolidated portfolio including:
 // - Balances across all chains
 // - USD values
@@ -150,53 +150,57 @@ const portfolioInfo = await eliza.getProvider("multichain");
 ### Common Issues
 
 1. **Cross-Chain Transaction Failures**
-    - Verify sufficient gas/fees on source chain
-    - Check Bitcoin UTXO availability
-    - Confirm bridge/protocol liquidity
-    - Monitor transaction status on both chains
+
+   - Verify sufficient gas/fees on source chain
+   - Check Bitcoin UTXO availability
+   - Confirm bridge/protocol liquidity
+   - Monitor transaction status on both chains
 
 2. **Network Issues**
-    - Verify RPC endpoints
-    - Check network congestion
-    - Monitor bridge status
-    - Ensure chain signatures are valid
+
+   - Verify RPC endpoints
+   - Check network congestion
+   - Monitor bridge status
+   - Ensure chain signatures are valid
 
 3. **Swap Issues**
-    - Verify token pair liquidity
-    - Check price impact
-    - Monitor slippage
-    - Confirm route availability
+   - Verify token pair liquidity
+   - Check price impact
+   - Monitor slippage
+   - Confirm route availability
 
 ## Security Best Practices
 
 1. **Key Management**
-    - Secure storage of private keys
-    - Regular key rotation
-    - Multi-signature support
-    - Activity monitoring
+
+   - Secure storage of private keys
+   - Regular key rotation
+   - Multi-signature support
+   - Activity monitoring
 
 2. **Transaction Safety**
-    - Input validation
-    - Amount limits
-    - Address verification
-    - Transaction simulation
+
+   - Input validation
+   - Amount limits
+   - Address verification
+   - Transaction simulation
 
 3. **Network Security**
-    - Secure RPC endpoints
-    - Fallback providers
-    - Rate limiting
-    - Chain signature verification
+   - Secure RPC endpoints
+   - Fallback providers
+   - Rate limiting
+   - Chain signature verification
 
 ## Testing
 
 ```bash
-pnpm test
+bun test
 ```
 
 Development mode:
 
 ```bash
-pnpm test:watch
+bun test:watch
 ```
 
 ## Dependencies
@@ -219,6 +223,7 @@ This plugin integrates with multiple blockchain networks and their respective te
 - NEAR Protocol (Chain Signatures and NEAR Intents)
 
 Special thanks to:
+
 - The NEAR Protocol team for developing the NEAR blockchain and Chain Signatures
 - The Aurora team for developing the NEAR Intents
 - The Eliza community for their contributions and feedback.

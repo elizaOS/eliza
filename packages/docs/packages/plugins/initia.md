@@ -11,7 +11,7 @@ This plugin provides functionality to:
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-initia
+bun install @elizaos/plugin-initia
 ```
 
 ## Configuration
@@ -24,13 +24,13 @@ INITIA_CHAIN_ID=initiaion-2
 
 ## Features
 
-
 ### Token transfer
 
 Send token to recipient:
+
 ```typescript
-User: "Send 1 INIT to init14l3c2vxrdvu6y0sqykppey930s4kufsvt97aeu";
-Assistant: "Sure! I am going to send 1 INIT to init14l3c2vxrdvu6y0sqykppey930s4kufsvt97aeu";
+User: 'Send 1 INIT to init14l3c2vxrdvu6y0sqykppey930s4kufsvt97aeu';
+Assistant: 'Sure! I am going to send 1 INIT to init14l3c2vxrdvu6y0sqykppey930s4kufsvt97aeu';
 ```
 
 ## Development
@@ -38,13 +38,13 @@ Assistant: "Sure! I am going to send 1 INIT to init14l3c2vxrdvu6y0sqykppey930s4k
 ### Building
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 ### Testing
 
 ```bash
-pnpm run test
+bun run test
 ```
 
 ## Dependencies
@@ -55,7 +55,6 @@ pnpm run test
 
 1. Execute other messages like delegate, undelegate.
 2. Interacting with minitia.
-
 
 ## License
 

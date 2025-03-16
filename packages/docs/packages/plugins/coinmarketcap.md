@@ -29,12 +29,12 @@ COINMARKETCAP_API_KEY=your_api_key
 3. Register the plugin in your Eliza configuration:
 
 ```typescript
-import { CoinMarketCapPlugin } from "@elizaos/plugin-coinmarketcap";
+import { CoinMarketCapPlugin } from '@elizaos/plugin-coinmarketcap';
 
 // In your Eliza configuration
 plugins: [
-    new CoinMarketCapPlugin(),
-    // ... other plugins
+  new CoinMarketCapPlugin(),
+  // ... other plugins
 ];
 ```
 
@@ -88,15 +88,15 @@ Fetches the current price of a cryptocurrency.
 
 ```typescript
 interface PriceData {
-    price: number;
-    marketCap: number;
-    volume24h: number;
-    percentChange24h: number;
+  price: number;
+  marketCap: number;
+  volume24h: number;
+  percentChange24h: number;
 }
 
 interface GetPriceContent {
-    symbol: string;
-    currency: string;
+  symbol: string;
+  currency: string;
 }
 ```
 

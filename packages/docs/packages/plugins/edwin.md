@@ -5,12 +5,13 @@ Edwin plugin for Eliza that enables interaction with Edwin tools for DeFi operat
 ## About
 
 See full info and docs at [Edwin docs](https://docs.edwin.finance).
+
 ## Setup
 
 1. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 2. Configure environment variables for chains you want to support:
@@ -24,11 +25,11 @@ SOLANA_PRIVATE_KEY=<YOUR_SOLANA_PRIVATE_KEY>
 
 The plugin provides access to the following Edwin tools:
 
--   supply
--   withdraw
--   stake
--   addLiquidity
--   removeLiquidity
+- supply
+- withdraw
+- stake
+- addLiquidity
+- removeLiquidity
 
 ## Usage Examples
 
@@ -49,18 +50,18 @@ Find a meteora pool with high liquidity and add to td 10 USDC and 0.01 SOL.
 1. Build the plugin:
 
 ```bash
-pnpm build
+bun build
 ```
 
 2. Run in development mode:
 
 ```bash
-pnpm dev
+bun dev
 ```
 
 ## Dependencies
 
--   edwin-sdk
+- edwin-sdk
 
 ## License
 

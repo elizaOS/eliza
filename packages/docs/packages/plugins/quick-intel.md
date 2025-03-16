@@ -9,7 +9,7 @@ This plugin enables comprehensive token security analysis using QuickIntel's API
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-quickintel
+bun install @elizaos/plugin-quickintel
 ```
 
 ## Configuration
@@ -26,11 +26,11 @@ Add the plugin to your character.json file:
 
 ```json
 {
-    "name": "YourCharacter",
-    "plugins": ["quickintel"],
-    "settings": {
-        "QUICKINTEL_API_KEY": "your-api-key-here"
-    }
+  "name": "YourCharacter",
+  "plugins": ["quickintel"],
+  "settings": {
+    "QUICKINTEL_API_KEY": "your-api-key-here"
+  }
 }
 ```
 
@@ -39,7 +39,7 @@ Add the plugin to your character.json file:
 ### Basic Integration
 
 ```typescript
-import { quickIntelPlugin } from "@elizaos/plugin-quickintel";
+import { quickIntelPlugin } from '@elizaos/plugin-quickintel';
 ```
 
 ### Example Usage
@@ -47,9 +47,9 @@ import { quickIntelPlugin } from "@elizaos/plugin-quickintel";
 The plugin processes natural language queries for token audits:
 
 ```typescript
-"Can you check if this token is safe? 0x742d35Cc6634C0532925a3b844Bc454e4438f44e on BSC"
-"Analyze this token on Ethereum: 0x1234..."
-"Is this Solana token safe? Hep4ZQ3MSSXFuLnT4baBFVBrC3677ntjrfaqE9zEt4rX"
+'Can you check if this token is safe? 0x742d35Cc6634C0532925a3b844Bc454e4438f44e on BSC';
+'Analyze this token on Ethereum: 0x1234...';
+'Is this Solana token safe? Hep4ZQ3MSSXFuLnT4baBFVBrC3677ntjrfaqE9zEt4rX';
 ```
 
 ### Supported Features
@@ -72,21 +72,22 @@ Performs security audits and market analysis on tokens.
 
 ```typescript
 interface AuditResponse {
-    success: boolean;
-    data: {
-        audit: any;    // QuickIntel audit data
-        market?: any;  // DexScreener market data
-    };
-    params: {
-        chain: string;
-        tokenAddress: string;
-    };
+  success: boolean;
+  data: {
+    audit: any; // QuickIntel audit data
+    market?: any; // DexScreener market data
+  };
+  params: {
+    chain: string;
+    tokenAddress: string;
+  };
 }
 ```
 
 ### Supported Chains
 
 The plugin supports all chains available through QuickIntel, including:
+
 - Ethereum (ETH)
 - BNB Smart Chain (BSC)
 - Polygon
@@ -99,11 +100,13 @@ The plugin supports all chains available through QuickIntel, including:
 ## Common Issues & Troubleshooting
 
 1. **API Issues**
+
    - Verify API key is correct
    - Check API endpoint accessibility
    - Ensure proper network connectivity
 
 2. **Chain/Address Detection**
+
    - Ensure chain name is clearly specified (e.g., "on ETH")
    - Verify token address format
    - Check chain support in QuickIntel
@@ -116,6 +119,7 @@ The plugin supports all chains available through QuickIntel, including:
 ## Security Best Practices
 
 1. **API Configuration**
+
    - Store API key securely
    - Use environment variables
    - Implement proper error handling
@@ -153,3 +157,4 @@ Special thanks to:
 ## License
 
 This plugin is part of the Eliza project. See the main project repository for license information.
+```

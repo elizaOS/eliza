@@ -6,50 +6,49 @@
 
 /* You can override the default Infima variables here. */
 :root {
-    --ifm-color-primary: #ffa600;
-    --ifm-color-primary-dark: #29784c;
-    --ifm-color-primary-darker: #277148;
-    --ifm-color-primary-darkest: #205d3b;
-    --ifm-color-primary-light: #33925d;
-    --ifm-color-primary-lighter: #359962;
-    --ifm-color-primary-lightest: #3cad6e;
-    --ifm-code-font-size: 95%;
-    --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-color-primary: #ffa600;
+  --ifm-color-primary-dark: #29784c;
+  --ifm-color-primary-darker: #277148;
+  --ifm-color-primary-darkest: #205d3b;
+  --ifm-color-primary-light: #33925d;
+  --ifm-color-primary-lighter: #359962;
+  --ifm-color-primary-lightest: #3cad6e;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
-[data-theme="dark"] {
-    --ifm-color-primary: lightblue;
-    --ifm-color-primary-dark: #21af90;
-    --ifm-color-primary-darker: #1fa588;
-    --ifm-color-primary-darkest: #1a8870;
-    --ifm-color-primary-light: #29d5b0;
-    --ifm-color-primary-lighter: #32d8b4;
-    --ifm-color-primary-lightest: #4fddbf;
-    --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
-    --ifm-footer-background-color: #ffa600;
+[data-theme='dark'] {
+  --ifm-color-primary: lightblue;
+  --ifm-color-primary-dark: #21af90;
+  --ifm-color-primary-darker: #1fa588;
+  --ifm-color-primary-darkest: #1a8870;
+  --ifm-color-primary-light: #29d5b0;
+  --ifm-color-primary-lighter: #32d8b4;
+  --ifm-color-primary-lightest: #4fddbf;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-footer-background-color: #ffa600;
 }
 
 .footer {
-    background-color: #242736;
+  background-color: #242736;
 }
 
 .button--primary {
-    background: linear-gradient(
-        180deg,
-        var(--token-e94f1f99-3833-4c15-8d11-a67e80285705, rgb(249, 140, 19))
-            /* {"name":"Orange"} */ 0%,
-        rgb(255, 166, 0) 100%
-    );
-    border: none;
-    padding: 1rem 2rem;
-    font-size: 1.2rem;
-    transition: background 0.3s;
-    color: white;
+  background: linear-gradient(
+    180deg,
+    var(--token-e94f1f99-3833-4c15-8d11-a67e80285705, rgb(249, 140, 19)) /* {"name":"Orange"} */ 0%,
+    rgb(255, 166, 0) 100%
+  );
+  border: none;
+  padding: 1rem 2rem;
+  font-size: 1.2rem;
+  transition: background 0.3s;
+  color: white;
 }
 
 .button--primary:hover {
-    background: linear-gradient(rgb(255, 156, 43) 0%, rgb(255, 166, 0) 100%);
+  background: linear-gradient(rgb(255, 156, 43) 0%, rgb(255, 166, 0) 100%);
 }
 
 .responsive-iframe {
@@ -70,3 +69,47 @@
   border: 0;
 }
 
+/* API Method badges */
+.api-method > .menu__link {
+  align-items: center;
+  justify-content: start;
+}
+
+.api-method > .menu__link::before {
+  width: 50px;
+  height: 20px;
+  font-size: 12px;
+  line-height: 20px;
+  text-transform: uppercase;
+  font-weight: 600;
+  border-radius: 0.25rem;
+  margin-right: var(--ifm-spacing-horizontal);
+  text-align: center;
+  flex-shrink: 0;
+  color: white;
+}
+
+.get > .menu__link::before {
+  content: 'get';
+  background-color: var(--ifm-color-primary);
+}
+
+.post > .menu__link::before {
+  content: 'post';
+  background-color: #10b981; /* green */
+}
+
+.delete > .menu__link::before {
+  content: 'del';
+  background-color: #ef4444; /* red */
+}
+
+.put > .menu__link::before {
+  content: 'put';
+  background-color: #3b82f6; /* blue */
+}
+
+.patch > .menu__link::before {
+  content: 'patch';
+  background-color: #f97316; /* orange */
+}

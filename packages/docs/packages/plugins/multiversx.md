@@ -27,7 +27,7 @@ Reuse providers and utilities from the existing actions where possible. Add more
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-multiversx
+bun install @elizaos/plugin-multiversx
 ```
 
 ## Configuration
@@ -45,26 +45,26 @@ ACCESS_TOKEN_MANAGEMENT_TO=everyone  # you can put an userid to limit token mana
 ### Token Transfer
 
 ```typescript
-import { multiversxPlugin } from "@elizaos/plugin-multiversx";
+import { multiversxPlugin } from '@elizaos/plugin-multiversx';
 
 // Send EGLD
 const result = await eliza.execute({
-    action: "SEND_TOKEN",
-    content: {
-        tokenAddress: "erd1...",
-        amount: "1",
-        tokenIdentifier: "EGLD",
-    },
+  action: 'SEND_TOKEN',
+  content: {
+    tokenAddress: 'erd1...',
+    amount: '1',
+    tokenIdentifier: 'EGLD',
+  },
 });
 
 // Send ESDT
 const result = await eliza.execute({
-    action: "SEND_TOKEN",
-    content: {
-        tokenAddress: "erd1...",
-        amount: "100",
-        tokenIdentifier: "TEST-a1b2c3",
-    },
+  action: 'SEND_TOKEN',
+  content: {
+    tokenAddress: 'erd1...',
+    amount: '100',
+    tokenIdentifier: 'TEST-a1b2c3',
+  },
 });
 ```
 
@@ -72,13 +72,13 @@ const result = await eliza.execute({
 
 ```typescript
 const result = await eliza.execute({
-    action: "CREATE_TOKEN",
-    content: {
-        tokenName: "TestToken",
-        tokenTicker: "TEST",
-        decimals: "18",
-        amount: "1000000",
-    },
+  action: 'CREATE_TOKEN',
+  content: {
+    tokenName: 'TestToken',
+    tokenTicker: 'TEST',
+    decimals: '18',
+    amount: '1000000',
+  },
 });
 ```
 
@@ -86,12 +86,12 @@ const result = await eliza.execute({
 
 ```typescript
 const result = await eliza.execute({
-    action: "SWAP",
-    content: {
-        tokenIn: "EGLD",
-        amountIn: "1",
-        tokenOut: "MEX"
-    },
+  action: 'SWAP',
+  content: {
+    tokenIn: 'EGLD',
+    amountIn: '1',
+    tokenOut: 'MEX',
+  },
 });
 ```
 
@@ -99,13 +99,13 @@ const result = await eliza.execute({
 
 ```typescript
 const result = await eliza.execute({
-    action: "CREATE_POOL",
-    content: {
-        baseTokenID: "KWAK",
-        quoteTokenID: "EGLD",
-        baseAmount: "1000000",
-        quoteAmount: "20"
-    },
+  action: 'CREATE_POOL',
+  content: {
+    baseTokenID: 'KWAK',
+    quoteTokenID: 'EGLD',
+    baseAmount: '1000000',
+    quoteAmount: '20',
+  },
 });
 ```
 
@@ -115,72 +115,72 @@ const result = await eliza.execute({
 
 1. **Transaction Failures**
 
-    - Verify wallet has sufficient balance
-    - Check network configuration matches intended network
-    - Ensure correct token identifiers
-    - Verify recipient address format
+   - Verify wallet has sufficient balance
+   - Check network configuration matches intended network
+   - Ensure correct token identifiers
+   - Verify recipient address format
 
 2. **Configuration Problems**
 
-    - Validate private key format
-    - Check network selection is valid
-    - Ensure environment variables are properly set
-    - Verify wallet permissions for token operations
+   - Validate private key format
+   - Check network selection is valid
+   - Ensure environment variables are properly set
+   - Verify wallet permissions for token operations
 
 3. **Token Creation Issues**
 
-    - Check token name and ticker format
-    - Verify EGLD balance for issuance fee
-    - Ensure unique token identifiers
-    - Monitor transaction status
+   - Check token name and ticker format
+   - Verify EGLD balance for issuance fee
+   - Ensure unique token identifiers
+   - Monitor transaction status
 
 4. **Network Connectivity**
-    - Verify network endpoint availability
-    - Check API rate limits
-    - Monitor network status
-    - Ensure proper network selection
+   - Verify network endpoint availability
+   - Check API rate limits
+   - Monitor network status
+   - Ensure proper network selection
 
 ## Security Best Practices
 
 1. **Key Management**
 
-    - Never expose private keys in code
-    - Use environment variables for sensitive data
-    - Implement key rotation policies
-    - Monitor wallet activity
+   - Never expose private keys in code
+   - Use environment variables for sensitive data
+   - Implement key rotation policies
+   - Monitor wallet activity
 
 2. **Transaction Safety**
 
-    - Validate all transaction parameters
-    - Implement transaction limits
-    - Use proper denomination handling
-    - Double-check recipient addresses
+   - Validate all transaction parameters
+   - Implement transaction limits
+   - Use proper denomination handling
+   - Double-check recipient addresses
 
 3. **Network Security**
 
-    - Use secure network connections
-    - Implement retry mechanisms
-    - Monitor for suspicious activity
-    - Keep dependencies updated
+   - Use secure network connections
+   - Implement retry mechanisms
+   - Monitor for suspicious activity
+   - Keep dependencies updated
 
 4. **Error Handling**
-    - Implement comprehensive error logging
-    - Handle network timeouts gracefully
-    - Validate all user inputs
-    - Provide clear error messages
+   - Implement comprehensive error logging
+   - Handle network timeouts gracefully
+   - Validate all user inputs
+   - Provide clear error messages
 
 ## Testing
 
 Run the test suite:
 
 ```bash
-pnpm test
+bun test
 ```
 
 Watch mode for development:
 
 ```bash
-pnpm test:watch
+bun test:watch
 ```
 
 ## Dependencies

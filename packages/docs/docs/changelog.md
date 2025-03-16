@@ -43,7 +43,7 @@
 * feat: submit update env for plugin viction by @khiemsoft in https://github.com/elizaOS/eliza/pull/3701
 * feat: ANTHROPIC_API_URL env. by @ChristopherTrimboli in https://github.com/elizaOS/eliza/pull/3711
 * chore: security NPM updates / bump turbo by @odilitime in https://github.com/elizaOS/eliza/pull/3700
-* fix: clean up `pnpm clean` output and make `pnpm dev` faster on faster CPUs by @odilitime in https://github.com/elizaOS/eliza/pull/3714
+* fix: clean up `bun clean` output and make `bun dev` faster on faster CPUs by @odilitime in https://github.com/elizaOS/eliza/pull/3714
 * chore: format pass by @odilitime in https://github.com/elizaOS/eliza/pull/3715
 * chore: tests favor local paths for consistency / adjust deps by @odilitime in https://github.com/elizaOS/eliza/pull/3716
 * fix: fix 0.25.8 oom bug by @v1xingyue in https://github.com/elizaOS/eliza/pull/3722
@@ -131,7 +131,7 @@
 * fix: Slack download upload attachments by @maxime in https://github.com/elizaOS/eliza/pull/3194
 * chore: Update GitHub Actions workflows and documentation by @PixelPil0t1 in https://github.com/elizaOS/eliza/pull/3166
 * chore: Standardization of Security Check Identifiers across GoPlus plugin by @Marcofann in https://github.com/elizaOS/eliza/pull/3164
-* fix: Update pnpm version during Docker build by @v1xingyue in https://github.com/elizaOS/eliza/pull/3158
+* fix: Update bun version during Docker build by @v1xingyue in https://github.com/elizaOS/eliza/pull/3158
 * Fix README_JA.md (add unwritten text and fix typo) by @You-saku in https://github.com/elizaOS/eliza/pull/3153
 * chore: some fix after v0.1.9 by @v1xingyue in https://github.com/elizaOS/eliza/pull/3141
 * feat: Trump character but tweets in Spanish by default by @silasneo in https://github.com/elizaOS/eliza/pull/3119
@@ -147,7 +147,7 @@
 * chore: remove unnecessary provider and transfer code by @madschristensen99 in https://github.com/elizaOS/eliza/pull/3251
 * fix: client-alexa by @AIFlowML in https://github.com/elizaOS/eliza/pull/3255
 * fix(deps): update dependency vitest [security] by @renovate in https://github.com/elizaOS/eliza/pull/3254
-* fix: pnpm install by @tcm390 in https://github.com/elizaOS/eliza/pull/3261
+* fix: bun install by @tcm390 in https://github.com/elizaOS/eliza/pull/3261
 * fix: Dynamic require of "http" is not supported error by @tcm390 in https://github.com/elizaOS/eliza/pull/3262
 * chore: develop => main by @odilitime in https://github.com/elizaOS/eliza/pull/3216
 * Fix broken links on contributing.md by @johntad110 in https://github.com/elizaOS/eliza/pull/3269
@@ -348,7 +348,7 @@ Injective & Other Blockchain Plugins
 
 High Priority (Critical Bugs & API Issues)
 - DeepSeek API bug: missing API key setting #2186
-- Resolve Windows path issue in pnpm build client #2240
+- Resolve Windows path issue in bun build client #2240
 - IME causes multiple messages on Enter #2274
 - Fix derive key and update remote attestation #2303
 - Ensure RA Action reply does not hallucinate #2355
@@ -439,7 +439,7 @@ General Code Fixes & Minor Enhancements
 * Minor typo in CHANGELOG.md by @Hack666r in https://github.com/elizaOS/eliza/pull/2255
 * fix: missing @elizaos/plugin-b2 by @shakkernerd in https://github.com/elizaOS/eliza/pull/2268
 * feat: Add character creation template function to start.sh by @HowieDuhzit in https://github.com/elizaOS/eliza/pull/2232
-* fix: resolve Windows path issue in pnpm build client by @KacperKoza343 in https://github.com/elizaOS/eliza/pull/2240
+* fix: resolve Windows path issue in bun build client by @KacperKoza343 in https://github.com/elizaOS/eliza/pull/2240
 * feat: Add cross chain swaps through Squid Router by @Archethect in https://github.com/elizaOS/eliza/pull/1482
 * feat: Plugin evm oz governance by @thetechnocratic in https://github.com/elizaOS/eliza/pull/1710
 * feat: Add support for VoyageAI embeddings API by @Firbydude in https://github.com/elizaOS/eliza/pull/1442
@@ -526,7 +526,7 @@ General Code Fixes & Minor Enhancements
 * revert: "refactor: dockerize smoke tests" by @twilwa in https://github.com/elizaOS/eliza/pull/2459
 * feat: Add features to the Solana Agent Kit  by @thearyanag in https://github.com/elizaOS/eliza/pull/2458
 * chore: set openai as default character's provider by @wtfsayo in https://github.com/elizaOS/eliza/pull/2460
-* fix: OPENAI provider being overwritten by LLAMA_LOCAL on pnpm start by @tcm390 in https://github.com/elizaOS/eliza/pull/2465
+* fix: OPENAI provider being overwritten by LLAMA_LOCAL on bun start by @tcm390 in https://github.com/elizaOS/eliza/pull/2465
 * Typo fix in read.me by @dedyshkaPexto in https://github.com/elizaOS/eliza/pull/2464
 * Fix spelling error by @Dimitrolito in https://github.com/elizaOS/eliza/pull/2456
 * fix: conditional use of useQuery in AgentRoute component to prevent runtime errors. by @carlos-cne in https://github.com/elizaOS/eliza/pull/2413
@@ -572,9 +572,9 @@ General Code Fixes & Minor Enhancements
 * feat: add anthropic image provider for vision by @BitWonka in https://github.com/elizaOS/eliza/pull/2524
 * feat: Add more actions to Abstract Plugin by @jonathangus in https://github.com/elizaOS/eliza/pull/2531
 * chore: remove cleanup step from integration tests workflow by @devin-ai-integration in https://github.com/elizaOS/eliza/pull/2553
-* chore: optimize pnpm cache configuration by @devin-ai-integration in https://github.com/elizaOS/eliza/pull/2555
+* chore: optimize bun cache configuration by @devin-ai-integration in https://github.com/elizaOS/eliza/pull/2555
 * feat: add a way to create/store/restore agents in the filesystem by @maxcoto in https://github.com/elizaOS/eliza/pull/2389
-* chore(revert): optimize pnpm cache configuration by @devin-ai-integration in https://github.com/elizaOS/eliza/pull/2556
+* chore(revert): optimize bun cache configuration by @devin-ai-integration in https://github.com/elizaOS/eliza/pull/2556
 * test configuration and tests for client-lens by @ai16z-demirix in https://github.com/elizaOS/eliza/pull/2534
 * feat(x spaces): Don't wait for mute, wait for silence by @tcm390 in https://github.com/elizaOS/eliza/pull/2576
 * feat: update integration tests workflow with improved caching by @devin-ai-integration in https://github.com/elizaOS/eliza/pull/2589
@@ -732,14 +732,14 @@ General Code Fixes & Minor Enhancements
 * chore: bump version to 0.1.9 by @odilitime in https://github.com/elizaOS/eliza/pull/2883
 * fix: client server port by @tcm390 in https://github.com/elizaOS/eliza/pull/2886
 * Add more data when scrapping tweets by @viv-cheung in https://github.com/elizaOS/eliza/pull/2644
-* Update pnpm to v9.15.0 [SECURITY] by @renovate in https://github.com/elizaOS/eliza/pull/2888
+* Update bun to v9.15.0 [SECURITY] by @renovate in https://github.com/elizaOS/eliza/pull/2888
 * Update dependency systeminformation to v5.23.8 [SECURITY] by @renovate in https://github.com/elizaOS/eliza/pull/2887
 * fet: use axios to fetch price and support two types private key by @v1xingyue in https://github.com/elizaOS/eliza/pull/2879
 * fix: plugin-omniflix by @AIFlowML in https://github.com/elizaOS/eliza/pull/2902
 * fix: plugin-open-weather by @AIFlowML in https://github.com/elizaOS/eliza/pull/2899
 * fix: plugin-opacity by @AIFlowML in https://github.com/elizaOS/eliza/pull/2900
 * fix: plugin-openai by @AIFlowML in https://github.com/elizaOS/eliza/pull/2898
-* fix(patch): pnpm/@solana-developers to fix @coral-xyz 'BN' export by @wtfsayo in https://github.com/elizaOS/eliza/pull/2901
+* fix(patch): bun/@solana-developers to fix @coral-xyz 'BN' export by @wtfsayo in https://github.com/elizaOS/eliza/pull/2901
 * fix: plugin-primus by @AIFlowML in https://github.com/elizaOS/eliza/pull/2893
 * fix: plugin-quai  by @AIFlowML in https://github.com/elizaOS/eliza/pull/2892
 * fix: plugin-quick-intel by @AIFlowML in https://github.com/elizaOS/eliza/pull/2890
@@ -784,7 +784,7 @@ General Code Fixes & Minor Enhancements
 * fix: plugin-router-nitro by @AIFlowML in https://github.com/elizaOS/eliza/pull/2884
 * fix: ensure action tweet replies to agent's initial tweet by @tcm390 in https://github.com/elizaOS/eliza/pull/2966
 * fix: plugin-lensnetwork  by @AIFlowML in https://github.com/elizaOS/eliza/pull/2965
-* chore: bump pnpm for remaining workflows by @wtfsayo in https://github.com/elizaOS/eliza/pull/2968
+* chore: bump bun for remaining workflows by @wtfsayo in https://github.com/elizaOS/eliza/pull/2968
 * fix(lint): plugin-intiface by @AIFlowML in https://github.com/elizaOS/eliza/pull/2971
 * fix(lint): plugin-iq6900 by @AIFlowML in https://github.com/elizaOS/eliza/pull/2970
 * fix: plugin-irys by @AIFlowML in https://github.com/elizaOS/eliza/pull/2969
@@ -1087,7 +1087,7 @@ Complete changelog:
 * Create README.md by @RobertSloan22 in https://github.com/elizaOS/eliza/pull/1787
 * Update c3po.character.json by @macfly-base in https://github.com/elizaOS/eliza/pull/1827
 * Feat/genlayer plugin by @AgustinRamiroDiaz in https://github.com/elizaOS/eliza/pull/975
-* fix: broken ci docs missed frozen pnpm file out-of-sync by @marcellodesales in https://github.com/elizaOS/eliza/pull/1798
+* fix: broken ci docs missed frozen bun file out-of-sync by @marcellodesales in https://github.com/elizaOS/eliza/pull/1798
 * chore: update bootstrap plugin export by @affaan-m in https://github.com/elizaOS/eliza/pull/1836
 * correct faq docs link in both contribution md files by @MacsDickinson in https://github.com/elizaOS/eliza/pull/1839
 * Feat: add infera as an inference provide by @inferanetwork in https://github.com/elizaOS/eliza/pull/1860
@@ -1187,7 +1187,7 @@ Complete changelog:
 * Opacity Verifiable Interference zkTLS Plugin by @RonTuretzky in https://github.com/elizaOS/eliza/pull/1673
 * fix: remove near-solana slippage env conflict by @wtfsayo in https://github.com/elizaOS/eliza/pull/2016
 * feat: Update the Galadriel LLM integration to reflect their product updates by @kristjanpeterson1 in https://github.com/elizaOS/eliza/pull/2011
-* chore(ci): add pnpm lockfile consistency check workflow by @jonathanykh in https://github.com/elizaOS/eliza/pull/2015
+* chore(ci): add bun lockfile consistency check workflow by @jonathanykh in https://github.com/elizaOS/eliza/pull/2015
 * feat: add telegram api root config in env by @dto-simba in https://github.com/elizaOS/eliza/pull/2014
 * feat: new plugin LetzAI by @mitchoz in https://github.com/elizaOS/eliza/pull/1868
 * fix: letzAi build issues by @wtfsayo in https://github.com/elizaOS/eliza/pull/2021
@@ -1399,7 +1399,7 @@ Complete changelog:
 * chore: bump version to v0.1.7-alpha.1 by @shakkernerd in https://github.com/elizaOS/eliza/pull/1361
 * fix: explicitly set env in each step by @shakkernerd in https://github.com/elizaOS/eliza/pull/1374
 * Update README.md to instructions to start client for chatting with Agent by @onlyzerosonce in https://github.com/elizaOS/eliza/pull/1375
-* docs: Add documentation on pnpm node version by @trbutler4 in https://github.com/elizaOS/eliza/pull/1350
+* docs: Add documentation on bun node version by @trbutler4 in https://github.com/elizaOS/eliza/pull/1350
 * chore: change CI trigger by @shakkernerd in https://github.com/elizaOS/eliza/pull/1387
 * chore: require approval for integration test step by @shakkernerd in https://github.com/elizaOS/eliza/pull/1388
 * chore: split tests by @shakkernerd in https://github.com/elizaOS/eliza/pull/1390
@@ -1438,7 +1438,7 @@ Complete changelog:
 * New default character by @lalalune in https://github.com/elizaOS/eliza/pull/1453
 * feat: added docs for plugin-nft-generation by @vishal-kanna in https://github.com/elizaOS/eliza/pull/1327
 * feat: Add Text to 3D function by @tomguluson92 in https://github.com/elizaOS/eliza/pull/1446
-* fix: update pnpm lock by @odilitime in https://github.com/elizaOS/eliza/pull/1457
+* fix: update bun lock by @odilitime in https://github.com/elizaOS/eliza/pull/1457
 * feat: allow passing secrets through environment by @odilitime in https://github.com/elizaOS/eliza/pull/1454
 * feat: Add ModelConfiguration to Character to enable adjusting temperature, response length & penalties  by @peersky in https://github.com/elizaOS/eliza/pull/1455
 * feat: replace `unruggable-core` with `unruggable-sdk` by @remiroyc in https://github.com/elizaOS/eliza/pull/450
@@ -1462,7 +1462,7 @@ Complete changelog:
 * feat: add readme for ton plugin by @chandiniv1 in https://github.com/elizaOS/eliza/pull/1496
 * feat: add readme for websearch plugin by @chandiniv1 in https://github.com/elizaOS/eliza/pull/1494
 * chore: fix typos by @qwdsds in https://github.com/elizaOS/eliza/pull/1489
-* docs: Fixed a small syntax issue in the ModelClass Update fine-tuning.md by @mdqst in https://github.com/elizaOS/eliza/pull/1493
+* docs: Fixed a small syntax issue in the ModelType Update fine-tuning.md by @mdqst in https://github.com/elizaOS/eliza/pull/1493
 * add CODE_OF_CONDUCT.md by @nulLeeKH in https://github.com/elizaOS/eliza/pull/1487
 * fix: remove `type` when import from `elizaos` by @tomguluson92 in https://github.com/elizaOS/eliza/pull/1492
 * fix: improve Twitter client dry run mode and configuration logging by @e-fu in https://github.com/elizaOS/eliza/pull/1498
@@ -1806,7 +1806,7 @@ Complete changelog:
 * fix: add auto to clients in types to use client-auto by @HashWarlock in https://github.com/ai16z/eliza/pull/1050
 * feat: add/change change through REST api (client-direct) by @odilitime in https://github.com/ai16z/eliza/pull/1052
 * fix: discord client ci issues by @cygaar in https://github.com/ai16z/eliza/pull/1054
-* fix: Fix pnpm lockfiles by @jzvikart in https://github.com/ai16z/eliza/pull/1055
+* fix: Fix bun lockfiles by @jzvikart in https://github.com/ai16z/eliza/pull/1055
 * fix: Allow bot to post tweets with images generated by the imageGenerationPlugin by @tcm390 in https://github.com/ai16z/eliza/pull/1040
 * feat: Add Telegram Team features  by @azep-ninja in https://github.com/ai16z/eliza/pull/1033
 * feat: add venice.ai image generation by @proteanx in https://github.com/ai16z/eliza/pull/1057
@@ -1829,7 +1829,7 @@ Complete changelog:
 * Adding plugin for ZKsync Era by @arose00 in https://github.com/ai16z/eliza/pull/906
 * fix: transfer action linting errors by @shakkernerd in https://github.com/ai16z/eliza/pull/1079
 * chore: add npmignore file by @shakkernerd in https://github.com/ai16z/eliza/pull/1080
-* chore: fix broken pnpm lockfile by @shakkernerd in https://github.com/ai16z/eliza/pull/1081
+* chore: fix broken bun lockfile by @shakkernerd in https://github.com/ai16z/eliza/pull/1081
 * fix: eslint command by @shakkernerd in https://github.com/ai16z/eliza/pull/1082
 * chore: remove unnecessary packages by @shakkernerd in https://github.com/ai16z/eliza/pull/1083
 * fix: dynamic import of fs module by @shakkernerd in https://github.com/ai16z/eliza/pull/1084
@@ -1837,7 +1837,7 @@ Complete changelog:
 * fix: client slack linting errors by @shakkernerd in https://github.com/ai16z/eliza/pull/1086
 * fix: syntax error: invalid arithmetic operator by @shakkernerd in https://github.com/ai16z/eliza/pull/1088
 * chore: increase timeout to 3mins by @shakkernerd in https://github.com/ai16z/eliza/pull/1092
-* chore: kill pnpm start by @shakkernerd in https://github.com/ai16z/eliza/pull/1093
+* chore: kill bun start by @shakkernerd in https://github.com/ai16z/eliza/pull/1093
 * chore: debugging start behaviour by @shakkernerd in https://github.com/ai16z/eliza/pull/1094
 * docs: add README.md to plugin-evm by @nicky-ru in https://github.com/ai16z/eliza/pull/1095
 * fix: return types of createAgent & startAgent by @BlockJuic3 in https://github.com/ai16z/eliza/pull/1097
@@ -1846,7 +1846,7 @@ Complete changelog:
 * test: adding tests. changed files actions.test.ts, messages.test.ts, models.test.ts by @ai16z-demirix in https://github.com/ai16z/eliza/pull/998
 * chore: improving client typing by @BalanaguYashwanth in https://github.com/ai16z/eliza/pull/1036
 * fix: handle no termination message by @shakkernerd in https://github.com/ai16z/eliza/pull/1102
-* chore: fix broken pnpm lockfile by @shakkernerd in https://github.com/ai16z/eliza/pull/1103
+* chore: fix broken bun lockfile by @shakkernerd in https://github.com/ai16z/eliza/pull/1103
 * fix: Fixed twitter posts include from including `/n` in the text by @Titan-Node in https://github.com/ai16z/eliza/pull/1070
 * fix: add missing imports by @shakkernerd in https://github.com/ai16z/eliza/pull/1104
 * chore: improve formatting of .env.example for better readability by @guzus in https://github.com/ai16z/eliza/pull/897
@@ -1859,7 +1859,7 @@ Complete changelog:
 * Feat: Update community section of docs by @madjin in https://github.com/ai16z/eliza/pull/1111
 * fix: Revert "Feat: Update community section of docs" by @monilpat in https://github.com/ai16z/eliza/pull/1112
 * feat: New docs for community section by @madjin in https://github.com/ai16z/eliza/pull/1114
-* chore: fix broken pnpm lockfile by @shakkernerd in https://github.com/ai16z/eliza/pull/1115
+* chore: fix broken bun lockfile by @shakkernerd in https://github.com/ai16z/eliza/pull/1115
 * fix: load image from diff endpoints by @qgpcybs in https://github.com/ai16z/eliza/pull/837
 * feat: Updated characters types, Discord & Telegram enhancements by @azep-ninja in https://github.com/ai16z/eliza/pull/957
 * FAL image settings escape hatch by @daojonesceo in https://github.com/ai16z/eliza/pull/814
@@ -1919,8 +1919,8 @@ Complete changelog:
 * fix: unsupported model provider: claude_vertex by @tcm390 in https://github.com/ai16z/eliza/pull/1258
 * feat: upgrade Tavily API with comprehensive input and constrain the token consumption by @tomguluson92 in https://github.com/ai16z/eliza/pull/1246
 * feat: add README_DE.md in docs directory by @derRizzMeister in https://github.com/ai16z/eliza/pull/1262
-* fix: pnpm lockfile by @shakkernerd in https://github.com/ai16z/eliza/pull/1273
-* chore: Revert "fix: pnpm lockfile" by @shakkernerd in https://github.com/ai16z/eliza/pull/1275
+* fix: bun lockfile by @shakkernerd in https://github.com/ai16z/eliza/pull/1273
+* chore: Revert "fix: bun lockfile" by @shakkernerd in https://github.com/ai16z/eliza/pull/1275
 * fix: Fix client.push issue and update README for Slack client verification by @SumeetChougule in https://github.com/ai16z/eliza/pull/1182
 * fix: write summary file before trying to cache it by @tobbelobb in https://github.com/ai16z/eliza/pull/1205
 * fix: fix ENABLE_ACTION_PROCESSING logic by @oxSaturn in https://github.com/ai16z/eliza/pull/1268
@@ -1928,7 +1928,7 @@ Complete changelog:
 * chore: clean up merged PR1168 by @odilitime in https://github.com/ai16z/eliza/pull/1289
 * feat: Redis Cache Implementation by @shakkernerd in https://github.com/ai16z/eliza/pull/1279
 * fix: integration tests fix by @twilwa in https://github.com/ai16z/eliza/pull/1291
-* fix: pnpm lock file by @shakkernerd in https://github.com/ai16z/eliza/pull/1292
+* fix: bun lock file by @shakkernerd in https://github.com/ai16z/eliza/pull/1292
 * fix: add missing claude vertex case to handleProvider by @shakkernerd in https://github.com/ai16z/eliza/pull/1293
 * fix: output checkable variable for conditional by @twilwa in https://github.com/ai16z/eliza/pull/1294
 * feat: Add caching support for Redis by @shakkernerd in https://github.com/ai16z/eliza/pull/1295
@@ -2162,7 +2162,7 @@ Complete changelog:
 * added support for LlamaLocal's path outside plugin-node/dist by @dr-fusion in https://github.com/ai16z/eliza/pull/649
 * CS - adding better errors and readme. by @justabot in https://github.com/ai16z/eliza/pull/654
 * feat: implement coinbase trading by @monilpat in https://github.com/ai16z/eliza/pull/608
-* fix: pnpm-lock.yaml by @monilpat in https://github.com/ai16z/eliza/pull/664
+* fix: bun-lock.yaml by @monilpat in https://github.com/ai16z/eliza/pull/664
 * feat: add minimal config file for code cov by @pgoos in https://github.com/ai16z/eliza/pull/659
 * fix: embedding search for non-openai models by @cygaar in https://github.com/ai16z/eliza/pull/660
 * feat: evm pubkey derivation by @St4rgarden in https://github.com/ai16z/eliza/pull/667

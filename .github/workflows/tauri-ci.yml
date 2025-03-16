@@ -33,49 +33,49 @@ jobs:
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '23'
-          
+
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
-          
+
       - name: Setup Rust
         run: |
           rustup update stable
           rustup default stable
         shell: bash
-          
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './packages/app/src-tauri -> target'
-          
+
       - name: Install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libx11-dev libxdo-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
-           
-      - name: Install dependencies 
+
+      - name: Install dependencies
         run: bun install
         env:
           NPM_CONFIG_IGNORE_SCRIPTS: true
-      
+
       - name: Build packages
         run: bun run build
-          
+
       - name: Run TypeScript check
         run: |
           cd packages/app
           bun run typecheck
-          
+
       - name: Install Tauri CLI
         run: |
           bun install -g @tauri-apps/cli
@@ -84,4 +84,4 @@ jobs:
       - name: Test build (verify it compiles)
         run: |
           cd packages/app
-          bun run tauri build --debug 
+          bun run tauri build --debug

@@ -46,6 +46,7 @@ Start the local TEE simulator for testing:
 ```bash
 elizaos tee phala simulator
 ```
+
 This will start the simulator on http://localhost:8090.
 
 ### Local Development
@@ -53,6 +54,7 @@ This will start the simulator on http://localhost:8090.
 You can develop your agent locally in two ways:
 
 1. Build the docker-compose file separately:
+
 ```bash
 elizaos tee phala build-compose \
   -i your-image-name \
@@ -64,6 +66,7 @@ elizaos tee phala build-compose \
 ```
 
 2. Run an existing compose file:
+
 ```bash
 elizaos tee phala run-local \
   -c path/to/docker-compose.yml \
@@ -71,12 +74,14 @@ elizaos tee phala run-local \
 ```
 
 This separation allows you to:
+
 - Build compose files without running them immediately
 - Version control your compose files
 - Share compose files with team members
 - Run the same compose file multiple times
 
 The CLI will store generated compose files in:
+
 ```
 .tee-cloud/
   └── compose-files/     # Generated docker-compose files
@@ -132,16 +137,19 @@ elizaos tee phala list-cvms
 ```
 
 List your TEE pods:
+
 ```bash
 elizaos tee phala teepods
 ```
 
 List images in a specific TEE pod:
+
 ```bash
 elizaos tee phala images --teepod-id your-teepod-id
 ```
 
 Upgrade an existing deployment:
+
 ```bash
 elizaos tee phala upgrade \
   -t phala \
@@ -154,6 +162,7 @@ elizaos tee phala upgrade \
 ## Directory Structure
 
 The CLI will create the following directory structure:
+
 ```
 .tee-cloud/
   └── compose-files/     # Generated docker-compose files
@@ -171,11 +180,13 @@ The CLI will create the following directory structure:
 Common issues and solutions:
 
 1. **Docker Build Fails**
+
    - Ensure Docker daemon is running
    - Check Dockerfile path is correct
    - Verify you have necessary permissions
 
 2. **Simulator Connection Issues**
+
    - Check if port 8090 is available
    - Ensure Docker has necessary permissions
 
