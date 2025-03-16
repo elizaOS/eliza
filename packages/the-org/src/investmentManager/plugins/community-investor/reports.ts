@@ -175,8 +175,6 @@ function calculateTradeMetrics(transactions: Transaction[], token: TokenPerforma
   const realizedPnLPercent =
     averageEntryPrice > 0 ? ((averageExitPrice - averageEntryPrice) / averageEntryPrice) * 100 : 0;
 
-  asdfadsfsad;
-
   return {
     totalBought,
     totalBoughtValue,
