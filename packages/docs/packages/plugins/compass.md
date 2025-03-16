@@ -70,4 +70,3 @@ Here are some secrets that need to be set if the plugin was to be used together 
 "plugins": ["@elizaos-plugins/plugin-compass"],
 ...
 ```
-

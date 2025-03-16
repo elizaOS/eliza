@@ -1,4 +1,4 @@
-import type { TSESTree } from "@typescript-eslint/types";
+import type { TSESTree } from '@typescript-eslint/types';
 
 /**
  * Represents an item in the Abstract Syntax Tree (AST) queue.
@@ -15,15 +15,15 @@ import type { TSESTree } from "@typescript-eslint/types";
  * @property {string} [jsDoc] - The JSDoc comment associated with the item.
  */
 export interface ASTQueueItem {
-	name: string;
-	filePath: string;
-	startLine: number;
-	endLine: number;
-	nodeType: string;
-	code: string;
-	className?: string;
-	methodName?: string;
-	jsDoc?: string;
+  name: string;
+  filePath: string;
+  startLine: number;
+  endLine: number;
+  nodeType: string;
+  code: string;
+  className?: string;
+  methodName?: string;
+  jsDoc?: string;
 }
 
 /**
@@ -34,9 +34,9 @@ export interface ASTQueueItem {
  * @property {number} [pullNumber] - The pull number of the repository (optional).
  */
 export interface Repository {
-	owner: string;
-	name: string;
-	pullNumber?: number;
+  owner: string;
+  name: string;
+  pullNumber?: number;
 }
 
 /**
@@ -46,8 +46,8 @@ export interface Repository {
  * @property {string} status - The status of the file change.
  */
 export interface FullModeFileChange {
-	filename: string;
-	status: string;
+  filename: string;
+  status: string;
 }
 
 /**
@@ -60,10 +60,10 @@ export interface FullModeFileChange {
  * @property {string} contents_url - The URL to the contents of the file change.
  */
 export interface PrModeFileChange extends FullModeFileChange {
-	additions: number;
-	deletions: number;
-	changes: number;
-	contents_url: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  contents_url: string;
 }
 
 /**
@@ -73,8 +73,8 @@ export interface PrModeFileChange extends FullModeFileChange {
  * @property {number} todoCount - The number of todos in the section.
  */
 export interface TodoSection {
-	todos: string;
-	todoCount: number;
+  todos: string;
+  todoCount: number;
 }
 
 /**
@@ -100,18 +100,18 @@ export interface TodoSection {
  * @property {number} contextLocation.end.column - The end column of the todo item context.
  */
 export interface TodoItem {
-	comment: string;
-	code: string;
-	fullContext: string;
-	node: TSESTree.Node;
-	location: {
-		start: { line: number; column: number };
-		end: { line: number; column: number };
-	};
-	contextLocation: {
-		start: { line: number; column: number };
-		end: { line: number; column: number };
-	};
+  comment: string;
+  code: string;
+  fullContext: string;
+  node: TSESTree.Node;
+  location: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  contextLocation: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
 }
 
 /**
@@ -137,18 +137,18 @@ export interface TodoItem {
  * @property {number} contextLocation.end.column - The end column number of the context.
  */
 export interface EnvUsage {
-	code: string;
-	context: string;
-	fullContext: string;
-	node: TSESTree.Node;
-	location: {
-		start: { line: number; column: number };
-		end: { line: number; column: number };
-	};
-	contextLocation: {
-		start: { line: number; column: number };
-		end: { line: number; column: number };
-	};
+  code: string;
+  context: string;
+  fullContext: string;
+  node: TSESTree.Node;
+  location: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
+  contextLocation: {
+    start: { line: number; column: number };
+    end: { line: number; column: number };
+  };
 }
 
 /**
@@ -172,17 +172,17 @@ export interface EnvUsage {
  */
 
 export interface PluginDocumentation {
-	overview: string;
-	installation: string;
-	configuration: string;
-	usage: string;
-	apiReference: string;
-	troubleshooting: string;
-	todos: string;
-	actionsDocumentation: string;
-	providersDocumentation: string;
-	evaluatorsDocumentation: string;
-	faq: string;
+  overview: string;
+  installation: string;
+  configuration: string;
+  usage: string;
+  apiReference: string;
+  troubleshooting: string;
+  todos: string;
+  actionsDocumentation: string;
+  providersDocumentation: string;
+  evaluatorsDocumentation: string;
+  faq: string;
 }
 
 /**
@@ -196,12 +196,12 @@ export interface PluginDocumentation {
  * @property {string} description - A brief description of the action.
  */
 export interface ActionMetadata {
-	name: string;
-	similes: string[];
-	validate: string;
-	handler: string;
-	examples: string[];
-	description: string;
+  name: string;
+  similes: string[];
+  validate: string;
+  handler: string;
+  examples: string[];
+  description: string;
 }
 
 /**
@@ -211,6 +211,6 @@ export interface ActionMetadata {
  * @property {number} endLine - The line number where the action ends.
  */
 export interface ActionBounds {
-	startLine: number;
-	endLine: number;
+  startLine: number;
+  endLine: number;
 }

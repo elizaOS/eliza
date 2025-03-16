@@ -4,10 +4,10 @@ sidebar_position: 1
 
 # Overview
 
-
 Eliza is a framework for creating AI agents that can interact across multiple platforms.
 
- **Features**
+**Features**
+
 - **Modular Design**: Plugins and services allow for flexible customization.
 - **Knowledge**: Supports both RAG-based and direct knowledge processing.
 - **Stateful Interactions**: Maintains context across conversations.
@@ -15,9 +15,10 @@ Eliza is a framework for creating AI agents that can interact across multiple pl
 - **Multi-Platform Support**: Integrates with various clients (e.g., Discord, Telegram).
 
 Eliza consists of these core components:
+
 - **Agents (Runtime)**: AI personalities that interact with users and platforms
 - **Actions**: Executable behaviors that agents can perform in response to messages
-- **Clients**: Platform connectors for services like Discord, Twitter, and Telegram 
+- **Clients**: Platform connectors for services like Discord, Twitter, and Telegram
 - **Plugins**: Modular extensions that add new features and capabilities
 - **Providers**: Services that supply contextual information to agents
 - **Evaluators**: Modules that analyze conversations and track agent goals
@@ -28,7 +29,6 @@ Here's an overview of how eliza works from user input to response generation:
 ![](/img/overview.png)
 Source: https://x.com/gelatonetwork/status/1894408632915169618
 
-
 ---
 
 ## [Agent Runtime](./agents.md)
@@ -37,7 +37,7 @@ Source: https://x.com/gelatonetwork/status/1894408632915169618
 
 The Runtime (`src/runtime.ts`) acts as the control tower for your AI agents. Think of it as a conductor leading an orchestra - it ensures all parts work together harmoniously. It serves as the central coordination layer for message processing, memory management, state composition, action execution, and integration with AI models and external services.
 
-- **Core Functions**: 
+- **Core Functions**:
   - Coordinates message processing
   - Manages the agent's lifecycle
   - Handles integration with AI models
@@ -58,17 +58,16 @@ The character file defines who your agent is - like a script for an actor. It in
 - Which plugins to load
 - Which platforms to connect to
 
-
 ## [Clients](./clients.md)
 
 **The Interface**
 
 Clients connect your agent to different platforms (Discord, Twitter, Slack, Farcaster, etc.) while maintaining consistent behavior across all interfaces. Each client can handle different types of interactions:
+
 - Chat messages
 - Social media posts
 - Voice conversations
 - Platform-specific features
-
 
 ## [Actions](./actions.md)
 
@@ -88,7 +87,6 @@ Evaluators (`src/evaluators.ts`) act like referees, making sure the agent follow
 
 Providers (`src/providers.ts`) are the agent's eyes and ears, like a newsroom keeping them informed about the world. They supply real-time information to agents by integrating external APIs, managing temporal awareness, and providing system status updates to help agents make better decisions.
 
-
 ## Memory & Knowledge Systems
 
 The framework implements specialized memory systems through:
@@ -96,24 +94,29 @@ The framework implements specialized memory systems through:
 ### Memory Manager
 
 The Memory Manager (`src/memory.ts`) acts like a personal diary and helps agents remember:
+
 - Recent conversations
 - Important facts
 - User interactions
 - Immediate context for current discussions
 
 ### Knowledge Systems
+
 Think of this as the agent's library (`src/knowledge.ts`, `src/ragknowledge.ts`), where information is:
+
 - Organized into searchable chunks
 - Converted into vector embeddings
 - Retrieved based on relevance
 - Used to enhance responses
 
 ## Data Management
+
 The data layer provides robust storage and caching through:
 
 ### Database System
 
 The database (`src/database.ts`) acts as a filing cabinet, storing:
+
 - Conversation histories
 - User interactions
 - Transaction management
@@ -130,57 +133,58 @@ See also: [Memory Management](../guides/memory-management.md)
 
 The Cache System (`src/cache.ts`) creates shortcuts for frequently accessed information, making agents respond faster and more efficiently.
 
-
 ## System Flow
 
 When someone interacts with your agent, the Client receives the message and forwards it to the Runtime which processes it with the characterfile configuration. The Runtime loads relevant memories and knowledge, uses actions and evaluators to determine how to response, gets additional context through providers. Then the Runtime generates a response using the AI model, stores new memories, and sends the response back through the client.
-
 
 ---
 
 ## Common Patterns
 
 ### Memory Usage (`src/memory.ts`)
+
 ```typescript
 // Store conversation data
 await messageManager.createMemory({
-    id: messageId,
-    content: { text: "Message content" },
-    userId: userId,
-    roomId: roomId
+  id: messageId,
+  content: { text: 'Message content' },
+  userId: userId,
+  roomId: roomId,
 });
 
 // Retrieve context
 const recentMessages = await messageManager.getMemories({
-    roomId: roomId,
-    count: 10
+  roomId: roomId,
+  count: 10,
 });
 ```
 
 ### Action Implementation (`src/actions.ts`)
+
 ```typescript
 const customAction: Action = {
-    name: "CUSTOM_ACTION",
-    similes: ["ALTERNATE_NAME"],
-    description: "Action description",
-    validate: async (runtime, message) => {
-        // Validation logic
-        return true;
-    },
-    handler: async (runtime, message) => {
-        // Implementation logic
-        return true;
-    }
+  name: 'CUSTOM_ACTION',
+  similes: ['ALTERNATE_NAME'],
+  description: 'Action description',
+  validate: async (runtime, message) => {
+    // Validation logic
+    return true;
+  },
+  handler: async (runtime, message) => {
+    // Implementation logic
+    return true;
+  },
 };
 ```
 
 ### Provider Integration (`src/providers.ts`)
+
 ```typescript
 const dataProvider: Provider = {
-    get: async (runtime: IAgentRuntime, message: Memory) => {
-        // Fetch and format data
-        return "Formatted context string";
-    }
+  get: async (runtime: IAgentRuntime, message: Memory) => {
+    // Fetch and format data
+    return 'Formatted context string';
+  },
 };
 ```
 

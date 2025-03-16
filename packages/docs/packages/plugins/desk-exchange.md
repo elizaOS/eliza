@@ -1,7 +1,9 @@
 # DESK Exchange Plugin for Eliza
 
 This plugin enables interaction with the DESK Perpetual DEX through Eliza, providing perpetual futures trading capabilities. Visit [DESK Exchange](https://desk.exchange/) for more details.
+
 ## Features
+
 - 💱 Perpetual Trading
   - Market orders (immediate execution)
   - Limit orders (price-specific)
@@ -18,7 +20,7 @@ Add the plugin to your Eliza configuration:
 
 ```json
 {
-    "plugins": ["@elizaos/plugin-desk-exchange"]
+  "plugins": ["@elizaos/plugin-desk-exchange"]
 }
 ```
 

@@ -26,12 +26,12 @@ ZAPPER_API_KEY=your_api_key
 3. Register the plugin in your Eliza configuration:
 
 ```typescript
-import { zapperPlugin } from "@elizaos/plugin-zapper";
+import { zapperPlugin } from '@elizaos/plugin-zapper';
 
 // In your Eliza configuration
 plugins: [
-    zapperPlugin,
-    // ... other plugins
+  zapperPlugin,
+  // ... other plugins
 ];
 ```
 
@@ -82,8 +82,8 @@ portfolio: {
       balanceUSD: number;
       pct: number;
     }>;
-  };
-};
+  }
+}
 ```
 
 #### farcasterPortfoio
@@ -107,13 +107,18 @@ custodyAddress: string;
 ```
 
 ## Development Guide
+
 ### Setting up the development environment
+
 1. Clone the repository.
 2. Install dependencies:
+
 ```bash
 pnpm install
 ```
+
 3. Build the plugin:
+
 ```bash
 pnpm build
 ```
@@ -122,8 +127,8 @@ pnpm build
 
 ### Environment Variables
 
-| Variable             | Description              | Required |
-| -------------------- | ------------------------ | -------- |
+| Variable       | Description         | Required |
+| -------------- | ------------------- | -------- |
 | ZAPPER_API_KEY | Your Zapper API key | Yes      |
 
 ### Types

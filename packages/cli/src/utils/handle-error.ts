@@ -1,4 +1,4 @@
-import { logger } from "@elizaos/core";
+import { logger } from '@elizaos/core';
 
 /**
  * Handles the error by logging it and exiting the process.
@@ -9,13 +9,13 @@ import { logger } from "@elizaos/core";
  * @param {unknown} error - The error to be handled.
  */
 export function handleError(error: unknown) {
-	logger.error("An error occurred:", error);
-	if (error instanceof Error) {
-		logger.error("Error details:", error.message);
-		logger.error("Stack trace:", error.stack);
-	} else {
-		logger.error("Unknown error type:", typeof error);
-		logger.error("Error value:", error);
-	}
-	process.exit(1);
+  logger.error('An error occurred:', error);
+  if (error instanceof Error) {
+    logger.error('Error details:', error.message);
+    logger.error('Stack trace:', error.stack);
+  } else {
+    logger.error('Unknown error type:', typeof error);
+    logger.error('Error value:', error);
+  }
+  process.exit(1);
 }

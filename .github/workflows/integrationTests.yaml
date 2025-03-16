@@ -3,10 +3,10 @@ name: Integration Tests
 on:
   push:
     branches:
-      - "*"
+      - '*'
   pull_request_target:
     branches:
-      - "*"
+      - '*'
 
 env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -26,7 +26,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "23"
+          node-version: '23'
 
       - name: Install required packages
         run: |

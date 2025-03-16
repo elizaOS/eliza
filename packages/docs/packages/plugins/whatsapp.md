@@ -34,13 +34,13 @@ WHATSAPP_BUSINESS_ID=your_business_id        # Optional: Business account ID
 ### Basic Setup
 
 ```typescript
-import { WhatsAppPlugin } from "@elizaos/plugin-whatsapp";
+import { WhatsAppPlugin } from '@elizaos/plugin-whatsapp';
 
 const whatsappPlugin = new WhatsAppPlugin({
-    accessToken: "your_access_token",
-    phoneNumberId: "your_phone_number_id",
-    webhookVerifyToken: "your_webhook_verify_token",
-    businessAccountId: "your_business_account_id",
+  accessToken: 'your_access_token',
+  phoneNumberId: 'your_phone_number_id',
+  webhookVerifyToken: 'your_webhook_verify_token',
+  businessAccountId: 'your_business_account_id',
 });
 ```
 
@@ -49,21 +49,21 @@ const whatsappPlugin = new WhatsAppPlugin({
 ```typescript
 // Send a text message
 await whatsappPlugin.sendMessage({
-    type: "text",
-    to: "1234567890",
-    content: "Hello from WhatsApp!",
+  type: 'text',
+  to: '1234567890',
+  content: 'Hello from WhatsApp!',
 });
 
 // Send a template message
 await whatsappPlugin.sendMessage({
-    type: "template",
-    to: "1234567890",
-    content: {
-        name: "hello_world",
-        language: {
-            code: "en",
-        },
+  type: 'template',
+  to: '1234567890',
+  content: {
+    name: 'hello_world',
+    language: {
+      code: 'en',
     },
+  },
 });
 ```
 
@@ -71,21 +71,19 @@ await whatsappPlugin.sendMessage({
 
 ```typescript
 // Verify webhook
-app.get("/webhook", (req, res) => {
-    const verified = await whatsappPlugin.verifyWebhook(
-        req.query["hub.verify_token"]
-    );
-    if (verified) {
-        res.send(req.query["hub.challenge"]);
-    } else {
-        res.sendStatus(403);
-    }
+app.get('/webhook', (req, res) => {
+  const verified = await whatsappPlugin.verifyWebhook(req.query['hub.verify_token']);
+  if (verified) {
+    res.send(req.query['hub.challenge']);
+  } else {
+    res.sendStatus(403);
+  }
 });
 
 // Handle webhook events
-app.post("/webhook", (req, res) => {
-    await whatsappPlugin.handleWebhook(req.body);
-    res.sendStatus(200);
+app.post('/webhook', (req, res) => {
+  await whatsappPlugin.handleWebhook(req.body);
+  res.sendStatus(200);
 });
 ```
 
@@ -103,13 +101,13 @@ The plugin throws errors in the following cases:
 
 ```typescript
 try {
-    await whatsappPlugin.sendMessage({
-        type: "text",
-        to: "1234567890",
-        content: "Hello!",
-    });
+  await whatsappPlugin.sendMessage({
+    type: 'text',
+    to: '1234567890',
+    content: 'Hello!',
+  });
 } catch (error) {
-    console.error("Failed to send message:", error.message);
+  console.error('Failed to send message:', error.message);
 }
 ```
 
@@ -135,30 +133,30 @@ Common error cases:
 
 ```typescript
 interface WhatsAppConfig {
-    accessToken: string;
-    phoneNumberId: string;
-    webhookVerifyToken?: string;
-    businessAccountId?: string;
+  accessToken: string;
+  phoneNumberId: string;
+  webhookVerifyToken?: string;
+  businessAccountId?: string;
 }
 
 interface WhatsAppMessage {
-    type: "text" | "template";
-    to: string;
-    content: string | WhatsAppTemplate;
+  type: 'text' | 'template';
+  to: string;
+  content: string | WhatsAppTemplate;
 }
 
 interface WhatsAppTemplate {
-    name: string;
-    language: {
-        code: string;
-    };
-    components?: Array<{
-        type: string;
-        parameters: Array<{
-            type: string;
-            text?: string;
-        }>;
+  name: string;
+  language: {
+    code: string;
+  };
+  components?: Array<{
+    type: string;
+    parameters: Array<{
+      type: string;
+      text?: string;
     }>;
+  }>;
 }
 ```
 

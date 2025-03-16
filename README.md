@@ -6,7 +6,7 @@
 
 <div align="center">
 
-📑 [Technical Report](https://arxiv.org/pdf/2501.06781) |  📖 [Documentation](https://elizaos.github.io/eliza/) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
+📑 [Technical Report](https://arxiv.org/pdf/2501.06781) | 📖 [Documentation](https://elizaos.github.io/eliza/) | 🎯 [Examples](https://github.com/thejoven/awesome-eliza)
 
 </div>
 
@@ -129,10 +129,10 @@ For detailed instructions on using the start script, including character managem
 1. Open `packages/core/src/defaultCharacter.ts` to modify the default character. Uncomment and edit.
 
 2. To load custom characters:
-    - Use `bun start --characters="path/to/your/character.json"`
-    - Multiple character files can be loaded simultaneously
+   - Use `bun start --characters="path/to/your/character.json"`
+   - Multiple character files can be loaded simultaneously
 3. Connect with X (Twitter)
-    - change `"clients": []` to `"clients": ["twitter"]` in the character file to connect with X
+   - change `"clients": []` to `"clients": ["twitter"]` in the character file to connect with X
 
 ---
 
@@ -143,11 +143,13 @@ You may need to install Sharp. If you see an error when starting up, try install
 ```
 bun install --include=optional sharp
 ```
+
 ---
 
-### Deploy Eliza in one click 
+### Deploy Eliza in one click
 
 Use [Fleek](https://fleek.xyz/eliza/) to deploy Eliza in one click. This opens Eliza to non-developers and provides the following options to build your agent:
+
 1. Start with a template
 2. Build characterfile from scratch
 3. Upload pre-made characterfile
@@ -164,6 +166,7 @@ Click [here](https://fleek.xyz/eliza/) to get started!
 ## Citation
 
 We now have a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the Eliza OS:
+
 ```bibtex
 @article{walters2025eliza,
   title={Eliza: A Web3 friendly AI Agent Operating System},
@@ -178,7 +181,6 @@ We now have a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the Eli
 <a href="https://github.com/elizaos/eliza/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=elizaos/eliza" alt="Eliza project contributors" />
 </a>
-
 
 ## Star History
 

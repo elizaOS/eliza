@@ -1,153 +1,146 @@
-import { type ParserOptions, parse } from "@typescript-eslint/parser";
-import type { AIService } from "./AIService/AIService.js";
+import { type ParserOptions, parse } from '@typescript-eslint/parser';
+import type { AIService } from './AIService/AIService.js';
 
 /**
  * Class for validating and fixing JSDoc comments in TypeScript code.
  */
 export class JSDocValidator {
-	private parserOptions: ParserOptions = {
-		sourceType: "module",
-		ecmaVersion: 2020,
-		ecmaFeatures: {
-			jsx: true,
-		},
-		range: true,
-		loc: true,
-		tokens: true,
-		comment: true,
-	};
+  private parserOptions: ParserOptions = {
+    sourceType: 'module',
+    ecmaVersion: 2020,
+    ecmaFeatures: {
+      jsx: true,
+    },
+    range: true,
+    loc: true,
+    tokens: true,
+    comment: true,
+  };
 
-	/**
-	 * Constructor for the class.
-	 *
-	 * @param {AIService} aiService - An instance of the AIService class.
-	 */
-	constructor(private aiService: AIService) {}
+  /**
+   * Constructor for the class.
+   *
+   * @param {AIService} aiService - An instance of the AIService class.
+   */
+  constructor(private aiService: AIService) {}
 
-	/**
-	 * Validates and fixes JSDoc comments in TypeScript code
-	 */
-	/**
-	 * Validates and fixes the JSDoc comment in the given file.
-	 * @param {string} fileName - The name of the file.
-	 * @param {string} code - The code containing the JSDoc comment.
-	 * @param {string} originalComment - The original JSDoc comment.
-	 * @returns {Promise<string>} The validated and potentially fixed JSDoc comment.
-	 */
-	public async validateAndFixJSDoc(
-		fileName: string,
-		code: string,
-		originalComment: string,
-	): Promise<string> {
-		// First try parsing with the original comment
-		if (this.isValidTypeScript(code)) {
-			return originalComment;
-		}
+  /**
+   * Validates and fixes JSDoc comments in TypeScript code
+   */
+  /**
+   * Validates and fixes the JSDoc comment in the given file.
+   * @param {string} fileName - The name of the file.
+   * @param {string} code - The code containing the JSDoc comment.
+   * @param {string} originalComment - The original JSDoc comment.
+   * @returns {Promise<string>} The validated and potentially fixed JSDoc comment.
+   */
+  public async validateAndFixJSDoc(
+    fileName: string,
+    code: string,
+    originalComment: string
+  ): Promise<string> {
+    // First try parsing with the original comment
+    if (this.isValidTypeScript(code)) {
+      return originalComment;
+    }
 
-		// Try fixing common JSDoc issues
-		const fixedComment = this.fixCommonJSDocIssues(originalComment);
-		const codeWithFixedComment = code.replace(originalComment, fixedComment);
+    // Try fixing common JSDoc issues
+    const fixedComment = this.fixCommonJSDocIssues(originalComment);
+    const codeWithFixedComment = code.replace(originalComment, fixedComment);
 
-		if (this.isValidTypeScript(codeWithFixedComment)) {
-			console.log(
-				`✓ JSDoc comment in ${fileName} was fixed using regex patterns`,
-			);
-			return fixedComment;
-		}
-		console.log(
-			`❌JSDoc comment in ${fileName} regex patterns failed, making AI call for help`,
-		);
+    if (this.isValidTypeScript(codeWithFixedComment)) {
+      console.log(`✓ JSDoc comment in ${fileName} was fixed using regex patterns`);
+      return fixedComment;
+    }
+    console.log(`❌JSDoc comment in ${fileName} regex patterns failed, making AI call for help`);
 
-		// If still invalid, try regenerating with AI
-		try {
-			const regeneratedComment = await this.regenerateJSDoc(code);
-			const codeWithRegeneratedComment = code.replace(
-				originalComment,
-				regeneratedComment,
-			);
+    // If still invalid, try regenerating with AI
+    try {
+      const regeneratedComment = await this.regenerateJSDoc(code);
+      const codeWithRegeneratedComment = code.replace(originalComment, regeneratedComment);
 
-			if (this.isValidTypeScript(codeWithRegeneratedComment)) {
-				console.log(`✓ JSDoc comment in ${fileName} was regenerated using AI`);
-				return regeneratedComment;
-			}
-		} catch (error) {
-			console.error(`Error during AI regeneration for ${fileName}:`, error);
-		}
+      if (this.isValidTypeScript(codeWithRegeneratedComment)) {
+        console.log(`✓ JSDoc comment in ${fileName} was regenerated using AI`);
+        return regeneratedComment;
+      }
+    } catch (error) {
+      console.error(`Error during AI regeneration for ${fileName}:`, error);
+    }
 
-		// Instead of throwing, log the issue and return original
-		console.warn(`⚠️ HUMAN INTERVENTION NEEDED - Invalid JSDoc in ${fileName}`);
-		console.warn("Original comment:", originalComment);
-		return originalComment;
-	}
+    // Instead of throwing, log the issue and return original
+    console.warn(`⚠️ HUMAN INTERVENTION NEEDED - Invalid JSDoc in ${fileName}`);
+    console.warn('Original comment:', originalComment);
+    return originalComment;
+  }
 
-	/**
-	 * Checks if the TypeScript code is valid
-	 */
-	private isValidTypeScript(code: string): boolean {
-		try {
-			parse(code, this.parserOptions);
-			return true;
-		} catch (_error) {
-			return false;
-		}
-	}
+  /**
+   * Checks if the TypeScript code is valid
+   */
+  private isValidTypeScript(code: string): boolean {
+    try {
+      parse(code, this.parserOptions);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
 
-	/**
-	 * Fixes common JSDoc formatting issues
-	 */
-	private fixCommonJSDocIssues(comment: string): string {
-		// First remove any backtick code block markers
-		comment = comment.replace(/^```[\s\S]*?\n/, ""); // Remove opening code block
-		comment = comment.replace(/\n```$/, ""); // Remove closing code block
+  /**
+   * Fixes common JSDoc formatting issues
+   */
+  private fixCommonJSDocIssues(comment: string): string {
+    // First remove any backtick code block markers
+    comment = comment.replace(/^```[\s\S]*?\n/, ''); // Remove opening code block
+    comment = comment.replace(/\n```$/, ''); // Remove closing code block
 
-		const fixes = [
-			// Fix opening format
-			[/\/\*\*?(?!\*)/, "/**"], // Ensure proper opening
+    const fixes = [
+      // Fix opening format
+      [/\/\*\*?(?!\*)/, '/**'], // Ensure proper opening
 
-			// Fix body asterisks and spacing
-			[/\*{3,}/g, "**"], // Remove excessive asterisks in body
-			[/\*(?!\s|\*|\/)/g, "* "], // Add space after single asterisk
-			[/^(\s*)\*\s\s+/gm, "$1* "], // Remove multiple spaces after asterisk
+      // Fix body asterisks and spacing
+      [/\*{3,}/g, '**'], // Remove excessive asterisks in body
+      [/\*(?!\s|\*|\/)/g, '* '], // Add space after single asterisk
+      [/^(\s*)\*\s\s+/gm, '$1* '], // Remove multiple spaces after asterisk
 
-			// Fix multi-line issues (from bash script insights)
-			[/\*\/\s*\n\s*\*\*\//g, "*/"], // Remove stray closing after proper closing
-			[/\n\s*\*\s*\n\s*\*\//g, "\n */"], // Fix empty line before closing
+      // Fix multi-line issues (from bash script insights)
+      [/\*\/\s*\n\s*\*\*\//g, '*/'], // Remove stray closing after proper closing
+      [/\n\s*\*\s*\n\s*\*\//g, '\n */'], // Fix empty line before closing
 
-			// Fix closing format
-			[/\*+\//g, "*/"], // Fix multiple asterisks in closing
-			[/(?<!\s)\*\//g, " */"], // Ensure space before closing
-			[/\*\/\s+\*\//g, "*/"], // Remove multiple closings
+      // Fix closing format
+      [/\*+\//g, '*/'], // Fix multiple asterisks in closing
+      [/(?<!\s)\*\//g, ' */'], // Ensure space before closing
+      [/\*\/\s+\*\//g, '*/'], // Remove multiple closings
 
-			// Fix indentation
-			[/\n\*/g, "\n *"], // Ensure asterisk alignment
-			[/^\s*\*\s*$/gm, " *"], // Fix empty comment lines
+      // Fix indentation
+      [/\n\*/g, '\n *'], // Ensure asterisk alignment
+      [/^\s*\*\s*$/gm, ' *'], // Fix empty comment lines
 
-			// Remove trailing spaces
-			[/\s+$/gm, ""],
+      // Remove trailing spaces
+      [/\s+$/gm, ''],
 
-			// Ensure proper spacing around parameter/return tags
-			[/@(param|returns?|throws?|example)\s{2,}/g, "@$1 "],
+      // Ensure proper spacing around parameter/return tags
+      [/@(param|returns?|throws?|example)\s{2,}/g, '@$1 '],
 
-			// Fix type definition spacing
-			[/\{(\w+)\}/g, "{ $1 }"], // Add spaces inside type braces
+      // Fix type definition spacing
+      [/\{(\w+)\}/g, '{ $1 }'], // Add spaces inside type braces
 
-			// Normalize newlines
-			[/\r\n/g, "\n"],
-		];
+      // Normalize newlines
+      [/\r\n/g, '\n'],
+    ];
 
-		let fixed = comment;
-		for (const [pattern, replacement] of fixes) {
-			fixed = fixed.replace(pattern, replacement as string);
-		}
+    let fixed = comment;
+    for (const [pattern, replacement] of fixes) {
+      fixed = fixed.replace(pattern, replacement as string);
+    }
 
-		return fixed;
-	}
+    return fixed;
+  }
 
-	/**
-	 * Regenerates JSDoc using AI with stronger constraints
-	 */
-	private async regenerateJSDoc(code: string): Promise<string> {
-		const prompt = `Fix the following JSDoc comment to be syntactically valid.
+  /**
+   * Regenerates JSDoc using AI with stronger constraints
+   */
+  private async regenerateJSDoc(code: string): Promise<string> {
+    const prompt = `Fix the following JSDoc comment to be syntactically valid.
         Ensure proper formatting:
         - Start with /**
         - Each line should start with a single *
@@ -161,6 +154,6 @@ export class JSDocValidator {
 
         Return ONLY the fixed JSDoc comment, nothing else.`;
 
-		return await this.aiService.generateComment(prompt);
-	}
+    return await this.aiService.generateComment(prompt);
+  }
 }

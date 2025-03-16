@@ -82,4 +82,4 @@ export interface IWebSocketService extends IServiceProvider {
    * Register a text message handler
    */
   onTextMessage(handler: (payload: TextMessagePayload) => void): void;
-} 
+}

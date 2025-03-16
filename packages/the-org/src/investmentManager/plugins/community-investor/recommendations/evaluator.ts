@@ -1,25 +1,25 @@
 import {
-	type Evaluator,
-	type IAgentRuntime,
-	type Memory,
-	ModelType,
-	type State,
-	type UUID,
-	composePrompt,
-} from "@elizaos/core";
-import { v4 as uuid } from "uuid";
-import { z } from "zod";
-import type { CommunityInvestorService } from "../tradingService.js";
-import { type RecommendationMemory, ServiceType } from "../types.js";
+  type Evaluator,
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  type State,
+  type UUID,
+  composePrompt,
+} from '@elizaos/core';
+import { v4 as uuid } from 'uuid';
+import { z } from 'zod';
+import type { CommunityInvestorService } from '../tradingService.js';
+import { type RecommendationMemory, ServiceType } from '../types.js';
 import {
-	extractXMLFromResponse,
-	getZodJsonSchema,
-	parseConfirmationResponse,
-	parseRecommendationsResponse,
-	parseSignalResponse,
-} from "../utils.js";
-import { examples } from "./examples.js";
-import { recommendationSchema } from "./schema.js";
+  extractXMLFromResponse,
+  getZodJsonSchema,
+  parseConfirmationResponse,
+  parseRecommendationsResponse,
+  parseSignalResponse,
+} from '../utils.js';
+import { examples } from './examples.js';
+import { recommendationSchema } from './schema.js';
 
 /**
  * Template for generating recommendation messages between agents.
@@ -372,10 +372,10 @@ Now, based on the recommendation schema, the existing recommendations, and the c
 const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID;
 
 export const formatRecommendations = (recommendations: Memory[]) => {
-	return recommendations
-		.reverse()
-		.map((rec: Memory) => `${JSON.stringify((rec.metadata as any).recommendation)}`)
-		.join("\n");
+  return recommendations
+    .reverse()
+    .map((rec: Memory) => `${JSON.stringify((rec.metadata as any).recommendation)}`)
+    .join('\n');
 };
 
 /**
@@ -390,37 +390,32 @@ export const formatRecommendations = (recommendations: Memory[]) => {
  * @property {Function} handler - An asynchronous function that handles the evaluation process.
  */
 export const recommendationEvaluator: Evaluator = {
-	name: "EXTRACT_RECOMMENDATIONS",
-	similes: [],
-	alwaysRun: true,
-	validate: async (
-		_runtime: IAgentRuntime,
-		message: Memory,
-	): Promise<boolean> => {
-		console.log(
-			"validating message for recommendation",
-			message.content.text.length < 5
-				? false
-				: message.entityId !== message.agentId,
-		);
+  name: 'EXTRACT_RECOMMENDATIONS',
+  similes: [],
+  alwaysRun: true,
+  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    console.log(
+      'validating message for recommendation',
+      message.content.text.length < 5 ? false : message.entityId !== message.agentId
+    );
 
-		if (message.content.text.length < 5) {
-			return false;
-		}
+    if (message.content.text.length < 5) {
+      return false;
+    }
 
-		return message.entityId !== message.agentId;
-	},
-	description:
-		"Extract recommendations to buy or sell memecoins/tokens from the conversation, including details like ticker, contract address, conviction level, and recommender username.",
-	async handler(runtime, message, state, options, callback) {
-		try {
-			await handler(runtime, message, state, options, callback);
-		} catch (error) {
-			console.error(error);
-			throw error;
-		}
-	},
-	examples,
+    return message.entityId !== message.agentId;
+  },
+  description:
+    'Extract recommendations to buy or sell memecoins/tokens from the conversation, including details like ticker, contract address, conviction level, and recommender username.',
+  async handler(runtime, message, state, options, callback) {
+    try {
+      await handler(runtime, message, state, options, callback);
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  },
+  examples,
 };
 
 /**
@@ -433,362 +428,348 @@ export const recommendationEvaluator: Evaluator = {
  * @param {Function} [callback] - Optional callback function.
  */
 async function handler(
-	runtime: IAgentRuntime,
-	message: Memory,
-	state?: State,
-	_options?: { [key: string]: unknown },
-	callback?: any,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  _options?: { [key: string]: unknown },
+  callback?: any
 ) {
-	console.log("Running the evaluator");
-	if (!state) return;
+  console.log('Running the evaluator');
+  if (!state) return;
 
-	const { agentId, roomId } = message;
+  const { agentId, roomId } = message;
 
-	if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
-		console.log("no trading service");
-		return;
-	}
+  if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
+    console.log('no trading service');
+    return;
+  }
 
-	const tradingService = runtime.getService<CommunityInvestorService>(
-		ServiceType.COMMUNITY_INVESTOR,
-	)!;
+  const tradingService = runtime.getService<CommunityInvestorService>(
+    ServiceType.COMMUNITY_INVESTOR
+  )!;
 
-	if (!tradingService.hasWallet("solana")) {
-		console.log("no registered solana wallet in trading service");
-		return;
-	}
+  if (!tradingService.hasWallet('solana')) {
+    console.log('no registered solana wallet in trading service');
+    return;
+  }
 
-	if (message.entityId === message.agentId) return;
-	console.log("evaluating recommendations....");
+  if (message.entityId === message.agentId) return;
+  console.log('evaluating recommendations....');
 
-	console.log("message", message.content.text);
+  console.log('message', message.content.text);
 
-	const sentimentPrompt = composePrompt({
-		template: sentimentTemplate,
-		state: {
-			message: message.content.text,
-		},
-	});
+  const sentimentPrompt = composePrompt({
+    template: sentimentTemplate,
+    state: {
+      message: message.content.text,
+    },
+  });
 
-	const sentimentText = await runtime.useModel(ModelType.TEXT_LARGE, {
-		prompt: sentimentPrompt,
-	});
+  const sentimentText = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: sentimentPrompt,
+  });
 
-	const signal = extractXMLFromResponse(sentimentText, "signal");
+  const signal = extractXMLFromResponse(sentimentText, 'signal');
 
-	const signalInt = parseSignalResponse(signal);
+  const signalInt = parseSignalResponse(signal);
 
-	console.log("signalInt", signalInt);
+  console.log('signalInt', signalInt);
 
-	if (signalInt === 2 && callback) {
-		const responseMemory: Memory = {
-			content: {
-				text: "Please provide a token address!",
-				inReplyTo: message.id ? message.id : undefined,
-				buttons: [],
-			},
-			entityId: message.entityId,
-			agentId: message.agentId,
-			metadata: {
-				...message.metadata,
-			},
-			roomId: message.roomId,
-			createdAt: Date.now() * 1000,
-		};
-		await callback(responseMemory);
-		return;
-	}
+  if (signalInt === 2 && callback) {
+    const responseMemory: Memory = {
+      content: {
+        text: 'Please provide a token address!',
+        inReplyTo: message.id ? message.id : undefined,
+        buttons: [],
+      },
+      entityId: message.entityId,
+      agentId: message.agentId,
+      metadata: {
+        ...message.metadata,
+      },
+      roomId: message.roomId,
+      createdAt: Date.now() * 1000,
+    };
+    await callback(responseMemory);
+    return;
+  }
 
-	if (signalInt === 3) {
-		console.log("signal is 3, skipping not related to tokens at all");
-		return;
-	}
-	// Get recommendations from trust db by user that sent the message
-	const recentRecommendations = (await runtime.getMemories({
-		tableName: "recommendations",
-		roomId,
-		count: 10,
-	})) as RecommendationMemory[];
+  if (signalInt === 3) {
+    console.log('signal is 3, skipping not related to tokens at all');
+    return;
+  }
+  // Get recommendations from trust db by user that sent the message
+  const recentRecommendations = (await runtime.getMemories({
+    tableName: 'recommendations',
+    roomId,
+    count: 10,
+  })) as RecommendationMemory[];
 
-	// Remove any recommendations older than 10 minutes
-	Promise.all(
-		await recentRecommendations
-			.filter((r) => r.createdAt && Date.now() - r.createdAt > 10 * 60 * 1000)
-			.map((r) => runtime.deleteMemory(r.id as UUID)),
-	);
+  // Remove any recommendations older than 10 minutes
+  Promise.all(
+    await recentRecommendations
+      .filter((r) => r.createdAt && Date.now() - r.createdAt > 10 * 60 * 1000)
+      .map((r) => runtime.deleteMemory(r.id as UUID))
+  );
 
-	console.log("message", message);
+  console.log('message', message);
 
-	const messageData = {
-		text: message.content.text,
-		entityId: message.entityId,
-		agentId: message.agentId,
-		roomId: message.roomId,
-		username: message.content.username ?? message.content.userName,
-	};
+  const messageData = {
+    text: message.content.text,
+    entityId: message.entityId,
+    agentId: message.agentId,
+    roomId: message.roomId,
+    username: message.content.username ?? message.content.userName,
+  };
 
-	// nicely format message data
+  // nicely format message data
 
-	const messageString = `username: ${messageData.username}: text: ${messageData.text}
+  const messageString = `username: ${messageData.username}: text: ${messageData.text}
 	entityId: ${messageData.entityId} | agentId: ${messageData.agentId} | roomId: ${messageData.roomId}`;
 
-	const prompt = composePrompt({
-		state: {
-			schema: JSON.stringify(getZodJsonSchema(recommendationSchema)),
-			message: messageString,
-		},
-		template: recommendationTemplate,
-	});
+  const prompt = composePrompt({
+    state: {
+      schema: JSON.stringify(getZodJsonSchema(recommendationSchema)),
+      message: messageString,
+    },
+    template: recommendationTemplate,
+  });
 
-	// Only function slowing us down: generateText
-	const [text, participants] = await Promise.all([
-		runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-			stopSequences: [],
-		}),
-		runtime.getParticipantsForRoom(message.roomId),
-	]);
+  // Only function slowing us down: generateText
+  const [text, participants] = await Promise.all([
+    runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+      stopSequences: [],
+    }),
+    runtime.getParticipantsForRoom(message.roomId),
+  ]);
 
-	console.log("Participants", participants);
+  console.log('Participants', participants);
 
-	const newRecommendationsBlock = extractXMLFromResponse(
-		text,
-		"new_recommendations",
-	);
+  const newRecommendationsBlock = extractXMLFromResponse(text, 'new_recommendations');
 
-	const parsedRecommendations = parseRecommendationsResponse(
-		newRecommendationsBlock,
-	);
+  const parsedRecommendations = parseRecommendationsResponse(newRecommendationsBlock);
 
-	if (parsedRecommendations.length === 0) {
-		console.log("no recommendations found");
-		return;
-	}
+  if (parsedRecommendations.length === 0) {
+    console.log('no recommendations found');
+    return;
+  }
 
-	const recommendationDataMap = parsedRecommendations
-		.map((r) => r.recommendation_data)
-		.filter((c) => c.conviction !== "null" && c.type !== "null");
+  const recommendationDataMap = parsedRecommendations
+    .map((r) => r.recommendation_data)
+    .filter((c) => c.conviction !== 'null' && c.type !== 'null');
 
-	const recommendations = z
-		.array(recommendationSchema)
-		.parse(recommendationDataMap);
+  const recommendations = z.array(recommendationSchema).parse(recommendationDataMap);
 
-	const tokenRecommendationsSet = new Set(
-		recentRecommendations
-			.filter((r) => (r.metadata as any).recommendation.confirmed)
-			.map((r) => (r.metadata as any).recommendation.tokenAddress),
-	);
+  const tokenRecommendationsSet = new Set(
+    recentRecommendations
+      .filter((r) => (r.metadata as any).recommendation.confirmed)
+      .map((r) => (r.metadata as any).recommendation.tokenAddress)
+  );
 
-	const filteredRecommendations = recommendations
-		// TODO: Replace username with entity ID
-		.filter((rec) => rec.username !== runtime.character.name)
-		.filter((rec) => !tokenRecommendationsSet.has(rec.tokenAddress));
+  const filteredRecommendations = recommendations
+    // TODO: Replace username with entity ID
+    .filter((rec) => rec.username !== runtime.character.name)
+    .filter((rec) => !tokenRecommendationsSet.has(rec.tokenAddress));
 
-	if (filteredRecommendations.length === 0) {
-		console.log("no new recommendations found");
-		return;
-	}
+  if (filteredRecommendations.length === 0) {
+    console.log('no new recommendations found');
+    return;
+  }
 
-	// TODO: getAccounts in database
-	const users = await Promise.all(
-		participants.map((id) => runtime.getEntityById(id)),
-	).then((users) => users.filter((user) => !!user));
+  // TODO: getAccounts in database
+  const users = await Promise.all(participants.map((id) => runtime.getEntityById(id))).then(
+    (users) => users.filter((user) => !!user)
+  );
 
-	// Only Reply to first recommendation
-	let hasAgentRepliedTo = false;
+  // Only Reply to first recommendation
+  let hasAgentRepliedTo = false;
 
-	for (const recommendation of filteredRecommendations) {
-		if (
-			recommendation.tokenAddress !== "null" &&
-			recommendation.ticker !== "null" &&
-			recommendation.ticker
-		) {
-			const tokenAddress = await tradingService.resolveTicker(
-				"solana", // todo: extract from recommendation?
-				recommendation.ticker,
-			);
+  for (const recommendation of filteredRecommendations) {
+    if (
+      recommendation.tokenAddress !== 'null' &&
+      recommendation.ticker !== 'null' &&
+      recommendation.ticker
+    ) {
+      const tokenAddress = await tradingService.resolveTicker(
+        'solana', // todo: extract from recommendation?
+        recommendation.ticker
+      );
 
-			recommendation.tokenAddress = tokenAddress ?? undefined;
-		}
+      recommendation.tokenAddress = tokenAddress ?? undefined;
+    }
 
-		if (!recommendation.tokenAddress) continue;
+    if (!recommendation.tokenAddress) continue;
 
-		const token = await tradingService.getTokenOverview(
-			"solana",
-			recommendation.tokenAddress!,
-		);
+    const token = await tradingService.getTokenOverview('solana', recommendation.tokenAddress!);
 
-		recommendation.ticker = token.symbol;
+    recommendation.ticker = token.symbol;
 
-		console.log("users", users);
+    console.log('users', users);
 
-		// find the first user Id from a user with the username that we extracted
-		const user = users.find((user) => {
-			return (
-				user.names
-					.map((name) => name.toLowerCase().trim())
-					.includes(recommendation.username.toLowerCase().trim()) ||
-				user.id === message.entityId
-			);
-		});
+    // find the first user Id from a user with the username that we extracted
+    const user = users.find((user) => {
+      return (
+        user.names
+          .map((name) => name.toLowerCase().trim())
+          .includes(recommendation.username.toLowerCase().trim()) || user.id === message.entityId
+      );
+    });
 
-		if (!user) {
-			console.warn("Could not find name: ", recommendation.username);
-			continue;
-		}
+    if (!user) {
+      console.warn('Could not find name: ', recommendation.username);
+      continue;
+    }
 
-		const recommendationString = `username: ${recommendation.username} | ticker: ${recommendation.ticker} | tokenAddress: ${recommendation.tokenAddress} | conviction: ${recommendation.conviction} | type: ${recommendation.type}`;
+    const recommendationString = `username: ${recommendation.username} | ticker: ${recommendation.ticker} | tokenAddress: ${recommendation.tokenAddress} | conviction: ${recommendation.conviction} | type: ${recommendation.type}`;
 
-		if (TELEGRAM_CHANNEL_ID) {
-			(async () => {
-				const prompt = composePrompt({
-					state: {
-						recommendation: recommendationString,
-						recipientAgentName: runtime.character.name,
-					},
-					template: recommendationFormatTemplate,
-				});
+    if (TELEGRAM_CHANNEL_ID) {
+      (async () => {
+        const prompt = composePrompt({
+          state: {
+            recommendation: recommendationString,
+            recipientAgentName: runtime.character.name,
+          },
+          template: recommendationFormatTemplate,
+        });
 
-				const text = await runtime.useModel(ModelType.TEXT_SMALL, {
-					prompt,
-				});
+        const text = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt,
+        });
 
-				const extractedXML = extractXMLFromResponse(text, "message");
+        const extractedXML = extractXMLFromResponse(text, 'message');
 
-				const formattedResponse = parseConfirmationResponse(extractedXML);
+        const formattedResponse = parseConfirmationResponse(extractedXML);
 
-				console.log(formattedResponse);
+        console.log(formattedResponse);
 
-				if (callback) {
-					const responseMemory: Memory = {
-						content: {
-							text: formattedResponse,
-							buttons: [],
-							channelId: TELEGRAM_CHANNEL_ID,
-							source: "telegram",
-							actions: ["CONFIRM_RECOMMENDATION"],
-						},
-						entityId: message.entityId,
-						agentId: message.agentId,
-						roomId: message.roomId,
-						metadata: message.metadata,
-						createdAt: Date.now() * 1000,
-					};
-					callback(responseMemory);
-				}
-			})();
-		}
+        if (callback) {
+          const responseMemory: Memory = {
+            content: {
+              text: formattedResponse,
+              buttons: [],
+              channelId: TELEGRAM_CHANNEL_ID,
+              source: 'telegram',
+              actions: ['CONFIRM_RECOMMENDATION'],
+            },
+            entityId: message.entityId,
+            agentId: message.agentId,
+            roomId: message.roomId,
+            metadata: message.metadata,
+            createdAt: Date.now() * 1000,
+          };
+          callback(responseMemory);
+        }
+      })();
+    }
 
-		const recMemory: Memory = {
-			id: uuid() as UUID,
-			entityId: message.entityId,
-			agentId,
-			content: { text: "", recommendation },
-			roomId,
-			createdAt: Date.now(),
-		};
+    const recMemory: Memory = {
+      id: uuid() as UUID,
+      entityId: message.entityId,
+      agentId,
+      content: { text: '', recommendation },
+      roomId,
+      createdAt: Date.now(),
+    };
 
-		// Store Recommendation
-		await Promise.all([runtime.createMemory(recMemory, "recommendations", true)]);
+    // Store Recommendation
+    await Promise.all([runtime.createMemory(recMemory, 'recommendations', true)]);
 
-		const tokenString = JSON.stringify(token, (_, v) => {
-			if (typeof v === "bigint") return v.toString();
-			return v;
-		});
+    const tokenString = JSON.stringify(token, (_, v) => {
+      if (typeof v === 'bigint') return v.toString();
+      return v;
+    });
 
-		console.log("forming memory from message", message);
+    console.log('forming memory from message', message);
 
-		if (callback && !hasAgentRepliedTo) {
-			console.log("generating text");
-			if (signalInt === 0) {
-				const responseMemory: Memory = {
-					content: {
-						text: "Are you just looking for details, or are you recommending this token?",
-						inReplyTo: message.id ? message.id : undefined,
-						buttons: [],
-						actions: ["CONFIRM_RECOMMENDATION"],
-						source: "telegram",
-					},
-					entityId: message.entityId,
-					agentId: message.agentId,
-					metadata: message.metadata,
-					roomId: message.roomId,
-					createdAt: Date.now() * 1000,
-				};
-				await callback(responseMemory);
-				return;
-			}
-			if (
-				recommendation.conviction === "MEDIUM" ||
-				recommendation.conviction === "HIGH"
-			) {
-				// temp message/memory
-				console.log("message", message.metadata);
-				const actionMemory = {
-					id: message.id,
-					entityId: message.entityId,
-					agentId,
-					content: {
-						text: message.content.text,
-						actions: ["CONFIRM_RECOMMENDATION"],
-					},
-					roomId,
-					createdAt: Date.now(),
-				};
-				await runtime.processActions(
-					{
-						...message,
-						...actionMemory,
-						actions: [""],
-					} as Memory,
-					[actionMemory as Memory],
-					state,
-					callback,
-				);
-				return;
-			}
-			const prompt = composePrompt({
-				state: {
-					agentName: runtime.character.name,
-					msg: message.content.text,
-					recommendation: recommendationString,
-					token: tokenString,
-				},
-				template: recommendationConfirmTemplate,
-			});
+    if (callback && !hasAgentRepliedTo) {
+      console.log('generating text');
+      if (signalInt === 0) {
+        const responseMemory: Memory = {
+          content: {
+            text: 'Are you just looking for details, or are you recommending this token?',
+            inReplyTo: message.id ? message.id : undefined,
+            buttons: [],
+            actions: ['CONFIRM_RECOMMENDATION'],
+            source: 'telegram',
+          },
+          entityId: message.entityId,
+          agentId: message.agentId,
+          metadata: message.metadata,
+          roomId: message.roomId,
+          createdAt: Date.now() * 1000,
+        };
+        await callback(responseMemory);
+        return;
+      }
+      if (recommendation.conviction === 'MEDIUM' || recommendation.conviction === 'HIGH') {
+        // temp message/memory
+        console.log('message', message.metadata);
+        const actionMemory = {
+          id: message.id,
+          entityId: message.entityId,
+          agentId,
+          content: {
+            text: message.content.text,
+            actions: ['CONFIRM_RECOMMENDATION'],
+          },
+          roomId,
+          createdAt: Date.now(),
+        };
+        await runtime.processActions(
+          {
+            ...message,
+            ...actionMemory,
+            actions: [''],
+          } as Memory,
+          [actionMemory as Memory],
+          state,
+          callback
+        );
+        return;
+      }
+      const prompt = composePrompt({
+        state: {
+          agentName: runtime.character.name,
+          msg: message.content.text,
+          recommendation: recommendationString,
+          token: tokenString,
+        },
+        template: recommendationConfirmTemplate,
+      });
 
-			console.log("prompt", prompt);
+      console.log('prompt', prompt);
 
-			const res = await runtime.useModel(ModelType.TEXT_LARGE, {
-				prompt,
-			});
+      const res = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      });
 
-			const agentResponseMsg = extractXMLFromResponse(res, "message");
-			const question = parseConfirmationResponse(agentResponseMsg);
+      const agentResponseMsg = extractXMLFromResponse(res, 'message');
+      const question = parseConfirmationResponse(agentResponseMsg);
 
-			console.log("question", question);
+      console.log('question', question);
 
-			console.log("forming response memory");
-			const responseMemory: Memory = {
-				content: {
-					text: question,
-					inReplyTo: message.id ? message.id : undefined,
-					buttons: [],
-					actions: ["CONFIRM_RECOMMENDATION"],
-					source: "telegram",
-				},
-				entityId: message.entityId,
-				agentId: message.agentId,
-				roomId: message.roomId,
-				metadata: message.metadata,
-				createdAt: Date.now() * 1000,
-			};
-			console.log("response memory", responseMemory);
-			await callback(responseMemory);
-			hasAgentRepliedTo = true;
-		}
-	}
-	hasAgentRepliedTo = false;
+      console.log('forming response memory');
+      const responseMemory: Memory = {
+        content: {
+          text: question,
+          inReplyTo: message.id ? message.id : undefined,
+          buttons: [],
+          actions: ['CONFIRM_RECOMMENDATION'],
+          source: 'telegram',
+        },
+        entityId: message.entityId,
+        agentId: message.agentId,
+        roomId: message.roomId,
+        metadata: message.metadata,
+        createdAt: Date.now() * 1000,
+      };
+      console.log('response memory', responseMemory);
+      await callback(responseMemory);
+      hasAgentRepliedTo = true;
+    }
+  }
+  hasAgentRepliedTo = false;
 
-	return recommendations;
+  return recommendations;
 }

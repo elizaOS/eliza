@@ -22,22 +22,22 @@ The workflow can be triggered manually using the `workflow_dispatch` event, whic
 
 - `pull_number` (optional): The pull request number to generate documentation for.
 
-    - if not provided, the `root_directory` will be scanned
-    - PR must be merged to develop/main branch
+  - if not provided, the `root_directory` will be scanned
+  - PR must be merged to develop/main branch
 
 - `root_directory` (required): Only scans files in this directory.
 
-    - Description: Target directory relative to repository root (e.g., packages/core/src)
-    - Default: `packages/core/src/test_resources` - arbitrarily chose this because its small
+  - Description: Target directory relative to repository root (e.g., packages/core/src)
+  - Default: `packages/core/src/test_resources` - arbitrarily chose this because its small
 
 - `excluded_directories` (required): Directories to exclude from scanning.
 
-    - Description: Comma-separated list of directories to exclude, relative to root_directory
-    - Default: 'node_modules,dist,test'
+  - Description: Comma-separated list of directories to exclude, relative to root_directory
+  - Default: 'node_modules,dist,test'
 
 - `reviewers` (required): Pull Request Reviewers.
-    - Description: Comma-separated list of GitHub usernames
-    - Default: ''
+  - Description: Comma-separated list of GitHub usernames
+  - Default: ''
 
 ### Config File
 

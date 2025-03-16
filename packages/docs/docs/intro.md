@@ -23,11 +23,11 @@ Eliza is a powerful multi-agent simulation framework designed to create, deploy,
 - **Memory Management**: Easily ingest and interact with documents using RAG
 - **Media Processing**: PDF, URLs, Audio transcription, Video processing, Image analysis, Conversation summarization
 - **Technical Foundation**:
-    - 100% TypeScript implementation
-    - Modular architecture
-    - Highly extensible action and plugin system
-    - Custom client support
-    - Comprehensive API
+  - 100% TypeScript implementation
+  - Modular architecture
+  - Highly extensible action and plugin system
+  - Custom client support
+  - Comprehensive API
 
 ## Use Cases
 

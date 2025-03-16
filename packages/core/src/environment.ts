@@ -1,14 +1,14 @@
-import fs from "node:fs";
-import path from "node:path";
-import { config } from "dotenv";
-import { z } from "zod";
-import logger from "./logger";
+import fs from 'node:fs';
+import path from 'node:path';
+import { config } from 'dotenv';
+import { z } from 'zod';
+import logger from './logger';
 
 /**
  * Interface for settings object with key-value pairs.
  */
 interface Settings {
-	[key: string]: string | undefined;
+  [key: string]: string | undefined;
 }
 
 /**
@@ -18,7 +18,7 @@ interface Settings {
  * @property {Settings} namespace - The namespace key and corresponding Settings value.
  */
 interface NamespacedSettings {
-	[namespace: string]: Settings;
+  [namespace: string]: Settings;
 }
 
 /**
@@ -31,9 +31,7 @@ let environmentSettings: Settings = {};
  * @returns {boolean} True if in browser environment
  */
 const isBrowser = (): boolean => {
-	return (
-		typeof window !== "undefined" && typeof window.document !== "undefined"
-	);
+  return typeof window !== 'undefined' && typeof window.document !== 'undefined';
 };
 
 /**
@@ -43,25 +41,25 @@ const isBrowser = (): boolean => {
  * @returns {string|null} Path to the nearest .env file or null if not found
  */
 export function findNearestEnvFile(startDir = process.cwd()) {
-	if (isBrowser()) return null;
+  if (isBrowser()) return null;
 
-	let currentDir = startDir;
+  let currentDir = startDir;
 
-	// Continue searching until we reach the root directory
-	while (currentDir !== path.parse(currentDir).root) {
-		const envPath = path.join(currentDir, ".env");
+  // Continue searching until we reach the root directory
+  while (currentDir !== path.parse(currentDir).root) {
+    const envPath = path.join(currentDir, '.env');
 
-		if (fs.existsSync(envPath)) {
-			return envPath;
-		}
+    if (fs.existsSync(envPath)) {
+      return envPath;
+    }
 
-		// Move up to parent directory
-		currentDir = path.dirname(currentDir);
-	}
+    // Move up to parent directory
+    currentDir = path.dirname(currentDir);
+  }
 
-	// Check root directory as well
-	const rootEnvPath = path.join(path.parse(currentDir).root, ".env");
-	return fs.existsSync(rootEnvPath) ? rootEnvPath : null;
+  // Check root directory as well
+  const rootEnvPath = path.join(path.parse(currentDir).root, '.env');
+  return fs.existsSync(rootEnvPath) ? rootEnvPath : null;
 }
 
 /**
@@ -69,7 +67,7 @@ export function findNearestEnvFile(startDir = process.cwd()) {
  * @param {Settings} settings - Object containing environment variables
  */
 export function configureSettings(settings: Settings) {
-	environmentSettings = { ...settings };
+  environmentSettings = { ...settings };
 }
 
 /**
@@ -79,33 +77,33 @@ export function configureSettings(settings: Settings) {
  * @throws {Error} If no .env file is found in Node.js environment
  */
 export function loadEnvConfig(): Settings {
-	// For browser environments, return the configured settings
-	if (isBrowser()) {
-		return environmentSettings;
-	}
+  // For browser environments, return the configured settings
+  if (isBrowser()) {
+    return environmentSettings;
+  }
 
-	// Node.js environment: load from .env file
-	const envPath = findNearestEnvFile();
+  // Node.js environment: load from .env file
+  const envPath = findNearestEnvFile();
 
-	// attempt to Load the .env file into process.env
-	const result = config(envPath ? { path: envPath } : {});
+  // attempt to Load the .env file into process.env
+  const result = config(envPath ? { path: envPath } : {});
 
-	if (!result.error) {
-		logger.log(`Loaded .env file from: ${envPath}`);
-	}
+  if (!result.error) {
+    logger.log(`Loaded .env file from: ${envPath}`);
+  }
 
-	// Parse namespaced settings
-	const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
-	const namespacedSettings = parseNamespacedSettings(env as Settings);
+  // Parse namespaced settings
+  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+  const namespacedSettings = parseNamespacedSettings(env as Settings);
 
-	// Attach to process.env for backward compatibility if available
-	if (typeof process !== 'undefined') {
-		Object.entries(namespacedSettings).forEach(([namespace, settings]) => {
-			process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
-		});
-	}
+  // Attach to process.env for backward compatibility if available
+  if (typeof process !== 'undefined') {
+    Object.entries(namespacedSettings).forEach(([namespace, settings]) => {
+      process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
+    });
+  }
 
-	return env as Settings;
+  return env as Settings;
 }
 
 /**
@@ -114,15 +112,12 @@ export function loadEnvConfig(): Settings {
  * @param {string} [defaultValue] - Optional default value if key doesn't exist
  * @returns {string|undefined} The environment variable value or default value
  */
-export function getEnvVariable(
-	key: string,
-	defaultValue?: string,
-): string | undefined {
-	if (isBrowser()) {
-		return environmentSettings[key] || defaultValue;
-	}
-	const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
-	return env[key] || defaultValue;
+export function getEnvVariable(key: string, defaultValue?: string): string | undefined {
+  if (isBrowser()) {
+    return environmentSettings[key] || defaultValue;
+  }
+  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+  return env[key] || defaultValue;
 }
 
 /**
@@ -131,29 +126,29 @@ export function getEnvVariable(
  * @returns {boolean} True if the environment variable exists
  */
 export function hasEnvVariable(key: string): boolean {
-	if (isBrowser()) {
-		return key in environmentSettings;
-	}
-	const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
-	return key in env;
+  if (isBrowser()) {
+    return key in environmentSettings;
+  }
+  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+  return key in env;
 }
 
 // Add this function to parse namespaced settings
 function parseNamespacedSettings(env: Settings): NamespacedSettings {
-	const namespaced: NamespacedSettings = {};
+  const namespaced: NamespacedSettings = {};
 
-	for (const [key, value] of Object.entries(env)) {
-		if (!value) continue;
+  for (const [key, value] of Object.entries(env)) {
+    if (!value) continue;
 
-		const [namespace, ...rest] = key.split(".");
-		if (!namespace || rest.length === 0) continue;
+    const [namespace, ...rest] = key.split('.');
+    if (!namespace || rest.length === 0) continue;
 
-		const settingKey = rest.join(".");
-		namespaced[namespace] = namespaced[namespace] || {};
-		namespaced[namespace][settingKey] = value;
-	}
+    const settingKey = rest.join('.');
+    namespaced[namespace] = namespaced[namespace] || {};
+    namespaced[namespace][settingKey] = value;
+  }
 
-	return namespaced;
+  return namespaced;
 }
 
 // Initialize settings based on environment
@@ -161,85 +156,85 @@ export const settings = isBrowser() ? environmentSettings : loadEnvConfig();
 
 // Helper schemas for nested types
 export const MessageExampleSchema = z.object({
-	name: z.string(),
-	content: z
-		.object({
-			text: z.string(),
-			action: z.string().optional(),
-			source: z.string().optional(),
-			url: z.string().optional(),
-			inReplyTo: z.string().uuid().optional(),
-			attachments: z.array(z.any()).optional(),
-		})
-		.and(z.record(z.string(), z.unknown())), // For additional properties
+  name: z.string(),
+  content: z
+    .object({
+      text: z.string(),
+      action: z.string().optional(),
+      source: z.string().optional(),
+      url: z.string().optional(),
+      inReplyTo: z.string().uuid().optional(),
+      attachments: z.array(z.any()).optional(),
+    })
+    .and(z.record(z.string(), z.unknown())), // For additional properties
 });
 
 export const PluginSchema = z.object({
-	name: z.string(),
-	description: z.string(),
-	actions: z.array(z.any()).optional(),
-	providers: z.array(z.any()).optional(),
-	evaluators: z.array(z.any()).optional(),
-	services: z.array(z.any()).optional(),
-	clients: z.array(z.any()).optional(),
+  name: z.string(),
+  description: z.string(),
+  actions: z.array(z.any()).optional(),
+  providers: z.array(z.any()).optional(),
+  evaluators: z.array(z.any()).optional(),
+  services: z.array(z.any()).optional(),
+  clients: z.array(z.any()).optional(),
 });
 
 // Main Character schema
 export const CharacterSchema = z.object({
-	id: z.string().uuid().optional(),
-	name: z.string(),
-	system: z.string().optional(),
-	templates: z.record(z.string()).optional(),
-	bio: z.union([z.string(), z.array(z.string())]),
-	messageExamples: z.array(z.array(MessageExampleSchema)),
-	postExamples: z.array(z.string()),
-	topics: z.array(z.string()),
-	adjectives: z.array(z.string()),
-	knowledge: z
-		.array(
-			z.union([
-				z.string(), // Direct knowledge strings
-				z.object({
-					// Individual file config
-					path: z.string(),
-					shared: z.boolean().optional(),
-				}),
-				z.object({
-					// Directory config
-					directory: z.string(),
-					shared: z.boolean().optional(),
-				}),
-			]),
-		)
-		.optional(),
-	plugins: z.union([z.array(z.string()), z.array(PluginSchema)]),
-	settings: z
-		.object({
-			secrets: z.record(z.string()).optional(),
-			voice: z
-				.object({
-					model: z.string().optional(),
-					url: z.string().optional(),
-				})
-				.optional(),
-			model: z.string().optional(),
-			modelConfig: z
-				.object({
-					maxInputTokens: z.number().optional(),
-					maxOutputTokens: z.number().optional(),
-					temperature: z.number().optional(),
-					frequency_penalty: z.number().optional(),
-					presence_penalty: z.number().optional(),
-				})
-				.optional(),
-			embeddingModel: z.string().optional(),
-		})
-		.optional(),
-	style: z.object({
-		all: z.array(z.string()),
-		chat: z.array(z.string()),
-		post: z.array(z.string()),
-	}),
+  id: z.string().uuid().optional(),
+  name: z.string(),
+  system: z.string().optional(),
+  templates: z.record(z.string()).optional(),
+  bio: z.union([z.string(), z.array(z.string())]),
+  messageExamples: z.array(z.array(MessageExampleSchema)),
+  postExamples: z.array(z.string()),
+  topics: z.array(z.string()),
+  adjectives: z.array(z.string()),
+  knowledge: z
+    .array(
+      z.union([
+        z.string(), // Direct knowledge strings
+        z.object({
+          // Individual file config
+          path: z.string(),
+          shared: z.boolean().optional(),
+        }),
+        z.object({
+          // Directory config
+          directory: z.string(),
+          shared: z.boolean().optional(),
+        }),
+      ])
+    )
+    .optional(),
+  plugins: z.union([z.array(z.string()), z.array(PluginSchema)]),
+  settings: z
+    .object({
+      secrets: z.record(z.string()).optional(),
+      voice: z
+        .object({
+          model: z.string().optional(),
+          url: z.string().optional(),
+        })
+        .optional(),
+      model: z.string().optional(),
+      modelConfig: z
+        .object({
+          maxInputTokens: z.number().optional(),
+          maxOutputTokens: z.number().optional(),
+          temperature: z.number().optional(),
+          frequency_penalty: z.number().optional(),
+          presence_penalty: z.number().optional(),
+        })
+        .optional(),
+      embeddingModel: z.string().optional(),
+    })
+    .optional(),
+  style: z.object({
+    all: z.array(z.string()),
+    chat: z.array(z.string()),
+    post: z.array(z.string()),
+  }),
 });
 
 // Type inference
@@ -247,32 +242,28 @@ export type CharacterConfig = z.infer<typeof CharacterSchema>;
 
 // Validation function
 export function validateCharacterConfig(json: unknown): CharacterConfig {
-	try {
-		return CharacterSchema.parse(json);
-	} catch (error) {
-		if (error instanceof z.ZodError) {
-			const groupedErrors = error.errors.reduce(
-				(acc, err) => {
-					const path = err.path.join(".");
-					if (!acc[path]) {
-						acc[path] = [];
-					}
-					acc[path].push(err.message);
-					return acc;
-				},
-				{} as Record<string, string[]>,
-			);
+  try {
+    return CharacterSchema.parse(json);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const groupedErrors = error.errors.reduce(
+        (acc, err) => {
+          const path = err.path.join('.');
+          if (!acc[path]) {
+            acc[path] = [];
+          }
+          acc[path].push(err.message);
+          return acc;
+        },
+        {} as Record<string, string[]>
+      );
 
-			for (const field in groupedErrors) {
-				logger.error(
-					`Validation errors in ${field}: ${groupedErrors[field].join(" - ")}`,
-				);
-			}
+      for (const field in groupedErrors) {
+        logger.error(`Validation errors in ${field}: ${groupedErrors[field].join(' - ')}`);
+      }
 
-			throw new Error(
-				"Character configuration validation failed. Check logs for details.",
-			);
-		}
-		throw error;
-	}
+      throw new Error('Character configuration validation failed. Check logs for details.');
+    }
+    throw error;
+  }
 }

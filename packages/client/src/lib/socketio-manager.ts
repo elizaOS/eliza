@@ -1,6 +1,6 @@
-import { SOCKET_MESSAGE_TYPE } from "@elizaos/core";
+import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
 import EventEmitter from 'eventemitter3';
-import { WorldManager } from "./world-manager";
+import { WorldManager } from './world-manager';
 
 // Define local interfaces to avoid import issues
 interface WebSocketMessageOptions {
@@ -43,13 +43,13 @@ const getWebSocketFactory = (): WebSocketFactory => {
   // In a real implementation, you would dynamically import or use a properly set up dependency
   // For now, we'll use a simple require to work around the type issues
   // @ts-ignore - Ignore TypeScript errors for importing from non-type declarations
-  return require("@elizaos/cli").WebSocketFactory.getInstance(BASE_URL);
+  return require('@elizaos/cli').WebSocketFactory.getInstance(BASE_URL);
 };
 
 class SocketIOManager extends EventEmitter {
   private static instance: SocketIOManager | null = null;
   private services: Map<string, WebSocketService>;
-  
+
   private constructor() {
     super();
     this.services = new Map();
@@ -64,7 +64,7 @@ class SocketIOManager extends EventEmitter {
 
   connect(agentId: string, roomId: string): void {
     const serviceKey = `${agentId}:${roomId}`;
-    
+
     if (this.services.has(serviceKey)) {
       console.warn(`[SocketIO] Socket for agent ${agentId} already exists.`);
       return;
@@ -74,27 +74,28 @@ class SocketIOManager extends EventEmitter {
       // Get a WebSocketService from the factory
       const factory = getWebSocketFactory();
       const service = factory.createClientService(agentId, roomId);
-      
+
       // Set up event handlers - only listen for messages from others, not from self
       service.onTextMessage((payload: TextMessagePayload) => {
         console.log(`[SocketIO] Message received in room ${roomId}:`, payload);
-        
+
         // Receive messages from any sender (agent or user) except self
         if (payload.entityId !== agentId) {
           // Format the message for the UI
-          this.emit("messageBroadcast", { 
-            entityId: payload.entityId, 
+          this.emit('messageBroadcast', {
+            entityId: payload.entityId,
             userName: payload.userName,
             text: payload.text,
-            roomId: payload.roomId, 
-            createdAt: Date.now(), 
-            source: payload.source || "websocket"
+            roomId: payload.roomId,
+            createdAt: Date.now(),
+            source: payload.source || 'websocket',
           });
         }
       });
 
       // Connect to the WebSocket server
-      service.connect()
+      service
+        .connect()
         .then(() => {
           console.log(`[SocketIO] Connected for entity ${agentId} in room ${roomId}`);
           this.services.set(serviceKey, service);
@@ -113,7 +114,9 @@ class SocketIOManager extends EventEmitter {
     const service = this.services.get(serviceKey);
 
     if (!service) {
-      console.warn(`[SocketIO] Cannot send message, service for agent ${agentId} in room ${roomId} does not exist.`);
+      console.warn(
+        `[SocketIO] Cannot send message, service for agent ${agentId} in room ${roomId} does not exist.`
+      );
       return;
     }
 
@@ -126,7 +129,7 @@ class SocketIOManager extends EventEmitter {
     const messageOptions = {
       ...options,
       // Make sure we're using the correct field name
-      text: options.text || ""
+      text: options.text || '',
     };
 
     console.log(`[SocketIO] Sending message to room ${roomId} from ${options.entityId}`);
@@ -137,18 +140,24 @@ class SocketIOManager extends EventEmitter {
     return `${agentId}:${roomId}`;
   }
 
-  handleBroadcastMessage(entityId: string, userName: string, text: string, roomId: string, source: string): void {
-    console.log(`[SocketIO] Broadcasting: ${entityId} sent "${text}" to room ${roomId}`)
-    
-    this.emit("messageBroadcast", { 
-      entityId, 
-      userName, 
-      text, 
-      roomId, 
-      createdAt: Date.now(), 
-      source
+  handleBroadcastMessage(
+    entityId: string,
+    userName: string,
+    text: string,
+    roomId: string,
+    source: string
+  ): void {
+    console.log(`[SocketIO] Broadcasting: ${entityId} sent "${text}" to room ${roomId}`);
+
+    this.emit('messageBroadcast', {
+      entityId,
+      userName,
+      text,
+      roomId,
+      createdAt: Date.now(),
+      source,
     });
-    
+
     this.sendMessage(entityId, {
       entityId,
       userName,
@@ -162,7 +171,7 @@ class SocketIOManager extends EventEmitter {
   disconnect(agentId: string, roomId: string): void {
     const serviceKey = this.getServiceKey(agentId, roomId);
     const service = this.services.get(serviceKey);
-    
+
     if (service) {
       service.disconnect();
       this.services.delete(serviceKey);
@@ -176,14 +185,14 @@ class SocketIOManager extends EventEmitter {
     this.services.forEach((service, key) => {
       const [agentId] = key.split(':');
       console.log(`[SocketIO] Closing Socket for agent ${agentId}`);
-      
+
       if (service.isConnected()) {
         service.disconnect();
       } else {
         console.warn(`[SocketIO] Socket for agent ${agentId} is already disconnected.`);
       }
     });
-    
+
     this.services.clear();
   }
 }

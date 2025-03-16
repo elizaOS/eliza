@@ -10,19 +10,18 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
-} from "@/components/ui/sidebar";
-import { useAgents } from "@/hooks/use-query-hooks";
-import info from "@/lib/info.json";
-import { formatAgentName } from "@/lib/utils";
-import { type Agent, AgentStatus } from "@elizaos/core";
-import { Book, Cog, TerminalIcon } from "lucide-react";
-import { NavLink, useLocation } from "react-router";
-import ConnectionStatus from "./connection-status";
+} from '@/components/ui/sidebar';
+import { useAgents } from '@/hooks/use-query-hooks';
+import info from '@/lib/info.json';
+import { formatAgentName } from '@/lib/utils';
+import { type Agent, AgentStatus } from '@elizaos/core';
+import { Book, Cog, TerminalIcon } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router';
+import ConnectionStatus from './connection-status';
 
 export function AppSidebar() {
   const location = useLocation();
-  const { data: { data: agentsData } = {}, isPending: isAgentsPending } =
-    useAgents();
+  const { data: { data: agentsData } = {}, isPending: isAgentsPending } = useAgents();
 
   return (
     <Sidebar className="bg-background">
@@ -32,11 +31,7 @@ export function AppSidebar() {
             <SidebarMenuButton size="lg" asChild>
               <NavLink to="/" className="px-6 py-2 h-full">
                 <div className="flex flex-col pt-2 gap-1 items-start justify-center">
-                  <img
-                    alt="elizaos-logo"
-                    src="/elizaos-logo-light.png"
-                    width="90%"
-                  />
+                  <img alt="elizaos-logo" src="/elizaos-logo-light.png" width="90%" />
                   <span className="text-xs font-mono text-muted-foreground text-center">
                     v{info?.version}
                   </span>
@@ -62,23 +57,15 @@ export function AppSidebar() {
                 <div>
                   {(() => {
                     // Sort agents: enabled first, then disabled
-                    const sortedAgents = [...(agentsData?.agents || [])].sort(
-                      (a, b) => {
-                        // Sort by status (active agents first)
-                        if (
-                          a.status === AgentStatus.ACTIVE &&
-                          b.status !== AgentStatus.ACTIVE
-                        )
-                          return -1;
-                        if (
-                          a.status !== AgentStatus.ACTIVE &&
-                          b.status === AgentStatus.ACTIVE
-                        )
-                          return 1;
-                        // If both have the same status, sort alphabetically by name
-                        return a.name.localeCompare(b.name);
-                      }
-                    );
+                    const sortedAgents = [...(agentsData?.agents || [])].sort((a, b) => {
+                      // Sort by status (active agents first)
+                      if (a.status === AgentStatus.ACTIVE && b.status !== AgentStatus.ACTIVE)
+                        return -1;
+                      if (a.status !== AgentStatus.ACTIVE && b.status === AgentStatus.ACTIVE)
+                        return 1;
+                      // If both have the same status, sort alphabetically by name
+                      return a.name.localeCompare(b.name);
+                    });
 
                     // Split into enabled and disabled groups
                     const activeAgents = sortedAgents.filter(
@@ -108,9 +95,7 @@ export function AppSidebar() {
                           <SidebarMenuItem key={agent.id}>
                             <NavLink to={`/chat/${agent.id}`}>
                               <SidebarMenuButton
-                                isActive={location.pathname.includes(
-                                  agent.id as string
-                                )}
+                                isActive={location.pathname.includes(agent.id as string)}
                                 className="transition-colors px-4 my-4 rounded-md"
                               >
                                 <div className="flex items-center gap-2">
@@ -134,9 +119,7 @@ export function AppSidebar() {
                                       )}
                                     </div>
                                   </div>
-                                  <span className="text-base">
-                                    {agent.name}
-                                  </span>
+                                  <span className="text-base">{agent.name}</span>
                                 </div>
                               </SidebarMenuButton>
                             </NavLink>
@@ -179,9 +162,7 @@ export function AppSidebar() {
                                     )}
                                   </div>
                                 </div>
-                                <span className="text-base truncate max-w-24">
-                                  {agent.name}
-                                </span>
+                                <span className="text-base truncate max-w-24">{agent.name}</span>
                               </div>
                             </div>
                           </SidebarMenuItem>
@@ -198,10 +179,7 @@ export function AppSidebar() {
       <SidebarFooter className="px-4 py-4">
         <SidebarMenu>
           <SidebarMenuItem>
-            <NavLink
-              to="https://elizaos.github.io/eliza/docs/intro/"
-              target="_blank"
-            >
+            <NavLink to="https://elizaos.github.io/eliza/docs/intro/" target="_blank">
               <SidebarMenuButton className="text-muted-foreground rounded-md">
                 <Book className="size-5" />
                 <span>Documentation</span>
@@ -217,10 +195,7 @@ export function AppSidebar() {
             </NavLink>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              disabled
-              className="text-muted-foreground/50 rounded-md"
-            >
+            <SidebarMenuButton disabled className="text-muted-foreground/50 rounded-md">
               <Cog className="size-5" />
               <span>Settings</span>
             </SidebarMenuButton>

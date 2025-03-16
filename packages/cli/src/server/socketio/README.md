@@ -17,16 +17,19 @@ Our WebSocket implementation uses a unified `WebSocketService` that is used by b
 ### Recent Improvements
 
 1. **Enhanced Self-Message Prevention**:
+
    - Multiple safeguards to prevent message loops
    - Clear identity checks at multiple processing stages
    - Extracted identity checks into helper methods
 
 2. **Better Message Format Handling**:
+
    - Support for both `text` and `message` fields
    - Standardized field usage across components
    - Clear documentation about field naming conventions
 
 3. **Improved Error Handling**:
+
    - Content validation before processing
    - Try/catch blocks around critical operations
    - Extracted LLM calls into a separate method with error handling
@@ -86,4 +89,4 @@ We have multiple safeguards to prevent agents from receiving and processing thei
 2. Centralized message validation with clear error reporting
 3. On the client side: Only processes messages where senderId is different from the client's ID
 
-This ensures that messages don't cause echo effects or infinite loops between agents. 
+This ensures that messages don't cause echo effects or infinite loops between agents.

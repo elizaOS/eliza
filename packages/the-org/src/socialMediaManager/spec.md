@@ -7,10 +7,12 @@ Laura is an AI-powered marketing agent designed to handle social media communica
 ## 2. Core Functionality
 
 ### Onboarding from existing assets
+
 - Give twitter account and she absorbs your brand voice, style, etc
 - website, YouTube, PDFs to knowledge
 
 ### Content Creation & Approval
+
 - Draft social media posts in team's brand voice
 - Generate and edit images for social media content
 - Present drafts for team approval
@@ -18,6 +20,7 @@ Laura is an AI-powered marketing agent designed to handle social media communica
 - Handle both text and media content
 
 ### Multi-Platform Publishing
+
 - Post approved content to Discord channels
 - Share updates on Twitter (including DM-based posting)
 - Distribute announcements via Telegram
@@ -26,6 +29,7 @@ Laura is an AI-powered marketing agent designed to handle social media communica
 - Can schedule content posts
 
 ### Media Management
+
 - Advanced image generation capabilities
 - Accept uploaded images from team members
 - Store and manage media assets
@@ -36,6 +40,7 @@ Laura is an AI-powered marketing agent designed to handle social media communica
 ### Workflows
 
 ### Content Creation & Approval
+
 1. Receive post request with content/template and target platforms
 2. Draft content adhering to brand voice and platform constraints
 3. Handle any attached or generated media
@@ -44,6 +49,7 @@ Laura is an AI-powered marketing agent designed to handle social media communica
 6. Proceed with publishing once approved
 
 ### Media Handling
+
 1. Accept media uploads from team members
 2. Validate format and size constraints
 3. Store in configured media storage
@@ -52,6 +58,7 @@ Laura is an AI-powered marketing agent designed to handle social media communica
 6. Track usage and platform distribution
 
 ### Cross-Platform Publishing
+
 1. Format content for each target platform
 2. Handle platform-specific media requirements
 3. Post to each platform in sequence

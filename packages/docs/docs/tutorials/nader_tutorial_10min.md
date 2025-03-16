@@ -29,24 +29,24 @@ Video: https://youtu.be/uouSdtcWXTQ?si=cm13L4T7DQUMXd0C
 
 1. Request your Twitter archive:
 
-    - Go to your Twitter settings
-    - Click "Download an archive of your data"
-    - Wait to receive the archive (timing depends on your account age/activity)
+   - Go to your Twitter settings
+   - Click "Download an archive of your data"
+   - Wait to receive the archive (timing depends on your account age/activity)
 
 2. Clone the Characterfile repo:
 
-    ```bash
-    git clone https://github.com/ai16z/characterfile.git
-    ```
+   ```bash
+   git clone https://github.com/ai16z/characterfile.git
+   ```
 
 3. Run the `tweets-to-character` script:
 
-    ```bash
-    npx tweets-to-character path/to/archive.zip
-    ```
+   ```bash
+   npx tweets-to-character path/to/archive.zip
+   ```
 
-    - Select model (e.g. Claude)
-    - (Optional) Add any additional user information
+   - Select model (e.g. Claude)
+   - (Optional) Add any additional user information
 
 4. Script will generate a `character.json` file from your Tweets
 
@@ -56,9 +56,9 @@ Video: https://youtu.be/uouSdtcWXTQ?si=cm13L4T7DQUMXd0C
 
 2. Run the `folder-to-knowledge` script:
 
-    ```bash
-    npx folder-to-knowledge path/to/folder
-    ```
+   ```bash
+   npx folder-to-knowledge path/to/folder
+   ```
 
 3. Run `knowledge-to-character` to add knowledge to your character file
 
@@ -66,24 +66,24 @@ Video: https://youtu.be/uouSdtcWXTQ?si=cm13L4T7DQUMXd0C
 
 1. Clone Eliza repo and check out latest version:
 
-    ```bash
-    git clone https://github.com/elizaOS/eliza.git
-    git checkout <latest-tag>
-    ```
+   ```bash
+   git clone https://github.com/elizaOS/eliza.git
+   git checkout <latest-tag>
+   ```
 
 2. Install dependencies:
 
-    ```bash
-    pnpm install
-    pnpm build
-    ```
+   ```bash
+   pnpm install
+   pnpm build
+   ```
 
 3. Add your character JSON file to `characters/`
 
 4. Modify character file:
 
-    - Add `clients`, `modelProvider`, `plugins` fields
-    - Remove `voice` field
+   - Add `clients`, `modelProvider`, `plugins` fields
+   - Remove `voice` field
 
 5. Set up `.env` with Twitter and Anthropic credentials
 
@@ -91,9 +91,9 @@ Video: https://youtu.be/uouSdtcWXTQ?si=cm13L4T7DQUMXd0C
 
 1. Start agent with your character file:
 
-    ```bash
-    pnpm start --character characters/yourcharacter.json
-    ```
+   ```bash
+   pnpm start --character characters/yourcharacter.json
+   ```
 
 2. Agent will log in and post an initial tweet
 

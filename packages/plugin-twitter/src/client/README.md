@@ -46,7 +46,7 @@ await client.login(
   'appKey',
   'appSecret',
   'accessToken',
-  'accessSecret',
+  'accessSecret'
 );
 
 const tweets = await client.getTweets('elonmusk', 10);
@@ -56,21 +56,17 @@ const tweet = await client.getTweet('1234567890123456789');
 await client.sendTweet('Hello world!');
 
 // Create a poll
-await client.sendTweetV2(
-  `What's got you most hyped? Let us know! 🤖💸`,
-  undefined,
-  {
-    poll: {
-      options: [
-        { label: 'AI Innovations 🤖' },
-        { label: 'Crypto Craze 💸' },
-        { label: 'Both! 🌌' },
-        { label: 'Neither for Me 😅' },
-      ],
-      durationMinutes: 120, // Duration of the poll in minutes
-    },
+await client.sendTweetV2(`What's got you most hyped? Let us know! 🤖💸`, undefined, {
+  poll: {
+    options: [
+      { label: 'AI Innovations 🤖' },
+      { label: 'Crypto Craze 💸' },
+      { label: 'Both! 🌌' },
+      { label: 'Neither for Me 😅' },
+    ],
+    durationMinutes: 120, // Duration of the poll in minutes
   },
-);
+});
 ```
 
 ### Fetching Specific Tweet Data (V2)
@@ -84,14 +80,11 @@ const tweet = await client.getTweetV2('1856441982811529619', {
 console.log('tweet', tweet);
 
 // Fetch multiple tweets with poll and media details
-const tweets = await client.getTweetsV2(
-  ['1856441982811529619', '1856429655215260130'],
-  {
-    expansions: ['attachments.poll_ids', 'attachments.media_keys'],
-    pollFields: ['options', 'end_datetime'],
-    mediaFields: ['url', 'preview_image_url'],
-  },
-);
+const tweets = await client.getTweetsV2(['1856441982811529619', '1856429655215260130'], {
+  expansions: ['attachments.poll_ids', 'attachments.media_keys'],
+  pollFields: ['options', 'end_datetime'],
+  mediaFields: ['url', 'preview_image_url'],
+});
 console.log('tweets', tweets);
 ```
 
@@ -186,7 +179,7 @@ const listTweets = await client.fetchListTweets('1234567890', 50);
 const tweets = client.getTweets('TwitterDev');
 
 // Fetch the home timeline
-const homeTimeline = await client.fetchHomeTimeline(10, ['seenTweetId1','seenTweetId2']);
+const homeTimeline = await client.fetchHomeTimeline(10, ['seenTweetId1', 'seenTweetId2']);
 
 // Get a user's liked tweets
 const likedTweets = client.getLikedTweets('TwitterDev');
@@ -196,10 +189,7 @@ const tweetsAndReplies = client.getTweetsAndReplies('TwitterDev');
 
 // Get tweets matching specific criteria
 const timeline = client.getTweets('TwitterDev', 100);
-const retweets = await client.getTweetsWhere(
-  timeline,
-  (tweet) => tweet.isRetweet,
-);
+const retweets = await client.getTweetsWhere(timeline, (tweet) => tweet.isRetweet);
 
 // Get a user's latest tweet
 const latestTweet = await client.getLatestTweet('TwitterDev');
@@ -211,11 +201,10 @@ const tweet = await client.getTweet('1234567890123456789');
 const sendTweetResults = await client.sendTweet('Hello world!');
 
 // Send a quote tweet - Media files are optional
-const sendQuoteTweetResults = await client.sendQuoteTweet(
-  'Hello world!',
-  '1234567890123456789',
-  ['mediaFile1', 'mediaFile2'],
-);
+const sendQuoteTweetResults = await client.sendQuoteTweet('Hello world!', '1234567890123456789', [
+  'mediaFile1',
+  'mediaFile2',
+]);
 
 // Retweet a tweet
 const retweetResults = await client.retweet('1234567890123456789');

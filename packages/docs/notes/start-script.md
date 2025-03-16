@@ -33,19 +33,23 @@
 <summary><b>🪟 Windows (WSL2)</b></summary>
 
 **Requirements:**
+
 - Windows 10 version 2004+ or Windows 11
 - 8GB RAM minimum
 - Virtualization enabled in BIOS
 - Admin access to install WSL2
 
 **Installation Steps:**
+
 1. Enable WSL2:
+
    ```powershell
    # Run in PowerShell as Administrator
    wsl --install
    ```
 
 2. Install Ubuntu from Microsoft Store or:
+
    ```powershell
    wsl --install -d Ubuntu
    ```
@@ -61,37 +65,40 @@
      ```
 
 Now you can follow the Linux instructions!
+
 </details>
 
 ## ✨ Features
 
-| Feature | Description |
-|---------|-------------|
-| 🔍 OS Detection | Automatically adapts to your platform |
-| 🛠️ Zero Config | Installs all dependencies automatically |
-| 📦 Node.js | Manages versions and packages seamlessly |
-| 🎭 Characters | Full character management interface |
-| 🔄 Updates | One-click updates and version management |
-| ⚙️ Environment | Guided configuration setup |
+| Feature         | Description                              |
+| --------------- | ---------------------------------------- |
+| 🔍 OS Detection | Automatically adapts to your platform    |
+| 🛠️ Zero Config  | Installs all dependencies automatically  |
+| 📦 Node.js      | Manages versions and packages seamlessly |
+| 🎭 Characters   | Full character management interface      |
+| 🔄 Updates      | One-click updates and version management |
+| ⚙️ Environment  | Guided configuration setup               |
 
 ## 🎮 Usage
 
 ### Command Line Options
+
 ```bash
 start.sh [-v|--verbose] [--skip-nvm]
 ```
 
-| Option | Description |
-|--------|-------------|
+| Option          | Description            |
+| --------------- | ---------------------- |
 | `-v, --verbose` | Show detailed progress |
-| `--skip-nvm` | Use system Node.js |
+| `--skip-nvm`    | Use system Node.js     |
+
 ### 🔄 Starting and Updating Eliza
 
-| Action | Description |
-|--------|-------------|
-| Start | Launch current version |
-| Update | Install latest updates |
-| Reinstall | Fresh installation |
+| Action    | Description            |
+| --------- | ---------------------- |
+| Start     | Launch current version |
+| Update    | Install latest updates |
+| Reinstall | Fresh installation     |
 
 ### 🎭 Character Management
 
@@ -112,24 +119,24 @@ start.sh [-v|--verbose] [--skip-nvm]
    - Select each: `X`
    - Select All: `Ctrl+A`
    - Confirm: `ENTER`
-</details>
+   </details>
 
 <details>
 <summary><b>Character Actions</b></summary>
 
 **Single Character:**
+
 - ▶️ Run
 - ✏️ Edit
 - 🗑️ Delete
 
 **Multiple Characters:**
+
 - ▶️ Run All
 - 🗑️ Delete All
 </details>
 
 ### ⚙️ Configuration
-
-
 
 ## 🛟 Troubleshooting
 
@@ -145,6 +152,7 @@ sudo chmod +x scripts/start.sh
 # Windows
 Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
+
 </details>
 
 <details>
@@ -164,7 +172,6 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 </details>
 
 ### 🚨 Common Errors
-
 
 | `characters not found` | Check working directory |
 
@@ -186,6 +193,7 @@ Need help? Try these steps:
 3. [Open an issue](https://github.com/elizaOS/eliza/issues)
 
 ---
+
 <div align="center">
 <i>Made with ❤️ by the ElizaOS team</i>
 </div>

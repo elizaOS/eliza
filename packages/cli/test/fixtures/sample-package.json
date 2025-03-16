@@ -11,13 +11,11 @@
   "platform": "universal",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "build": "echo 'Mock build completed'"
   },
   "dependencies": {
     "@elizaos/core": "^1.0.0"
   }
-} 
+}

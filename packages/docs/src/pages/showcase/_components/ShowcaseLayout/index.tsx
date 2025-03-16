@@ -14,9 +14,7 @@ export default function ShowcaseLayout({
 }): JSX.Element {
   return (
     <div className={styles.layout}>
-      <div className={styles.content}>
-        {children}
-      </div>
+      <div className={styles.content}>{children}</div>
     </div>
   );
 }

@@ -101,15 +101,15 @@ CREATE INDEX idx_participants_room ON participants("roomId");
 ```typescript
 // PostgreSQL Configuration
 const postgresConfig = {
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 };
 
 // Supabase Configuration
 const supabaseConfig = {
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseKey: process.env.SUPABASE_KEY,
+  supabaseUrl: process.env.SUPABASE_URL,
+  supabaseKey: process.env.SUPABASE_KEY,
 };
 ```
 
@@ -120,34 +120,34 @@ const supabaseConfig = {
 The memory system uses vector embeddings for semantic search:
 
 ```typescript
-import { embed } from "@elizaos/core";
+import { embed } from '@elizaos/core';
 
 async function storeMemory(runtime: IAgentRuntime, content: string) {
-    const embedding = await embed(runtime, message.content.text);
+  const embedding = await embed(runtime, message.content.text);
 
-    await runtime.databaseAdapter.createMemory({
-        type: "message",
-        content: { text: content },
-        embedding,
-        roomId: roomId,
-        userId: userId,
-    });
+  await runtime.databaseAdapter.createMemory({
+    type: 'message',
+    content: { text: content },
+    embedding,
+    roomId: roomId,
+    userId: userId,
+  });
 }
 ```
 
 ### Memory Retrieval
 
 ```typescript
-import { embed } from "@elizaos/core";
+import { embed } from '@elizaos/core';
 
 async function searchMemories(runtime: IAgentRuntime, query: string) {
-    const embedding = await embed(runtime, query);
+  const embedding = await embed(runtime, query);
 
-    return runtime.databaseAdapter.searchMemoriesByEmbedding(embedding, {
-        match_threshold: 0.8,
-        count: 10,
-        tableName: "memories",
-    });
+  return runtime.databaseAdapter.searchMemoriesByEmbedding(embedding, {
+    match_threshold: 0.8,
+    count: 10,
+    tableName: 'memories',
+  });
 }
 ```
 
@@ -157,42 +157,42 @@ async function searchMemories(runtime: IAgentRuntime, query: string) {
 
 1. **Index Management**
 
-    - Use HNSW indexes for vector similarity search
-    - Create appropriate indexes for frequent query patterns
-    - Regularly analyze and update index statistics
+   - Use HNSW indexes for vector similarity search
+   - Create appropriate indexes for frequent query patterns
+   - Regularly analyze and update index statistics
 
 2. **Connection Pooling**
 
-    ```typescript
-    const pool = new Pool({
-        max: 20, // Maximum pool size
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
-    });
-    ```
+   ```typescript
+   const pool = new Pool({
+     max: 20, // Maximum pool size
+     idleTimeoutMillis: 30000,
+     connectionTimeoutMillis: 2000,
+   });
+   ```
 
 3. **Query Optimization**
-    - Use prepared statements
-    - Implement efficient pagination
-    - Optimize vector similarity searches
+   - Use prepared statements
+   - Implement efficient pagination
+   - Optimize vector similarity searches
 
 ### High Availability
 
 1. **Database Replication**
 
-    - Set up read replicas for scaling read operations
-    - Configure streaming replication for failover
-    - Implement connection retry logic
+   - Set up read replicas for scaling read operations
+   - Configure streaming replication for failover
+   - Implement connection retry logic
 
 2. **Backup Strategy**
 
-    ```sql
-    -- Regular backups
-    pg_dump -Fc mydb > backup.dump
+   ```sql
+   -- Regular backups
+   pg_dump -Fc mydb > backup.dump
 
-    -- Point-in-time recovery
-    pg_basebackup -D backup -Fp -Xs -P
-    ```
+   -- Point-in-time recovery
+   pg_basebackup -D backup -Fp -Xs -P
+   ```
 
 ## Security
 
@@ -222,9 +222,9 @@ GRANT USAGE ON SCHEMA public TO app_user;
 
 1. **Encryption**
 
-    - Use TLS for connections
-    - Encrypt sensitive data at rest
-    - Implement key rotation
+   - Use TLS for connections
+   - Encrypt sensitive data at rest
+   - Implement key rotation
 
 2. **Audit Logging**
 
@@ -245,13 +245,13 @@ CREATE TABLE logs (
 
 ```typescript
 async function checkDatabaseHealth(): Promise<boolean> {
-    try {
-        await db.query("SELECT 1");
-        return true;
-    } catch (error) {
-        console.error("Database health check failed:", error);
-        return false;
-    }
+  try {
+    await db.query('SELECT 1');
+    return true;
+  } catch (error) {
+    console.error('Database health check failed:', error);
+    return false;
+  }
 }
 ```
 
@@ -289,24 +289,24 @@ REINDEX INDEX idx_memories_embedding;
 
 1. **Archival Strategy**
 
-    - Archive old conversations
-    - Compress inactive memories
-    - Implement data retention policies
+   - Archive old conversations
+   - Compress inactive memories
+   - Implement data retention policies
 
 2. **Cleanup Jobs**
 
 ```typescript
 async function cleanupOldMemories() {
-    const cutoffDate = new Date();
-    cutoffDate.setMonth(cutoffDate.getMonth() - 6);
+  const cutoffDate = new Date();
+  cutoffDate.setMonth(cutoffDate.getMonth() - 6);
 
-    await db.query(
-        `
+  await db.query(
+    `
         DELETE FROM memories 
         WHERE "createdAt" < $1
     `,
-        [cutoffDate],
-    );
+    [cutoffDate]
+  );
 }
 ```
 
@@ -316,20 +316,20 @@ async function cleanupOldMemories() {
 
 1. **Connection Problems**
 
-    - Check connection pool settings
-    - Verify network connectivity
-    - Review firewall rules
+   - Check connection pool settings
+   - Verify network connectivity
+   - Review firewall rules
 
 2. **Performance Issues**
 
-    - Analyze query plans
-    - Check index usage
-    - Monitor resource utilization
+   - Analyze query plans
+   - Check index usage
+   - Monitor resource utilization
 
 3. **Vector Search Problems**
-    - Verify embedding dimensions
-    - Check similarity thresholds
-    - Review index configuration
+   - Verify embedding dimensions
+   - Check similarity thresholds
+   - Review index configuration
 
 ### Diagnostic Queries
 

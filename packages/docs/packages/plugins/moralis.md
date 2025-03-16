@@ -23,7 +23,7 @@ Set up your environment with the required Moralis API key:
 ## Usage
 
 ```typescript
-import { moralisPlugin } from "@elizaos/plugin-moralis";
+import { moralisPlugin } from '@elizaos/plugin-moralis';
 
 // Initialize the plugin
 const plugin = moralisPlugin;

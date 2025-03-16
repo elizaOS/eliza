@@ -62,7 +62,7 @@ AWS_S3_FORCE_PATH_STYLE=boolean(true|false)
 ## Usage
 
 ```typescript
-import { createNodePlugin } from "@elizaos/plugin-node";
+import { createNodePlugin } from '@elizaos/plugin-node';
 
 // Initialize the plugin
 const nodePlugin = createNodePlugin();
@@ -157,8 +157,8 @@ Analyzes and generates descriptions for images.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("DESCRIBE_IMAGE", {
-    imageUrl: "path/to/image.jpg",
+const result = await runtime.executeAction('DESCRIBE_IMAGE', {
+  imageUrl: 'path/to/image.jpg',
 });
 ```
 
@@ -234,7 +234,7 @@ Error: AWS credentials not configured
 Enable debug logging for detailed troubleshooting:
 
 ```typescript
-process.env.DEBUG = "eliza:plugin-node:*";
+process.env.DEBUG = 'eliza:plugin-node:*';
 ```
 
 ### System Requirements
@@ -248,20 +248,20 @@ process.env.DEBUG = "eliza:plugin-node:*";
 
 1. **Cache Management**
 
-    - Regular cleanup of `content_cache` directory
-    - Implement cache size limits
-    - Monitor disk usage
+   - Regular cleanup of `content_cache` directory
+   - Implement cache size limits
+   - Monitor disk usage
 
 2. **Memory Usage**
 
-    - Configure max buffer sizes
-    - Implement streaming for large files
-    - Monitor memory consumption
+   - Configure max buffer sizes
+   - Implement streaming for large files
+   - Monitor memory consumption
 
 3. **Concurrent Operations**
-    - Adjust queue size limits
-    - Configure worker threads
-    - Monitor process pool
+   - Adjust queue size limits
+   - Configure worker threads
+   - Monitor process pool
 
 ## Support
 
@@ -270,82 +270,82 @@ For issues and feature requests, please:
 1. Check the troubleshooting guide above
 2. Review existing GitHub issues
 3. Submit a new issue with:
-    - System information
-    - Error logs
-    - Steps to reproduce
+   - System information
+   - Error logs
+   - Steps to reproduce
 
 ## Future Enhancements
 
 1. **File Operations**
 
-    - Enhanced streaming capabilities
-    - Advanced compression options
-    - Batch file processing
-    - File type detection
-    - Metadata management
-    - Version control integration
+   - Enhanced streaming capabilities
+   - Advanced compression options
+   - Batch file processing
+   - File type detection
+   - Metadata management
+   - Version control integration
 
 2. **Media Processing**
 
-    - Additional video formats
-    - Advanced image processing
-    - Audio enhancement tools
-    - Real-time processing
-    - Quality optimization
-    - Format conversion
+   - Additional video formats
+   - Advanced image processing
+   - Audio enhancement tools
+   - Real-time processing
+   - Quality optimization
+   - Format conversion
 
 3. **Cloud Integration**
 
-    - Multi-cloud support
-    - Advanced caching
-    - CDN optimization
-    - Auto-scaling features
-    - Cost optimization
-    - Backup automation
+   - Multi-cloud support
+   - Advanced caching
+   - CDN optimization
+   - Auto-scaling features
+   - Cost optimization
+   - Backup automation
 
 4. **Speech Services**
 
-    - Additional voice models
-    - Language expansion
-    - Emotion detection
-    - Voice cloning
-    - Real-time synthesis
-    - Custom voice training
+   - Additional voice models
+   - Language expansion
+   - Emotion detection
+   - Voice cloning
+   - Real-time synthesis
+   - Custom voice training
 
 5. **Browser Automation**
 
-    - Headless optimization
-    - Parallel processing
-    - Session management
-    - Cookie handling
-    - Proxy support
-    - Resource optimization
+   - Headless optimization
+   - Parallel processing
+   - Session management
+   - Cookie handling
+   - Proxy support
+   - Resource optimization
 
 6. **Security Features**
 
-    - Enhanced encryption
-    - Access control
-    - Audit logging
-    - Threat detection
-    - Rate limiting
-    - Compliance tools
+   - Enhanced encryption
+   - Access control
+   - Audit logging
+   - Threat detection
+   - Rate limiting
+   - Compliance tools
 
 7. **Performance Optimization**
 
-    - Memory management
-    - CPU utilization
-    - Concurrent operations
-    - Resource pooling
-    - Cache strategies
-    - Load balancing
+   - Memory management
+   - CPU utilization
+   - Concurrent operations
+   - Resource pooling
+   - Cache strategies
+   - Load balancing
 
 8. **Developer Tools**
-    - Enhanced debugging
-    - Testing framework
-    - Documentation generator
-    - CLI improvements
-    - Monitoring tools
-    - Integration templates
+   - Enhanced debugging
+   - Testing framework
+   - Documentation generator
+   - CLI improvements
+   - Monitoring tools
+   - Integration templates
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 

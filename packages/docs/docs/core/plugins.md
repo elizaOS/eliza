@@ -5,10 +5,10 @@ Plugins (or packages) are modular extensions that enhance the capabilities of El
 **Browse the various plugins the eliza dev community made here: [Package Showcase](/showcase)**
 
 [![](/img/plugins.png)](/showcase)
+
 > elizaOS maintains an official package registry at [github.com/elizaos-plugins/registry](https://github.com/elizaos-plugins/registry).
 
 ---
-
 
 ### Installation
 
@@ -44,7 +44,7 @@ Eliza now supports dynamic plugin loading directly from the package registry. He
 
 3. Use the new CLI tool:
 
-You can list available plugins, install new ones, and remove them when needed.  
+You can list available plugins, install new ones, and remove them when needed.
 
 Go into the eliza directory you cloned and type `npx elizaos plugins` to use it.
 
@@ -70,6 +70,7 @@ Commands:
 Eliza uses a unified plugin architecture where everything is a plugin - including clients, adapters, actions, evaluators, and services. This approach ensures consistent behavior and better extensibility. Here's how the architecture works:
 
 1. **Plugin Types**: Each plugin can provide one or more of the following:
+
    - Clients (e.g., Discord, Twitter, WhatsApp integrations)
    - Adapters (e.g., database adapters, caching systems)
    - Actions (custom behavior and responses functionality)
@@ -78,27 +79,30 @@ Eliza uses a unified plugin architecture where everything is a plugin - includin
    - Providers (data or functionality providers)
 
 2. **Plugin Interface**: All plugins implement the core Plugin interface:
+
    ```typescript
    type Plugin = {
-       name: string;
-       description: string;
-       config?: { [key: string]: any };
-       actions?: Action[];
-       providers?: Provider[];
-       evaluators?: Evaluator[];
-       services?: Service[];
-       clients?: Client[];
-       adapters?: Adapter[];
+     name: string;
+     description: string;
+     config?: { [key: string]: any };
+     actions?: Action[];
+     providers?: Provider[];
+     evaluators?: Evaluator[];
+     services?: Service[];
+     clients?: Client[];
+     adapters?: Adapter[];
    };
    ```
 
 3. **Independent Repositories**: Each plugin lives in its own repository under the [elizaos-plugins](https://github.com/elizaos-plugins/) organization, allowing:
+
    - Independent versioning and releases
    - Focused issue tracking and documentation
    - Easier maintenance and contribution
    - Separate CI/CD pipelines
 
 4. **Plugin Structure**: Each plugin repository should follow this structure:
+
    ```
    plugin-name/
    ├── images/
@@ -116,6 +120,7 @@ Eliza uses a unified plugin architecture where everything is a plugin - includin
    ```
 
 5. **Package Configuration**: Your plugin's `package.json` must include an `agentConfig` section:
+
    ```json
    {
      "name": "@elizaos/plugin-example",
@@ -133,6 +138,7 @@ Eliza uses a unified plugin architecture where everything is a plugin - includin
    ```
 
 6. **Plugin Loading**: Plugins are dynamically loaded at runtime through the `handlePluginImporting` function, which:
+
    - Imports the plugin module
    - Reads the plugin configuration
    - Validates plugin parameters
@@ -141,27 +147,27 @@ Eliza uses a unified plugin architecture where everything is a plugin - includin
 7. **Client and Adapter Implementation**: When implementing clients or adapters:
 
 ```typescript
-   // Client example
-   const discordPlugin: Plugin = {
-     name: "discord",
-     description: "Discord client plugin",
-     clients: [DiscordClientInterface]
-   };
+// Client example
+const discordPlugin: Plugin = {
+  name: 'discord',
+  description: 'Discord client plugin',
+  clients: [DiscordClientInterface],
+};
 
-   // Adapter example
-   const postgresPlugin: Plugin = {
-     name: "postgres",
-     description: "PostgreSQL database adapter",
-     adapters: [PostgresDatabaseAdapter]
-   };
-   
-   // Adapter example
-   export const browserPlugin = {
-    name: "default",
-    description: "Pdf",
-    services: [PdfService],
-    actions: [],
-  };
+// Adapter example
+const postgresPlugin: Plugin = {
+  name: 'postgres',
+  description: 'PostgreSQL database adapter',
+  adapters: [PostgresDatabaseAdapter],
+};
+
+// Adapter example
+export const browserPlugin = {
+  name: 'default',
+  description: 'Pdf',
+  services: [PdfService],
+  actions: [],
+};
 ```
 
 ### Environment Variables and Secrets
@@ -169,6 +175,7 @@ Eliza uses a unified plugin architecture where everything is a plugin - includin
 Plugins can access environment variables and secrets in two ways:
 
 1. **Character Configuration**: Through `agent.json.secret` or character settings:
+
    ```json
    {
      "name": "MyAgent",
@@ -185,13 +192,14 @@ Plugins can access environment variables and secrets in two ways:
    ```typescript
    class MyPlugin implements Plugin {
      async initialize(runtime: AgentRuntime) {
-       const apiKey = runtime.getSetting("PLUGIN_API_KEY");
-       const secret = runtime.getSetting("PLUGIN_SECRET");
+       const apiKey = runtime.getSetting('PLUGIN_API_KEY');
+       const secret = runtime.getSetting('PLUGIN_SECRET');
      }
    }
    ```
 
 The `getSetting` method follows this precedence:
+
 1. Character settings secrets
 2. Character settings
 3. Global settings
@@ -203,18 +211,21 @@ The `getSetting` method follows this precedence:
 When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), your PR must include:
 
 1. **Working Demo Evidence:**
+
    - Screenshots or video demonstrations of the plugin working with ElizaOS
    - Test results showing successful integration
    - Example agent configuration using your plugin
    - Documentation of any specific setup requirements
 
 2. **Integration Testing:**
+
    - Proof of successful dynamic loading with ElizaOS
    - Test cases covering main functionality
    - Error handling demonstrations
    - Performance metrics (if applicable)
 
 3. **Configuration Examples:**
+
    ```json
    {
      "name": "MyAgent",
@@ -242,6 +253,7 @@ Visit the [Elizaos Plugin Development Guide]([https://github.com/elizaos-plugins
 To maintain a consistent and professional appearance across the ElizaOS ecosystem, we recommend including the following assets in your plugin repository:
 
 1. **Required Images:**
+
    - `logo.png` (400x400px) - Your plugin's square logo
    - `banner.png` (1280x640px) - A banner image for your plugin
    - `screenshot.png` - At least one screenshot demonstrating your plugin's functionality
@@ -256,7 +268,6 @@ To maintain a consistent and professional appearance across the ElizaOS ecosyste
    │       ├── screenshot1.png
    │       └── screenshot2.png
    ```
-   
 3. **Image Guidelines:**
    - Use clear, high-resolution images
    - Keep file sizes optimized (< 500KB for logos, < 1MB for banners)
@@ -266,6 +277,7 @@ To maintain a consistent and professional appearance across the ElizaOS ecosyste
 ---
 
 ## Using Your Custom Plugins
+
 Plugins that are not in the official registry for ElizaOS can be used as well. Here's how:
 
 ### Installation

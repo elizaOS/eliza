@@ -1,10 +1,10 @@
 x-common: &common-config
   restart: always
   logging:
-    driver: "json-file"
+    driver: 'json-file'
     options:
-      max-size: "100m"
-      max-file: "5"
+      max-size: '100m'
+      max-file: '5'
 
 services:
   eliza:
@@ -22,7 +22,7 @@ services:
     <<: *common-config
     container_name: logs
     ports:
-      - "8080:80"
+      - '8080:80'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -31,7 +31,7 @@ services:
   mkswap:
     image: busybox
     privileged: true
-    entrypoint: ["/bin/sh", "-c"]
+    entrypoint: ['/bin/sh', '-c']
     command:
       - |
         if ! [ -f /host/swap0 ]; then
@@ -43,4 +43,4 @@ services:
         echo 30 > /host/proc/sys/vm/swappiness
     volumes:
       - /:/host
-    restart: "no"
+    restart: 'no'

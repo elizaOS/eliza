@@ -1,35 +1,35 @@
-import { Button } from "@/components/ui/button";
+import { Button } from '@/components/ui/button';
 import {
   ChatBubble,
   ChatBubbleMessage,
   ChatBubbleTimestamp,
-} from "@/components/ui/chat/chat-bubble";
-import { ChatInput } from "@/components/ui/chat/chat-input";
-import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
-import { USER_NAME } from "@/constants";
-import { useAgent, useMessages } from "@/hooks/use-query-hooks";
-import { cn, getEntityId, moment } from "@/lib/utils";
-import SocketIOManager from "@/lib/socketio-manager";
-import { WorldManager } from "@/lib/world-manager";
-import type { IAttachment } from "@/types";
-import type { Content, UUID } from "@elizaos/core";
-import { AgentStatus } from "@elizaos/core";
-import { useQueryClient } from "@tanstack/react-query";
-import { Activity, MenuIcon, Paperclip, Send, Terminal, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import AIWriter from "react-aiwriter";
-import { AgentActionViewer } from "./action-viewer";
-import { AudioRecorder } from "./audio-recorder";
-import CopyButton from "./copy-button";
-import { LogViewer } from "./log-viewer";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { Badge } from "./ui/badge";
-import ChatTtsButton from "./ui/chat/chat-tts-button";
-import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+} from '@/components/ui/chat/chat-bubble';
+import { ChatInput } from '@/components/ui/chat/chat-input';
+import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
+import { USER_NAME } from '@/constants';
+import { useAgent, useMessages } from '@/hooks/use-query-hooks';
+import { cn, getEntityId, moment } from '@/lib/utils';
+import SocketIOManager from '@/lib/socketio-manager';
+import { WorldManager } from '@/lib/world-manager';
+import type { IAttachment } from '@/types';
+import type { Content, UUID } from '@elizaos/core';
+import { AgentStatus } from '@elizaos/core';
+import { useQueryClient } from '@tanstack/react-query';
+import { Activity, MenuIcon, Paperclip, Send, Terminal, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import AIWriter from 'react-aiwriter';
+import { AgentActionViewer } from './action-viewer';
+import { AudioRecorder } from './audio-recorder';
+import CopyButton from './copy-button';
+import { LogViewer } from './log-viewer';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Badge } from './ui/badge';
+import ChatTtsButton from './ui/chat/chat-tts-button';
+import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
-const SOURCE_NAME = "client_chat";
+const SOURCE_NAME = 'client_chat';
 
 type ExtraContentFields = {
   name: string;
@@ -52,21 +52,19 @@ function MessageContent({
     <div className="flex flex-col">
       <ChatBubbleMessage
         isLoading={message.isLoading}
-        {...(message.name === USER_NAME ? { variant: "sent" } : {})}
+        {...(message.name === USER_NAME ? { variant: 'sent' } : {})}
       >
-        {message.name === USER_NAME ? 
-          message.text :
-          (isLastMessage && message.name !== USER_NAME) ? 
-            <AIWriter>{message.text}</AIWriter> : 
-            message.text
-        }
+        {message.name === USER_NAME ? (
+          message.text
+        ) : isLastMessage && message.name !== USER_NAME ? (
+          <AIWriter>{message.text}</AIWriter>
+        ) : (
+          message.text
+        )}
         {/* Attachments */}
         <div>
           {message.attachments?.map((attachment: IAttachment) => (
-            <div
-              className="flex flex-col gap-1 mt-2"
-              key={`${attachment.url}-${attachment.title}`}
-            >
+            <div className="flex flex-col gap-1 mt-2" key={`${attachment.url}-${attachment.title}`}>
               <img
                 alt="attachment"
                 src={attachment.url}
@@ -91,20 +89,14 @@ function MessageContent({
         ) : null}
         <div
           className={cn([
-            message.isLoading ? "mt-2" : "",
-            "flex items-center justify-between gap-4 select-none",
+            message.isLoading ? 'mt-2' : '',
+            'flex items-center justify-between gap-4 select-none',
           ])}
         >
-          {message.thought ? (
-            <Badge variant="outline">{message.thought}</Badge>
-          ) : null}
-          {message.plan ? (
-            <Badge variant="outline">{message.plan}</Badge>
-          ) : null}
+          {message.thought ? <Badge variant="outline">{message.thought}</Badge> : null}
+          {message.plan ? <Badge variant="outline">{message.plan}</Badge> : null}
           {message.createdAt ? (
-            <ChatBubbleTimestamp
-              timestamp={moment(message.createdAt).format("LT")}
-            />
+            <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
           ) : null}
         </div>
       </div>
@@ -114,9 +106,9 @@ function MessageContent({
 
 export default function Page({ agentId }: { agentId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState('');
   const [showDetails, setShowDetails] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<"actions" | "logs">("actions");
+  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs'>('actions');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -137,28 +129,23 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
       queryClient.setQueryData(
-        ["messages", agentId, roomId, worldId],
-        (old: ContentWithUser[] = []) => [
-          ...old,
-          { ...data, name: data.senderName },
-        ]
+        ['messages', agentId, roomId, worldId],
+        (old: ContentWithUser[] = []) => [...old, { ...data, name: data.senderName }]
       );
     };
-    socketIOManager.on("messageBroadcast", handleMessageBroadcasting);
+    socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
 
     return () => {
       socketIOManager.disconnectAll();
-      socketIOManager.off("messageBroadcast", handleMessageBroadcasting);
+      socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
     };
   }, [roomId]);
 
-  const getMessageVariant = (id: UUID) =>
-    id !== entityId ? "received" : "sent";
+  const getMessageVariant = (id: UUID) => (id !== entityId ? 'received' : 'sent');
 
-  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } =
-    useAutoScroll({
-      smooth: true,
-    });
+  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } = useAutoScroll({
+    smooth: true,
+  });
 
   useEffect(() => {
     scrollToBottom();
@@ -169,7 +156,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (e.nativeEvent.isComposing) return;
       handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
@@ -180,16 +167,10 @@ export default function Page({ agentId }: { agentId: UUID }) {
     e.preventDefault();
     if (!input) return;
 
-    socketIOManager.handleBroadcastMessage(
-      entityId,
-      USER_NAME,
-      input,
-      roomId,
-      SOURCE_NAME
-    );
+    socketIOManager.handleBroadcastMessage(entityId, USER_NAME, input, roomId, SOURCE_NAME);
 
     setSelectedFile(null);
-    setInput("");
+    setInput('');
     formRef.current?.reset();
   };
 
@@ -201,7 +182,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file?.type.startsWith("image/")) {
+    if (file?.type.startsWith('image/')) {
       setSelectedFile(file);
     }
   };
@@ -217,18 +198,12 @@ export default function Page({ agentId }: { agentId: UUID }) {
         <div className="flex items-center gap-3">
           <Avatar className="size-10 border rounded-full">
             <AvatarImage
-              src={
-                agentData?.settings?.avatar
-                  ? agentData?.settings?.avatar
-                  : "/elizaos-icon.png"
-              }
+              src={agentData?.settings?.avatar ? agentData?.settings?.avatar : '/elizaos-icon.png'}
             />
           </Avatar>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-lg">
-                {agentData?.name || "Agent"}
-              </h2>
+              <h2 className="font-semibold text-lg">{agentData?.name || 'Agent'}</h2>
               {agentData?.status === AgentStatus.ACTIVE ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -251,9 +226,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
             </div>
             {agentData?.bio && (
               <p className="text-sm text-muted-foreground line-clamp-1">
-                {Array.isArray(agentData.bio)
-                  ? agentData.bio[0]
-                  : agentData.bio}
+                {Array.isArray(agentData.bio) ? agentData.bio[0] : agentData.bio}
               </p>
             )}
           </div>
@@ -263,7 +236,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
           variant="outline"
           size="sm"
           onClick={toggleDetails}
-          className={cn("gap-1.5", showDetails && "bg-secondary")}
+          className={cn('gap-1.5', showDetails && 'bg-secondary')}
         >
           <MenuIcon className="size-4" />
         </Button>
@@ -273,8 +246,8 @@ export default function Page({ agentId }: { agentId: UUID }) {
         {/* Main Chat Area */}
         <div
           className={cn(
-            "flex flex-col transition-all duration-300",
-            showDetails ? "w-3/5" : "w-full"
+            'flex flex-col transition-all duration-300',
+            showDetails ? 'w-3/5' : 'w-full'
           )}
         >
           {/* Chat Messages */}
@@ -290,30 +263,32 @@ export default function Page({ agentId }: { agentId: UUID }) {
               return (
                 <div
                   key={`${message.id as string}-${message.createdAt}`}
-                  className={`flex flex-column gap-1 p-1 ${
-                    isUser ? "justify-end" : ""
-                  }`}
+                  className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
                 >
                   <ChatBubble
                     variant={getMessageVariant(isUser ? entityId : agentId)}
                     className={`flex flex-row items-center gap-2 ${
-                      isUser ? "flex-row-reverse" : ""
+                      isUser ? 'flex-row-reverse' : ''
                     }`}
                   >
                     <Avatar className="size-8 border rounded-full select-none">
                       <AvatarImage
                         src={
                           isUser
-                            ? "/user-icon.png"
+                            ? '/user-icon.png'
                             : agentData?.settings?.avatar
-                            ? agentData?.settings?.avatar
-                            : "/elizaos-icon.png"
+                              ? agentData?.settings?.avatar
+                              : '/elizaos-icon.png'
                         }
                       />
 
                       {isUser && <AvatarFallback>U</AvatarFallback>}
                     </Avatar>
-                    <MessageContent message={message} agentId={agentId} isLastMessage={index === messages.length - 1}/>
+                    <MessageContent
+                      message={message}
+                      agentId={agentId}
+                      isLastMessage={index === messages.length - 1}
+                    />
                   </ChatBubble>
                 </div>
               );
@@ -389,11 +364,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
                   agentId={agentId}
                   onChange={(newInput: string) => setInput(newInput)}
                 />
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="ml-auto gap-1.5 h-[30px]"
-                >
+                <Button type="submit" size="sm" className="ml-auto gap-1.5 h-[30px]">
                   <Send className="size-3.5" />
                 </Button>
               </div>
@@ -407,22 +378,16 @@ export default function Page({ agentId }: { agentId: UUID }) {
             <Tabs
               defaultValue="actions"
               value={detailsTab}
-              onValueChange={(v) => setDetailsTab(v as "actions" | "logs")}
+              onValueChange={(v) => setDetailsTab(v as 'actions' | 'logs')}
               className="flex flex-col h-full"
             >
               <div className="border-b px-4 py-2">
                 <TabsList className="grid grid-cols-2">
-                  <TabsTrigger
-                    value="actions"
-                    className="flex items-center gap-1.5"
-                  >
+                  <TabsTrigger value="actions" className="flex items-center gap-1.5">
                     <Activity className="h-4 w-4" />
                     <span>Agent Actions</span>
                   </TabsTrigger>
-                  <TabsTrigger
-                    value="logs"
-                    className="flex items-center gap-1.5"
-                  >
+                  <TabsTrigger value="logs" className="flex items-center gap-1.5">
                     <Terminal className="h-4 w-4" />
                     <span>Logs</span>
                   </TabsTrigger>

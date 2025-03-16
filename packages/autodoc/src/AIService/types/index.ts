@@ -1,4 +1,4 @@
-import type { ASTQueueItem } from "../../types";
+import type { ASTQueueItem } from '../../types';
 
 /**
  * Interface representing a group of documentation for files.
@@ -11,12 +11,12 @@ import type { ASTQueueItem } from "../../types";
  * @property {ASTQueueItem[]} functions - An array of ASTQueueItem objects representing functions in the file.
  */
 export interface FileDocsGroup {
-	filePath: string;
-	classes: ASTQueueItem[];
-	methods: ASTQueueItem[];
-	interfaces: ASTQueueItem[];
-	types: ASTQueueItem[];
-	functions: ASTQueueItem[];
+  filePath: string;
+  classes: ASTQueueItem[];
+  methods: ASTQueueItem[];
+  interfaces: ASTQueueItem[];
+  types: ASTQueueItem[];
+  functions: ASTQueueItem[];
 }
 
 /**
@@ -29,10 +29,10 @@ export interface FileDocsGroup {
  * @property {ASTQueueItem[]} variables - An array of ASTQueueItem objects representing variables.
  */
 export interface OrganizedDocs {
-	classes: ASTQueueItem[];
-	methods: ASTQueueItem[];
-	interfaces: ASTQueueItem[];
-	types: ASTQueueItem[];
-	functions: ASTQueueItem[];
-	variables: ASTQueueItem[];
+  classes: ASTQueueItem[];
+  methods: ASTQueueItem[];
+  interfaces: ASTQueueItem[];
+  types: ASTQueueItem[];
+  functions: ASTQueueItem[];
+  variables: ASTQueueItem[];
 }

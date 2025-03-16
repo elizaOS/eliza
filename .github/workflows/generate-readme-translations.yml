@@ -2,7 +2,7 @@ name: Generate Readme Translations
 on:
   push:
     branches:
-      - "1222--README-ci-auto-translation"
+      - '1222--README-ci-auto-translation'
 
 jobs:
   translation:
@@ -11,28 +11,28 @@ jobs:
       matrix:
         language:
           [
-            { code: "CN", name: "Chinese" },
-            { code: "DE", name: "German" },
-            { code: "ES", name: "Spanish" },
-            { code: "FR", name: "French" },
-            { code: "HE", name: "Hebrew" },
-            { code: "IT", name: "Italian" },
-            { code: "JA", name: "Japanese" },
-            { code: "KOR", name: "Korean" },
-            { code: "PTBR", name: "Portuguese (Brazil)" },
-            { code: "RU", name: "Russian" },
-            { code: "TH", name: "Thai" },
-            { code: "TR", name: "Turkish" },
-            { code: "VI", name: "Vietnamese" },
-            { code: "AR", name: "Arabic" },
-            { code: "RS", name: "Srpski" },
-            { code: "TG", name: "Tagalog" },
-            { code: "PL", name: "Polski" },
-            { code: "HU", name: "Hungarian" },
-            { code: "FA", name: "Persian" },
-            { code: "RO", name: "Romanian" },
-            { code: "GR", name: "Greek" },
-            { code: "NL", name: "Dutch" },
+            { code: 'CN', name: 'Chinese' },
+            { code: 'DE', name: 'German' },
+            { code: 'ES', name: 'Spanish' },
+            { code: 'FR', name: 'French' },
+            { code: 'HE', name: 'Hebrew' },
+            { code: 'IT', name: 'Italian' },
+            { code: 'JA', name: 'Japanese' },
+            { code: 'KOR', name: 'Korean' },
+            { code: 'PTBR', name: 'Portuguese (Brazil)' },
+            { code: 'RU', name: 'Russian' },
+            { code: 'TH', name: 'Thai' },
+            { code: 'TR', name: 'Turkish' },
+            { code: 'VI', name: 'Vietnamese' },
+            { code: 'AR', name: 'Arabic' },
+            { code: 'RS', name: 'Srpski' },
+            { code: 'TG', name: 'Tagalog' },
+            { code: 'PL', name: 'Polski' },
+            { code: 'HU', name: 'Hungarian' },
+            { code: 'FA', name: 'Persian' },
+            { code: 'RO', name: 'Romanian' },
+            { code: 'GR', name: 'Greek' },
+            { code: 'NL', name: 'Dutch' },
           ]
     permissions:
       contents: write
@@ -92,7 +92,7 @@ jobs:
       - name: Commit all translations
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: update all README translations"
+          commit_message: 'chore: update all README translations'
           branch: main
-          file_pattern: "README_*.md"
-          commit_author: "GitHub Action <actions@github.com>"
+          file_pattern: 'README_*.md'
+          commit_author: 'GitHub Action <actions@github.com>'

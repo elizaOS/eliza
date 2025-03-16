@@ -62,4 +62,4 @@ The Jest configuration is in both `jest.config.js` and `package.json`. The confi
 1. Sets up Node.js environment
 2. Maps module paths
 3. Configures code coverage
-4. Sets up test matching patterns 
+4. Sets up test matching patterns

@@ -10,8 +10,6 @@ Sign up for a Tako account on the [Tako App](https://app.tako.so) and obtain you
 
 Tako is developed in collaboration with Farcaster. Every Tako account must be linked to a Farcaster account.
 
-
-
 - The identifier for a Tako account is the **Tako ID**.
 - The identifier for a Farcaster account is the **FID**. For more details, refer to the [Farcaster Documentation](https://docs.farcaster.xyz/).
 

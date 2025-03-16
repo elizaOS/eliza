@@ -64,14 +64,14 @@ Configure the plugin by setting the following environment variables:
 
 ```typescript
 const solanaEnvSchema = {
-    WALLET_SECRET_SALT: string(optional),
-    WALLET_SECRET_KEY: string,
-    WALLET_PUBLIC_KEY: string,
-    SOL_ADDRESS: string,
-    SLIPPAGE: string,
-    SOLANA_RPC_URL: string,
-    HELIUS_API_KEY: string,
-    BIRDEYE_API_KEY: string,
+  WALLET_SECRET_SALT: string(optional),
+  WALLET_SECRET_KEY: string,
+  WALLET_PUBLIC_KEY: string,
+  SOL_ADDRESS: string,
+  SLIPPAGE: string,
+  SOLANA_RPC_URL: string,
+  HELIUS_API_KEY: string,
+  BIRDEYE_API_KEY: string,
 };
 ```
 
@@ -80,11 +80,11 @@ const solanaEnvSchema = {
 ### Basic Setup
 
 ```typescript
-import { solanaPlugin } from "@elizaos/plugin-solana";
+import { solanaPlugin } from '@elizaos/plugin-solana';
 
 // Initialize the plugin
 const runtime = await initializeRuntime({
-    plugins: [solanaPlugin],
+  plugins: [solanaPlugin],
 });
 ```
 
@@ -95,11 +95,7 @@ const runtime = await initializeRuntime({
 Manages token operations and information retrieval.
 
 ```typescript
-const tokenProvider = new TokenProvider(
-    tokenAddress,
-    walletProvider,
-    cacheManager
-);
+const tokenProvider = new TokenProvider(tokenAddress, walletProvider, cacheManager);
 await tokenProvider.getTokensInWallet(runtime);
 ```
 
@@ -117,7 +113,7 @@ await walletProvider.getFormattedPortfolio(runtime);
 Evaluates and manages trust scores for tokens and trading activities.
 
 ```typescript
-const trustScore = await runtime.getProvider("trustScore");
+const trustScore = await runtime.getProvider('trustScore');
 ```
 
 ## Actions
@@ -128,10 +124,10 @@ Executes a token swap using Jupiter aggregator.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("EXECUTE_SWAP", {
-    inputTokenSymbol: "SOL",
-    outputTokenSymbol: "USDC",
-    amount: 0.1,
+const result = await runtime.executeAction('EXECUTE_SWAP', {
+  inputTokenSymbol: 'SOL',
+  outputTokenSymbol: 'USDC',
+  amount: 0.1,
 });
 ```
 
@@ -141,10 +137,10 @@ Transfers tokens between wallets.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("SEND_TOKEN", {
-    tokenAddress: "TokenAddressHere",
-    recipient: "RecipientAddressHere",
-    amount: "1000",
+const result = await runtime.executeAction('SEND_TOKEN', {
+  tokenAddress: 'TokenAddressHere',
+  recipient: 'RecipientAddressHere',
+  amount: '1000',
 });
 ```
 
@@ -154,9 +150,9 @@ Transfers SOL between wallets.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("SEND_SOL", {
-    recipient: "RecipientAddressHere",
-    amount: "1000",
+const result = await runtime.executeAction('SEND_SOL', {
+  recipient: 'RecipientAddressHere',
+  amount: '1000',
 });
 ```
 
@@ -166,9 +162,9 @@ Places a buy order based on conviction level.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("TAKE_ORDER", {
-    ticker: "SOL",
-    contractAddress: "ContractAddressHere",
+const result = await runtime.executeAction('TAKE_ORDER', {
+  ticker: 'SOL',
+  contractAddress: 'ContractAddressHere',
 });
 ```
 
@@ -178,14 +174,14 @@ Creates and buys tokens on pump.fun.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("CREATE_AND_BUY_TOKEN", {
-    tokenMetadata: {
-        name: "TokenName",
-        symbol: "SYMBOL",
-        description: "Token description",
-        image_description: "Image description",
-    },
-    buyAmountSol: 0.1,
+const result = await runtime.executeAction('CREATE_AND_BUY_TOKEN', {
+  tokenMetadata: {
+    name: 'TokenName',
+    symbol: 'SYMBOL',
+    description: 'Token description',
+    image_description: 'Image description',
+  },
+  buyAmountSol: 0.1,
 });
 ```
 
@@ -195,15 +191,15 @@ Creates and buys tokens on fomo.fund.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("CREATE_AND_BUY_TOKEN", {
-    tokenMetadata: {
-        name: "TokenName",
-        symbol: "SYMBOL",
-        description: "Token description",
-        image_description: "Image description",
-    },
-    buyAmountSol: 0.1,
-    requiredLiquidity: 1000,
+const result = await runtime.executeAction('CREATE_AND_BUY_TOKEN', {
+  tokenMetadata: {
+    name: 'TokenName',
+    symbol: 'SYMBOL',
+    description: 'Token description',
+    image_description: 'Image description',
+  },
+  buyAmountSol: 0.1,
+  requiredLiquidity: 1000,
 });
 ```
 
@@ -213,10 +209,10 @@ Executes token swaps for DAO operations.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("EXECUTE_SWAP_DAO", {
-    inputTokenSymbol: "SOL",
-    outputTokenSymbol: "USDC",
-    amount: 0.1,
+const result = await runtime.executeAction('EXECUTE_SWAP_DAO', {
+  inputTokenSymbol: 'SOL',
+  outputTokenSymbol: 'USDC',
+  amount: 0.1,
 });
 ```
 
@@ -224,20 +220,20 @@ const result = await runtime.executeAction("EXECUTE_SWAP_DAO", {
 
 1. **Cache Management**
 
-    - Implement token data caching
-    - Configure cache TTL settings
-    - Monitor cache hit rates
+   - Implement token data caching
+   - Configure cache TTL settings
+   - Monitor cache hit rates
 
 2. **RPC Optimization**
 
-    - Use connection pooling
-    - Implement request batching
-    - Monitor RPC usage
+   - Use connection pooling
+   - Implement request batching
+   - Monitor RPC usage
 
 3. **Transaction Management**
-    - Optimize transaction bundling
-    - Implement retry strategies
-    - Monitor transaction success rates
+   - Optimize transaction bundling
+   - Implement retry strategies
+   - Monitor transaction success rates
 
 ## System Requirements
 
@@ -287,45 +283,45 @@ Error: Unable to fetch price data
 
 1. **Environment Variables**
 
-    - Store sensitive keys in environment variables
-    - Use .env.example for non-sensitive defaults
-    - Never commit real credentials to version control
+   - Store sensitive keys in environment variables
+   - Use .env.example for non-sensitive defaults
+   - Never commit real credentials to version control
 
 2. **Transaction Limits**
 
-    - Set maximum transaction amounts
-    - Implement daily trading limits
-    - Configure per-token restrictions
+   - Set maximum transaction amounts
+   - Implement daily trading limits
+   - Configure per-token restrictions
 
 3. **Monitoring**
 
-    - Track failed transaction attempts
-    - Monitor unusual trading patterns
-    - Log security-relevant events
+   - Track failed transaction attempts
+   - Monitor unusual trading patterns
+   - Log security-relevant events
 
 4. **Recovery**
-    - Implement transaction rollback mechanisms
-    - Maintain backup RPC endpoints
-    - Document recovery procedures
+   - Implement transaction rollback mechanisms
+   - Maintain backup RPC endpoints
+   - Document recovery procedures
 
 ## Performance Optimization
 
 1. **Cache Management**
 
-    - Implement token data caching
-    - Configure cache TTL settings
-    - Monitor cache hit rates
+   - Implement token data caching
+   - Configure cache TTL settings
+   - Monitor cache hit rates
 
 2. **RPC Optimization**
 
-    - Use connection pooling
-    - Implement request batching
-    - Monitor RPC usage
+   - Use connection pooling
+   - Implement request batching
+   - Monitor RPC usage
 
 3. **Transaction Management**
-    - Optimize transaction bundling
-    - Implement retry strategies
-    - Monitor transaction success rates
+   - Optimize transaction bundling
+   - Implement retry strategies
+   - Monitor transaction success rates
 
 ## Support
 
@@ -334,10 +330,10 @@ For issues and feature requests, please:
 1. Check the troubleshooting guide above
 2. Review existing GitHub issues
 3. Submit a new issue with:
-    - System information
-    - Error logs
-    - Steps to reproduce
-    - Transaction IDs (if applicable)
+   - System information
+   - Error logs
+   - Steps to reproduce
+   - Transaction IDs (if applicable)
 
 ## Contributing
 

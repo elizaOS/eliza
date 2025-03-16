@@ -34,34 +34,34 @@ pnpm add @eliza/adapter-supabase
 ### SQLite (Development)
 
 ```typescript
-import { SqliteDatabaseAdapter } from "@eliza/adapter-sqlite";
-import Database from "better-sqlite3";
+import { SqliteDatabaseAdapter } from '@eliza/adapter-sqlite';
+import Database from 'better-sqlite3';
 
-const db = new SqliteDatabaseAdapter(new Database("./dev.db"));
+const db = new SqliteDatabaseAdapter(new Database('./dev.db'));
 ```
 
 ### PostgreSQL (Production)
 
 ```typescript
-import { PostgresDatabaseAdapter } from "@eliza/adapter-postgres";
+import { PostgresDatabaseAdapter } from '@eliza/adapter-postgres';
 
 const db = new PostgresDatabaseAdapter({
-    connectionString: process.env.DATABASE_URL,
-    // Optional connection pool settings
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+  connectionString: process.env.DATABASE_URL,
+  // Optional connection pool settings
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 });
 ```
 
 ### Supabase (Cloud)
 
 ```typescript
-import { SupabaseDatabaseAdapter } from "@eliza/adapter-supabase";
+import { SupabaseDatabaseAdapter } from '@eliza/adapter-supabase';
 
 const db = new SupabaseDatabaseAdapter(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_API_KEY,
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_API_KEY
 );
 ```
 
@@ -73,16 +73,16 @@ Memories are the fundamental unit of storage in Eliza. They represent messages, 
 
 ```typescript
 interface Memory {
-    id: UUID;
-    content: {
-        text: string;
-        attachments?: Attachment[];
-    };
-    embedding?: number[];
-    userId: UUID;
-    roomId: UUID;
-    agentId: UUID;
-    createdAt: number;
+  id: UUID;
+  content: {
+    text: string;
+    attachments?: Attachment[];
+  };
+  embedding?: number[];
+  userId: UUID;
+  roomId: UUID;
+  agentId: UUID;
+  createdAt: number;
 }
 ```
 
@@ -92,9 +92,9 @@ Relationships track connections between users and agents:
 
 ```typescript
 interface Relationship {
-    userA: UUID;
-    userB: UUID;
-    status: "FRIENDS" | "BLOCKED";
+  userA: UUID;
+  userB: UUID;
+  status: 'FRIENDS' | 'BLOCKED';
 }
 ```
 
@@ -104,12 +104,12 @@ Goals track objectives and their progress:
 
 ```typescript
 interface Goal {
-    id: UUID;
-    roomId: UUID;
-    userId: UUID;
-    name: string;
-    status: GoalStatus;
-    objectives: Objective[];
+  id: UUID;
+  roomId: UUID;
+  userId: UUID;
+  name: string;
+  status: GoalStatus;
+  objectives: Objective[];
 }
 ```
 
@@ -120,29 +120,29 @@ interface Goal {
 ```typescript
 // Create a memory
 await db.createMemory(
-    {
-        id: uuid(),
-        content: { text: "Hello world" },
-        userId: user.id,
-        roomId: room.id,
-        agentId: agent.id,
-        createdAt: Date.now(),
-    },
-    "messages",
+  {
+    id: uuid(),
+    content: { text: 'Hello world' },
+    userId: user.id,
+    roomId: room.id,
+    agentId: agent.id,
+    createdAt: Date.now(),
+  },
+  'messages'
 );
 
 // Search memories by embedding
 const similar = await db.searchMemoriesByEmbedding(embedding, {
-    match_threshold: 0.8,
-    count: 10,
-    roomId: room.id,
+  match_threshold: 0.8,
+  count: 10,
+  roomId: room.id,
 });
 
 // Get recent memories
 const recent = await db.getMemories({
-    roomId: room.id,
-    count: 10,
-    unique: true,
+  roomId: room.id,
+  count: 10,
+  unique: true,
 });
 ```
 
@@ -151,13 +151,13 @@ const recent = await db.getMemories({
 ```typescript
 // Create relationship
 await db.createRelationship({
-    userA: user1.id,
-    userB: user2.id,
+  userA: user1.id,
+  userB: user2.id,
 });
 
 // Get relationships for user
 const relationships = await db.getRelationships({
-    userId: user.id,
+  userId: user.id,
 });
 ```
 
@@ -166,18 +166,18 @@ const relationships = await db.getRelationships({
 ```typescript
 // Create goal
 await db.createGoal({
-    id: uuid(),
-    roomId: room.id,
-    userId: user.id,
-    name: "Complete task",
-    status: "IN_PROGRESS",
-    objectives: [],
+  id: uuid(),
+  roomId: room.id,
+  userId: user.id,
+  name: 'Complete task',
+  status: 'IN_PROGRESS',
+  objectives: [],
 });
 
 // Get active goals
 const goals = await db.getGoals({
-    roomId: room.id,
-    onlyInProgress: true,
+  roomId: room.id,
+  onlyInProgress: true,
 });
 ```
 
@@ -213,10 +213,10 @@ const cached = await db.getCachedEmbeddings({
 
 ```typescript
 const db = new PostgresDatabaseAdapter({
-    connectionString: process.env.DATABASE_URL,
-    max: 20, // Maximum pool size
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+  connectionString: process.env.DATABASE_URL,
+  max: 20, // Maximum pool size
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 });
 ```
 
@@ -224,11 +224,11 @@ const db = new PostgresDatabaseAdapter({
 
 ```typescript
 const db = new SqliteDatabaseAdapter(
-    new Database("./dev.db", {
-        memory: true, // In-memory database
-        readonly: false,
-        fileMustExist: false,
-    }),
+  new Database('./dev.db', {
+    memory: true, // In-memory database
+    readonly: false,
+    fileMustExist: false,
+  })
 );
 ```
 
@@ -237,10 +237,10 @@ const db = new SqliteDatabaseAdapter(
 ```typescript
 // Enable memory caching
 const memory = new MemoryManager({
-    runtime,
-    tableName: "messages",
-    cacheSize: 1000,
-    cacheTTL: 3600,
+  runtime,
+  tableName: 'messages',
+  cacheSize: 1000,
+  cacheTTL: 3600,
 });
 ```
 
@@ -285,15 +285,15 @@ CREATE TABLE IF NOT EXISTS memories (
 
 ```typescript
 try {
-    await db.createMemory(memory);
+  await db.createMemory(memory);
 } catch (error) {
-    if (error.code === "SQLITE_CONSTRAINT") {
-        // Handle unique constraint violation
-    } else if (error.code === "23505") {
-        // Handle Postgres unique violation
-    } else {
-        // Handle other errors
-    }
+  if (error.code === 'SQLITE_CONSTRAINT') {
+    // Handle unique constraint violation
+  } else if (error.code === '23505') {
+    // Handle Postgres unique violation
+  } else {
+    // Handle other errors
+  }
 }
 ```
 
@@ -303,19 +303,15 @@ To create a custom adapter, implement the `DatabaseAdapter` interface:
 
 ```typescript
 class CustomDatabaseAdapter extends DatabaseAdapter {
-    async createMemory(memory: Memory, tableName: string): Promise<void> {
-        // Custom implementation
-    }
+  async createMemory(memory: Memory, tableName: string): Promise<void> {
+    // Custom implementation
+  }
 
-    async getMemories(params: {
-        roomId: UUID;
-        count?: number;
-        unique?: boolean;
-    }): Promise<Memory[]> {
-        // Custom implementation
-    }
+  async getMemories(params: { roomId: UUID; count?: number; unique?: boolean }): Promise<Memory[]> {
+    // Custom implementation
+  }
 
-    // Implement other required methods...
+  // Implement other required methods...
 }
 ```
 
@@ -323,26 +319,26 @@ class CustomDatabaseAdapter extends DatabaseAdapter {
 
 1. **Connection Management**
 
-    - Use connection pooling for PostgreSQL
-    - Close connections properly when using SQLite
-    - Handle connection errors gracefully
+   - Use connection pooling for PostgreSQL
+   - Close connections properly when using SQLite
+   - Handle connection errors gracefully
 
 2. **Vector Search**
 
-    - Set appropriate match thresholds based on your use case
-    - Index embedding columns for better performance
-    - Cache frequently accessed embeddings
+   - Set appropriate match thresholds based on your use case
+   - Index embedding columns for better performance
+   - Cache frequently accessed embeddings
 
 3. **Memory Management**
 
-    - Implement cleanup strategies for old memories
-    - Use unique flags to prevent duplicates
-    - Consider partitioning large tables
+   - Implement cleanup strategies for old memories
+   - Use unique flags to prevent duplicates
+   - Consider partitioning large tables
 
 4. **Error Handling**
-    - Implement retries for transient failures
-    - Log database errors with context
-    - Use transactions for atomic operations
+   - Implement retries for transient failures
+   - Log database errors with context
+   - Use transactions for atomic operations
 
 ## Troubleshooting
 
@@ -353,7 +349,7 @@ class CustomDatabaseAdapter extends DatabaseAdapter {
 ```typescript
 // Increase connection timeout
 const db = new PostgresDatabaseAdapter({
-    connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 5000,
 });
 ```
 

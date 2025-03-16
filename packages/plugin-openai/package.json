@@ -1,51 +1,56 @@
 {
-	"name": "@elizaos/plugin-openai",
-	"version": "1.0.0-alpha.63",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/elizaos-plugins/plugin-openai"
-	},
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"dependencies": {
-		"@ai-sdk/openai": "^1.1.9",
-		"@ai-sdk/ui-utils": "1.1.9",
-		"@elizaos/core": "^1.0.0-alpha.63",
-		"ai": "^4.1.25",
-		"js-tiktoken": "^1.0.18",
-		"tsup": "8.4.0"
-	},
-	"scripts": {
-		"build": "tsup",
-		"dev": "tsup --watch",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"agentConfig": {
-		"pluginType": "elizaos:plugin:1.0.0",
-		"pluginParameters": {
-			"OPENAI_API_KEY": {
-				"type": "string",
-				"description": "API key for the service"
-			}
-		}
-	},
-	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
+  "name": "@elizaos/plugin-openai",
+  "version": "1.0.0-alpha.63",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-openai"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@ai-sdk/openai": "^1.1.9",
+    "@ai-sdk/ui-utils": "1.1.9",
+    "@elizaos/core": "^1.0.0-alpha.63",
+    "ai": "^4.1.25",
+    "js-tiktoken": "^1.0.18",
+    "tsup": "8.4.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "OPENAI_API_KEY": {
+        "type": "string",
+        "description": "API key for the service"
+      }
+    }
+  },
+  "gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b",
+  "devDependencies": {
+    "prettier": "3.5.3"
+  }
 }

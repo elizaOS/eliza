@@ -1,6 +1,6 @@
 ---
 Title: AI Agent Dev School Part 3
-description: "Building a User Data Extraction Agent"
+description: 'Building a User Data Extraction Agent'
 ---
 
 # Part 3: Building a User Data Extraction Agent
@@ -24,7 +24,6 @@ We explore:
     allowFullScreen
   />
 </div>
-
 
 # Key Sections
 

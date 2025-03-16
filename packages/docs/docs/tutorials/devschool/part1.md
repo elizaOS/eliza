@@ -1,6 +1,6 @@
 ---
 Title: AI Agent Dev School Part 1
-description: "Introduction and Foundations"
+description: 'Introduction and Foundations'
 ---
 
 # Part 1: Introduction and Foundations
@@ -14,7 +14,7 @@ In this first session of the AI Agent Dev School, we dive into the fundamentals 
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"                              
     allowFullScreen                                                                                                               
   />                                                                                                                              
-</div> 
+</div>
 
 ## Origins and Ecosystem
 
@@ -51,7 +51,7 @@ In this first session of the AI Agent Dev School, we dive into the fundamentals 
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"                              
     allowFullScreen                                                                                                               
   />                                                                                                                              
-</div> 
+</div>
 
 ## Characters, Embeddings, and Discord Integration
 

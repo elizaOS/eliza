@@ -5,16 +5,16 @@ This plugin enables interaction with the Hyperliquid DEX through Eliza, providin
 ## Features
 
 - 💱 Spot Trading
-    - Market orders (immediate execution)
-    - Limit orders (price-specific)
-    - Smart price validation to prevent mistakes
+  - Market orders (immediate execution)
+  - Limit orders (price-specific)
+  - Smart price validation to prevent mistakes
 - 📊 Price Checking
-    - Real-time price information
-    - 24h price change
-    - Volume statistics
+  - Real-time price information
+  - 24h price change
+  - Volume statistics
 - 🔄 Order Management
-    - Cancel all open orders
-    - Clear feedback on execution
+  - Cancel all open orders
+  - Clear feedback on execution
 
 ## Installation
 
@@ -22,7 +22,7 @@ Add the plugin to your Eliza configuration:
 
 ```json
 {
-    "plugins": ["@elizaos/plugin-hyperliquid"]
+  "plugins": ["@elizaos/plugin-hyperliquid"]
 }
 ```
 
@@ -85,9 +85,9 @@ The plugin includes smart price validation to prevent mistakes:
 
 - Market Orders: Validates price is within ±50% of market price
 - Limit Orders:
-    - Buy orders must be below market price
-    - Sell orders must be above market price
-    - Warns if price is very different from market (±80%)
+  - Buy orders must be below market price
+  - Sell orders must be above market price
+  - Warns if price is very different from market (±80%)
 
 ## Error Handling
 

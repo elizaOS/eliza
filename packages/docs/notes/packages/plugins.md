@@ -12,12 +12,12 @@ Each plugin in Eliza must implement the `Plugin` interface with the following pr
 
 ```typescript
 interface Plugin {
-    name: string; // Unique identifier for the plugin
-    description: string; // Brief description of plugin functionality
-    actions?: Action[]; // Custom actions provided by the plugin
-    evaluators?: Evaluator[]; // Custom evaluators for behavior assessment
-    providers?: Provider[]; // Context providers for message generation
-    services?: Service[]; // Additional services (optional)
+  name: string; // Unique identifier for the plugin
+  description: string; // Brief description of plugin functionality
+  actions?: Action[]; // Custom actions provided by the plugin
+  evaluators?: Evaluator[]; // Custom evaluators for behavior assessment
+  providers?: Provider[]; // Context providers for message generation
+  services?: Service[]; // Additional services (optional)
 }
 ```
 
@@ -34,12 +34,12 @@ pnpm add @elizaos/plugin-[name]
 2. Import and register the plugin in your character configuration:
 
 ```typescript
-import { bootstrapPlugin } from "@eliza/plugin-bootstrap";
-import { imageGenerationPlugin } from "@eliza/plugin-image-generation";
-import { buttplugPlugin } from "@eliza/plugin-buttplug";
+import { bootstrapPlugin } from '@eliza/plugin-bootstrap';
+import { imageGenerationPlugin } from '@eliza/plugin-image-generation';
+import { buttplugPlugin } from '@eliza/plugin-buttplug';
 const character = {
-    // ... other character config
-    plugins: [bootstrapPlugin, imageGenerationPlugin, buttplugPlugin],
+  // ... other character config
+  plugins: [bootstrapPlugin, imageGenerationPlugin, buttplugPlugin],
 };
 ```
 
@@ -144,15 +144,15 @@ The plugin automatically handles wallet creation or uses an existing wallet if t
 1. **Wallet Generation on First Run**
    If no wallet information is provided (`COINBASE_GENERATED_WALLET_HEX_SEED` and `COINBASE_GENERATED_WALLET_ID`), the plugin will:
 
-    - **Generate a new wallet** using the Coinbase SDK.
-    - Automatically **export the wallet details** (`seed` and `walletId`) and securely store them in `runtime.character.settings.secrets` or other configured storage.
-    - Log the wallet’s default address for reference.
-    - If the character file does not exist, the wallet details are saved to a characters/charactername-seed.txt file in the characters directory with a note indicating that the user must manually add these details to settings.secrets or the .env file.
+   - **Generate a new wallet** using the Coinbase SDK.
+   - Automatically **export the wallet details** (`seed` and `walletId`) and securely store them in `runtime.character.settings.secrets` or other configured storage.
+   - Log the wallet’s default address for reference.
+   - If the character file does not exist, the wallet details are saved to a characters/charactername-seed.txt file in the characters directory with a note indicating that the user must manually add these details to settings.secrets or the .env file.
 
 2. **Using an Existing Wallet**
    If wallet information is available during the first run:
-    - Provide `COINBASE_GENERATED_WALLET_HEX_SEED` and `COINBASE_GENERATED_WALLET_ID` via `runtime.character.settings.secrets` or environment variables.
-    - The plugin will **import the wallet** and use it for processing mass payouts.
+   - Provide `COINBASE_GENERATED_WALLET_HEX_SEED` and `COINBASE_GENERATED_WALLET_ID` via `runtime.character.settings.secrets` or environment variables.
+   - The plugin will **import the wallet** and use it for processing mass payouts.
 
 ---
 
@@ -164,35 +164,35 @@ This plugin facilitates the processing of cryptocurrency mass payouts using the 
 
 - `SEND_MASS_PAYOUT`
   Sends cryptocurrency mass payouts to multiple wallet addresses.
-    - **Inputs**:
-        - `receivingAddresses` (array of strings): Wallet addresses to receive funds.
-        - `transferAmount` (number): Amount to send to each address (in smallest currency unit, e.g., Wei for ETH).
-        - `assetId` (string): Cryptocurrency asset ID (e.g., `ETH`, `BTC`).
-        - `network` (string): Blockchain network (e.g., `base`, `sol`, `eth`, `arb`, `pol`).
-    - **Outputs**: Logs transaction results (success/failure) in a CSV file.
-    - **Example**:
-        ```json
-        {
-            "receivingAddresses": [
-                "0xA0ba2ACB5846A54834173fB0DD9444F756810f06",
-                "0xF14F2c49aa90BaFA223EE074C1C33b59891826bF"
-            ],
-            "transferAmount": 5000000000000000,
-            "assetId": "ETH",
-            "network": "eth"
-        }
-        ```
+  - **Inputs**:
+    - `receivingAddresses` (array of strings): Wallet addresses to receive funds.
+    - `transferAmount` (number): Amount to send to each address (in smallest currency unit, e.g., Wei for ETH).
+    - `assetId` (string): Cryptocurrency asset ID (e.g., `ETH`, `BTC`).
+    - `network` (string): Blockchain network (e.g., `base`, `sol`, `eth`, `arb`, `pol`).
+  - **Outputs**: Logs transaction results (success/failure) in a CSV file.
+  - **Example**:
+    ```json
+    {
+      "receivingAddresses": [
+        "0xA0ba2ACB5846A54834173fB0DD9444F756810f06",
+        "0xF14F2c49aa90BaFA223EE074C1C33b59891826bF"
+      ],
+      "transferAmount": 5000000000000000,
+      "assetId": "ETH",
+      "network": "eth"
+    }
+    ```
 
 **Providers:**
 
 - `massPayoutProvider`
   Retrieves details of past transactions from the generated CSV file.
-    - **Outputs**: A list of transaction records including the following fields:
-        - `address`: Recipient wallet address.
-        - `amount`: Amount sent.
-        - `status`: Transaction status (`Success` or `Failed`).
-        - `errorCode`: Error code (if any).
-        - `transactionUrl`: URL for transaction details (if available).
+  - **Outputs**: A list of transaction records including the following fields:
+    - `address`: Recipient wallet address.
+    - `amount`: Amount sent.
+    - `status`: Transaction status (`Success` or `Failed`).
+    - `errorCode`: Error code (if any).
+    - `transactionUrl`: URL for transaction details (if available).
 
 **Description:**
 
@@ -211,21 +211,21 @@ Supported networks:
 1. **Configure the Plugin**
    Add the plugin to your character's configuration:
 
-    ```typescript
-    import { coinbaseMassPaymentsPlugin } from "@eliza/plugin-coinbase-masspayments";
+   ```typescript
+   import { coinbaseMassPaymentsPlugin } from '@eliza/plugin-coinbase-masspayments';
 
-    const character = {
-        plugins: [coinbaseMassPaymentsPlugin],
-    };
-    ```
+   const character = {
+     plugins: [coinbaseMassPaymentsPlugin],
+   };
+   ```
 
 2. **Required Configurations**
    Set the following environment variables or runtime settings:
 
-    - `COINBASE_API_KEY`: API key for Coinbase SDK
-    - `COINBASE_PRIVATE_KEY`: Private key for secure transactions
-    - `COINBASE_GENERATED_WALLET_HEX_SEED`: Hexadecimal seed of the wallet (if using existing wallet)
-    - `COINBASE_GENERATED_WALLET_ID`: Unique wallet ID (if using existing wallet)
+   - `COINBASE_API_KEY`: API key for Coinbase SDK
+   - `COINBASE_PRIVATE_KEY`: Private key for secure transactions
+   - `COINBASE_GENERATED_WALLET_HEX_SEED`: Hexadecimal seed of the wallet (if using existing wallet)
+   - `COINBASE_GENERATED_WALLET_ID`: Unique wallet ID (if using existing wallet)
 
 **Wallet Management:**
 
@@ -234,45 +234,45 @@ The plugin handles wallet creation and management in two ways:
 1. **Automatic Wallet Creation**
    When no wallet details are provided, the plugin will:
 
-    - Generate a new wallet using the Coinbase SDK
-    - Export and store the wallet details in `runtime.character.settings.secrets`
-    - Save details to `characters/charactername-seed.txt` if character file doesn't exist
-    - Log the wallet's default address
+   - Generate a new wallet using the Coinbase SDK
+   - Export and store the wallet details in `runtime.character.settings.secrets`
+   - Save details to `characters/charactername-seed.txt` if character file doesn't exist
+   - Log the wallet's default address
 
 2. **Using Existing Wallet**
    When wallet information is available:
-    - Provide the required wallet details via settings or environment variables
-    - The plugin will import and use the existing wallet
+   - Provide the required wallet details via settings or environment variables
+   - The plugin will import and use the existing wallet
 
 **Example Configuration:**
 
 ```typescript
 // For automatic wallet generation
 runtime.character.settings.secrets = {
-    // Empty settings for first run
+  // Empty settings for first run
 };
 
 // For using existing wallet
 runtime.character.settings.secrets = {
-    COINBASE_GENERATED_WALLET_HEX_SEED:
-        "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-    COINBASE_GENERATED_WALLET_ID: "wallet-id-123",
+  COINBASE_GENERATED_WALLET_HEX_SEED:
+    '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+  COINBASE_GENERATED_WALLET_ID: 'wallet-id-123',
 };
 ```
 
 **Example Call**
 
 ```typescript
-const response = await runtime.processAction("SEND_MASS_PAYOUT", {
-    receivingAddresses: [
-        "0xA0ba2ACB5846A54834173fB0DD9444F756810f06",
-        "0xF14F2c49aa90BaFA223EE074C1C33b59891826bF",
-    ],
-    transferAmount: 5000000000000000, // 0.005 ETH
-    assetId: "ETH",
-    network: "eth",
+const response = await runtime.processAction('SEND_MASS_PAYOUT', {
+  receivingAddresses: [
+    '0xA0ba2ACB5846A54834173fB0DD9444F756810f06',
+    '0xF14F2c49aa90BaFA223EE074C1C33b59891826bF',
+  ],
+  transferAmount: 5000000000000000, // 0.005 ETH
+  assetId: 'ETH',
+  network: 'eth',
 });
-console.log("Mass payout response:", response);
+console.log('Mass payout response:', response);
 ```
 
 **Transaction Logging**
@@ -290,7 +290,7 @@ When successful, a response similar to the following will be returned:
 
 ```json
 {
-    "text": "Mass payouts completed successfully.\n- Successful Transactions: 2\n- Failed Transactions: 0\nCheck the CSV file for more details."
+  "text": "Mass payouts completed successfully.\n- Successful Transactions: 2\n- Failed Transactions: 0\nCheck the CSV file for more details."
 }
 ```
 
@@ -311,47 +311,47 @@ This plugin enables the deployment and interaction with various token contracts 
 1. `DEPLOY_TOKEN_CONTRACT`
    Deploys a new token contract (ERC20, ERC721, or ERC1155).
 
-    - **Inputs**:
-        - `contractType` (string): Type of contract to deploy (`ERC20`, `ERC721`, or `ERC1155`)
-        - `name` (string): Name of the token
-        - `symbol` (string): Symbol of the token
-        - `network` (string): Blockchain network to deploy on
-        - `baseURI` (string, optional): Base URI for token metadata (required for ERC721 and ERC1155)
-        - `totalSupply` (number, optional): Total supply of tokens (only for ERC20)
-    - **Example**:
-        ```json
-        {
-            "contractType": "ERC20",
-            "name": "MyToken",
-            "symbol": "MTK",
-            "network": "base",
-            "totalSupply": 1000000
-        }
-        ```
+   - **Inputs**:
+     - `contractType` (string): Type of contract to deploy (`ERC20`, `ERC721`, or `ERC1155`)
+     - `name` (string): Name of the token
+     - `symbol` (string): Symbol of the token
+     - `network` (string): Blockchain network to deploy on
+     - `baseURI` (string, optional): Base URI for token metadata (required for ERC721 and ERC1155)
+     - `totalSupply` (number, optional): Total supply of tokens (only for ERC20)
+   - **Example**:
+     ```json
+     {
+       "contractType": "ERC20",
+       "name": "MyToken",
+       "symbol": "MTK",
+       "network": "base",
+       "totalSupply": 1000000
+     }
+     ```
 
 2. `INVOKE_CONTRACT`
    Invokes a method on a deployed smart contract.
-    - **Inputs**:
-        - `contractAddress` (string): Address of the contract to invoke
-        - `method` (string): Method name to invoke
-        - `abi` (array): Contract ABI
-        - `args` (object, optional): Arguments for the method
-        - `amount` (number, optional): Amount of asset to send (for payable methods)
-        - `assetId` (string, optional): Asset ID to send
-        - `network` (string): Blockchain network to use
-    - **Example**:
-        ```json
-        {
-          "contractAddress": "0x123...",
-          "method": "transfer",
-          "abi": [...],
-          "args": {
-            "to": "0x456...",
-            "amount": "1000000000000000000"
-          },
-          "network": "base"
-        }
-        ```
+   - **Inputs**:
+     - `contractAddress` (string): Address of the contract to invoke
+     - `method` (string): Method name to invoke
+     - `abi` (array): Contract ABI
+     - `args` (object, optional): Arguments for the method
+     - `amount` (number, optional): Amount of asset to send (for payable methods)
+     - `assetId` (string, optional): Asset ID to send
+     - `network` (string): Blockchain network to use
+   - **Example**:
+     ```json
+     {
+       "contractAddress": "0x123...",
+       "method": "transfer",
+       "abi": [...],
+       "args": {
+         "to": "0x456...",
+         "amount": "1000000000000000000"
+       },
+       "network": "base"
+     }
+     ```
 
 **Description:**
 
@@ -369,56 +369,56 @@ All contract deployments and interactions are logged to a CSV file for record-ke
 1. **Configure the Plugin**
    Add the plugin to your character's configuration:
 
-    ```typescript
-    import { tokenContractPlugin } from "@eliza/plugin-coinbase";
+   ```typescript
+   import { tokenContractPlugin } from '@eliza/plugin-coinbase';
 
-    const character = {
-        plugins: [tokenContractPlugin],
-    };
-    ```
+   const character = {
+     plugins: [tokenContractPlugin],
+   };
+   ```
 
 2. **Required Configurations**
    Ensure the following environment variables or runtime settings are configured:
-    - `COINBASE_API_KEY`: API key for Coinbase SDK
-    - `COINBASE_PRIVATE_KEY`: Private key for secure transactions
-    - Wallet configuration (same as MassPayments plugin)
+   - `COINBASE_API_KEY`: API key for Coinbase SDK
+   - `COINBASE_PRIVATE_KEY`: Private key for secure transactions
+   - Wallet configuration (same as MassPayments plugin)
 
 **Example Deployments:**
 
 1. **ERC20 Token**
 
-    ```typescript
-    const response = await runtime.processAction("DEPLOY_TOKEN_CONTRACT", {
-        contractType: "ERC20",
-        name: "MyToken",
-        symbol: "MTK",
-        network: "base",
-        totalSupply: 1000000,
-    });
-    ```
+   ```typescript
+   const response = await runtime.processAction('DEPLOY_TOKEN_CONTRACT', {
+     contractType: 'ERC20',
+     name: 'MyToken',
+     symbol: 'MTK',
+     network: 'base',
+     totalSupply: 1000000,
+   });
+   ```
 
 2. **NFT Collection**
 
-    ```typescript
-    const response = await runtime.processAction("DEPLOY_TOKEN_CONTRACT", {
-        contractType: "ERC721",
-        name: "MyNFT",
-        symbol: "MNFT",
-        network: "eth",
-        baseURI: "https://api.mynft.com/metadata/",
-    });
-    ```
+   ```typescript
+   const response = await runtime.processAction('DEPLOY_TOKEN_CONTRACT', {
+     contractType: 'ERC721',
+     name: 'MyNFT',
+     symbol: 'MNFT',
+     network: 'eth',
+     baseURI: 'https://api.mynft.com/metadata/',
+   });
+   ```
 
 3. **Multi-token Collection**
-    ```typescript
-    const response = await runtime.processAction("DEPLOY_TOKEN_CONTRACT", {
-        contractType: "ERC1155",
-        name: "MyMultiToken",
-        symbol: "MMT",
-        network: "pol",
-        baseURI: "https://api.mymultitoken.com/metadata/",
-    });
-    ```
+   ```typescript
+   const response = await runtime.processAction('DEPLOY_TOKEN_CONTRACT', {
+     contractType: 'ERC1155',
+     name: 'MyMultiToken',
+     symbol: 'MMT',
+     network: 'pol',
+     baseURI: 'https://api.mymultitoken.com/metadata/',
+   });
+   ```
 
 **Contract Interaction Example:**
 
@@ -461,59 +461,59 @@ Integrates [Dstack SDK](https://github.com/Dstack-TEE/dstack) to enable TEE (Tru
 **DeriveKeyProvider Usage**
 
 ```typescript
-import { DeriveKeyProvider } from "@elizaos/plugin-tee";
+import { DeriveKeyProvider } from '@elizaos/plugin-tee';
 
 // Initialize the provider
 const provider = new DeriveKeyProvider();
 
 // Derive a raw key
 try {
-    const rawKey = await provider.rawDeriveKey(
-        "/path/to/derive", // This is what the WALLET_SECRET_SALT is used for
-        "subject-identifier",
-    );
-    // rawKey is a DeriveKeyResponse that can be used for further processing
-    // to get the uint8Array do the following
-    const rawKeyArray = rawKey.asUint8Array();
+  const rawKey = await provider.rawDeriveKey(
+    '/path/to/derive', // This is what the WALLET_SECRET_SALT is used for
+    'subject-identifier'
+  );
+  // rawKey is a DeriveKeyResponse that can be used for further processing
+  // to get the uint8Array do the following
+  const rawKeyArray = rawKey.asUint8Array();
 } catch (error) {
-    console.error("Raw key derivation failed:", error);
+  console.error('Raw key derivation failed:', error);
 }
 
 // Derive a Solana keypair (Ed25519)
 try {
-    const solanaKeypair = await provider.deriveEd25519Keypair(
-        "/path/to/derive", // This is what the WALLET_SECRET_SALT is used for
-        "subject-identifier",
-    );
-    // solanaKeypair can now be used for Solana operations
+  const solanaKeypair = await provider.deriveEd25519Keypair(
+    '/path/to/derive', // This is what the WALLET_SECRET_SALT is used for
+    'subject-identifier'
+  );
+  // solanaKeypair can now be used for Solana operations
 } catch (error) {
-    console.error("Solana key derivation failed:", error);
+  console.error('Solana key derivation failed:', error);
 }
 
 // Derive an Ethereum keypair (ECDSA)
 try {
-    const evmKeypair = await provider.deriveEcdsaKeypair(
-        "/path/to/derive", // This is what the WALLET_SECRET_SALT is used for
-        "subject-identifier",
-    );
-    // evmKeypair can now be used for Ethereum operations
+  const evmKeypair = await provider.deriveEcdsaKeypair(
+    '/path/to/derive', // This is what the WALLET_SECRET_SALT is used for
+    'subject-identifier'
+  );
+  // evmKeypair can now be used for Ethereum operations
 } catch (error) {
-    console.error("EVM key derivation failed:", error);
+  console.error('EVM key derivation failed:', error);
 }
 ```
 
 **RemoteAttestationProvider Usage**
 
 ```typescript
-import { RemoteAttestationProvider } from "@elizaos/plugin-tee";
+import { RemoteAttestationProvider } from '@elizaos/plugin-tee';
 // Initialize the provider
 const provider = new RemoteAttestationProvider();
 // Generate Remote Attestation
 try {
-    const attestation = await provider.generateAttestation("your-report-data");
-    console.log("Attestation:", attestation);
+  const attestation = await provider.generateAttestation('your-report-data');
+  console.log('Attestation:', attestation);
 } catch (error) {
-    console.error("Failed to generate attestation:", error);
+  console.error('Failed to generate attestation:', error);
 }
 ```
 
@@ -548,25 +548,25 @@ Manages webhooks using the Coinbase SDK, allowing for the creation and managemen
 **Actions:**
 
 - `CREATE_WEBHOOK` - Create a new webhook to listen for specific events.
-    - **Inputs**:
-        - `networkId` (string): The network ID where the webhook should listen for events.
-        - `eventType` (string): The type of event to listen for (e.g., transfers).
-        - `eventFilters` (object, optional): Additional filters for the event.
-        - `eventTypeFilter` (string, optional): Specific event type filter.
-    - **Outputs**: Confirmation message with webhook details.
-    - **Example**:
-        ```json
-        {
-            "networkId": "base",
-            "eventType": "transfers",
-            "notificationUri": "https://your-notification-uri.com"
-        }
-        ```
+  - **Inputs**:
+    - `networkId` (string): The network ID where the webhook should listen for events.
+    - `eventType` (string): The type of event to listen for (e.g., transfers).
+    - `eventFilters` (object, optional): Additional filters for the event.
+    - `eventTypeFilter` (string, optional): Specific event type filter.
+  - **Outputs**: Confirmation message with webhook details.
+  - **Example**:
+    ```json
+    {
+      "networkId": "base",
+      "eventType": "transfers",
+      "notificationUri": "https://your-notification-uri.com"
+    }
+    ```
 
 **Providers:**
 
 - `webhookProvider` - Retrieves a list of all configured webhooks.
-    - **Outputs**: A list of webhooks with details such as ID, URL, event type, and status.
+  - **Outputs**: A list of webhooks with details such as ID, URL, event type, and status.
 
 **Description:**
 
@@ -577,32 +577,32 @@ The Webhook Plugin enables Eliza to interact with the Coinbase SDK to create and
 1. **Configure the Plugin**
    Add the plugin to your character’s configuration:
 
-    ```typescript
-    import { webhookPlugin } from "@eliza/plugin-coinbase-webhooks";
+   ```typescript
+   import { webhookPlugin } from '@eliza/plugin-coinbase-webhooks';
 
-    const character = {
-        plugins: [webhookPlugin],
-    };
-    ```
+   const character = {
+     plugins: [webhookPlugin],
+   };
+   ```
 
 2. **Ensure Secure Configuration**
    Set the following environment variables or runtime settings to ensure the plugin functions securely:
 
-    - `COINBASE_API_KEY`: API key for Coinbase SDK.
-    - `COINBASE_PRIVATE_KEY`: Private key for secure transactions.
-    - `COINBASE_NOTIFICATION_URI`: URI where notifications should be sent.
+   - `COINBASE_API_KEY`: API key for Coinbase SDK.
+   - `COINBASE_PRIVATE_KEY`: Private key for secure transactions.
+   - `COINBASE_NOTIFICATION_URI`: URI where notifications should be sent.
 
 **Example Call**
 
 To create a webhook:
 
 ```typescript
-const response = await runtime.processAction("CREATE_WEBHOOK", {
-    networkId: "base",
-    eventType: "transfers",
-    notificationUri: "https://your-notification-uri.com",
+const response = await runtime.processAction('CREATE_WEBHOOK', {
+  networkId: 'base',
+  eventType: 'transfers',
+  notificationUri: 'https://your-notification-uri.com',
 });
-console.log("Webhook creation response:", response);
+console.log('Webhook creation response:', response);
 ```
 
 **Best Practices:**
@@ -621,30 +621,30 @@ The Fuel plugin provides an interface to the Fuel Ignition blockchain.
 
 1. `TRANSFER_FUEL_ETH` - Transfer ETH to a given Fuel address. - **Inputs**: - `toAddress` (string): The Fuel address to transfer ETH to. - `amount` (string): The amount of ETH to transfer. - **Outputs**: Confirmation message with transaction details. - **Example**:
 
-    ```json
-    {
-        "toAddress": "0x8F8afB12402C9a4bD9678Bec363E51360142f8443FB171655eEd55dB298828D1",
-        "amount": "0.00001"
-    }
-    ```
+   ```json
+   {
+     "toAddress": "0x8F8afB12402C9a4bD9678Bec363E51360142f8443FB171655eEd55dB298828D1",
+     "amount": "0.00001"
+   }
+   ```
 
-    **Setup and Configuration:**
+   **Setup and Configuration:**
 
 1. **Configure the Plugin**
    Add the plugin to your character's configuration:
 
-    ```typescript
-    import { fuelPlugin } from "@eliza/plugin-fuel";
+   ```typescript
+   import { fuelPlugin } from '@eliza/plugin-fuel';
 
-    const character = {
-        plugins: [fuelPlugin],
-    };
-    ```
+   const character = {
+     plugins: [fuelPlugin],
+   };
+   ```
 
 1. **Required Configurations**
    Set the following environment variables or runtime settings:
 
-    - `FUEL_WALLET_PRIVATE_KEY`: Private key for secure transactions
+   - `FUEL_WALLET_PRIVATE_KEY`: Private key for secure transactions
 
 ---
 
@@ -655,6 +655,7 @@ Makes Eliza TEE-aware by using the [Marlin Oyster](https://github.com/marlinprot
 **Configuration:**
 
 Add the following to your `.env` file to enable the plugin:
+
 ```
 TEE_MARLIN=yes
 ```
@@ -666,6 +667,7 @@ TEE_MARLIN=yes
 **REMOTE_ATTESTATION Configuration:**
 
 The agent fetches the remote attestation from an attestation server whose URL can be configured in the `.env` file:
+
 ```
 # Optional, default is http://127.0.0.1:1350
 TEE_MARLIN_ATTESTATION_ENDPOINT="http://127.0.0.1:1350"
@@ -750,16 +752,16 @@ The [Allora Network](https://allora.network) plugin seamlessly empowers Eliza ag
 
 1. Add the plugin to your character's configuration
 
-    ```typescript
-    import { alloraPlugin } from "@eliza/plugin-allora";
+   ```typescript
+   import { alloraPlugin } from '@eliza/plugin-allora';
 
-    const character = {
-        plugins: [alloraPlugin],
-    };
-    ```
+   const character = {
+     plugins: [alloraPlugin],
+   };
+   ```
 
 2. Set the following environment variables:
-    - `ALLORA_API_KEY`: Create an API key by [creating an account](https://developer.upshot.xyz/signup).
+   - `ALLORA_API_KEY`: Create an API key by [creating an account](https://developer.upshot.xyz/signup).
 
 **Actions**
 
@@ -782,6 +784,7 @@ The Form chain plugin enables interaction with Form blockchain's unique SocialFi
 **Actions:**
 
 1. `BUY_CURVES_TOKEN` - Buy curves tokens for a subject address
+
    - **Inputs**:
      - `subject`: Address to buy curves for
      - `amount`: Number of curves tokens to buy (defaults to 1)
@@ -796,53 +799,61 @@ The Form chain plugin enables interaction with Form blockchain's unique SocialFi
      ```
 
 2. `SELL_CURVES_TOKEN` - Sell curves tokens for a subject address
+
    - **Inputs**:
      - `subject`: Address whose curves to sell
      - `amount`: Number of curves tokens to sell (defaults to 1)
      - `formula`: Curves formula type ("QUADRATIC" or "LOGARITHMIC")
 
 3. `WITHDRAW_CURVES_TOKEN` - Convert curves tokens to their ERC20 equivalent
+
    - **Inputs**:
      - `subject`: Address whose curves to withdraw
      - `amount`: Number of curves tokens to withdraw (integer values only)
      - `formula`: Curves formula type ("QUADRATIC" or "LOGARITHMIC")
 
 4. `DEPOSIT_CURVES_TOKEN` - Convert ERC20 tokens back to curves tokens
+
    - **Inputs**:
      - `subject`: Address whose ERC20 to convert
      - `amount`: Amount in ERC20 decimals (18 decimals precision)
      - `formula`: Curves formula type ("QUADRATIC" or "LOGARITHMIC")
 
 5. `MINT_CURVES_ERC20` - Mint new ERC20 token for curves holdings
+
    - **Inputs**:
      - `name`: Token name (1-32 characters)
      - `symbol`: Token symbol (1-8 characters, uppercase)
      - `formula`: Curves formula type ("QUADRATIC" or "LOGARITHMIC")
 
 6. `GET_CURVES_BALANCE` - Check curves token balance
+
    - **Inputs**:
      - `subject`: Address to check balance for
      - `owner`: Optional owner address (defaults to connected wallet)
      - `formula`: Curves formula type ("QUADRATIC" or "LOGARITHMIC")
 
 7. `GET_CURVES_BUY_PRICE` - Get price quote for buying curves
+
    - **Inputs**:
      - `subject`: Address to check price for
      - `amount`: Number of curves tokens (defaults to 1)
      - `formula`: Curves formula type ("QUADRATIC" or "LOGARITHMIC")
 
 8. `GET_CURVES_SELL_PRICE` - Get price quote for selling curves
+
    - **Inputs**:
      - `subject`: Address to check price for
      - `amount`: Number of curves tokens (defaults to 1)
      - `formula`: Curves formula type ("QUADRATIC" or "LOGARITHMIC")
 
-8. `GET_CURVES_ERC20_DETAILS` - Get curves token respective ERC20 details
+9. `GET_CURVES_ERC20_DETAILS` - Get curves token respective ERC20 details
    - **Inputs**:
      - `subject`: Address to check ERC20 token for
      - `formula`: Curves formula type ("QUADRATIC" or "LOGARITHMIC")
 
 **Providers:**
+
 - `curvesFormulaProvider` - Provides context about available curves formulas and their use cases
 - `formWalletProvider` - Provides a wallet for accessing Form blockchain and performing common operations
 
@@ -850,18 +861,22 @@ The Form chain plugin enables interaction with Form blockchain's unique SocialFi
 
 1. **Configure the Plugin**
    Add the plugin to your character's configuration:
+
    ```typescript
-   import { formPlugin } from "@elizaos/plugin-form";
+   import { formPlugin } from '@elizaos/plugin-form';
 
    const character = {
-       plugins: [formPlugin],
+     plugins: [formPlugin],
    };
+   ```
+
 2. **Required Configurations**
-  Set the following environment variables:
-  ```bash
-  FORM_PRIVATE_KEY=your_private_key
-  FORM_TESTNET=true  # Optional, defaults to false
-  ```
+   Set the following environment variables:
+
+```bash
+FORM_PRIVATE_KEY=your_private_key
+FORM_TESTNET=true  # Optional, defaults to false
+```
 
 **Formula Types:**
 
@@ -878,19 +893,20 @@ The Form chain plugin enables interaction with Form blockchain's unique SocialFi
 - Consider gas costs when executing transactions
 
 **Examples:**
+
 ```typescript
 // Buying curves tokens
-await runtime.processAction("BUY_CURVES_TOKEN", {
-    subject: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-    amount: 1,
-    formula: "QUADRATIC"
+await runtime.processAction('BUY_CURVES_TOKEN', {
+  subject: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+  amount: 1,
+  formula: 'QUADRATIC',
 });
 
 // Converting to ERC20
-await runtime.processAction("WITHDRAW_CURVES_TOKEN", {
-    subject: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-    amount: 1,
-    formula: "QUADRATIC"
+await runtime.processAction('WITHDRAW_CURVES_TOKEN', {
+  subject: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+  amount: 1,
+  formula: 'QUADRATIC',
 });
 ```
 
@@ -899,23 +915,23 @@ await runtime.processAction("WITHDRAW_CURVES_TOKEN", {
 Create a new plugin by implementing the Plugin interface:
 
 ```typescript
-import { Plugin, Action, Evaluator, Provider } from "@elizaos/core";
+import { Plugin, Action, Evaluator, Provider } from '@elizaos/core';
 
 const myCustomPlugin: Plugin = {
-    name: "my-custom-plugin",
-    description: "Adds custom functionality",
-    actions: [
-        /* custom actions */
-    ],
-    evaluators: [
-        /* custom evaluators */
-    ],
-    providers: [
-        /* custom providers */
-    ],
-    services: [
-        /* custom services */
-    ],
+  name: 'my-custom-plugin',
+  description: 'Adds custom functionality',
+  actions: [
+    /* custom actions */
+  ],
+  evaluators: [
+    /* custom evaluators */
+  ],
+  providers: [
+    /* custom providers */
+  ],
+  services: [
+    /* custom services */
+  ],
 };
 ```
 
@@ -957,14 +973,14 @@ const myCustomPlugin: Plugin = {
 ```typescript
 // Check if plugins are loaded correctly
 if (character.plugins) {
-    console.log("Plugins are: ", character.plugins);
-    const importedPlugins = await Promise.all(
-        character.plugins.map(async (plugin) => {
-            const importedPlugin = await import(plugin);
-            return importedPlugin;
-        }),
-    );
-    character.plugins = importedPlugins;
+  console.log('Plugins are: ', character.plugins);
+  const importedPlugins = await Promise.all(
+    character.plugins.map(async (plugin) => {
+      const importedPlugin = await import(plugin);
+      return importedPlugin;
+    })
+  );
+  character.plugins = importedPlugins;
 }
 ```
 
@@ -1010,10 +1026,13 @@ For detailed API documentation and examples, see the [API Reference](/api).
 ## FAQ
 
 ### How do I add and configure plugins?
+
 Add plugin names to the plugins array in character.json, run `pnpm build`, and configure any required settings in `.env` or character file.
 
 ### Can plugins interact with each other?
+
 Yes, plugins can share functionality and data. For example, one plugin can use another's image generation capabilities.
 
 ### How do I create custom functionality?
+
 Create a new plugin in the packages directory, implement desired features, and add it to your character's plugin configuration.

@@ -34,26 +34,27 @@ Update your agent's character configuration file with the appropriate knowledge 
 
 ```json
 {
-    "knowledge": [
-        {
-            "directory": "characters/knowledge/shared",
-            "shared": true
-        },
-        {
-            "directory": "characters/knowledge/{agent-name}",
-            "shared": false
-        },
-        {
-            "path": "characters/knowledge/{agent-name}/specific-file.pdf",
-            "shared": false
-        }
-    ]
+  "knowledge": [
+    {
+      "directory": "characters/knowledge/shared",
+      "shared": true
+    },
+    {
+      "directory": "characters/knowledge/{agent-name}",
+      "shared": false
+    },
+    {
+      "path": "characters/knowledge/{agent-name}/specific-file.pdf",
+      "shared": false
+    }
+  ]
 }
 ```
 
 ## How It Works
 
 1. **Document Processing**:
+
    - When documents are added to the knowledge directories, they are automatically processed
    - Documents are split into manageable chunks for better retrieval
    - Each chunk is embedded using the configured embedding model
@@ -68,12 +69,14 @@ Update your agent's character configuration file with the appropriate knowledge 
 ## Best Practices
 
 1. **Document Organization**:
+
    - Keep files organized in appropriate directories
    - Use descriptive filenames
    - Break large documents into logical smaller files
    - Include metadata and context in markdown files
 
 2. **Content Management**:
+
    - Regularly review and update knowledge files
    - Remove outdated or irrelevant documents
    - Ensure documents are in the correct format
@@ -90,12 +93,14 @@ Update your agent's character configuration file with the appropriate knowledge 
 ### Common Issues and Solutions
 
 1. **Documents Not Being Retrieved**:
+
    - Verify the file is in a supported format (PDF, MD, TXT)
    - Check if the file is in the correct directory under `characters/knowledge`
    - Ensure the configuration file correctly references the knowledge directory
    - Verify file permissions
 
 2. **Poor Quality Retrievals**:
+
    - Break down large documents into smaller, focused files
    - Ensure document content is clear and well-structured
    - Review and clean up any formatting issues in the source documents
@@ -114,23 +119,27 @@ Update your agent's character configuration file with the appropriate knowledge 
 The RAG system processes documents through several stages to optimize both storage and retrieval:
 
 1. **Directory Processing**
+
    - The system scans configured directories in `characters/knowledge/`
    - Files are processed based on their shared/private status and file type
 
 2. **File Processing Pipeline**
-   
+
    a. **Preprocessing**
+
    - Read the file content
    - Clean and normalize text through preprocessing
-   
+
    b. **Main Document Processing**
+
    - Generate embeddings for the entire document
    - Store the complete document with:
      - Full text content
      - Document-level embeddings
      - Metadata (file path, type, shared status)
-   
+
    c. **Chunk Processing**
+
    - Split the preprocessed content into chunks
      - Default chunk size: 512 tokens
      - Overlap between chunks: 20 tokens
@@ -141,6 +150,7 @@ The RAG system processes documents through several stages to optimize both stora
      - Include chunk-specific metadata (chunk index, original document ID)
 
 This multi-level approach enables:
+
 - Broad document-level semantic search
 - Fine-grained chunk-level retrieval for specific information
 - Efficient parallel processing of large documents
@@ -173,18 +183,18 @@ graph TB
         I --> |512 tokens| J[Chunk 1]
         I --> |20 token overlap| K[...]
         I --> L[Chunk N]
-        
+
         subgraph Parallel_Processing
             J --> M1[Generate Embedding]
             K --> M2[Generate Embedding]
             L --> M3[Generate Embedding]
         end
-        
+
         subgraph Chunk_Storage
             M1 --> N1[Store Chunk]
             M2 --> N2[Store Chunk]
             M3 --> N3[Store Chunk]
-            
+
             N1 --> |Metadata| O[Original Doc Reference]
             N1 --> |Metadata| P[Chunk Index]
             N2 --> |Metadata| O
@@ -203,6 +213,7 @@ graph TB
 ```
 
 Key Features:
+
 1. **Parallel Processing**: Chunks are processed in batches of 10 for optimal performance
 2. **Dual Storage**: Both full documents and chunks are stored with embeddings
 3. **Metadata Linking**: Chunks maintain references to their source documents
@@ -231,7 +242,7 @@ classDiagram
         +Float32Array embedding
         +String content
     }
-    
+
     class Fragment {
         +UUID id
         +UUID originalId
@@ -247,6 +258,7 @@ classDiagram
 #### ID Generation and Linking
 
 1. **Document ID Generation**
+
    ```mermaid
    graph LR
        A[File Path] --> B[Hash Function]
@@ -254,6 +266,7 @@ classDiagram
        B --> D[Document UUID]
        style D fill:#f9f,stroke:#333,stroke-width:2px
    ```
+
    - Generated using `generateScopedId(path, isShared)`
    - Deterministic: same file path + shared status = same ID
    - Stored as `id` in the knowledge database
@@ -303,16 +316,19 @@ graph TB
 #### Key Points
 
 1. **Document IDs**
+
    - Unique per file path and shared status
    - Used as reference point for all fragments
    - Stored in main knowledge table
 
 2. **Fragment IDs**
+
    - Always linked to parent document
    - Include chunk index for ordering
    - Maintain complete lineage to source
 
 3. **Querying Relationships**
+
    - Find all fragments: `SELECT * FROM knowledge WHERE originalId = {documentId}`
    - Get source document: `SELECT * FROM knowledge WHERE id = {fragment.originalId}`
    - List chunks in order: Sort by `chunkIndex`
@@ -323,6 +339,7 @@ graph TB
    - Both contain embeddings for search
 
 This ID system enables:
+
 - Efficient document-fragment relationship tracking
 - Quick retrieval of related content
 - Maintenance of document hierarchy
@@ -337,14 +354,16 @@ This ID system enables:
 The main class responsible for managing RAG knowledge. Here are the key methods:
 
 ##### `createKnowledge(item: RAGKnowledgeItem): Promise<void>`
+
 Adds new knowledge to the database.
+
 - Parameters:
   - `item`: A RAGKnowledgeItem containing:
     - `id`: UUID
     - `agentId`: UUID
     - `content`:
       - `text`: string
-      - `metadata`: 
+      - `metadata`:
         - `source`: string
         - `type`: "pdf" | "md" | "txt"
         - `isShared`: boolean
@@ -352,7 +371,9 @@ Adds new knowledge to the database.
     - `createdAt`: number
 
 ##### `getKnowledge(params): Promise<RAGKnowledgeItem[]>`
+
 Retrieves knowledge based on query or ID.
+
 - Parameters:
   - `query?`: string - Optional search query
   - `id?`: UUID - Optional specific knowledge ID
@@ -362,7 +383,9 @@ Retrieves knowledge based on query or ID.
 - Returns: Array of matching RAGKnowledgeItem objects
 
 ##### `searchKnowledge(params): Promise<RAGKnowledgeItem[]>`
+
 Performs semantic search with configurable parameters.
+
 - Parameters:
   - `agentId`: UUID - Agent ID to search within
   - `embedding`: Float32Array | number[] - Vector to search against
@@ -372,13 +395,17 @@ Performs semantic search with configurable parameters.
 - Returns: Array of matching RAGKnowledgeItem objects
 
 ##### `clearKnowledge(shared?: boolean): Promise<void>`
+
 Clears knowledge entries.
+
 - Parameters:
   - `shared?`: boolean - If true, clears shared knowledge as well
 - Returns: Promise that resolves when operation completes
 
 ##### `processFile(file): Promise<void>`
+
 Processes a new knowledge file.
+
 - Parameters:
   - `file`:
     - `path`: string - File path
@@ -388,13 +415,17 @@ Processes a new knowledge file.
 - Returns: Promise that resolves when processing completes
 
 ##### `listAllKnowledge(agentId: UUID): Promise<RAGKnowledgeItem[]>`
+
 Lists all knowledge entries for an agent without semantic search.
+
 - Parameters:
   - `agentId`: UUID - Agent ID to list knowledge for
 - Returns: Array of all RAGKnowledgeItem entries for the agent
 
 ##### `removeKnowledge(id: UUID): Promise<void>`
+
 Removes a specific knowledge entry.
+
 - Parameters:
   - `id`: UUID - ID of the knowledge to remove
 - Returns: Promise that resolves when deletion completes
@@ -402,6 +433,7 @@ Removes a specific knowledge entry.
 ## Security Considerations
 
 1. **Access Control**:
+
    - Use the `shared` flag appropriately to control document access
    - Keep sensitive information in agent-specific directories
    - Regularly audit knowledge access patterns
@@ -414,6 +446,7 @@ Removes a specific knowledge entry.
 ## Future Considerations
 
 1. **Scalability**:
+
    - Monitor knowledge base size and performance
    - Plan for regular maintenance and cleanup
    - Consider implementing document versioning
@@ -428,4 +461,3 @@ Removes a specific knowledge entry.
 - Review the implementation in `packages/core/src/ragknowledge.ts`
 - Check the issue tracker for known issues and solutions
 - Contribute improvements and bug fixes through pull requests
-

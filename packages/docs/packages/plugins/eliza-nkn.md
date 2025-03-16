@@ -1,6 +1,5 @@
 ## plugin-nkn
 
-
 This ElizaOS plugin integrates NKN ([https://nkn.org/](https://nkn.org/)) to enable communication between multiple AI agents or users.
 
 ### Description

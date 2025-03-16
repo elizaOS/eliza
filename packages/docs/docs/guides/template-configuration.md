@@ -14,23 +14,23 @@ Here are all the template options you can configure:
 
 ```json
 {
-    "templates": {
-        "goalsTemplate": "", // Define character goals
-        "factsTemplate": "", // Specify character knowledge
-        "messageHandlerTemplate": "", // Handle general messages
-        "shouldRespondTemplate": "", // Control response triggers
-        "continueMessageHandlerTemplate": "", // Manage conversation flow
-        "evaluationTemplate": "", // Handle response evaluation
-        "twitterSearchTemplate": "", // Process Twitter searches
-        "twitterPostTemplate": "", // Format Twitter posts
-        "twitterMessageHandlerTemplate": "", // Handle Twitter messages
-        "twitterShouldRespondTemplate": "", // Control Twitter responses
-        "telegramMessageHandlerTemplate": "", // Handle Telegram messages
-        "telegramShouldRespondTemplate": "", // Control Telegram responses
-        "discordVoiceHandlerTemplate": "", // Manage Discord voice
-        "discordShouldRespondTemplate": "", // Control Discord responses
-        "discordMessageHandlerTemplate": "" // Handle Discord messages
-    }
+  "templates": {
+    "goalsTemplate": "", // Define character goals
+    "factsTemplate": "", // Specify character knowledge
+    "messageHandlerTemplate": "", // Handle general messages
+    "shouldRespondTemplate": "", // Control response triggers
+    "continueMessageHandlerTemplate": "", // Manage conversation flow
+    "evaluationTemplate": "", // Handle response evaluation
+    "twitterSearchTemplate": "", // Process Twitter searches
+    "twitterPostTemplate": "", // Format Twitter posts
+    "twitterMessageHandlerTemplate": "", // Handle Twitter messages
+    "twitterShouldRespondTemplate": "", // Control Twitter responses
+    "telegramMessageHandlerTemplate": "", // Handle Telegram messages
+    "telegramShouldRespondTemplate": "", // Control Telegram responses
+    "discordVoiceHandlerTemplate": "", // Manage Discord voice
+    "discordShouldRespondTemplate": "", // Control Discord responses
+    "discordMessageHandlerTemplate": "" // Handle Discord messages
+  }
 }
 ```
 
@@ -38,12 +38,12 @@ Here are all the template options you can configure:
 
 ```json
 {
-    "templates": {
-        "discordMessageHandlerTemplate": "",
-        "discordShouldRespondTemplate": "",
-        "telegramShouldRespondTemplate": "",
-        "twitterPostTemplate": ""
-    }
+  "templates": {
+    "discordMessageHandlerTemplate": "",
+    "discordShouldRespondTemplate": "",
+    "telegramShouldRespondTemplate": "",
+    "twitterPostTemplate": ""
+  }
 }
 ```
 
@@ -57,16 +57,16 @@ Configure platform-specific behaviors for your character, such as handling direc
 
 ```json
 {
-    "clientConfig": {
-        "telegram": {
-            "shouldIgnoreDirectMessages": true, // Ignore DMs
-            "shouldIgnoreBotMessages": true // Ignore bot messages
-        },
-        "discord": {
-            "shouldIgnoreBotMessages": true, // Ignore bot messages
-            "shouldIgnoreDirectMessages": true // Ignore DMs
-        }
+  "clientConfig": {
+    "telegram": {
+      "shouldIgnoreDirectMessages": true, // Ignore DMs
+      "shouldIgnoreBotMessages": true // Ignore bot messages
+    },
+    "discord": {
+      "shouldIgnoreBotMessages": true, // Ignore bot messages
+      "shouldIgnoreDirectMessages": true // Ignore DMs
     }
+  }
 }
 ```
 
@@ -74,17 +74,17 @@ Configure platform-specific behaviors for your character, such as handling direc
 
 1. **Template Management**
 
-    - Keep templates focused and specific
-    - Use clear, consistent formatting
-    - Document custom template behavior
+   - Keep templates focused and specific
+   - Use clear, consistent formatting
+   - Document custom template behavior
 
 2. **Client Configuration**
 
-    - Configure per platform as needed
-    - Test behavior in development
-    - Monitor interaction patterns
+   - Configure per platform as needed
+   - Test behavior in development
+   - Monitor interaction patterns
 
 3. **Performance Considerations**
-    - Keep templates concise
-    - Avoid redundant configurations
-    - Test with expected message volumes
+   - Keep templates concise
+   - Avoid redundant configurations
+   - Test with expected message volumes

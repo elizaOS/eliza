@@ -38,6 +38,7 @@ cd eliza
 ### 2. (Optional) Run Inside a Dev Container
 
 1. Open the project directory in **VS Code**:
+
    ```bash
    code .
    ```
@@ -128,16 +129,19 @@ pnpm start:client
 ```
 
 NOTE: If you are using devcontainer, add --host argument to client:
+
 ```
 pnpm start:client --host
 ```
 
 NOTE: If you have run the server locally, but using a different port number:
+
 ```shell
 SERVER_PORT="4567" pnpm start:client
 ```
 
 NOTE: If you have hosted the server on a different computer/ domain, specify its base URL:
+
 ```shell
 SERVER_BASE_URL="https://foobar.my.custom.domain:80" pnpm start:client
 ```
@@ -146,24 +150,23 @@ Look for the message:
 `  ➜  Local:   http://localhost:5173/`
 Click on that link or open a browser window to that location. Once you do that you should see the chat interface connect with the system and you can start interacting with your character.
 
-
 ## Database Development
 
 ### SQLite (Recommended for Development)
 
 ```typescript
-import { SqliteDatabaseAdapter } from "@elizaos/core/adapters";
-import Database from "better-sqlite3";
+import { SqliteDatabaseAdapter } from '@elizaos/core/adapters';
+import Database from 'better-sqlite3';
 
-const db = new SqliteDatabaseAdapter(new Database("./dev.db"));
+const db = new SqliteDatabaseAdapter(new Database('./dev.db'));
 ```
 
 ### In-Memory Database (for Testing)
 
 ```typescript
-import { SqlJsDatabaseAdapter } from "@elizaos/core/adapters";
+import { SqlJsDatabaseAdapter } from '@elizaos/core/adapters';
 
-const db = new SqlJsDatabaseAdapter(new Database(":memory:"));
+const db = new SqlJsDatabaseAdapter(new Database(':memory:'));
 ```
 
 ### Schema Management
@@ -201,25 +204,25 @@ pnpm test:sqljs
 ### Writing Tests
 
 ```typescript
-import { runAiTest } from "@elizaos/core/test_resources";
+import { runAiTest } from '@elizaos/core/test_resources';
 
-describe("Feature Test", () => {
-    beforeEach(async () => {
-        // Setup test environment
-    });
+describe('Feature Test', () => {
+  beforeEach(async () => {
+    // Setup test environment
+  });
 
-    it("should perform expected behavior", async () => {
-        const result = await runAiTest({
-            messages: [
-                {
-                    user: "user1",
-                    content: { text: "test message" },
-                },
-            ],
-            expected: "expected response",
-        });
-        expect(result.success).toBe(true);
+  it('should perform expected behavior', async () => {
+    const result = await runAiTest({
+      messages: [
+        {
+          user: 'user1',
+          content: { text: 'test message' },
+        },
+      ],
+      expected: 'expected response',
     });
+    expect(result.success).toBe(true);
+  });
 });
 ```
 
@@ -229,14 +232,14 @@ describe("Feature Test", () => {
 
 ```typescript
 // plugins/my-plugin/src/index.ts
-import { Plugin } from "@elizaos/core/types";
+import { Plugin } from '@elizaos/core/types';
 
 export const myPlugin: Plugin = {
-    name: "my-plugin",
-    description: "My custom plugin",
-    actions: [],
-    evaluators: [],
-    providers: [],
+  name: 'my-plugin',
+  description: 'My custom plugin',
+  actions: [],
+  evaluators: [],
+  providers: [],
 };
 ```
 
@@ -245,16 +248,16 @@ export const myPlugin: Plugin = {
 ```typescript
 // plugins/my-plugin/src/actions/myAction.ts
 export const myAction: Action = {
-    name: "MY_ACTION",
-    similes: ["SIMILAR_ACTION"],
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
-        return true;
-    },
-    handler: async (runtime: IAgentRuntime, message: Memory) => {
-        // Implementation
-        return true;
-    },
-    examples: [],
+  name: 'MY_ACTION',
+  similes: ['SIMILAR_ACTION'],
+  validate: async (runtime: IAgentRuntime, message: Memory) => {
+    return true;
+  },
+  handler: async (runtime: IAgentRuntime, message: Memory) => {
+    // Implementation
+    return true;
+  },
+  examples: [],
 };
 ```
 
@@ -266,20 +269,20 @@ Create `.vscode/launch.json`:
 
 ```json
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "type": "node",
-            "request": "launch",
-            "name": "Debug Eliza",
-            "skipFiles": ["<node_internals>/**"],
-            "program": "${workspaceFolder}/src/index.ts",
-            "runtimeArgs": ["-r", "ts-node/register"],
-            "env": {
-                "DEBUG": "eliza:*"
-            }
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Eliza",
+      "skipFiles": ["<node_internals>/**"],
+      "program": "${workspaceFolder}/src/index.ts",
+      "runtimeArgs": ["-r", "ts-node/register"],
+      "env": {
+        "DEBUG": "eliza:*"
+      }
+    }
+  ]
 }
 ```
 
@@ -295,12 +298,12 @@ DEBUG=eliza:*
 2. Use Debug Points
 
 ```typescript
-const debug = require("debug")("eliza:dev");
+const debug = require('debug')('eliza:dev');
 
-debug("Operation details: %O", {
-    operation: "functionName",
-    params: parameters,
-    result: result,
+debug('Operation details: %O', {
+  operation: 'functionName',
+  params: parameters,
+  result: result,
 });
 ```
 
@@ -317,13 +320,13 @@ NODE_OPTIONS="--max-old-space-size=8192" pnpm run dev
 
 ```json
 {
-    "name": "DevBot",
-    "description": "Development testing bot",
-    "modelProvider": "openai",
-    "settings": {
-        "debug": true,
-        "logLevel": "debug"
-    }
+  "name": "DevBot",
+  "description": "Development testing bot",
+  "modelProvider": "openai",
+  "settings": {
+    "debug": true,
+    "logLevel": "debug"
+  }
 }
 ```
 
@@ -331,15 +334,15 @@ NODE_OPTIONS="--max-old-space-size=8192" pnpm run dev
 
 ```typescript
 class CustomService extends Service {
-    static serviceType = ServiceType.CUSTOM;
+  static serviceType = ServiceType.CUSTOM;
 
-    async initialize() {
-        // Setup code
-    }
+  async initialize() {
+    // Setup code
+  }
 
-    async process(input: any): Promise<any> {
-        // Service logic
-    }
+  async process(input: any): Promise<any> {
+    // Service logic
+  }
 }
 ```
 
@@ -348,20 +351,20 @@ class CustomService extends Service {
 ```typescript
 // Local model configuration
 const localModel = {
-    modelProvider: "llamalocal",
-    settings: {
-        modelPath: "./models/llama-7b.gguf",
-        contextSize: 8192,
-    },
+  modelProvider: 'llamalocal',
+  settings: {
+    modelPath: './models/llama-7b.gguf',
+    contextSize: 8192,
+  },
 };
 
 // Cloud model configuration
 const cloudModel = {
-    modelProvider: "openai",
-    settings: {
-        model: "gpt-4o-mini",
-        temperature: 0.7,
-    },
+  modelProvider: 'openai',
+  settings: {
+    model: 'gpt-4o-mini',
+    temperature: 0.7,
+  },
 };
 ```
 
@@ -382,14 +385,14 @@ CUDA_PATH=/usr/local/cuda  # Windows: C:\Program Files\NVIDIA GPU Computing Tool
 
 ```typescript
 class MemoryManager {
-    private cache = new Map();
-    private maxSize = 1000;
+  private cache = new Map();
+  private maxSize = 1000;
 
-    async cleanup() {
-        if (this.cache.size > this.maxSize) {
-            // Implement cleanup logic
-        }
+  async cleanup() {
+    if (this.cache.size > this.maxSize) {
+      // Implement cleanup logic
     }
+  }
 }
 ```
 
@@ -436,20 +439,20 @@ pnpm run analyze
 
 1. Code Organization
 
-    - Place custom actions in `custom_actions/`
-    - Keep character files in `characters/`
-    - Store test data in `tests/fixtures/`
+   - Place custom actions in `custom_actions/`
+   - Keep character files in `characters/`
+   - Store test data in `tests/fixtures/`
 
 2. Testing Strategy
 
-    - Write unit tests for new features
-    - Use integration tests for plugins
-    - Test with multiple model providers
+   - Write unit tests for new features
+   - Use integration tests for plugins
+   - Test with multiple model providers
 
 3. Git Workflow
-    - Create feature branches
-    - Follow conventional commits
-    - Keep PRs focused
+   - Create feature branches
+   - Follow conventional commits
+   - Keep PRs focused
 
 ## Additional Tools
 
@@ -484,13 +487,16 @@ npx knowledge2character <character-file> <knowledge-file>
 ## FAQ
 
 ### Can I run multiple agents on one machine?
+
 Yes, you can run multiple agents simultaneously:
+
 - Use different character files and configurations
 - Each agent needs unique credentials
 - Start with `pnpm start --characters="characters/agent1.json,characters/agent2.json"`
 - Configure different ports if needed
 
 ### How do I customize a client/plugin package?
+
 1. Copy the plugin into your eliza-start packages folder
 2. Modify root package.json dependencies
 3. Build the plugin
@@ -503,4 +509,3 @@ Yes, you can run multiple agents simultaneously:
 - [Configuration Guide](./configuration) for setup details
 - [Advanced Usage](./advanced) for complex features
 - [Contributing Guide](../contributing) for contribution guidelines
-

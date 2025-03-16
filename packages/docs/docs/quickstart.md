@@ -41,10 +41,10 @@ cd eliza
 ./scripts/start.sh
 ```
 
-
 3. Using Docker
 
 Prerequisites:
+
 - A Linux-based server (Ubuntu/Debian recommended)
 - Git installed
 - [Docker](https://docs.docker.com/get-started/get-docker/)
@@ -69,13 +69,16 @@ docker-compose up
 ```
 
 #### Permission Issues
+
 ```
 sudo chmod +x scripts/start.sh  # Linux/macOS
 Set-ExecutionPolicy RemoteSigned -Scope CurrentUser  # Windows
 ```
 
 #### Package Issues
+
 > Note: Always verify scripts before running it
+
 ```
 ## Linux
 sudo apt update
@@ -89,6 +92,7 @@ brew update
 ```
 
 #### Node.js Issues
+
 - Ensure Node.js 23.3.0 is installed
 - Use `node -v` to check version
 - Consider using [nvm](https://github.com/nvm-sh/nvm) to manage Node versions
@@ -104,6 +108,7 @@ pnpm install --include=optional sharp
 If you see errors about better-sqlite3, try `pnpm rebuild better-sqlite3` or go into `node_modules/better-sqlite3` and run `pnpm i`
 
 You can also add a postinstall script in your `package.json` if you want to automate this:
+
 ```json
 scripts: {
     "postinstall": "npm rebuild better-sqlite3"
@@ -119,6 +124,7 @@ pnpm env use --global 23.3.0
 #### Docker issues
 
 Some tips on cleaning your working directory before rebuilding:
+
 - List all docker images: `sudo docker images`
 - Reomove all Docker images: `docker rmi -f $(docker images -aq)`
 - Remove all build cache: `docker builder prune -a -f`
@@ -138,14 +144,17 @@ cd eliza
 
 :::tip
 If you're planning on doing development, we suggest using the code on the develop branch:
+
 ```bash
 git checkout develop
 ```
 
 From the main repo you can also download [sample character files](https://github.com/elizaos/characters) this way:
+
 ```bash
 git submodule update --init
 ```
+
 :::
 
 Install the dependencies
@@ -200,7 +209,7 @@ Simply click the link or open your browser to `http://localhost:5173/`. You'll s
 
 ## Additional Configuration
 
-You can load plugins or additional client support with your character file to unlock more capabilities for your agent. 
+You can load plugins or additional client support with your character file to unlock more capabilities for your agent.
 
 ### Add Plugins and Clients
 
@@ -229,18 +238,16 @@ $ npx elizaos plugins list
 
 Here's a sample list of plugins you can check out!
 
-| plugin name | Description |
-| ----------- | ----------- |
-| [`@elizaos/plugin-llama`](https://github.com/elizaos-plugins/plugin-llama) | Run LLM models on your local machine
-| [`@elizaos/client-twitter`](https://github.com/elizaos-plugins/client-twitter) | Twitter bot integration
-| [`@elizaos/client-discord`](https://github.com/elizaos-plugins/client-discord) | Discord bot integration
-| [`@elizaos/client-telegram`](https://github.com/elizaos-plugins/client-telegram) | Telegram integration
-| [`@elizaos/plugin-image`](https://github.com/elizaos-plugins/plugin-image) | Image processing and analysis
-| [`@elizaos/plugin-video`](https://github.com/elizaos-plugins/plugin-video) | Video processing capabilities
-| [`@elizaos/plugin-browser`](https://github.com/elizaos-plugins/plugin-browser) | Web scraping capabilities
-| [`@elizaos/plugin-pdf`](https://github.com/elizaos-plugins/plugin-pdf) | PDF processing
-
-
+| plugin name                                                                      | Description                          |
+| -------------------------------------------------------------------------------- | ------------------------------------ |
+| [`@elizaos/plugin-llama`](https://github.com/elizaos-plugins/plugin-llama)       | Run LLM models on your local machine |
+| [`@elizaos/client-twitter`](https://github.com/elizaos-plugins/client-twitter)   | Twitter bot integration              |
+| [`@elizaos/client-discord`](https://github.com/elizaos-plugins/client-discord)   | Discord bot integration              |
+| [`@elizaos/client-telegram`](https://github.com/elizaos-plugins/client-telegram) | Telegram integration                 |
+| [`@elizaos/plugin-image`](https://github.com/elizaos-plugins/plugin-image)       | Image processing and analysis        |
+| [`@elizaos/plugin-video`](https://github.com/elizaos-plugins/plugin-video)       | Video processing capabilities        |
+| [`@elizaos/plugin-browser`](https://github.com/elizaos-plugins/plugin-browser)   | Web scraping capabilities            |
+| [`@elizaos/plugin-pdf`](https://github.com/elizaos-plugins/plugin-pdf)           | PDF processing                       |
 
 ### Configure Environment
 
@@ -258,7 +265,6 @@ nano .env
 ### Option 2: Secrets in the character file
 
 This option allows you finer grain control over which character uses what resources and is required if you want multiple agents but using different keys. For example:
-
 
 ```typescript
 {
@@ -297,6 +303,7 @@ TWITTER_2FA_SECRET=    # In order to avoid X preventing the login, it is better 
 ```
 
 **Important:** Log in to the [Twitter Developer Portal](https://developer.twitter.com) and enable the "Automated" label for your account to avoid being flagged as inauthentic.
+
 </details>
 
 <details>
@@ -308,32 +315,33 @@ TWITTER_2FA_SECRET=    # In order to avoid X preventing the login, it is better 
 ```bash
 TELEGRAM_BOT_TOKEN=your_token_here
 ```
+
 </details>
-
-
-
 
 ### GPU Acceleration
 
 If you have a Nvidia GPU you can enable CUDA support. First ensure CUDA Toolkit, cuDNN, and cuBLAS are first installed, then: `npx --no node-llama-cpp source download --gpu cuda`
-
-
 
 ---
 
 ## FAQ
 
 ### What's the difference between eliza and eliza-starter?
+
 Eliza-starter is a lightweight version for simpler setups, while the main eliza repository includes all advanced features and a web client.
 
 ### How do I fix build/installation issues?
+
 Use Node v23.3.0, run `pnpm clean`, then `pnpm install --no-frozen-lockfile`, followed by `pnpm build`. If issues persist, checkout the latest stable tag.
 
 ### What are the minimum system requirements?
+
 8GB RAM recommended for build process. For deployment, a t2.large instance on AWS with 20GB storage running Ubuntu is the minimum tested configuration.
 
 ### How do I fix "Exit Status 1" errors?
+
 If you see `triggerUncaughtException` errors, try:
+
 1. Add dependencies to workspace root
 2. Add dependencies to specific packages
 3. Clean and rebuild

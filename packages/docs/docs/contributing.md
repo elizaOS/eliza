@@ -17,19 +17,19 @@ By contributing to elizaOS, you agree that your contributions will be licensed u
 
 1. **Extend elizaOS's Capabilities**
 
-    - Develop new actions, evaluators, and providers
-    - Improve existing components and modules
+   - Develop new actions, evaluators, and providers
+   - Improve existing components and modules
 
 2. **Enhance Infrastructure**
 
-    - Review open issues and submit PRs
-    - Test and update documentation
-    - Optimize performance
-    - Improve deployment solutions
+   - Review open issues and submit PRs
+   - Test and update documentation
+   - Optimize performance
+   - Improve deployment solutions
 
 3. Fork the repo and create your branch from `develop`.
-    1. The name of the branch could start with the issue number and be descriptive of the changes you are making.
-    2. Example: 9999-add-test-for-bug-123
+   1. The name of the branch could start with the issue number and be descriptive of the changes you are making.
+   2. Example: 9999-add-test-for-bug-123
 4. If you've added code that should be tested, add tests.
 5. Ensure the test suite passes.
 6. Make sure your code lints.

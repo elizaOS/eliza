@@ -1,5 +1,5 @@
 // src/utils/registry/schema.ts
-import { z } from "zod";
+import { z } from 'zod';
 
 export const registrySchema = z.record(z.string(), z.string());
 
@@ -9,7 +9,7 @@ export const registrySchema = z.record(z.string(), z.string());
  * - "client"
  * - "plugin"
  */
-export type PluginType = "adapter" | "client" | "plugin";
+export type PluginType = 'adapter' | 'client' | 'plugin';
 
 // TODO: we should handle this better later
 /**
@@ -18,9 +18,9 @@ export type PluginType = "adapter" | "client" | "plugin";
  * @returns {PluginType} The type of plugin ('adapter', 'client', or 'plugin').
  */
 export function getPluginType(name: string): PluginType {
-	if (/sql/.test(name)) return "adapter";
-	if (/discord|twitter|telegram/.test(name)) return "client";
-	return "plugin";
+  if (/sql/.test(name)) return 'adapter';
+  if (/discord|twitter|telegram/.test(name)) return 'client';
+  return 'plugin';
 }
 
 /**

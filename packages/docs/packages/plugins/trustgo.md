@@ -45,7 +45,6 @@ The TrustGo Provider integrates the EVM Wallet Provider. It performs the followi
 - List User Attestations: Display user attestations.
 - Mint MEDIA Attestation: Mint MEDIA attestations on the blockchain.
 
-
 ## Actions
 
 ### 1. account
@@ -75,7 +74,6 @@ show my attestations
 ### 4. mint attestation
 
 Mint an on-chain reputation attestation.
-
 
 ```typescript
 mint my linea media score

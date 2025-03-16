@@ -1,132 +1,132 @@
 .heroTitle {
-    font-size: 3.2rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
-    line-height: 1.4;
+  font-size: 3.2rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  line-height: 1.4;
 }
 
 .heroSubtitle {
-    font-size: 1.5rem;
-    opacity: 0.8;
+  font-size: 1.5rem;
+  opacity: 0.8;
 }
 
 .heroSection {
-    padding: 6rem 2rem 0rem;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    margin: 0 auto;
-    max-width: 100%;
+  padding: 6rem 2rem 0rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0 auto;
+  max-width: 100%;
 }
 
 .reg-button {
-    background-color: pink;
+  background-color: pink;
 }
 
 .buttonGroup {
-    display: flex;
-    gap: 1rem;
+  display: flex;
+  gap: 1rem;
 }
 
 .githubButton {
-    margin-top: 1rem;
+  margin-top: 1rem;
 }
 
 .heroRight {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  position: relative;
 }
 
 .codeBlock {
-    display: flex;
-    background: #242736;
-    color: white;
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-    position: relative;
-    z-index: 1;
-    opacity: 0.9;
+  display: flex;
+  background: #242736;
+  color: white;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+  position: relative;
+  z-index: 1;
+  opacity: 0.9;
 }
 
 .headerTextGradient {
-    background: linear-gradient(180deg, #ffa600 0%, #ff6f00 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+  background: linear-gradient(180deg, #ffa600 0%, #ff6f00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .blurPhoto {
-    filter: blur(15px);
-    border-radius: 45%;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  filter: blur(15px);
+  border-radius: 45%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 
 /* Media Queries for Responsiveness */
 @media (max-width: 1024px) {
-    .heroSection {
-        grid-template-columns: 1fr;
-        padding: 4rem 1rem 0rem;
-        text-align: center;
-        gap: 2rem;
-    }
+  .heroSection {
+    grid-template-columns: 1fr;
+    padding: 4rem 1rem 0rem;
+    text-align: center;
+    gap: 2rem;
+  }
 
-    .buttonGroup {
-        justify-content: center;
-        position: relative;
-        z-index: 1;
-    }
+  .buttonGroup {
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+  }
 
-    .heroTitle {
-        font-size: 3rem;
-    }
+  .heroTitle {
+    font-size: 3rem;
+  }
 
-    .heroSubtitle {
-        font-size: 1.3rem;
-    }
+  .heroSubtitle {
+    font-size: 1.3rem;
+  }
 }
 
 @media (max-width: 768px) {
-    .heroSection {
-        padding: 3rem 1rem 0rem;
-    }
+  .heroSection {
+    padding: 3rem 1rem 0rem;
+  }
 
-    .heroTitle {
-        font-size: 2rem;
-    }
+  .heroTitle {
+    font-size: 2rem;
+  }
 
-    .heroSubtitle {
-        font-size: 1rem;
-    }
+  .heroSubtitle {
+    font-size: 1rem;
+  }
 
-    .codeBlock {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
+  .codeBlock {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
 }
 
 @media (max-width: 480px) {
-    .heroSection {
-        padding: 2rem 1rem 0rem;
-    }
+  .heroSection {
+    padding: 2rem 1rem 0rem;
+  }
 
-    .heroTitle {
-        font-size: 1.5rem;
-    }
+  .heroTitle {
+    font-size: 1.5rem;
+  }
 
-    .heroSubtitle {
-        font-size: 0.9rem;
-    }
+  .heroSubtitle {
+    font-size: 0.9rem;
+  }
 
-    .buttonGroup {
-        flex-direction: column;
-        gap: 0.5rem;
-    }
+  .buttonGroup {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
 
-    .githubButton {
-        margin-top: 0.5rem;
-    }
+  .githubButton {
+    margin-top: 0.5rem;
+  }
 }

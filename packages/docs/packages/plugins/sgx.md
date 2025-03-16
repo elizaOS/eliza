@@ -5,21 +5,26 @@ The SGX Plugin for Eliza enhances the platform by providing Intel SGX attestatio
 Intel SGX is part of the Intel confidential computing technology portfolio that allows businesses to take advantage of the cloud while staying in control of their data. Intel SGX protects data actively being used in the processor and memory by creating a trusted execution environment (TEE) called an enclave.
 
 ### Trusted Execution Environment (TEE)
+
 A Trusted Execution Environment (TEE) is a secure area within a main processor that ensures sensitive data is stored, processed, and protected in an isolated environment. TEEs provide a higher level of security by allowing applications to run in a protected space, safeguarding them from unauthorized access and potential threats.
 
 ### Software Guard Extensions (SGX)
+
 Software Guard Extensions is a set of instructions on Intel processors for creating Trusted Execution Environments (TEE). SGX enables the creation of enclaves, which are protected areas of execution that ensure the confidentiality and integrity of the code and data within them. This allows applications to run securely, even in untrusted environments, by protecting sensitive information from being exposed to the host operating system or other applications.
 
 ### Attestation
+
 The attestation of TEE is a security mechanism that enables a TEE to provide cryptographic proof of its integrity and authenticity to external parties. By generating a unique attestation report that includes information about the software and its execution state, a TEE can assure remote verifiers that the code running within it has not been altered and is operating as intended. This process is essential for establishing trust in secure applications, allowing them to interact confidently with other systems and services in potentially untrusted environments.
 
 ### Gramine
+
 The attestation capabilities are based on [Gramine Library OS](https://github.com/gramineproject/gramine). Gramine is a Library OS for Unmodified Applications. Applications can benefit from confidentiality and integrity guarantees of Intel SGX, but developers need to be very skilled for effective partitioning and code modification for Intel SGX environment.
 Gramine runs unmodified applications inside Intel SGX. It supports dynamically loaded libraries, runtime linking, multi-process abstractions, and file authentication. For additional security, Gramine performs cryptographic and semantic checks at untrusted host interface. Developers provide a manifest file to configure the application environment and isolation policies, Gramine automatically does the rest.
 
 ## Components
 
 ### Providers
+
 - **sgxAttestationProvider**: This provider is responsible for generating SGX remote attestations within Gramine SGX environments.
 
 ## Usage

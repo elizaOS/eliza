@@ -1,46 +1,48 @@
 {
-	"name": "@elizaos/project-starter",
-	"description": "Project starter for elizaOS",
-	"version": "1.0.0-alpha.42",
-	"type": "module",
-	"private": true,
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"dependencies": {
-		"@elizaos/cli": "workspace:*",
-		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-anthropic": "workspace:*",
-		"@elizaos/plugin-openai": "workspace:*",
-		"@elizaos/plugin-sql": "workspace:*",
-		"zod": "3.24.2"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^1.9.4",
-		"tsup": "8.4.0"
-	},
-	"scripts": {
-		"start": "npx @elizaos/cli@alpha start",
-		"dev": "npx @elizaos/cli@alpha dev",
-		"build": "tsup",
-		"lint": "biome check --config-path=./ --write",
-		"test": "npx @elizaos/cli@alpha test",
-		"deploy": "npx @elizaos/cli@alpha deploy"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
+  "name": "@elizaos/project-starter",
+  "description": "Project starter for elizaOS",
+  "version": "1.0.0-alpha.42",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/cli": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "tsup": "8.4.0",
+    "prettier": "3.5.3"
+  },
+  "scripts": {
+    "start": "npx @elizaos/cli@alpha start",
+    "dev": "npx @elizaos/cli@alpha dev",
+    "build": "tsup",
+    "lint": "prettier --write ./src",
+    "test": "npx @elizaos/cli@alpha test",
+    "deploy": "npx @elizaos/cli@alpha deploy",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
 }

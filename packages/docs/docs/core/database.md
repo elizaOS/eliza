@@ -10,73 +10,73 @@ Database adapters provide persistent storage capabilities for ElizaOS agents. Th
 
 Database adapters implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAdapter) interface to provide consistent data access across different storage solutions. Each adapter optimizes for specific use cases:
 
-| Adapter | Best For | Key Features |
-|---------|----------|--------------|
-| [MongoDB](https://github.com/elizaos-plugins/adapter-mongodb) | Production deployments | Sharding, vector search, real-time participant management |
-| [PostgreSQL](https://github.com/elizaos-plugins/adapter-postgres) | Enterprise & vector search | Dynamic vector dimensions, fuzzy matching, comprehensive logging |
-| [SQLite](https://github.com/elizaos-plugins/adapter-sqlite) | Development & embedded | Lightweight, file-based, vector BLOB support |
-| [Supabase](https://github.com/elizaos-plugins/adapter-supabase) | Cloud-hosted vector DB | Multiple embedding sizes, real-time subscriptions, row-level security |
-| [PGLite](https://github.com/elizaos-plugins/adapter-pglite) | Browser environments | Lightweight PostgreSQL implementation, HNSW indexing |
-| [Qdrant](https://github.com/elizaos-plugins/adapter-qdrant) | Vector-focused deployments | Optimized for RAG applications, sophisticated preprocessing |
-| [SQL.js](https://github.com/elizaos-plugins/adapter-sqljs) | Browser environments | Full SQLite functionality in browser, complex queries |
+| Adapter                                                           | Best For                   | Key Features                                                          |
+| ----------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------- |
+| [MongoDB](https://github.com/elizaos-plugins/adapter-mongodb)     | Production deployments     | Sharding, vector search, real-time participant management             |
+| [PostgreSQL](https://github.com/elizaos-plugins/adapter-postgres) | Enterprise & vector search | Dynamic vector dimensions, fuzzy matching, comprehensive logging      |
+| [SQLite](https://github.com/elizaos-plugins/adapter-sqlite)       | Development & embedded     | Lightweight, file-based, vector BLOB support                          |
+| [Supabase](https://github.com/elizaos-plugins/adapter-supabase)   | Cloud-hosted vector DB     | Multiple embedding sizes, real-time subscriptions, row-level security |
+| [PGLite](https://github.com/elizaos-plugins/adapter-pglite)       | Browser environments       | Lightweight PostgreSQL implementation, HNSW indexing                  |
+| [Qdrant](https://github.com/elizaos-plugins/adapter-qdrant)       | Vector-focused deployments | Optimized for RAG applications, sophisticated preprocessing           |
+| [SQL.js](https://github.com/elizaos-plugins/adapter-sqljs)        | Browser environments       | Full SQLite functionality in browser, complex queries                 |
 
 ## Core Functionality
 
 All adapters extend the [`DatabaseAdapter`](/api/classes/DatabaseAdapter) base class and implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAdapter) interface. Here's a comprehensive overview of available methods:
 
-| Category | Method | Description | Parameters |
-|----------|---------|-------------|------------|
-| **Database Lifecycle** |
-| | `init()` | Initialize database connection | - |
-| | `close()` | Close database connection | - |
-| **Memory Management** |
-| | `createMemory()` | Store new memory | `memory: Memory, tableName: string, unique?: boolean` |
-| | `getMemoryById()` | Retrieve specific memory | `id: UUID` |
-| | `getMemories()` | Get memories matching criteria | `{ roomId: UUID, count?: number, unique?: boolean, tableName: string, agentId: UUID, start?: number, end?: number }` |
-| | `getMemoriesByIds()` | Get multiple memories by IDs | `memoryIds: UUID[], tableName?: string` |
-| | `getMemoriesByRoomIds()` | Get memories from multiple rooms | `{ agentId: UUID, roomIds: UUID[], tableName: string, limit?: number }` |
-| | `searchMemories()` | Search with vector similarity | `{ tableName: string, agentId: UUID, roomId: UUID, embedding: number[], match_threshold: number, match_count: number, unique: boolean }` |
-| | `searchMemoriesByEmbedding()` | Search memories by embedding vector | `embedding: number[], { match_threshold?: number, count?: number, roomId?: UUID, agentId?: UUID, unique?: boolean, tableName: string }` |
-| | `deleteMemory()` | Remove specific memory | `memoryId: UUID, tableName: string` |
-| | `deleteAllMemories()` | Remove all memories in room | `roomId: UUID, tableName: string` |
-| | `countMemories()` | Count memories in room | `roomId: UUID, unique?: boolean, tableName?: string` |
+| Category                 | Method                        | Description                         | Parameters                                                                                                                                                      |
+| ------------------------ | ----------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----- |
+| **Database Lifecycle**   |
+|                          | `init()`                      | Initialize database connection      | -                                                                                                                                                               |
+|                          | `close()`                     | Close database connection           | -                                                                                                                                                               |
+| **Memory Management**    |
+|                          | `createMemory()`              | Store new memory                    | `memory: Memory, tableName: string, unique?: boolean`                                                                                                           |
+|                          | `getMemoryById()`             | Retrieve specific memory            | `id: UUID`                                                                                                                                                      |
+|                          | `getMemories()`               | Get memories matching criteria      | `{ roomId: UUID, count?: number, unique?: boolean, tableName: string, agentId: UUID, start?: number, end?: number }`                                            |
+|                          | `getMemoriesByIds()`          | Get multiple memories by IDs        | `memoryIds: UUID[], tableName?: string`                                                                                                                         |
+|                          | `getMemoriesByRoomIds()`      | Get memories from multiple rooms    | `{ agentId: UUID, roomIds: UUID[], tableName: string, limit?: number }`                                                                                         |
+|                          | `searchMemories()`            | Search with vector similarity       | `{ tableName: string, agentId: UUID, roomId: UUID, embedding: number[], match_threshold: number, match_count: number, unique: boolean }`                        |
+|                          | `searchMemoriesByEmbedding()` | Search memories by embedding vector | `embedding: number[], { match_threshold?: number, count?: number, roomId?: UUID, agentId?: UUID, unique?: boolean, tableName: string }`                         |
+|                          | `deleteMemory()`              | Remove specific memory              | `memoryId: UUID, tableName: string`                                                                                                                             |
+|                          | `deleteAllMemories()`         | Remove all memories in room         | `roomId: UUID, tableName: string`                                                                                                                               |
+|                          | `countMemories()`             | Count memories in room              | `roomId: UUID, unique?: boolean, tableName?: string`                                                                                                            |
 | **Knowledge Management** |
-| | `createKnowledge()` | Store new knowledge item | `knowledge: RAGKnowledgeItem` |
-| | `getKnowledge()` | Retrieve knowledge | `{ id?: UUID, agentId: UUID, limit?: number, query?: string, conversationContext?: string }` |
-| | `searchKnowledge()` | Semantic knowledge search | `{ agentId: UUID, embedding: Float32Array, match_threshold: number, match_count: number, searchText?: string }` |
-| | `removeKnowledge()` | Remove knowledge item | `id: UUID` |
-| | `clearKnowledge()` | Remove all knowledge | `agentId: UUID, shared?: boolean` |
-| **Room & Participants** |
-| | `createRoom()` | Create new conversation room | `roomId?: UUID` |
-| | `getRoom()` | Get room by ID | `roomId: UUID` |
-| | `removeRoom()` | Remove room | `roomId: UUID` |
-| | `addParticipant()` | Add user to room | `userId: UUID, roomId: UUID` |
-| | `removeParticipant()` | Remove user from room | `userId: UUID, roomId: UUID` |
-| | `getParticipantsForRoom()` | List room participants | `roomId: UUID` |
-| | `getParticipantsForAccount()` | Get user's room participations | `userId: UUID` |
-| | `getRoomsForParticipant()` | Get rooms for user | `userId: UUID` |
-| | `getRoomsForParticipants()` | Get shared rooms for users | `userIds: UUID[]` |
-| | `getParticipantUserState()` | Get participant's state | `roomId: UUID, userId: UUID` |
-| | `setParticipantUserState()` | Update participant state | `roomId: UUID, userId: UUID, state: "FOLLOWED"|"MUTED"|null` |
-| **Account Management** |
-| | `createAccount()` | Create new user account | `account: Account` |
-| | `getAccountById()` | Retrieve user account | `userId: UUID` |
-| | `getActorDetails()` | Get actor information | `{ roomId: UUID }` |
-| **Relationships** |
-| | `createRelationship()` | Create user connection | `{ userA: UUID, userB: UUID }` |
-| | `getRelationship()` | Get relationship details | `{ userA: UUID, userB: UUID }` |
-| | `getRelationships()` | Get all relationships | `{ userId: UUID }` |
-| **Goals** |
-| | `createGoal()` | Create new goal | `goal: Goal` |
-| | `updateGoal()` | Update goal | `goal: Goal` |
-| | `updateGoalStatus()` | Update goal status | `{ goalId: UUID, status: GoalStatus }` |
-| | `getGoals()` | Get goals matching criteria | `{ agentId: UUID, roomId: UUID, userId?: UUID, onlyInProgress?: boolean, count?: number }` |
-| | `removeGoal()` | Remove specific goal | `goalId: UUID` |
-| | `removeAllGoals()` | Remove all goals in room | `roomId: UUID` |
-| **Caching & Embedding** |
-| | `getCachedEmbeddings()` | Retrieve cached embeddings | `{ query_table_name: string, query_threshold: number, query_input: string, query_field_name: string, query_field_sub_name: string, query_match_count: number }` |
-| **Logging** |
-| | `log()` | Log event or action | `{ body: { [key: string]: unknown }, userId: UUID, roomId: UUID, type: string }` |
+|                          | `createKnowledge()`           | Store new knowledge item            | `knowledge: RAGKnowledgeItem`                                                                                                                                   |
+|                          | `getKnowledge()`              | Retrieve knowledge                  | `{ id?: UUID, agentId: UUID, limit?: number, query?: string, conversationContext?: string }`                                                                    |
+|                          | `searchKnowledge()`           | Semantic knowledge search           | `{ agentId: UUID, embedding: Float32Array, match_threshold: number, match_count: number, searchText?: string }`                                                 |
+|                          | `removeKnowledge()`           | Remove knowledge item               | `id: UUID`                                                                                                                                                      |
+|                          | `clearKnowledge()`            | Remove all knowledge                | `agentId: UUID, shared?: boolean`                                                                                                                               |
+| **Room & Participants**  |
+|                          | `createRoom()`                | Create new conversation room        | `roomId?: UUID`                                                                                                                                                 |
+|                          | `getRoom()`                   | Get room by ID                      | `roomId: UUID`                                                                                                                                                  |
+|                          | `removeRoom()`                | Remove room                         | `roomId: UUID`                                                                                                                                                  |
+|                          | `addParticipant()`            | Add user to room                    | `userId: UUID, roomId: UUID`                                                                                                                                    |
+|                          | `removeParticipant()`         | Remove user from room               | `userId: UUID, roomId: UUID`                                                                                                                                    |
+|                          | `getParticipantsForRoom()`    | List room participants              | `roomId: UUID`                                                                                                                                                  |
+|                          | `getParticipantsForAccount()` | Get user's room participations      | `userId: UUID`                                                                                                                                                  |
+|                          | `getRoomsForParticipant()`    | Get rooms for user                  | `userId: UUID`                                                                                                                                                  |
+|                          | `getRoomsForParticipants()`   | Get shared rooms for users          | `userIds: UUID[]`                                                                                                                                               |
+|                          | `getParticipantUserState()`   | Get participant's state             | `roomId: UUID, userId: UUID`                                                                                                                                    |
+|                          | `setParticipantUserState()`   | Update participant state            | `roomId: UUID, userId: UUID, state: "FOLLOWED"                                                                                                                  | "MUTED" | null` |
+| **Account Management**   |
+|                          | `createAccount()`             | Create new user account             | `account: Account`                                                                                                                                              |
+|                          | `getAccountById()`            | Retrieve user account               | `userId: UUID`                                                                                                                                                  |
+|                          | `getActorDetails()`           | Get actor information               | `{ roomId: UUID }`                                                                                                                                              |
+| **Relationships**        |
+|                          | `createRelationship()`        | Create user connection              | `{ userA: UUID, userB: UUID }`                                                                                                                                  |
+|                          | `getRelationship()`           | Get relationship details            | `{ userA: UUID, userB: UUID }`                                                                                                                                  |
+|                          | `getRelationships()`          | Get all relationships               | `{ userId: UUID }`                                                                                                                                              |
+| **Goals**                |
+|                          | `createGoal()`                | Create new goal                     | `goal: Goal`                                                                                                                                                    |
+|                          | `updateGoal()`                | Update goal                         | `goal: Goal`                                                                                                                                                    |
+|                          | `updateGoalStatus()`          | Update goal status                  | `{ goalId: UUID, status: GoalStatus }`                                                                                                                          |
+|                          | `getGoals()`                  | Get goals matching criteria         | `{ agentId: UUID, roomId: UUID, userId?: UUID, onlyInProgress?: boolean, count?: number }`                                                                      |
+|                          | `removeGoal()`                | Remove specific goal                | `goalId: UUID`                                                                                                                                                  |
+|                          | `removeAllGoals()`            | Remove all goals in room            | `roomId: UUID`                                                                                                                                                  |
+| **Caching & Embedding**  |
+|                          | `getCachedEmbeddings()`       | Retrieve cached embeddings          | `{ query_table_name: string, query_threshold: number, query_input: string, query_field_name: string, query_field_sub_name: string, query_match_count: number }` |
+| **Logging**              |
+|                          | `log()`                       | Log event or action                 | `{ body: { [key: string]: unknown }, userId: UUID, roomId: UUID, type: string }`                                                                                |
 
 ### Implementation Notes
 
@@ -94,29 +94,29 @@ All adapters provide:
 
 ```typescript
 interface IDatabaseAdapter {
-    // Memory Management
-    createMemory(memory: Memory, tableName: string): Promise<void>;
-    getMemories(params: { roomId: UUID; count?: number }): Promise<Memory[]>;
-    searchMemories(params: SearchParams): Promise<Memory[]>;
-    deleteMemory(memoryId: UUID): Promise<void>;
-    
-    // Account & Room Management
-    createAccount(account: Account): Promise<boolean>;
-    getAccountById(userId: UUID): Promise<Account>;
-    createRoom(roomId?: UUID): Promise<UUID>;
-    getRoom(roomId: UUID): Promise<UUID>;
-    
-    // Participant Management
-    addParticipant(userId: UUID, roomId: UUID): Promise<boolean>;
-    getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
-    
-    // Knowledge Management
-    createKnowledge(knowledge: RAGKnowledgeItem): Promise<void>;
-    searchKnowledge(params: SearchParams): Promise<RAGKnowledgeItem[]>;
-    
-    // Goal Management
-    createGoal(goal: Goal): Promise<void>;
-    updateGoalStatus(params: { goalId: UUID; status: GoalStatus }): Promise<void>;
+  // Memory Management
+  createMemory(memory: Memory, tableName: string): Promise<void>;
+  getMemories(params: { roomId: UUID; count?: number }): Promise<Memory[]>;
+  searchMemories(params: SearchParams): Promise<Memory[]>;
+  deleteMemory(memoryId: UUID): Promise<void>;
+
+  // Account & Room Management
+  createAccount(account: Account): Promise<boolean>;
+  getAccountById(userId: UUID): Promise<Account>;
+  createRoom(roomId?: UUID): Promise<UUID>;
+  getRoom(roomId: UUID): Promise<UUID>;
+
+  // Participant Management
+  addParticipant(userId: UUID, roomId: UUID): Promise<boolean>;
+  getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
+
+  // Knowledge Management
+  createKnowledge(knowledge: RAGKnowledgeItem): Promise<void>;
+  searchKnowledge(params: SearchParams): Promise<RAGKnowledgeItem[]>;
+
+  // Goal Management
+  createGoal(goal: Goal): Promise<void>;
+  updateGoalStatus(params: { goalId: UUID; status: GoalStatus }): Promise<void>;
 }
 ```
 
@@ -158,18 +158,19 @@ interface IDatabaseCacheAdapter {
 }
 
 interface IDatabaseAdapter {
-    // Goal Management
-    createGoal(goal: Goal): Promise<void>;
-    updateGoal(goal: Goal): Promise<void>;
-    getGoals(params: {
-        agentId: UUID;
-        roomId: UUID;
-        userId?: UUID | null;
-        onlyInProgress?: boolean;
-        count?: number;
-    }): Promise<Goal[]>;
+// Goal Management
+createGoal(goal: Goal): Promise<void>;
+updateGoal(goal: Goal): Promise<void>;
+getGoals(params: {
+agentId: UUID;
+roomId: UUID;
+userId?: UUID | null;
+onlyInProgress?: boolean;
+count?: number;
+}): Promise<Goal[]>;
 }
-```
+
+````
 </details>
 
 ---
@@ -202,27 +203,29 @@ const supabaseAdapter = new SupabaseAdapter({
     url: process.env.SUPABASE_URL,
     apiKey: process.env.SUPABASE_API_KEY
 });
-```
+````
 
 ## Adapter Comparison
 
-| Feature | MongoDB | PostgreSQL | SQLite | Supabase |
-|---------|---------|------------|---------|-----------|
-| **Best For** | Production deployments | Enterprise & vector search | Development & embedded | Cloud-hosted vector DB |
-| **Vector Support** | Native sharding | Multiple dimensions (384d-1536d) | BLOB storage | Multi-dimension tables |
-| **Key Features** | Auto-sharding, Real-time tracking, Auto-reconnection | Fuzzy matching, UUID keys, Comprehensive logging | JSON validation, FK constraints, Built-in caching | Real-time subs, Row-level security, Type-safe queries |
-| **Setup Requirements** | None | pgvector extension | None | None |
-| **Collections/Tables** | rooms, participants, accounts, memories, knowledge | Same as MongoDB + vector extensions | Same as MongoDB + metadata JSON | Same as PostgreSQL + dimension-specific tables |
+| Feature                | MongoDB                                              | PostgreSQL                                       | SQLite                                            | Supabase                                              |
+| ---------------------- | ---------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------- |
+| **Best For**           | Production deployments                               | Enterprise & vector search                       | Development & embedded                            | Cloud-hosted vector DB                                |
+| **Vector Support**     | Native sharding                                      | Multiple dimensions (384d-1536d)                 | BLOB storage                                      | Multi-dimension tables                                |
+| **Key Features**       | Auto-sharding, Real-time tracking, Auto-reconnection | Fuzzy matching, UUID keys, Comprehensive logging | JSON validation, FK constraints, Built-in caching | Real-time subs, Row-level security, Type-safe queries |
+| **Setup Requirements** | None                                                 | pgvector extension                               | None                                              | None                                                  |
+| **Collections/Tables** | rooms, participants, accounts, memories, knowledge   | Same as MongoDB + vector extensions              | Same as MongoDB + metadata JSON                   | Same as PostgreSQL + dimension-specific tables        |
 
 ## Implementation Details
 
 ### PostgreSQL Requirements
+
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
 ```
 
 ### SQLite Schema
+
 ```sql
 CREATE TABLE memories (
     id TEXT PRIMARY KEY,
@@ -243,6 +246,7 @@ CREATE TABLE knowledge (
 ```
 
 ### Supabase Vector Tables
+
 ```sql
 CREATE TABLE memories_1536 (id UUID PRIMARY KEY, embedding vector(1536));
 CREATE TABLE memories_1024 (id UUID PRIMARY KEY, embedding vector(1024));
@@ -250,12 +254,12 @@ CREATE TABLE memories_1024 (id UUID PRIMARY KEY, embedding vector(1024));
 
 ## Embedding Support
 
-| Adapter | Supported Dimensions |
-|---------|---------------------|
-| MongoDB | All (as arrays) |
+| Adapter    | Supported Dimensions                                       |
+| ---------- | ---------------------------------------------------------- |
+| MongoDB    | All (as arrays)                                            |
 | PostgreSQL | OpenAI (1536d), Ollama (1024d), GAIANET (768d), BGE (384d) |
-| SQLite | All (as BLOB) |
-| Supabase | Configurable (384d-1536d) |
+| SQLite     | All (as BLOB)                                              |
+| Supabase   | Configurable (384d-1536d)                                  |
 
 Source code: [elizaos-plugins](https://github.com/elizaos-plugins)
 
@@ -290,6 +294,7 @@ protected async withCircuitBreaker<T>(
 ```
 
 Implemented features include:
+
 - Automatic rollback on errors
 - Circuit breaker pattern to prevent cascading failures ([source](https://github.com/elizaOS/eliza/blob/main/packages/core/src/database/CircuitBreaker.ts))
 - Connection pool management
