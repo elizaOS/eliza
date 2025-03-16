@@ -11,6 +11,7 @@ import {
   forkRepository,
   getFileContent,
   updateFile,
+  ensureDirectory,
 } from './github';
 import { getGitHubToken, getRegistrySettings } from './registry';
 
@@ -138,6 +139,9 @@ export async function testPublishToGitHub(
     // Test registry access
     const settings = await getRegistrySettings();
     const [registryOwner, registryRepo] = settings.defaultRegistry.split('/');
+    
+    // Log the registry we're testing with
+    logger.info(`Testing with registry: ${registryOwner}/${registryRepo}`);
 
     // Check fork permissions and create fork if needed
     const hasFork = await forkExists(token, registryOwner, registryRepo, username);
@@ -171,10 +175,17 @@ export async function testPublishToGitHub(
       logger.info('✓ Branch created');
     }
 
-    // Test file update permissions
+    // Test file update permissions - try a test file in the test directory
     const simpleName = packageJson.name.replace(/^@elizaos\//, '').replace(/[^a-zA-Z0-9-]/g, '-');
-    const testPath = `${simpleName}-test.json`;
+    // Change the path to try "test-files" directory rather than root
+    const testPath = `test-files/${simpleName}-test.json`;
     logger.info(`Attempting to create test file: ${testPath} in branch: ${branchName}`);
+    
+    // Try to create the directory first if needed
+    const dirCreated = await ensureDirectory(token, username, registryRepo, 'test-files', branchName);
+    if (!dirCreated) {
+      logger.warn('Failed to create test directory, but continuing with file creation');
+    }
     
     const canUpdate = await updateFile(
       token,
@@ -189,15 +200,11 @@ export async function testPublishToGitHub(
       logger.error('Cannot update files in repository');
       return false;
     }
-    logger.info('✓ Can update files');
+    logger.info('✓ Can create and update files');
 
     return true;
   } catch (error) {
     logger.error('Test failed:', error);
-    if (error instanceof Error) {
-      logger.error(`Error message: ${error.message}`);
-      logger.error(`Error stack: ${error.stack}`);
-    }
     return false;
   }
 }

@@ -1,24 +1,58 @@
 import { SOCKET_MESSAGE_TYPE } from "@elizaos/core";
 import EventEmitter from 'eventemitter3';
-import { io, type Socket } from 'socket.io-client';
-import { apiClient } from "./api";
 import { WorldManager } from "./world-manager";
 
+// Define local interfaces to avoid import issues
+interface WebSocketMessageOptions {
+  entityId: string;
+  userName?: string;
+  text: string;
+  roomId: string;
+  source?: string;
+  worldId?: string;
+}
+
+interface TextMessagePayload {
+  entityId: string;
+  userName?: string;
+  text: string;
+  roomId: string;
+  source?: string;
+  worldId?: string;
+}
+
+interface WebSocketService {
+  connect(): Promise<void>;
+  joinRoom(roomId: string): void;
+  sendTextMessage(options: WebSocketMessageOptions): void;
+  disconnect(): void;
+  isConnected(): boolean;
+  onTextMessage(handler: (payload: TextMessagePayload) => void): void;
+}
+
+interface WebSocketFactory {
+  createClientService(entityId: string, roomId: string): WebSocketService;
+}
+
+// Import dynamically to avoid TypeScript errors
+// This assumes the WebSocketFactory is properly exported from your CLI package
 const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 
-type MessagePayload = Record<string, any>;
+// Use dynamic import to get the factory with proper type casting
+const getWebSocketFactory = (): WebSocketFactory => {
+  // In a real implementation, you would dynamically import or use a properly set up dependency
+  // For now, we'll use a simple require to work around the type issues
+  // @ts-ignore - Ignore TypeScript errors for importing from non-type declarations
+  return require("@elizaos/cli").WebSocketFactory.getInstance(BASE_URL);
+};
 
 class SocketIOManager extends EventEmitter {
   private static instance: SocketIOManager | null = null;
-  private sockets: Map<string, Socket>;
-  private readyPromises: Map<string, Promise<void>>;
-  private resolveReadyMap: Map<string, () => void>;
+  private services: Map<string, WebSocketService>;
   
   private constructor() {
     super();
-    this.sockets = new Map();
-    this.readyPromises = new Map();
-    this.resolveReadyMap = new Map();
+    this.services = new Map();
   }
 
   public static getInstance(): SocketIOManager {
@@ -29,125 +63,109 @@ class SocketIOManager extends EventEmitter {
   }
 
   connect(agentId: string, roomId: string): void {
-    if (this.sockets.has(agentId)) {
+    const serviceKey = `${agentId}:${roomId}`;
+    
+    if (this.services.has(serviceKey)) {
       console.warn(`[SocketIO] Socket for agent ${agentId} already exists.`);
       return;
     }
 
-    const socket = io(BASE_URL, {
-      query: {
-        agentId,
-        roomId
-      },
-      autoConnect: true,
-      reconnection: true
-    });
-
-    const readyPromise = new Promise<void>((resolve) => {
-      this.resolveReadyMap.set(agentId, resolve);
-    });
-    this.readyPromises.set(agentId, readyPromise);
-
-    socket.on('connect', () => {
-      console.log(`[SocketIO] Connected for agent ${agentId}`);
-      this.resolveReadyMap.get(agentId)?.();
-      const data = {
-        type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
-        payload: {
-          agentId,
-          roomId,
-        }
-      };
-      this.sendMessage(agentId, data);
-    });
-
-    socket.on('message', async (messageData) => {
-      console.log(`[SocketIO] Message for agent ${agentId}:`, messageData, messageData.type);
-
-      const payload = messageData.payload;
-
-      if (messageData.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
-        const response = await apiClient.getAgentCompletion(
-          agentId,
-          payload.senderId,
-          payload.message,
-          payload.roomId,
-          payload.source,
-        );
-
-        if (response?.data?.message?.text) {
-          this.handleBroadcastMessage(
-            agentId, 
-            response?.data?.name,
-            response.data.message.text, 
-            response.data.roomId,
-            response.data.source,
-          );
-        }
-      }
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error(`[SocketIO] Connection error for agent ${agentId}:`, error);
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log(`[SocketIO] Disconnected for agent ${agentId}. Reason:`, reason);
+    try {
+      // Get a WebSocketService from the factory
+      const factory = getWebSocketFactory();
+      const service = factory.createClientService(agentId, roomId);
       
-      if (reason === 'io server disconnect') {
-        socket.connect();
-      }
-    });
+      // Set up event handlers - only listen for messages from others, not from self
+      service.onTextMessage((payload: TextMessagePayload) => {
+        console.log(`[SocketIO] Message received in room ${roomId}:`, payload);
+        
+        // Receive messages from any sender (agent or user) except self
+        if (payload.entityId !== agentId) {
+          // Format the message for the UI
+          this.emit("messageBroadcast", { 
+            entityId: payload.entityId, 
+            userName: payload.userName,
+            text: payload.text,
+            roomId: payload.roomId, 
+            createdAt: Date.now(), 
+            source: payload.source || "websocket"
+          });
+        }
+      });
 
-    this.sockets.set(agentId, socket);
+      // Connect to the WebSocket server
+      service.connect()
+        .then(() => {
+          console.log(`[SocketIO] Connected for entity ${agentId} in room ${roomId}`);
+          this.services.set(serviceKey, service);
+        })
+        .catch((error: Error) => {
+          console.error(`[SocketIO] Connection error for entity ${agentId}:`, error);
+        });
+    } catch (error) {
+      console.error(`[SocketIO] Error creating service:`, error);
+    }
   }
 
-  async sendMessage(agentId: string, message: MessagePayload): Promise<void> {
-    const socket = this.sockets.get(agentId);
-    const readyPromise = this.readyPromises.get(agentId);
+  async sendMessage(agentId: string, options: WebSocketMessageOptions): Promise<void> {
+    const { roomId } = options;
+    const serviceKey = `${agentId}:${roomId}`;
+    const service = this.services.get(serviceKey);
 
-    if (!socket) {
-      console.warn(`[SocketIO] Cannot send message, Socket for agent ${agentId} does not exist.`);
+    if (!service) {
+      console.warn(`[SocketIO] Cannot send message, service for agent ${agentId} in room ${roomId} does not exist.`);
       return;
     }
 
-    await readyPromise;
-
-    if (socket.connected) {
-      socket.emit('message', message);
-    } else {
-      console.warn(`[SocketIO] Socket for agent ${agentId} is not connected.`);
+    if (!service.isConnected()) {
+      console.warn(`[SocketIO] Service for agent ${agentId} is not connected.`);
+      return;
     }
+
+    // Convert 'text' to 'message' format if needed for consistency
+    const messageOptions = {
+      ...options,
+      // Make sure we're using the correct field name
+      text: options.text || ""
+    };
+
+    console.log(`[SocketIO] Sending message to room ${roomId} from ${options.entityId}`);
+    service.sendTextMessage(messageOptions);
   }
 
-  private cleanupSocket(agentId: string): void {
-    this.sockets.delete(agentId);
-    this.readyPromises.delete(agentId);
-    this.resolveReadyMap.delete(agentId);
+  private getServiceKey(agentId: string, roomId: string): string {
+    return `${agentId}:${roomId}`;
   }
 
-  handleBroadcastMessage(senderId: string, senderName: string, text: string, roomId: string, source: string) {
-    console.log(`[SocketIO] Broadcasting: ${senderId} sent "${text}" to room ${roomId}`)
+  handleBroadcastMessage(entityId: string, userName: string, text: string, roomId: string, source: string): void {
+    console.log(`[SocketIO] Broadcasting: ${entityId} sent "${text}" to room ${roomId}`)
     
-    this.emit("messageBroadcast", { senderId, senderName, text, roomId, createdAt: Date.now(), source});
-    this.sendMessage(senderId, {
-      type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
-      payload: {
-        senderId,
-        senderName,
-        message: text,
-        roomId,
-        worldId: WorldManager.getWorldId(),
-        source,
-      }
-    })
+    this.emit("messageBroadcast", { 
+      entityId, 
+      userName, 
+      text, 
+      roomId, 
+      createdAt: Date.now(), 
+      source
+    });
+    
+    this.sendMessage(entityId, {
+      entityId,
+      userName,
+      text,
+      roomId,
+      worldId: WorldManager.getWorldId(),
+      source,
+    });
   }
 
-  disconnect(agentId: string): void {
-    const socket = this.sockets.get(agentId);
-    if (socket) {
-      socket.disconnect();
-      this.cleanupSocket(agentId);
+  disconnect(agentId: string, roomId: string): void {
+    const serviceKey = this.getServiceKey(agentId, roomId);
+    const service = this.services.get(serviceKey);
+    
+    if (service) {
+      service.disconnect();
+      this.services.delete(serviceKey);
       console.log(`[SocketIO] Socket for agent ${agentId} disconnected.`);
     } else {
       console.warn(`[SocketIO] No Socket found for agent ${agentId}.`);
@@ -155,17 +173,18 @@ class SocketIOManager extends EventEmitter {
   }
 
   disconnectAll(): void {
-    this.sockets.forEach((socket, agentId) => {
+    this.services.forEach((service, key) => {
+      const [agentId] = key.split(':');
       console.log(`[SocketIO] Closing Socket for agent ${agentId}`);
       
-      if (socket.connected) {
-        socket.disconnect();
-        this.cleanupSocket(agentId);
+      if (service.isConnected()) {
+        service.disconnect();
       } else {
-        this.cleanupSocket(agentId);
         console.warn(`[SocketIO] Socket for agent ${agentId} is already disconnected.`);
       }
     });
+    
+    this.services.clear();
   }
 }
 

@@ -70,3 +70,7 @@ main().catch((error) => {
 	logger.error("An error occurred:", error);
 	process.exit(1);
 });
+
+// Export WebSocket implementation
+export * from './server/socketio/WebSocketService';
+export * from './server/socketio/WebSocketFactory';

@@ -29,7 +29,7 @@ export const plugin = new Command()
 plugin
 	.command("publish")
 	.description("publish a plugin to a registry")
-	.option("-r, --registry <registry>", "target registry", "elizaos/registry")
+	.option("-r, --registry <registry>", "target registry", "elizaOS/registry")
 	.option("-n, --npm", "publish to npm instead of GitHub", false)
 	.option("-t, --test", "test publish process without making changes", false)
 	.option("-p, --platform <platform>", "specify platform compatibility (node, browser, universal)", "universal")

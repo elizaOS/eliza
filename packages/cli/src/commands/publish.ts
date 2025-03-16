@@ -13,11 +13,10 @@ import {
 	validateDataDir
 } from "@/src/utils/registry/index";
 import { logger } from "@elizaos/core";
+import { Octokit } from "@octokit/rest";
 import { Command } from "commander";
 import { execa } from "execa";
 import prompts from "prompts";
-import { Octokit } from "@octokit/rest";
-import axios from "axios";
 
 // Registry integration constants
 const REGISTRY_REPO = "elizaos/registry";
@@ -352,7 +351,7 @@ Submitted by: @${username}
 export const publish = new Command()
 	.name("publish")
 	.description("Publish a plugin or project to the registry")
-	.option("-r, --registry <registry>", "target registry", "elizaos/registry")
+	.option("-r, --registry <registry>", "target registry", "elizaOS/registry")
 	.option("-n, --npm", "publish to npm instead of GitHub", false)
 	.option("-t, --test", "test publish process without making changes", false)
 	.option("-p, --platform <platform>", "specify platform compatibility (node, browser, universal)", "universal")

@@ -20,6 +20,7 @@ import express from "express";
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import type { AgentServer } from "..";
+import { WebSocketFactory } from "../socketio/WebSocketFactory";
 import { upload } from "../loader";
 
 /**
@@ -269,6 +270,24 @@ export function agentRouter(
 			return;
 		}
 
+		// Disconnect agent from WebSocket
+		try {
+			const serverUrl = `http://localhost:${process.env.PORT || 3000}`;
+			const webSocketFactory = WebSocketFactory.getInstance(serverUrl);
+			
+			// Get a list of rooms for this agent
+			const rooms = await runtime.getRoomsForParticipant(agentId);
+			
+			// Disconnect from each room
+			for (const roomId of rooms) {
+				webSocketFactory.removeService(agentId, roomId as string);
+				logger.info(`[AGENT STOP] Agent ${agentId} disconnected from room ${roomId} via WebSocket`);
+			}
+		} catch (error) {
+			logger.error(`[AGENT STOP] Error disconnecting agent ${agentId} from WebSocket:`, error);
+			// Don't fail the agent stop if WebSocket disconnection fails
+		}
+
 		// stop existing runtime
 		server?.unregisterAgent(agentId);
 
@@ -335,6 +354,31 @@ export function agentRouter(
 			if (!runtime) {
 				throw new Error("Failed to start agent");
 			}
+			
+			// Connect agent to the WebSocket server
+			try {
+				const serverUrl = `http://localhost:${process.env.PORT || 3000}`;
+				const webSocketFactory = WebSocketFactory.getInstance(serverUrl);
+				
+				// Get a list of rooms for this agent
+				const rooms = await runtime.getRoomsForParticipant(agentId);
+				logger.info(`[AGENT START] Found ${rooms.length} rooms for agent ${agentId}`);
+				
+				// Connect the agent to each room
+				for (const roomId of rooms) {
+					const webSocketService = webSocketFactory.createAgentService(agentId, roomId as string, runtime);
+					webSocketService.connect()
+						.then(() => {
+							logger.info(`[AGENT START] Agent ${agentId} connected to room ${roomId} via WebSocket`);
+						})
+						.catch((error) => {
+							logger.error(`[AGENT START] Failed to connect agent ${agentId} to room ${roomId} via WebSocket:`, error);
+						});
+				}
+			} catch (error) {
+				logger.error(`[AGENT START] Error connecting agent ${agentId} to WebSocket:`, error);
+				// Don't fail the agent start if WebSocket connection fails
+			}
 
 			logger.success(`[AGENT START] Successfully started agent: ${agent.name}`);
 			res.json({
@@ -373,14 +417,32 @@ export function agentRouter(
 		}
 
 		try {
-			await db.deleteAgent(agentId);
-
 			const runtime = agents.get(agentId);
 
-			// if agent is running, stop it
+			// Disconnect agent from WebSocket if running
 			if (runtime) {
+				try {
+					const serverUrl = `http://localhost:${process.env.PORT || 3000}`;
+					const webSocketFactory = WebSocketFactory.getInstance(serverUrl);
+					
+					// Get a list of rooms for this agent
+					const rooms = await runtime.getRoomsForParticipant(agentId);
+					
+					// Disconnect from each room
+					for (const roomId of rooms) {
+						webSocketFactory.removeService(agentId, roomId as string);
+						logger.info(`[AGENT DELETE] Agent ${agentId} disconnected from room ${roomId} via WebSocket`);
+					}
+				} catch (error) {
+					logger.error(`[AGENT DELETE] Error disconnecting agent ${agentId} from WebSocket:`, error);
+					// Don't fail the agent deletion if WebSocket disconnection fails
+				}
+				
+				// if agent is running, stop it
 				server?.unregisterAgent(agentId);
 			}
+			
+			await db.deleteAgent(agentId);
 			res.status(204).send();
 		} catch (error) {
 			logger.error("[AGENT DELETE] Error deleting agent:", error);

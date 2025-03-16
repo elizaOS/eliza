@@ -396,7 +396,7 @@ export async function getFileContent(
 }
 
 /**
- * Update or create a file in a repository
+ * Create or update a file in a repository
  */
 export async function updateFile(
 	token: string,
@@ -437,9 +437,22 @@ export async function updateFile(
 			}
 		}
 
+		// Full URL for debugging
+		const fileUrl = `${GITHUB_API_URL}/repos/${owner}/${repo}/contents/${path}`;
+		logger.info(`Updating file at: ${fileUrl}`);
+		
+		// Full request body for debugging
+		const requestBody = {
+			message,
+			content: Buffer.from(content).toString("base64"),
+			branch,
+			sha,
+		};
+		logger.info(`Request details: method=${method}, branch=${branch}, has_sha=${!!sha}`);
+
 		// Update or create the file
 		const response = await fetch(
-			`${GITHUB_API_URL}/repos/${owner}/${repo}/contents/${path}`,
+			fileUrl,
 			{
 				method,
 				headers: {
@@ -447,37 +460,43 @@ export async function updateFile(
 					Accept: "application/vnd.github.v3+json",
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({
-					message,
-					content: Buffer.from(content).toString("base64"),
-					branch,
-					sha,
-				}),
+				body: JSON.stringify(requestBody),
 			},
 		);
 
 		if (response.status === 200 || response.status === 201) {
 			logger.success(
-				`${existingContent !== null ? "Updated" : "Created"} file ${path} in ${owner}/${repo}`,
+				existingContent !== null ? "File updated" : "File created",
 			);
 			return true;
 		}
 
-		// Log more detailed error information
-		try {
-			const errorData = await response.json();
-			logger.error(
-				`Failed to ${existingContent !== null ? "update" : "create"} file: ${response.statusText}`,
-			);
-			logger.error(`Error details: ${JSON.stringify(errorData)}`);
-		} catch (jsonError) {
-			logger.error(
-				`Failed to ${existingContent !== null ? "update" : "create"} file: ${response.statusText}`,
-			);
+		// Log the full error response for debugging
+		const errorBody = await response.text();
+		logger.error(`Failed to update file: ${response.status} ${response.statusText}`);
+		logger.error(`Response body: ${errorBody}`);
+		
+		// Check for common GitHub API errors
+		if (response.status === 404) {
+			logger.error(`Repository or path not found: ${owner}/${repo}/${path}`);
+			// Try to check if the repo exists
+			const repoCheck = await fetch(`${GITHUB_API_URL}/repos/${owner}/${repo}`, {
+				headers: {
+					Authorization: `token ${token}`,
+					Accept: "application/vnd.github.v3+json",
+				}
+			});
+			
+			if (repoCheck.status === 404) {
+				logger.error(`Repository ${owner}/${repo} does not exist or is not accessible`);
+			} else {
+				logger.info(`Repository exists, but path is likely invalid`);
+			}
 		}
+		
 		return false;
 	} catch (error) {
-		logger.error(`Failed to update file: ${error.message}`);
+		logger.error(`Error updating file: ${error.message}`);
 		return false;
 	}
 }
@@ -669,5 +688,64 @@ async function saveGitHubCredentials(username: string, token: string): Promise<v
 		}
 	} catch (error) {
 		logger.error(`Failed to save GitHub credentials: ${error.message}`);
+	}
+}
+
+/**
+ * Ensure a directory exists in the repository
+ */
+export async function ensureDirectory(
+	token: string,
+	owner: string,
+	repo: string,
+	directoryPath: string,
+	branch = "main",
+): Promise<boolean> {
+	try {
+		// First check if the directory already exists
+		try {
+			const response = await fetch(
+				`${GITHUB_API_URL}/repos/${owner}/${repo}/contents/${directoryPath}?ref=${branch}`,
+				{
+					headers: {
+						Authorization: `token ${token}`,
+						Accept: "application/vnd.github.v3+json",
+					},
+				},
+			);
+			
+			// Directory exists
+			if (response.status === 200) {
+				logger.info(`Directory ${directoryPath} already exists`);
+				return true;
+			}
+		} catch (error) {
+			// Directory doesn't exist, we'll create it
+			logger.info(`Directory ${directoryPath} doesn't exist, creating it`);
+		}
+		
+		// Create a placeholder file in the directory 
+		// (GitHub doesn't have a concept of empty directories)
+		const placeholderPath = `${directoryPath}/.gitkeep`;
+		const result = await updateFile(
+			token,
+			owner,
+			repo,
+			placeholderPath,
+			"", // Empty content for placeholder
+			`Create directory: ${directoryPath}`,
+			branch,
+		);
+		
+		if (result) {
+			logger.success(`Created directory: ${directoryPath}`);
+			return true;
+		}
+		
+		logger.error(`Failed to create directory: ${directoryPath}`);
+		return false;
+	} catch (error) {
+		logger.error(`Error creating directory: ${error.message}`);
+		return false;
 	}
 }

@@ -4,10 +4,12 @@ import { SOCKET_MESSAGE_TYPE } from "@elizaos/core";
 import type { Server as SocketIOServer } from "socket.io";
 import type { Socket, RemoteSocket } from "socket.io";
 import type { DefaultEventsMap } from "socket.io/dist/typed-events";
+import { EventEmitter } from "node:events";
 
 export class SocketIORouter {
     private agents: Map<UUID, IAgentRuntime>;
     private connections: Map<string, UUID>; 
+    private agentServices: Map<UUID, { emit: (event: string, data: any) => void }> = new Map();
 
     constructor(agents: Map<UUID, IAgentRuntime>) {
         this.agents = agents;
@@ -108,58 +110,67 @@ export class SocketIORouter {
     }
 
     private handleRoomJoining(socket: Socket, payload: any) {
-        const { roomId, agentId } = payload;
+        const { roomId, entityId } = payload;
 
-        if (!roomId || !agentId) {
-            this.sendErrorResponse(socket, `agentId and roomId are required`);
+        if (!roomId || !entityId) {
+            this.sendErrorResponse(socket, `entityId and roomId are required`);
             return;
         }
 
-        const agentUuid = validateUuid(agentId);
+        const entityUuid = validateUuid(entityId);
 
-        this.connections.set(socket.id, agentUuid);
+        this.connections.set(socket.id, entityUuid);
         socket.join(roomId);
         
         // Log connection state for debugging
         logger.info(`[SocketIO] Current connections: ${Array.from(this.connections.entries())
-            .map(([socketId, agId]) => `${socketId} -> ${agId}`).join(', ')}`);
+            .map(([socketId, entityId]) => `${socketId} -> ${entityId}`).join(', ')}`);
         logger.info(`[SocketIO] Available agents: ${Array.from(this.agents.keys()).join(', ')}`);
         
-        const successMessage = `Agent ${agentUuid} joined room ${roomId}.`;
+        const successMessage = `Entity ${entityUuid} joined room ${roomId}.`;
         const responsePayload = {
             message: successMessage,
             roomId,
-            agentId: agentUuid
+            entityId: entityUuid
         };
         
-        // Send response in both formats for compatibility
+        // Send response
         socket.emit('message', {
             type: 'room_joined',
             payload: responsePayload
         });
-        socket.emit('room_joined', responsePayload);
         
         logger.info(`[SocketIO] ${successMessage}`);
     }
 
     private async handleBroadcastMessage(socket: Socket, payload: any) {
-        const { senderId, senderName, message, roomId, worldId, source } = payload;
+        // Convert from old field names if necessary for backward compatibility
+        const entityId = payload.entityId || payload.senderId;
+        const userName = payload.userName || payload.senderName;
+        const text = payload.text || payload.message;
+        const { roomId, worldId, source } = payload;
 
-        logger.info(`[SocketIO] Processing message in room ${roomId} from ${senderName || senderId}`);
+        logger.info(`[SocketIO] Processing message in room ${roomId} from ${userName || entityId}`);
 
         if (!roomId) {
             this.sendErrorResponse(socket, `roomId is required`);
             return;
         }
 
+        if (!entityId) {
+            this.sendErrorResponse(socket, `entityId is required`);
+            return;
+        }
+
+        if (!text) {
+            this.sendErrorResponse(socket, `text is required`);
+            return;
+        }
+
         try {
+            // Get all participants in this room
             const socketsInRoom = await socket.to(roomId).fetchSockets();
             logger.info(`[SocketIO] Found ${socketsInRoom.length} sockets in room ${roomId}`);
-            
-            if (socketsInRoom.length === 0) {
-                this.sendErrorResponse(socket, `No agents found in room ${roomId}`);
-                return;
-            }
             
             // Find a valid runtime to create UUIDs
             let runtime: IAgentRuntime | undefined;
@@ -176,189 +187,195 @@ export class SocketIORouter {
             // Create a properly typed room UUID for use in processing
             const typedRoomId = createUniqueUuid(runtime, roomId);
             
-            await this.processMessageForRecipients(socket, socketsInRoom, {
-                senderId, senderName, message, roomId: typedRoomId, worldId, source
-            });
+            // Process message for all eligible recipients
+            for (const clientSocket of socketsInRoom) {
+                // Get the entity ID associated with this socket
+                const recipientId = this.connections.get(clientSocket.id);
+                
+                // Skip if no entity ID is associated or it's the sender
+                if (!recipientId || recipientId === entityId) {
+                    continue;
+                }
+                
+                // Find if there's an agent runtime for this entity
+                const agentRuntime = this.agents.get(recipientId);
+                if (!agentRuntime) {
+                    // This is a client, not an agent - skip
+                    continue;
+                }
+                
+                logger.info(`[SocketIO] Delivering message to agent ${recipientId} in room ${roomId}`);
+                
+                // Create message memory for this agent
+                await this.createMessageMemoryForAgent(agentRuntime, {
+                    entityId, 
+                    userName, 
+                    text, 
+                    roomId: typedRoomId, 
+                    worldId, 
+                    source
+                });
+            }
 
-            // Broadcast to room using the original roomId for socket.io
-            this.broadcastMessageToRoom(socket, roomId, payload);
+            // Convert payload to standardized format for broadcasting
+            const standardizedPayload = {
+                entityId,
+                userName,
+                text,
+                roomId,
+                source,
+                worldId
+            };
+
+            // Broadcast to room using the standardized format
+            this.broadcastMessageToRoom(socket, roomId, standardizedPayload);
             
         } catch (error) {
             logger.error(`[SocketIO] Error processing broadcast: ${error.message}`, error);
-            this.sendErrorResponse(socket, `[SocketIO] Error fetching sockets in room: ${error.message}`);
-        }
-    }
-
-    private async processMessageForRecipients(
-        socket: Socket, 
-        socketsInRoom: RemoteSocket<DefaultEventsMap, any>[], 
-        messageData: { 
-            senderId: string, 
-            senderName?: string, 
-            message: string, 
-            roomId: UUID, 
-            worldId?: string, 
-            source?: string 
-        }
-    ) {
-        const { senderId, senderName, message, roomId, worldId, source } = messageData;
-        
-        for (const clientSocket of socketsInRoom) {
-            const agentId = this.connections.get(clientSocket.id);
-            logger.info(`[SocketIO] Processing message for agent ${agentId} in socket ${clientSocket.id}`);
-            
-            if (!agentId) {
-                logger.warn(`[SocketIO] No agent ID found for socket ${clientSocket.id}`);
-                continue;
-            }
-            
-            const senderUuid = validateUuid(senderId);
-            if (agentId === senderUuid) {
-                logger.info(`[SocketIO] Skipping sender's own socket ${clientSocket.id}`);
-                continue;
-            }
-
-            await this.createMessageInAgentMemory(socket, {
-                senderId, senderName, agentId, message, roomId, worldId, source
-            });
-        }
-    }
-
-    private async createMessageInAgentMemory(
-        socket: Socket,
-        data: {
-            senderId: string,
-            senderName?: string,
-            agentId: UUID,
-            message: string,
-            roomId: UUID,
-            worldId?: string,
-            source?: string
-        }
-    ) {
-        const { senderId, senderName, agentId, message, roomId, worldId, source } = data;
-        
-        logger.info(`[SocketIO] Creating new message for agent ${agentId}`);
-        
-        // Find the appropriate runtime
-        const runtime = this.agents.get(agentId) || this.agents.get(senderId as UUID);
-        if (!runtime) {
-            this.sendErrorResponse(socket, `[SocketIO] No runtime found.`);
-            return;
-        }
-
-        const text = message?.trim();
-        if (!text) {
-            this.sendErrorResponse(socket, `[SocketIO] No text found.`);
-            return;
-        }
-
-        try {
-            // Generate proper UUIDs
-            const uniqueRoomId = createUniqueUuid(runtime, roomId);
-            const entityId = createUniqueUuid(runtime, senderId);
-            
-            // Ensure connection for entity
-            try {
-                logger.info(`[SocketIO] Ensuring connection for entity ${entityId} in room ${uniqueRoomId}`);
-                await runtime.ensureConnection({
-                    entityId,
-                    roomId: uniqueRoomId,
-                    userName: senderName,
-                    name: senderName,
-                    source,
-                    type: ChannelType.API,
-                    worldId: worldId as UUID,
-                });
-                logger.info(`[SocketIO] Connection ensured successfully`);
-            } catch (error) {
-                logger.error(`[SocketIO] Error in ensureConnection: ${error.message}`);
-            }
-            
-            // Create or update relationship
-            try {
-                await this.ensureRelationship(runtime, entityId);
-            } catch (error) {
-                logger.error(`[SocketIO] Error handling relationship: ${error.message}`);
-            }
-
-            // Create memory for message
-            await this.createMemoryForMessage(runtime, {
-                text, source, entityId, roomId: uniqueRoomId
-            });
-            
-        } catch (error) {
-            logger.error(`[SocketIO] Error processing message: ${error.message}`, error);
             this.sendErrorResponse(socket, `[SocketIO] Error processing message: ${error.message}`);
         }
     }
 
-    private async ensureRelationship(runtime: IAgentRuntime, entityId: UUID) {
-        const existingRelationship = await runtime.getRelationship({
-            sourceEntityId: entityId,
-            targetEntityId: runtime.agentId,
-        });
-
-        if (!existingRelationship && entityId !== runtime.agentId) {
-            logger.info(`[SocketIO] Creating new relationship between ${entityId} and ${runtime.agentId}`);
-            await runtime.createRelationship({
-                sourceEntityId: entityId,
-                targetEntityId: runtime.agentId,
-                tags: ["message_interaction"],
-                metadata: {
-                    lastInteraction: Date.now(),
-                    channel: "socketio",
-                },
+    /**
+     * Create a message memory entry for an agent
+     */
+    private async createMessageMemoryForAgent(
+        runtime: IAgentRuntime,
+        data: {
+            entityId: string,
+            userName?: string,
+            text: string,
+            roomId: UUID,
+            source?: string,
+            worldId?: string
+        }
+    ) {
+        const { entityId, userName, text, roomId, source, worldId } = data;
+        
+        logger.info(`[SocketIO] Creating memory for message from ${entityId} to agent ${runtime.agentId}`);
+        
+        try {
+            // Generate proper UUIDs
+            const typedEntityId = createUniqueUuid(runtime, entityId);
+            
+            // Ensure connection for entity
+            await runtime.ensureConnection({
+                entityId: typedEntityId,
+                roomId,
+                userName,
+                name: userName,
+                source: source || "websocket",
+                type: ChannelType.API,
+                worldId: worldId as UUID,
             });
-            logger.info(`[SocketIO] Relationship created successfully`);
+            
+            // Create memory for message
+            const messageId = createUniqueUuid(runtime, Date.now().toString());
+            const content: Content = {
+                text,
+                attachments: [],
+                source: source || "websocket",
+                inReplyTo: undefined,
+                channelType: ChannelType.API,
+            };
+
+            const memory: Memory = {
+                id: messageId,
+                agentId: runtime.agentId,
+                entityId: typedEntityId,
+                roomId,
+                content,
+                createdAt: Date.now(),
+            };
+
+            try {
+                // Add embedding to memory for better retrieval
+                logger.info(`[SocketIO] Adding embedding to memory for message ${memory.id}`);
+                await runtime.addEmbeddingToMemory(memory);
+            } catch (embeddingError) {
+                logger.error(`[SocketIO] Error adding embedding: ${embeddingError.message}`, embeddingError);
+                // Continue without embedding if it fails
+            }
+            
+            try {
+                // Create the memory in the database
+                logger.info(`[SocketIO] Creating memory for message ${memory.id}`);
+                await runtime.createMemory(memory, "messages");
+                logger.info(`[SocketIO] Created memory successfully`);
+            } catch (memoryError) {
+                logger.error(`[SocketIO] Error creating memory: ${memoryError.message}`, memoryError);
+                throw memoryError; // Rethrow since this is critical
+            }
+            
+            // Trigger the agent's WebSocket service to process this message
+            const agentService = this.getAgentWebSocketService(runtime.agentId);
+            if (agentService) {
+                logger.info(`[SocketIO] Found WebSocket service for agent ${runtime.agentId}, triggering message processing`);
+                agentService.emit('processMessage', memory);
+            } else {
+                logger.info(`[SocketIO] Agent ${runtime.agentId} doesn't have a WebSocket service, relying on memory monitoring`);
+            }
+            
+            // Ensure relationship
+            await this.ensureRelationship(runtime, typedEntityId);
+            
+        } catch (error) {
+            logger.error(`[SocketIO] Error creating memory: ${error.message}`, error);
         }
     }
 
-    private async createMemoryForMessage(
-        runtime: IAgentRuntime,
-        data: {
-            text: string,
-            source?: string,
-            entityId: UUID,
-            roomId: UUID
+    /**
+     * Register a service for an agent
+     */
+    public registerAgentService(agentId: UUID, service: { emit: (event: string, data: any) => void }): void {
+        logger.info(`[SocketIO] Registering WebSocket service for agent ${agentId}`);
+        this.agentServices.set(agentId, service);
+    }
+
+    /**
+     * Unregister a service for an agent
+     */
+    public unregisterAgentService(agentId: UUID): void {
+        logger.info(`[SocketIO] Unregistering WebSocket service for agent ${agentId}`);
+        this.agentServices.delete(agentId);
+    }
+
+    /**
+     * Get WebSocket service for agent if it exists
+     */
+    private getAgentWebSocketService(agentId: UUID): { emit: (event: string, data: any) => void } | undefined {
+        return this.agentServices.get(agentId);
+    }
+
+    private async ensureRelationship(runtime: IAgentRuntime, entityId: UUID) {
+        try {
+            const existingRelationship = await runtime.getRelationship({
+                sourceEntityId: entityId,
+                targetEntityId: runtime.agentId,
+            });
+
+            if (!existingRelationship && entityId !== runtime.agentId) {
+                logger.info(`[SocketIO] Creating new relationship between ${entityId} and ${runtime.agentId}`);
+                await runtime.createRelationship({
+                    sourceEntityId: entityId,
+                    targetEntityId: runtime.agentId,
+                    tags: ["message_interaction"],
+                    metadata: {
+                        lastInteraction: Date.now(),
+                        channel: "socketio",
+                    },
+                });
+                logger.info(`[SocketIO] Relationship created successfully`);
+            }
+        } catch (error) {
+            logger.error(`[SocketIO] Error handling relationship: ${error.message}`);
         }
-    ) {
-        const { text, source, entityId, roomId } = data;
-        
-        // Generate a message ID
-        const timestamp = Date.now().toString();
-        const messageId = createUniqueUuid(runtime, timestamp);
-        
-        const content: Content = {
-            text,
-            attachments: [],
-            source,
-            inReplyTo: undefined,
-            channelType: ChannelType.API,
-        };
-
-        const memory: Memory = {
-            id: createUniqueUuid(runtime, messageId),
-            agentId: runtime.agentId,
-            entityId,
-            roomId,
-            content,
-            createdAt: Date.now(),
-        };
-
-        logger.info(`[SocketIO] Adding embedding to memory for message ${memory.id}`);
-        await runtime.addEmbeddingToMemory(memory);
-        
-        logger.info(`[SocketIO] Creating memory for message ${memory.id}`);
-        await runtime.createMemory(memory, "messages");
-        logger.info(`[SocketIO] Created memory successfully`);
     }
 
     private broadcastMessageToRoom(socket: Socket, roomId: string, payload: any) {
         logger.info(`[SocketIO] Broadcasting message to room ${roomId}`);
         
-        // Send using both formats for compatibility
-        socket.to(roomId).emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), payload);
+        // Broadcast message to all clients in the room
         socket.to(roomId).emit('message', {
             type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
             payload
@@ -374,7 +391,7 @@ export class SocketIORouter {
             }
         });
         
-        logger.info(`[SocketIO] Broadcasted message from ${payload.senderId} to Room ${roomId}`);
+        logger.info(`[SocketIO] Broadcasted message from ${payload.entityId} to Room ${roomId}`);
     }
 
     private sendErrorResponse(socket: Socket, errorMessage: string) {
