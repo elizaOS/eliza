@@ -1,50 +1,36 @@
 import {
-	type Agent,
-	type Component,
-	DatabaseAdapter,
-	type Entity,
-	type Memory,
-	type Participant,
-	type Relationship,
-	type Room,
-	type Task,
-	type UUID,
-	type World,
-	logger
-} from "@elizaos/core";
-import type { Log } from "@elizaos/core";
+  type Agent,
+  type Component,
+  DatabaseAdapter,
+  type Entity,
+  type Memory,
+  type Participant,
+  type Relationship,
+  type Room,
+  type Task,
+  type UUID,
+  type World,
+  logger,
+} from '@elizaos/core';
+import type { Log } from '@elizaos/core';
+import { and, cosineDistance, count, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
+import { v4 } from 'uuid';
+import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
 import {
-	and,
-	cosineDistance,
-	count,
-	desc,
-	eq,
-	gte,
-	inArray,
-	lte,
-	or,
-	sql,
-} from "drizzle-orm";
-import { v4 } from "uuid";
-import {
-	DIMENSION_MAP,
-	type EmbeddingDimensionColumn,
-} from "./schema/embedding";
-import {
-	agentTable,
-	cacheTable,
-	componentTable,
-	embeddingTable,
-	entityTable,
-	logTable,
-	memoryTable,
-	participantTable,
-	relationshipTable,
-	roomTable,
-	taskTable,
-	worldTable
-} from "./schema/index";
-import type { DrizzleOperations } from "./types";
+  agentTable,
+  cacheTable,
+  componentTable,
+  embeddingTable,
+  entityTable,
+  logTable,
+  memoryTable,
+  participantTable,
+  relationshipTable,
+  roomTable,
+  taskTable,
+  worldTable,
+} from './schema/index';
+import type { DrizzleOperations } from './types';
 
 // Define the metadata type inline since we can't import it
 /**
@@ -61,14 +47,14 @@ import type { DrizzleOperations } from "./types";
  */
 
 type MemoryMetadata = {
-	type: string;
-	source?: string;
-	sourceId?: UUID;
-	scope?: string;
-	timestamp?: number;
-	tags?: string[];
-	documentId?: UUID;
-	position?: number;
+  type: string;
+  source?: string;
+  sourceId?: UUID;
+  scope?: string;
+  timestamp?: number;
+  tags?: string[];
+  documentId?: UUID;
+  position?: number;
 };
 
 /**
@@ -77,15 +63,15 @@ type MemoryMetadata = {
  * using Drizzle ORM. It implements the DatabaseAdapter interface and handles operations
  * for various entity types including agents, entities, components, memories, rooms,
  * participants, relationships, tasks, and more.
- * 
+ *
  * The adapter includes built-in retry logic for database operations, embedding dimension
  * management, and transaction support. Concrete implementations must provide the
  * withDatabase method to execute operations against their specific database.
- * 
+ *
  * @template TDatabase - The type of Drizzle operations supported by the adapter.
  */
 export abstract class BaseDrizzleAdapter<
-	TDatabase extends DrizzleOperations,
+  TDatabase extends DrizzleOperations,
 > extends DatabaseAdapter<TDatabase> {
 	protected readonly maxRetries: number = 3;
 	protected readonly baseDelay: number = 1000;
@@ -891,1271 +877,1176 @@ export abstract class BaseDrizzleAdapter<
                     LIMIT ${opts.query_match_count}
                 `);
 
-				return results.rows
-					.map((row) => ({
-						embedding: Array.isArray(row.embedding)
-							? row.embedding
-							: typeof row.embedding === "string"
-								? JSON.parse(row.embedding)
-								: [],
-						levenshtein_score: Number(row.levenshtein_score),
-					}))
-					.filter((row) => Array.isArray(row.embedding));
-			} catch (error) {
-				logger.error("Error in getCachedEmbeddings:", {
-					error: error instanceof Error ? error.message : String(error),
-					tableName: opts.query_table_name,
-					fieldName: opts.query_field_name,
-				});
-				if (
-					error instanceof Error &&
-					error.message ===
-						"levenshtein argument exceeds maximum length of 255 characters"
-				) {
-					return [];
-				}
-				throw error;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously logs an event in the database.
-	 * @param {Object} params - The parameters for logging an event.
-	 * @param {Object} params.body - The body of the event to log.
-	 * @param {UUID} params.entityId - The ID of the entity associated with the event.
-	 * @param {UUID} params.roomId - The ID of the room associated with the event.
-	 * @param {string} params.type - The type of the event to log.
-	 * @returns {Promise<void>} A Promise that resolves when the event is logged.
-	 */
-	async log(params: {
-		body: { [key: string]: unknown };
-		entityId: UUID;
-		roomId: UUID;
-		type: string;
-	}): Promise<void> {
-		return this.withDatabase(async () => {
-			try {
-				await this.db.transaction(async (tx) => {
-					await tx.insert(logTable).values({
-						body: sql`${params.body}::jsonb`,
-						entityId: params.entityId,
-						roomId: params.roomId,
-						type: params.type,
-					});
-				});
-			} catch (error) {
-				logger.error("Failed to create log entry:", {
-					error: error instanceof Error ? error.message : String(error),
-					type: params.type,
-					roomId: params.roomId,
-					entityId: params.entityId,
-				});
-				throw error;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves logs from the database based on the provided parameters.
-	 * @param {Object} params - The parameters for retrieving logs.
-	 * @param {UUID} params.entityId - The ID of the entity associated with the logs.
-	 * @param {UUID} [params.roomId] - The ID of the room associated with the logs.
-	 * @param {string} [params.type] - The type of the logs to retrieve.
-	 * @param {number} [params.count] - The maximum number of logs to retrieve.
-	 * @param {number} [params.offset] - The offset to retrieve logs from.
-	 * @returns {Promise<Log[]>} A Promise that resolves to an array of logs.
-	 */
-	async getLogs(
-		params: {
-			entityId: UUID;
-			roomId?: UUID;
-			type?: string;
-			count?: number;
-			offset?: number;
-		},
-	): Promise<Log[]> {
-		const { entityId, roomId, type, count, offset } = params;
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.select()
-				.from(logTable)
-				.where(
-					and(
-						eq(logTable.entityId, entityId),
-						roomId ? eq(logTable.roomId, roomId) : undefined,
-						type ? eq(logTable.type, type) : undefined,
-					),
-				)
-				.orderBy(desc(logTable.createdAt))
-				.limit(count ?? 10)
-				.offset(offset ?? 0);
-			return result;
-		});
-
-	}
-
-	/**
-	 * Asynchronously deletes a log from the database based on the provided parameters.
-	 * @param {UUID} logId - The ID of the log to delete.
-	 * @returns {Promise<void>} A Promise that resolves when the log is deleted.
-	 */
-	async deleteLog(logId: UUID): Promise<void> {
-		return this.withDatabase(async () => {
-			await this.db.delete(logTable).where(eq(logTable.id, logId));
-		});
-	}
-
-	/**
-	 * Asynchronously searches for memories in the database based on the provided parameters.
-	 * @param {Object} params - The parameters for searching for memories.
-	 * @param {string} params.tableName - The name of the table to search for memories in.
-	 * @param {UUID} params.roomId - The ID of the room to search for memories in.
-	 * @param {number[]} params.embedding - The embedding to search for.
-	 * @param {number} [params.match_threshold] - The threshold for the cosine distance.
-	 * @param {number} [params.count] - The maximum number of memories to retrieve.
-	 * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
-	 * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
-	 */
-	async searchMemories(params: {
-		tableName: string;
-		roomId: UUID;
-		embedding: number[];
-		match_threshold: number;
-		count: number;
-		unique: boolean;
-	}): Promise<Memory[]> {
-		return await this.searchMemoriesByEmbedding(params.embedding, {
-			match_threshold: params.match_threshold,
-			count: params.count,
-			roomId: params.roomId,
-			unique: params.unique,
-			tableName: params.tableName,
-		});
-	}
-
-	/**
-	 * Asynchronously searches for memories in the database based on the provided parameters.
-	 * @param {number[]} embedding - The embedding to search for.
-	 * @param {Object} params - The parameters for searching for memories.
-	 * @param {number} [params.match_threshold] - The threshold for the cosine distance.
-	 * @param {number} [params.count] - The maximum number of memories to retrieve.
-	 * @param {UUID} [params.roomId] - The ID of the room to search for memories in.
-	 * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
-	 * @param {string} [params.tableName] - The name of the table to search for memories in.
-	 * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
-	 */
-	async searchMemoriesByEmbedding(
-		embedding: number[],
-		params: {
-			match_threshold?: number;
-			count?: number;
-			roomId?: UUID;
-			unique?: boolean;
-			tableName: string;
-		},
-	): Promise<Memory[]> {
-		return this.withDatabase(async () => {
-			const cleanVector = embedding.map((n) =>
-				Number.isFinite(n) ? Number(n.toFixed(6)) : 0,
-			);
-
-			const similarity = sql<number>`1 - (${cosineDistance(
-				embeddingTable[this.embeddingDimension],
-				cleanVector,
-			)})`;
-
-			const conditions = [eq(memoryTable.type, params.tableName)];
-
-			if (params.unique) {
-				conditions.push(eq(memoryTable.unique, true));
-			}
-
-			conditions.push(eq(memoryTable.agentId, this.agentId));
-
-			if (params.roomId) {
-				conditions.push(eq(memoryTable.roomId, params.roomId));
-			}
-
-			if (params.match_threshold) {
-				conditions.push(gte(similarity, params.match_threshold));
-			}
-
-			const results = await this.db
-				.select({
-					memory: memoryTable,
-					similarity,
-					embedding: embeddingTable[this.embeddingDimension],
-				})
-				.from(embeddingTable)
-				.innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
-				.where(and(...conditions))
-				.orderBy(desc(similarity))
-				.limit(params.count ?? 10);
-
-			return results.map((row) => ({
-				id: row.memory.id as UUID,
-				type: row.memory.type,
-				createdAt: row.memory.createdAt,
-				content:
-					typeof row.memory.content === "string"
-						? JSON.parse(row.memory.content)
-						: row.memory.content,
-				entityId: row.memory.entityId as UUID,
-				agentId: row.memory.agentId as UUID,
-				roomId: row.memory.roomId as UUID,
-				unique: row.memory.unique,
-				embedding: row.embedding ?? undefined,
-				similarity: row.similarity,
-			}));
-		});
-	}
-
-	/**
-	 * Asynchronously creates a new memory in the database.
-	 * @param {Memory & { metadata?: MemoryMetadata }} memory - The memory object to create.
-	 * @param {string} tableName - The name of the table to create the memory in.
-	 * @returns {Promise<UUID>} A Promise that resolves to the ID of the created memory.
-	 */
-	async createMemory(
-		memory: Memory & { metadata?: MemoryMetadata },
-		tableName: string,
-	): Promise<UUID> {
-		console.log("memory.id is", memory.id)
-		logger.debug("DrizzleAdapter createMemory:", {
-			memoryId: memory.id,
-			embeddingLength: memory.embedding?.length,
-			contentLength: memory.content?.text?.length,
-		});
-
-		let isUnique = true;
-		if (memory.embedding && Array.isArray(memory.embedding)) {
-			const similarMemories = await this.searchMemoriesByEmbedding(
-				memory.embedding,
-				{
-					tableName,
-					roomId: memory.roomId,
-					match_threshold: 0.95,
-					count: 1,
-				},
-			);
-			isUnique = similarMemories.length === 0;
-		}
-
-		const contentToInsert =
-			typeof memory.content === "string"
-				? JSON.parse(memory.content)
-				: memory.content;
-
-		const memoryId = memory.id ?? (v4() as UUID);
-
-		await this.db.transaction(async (tx) => {
-			await tx.insert(memoryTable).values([
-				{
-					id: memoryId,
-					type: tableName,
-					content: sql`${contentToInsert}::jsonb`,
-					metadata: sql`${memory.metadata || {}}::jsonb`,
-					entityId: memory.entityId,
-					roomId: memory.roomId,
-					agentId: memory.agentId,
-					unique: memory.unique ?? isUnique,
-					createdAt: memory.createdAt,
-				},
-			]);
-
-			if (memory.embedding && Array.isArray(memory.embedding)) {
-				const embeddingValues: Record<string, unknown> = {
-					id: v4(),
-					memoryId: memoryId,
-					createdAt: memory.createdAt,
-				};
-
-				const cleanVector = memory.embedding.map((n) =>
-					Number.isFinite(n) ? Number(n.toFixed(6)) : 0,
-				);
-
-				embeddingValues[this.embeddingDimension] = cleanVector;
-
-				await tx.insert(embeddingTable).values([embeddingValues]);
-			}
-		});
-
-		return memoryId;
-	}
-
-	/**
-	 * Asynchronously deletes a memory from the database based on the provided parameters.
-	 * @param {UUID} memoryId - The ID of the memory to delete.
-	 * @returns {Promise<void>} A Promise that resolves when the memory is deleted.
-	 */
-	async deleteMemory(memoryId: UUID): Promise<void> {
-		return this.withDatabase(async () => {
-			await this.db.transaction(async (tx) => {
-				await tx
-					.delete(embeddingTable)
-					.where(eq(embeddingTable.memoryId, memoryId));
-
-				await tx
-					.delete(memoryTable)
-					.where(
-						and(eq(memoryTable.id, memoryId)),
-					);
-			});
-
-			logger.debug("Memory removed successfully:", {
-				memoryId
-			});
-		});
-	}
-
-	/**
-	 * Asynchronously deletes all memories from the database based on the provided parameters.
-	 * @param {UUID} roomId - The ID of the room to delete memories from.
-	 * @param {string} tableName - The name of the table to delete memories from.
-	 * @returns {Promise<void>} A Promise that resolves when the memories are deleted.
-	 */
-	async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
-		return this.withDatabase(async () => {
-			await this.db.transaction(async (tx) => {
-				const memoryIds = await tx
-					.select({ id: memoryTable.id })
-					.from(memoryTable)
-					.where(
-						and(
-							eq(memoryTable.roomId, roomId),
-							eq(memoryTable.type, tableName),
-						),
-					);
-
-				if (memoryIds.length > 0) {
-					await tx.delete(embeddingTable).where(
-						inArray(
-							embeddingTable.memoryId,
-							memoryIds.map((m) => m.id),
-						),
-					);
-
-					await tx
-						.delete(memoryTable)
-						.where(
-							and(
-								eq(memoryTable.roomId, roomId),
-								eq(memoryTable.type, tableName),
-							),
-						);
-				}
-			});
-
-			logger.debug("All memories removed successfully:", {
-				roomId,
-				tableName,
-			});
-		});
-	}
-
-	/**
-	 * Asynchronously counts the number of memories in the database based on the provided parameters.
-	 * @param {UUID} roomId - The ID of the room to count memories in.
-	 * @param {boolean} [unique] - Whether to count unique memories only.
-	 * @param {string} [tableName] - The name of the table to count memories in.
-	 * @returns {Promise<number>} A Promise that resolves to the number of memories.
-	 */
-	async countMemories(
-		roomId: UUID,
-		unique = true,
-		tableName = "",
-	): Promise<number> {
-		if (!tableName) throw new Error("tableName is required");
-
-		return this.withDatabase(async () => {
-			const conditions = [
-				eq(memoryTable.roomId, roomId),
-				eq(memoryTable.type, tableName),
-			];
-
-			if (unique) {
-				conditions.push(eq(memoryTable.unique, true));
-			}
-
-			const result = await this.db
-				.select({ count: sql<number>`count(*)` })
-				.from(memoryTable)
-				.where(and(...conditions));
-
-			return Number(result[0]?.count ?? 0);
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves a room from the database based on the provided parameters.
-	 * @param {UUID} roomId - The ID of the room to retrieve.
-	 * @returns {Promise<Room | null>} A Promise that resolves to the room if found, null otherwise.
-	 */
-	async getRoom(roomId: UUID): Promise<Room | null> {
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.select({
-					id: roomTable.id,
-					channelId: roomTable.channelId,
-					agentId: roomTable.agentId,
-					serverId: roomTable.serverId,
-					worldId: roomTable.worldId,
-					type: roomTable.type,
-					source: roomTable.source,
-				})
-				.from(roomTable)
-				.where(
-					and(eq(roomTable.id, roomId), eq(roomTable.agentId, this.agentId)),
-				)
-				.limit(1);
-			if (result.length === 0) return null;
-			return result[0];
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves all rooms from the database based on the provided parameters.
-	 * @param {UUID} worldId - The ID of the world to retrieve rooms from.
-	 * @returns {Promise<Room[]>} A Promise that resolves to an array of rooms.
-	 */
-	async getRooms(worldId: UUID): Promise<Room[]> {
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.select()
-				.from(roomTable)
-				.where(eq(roomTable.worldId, worldId));
-			return result;
-		});
-	}
-
-	/**
-	 * Asynchronously updates a room in the database based on the provided parameters.
-	 * @param {Room} room - The room object to update.
-	 * @returns {Promise<void>} A Promise that resolves when the room is updated.
-	 */
-	async updateRoom(room: Room): Promise<void> {
-		return this.withDatabase(async () => {
-			await this.db
-				.update(roomTable)
-				.set({ ...room, agentId: this.agentId })
-				.where(eq(roomTable.id, room.id));
-		});
-	}
-
-	/**
-	 * Asynchronously creates a new room in the database based on the provided parameters.
-	 * @param {Room} room - The room object to create.
-	 * @returns {Promise<UUID>} A Promise that resolves to the ID of the created room.
-	 */
-	async createRoom({
-		id,
-		name,
-		source,
-		type,
-		channelId,
-		serverId,
-		worldId,
-	}: Room): Promise<UUID> {
-		return this.withDatabase(async () => {
-			const newRoomId = id || v4();
-			await this.db
-				.insert(roomTable)
-				.values({
-					id: newRoomId,
-					name,
-					agentId: this.agentId,
-					source,
-					type,
-					channelId,
-					serverId,
-					worldId,
-				})
-				.onConflictDoNothing({ target: roomTable.id });
-			return newRoomId as UUID;
-		});
-	}
-
-	/**
-	 * Asynchronously deletes a room from the database based on the provided parameters.
-	 * @param {UUID} roomId - The ID of the room to delete.
-	 * @returns {Promise<void>} A Promise that resolves when the room is deleted.
-	 */
-	async deleteRoom(roomId: UUID): Promise<void> {
-		if (!roomId) throw new Error("Room ID is required");
-		return this.withDatabase(async () => {
-			await this.db.transaction(async (tx) => {
-				await tx.delete(roomTable).where(eq(roomTable.id, roomId));
-			});
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves all rooms for a participant from the database based on the provided parameters.
-	 * @param {UUID} entityId - The ID of the entity to retrieve rooms for.
-	 * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
-	 */
-	async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.select({ roomId: participantTable.roomId })
-				.from(participantTable)
-				.innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-				.where(
-					and(
-						eq(participantTable.entityId, entityId),
-						eq(roomTable.agentId, this.agentId),
-					),
-				);
-
-			return result.map((row) => row.roomId as UUID);
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves all rooms for a list of participants from the database based on the provided parameters.
-	 * @param {UUID[]} entityIds - The IDs of the entities to retrieve rooms for.
-	 * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
-	 */
-	async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.selectDistinct({ roomId: participantTable.roomId })
-				.from(participantTable)
-				.innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-				.where(
-					and(
-						inArray(participantTable.entityId, entityIds),
-						eq(roomTable.agentId, this.agentId),
-					),
-				);
-
-			return result.map((row) => row.roomId as UUID);
-		});
-	}
-
-	/**
-	 * Asynchronously adds a participant to a room in the database based on the provided parameters.
-	 * @param {UUID} entityId - The ID of the entity to add to the room.
-	 * @param {UUID} roomId - The ID of the room to add the entity to.
-	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the participant was added successfully.
-	 */
-	async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-		return this.withDatabase(async () => {
-			try {
-				await this.db
-					.insert(participantTable)
-					.values({
-						entityId,
-						roomId,
-						agentId: this.agentId,
-					})
-					.onConflictDoNothing();
-				return true;
-			} catch (error) {
-				logger.error("Error adding participant", {
-					error: error instanceof Error ? error.message : String(error),
-					entityId,
-					roomId,
-					agentId: this.agentId,
-				});
-				return false;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously removes a participant from a room in the database based on the provided parameters.
-	 * @param {UUID} entityId - The ID of the entity to remove from the room.
-	 * @param {UUID} roomId - The ID of the room to remove the entity from.
-	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the participant was removed successfully.
-	 */
-	async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-		return this.withDatabase(async () => {
-			try {
-				const result = await this.db.transaction(async (tx) => {
-					return await tx
-						.delete(participantTable)
-						.where(
-							and(
-								eq(participantTable.entityId, entityId),
-								eq(participantTable.roomId, roomId),
-							),
-						)
-						.returning();
-				});
-
-				const removed = result.length > 0;
-				logger.debug(`Participant ${removed ? "removed" : "not found"}:`, {
-					entityId,
-					roomId,
-					removed,
-				});
-
-				return removed;
-			} catch (error) {
-				logger.error("Failed to remove participant:", {
-					error: error instanceof Error ? error.message : String(error),
-					entityId,
-					roomId,
-				});
-				return false;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves all participants for an entity from the database based on the provided parameters.
-	 * @param {UUID} entityId - The ID of the entity to retrieve participants for.
-	 * @returns {Promise<Participant[]>} A Promise that resolves to an array of participants.
-	 */
-	async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.select({
-					id: participantTable.id,
-					entityId: participantTable.entityId,
-					roomId: participantTable.roomId,
-				})
-				.from(participantTable)
-				.where(eq(participantTable.entityId, entityId));
-
-			const entity = await this.getEntityById(entityId);
-
-			if (!entity) {
-				return [];
-			}
-
-			return result.map((row) => ({
-				id: row.id as UUID,
-				entity: entity,
-			}));
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves all participants for a room from the database based on the provided parameters.
-	 * @param {UUID} roomId - The ID of the room to retrieve participants for.
-	 * @returns {Promise<UUID[]>} A Promise that resolves to an array of entity IDs.
-	 */
-	async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.select({ entityId: participantTable.entityId })
-				.from(participantTable)
-				.where(
-					and(
-						eq(participantTable.roomId, roomId),
-						eq(participantTable.agentId, this.agentId),
-					),
-				);
-
-			return result.map((row) => row.entityId as UUID);
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves the user state for a participant in a room from the database based on the provided parameters.
-	 * @param {UUID} roomId - The ID of the room to retrieve the participant's user state for.
-	 * @param {UUID} entityId - The ID of the entity to retrieve the user state for.
-	 * @returns {Promise<"FOLLOWED" | "MUTED" | null>} A Promise that resolves to the participant's user state.
-	 */
-	async getParticipantUserState(
-		roomId: UUID,
-		entityId: UUID,
-	): Promise<"FOLLOWED" | "MUTED" | null> {
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.select({ roomState: participantTable.roomState })
-				.from(participantTable)
-				.where(
-					and(
-						eq(participantTable.roomId, roomId),
-						eq(participantTable.entityId, entityId),
-						eq(participantTable.agentId, this.agentId),
-					),
-				)
-				.limit(1);
-
-			return (result[0]?.roomState as "FOLLOWED" | "MUTED" | null) ?? null;
-		});
-	}
-
-	/**
-	 * Asynchronously sets the user state for a participant in a room in the database based on the provided parameters.
-	 * @param {UUID} roomId - The ID of the room to set the participant's user state for.
-	 * @param {UUID} entityId - The ID of the entity to set the user state for.
-	 * @param {string} state - The state to set the participant's user state to.
-	 * @returns {Promise<void>} A Promise that resolves when the participant's user state is set.
-	 */
-	async setParticipantUserState(
-		roomId: UUID,
-		entityId: UUID,
-		state: "FOLLOWED" | "MUTED" | null,
-	): Promise<void> {
-		return this.withDatabase(async () => {
-			try {
-				await this.db.transaction(async (tx) => {
-					await tx
-						.update(participantTable)
-						.set({ roomState: state })
-						.where(
-							and(
-								eq(participantTable.roomId, roomId),
-								eq(participantTable.entityId, entityId),
-								eq(participantTable.agentId, this.agentId),
-							),
-						);
-				});
-			} catch (error) {
-				logger.error("Failed to set participant user state:", {
-					roomId,
-					entityId,
-					state,
-					error: error instanceof Error ? error.message : String(error),
-				});
-				throw error;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously creates a new relationship in the database based on the provided parameters.
-	 * @param {Object} params - The parameters for creating a new relationship.
-	 * @param {UUID} params.sourceEntityId - The ID of the source entity.
-	 * @param {UUID} params.targetEntityId - The ID of the target entity.
-	 * @param {string[]} [params.tags] - The tags for the relationship.
-	 * @param {Object} [params.metadata] - The metadata for the relationship.
-	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the relationship was created successfully.
-	 */
-	async createRelationship(params: {
-		sourceEntityId: UUID;
-		targetEntityId: UUID;
-		tags?: string[];
-		metadata?: { [key: string]: unknown };
-	}): Promise<boolean> {
-		return this.withDatabase(async () => {
-			const id = v4();
-			const saveParams = {
-				id,
-				sourceEntityId: params.sourceEntityId,
-				targetEntityId: params.targetEntityId,
-				agentId: this.agentId,
-				tags: params.tags || [],
-				metadata: params.metadata || {},
-			};
-			try {
-				await this.db.insert(relationshipTable).values(saveParams);
-				return true;
-			} catch (error) {
-				logger.error("Error creating relationship:", {
-					error: error instanceof Error ? error.message : String(error),
-					saveParams,
-				});
-				return false;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously updates an existing relationship in the database based on the provided parameters.
-	 * @param {Relationship} relationship - The relationship object to update.
-	 * @returns {Promise<void>} A Promise that resolves when the relationship is updated.
-	 */
-	async updateRelationship(relationship: Relationship): Promise<void> {
-		return this.withDatabase(async () => {
-			try {
-				await this.db
-					.update(relationshipTable)
-					.set({
-						tags: relationship.tags || [],
-						metadata: relationship.metadata || {},
-					})
-					.where(eq(relationshipTable.id, relationship.id));
-			} catch (error) {
-				logger.error("Error updating relationship:", {
-					error: error instanceof Error ? error.message : String(error),
-					relationship,
-				});
-				throw error;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves a relationship from the database based on the provided parameters.
-	 * @param {Object} params - The parameters for retrieving a relationship.
-	 * @param {UUID} params.sourceEntityId - The ID of the source entity.
-	 * @param {UUID} params.targetEntityId - The ID of the target entity.
-	 * @returns {Promise<Relationship | null>} A Promise that resolves to the relationship if found, null otherwise.
-	 */
-	async getRelationship(params: {
-		sourceEntityId: UUID;
-		targetEntityId: UUID;
-	}): Promise<Relationship | null> {
-		return this.withDatabase(async () => {
-			try {
-				const result = await this.db
-					.select()
-					.from(relationshipTable)
-					.where(
-						and(
-							eq(relationshipTable.sourceEntityId, params.sourceEntityId),
-							eq(relationshipTable.targetEntityId, params.targetEntityId),
-							eq(relationshipTable.agentId, this.agentId),
-						),
-					)
-					.limit(1);
-
-				if (result.length === 0) {
-					return null;
-				}
-
-				return {
-					id: result[0].id,
-					sourceEntityId: result[0].sourceEntityId,
-					targetEntityId: result[0].targetEntityId,
-					agentId: result[0].agentId,
-					tags: result[0].tags || [],
-					metadata: result[0].metadata || {},
-					createdAt: result[0].createdAt?.toString(),
-				};
-			} catch (error) {
-				logger.error("Error getting relationship:", {
-					error: error instanceof Error ? error.message : String(error),
-					params,
-				});
-				return null;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves all relationships from the database based on the provided parameters.
-	 * @param {Object} params - The parameters for retrieving relationships.
-	 * @param {UUID} params.entityId - The ID of the entity to retrieve relationships for.
-	 * @param {string[]} [params.tags] - The tags to filter relationships by.
-	 * @returns {Promise<Relationship[]>} A Promise that resolves to an array of relationships.
-	 */
-	async getRelationships(params: {
-		entityId: UUID;
-		tags?: string[];
-	}): Promise<Relationship[]> {
-		return this.withDatabase(async () => {
-			try {
-				let query = this.db
-					.select()
-					.from(relationshipTable)
-					.where(
-						and(
-							or(
-								eq(relationshipTable.sourceEntityId, params.entityId),
-								eq(relationshipTable.targetEntityId, params.entityId),
-							),
-							eq(relationshipTable.agentId, this.agentId),
-						),
-					);
-
-				// Filter by tags if provided
-				if (params.tags && params.tags.length > 0) {
-					// Filter by tags - find tasks that have ALL of the specified tags
-					// Using @> operator which checks if left array contains all elements from right array
-					const tagParams = params.tags
-						.map((tag) => `'${tag.replace(/'/g, "''")}'`)
-						.join(", ");
-					query = query.where(
-						sql`${relationshipTable.tags} @> ARRAY[${sql.raw(
-							tagParams,
-						)}]::text[]`,
-					);
-				}
-
-				const results = await query;
-
-				return results.map((result) => ({
-					id: result.id,
-					sourceEntityId: result.sourceEntityId,
-					targetEntityId: result.targetEntityId,
-					agentId: result.agentId,
-					tags: result.tags || [],
-					metadata: result.metadata || {},
-					createdAt: result.createdAt?.toString(),
-				}));
-			} catch (error) {
-				logger.error("Error getting relationships:", {
-					error: error instanceof Error ? error.message : String(error),
-					params,
-				});
-				return [];
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves a cache value from the database based on the provided key.
-	 * @param {string} key - The key to retrieve the cache value for.
-	 * @returns {Promise<T | undefined>} A Promise that resolves to the cache value if found, undefined otherwise.
-	 */
-	async getCache<T>(key: string): Promise<T | undefined> {
-		return this.withDatabase(async () => {
-			try {
-				const result = await this.db
-					.select()
-					.from(cacheTable)
-					.where(
-						and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)),
-					);
-
-				return result[0]?.value as T | undefined;
-			} catch (error) {
-				logger.error("Error fetching cache", {
-					error: error instanceof Error ? error.message : String(error),
-					key: key,
-					agentId: this.agentId,
-				});
-				return undefined;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously sets a cache value in the database based on the provided key and value.
-	 * @param {string} key - The key to set the cache value for.
-	 * @param {T} value - The value to set in the cache.
-	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the cache value was set successfully.
-	 */
-	async setCache<T>(key: string, value: T): Promise<boolean> {
-		return this.withDatabase(async () => {
-			try {
-				await this.db.transaction(async (tx) => {
-					await tx
-						.insert(cacheTable)
-						.values({
-							key: key,
-							agentId: this.agentId,
-							value: value,
-						})
-						.onConflictDoUpdate({
-							target: [cacheTable.key, cacheTable.agentId],
-							set: {
-								value: value,
-							},
-						});
-				});
-				return true;
-			} catch (error) {
-				logger.error("Error setting cache", {
-					error: error instanceof Error ? error.message : String(error),
-					key: key,
-					agentId: this.agentId,
-				});
-				return false;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously deletes a cache value from the database based on the provided key.
-	 * @param {string} key - The key to delete the cache value for.
-	 * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the cache value was deleted successfully.
-	 */
-	async deleteCache(key: string): Promise<boolean> {
-		return this.withDatabase(async () => {
-			try {
-				await this.db.transaction(async (tx) => {
-					await tx
-						.delete(cacheTable)
-						.where(
-							and(
-								eq(cacheTable.agentId, this.agentId),
-								eq(cacheTable.key, key),
-							),
-						);
-				});
-				return true;
-			} catch (error) {
-				logger.error("Error deleting cache", {
-					error: error instanceof Error ? error.message : String(error),
-					key: key,
-					agentId: this.agentId,
-				});
-				return false;
-			}
-		});
-	}
-
-	/**
-	 * Asynchronously creates a new world in the database based on the provided parameters.
-	 * @param {World} world - The world object to create.
-	 * @returns {Promise<UUID>} A Promise that resolves to the ID of the created world.
-	 */
-	async createWorld(world: World): Promise<UUID> {
-		console.trace("*** creating world", world, "with id", world.id);
-		return this.withDatabase(async () => {
-			const newWorldId = world.id || v4();
-			await this.db.insert(worldTable).values({
-				...world,
-				id: newWorldId,
-			});
-			return newWorldId;
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves a world from the database based on the provided parameters.
-	 * @param {UUID} id - The ID of the world to retrieve.
-	 * @returns {Promise<World | null>} A Promise that resolves to the world if found, null otherwise.
-	 */
-	async getWorld(id: UUID): Promise<World | null> {
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.select()
-				.from(worldTable)
-				.where(eq(worldTable.id, id));
-			return result[0] as World | null;
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves all worlds from the database based on the provided parameters.
-	 * @returns {Promise<World[]>} A Promise that resolves to an array of worlds.
-	 */
-	async getAllWorlds(): Promise<World[]> {
-		return this.withDatabase(async () => {
-			const result = await this.db
-				.select()
-				.from(worldTable)
-				.where(eq(worldTable.agentId, this.agentId));
-			return result as World[];
-		});
-	}
-
-	/**
-	 * Asynchronously updates an existing world in the database based on the provided parameters.
-	 * @param {World} world - The world object to update.
-	 * @returns {Promise<void>} A Promise that resolves when the world is updated.
-	 */
-	async updateWorld(world: World): Promise<void> {
-		console.trace("*** updating world", world, "with id", world.id);
-		return this.withDatabase(async () => {
-			await this.db
-				.update(worldTable)
-				.set(world)
-				.where(eq(worldTable.id, world.id));
-		});
-	}
-
-	/**
-	 * Asynchronously removes a world from the database based on the provided parameters.
-	 * @param {UUID} id - The ID of the world to remove.
-	 * @returns {Promise<void>} A Promise that resolves when the world is removed.
-	 */
-	async removeWorld(id: UUID): Promise<void> {
-		return this.withDatabase(async () => {
-			await this.db.delete(worldTable).where(eq(worldTable.id, id));
-		});
-	}
-
-	/**
-	 * Asynchronously creates a new task in the database based on the provided parameters.
-	 * @param {Task} task - The task object to create.
-	 * @returns {Promise<UUID>} A Promise that resolves to the ID of the created task.
-	 */
-	async createTask(task: Task): Promise<UUID> {
-		return this.withRetry(async () => {
-			return this.withDatabase(async () => {
-				const now = new Date();
-				const metadata = task.metadata || {};
-
-				const values = {
-					id: task.id as UUID,
-					name: task.name,
-					description: task.description,
-					roomId: task.roomId,
-					worldId: task.worldId,
-					tags: task.tags,
-					metadata: metadata,
-					createdAt: now,
-					updatedAt: now,
-					agentId: this.agentId,
-				};
-				const result = await this.db
-					.insert(taskTable)
-					.values(values)
-					.returning({ id: taskTable.id });
-
-				return result[0].id;
-			});
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves tasks based on specified parameters.
-	 * @param params Object containing optional roomId and tags to filter tasks
-	 * @returns Promise resolving to an array of Task objects
-	 */
-	async getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]> {
-		return this.withRetry(async () => {
-			return this.withDatabase(async () => {
-				let query = this.db
-					.select()
-					.from(taskTable)
-					.where(eq(taskTable.agentId, this.agentId));
-
-				// Apply filters if provided
-				if (params.roomId) {
-					query = query.where(eq(taskTable.roomId, params.roomId));
-				}
-
-				if (params.tags && params.tags.length > 0) {
-					// Filter by tags - find tasks that have ALL of the specified tags
-					// Using @> operator which checks if left array contains all elements from right array
-					const tagParams = params.tags
-						.map((tag) => `'${tag.replace(/'/g, "''")}'`)
-						.join(", ");
-					query = query.where(
-						sql`${taskTable.tags} @> ARRAY[${sql.raw(tagParams)}]::text[]`,
-					);
-				}
-
-				const result = await query;
-
-				return result.map((row) => ({
-					id: row.id,
-					name: row.name,
-					description: row.description,
-					roomId: row.roomId,
-					worldId: row.worldId,
-					tags: row.tags,
-					metadata: row.metadata,
-				}));
-			});
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves a specific task by its name.
-	 * @param name The name of the task to retrieve
-	 * @returns Promise resolving to the Task object if found, null otherwise
-	 */
-	async getTasksByName(name: string): Promise<Task[]> {
-		return this.withRetry(async () => {
-			return this.withDatabase(async () => {
-				const result = await this.db
-					.select()
-					.from(taskTable)
-					.where(
-						and(eq(taskTable.name, name), eq(taskTable.agentId, this.agentId)),
-					);
-
-				return result.map((row) => ({
-					id: row.id,
-					name: row.name,
-					description: row.description,
-					roomId: row.roomId,
-					worldId: row.worldId,
-					tags: row.tags || [],
-					metadata: row.metadata || {},
-				}));
-			});
-		});
-	}
-
-	/**
-	 * Asynchronously retrieves a specific task by its ID.
-	 * @param id The UUID of the task to retrieve
-	 * @returns Promise resolving to the Task object if found, null otherwise
-	 */
-	async getTask(id: UUID): Promise<Task | null> {
-		return this.withRetry(async () => {
-			return this.withDatabase(async () => {
-				const result = await this.db
-					.select()
-					.from(taskTable)
-					.where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)))
-					.limit(1);
-
-				if (result.length === 0) {
-					return null;
-				}
-
-				const row = result[0];
-				return {
-					id: row.id,
-					name: row.name,
-					description: row.description,
-					roomId: row.roomId,
-					worldId: row.worldId,
-					tags: row.tags || [],
-					metadata: row.metadata || {},
-				};
-			});
-		});
-	}
-
-	/**
-	 * Asynchronously updates an existing task in the database.
-	 * @param id The UUID of the task to update
-	 * @param task Partial Task object containing the fields to update
-	 * @returns Promise resolving when the update is complete
-	 */
-	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
-		await this.withRetry(async () => {
-			await this.withDatabase(async () => {
-				const updateValues: Partial<Task> = {};
-
-				// Add fields to update if they exist in the partial task object
-				if (task.name !== undefined) updateValues.name = task.name;
-				if (task.description !== undefined)
-					updateValues.description = task.description;
-				if (task.roomId !== undefined) updateValues.roomId = task.roomId;
-				if (task.worldId !== undefined) updateValues.worldId = task.worldId;
-				if (task.tags !== undefined) updateValues.tags = task.tags;
-
-				task.updatedAt = Date.now();
-
-				// Handle metadata updates
-				if (task.metadata) {
-					// Get current task to merge metadata
-					const currentTask = await this.getTask(id);
-					if (currentTask) {
-						const currentMetadata = currentTask.metadata || {};
-						const newMetadata = {
-							...currentMetadata,
-							...task.metadata,
-						};
-						updateValues.metadata = newMetadata;
-					} else {
-						updateValues.metadata = {
-							...task.metadata,
-						};
-					}
-				}
-
-				await this.db
-					.update(taskTable)
-					.set(updateValues)
-					.where(
-						and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)),
-					);
-			});
-		});
-	}
-
-	/**
-	 * Asynchronously deletes a task from the database.
-	 * @param id The UUID of the task to delete
-	 * @returns Promise resolving when the deletion is complete
-	 */
-	async deleteTask(id: UUID): Promise<void> {
-		await this.withRetry(async () => {
-			await this.withDatabase(async () => {
-				await this.db
-					.delete(taskTable)
-					.where(
-						and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)),
-					);
-			});
-		});
-	}
+        return results.rows
+          .map((row) => ({
+            embedding: Array.isArray(row.embedding)
+              ? row.embedding
+              : typeof row.embedding === 'string'
+                ? JSON.parse(row.embedding)
+                : [],
+            levenshtein_score: Number(row.levenshtein_score),
+          }))
+          .filter((row) => Array.isArray(row.embedding));
+      } catch (error) {
+        logger.error('Error in getCachedEmbeddings:', {
+          error: error instanceof Error ? error.message : String(error),
+          tableName: opts.query_table_name,
+          fieldName: opts.query_field_name,
+        });
+        if (
+          error instanceof Error &&
+          error.message === 'levenshtein argument exceeds maximum length of 255 characters'
+        ) {
+          return [];
+        }
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously logs an event in the database.
+   * @param {Object} params - The parameters for logging an event.
+   * @param {Object} params.body - The body of the event to log.
+   * @param {UUID} params.entityId - The ID of the entity associated with the event.
+   * @param {UUID} params.roomId - The ID of the room associated with the event.
+   * @param {string} params.type - The type of the event to log.
+   * @returns {Promise<void>} A Promise that resolves when the event is logged.
+   */
+  async log(params: {
+    body: { [key: string]: unknown };
+    entityId: UUID;
+    roomId: UUID;
+    type: string;
+  }): Promise<void> {
+    return this.withDatabase(async () => {
+      try {
+        await this.db.transaction(async (tx) => {
+          await tx.insert(logTable).values({
+            body: sql`${params.body}::jsonb`,
+            entityId: params.entityId,
+            roomId: params.roomId,
+            type: params.type,
+          });
+        });
+      } catch (error) {
+        logger.error('Failed to create log entry:', {
+          error: error instanceof Error ? error.message : String(error),
+          type: params.type,
+          roomId: params.roomId,
+          entityId: params.entityId,
+        });
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously retrieves logs from the database based on the provided parameters.
+   * @param {Object} params - The parameters for retrieving logs.
+   * @param {UUID} params.entityId - The ID of the entity associated with the logs.
+   * @param {UUID} [params.roomId] - The ID of the room associated with the logs.
+   * @param {string} [params.type] - The type of the logs to retrieve.
+   * @param {number} [params.count] - The maximum number of logs to retrieve.
+   * @param {number} [params.offset] - The offset to retrieve logs from.
+   * @returns {Promise<Log[]>} A Promise that resolves to an array of logs.
+   */
+  async getLogs(params: {
+    entityId: UUID;
+    roomId?: UUID;
+    type?: string;
+    count?: number;
+    offset?: number;
+  }): Promise<Log[]> {
+    const { entityId, roomId, type, count, offset } = params;
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select()
+        .from(logTable)
+        .where(
+          and(
+            eq(logTable.entityId, entityId),
+            roomId ? eq(logTable.roomId, roomId) : undefined,
+            type ? eq(logTable.type, type) : undefined
+          )
+        )
+        .orderBy(desc(logTable.createdAt))
+        .limit(count ?? 10)
+        .offset(offset ?? 0);
+      return result;
+    });
+  }
+
+  /**
+   * Asynchronously deletes a log from the database based on the provided parameters.
+   * @param {UUID} logId - The ID of the log to delete.
+   * @returns {Promise<void>} A Promise that resolves when the log is deleted.
+   */
+  async deleteLog(logId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.delete(logTable).where(eq(logTable.id, logId));
+    });
+  }
+
+  /**
+   * Asynchronously searches for memories in the database based on the provided parameters.
+   * @param {Object} params - The parameters for searching for memories.
+   * @param {string} params.tableName - The name of the table to search for memories in.
+   * @param {UUID} params.roomId - The ID of the room to search for memories in.
+   * @param {number[]} params.embedding - The embedding to search for.
+   * @param {number} [params.match_threshold] - The threshold for the cosine distance.
+   * @param {number} [params.count] - The maximum number of memories to retrieve.
+   * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
+   * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
+   */
+  async searchMemories(params: {
+    tableName: string;
+    roomId: UUID;
+    embedding: number[];
+    match_threshold: number;
+    count: number;
+    unique: boolean;
+  }): Promise<Memory[]> {
+    return await this.searchMemoriesByEmbedding(params.embedding, {
+      match_threshold: params.match_threshold,
+      count: params.count,
+      roomId: params.roomId,
+      unique: params.unique,
+      tableName: params.tableName,
+    });
+  }
+
+  /**
+   * Asynchronously searches for memories in the database based on the provided parameters.
+   * @param {number[]} embedding - The embedding to search for.
+   * @param {Object} params - The parameters for searching for memories.
+   * @param {number} [params.match_threshold] - The threshold for the cosine distance.
+   * @param {number} [params.count] - The maximum number of memories to retrieve.
+   * @param {UUID} [params.roomId] - The ID of the room to search for memories in.
+   * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
+   * @param {string} [params.tableName] - The name of the table to search for memories in.
+   * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
+   */
+  async searchMemoriesByEmbedding(
+    embedding: number[],
+    params: {
+      match_threshold?: number;
+      count?: number;
+      roomId?: UUID;
+      unique?: boolean;
+      tableName: string;
+    }
+  ): Promise<Memory[]> {
+    return this.withDatabase(async () => {
+      const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
+
+      const similarity = sql<number>`1 - (${cosineDistance(
+        embeddingTable[this.embeddingDimension],
+        cleanVector
+      )})`;
+
+      const conditions = [eq(memoryTable.type, params.tableName)];
+
+      if (params.unique) {
+        conditions.push(eq(memoryTable.unique, true));
+      }
+
+      conditions.push(eq(memoryTable.agentId, this.agentId));
+
+      if (params.roomId) {
+        conditions.push(eq(memoryTable.roomId, params.roomId));
+      }
+
+      if (params.match_threshold) {
+        conditions.push(gte(similarity, params.match_threshold));
+      }
+
+      const results = await this.db
+        .select({
+          memory: memoryTable,
+          similarity,
+          embedding: embeddingTable[this.embeddingDimension],
+        })
+        .from(embeddingTable)
+        .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
+        .where(and(...conditions))
+        .orderBy(desc(similarity))
+        .limit(params.count ?? 10);
+
+      return results.map((row) => ({
+        id: row.memory.id as UUID,
+        type: row.memory.type,
+        createdAt: row.memory.createdAt,
+        content:
+          typeof row.memory.content === 'string'
+            ? JSON.parse(row.memory.content)
+            : row.memory.content,
+        entityId: row.memory.entityId as UUID,
+        agentId: row.memory.agentId as UUID,
+        roomId: row.memory.roomId as UUID,
+        unique: row.memory.unique,
+        embedding: row.embedding ?? undefined,
+        similarity: row.similarity,
+      }));
+    });
+  }
+
+  /**
+   * Asynchronously creates a new memory in the database.
+   * @param {Memory & { metadata?: MemoryMetadata }} memory - The memory object to create.
+   * @param {string} tableName - The name of the table to create the memory in.
+   * @returns {Promise<UUID>} A Promise that resolves to the ID of the created memory.
+   */
+  async createMemory(
+    memory: Memory & { metadata?: MemoryMetadata },
+    tableName: string
+  ): Promise<UUID> {
+    console.log('memory.id is', memory.id);
+    logger.debug('DrizzleAdapter createMemory:', {
+      memoryId: memory.id,
+      embeddingLength: memory.embedding?.length,
+      contentLength: memory.content?.text?.length,
+    });
+
+    let isUnique = true;
+    if (memory.embedding && Array.isArray(memory.embedding)) {
+      const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
+        tableName,
+        roomId: memory.roomId,
+        match_threshold: 0.95,
+        count: 1,
+      });
+      isUnique = similarMemories.length === 0;
+    }
+
+    const contentToInsert =
+      typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
+
+    const memoryId = memory.id ?? (v4() as UUID);
+
+    await this.db.transaction(async (tx) => {
+      await tx.insert(memoryTable).values([
+        {
+          id: memoryId,
+          type: tableName,
+          content: sql`${contentToInsert}::jsonb`,
+          metadata: sql`${memory.metadata || {}}::jsonb`,
+          entityId: memory.entityId,
+          roomId: memory.roomId,
+          agentId: memory.agentId,
+          unique: memory.unique ?? isUnique,
+          createdAt: memory.createdAt,
+        },
+      ]);
+
+      if (memory.embedding && Array.isArray(memory.embedding)) {
+        const embeddingValues: Record<string, unknown> = {
+          id: v4(),
+          memoryId: memoryId,
+          createdAt: memory.createdAt,
+        };
+
+        const cleanVector = memory.embedding.map((n) =>
+          Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+        );
+
+        embeddingValues[this.embeddingDimension] = cleanVector;
+
+        await tx.insert(embeddingTable).values([embeddingValues]);
+      }
+    });
+
+    return memoryId;
+  }
+
+  /**
+   * Asynchronously deletes a memory from the database based on the provided parameters.
+   * @param {UUID} memoryId - The ID of the memory to delete.
+   * @returns {Promise<void>} A Promise that resolves when the memory is deleted.
+   */
+  async deleteMemory(memoryId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
+
+        await tx.delete(memoryTable).where(and(eq(memoryTable.id, memoryId)));
+      });
+
+      logger.debug('Memory removed successfully:', {
+        memoryId,
+      });
+    });
+  }
+
+  /**
+   * Asynchronously deletes all memories from the database based on the provided parameters.
+   * @param {UUID} roomId - The ID of the room to delete memories from.
+   * @param {string} tableName - The name of the table to delete memories from.
+   * @returns {Promise<void>} A Promise that resolves when the memories are deleted.
+   */
+  async deleteAllMemories(roomId: UUID, tableName: string): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        const memoryIds = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
+
+        if (memoryIds.length > 0) {
+          await tx.delete(embeddingTable).where(
+            inArray(
+              embeddingTable.memoryId,
+              memoryIds.map((m) => m.id)
+            )
+          );
+
+          await tx
+            .delete(memoryTable)
+            .where(and(eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)));
+        }
+      });
+
+      logger.debug('All memories removed successfully:', {
+        roomId,
+        tableName,
+      });
+    });
+  }
+
+  /**
+   * Asynchronously counts the number of memories in the database based on the provided parameters.
+   * @param {UUID} roomId - The ID of the room to count memories in.
+   * @param {boolean} [unique] - Whether to count unique memories only.
+   * @param {string} [tableName] - The name of the table to count memories in.
+   * @returns {Promise<number>} A Promise that resolves to the number of memories.
+   */
+  async countMemories(roomId: UUID, unique = true, tableName = ''): Promise<number> {
+    if (!tableName) throw new Error('tableName is required');
+
+    return this.withDatabase(async () => {
+      const conditions = [eq(memoryTable.roomId, roomId), eq(memoryTable.type, tableName)];
+
+      if (unique) {
+        conditions.push(eq(memoryTable.unique, true));
+      }
+
+      const result = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(memoryTable)
+        .where(and(...conditions));
+
+      return Number(result[0]?.count ?? 0);
+    });
+  }
+
+  /**
+   * Asynchronously retrieves a room from the database based on the provided parameters.
+   * @param {UUID} roomId - The ID of the room to retrieve.
+   * @returns {Promise<Room | null>} A Promise that resolves to the room if found, null otherwise.
+   */
+  async getRoom(roomId: UUID): Promise<Room | null> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select({
+          id: roomTable.id,
+          channelId: roomTable.channelId,
+          agentId: roomTable.agentId,
+          serverId: roomTable.serverId,
+          worldId: roomTable.worldId,
+          type: roomTable.type,
+          source: roomTable.source,
+        })
+        .from(roomTable)
+        .where(and(eq(roomTable.id, roomId), eq(roomTable.agentId, this.agentId)))
+        .limit(1);
+      if (result.length === 0) return null;
+      return result[0];
+    });
+  }
+
+  /**
+   * Asynchronously retrieves all rooms from the database based on the provided parameters.
+   * @param {UUID} worldId - The ID of the world to retrieve rooms from.
+   * @returns {Promise<Room[]>} A Promise that resolves to an array of rooms.
+   */
+  async getRooms(worldId: UUID): Promise<Room[]> {
+    return this.withDatabase(async () => {
+      const result = await this.db.select().from(roomTable).where(eq(roomTable.worldId, worldId));
+      return result;
+    });
+  }
+
+  /**
+   * Asynchronously updates a room in the database based on the provided parameters.
+   * @param {Room} room - The room object to update.
+   * @returns {Promise<void>} A Promise that resolves when the room is updated.
+   */
+  async updateRoom(room: Room): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db
+        .update(roomTable)
+        .set({ ...room, agentId: this.agentId })
+        .where(eq(roomTable.id, room.id));
+    });
+  }
+
+  /**
+   * Asynchronously creates a new room in the database based on the provided parameters.
+   * @param {Room} room - The room object to create.
+   * @returns {Promise<UUID>} A Promise that resolves to the ID of the created room.
+   */
+  async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
+    return this.withDatabase(async () => {
+      const newRoomId = id || v4();
+      await this.db
+        .insert(roomTable)
+        .values({
+          id: newRoomId,
+          name,
+          agentId: this.agentId,
+          source,
+          type,
+          channelId,
+          serverId,
+          worldId,
+        })
+        .onConflictDoNothing({ target: roomTable.id });
+      return newRoomId as UUID;
+    });
+  }
+
+  /**
+   * Asynchronously deletes a room from the database based on the provided parameters.
+   * @param {UUID} roomId - The ID of the room to delete.
+   * @returns {Promise<void>} A Promise that resolves when the room is deleted.
+   */
+  async deleteRoom(roomId: UUID): Promise<void> {
+    if (!roomId) throw new Error('Room ID is required');
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        await tx.delete(roomTable).where(eq(roomTable.id, roomId));
+      });
+    });
+  }
+
+  /**
+   * Asynchronously retrieves all rooms for a participant from the database based on the provided parameters.
+   * @param {UUID} entityId - The ID of the entity to retrieve rooms for.
+   * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
+   */
+  async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select({ roomId: participantTable.roomId })
+        .from(participantTable)
+        .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
+        .where(and(eq(participantTable.entityId, entityId), eq(roomTable.agentId, this.agentId)));
+
+      return result.map((row) => row.roomId as UUID);
+    });
+  }
+
+  /**
+   * Asynchronously retrieves all rooms for a list of participants from the database based on the provided parameters.
+   * @param {UUID[]} entityIds - The IDs of the entities to retrieve rooms for.
+   * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
+   */
+  async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .selectDistinct({ roomId: participantTable.roomId })
+        .from(participantTable)
+        .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
+        .where(
+          and(inArray(participantTable.entityId, entityIds), eq(roomTable.agentId, this.agentId))
+        );
+
+      return result.map((row) => row.roomId as UUID);
+    });
+  }
+
+  /**
+   * Asynchronously adds a participant to a room in the database based on the provided parameters.
+   * @param {UUID} entityId - The ID of the entity to add to the room.
+   * @param {UUID} roomId - The ID of the room to add the entity to.
+   * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the participant was added successfully.
+   */
+  async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+    return this.withDatabase(async () => {
+      try {
+        await this.db
+          .insert(participantTable)
+          .values({
+            entityId,
+            roomId,
+            agentId: this.agentId,
+          })
+          .onConflictDoNothing();
+        return true;
+      } catch (error) {
+        logger.error('Error adding participant', {
+          error: error instanceof Error ? error.message : String(error),
+          entityId,
+          roomId,
+          agentId: this.agentId,
+        });
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously removes a participant from a room in the database based on the provided parameters.
+   * @param {UUID} entityId - The ID of the entity to remove from the room.
+   * @param {UUID} roomId - The ID of the room to remove the entity from.
+   * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the participant was removed successfully.
+   */
+  async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+    return this.withDatabase(async () => {
+      try {
+        const result = await this.db.transaction(async (tx) => {
+          return await tx
+            .delete(participantTable)
+            .where(
+              and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
+            )
+            .returning();
+        });
+
+        const removed = result.length > 0;
+        logger.debug(`Participant ${removed ? 'removed' : 'not found'}:`, {
+          entityId,
+          roomId,
+          removed,
+        });
+
+        return removed;
+      } catch (error) {
+        logger.error('Failed to remove participant:', {
+          error: error instanceof Error ? error.message : String(error),
+          entityId,
+          roomId,
+        });
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously retrieves all participants for an entity from the database based on the provided parameters.
+   * @param {UUID} entityId - The ID of the entity to retrieve participants for.
+   * @returns {Promise<Participant[]>} A Promise that resolves to an array of participants.
+   */
+  async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select({
+          id: participantTable.id,
+          entityId: participantTable.entityId,
+          roomId: participantTable.roomId,
+        })
+        .from(participantTable)
+        .where(eq(participantTable.entityId, entityId));
+
+      const entity = await this.getEntityById(entityId);
+
+      if (!entity) {
+        return [];
+      }
+
+      return result.map((row) => ({
+        id: row.id as UUID,
+        entity: entity,
+      }));
+    });
+  }
+
+  /**
+   * Asynchronously retrieves all participants for a room from the database based on the provided parameters.
+   * @param {UUID} roomId - The ID of the room to retrieve participants for.
+   * @returns {Promise<UUID[]>} A Promise that resolves to an array of entity IDs.
+   */
+  async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select({ entityId: participantTable.entityId })
+        .from(participantTable)
+        .where(
+          and(eq(participantTable.roomId, roomId), eq(participantTable.agentId, this.agentId))
+        );
+
+      return result.map((row) => row.entityId as UUID);
+    });
+  }
+
+  /**
+   * Asynchronously retrieves the user state for a participant in a room from the database based on the provided parameters.
+   * @param {UUID} roomId - The ID of the room to retrieve the participant's user state for.
+   * @param {UUID} entityId - The ID of the entity to retrieve the user state for.
+   * @returns {Promise<"FOLLOWED" | "MUTED" | null>} A Promise that resolves to the participant's user state.
+   */
+  async getParticipantUserState(
+    roomId: UUID,
+    entityId: UUID
+  ): Promise<'FOLLOWED' | 'MUTED' | null> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select({ roomState: participantTable.roomState })
+        .from(participantTable)
+        .where(
+          and(
+            eq(participantTable.roomId, roomId),
+            eq(participantTable.entityId, entityId),
+            eq(participantTable.agentId, this.agentId)
+          )
+        )
+        .limit(1);
+
+      return (result[0]?.roomState as 'FOLLOWED' | 'MUTED' | null) ?? null;
+    });
+  }
+
+  /**
+   * Asynchronously sets the user state for a participant in a room in the database based on the provided parameters.
+   * @param {UUID} roomId - The ID of the room to set the participant's user state for.
+   * @param {UUID} entityId - The ID of the entity to set the user state for.
+   * @param {string} state - The state to set the participant's user state to.
+   * @returns {Promise<void>} A Promise that resolves when the participant's user state is set.
+   */
+  async setParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+    state: 'FOLLOWED' | 'MUTED' | null
+  ): Promise<void> {
+    return this.withDatabase(async () => {
+      try {
+        await this.db.transaction(async (tx) => {
+          await tx
+            .update(participantTable)
+            .set({ roomState: state })
+            .where(
+              and(
+                eq(participantTable.roomId, roomId),
+                eq(participantTable.entityId, entityId),
+                eq(participantTable.agentId, this.agentId)
+              )
+            );
+        });
+      } catch (error) {
+        logger.error('Failed to set participant user state:', {
+          roomId,
+          entityId,
+          state,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously creates a new relationship in the database based on the provided parameters.
+   * @param {Object} params - The parameters for creating a new relationship.
+   * @param {UUID} params.sourceEntityId - The ID of the source entity.
+   * @param {UUID} params.targetEntityId - The ID of the target entity.
+   * @param {string[]} [params.tags] - The tags for the relationship.
+   * @param {Object} [params.metadata] - The metadata for the relationship.
+   * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the relationship was created successfully.
+   */
+  async createRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+    tags?: string[];
+    metadata?: { [key: string]: unknown };
+  }): Promise<boolean> {
+    return this.withDatabase(async () => {
+      const id = v4();
+      const saveParams = {
+        id,
+        sourceEntityId: params.sourceEntityId,
+        targetEntityId: params.targetEntityId,
+        agentId: this.agentId,
+        tags: params.tags || [],
+        metadata: params.metadata || {},
+      };
+      try {
+        await this.db.insert(relationshipTable).values(saveParams);
+        return true;
+      } catch (error) {
+        logger.error('Error creating relationship:', {
+          error: error instanceof Error ? error.message : String(error),
+          saveParams,
+        });
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously updates an existing relationship in the database based on the provided parameters.
+   * @param {Relationship} relationship - The relationship object to update.
+   * @returns {Promise<void>} A Promise that resolves when the relationship is updated.
+   */
+  async updateRelationship(relationship: Relationship): Promise<void> {
+    return this.withDatabase(async () => {
+      try {
+        await this.db
+          .update(relationshipTable)
+          .set({
+            tags: relationship.tags || [],
+            metadata: relationship.metadata || {},
+          })
+          .where(eq(relationshipTable.id, relationship.id));
+      } catch (error) {
+        logger.error('Error updating relationship:', {
+          error: error instanceof Error ? error.message : String(error),
+          relationship,
+        });
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously retrieves a relationship from the database based on the provided parameters.
+   * @param {Object} params - The parameters for retrieving a relationship.
+   * @param {UUID} params.sourceEntityId - The ID of the source entity.
+   * @param {UUID} params.targetEntityId - The ID of the target entity.
+   * @returns {Promise<Relationship | null>} A Promise that resolves to the relationship if found, null otherwise.
+   */
+  async getRelationship(params: {
+    sourceEntityId: UUID;
+    targetEntityId: UUID;
+  }): Promise<Relationship | null> {
+    return this.withDatabase(async () => {
+      try {
+        const result = await this.db
+          .select()
+          .from(relationshipTable)
+          .where(
+            and(
+              eq(relationshipTable.sourceEntityId, params.sourceEntityId),
+              eq(relationshipTable.targetEntityId, params.targetEntityId),
+              eq(relationshipTable.agentId, this.agentId)
+            )
+          )
+          .limit(1);
+
+        if (result.length === 0) {
+          return null;
+        }
+
+        return {
+          id: result[0].id,
+          sourceEntityId: result[0].sourceEntityId,
+          targetEntityId: result[0].targetEntityId,
+          agentId: result[0].agentId,
+          tags: result[0].tags || [],
+          metadata: result[0].metadata || {},
+          createdAt: result[0].createdAt?.toString(),
+        };
+      } catch (error) {
+        logger.error('Error getting relationship:', {
+          error: error instanceof Error ? error.message : String(error),
+          params,
+        });
+        return null;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously retrieves all relationships from the database based on the provided parameters.
+   * @param {Object} params - The parameters for retrieving relationships.
+   * @param {UUID} params.entityId - The ID of the entity to retrieve relationships for.
+   * @param {string[]} [params.tags] - The tags to filter relationships by.
+   * @returns {Promise<Relationship[]>} A Promise that resolves to an array of relationships.
+   */
+  async getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]> {
+    return this.withDatabase(async () => {
+      try {
+        let query = this.db
+          .select()
+          .from(relationshipTable)
+          .where(
+            and(
+              or(
+                eq(relationshipTable.sourceEntityId, params.entityId),
+                eq(relationshipTable.targetEntityId, params.entityId)
+              ),
+              eq(relationshipTable.agentId, this.agentId)
+            )
+          );
+
+        // Filter by tags if provided
+        if (params.tags && params.tags.length > 0) {
+          // Filter by tags - find tasks that have ALL of the specified tags
+          // Using @> operator which checks if left array contains all elements from right array
+          const tagParams = params.tags.map((tag) => `'${tag.replace(/'/g, "''")}'`).join(', ');
+          query = query.where(
+            sql`${relationshipTable.tags} @> ARRAY[${sql.raw(tagParams)}]::text[]`
+          );
+        }
+
+        const results = await query;
+
+        return results.map((result) => ({
+          id: result.id,
+          sourceEntityId: result.sourceEntityId,
+          targetEntityId: result.targetEntityId,
+          agentId: result.agentId,
+          tags: result.tags || [],
+          metadata: result.metadata || {},
+          createdAt: result.createdAt?.toString(),
+        }));
+      } catch (error) {
+        logger.error('Error getting relationships:', {
+          error: error instanceof Error ? error.message : String(error),
+          params,
+        });
+        return [];
+      }
+    });
+  }
+
+  /**
+   * Asynchronously retrieves a cache value from the database based on the provided key.
+   * @param {string} key - The key to retrieve the cache value for.
+   * @returns {Promise<T | undefined>} A Promise that resolves to the cache value if found, undefined otherwise.
+   */
+  async getCache<T>(key: string): Promise<T | undefined> {
+    return this.withDatabase(async () => {
+      try {
+        const result = await this.db
+          .select()
+          .from(cacheTable)
+          .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)));
+
+        return result[0]?.value as T | undefined;
+      } catch (error) {
+        logger.error('Error fetching cache', {
+          error: error instanceof Error ? error.message : String(error),
+          key: key,
+          agentId: this.agentId,
+        });
+        return undefined;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously sets a cache value in the database based on the provided key and value.
+   * @param {string} key - The key to set the cache value for.
+   * @param {T} value - The value to set in the cache.
+   * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the cache value was set successfully.
+   */
+  async setCache<T>(key: string, value: T): Promise<boolean> {
+    return this.withDatabase(async () => {
+      try {
+        await this.db.transaction(async (tx) => {
+          await tx
+            .insert(cacheTable)
+            .values({
+              key: key,
+              agentId: this.agentId,
+              value: value,
+            })
+            .onConflictDoUpdate({
+              target: [cacheTable.key, cacheTable.agentId],
+              set: {
+                value: value,
+              },
+            });
+        });
+        return true;
+      } catch (error) {
+        logger.error('Error setting cache', {
+          error: error instanceof Error ? error.message : String(error),
+          key: key,
+          agentId: this.agentId,
+        });
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously deletes a cache value from the database based on the provided key.
+   * @param {string} key - The key to delete the cache value for.
+   * @returns {Promise<boolean>} A Promise that resolves to a boolean indicating whether the cache value was deleted successfully.
+   */
+  async deleteCache(key: string): Promise<boolean> {
+    return this.withDatabase(async () => {
+      try {
+        await this.db.transaction(async (tx) => {
+          await tx
+            .delete(cacheTable)
+            .where(and(eq(cacheTable.agentId, this.agentId), eq(cacheTable.key, key)));
+        });
+        return true;
+      } catch (error) {
+        logger.error('Error deleting cache', {
+          error: error instanceof Error ? error.message : String(error),
+          key: key,
+          agentId: this.agentId,
+        });
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Asynchronously creates a new world in the database based on the provided parameters.
+   * @param {World} world - The world object to create.
+   * @returns {Promise<UUID>} A Promise that resolves to the ID of the created world.
+   */
+  async createWorld(world: World): Promise<UUID> {
+    console.trace('*** creating world', world, 'with id', world.id);
+    return this.withDatabase(async () => {
+      const newWorldId = world.id || v4();
+      await this.db.insert(worldTable).values({
+        ...world,
+        id: newWorldId,
+      });
+      return newWorldId;
+    });
+  }
+
+  /**
+   * Asynchronously retrieves a world from the database based on the provided parameters.
+   * @param {UUID} id - The ID of the world to retrieve.
+   * @returns {Promise<World | null>} A Promise that resolves to the world if found, null otherwise.
+   */
+  async getWorld(id: UUID): Promise<World | null> {
+    return this.withDatabase(async () => {
+      const result = await this.db.select().from(worldTable).where(eq(worldTable.id, id));
+      return result[0] as World | null;
+    });
+  }
+
+  /**
+   * Asynchronously retrieves all worlds from the database based on the provided parameters.
+   * @returns {Promise<World[]>} A Promise that resolves to an array of worlds.
+   */
+  async getAllWorlds(): Promise<World[]> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select()
+        .from(worldTable)
+        .where(eq(worldTable.agentId, this.agentId));
+      return result as World[];
+    });
+  }
+
+  /**
+   * Asynchronously updates an existing world in the database based on the provided parameters.
+   * @param {World} world - The world object to update.
+   * @returns {Promise<void>} A Promise that resolves when the world is updated.
+   */
+  async updateWorld(world: World): Promise<void> {
+    console.trace('*** updating world', world, 'with id', world.id);
+    return this.withDatabase(async () => {
+      await this.db.update(worldTable).set(world).where(eq(worldTable.id, world.id));
+    });
+  }
+
+  /**
+   * Asynchronously removes a world from the database based on the provided parameters.
+   * @param {UUID} id - The ID of the world to remove.
+   * @returns {Promise<void>} A Promise that resolves when the world is removed.
+   */
+  async removeWorld(id: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.delete(worldTable).where(eq(worldTable.id, id));
+    });
+  }
+
+  /**
+   * Asynchronously creates a new task in the database based on the provided parameters.
+   * @param {Task} task - The task object to create.
+   * @returns {Promise<UUID>} A Promise that resolves to the ID of the created task.
+   */
+  async createTask(task: Task): Promise<UUID> {
+    return this.withRetry(async () => {
+      return this.withDatabase(async () => {
+        const now = new Date();
+        const metadata = task.metadata || {};
+
+        const values = {
+          id: task.id as UUID,
+          name: task.name,
+          description: task.description,
+          roomId: task.roomId,
+          worldId: task.worldId,
+          tags: task.tags,
+          metadata: metadata,
+          createdAt: now,
+          updatedAt: now,
+          agentId: this.agentId,
+        };
+        const result = await this.db
+          .insert(taskTable)
+          .values(values)
+          .returning({ id: taskTable.id });
+
+        return result[0].id;
+      });
+    });
+  }
+
+  /**
+   * Asynchronously retrieves tasks based on specified parameters.
+   * @param params Object containing optional roomId and tags to filter tasks
+   * @returns Promise resolving to an array of Task objects
+   */
+  async getTasks(params: { roomId?: UUID; tags?: string[] }): Promise<Task[]> {
+    return this.withRetry(async () => {
+      return this.withDatabase(async () => {
+        let query = this.db.select().from(taskTable).where(eq(taskTable.agentId, this.agentId));
+
+        // Apply filters if provided
+        if (params.roomId) {
+          query = query.where(eq(taskTable.roomId, params.roomId));
+        }
+
+        if (params.tags && params.tags.length > 0) {
+          // Filter by tags - find tasks that have ALL of the specified tags
+          // Using @> operator which checks if left array contains all elements from right array
+          const tagParams = params.tags.map((tag) => `'${tag.replace(/'/g, "''")}'`).join(', ');
+          query = query.where(sql`${taskTable.tags} @> ARRAY[${sql.raw(tagParams)}]::text[]`);
+        }
+
+        const result = await query;
+
+        return result.map((row) => ({
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          roomId: row.roomId,
+          worldId: row.worldId,
+          tags: row.tags,
+          metadata: row.metadata,
+        }));
+      });
+    });
+  }
+
+  /**
+   * Asynchronously retrieves a specific task by its name.
+   * @param name The name of the task to retrieve
+   * @returns Promise resolving to the Task object if found, null otherwise
+   */
+  async getTasksByName(name: string): Promise<Task[]> {
+    return this.withRetry(async () => {
+      return this.withDatabase(async () => {
+        const result = await this.db
+          .select()
+          .from(taskTable)
+          .where(and(eq(taskTable.name, name), eq(taskTable.agentId, this.agentId)));
+
+        return result.map((row) => ({
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          roomId: row.roomId,
+          worldId: row.worldId,
+          tags: row.tags || [],
+          metadata: row.metadata || {},
+        }));
+      });
+    });
+  }
+
+  /**
+   * Asynchronously retrieves a specific task by its ID.
+   * @param id The UUID of the task to retrieve
+   * @returns Promise resolving to the Task object if found, null otherwise
+   */
+  async getTask(id: UUID): Promise<Task | null> {
+    return this.withRetry(async () => {
+      return this.withDatabase(async () => {
+        const result = await this.db
+          .select()
+          .from(taskTable)
+          .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)))
+          .limit(1);
+
+        if (result.length === 0) {
+          return null;
+        }
+
+        const row = result[0];
+        return {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          roomId: row.roomId,
+          worldId: row.worldId,
+          tags: row.tags || [],
+          metadata: row.metadata || {},
+        };
+      });
+    });
+  }
+
+  /**
+   * Asynchronously updates an existing task in the database.
+   * @param id The UUID of the task to update
+   * @param task Partial Task object containing the fields to update
+   * @returns Promise resolving when the update is complete
+   */
+  async updateTask(id: UUID, task: Partial<Task>): Promise<void> {
+    await this.withRetry(async () => {
+      await this.withDatabase(async () => {
+        const updateValues: Partial<Task> = {};
+
+        // Add fields to update if they exist in the partial task object
+        if (task.name !== undefined) updateValues.name = task.name;
+        if (task.description !== undefined) updateValues.description = task.description;
+        if (task.roomId !== undefined) updateValues.roomId = task.roomId;
+        if (task.worldId !== undefined) updateValues.worldId = task.worldId;
+        if (task.tags !== undefined) updateValues.tags = task.tags;
+
+        task.updatedAt = Date.now();
+
+        // Handle metadata updates
+        if (task.metadata) {
+          // Get current task to merge metadata
+          const currentTask = await this.getTask(id);
+          if (currentTask) {
+            const currentMetadata = currentTask.metadata || {};
+            const newMetadata = {
+              ...currentMetadata,
+              ...task.metadata,
+            };
+            updateValues.metadata = newMetadata;
+          } else {
+            updateValues.metadata = {
+              ...task.metadata,
+            };
+          }
+        }
+
+        await this.db
+          .update(taskTable)
+          .set(updateValues)
+          .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)));
+      });
+    });
+  }
+
+  /**
+   * Asynchronously deletes a task from the database.
+   * @param id The UUID of the task to delete
+   * @returns Promise resolving when the deletion is complete
+   */
+  async deleteTask(id: UUID): Promise<void> {
+    await this.withRetry(async () => {
+      await this.withDatabase(async () => {
+        await this.db
+          .delete(taskTable)
+          .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)));
+      });
+    });
+  }
 }

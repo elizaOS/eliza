@@ -1,44 +1,47 @@
 {
-	"name": "create-eliza",
-	"version": "1.0.0-alpha.63",
-	"description": "Initialize an Eliza project",
-	"type": "module",
-	"publishConfig": {
-		"access": "public"
-	},
-	"bin": {
-		"create-eliza": "index.mjs"
-	},
-	"scripts": {
-		"create-eliza": "bun run index.mjs"
-	},
-	"license": "MIT",
-	"author": {
-		"name": "elizaOS",
-		"url": "https://twitter.com/eliza_OS"
-	},
-	"dependencies": {
-		"@elizaos/cli": "^1.0.0-alpha.63"
-	},
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/elizaOS/eliza.git",
-		"directory": "packages/create-eliza"
-	},
-	"files": [
-		"cli",
-		"index.mjs",
-		"package.json"
-	],
-	"keywords": [
-		"eliza",
-		"elizaos",
-		"ai",
-		"agent",
-		"create"
-	],
-	"engines": {
-		"node": ">=14.0.0"
-	},
-	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
+  "name": "create-eliza",
+  "version": "1.0.0-alpha.63",
+  "description": "Initialize an Eliza project",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "create-eliza": "index.mjs"
+  },
+  "scripts": {
+    "create-eliza": "bun run index.mjs"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "elizaOS",
+    "url": "https://twitter.com/eliza_OS"
+  },
+  "dependencies": {
+    "@elizaos/cli": "^1.0.0-alpha.63"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/create-eliza"
+  },
+  "files": [
+    "cli",
+    "index.mjs",
+    "package.json"
+  ],
+  "keywords": [
+    "eliza",
+    "elizaos",
+    "ai",
+    "agent",
+    "create"
+  ],
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b",
+  "devDependencies": {
+    "prettier": "3.5.3"
+  }
 }

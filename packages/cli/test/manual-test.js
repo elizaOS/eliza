@@ -2,12 +2,12 @@
 
 /**
  * Manual test script for plugin publishing
- * 
+ *
  * This script:
  * 1. Creates a test plugin
  * 2. Sets up package.json with required fields
  * 3. Tests the publishing command with dry run
- * 
+ *
  * Usage:
  *   node test/manual-test.js
  */
@@ -25,14 +25,14 @@ const TEST_PLUGIN_DIR = path.resolve(__dirname, '../.test-plugin');
  */
 async function createTestPlugin() {
   console.log('Creating test plugin...');
-  
+
   // Create plugin directory
   try {
     await fs.mkdir(TEST_PLUGIN_DIR, { recursive: true });
   } catch (err) {
     // Directory already exists
   }
-  
+
   // Create package.json
   const packageJson = {
     name: '@elizaos/plugin-test-publish',
@@ -44,19 +44,19 @@ async function createTestPlugin() {
     platform: 'universal',
     repository: {
       type: 'git',
-      url: 'github:elizaos/plugin-test-publish'
+      url: 'github:elizaos/plugin-test-publish',
     },
     main: 'dist/index.js',
     scripts: {
-      build: 'echo "Build completed"'
-    }
+      build: 'echo "Build completed"',
+    },
   };
-  
+
   await fs.writeFile(
     path.join(TEST_PLUGIN_DIR, 'package.json'),
     JSON.stringify(packageJson, null, 2)
   );
-  
+
   // Create an index.js file
   await fs.writeFile(
     path.join(TEST_PLUGIN_DIR, 'index.js'),
@@ -66,7 +66,7 @@ module.exports = {
   actions: []
 };`
   );
-  
+
   console.log('Test plugin created at:', TEST_PLUGIN_DIR);
 }
 
@@ -75,12 +75,12 @@ module.exports = {
  */
 async function testPublishCommand() {
   console.log('\nTesting plugin publish command (dry run)...');
-  
+
   try {
-    execSync(
-      'npx @elizaos/cli plugin publish --test --platform universal',
-      { cwd: TEST_PLUGIN_DIR, stdio: 'inherit' }
-    );
+    execSync('npx @elizaos/cli plugin publish --test --platform universal', {
+      cwd: TEST_PLUGIN_DIR,
+      stdio: 'inherit',
+    });
     console.log('Publish test completed successfully!');
   } catch (error) {
     console.error('Publish test failed:', error.message);
@@ -95,7 +95,7 @@ async function runManualTest() {
   try {
     await createTestPlugin();
     await testPublishCommand();
-    
+
     console.log('\nAll manual tests completed successfully!');
     console.log(`You can find the test plugin at: ${TEST_PLUGIN_DIR}`);
     console.log('To remove the test plugin, run: rm -rf', TEST_PLUGIN_DIR);
@@ -105,4 +105,4 @@ async function runManualTest() {
   }
 }
 
-runManualTest(); 
+runManualTest();

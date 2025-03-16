@@ -1,27 +1,20 @@
-import type {
-	Agent,
-	Character,
-	Content,
-	IAgentRuntime,
-	Memory,
-	UUID
-} from "@elizaos/core";
+import type { Agent, Character, Content, IAgentRuntime, Memory, UUID } from '@elizaos/core';
 import {
-	ChannelType,
-	ModelType,
-	composePrompt,
-	composePromptFromState,
-	createUniqueUuid,
-	logger,
-	messageHandlerTemplate,
-	validateUuid
-} from "@elizaos/core";
-import express from "express";
-import fs from "node:fs";
-import { Readable } from "node:stream";
-import type { AgentServer } from "..";
-import { WebSocketFactory } from "../socketio/WebSocketFactory";
-import { upload } from "../loader";
+  ChannelType,
+  ModelType,
+  composePrompt,
+  composePromptFromState,
+  createUniqueUuid,
+  logger,
+  messageHandlerTemplate,
+  validateUuid,
+} from '@elizaos/core';
+import express from 'express';
+import fs from 'node:fs';
+import { Readable } from 'node:stream';
+import type { AgentServer } from '..';
+import { WebSocketFactory } from '../socketio/WebSocketFactory';
+import { upload } from '../loader';
 
 /**
  * Interface representing a custom request object that extends the express.Request interface.
@@ -32,10 +25,10 @@ import { upload } from "../loader";
  * @property {string} params.agentId - The unique identifier for the agent associated with the request
  */
 interface CustomRequest extends express.Request {
-	file?: Express.Multer.File;
-	params: {
-		agentId: string;
-	};
+  file?: Express.Multer.File;
+  params: {
+    agentId: string;
+  };
 }
 
 /**
@@ -46,8 +39,8 @@ interface CustomRequest extends express.Request {
  * @returns An express Router for agent routes.
  */
 export function agentRouter(
-	agents: Map<UUID, IAgentRuntime>,
-	server?: AgentServer,
+  agents: Map<UUID, IAgentRuntime>,
+  server?: AgentServer
 ): express.Router {
 	const router = express.Router();
 	const db = server?.database;

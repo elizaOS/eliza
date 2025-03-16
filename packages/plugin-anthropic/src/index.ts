@@ -253,18 +253,18 @@ export const anthropicPlugin: Plugin = {
 					}
 					
 					// Validate against schema if provided
-					if (params.schema) {
-						try {
-							return z.object(params.schema).parse(jsonObject);
-						} catch (zodError) {
-							logger.error("Schema validation failed:", zodError);
-							// If we have partial data that matches the schema structure, return what we have
-							if (isReflection && jsonObject.thought) {
-								return jsonObject;
-							}
-							throw zodError;
-						}
-					}
+					// if (params.schema) {
+					// 	try {
+					// 		return z.object(params.schema).parse(jsonObject);
+					// 	} catch (zodError) {
+					// 		logger.error("Schema validation failed:", zodError);
+					// 		// If we have partial data that matches the schema structure, return what we have
+					// 		if (isReflection && jsonObject.thought) {
+					// 			return jsonObject;
+					// 		}
+					// 		throw zodError;
+					// 	}
+					// }
 					
 					return jsonObject;
 				} catch (parseError) {
@@ -421,18 +421,18 @@ export const anthropicPlugin: Plugin = {
 					}
 					
 					// Validate against schema if provided
-					if (params.schema) {
-						try {
-							return z.object(params.schema).parse(jsonObject);
-						} catch (zodError) {
-							logger.error("Schema validation failed:", zodError);
-							// If we have partial data that matches the schema structure, return what we have
-							if (isReflection && jsonObject.thought) {
-								return jsonObject;
-							}
-							throw zodError;
-						}
-					}
+					// if (params.schema) {
+					// 	try {
+					// 		return z.object(params.schema).parse(jsonObject);
+					// 	} catch (zodError) {
+					// 		logger.error("Schema validation failed:", zodError);
+					// 		// If we have partial data that matches the schema structure, return what we have
+					// 		if (isReflection && jsonObject.thought) {
+					// 			return jsonObject;
+					// 		}
+					// 		throw zodError;
+					// 	}
+					// }
 					
 					return jsonObject;
 				} catch (parseError) {

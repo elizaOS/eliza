@@ -159,13 +159,13 @@ Note: proposal Id and vote option is required for voting on proposals or it will
 1. Import the plugin:
 
 ```typescript
-import { OmniflixPlugin } from "@elizaos/plugin-omniflix";
+import { OmniflixPlugin } from '@elizaos/plugin-omniflix';
 ```
 
 2. Register with ElizaOS:
 
 ```typescript
-import { Eliza } from "@elizaos/core";
+import { Eliza } from '@elizaos/core';
 
 const eliza = new Eliza();
 eliza.registerPlugin(OmniflixPlugin);
@@ -174,18 +174,18 @@ eliza.registerPlugin(OmniflixPlugin);
 ### Example Usage
 
 ```typescript
-import { voteOnProposal } from "@elizaos/plugin-omniflix";
+import { voteOnProposal } from '@elizaos/plugin-omniflix';
 
 // Vote on a proposal
 const voteOnProposal = await voteOnProposal(
-    {
-        proposalId: "1",
-        vote: "YES",
-    },
-    {
-        apiEndpoint: "https://rest.omniflix.network",
-        rpcEndpoint: "https://rpc.omniflix.network:443",
-    }
+  {
+    proposalId: '1',
+    vote: 'YES',
+  },
+  {
+    apiEndpoint: 'https://rest.omniflix.network',
+    rpcEndpoint: 'https://rpc.omniflix.network:443',
+  }
 );
 ```
 
@@ -207,10 +207,10 @@ const voteOnProposal = await voteOnProposal(
 - Redelegation: Has cooldown period
 - Delegation: Minimum amount may apply
 - Unbonding cancellation requires:
-    - Validator address
-    - Amount
-    - Creation height (block height when unbonding started)
-    - Must be within unbonding period
+  - Validator address
+  - Amount
+  - Creation height (block height when unbonding started)
+  - Must be within unbonding period
 
 ### Governance Rules
 

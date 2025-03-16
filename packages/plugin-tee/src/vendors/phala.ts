@@ -1,8 +1,8 @@
-import { TeeVendors } from "@elizaos/core";
-import { phalaRemoteAttestationAction as remoteAttestationAction } from "../actions/remoteAttestationAction";
-import { phalaDeriveKeyProvider as deriveKeyProvider } from "../providers/deriveKeyProvider";
-import { phalaRemoteAttestationProvider as remoteAttestationProvider } from "../providers/remoteAttestationProvider";
-import type { TeeVendor } from "./types";
+import { TeeVendors } from '@elizaos/core';
+import { phalaRemoteAttestationAction as remoteAttestationAction } from '../actions/remoteAttestationAction';
+import { phalaDeriveKeyProvider as deriveKeyProvider } from '../providers/deriveKeyProvider';
+import { phalaRemoteAttestationProvider as remoteAttestationProvider } from '../providers/remoteAttestationProvider';
+import type { TeeVendor } from './types';
 
 /**
  * A class representing a vendor for Phala TEE.
@@ -22,38 +22,38 @@ import type { TeeVendor } from "./types";
  * * @returns { string } The description of the vendor.
  */
 export class PhalaVendor implements TeeVendor {
-	type = TeeVendors.PHALA;
+  type = TeeVendors.PHALA;
 
-	/**
-	 * Returns an array of actions.
-	 *
-	 * @returns {Array} An array containing the remote attestation action.
-	 */
-	getActions() {
-		return [remoteAttestationAction];
-	}
-	/**
-	 * Retrieve the list of providers.
-	 *
-	 * @returns {Array<Function>} An array containing two provider functions: deriveKeyProvider and remoteAttestationProvider.
-	 */
-	getProviders() {
-		return [deriveKeyProvider, remoteAttestationProvider];
-	}
+  /**
+   * Returns an array of actions.
+   *
+   * @returns {Array} An array containing the remote attestation action.
+   */
+  getActions() {
+    return [remoteAttestationAction];
+  }
+  /**
+   * Retrieve the list of providers.
+   *
+   * @returns {Array<Function>} An array containing two provider functions: deriveKeyProvider and remoteAttestationProvider.
+   */
+  getProviders() {
+    return [deriveKeyProvider, remoteAttestationProvider];
+  }
 
-	/**
-	 * Returns the name of the plugin.
-	 * @returns {string} The name of the plugin.
-	 */
-	getName() {
-		return "phala-tee-plugin";
-	}
+  /**
+   * Returns the name of the plugin.
+   * @returns {string} The name of the plugin.
+   */
+  getName() {
+    return 'phala-tee-plugin';
+  }
 
-	/**
-	 * Get the description of the function
-	 * @returns {string} The description of the function
-	 */
-	getDescription() {
-		return "Phala TEE Cloud to Host Eliza Agents";
-	}
+  /**
+   * Get the description of the function
+   * @returns {string} The description of the function
+   */
+  getDescription() {
+    return 'Phala TEE Cloud to Host Eliza Agents';
+  }
 }

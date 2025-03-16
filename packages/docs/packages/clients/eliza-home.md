@@ -54,9 +54,7 @@ Add the Home client to your agent's configuration:
 
 ```json
 {
-  "clients": [
-    "home"
-  ]
+  "clients": ["home"]
 }
 ```
 
@@ -112,9 +110,9 @@ The plugin supports a variety of device types:
 
 ## Configuration Options
 
-| Environment Variable | Required | Description |
-|---------------------|----------|-------------|
-| `SMARTTHINGS_TOKEN` | Yes | SmartThings personal access token |
+| Environment Variable | Required | Description                       |
+| -------------------- | -------- | --------------------------------- |
+| `SMARTTHINGS_TOKEN`  | Yes      | SmartThings personal access token |
 
 ## Troubleshooting
 

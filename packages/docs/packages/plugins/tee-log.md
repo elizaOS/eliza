@@ -9,6 +9,7 @@ As Eliza is a fully autonomous AI agent capable of running within a TEE, we need
 ## Requirements
 
 Since the TEE Logging is based on the TEE, it is necessary to have a TEE enabled environment. Currently, we support Intel SGX (Gramine) and Intel TDX (dstack).
+
 - using Intel SGX (Gramine), you need to enable the plugin-sgx in the Eliza runtime, which is enabled in SGX env automatically.
 - using Intel TDX (dstack), you need to enable the plugin-tee in the Eliza runtime.
 
@@ -17,9 +18,11 @@ Since the TEE Logging is based on the TEE, it is necessary to have a TEE enabled
 ## TEE Logging Mechanism
 
 1. **Key Pair Generation and Attestation**:
+
    - During startup, each agent generates a key pair and creates a remote attestation for the public key. The private key is securely stored in the TEE's encrypted memory. The agent's relevant information, along with the public key and attestation, is recorded in a local database. A new key pair is generated each time the agent is updated or restarted to ensure key security.
 
 2. **Log Recording**:
+
    - For each log entry, basic information is recorded, including `agentId`, `roomId`, `userId`, `type`, `content`, and `timestamp`. This information is concatenated and signed using the agent's corresponding private key to ensure verifiability. The verification process follows this trust chain:
      - Verify the attestation.
      - Trust the public key contained in the attestation.
@@ -27,9 +30,11 @@ Since the TEE Logging is based on the TEE, it is necessary to have a TEE enabled
      - Trust the complete log record.
 
 3. **Data Storage**:
+
    - All log data must be stored in the TEE's encrypted file system in production environments. Storing data in plaintext is prohibited to prevent tampering.
 
 4. **Log Extraction for Verification**:
+
    - Third parties can extract TEE logs for verification purposes. Two types of information can be extracted:
      - **Agent Information**: This includes the agent's metadata, public key, and attestation, which can be used to verify the agent's public key.
      - **Log Information**: Required logs can be extracted, with the agent's attestation and public key used to verify the signature, ensuring that each record remains untampered.
@@ -48,24 +53,31 @@ The `TeeLogService` class implements the `ITeeLogService` interface and extends 
 #### Methods
 
 - **getInstance()**: `TeeLogService`
+
   - Returns the singleton instance of the `TeeLogService`.
 
 - **static get serviceType()**: `ServiceType`
+
   - Returns the service type for TEE logging.
 
 - **async initialize(runtime: IAgentRuntime): Promise void**
+
   - Initializes the TEE log service. It checks the runtime settings to configure the TEE type and enables logging if configured.
 
 - **async log(agentId: string, roomId: string, userId: string, type: string, content: string): Promise boolean**
+
   - Logs an interaction with the specified parameters. Returns `false` if TEE logging is not enabled.
 
 - **async getAllAgents(): Promise TeeAgent[]**
+
   - Retrieves all agents that have been logged. Returns an empty array if TEE logging is not enabled.
 
 - **async getAgent(agentId: string): Promise TeeAgent | undefined**
+
   - Retrieves the details of a specific agent by their ID. Returns `undefined` if TEE logging is not enabled.
 
 - **async getLogs(query: TeeLogQuery, page: number, pageSize: number): Promise PageQuery TeeLog[]**
+
   - Retrieves logs based on the provided query parameters. Returns an empty result if TEE logging is not enabled.
 
 - **async generateAttestation(userReport: string): Promise string**
@@ -98,39 +110,34 @@ First, add plugin-tee-log to the dependencies of plugin-bootstrap:
 Then, add the following code to the `Continue` action:
 
 ```typescript
-import {
-    ServiceType,
-    ITeeLogService,
-} from "@elizaos/core";
-
+import { ServiceType, ITeeLogService } from '@elizaos/core';
 
 // In the handler of the action
-    handler: async (
-        runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
-        callback: HandlerCallback
-    ) => {
-        // Continue the action
+handler: async (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State,
+  options: any,
+  callback: HandlerCallback
+) => {
+  // Continue the action
 
-        // Log the action
-        const teeLogService = runtime
-            .getService<ITeeLogService>(ServiceType.TEE_LOG)
-            .getInstance();
-        if (teeLogService.log(
-                runtime.agentId,
-                message.roomId,
-                message.userId,
-                "The type of the log, for example, Action:CONTINUE",
-                "The content that you want to log"
-            )
-        ) {
-            console.log("Logged TEE log successfully");
-        }
+  // Log the action
+  const teeLogService = runtime.getService<ITeeLogService>(ServiceType.TEE_LOG).getInstance();
+  if (
+    teeLogService.log(
+      runtime.agentId,
+      message.roomId,
+      message.userId,
+      'The type of the log, for example, Action:CONTINUE',
+      'The content that you want to log'
+    )
+  ) {
+    console.log('Logged TEE log successfully');
+  }
 
-        // Continue the action
-    }
+  // Continue the action
+};
 ```
 
-After configuring the logging for the action, you can run the Eliza and see the logs through the client-direct REST API. 
+After configuring the logging for the action, you can run the Eliza and see the logs through the client-direct REST API.

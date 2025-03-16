@@ -37,7 +37,7 @@
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .filtersContainer > div:first-child {
     margin-bottom: 1rem;
   }

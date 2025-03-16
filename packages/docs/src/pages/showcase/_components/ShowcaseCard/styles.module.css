@@ -48,11 +48,8 @@
 
 .showcaseCardTitle a {
   text-decoration: none;
-  background: linear-gradient(
-      var(--ifm-color-primary),
-      var(--ifm-color-primary)
-    )
-    0% 100% / 0% 1px no-repeat;
+  background: linear-gradient(var(--ifm-color-primary), var(--ifm-color-primary)) 0% 100% / 0% 1px
+    no-repeat;
   transition: background-size ease-out 200ms;
 }
 
@@ -84,7 +81,6 @@
   font-size: smaller;
   line-height: 1.66;
 }
-
 
 /* Base tag styling */
 .tag {

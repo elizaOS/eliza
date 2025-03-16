@@ -40,7 +40,7 @@ _Como visto dando funcionamento em [@DegenSpartanAI](https://x.com/degenspartana
 ### Edite o arquivo de personagem (character file)
 
 - Verifique o arquivo `packages/core/src/defaultCharacter.ts` - você pode modificá-lo
-- Você também pode carregar personagens com o comando  `pnpm start --characters="path/to/your/character.json"` e executar vários bots ao mesmo tempo.
+- Você também pode carregar personagens com o comando `pnpm start --characters="path/to/your/character.json"` e executar vários bots ao mesmo tempo.
 
 Após configurar o arquivo .env e o arquivo de personagem (character file), você pode iniciar o bot com o seguinte comando:
 
@@ -53,7 +53,7 @@ pnpm start
 
 ### Adicionando ações personalizadas
 
-Para evitar conflitos no diretório principal, recomendamos adicionar ações personalizadas a um diretório chamado  `custom_actions` e, em seguida, incluí-las no arquivo `elizaConfig.yaml`. Consulte o arquivo `elizaConfig.example.yaml` para um exemplo.
+Para evitar conflitos no diretório principal, recomendamos adicionar ações personalizadas a um diretório chamado `custom_actions` e, em seguida, incluí-las no arquivo `elizaConfig.yaml`. Consulte o arquivo `elizaConfig.example.yaml` para um exemplo.
 
 ## Rodando com diferentes modelos
 

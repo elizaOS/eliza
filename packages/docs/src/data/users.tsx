@@ -1,11 +1,7 @@
-import {sortBy} from 'lodash';
-import {registryUsers} from './registry-users';
+import { sortBy } from 'lodash';
+import { registryUsers } from './registry-users';
 
-export type TagType =
-  | 'favorite' 
-  | 'adapter'
-  | 'client'
-  | 'plugin';
+export type TagType = 'favorite' | 'adapter' | 'client' | 'plugin';
 
 export type User = {
   title: string;
@@ -22,7 +18,7 @@ export type Tag = {
   color: string;
 };
 
-export const Tags: {[type in TagType]: Tag} = {
+export const Tags: { [type in TagType]: Tag } = {
   favorite: {
     label: 'Favorite',
     description: 'Our favorite projects that you must check out!',
@@ -36,13 +32,13 @@ export const Tags: {[type in TagType]: Tag} = {
   client: {
     label: 'Client',
     description: 'Platform and service clients',
-    color: '#4040bf', 
+    color: '#4040bf',
   },
   plugin: {
     label: 'Plugin',
     description: 'Feature and integration plugins',
     color: '#40bf40',
-  }
+  },
 };
 
 export const TagList = Object.keys(Tags) as TagType[];

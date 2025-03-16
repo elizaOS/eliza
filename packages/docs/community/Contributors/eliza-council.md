@@ -17,21 +17,21 @@ Current Status & Priorities:
 Version 2 (V2) Plans:
 
 - Major architectural changes planned for V2 including:
-    - Unified message bus for better cross-client communication
-    - Unified wallet abstraction to handle multiple chains/providers
-    - Event-driven architecture for better plugin extensibility
-    - Moving plugins to a community repo with standards for core plugins
-    - Simplified client code (reducing to ~200 lines per client)
-    - CLI tool for easier setup and plugin management
-    - Improved developer experience targeting "5 minutes to get running"
-    - Moving model providers to plugins
-    - Better secrets management
+  - Unified message bus for better cross-client communication
+  - Unified wallet abstraction to handle multiple chains/providers
+  - Event-driven architecture for better plugin extensibility
+  - Moving plugins to a community repo with standards for core plugins
+  - Simplified client code (reducing to ~200 lines per client)
+  - CLI tool for easier setup and plugin management
+  - Improved developer experience targeting "5 minutes to get running"
+  - Moving model providers to plugins
+  - Better secrets management
 
 Development Strategy:
 
 - Will maintain V1 and V2 development simultaneously:
-    - V1 team focusing on stability, merging PRs, documentation
-    - V2 team working on new architecture and features
+  - V1 team focusing on stability, merging PRs, documentation
+  - V2 team working on new architecture and features
 - Need to balance maintaining momentum/community engagement while improving architecture
 - Plan to create CLI tool similar to "create-react-app" for easier project setup
 - Considering moving from PNPM to Bun or Deno for better developer experience

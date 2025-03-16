@@ -1,59 +1,53 @@
-import { getClient } from "./test-utils";
+import { getClient } from './test-utils';
 
-test("client can get profile followers", async () => {
-	const client = await getClient();
+test('client can get profile followers', async () => {
+  const client = await getClient();
 
-	const seenProfiles = new Map<string, boolean>();
-	const maxProfiles = 50;
-	let nProfiles = 0;
+  const seenProfiles = new Map<string, boolean>();
+  const maxProfiles = 50;
+  let nProfiles = 0;
 
-	const profiles = await client.getFollowers(
-		"1425600122885394432",
-		maxProfiles,
-	);
+  const profiles = await client.getFollowers('1425600122885394432', maxProfiles);
 
-	for await (const profile of profiles) {
-		nProfiles++;
+  for await (const profile of profiles) {
+    nProfiles++;
 
-		const id = profile.userId;
-		expect(id).toBeTruthy();
+    const id = profile.userId;
+    expect(id).toBeTruthy();
 
-		if (id != null) {
-			expect(seenProfiles.has(id)).toBeFalsy();
-			seenProfiles.set(id, true);
-		}
+    if (id != null) {
+      expect(seenProfiles.has(id)).toBeFalsy();
+      seenProfiles.set(id, true);
+    }
 
-		expect(profile.username).toBeTruthy();
-	}
+    expect(profile.username).toBeTruthy();
+  }
 
-	expect(nProfiles).toEqual(maxProfiles);
+  expect(nProfiles).toEqual(maxProfiles);
 });
 
-test("client can get profile following", async () => {
-	const client = await getClient();
+test('client can get profile following', async () => {
+  const client = await getClient();
 
-	const seenProfiles = new Map<string, boolean>();
-	const maxProfiles = 50;
-	let nProfiles = 0;
+  const seenProfiles = new Map<string, boolean>();
+  const maxProfiles = 50;
+  let nProfiles = 0;
 
-	const profiles = await client.getFollowing(
-		"1425600122885394432",
-		maxProfiles,
-	);
+  const profiles = await client.getFollowing('1425600122885394432', maxProfiles);
 
-	for await (const profile of profiles) {
-		nProfiles++;
+  for await (const profile of profiles) {
+    nProfiles++;
 
-		const id = profile.userId;
-		expect(id).toBeTruthy();
+    const id = profile.userId;
+    expect(id).toBeTruthy();
 
-		if (id != null) {
-			expect(seenProfiles.has(id)).toBeFalsy();
-			seenProfiles.set(id, true);
-		}
+    if (id != null) {
+      expect(seenProfiles.has(id)).toBeFalsy();
+      seenProfiles.set(id, true);
+    }
 
-		expect(profile.username).toBeTruthy();
-	}
+    expect(profile.username).toBeTruthy();
+  }
 
-	expect(nProfiles).toEqual(maxProfiles);
+  expect(nProfiles).toEqual(maxProfiles);
 });

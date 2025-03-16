@@ -13,7 +13,7 @@ This guide covers advanced features and capabilities of Eliza, including complex
 Eliza supports advanced video processing capabilities through the `VideoService`:
 
 ```typescript
-import { VideoService } from "@elizaos/core/plugin-node";
+import { VideoService } from '@elizaos/core/plugin-node';
 
 // Initialize service
 const videoService = new VideoService();
@@ -35,10 +35,10 @@ Key features:
 The `ImageDescriptionService` provides advanced image analysis:
 
 ```typescript
-import { ImageDescriptionService } from "@elizaos/core/plugin-node";
+import { ImageDescriptionService } from '@elizaos/core/plugin-node';
 
 const imageService = new ImageDescriptionService();
-const description = await imageService.describeImage(imageUrl, "gpu", runtime);
+const description = await imageService.describeImage(imageUrl, 'gpu', runtime);
 ```
 
 Features:
@@ -55,7 +55,7 @@ Features:
 The Solana plugin provides comprehensive blockchain functionality:
 
 ```typescript
-import { solanaPlugin } from "@elizaos/core/plugin-solana";
+import { solanaPlugin } from '@elizaos/core/plugin-solana';
 
 // Initialize plugin
 runtime.registerPlugin(solanaPlugin);
@@ -66,23 +66,23 @@ runtime.registerPlugin(solanaPlugin);
 ```typescript
 // Buy tokens
 const swapResult = await swapToken(
-    connection,
-    walletPublicKey,
-    inputTokenCA,
-    outputTokenCA,
-    amount,
+  connection,
+  walletPublicKey,
+  inputTokenCA,
+  outputTokenCA,
+  amount
 );
 
 // Sell tokens
 const sellResult = await sellToken({
-    sdk,
-    seller: walletKeypair,
-    mint: tokenMint,
-    amount: sellAmount,
-    priorityFee,
-    allowOffCurve: false,
-    slippage: "1",
-    connection,
+  sdk,
+  seller: walletKeypair,
+  mint: tokenMint,
+  amount: sellAmount,
+  priorityFee,
+  allowOffCurve: false,
+  slippage: '1',
+  connection,
 });
 ```
 
@@ -93,15 +93,15 @@ const trustScoreManager = new TrustScoreManager(tokenProvider, trustScoreDb);
 
 // Generate trust scores
 const score = await trustScoreManager.generateTrustScore(
-    tokenAddress,
-    recommenderId,
-    recommenderWallet,
+  tokenAddress,
+  recommenderId,
+  recommenderWallet
 );
 
 // Monitor trade performance
 await trustScoreManager.createTradePerformance(runtime, tokenAddress, userId, {
-    buy_amount: amount,
-    is_simulation: false,
+  buy_amount: amount,
+  is_simulation: false,
 });
 ```
 
@@ -113,18 +113,18 @@ Implement text-to-speech capabilities:
 
 ```typescript
 class SpeechService extends Service implements ISpeechService {
-    async generate(runtime: IAgentRuntime, text: string): Promise<Readable> {
-        if (runtime.getSetting("ELEVENLABS_XI_API_KEY")) {
-            return textToSpeech(runtime, text);
-        }
-
-        const { audio } = await synthesize(text, {
-            engine: "vits",
-            voice: "en_US-hfc_female-medium",
-        });
-
-        return Readable.from(audio);
+  async generate(runtime: IAgentRuntime, text: string): Promise<Readable> {
+    if (runtime.getSetting('ELEVENLABS_XI_API_KEY')) {
+      return textToSpeech(runtime, text);
     }
+
+    const { audio } = await synthesize(text, {
+      engine: 'vits',
+      voice: 'en_US-hfc_female-medium',
+    });
+
+    return Readable.from(audio);
+  }
 }
 ```
 
@@ -134,23 +134,23 @@ Handle PDF document analysis:
 
 ```typescript
 class PdfService extends Service {
-    async convertPdfToText(pdfBuffer: Buffer): Promise<string> {
-        const pdf = await getDocument({ data: pdfBuffer }).promise;
-        const numPages = pdf.numPages;
-        const textPages = [];
+  async convertPdfToText(pdfBuffer: Buffer): Promise<string> {
+    const pdf = await getDocument({ data: pdfBuffer }).promise;
+    const numPages = pdf.numPages;
+    const textPages = [];
 
-        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-            const page = await pdf.getPage(pageNum);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items
-                .filter(isTextItem)
-                .map((item) => item.str)
-                .join(" ");
-            textPages.push(pageText);
-        }
-
-        return textPages.join("\n");
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .filter(isTextItem)
+        .map((item) => item.str)
+        .join(' ');
+      textPages.push(pageText);
     }
+
+    return textPages.join('\n');
+  }
 }
 ```
 
@@ -160,24 +160,21 @@ class PdfService extends Service {
 
 ```typescript
 class MemoryManager {
-    async getMemories({
-        agentId,
-        roomId,
-        count,
-    }: {
-        agentId: string;
-        roomId: string;
-        count: number;
-    }): Promise<Memory[]> {
-        // Implement memory retrieval logic
-    }
+  async getMemories({
+    agentId,
+    roomId,
+    count,
+  }: {
+    agentId: string;
+    roomId: string;
+    count: number;
+  }): Promise<Memory[]> {
+    // Implement memory retrieval logic
+  }
 
-    async createMemory(
-        memory: Memory,
-        allowDuplicates: boolean = false,
-    ): Promise<void> {
-        // Implement memory storage logic
-    }
+  async createMemory(memory: Memory, allowDuplicates: boolean = false): Promise<void> {
+    // Implement memory storage logic
+  }
 }
 ```
 
@@ -187,20 +184,20 @@ Implement advanced scoring systems:
 
 ```typescript
 class TrustScoreDatabase {
-    async calculateValidationTrust(tokenAddress: string): number {
-        const sql = `
+  async calculateValidationTrust(tokenAddress: string): number {
+    const sql = `
       SELECT rm.trust_score
       FROM token_recommendations tr
       JOIN recommender_metrics rm ON tr.recommender_id = rm.recommender_id
       WHERE tr.token_address = ?;
     `;
 
-        const rows = this.db.prepare(sql).all(tokenAddress);
-        if (rows.length === 0) return 0;
+    const rows = this.db.prepare(sql).all(tokenAddress);
+    if (rows.length === 0) return 0;
 
-        const totalTrust = rows.reduce((acc, row) => acc + row.trust_score, 0);
-        return totalTrust / rows.length;
-    }
+    const totalTrust = rows.reduce((acc, row) => acc + row.trust_score, 0);
+    return totalTrust / rows.length;
+  }
 }
 ```
 
@@ -210,17 +207,17 @@ class TrustScoreDatabase {
 
 ```typescript
 const customPlugin: Plugin = {
-    name: "custom-plugin",
-    description: "Custom Plugin for Eliza",
-    actions: [
-        // Custom actions
-    ],
-    evaluators: [
-        // Custom evaluators
-    ],
-    providers: [
-        // Custom providers
-    ],
+  name: 'custom-plugin',
+  description: 'Custom Plugin for Eliza',
+  actions: [
+    // Custom actions
+  ],
+  evaluators: [
+    // Custom evaluators
+  ],
+  providers: [
+    // Custom providers
+  ],
 };
 ```
 
@@ -228,22 +225,22 @@ const customPlugin: Plugin = {
 
 ```typescript
 export const complexAction: Action = {
-    name: "COMPLEX_ACTION",
-    similes: ["ALTERNATIVE_NAME", "OTHER_NAME"],
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
-        // Implement validation logic
-        return true;
-    },
-    handler: async (
-        runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: { [key: string]: unknown },
-        callback?: HandlerCallback,
-    ): Promise<boolean> => {
-        // Implement complex handling logic
-        return true;
-    },
+  name: 'COMPLEX_ACTION',
+  similes: ['ALTERNATIVE_NAME', 'OTHER_NAME'],
+  validate: async (runtime: IAgentRuntime, message: Memory) => {
+    // Implement validation logic
+    return true;
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    options: { [key: string]: unknown },
+    callback?: HandlerCallback
+  ): Promise<boolean> => {
+    // Implement complex handling logic
+    return true;
+  },
 };
 ```
 
@@ -253,14 +250,10 @@ export const complexAction: Action = {
 
 ```typescript
 const customRuntime = new AgentRuntime({
-    databaseAdapter: new PostgresDatabaseAdapter(config),
-    modelProvider: new OpenAIProvider(apiKey),
-    plugins: [solanaPlugin, customPlugin],
-    services: [
-        new VideoService(),
-        new ImageDescriptionService(),
-        new SpeechService(),
-    ],
+  databaseAdapter: new PostgresDatabaseAdapter(config),
+  modelProvider: new OpenAIProvider(apiKey),
+  plugins: [solanaPlugin, customPlugin],
+  services: [new VideoService(), new ImageDescriptionService(), new SpeechService()],
 });
 ```
 
@@ -268,18 +261,18 @@ const customRuntime = new AgentRuntime({
 
 ```typescript
 const modelConfig = {
-    modelClass: ModelClass.LARGE,
-    temperature: 0.7,
-    maxTokens: 2000,
-    topP: 0.9,
-    frequencyPenalty: 0.5,
-    presencePenalty: 0.5,
+  modelClass: ModelClass.LARGE,
+  temperature: 0.7,
+  maxTokens: 2000,
+  topP: 0.9,
+  frequencyPenalty: 0.5,
+  presencePenalty: 0.5,
 };
 
 const response = await generateText({
-    runtime,
-    context: prompt,
-    ...modelConfig,
+  runtime,
+  context: prompt,
+  ...modelConfig,
 });
 ```
 
@@ -289,18 +282,18 @@ const response = await generateText({
 
 ```typescript
 class CacheManager {
-    private cache: NodeCache;
-    private cacheDir: string;
+  private cache: NodeCache;
+  private cacheDir: string;
 
-    constructor() {
-        this.cache = new NodeCache({ stdTTL: 300 });
-        this.cacheDir = path.join(__dirname, "cache");
-        this.ensureCacheDirectoryExists();
-    }
+  constructor() {
+    this.cache = new NodeCache({ stdTTL: 300 });
+    this.cacheDir = path.join(__dirname, 'cache');
+    this.ensureCacheDirectoryExists();
+  }
 
-    private async getCachedData<T>(key: string): Promise<T | null> {
-        // Implement tiered caching strategy
-    }
+  private async getCachedData<T>(key: string): Promise<T | null> {
+    // Implement tiered caching strategy
+  }
 }
 ```
 
@@ -308,21 +301,21 @@ class CacheManager {
 
 ```typescript
 class QueueManager {
-    private queue: string[] = [];
-    private processing: boolean = false;
+  private queue: string[] = [];
+  private processing: boolean = false;
 
-    async processQueue(): Promise<void> {
-        if (this.processing || this.queue.length === 0) {
-            return;
-        }
-
-        this.processing = true;
-        while (this.queue.length > 0) {
-            const item = this.queue.shift();
-            await this.processItem(item);
-        }
-        this.processing = false;
+  async processQueue(): Promise<void> {
+    if (this.processing || this.queue.length === 0) {
+      return;
     }
+
+    this.processing = true;
+    while (this.queue.length > 0) {
+      const item = this.queue.shift();
+      await this.processItem(item);
+    }
+    this.processing = false;
+  }
 }
 ```
 
@@ -332,17 +325,17 @@ class QueueManager {
 
 ```typescript
 try {
-    const result = await complexOperation();
-    if (!result) {
-        throw new Error("Operation failed");
-    }
-    return result;
+  const result = await complexOperation();
+  if (!result) {
+    throw new Error('Operation failed');
+  }
+  return result;
 } catch (error) {
-    console.error("Error in operation:", error);
-    await errorReporting.log(error);
-    throw new OperationalError("Failed to complete operation", {
-        cause: error,
-    });
+  console.error('Error in operation:', error);
+  await errorReporting.log(error);
+  throw new OperationalError('Failed to complete operation', {
+    cause: error,
+  });
 }
 ```
 
@@ -350,15 +343,15 @@ try {
 
 ```typescript
 class ResourceManager {
-    private resources: Map<string, Resource> = new Map();
+  private resources: Map<string, Resource> = new Map();
 
-    async acquire(id: string): Promise<Resource> {
-        // Implement resource acquisition with timeout
-    }
+  async acquire(id: string): Promise<Resource> {
+    // Implement resource acquisition with timeout
+  }
 
-    async release(id: string): Promise<void> {
-        // Implement resource cleanup
-    }
+  async release(id: string): Promise<void> {
+    // Implement resource cleanup
+  }
 }
 ```
 
@@ -368,30 +361,30 @@ class ResourceManager {
 
 1. Memory Leaks
 
-    - Monitor memory usage
-    - Implement proper cleanup
-    - Use WeakMap for caching
+   - Monitor memory usage
+   - Implement proper cleanup
+   - Use WeakMap for caching
 
 2. Performance Bottlenecks
 
-    - Profile slow operations
-    - Implement batching
-    - Use connection pooling
+   - Profile slow operations
+   - Implement batching
+   - Use connection pooling
 
 3. Integration Issues
-    - Verify API credentials
-    - Check network connectivity
-    - Validate request formatting
+   - Verify API credentials
+   - Check network connectivity
+   - Validate request formatting
 
 ### Debugging
 
 ```typescript
-const debug = require("debug")("eliza:advanced");
+const debug = require('debug')('eliza:advanced');
 
-debug("Detailed operation info: %O", {
-    operation: "complexOperation",
-    parameters: params,
-    result: result,
+debug('Detailed operation info: %O', {
+  operation: 'complexOperation',
+  parameters: params,
+  result: result,
 });
 ```
 
@@ -400,29 +393,37 @@ debug("Detailed operation info: %O", {
 ## FAQ
 
 ### How does memory management work in ElizaOS?
+
 ElizaOS uses RAG (Retrieval-Augmented Generation) to convert prompts into vector embeddings for efficient context retrieval and memory storage.
 
 ### How do I load custom knowledge/documents?
+
 Convert documents using the folder2knowledge tool and add them to your character's knowledge section. Use RAG by setting `ragKnowledge: true`.
 
 ### How do I fix "Cannot generate embedding: Memory content is empty"?
+
 Check your database for null memory entries and ensure proper content formatting when storing new memories.
 
 ### How do I prevent unwanted Twitter interactions?
+
 To better control what tweets your agent responds to, configure `TWITTER_TARGET_USERS` in `.env` and set specific action flags like `TWITTER_LIKES_ENABLE=false` to control interaction types.
 
 ### How do I troubleshoot Twitter authentication issues?
+
 Ensure correct credentials in `.env`, mark account as "Automated" in Twitter settings, and consider using a residential IP to avoid blocks.
 
 ### How do I make my agent respond to Twitter replies?
+
 Set `ENABLE_ACTION_PROCESSING=true` and configure `TWITTER_POLL_INTERVAL`. Target specific users for guaranteed responses.
 
 ### How do I avoid Twitter bot suspensions?
+
 - Mark account as automated in Twitter settings
 - Space out posts (15-20 minutes between interactions)
 - Avoid using proxies
 
 ### How do I fix Twitter authentication issues?
+
 - Ensure correct credentials in .env file
 - Use valid TWITTER_COOKIES format
 - Turn on "Automated" in Twitter profile settings

@@ -67,9 +67,9 @@ pnpm run lint
 
 - Copy the `.env.example` file and rename it to `.env`.
 - Fill in the necessary details:
-    - Node information.
-    - LLM key.
-    - Twitter credentials.
+  - Node information.
+  - LLM key.
+  - Twitter credentials.
 
 ### 2. Customize DKG Knowledge Asset & Query Templates
 
@@ -80,9 +80,9 @@ pnpm run lint
 
 - Create a character file in the `characters` folder.
 - Run the character using the following command:
-    ```bash
-    pnpm start --characters="characters/chatdkg.character.json"
-    ```
+  ```bash
+  pnpm start --characters="characters/chatdkg.character.json"
+  ```
 
 ### Notes
 

@@ -44,13 +44,13 @@ To use this plugin, you need to configure your ElizaOS character with the necess
 
 ### Required Settings
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `DEVA_API_KEY` | Your Deva API key for authentication | None (Required) |
-| `DEVA_API_BASE_URL` | Base URL for the Deva API | None (Required) |
-| `POST_INTERVAL_MIN` | Minimum interval between posts (minutes) | 90 |
-| `POST_INTERVAL_MAX` | Maximum interval between posts (minutes) | 180 |
-| `POST_IMMEDIATELY` | Whether to post immediately on startup | false |
+| Setting             | Description                              | Default         |
+| ------------------- | ---------------------------------------- | --------------- |
+| `DEVA_API_KEY`      | Your Deva API key for authentication     | None (Required) |
+| `DEVA_API_BASE_URL` | Base URL for the Deva API                | None (Required) |
+| `POST_INTERVAL_MIN` | Minimum interval between posts (minutes) | 90              |
+| `POST_INTERVAL_MAX` | Maximum interval between posts (minutes) | 180             |
+| `POST_IMMEDIATELY`  | Whether to post immediately on startup   | false           |
 
 ## Post Template
 

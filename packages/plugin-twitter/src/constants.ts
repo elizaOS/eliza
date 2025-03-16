@@ -1,1 +1,1 @@
-export const TWITTER_SERVICE_NAME = "twitter";
+export const TWITTER_SERVICE_NAME = 'twitter';

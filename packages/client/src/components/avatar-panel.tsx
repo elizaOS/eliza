@@ -1,20 +1,15 @@
-import { Button } from "@/components/ui/button";
-import type { Agent } from "@elizaos/core";
-import { Image as ImageIcon, Upload, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Button } from '@/components/ui/button';
+import type { Agent } from '@elizaos/core';
+import { Image as ImageIcon, Upload, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 interface AvatarPanelProps {
   characterValue: Agent;
   setCharacterValue: (value: (prev: Agent) => Agent) => void;
 }
 
-export default function AvatarPanel({
-  characterValue,
-  setCharacterValue,
-}: AvatarPanelProps) {
-  const [avatar, setAvatar] = useState<string | null>(
-    characterValue?.settings?.avatar || null
-  );
+export default function AvatarPanel({ characterValue, setCharacterValue }: AvatarPanelProps) {
+  const [avatar, setAvatar] = useState<string | null>(characterValue?.settings?.avatar || null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,7 +21,7 @@ export default function AvatarPanel({
           const img = new Image();
           img.src = e.target.result as string;
           img.onload = () => {
-            const canvas = document.createElement("canvas");
+            const canvas = document.createElement('canvas');
             const maxSize = 300; // Resize to max 300px width/height
             let width = img.width;
             let height = img.height;
@@ -45,9 +40,9 @@ export default function AvatarPanel({
 
             canvas.width = width;
             canvas.height = height;
-            const ctx = canvas.getContext("2d");
+            const ctx = canvas.getContext('2d');
             ctx?.drawImage(img, 0, 0, width, height);
-            const resizedBase64 = canvas.toDataURL("image/jpeg", 0.8); // Reduce quality to 80%
+            const resizedBase64 = canvas.toDataURL('image/jpeg', 0.8); // Reduce quality to 80%
 
             setAvatar(resizedBase64);
           };
@@ -74,11 +69,7 @@ export default function AvatarPanel({
       <div className="flex flex-col items-center gap-4 pb-4">
         {avatar ? (
           <div className="relative w-64 h-64">
-            <img
-              src={avatar}
-              alt="Character Avatar"
-              className="object-cover rounded-lg border"
-            />
+            <img src={avatar} alt="Character Avatar" className="object-cover rounded-lg border" />
             <button
               className="absolute -top-2 -right-2 bg-white p-1 rounded-full shadow-md"
               onClick={() => setAvatar(null)}
@@ -100,10 +91,7 @@ export default function AvatarPanel({
           ref={fileInputRef}
           onChange={handleFileUpload}
         />
-        <Button
-          className="flex items-center gap-2"
-          onClick={() => fileInputRef.current?.click()}
-        >
+        <Button className="flex items-center gap-2" onClick={() => fileInputRef.current?.click()}>
           <Upload className="w-5 h-5" /> Upload Avatar
         </Button>
       </div>

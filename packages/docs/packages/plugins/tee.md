@@ -33,11 +33,11 @@ DSTACK_SIMULATOR_ENDPOINT=your-endpoint-url  # Optional, for simulator purposes
 Import and register the plugin in your Eliza configuration:
 
 ```typescript
-import { teePlugin } from "@elizaos/plugin-tee";
+import { teePlugin } from '@elizaos/plugin-tee';
 
 export default {
-    plugins: [teePlugin],
-    // ... other configuration
+  plugins: [teePlugin],
+  // ... other configuration
 };
 ```
 
@@ -48,30 +48,21 @@ export default {
 The `DeriveKeyProvider` allows for secure key derivation within a TEE environment:
 
 ```typescript
-import { DeriveKeyProvider } from "@elizaos/plugin-tee";
+import { DeriveKeyProvider } from '@elizaos/plugin-tee';
 
 // Initialize the provider
 const provider = new DeriveKeyProvider();
 
 // Derive a raw key
-const rawKey = await provider.rawDeriveKey(
-    "/path/to/derive",
-    "subject-identifier"
-);
+const rawKey = await provider.rawDeriveKey('/path/to/derive', 'subject-identifier');
 // rawKey is a DeriveKeyResponse that can be used for further processing
 const rawKeyArray = rawKey.asUint8Array();
 
 // Derive a Solana keypair (Ed25519)
-const solanaKeypair = await provider.deriveEd25519Keypair(
-    "/path/to/derive",
-    "subject-identifier"
-);
+const solanaKeypair = await provider.deriveEd25519Keypair('/path/to/derive', 'subject-identifier');
 
 // Derive an Ethereum keypair (ECDSA)
-const evmKeypair = await provider.deriveEcdsaKeypair(
-    "/path/to/derive",
-    "subject-identifier"
-);
+const evmKeypair = await provider.deriveEcdsaKeypair('/path/to/derive', 'subject-identifier');
 ```
 
 ### RemoteAttestationProvider
@@ -79,10 +70,10 @@ const evmKeypair = await provider.deriveEcdsaKeypair(
 The `RemoteAttestationProvider` generates remote attestations within a TEE environment:
 
 ```typescript
-import { RemoteAttestationProvider } from "@elizaos/plugin-tee";
+import { RemoteAttestationProvider } from '@elizaos/plugin-tee';
 
 const provider = new RemoteAttestationProvider();
-const attestation = await provider.generateAttestation("your-report-data");
+const attestation = await provider.generateAttestation('your-report-data');
 ```
 
 ## Development
@@ -128,15 +119,15 @@ docker run --rm -p 8090:8090 phalanetwork/tappd-simulator:latest
 
 ```typescript
 enum TEEMode {
-    OFF = "OFF",
-    LOCAL = "LOCAL", // For local development with simulator
-    DOCKER = "DOCKER", // For docker development with simulator
-    PRODUCTION = "PRODUCTION", // For production without simulator
+  OFF = 'OFF',
+  LOCAL = 'LOCAL', // For local development with simulator
+  DOCKER = 'DOCKER', // For docker development with simulator
+  PRODUCTION = 'PRODUCTION', // For production without simulator
 }
 
 interface RemoteAttestationQuote {
-    quote: string;
-    timestamp: number;
+  quote: string;
+  timestamp: number;
 }
 ```
 
@@ -144,56 +135,56 @@ interface RemoteAttestationQuote {
 
 1. **Key Management**
 
-    - Advanced key derivation schemes
-    - Multi-party computation support
-    - Key rotation automation
-    - Backup and recovery systems
-    - Hardware security module integration
-    - Custom derivation paths
+   - Advanced key derivation schemes
+   - Multi-party computation support
+   - Key rotation automation
+   - Backup and recovery systems
+   - Hardware security module integration
+   - Custom derivation paths
 
 2. **Remote Attestation**
 
-    - Enhanced quote verification
-    - Multiple TEE provider support
-    - Automated attestation renewal
-    - Policy management system
-    - Compliance reporting
-    - Audit trail generation
+   - Enhanced quote verification
+   - Multiple TEE provider support
+   - Automated attestation renewal
+   - Policy management system
+   - Compliance reporting
+   - Audit trail generation
 
 3. **Security Features**
 
-    - Memory encryption improvements
-    - Side-channel protection
-    - Secure state management
-    - Access control systems
-    - Threat detection
-    - Security monitoring
+   - Memory encryption improvements
+   - Side-channel protection
+   - Secure state management
+   - Access control systems
+   - Threat detection
+   - Security monitoring
 
 4. **Chain Integration**
 
-    - Multi-chain support expansion
-    - Cross-chain attestation
-    - Chain-specific optimizations
-    - Custom signing schemes
-    - Transaction privacy
-    - Bridge security
+   - Multi-chain support expansion
+   - Cross-chain attestation
+   - Chain-specific optimizations
+   - Custom signing schemes
+   - Transaction privacy
+   - Bridge security
 
 5. **Developer Tools**
 
-    - Enhanced debugging capabilities
-    - Testing framework
-    - Simulation environment
-    - Documentation generator
-    - Performance profiling
-    - Integration templates
+   - Enhanced debugging capabilities
+   - Testing framework
+   - Simulation environment
+   - Documentation generator
+   - Performance profiling
+   - Integration templates
 
 6. **Performance Optimization**
-    - Parallel processing
-    - Caching mechanisms
-    - Resource management
-    - Latency reduction
-    - Throughput improvements
-    - Load balancing
+   - Parallel processing
+   - Caching mechanisms
+   - Resource management
+   - Latency reduction
+   - Throughput improvements
+   - Load balancing
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 

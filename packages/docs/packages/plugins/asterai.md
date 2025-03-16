@@ -42,7 +42,7 @@ through your Eliza character.
 For example, if your asterai agent can fetch weather data:
 
 ```typescript
-"Hey Eliza, how's the weather in LA?"
+"Hey Eliza, how's the weather in LA?";
 ```
 
 Eliza will then query the asterai agent to fetch the information.
@@ -77,4 +77,3 @@ Contributions are welcome! Please see the CONTRIBUTING.md file for more informat
 ## License
 
 This plugin is part of the Eliza project. See the main project repository for license information.
-

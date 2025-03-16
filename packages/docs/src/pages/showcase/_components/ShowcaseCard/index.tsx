@@ -1,10 +1,10 @@
 import React from 'react';
 import clsx from 'clsx';
 import Link from '@docusaurus/Link';
-import {Tags, type TagType, type User} from '../../../../data/users';
+import { Tags, type TagType, type User } from '../../../../data/users';
 import styles from './styles.module.css';
 
-function TagIcon({label, color}: {label: string; color: string}) {
+function TagIcon({ label, color }: { label: string; color: string }) {
   return (
     <span
       style={{
@@ -35,13 +35,13 @@ function getShortLabel(label: string): string {
   }
 }
 
-function ShowcaseCardTag({tags}: {tags: TagType[]}) {
+function ShowcaseCardTag({ tags }: { tags: TagType[] }) {
   return (
     <>
       {tags.map((tag) => {
-        const {label, color} = Tags[tag];
+        const { label, color } = Tags[tag];
         const displayLabel = getShortLabel(label);
-        
+
         return (
           <li key={tag} className={styles.tag} title={label}>
             <TagIcon label={label} color={color} />
@@ -53,12 +53,12 @@ function ShowcaseCardTag({tags}: {tags: TagType[]}) {
   );
 }
 
-export default function ShowcaseCard({user}: {user: User}) {
-    // Function to convert title to documentation link
+export default function ShowcaseCard({ user }: { user: User }) {
+  // Function to convert title to documentation link
   const getDocLink = (user: User) => {
-    const baseUrl = '/eliza/packages/';  // Make sure to include your baseUrl prefix
+    const baseUrl = '/eliza/packages/'; // Make sure to include your baseUrl prefix
     let category = '';
-    
+
     if (user.tags.includes('adapter')) {
       category = 'adapters/';
     } else if (user.tags.includes('client')) {
@@ -66,11 +66,11 @@ export default function ShowcaseCard({user}: {user: User}) {
     } else if (user.tags.includes('plugin')) {
       category = 'plugins/';
     }
-    
+
     // Extract package name from title
     // Convert to lowercase and remove spaces/special chars
     const slug = user.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    
+
     return `${baseUrl}${category}${slug}`;
   };
 
@@ -78,12 +78,7 @@ export default function ShowcaseCard({user}: {user: User}) {
     <li key={user.title} className="card shadow--md">
       <div className={clsx('card__image', styles.showcaseCardImage)}>
         {user.preview && (
-          <img 
-            src={user.preview} 
-            alt={user.title}
-            loading="lazy"
-            className={styles.cardImage} 
-          />
+          <img src={user.preview} alt={user.title} loading="lazy" className={styles.cardImage} />
         )}
       </div>
       <div className="card__body">
@@ -96,10 +91,8 @@ export default function ShowcaseCard({user}: {user: User}) {
           {user.source && (
             <Link
               href={user.source}
-              className={clsx(
-                'button button--secondary button--sm',
-                styles.showcaseCardSrcBtn,
-              )}>
+              className={clsx('button button--secondary button--sm', styles.showcaseCardSrcBtn)}
+            >
               source
             </Link>
           )}
@@ -108,7 +101,7 @@ export default function ShowcaseCard({user}: {user: User}) {
       </div>
       <div className={clsx('card__footer', styles.cardFooter)}>
         <div className={styles.tagContainer}>
-          <ShowcaseCardTag tags={user.tags.filter(tag => tag)} />
+          <ShowcaseCardTag tags={user.tags.filter((tag) => tag)} />
         </div>
         <Link
           to={getDocLink(user)}

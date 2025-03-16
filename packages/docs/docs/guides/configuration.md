@@ -20,25 +20,24 @@ Then edit the `.env` file to add your specific configuration values.
 
 ---
 
-
 ## Character Configuration
 
 Character files define your agent's personality and behavior. Create them in the `characters/` directory:
 
 ```json
 {
-    "name": "AgentName",
-    "clients": ["discord", "twitter"],
-    "modelProvider": "openrouter",
-    "settings": {
-        "model": "openai/gpt-4o",
-        "temperature": 0.7,
-        "maxTokens": 2000,
-        "secrets": {
-            "OPENAI_API_KEY": "character-specific-key",
-            "DISCORD_TOKEN": "bot-specific-token"
-        }
+  "name": "AgentName",
+  "clients": ["discord", "twitter"],
+  "modelProvider": "openrouter",
+  "settings": {
+    "model": "openai/gpt-4o",
+    "temperature": 0.7,
+    "maxTokens": 2000,
+    "secrets": {
+      "OPENAI_API_KEY": "character-specific-key",
+      "DISCORD_TOKEN": "bot-specific-token"
     }
+  }
 }
 ```
 
@@ -71,8 +70,8 @@ CHARACTER.DOBBY.DISCORD_API_TOKEN=369
 
 ```yaml
 actions:
-    - name: myCustomAction
-      path: ./custom_actions/myAction.ts
+  - name: myCustomAction
+    path: ./custom_actions/myAction.ts
 ```
 
 See the [actions](/docs/core/actions) page for more info.
@@ -105,18 +104,17 @@ Fine-tune runtime behavior:
 
 ```typescript
 const settings = {
-    // Performance
-    MAX_CONCURRENT_REQUESTS: 5,
-    REQUEST_TIMEOUT: 30000,
+  // Performance
+  MAX_CONCURRENT_REQUESTS: 5,
+  REQUEST_TIMEOUT: 30000,
 
-    // Memory
-    MEMORY_TTL: 3600,
-    MAX_MEMORY_ITEMS: 1000,
+  // Memory
+  MEMORY_TTL: 3600,
+  MAX_MEMORY_ITEMS: 1000,
 };
 ```
 
 ---
-
 
 ## Environment Variables Reference
 
@@ -957,6 +955,7 @@ IMGFLIP_USERNAME= # Imgflip username
 IMGFLIP_PASSWORD= # Imgflip password
 RUNTIME_CHECK_MODE=false # Runtime check mode
 ```
+
 </details>
 
 ---
@@ -964,9 +963,11 @@ RUNTIME_CHECK_MODE=false # Runtime check mode
 ## FAQ
 
 ### How do I configure different model providers?
+
 Set `modelProvider` in your character.json and add corresponding API keys in `.env` or character secrets. Supports Anthropic, OpenAI, DeepSeek, and others.
 
 ### How do I adjust the temperature setting in my character file?
+
 The temperature setting controls response randomness and can be configured in your character's JSON file:
 
 ```json
@@ -980,10 +981,13 @@ The temperature setting controls response randomness and can be configured in yo
     }
 }
 ```
+
 Increase temperature for more creative responses, decrease for more consistent outputs.
 
 ### I'm getting an authentication error ("No auth credentials found"). What should I do?
+
 Check these common issues:
+
 1. Verify API keys in your .env file
 2. Ensure keys are properly formatted (OpenAI keys start with `sk-`, Groq with `gsk_`, etc.)
 3. Check logs for specific authentication errors
@@ -991,10 +995,12 @@ Check these common issues:
 5. For character-specific providers, ensure they have access to the needed keys
 
 ### How do I debug when my agent isn't responding?
+
 1. Enable debug logging: `DEBUG=eliza:*` in your .env file
 2. Check database for saved messages
 3. Verify model provider connectivity
 4. Review logs for error messages
 
 ### How do I control my agent's behavior across platforms?
+
 Configure platform-specific settings in `.env` (like `TWITTER_TARGET_USERS`) and adjust response templates in your character file.

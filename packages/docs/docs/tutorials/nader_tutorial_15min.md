@@ -27,26 +27,26 @@ Video: https://youtu.be/6PZVwNTl5hI?si=0zB3OvYU4KiRQTxI
 
 1. Clone the Eliza repo and check out the latest version:
 
-    ```bash
-    git clone https://github.com/elizaOS/eliza.git
-    cd eliza
-    git checkout <latest-tag>
-    ```
+   ```bash
+   git clone https://github.com/elizaOS/eliza.git
+   cd eliza
+   git checkout <latest-tag>
+   ```
 
 2. Install dependencies:
 
-    ```bash
-    pnpm install
-    pnpm build
-    ```
+   ```bash
+   pnpm install
+   pnpm build
+   ```
 
 ## Environment Variables
 
 1. Copy `.env.example` to `.env`:
 
-    ```bash
-    cp .env.example .env
-    ```
+   ```bash
+   cp .env.example .env
+   ```
 
 2. Open `.env` and set your Twitter credentials. You can use username/password or cookies.
 
@@ -54,26 +54,26 @@ Video: https://youtu.be/6PZVwNTl5hI?si=0zB3OvYU4KiRQTxI
 
 4. For Gaia, set:
 
-    ```
-    MODEL_LLM_API_URL=https://modelserverurl/
-    MODEL_EMBEDDING_MODEL=embeddingmodel
-    MODEL_EMBEDDING_ENABLED=true
-    ```
+   ```
+   MODEL_LLM_API_URL=https://modelserverurl/
+   MODEL_EMBEDDING_MODEL=embeddingmodel
+   MODEL_EMBEDDING_ENABLED=true
+   ```
 
 ## Customizing Your Character
 
 1. Create `agent/mainCharacter.ts`:
 
-    ```typescript
-    import { DefaultCharacter } from "./defaultCharacter";
-    import { clients } from "../globalClients";
+   ```typescript
+   import { DefaultCharacter } from './defaultCharacter';
+   import { clients } from '../globalClients';
 
-    export const mainCharacter = {
-        ...DefaultCharacter,
-        clients: { twitter: clients.twitter },
-        modelProvider: modelProviders.anthropic,
-    };
-    ```
+   export const mainCharacter = {
+     ...DefaultCharacter,
+     clients: { twitter: clients.twitter },
+     modelProvider: modelProviders.anthropic,
+   };
+   ```
 
 2. Extend the character by overriding properties like `name`, `bio`, `systemPrompt` etc.
 
@@ -89,9 +89,9 @@ Video: https://youtu.be/6PZVwNTl5hI?si=0zB3OvYU4KiRQTxI
 
 1. In `mainCharacter.ts`, change the model provider:
 
-    ```typescript
-    modelProvider: modelProviders.gaiaNet;
-    ```
+   ```typescript
+   modelProvider: modelProviders.gaiaNet;
+   ```
 
 2. Customize the `systemPrompt` and `bio` for the new personality.
 

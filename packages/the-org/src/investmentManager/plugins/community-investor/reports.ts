@@ -1,12 +1,12 @@
-import type { Entity } from "@elizaos/core";
+import type { Entity } from '@elizaos/core';
 import type {
-	PositionWithBalance,
-	Pretty,
-	RecommenderMetrics,
-	RecommenderMetricsHistory,
-	TokenPerformance,
-	Transaction,
-} from "./types";
+  PositionWithBalance,
+  Pretty,
+  RecommenderMetrics,
+  RecommenderMetricsHistory,
+  TokenPerformance,
+  Transaction,
+} from './types';
 
 /**
  * Represents the metrics of a trade including total bought quantity, total bought value, total sold quantity,
@@ -28,19 +28,19 @@ import type {
  * @property {Date} lastTradeTime - The timestamp of the last trade
  */
 type TradeMetrics = {
-	totalBought: number;
-	totalBoughtValue: number;
-	totalSold: number;
-	totalSoldValue: number;
-	totalTransferIn: number;
-	totalTransferOut: number;
-	averageEntryPrice: number;
-	averageExitPrice: number;
-	realizedPnL: number;
-	realizedPnLPercent: number;
-	volumeUsd: number;
-	firstTradeTime: Date;
-	lastTradeTime: Date;
+  totalBought: number;
+  totalBoughtValue: number;
+  totalSold: number;
+  totalSoldValue: number;
+  totalTransferIn: number;
+  totalTransferOut: number;
+  averageEntryPrice: number;
+  averageExitPrice: number;
+  realizedPnL: number;
+  realizedPnLPercent: number;
+  volumeUsd: number;
+  firstTradeTime: Date;
+  lastTradeTime: Date;
 };
 
 /**
@@ -50,21 +50,21 @@ type TradeMetrics = {
  * total profit/loss, and total profit/loss percentage.
  */
 type PositionPerformance = Pretty<
-	PositionWithBalance & {
-		token: TokenPerformance;
-		currentValue: number;
-		initialValue: number;
-		profitLoss: number;
-		profitLossPercentage: number;
-		priceChange: number;
-		priceChangePercentage: number;
-		normalizedBalance: number;
-		trades: TradeMetrics;
-		unrealizedPnL: number;
-		unrealizedPnLPercent: number;
-		totalPnL: number;
-		totalPnLPercent: number;
-	}
+  PositionWithBalance & {
+    token: TokenPerformance;
+    currentValue: number;
+    initialValue: number;
+    profitLoss: number;
+    profitLossPercentage: number;
+    priceChange: number;
+    priceChangePercentage: number;
+    normalizedBalance: number;
+    trades: TradeMetrics;
+    unrealizedPnL: number;
+    unrealizedPnLPercent: number;
+    totalPnL: number;
+    totalPnLPercent: number;
+  }
 >;
 
 /**
@@ -74,12 +74,12 @@ type PositionPerformance = Pretty<
  * @returns {string} The price formatted as a currency.
  */
 function formatPrice(price: number): string {
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
-		minimumFractionDigits: price < 1 ? 6 : 2,
-		maximumFractionDigits: price < 1 ? 6 : 2,
-	}).format(price);
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: price < 1 ? 6 : 2,
+    maximumFractionDigits: price < 1 ? 6 : 2,
+  }).format(price);
 }
 
 /**
@@ -88,7 +88,7 @@ function formatPrice(price: number): string {
  * @returns {string} The formatted percentage string.
  */
 function formatPercent(value: number): string {
-	return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 }
 
 /**
@@ -98,7 +98,7 @@ function formatPercent(value: number): string {
  * @returns {string} The formatted number as a string.
  */
 function formatNumber(value: number): string {
-	return new Intl.NumberFormat("en-US").format(value);
+  return new Intl.NumberFormat('en-US').format(value);
 }
 
 /**
@@ -108,8 +108,8 @@ function formatNumber(value: number): string {
  * @returns {string} The formatted date string.
  */
 function formatDate(dateString: string | Date): string {
-	const date = dateString instanceof Date ? dateString : new Date(dateString);
-	return date.toLocaleString();
+  const date = dateString instanceof Date ? dateString : new Date(dateString);
+  return date.toLocaleString();
 }
 
 /**
@@ -118,13 +118,9 @@ function formatDate(dateString: string | Date): string {
  * @param {number} decimals - The number of decimal places to normalize to.
  * @returns {number} The normalized balance as a number.
  */
-function normalizeBalance(
-	balanceStr: string | bigint,
-	decimals: number,
-): number {
-	const balance =
-		typeof balanceStr === "string" ? BigInt(balanceStr) : balanceStr;
-	return Number(balance) / 10 ** decimals;
+function normalizeBalance(balanceStr: string | bigint, decimals: number): number {
+  const balance = typeof balanceStr === 'string' ? BigInt(balanceStr) : balanceStr;
+  return Number(balance) / 10 ** decimals;
 }
 
 /**
@@ -134,74 +130,66 @@ function normalizeBalance(
  * @param {TokenPerformance} token - Token performance object.
  * @returns {TradeMetrics} Object containing calculated trade metrics.
  */
-function calculateTradeMetrics(
-	transactions: Transaction[],
-	token: TokenPerformance,
-): TradeMetrics {
-	let totalBought = 0;
-	let totalBoughtValue = 0;
-	let totalSold = 0;
-	let totalSoldValue = 0;
-	let totalTransferIn = 0;
-	let totalTransferOut = 0;
-	let volumeUsd = 0;
-	let firstTradeTime = new Date();
-	let lastTradeTime = new Date(0);
+function calculateTradeMetrics(transactions: Transaction[], token: TokenPerformance): TradeMetrics {
+  let totalBought = 0;
+  let totalBoughtValue = 0;
+  let totalSold = 0;
+  let totalSoldValue = 0;
+  let totalTransferIn = 0;
+  let totalTransferOut = 0;
+  let volumeUsd = 0;
+  let firstTradeTime = new Date();
+  let lastTradeTime = new Date(0);
 
-	for (const tx of transactions) {
-		const normalizedAmount = normalizeBalance(tx.amount, token.decimals);
-		const price = tx.price
-			? Number.parseFloat(tx.price as unknown as string)
-			: 0;
-		const value = normalizedAmount * price;
+  for (const tx of transactions) {
+    const normalizedAmount = normalizeBalance(tx.amount, token.decimals);
+    const price = tx.price ? Number.parseFloat(tx.price as unknown as string) : 0;
+    const value = normalizedAmount * price;
 
-		if (tx.timestamp < firstTradeTime) firstTradeTime = new Date(tx.timestamp);
-		if (tx.timestamp > lastTradeTime) lastTradeTime = new Date(tx.timestamp);
+    if (tx.timestamp < firstTradeTime) firstTradeTime = new Date(tx.timestamp);
+    if (tx.timestamp > lastTradeTime) lastTradeTime = new Date(tx.timestamp);
 
-		switch (tx.type) {
-			case "BUY":
-				totalBought += normalizedAmount;
-				totalBoughtValue += value;
-				volumeUsd += value;
-				break;
-			case "SELL":
-				totalSold += normalizedAmount;
-				totalSoldValue += value;
-				volumeUsd += value;
-				break;
-			case "transfer_in":
-				totalTransferIn += normalizedAmount;
-				break;
-			case "transfer_out":
-				totalTransferOut += normalizedAmount;
-				break;
-		}
-	}
+    switch (tx.type) {
+      case 'BUY':
+        totalBought += normalizedAmount;
+        totalBoughtValue += value;
+        volumeUsd += value;
+        break;
+      case 'SELL':
+        totalSold += normalizedAmount;
+        totalSoldValue += value;
+        volumeUsd += value;
+        break;
+      case 'transfer_in':
+        totalTransferIn += normalizedAmount;
+        break;
+      case 'transfer_out':
+        totalTransferOut += normalizedAmount;
+        break;
+    }
+  }
 
-	const averageEntryPrice =
-		totalBought > 0 ? totalBoughtValue / totalBought : 0;
-	const averageExitPrice = totalSold > 0 ? totalSoldValue / totalSold : 0;
-	const realizedPnL = totalSoldValue - totalSold * averageEntryPrice;
-	const realizedPnLPercent =
-		averageEntryPrice > 0
-			? ((averageExitPrice - averageEntryPrice) / averageEntryPrice) * 100
-			: 0;
+  const averageEntryPrice = totalBought > 0 ? totalBoughtValue / totalBought : 0;
+  const averageExitPrice = totalSold > 0 ? totalSoldValue / totalSold : 0;
+  const realizedPnL = totalSoldValue - totalSold * averageEntryPrice;
+  const realizedPnLPercent =
+    averageEntryPrice > 0 ? ((averageExitPrice - averageEntryPrice) / averageEntryPrice) * 100 : 0;
 
-	return {
-		totalBought,
-		totalBoughtValue,
-		totalSold,
-		totalSoldValue,
-		totalTransferIn,
-		totalTransferOut,
-		averageEntryPrice,
-		averageExitPrice,
-		realizedPnL,
-		realizedPnLPercent,
-		volumeUsd,
-		firstTradeTime,
-		lastTradeTime,
-	};
+  return {
+    totalBought,
+    totalBoughtValue,
+    totalSold,
+    totalSoldValue,
+    totalTransferIn,
+    totalTransferOut,
+    averageEntryPrice,
+    averageExitPrice,
+    realizedPnL,
+    realizedPnLPercent,
+    volumeUsd,
+    firstTradeTime,
+    lastTradeTime,
+  };
 }
 
 /**
@@ -216,54 +204,53 @@ function calculateTradeMetrics(
  */
 
 function calculatePositionPerformance(
-	position: PositionWithBalance,
-	token: TokenPerformance,
-	transactions: Transaction[],
+  position: PositionWithBalance,
+  token: TokenPerformance,
+  transactions: Transaction[]
 ): PositionPerformance {
-	const normalizedBalance = normalizeBalance(position.balance, token.decimals);
-	const initialPrice = Number.parseFloat(position.initialPrice);
-	const currentPrice = token.price;
+  const normalizedBalance = normalizeBalance(position.balance, token.decimals);
+  const initialPrice = Number.parseFloat(position.initialPrice);
+  const currentPrice = token.price;
 
-	const trades = calculateTradeMetrics(transactions, token);
+  const trades = calculateTradeMetrics(transactions, token);
 
-	const currentValue = normalizedBalance * currentPrice;
-	const initialValue = normalizedBalance * initialPrice;
+  const currentValue = normalizedBalance * currentPrice;
+  const initialValue = normalizedBalance * initialPrice;
 
-	// Calculate unrealized P&L based on average entry price
-	const costBasis = normalizedBalance * trades.averageEntryPrice;
-	const unrealizedPnL = currentValue - costBasis;
-	const unrealizedPnLPercent =
-		trades.averageEntryPrice > 0
-			? ((currentPrice - trades.averageEntryPrice) / trades.averageEntryPrice) *
-				100
-			: 0;
+  // Calculate unrealized P&L based on average entry price
+  const costBasis = normalizedBalance * trades.averageEntryPrice;
+  const unrealizedPnL = currentValue - costBasis;
+  const unrealizedPnLPercent =
+    trades.averageEntryPrice > 0
+      ? ((currentPrice - trades.averageEntryPrice) / trades.averageEntryPrice) * 100
+      : 0;
 
-	// Total P&L combines realized and unrealized
-	const totalPnL = trades.realizedPnL + unrealizedPnL;
-	const totalCost = trades.totalBought * trades.averageEntryPrice;
-	const totalPnLPercent = totalCost > 0 ? (totalPnL / totalCost) * 100 : 0;
+  // Total P&L combines realized and unrealized
+  const totalPnL = trades.realizedPnL + unrealizedPnL;
+  const totalCost = trades.totalBought * trades.averageEntryPrice;
+  const totalPnLPercent = totalCost > 0 ? (totalPnL / totalCost) * 100 : 0;
 
-	const profitLoss = currentValue - initialValue;
-	const profitLossPercentage = (profitLoss / initialValue) * 100;
-	const priceChange = currentPrice - initialPrice;
-	const priceChangePercentage = (priceChange / initialPrice) * 100;
+  const profitLoss = currentValue - initialValue;
+  const profitLossPercentage = (profitLoss / initialValue) * 100;
+  const priceChange = currentPrice - initialPrice;
+  const priceChangePercentage = (priceChange / initialPrice) * 100;
 
-	return {
-		...position,
-		token,
-		currentValue,
-		initialValue,
-		profitLoss,
-		profitLossPercentage,
-		priceChange,
-		priceChangePercentage,
-		normalizedBalance,
-		trades,
-		unrealizedPnL,
-		unrealizedPnLPercent,
-		totalPnL,
-		totalPnLPercent,
-	};
+  return {
+    ...position,
+    token,
+    currentValue,
+    initialValue,
+    profitLoss,
+    profitLossPercentage,
+    priceChange,
+    priceChangePercentage,
+    normalizedBalance,
+    trades,
+    unrealizedPnL,
+    unrealizedPnLPercent,
+    totalPnL,
+    totalPnLPercent,
+  };
 }
 
 /**
@@ -272,7 +259,7 @@ function calculatePositionPerformance(
  * @returns {string} The formatted token performance information.
  */
 function formatTokenPerformance(token: TokenPerformance): string {
-	return `
+  return `
   Token: ${token.name} (${token.symbol})
   Address: ${token.address}
   Chain: ${token.chain}
@@ -287,7 +274,7 @@ function formatTokenPerformance(token: TokenPerformance): string {
   - Creation Time: ${new Date(token.metadata.security.creationTime * 1000).toLocaleString()}
   - Total Supply: ${formatNumber(token.metadata.security.totalSupply)}
   - Top 10 Holders: ${formatPercent(token.metadata.security.top10HolderPercent)}
-  - Token Standard: ${token.metadata.security.isToken2022 ? "Token-2022" : "SPL Token"}
+  - Token Standard: ${token.metadata.security.isToken2022 ? 'Token-2022' : 'SPL Token'}
       `.trim();
 }
 
@@ -297,32 +284,26 @@ function formatTokenPerformance(token: TokenPerformance): string {
  * @param {TokenPerformance} token - The token performance data used for formatting.
  * @returns {string[]} - An array of formatted strings representing each transaction.
  */
-function formatTransactionHistory(
-	transactions: Transaction[],
-	token: TokenPerformance,
-): string[] {
-	return transactions
-		.sort(
-			(a, b) =>
-				new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-		)
-		.map((tx) => {
-			const normalizedAmount = normalizeBalance(tx.amount, token.decimals);
-			const price = tx.price
-				? formatPrice(Number.parseFloat(tx.price as unknown as string))
-				: "N/A";
-			const value = tx.valueUsd
-				? formatPrice(Number.parseFloat(tx.valueUsd as unknown as string))
-				: "N/A";
+function formatTransactionHistory(transactions: Transaction[], token: TokenPerformance): string[] {
+  return transactions
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .map((tx) => {
+      const normalizedAmount = normalizeBalance(tx.amount, token.decimals);
+      const price = tx.price
+        ? formatPrice(Number.parseFloat(tx.price as unknown as string))
+        : 'N/A';
+      const value = tx.valueUsd
+        ? formatPrice(Number.parseFloat(tx.valueUsd as unknown as string))
+        : 'N/A';
 
-			return `
+      return `
   ${formatDate(tx.timestamp)} - ${tx.type}
   Amount: ${formatNumber(normalizedAmount)} ${token.symbol}
   Price: ${price}
   Value: ${value}
   TX: ${tx.transactionHash}
           `.trim();
-		});
+    });
 }
 
 /**
@@ -334,15 +315,15 @@ function formatTransactionHistory(
  * @returns {string} The formatted performance details of the position.
  */
 function formatPositionPerformance(
-	position: PositionWithBalance,
-	token: TokenPerformance,
-	transactions: Transaction[],
+  position: PositionWithBalance,
+  token: TokenPerformance,
+  transactions: Transaction[]
 ): string {
-	const perfData = calculatePositionPerformance(position, token, transactions);
+  const perfData = calculatePositionPerformance(position, token, transactions);
 
-	return `
+  return `
   Position ID: ${position.id}
-  Type: ${position.isSimulation ? "Simulation" : "Real"}
+  Type: ${position.isSimulation ? 'Simulation' : 'Real'}
   Token: ${token.name} (${token.symbol})
   Wallet: ${position.walletAddress}
 
@@ -393,78 +374,73 @@ function formatPositionPerformance(
  * }} Formatted full report containing token reports, position reports, total values, and positions with balance.
  */
 export function formatFullReport(
-	tokens: TokenPerformance[],
-	positions: PositionWithBalance[],
-	transactions: Transaction[],
+  tokens: TokenPerformance[],
+  positions: PositionWithBalance[],
+  transactions: Transaction[]
 ) {
-	const tokenMap = new Map(tokens.map((token) => [token.address, token]));
-	const txMap = new Map<string, Transaction[]>();
+  const tokenMap = new Map(tokens.map((token) => [token.address, token]));
+  const txMap = new Map<string, Transaction[]>();
 
-	// Group transactions by position ID
-	transactions.forEach((tx) => {
-		if (!txMap.has(tx.positionId)) {
-			txMap.set(tx.positionId, []);
-		}
-		txMap.get(tx.positionId)?.push(tx);
-	});
+  // Group transactions by position ID
+  transactions.forEach((tx) => {
+    if (!txMap.has(tx.positionId)) {
+      txMap.set(tx.positionId, []);
+    }
+    txMap.get(tx.positionId)?.push(tx);
+  });
 
-	const tokenReports = tokens.map((token) => formatTokenPerformance(token));
+  const tokenReports = tokens.map((token) => formatTokenPerformance(token));
 
-	const filteredPositions = positions.filter((position) =>
-		tokenMap.has(position.tokenAddress),
-	);
+  const filteredPositions = positions.filter((position) => tokenMap.has(position.tokenAddress));
 
-	const positionsWithData = filteredPositions.map((position) => ({
-		position,
-		token: tokenMap.get(position.tokenAddress)!,
-		transactions: txMap.get(position.id) || [],
-	}));
+  const positionsWithData = filteredPositions.map((position) => ({
+    position,
+    token: tokenMap.get(position.tokenAddress)!,
+    transactions: txMap.get(position.id) || [],
+  }));
 
-	const positionReports = positionsWithData.map(
-		({ position, token, transactions }) =>
-			formatPositionPerformance(position, token, transactions),
-	);
+  const positionReports = positionsWithData.map(({ position, token, transactions }) =>
+    formatPositionPerformance(position, token, transactions)
+  );
 
-	const { totalCurrentValue, totalRealizedPnL, totalUnrealizedPnL } =
-		positions.reduce(
-			(acc, position) => {
-				const token = tokenMap.get(position.tokenAddress);
+  const { totalCurrentValue, totalRealizedPnL, totalUnrealizedPnL } = positions.reduce(
+    (acc, position) => {
+      const token = tokenMap.get(position.tokenAddress);
 
-				if (token) {
-					const perfData = calculatePositionPerformance(
-						position,
-						token,
-						txMap.get(position.id) || [],
-					);
+      if (token) {
+        const perfData = calculatePositionPerformance(
+          position,
+          token,
+          txMap.get(position.id) || []
+        );
 
-					return {
-						totalCurrentValue: acc.totalCurrentValue + perfData.currentValue,
-						totalRealizedPnL:
-							acc.totalRealizedPnL + perfData.trades.realizedPnL,
-						totalUnrealizedPnL: acc.totalUnrealizedPnL + perfData.unrealizedPnL,
-					};
-				}
+        return {
+          totalCurrentValue: acc.totalCurrentValue + perfData.currentValue,
+          totalRealizedPnL: acc.totalRealizedPnL + perfData.trades.realizedPnL,
+          totalUnrealizedPnL: acc.totalUnrealizedPnL + perfData.unrealizedPnL,
+        };
+      }
 
-				return acc;
-			},
-			{
-				totalCurrentValue: 0,
-				totalRealizedPnL: 0,
-				totalUnrealizedPnL: 0,
-			},
-		);
+      return acc;
+    },
+    {
+      totalCurrentValue: 0,
+      totalRealizedPnL: 0,
+      totalUnrealizedPnL: 0,
+    }
+  );
 
-	const totalPnL = totalRealizedPnL + totalUnrealizedPnL;
+  const totalPnL = totalRealizedPnL + totalUnrealizedPnL;
 
-	return {
-		tokenReports,
-		positionReports,
-		totalCurrentValue: formatPrice(totalCurrentValue),
-		totalRealizedPnL: formatPrice(totalRealizedPnL),
-		totalUnrealizedPnL: formatPrice(totalUnrealizedPnL),
-		totalPnL: formatPrice(totalPnL),
-		positionsWithBalance: positionsWithData,
-	};
+  return {
+    tokenReports,
+    positionReports,
+    totalCurrentValue: formatPrice(totalCurrentValue),
+    totalRealizedPnL: formatPrice(totalRealizedPnL),
+    totalUnrealizedPnL: formatPrice(totalUnrealizedPnL),
+    totalPnL: formatPrice(totalPnL),
+    positionsWithBalance: positionsWithData,
+  };
 }
 
 /**
@@ -475,7 +451,7 @@ export function formatFullReport(
  */
 
 function formatScore(score: number): string {
-	return score.toFixed(2);
+  return score.toFixed(2);
 }
 
 /**
@@ -485,14 +461,14 @@ function formatScore(score: number): string {
  * @returns {string} The formatted percentage string.
  */
 function formatPercentMetric(value: number): string {
-	return `${(value * 100).toFixed(1)}%`;
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 /**
  * TypeScript type to retrieve the keys of a given object `T` that have numeric values.
  */
 type NumericKeys<T> = {
-	[K in keyof T]: T[K] extends number ? K : never;
+  [K in keyof T]: T[K] extends number ? K : never;
 }[keyof T];
 
 /**
@@ -509,28 +485,24 @@ type RecommenderNumericMetrics = NumericKeys<RecommenderMetrics>;
  * @returns {{ trend: number; description: string }} - Object containing trend value and description.
  */
 function calculateMetricTrend<Metric extends RecommenderNumericMetrics>(
-	current: RecommenderMetrics,
-	metric: Metric,
-	history: RecommenderMetricsHistory[],
+  current: RecommenderMetrics,
+  metric: Metric,
+  history: RecommenderMetricsHistory[]
 ): { trend: number; description: string } {
-	if (history.length === 0)
-		return { trend: 0, description: "No historical data" };
+  if (history.length === 0) return { trend: 0, description: 'No historical data' };
 
-	const sortedHistory = history
-		.slice()
-		.sort(
-			(a, b) =>
-				new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-		);
+  const sortedHistory = history
+    .slice()
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-	const previousValue = sortedHistory[0].metrics[metric];
-	const trend = ((current[metric] - previousValue) / previousValue) * 100;
+  const previousValue = sortedHistory[0].metrics[metric];
+  const trend = ((current[metric] - previousValue) / previousValue) * 100;
 
-	let description = "stable";
-	if (trend > 5) description = "improving";
-	if (trend < -5) description = "declining";
+  let description = 'stable';
+  if (trend > 5) description = 'improving';
+  if (trend < -5) description = 'declining';
 
-	return { trend, description };
+  return { trend, description };
 }
 
 /**
@@ -541,9 +513,9 @@ function calculateMetricTrend<Metric extends RecommenderNumericMetrics>(
  * @returns {number} The calculated trend percentage.
  */
 function calculateTrend(current: number, historicalValues: number[]): number {
-	if (historicalValues.length === 0) return 0;
-	const previousValue = historicalValues[0];
-	return ((current - previousValue) / previousValue) * 100;
+  if (historicalValues.length === 0) return 0;
+  const previousValue = historicalValues[0];
+  return ((current - previousValue) / previousValue) * 100;
 }
 
 /**
@@ -556,9 +528,9 @@ function calculateTrend(current: number, historicalValues: number[]): number {
  * @returns The formatted arrow representing the trend direction
  */
 function formatTrendArrow(trend: number): string {
-	if (trend > 5) return "↑";
-	if (trend < -5) return "↓";
-	return "→";
+  if (trend > 5) return '↑';
+  if (trend < -5) return '↓';
+  return '→';
 }
 
 /**
@@ -568,8 +540,8 @@ function formatTrendArrow(trend: number): string {
  * @property {number} days - The number of days in the time period.
  */
 type TimePeriod = {
-	label: string;
-	days: number;
+  label: string;
+  days: number;
 };
 
 /**
@@ -587,100 +559,86 @@ type TimePeriod = {
  * }>} An array of objects containing period, average performance, success rate, and total recommendations.
  */
 function calculatePeriodTrends(
-	history: RecommenderMetricsHistory[],
-	period: TimePeriod | null = null,
+  history: RecommenderMetricsHistory[],
+  period: TimePeriod | null = null
 ): Array<{
-	period: string;
-	avgPerformance: number;
-	successRate: number;
-	recommendations: number;
+  period: string;
+  avgPerformance: number;
+  successRate: number;
+  recommendations: number;
 }> {
-	// For monthly grouping
-	if (!period) {
-		const monthlyData = history.reduce(
-			(acc, record) => {
-				const month = new Date(record.timestamp).toISOString().slice(0, 7);
+  // For monthly grouping
+  if (!period) {
+    const monthlyData = history.reduce(
+      (acc, record) => {
+        const month = new Date(record.timestamp).toISOString().slice(0, 7);
 
-				const currentData = acc.get(month) ?? {
-					performances: [],
-					successes: 0,
-					total: 0,
-				};
+        const currentData = acc.get(month) ?? {
+          performances: [],
+          successes: 0,
+          total: 0,
+        };
 
-				acc.set(month, {
-					performances: [
-						...currentData.performances,
-						record.metrics.avgTokenPerformance,
-					],
-					successes: currentData.successes + record.metrics.successfulRecs,
-					total: currentData.total + record.metrics.totalRecommendations,
-				});
+        acc.set(month, {
+          performances: [...currentData.performances, record.metrics.avgTokenPerformance],
+          successes: currentData.successes + record.metrics.successfulRecs,
+          total: currentData.total + record.metrics.totalRecommendations,
+        });
 
-				return acc;
-			},
-			new Map<
-				string,
-				{
-					performances: number[];
-					successes: number;
-					total: number;
-				}
-			>(),
-		);
+        return acc;
+      },
+      new Map<
+        string,
+        {
+          performances: number[];
+          successes: number;
+          total: number;
+        }
+      >()
+    );
 
-		return Array.from(monthlyData.entries())
-			.map(([month, data]) => ({
-				period: month,
-				avgPerformance:
-					data.performances.reduce((a, b) => a + b, 0) /
-					data.performances.length,
-				successRate: data.successes / data.total,
-				recommendations: data.total,
-			}))
-			.sort((a, b) => b.period.localeCompare(a.period));
-	}
+    return Array.from(monthlyData.entries())
+      .map(([month, data]) => ({
+        period: month,
+        avgPerformance: data.performances.reduce((a, b) => a + b, 0) / data.performances.length,
+        successRate: data.successes / data.total,
+        recommendations: data.total,
+      }))
+      .sort((a, b) => b.period.localeCompare(a.period));
+  }
 
-	// For daily and weekly periods
-	const cutoffDate = new Date();
-	cutoffDate.setDate(cutoffDate.getDate() - period.days);
+  // For daily and weekly periods
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - period.days);
 
-	const periodData = history.filter(
-		(record) => new Date(record.timestamp) >= cutoffDate,
-	);
+  const periodData = history.filter((record) => new Date(record.timestamp) >= cutoffDate);
 
-	if (periodData.length === 0) {
-		return [
-			{
-				period: period.label,
-				avgPerformance: 0,
-				successRate: 0,
-				recommendations: 0,
-			},
-		];
-	}
+  if (periodData.length === 0) {
+    return [
+      {
+        period: period.label,
+        avgPerformance: 0,
+        successRate: 0,
+        recommendations: 0,
+      },
+    ];
+  }
 
-	const performances = periodData.map(
-		(record) => record.metrics.avgTokenPerformance,
-	);
-	const totalRecommendations = periodData.reduce(
-		(sum, record) => sum + record.metrics.totalRecommendations,
-		0,
-	);
-	const successfulRecs = periodData.reduce(
-		(sum, record) => sum + record.metrics.successfulRecs,
-		0,
-	);
+  const performances = periodData.map((record) => record.metrics.avgTokenPerformance);
+  const totalRecommendations = periodData.reduce(
+    (sum, record) => sum + record.metrics.totalRecommendations,
+    0
+  );
+  const successfulRecs = periodData.reduce((sum, record) => sum + record.metrics.successfulRecs, 0);
 
-	return [
-		{
-			period: period.label,
-			avgPerformance:
-				performances.reduce((a, b) => a + b, 0) / performances.length,
-			successRate:
-				totalRecommendations > 0 ? successfulRecs / totalRecommendations : 0,
-			recommendations: totalRecommendations,
-		},
-	];
+  return [
+    {
+      period: period.label,
+      avgPerformance: performances.reduce((a, b) => a + b, 0) / performances.length,
+      successRate: totalRecommendations > 0 ? successfulRecs / totalRecommendations : 0,
+      recommendations: totalRecommendations,
+    },
+  ];
 }
 
 /**
@@ -690,22 +648,22 @@ function calculatePeriodTrends(
  * @returns {string} The formatted trends as a string with each trend separated by two new lines.
  */
 function formatTrends(
-	trends: Array<{
-		period: string;
-		avgPerformance: number;
-		successRate: number;
-		recommendations: number;
-	}>,
+  trends: Array<{
+    period: string;
+    avgPerformance: number;
+    successRate: number;
+    recommendations: number;
+  }>
 ): string {
-	return trends
-		.map((trend) =>
-			`
+  return trends
+    .map((trend) =>
+      `
 ${trend.period}:
 - Performance: ${formatPercent(trend.avgPerformance)}
 - Success Rate: ${formatPercentMetric(trend.successRate)}
-- Recommendations: ${trend.recommendations}`.trim(),
-		)
-		.join("\n\n");
+- Recommendations: ${trend.recommendations}`.trim()
+    )
+    .join('\n\n');
 }
 
 /**
@@ -716,19 +674,15 @@ ${trend.period}:
  * @returns {string} The formatted recommender profile string.
  */
 export function formatRecommenderProfile(
-	entity: Entity,
-	metrics: RecommenderMetrics,
-	history: RecommenderMetricsHistory[],
+  entity: Entity,
+  metrics: RecommenderMetrics,
+  history: RecommenderMetricsHistory[]
 ): string {
-	const successRate = metrics.successfulRecs / metrics.totalRecommendations;
-	const trustTrend = calculateMetricTrend(metrics, "trustScore", history);
-	const performanceTrend = calculateMetricTrend(
-		metrics,
-		"avgTokenPerformance",
-		history,
-	);
+  const successRate = metrics.successfulRecs / metrics.totalRecommendations;
+  const trustTrend = calculateMetricTrend(metrics, 'trustScore', history);
+  const performanceTrend = calculateMetricTrend(metrics, 'avgTokenPerformance', history);
 
-	return `
+  return `
 Entity Profile: ${entity.metadata.username}
 Platform: ${entity.metadata.platform}
 ID: ${entity.id}
@@ -755,40 +709,38 @@ Activity:
  * @returns {string} The formatted recommender report.
  */
 export function formatRecommenderReport(
-	entity: Entity,
-	metrics: RecommenderMetrics,
-	history: RecommenderMetricsHistory[],
+  entity: Entity,
+  metrics: RecommenderMetrics,
+  history: RecommenderMetricsHistory[]
 ): string {
-	const sortedHistory = [...history].sort(
-		(a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-	);
+  const sortedHistory = [...history].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
 
-	// Calculate performance trends for different time periods
-	const dailyTrends = calculatePeriodTrends(sortedHistory, {
-		label: "24 Hours",
-		days: 1,
-	});
-	const weeklyTrends = calculatePeriodTrends(sortedHistory, {
-		label: "7 Days",
-		days: 7,
-	});
-	const monthlyTrends = calculatePeriodTrends(sortedHistory);
+  // Calculate performance trends for different time periods
+  const dailyTrends = calculatePeriodTrends(sortedHistory, {
+    label: '24 Hours',
+    days: 1,
+  });
+  const weeklyTrends = calculatePeriodTrends(sortedHistory, {
+    label: '7 Days',
+    days: 7,
+  });
+  const monthlyTrends = calculatePeriodTrends(sortedHistory);
 
-	// Calculate success trend
-	const successTrend = calculateTrend(
-		metrics.successfulRecs / metrics.totalRecommendations,
-		sortedHistory.map(
-			(h) => h.metrics.successfulRecs / h.metrics.totalRecommendations,
-		),
-	);
+  // Calculate success trend
+  const successTrend = calculateTrend(
+    metrics.successfulRecs / metrics.totalRecommendations,
+    sortedHistory.map((h) => h.metrics.successfulRecs / h.metrics.totalRecommendations)
+  );
 
-	// Calculate performance trend
-	const performanceTrend = calculateTrend(
-		metrics.avgTokenPerformance,
-		sortedHistory.map((h) => h.metrics.avgTokenPerformance),
-	);
+  // Calculate performance trend
+  const performanceTrend = calculateTrend(
+    metrics.avgTokenPerformance,
+    sortedHistory.map((h) => h.metrics.avgTokenPerformance)
+  );
 
-	return `
+  return `
 Username: ${entity.metadata.username}
 Platform: ${entity.metadata.platform}
 ID: ${entity.id}
@@ -823,45 +775,37 @@ ${formatTrends(monthlyTrends)}`.trim();
  * @returns {string} The formatted top recommenders overview in XML format
  */
 export function formatTopRecommendersOverview(
-	recommenders: Entity[],
-	metrics: Map<string, RecommenderMetrics>,
-	history: Map<string, RecommenderMetricsHistory[]>,
+  recommenders: Entity[],
+  metrics: Map<string, RecommenderMetrics>,
+  history: Map<string, RecommenderMetricsHistory[]>
 ): string {
-	const sortedRecommenders = [...recommenders].sort((a, b) => {
-		const metricsA = metrics.get(a.id);
-		const metricsB = metrics.get(b.id);
-		if (!metricsA || !metricsB) return 0;
-		return metricsB.trustScore - metricsA.trustScore;
-	});
+  const sortedRecommenders = [...recommenders].sort((a, b) => {
+    const metricsA = metrics.get(a.id);
+    const metricsB = metrics.get(b.id);
+    if (!metricsA || !metricsB) return 0;
+    return metricsB.trustScore - metricsA.trustScore;
+  });
 
-	return `
+  return `
 <top_recommenders>
 ${sortedRecommenders
-	.map((entity) => {
-		const metric = metrics.get(entity.id);
-		if (!metric) return null;
-		const historicalData = history.get(entity.id) || [];
-		const trustTrend = calculateMetricTrend(
-			metric,
-			"trustScore",
-			historicalData,
-		);
+  .map((entity) => {
+    const metric = metrics.get(entity.id);
+    if (!metric) return null;
+    const historicalData = history.get(entity.id) || [];
+    const trustTrend = calculateMetricTrend(metric, 'trustScore', historicalData);
 
-		const performanceTrend = calculateMetricTrend(
-			metric,
-			"avgTokenPerformance",
-			historicalData,
-		);
+    const performanceTrend = calculateMetricTrend(metric, 'avgTokenPerformance', historicalData);
 
-		return `
+    return `
 ${entity.metadata.username} (${entity.metadata.platform})
 Trust Score: ${formatScore(metric.trustScore)} (${formatPercent(trustTrend.trend)} ${trustTrend.description})
 Performance Score: ${formatScore(metric.avgTokenPerformance)} (${formatPercent(performanceTrend.trend)} ${performanceTrend.description})
 Success Rate: ${formatPercentMetric(metric.successfulRecs / metric.totalRecommendations)}
 Last Active: ${formatDate(metric.lastUpdated)}
   `.trim();
-	})
-	.filter((report) => report !== null)
-	.join("\n\n")}
+  })
+  .filter((report) => report !== null)
+  .join('\n\n')}
 </top_recommenders>`.trim();
 }

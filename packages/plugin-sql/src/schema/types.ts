@@ -1,4 +1,4 @@
-import { customType } from "drizzle-orm/pg-core";
+import { customType } from 'drizzle-orm/pg-core';
 
 /**
  * Represents a custom type for converting a string to a JSONB format and vice versa.
@@ -10,15 +10,15 @@ import { customType } from "drizzle-orm/pg-core";
  */
 
 export const stringJsonb = customType<{ data: string; driverData: string }>({
-	dataType() {
-		return "jsonb";
-	},
-	toDriver(value: string): string {
-		return JSON.stringify(value);
-	},
-	fromDriver(value: string): string {
-		return JSON.stringify(value);
-	},
+  dataType() {
+    return 'jsonb';
+  },
+  toDriver(value: string): string {
+    return JSON.stringify(value);
+  },
+  fromDriver(value: string): string {
+    return JSON.stringify(value);
+  },
 });
 
 /**
@@ -29,16 +29,14 @@ export const stringJsonb = customType<{ data: string; driverData: string }>({
  * @param {Function} options.fromDriver - A function that converts a timestamp string to a number using the Date object's getTime method.
  * @returns {Object} - The custom type for number to timestamp conversion.
  */
-export const numberTimestamp = customType<{ data: number; driverData: string }>(
-	{
-		dataType() {
-			return "timestamptz";
-		},
-		toDriver(value: number): string {
-			return new Date(value).toISOString();
-		},
-		fromDriver(value: string): number {
-			return new Date(value).getTime();
-		},
-	},
-);
+export const numberTimestamp = customType<{ data: number; driverData: string }>({
+  dataType() {
+    return 'timestamptz';
+  },
+  toDriver(value: number): string {
+    return new Date(value).toISOString();
+  },
+  fromDriver(value: string): number {
+    return new Date(value).getTime();
+  },
+});

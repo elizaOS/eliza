@@ -13,7 +13,7 @@ A comprehensive guide for managing API keys, credentials, and other sensitive co
 Eliza uses a hierarchical environment variable system that retrieves settings in this order:
 
 1. Character-specific secrets (highest priority)
-2. Character-specific settings 
+2. Character-specific settings
 3. Global environment variables
 4. Default values (lowest priority)
 
@@ -62,7 +62,7 @@ For a complete list of supported environment variables, see the [`.env.example`]
    ```bash
    # Model Provider
    OPENAI_API_KEY=sk-xxxxxxxxxxxxx
-   
+
    # Clients
    DISCORD_API_TOKEN=xxxxxxxxxxxxxxxx
    ```
@@ -75,13 +75,13 @@ Use the `runtime.getSetting()` method to access configuration values:
 
 ```typescript
 // In a plugin, action, or service
-const apiKey = runtime.getSetting("OPENAI_API_KEY");
+const apiKey = runtime.getSetting('OPENAI_API_KEY');
 if (!apiKey) {
-  throw new Error("OpenAI API key not configured");
+  throw new Error('OpenAI API key not configured');
 }
 
 // With a fallback value
-const temperature = runtime.getSetting("TEMPERATURE") || "0.7";
+const temperature = runtime.getSetting('TEMPERATURE') || '0.7';
 ```
 
 This method automatically handles the environment variable hierarchy, checking character-specific secrets first, then character settings, and finally global environment variables.
@@ -92,13 +92,13 @@ Define secrets for individual characters in their character file:
 
 ```json
 {
-    "name": "FinancialAssistant",
-    "settings": {
-        "secrets": {
-            "OPENAI_API_KEY": "sk-character-specific-key",
-            "ALPHA_VANTAGE_API_KEY": "financial-data-api-key"
-        }
+  "name": "FinancialAssistant",
+  "settings": {
+    "secrets": {
+      "OPENAI_API_KEY": "sk-character-specific-key",
+      "ALPHA_VANTAGE_API_KEY": "financial-data-api-key"
     }
+  }
 }
 ```
 
@@ -109,6 +109,7 @@ CHARACTER.<CHARACTER_NAME>.<SECRET_NAME>=value
 ```
 
 For example:
+
 ```
 CHARACTER.TraderAgent.OPENAI_API_KEY=sk-character-specific-key
 ```
@@ -133,12 +134,12 @@ Validate required secrets before using them:
 
 ```typescript
 function validateRequiredSecrets(runtime) {
-  const required = ["OPENAI_API_KEY", "DATABASE_URL"];
-  
-  const missing = required.filter(key => !runtime.getSetting(key));
-  
+  const required = ['OPENAI_API_KEY', 'DATABASE_URL'];
+
+  const missing = required.filter((key) => !runtime.getSetting(key));
+
   if (missing.length > 0) {
-    throw new Error(`Missing required secrets: ${missing.join(", ")}`);
+    throw new Error(`Missing required secrets: ${missing.join(', ')}`);
   }
 }
 ```
@@ -149,11 +150,11 @@ Avoid exposing secrets in error messages or logs:
 
 ```typescript
 try {
-  const apiKey = runtime.getSetting("API_KEY");
+  const apiKey = runtime.getSetting('API_KEY');
   // Use API key...
 } catch (error) {
   // Log without exposing the secret
-  console.error("Error using API:", error.message);
+  console.error('Error using API:', error.message);
   // Don't log the actual API key!
 }
 ```
@@ -164,14 +165,14 @@ Validate API key formats before use:
 
 ```typescript
 // OpenAI API key validation
-const apiKey = runtime.getSetting("OPENAI_API_KEY");
-if (apiKey && !apiKey.startsWith("sk-")) {
-  throw new Error("Invalid OpenAI API key format");
+const apiKey = runtime.getSetting('OPENAI_API_KEY');
+if (apiKey && !apiKey.startsWith('sk-')) {
+  throw new Error('Invalid OpenAI API key format');
 }
 
 // Mask before logging
-const maskedKey = apiKey ? `${apiKey.substring(0, 5)}...` : "not set";
-console.log("Using API key:", maskedKey);
+const maskedKey = apiKey ? `${apiKey.substring(0, 5)}...` : 'not set';
+console.log('Using API key:', maskedKey);
 ```
 
 ## Security Considerations
@@ -182,15 +183,15 @@ Take extra care with blockchain private keys:
 
 ```typescript
 // Retrieve private key from settings
-const privateKey = runtime.getSetting("WALLET_PRIVATE_KEY");
+const privateKey = runtime.getSetting('WALLET_PRIVATE_KEY');
 
 // Validate private key format (example for EVM)
 if (privateKey && !privateKey.match(/^(0x)?[0-9a-fA-F]{64}$/)) {
-  throw new Error("Invalid private key format");
+  throw new Error('Invalid private key format');
 }
 
 // Use private key securely - NEVER log the actual key
-console.log("Using wallet with address:", getAddressFromPrivateKey(privateKey));
+console.log('Using wallet with address:', getAddressFromPrivateKey(privateKey));
 ```
 
 ### Secret Rotation
@@ -207,6 +208,7 @@ Implement periodic key rotation for production deployments:
 When deploying to cloud environments:
 
 1. Use the platform's secrets management service:
+
    - AWS: Secrets Manager or Parameter Store
    - Google Cloud: Secret Manager
    - Azure: Key Vault

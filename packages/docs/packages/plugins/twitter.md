@@ -36,11 +36,11 @@ TWITTER_DRY_RUN=false                # Optional: test without posting
 Import and register the plugin in your Eliza configuration:
 
 ```typescript
-import { twitterPlugin } from "@elizaos/plugin-twitter";
+import { twitterPlugin } from '@elizaos/plugin-twitter';
 
 export default {
-    plugins: [twitterPlugin],
-    // ... other configuration
+  plugins: [twitterPlugin],
+  // ... other configuration
 };
 ```
 
@@ -51,7 +51,7 @@ export default {
 The plugin uses context-aware templates to generate appropriate tweets:
 
 ```typescript
-import { postAction } from "@elizaos/plugin-twitter";
+import { postAction } from '@elizaos/plugin-twitter';
 
 // Tweet will be composed based on context and character limits
 const result = await postAction.handler(runtime, message, state);
@@ -64,7 +64,7 @@ const result = await postAction.handler(runtime, message, state);
 await postAction.handler(runtime, message, state);
 
 // Dry run mode (for testing)
-process.env.TWITTER_DRY_RUN = "true";
+process.env.TWITTER_DRY_RUN = 'true';
 await postAction.handler(runtime, message, state);
 ```
 
@@ -101,30 +101,22 @@ npm run dev
 
 ```typescript
 interface TweetContent {
-    text: string;
+  text: string;
 }
 
 // Tweet Schema
 const TweetSchema = z.object({
-    text: z.string().describe("The text of the tweet"),
+  text: z.string().describe('The text of the tweet'),
 });
 
 // Action Interface
 interface Action {
-    name: "POST_TWEET";
-    similes: string[];
-    description: string;
-    validate: (
-        runtime: IAgentRuntime,
-        message: Memory,
-        state?: State
-    ) => Promise<boolean>;
-    handler: (
-        runtime: IAgentRuntime,
-        message: Memory,
-        state?: State
-    ) => Promise<boolean>;
-    examples: Array<Array<any>>;
+  name: 'POST_TWEET';
+  similes: string[];
+  description: string;
+  validate: (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<boolean>;
+  handler: (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<boolean>;
+  examples: Array<Array<any>>;
 }
 ```
 
@@ -193,56 +185,56 @@ Generate a tweet that:
 
 1. **Content Generation**
 
-    - Advanced context awareness
-    - Multi-language support
-    - Style customization
-    - Hashtag optimization
-    - Media generation
-    - Thread composition
+   - Advanced context awareness
+   - Multi-language support
+   - Style customization
+   - Hashtag optimization
+   - Media generation
+   - Thread composition
 
 2. **Engagement Features**
 
-    - Auto-reply system
-    - Engagement analytics
-    - Follower management
-    - Interaction scheduling
-    - Sentiment analysis
-    - Community management
+   - Auto-reply system
+   - Engagement analytics
+   - Follower management
+   - Interaction scheduling
+   - Sentiment analysis
+   - Community management
 
 3. **Tweet Management**
 
-    - Thread management
-    - Tweet scheduling
-    - Content moderation
-    - Archive management
-    - Delete automation
-    - Edit optimization
+   - Thread management
+   - Tweet scheduling
+   - Content moderation
+   - Archive management
+   - Delete automation
+   - Edit optimization
 
 4. **Analytics Integration**
 
-    - Performance tracking
-    - Engagement metrics
-    - Audience insights
-    - Trend analysis
-    - ROI measurement
-    - Custom reporting
+   - Performance tracking
+   - Engagement metrics
+   - Audience insights
+   - Trend analysis
+   - ROI measurement
+   - Custom reporting
 
 5. **Authentication**
 
-    - OAuth improvements
-    - Multi-account support
-    - Session management
-    - Rate limit handling
-    - Security enhancements
-    - Backup mechanisms
+   - OAuth improvements
+   - Multi-account support
+   - Session management
+   - Rate limit handling
+   - Security enhancements
+   - Backup mechanisms
 
 6. **Developer Tools**
-    - Enhanced debugging
-    - Testing framework
-    - Documentation generator
-    - Integration templates
-    - Error handling
-    - Logging system
+   - Enhanced debugging
+   - Testing framework
+   - Documentation generator
+   - Integration templates
+   - Error handling
+   - Logging system
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 

@@ -44,82 +44,82 @@ jobs:
           #   asset-suffix: _x64-setup.exe
 
     runs-on: ${{ matrix.platform }}
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '23'
-          
+
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
-          
+
       - name: Setup Rust
         run: |
           rustup update stable
           rustup default stable
           rustup target add ${{ matrix.target }}
         shell: bash
-          
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './packages/app/src-tauri -> target'
           key: ${{ matrix.target }}
-          
+
       - name: Install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libx11-dev libxdo-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
-          
+
       - name: Install dependencies (mac only - for universal builds)
         if: matrix.platform == 'macos-latest'
         run: |
           rustup target add aarch64-apple-darwin
-          
+
       - name: Create .npmrc to skip postinstall scripts
         run: |
           echo "ignore-scripts=true" > .npmrc
         shell: bash
-          
+
       - name: Install dependencies
         run: bun install --no-postinstall
         env:
           NPM_CONFIG_IGNORE_SCRIPTS: true
-        
+
       - name: Build packages
         run: bun run build
-        
+
       - name: Install Tauri CLI
         run: |
           bun install -g @tauri-apps/cli
         shell: bash
-          
+
       - name: Build the app (macOS)
         if: matrix.platform == 'macos-latest'
         run: |
           cd packages/app
           bun run tauri build --target universal-apple-darwin
-          
+
       - name: Build the app (non-macOS)
         if: matrix.platform != 'macos-latest'
         run: |
           cd packages/app
           bun run tauri build
-          
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v3
         with:
           name: tauri-artifacts-${{ matrix.platform }}
           path: packages/app/${{ matrix.output-dir }}
           if-no-files-found: error
-      
+
       # Special handling for Linux since it produces multiple artifacts
       - name: Collect Linux artifacts
         if: matrix.platform == 'ubuntu-latest'
@@ -127,15 +127,15 @@ jobs:
           mkdir -p ./release-artifacts
           cp packages/app/src-tauri/target/release/bundle/appimage/*.AppImage ./release-artifacts/ || echo "No AppImage found"
           cp packages/app/src-tauri/target/release/bundle/deb/*.deb ./release-artifacts/ || echo "No deb file found"
-          
-      - name: Upload Linux artifacts 
+
+      - name: Upload Linux artifacts
         if: matrix.platform == 'ubuntu-latest'
         uses: actions/upload-artifact@v3
         with:
           name: linux-specific-artifacts
           path: ./release-artifacts
           if-no-files-found: warn
-          
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
@@ -147,4 +147,4 @@ jobs:
           prerelease: ${{ github.event.release.prerelease }}
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -16,9 +16,7 @@ function ShowcaseHeader() {
       <h1>{TITLE}</h1>
       <p>{DESCRIPTION}</p>
       <div className={styles.submitButton}>
-        <Link
-          className="button button--primary"
-          to={GITHUB_LINK}>
+        <Link className="button button--primary" to={GITHUB_LINK}>
           Submit your plugin
         </Link>
       </div>
@@ -26,18 +24,25 @@ function ShowcaseHeader() {
   );
 }
 
-function filterUsers(users: User[], search: string, selectedTags: string[], operator: 'OR' | 'AND') {
+function filterUsers(
+  users: User[],
+  search: string,
+  selectedTags: string[],
+  operator: 'OR' | 'AND'
+) {
   // First deduplicate the input array
-  const uniqueUsers = users.filter((user, index, self) =>
-    index === self.findIndex((u) => u.title === user.title)
+  const uniqueUsers = users.filter(
+    (user, index, self) => index === self.findIndex((u) => u.title === user.title)
   );
 
-  return uniqueUsers.filter(user => {
+  return uniqueUsers.filter((user) => {
     // Search filter
     if (search) {
       const searchValue = search.toLowerCase().trim();
-      if (!user.title.toLowerCase().includes(searchValue) &&
-          !user.description.toLowerCase().includes(searchValue)) {
+      if (
+        !user.title.toLowerCase().includes(searchValue) &&
+        !user.description.toLowerCase().includes(searchValue)
+      ) {
         return false;
       }
     }
@@ -48,9 +53,9 @@ function filterUsers(users: User[], search: string, selectedTags: string[], oper
     }
 
     if (operator === 'AND') {
-      return selectedTags.every(tag => user.tags.includes(tag));
+      return selectedTags.every((tag) => user.tags.includes(tag));
     }
-    return selectedTags.some(tag => user.tags.includes(tag));
+    return selectedTags.some((tag) => user.tags.includes(tag));
   });
 }
 
@@ -60,15 +65,13 @@ export default function ShowcaseComponent(): JSX.Element {
   const [searchValue, setSearchValue] = useState('');
 
   const toggleTag = (tag: string) => {
-    setSelectedTags(tags =>
-      tags.includes(tag)
-        ? tags.filter(t => t !== tag)
-        : [...tags, tag]
+    setSelectedTags((tags) =>
+      tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag]
     );
   };
 
   const toggleOperator = () => {
-    setOperator(op => op === 'OR' ? 'AND' : 'OR');
+    setOperator((op) => (op === 'OR' ? 'AND' : 'OR'));
   };
 
   const filteredUsers = useMemo(() => {
@@ -78,7 +81,7 @@ export default function ShowcaseComponent(): JSX.Element {
   return (
     <div>
       <ShowcaseHeader />
-      
+
       <div className="container">
         <div className={styles.filtersContainer}>
           <div className={styles.filtersRow}>
@@ -88,13 +91,10 @@ export default function ShowcaseComponent(): JSX.Element {
               operator={operator}
               toggleOperator={toggleOperator}
             />
-            <ShowcaseSearchBar 
-              onChange={setSearchValue}
-              value={searchValue}
-            />
+            <ShowcaseSearchBar onChange={setSearchValue} value={searchValue} />
           </div>
         </div>
-        
+
         <ShowcaseCards users={filteredUsers} />
       </div>
     </div>

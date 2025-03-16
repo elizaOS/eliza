@@ -7,6 +7,7 @@ Ruby is an AI-powered cross-organizational liaison agent designed to foster coll
 ## 2. Core Functionality
 
 ### Cross-Organization Intelligence
+
 - Track public discussions across subscribed Discord servers
 - Maintain awareness of active topics and initiatives in each community
 - Identify parallel or similar discussions across different communities
@@ -14,6 +15,7 @@ Ruby is an AI-powered cross-organizational liaison agent designed to foster coll
 - Facilitate cross-organizational knowledge sharing
 
 ### Knowledge Management
+
 - Log and index all public channel discussions
 - Create retrievable knowledge base of community activities
 - Answer questions about historical discussions and decisions
@@ -21,6 +23,7 @@ Ruby is an AI-powered cross-organizational liaison agent designed to foster coll
 - Identify areas of shared interest or parallel work
 
 ### Information Synthesis
+
 - Generate periodic reports highlighting cross-community activities
 - Identify potential collaboration opportunities based on shared interests
 - Create topic-specific briefings on request
@@ -61,7 +64,7 @@ interface CrossOrgReport {
   };
 }
 
-type ReportType = "DAILY" | "WEEKLY" | "TOPIC_SPECIFIC";
+type ReportType = 'DAILY' | 'WEEKLY' | 'TOPIC_SPECIFIC';
 ```
 
 ### Configuration
@@ -80,21 +83,22 @@ interface OrgConfig {
 const config: OnboardingConfig = {
   settings: {
     ORGANIZATIONS: {
-      name: "Monitored Organizations",
-      description: "List of channels to monitor and their preferences",
+      name: 'Monitored Organizations',
+      description: 'List of channels to monitor and their preferences',
       required: true,
       public: true,
       secret: false,
       value: [] as OrgConfig[],
       validation: (value: OrgConfig[]) => Array.isArray(value),
-    }
-  }
+    },
+  },
 };
 ```
 
 ## 4. Workflows
 
 ### Organization Monitoring
+
 1. Join and authenticate with each organization's Discord server
 2. Index all public channels and maintain searchable knowledge base
 3. Track emerging topics and discussions
@@ -102,35 +106,44 @@ const config: OnboardingConfig = {
 5. Generate knowledge items and topic summaries
 
 ### Cross-Org Intelligence
+
 1. Analyze discussion topics across organizations
 2. Identify parallel conversations and shared interests
 3. Track knowledge distribution across communities
 4. Maintain awareness of cross-org discussion opportunities
 
 ### Report Generation
+
 ```markdown
 # Cross-Organization Report - [Date]
 
 ## Overview
+
 [Key highlights and emerging trends across organizations]
 
 ## Active Topics & Parallel Discussions
+
 ### [Topic Area]
+
 - Communities Discussing: [List of orgs]
 - Recent Discussions: [Brief summary of key points]
 - Potential Collaboration Areas: [Suggestions]
 
 ## Community Updates
+
 ### [Organization Name]
+
 - Active Topics: [Current discussion areas]
 - Key Discussions: [Important conversations]
 - Notable Developments: [Significant insights/decisions]
 
 ## Knowledge Sharing Opportunities
+
 - [Description of shared interests or challenges]
 - [Areas where communities could benefit from each other's insights]
 
 ## Knowledge Base Updates
+
 - New Topics: [Recently discussed subjects]
 - Active Discussions: [Cross-org conversations]
 - Shared Resources: [Useful information/tools mentioned]

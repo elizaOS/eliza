@@ -24,13 +24,13 @@ INITIA_CHAIN_ID=initiaion-2
 
 ## Features
 
-
 ### Token transfer
 
 Send token to recipient:
+
 ```typescript
-User: "Send 1 INIT to init14l3c2vxrdvu6y0sqykppey930s4kufsvt97aeu";
-Assistant: "Sure! I am going to send 1 INIT to init14l3c2vxrdvu6y0sqykppey930s4kufsvt97aeu";
+User: 'Send 1 INIT to init14l3c2vxrdvu6y0sqykppey930s4kufsvt97aeu';
+Assistant: 'Sure! I am going to send 1 INIT to init14l3c2vxrdvu6y0sqykppey930s4kufsvt97aeu';
 ```
 
 ## Development
@@ -55,7 +55,6 @@ pnpm run test
 
 1. Execute other messages like delegate, undelegate.
 2. Interacting with minitia.
-
 
 ## License
 

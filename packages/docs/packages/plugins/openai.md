@@ -1,4 +1,3 @@
-
 # @elizaos/plugin-openai
 
 A plugin for OpenAI integration, providing automated text generation capabilities.
@@ -29,11 +28,11 @@ OPENAI_API_KEY=your_openai_api_key
 Import and register the plugin in your Eliza configuration:
 
 ```typescript
-import { openaiPlugin } from "@elizaos/plugin-openai";
+import { openaiPlugin } from '@elizaos/plugin-openai';
 
 export default {
-    plugins: [openaiPlugin],
-    // ... other configuration
+  plugins: [openaiPlugin],
+  // ... other configuration
 };
 ```
 

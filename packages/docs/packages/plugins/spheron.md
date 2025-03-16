@@ -28,7 +28,7 @@ WALLET_ADDRESS=your_wallet_address
 1. Import and register the plugin:
 
 ```typescript
-import { spheronPlugin } from "@elizaos/plugin-spheron";
+import { spheronPlugin } from '@elizaos/plugin-spheron';
 
 // Register with Eliza
 eliza.registerPlugin(spheronPlugin);
@@ -45,17 +45,17 @@ eliza.registerPlugin(spheronPlugin);
 
 ```typescript
 // Deposit tokens
-await runtime.executeAction("ESCROW_OPERATION", {
-    token: "USDT",
-    amount: 100,
-    operation: "deposit",
+await runtime.executeAction('ESCROW_OPERATION', {
+  token: 'USDT',
+  amount: 100,
+  operation: 'deposit',
 });
 
 // Withdraw tokens
-await runtime.executeAction("ESCROW_OPERATION", {
-    token: "USDC",
-    amount: 50,
-    operation: "withdraw",
+await runtime.executeAction('ESCROW_OPERATION', {
+  token: 'USDC',
+  amount: 50,
+  operation: 'withdraw',
 });
 ```
 
@@ -63,46 +63,46 @@ await runtime.executeAction("ESCROW_OPERATION", {
 
 ```typescript
 // Create deployment
-await runtime.executeAction("DEPLOYMENT_OPERATION", {
-    operation: "create",
-    template: "jupyter-notebook",
-    customizations: {
-        cpu: false,
-        resources: {
-            cpu: "4",
-            memory: "8Gi",
-            storage: "10Gi",
-            gpu: "1",
-            gpu_model: "rtx4090",
-        },
-        duration: "1h",
-        token: "USDT",
+await runtime.executeAction('DEPLOYMENT_OPERATION', {
+  operation: 'create',
+  template: 'jupyter-notebook',
+  customizations: {
+    cpu: false,
+    resources: {
+      cpu: '4',
+      memory: '8Gi',
+      storage: '10Gi',
+      gpu: '1',
+      gpu_model: 'rtx4090',
     },
+    duration: '1h',
+    token: 'USDT',
+  },
 });
 
 // Update deployment
-await runtime.executeAction("DEPLOYMENT_OPERATION", {
-    operation: "update",
-    leaseId: "your_lease_id",
-    template: "jupyter-notebook",
-    customizations: {
-        cpu: false,
-        resources: {
-            cpu: "4",
-            memory: "8Gi",
-            storage: "10Gi",
-            gpu: "1",
-            gpu_model: "rtx4090",
-        },
-        duration: "1h",
-        token: "USDT",
+await runtime.executeAction('DEPLOYMENT_OPERATION', {
+  operation: 'update',
+  leaseId: 'your_lease_id',
+  template: 'jupyter-notebook',
+  customizations: {
+    cpu: false,
+    resources: {
+      cpu: '4',
+      memory: '8Gi',
+      storage: '10Gi',
+      gpu: '1',
+      gpu_model: 'rtx4090',
     },
+    duration: '1h',
+    token: 'USDT',
+  },
 });
 
 // Close deployment
-await runtime.executeAction("DEPLOYMENT_OPERATION", {
-    operation: "close",
-    leaseId: "your_lease_id",
+await runtime.executeAction('DEPLOYMENT_OPERATION', {
+  operation: 'close',
+  leaseId: 'your_lease_id',
 });
 ```
 

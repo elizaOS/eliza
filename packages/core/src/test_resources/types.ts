@@ -15,8 +15,8 @@
  * @property {string} [role] - The role of the user (optional).
  */
 export interface User {
-	id: string;
-	email?: string;
-	phone?: string;
-	role?: string;
+  id: string;
+  email?: string;
+  phone?: string;
+  role?: string;
 }

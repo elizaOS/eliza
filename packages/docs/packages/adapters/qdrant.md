@@ -35,7 +35,7 @@ Add the adapter to your ElizaOS configuration:
     "QDRANT_URL": "your-qdrant-server-url",
     "QDRANT_KEY": "your-qdrant-api-key",
     "QDRANT_PORT": "6333",
-    "QDRANT_VECTOR_SIZE": "1536"  // Adjust based on your embedding size
+    "QDRANT_VECTOR_SIZE": "1536" // Adjust based on your embedding size
   }
 }
 ```
@@ -52,6 +52,7 @@ Add the adapter to your ElizaOS configuration:
 ### Vector Search
 
 The adapter provides specialized vector search capabilities:
+
 - Cosine similarity search
 - Configurable vector dimensions
 - Support for multiple embedding types
@@ -60,6 +61,7 @@ The adapter provides specialized vector search capabilities:
 ### Knowledge Management
 
 Knowledge items are stored with:
+
 - Vector embeddings for similarity search
 - Metadata support for additional information
 - Shared/private knowledge separation
@@ -68,6 +70,7 @@ Knowledge items are stored with:
 ### Text Preprocessing
 
 Built-in text preprocessing for better search quality:
+
 - Code block removal
 - URL normalization
 - Markdown cleanup
@@ -77,6 +80,7 @@ Built-in text preprocessing for better search quality:
 ### Caching System
 
 Efficient in-memory caching:
+
 - Per-agent cache isolation
 - UUID-based cache keys
 - Automatic cache management
@@ -86,6 +90,7 @@ Efficient in-memory caching:
 ### Specialized Functions
 
 This adapter primarily implements:
+
 - Knowledge management
 - Vector similarity search
 - Caching operations
@@ -95,6 +100,7 @@ Other database functions (like memory management, participant tracking, etc.) ar
 ### Collection Management
 
 The adapter automatically manages:
+
 - Collection creation
 - Vector indexes
 - Point upserts with payload

@@ -3,6 +3,7 @@
 A plugin for interacting with the Abstract blockchain network within the ElizaOS ecosystem.
 
 ## Description
+
 The Abstract plugin enables seamless token transfers on the Abstract testnet. It provides functionality to transfer both native ETH and ERC20 tokens using secure wallet operations.
 
 ## Installation
@@ -14,6 +15,7 @@ pnpm install @elizaos/plugin-lensNetwork
 ## Configuration
 
 The plugin requires the following environment variables to be set:
+
 ```typescript
 LENS_ADDRESS=<Your Lens wallet address>
 LENS_PRIVATE_KEY=<Your Lens private key>
@@ -32,8 +34,7 @@ import { lensPlugin } from '@elizaos/plugin-lensNetwork';
 ```typescript
 // The plugin responds to natural language commands like:
 
-"Send 1 Grass to 0xCCa8009f5e09F8C5dB63cb0031052F9CB635Af62"
-
+'Send 1 Grass to 0xCCa8009f5e09F8C5dB63cb0031052F9CB635Af62';
 ```
 
 ## API Reference
@@ -45,6 +46,7 @@ import { lensPlugin } from '@elizaos/plugin-lensNetwork';
 Transfers tokens from the agent's wallet to another address.
 
 **Aliases:**
+
 - TRANSFER_TOKEN_ON_LENS
 - TRANSFER_TOKENS_ON_LENS
 - SEND_TOKENS_ON_LENS
@@ -56,6 +58,7 @@ Transfers tokens from the agent's wallet to another address.
 ## Common Issues & Troubleshooting
 
 1. **Transaction Failures**
+
    - Verify wallet has sufficient balance
    - Check recipient address format
    - Ensure private key is correctly set
@@ -96,4 +99,3 @@ pnpm run build
 ```bash
 pnpm run dev
 ```
-

@@ -36,10 +36,16 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
   private readyPromise: Promise<void> | null = null;
   private readyResolve: (() => void) | null = null;
   private router: SocketIORouter;
-  
-  readonly name = "websocket";
-  
-  constructor(serverUrl: string, entityId: string, roomId: string, runtime?: IAgentRuntime, router?: SocketIORouter) {
+
+  readonly name = 'websocket';
+
+  constructor(
+    serverUrl: string,
+    entityId: string,
+    roomId: string,
+    runtime?: IAgentRuntime,
+    router?: SocketIORouter
+  ) {
     super();
     this.serverUrl = serverUrl;
     this.entityId = entityId;
@@ -57,11 +63,15 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
       return this.readyPromise || Promise.resolve();
     }
 
-    logger.info(`[WebSocketService] Connecting entity ${this.entityId} to server ${this.serverUrl} in room ${this.roomId}`);
-    
+    logger.info(
+      `[WebSocketService] Connecting entity ${this.entityId} to server ${this.serverUrl} in room ${this.roomId}`
+    );
+
     if (!this.entityId || !this.roomId) {
-      logger.error(`[WebSocketService] Cannot connect: entityId=${this.entityId}, roomId=${this.roomId} - both required`);
-      return Promise.reject(new Error("entityId and roomId are required for connection"));
+      logger.error(
+        `[WebSocketService] Cannot connect: entityId=${this.entityId}, roomId=${this.roomId} - both required`
+      );
+      return Promise.reject(new Error('entityId and roomId are required for connection'));
     }
 
     // Register with router if available
@@ -70,10 +80,12 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
         this.router.registerAgentService(this.runtime.agentId, {
           emit: (event: string, data: any) => {
             if (event === 'processMessage' && data) {
-              logger.info(`[WebSocketService] Received direct processMessage event for agent ${this.runtime?.agentId}`);
+              logger.info(
+                `[WebSocketService] Received direct processMessage event for agent ${this.runtime?.agentId}`
+              );
               this.processAgentMessage(data);
             }
-          }
+          },
         });
         logger.info(`[WebSocketService] Registered agent ${this.runtime.agentId} with router`);
       } catch (error) {
@@ -86,18 +98,22 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
     });
 
     // Double check that both entityId and roomId are set before connecting
-    logger.info(`[WebSocketService] Creating socket with query params: entityId=${this.entityId}, roomId=${this.roomId}`);
-    
+    logger.info(
+      `[WebSocketService] Creating socket with query params: entityId=${this.entityId}, roomId=${this.roomId}`
+    );
+
     this.socket = io(this.serverUrl, {
       query: {
         entityId: this.entityId,
-        roomId: this.roomId
+        roomId: this.roomId,
       },
       autoConnect: true,
-      reconnection: true
+      reconnection: true,
     });
 
-    logger.info(`[WebSocketService] Socket created with query params: entityId=${this.entityId}, roomId=${this.roomId}`);
+    logger.info(
+      `[WebSocketService] Socket created with query params: entityId=${this.entityId}, roomId=${this.roomId}`
+    );
 
     this.setupEventHandlers();
 
@@ -109,7 +125,7 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
    */
   private setupEventHandlers(): void {
     if (!this.socket) return;
-    
+
     this.socket.on('connect', () => {
       logger.info(`[WebSocketService] Connected for entity ${this.entityId}`);
       this.connected = true;
@@ -142,7 +158,7 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
       logger.info(`[WebSocketService] Disconnected for entity ${this.entityId}. Reason:`, reason);
       this.connected = false;
       this.emit('disconnect', reason);
-      
+
       if (reason === 'io server disconnect') {
         this.socket?.connect();
       }
@@ -164,15 +180,15 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
     }
 
     this.roomId = roomId;
-    
+
     logger.info(`[WebSocketService] Entity ${this.entityId} joining room ${roomId}`);
-    
+
     this.sendMessage({
       type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
       payload: {
         entityId: this.entityId,
-        roomId: roomId
-      }
+        roomId: roomId,
+      },
     });
   }
 
@@ -186,19 +202,25 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
     // Log detailed message debugging info
     if (messageData.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
       const payload = messageData.payload as TextMessagePayload;
-      
+
       logger.info(`[WebSocketService][${this.entityId}] Received message - detailed debug:`);
       logger.info(`  - From: ${payload.entityId} (${payload.userName || 'unnamed'})`);
       logger.info(`  - To: WebSocket service for entity ${this.entityId}`);
       logger.info(`  - Room: ${payload.roomId}`);
-      logger.info(`  - Text: "${payload.text?.substring(0, 50)}${payload.text?.length > 50 ? '...' : ''}"`);
+      logger.info(
+        `  - Text: "${payload.text?.substring(0, 50)}${payload.text?.length > 50 ? '...' : ''}"`
+      );
       logger.info(`  - Runtime available: ${this.runtime ? 'YES' : 'NO'}`);
-      logger.info(`  - Self-message check: Service ID ${this.entityId} vs Sender ID ${payload.entityId}`);
-      
+      logger.info(
+        `  - Self-message check: Service ID ${this.entityId} vs Sender ID ${payload.entityId}`
+      );
+
       if (this.runtime) {
-        logger.info(`  - Agent ID check: Runtime ID ${this.runtime.agentId} vs Sender ID ${payload.entityId}`);
+        logger.info(
+          `  - Agent ID check: Runtime ID ${this.runtime.agentId} vs Sender ID ${payload.entityId}`
+        );
       }
-      
+
       // Add safeguard: ensure payload has required fields
       if (!this.validateMessagePayload(payload)) {
         logger.warn(`[WebSocketService][${this.entityId}] Message failed validation, ignoring`);
@@ -210,18 +232,22 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
         logger.warn(`[WebSocketService][${this.entityId}] Message IS from self, ignoring`);
         return;
       }
-      
+
       logger.info(`[WebSocketService][${this.entityId}] Message is NOT from self, processing`);
-      
+
       // Forward the message event to any listeners
       this.emit('textMessage', payload);
 
       // If this is an agent with a runtime, process the message
       if (this.runtime) {
-        logger.info(`[WebSocketService][${this.entityId}] Has runtime, forwarding to processAgentMessage`);
+        logger.info(
+          `[WebSocketService][${this.entityId}] Has runtime, forwarding to processAgentMessage`
+        );
         await this.processAgentMessage(payload);
       } else {
-        logger.warn(`[WebSocketService][${this.entityId}] No runtime available, cannot process message`);
+        logger.warn(
+          `[WebSocketService][${this.entityId}] No runtime available, cannot process message`
+        );
       }
     }
   }
@@ -231,7 +257,9 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
    */
   private validateMessagePayload(payload: TextMessagePayload): boolean {
     if (!payload || !payload.entityId || !payload.text || !payload.roomId) {
-      logger.warn(`[WebSocketService] Received malformed message payload: ${JSON.stringify(payload)}`);
+      logger.warn(
+        `[WebSocketService] Received malformed message payload: ${JSON.stringify(payload)}`
+      );
       return false;
     }
     return true;
@@ -242,15 +270,19 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
    */
   private isSelfMessage(entityId: string): boolean {
     // Check both the service's entity ID and, if available, the runtime's agent ID
-    const isSelf = this.entityId === entityId || 
-                  (this.runtime && this.runtime.agentId === entityId);
-    
+    const isSelf =
+      this.entityId === entityId || (this.runtime && this.runtime.agentId === entityId);
+
     if (isSelf) {
-      logger.debug(`[WebSocketService] Ignoring message from self (service ID: ${this.entityId}, agent ID: ${this.runtime?.agentId}, message sender: ${entityId})`);
+      logger.debug(
+        `[WebSocketService] Ignoring message from self (service ID: ${this.entityId}, agent ID: ${this.runtime?.agentId}, message sender: ${entityId})`
+      );
     } else {
-      logger.debug(`[WebSocketService] Message is not from self (service ID: ${this.entityId}, agent ID: ${this.runtime?.agentId}, message sender: ${entityId})`);
+      logger.debug(
+        `[WebSocketService] Message is not from self (service ID: ${this.entityId}, agent ID: ${this.runtime?.agentId}, message sender: ${entityId})`
+      );
     }
-    
+
     return isSelf;
   }
 
@@ -448,29 +480,29 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
    */
   private async useModelWithErrorHandling(state: unknown): Promise<string | undefined> {
     if (!this.runtime) return undefined;
-    
+
     try {
       const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
         messages: [
           {
-            role: "system",
+            role: 'system',
             content: messageHandlerTemplate,
           },
           {
-            role: "user",
+            role: 'user',
             content: typeof state === 'string' ? state : JSON.stringify(state),
           },
         ],
       });
-      
+
       if (!response) {
-        logger.error("[WebSocketService] No response from model");
+        logger.error('[WebSocketService] No response from model');
         return undefined;
       }
-      
+
       return response;
     } catch (error) {
-      logger.error("[WebSocketService] Error getting response from model:", error);
+      logger.error('[WebSocketService] Error getting response from model:', error);
       return undefined;
     }
   }
@@ -480,11 +512,15 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
    */
   public async sendMessage(message: WebSocketMessage): Promise<void> {
     if (!this.socket || !this.connected) {
-      logger.warn(`[WebSocketService] Cannot send message, socket for entity ${this.entityId} is not connected.`);
+      logger.warn(
+        `[WebSocketService] Cannot send message, socket for entity ${this.entityId} is not connected.`
+      );
       return;
     }
 
-    logger.debug(`[WebSocketService] Sending message type ${message.type}: ${JSON.stringify(message.payload)}`);
+    logger.debug(
+      `[WebSocketService] Sending message type ${message.type}: ${JSON.stringify(message.payload)}`
+    );
     this.socket.emit('message', message);
   }
 
@@ -493,7 +529,7 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
    */
   public sendTextMessage(options: WebSocketMessageOptions): void {
     const { entityId, userName, text, roomId, source, worldId } = options;
-    
+
     this.sendMessage({
       type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
       payload: {
@@ -501,9 +537,9 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
         userName,
         text,
         roomId,
-        source: source || "websocket",
-        worldId
-      }
+        source: source || 'websocket',
+        worldId,
+      },
     });
   }
 
@@ -520,7 +556,7 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
         logger.error(`[WebSocketService] Error unregistering from router: ${error.message}`);
       }
     }
-    
+
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
@@ -555,9 +591,9 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
    */
   private async startMemoryMonitoring() {
     if (!this.runtime) return;
-    
+
     logger.info(`[WebSocketService] Starting memory monitoring for agent ${this.runtime.agentId}`);
     // Implementation would depend on your memory architecture
     // For example, you might poll the database or set up a subscription
   }
-} 
+}

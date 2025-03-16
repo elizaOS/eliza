@@ -10,7 +10,7 @@ export default defineConfig({
     globals: false,
     testMatch: ['**/test/**/*.test.js'],
     alias: {
-      '@/': resolve(__dirname, './')
+      '@/': resolve(__dirname, './'),
     },
   },
-}); 
+});

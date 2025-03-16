@@ -71,7 +71,7 @@ const litAction = await elizaOS.lit.deployAction({
     (async () => {
       // Your Lit Action code here
     })();
-  `
+  `,
 });
 ```
 
@@ -80,28 +80,31 @@ const litAction = await elizaOS.lit.deployAction({
 The `src/actions/helloLit/tools` directory contains pre-built tools for common blockchain operations:
 
 #### ECDSA Signing
+
 ```javascript
 const signature = await elizaOS.lit.tools.ecdsaSign({
-  message: "Message to sign",
+  message: 'Message to sign',
   // Additional parameters
 });
 ```
 
 #### ERC20 Token Transfer
+
 ```javascript
 const transfer = await elizaOS.lit.tools.erc20Transfer({
-  tokenAddress: "0x...",
-  recipient: "0x...",
-  amount: "1000000000000000000" // 1 token with 18 decimals
+  tokenAddress: '0x...',
+  recipient: '0x...',
+  amount: '1000000000000000000', // 1 token with 18 decimals
 });
 ```
 
 #### Uniswap Integration
+
 ```javascript
 const swap = await elizaOS.lit.tools.uniswapSwap({
-  tokenIn: "0x...",
-  tokenOut: "0x...",
-  amountIn: "1000000000000000000"
+  tokenIn: '0x...',
+  tokenOut: '0x...',
+  amountIn: '1000000000000000000',
 });
 ```
 
@@ -116,6 +119,7 @@ This plugin integrates with the [Lit Protocol Agent Wallet](https://github.com/L
 ## Documentation
 
 For more detailed information about Lit Protocol and its capabilities, visit:
+
 - [Lit Protocol Documentation](https://developer.litprotocol.com/)
 - [Agent Wallet Documentation](https://github.com/LIT-Protocol/agent-wallet)
 

@@ -14,26 +14,26 @@ Each adapter is optimized for different use cases:
 
 - **PostgreSQL** (`@elizaos/adapter-postgres`)
 
-    - Production-ready with vector search
-    - Connection pooling and high performance
-    - JSONB and pgvector support
+  - Production-ready with vector search
+  - Connection pooling and high performance
+  - JSONB and pgvector support
 
 - **SQLite** (`@elizaos/adapter-sqlite`)
 
-    - Lightweight local development
-    - No external dependencies
-    - Full-text search capabilities
+  - Lightweight local development
+  - No external dependencies
+  - Full-text search capabilities
 
 - **Supabase** (`@elizaos/adapter-supabase`)
 
-    - Cloud-native PostgreSQL
-    - Real-time subscriptions
-    - Built-in RPC functions
+  - Cloud-native PostgreSQL
+  - Real-time subscriptions
+  - Built-in RPC functions
 
 - **SQL.js** (`@elizaos/adapter-sqljs`)
-    - In-memory SQLite for testing
-    - Browser compatibility
-    - Zero configuration
+  - In-memory SQLite for testing
+  - Browser compatibility
+  - Zero configuration
 
 ### Architecture Overview
 
@@ -168,13 +168,13 @@ pnpm add @elizaos/adapter-pglite @electric-sql/pglite
 ### PostgreSQL Setup
 
 ```typescript
-import { PostgresDatabaseAdapter } from "@elizaos/adapter-postgres";
+import { PostgresDatabaseAdapter } from '@elizaos/adapter-postgres';
 
 const db = new PostgresDatabaseAdapter({
-    connectionString: process.env.DATABASE_URL,
-    max: 20, // Connection pool size
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 2000,
+  connectionString: process.env.DATABASE_URL,
+  max: 20, // Connection pool size
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 });
 
 // Test connection
@@ -184,53 +184,50 @@ await db.testConnection();
 ### SQLite Setup
 
 ```typescript
-import { SqliteDatabaseAdapter } from "@elizaos/adapter-sqlite";
-import Database from "better-sqlite3";
+import { SqliteDatabaseAdapter } from '@elizaos/adapter-sqlite';
+import Database from 'better-sqlite3';
 
 const db = new SqliteDatabaseAdapter(
-    new Database("./db.sqlite", {
-        // SQLite options
-        memory: false,
-        readonly: false,
-        fileMustExist: false,
-    }),
+  new Database('./db.sqlite', {
+    // SQLite options
+    memory: false,
+    readonly: false,
+    fileMustExist: false,
+  })
 );
 ```
 
 ### Supabase Setup
 
 ```typescript
-import { SupabaseDatabaseAdapter } from "@elizaos/adapter-supabase";
+import { SupabaseDatabaseAdapter } from '@elizaos/adapter-supabase';
 
-const db = new SupabaseDatabaseAdapter(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_ANON_KEY!,
-);
+const db = new SupabaseDatabaseAdapter(process.env.SUPABASE_URL!, process.env.SUPABASE_ANON_KEY!);
 ```
 
 ```typescript
-import { SqliteDatabaseAdapter } from "@elizaos/adapter-sqlite";
-import Database from "better-sqlite3";
+import { SqliteDatabaseAdapter } from '@elizaos/adapter-sqlite';
+import Database from 'better-sqlite3';
 
 const db = new SqliteDatabaseAdapter(
-    new Database("./db.sqlite", {
-        // SQLite options
-        memory: false,
-        readonly: false,
-        fileMustExist: false,
-    }),
+  new Database('./db.sqlite', {
+    // SQLite options
+    memory: false,
+    readonly: false,
+    fileMustExist: false,
+  })
 );
 ```
 
 ### PgLite Setup
 
 ```typescript
-import { PGLiteDatabaseAdapter } from "@elizaos/adapter-pglite";
+import { PGLiteDatabaseAdapter } from '@elizaos/adapter-pglite';
 
 const db = new PGLiteDatabaseAdapter(
-    new PGLite({
-        dataDir: "./db"
-    })
+  new PGLite({
+    dataDir: './db',
+  })
 );
 ```
 
@@ -243,37 +240,37 @@ const db = new PGLiteDatabaseAdapter(
 ```typescript
 // Create memory
 await db.createMemory({
-    id: uuid(),
-    content: {
-        text: "Hello world",
-        attachments: [],
-    },
-    embedding: new Float32Array(1536), // Embedding vector
-    userId,
-    roomId,
-    agentId,
-    createdAt: Date.now(),
-    unique: true,
+  id: uuid(),
+  content: {
+    text: 'Hello world',
+    attachments: [],
+  },
+  embedding: new Float32Array(1536), // Embedding vector
+  userId,
+  roomId,
+  agentId,
+  createdAt: Date.now(),
+  unique: true,
 });
 
 // Search by embedding
 const memories = await db.searchMemories({
-    tableName: "messages",
-    roomId,
-    embedding: vectorData,
-    match_threshold: 0.8,
-    match_count: 10,
-    unique: true,
+  tableName: 'messages',
+  roomId,
+  embedding: vectorData,
+  match_threshold: 0.8,
+  match_count: 10,
+  unique: true,
 });
 
 // Get recent memories
 const recent = await db.getMemories({
-    roomId,
-    count: 10,
-    unique: true,
-    tableName: "messages",
-    start: startTime,
-    end: endTime,
+  roomId,
+  count: 10,
+  unique: true,
+  tableName: 'messages',
+  start: startTime,
+  end: endTime,
 });
 ```
 
@@ -282,19 +279,19 @@ const recent = await db.getMemories({
 ```typescript
 // Create relationship
 await db.createRelationship({
-    userA: user1Id,
-    userB: user2Id,
+  userA: user1Id,
+  userB: user2Id,
 });
 
 // Get relationship
 const relationship = await db.getRelationship({
-    userA: user1Id,
-    userB: user2Id,
+  userA: user1Id,
+  userB: user2Id,
 });
 
 // Get all relationships
 const relationships = await db.getRelationships({
-    userId: user1Id,
+  userId: user1Id,
 });
 ```
 
@@ -303,29 +300,29 @@ const relationships = await db.getRelationships({
 ```typescript
 // Create goal
 await db.createGoal({
-    id: uuid(),
-    roomId,
-    userId,
-    name: "Complete task",
-    status: GoalStatus.IN_PROGRESS,
-    objectives: [
-        { text: "Step 1", completed: false },
-        { text: "Step 2", completed: false },
-    ],
+  id: uuid(),
+  roomId,
+  userId,
+  name: 'Complete task',
+  status: GoalStatus.IN_PROGRESS,
+  objectives: [
+    { text: 'Step 1', completed: false },
+    { text: 'Step 2', completed: false },
+  ],
 });
 
 // Update goal status
 await db.updateGoalStatus({
-    goalId,
-    status: GoalStatus.COMPLETED,
+  goalId,
+  status: GoalStatus.COMPLETED,
 });
 
 // Get active goals
 const goals = await db.getGoals({
-    roomId,
-    userId,
-    onlyInProgress: true,
-    count: 10,
+  roomId,
+  userId,
+  onlyInProgress: true,
+  count: 10,
 });
 ```
 
@@ -598,30 +595,28 @@ constructor(connectionConfig: any) {
 ```typescript
 // SQLite prepared statements
 class SqliteDatabaseAdapter extends DatabaseAdapter {
-    private statements = new Map<string, Statement>();
+  private statements = new Map<string, Statement>();
 
-    prepareStatement(sql: string): Statement {
-        let stmt = this.statements.get(sql);
-        if (!stmt) {
-            stmt = this.db.prepare(sql);
-            this.statements.set(sql, stmt);
+  prepareStatement(sql: string): Statement {
+    let stmt = this.statements.get(sql);
+    if (!stmt) {
+      stmt = this.db.prepare(sql);
+      this.statements.set(sql, stmt);
+    }
+    return stmt;
+  }
+
+  // Use prepared statements
+  async getMemoryById(id: UUID): Promise<Memory | null> {
+    const stmt = this.prepareStatement('SELECT * FROM memories WHERE id = ?');
+    const memory = stmt.get(id);
+    return memory
+      ? {
+          ...memory,
+          content: JSON.parse(memory.content),
         }
-        return stmt;
-    }
-
-    // Use prepared statements
-    async getMemoryById(id: UUID): Promise<Memory | null> {
-        const stmt = this.prepareStatement(
-            "SELECT * FROM memories WHERE id = ?",
-        );
-        const memory = stmt.get(id);
-        return memory
-            ? {
-                  ...memory,
-                  content: JSON.parse(memory.content),
-              }
-            : null;
-    }
+      : null;
+  }
 }
 ```
 
@@ -671,28 +666,26 @@ async createMemories(memories: Memory[], tableName: string) {
 
 ```typescript
 class DatabaseAdapter {
-    protected async withTransaction<T>(
-        callback: (client: PoolClient) => Promise<T>,
-    ): Promise<T> {
-        const client = await this.pool.connect();
-        try {
-            await client.query("BEGIN");
-            const result = await callback(client);
-            await client.query("COMMIT");
-            return result;
-        } catch (error) {
-            await client.query("ROLLBACK");
-            if (error instanceof DatabaseError) {
-                // Handle specific database errors
-                if (error.code === "23505") {
-                    throw new UniqueViolationError(error);
-                }
-            }
-            throw error;
-        } finally {
-            client.release();
+  protected async withTransaction<T>(callback: (client: PoolClient) => Promise<T>): Promise<T> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await callback(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      if (error instanceof DatabaseError) {
+        // Handle specific database errors
+        if (error.code === '23505') {
+          throw new UniqueViolationError(error);
         }
+      }
+      throw error;
+    } finally {
+      client.release();
     }
+  }
 }
 ```
 
@@ -702,24 +695,24 @@ class DatabaseAdapter {
 
 ```typescript
 class CustomDatabaseAdapter extends DatabaseAdapter {
-    constructor(config: CustomConfig) {
-        super();
-        // Initialize custom database connection
-    }
+  constructor(config: CustomConfig) {
+    super();
+    // Initialize custom database connection
+  }
 
-    // Implement required methods
-    async createMemory(memory: Memory, tableName: string): Promise<void> {
-        // Custom implementation
-    }
+  // Implement required methods
+  async createMemory(memory: Memory, tableName: string): Promise<void> {
+    // Custom implementation
+  }
 
-    async searchMemories(params: SearchParams): Promise<Memory[]> {
-        // Custom implementation
-    }
+  async searchMemories(params: SearchParams): Promise<Memory[]> {
+    // Custom implementation
+  }
 
-    // Add custom functionality
-    async customOperation(): Promise<void> {
-        // Custom database operation
-    }
+  // Add custom functionality
+  async customOperation(): Promise<void> {
+    // Custom database operation
+  }
 }
 ```
 
@@ -729,26 +722,26 @@ class CustomDatabaseAdapter extends DatabaseAdapter {
 
 1. **Connection Management**
 
-    - Use connection pooling for PostgreSQL
-    - Handle connection failures gracefully
-    - Implement proper cleanup
+   - Use connection pooling for PostgreSQL
+   - Handle connection failures gracefully
+   - Implement proper cleanup
 
 2. **Transaction Handling**
 
-    - Use transactions for atomic operations
-    - Implement proper rollback handling
-    - Manage nested transactions
+   - Use transactions for atomic operations
+   - Implement proper rollback handling
+   - Manage nested transactions
 
 3. **Error Handling**
 
-    - Implement specific error types
-    - Handle constraint violations
-    - Provide meaningful error messages
+   - Implement specific error types
+   - Handle constraint violations
+   - Provide meaningful error messages
 
 4. **Resource Management**
-    - Close connections properly
-    - Clean up prepared statements
-    - Monitor connection pools
+   - Close connections properly
+   - Clean up prepared statements
+   - Monitor connection pools
 
 ## Related Resources
 

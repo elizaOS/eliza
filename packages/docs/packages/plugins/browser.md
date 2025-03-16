@@ -35,7 +35,7 @@ CAPSOLVER_API_KEY=your_capsolver_api_key  # Optional: For CAPTCHA solving capabi
 ## Usage
 
 ```typescript
-import { createBrowserPlugin } from "@elizaos/plugin-browser";
+import { createBrowserPlugin } from '@elizaos/plugin-browser';
 
 // Initialize the plugin
 const browserPlugin = createBrowserPlugin();
@@ -95,7 +95,7 @@ Error: Navigation timeout
 Enable debug logging for detailed troubleshooting:
 
 ```typescript
-process.env.DEBUG = "eliza:plugin-browser:*";
+process.env.DEBUG = 'eliza:plugin-browser:*';
 ```
 
 ### System Requirements
@@ -112,9 +112,9 @@ For issues and feature requests, please:
 1. Check the troubleshooting guide above
 2. Review existing GitHub issues
 3. Submit a new issue with:
-    - System information
-    - Error logs
-    - Steps to reproduce
+   - System information
+   - Error logs
+   - Steps to reproduce
 
 ## Credits
 

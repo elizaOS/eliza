@@ -1,6 +1,6 @@
 ---
 Title: AI Agent Dev School Part 2
-description: "Deep Dive into Actions, Providers, and Evaluators"
+description: 'Deep Dive into Actions, Providers, and Evaluators'
 ---
 
 # Part 2: Deep Dive into Actions, Providers, and Evaluators

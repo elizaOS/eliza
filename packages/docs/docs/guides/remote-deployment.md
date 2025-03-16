@@ -41,6 +41,7 @@ sudo ufw allow 22/tcp
 ```
 
 If you want to publicly expose the API, you can do so with:
+
 ```bash
 sudo ufw allow 3000/tcp
 ```
@@ -75,7 +76,7 @@ sudo chmod 750 /opt/elizaos
 
 ## Install dependencies and configure the agent
 
-Switch to the `eliza` user and clone the repository. 
+Switch to the `eliza` user and clone the repository.
 
 ```bash
 sudo su - eliza # this puts you in /opt/elizaos
@@ -84,6 +85,7 @@ git clone https://github.com/elizaOS/eliza.git
 ```
 
 Switch to the latest release branch.
+
 ```bash
 cd eliza
 git checkout $(git describe --tags --abbrev=0)
@@ -105,12 +107,14 @@ export NVM_DIR="$HOME/.nvm"
 ```
 
 Install the correct version of Node.js using nvm.
+
 ```bash
 nvm install v23.3.0
 nvm use v23.3.0
 ```
 
 Install pnpm globally and verify the installation:
+
 ```bash
 # Install pnpm
 npm install -g pnpm
@@ -123,19 +127,23 @@ which pnpm
 ```
 
 Install and build the workspace.
+
 ```bash
 pnpm install --no-frozen-lockfile
 pnpm build
 ```
 
 ### Configure Environment
+
 ```bash
 # Copy example environment file
 cp -v .env.example .env
 ```
-Make changes to the `.env` file for your production environment as required. 
+
+Make changes to the `.env` file for your production environment as required.
 
 For example, your `.env` might look like this for a simple Discord bot:
+
 ```bash
 USE_CHARACTER_STORAGE=true
 
@@ -149,6 +157,7 @@ ANTHROPIC_API_KEY=sk-...
 ```
 
 Setup a default character and storage for the character's state.
+
 ```bash
 cd characters
 ln -svf snoop.character.json default.character.json
@@ -186,7 +195,7 @@ sudo chown eliza:eliza /opt/elizaos/.profile
 
 To enable eliza to start automatically on boot, we need to create a systemd service.
 
-Logout as `eliza` using `CTRL-D`, which should drop you 
+Logout as `eliza` using `CTRL-D`, which should drop you
 back into your user with sudo access.
 
 Create the systemd service file:
@@ -226,12 +235,14 @@ EOL
 ```
 
 Create the log directory.
+
 ```bash
 sudo mkdir -p /var/log/eliza
 sudo chown -R eliza:eliza /var/log/eliza
 ```
 
 Enable and start the service:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable eliza
@@ -241,6 +252,7 @@ sudo systemctl start eliza
 The API should now be running on port 3000. Note that external access to this port is blocked by default unless you explicitly allowed it in the firewall configuration during basic system setup.
 
 If you need to troubleshoot, you can:
+
 ```bash
 # Check service status
 sudo systemctl status eliza
@@ -252,7 +264,9 @@ sudo journalctl -u eliza -f
 ## FAQ
 
 ### How do I run multiple agents?
+
 Create separate characterfiles or Docker containers for each agent with unique configurations and credentials.
 
 ### What are the resource requirements?
+
 Minimum >=4GB recommended and 20G disk space is recommended. CUDA optional unless using local LLMs.

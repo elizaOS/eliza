@@ -13,6 +13,7 @@
 ## 🌍 Traduceri README
 
 [中文说明](./README_CN.md) | [日本語の説明](./README_JA.md) | [한국어 설명](./README_KOR.md) | [Français](./README_FR.md) | [Português](./README_PTBR.md) | [Türkçe](./README_TR.md) | [Русский](./README_RU.md) | [Español](./README_ES.md) | [Italiano](./README_IT.md) | [ไทย](./README_TH.md) | [Deutsch](./README_DE.md) | [Tiếng Việt](./README_VI.md) | [עִברִית](https://github.com/elizaos/Elisa/blob/main/README_HE.md) | [Tagalog](./README_TG.md) | [Polski](./README_PL.md) | [Arabic](./README_AR.md) | [Hungarian](./README_HU.md) | [Romanian](./README_RO.md) | [Srpski](./README_RS.md)
+
 ## 🚩 Prezentare generală
 
 <div align="center">
@@ -51,6 +52,7 @@ Pentru a asigura dezvoltarea durabilă și inovația continuă, solicităm contr
 Toate contribuțiile sunt urmărite public pe blockchain și sunt utilizate exclusiv pentru dezvoltarea ecosistemului.
 
 ### ⚠️ Nu uita să oferi 10% marelui lider: ⚠️
+
 [AM84n1iLdxgVTAyENBcLdjXoyvjentTbu5Q6EpKV1PeG](https://solscan.io/account/AM84n1iLdxgVTAyENBcLdjXoyvjentTbu5Q6EpKV1PeG)
 
 ## 🚀 Start rapid
@@ -109,7 +111,7 @@ Notă: Fișierul .env este opțional. Dacă plănuiești să rulezi mai mulți a
 ### Start automat pentru Eliza
 
 Acest script setează proiectul și pornește bot-ul cu caracterul implicit.
-                                                                     
+
 ```bash
 sh scripts/start.sh
 ```
@@ -119,10 +121,10 @@ sh scripts/start.sh
 1. Deschide `packages/core/src/defaultCharacter.ts` pentru a modifica caracterul implicit. Decomentează și editează.
 
 2. Pentru a încărca caractere personalizate:
-    - Folosește `pnpm start --characters="path/to/your/character.json"`
-    - Poți încărca simultan mai multe fișiere de caractere.
+   - Folosește `pnpm start --characters="path/to/your/character.json"`
+   - Poți încărca simultan mai multe fișiere de caractere.
 3. Conectare la X (Twitter):
-    - Schimbă `"clients": []` to `"clients": ["twitter"]` în fișierul de caracter.
+   - Schimbă `"clients": []` to `"clients": ["twitter"]` în fișierul de caracter.
 
 ### Start manual pentru Eliza
 

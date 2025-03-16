@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ChannelType, type UUID } from "@elizaos/core";
+import { ChannelType, type UUID, type Agent } from "@elizaos/core";
 import {
   PlusCircle,
   Hash,
@@ -36,9 +36,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useNavigate } from "react-router";
 
 interface Room {
   id: string;
@@ -67,8 +68,10 @@ export function RoomList({
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomMembers, setNewRoomMembers] = useState<string[]>([]);
   const [currentRoom, setCurrentRoom] = useState<Room | null>(null);
+  const [availableAgents, setAvailableAgents] = useState<Agent[]>([]);
   const { data: agentsData } = useAgents();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchRooms();
@@ -108,7 +111,7 @@ export function RoomList({
       const data = await response.json();
       if (data.success) {
         setAvailableAgents(
-          data.data.agents.filter((a: any) => a.id !== agentId)
+          data.data.agents.filter((agent: Agent) => agent.id !== agentId)
         );
       }
     } catch (error) {
@@ -138,7 +141,16 @@ export function RoomList({
         setIsCreateDialogOpen(false);
         setNewRoomName("");
         setNewRoomMembers([]);
-        fetchRooms();
+        
+        // Fetch updated rooms and navigate to the new room
+        await fetchRooms();
+        
+        // Select the new room to navigate to it
+        console.log(`Room created with ID: ${data.data.id}`);
+        onSelectRoom(data.data.id as UUID);
+        
+        // Navigate to the room
+        navigate(`/chat/${agentId}?roomId=${data.data.id}`);
       } else {
         toast({
           variant: "destructive",
@@ -222,7 +234,7 @@ export function RoomList({
         fetchRooms();
         if (selectedRoomId === roomId) {
           // If the currently selected room was deleted, reset selection
-          onSelectRoom(agentId); // Default to agent's DM room
+          onSelectRoom(agentId as UUID); // Default to agent's DM room
         }
       } else {
         const data = await response.json();

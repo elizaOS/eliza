@@ -1,18 +1,18 @@
-import fs from "node:fs";
+import fs from 'node:fs';
 import {
-	type Action,
-	type ActionExample,
-	ChannelType,
-	type Content,
-	type HandlerCallback,
-	type IAgentRuntime,
-	type Memory,
-	ModelType,
-	type State,
-	composePromptFromState,
-	parseJSONObjectFromText,
-	trimTokens,
-} from "@elizaos/core";
+  type Action,
+  type ActionExample,
+  ChannelType,
+  type Content,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  type State,
+  composePromptFromState,
+  parseJSONObjectFromText,
+  trimTokens,
+} from '@elizaos/core';
 
 export const summarizationTemplate = `# Summarized so far (we are adding to this)
 {{currentSummary}}
@@ -55,31 +55,31 @@ Your response must be formatted as a JSON block with this structure:
  * @returns {Promise<{ objective: string; attachmentIds: string[] } | null>} An object containing the objective and attachment IDs, or null if the data could not be retrieved after multiple attempts
  */
 const getAttachmentIds = async (
-	runtime: IAgentRuntime,
-	_message: Memory,
-	state: State,
+  runtime: IAgentRuntime,
+  _message: Memory,
+  state: State
 ): Promise<{ objective: string; attachmentIds: string[] } | null> => {
-	const prompt = composePromptFromState({
-		state,
-		template: attachmentIdsTemplate,
-	});
+  const prompt = composePromptFromState({
+    state,
+    template: attachmentIdsTemplate,
+  });
 
-	for (let i = 0; i < 5; i++) {
-		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-		});
-		console.log("response", response);
-		// try parsing to a json object
-		const parsedResponse = parseJSONObjectFromText(response) as {
-			objective: string;
-			attachmentIds: string[];
-		} | null;
-		// see if it contains objective and attachmentIds
-		if (parsedResponse?.objective && parsedResponse?.attachmentIds) {
-			return parsedResponse;
-		}
-	}
-	return null;
+  for (let i = 0; i < 5; i++) {
+    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
+    console.log('response', response);
+    // try parsing to a json object
+    const parsedResponse = parseJSONObjectFromText(response) as {
+      objective: string;
+      attachmentIds: string[];
+    } | null;
+    // see if it contains objective and attachmentIds
+    if (parsedResponse?.objective && parsedResponse?.attachmentIds) {
+      return parsedResponse;
+    }
+  }
+  return null;
 };
 
 /**
@@ -95,279 +95,273 @@ const getAttachmentIds = async (
  */
 
 export const chatWithAttachments: Action = {
-	name: "CHAT_WITH_ATTACHMENTS",
-	similes: [
-		"CHAT_WITH_ATTACHMENT",
-		"SUMMARIZE_FILES",
-		"SUMMARIZE_FILE",
-		"SUMMARIZE_ATACHMENT",
-		"CHAT_WITH_PDF",
-		"ATTACHMENT_SUMMARY",
-		"RECAP_ATTACHMENTS",
-		"SUMMARIZE_FILE",
-		"SUMMARIZE_VIDEO",
-		"SUMMARIZE_AUDIO",
-		"SUMMARIZE_IMAGE",
-		"SUMMARIZE_DOCUMENT",
-		"SUMMARIZE_LINK",
-		"ATTACHMENT_SUMMARY",
-		"FILE_SUMMARY",
-	],
-	description:
-		"Answer a user request informed by specific attachments based on their IDs. If a user asks to chat with a PDF, or wants more specific information about a link or video or anything else they've attached, this is the action to use.",
-	validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
-		const room = await _runtime.getRoom(message.roomId);
-		if (room?.type !== ChannelType.GROUP) {
-			return false;
-		}
-		// only show if one of the keywords are in the message
-		const keywords: string[] = [
-			"attachment",
-			"summary",
-			"summarize",
-			"research",
-			"pdf",
-			"video",
-			"audio",
-			"image",
-			"document",
-			"link",
-			"file",
-			"attachment",
-			"summarize",
-			"code",
-			"report",
-			"write",
-			"details",
-			"information",
-			"talk",
-			"chat",
-			"read",
-			"listen",
-			"watch",
-		];
-		return keywords.some((keyword) =>
-			message.content.text?.toLowerCase().includes(keyword.toLowerCase()),
-		);
-	},
-	handler: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-		_options: any,
-		callback: HandlerCallback,
-	) => {
-		const callbackData: Content = {
-			text: "", // fill in later
-			actions: ["CHAT_WITH_ATTACHMENTS_RESPONSE"],
-			source: message.content.source,
-			attachments: [],
-		};
+  name: 'CHAT_WITH_ATTACHMENTS',
+  similes: [
+    'CHAT_WITH_ATTACHMENT',
+    'SUMMARIZE_FILES',
+    'SUMMARIZE_FILE',
+    'SUMMARIZE_ATACHMENT',
+    'CHAT_WITH_PDF',
+    'ATTACHMENT_SUMMARY',
+    'RECAP_ATTACHMENTS',
+    'SUMMARIZE_FILE',
+    'SUMMARIZE_VIDEO',
+    'SUMMARIZE_AUDIO',
+    'SUMMARIZE_IMAGE',
+    'SUMMARIZE_DOCUMENT',
+    'SUMMARIZE_LINK',
+    'ATTACHMENT_SUMMARY',
+    'FILE_SUMMARY',
+  ],
+  description:
+    "Answer a user request informed by specific attachments based on their IDs. If a user asks to chat with a PDF, or wants more specific information about a link or video or anything else they've attached, this is the action to use.",
+  validate: async (_runtime: IAgentRuntime, message: Memory, _state: State) => {
+    const room = await _runtime.getRoom(message.roomId);
+    if (room?.type !== ChannelType.GROUP) {
+      return false;
+    }
+    // only show if one of the keywords are in the message
+    const keywords: string[] = [
+      'attachment',
+      'summary',
+      'summarize',
+      'research',
+      'pdf',
+      'video',
+      'audio',
+      'image',
+      'document',
+      'link',
+      'file',
+      'attachment',
+      'summarize',
+      'code',
+      'report',
+      'write',
+      'details',
+      'information',
+      'talk',
+      'chat',
+      'read',
+      'listen',
+      'watch',
+    ];
+    return keywords.some((keyword) =>
+      message.content.text?.toLowerCase().includes(keyword.toLowerCase())
+    );
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    _options: any,
+    callback: HandlerCallback
+  ) => {
+    const callbackData: Content = {
+      text: '', // fill in later
+      actions: ['CHAT_WITH_ATTACHMENTS_RESPONSE'],
+      source: message.content.source,
+      attachments: [],
+    };
 
-		// 1. extract attachment IDs from the message
-		const attachmentData = await getAttachmentIds(runtime, message, state);
-		if (!attachmentData) {
-			console.error("Couldn't get attachment IDs from message");
-			await runtime.createMemory({
-				entityId: message.entityId,
-				agentId: message.agentId,
-				roomId: message.roomId,
-				content: {
-					source: message.content.source,
-					thought:
-						"I tried to chat with attachments but I couldn't get attachment IDs",
-					actions: ["CHAT_WITH_ATTACHMENTS_FAILED"],
-				},
-				metadata: {
-					type: "CHAT_WITH_ATTACHMENTS",
-				},
-			}, "messages");
-			return;
-		}
+    // 1. extract attachment IDs from the message
+    const attachmentData = await getAttachmentIds(runtime, message, state);
+    if (!attachmentData) {
+      console.error("Couldn't get attachment IDs from message");
+      await runtime.createMemory(
+        {
+          entityId: message.entityId,
+          agentId: message.agentId,
+          roomId: message.roomId,
+          content: {
+            source: message.content.source,
+            thought: "I tried to chat with attachments but I couldn't get attachment IDs",
+            actions: ['CHAT_WITH_ATTACHMENTS_FAILED'],
+          },
+          metadata: {
+            type: 'CHAT_WITH_ATTACHMENTS',
+          },
+        },
+        'messages'
+      );
+      return;
+    }
 
-		const { objective, attachmentIds } = attachmentData;
+    const { objective, attachmentIds } = attachmentData;
 
-		// This is pretty gross but it can catch cases where the returned generated UUID is stupidly wrong for some reason
-		const attachments = state.data.recentMessages
-			.filter(
-				(msg) => msg.content.attachments && msg.content.attachments.length > 0,
-			)
-			.flatMap((msg) => msg.content.attachments)
-			// check by first 5 characters of uuid
-			.filter(
-				(attachment) =>
-					attachmentIds
-						.map((attch) => attch.toLowerCase().slice(0, 5))
-						.includes(attachment.id.toLowerCase().slice(0, 5)) ||
-					// or check the other way
-					attachmentIds.some((id) => {
-						const attachmentId = id.toLowerCase().slice(0, 5);
-						return attachment.id.toLowerCase().includes(attachmentId);
-					}),
-			);
+    // This is pretty gross but it can catch cases where the returned generated UUID is stupidly wrong for some reason
+    const attachments = state.data.recentMessages
+      .filter((msg) => msg.content.attachments && msg.content.attachments.length > 0)
+      .flatMap((msg) => msg.content.attachments)
+      // check by first 5 characters of uuid
+      .filter(
+        (attachment) =>
+          attachmentIds
+            .map((attch) => attch.toLowerCase().slice(0, 5))
+            .includes(attachment.id.toLowerCase().slice(0, 5)) ||
+          // or check the other way
+          attachmentIds.some((id) => {
+            const attachmentId = id.toLowerCase().slice(0, 5);
+            return attachment.id.toLowerCase().includes(attachmentId);
+          })
+      );
 
-		const attachmentsWithText = attachments
-			.map((attachment) => `# ${attachment.title}\n${attachment.text}`)
-			.join("\n\n");
+    const attachmentsWithText = attachments
+      .map((attachment) => `# ${attachment.title}\n${attachment.text}`)
+      .join('\n\n');
 
-		let currentSummary = "";
+    let currentSummary = '';
 
-		const chunkSize = 8192;
+    const chunkSize = 8192;
 
-		state.values.attachmentsWithText = attachmentsWithText;
-		state.values.objective = objective;
-		const template = await trimTokens(
-			summarizationTemplate,
-			chunkSize,
-			runtime,
-		);
-		const prompt = composePromptFromState({
-			state,
-			// make sure it fits, we can pad the tokens a bit
-			// Get the model's tokenizer based on the current model being used
-			template,
-		});
+    state.values.attachmentsWithText = attachmentsWithText;
+    state.values.objective = objective;
+    const template = await trimTokens(summarizationTemplate, chunkSize, runtime);
+    const prompt = composePromptFromState({
+      state,
+      // make sure it fits, we can pad the tokens a bit
+      // Get the model's tokenizer based on the current model being used
+      template,
+    });
 
-		const summary = await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-		});
+    const summary = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt,
+    });
 
-		currentSummary = `${currentSummary}\n${summary}`;
+    currentSummary = `${currentSummary}\n${summary}`;
 
-		if (!currentSummary) {
-			console.error("No summary found, that's not good!");
-			await runtime.createMemory({
-				entityId: message.entityId,
-				agentId: message.agentId,
-				roomId: message.roomId,
-				content: {
-					source: message.content.source,
-					thought:
-						"I tried to chat with attachments but I couldn't get a summary",
-					actions: ["CHAT_WITH_ATTACHMENTS_FAILED"],
-				},
-				metadata: {
-					type: "CHAT_WITH_ATTACHMENTS",
-				},
-			}, "messages");
-			return;
-		}
+    if (!currentSummary) {
+      console.error("No summary found, that's not good!");
+      await runtime.createMemory(
+        {
+          entityId: message.entityId,
+          agentId: message.agentId,
+          roomId: message.roomId,
+          content: {
+            source: message.content.source,
+            thought: "I tried to chat with attachments but I couldn't get a summary",
+            actions: ['CHAT_WITH_ATTACHMENTS_FAILED'],
+          },
+          metadata: {
+            type: 'CHAT_WITH_ATTACHMENTS',
+          },
+        },
+        'messages'
+      );
+      return;
+    }
 
-		callbackData.text = currentSummary.trim();
-		if (
-			callbackData.text &&
-			(currentSummary.trim()?.split("\n").length < 4 ||
-				currentSummary.trim()?.split(" ").length < 100)
-		) {
-			callbackData.text = `Here is the summary:
+    callbackData.text = currentSummary.trim();
+    if (
+      callbackData.text &&
+      (currentSummary.trim()?.split('\n').length < 4 ||
+        currentSummary.trim()?.split(' ').length < 100)
+    ) {
+      callbackData.text = `Here is the summary:
 \`\`\`md
 ${currentSummary.trim()}
 \`\`\`
 `;
-			await callback(callbackData);
-		} else if (currentSummary.trim()) {
-			const summaryDir = "cache";
-			const summaryFilename = `${summaryDir}/summary_${Date.now()}.md`;
-			try {
-				await fs.promises.mkdir(summaryDir, { recursive: true });
-				// Debug: Log before file operations
-				console.log("Creating summary file:", {
-					filename: summaryFilename,
-					summaryLength: currentSummary.length,
-				});
+      await callback(callbackData);
+    } else if (currentSummary.trim()) {
+      const summaryDir = 'cache';
+      const summaryFilename = `${summaryDir}/summary_${Date.now()}.md`;
+      try {
+        await fs.promises.mkdir(summaryDir, { recursive: true });
+        // Debug: Log before file operations
+        console.log('Creating summary file:', {
+          filename: summaryFilename,
+          summaryLength: currentSummary.length,
+        });
 
-				// Write file directly first
-				await fs.promises.writeFile(summaryFilename, currentSummary, "utf8");
-				console.log("File written successfully");
+        // Write file directly first
+        await fs.promises.writeFile(summaryFilename, currentSummary, 'utf8');
+        console.log('File written successfully');
 
-				// Then cache it
-				await runtime
-					
-					.setCache<string>(summaryFilename, currentSummary);
-				console.log("Cache set operation completed");
+        // Then cache it
+        await runtime.setCache<string>(summaryFilename, currentSummary);
+        console.log('Cache set operation completed');
 
-				await callback(
-					{
-						...callbackData,
-						text: `I've attached the summary of the requested attachments as a text file.`,
-					},
-					[summaryFilename],
-				);
-				console.log("Callback completed with summary file");
-			} catch (error) {
-				console.error("Error in file/cache process:", error);
-				throw error;
-			}
-		} else {
-			console.warn(
-				"Empty response from chat with attachments action, skipping",
-			);
-		}
+        await callback(
+          {
+            ...callbackData,
+            text: `I've attached the summary of the requested attachments as a text file.`,
+          },
+          [summaryFilename]
+        );
+        console.log('Callback completed with summary file');
+      } catch (error) {
+        console.error('Error in file/cache process:', error);
+        throw error;
+      }
+    } else {
+      console.warn('Empty response from chat with attachments action, skipping');
+    }
 
-		return callbackData;
-	},
-	examples: [
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "Can you summarize the attachments b3e23, c4f67, and d5a89?",
-				},
-			},
-			{
-				name: "{{name2}}",
-				content: {
-					text: "Sure thing! I'll pull up those specific attachments and provide a summary of their content.",
-					actions: ["CHAT_WITH_ATTACHMENTS"],
-				},
-			},
-		],
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "I need a technical summary of the PDFs I sent earlier - a1b2c3.pdf, d4e5f6.pdf, and g7h8i9.pdf",
-				},
-			},
-			{
-				name: "{{name2}}",
-				content: {
-					text: "I'll take a look at those specific PDF attachments and put together a technical summary for you. Give me a few minutes to review them.",
-					actions: ["CHAT_WITH_ATTACHMENTS"],
-				},
-			},
-		],
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "Can you watch this video for me and tell me which parts you think are most relevant to the report I'm writing? (the one I attached in my last message)",
-				},
-			},
-			{
-				name: "{{name2}}",
-				content: {
-					text: "sure, no problem.",
-					actions: ["CHAT_WITH_ATTACHMENTS"],
-				},
-			},
-		],
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "can you read my blog post and give me a detailed breakdown of the key points I made, and then suggest a handful of tweets to promote it?",
-				},
-			},
-			{
-				name: "{{name2}}",
-				content: {
-					text: "great idea, give me a minute",
-					actions: ["CHAT_WITH_ATTACHMENTS"],
-				},
-			},
-		],
-	] as ActionExample[][],
+    return callbackData;
+  },
+  examples: [
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'Can you summarize the attachments b3e23, c4f67, and d5a89?',
+        },
+      },
+      {
+        name: '{{name2}}',
+        content: {
+          text: "Sure thing! I'll pull up those specific attachments and provide a summary of their content.",
+          actions: ['CHAT_WITH_ATTACHMENTS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'I need a technical summary of the PDFs I sent earlier - a1b2c3.pdf, d4e5f6.pdf, and g7h8i9.pdf',
+        },
+      },
+      {
+        name: '{{name2}}',
+        content: {
+          text: "I'll take a look at those specific PDF attachments and put together a technical summary for you. Give me a few minutes to review them.",
+          actions: ['CHAT_WITH_ATTACHMENTS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: "Can you watch this video for me and tell me which parts you think are most relevant to the report I'm writing? (the one I attached in my last message)",
+        },
+      },
+      {
+        name: '{{name2}}',
+        content: {
+          text: 'sure, no problem.',
+          actions: ['CHAT_WITH_ATTACHMENTS'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'can you read my blog post and give me a detailed breakdown of the key points I made, and then suggest a handful of tweets to promote it?',
+        },
+      },
+      {
+        name: '{{name2}}',
+        content: {
+          text: 'great idea, give me a minute',
+          actions: ['CHAT_WITH_ATTACHMENTS'],
+        },
+      },
+    ],
+  ] as ActionExample[][],
 } as Action;
 
 export default chatWithAttachments;

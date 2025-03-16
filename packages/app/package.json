@@ -11,7 +11,10 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "lint": "prettier --write ./src"
   },
   "dependencies": {
     "@elizaos/cli": "^1.0.0-alpha.42",
@@ -27,7 +30,8 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "~5.8.2",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "prettier": "3.5.3"
   },
   "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
 }

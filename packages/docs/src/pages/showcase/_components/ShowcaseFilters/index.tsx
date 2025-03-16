@@ -1,7 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
 import { X } from 'lucide-react';
-import {TagList, Tags, type TagType} from '../../../../data/users';
+import { TagList, Tags, type TagType } from '../../../../data/users';
 import styles from './styles.module.css';
 
 function ShowcaseTagSelect({
@@ -52,7 +52,7 @@ export default function ShowcaseFilters({
 }): JSX.Element {
   const clearAllFilters = () => {
     // Clear all selected tags by toggling each one that's currently selected
-    selectedTags.forEach(tag => toggleTag(tag));
+    selectedTags.forEach((tag) => toggleTag(tag));
   };
 
   const hasActiveFilters = selectedTags.length > 0;
@@ -62,22 +62,26 @@ export default function ShowcaseFilters({
       <div className={styles.filtersWrapper}>
         <div className={styles.filterHeader}>
           <h3 className={styles.filterTitle}>Filters</h3>
-          
+
           <div className={styles.operatorToggle}>
             <span>Combine:</span>
             <button
               className={clsx(styles.operatorSwitch, {
-                [styles.operatorSwitchAnd]: operator === 'AND'
+                [styles.operatorSwitchAnd]: operator === 'AND',
               })}
               onClick={toggleOperator}
-              title={operator === 'OR' ? 'Change to AND (all filters must match)' : 'Change to OR (any filter can match)'}
+              title={
+                operator === 'OR'
+                  ? 'Change to AND (all filters must match)'
+                  : 'Change to OR (any filter can match)'
+              }
             >
               <span className={styles.switchKnob}></span>
               <span className={styles.switchLabel}>AND</span>
             </button>
           </div>
-          
-          <button 
+
+          <button
             className={styles.clearButton}
             onClick={clearAllFilters}
             disabled={!hasActiveFilters}
@@ -91,8 +95,8 @@ export default function ShowcaseFilters({
       </div>
 
       <ul className={clsx('clean-list', styles.tagList)}>
-        {TagList.filter(tag => tag).map((tag) => {
-          const {label, description, color} = Tags[tag];
+        {TagList.filter((tag) => tag).map((tag) => {
+          const { label, description, color } = Tags[tag];
           return (
             <ShowcaseTagSelect
               key={tag}

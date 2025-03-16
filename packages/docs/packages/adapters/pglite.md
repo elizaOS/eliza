@@ -32,7 +32,7 @@ Add the adapter to your ElizaOS configuration:
 {
   "plugins": ["@elizaos-plugins/adapter-pglite"],
   "settings": {
-    "PGLITE_DATA_DIR": "/path/to/data/directory"  // Required setting
+    "PGLITE_DATA_DIR": "/path/to/data/directory" // Required setting
   }
 }
 ```

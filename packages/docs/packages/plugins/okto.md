@@ -8,27 +8,32 @@ For comprehensive documentation, please visit the [Okto Eliza Plugin Documentati
 
 ## Features
 
-- **Portfolio Management**: 
+- **Portfolio Management**:
+
   - Get user portfolio data and balances
   - View NFT portfolio details
   - Track token holdings across multiple networks
 
-- **Wallet Management**: 
+- **Wallet Management**:
+
   - Access user's wallets
   - View wallet addresses and network details
 
 - **Token Operations**:
+
   - Get supported tokens list and details
   - Transfer tokens between addresses
   - Swap tokens using DEX integrations
   - Execute EVM raw transactions
 
 - **NFT Operations**:
+
   - View NFT collections
   - Transfer NFTs (ERC721/ERC1155)
   - Track NFT balances
 
-- **Chain Support**: 
+- **Chain Support**:
+
   - Multiple networks supported including:
     - Ethereum
     - Polygon
@@ -76,25 +81,21 @@ GOOGLE_CLIENT_SECRET=            # Required. Get from https://console.cloud.goog
 ## Usage
 
 ```typescript
-import {OktoPlugin} from "@okto_web3/eliza-plugin";
-const oktoPlugin = new OktoPlugin()
-  return new AgentRuntime({
-    databaseAdapter: db,
-    token,
-    modelProvider: character.modelProvider,
-    evaluators: [],
-    character,
-    plugins: [
-      bootstrapPlugin,
-      nodePlugin,
-      oktoPlugin,
-    ].filter(Boolean),
-    providers: [],
-    actions: [],
-    services: [oktoPlugin.oktoService],
-    managers: [],
-    cacheManager: cache,
-  });
+import { OktoPlugin } from '@okto_web3/eliza-plugin';
+const oktoPlugin = new OktoPlugin();
+return new AgentRuntime({
+  databaseAdapter: db,
+  token,
+  modelProvider: character.modelProvider,
+  evaluators: [],
+  character,
+  plugins: [bootstrapPlugin, nodePlugin, oktoPlugin].filter(Boolean),
+  providers: [],
+  actions: [],
+  services: [oktoPlugin.oktoService],
+  managers: [],
+  cacheManager: cache,
+});
 ```
 
 ### Available Actions

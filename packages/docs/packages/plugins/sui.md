@@ -31,11 +31,11 @@ SUI_NETWORK=mainnet|testnet|devnet|localnet
 Import and register the plugin in your Eliza configuration:
 
 ```typescript
-import { suiPlugin } from "@elizaos/plugin-sui";
+import { suiPlugin } from '@elizaos/plugin-sui';
 
 export default {
-    plugins: [suiPlugin],
-    // ... other configuration
+  plugins: [suiPlugin],
+  // ... other configuration
 };
 ```
 
@@ -47,7 +47,7 @@ Transfer SUI tokens to another address:
 
 ```typescript
 // Example conversation
-User: "Send 1 SUI to 0x4f2e63be8e7fe287836e29cde6f3d5cbc96eefd0c0e3f3747668faa2ae7324b0";
+User: 'Send 1 SUI to 0x4f2e63be8e7fe287836e29cde6f3d5cbc96eefd0c0e3f3747668faa2ae7324b0';
 Assistant: "I'll send 1 SUI token now...";
 ```
 
@@ -58,7 +58,7 @@ Query wallet balance and portfolio value:
 ```typescript
 // Example conversation
 User: "What's my wallet balance?";
-Assistant: "Your wallet contains 10.5 SUI ($42.00 USD)...";
+Assistant: 'Your wallet contains 10.5 SUI ($42.00 USD)...';
 ```
 
 ## API Reference
@@ -101,42 +101,42 @@ The following features and improvements are planned for future releases:
 
 1. **Transaction Management**
 
-    - Batch transaction processing
-    - Transaction simulation
-    - Gas optimization strategies
-    - Custom transaction builders
-    - Advanced error handling
+   - Batch transaction processing
+   - Transaction simulation
+   - Gas optimization strategies
+   - Custom transaction builders
+   - Advanced error handling
 
 2. **Wallet Integration**
 
-    - Multi-wallet support
-    - Hardware wallet integration
-    - Social recovery options
-    - Account abstraction
-    - Transaction history tracking
+   - Multi-wallet support
+   - Hardware wallet integration
+   - Social recovery options
+   - Account abstraction
+   - Transaction history tracking
 
 3. **Smart Contract Features**
 
-    - Contract deployment tools
-    - Move module templates
-    - Testing framework
-    - Upgrade management
-    - Security analysis
+   - Contract deployment tools
+   - Move module templates
+   - Testing framework
+   - Upgrade management
+   - Security analysis
 
 4. **Token Operations**
 
-    - Batch token transfers
-    - NFT support enhancement
-    - Token metadata handling
-    - Custom token standards
-    - Collection management
+   - Batch token transfers
+   - NFT support enhancement
+   - Token metadata handling
+   - Custom token standards
+   - Collection management
 
 5. **Developer Tools**
-    - Enhanced debugging
-    - CLI improvements
-    - Documentation generator
-    - Integration templates
-    - Performance monitoring
+   - Enhanced debugging
+   - CLI improvements
+   - Documentation generator
+   - Integration templates
+   - Performance monitoring
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 

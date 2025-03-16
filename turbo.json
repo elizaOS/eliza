@@ -12,6 +12,12 @@
       "outputs": ["dist/**"],
       "cache": false
     },
+    "format": {
+      "outputs": []
+    },
+    "format:check": {
+      "outputs": []
+    },
     "start": {
       "dependsOn": ["@elizaos/core#build"],
       "env": ["LOG_LEVEL"],

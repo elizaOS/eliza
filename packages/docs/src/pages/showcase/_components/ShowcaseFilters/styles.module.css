@@ -152,7 +152,7 @@
 .clearButton {
   display: inline-flex;
   align-items: center;
-  margin-left:6px;
+  margin-left: 6px;
   gap: 4px;
   padding: 6px 14px;
   border-radius: 15px;
@@ -180,7 +180,7 @@
     height: auto;
     width: 100%;
   }
-  
+
   .filterHeader {
     width: 100%;
     justify-content: space-between;
@@ -193,11 +193,11 @@
     align-items: flex-start;
     gap: 12px;
   }
-  
+
   .filterControls {
     margin-left: 0;
   }
-  
+
   .tagList {
     margin-top: 16px;
   }

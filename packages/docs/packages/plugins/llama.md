@@ -34,7 +34,7 @@ OLLAMA_MODEL=optional_ollama_model_name
 ## Usage
 
 ```typescript
-import { createLlamaPlugin } from "@elizaos/plugin-llama";
+import { createLlamaPlugin } from '@elizaos/plugin-llama';
 
 // Initialize the plugin
 const llamaPlugin = createLlamaPlugin();
@@ -59,6 +59,7 @@ Provides local LLM capabilities using LLaMA models.
 #### Features
 
 1. **Text Generation**
+
    - Completion-style inference
    - Temperature control
    - Stop token configuration
@@ -66,6 +67,7 @@ Provides local LLM capabilities using LLaMA models.
    - Maximum token limit control
 
 2. **Model Management**
+
    - Automatic model downloading
    - Model file verification
    - Automatic retry on initialization failures
@@ -105,7 +107,7 @@ Warning: No CUDA detected - local response will be slow
 Enable debug logging for detailed troubleshooting:
 
 ```typescript
-process.env.DEBUG = "eliza:plugin-llama:*";
+process.env.DEBUG = 'eliza:plugin-llama:*';
 ```
 
 ### System Requirements
@@ -118,11 +120,13 @@ process.env.DEBUG = "eliza:plugin-llama:*";
 ### Performance Optimization
 
 1. **Model Selection**
+
    - Choose appropriate model size
    - Use quantized versions when possible
    - Balance quality vs speed
 
 2. **Resource Management**
+
    - Monitor memory usage
    - Configure appropriate context size
    - Optimize batch processing
@@ -139,9 +143,9 @@ For issues and feature requests, please:
 1. Check the troubleshooting guide above
 2. Review existing GitHub issues
 3. Submit a new issue with:
-    - System information
-    - Error logs
-    - Steps to reproduce
+   - System information
+   - Error logs
+   - Steps to reproduce
 
 ## Credits
 

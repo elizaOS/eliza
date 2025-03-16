@@ -10,19 +10,47 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
-} from "@/components/ui/sidebar";
-import { useAgents } from "@/hooks/use-query-hooks";
-import info from "@/lib/info.json";
-import { formatAgentName } from "@/lib/utils";
-import { type Agent, AgentStatus } from "@elizaos/core";
-import { Book, Cog, TerminalIcon } from "lucide-react";
-import { NavLink, useLocation } from "react-router";
-import ConnectionStatus from "./connection-status";
+} from '@/components/ui/sidebar';
+import { useAgents } from '@/hooks/use-query-hooks';
+import info from '@/lib/info.json';
+import { formatAgentName } from '@/lib/utils';
+import { type Agent, AgentStatus, ChannelType, type UUID } from '@elizaos/core';
+import { Book, Cog, TerminalIcon } from 'lucide-react';
+import { NavLink, useLocation, useNavigate } from 'react-router';
+import ConnectionStatus from './connection-status';
+import { useState, useEffect } from 'react';
+import { RoomList } from './room-list';
 
 export function AppSidebar() {
   const location = useLocation();
-  const { data: { data: agentsData } = {}, isPending: isAgentsPending } =
-    useAgents();
+  const navigate = useNavigate();
+  const { data: { data: agentsData } = {}, isPending: isAgentsPending } = useAgents();
+  
+  const [newRoomName, setNewRoomName] = useState("");
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [selectedRoomId, setSelectedRoomId] = useState<UUID | undefined>(undefined);
+
+  useEffect(() => {
+    // Extract agent ID from URL if present
+    const match = location.pathname.match(/\/chat\/([^/?]+)/);
+    if (match && match[1]) {
+      setSelectedAgentId(match[1]);
+    }
+
+    // Extract room ID from URL if present
+    const searchParams = new URLSearchParams(location.search);
+    const roomId = searchParams.get("roomId");
+    if (roomId) {
+      setSelectedRoomId(roomId as UUID);
+    }
+  }, [location]);
+
+  // Function to fetch rooms - this needs to be implemented based on your app structure
+  const fetchRooms = async () => {
+    // Implementation would go here
+    console.log("Fetching rooms...");
+  };
 
   const handleCreateRoom = async () => {
     if (!newRoomName.trim() || !selectedAgentId) return;
@@ -30,20 +58,18 @@ export function AppSidebar() {
     try {
       console.log(`Creating room with agent ID: ${selectedAgentId}`);
 
-      const response = await fetch(
-        `http://localhost:3000/agents/${selectedAgentId}/rooms`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: newRoomName,
-            type: ChannelType.GROUP,
-            entityId: "10000000-0000-0000-0000-000000000000", // Fixed user ID
-          }),
-        }
-      );
+      // Use relative path instead of hardcoded localhost URL
+      const response = await fetch(`/agents/${selectedAgentId}/rooms`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: newRoomName,
+          type: ChannelType.GROUP,
+          entityId: "10000000-0000-0000-0000-000000000000", // Fixed user ID
+        }),
+      });
 
       if (!response.ok) {
         console.error(
@@ -65,14 +91,18 @@ export function AppSidebar() {
         console.log(`Created room with ID: ${newRoomId}, navigating to it`);
 
         // Navigate to the chat page with the new room
-        navigate(`/chat/${selectedAgentId}/${newRoomId}`);
-
-        // Update rooms list
-        fetchRooms();
+        navigate(`/chat/${selectedAgentId}?roomId=${newRoomId}`);
       }
     } catch (error) {
       console.error("Error creating room:", error);
     }
+  };
+
+  const handleSelectRoom = (roomId: UUID) => {
+    if (!selectedAgentId) return;
+    
+    setSelectedRoomId(roomId);
+    navigate(`/chat/${selectedAgentId}?roomId=${roomId}`);
   };
 
   return (
@@ -83,11 +113,7 @@ export function AppSidebar() {
             <SidebarMenuButton size="lg" asChild>
               <NavLink to="/" className="px-6 py-2 h-full">
                 <div className="flex flex-col pt-2 gap-1 items-start justify-center">
-                  <img
-                    alt="elizaos-logo"
-                    src="/elizaos-logo-light.png"
-                    width="90%"
-                  />
+                  <img alt="elizaos-logo" src="/elizaos-logo-light.png" width="90%" />
                   <span className="text-xs font-mono text-muted-foreground text-center">
                     v{info?.version}
                   </span>
@@ -103,8 +129,8 @@ export function AppSidebar() {
             <SidebarMenu>
               {isAgentsPending ? (
                 <div>
-                  {Array.from({ length: 5 }).map((_, _index) => (
-                    <SidebarMenuItem key={`skeleton-item-${_index}`}>
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <SidebarMenuItem key={`skeleton-item-${index}`}>
                       <SidebarMenuSkeleton />
                     </SidebarMenuItem>
                   ))}
@@ -113,23 +139,15 @@ export function AppSidebar() {
                 <div>
                   {(() => {
                     // Sort agents: enabled first, then disabled
-                    const sortedAgents = [...(agentsData?.agents || [])].sort(
-                      (a, b) => {
-                        // Sort by status (active agents first)
-                        if (
-                          a.status === AgentStatus.ACTIVE &&
-                          b.status !== AgentStatus.ACTIVE
-                        )
-                          return -1;
-                        if (
-                          a.status !== AgentStatus.ACTIVE &&
-                          b.status === AgentStatus.ACTIVE
-                        )
-                          return 1;
-                        // If both have the same status, sort alphabetically by name
-                        return a.name.localeCompare(b.name);
-                      }
-                    );
+                    const sortedAgents = [...(agentsData?.agents || [])].sort((a, b) => {
+                      // Sort by status (active agents first)
+                      if (a.status === AgentStatus.ACTIVE && b.status !== AgentStatus.ACTIVE)
+                        return -1;
+                      if (a.status !== AgentStatus.ACTIVE && b.status === AgentStatus.ACTIVE)
+                        return 1;
+                      // If both have the same status, sort alphabetically by name
+                      return a.name.localeCompare(b.name);
+                    });
 
                     // Split into enabled and disabled groups
                     const activeAgents = sortedAgents.filter(
@@ -159,10 +177,9 @@ export function AppSidebar() {
                           <SidebarMenuItem key={agent.id}>
                             <NavLink to={`/chat/${agent.id}`}>
                               <SidebarMenuButton
-                                isActive={location.pathname.includes(
-                                  agent.id as string
-                                )}
+                                isActive={location.pathname.includes(agent.id as string)}
                                 className="transition-colors px-4 my-4 rounded-md"
+                                onClick={() => setSelectedAgentId(agent.id as string)}
                               >
                                 <div className="flex items-center gap-2">
                                   <div className="w-8 h-8 flex justify-center items-center">
@@ -245,14 +262,25 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        
+        {/* Room List section - display only when an agent is selected */}
+        {selectedAgentId && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Rooms</SidebarGroupLabel>
+            <SidebarGroupContent className="px-2">
+              <RoomList 
+                agentId={selectedAgentId as UUID} 
+                selectedRoomId={selectedRoomId}
+                onSelectRoom={handleSelectRoom}
+              />
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter className="px-4 py-4">
         <SidebarMenu>
           <SidebarMenuItem>
-            <NavLink
-              to="https://elizaos.github.io/eliza/docs/intro/"
-              target="_blank"
-            >
+            <NavLink to="https://elizaos.github.io/eliza/docs/intro/" target="_blank">
               <SidebarMenuButton className="text-muted-foreground rounded-md">
                 <Book className="size-5" />
                 <span>Documentation</span>
@@ -268,10 +296,7 @@ export function AppSidebar() {
             </NavLink>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              disabled
-              className="text-muted-foreground/50 rounded-md"
-            >
+            <SidebarMenuButton disabled className="text-muted-foreground/50 rounded-md">
               <Cog className="size-5" />
               <span>Settings</span>
             </SidebarMenuButton>

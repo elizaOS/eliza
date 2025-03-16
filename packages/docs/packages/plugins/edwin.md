@@ -5,6 +5,7 @@ Edwin plugin for Eliza that enables interaction with Edwin tools for DeFi operat
 ## About
 
 See full info and docs at [Edwin docs](https://docs.edwin.finance).
+
 ## Setup
 
 1. Install dependencies:
@@ -24,11 +25,11 @@ SOLANA_PRIVATE_KEY=<YOUR_SOLANA_PRIVATE_KEY>
 
 The plugin provides access to the following Edwin tools:
 
--   supply
--   withdraw
--   stake
--   addLiquidity
--   removeLiquidity
+- supply
+- withdraw
+- stake
+- addLiquidity
+- removeLiquidity
 
 ## Usage Examples
 
@@ -60,7 +61,7 @@ pnpm dev
 
 ## Dependencies
 
--   edwin-sdk
+- edwin-sdk
 
 ## License
 
