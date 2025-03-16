@@ -38,7 +38,7 @@ jobs:
         run: bun run lint
 
       - name: Build packages
-        run: bun run build
+        run: bun run build && bun run build:docs
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5

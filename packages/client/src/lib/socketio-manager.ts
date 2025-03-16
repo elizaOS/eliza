@@ -63,6 +63,11 @@ class SocketIOManager extends EventEmitter {
   }
 
   connect(agentId: string, roomId: string): void {
+    if (!agentId || !roomId) {
+      console.error(`[SocketIO] Cannot connect: agentId and roomId are required`);
+      return;
+    }
+
     const serviceKey = `${agentId}:${roomId}`;
 
     if (this.services.has(serviceKey)) {
@@ -70,17 +75,23 @@ class SocketIOManager extends EventEmitter {
       return;
     }
 
+    // Use a simple fixed user ID instead of a random one
+    const clientId = 'user-00000000-0000-0000-0000-000000000000';
+    console.log(
+      `[SocketIO] Using client ID ${clientId} for connecting to agent ${agentId} in room ${roomId}`
+    );
+
     try {
       // Get a WebSocketService from the factory
       const factory = getWebSocketFactory();
-      const service = factory.createClientService(agentId, roomId);
+      const service = factory.createClientService(clientId, roomId);
 
       // Set up event handlers - only listen for messages from others, not from self
       service.onTextMessage((payload: TextMessagePayload) => {
         console.log(`[SocketIO] Message received in room ${roomId}:`, payload);
 
         // Receive messages from any sender (agent or user) except self
-        if (payload.entityId !== agentId) {
+        if (payload.entityId !== clientId) {
           // Format the message for the UI
           this.emit('messageBroadcast', {
             entityId: payload.entityId,
@@ -97,11 +108,16 @@ class SocketIOManager extends EventEmitter {
       service
         .connect()
         .then(() => {
-          console.log(`[SocketIO] Connected for entity ${agentId} in room ${roomId}`);
+          console.log(
+            `[SocketIO] Connected for entity ${clientId} to agent ${agentId} in room ${roomId}`
+          );
           this.services.set(serviceKey, service);
         })
         .catch((error: Error) => {
-          console.error(`[SocketIO] Connection error for entity ${agentId}:`, error);
+          console.error(
+            `[SocketIO] Connection error for entity ${clientId} to agent ${agentId}:`,
+            error
+          );
         });
     } catch (error) {
       console.error(`[SocketIO] Error creating service:`, error);
@@ -125,15 +141,10 @@ class SocketIOManager extends EventEmitter {
       return;
     }
 
-    // Convert 'text' to 'message' format if needed for consistency
-    const messageOptions = {
-      ...options,
-      // Make sure we're using the correct field name
-      text: options.text || '',
-    };
-
+    // IMPORTANT: Use the entityId from options, not the agentId
+    // This ensures the message sender ID is correctly set to the user, not the agent
     console.log(`[SocketIO] Sending message to room ${roomId} from ${options.entityId}`);
-    service.sendTextMessage(messageOptions);
+    service.sendTextMessage(options);
   }
 
   private getServiceKey(agentId: string, roomId: string): string {
@@ -149,17 +160,28 @@ class SocketIOManager extends EventEmitter {
   ): void {
     console.log(`[SocketIO] Broadcasting: ${entityId} sent "${text}" to room ${roomId}`);
 
-    this.emit('messageBroadcast', {
-      entityId,
-      userName,
-      text,
-      roomId,
-      createdAt: Date.now(),
-      source,
-    });
+    // DO NOT emit a messageBroadcast here!
+    // The UI already displays the user's own message immediately
+    // This was causing messages to appear as if sent by the agent
 
-    this.sendMessage(entityId, {
-      entityId,
+    // Get the agent ID from the room key but send the message with the user's entityId
+    const serviceKey = Array.from(this.services.keys()).find((key) => key.endsWith(`:${roomId}`));
+    if (!serviceKey) {
+      console.warn(`[SocketIO] No service found for room ${roomId}`);
+      return;
+    }
+
+    const agentId = serviceKey.split(':')[0];
+
+    // Always use the fixed user ID to ensure consistency
+    const userEntityId = 'user-00000000-0000-0000-0000-000000000000';
+
+    console.log(
+      `[SocketIO] Found agent ${agentId} for room ${roomId}, sending message as user ${userEntityId}`
+    );
+
+    this.sendMessage(agentId, {
+      entityId: userEntityId, // Use fixed user ID
       userName,
       text,
       roomId,

@@ -501,16 +501,17 @@ export type Media = {
 };
 
 export enum ChannelType {
-  SELF = 'SELF',
-  DM = 'DM',
-  GROUP = 'GROUP',
-  VOICE_DM = 'VOICE_DM',
-  VOICE_GROUP = 'VOICE_GROUP',
-  FEED = 'FEED',
-  THREAD = 'THREAD',
-  WORLD = 'WORLD',
-  API = 'API',
-  FORUM = 'FORUM',
+  SELF = 'SELF', // Messages to self
+  DM = 'DM', // Direct messages between two participants
+  GROUP = 'GROUP', // Group messages with multiple participants
+  VOICE_DM = 'VOICE_DM', // Voice direct messages
+  VOICE_GROUP = 'VOICE_GROUP', // Voice channels with multiple participants
+  FEED = 'FEED', // Social media feed
+  THREAD = 'THREAD', // Threaded conversation
+  WORLD = 'WORLD', // World channel
+  FORUM = 'FORUM', // Forum discussion
+  // Legacy types - kept for backward compatibility but should be replaced
+  API = 'API', // @deprecated - Use DM or GROUP instead
 }
 
 /**
