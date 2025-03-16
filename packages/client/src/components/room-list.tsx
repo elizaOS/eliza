@@ -38,15 +38,8 @@ import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useNavigate } from 'react-router';
 import { Badge } from '@/components/ui/badge';
-import { Room } from '../types/rooms';
+import { Room } from '@/types/rooms';
 import axios from 'axios';
-
-interface Room {
-  id: string;
-  name: string;
-  type: ChannelType;
-  entities: { id: string; agentId?: string }[];
-}
 
 interface RoomListProps {
   agentId: UUID;
@@ -138,57 +131,80 @@ export function RoomList({ agentId, onSelectRoom, selectedRoomId }: RoomListProp
     navigate(`/chat/${agentId}?roomId=${roomId}`);
   };
 
-  const handleCreateRoom = async () => {
-    if (!newRoomName) {
-      setCreateRoomError('Room name is required');
-      return;
-    }
+  const createConceptualRoom = async (
+    agentId: string,
+    roomName: string,
+    roomType: string = 'GROUP'
+  ): Promise<string | null> => {
+    try {
+      const response = await axios.post(
+        `${import.meta.env.VITE_API_URL || ''}/api/room-mappings/conceptual-room`,
+        {
+          name: roomName,
+          type: roomType,
+          agentId,
+        }
+      );
 
+      if (response.data.success) {
+        return response.data.data.conceptualRoomId;
+      }
+
+      console.error('Failed to create conceptual room:', response.data.error);
+      return null;
+    } catch (error) {
+      console.error('Error creating conceptual room:', error);
+      return null;
+    }
+  };
+
+  const handleCreateRoom = async () => {
     setIsCreatingRoom(true);
     setCreateRoomError(null);
 
     try {
-      console.log(`Creating new room: ${newRoomName}`);
-
-      // Create the room directly with the agent API instead of using the conceptual room API
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL || ''}/api/agents/${agentId}/rooms`,
-        {
-          name: newRoomName,
-          type: ChannelType.GROUP,
-        }
-      );
-
-      if (!response.data.success) {
-        throw new Error(response.data.error?.message || 'Failed to create room');
+      if (!newRoomName) {
+        setCreateRoomError('Please enter a room name');
+        return;
       }
 
-      const newRoomId = response.data.data.id;
-      console.log(`Created new room: ${newRoomId}`);
+      if (!availableAgents.length) {
+        setCreateRoomError('Please select at least one agent');
+        return;
+      }
 
-      // Add admin user to the room (this should be automatic on the server side now)
-      const adminId = '10000000-0000-0000-0000-000000000000';
-      await axios.post(
-        `${import.meta.env.VITE_API_URL || ''}/api/agents/${agentId}/rooms/${newRoomId}/participants`,
-        {
-          participantId: adminId,
+      const agentsToAdd = availableAgents.map((a) => a.id);
+
+      // Create a conceptual room
+      const conceptualRoomId = await createConceptualRoom(agentId.toString(), newRoomName);
+
+      if (!conceptualRoomId) {
+        setCreateRoomError('Failed to create room');
+        return;
+      }
+
+      // Add selected agents to the room
+      for (const agentId of agentsToAdd) {
+        try {
+          await axios.post(`${import.meta.env.VITE_API_URL || ''}/api/room-mappings/add-agent`, {
+            conceptualRoomId,
+            agentId,
+          });
+        } catch (error) {
+          console.error(`Failed to add agent ${agentId} to room:`, error);
+          // Continue with other agents even if one fails
         }
-      );
+      }
 
-      // Fetch updated rooms to refresh the list
-      fetchRooms();
+      // Navigate to the new room - use the conceptual room URL format
+      navigate(`/chat/${agentId}/${conceptualRoomId}`);
 
-      // Close the create dialog
-      setIsCreateDialogOpen(false);
+      // Reset UI state
       setNewRoomName('');
-
-      // Navigate to the new chat room
-      navigate(`/chat/${agentId}/${newRoomId}`);
+      setIsCreateDialogOpen(false);
     } catch (error) {
-      console.error('Failed to create room:', error);
-      setCreateRoomError(
-        'Failed to create room: ' + (error instanceof Error ? error.message : 'Unknown error')
-      );
+      console.error('Error creating room:', error);
+      setCreateRoomError('Failed to create room');
     } finally {
       setIsCreatingRoom(false);
     }
@@ -432,7 +448,9 @@ export function RoomList({ agentId, onSelectRoom, selectedRoomId }: RoomListProp
                 .filter((room) => room.type === ChannelType.DM)
                 .map((room) => {
                   // Get the other entity in the DM (not the current agent)
-                  const otherEntity = room.entities?.find((entity) => entity.id !== agentId);
+                  const otherEntity = room.entities?.find(
+                    (entity: { id: string; agentId?: string }) => entity.id !== agentId
+                  );
                   const agentEntity = availableAgents.find(
                     (a) => otherEntity && a.id === otherEntity.id
                   );
@@ -482,7 +500,7 @@ export function RoomList({ agentId, onSelectRoom, selectedRoomId }: RoomListProp
                   const participantCount = room.entities?.length || 0;
                   // Check which agents are in this room
                   const agentsInRoom =
-                    room.entities?.filter((entity) =>
+                    room.entities?.filter((entity: { id: string; agentId?: string }) =>
                       // An entity is an agent if it matches an available agent ID
                       availableAgents.some((agent) => agent.id === entity.id)
                     ) || [];
@@ -529,7 +547,7 @@ export function RoomList({ agentId, onSelectRoom, selectedRoomId }: RoomListProp
                       {/* Show agents in this room */}
                       {agentsInRoom.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1 ml-10">
-                          {agentsInRoom.map((agent) => {
+                          {agentsInRoom.map((agent: { id: string; agentId?: string }) => {
                             const agentInfo = availableAgents.find((a) => a.id === agent.id);
                             return (
                               <Badge key={agent.id} variant="outline" className="text-xs">

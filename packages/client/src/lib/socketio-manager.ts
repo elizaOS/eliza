@@ -63,6 +63,14 @@ export interface WebSocketService {
 
   // Message methods
   sendMessage(message: Partial<MessagePayload>): Promise<boolean>;
+
+  /**
+   * Gets the agent-specific room ID for a conceptual room ID
+   * @param conceptualRoomId The conceptual room ID
+   * @param agentId The agent ID
+   * @returns Promise with the agent-specific room ID or null if not found
+   */
+  getAgentRoomId(conceptualRoomId: string, agentId: string): Promise<string | null>;
 }
 
 // Import dynamically to avoid TypeScript errors
@@ -272,6 +280,46 @@ class WebSocketManager implements WebSocketService {
       return false;
     }
   }
+
+  /**
+   * Gets the agent-specific room ID for a conceptual room ID
+   * @param conceptualRoomId The conceptual room ID
+   * @param agentId The agent ID
+   * @returns Promise with the agent-specific room ID or null if not found
+   */
+  async getAgentRoomId(conceptualRoomId: string, agentId: string): Promise<string | null> {
+    if (!conceptualRoomId || !agentId) {
+      console.error('Conceptual room ID and agent ID are required');
+      return null;
+    }
+
+    try {
+      console.log(
+        `[WebSocketService] Getting agent room ID for conceptual room ${conceptualRoomId} and agent ${agentId}`
+      );
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || ''}/api/room-mappings/mapping/${conceptualRoomId}/${agentId}`
+      );
+
+      if (!response.ok) {
+        console.error(`[WebSocketService] Failed to get room mapping: ${response.statusText}`);
+        return null;
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.data.agentRoomId) {
+        console.log(`[WebSocketService] Found agent room ID: ${data.data.agentRoomId}`);
+        return data.data.agentRoomId;
+      }
+
+      console.error('[WebSocketService] Room mapping not found in response');
+      return null;
+    } catch (error) {
+      console.error('[WebSocketService] Error getting room mapping:', error);
+      return null;
+    }
+  }
 }
 
 // Define events for TypeScript
@@ -307,20 +355,18 @@ export class SocketIOManager extends EventEmitter<SocketIOManagerEvents> {
   }
 
   // Connect to a room (optionally providing an agent reference)
-  connectToRoom(roomId: string, agentId?: string): void {
-    console.log(
-      `[SocketManager] Connecting to room ${roomId}${agentId ? ` (with agent ${agentId} as reference)` : ''}`
-    );
+  async connectToRoom(roomId?: string): Promise<boolean> {
+    console.log(`[SocketManager] Connecting to room ${roomId || 'any room'}`);
 
     if (!roomId) {
       console.error('[SocketManager] Cannot connect: roomId is required');
-      return;
+      return false;
     }
 
     // Check if we already have a socket for this room
     if (this.roomSockets.has(roomId)) {
       console.log(`[SocketManager] Already connected to room ${roomId}`);
-      return;
+      return true;
     }
 
     try {
@@ -377,8 +423,8 @@ export class SocketIOManager extends EventEmitter<SocketIOManagerEvents> {
             service.joinRoom(roomId);
 
             // Add the user to the room via API if an agent ID was provided
-            if (agentId) {
-              this.ensureUserInRoom(this.clientId, agentId, roomId);
+            if (roomId) {
+              this.ensureUserInRoom(this.clientId, roomId, roomId);
             } else {
               console.log(
                 `[SocketManager] No agent ID provided, skipping API registration for room ${roomId}`
@@ -417,8 +463,11 @@ export class SocketIOManager extends EventEmitter<SocketIOManagerEvents> {
 
       // Start the connection process
       connectWithRetry();
+
+      return true;
     } catch (error) {
       console.error(`[SocketManager] Error creating socket service for room ${roomId}:`, error);
+      return false;
     }
   }
 
@@ -546,7 +595,7 @@ export class SocketIOManager extends EventEmitter<SocketIOManagerEvents> {
   // Back-compatibility method for the old style (agent-centric)
   connect(agentId: string, roomId: string): void {
     console.log(`[SocketManager] Legacy connection request for agent ${agentId}, room ${roomId}`);
-    this.connectToRoom(roomId, agentId);
+    this.connectToRoom(roomId);
   }
 
   // Back-compatibility method for sending messages
