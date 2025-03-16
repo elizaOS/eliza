@@ -94,21 +94,15 @@
     "@elizaos/plugin-storage-s3",
     "@elizaos/plugin-video-understanding",
     "@swc/core",
-    "better-sqlite3",
     "bigint-buffer",
     "bufferutil",
     "bun",
     "canvas",
-    "core-js",
-    "core-js-pure",
-    "cpu-features",
     "esbuild",
+    "husky",
     "node-llama-cpp",
-    "nx",
-    "onnxruntime-node",
     "protobufjs",
     "sharp",
-    "ssh2",
     "utf-8-validate"
   ]
 }
