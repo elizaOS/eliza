@@ -118,3 +118,7 @@ export interface IDiscordService {
 }
 
 export const DISCORD_SERVICE_NAME = 'discord';
+
+export const ServiceType = {
+  DISCORD: 'discord',
+} as const;

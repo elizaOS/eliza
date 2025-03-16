@@ -1580,7 +1580,7 @@ Complete changelog:
 * feat: add readme for ton plugin by @chandiniv1 in https://github.com/elizaOS/eliza/pull/1496
 * feat: add readme for websearch plugin by @chandiniv1 in https://github.com/elizaOS/eliza/pull/1494
 * chore: fix typos by @qwdsds in https://github.com/elizaOS/eliza/pull/1489
-* docs: Fixed a small syntax issue in the ModelType Update fine-tuning.md by @mdqst in https://github.com/elizaOS/eliza/pull/1493
+* docs: Fixed a small syntax issue in the ModelClass Update fine-tuning.md by @mdqst in https://github.com/elizaOS/eliza/pull/1493
 * add CODE_OF_CONDUCT.md by @nulLeeKH in https://github.com/elizaOS/eliza/pull/1487
 * fix: remove `type` when import from `elizaos` by @tomguluson92 in https://github.com/elizaOS/eliza/pull/1492
 * fix: improve Twitter client dry run mode and configuration logging by @e-fu in https://github.com/elizaOS/eliza/pull/1498
@@ -1901,7 +1901,7 @@ Complete changelog:
 * feat: add readme for ton plugin by @chandiniv1 in https://github.com/elizaOS/eliza/pull/1496
 * feat: add readme for websearch plugin by @chandiniv1 in https://github.com/elizaOS/eliza/pull/1494
 * chore: fix typos by @qwdsds in https://github.com/elizaOS/eliza/pull/1489
-* docs: Fixed a small syntax issue in the ModelType Update fine-tuning.md by @mdqst in https://github.com/elizaOS/eliza/pull/1493
+* docs: Fixed a small syntax issue in the ModelClass Update fine-tuning.md by @mdqst in https://github.com/elizaOS/eliza/pull/1493
 * add CODE_OF_CONDUCT.md by @nulLeeKH in https://github.com/elizaOS/eliza/pull/1487
 * fix: remove `type` when import from `elizaos` by @tomguluson92 in https://github.com/elizaOS/eliza/pull/1492
 * fix: improve Twitter client dry run mode and configuration logging by @e-fu in https://github.com/elizaOS/eliza/pull/1498

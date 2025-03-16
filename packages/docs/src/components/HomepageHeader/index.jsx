@@ -1,5 +1,6 @@
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import React from 'react';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+import Heading from '@theme/Heading';
 
 import styles from './styles.module.css';
 
@@ -27,14 +28,14 @@ function HomepageHeader() {
                   width="135"
                   height="30"
                   title="GitHub"
-                />
+                ></iframe>
               </div>
             </div>
           </div>
           <div className={styles.heroRight}>
             <img src="/eliza/img/blurback.png" className={styles.blurPhoto} alt="blurred" />
             <pre className={styles.codeBlock}>
-              <code className="language-bash">{`npm create`}</code>
+              <code className="language-bash">{`npm install @elizaos/core`}</code>
             </pre>
           </div>
         </div>

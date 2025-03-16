@@ -261,7 +261,7 @@ const customRuntime = new AgentRuntime({
 
 ```typescript
 const modelConfig = {
-  modelClass: ModelType.LARGE,
+  modelClass: ModelClass.LARGE,
   temperature: 0.7,
   maxTokens: 2000,
   topP: 0.9,
