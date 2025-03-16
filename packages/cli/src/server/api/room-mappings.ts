@@ -36,7 +36,10 @@ export function roomMappingsRouter(
     try {
       // Check if entity exists
       const entity = await runtime.getEntityById(entityId);
-      if (entity) return true;
+      if (entity) {
+        logger.info(`[RoomMappings] Entity ${entityId} already exists for agent ${agentId}`);
+        return true;
+      }
 
       // Create entity if it doesn't exist
       const newEntity: Entity = {
@@ -45,12 +48,30 @@ export function roomMappingsRouter(
         agentId: agentId,
       };
 
-      await runtime.createEntity(newEntity);
+      try {
+        await runtime.createEntity(newEntity);
+        logger.info(`[RoomMappings] Created entity ${entityId} for agent ${agentId}`);
+      } catch (createError) {
+        // Check if this is a duplicate key error
+        if (createError.message?.includes('duplicate key') || createError.code === '23505') {
+          logger.info(
+            `[RoomMappings] Entity ${entityId} already exists (detected from DB constraint)`
+          );
+          return true;
+        }
+        // Rethrow any other error
+        throw createError;
+      }
 
-      logger.info(`[RoomMappings] Created entity ${entityId} for agent ${agentId}`);
       return true;
     } catch (error) {
-      logger.error(`[RoomMappings] Error ensuring entity exists: ${error.message}`);
+      if (error.message?.includes('duplicate key') || error.code === '23505') {
+        logger.info(`[RoomMappings] Entity ${entityId} already exists (detected from error)`);
+        return true;
+      }
+      logger.error(
+        `[RoomMappings] Error ensuring entity ${entityId} exists for agent ${agentId}: ${error.message}`
+      );
       return false;
     }
   }

@@ -2,8 +2,10 @@ import './index.css';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import AgentCreator from './components/agent-creator';
 import { AppSidebar } from './components/app-sidebar';
+import { LogViewer } from './components/log-viewer';
 import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
 import { STALE_TIMES } from './hooks/use-query-hooks';
@@ -13,13 +15,6 @@ import Chat from './routes/chat';
 import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
 import Settings from './routes/settings';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import AgentList from './routes/agent-list';
-import AgentDetail from './routes/agent-detail';
-import CharacterList from './routes/character-list';
-import CharacterForm from './routes/character-form';
-import CharacterDetail from './routes/character-detail';
-import NotFound from './routes/not-found';
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({
@@ -63,7 +58,7 @@ const prefetchInitialData = async () => {
 // Execute prefetch immediately
 prefetchInitialData();
 
-export default function App() {
+function App() {
   useVersion();
 
   // Also prefetch when the component mounts (helps with HMR and refreshes)
@@ -79,40 +74,27 @@ export default function App() {
           colorScheme: 'dark',
         }}
       >
-        <TooltipProvider delayDuration={0}>
-          <SidebarProvider>
-            <Router>
-              <div className="flex h-screen w-full">
-                <AppSidebar />
-                <main className="flex-1 overflow-auto">
-                  <Routes>
-                    <Route path="/" element={<Navigate to="/agents" />} />
-                    <Route path="/agents" element={<AgentList />} />
-                    <Route path="/agents/:agentId" element={<AgentDetail />} />
-
-                    {/* Chat routes */}
-                    <Route path="/chat/:agentId" element={<Chat />} />
-                    <Route path="/chat/:agentId/:roomId" element={<Chat />} />
-
-                    {/* Character routes */}
-                    <Route path="/characters" element={<CharacterList />} />
-                    <Route path="/characters/new" element={<CharacterForm />} />
-                    <Route path="/characters/:characterId" element={<CharacterDetail />} />
-                    <Route path="/characters/:characterId/edit" element={<CharacterForm />} />
-
-                    {/* Settings route */}
-                    <Route path="/settings" element={<Settings />} />
-
-                    {/* 404 route */}
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
-                </main>
-              </div>
-            </Router>
+        <BrowserRouter>
+          <TooltipProvider delayDuration={0}>
+            <SidebarProvider>
+              <AppSidebar />
+              <SidebarInset>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="chat/:agentId" element={<Chat />} />
+                  <Route path="settings/:agentId" element={<Settings />} />
+                  <Route path="agents/new" element={<AgentCreatorRoute />} />
+                  <Route path="/create" element={<AgentCreator />} />
+                  <Route path="/logs" element={<LogViewer />} />
+                </Routes>
+              </SidebarInset>
+            </SidebarProvider>
             <Toaster />
-          </SidebarProvider>
-        </TooltipProvider>
+          </TooltipProvider>
+        </BrowserRouter>
       </div>
     </QueryClientProvider>
   );
 }
+
+export default App;

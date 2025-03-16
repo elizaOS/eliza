@@ -6,6 +6,7 @@ import { Server as HttpServer } from 'http';
 import { type AgentManager } from '../agents/AgentManager';
 import { logger } from '@elizaos/core';
 import type { IAgentRuntime } from '@elizaos/core';
+import { MemoryType } from '@elizaos/core';
 
 // Interface for room mappings between conceptual and agent-specific rooms
 interface RoomMapping {
@@ -135,6 +136,7 @@ export class SocketIORouter {
         await agentRuntime.createMemory(
           {
             id: memoryId,
+            type: MemoryType.MESSAGE,
             entityId: entityId as UUID,
             roomId: agentRoomId,
             agentId: agentId,
@@ -144,6 +146,8 @@ export class SocketIORouter {
               channelType: 'GROUP' as ChannelType,
             },
             createdAt: Date.now(),
+            unique: true,
+            metadata: {},
           },
           'messages'
         );
@@ -244,7 +248,7 @@ export class SocketIORouter {
 
       await agentRuntime.createEntity({
         id: entityId,
-        name: entityName,
+        names: [entityName],
         agentId: agentRuntime.agentId,
         metadata: {
           websocket: {

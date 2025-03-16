@@ -1747,6 +1747,9 @@ export type EventHandler<T extends keyof EventPayloadMap> = (
 export enum SOCKET_MESSAGE_TYPE {
   ROOM_JOINING = 1,
   SEND_MESSAGE = 2,
+  MESSAGE = 3,
+  ACK = 4,
+  THINKING = 5,
 }
 
 /**

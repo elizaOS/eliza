@@ -1,9 +1,16 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import App from '../App';
 
 // Lazy load components
-const Chat = lazy(() => import('../components/chat'));
+const Chat = lazy(() => import('../routes/chat'));
+const AgentList = lazy(() => import('../routes/agent-list'));
+const AgentDetail = lazy(() => import('../routes/agent-detail'));
+const CharacterList = lazy(() => import('../routes/character-list'));
+const CharacterForm = lazy(() => import('../routes/character-form'));
+const CharacterDetail = lazy(() => import('../routes/character-detail'));
+const Settings = lazy(() => import('../routes/settings'));
+const NotFound = lazy(() => import('../routes/not-found'));
 
 // Loading fallback
 const Loading = () => (
@@ -19,10 +26,22 @@ export const router = createBrowserRouter([
     children: [
       {
         path: '/',
+        element: <Navigate to="/" />,
+      },
+      {
+        path: '/agents',
         element: (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            Select an agent to start chatting
-          </div>
+          <Suspense fallback={<Loading />}>
+            <AgentList />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/agents/:agentId',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <AgentDetail />
+          </Suspense>
         ),
       },
       {
@@ -34,11 +53,59 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: '/logs',
+        path: '/chat/:agentId/:roomId',
         element: (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            Logs feature coming soon
-          </div>
+          <Suspense fallback={<Loading />}>
+            <Chat />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/characters',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <CharacterList />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/characters/new',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <CharacterForm />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/characters/:characterId',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <CharacterDetail />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/characters/:characterId/edit',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <CharacterForm />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/settings',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <Settings />
+          </Suspense>
+        ),
+      },
+      {
+        path: '*',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <NotFound />
+          </Suspense>
         ),
       },
     ],

@@ -8,10 +8,8 @@ import {
   AgentRuntime,
   type Character,
   type IAgentRuntime,
-  ModelType,
   type Plugin,
   logger,
-  settings,
   stringToUuid,
 } from '@elizaos/core';
 import { Command } from 'commander';
@@ -353,7 +351,7 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
 
-  const serverPort = options.port || Number.parseInt(settings.SERVER_PORT || '3000');
+  const serverPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
 
   // Try to find a project or plugin in the current directory
   let isProject = false;

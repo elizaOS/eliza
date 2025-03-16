@@ -1,7 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { bootstrapPlugin } from './bootstrap';
 import { createUniqueUuid } from './entities';
-import { settings } from './environment';
 import { handlePluginImporting } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
@@ -39,6 +38,106 @@ import type {
   World,
 } from './types';
 import { stringToUuid } from './uuid';
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+/**
+ * Interface for settings object with key-value pairs.
+ */
+interface Settings {
+  [key: string]: string | undefined;
+}
+
+/**
+ * Represents a collection of settings grouped by namespace.
+ *
+ * @typedef {Object} NamespacedSettings
+ * @property {Settings} namespace - The namespace key and corresponding Settings value.
+ */
+interface NamespacedSettings {
+  [namespace: string]: Settings;
+}
+
+/**
+ * Initialize an empty object for storing environment settings.
+ */
+let environmentSettings: Settings = {};
+
+/**
+ * Loads environment variables from the nearest .env file in Node.js
+ * or returns configured settings in browser
+ * @returns {Settings} Environment variables object
+ * @throws {Error} If no .env file is found in Node.js environment
+ */
+export async function loadEnvConfig(): Promise<Settings> {
+  // For browser environments, return the configured settings
+  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+    return environmentSettings;
+  }
+
+  function findNearestEnvFile(startDir = process.cwd()) {
+    let currentDir = startDir;
+
+    // Continue searching until we reach the root directory
+    while (currentDir !== path.parse(currentDir).root) {
+      const envPath = path.join(currentDir, '.env');
+
+      if (fs.existsSync(envPath)) {
+        return envPath;
+      }
+
+      // Move up to parent directory
+      currentDir = path.dirname(currentDir);
+    }
+
+    // Check root directory as well
+    const rootEnvPath = path.join(path.parse(currentDir).root, '.env');
+    return fs.existsSync(rootEnvPath) ? rootEnvPath : null;
+  }
+
+  // Node.js environment: load from .env file
+  const envPath = findNearestEnvFile();
+
+  // attempt to Load the .env file into process.env
+  const dotenv = await import('dotenv');
+  const result = dotenv.default.config(envPath ? { path: envPath } : {});
+
+  if (!result.error) {
+    logger.log(`Loaded .env file from: ${envPath}`);
+  }
+
+  // Parse namespaced settings
+  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+  const namespacedSettings = parseNamespacedSettings(env as Settings);
+
+  // Attach to process.env for backward compatibility if available
+  if (typeof process !== 'undefined') {
+    Object.entries(namespacedSettings).forEach(([namespace, settings]) => {
+      process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
+    });
+  }
+
+  return env as Settings;
+}
+
+// Add this function to parse namespaced settings
+function parseNamespacedSettings(env: Settings): NamespacedSettings {
+  const namespaced: NamespacedSettings = {};
+
+  for (const [key, value] of Object.entries(env)) {
+    if (!value) continue;
+
+    const [namespace, ...rest] = key.split('.');
+    if (!namespace || rest.length === 0) continue;
+
+    const settingKey = rest.join('.');
+    namespaced[namespace] = namespaced[namespace] || {};
+    namespaced[namespace][settingKey] = value;
+  }
+
+  return namespaced;
+}
 
 // Semaphore implementation for controlling concurrent operations
 export class Semaphore {
@@ -118,6 +217,7 @@ export class AgentRuntime implements IAgentRuntime {
 
   private runtimeLogger;
   private knowledgeProcessingSemaphore = new Semaphore(10);
+  private settings: Settings;
 
   constructor(opts: {
     conversationLength?: number;
@@ -147,9 +247,15 @@ export class AgentRuntime implements IAgentRuntime {
       this.registerDatabaseAdapter(opts.adapter);
     }
 
-    this.runtimeLogger.success(`Agent ID: ${this.agentId}`);
-
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
+
+    if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+      this.settings = environmentSettings;
+    } else {
+      loadEnvConfig().then((settings) => {
+        this.settings = settings;
+      });
+    }
 
     // Register plugins from options or empty array
     const plugins = opts?.plugins ?? [];
@@ -161,6 +267,8 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
+
+    this.runtimeLogger.success(`Agent ID: ${this.agentId}`);
   }
 
   /**
@@ -564,7 +672,7 @@ export class AgentRuntime implements IAgentRuntime {
       this.character.secrets?.[key] ||
       this.character.settings?.[key] ||
       this.character.settings?.secrets?.[key] ||
-      settings[key];
+      this.settings[key];
 
     if (value === 'true') return true;
     if (value === 'false') return false;

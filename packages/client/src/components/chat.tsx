@@ -15,8 +15,8 @@ import type { IAttachment } from '@/types';
 import type { Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { Activity, MenuIcon, Paperclip, Send, Terminal, X } from 'lucide-react';
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { Activity, Database, PanelRight, Paperclip, Send, Terminal, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AgentActionViewer } from './action-viewer';
 import { AudioRecorder } from './audio-recorder';
@@ -28,9 +28,7 @@ import ChatTtsButton from './ui/chat/chat-tts-button';
 import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import { v4 as uuidv4 } from 'uuid';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { AgentMemoryViewer } from './memory-viewer';
 
 const SOURCE_NAME = 'client_chat';
 
@@ -41,13 +39,6 @@ type ExtraContentFields = {
 };
 
 type ContentWithUser = Content & ExtraContentFields;
-
-interface RoomMapping {
-  conceptualRoomId: string;
-  agentId: string;
-  agentRoomId: string;
-  createdAt: number;
-}
 
 function MessageContent({
   message,
@@ -114,368 +105,74 @@ function MessageContent({
   );
 }
 
-export default function Chat() {
-  const { agentId, roomId: conceptualRoomId } = useParams<{ agentId: string; roomId?: string }>();
-  const location = useLocation();
-  const queryParams = new URLSearchParams(location.search);
-  const queryRoomId = queryParams.get('roomId');
-
-  const providedRoomId = conceptualRoomId || queryRoomId || undefined;
-
-  const [agentRoomId, setAgentRoomId] = useState<string | undefined>(
-    !conceptualRoomId ? queryRoomId || undefined : undefined
-  );
-
-  const isConceptualRoom = !!conceptualRoomId;
-
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-
-  const socketIOManager = useMemo(() => SocketIOManager.getInstance(), []);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!agentId) {
-      navigate('/agents', { replace: true });
-    }
-  }, [agentId, navigate]);
-
+export default function Page({ agentId }: { agentId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
   const [showDetails, setShowDetails] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs'>('actions');
-  const [messages, setMessages] = useState<ContentWithUser[]>([]);
-  const [isTyping, setIsTyping] = useState(false);
-
+  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs' | 'memories'>('actions');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const initialScrollRef = useRef<boolean>(false);
+  const queryClient = useQueryClient();
+  const worldId = WorldManager.getWorldId();
 
-  const validAgentId =
-    typeof agentId === 'string' && agentId.length >= 36 ? (agentId as UUID) : null;
-  const validRoomId =
-    typeof providedRoomId === 'string' && providedRoomId.length >= 36
-      ? (providedRoomId as UUID)
-      : validAgentId;
-
-  const agentData = validAgentId ? useAgent(validAgentId)?.data?.data : undefined;
+  const agentData = useAgent(agentId)?.data?.data;
   const entityId = getEntityId();
+  const roomId = agentId;
+
+  const { data: messages = [] } = useMessages(agentId, roomId);
+
+  const socketIOManager = SocketIOManager.getInstance();
 
   useEffect(() => {
-    if (agentId) {
-      console.log(
-        `[Chat] Initializing chat with agent ${agentId} and room ${providedRoomId || 'default'}`
+    socketIOManager.connect(agentId, roomId);
+    socketIOManager.connect(entityId, roomId);
+
+    const handleMessageBroadcasting = (data: ContentWithUser) => {
+      queryClient.setQueryData(
+        ['messages', agentId, roomId, worldId],
+        (old: ContentWithUser[] = []) => [...old, { ...data, name: data.senderName }]
       );
-    }
-  }, [agentId, providedRoomId]);
-
-  const { data: fetchedMessages = [] } =
-    validAgentId && validRoomId ? useMessages(validAgentId, validRoomId) : { data: [] };
-
-  useEffect(() => {
-    if (fetchedMessages && fetchedMessages.length > 0) {
-      setMessages((prevMessages) => {
-        if (
-          prevMessages.length === fetchedMessages.length &&
-          JSON.stringify(prevMessages) === JSON.stringify(fetchedMessages)
-        ) {
-          return prevMessages;
-        }
-        return fetchedMessages as ContentWithUser[];
-      });
-    }
-  }, [fetchedMessages]);
-
-  // Add a fallback method to get room mapping if socketIOManager's method fails
-  const getAgentRoomId = async (
-    conceptualRoomId: string,
-    agentId: string
-  ): Promise<string | null> => {
-    try {
-      // Try to use socketIOManager's method first if it exists
-      // Use typecasting to avoid TypeScript errors for now
-      const socketManager = socketIOManager as any;
-      if (socketManager.getAgentRoomId) {
-        return await socketManager.getAgentRoomId(conceptualRoomId, agentId);
-      }
-
-      // Fallback to direct API call
-      console.log(
-        `[Chat] Fetching room mapping directly for conceptual room ${conceptualRoomId} and agent ${agentId}`
-      );
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL || ''}/api/room-mappings/mapping/${conceptualRoomId}/${agentId}`
-      );
-
-      if (response.data.success) {
-        const mapping = response.data.data;
-        console.log(`[Chat] Got agent-specific room ID: ${mapping.agentRoomId}`);
-        return mapping.agentRoomId;
-      }
-
-      console.error(`[Chat] Failed to get room mapping:`, response.data.error);
-      return null;
-    } catch (error) {
-      console.error(`[Chat] Error fetching room mapping:`, error);
-      return null;
-    }
-  };
-
-  // Update the connection code to use our fallback function
-  useEffect(() => {
-    if (!agentId) {
-      return;
-    }
-
-    const connectToRoom = async () => {
-      setIsConnecting(true);
-      setConnectionError(null);
-
-      try {
-        // If using a conceptual room, get the agent-specific room ID first
-        let targetRoomId = providedRoomId;
-
-        if (isConceptualRoom && conceptualRoomId && agentId) {
-          console.log(`[Chat] Using conceptual room: ${conceptualRoomId}`);
-          // Try to get the agent-specific room ID from our local state first
-          if (!agentRoomId) {
-            // If not in state, fetch it using our helper function
-            const fetchedRoomId = await getAgentRoomId(conceptualRoomId, agentId);
-            if (fetchedRoomId) {
-              console.log(`[Chat] Got agent-specific room ID from service: ${fetchedRoomId}`);
-              setAgentRoomId(fetchedRoomId);
-              targetRoomId = fetchedRoomId;
-            } else {
-              setConnectionError('Could not find agent-specific room. The room may not exist.');
-              setIsConnecting(false);
-              return;
-            }
-          } else {
-            // Use the one we already have in state
-            console.log(`[Chat] Using cached agent-specific room ID: ${agentRoomId}`);
-            targetRoomId = agentRoomId;
-          }
-        }
-
-        // Now connect to the room using the appropriate ID
-        const success = await socketIOManager.connectToRoom(targetRoomId || agentId);
-
-        if (success) {
-          setIsConnected(true);
-          setConnectionError(null);
-        } else {
-          setConnectionError('Failed to connect to room. Try refreshing the page.');
-        }
-      } catch (error) {
-        console.error(`[Chat] Error connecting to room:`, error);
-        setConnectionError('Error connecting to room. Try refreshing the page.');
-      } finally {
-        setIsConnecting(false);
-      }
     };
-
-    connectToRoom();
+    socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
 
     return () => {
-      // Disconnect when component unmounts
-      if (agentRoomId) {
-        socketIOManager.disconnectFromRoom(agentRoomId);
-      } else if (providedRoomId) {
-        socketIOManager.disconnectFromRoom(providedRoomId);
-      } else if (agentId) {
-        socketIOManager.disconnectFromRoom(agentId);
-      }
+      socketIOManager.disconnectAll();
+      socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
     };
-  }, [agentId, providedRoomId, conceptualRoomId, isConceptualRoom, socketIOManager, agentRoomId]);
+  }, [roomId]);
 
-  const scrollToBottom = useCallback(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messagesEndRef]);
+  const getMessageVariant = (id: UUID) => (id !== entityId ? 'received' : 'sent');
+
+  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } = useAutoScroll({
+    smooth: true,
+  });
 
   useEffect(() => {
-    if (!socketIOManager || !agentId) return;
-
-    const handleMessageEvent = (data: {
-      id?: string;
-      messageId?: string;
-      text?: string;
-      message?: string;
-      entityId?: string;
-      senderId?: string;
-      userName?: string;
-      createdAt?: number;
-      timestamp?: number;
-      file?: string;
-    }) => {
-      console.log('Received message event:', data);
-
-      const messageData = {
-        id: data.id || data.messageId || `msg-${Date.now()}`,
-        text: data.text || data.message || '',
-        sender: data.entityId || data.senderId || '',
-        userName: data.userName || 'User',
-        createdAt: data.createdAt || data.timestamp || Date.now(),
-        file: data.file,
-      };
-
-      const newMessage: ContentWithUser = {
-        id: messageData.id,
-        text: messageData.text,
-        sender: messageData.sender,
-        name: messageData.userName,
-        createdAt: messageData.createdAt,
-        isLoading: false,
-        files: messageData.file ? [messageData.file] : [],
-      };
-
-      setMessages((prevMessages) => {
-        if (prevMessages.some((m) => m.id === newMessage.id)) {
-          return prevMessages;
-        }
-        return [...prevMessages, newMessage];
-      });
-
-      setTimeout(scrollToBottom, 100);
-    };
-
-    socketIOManager.on('messageBroadcast', handleMessageEvent);
-
-    return () => {
-      socketIOManager.off('messageBroadcast', handleMessageEvent);
-    };
-  }, [agentId, socketIOManager, scrollToBottom]);
-
-  const getSafeUUID = (id?: string) => {
-    if (typeof id === 'string' && id.length >= 36) {
-      return id as UUID;
-    }
-    return undefined;
-  };
-
-  const safeAgentId = getSafeUUID(agentId);
-  const safeRoomId = getSafeUUID(providedRoomId);
+    scrollToBottom();
+  }, [messages!.length]);
 
   useEffect(() => {
-    if (!initialScrollRef.current && messages.length > 0) {
-      scrollToBottom();
-      initialScrollRef.current = true;
-    }
-  }, [messages.length]);
+    scrollToBottom();
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (e.nativeEvent.isComposing) return;
-      handleSendMessage();
+      handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
     }
   };
 
-  const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement>) => {
-    if (!input.trim() && !selectedFile) return;
+  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!input) return;
 
-    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    socketIOManager.handleBroadcastMessage(entityId, USER_NAME, input, roomId, SOURCE_NAME);
 
-    const newMessage: ContentWithUser = {
-      id: messageId,
-      text: input,
-      sender: entityId,
-      name: 'You',
-      createdAt: Date.now(),
-      isLoading: false,
-      files: selectedFile ? [selectedFile.name] : [],
-    };
-
-    const messageText = input;
-
-    setMessages((prev) => [...prev, newMessage]);
-
-    setInput('');
     setSelectedFile(null);
-
-    try {
-      let filePath = null;
-
-      if (selectedFile) {
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-
-        try {
-          const response = await axios.post(
-            `${import.meta.env.VITE_API_URL || ''}/api/upload`,
-            formData,
-            {
-              headers: {
-                'Content-Type': 'multipart/form-data',
-              },
-            }
-          );
-
-          if (response.data.success) {
-            filePath = response.data.data;
-            console.log('File uploaded successfully:', filePath);
-          } else {
-            console.error('File upload failed', response.data);
-            setConnectionError('File upload failed');
-          }
-        } catch (uploadError) {
-          console.error('Error uploading file:', uploadError);
-          setConnectionError('Error uploading file');
-        }
-      }
-
-      // Get the target room ID - use the agent-specific room ID if available
-      const targetRoomId = agentRoomId || providedRoomId || agentId || '';
-      if (!targetRoomId) {
-        console.error('No valid room ID for sending message');
-        setConnectionError('Cannot send message - no valid room ID');
-        return;
-      }
-
-      console.log(`Sending message to room ${targetRoomId}: ${messageText.substring(0, 50)}`);
-
-      // First check if socket is connected
-      if (!socketIOManager.isConnected()) {
-        console.log('Socket not connected, attempting to connect...');
-        try {
-          const connected = await socketIOManager.connect();
-          if (!connected) {
-            console.error('Failed to establish connection');
-            setConnectionError('Failed to establish connection');
-            return;
-          }
-        } catch (connError) {
-          console.error('Connection error:', connError);
-          setConnectionError('Failed to establish connection');
-          return;
-        }
-      }
-
-      const success = await socketIOManager.handleBroadcastMessage(
-        entityId,
-        'You',
-        messageText,
-        targetRoomId,
-        'user'
-      );
-
-      if (!success) {
-        console.error('Failed to send message');
-        setConnectionError('Failed to send message - connection issue');
-      } else {
-        setConnectionError(null);
-      }
-
-      setTimeout(scrollToBottom, 100);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      setConnectionError('Error sending message');
-    }
+    setInput('');
+    formRef.current?.reset();
   };
 
   useEffect(() => {
@@ -495,47 +192,9 @@ export default function Chat() {
     setShowDetails(!showDetails);
   };
 
-  const { scrollRef, isAtBottom, disableAutoScroll } = useAutoScroll({
-    smooth: true,
-  });
-
-  const getMessageVariant = (id: string) => {
-    return id ? 'received' : 'sent';
-  };
-
-  useEffect(() => {
-    const fetchRoomMapping = async () => {
-      if (conceptualRoomId && agentId) {
-        try {
-          console.log(
-            `[Chat] Fetching room mapping for conceptual room ${conceptualRoomId} and agent ${agentId}`
-          );
-          const response = await axios.get(
-            `${import.meta.env.VITE_API_URL || ''}/api/room-mappings/mapping/${conceptualRoomId}/${agentId}`
-          );
-
-          if (response.data.success) {
-            const mapping: RoomMapping = response.data.data;
-            console.log(`[Chat] Got agent-specific room ID: ${mapping.agentRoomId}`);
-            setAgentRoomId(mapping.agentRoomId);
-          } else {
-            console.error(`[Chat] Failed to get room mapping:`, response.data.error);
-            setConnectionError(
-              `Failed to get room mapping: ${response.data.error.message || 'Unknown error'}`
-            );
-          }
-        } catch (error) {
-          console.error(`[Chat] Error fetching room mapping:`, error);
-          setConnectionError('Failed to get room mapping. Try again later.');
-        }
-      }
-    };
-
-    fetchRoomMapping();
-  }, [conceptualRoomId, agentId]);
-
   return (
     <div className="flex flex-col w-full h-screen p-4">
+      {/* Agent Header */}
       <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
         <div className="flex items-center gap-3">
           <Avatar className="size-10 border rounded-full">
@@ -580,17 +239,19 @@ export default function Chat() {
           onClick={toggleDetails}
           className={cn('gap-1.5', showDetails && 'bg-secondary')}
         >
-          <MenuIcon className="size-4" />
+          <PanelRight className="size-4" />
         </Button>
       </div>
 
       <div className="flex flex-row w-full overflow-y-auto grow gap-4">
+        {/* Main Chat Area */}
         <div
           className={cn(
             'flex flex-col transition-all duration-300',
             showDetails ? 'w-3/5' : 'w-full'
           )}
         >
+          {/* Chat Messages */}
           <ChatMessageList
             scrollRef={scrollRef}
             isAtBottom={isAtBottom}
@@ -606,7 +267,7 @@ export default function Chat() {
                   className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
                 >
                   <ChatBubble
-                    variant={getMessageVariant(isUser ? entityId : safeAgentId || '')}
+                    variant={getMessageVariant(isUser ? entityId : agentId)}
                     className={`flex flex-row items-center gap-2 ${
                       isUser ? 'flex-row-reverse' : ''
                     }`}
@@ -626,7 +287,7 @@ export default function Chat() {
                     </Avatar>
                     <MessageContent
                       message={message}
-                      agentId={safeAgentId || ('' as UUID)}
+                      agentId={agentId}
                       isLastMessage={index === messages.length - 1}
                     />
                   </ChatBubble>
@@ -635,13 +296,11 @@ export default function Chat() {
             })}
           </ChatMessageList>
 
+          {/* Chat Input */}
           <div className="px-4 pb-4 mt-auto">
             <form
               ref={formRef}
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendMessage();
-              }}
+              onSubmit={handleSendMessage}
               className="relative rounded-md border bg-card"
             >
               {selectedFile ? (
@@ -702,12 +361,10 @@ export default function Chat() {
                     <p>Attach file</p>
                   </TooltipContent>
                 </Tooltip>
-                {safeAgentId && (
-                  <AudioRecorder
-                    agentId={safeAgentId}
-                    onChange={(newInput: string) => setInput(newInput)}
-                  />
-                )}
+                <AudioRecorder
+                  agentId={agentId}
+                  onChange={(newInput: string) => setInput(newInput)}
+                />
                 <Button type="submit" size="sm" className="ml-auto gap-1.5 h-[30px]">
                   <Send className="size-3.5" />
                 </Button>
@@ -716,16 +373,17 @@ export default function Chat() {
           </div>
         </div>
 
+        {/* Details Column */}
         {showDetails && (
           <div className="w-2/5 border rounded-lg overflow-hidden pb-4 bg-background flex flex-col h-full">
             <Tabs
               defaultValue="actions"
               value={detailsTab}
-              onValueChange={(v) => setDetailsTab(v as 'actions' | 'logs')}
+              onValueChange={(v) => setDetailsTab(v as 'actions' | 'logs' | 'memories')}
               className="flex flex-col h-full"
             >
               <div className="border-b px-4 py-2">
-                <TabsList className="grid grid-cols-2">
+                <TabsList className="grid grid-cols-3">
                   <TabsTrigger value="actions" className="flex items-center gap-1.5">
                     <Activity className="h-4 w-4" />
                     <span>Agent Actions</span>
@@ -734,14 +392,21 @@ export default function Chat() {
                     <Terminal className="h-4 w-4" />
                     <span>Logs</span>
                   </TabsTrigger>
+                  <TabsTrigger value="memories" className="flex items-center gap-1.5">
+                    <Database className="h-4 w-4" />
+                    <span>Memories</span>
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
               <TabsContent value="actions" className="overflow-y-scroll">
-                {safeAgentId && <AgentActionViewer agentId={safeAgentId} roomId={safeRoomId} />}
+                <AgentActionViewer agentId={agentId} roomId={roomId} />
               </TabsContent>
               <TabsContent value="logs">
                 <LogViewer agentName={agentData?.name} level="all" hideTitle />
+              </TabsContent>
+              <TabsContent value="memories">
+                <AgentMemoryViewer agentId={agentId} />
               </TabsContent>
             </Tabs>
           </div>

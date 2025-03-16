@@ -1,12 +1,12 @@
+import { buildProject } from '@/src/utils/build-project';
+import { type IAgentRuntime, type ProjectAgent, logger } from '@elizaos/core';
+import { Command } from 'commander';
+import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import { existsSync } from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import path from 'node:path';
-import { buildProject } from '@/src/utils/build-project';
-import { type IAgentRuntime, ModelType, type ProjectAgent, logger, settings } from '@elizaos/core';
-import { Command } from 'commander';
-import * as dotenv from 'dotenv';
 import { loadProject } from '../project.js';
 import { AgentServer } from '../server/index.js';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
@@ -224,7 +224,7 @@ const runAgentTests = async (options: {
     server.jsonToCharacter = jsonToCharacter;
     logger.info('Server properties set up');
 
-    const serverPort = options.port || Number.parseInt(settings.SERVER_PORT || '3000');
+    const serverPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
 
     let project;
     try {

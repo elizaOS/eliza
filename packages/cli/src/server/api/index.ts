@@ -1,15 +1,12 @@
-import path from 'node:path';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { logger as Logger, getEnvVariable } from '@elizaos/core';
-import { logger } from '@elizaos/core';
+import { logger as Logger, logger } from '@elizaos/core';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
+import path from 'node:path';
 import type { AgentServer } from '..';
 import { agentRouter } from './agent';
 import { teeRouter } from './tee';
-import { roomsRouter } from './rooms';
-import { roomMappingsRouter } from './room-mappings';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -54,7 +51,7 @@ export function createApiRouter(
   router.use(bodyParser.urlencoded({ extended: true }));
   router.use(
     express.json({
-      limit: getEnvVariable('EXPRESS_MAX_PAYLOAD') || '100kb',
+      limit: process.env.EXPRESS_MAX_PAYLOAD || '100kb',
     })
   );
 
@@ -242,8 +239,6 @@ export function createApiRouter(
   // Mount sub-routers
   router.use('/agents', agentRouter(agents, server));
   router.use('/tee', teeRouter(agents));
-  router.use('/rooms', roomsRouter(agents));
-  router.use('/room-mappings', roomMappingsRouter(agents));
 
   router.get('/stop', (_req, res) => {
     server.stop();

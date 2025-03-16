@@ -14,94 +14,14 @@ import {
 import { useAgents } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
 import { formatAgentName } from '@/lib/utils';
-import { type Agent, AgentStatus, ChannelType, type UUID } from '@elizaos/core';
+import { type Agent, AgentStatus } from '@elizaos/core';
 import { Book, Cog, TerminalIcon } from 'lucide-react';
-import { NavLink, useLocation, useNavigate } from 'react-router';
+import { NavLink, useLocation } from 'react-router';
 import ConnectionStatus from './connection-status';
-import { useState, useEffect } from 'react';
-import { RoomList } from './room-list';
 
 export function AppSidebar() {
   const location = useLocation();
-  const navigate = useNavigate();
   const { data: { data: agentsData } = {}, isPending: isAgentsPending } = useAgents();
-
-  const [newRoomName, setNewRoomName] = useState('');
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [selectedRoomId, setSelectedRoomId] = useState<UUID | undefined>(undefined);
-
-  useEffect(() => {
-    // Extract agent ID from URL if present
-    const match = location.pathname.match(/\/chat\/([^/?]+)/);
-    if (match && match[1]) {
-      setSelectedAgentId(match[1]);
-    }
-
-    // Extract room ID from URL if present
-    const searchParams = new URLSearchParams(location.search);
-    const roomId = searchParams.get('roomId');
-    if (roomId) {
-      setSelectedRoomId(roomId as UUID);
-    }
-  }, [location]);
-
-  // Function to fetch rooms - this needs to be implemented based on your app structure
-  const fetchRooms = async () => {
-    // Implementation would go here
-    console.log('Fetching rooms...');
-  };
-
-  const handleCreateRoom = async () => {
-    if (!newRoomName.trim() || !selectedAgentId) return;
-
-    try {
-      console.log(`Creating room with agent ID: ${selectedAgentId}`);
-
-      // Use relative path instead of hardcoded localhost URL
-      const response = await fetch(`/agents/${selectedAgentId}/rooms`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: newRoomName,
-          type: ChannelType.GROUP,
-          entityId: '10000000-0000-0000-0000-000000000000', // Fixed user ID
-        }),
-      });
-
-      if (!response.ok) {
-        console.error(`Error creating room: ${response.status} ${response.statusText}`);
-        const text = await response.text();
-        console.error(`Response body: ${text}`);
-        return;
-      }
-
-      const data = await response.json();
-
-      if (data.success) {
-        setIsCreateDialogOpen(false);
-        setNewRoomName('');
-
-        // Navigate to the new room
-        const newRoomId = data.data.id;
-        console.log(`Created room with ID: ${newRoomId}, navigating to it`);
-
-        // Navigate to the chat page with the new room
-        navigate(`/chat/${selectedAgentId}?roomId=${newRoomId}`);
-      }
-    } catch (error) {
-      console.error('Error creating room:', error);
-    }
-  };
-
-  const handleSelectRoom = (roomId: UUID) => {
-    if (!selectedAgentId) return;
-
-    setSelectedRoomId(roomId);
-    navigate(`/chat/${selectedAgentId}?roomId=${roomId}`);
-  };
 
   return (
     <Sidebar className="bg-background">
@@ -127,8 +47,8 @@ export function AppSidebar() {
             <SidebarMenu>
               {isAgentsPending ? (
                 <div>
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <SidebarMenuItem key={`skeleton-item-${index}`}>
+                  {Array.from({ length: 5 }).map((_, _index) => (
+                    <SidebarMenuItem key={`skeleton-item-${_index}`}>
                       <SidebarMenuSkeleton />
                     </SidebarMenuItem>
                   ))}
@@ -177,7 +97,6 @@ export function AppSidebar() {
                               <SidebarMenuButton
                                 isActive={location.pathname.includes(agent.id as string)}
                                 className="transition-colors px-4 my-4 rounded-md"
-                                onClick={() => setSelectedAgentId(agent.id as string)}
                               >
                                 <div className="flex items-center gap-2">
                                   <div className="w-8 h-8 flex justify-center items-center">
@@ -256,20 +175,6 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
-        {/* Room List section - display only when an agent is selected */}
-        {selectedAgentId && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Rooms</SidebarGroupLabel>
-            <SidebarGroupContent className="px-2">
-              <RoomList
-                agentId={selectedAgentId as UUID}
-                selectedRoomId={selectedRoomId}
-                onSelectRoom={handleSelectRoom}
-              />
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
       </SidebarContent>
       <SidebarFooter className="px-4 py-4">
         <SidebarMenu>

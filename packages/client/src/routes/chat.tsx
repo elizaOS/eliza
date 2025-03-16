@@ -1,17 +1,12 @@
 import Chat from '@/components/chat';
 import type { UUID } from '@elizaos/core';
-import { useParams, Navigate } from 'react-router-dom';
+import { useParams } from 'react-router';
 
 export default function AgentRoute() {
-  const { agentId, roomId } = useParams<{ agentId: UUID; roomId?: UUID }>();
+  const { agentId } = useParams<{ agentId: UUID }>();
 
-  // Provide a clear error message if agent ID is missing
-  if (!agentId) {
-    return <Navigate to="/agents" replace />;
-  }
+  if (!agentId) return <div>No data.</div>;
 
-  console.log(`[ChatRoute] Rendering chat with agent ${agentId} and room ${roomId || 'default'}`);
-
-  // The Chat component will handle the roomId parameter directly from useParams
-  return <Chat />;
+  // Go directly to the chat with the agent, skipping the room selection
+  return <Chat agentId={agentId} />;
 }

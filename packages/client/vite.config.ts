@@ -24,9 +24,9 @@ export default defineConfig(({ mode }): UserConfig => {
     },
     build: {
       outDir: 'dist',
-      minify: true,
+      minify: false,
       cssMinify: true,
-      sourcemap: false,
+      sourcemap: true,
       cssCodeSplit: true,
     },
     resolve: {

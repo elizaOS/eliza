@@ -146,6 +146,9 @@ interface AgentLog {
  * 		getLogs: (level: string) => Promise<LogResponse>;
  * 		getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }) => Promise<{ success: boolean; data: AgentLog[] }>;
  * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
+ * 		getAgentMemories: (agentId: UUID, roomId?: UUID) => Promise<any>;
+ * 		deleteAgentMemory: (agentId: UUID, memoryId: string) => Promise<any>;
+ * 		updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => Promise<any>;
  * 	}
  * }}
  */
@@ -370,6 +373,34 @@ export const apiClient = {
     return fetcher({
       url: `/agents/${agentId}/logs/${logId}`,
       method: 'DELETE',
+    });
+  },
+
+  // Method to get all memories for an agent, optionally filtered by room
+  getAgentMemories: (agentId: UUID, roomId?: UUID) => {
+    const url = roomId
+      ? `/agents/${agentId}/rooms/${roomId}/memories`
+      : `/agents/${agentId}/memories`;
+
+    return fetcher({
+      url,
+      method: 'GET',
+    });
+  },
+
+  // Method to delete a specific memory for an agent
+  deleteAgentMemory: (agentId: UUID, memoryId: string) => {
+    return fetcher({
+      url: `/agents/${agentId}/memories/${memoryId}`,
+      method: 'DELETE',
+    });
+  },
+
+  updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => {
+    return fetcher({
+      url: `/agents/${agentId}/memories/${memoryId}`,
+      method: 'PATCH',
+      body: memoryData,
     });
   },
 };
