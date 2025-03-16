@@ -1,7 +1,7 @@
 import {
   ChannelType,
   type Content,
-  EventTypes,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   type IBrowserService,
@@ -194,7 +194,7 @@ export class MessageManager {
         }
       };
 
-      this.runtime.emitEvent([DiscordEventTypes.MESSAGE_RECEIVED, EventTypes.MESSAGE_RECEIVED], {
+      this.runtime.emitEvent([DiscordEventTypes.MESSAGE_RECEIVED, EventType.MESSAGE_RECEIVED], {
         runtime: this.runtime,
         message: newMessage,
         callback,

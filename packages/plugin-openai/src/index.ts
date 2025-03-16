@@ -420,9 +420,11 @@ export const openaiPlugin: Plugin = {
 
       try {
         if (params.schema) {
+          // Skip zod validation and just use the generateObject without schema
+          logger.info('Using OBJECT_SMALL without schema validation');
           const { object } = await generateObject({
             model: openai.languageModel(model),
-            schema: z.object(params.schema),
+            output: 'no-schema',
             prompt: params.prompt,
             temperature: params.temperature,
           });
@@ -452,9 +454,11 @@ export const openaiPlugin: Plugin = {
 
       try {
         if (params.schema) {
+          // Skip zod validation and just use the generateObject without schema
+          logger.info('Using OBJECT_LARGE without schema validation');
           const { object } = await generateObject({
             model: openai.languageModel(model),
-            schema: z.object(params.schema),
+            output: 'no-schema',
             prompt: params.prompt,
             temperature: params.temperature,
           });

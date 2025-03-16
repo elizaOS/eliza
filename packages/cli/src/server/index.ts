@@ -9,8 +9,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
 import { Server as SocketIOServer } from 'socket.io';
-import { createApiRouter } from './api/index.js';
-import { SocketIORouter } from './socketio/index.js';
+import { createApiRouter, setupSocketIO } from './api';
+import http from 'node:http';
 
 // Load environment variables
 dotenv.config();
@@ -53,14 +53,14 @@ const AGENT_RUNTIME_URL =
 export class AgentServer {
   public app: express.Application;
   private agents: Map<UUID, IAgentRuntime>;
-  public server: any;
+  public server: http.Server;
+  public socketIO: SocketIOServer;
 
   public database: any;
   public startAgent!: (character: Character) => Promise<IAgentRuntime>;
   public stopAgent!: (runtime: IAgentRuntime) => void;
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
   public jsonToCharacter!: (character: unknown) => Promise<Character>;
-  private socketIO: SocketIOServer;
 
   /**
    * Constructor for AgentServer class.
@@ -295,7 +295,38 @@ export class AgentServer {
 
       // API Router setup
       const apiRouter = createApiRouter(this.agents, this);
-      this.app.use(apiRouter);
+
+      // Add explicit error handling for API routes
+      this.app.use(
+        '/api',
+        (req, res, next) => {
+          logger.debug(`API request: ${req.method} ${req.path}`);
+          next();
+        },
+        apiRouter,
+        (err, req, res, next) => {
+          logger.error(`API error: ${req.method} ${req.path}`, err);
+          res.status(500).json({
+            success: false,
+            error: {
+              message: err.message || 'Internal Server Error',
+              code: err.code || 500,
+            },
+          });
+        }
+      );
+
+      // Add a catch-all route for API 404s
+      this.app.use('/api/*', (req, res) => {
+        logger.warn(`API 404: ${req.method} ${req.path}`);
+        res.status(404).json({
+          success: false,
+          error: {
+            message: 'API endpoint not found',
+            code: 404,
+          },
+        });
+      });
 
       // Main fallback for the SPA - must be registered after all other routes
       // For Express 4, we need to use the correct method for fallback routes
@@ -320,6 +351,12 @@ export class AgentServer {
         // For all other routes, serve the SPA's index.html
         res.sendFile(path.join(clientPath, 'index.html'));
       });
+
+      // Create HTTP server for Socket.io
+      this.server = http.createServer(this.app);
+
+      // Initialize Socket.io
+      this.socketIO = setupSocketIO(this.server, this.agents);
 
       logger.success('AgentServer initialization complete');
     } catch (error) {
@@ -455,7 +492,8 @@ export class AgentServer {
       logger.debug(`Current agents count: ${this.agents.size}`);
       logger.debug(`Environment: ${process.env.NODE_ENV}`);
 
-      this.server = this.app.listen(port, () => {
+      // Use http server instead of app.listen
+      this.server.listen(port, () => {
         logger.success(
           `REST API bound to 0.0.0.0:${port}. If running locally, access it at http://localhost:${port}.`
         );
@@ -464,11 +502,6 @@ export class AgentServer {
           logger.debug(`- Agent ${id}: ${agent.character.name}`);
         });
       });
-
-      this.socketIO = new SocketIOServer(this.server);
-
-      const socketIORouter = new SocketIORouter(this.agents, this);
-      socketIORouter.setupListeners(this.socketIO);
 
       // Enhanced graceful shutdown
       const gracefulShutdown = async () => {

@@ -1,7 +1,7 @@
 import {
   ChannelType,
   type Entity,
-  EventTypes,
+  EventType,
   type IAgentRuntime,
   type Plugin,
   Role,
@@ -206,7 +206,7 @@ export class TwitterService extends Service {
       };
 
       // Emit the WORLD_JOINED event
-      runtime.emitEvent([TwitterEventTypes.WORLD_JOINED, EventTypes.WORLD_JOINED], {
+      runtime.emitEvent([TwitterEventTypes.WORLD_JOINED, EventType.WORLD_JOINED], {
         runtime: runtime,
         world: world,
         rooms: [homeTimelineRoom, mentionsRoom],

@@ -1,7 +1,7 @@
 import {
   ChannelType,
   type Content,
-  EventTypes,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   type InvokePayload,
@@ -356,7 +356,7 @@ export class TwitterPostClient {
       console.log('emitting event');
 
       // Emit event to handle the post generation using standard handlers
-      this.runtime.emitEvent([EventTypes.POST_GENERATED, TwitterEventTypes.POST_GENERATED], {
+      this.runtime.emitEvent([EventType.POST_GENERATED, TwitterEventTypes.POST_GENERATED], {
         runtime: this.runtime,
         callback,
         worldId,

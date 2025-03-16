@@ -7,6 +7,10 @@ import path from 'node:path';
 import type { AgentServer } from '..';
 import { agentRouter } from './agent';
 import { teeRouter } from './tee';
+import { Server as SocketIOServer } from 'socket.io';
+import { SOCKET_MESSAGE_TYPE, EventType, ChannelType } from '@elizaos/core';
+import http from 'node:http';
+import crypto from 'node:crypto';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -34,6 +38,252 @@ interface LogEntry {
 }
 
 /**
+ * Sets up Socket.io server for real-time messaging
+ * @param server HTTP Server instance
+ * @param agents Map of agent runtimes
+ */
+export function setupSocketIO(
+  server: http.Server,
+  agents: Map<UUID, IAgentRuntime>
+): SocketIOServer {
+  // Map to track which agents are in which rooms
+  const roomParticipants: Map<string, Set<UUID>> = new Map();
+
+  const io = new SocketIOServer(server, {
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST'],
+    },
+  });
+
+  // Handle socket connections
+  io.on('connection', (socket) => {
+    const { agentId, roomId } = socket.handshake.query as { agentId: string; roomId: string };
+
+    logger.info('Socket connected', { agentId, roomId, socketId: socket.id });
+
+    // Join the specified room
+    if (roomId) {
+      socket.join(roomId);
+      logger.debug(`Socket ${socket.id} joined room ${roomId}`);
+    }
+
+    // Handle messages from clients
+    socket.on('message', async (messageData) => {
+      logger.debug('Socket message received', { messageData, socketId: socket.id });
+
+      if (messageData.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
+        const payload = messageData.payload;
+        const targetRoomId = payload.roomId;
+        const worldId = payload.worldId;
+
+        // Get all agents in this room
+        const agentsInRoom = roomParticipants.get(targetRoomId) || new Set([targetRoomId as UUID]);
+
+        // Find the primary agent for this room (for simple 1:1 chats)
+        // In more complex implementations, we'd have a proper room management system
+        const primaryAgentId = targetRoomId as UUID;
+        const agentRuntime = agents.get(primaryAgentId);
+
+        if (!agentRuntime) {
+          logger.warn(`Agent runtime not found for ${primaryAgentId}`);
+          return;
+        }
+
+        try {
+          // Ensure world exists first (similar to Discord plugin)
+          await agentRuntime.ensureWorldExists({
+            id: worldId,
+            name: `Client Chat World`,
+            agentId: agentRuntime.agentId,
+            serverId: 'client-chat', // Using a constant server ID for client chat
+          });
+
+          // Ensure room exists
+          await agentRuntime.ensureRoomExists({
+            id: targetRoomId,
+            name: `Chat with ${agentRuntime.character.name}`,
+            source: 'client_chat',
+            type: ChannelType.DM, // Using DM as the channel type
+            channelId: targetRoomId,
+            serverId: 'client-chat',
+            worldId: worldId,
+          });
+
+          // Ensure connection between entity and room (just like Discord)
+          await agentRuntime.ensureConnection({
+            entityId: payload.senderId,
+            roomId: targetRoomId,
+            userName: payload.senderName || 'User',
+            name: payload.senderName || 'User',
+            source: 'client_chat',
+            channelId: targetRoomId,
+            serverId: 'client-chat',
+            type: ChannelType.DM,
+            worldId: worldId,
+          });
+
+          // Create unique message ID
+          const messageId = crypto.randomUUID() as UUID;
+
+          // Create message object for the agent
+          const newMessage = {
+            id: messageId,
+            entityId: payload.senderId,
+            agentId: agentRuntime.agentId,
+            roomId: targetRoomId,
+            content: {
+              text: payload.message,
+              source: payload.source || 'client_chat',
+            },
+            createdAt: Date.now(),
+          };
+
+          // No need to save the message here, the bootstrap handler will do it
+          // Let the messageReceivedHandler in bootstrap.ts handle the memory creation
+
+          // Define callback for agent responses (pattern matching Discord's approach)
+          const callback = async (content) => {
+            try {
+              // Log the content object we received
+              logger.debug('Callback received content:', {
+                contentType: typeof content,
+                contentKeys: content ? Object.keys(content) : 'null',
+                content: JSON.stringify(content),
+              });
+
+              // Make sure we have inReplyTo set correctly
+              if (messageId && !content.inReplyTo) {
+                content.inReplyTo = messageId;
+              }
+
+              // Prepare broadcast data - more direct and explicit
+              // Only include required fields to avoid schema validation issues
+              const broadcastData: Record<string, any> = {
+                senderId: agentRuntime.agentId,
+                senderName: agentRuntime.character.name,
+                text: content.text || '',
+                roomId: targetRoomId,
+                createdAt: Date.now(),
+                source: content.source || 'agent',
+              };
+
+              // Add optional fields only if they exist in the original content
+              if (content.thought) broadcastData.thought = content.thought;
+              if (content.plan) broadcastData.plan = content.plan;
+              if (content.actions) broadcastData.actions = content.actions;
+
+              // Log exact broadcast data
+              logger.info(`Broadcasting message to room ${targetRoomId}`, {
+                room: targetRoomId,
+                clients: io.sockets.adapter.rooms.get(targetRoomId)?.size || 0,
+                messageText: broadcastData.text?.substring(0, 50),
+              });
+
+              logger.debug('Broadcasting data:', JSON.stringify(broadcastData));
+
+              // Send to specific room first
+              io.to(targetRoomId).emit('messageBroadcast', broadcastData);
+
+              // Also send to all connected clients as a fallback
+              logger.info('Also broadcasting to all clients as fallback');
+              io.emit('messageBroadcast', broadcastData);
+
+              // Create memory for the response message (matching Discord's pattern)
+              const memory = {
+                id: crypto.randomUUID() as UUID,
+                entityId: agentRuntime.agentId,
+                agentId: agentRuntime.agentId,
+                content: {
+                  ...content,
+                  inReplyTo: messageId,
+                  channelType: ChannelType.DM,
+                },
+                roomId: targetRoomId,
+                createdAt: Date.now(),
+              };
+
+              // Log the memory object we're creating
+              logger.debug('Memory object for response:', {
+                memoryId: memory.id,
+                contentKeys: Object.keys(memory.content),
+              });
+
+              // Save the memory for the response
+              await agentRuntime.createMemory(memory, 'messages');
+
+              // Return content for bootstrap's processing
+              logger.debug('Returning content directly');
+              return [content];
+            } catch (error) {
+              logger.error('Error in socket message callback:', error);
+              return [];
+            }
+          };
+
+          // Log the message and runtime details before calling emitEvent
+          logger.debug('Emitting MESSAGE_RECEIVED with:', {
+            messageId: newMessage.id,
+            entityId: newMessage.entityId,
+            agentId: newMessage.agentId,
+            text: newMessage.content.text,
+            callbackType: typeof callback,
+          });
+
+          // Monkey-patch the emitEvent method to log its arguments
+          const originalEmitEvent = agentRuntime.emitEvent;
+          agentRuntime.emitEvent = function (eventType, payload) {
+            logger.debug('emitEvent called with eventType:', eventType);
+            logger.debug('emitEvent payload structure:', {
+              hasRuntime: !!payload.runtime,
+              hasMessage: !!payload.message,
+              hasCallback: !!payload.callback,
+              callbackType: typeof payload.callback,
+            });
+            return originalEmitEvent.call(this, eventType, payload);
+          };
+
+          // Emit message received event to trigger agent's message handler
+          agentRuntime.emitEvent(EventType.MESSAGE_RECEIVED, {
+            runtime: agentRuntime,
+            message: newMessage,
+            callback,
+          });
+        } catch (error) {
+          logger.error('Error processing message:', error);
+        }
+      } else if (messageData.type === SOCKET_MESSAGE_TYPE.ROOM_JOINING) {
+        const payload = messageData.payload;
+        const roomId = payload.roomId;
+        const entityId = payload.entityId;
+
+        // Add entity to room participants if it's an agent
+        if (agents.has(entityId as UUID)) {
+          // Initialize Set if not exists
+          if (!roomParticipants.has(roomId)) {
+            roomParticipants.set(roomId, new Set());
+          }
+          // Add agent to room participants
+          roomParticipants.get(roomId)!.add(entityId as UUID);
+          logger.debug(`Agent ${entityId} joined room ${roomId}`);
+        }
+
+        logger.debug(`Client ${socket.id} joining room ${roomId}`);
+      }
+    });
+
+    // Handle disconnections
+    socket.on('disconnect', () => {
+      logger.info('Socket disconnected', { socketId: socket.id });
+      // Note: We're not removing agents from rooms on disconnect
+      // as they should remain participants even when not connected
+    });
+  });
+
+  return io;
+}
+
+/**
  * Creates an API router with various endpoints and middleware.
  * @param {Map<UUID, IAgentRuntime>} agents - Map of agents with UUID as key and IAgentRuntime as value.
  * @param {AgentServer} [server] - Optional AgentServer instance.
@@ -55,15 +305,32 @@ export function createApiRouter(
     })
   );
 
+  // Explicitly define the hello endpoint with strict JSON response
   router.get('/hello', (_req, res) => {
-    logger.log({ apiRoute: '/hello' });
-    res.json({ message: 'Hello World!' });
+    logger.info('Hello endpoint hit');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify({ message: 'Hello World!' }));
   });
 
-  // Plugin routes handling middleware
-  // This middleware needs to be registered before the other routes
-  // to ensure plugin routes take precedence
-  router.use('/', (req, res, next) => {
+  // Add a basic API test endpoint that returns the agent count
+  router.get('/status', (_req, res) => {
+    logger.info('Status endpoint hit');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(
+      JSON.stringify({
+        status: 'ok',
+        agentCount: agents.size,
+        timestamp: new Date().toISOString(),
+      })
+    );
+  });
+
+  // Define plugin routes middleware function
+  const handlePluginRoutes = (
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
     // Debug output for all JavaScript requests to help diagnose MIME type issues
     if (
       req.path.endsWith('.js') ||
@@ -234,6 +501,18 @@ export function createApiRouter(
 
     // Otherwise, continue to the next middleware
     next();
+  };
+
+  // Add the plugin routes middleware directly to the router
+  // We'll do this by handling all routes with a wildcard
+  router.all('*', (req, res, next) => {
+    // Skip for sub-routes that are already handled
+    if (req.path.startsWith('/agents/') || req.path.startsWith('/tee/')) {
+      return next();
+    }
+
+    // Otherwise run our plugin handler
+    handlePluginRoutes(req, res, next);
   });
 
   // Mount sub-routers
@@ -337,12 +616,6 @@ export function createApiRouter(
 
     const statusCode = healthcheck.dependencies.agents === 'healthy' ? 200 : 503;
     res.status(statusCode).json(healthcheck);
-  });
-
-  // Status endpoint
-  router.get('/status', (_req, res) => {
-    logger.log({ apiRoute: '/status' }, 'Status route hit');
-    res.json({ status: 'ok' });
   });
 
   return router;

@@ -51,7 +51,7 @@ import {
   type Entity,
   type EntityPayload,
   type EvaluatorEventPayload,
-  EventTypes,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   type InvokePayload,
@@ -130,7 +130,7 @@ const messageReceivedHandler = async ({
   const startTime = Date.now();
 
   // Emit run started event
-  await runtime.emitEvent(EventTypes.RUN_STARTED, {
+  await runtime.emitEvent(EventType.RUN_STARTED, {
     runtime,
     runId,
     messageId: message.id,
@@ -147,7 +147,7 @@ const messageReceivedHandler = async ({
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(async () => {
-      await runtime.emitEvent(EventTypes.RUN_TIMEOUT, {
+      await runtime.emitEvent(EventType.RUN_TIMEOUT, {
         runtime,
         runId,
         messageId: message.id,
@@ -302,7 +302,7 @@ const messageReceivedHandler = async ({
       await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
 
       // Emit run ended event on successful completion
-      await runtime.emitEvent(EventTypes.RUN_ENDED, {
+      await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
         runId,
         messageId: message.id,
@@ -316,7 +316,7 @@ const messageReceivedHandler = async ({
       });
     } catch (error) {
       // Emit run ended event with error
-      await runtime.emitEvent(EventTypes.RUN_ENDED, {
+      await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
         runId,
         messageId: message.id,
@@ -645,7 +645,7 @@ const handleServerSync = async ({ runtime, world, rooms, entities, source }: Wor
 };
 
 const events = {
-  [EventTypes.MESSAGE_RECEIVED]: [
+  [EventType.MESSAGE_RECEIVED]: [
     async (payload: MessagePayload) => {
       await messageReceivedHandler({
         runtime: payload.runtime,
@@ -655,7 +655,7 @@ const events = {
     },
   ],
 
-  [EventTypes.VOICE_MESSAGE_RECEIVED]: [
+  [EventType.VOICE_MESSAGE_RECEIVED]: [
     async (payload: MessagePayload) => {
       await messageReceivedHandler({
         runtime: payload.runtime,
@@ -665,7 +665,7 @@ const events = {
     },
   ],
 
-  [EventTypes.REACTION_RECEIVED]: [
+  [EventType.REACTION_RECEIVED]: [
     async (payload: MessagePayload) => {
       await reactionReceivedHandler({
         runtime: payload.runtime,
@@ -674,32 +674,32 @@ const events = {
     },
   ],
 
-  [EventTypes.POST_GENERATED]: [
+  [EventType.POST_GENERATED]: [
     async (payload: InvokePayload) => {
       await postGeneratedHandler(payload);
     },
   ],
 
-  [EventTypes.MESSAGE_SENT]: [
+  [EventType.MESSAGE_SENT]: [
     async (payload: MessagePayload) => {
       // Message sent tracking
       logger.debug(`Message sent: ${payload.message.content.text}`);
     },
   ],
 
-  [EventTypes.WORLD_JOINED]: [
+  [EventType.WORLD_JOINED]: [
     async (payload: WorldPayload) => {
       await handleServerSync(payload);
     },
   ],
 
-  [EventTypes.WORLD_CONNECTED]: [
+  [EventType.WORLD_CONNECTED]: [
     async (payload: WorldPayload) => {
       await handleServerSync(payload);
     },
   ],
 
-  [EventTypes.ENTITY_JOINED]: [
+  [EventType.ENTITY_JOINED]: [
     async (payload: EntityPayload) => {
       await syncSingleUser(
         payload.entityId,
@@ -712,7 +712,7 @@ const events = {
     },
   ],
 
-  [EventTypes.ENTITY_LEFT]: [
+  [EventType.ENTITY_LEFT]: [
     async (payload: EntityPayload) => {
       try {
         // Update entity to inactive
@@ -732,26 +732,26 @@ const events = {
     },
   ],
 
-  [EventTypes.ACTION_STARTED]: [
+  [EventType.ACTION_STARTED]: [
     async (payload: ActionEventPayload) => {
       logger.debug(`Action started: ${payload.actionName} (${payload.actionId})`);
     },
   ],
 
-  [EventTypes.ACTION_COMPLETED]: [
+  [EventType.ACTION_COMPLETED]: [
     async (payload: ActionEventPayload) => {
       const status = payload.error ? `failed: ${payload.error.message}` : 'completed';
       logger.debug(`Action ${status}: ${payload.actionName} (${payload.actionId})`);
     },
   ],
 
-  [EventTypes.EVALUATOR_STARTED]: [
+  [EventType.EVALUATOR_STARTED]: [
     async (payload: EvaluatorEventPayload) => {
       logger.debug(`Evaluator started: ${payload.evaluatorName} (${payload.evaluatorId})`);
     },
   ],
 
-  [EventTypes.EVALUATOR_COMPLETED]: [
+  [EventType.EVALUATOR_COMPLETED]: [
     async (payload: EvaluatorEventPayload) => {
       const status = payload.error ? `failed: ${payload.error.message}` : 'completed';
       logger.debug(`Evaluator ${status}: ${payload.evaluatorName} (${payload.evaluatorId})`);

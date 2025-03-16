@@ -1,7 +1,8 @@
-import type { Agent, Character, UUID } from '@elizaos/core';
+import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 import { WorldManager } from './world-manager';
 
-//const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
+const API_PREFIX = '/api';
+const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}${API_PREFIX}`;
 
 /**
  * A function that handles fetching data from a specified URL with various options.
@@ -23,6 +24,14 @@ const fetcher = async ({
   body?: object | FormData;
   headers?: HeadersInit;
 }) => {
+  // Ensure URL starts with a slash if it's a relative path
+  const normalizedUrl = url.startsWith('/') ? url : `/${url}`;
+
+  // Construct the full URL
+  const fullUrl = `${BASE_URL}${normalizedUrl}`;
+
+  console.log('API Request:', method || 'GET', fullUrl);
+
   const options: RequestInit = {
     method: method ?? 'GET',
     headers: headers
@@ -49,34 +58,53 @@ const fetcher = async ({
     }
   }
 
-  return fetch(`${url}`, options).then(async (resp) => {
-    const contentType = resp.headers.get('Content-Type');
+  try {
+    const response = await fetch(fullUrl, options);
+    const contentType = response.headers.get('Content-Type');
+
     if (contentType === 'audio/mpeg') {
-      return await resp.blob();
+      return await response.blob();
     }
 
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      console.error('Error: ', errorText);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error:', response.status, response.statusText);
+      console.error('Response:', errorText);
 
-      let errorMessage = 'An error occurred.';
+      let errorMessage = `Error ${response.status}: ${response.statusText}`;
       try {
         const errorObj = JSON.parse(errorText);
         errorMessage = errorObj.message || errorMessage;
       } catch {
-        errorMessage = errorText || errorMessage;
+        // If we can't parse as JSON, use the raw text
+        if (errorText.includes('<!DOCTYPE html>')) {
+          errorMessage = 'Received HTML instead of JSON. API endpoint may be incorrect.';
+        } else {
+          errorMessage = errorText || errorMessage;
+        }
       }
 
       throw new Error(errorMessage);
     }
 
-    try {
-      return await resp.json();
-    } catch (error) {
-      console.error('JSON Parse Error:', error);
-      return null;
+    // For successful responses, try to parse as JSON
+    if (contentType?.includes('application/json')) {
+      try {
+        return await response.json();
+      } catch (error) {
+        console.error('JSON Parse Error:', error);
+        const text = await response.text();
+        console.error('Response text:', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
+        throw new Error('Failed to parse JSON response');
+      }
+    } else {
+      // For non-JSON responses, return text
+      return await response.text();
     }
-  });
+  } catch (error) {
+    console.error('Fetch error:', error);
+    throw error;
+  }
 };
 
 // Add these interfaces near the top with other types

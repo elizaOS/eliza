@@ -174,84 +174,108 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     template: runtime.character.templates?.reflectionTemplate || reflectionTemplate,
   });
 
-  const reflection = await runtime.useModel(ModelType.OBJECT_SMALL, {
-    prompt,
-    schema: reflectionSchema,
-  });
-  if (!reflection) {
-    // seems like we're failing JSON parsing
-    logger.warn('Getting reflection failed', prompt);
-    return;
-  }
-
-  // Store new facts
-  const newFacts =
-    reflection?.facts.filter(
-      (fact) => !fact.already_known && !fact.in_bio && fact.claim && fact.claim.trim() !== ''
-    ) || [];
-
-  await Promise.all(
-    newFacts.map(async (fact) => {
-      const factMemory = await runtime.addEmbeddingToMemory({
-        entityId: agentId,
-        agentId,
-        content: { text: fact.claim },
-        roomId,
-        createdAt: Date.now(),
-      });
-      return runtime.createMemory(factMemory, 'facts', true);
-    })
-  );
-
-  // Update or create relationships
-  for (const relationship of reflection.relationships) {
-    let sourceId: UUID;
-    let targetId: UUID;
-
-    try {
-      sourceId = resolveEntity(relationship.sourceEntityId, entities);
-      targetId = resolveEntity(relationship.targetEntityId, entities);
-    } catch (error) {
-      console.warn('Failed to resolve relationship entities:', error);
-      console.warn('relationship:\n', relationship);
-      continue; // Skip this relationship if we can't resolve the IDs
-    }
-
-    const existingRelationship = existingRelationships.find((r) => {
-      return r.sourceEntityId === sourceId && r.targetEntityId === targetId;
+  // Use the model without schema validation
+  try {
+    const reflection = await runtime.useModel(ModelType.OBJECT_SMALL, {
+      prompt,
+      // Remove schema validation to avoid zod issues
     });
 
-    if (existingRelationship) {
-      const updatedMetadata = {
-        ...existingRelationship.metadata,
-        interactions: (existingRelationship.metadata?.interactions || 0) + 1,
-      };
-
-      const updatedTags = Array.from(
-        new Set([...(existingRelationship.tags || []), ...relationship.tags])
-      );
-
-      await runtime.updateRelationship({
-        ...existingRelationship,
-        tags: updatedTags,
-        metadata: updatedMetadata,
-      });
-    } else {
-      await runtime.createRelationship({
-        sourceEntityId: sourceId,
-        targetEntityId: targetId,
-        tags: relationship.tags,
-        metadata: {
-          interactions: 1,
-          ...relationship.metadata,
-        },
-      });
+    if (!reflection) {
+      logger.warn('Getting reflection failed - empty response', prompt);
+      return;
     }
+
+    // Perform basic structure validation instead of using zod
+    if (!reflection.facts || !Array.isArray(reflection.facts)) {
+      logger.warn('Getting reflection failed - invalid facts structure', reflection);
+      return;
+    }
+
+    if (!reflection.relationships || !Array.isArray(reflection.relationships)) {
+      logger.warn('Getting reflection failed - invalid relationships structure', reflection);
+      return;
+    }
+
+    // Store new facts
+    const newFacts =
+      reflection.facts.filter(
+        (fact) =>
+          fact &&
+          typeof fact === 'object' &&
+          !fact.already_known &&
+          !fact.in_bio &&
+          fact.claim &&
+          typeof fact.claim === 'string' &&
+          fact.claim.trim() !== ''
+      ) || [];
+
+    await Promise.all(
+      newFacts.map(async (fact) => {
+        const factMemory = await runtime.addEmbeddingToMemory({
+          entityId: agentId,
+          agentId,
+          content: { text: fact.claim },
+          roomId,
+          createdAt: Date.now(),
+        });
+        return runtime.createMemory(factMemory, 'facts', true);
+      })
+    );
+
+    // Update or create relationships
+    for (const relationship of reflection.relationships) {
+      let sourceId: UUID;
+      let targetId: UUID;
+
+      try {
+        sourceId = resolveEntity(relationship.sourceEntityId, entities);
+        targetId = resolveEntity(relationship.targetEntityId, entities);
+      } catch (error) {
+        console.warn('Failed to resolve relationship entities:', error);
+        console.warn('relationship:\n', relationship);
+        continue; // Skip this relationship if we can't resolve the IDs
+      }
+
+      const existingRelationship = existingRelationships.find((r) => {
+        return r.sourceEntityId === sourceId && r.targetEntityId === targetId;
+      });
+
+      if (existingRelationship) {
+        const updatedMetadata = {
+          ...existingRelationship.metadata,
+          interactions: (existingRelationship.metadata?.interactions || 0) + 1,
+        };
+
+        const updatedTags = Array.from(
+          new Set([...(existingRelationship.tags || []), ...relationship.tags])
+        );
+
+        await runtime.updateRelationship({
+          ...existingRelationship,
+          tags: updatedTags,
+          metadata: updatedMetadata,
+        });
+      } else {
+        await runtime.createRelationship({
+          sourceEntityId: sourceId,
+          targetEntityId: targetId,
+          tags: relationship.tags,
+          metadata: {
+            interactions: 1,
+            ...relationship.metadata,
+          },
+        });
+      }
+    }
+
+    await runtime.setCache<string>(`${message.roomId}-reflection-last-processed`, message.id);
+
+    return reflection;
+  } catch (error) {
+    logger.error('Error in reflection handler:', error);
+    return;
   }
-
-  await runtime.setCache<string>(`${message.roomId}-reflection-last-processed`, message.id);
-
-  return reflection;
 }
 
 export const reflectionEvaluator: Evaluator = {

@@ -1,7 +1,7 @@
 import {
   ChannelType,
   type Content,
-  EventTypes,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -230,7 +230,7 @@ export class TwitterInteractionClient {
             };
 
             // Emit generic MESSAGE_RECEIVED event
-            this.runtime.emitEvent(EventTypes.MESSAGE_RECEIVED, messagePayload);
+            this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, messagePayload);
 
             // Emit platform-specific MENTION_RECEIVED event
             const mentionPayload: TwitterMentionReceivedPayload = {
@@ -339,7 +339,7 @@ export class TwitterInteractionClient {
               this.runtime.emitEvent(TwitterEventTypes.LIKE_RECEIVED, likePayload);
 
               // Emit generic REACTION_RECEIVED event
-              this.runtime.emitEvent(EventTypes.REACTION_RECEIVED, {
+              this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
                 ...basePayload,
                 reaction: {
                   type: 'like',
@@ -363,7 +363,7 @@ export class TwitterInteractionClient {
               this.runtime.emitEvent(TwitterEventTypes.RETWEET_RECEIVED, retweetPayload);
 
               // Emit generic REACTION_RECEIVED event
-              this.runtime.emitEvent(EventTypes.REACTION_RECEIVED, {
+              this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
                 ...basePayload,
                 reaction: {
                   type: 'retweet',
@@ -394,7 +394,7 @@ export class TwitterInteractionClient {
               this.runtime.emitEvent(TwitterEventTypes.QUOTE_RECEIVED, quotePayload);
 
               // Emit generic REACTION_RECEIVED event
-              this.runtime.emitEvent(EventTypes.REACTION_RECEIVED, {
+              this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
                 ...basePayload,
                 reaction: {
                   type: 'quote',
@@ -633,7 +633,7 @@ export class TwitterInteractionClient {
     };
 
     // Emit standardized event for handling the message
-    this.runtime.emitEvent(EventTypes.MESSAGE_RECEIVED, {
+    this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
       runtime: this.runtime,
       message,
       callback,

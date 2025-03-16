@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import {
   ChannelType,
-  EventTypes,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -57,7 +57,7 @@ export class ScenarioService extends Service {
 
   private setupEventListeners() {
     // Track action start/completion
-    this.runtime.registerEvent(EventTypes.ACTION_STARTED, async (data: ActionEventPayload) => {
+    this.runtime.registerEvent(EventType.ACTION_STARTED, async (data: ActionEventPayload) => {
       this.activeActions.set(data.actionId, {
         actionId: data.actionId,
         actionName: data.actionName,
@@ -67,7 +67,7 @@ export class ScenarioService extends Service {
       return Promise.resolve();
     });
 
-    this.runtime.registerEvent(EventTypes.ACTION_COMPLETED, async (data: ActionEventPayload) => {
+    this.runtime.registerEvent(EventType.ACTION_COMPLETED, async (data: ActionEventPayload) => {
       const action = this.activeActions.get(data.actionId);
       if (action) {
         action.completed = true;
@@ -77,22 +77,19 @@ export class ScenarioService extends Service {
     });
 
     // Track evaluator start/completion
-    this.runtime.registerEvent(
-      EventTypes.EVALUATOR_STARTED,
-      async (data: EvaluatorEventPayload) => {
-        this.activeEvaluators.set(data.evaluatorId, {
-          evaluatorId: data.evaluatorId,
-          evaluatorName: data.evaluatorName,
-          startTime: Date.now(),
-          completed: false,
-        });
-        logger.debug('Evaluator started', data);
-        return Promise.resolve();
-      }
-    );
+    this.runtime.registerEvent(EventType.EVALUATOR_STARTED, async (data: EvaluatorEventPayload) => {
+      this.activeEvaluators.set(data.evaluatorId, {
+        evaluatorId: data.evaluatorId,
+        evaluatorName: data.evaluatorName,
+        startTime: Date.now(),
+        completed: false,
+      });
+      logger.debug('Evaluator started', data);
+      return Promise.resolve();
+    });
 
     this.runtime.registerEvent(
-      EventTypes.EVALUATOR_COMPLETED,
+      EventType.EVALUATOR_COMPLETED,
       async (data: EvaluatorEventPayload) => {
         const evaluator = this.activeEvaluators.get(data.evaluatorId);
         if (evaluator) {

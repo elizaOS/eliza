@@ -21,7 +21,15 @@ import ConnectionStatus from './connection-status';
 
 export function AppSidebar() {
   const location = useLocation();
-  const { data: { data: agentsData } = {}, isPending: isAgentsPending } = useAgents();
+
+  // Add more defensive coding to handle any possible null/undefined responses
+  const agentsResult = useAgents();
+  const { data, isPending: isAgentsPending } = agentsResult || { data: undefined, isPending: true };
+
+  // Create a safe data object that can't be null
+  const safeData = data || {};
+  const safeDataData = (safeData as any).data || {};
+  const agents = safeDataData.agents || [];
 
   return (
     <Sidebar className="bg-background">
@@ -57,7 +65,7 @@ export function AppSidebar() {
                 <div>
                   {(() => {
                     // Sort agents: enabled first, then disabled
-                    const sortedAgents = [...(agentsData?.agents || [])].sort((a, b) => {
+                    const sortedAgents = [...agents].sort((a, b) => {
                       // Sort by status (active agents first)
                       if (a.status === AgentStatus.ACTIVE && b.status !== AgentStatus.ACTIVE)
                         return -1;

@@ -2,7 +2,7 @@ import {
   ChannelType,
   type Character,
   type Entity,
-  EventTypes,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -197,7 +197,7 @@ export class DiscordService extends Service implements IDiscordService {
       : member.user.username;
 
     // Emit standardized ENTITY_JOINED event
-    this.runtime.emitEvent([EventTypes.ENTITY_JOINED], {
+    this.runtime.emitEvent([EventType.ENTITY_JOINED], {
       runtime: this.runtime,
       entityId: createUniqueUuid(this.runtime, member.id),
       worldId: createUniqueUuid(this.runtime, guild.id),
@@ -639,7 +639,7 @@ export class DiscordService extends Service implements IDiscordService {
     });
 
     // Emit standardized event with the same structure as WORLD_CONNECTED
-    this.runtime.emitEvent([EventTypes.WORLD_JOINED], standardizedData);
+    this.runtime.emitEvent([EventType.WORLD_JOINED], standardizedData);
   }
 
   /**
@@ -915,7 +915,7 @@ export class DiscordService extends Service implements IDiscordService {
         };
 
         // Emit standardized event
-        this.runtime.emitEvent([EventTypes.WORLD_CONNECTED], standardizedData);
+        this.runtime.emitEvent([EventType.WORLD_CONNECTED], standardizedData);
       }, 1000);
     }
 

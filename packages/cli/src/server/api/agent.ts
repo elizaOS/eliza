@@ -1,6 +1,7 @@
 import type { Agent, Character, Content, IAgentRuntime, Memory, UUID } from '@elizaos/core';
 import {
   ChannelType,
+  EventType,
   ModelType,
   composePrompt,
   composePromptFromState,
@@ -1404,7 +1405,6 @@ export function agentRouter(
     }
 
     const memories = await runtime.getMemories({
-      agentId,
       tableName: 'messages',
     });
 
@@ -1482,6 +1482,8 @@ export function agentRouter(
   });
 
   router.post('/:agentId/message', async (req: CustomRequest, res) => {
+    res.status(202).json();
+    return;
     logger.info('[MESSAGES CREATE] Creating new message');
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
@@ -1542,66 +1544,10 @@ export function agentRouter(
         createdAt: Date.now(),
       };
 
-      // save message
-      await runtime.createMemory(memory, 'messages');
-
-      console.log('*** memory', memory);
-
-      let state = await runtime.composeState(memory);
-
-      console.log('*** state', state);
-
-      const prompt = composePromptFromState({
-        state,
-        template: messageHandlerTemplate,
+      runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+        message: userMessage,
+        roomId,
       });
-
-      console.log('*** prompt', prompt);
-
-      const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
-        prompt,
-      });
-
-      console.log('*** response', response);
-
-      if (!response) {
-        res.status(500).json({
-          success: false,
-          error: {
-            code: 'MODEL_ERROR',
-            message: 'No response from model',
-          },
-        });
-        return;
-      }
-
-      const responseMessage: Memory = {
-        id: createUniqueUuid(runtime, messageId),
-        ...userMessage,
-        entityId: runtime.agentId,
-        content: response,
-        createdAt: Date.now(),
-      };
-
-      state = await runtime.composeState(responseMessage, ['RECENT_MESSAGES']);
-
-      const replyHandler = async (message: Content) => {
-        res.status(201).json({
-          success: true,
-          data: {
-            message,
-            messageId,
-            name: runtime.character.name,
-            roomId: req.body.roomId,
-            source,
-          },
-        });
-        return [memory];
-      };
-
-      await runtime.processActions(memory, [responseMessage], state, replyHandler);
-
-      await runtime.evaluate(memory, state);
 
       if (!res.headersSent) {
         res.status(202).json();

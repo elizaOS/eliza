@@ -1,7 +1,7 @@
 import {
   ChannelType,
   type Content,
-  EventTypes,
+  EventType,
   type HandlerCallback,
   type IAgentRuntime,
   type Media,
@@ -396,7 +396,7 @@ export class MessageManager {
       };
 
       // Let the bootstrap plugin handle the message
-      this.runtime.emitEvent(EventTypes.MESSAGE_RECEIVED, {
+      this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
         runtime: this.runtime,
         message: memory,
         callback,
@@ -486,7 +486,7 @@ export class MessageManager {
       };
 
       // Let the bootstrap plugin handle the reaction
-      this.runtime.emitEvent(EventTypes.REACTION_RECEIVED, {
+      this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
         runtime: this.runtime,
         message: memory,
         callback,
@@ -563,7 +563,7 @@ export class MessageManager {
       }
 
       // Emit both generic and platform-specific message sent events
-      this.runtime.emitEvent(EventTypes.MESSAGE_SENT, {
+      this.runtime.emitEvent(EventType.MESSAGE_SENT, {
         runtime: this.runtime,
         messages: memories,
         roomId,

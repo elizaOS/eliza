@@ -1,7 +1,7 @@
 import {
   ChannelType,
   type Entity,
-  EventTypes,
+  EventType,
   type IAgentRuntime,
   Role,
   type Room,
@@ -315,7 +315,7 @@ export class TelegramService extends Service {
     };
 
     // Emit generic WORLD_JOINED event
-    this.runtime.emitEvent(EventTypes.WORLD_JOINED, worldPayload);
+    this.runtime.emitEvent(EventType.WORLD_JOINED, worldPayload);
 
     // Emit platform-specific WORLD_JOINED event
     this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
@@ -418,7 +418,7 @@ export class TelegramService extends Service {
         };
 
         // Emit generic ENTITY_JOINED event
-        this.runtime.emitEvent(EventTypes.ENTITY_JOINED, entityJoinedPayload);
+        this.runtime.emitEvent(EventType.ENTITY_JOINED, entityJoinedPayload);
 
         // Emit platform-specific ENTITY_JOINED event
         this.runtime.emitEvent(TelegramEventTypes.ENTITY_JOINED, telegramEntityJoinedPayload);
@@ -479,7 +479,7 @@ export class TelegramService extends Service {
           };
 
           // Emit generic ENTITY_LEFT event
-          this.runtime.emitEvent(EventTypes.ENTITY_LEFT, entityLeftPayload);
+          this.runtime.emitEvent(EventType.ENTITY_LEFT, entityLeftPayload);
 
           // Emit platform-specific ENTITY_LEFT event
           this.runtime.emitEvent(TelegramEventTypes.ENTITY_LEFT, telegramEntityLeftPayload);

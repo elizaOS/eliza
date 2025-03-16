@@ -1558,7 +1558,7 @@ export interface ModelResultMap {
 /**
  * Standard event types across all platforms
  */
-export enum EventTypes {
+export enum EventType {
   // World events
   WORLD_JOINED = 'WORLD_JOINED',
   WORLD_CONNECTED = 'WORLD_CONNECTED',
@@ -1713,24 +1713,24 @@ export type MessageReceivedHandlerParams = {
  * Maps event types to their corresponding payload types
  */
 export interface EventPayloadMap {
-  [EventTypes.WORLD_JOINED]: WorldPayload;
-  [EventTypes.WORLD_CONNECTED]: WorldPayload;
-  [EventTypes.WORLD_LEFT]: WorldPayload;
-  [EventTypes.ENTITY_JOINED]: EntityPayload;
-  [EventTypes.ENTITY_LEFT]: EntityPayload;
-  [EventTypes.ENTITY_UPDATED]: EntityPayload;
-  [EventTypes.MESSAGE_RECEIVED]: MessagePayload;
-  [EventTypes.MESSAGE_SENT]: MessagePayload;
-  [EventTypes.REACTION_RECEIVED]: MessagePayload;
-  [EventTypes.POST_GENERATED]: InvokePayload;
-  [EventTypes.INTERACTION_RECEIVED]: MessagePayload;
-  [EventTypes.RUN_STARTED]: RunEventPayload;
-  [EventTypes.RUN_ENDED]: RunEventPayload;
-  [EventTypes.RUN_TIMEOUT]: RunEventPayload;
-  [EventTypes.ACTION_STARTED]: ActionEventPayload;
-  [EventTypes.ACTION_COMPLETED]: ActionEventPayload;
-  [EventTypes.EVALUATOR_STARTED]: EvaluatorEventPayload;
-  [EventTypes.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
+  [EventType.WORLD_JOINED]: WorldPayload;
+  [EventType.WORLD_CONNECTED]: WorldPayload;
+  [EventType.WORLD_LEFT]: WorldPayload;
+  [EventType.ENTITY_JOINED]: EntityPayload;
+  [EventType.ENTITY_LEFT]: EntityPayload;
+  [EventType.ENTITY_UPDATED]: EntityPayload;
+  [EventType.MESSAGE_RECEIVED]: MessagePayload;
+  [EventType.MESSAGE_SENT]: MessagePayload;
+  [EventType.REACTION_RECEIVED]: MessagePayload;
+  [EventType.POST_GENERATED]: InvokePayload;
+  [EventType.INTERACTION_RECEIVED]: MessagePayload;
+  [EventType.RUN_STARTED]: RunEventPayload;
+  [EventType.RUN_ENDED]: RunEventPayload;
+  [EventType.RUN_TIMEOUT]: RunEventPayload;
+  [EventType.ACTION_STARTED]: ActionEventPayload;
+  [EventType.ACTION_COMPLETED]: ActionEventPayload;
+  [EventType.EVALUATOR_STARTED]: EvaluatorEventPayload;
+  [EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
 }
 
 /**
