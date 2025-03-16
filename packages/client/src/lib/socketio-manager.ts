@@ -1,7 +1,12 @@
 import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
 import EventEmitter from 'eventemitter3';
 import { WorldManager } from './world-manager';
-import io, { Socket } from 'socket.io-client';
+// Use type import to avoid linter errors
+import io from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
+import { v4 as uuidv4 } from 'uuid';
+import { EventEmitter as NodeEventEmitter } from 'events';
+import type { UUID } from '@elizaos/core';
 
 // Define local interfaces to avoid import issues
 interface WebSocketMessageOptions {
@@ -22,157 +27,276 @@ interface TextMessagePayload {
   worldId?: string;
 }
 
+// Define MessagePayload to improve typing
+interface MessagePayload {
+  entityId?: string;
+  senderId?: string;
+  userName?: string;
+  text?: string;
+  message?: string;
+  roomId?: string;
+  source?: string;
+  id?: string;
+  messageId?: string;
+  createdAt?: number;
+  timestamp?: number;
+  file?: string;
+  // Allow other properties
+  [key: string]: unknown;
+}
+
 // Define a simpler interface for WebSocket service
-interface WebSocketService {
-  connect(): Promise<void>;
-  joinRoom(roomId: string): void;
-  sendTextMessage(options: WebSocketMessageOptions): void;
+export interface WebSocketService {
+  // Connection methods
+  connect(): Promise<boolean>;
   disconnect(): void;
   isConnected(): boolean;
-  onTextMessage(handler: (payload: TextMessagePayload) => void): void;
-  socket?: Socket; // Socket instance for direct access
+
+  // Event emitter methods
+  on(event: string, listener: (data: MessagePayload) => void): void;
+  off(event: string, listener: (data: MessagePayload) => void): void;
+  emit(event: string, data: MessagePayload): void;
+
+  // Room methods
+  joinRoom(roomId: string): Promise<boolean>;
+  leaveRoom(roomId: string): void;
+
+  // Message methods
+  sendMessage(message: Partial<MessagePayload>): Promise<boolean>;
 }
 
 // Import dynamically to avoid TypeScript errors
 // @ts-ignore - Import.meta is valid in Vite/ESBuild environments
 const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT || '3000'}`;
 
-// Wrapper for direct socket connections that mimics WebSocketService interface
-class DirectSocketService implements WebSocketService {
-  private socketIO: Socket;
-  private roomId: string;
-  private entityId: string;
+// Add connection states for better tracking
+export enum ConnectionState {
+  DISCONNECTED = 'disconnected',
+  CONNECTING = 'connecting',
+  CONNECTED = 'connected',
+  ERROR = 'error',
+}
+
+// Main WebSocketService implementation
+class WebSocketManager implements WebSocketService {
+  private socket: SocketIOClient.Socket | null = null;
   private connected = false;
-  private messageHandler: ((payload: TextMessagePayload) => void) | null = null;
+  private roomId: string | null = null;
+  private connectPromises: Map<
+    string,
+    { resolve: (value: boolean) => void; reject: (error: Error) => void }
+  > = new Map();
+  private messageEventEmitter = new EventEmitter();
 
-  constructor(entityId: string, roomId: string) {
-    this.entityId = entityId;
-    this.roomId = roomId;
+  // Connect to WebSocket server
+  async connect(): Promise<boolean> {
+    try {
+      console.log('[WebSocketService] Connecting to server...');
 
-    this.socketIO = io(BASE_URL, {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 20000,
-    });
+      if (this.socket && this.connected) {
+        console.log('[WebSocketService] Already connected');
+        return true;
+      }
 
-    // Expose the socket
-    this.socket = this.socketIO;
+      // Create a unique ID for this connection attempt
+      const connectId = `connect-${Date.now()}`;
 
-    // Set up event listeners
-    this.socketIO.on('messageBroadcast', (message: TextMessagePayload) => {
-      if (this.messageHandler && message.entityId !== this.entityId) {
-        this.messageHandler({
-          entityId: message.entityId,
-          userName: message.userName,
-          text: message.text,
-          roomId: message.roomId,
-          source: message.source,
-          worldId: message.worldId,
+      // Create a promise that will be resolved when connection is established
+      const connectPromise = new Promise<boolean>((resolve, reject) => {
+        this.connectPromises.set(connectId, { resolve, reject });
+
+        // Set a timeout
+        setTimeout(() => {
+          if (this.connectPromises.has(connectId)) {
+            this.connectPromises.delete(connectId);
+            reject(new Error('Connection timeout'));
+          }
+        }, 10000);
+      });
+
+      // Create socket connection if it doesn't exist
+      if (!this.socket) {
+        this.socket = io(process.env.VITE_SOCKET_URL || 'http://localhost:3000');
+
+        // Set up event handlers
+        this.socket.on('connect', () => {
+          console.log('[WebSocketService] Connected to server');
+          this.connected = true;
+
+          // Resolve all pending connect promises
+          for (const { resolve } of this.connectPromises.values()) {
+            resolve(true);
+          }
+          this.connectPromises.clear();
+        });
+
+        this.socket.on('disconnect', () => {
+          console.log('[WebSocketService] Disconnected from server');
+          this.connected = false;
+        });
+
+        // Set up message handling
+        this.socket.on('message', (data) => {
+          console.log('[WebSocketService] Received message:', data);
+          this.messageEventEmitter.emit('messageBroadcast', data);
+        });
+
+        this.socket.on('error', (error) => {
+          console.error('[WebSocketService] Socket error:', error);
+
+          // Reject all pending connect promises
+          for (const { reject } of this.connectPromises.values()) {
+            reject(error);
+          }
+          this.connectPromises.clear();
         });
       }
-    });
+
+      return connectPromise;
+    } catch (error) {
+      console.error('[WebSocketService] Connection error:', error);
+      return false;
+    }
   }
 
-  // Make socket available externally
-  public socket: Socket;
-
-  async connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Set a timeout to avoid hanging
-      const timeout = setTimeout(() => {
-        if (!this.connected) {
-          reject(new Error('Connection timeout'));
-        }
-      }, 10000);
-
-      this.socketIO.on('connect', () => {
-        console.log(`[DirectSocketService] Connected with ID ${this.socketIO.id}`);
-        this.connected = true;
-        clearTimeout(timeout);
-        resolve();
-      });
-
-      this.socketIO.on('connect_error', (error: Error) => {
-        console.error('[DirectSocketService] Connection error:', error);
-        if (!this.connected) {
-          clearTimeout(timeout);
-          reject(error);
-        }
-      });
-
-      this.socketIO.on('disconnect', () => {
-        console.log('[DirectSocketService] Disconnected');
-        this.connected = false;
-      });
-    });
-  }
-
-  joinRoom(roomId: string): void {
-    console.log(`[DirectSocketService] Joining room ${roomId}`);
-
-    // Both methods to ensure compatibility
-    this.socketIO.emit('join', {
-      id: roomId,
-      entityId: this.entityId,
-      roomId: roomId,
-    });
-
-    this.socketIO.emit('message', {
-      type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
-      payload: {
-        entityId: this.entityId,
-        roomId: roomId,
-        userName: 'User',
-      },
-    });
-  }
-
-  sendTextMessage(options: WebSocketMessageOptions): void {
-    console.log(`[DirectSocketService] Sending message to room ${options.roomId}`);
-
-    // Method 1: Use the standard event type
-    this.socketIO.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), options);
-
-    // Method 2: Use generic message event with type envelope
-    this.socketIO.emit('message', {
-      type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
-      payload: {
-        ...options,
-        messageId: Math.random().toString(36).substring(2, 15),
-        timestamp: new Date().toISOString(),
-      },
-    });
-  }
-
+  // Disconnect from WebSocket server
   disconnect(): void {
-    this.socketIO.disconnect();
-    this.connected = false;
+    if (this.socket) {
+      console.log('[WebSocketService] Disconnecting from server');
+      this.socket.disconnect();
+      this.socket = null;
+      this.connected = false;
+      this.roomId = null;
+    }
   }
 
+  // Check if socket is connected
   isConnected(): boolean {
-    return this.connected && this.socketIO.connected;
+    return this.connected && !!this.socket;
   }
 
-  onTextMessage(handler: (payload: TextMessagePayload) => void): void {
-    this.messageHandler = handler;
+  // Event emitter methods
+  on(event: string, listener: (data: MessagePayload) => void): void {
+    this.messageEventEmitter.on(event, listener);
+  }
+
+  off(event: string, listener: (data: MessagePayload) => void): void {
+    this.messageEventEmitter.off(event, listener);
+  }
+
+  emit(event: string, data: MessagePayload): void {
+    if (this.socket && this.connected) {
+      this.socket.emit(event, data);
+    } else {
+      console.error(`[WebSocketService] Cannot emit ${event} - not connected`);
+    }
+  }
+
+  // Room methods
+  async joinRoom(roomId: string): Promise<boolean> {
+    if (!this.socket || !this.connected) {
+      console.error('[WebSocketService] Cannot join room - not connected');
+      return false;
+    }
+
+    try {
+      console.log(`[WebSocketService] Joining room ${roomId}`);
+
+      return new Promise<boolean>((resolve) => {
+        this.socket!.emit('joinRoom', { roomId }, (response: { success: boolean }) => {
+          if (response && response.success) {
+            console.log(`[WebSocketService] Successfully joined room ${roomId}`);
+            this.roomId = roomId;
+            resolve(true);
+          } else {
+            console.error(`[WebSocketService] Failed to join room ${roomId}`);
+            resolve(false);
+          }
+        });
+
+        // Set a timeout in case the server doesn't respond
+        setTimeout(() => resolve(false), 5000);
+      });
+    } catch (error) {
+      console.error(`[WebSocketService] Error joining room ${roomId}:`, error);
+      return false;
+    }
+  }
+
+  leaveRoom(roomId: string): void {
+    if (this.socket && this.connected) {
+      console.log(`[WebSocketService] Leaving room ${roomId}`);
+      this.socket.emit('leaveRoom', { roomId });
+
+      if (this.roomId === roomId) {
+        this.roomId = null;
+      }
+    }
+  }
+
+  // Message methods
+  async sendMessage(message: Partial<MessagePayload>): Promise<boolean> {
+    if (!this.socket || !this.connected) {
+      console.error('[WebSocketService] Cannot send message - not connected');
+      return false;
+    }
+
+    if (!this.roomId) {
+      console.error('[WebSocketService] Cannot send message - not in a room');
+      return false;
+    }
+
+    try {
+      console.log(`[WebSocketService] Sending message to room ${this.roomId}`);
+
+      return new Promise<boolean>((resolve) => {
+        this.socket!.emit(
+          'message',
+          { ...message, roomId: this.roomId },
+          (response: { success: boolean }) => {
+            if (response && response.success) {
+              console.log(`[WebSocketService] Message sent successfully`);
+              resolve(true);
+            } else {
+              console.error('[WebSocketService] Failed to send message');
+              resolve(false);
+            }
+          }
+        );
+
+        // Set a timeout in case the server doesn't respond
+        setTimeout(() => resolve(false), 5000);
+      });
+    } catch (error) {
+      console.error('[WebSocketService] Error sending message:', error);
+      return false;
+    }
   }
 }
 
 // Define events for TypeScript
 interface SocketIOManagerEvents {
-  messageBroadcast: (message: TextMessagePayload & { createdAt: number }) => void;
+  messageBroadcast: (message: {
+    entityId: string;
+    userName: string;
+    text: string;
+    roomId: string;
+    createdAt: number;
+    source?: string;
+  }) => void;
 }
 
-class SocketIOManager extends EventEmitter<SocketIOManagerEvents> {
+export class SocketIOManager extends EventEmitter<SocketIOManagerEvents> {
   private static instance: SocketIOManager | null = null;
-  private services: Map<string, WebSocketService>;
+  private roomSockets: Map<string, WebSocketManager>; // key is roomId
+  private activeRooms: Set<string>; // Track active room IDs
+  private clientId: string = '10000000-0000-0000-0000-000000000000'; // Fixed admin user ID
 
   private constructor() {
     super();
-    this.services = new Map();
+    this.roomSockets = new Map();
+    this.activeRooms = new Set();
+    console.log('[SocketManager] Initialized with fixed client ID:', this.clientId);
   }
 
   public static getInstance(): SocketIOManager {
@@ -182,83 +306,111 @@ class SocketIOManager extends EventEmitter<SocketIOManagerEvents> {
     return SocketIOManager.instance;
   }
 
-  connect(agentId: string, roomId: string): void {
-    if (!agentId || !roomId) {
-      console.error('[SocketIO] Cannot connect: agentId and roomId are required');
-      return;
-    }
-
-    const serviceKey = `${agentId}:${roomId}`;
-
-    if (this.services.has(serviceKey)) {
-      console.warn(`[SocketIO] Socket for agent ${agentId} already exists.`);
-      return;
-    }
-
-    // Use a simple fixed user ID instead of a random one
-    const clientId = '10000000-0000-0000-0000-000000000000';
+  // Connect to a room (optionally providing an agent reference)
+  connectToRoom(roomId: string, agentId?: string): void {
     console.log(
-      `[SocketIO] Using client ID ${clientId} for connecting to agent ${agentId} in room ${roomId}`
+      `[SocketManager] Connecting to room ${roomId}${agentId ? ` (with agent ${agentId} as reference)` : ''}`
     );
 
+    if (!roomId) {
+      console.error('[SocketManager] Cannot connect: roomId is required');
+      return;
+    }
+
+    // Check if we already have a socket for this room
+    if (this.roomSockets.has(roomId)) {
+      console.log(`[SocketManager] Already connected to room ${roomId}`);
+      return;
+    }
+
     try {
-      // Create direct socket service for more reliable connection
-      console.log('[SocketIO] Creating direct socket service with enhanced options');
-      const service = new DirectSocketService(clientId, roomId);
+      // Create a socket service for this room
+      console.log(`[SocketManager] Creating socket service for room ${roomId}`);
+      const service = new WebSocketManager();
 
-      // Set up event handlers - only listen for messages from others, not from self
-      service.onTextMessage((payload: TextMessagePayload) => {
-        console.log(`[SocketIO] Message received in room ${roomId}:`, payload);
+      // Register message handler using event emitter approach
+      service.on('messageBroadcast', (payload: MessagePayload) => {
+        console.log(`[SocketManager] Message received in room ${roomId}:`, {
+          from: payload.entityId || payload.senderId,
+          text: payload.text
+            ? payload.text.substring(0, 30) + (payload.text.length > 30 ? '...' : '')
+            : payload.message
+              ? payload.message.substring(0, 30) + (payload.message.length > 30 ? '...' : '')
+              : '[No text]',
+        });
 
-        // Receive messages from any sender (agent or user) except self
-        if (payload.entityId !== clientId) {
-          // Format the message for the UI
+        // Only emit messages from other entities
+        if ((payload.entityId || payload.senderId) !== this.clientId) {
           this.emit('messageBroadcast', {
-            entityId: payload.entityId,
-            userName: payload.userName,
-            text: payload.text,
-            roomId: payload.roomId,
-            createdAt: Date.now(),
+            entityId: payload.entityId || payload.senderId || 'unknown',
+            userName: payload.userName || 'User',
+            text: payload.text || payload.message || '',
+            roomId: payload.roomId || roomId,
+            createdAt: payload.createdAt || payload.timestamp || Date.now(),
             source: payload.source || 'websocket',
           });
         }
       });
 
-      // Connect to the WebSocket server with retry logic
+      // Connect with retry logic
       let retryCount = 0;
       const maxRetries = 3;
 
       const connectWithRetry = async () => {
         try {
-          console.log(`[SocketIO] Attempting to connect (attempt ${retryCount + 1}/${maxRetries})`);
-          await service.connect();
           console.log(
-            `[SocketIO] Connected for entity ${clientId} to agent ${agentId} in room ${roomId}`
+            `[SocketManager] Connecting to room ${roomId} (attempt ${retryCount + 1}/${maxRetries})`
           );
-          this.services.set(serviceKey, service);
 
-          // After connection, explicitly join the room
-          try {
-            console.log(`[SocketIO] Explicitly joining room ${roomId} after connection`);
+          // Connect the socket service
+          const connectionSuccessful = await service.connect();
+
+          if (connectionSuccessful) {
+            console.log(`[SocketManager] Successfully connected to room ${roomId}`);
+
+            // Store the service and mark room as active
+            this.roomSockets.set(roomId, service);
+            this.activeRooms.add(roomId);
+
+            // Join the room
+            console.log(`[SocketManager] Joining room ${roomId}`);
             service.joinRoom(roomId);
 
-            // Also try adding the user to the room via API
-            this.ensureUserInRoom(clientId, agentId, roomId);
-          } catch (joinError) {
-            console.error(`[SocketIO] Error joining room ${roomId}:`, joinError);
+            // Add the user to the room via API if an agent ID was provided
+            if (agentId) {
+              this.ensureUserInRoom(this.clientId, agentId, roomId);
+            } else {
+              console.log(
+                `[SocketManager] No agent ID provided, skipping API registration for room ${roomId}`
+              );
+            }
+          } else {
+            console.error(`[SocketManager] Failed to connect to room ${roomId}`);
+
+            retryCount++;
+            if (retryCount < maxRetries) {
+              console.log(`[SocketManager] Retrying connection to room ${roomId} in 1000ms...`);
+              setTimeout(connectWithRetry, 1000);
+            } else {
+              console.error(
+                `[SocketManager] Failed to connect to room ${roomId} after ${maxRetries} attempts`
+              );
+            }
           }
         } catch (error) {
           console.error(
-            `[SocketIO] Connection error for entity ${clientId} to agent ${agentId} (attempt ${retryCount + 1}/${maxRetries}):`,
+            `[SocketManager] Error connecting to room ${roomId} (attempt ${retryCount + 1}/${maxRetries}):`,
             error
           );
 
           retryCount++;
           if (retryCount < maxRetries) {
-            console.log('[SocketIO] Retrying connection in 1000ms...');
+            console.log(`[SocketManager] Retrying connection to room ${roomId} in 1000ms...`);
             setTimeout(connectWithRetry, 1000);
           } else {
-            console.error(`[SocketIO] Failed to connect after ${maxRetries} attempts`);
+            console.error(
+              `[SocketManager] Failed to connect to room ${roomId} after ${maxRetries} attempts`
+            );
           }
         }
       };
@@ -266,15 +418,17 @@ class SocketIOManager extends EventEmitter<SocketIOManagerEvents> {
       // Start the connection process
       connectWithRetry();
     } catch (error) {
-      console.error('[SocketIO] Error creating service:', error);
+      console.error(`[SocketManager] Error creating socket service for room ${roomId}:`, error);
     }
   }
 
   // Private method to ensure the user is added to the room via API
   private async ensureUserInRoom(userId: string, agentId: string, roomId: string): Promise<void> {
-    try {
-      console.log(`[SocketIO] Ensuring user ${userId} is in room ${roomId} via API`);
+    console.log(
+      `[SocketManager] Ensuring user ${userId} is in room ${roomId} via API (agent ${agentId})`
+    );
 
+    try {
       // Call the API to add the user to the room
       const response = await fetch(`${BASE_URL}/agents/${agentId}/rooms/${roomId}/participants`, {
         method: 'POST',
@@ -288,158 +442,225 @@ class SocketIOManager extends EventEmitter<SocketIOManagerEvents> {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[SocketIO] API error adding user to room: ${response.status}`, errorText);
+        console.error(
+          `[SocketManager] API error adding user to room: ${response.status}`,
+          errorText
+        );
         return;
       }
 
       const result = await response.json();
-      console.log('[SocketIO] User added to room via API:', result);
+      console.log('[SocketManager] User added to room via API:', result);
     } catch (error) {
-      console.error('[SocketIO] Error ensuring user in room:', error);
+      console.error('[SocketManager] Error ensuring user in room:', error);
     }
   }
 
-  async sendMessage(agentId: string, options: WebSocketMessageOptions): Promise<void> {
-    const { roomId } = options;
-    const serviceKey = `${agentId}:${roomId}`;
-    const service = this.services.get(serviceKey);
+  // Get all connected rooms
+  getConnectedRooms(): string[] {
+    return Array.from(this.activeRooms);
+  }
 
-    if (!service) {
-      console.warn(
-        `[SocketIO] Cannot send message, service for agent ${agentId} in room ${roomId} does not exist.`
+  // Send a message to a room
+  async sendMessageToRoom(
+    roomId: string,
+    options: Omit<WebSocketMessageOptions, 'roomId'>
+  ): Promise<boolean> {
+    console.log(`[SocketManager] Preparing to send message to room ${roomId}`);
+
+    if (!roomId) {
+      console.error('[SocketManager] Room ID is required to send a message');
+      return false;
+    }
+
+    // If not connected to this room yet, try to connect first
+    if (!this.roomSockets.has(roomId)) {
+      console.log(`[SocketManager] Not connected to room ${roomId} yet, connecting now...`);
+      this.connectToRoom(roomId);
+      console.log(
+        `[SocketManager] Connection initiated for room ${roomId}, please try sending again in a moment`
       );
-      return;
+      return false;
+    }
+
+    const service = this.roomSockets.get(roomId);
+    if (!service) {
+      console.error(`[SocketManager] No socket service found for room ${roomId}`);
+      return false;
     }
 
     if (!service.isConnected()) {
-      console.warn(
-        `[SocketIO] Service for agent ${agentId} is not connected. Attempting to reconnect...`
-      );
+      console.warn(`[SocketManager] Socket for room ${roomId} is disconnected, reconnecting...`);
       try {
-        await service.connect();
-        console.log(`[SocketIO] Successfully reconnected service for agent ${agentId}`);
+        // Disconnect first to ensure clean state
+        service.disconnect();
+
+        // Wait briefly before reconnecting
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Reconnect
+        const reconnected = await service.connect();
+
+        if (!reconnected) {
+          console.error(`[SocketManager] Failed to reconnect to room ${roomId}`);
+          return false;
+        }
+
+        console.log(`[SocketManager] Successfully reconnected to room ${roomId}`);
       } catch (error) {
-        console.error(`[SocketIO] Failed to reconnect service for agent ${agentId}:`, error);
-        return;
+        console.error(`[SocketManager] Failed to reconnect to room ${roomId}:`, error);
+        return false;
       }
     }
 
-    // Send the message through the socket service
-    console.log(`[SocketIO] Sending message to room ${roomId} from ${options.entityId}`);
-    service.sendTextMessage(options);
+    // Create the full message payload
+    const messagePayload = {
+      ...options,
+      roomId,
+      entityId: options.entityId || this.clientId,
+      userName: options.userName || 'User', // Ensure userName is always defined
+    };
+
+    console.log(`[SocketManager] Sending message to room ${roomId}:`, {
+      from: messagePayload.entityId,
+      text: messagePayload.text.substring(0, 30) + (messagePayload.text.length > 30 ? '...' : ''),
+    });
+
+    try {
+      // Double check we are connected before sending
+      if (!service.isConnected()) {
+        console.error(`[SocketManager] Cannot send message to room ${roomId} - not connected`);
+        return false;
+      }
+
+      // Send through the socket service
+      service.emit('message', messagePayload);
+      console.log(`[SocketManager] Message sent successfully to room ${roomId}`);
+      return true;
+    } catch (error) {
+      console.error(`[SocketManager] Error sending message to room ${roomId}:`, error);
+      return false;
+    }
   }
 
-  private getServiceKey(agentId: string, roomId: string): string {
-    return `${agentId}:${roomId}`;
+  // Back-compatibility method for the old style (agent-centric)
+  connect(agentId: string, roomId: string): void {
+    console.log(`[SocketManager] Legacy connection request for agent ${agentId}, room ${roomId}`);
+    this.connectToRoom(roomId, agentId);
   }
 
-  handleBroadcastMessage(
+  // Back-compatibility method for sending messages
+  async sendMessage(agentId: string, options: WebSocketMessageOptions): Promise<void> {
+    console.log(
+      `[SocketManager] Legacy sendMessage called for agent ${agentId}, room ${options.roomId}`
+    );
+    await this.sendMessageToRoom(options.roomId, options);
+  }
+
+  // Message broadcast handler (direct to room)
+  async handleBroadcastMessage(
     entityId: string,
     userName: string,
     text: string,
     roomId: string | undefined,
     source: string
-  ): void {
-    console.log(
-      `[SocketIO] Broadcasting: ${entityId} sent "${text}" to room ${roomId || 'unknown'}`
-    );
+  ): Promise<boolean> {
+    console.log(`[SocketManager] Broadcast request: ${entityId} to room ${roomId || 'undefined'}`);
 
-    // If roomId is undefined, try to find the most recent connection
     if (!roomId) {
-      console.warn('[SocketIO] Room ID is undefined, attempting to find most recent connection');
+      console.error('[SocketManager] Room ID is required for broadcasting messages');
 
-      // Get all available services
-      const serviceKeys = Array.from(this.services.keys());
-      if (serviceKeys.length === 0) {
-        console.error('[SocketIO] No active connections available');
-        return;
-      }
+      // Log all active rooms to help debugging
+      const activeRooms = this.getConnectedRooms();
+      console.log('[SocketManager] Currently active rooms:', activeRooms);
 
-      // Use the first available service (assuming it's the most recent)
-      const fallbackServiceKey = serviceKeys[0];
-      console.log(`[SocketIO] Using fallback service: ${fallbackServiceKey}`);
-
-      // Extract the agent and room IDs from the service key
-      const [agentId, foundRoomId] = fallbackServiceKey.split(':');
-
-      // Use the found room ID and proceed with the message
-      roomId = foundRoomId;
-      console.log(`[SocketIO] Using fallback room ID: ${roomId}`);
+      return false;
     }
 
-    // Get the agent ID from the room key but send the message with the user's entityId
-    const serviceKey = Array.from(this.services.keys()).find((key) => key.endsWith(`:${roomId}`));
-    if (!serviceKey) {
-      // List all available service keys for debugging
-      const availableKeys = Array.from(this.services.keys());
-      console.warn(
-        `[SocketIO] No service found for room ${roomId}. Available services: ${availableKeys.join(', ')}`
-      );
-      return;
-    }
-
-    const agentId = serviceKey.split(':')[0];
-
-    // Always use the fixed user ID to ensure consistency
-    const userEntityId = '10000000-0000-0000-0000-000000000000';
-
-    console.log(
-      `[SocketIO] Found agent ${agentId} for room ${roomId}, sending message as user ${userEntityId}`
-    );
-
-    // Get the service to check if it's connected
-    const service = this.services.get(serviceKey);
-    if (!service) {
-      console.error(`[SocketIO] Service not found for key ${serviceKey}`);
-      return;
-    }
-
-    // Format the message properly
+    // Prepare message payload
     const messagePayload = {
-      entityId: userEntityId, // Use fixed user ID
+      entityId, // Use the provided entity ID
       userName,
       text,
-      roomId,
-      worldId: WorldManager.getWorldId(),
       source,
+      worldId: WorldManager.getWorldId(),
     };
 
-    // If using DirectSocketService, we can access the socket directly
-    if (service instanceof DirectSocketService) {
-      // Send via direct socket
-      service.sendTextMessage(messagePayload);
-    } else {
-      // Try to send through the service's method
-      service.sendTextMessage(messagePayload);
-    }
+    // Send to the room
+    return this.sendMessageToRoom(roomId, messagePayload);
   }
 
-  disconnect(agentId: string, roomId: string): void {
-    const serviceKey = this.getServiceKey(agentId, roomId);
-    const service = this.services.get(serviceKey);
+  // Disconnect from a specific room
+  disconnectFromRoom(roomId: string): void {
+    console.log(`[SocketManager] Disconnecting from room ${roomId}`);
 
+    const service = this.roomSockets.get(roomId);
     if (service) {
       service.disconnect();
-      this.services.delete(serviceKey);
-      console.log(`[SocketIO] Socket for agent ${agentId} disconnected.`);
+      this.roomSockets.delete(roomId);
+      this.activeRooms.delete(roomId);
+      console.log(`[SocketManager] Disconnected from room ${roomId}`);
     } else {
-      console.warn(`[SocketIO] No Socket found for agent ${agentId}.`);
+      console.warn(`[SocketManager] Not connected to room ${roomId}`);
     }
   }
 
-  disconnectAll(): void {
-    this.services.forEach((service, key) => {
-      const [agentId] = key.split(':');
-      console.log(`[SocketIO] Closing Socket for agent ${agentId}`);
+  // Legacy disconnect method
+  disconnect(agentId: string, roomId: string): void {
+    console.log(`[SocketManager] Legacy disconnect request for agent ${agentId}, room ${roomId}`);
+    this.disconnectFromRoom(roomId);
+  }
 
-      if (service.isConnected()) {
+  // Disconnect from all rooms
+  disconnectAll(): void {
+    console.log('[SocketManager] Disconnecting from all rooms');
+
+    this.roomSockets.forEach((service, roomId) => {
+      console.log(`[SocketManager] Disconnecting from room ${roomId}`);
+      try {
         service.disconnect();
-      } else {
-        console.warn(`[SocketIO] Socket for agent ${agentId} is already disconnected.`);
+      } catch (error) {
+        console.warn(`[SocketManager] Error disconnecting from room ${roomId}:`, error);
       }
     });
 
-    this.services.clear();
+    this.roomSockets.clear();
+    this.activeRooms.clear();
+    console.log('[SocketManager] Disconnected from all rooms');
+  }
+
+  // Connect to WebSocket server
+  async connect(): Promise<boolean> {
+    // Get the current room ID
+    const roomId = this.getCurrentRoomId();
+    if (!roomId) {
+      console.error('[SocketManager] Cannot connect - no active room');
+      return false;
+    }
+
+    // Try to connect to the room
+    return this.connectToRoom(roomId);
+  }
+
+  // Check if socket is connected to current room
+  isConnected(): boolean {
+    const roomId = this.getCurrentRoomId();
+    if (!roomId) return false;
+
+    const socket = this.getSocketForRoom(roomId);
+    return socket ? socket.isConnected() : false;
+  }
+
+  // Get the current room ID (most recently joined room)
+  getCurrentRoomId(): string | undefined {
+    // Return the last active room ID, if any
+    if (this.activeRooms.size === 0) return undefined;
+    return Array.from(this.activeRooms).pop();
+  }
+
+  // Get the socket for a specific room
+  private getSocketForRoom(roomId: string): WebSocketManager | undefined {
+    return this.roomSockets.get(roomId);
   }
 }
 
