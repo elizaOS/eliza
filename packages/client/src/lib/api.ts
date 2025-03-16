@@ -396,7 +396,6 @@ export const apiClient = {
       method: 'GET',
     });
   },
-
   deleteLog: (agentId: string, logId: string): Promise<void> => {
     return fetcher({
       url: `/agents/${agentId}/logs/${logId}`,

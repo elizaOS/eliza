@@ -182,9 +182,9 @@ class LocalAIManager {
     }
 
     // Set paths for models
-    this.modelPath = path.join(this.modelsDir, 'DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf');
+    this.modelPath = path.join(this.modelsDir, 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf');
 
-    this.mediumModelPath = path.join(this.modelsDir, 'DeepSeek-R1-Distill-Qwen-7B-Q5_K_M.gguf');
+    this.mediumModelPath = path.join(this.modelsDir, 'DeepHermes-3-Llama-3-8B-q4.gguf');
 
     // Set up cache directory
     const cacheDirEnv = process.env.CACHE_DIR?.trim();

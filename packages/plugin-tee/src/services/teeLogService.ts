@@ -13,7 +13,6 @@ import {
   type TeePageQuery,
   TeeType,
 } from '@elizaos/core';
-import Database from 'better-sqlite3';
 import { SqliteTeeLogDAO } from '../adapters/sqliteDAO';
 import { TeeLogManager } from './teeLogManager';
 
@@ -29,7 +28,7 @@ export class TeeLogService extends Service implements ITeeLogService {
   private teeType: TeeType;
   private teeMode: TEEMode = TEEMode.OFF; // Only used for plugin-tee with TDX dstack
 
-  private teeLogDAO: TeeLogDAO<Database.Database>;
+  private teeLogDAO: TeeLogDAO<any>;
   private teeLogManager: TeeLogManager;
 
   static serviceType: ServiceTypeName = ServiceType.TEE;
@@ -90,8 +89,8 @@ export class TeeLogService extends Service implements ITeeLogService {
     const dbPathSetting = runtime.getSetting('TEE_LOG_DB_PATH') as string;
     service.dbPath = dbPathSetting || path.resolve('data/tee_log.sqlite');
 
-    const db = new Database(service.dbPath);
-    service.teeLogDAO = new SqliteTeeLogDAO(db);
+    // const db = new Database(service.dbPath);
+    // service.teeLogDAO = new SqliteTeeLogDAO(db);
     service.teeLogManager = new TeeLogManager(service.teeLogDAO, service.teeType, service.teeMode);
 
     const isRegistered = await service.teeLogManager.registerAgent(

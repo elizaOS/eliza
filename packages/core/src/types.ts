@@ -135,7 +135,6 @@ export enum MemoryType {
   DESCRIPTION = 'description',
   CUSTOM = 'custom',
 }
-
 export type MemoryScope = 'shared' | 'private' | 'room';
 
 /**
@@ -744,7 +743,9 @@ export interface IDatabaseAdapter {
 
   /** Get memories matching criteria */
   getMemories(params: {
-    roomId: UUID;
+    entityId?: UUID;
+    agentId?: UUID;
+    roomId?: UUID;
     count?: number;
     unique?: boolean;
     tableName: string;
@@ -798,6 +799,8 @@ export interface IDatabaseAdapter {
   }): Promise<Memory[]>;
 
   createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID>;
+
+  updateMemory(memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }): Promise<boolean>;
 
   deleteMemory(memoryId: UUID): Promise<void>;
 

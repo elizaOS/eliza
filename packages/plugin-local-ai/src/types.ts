@@ -109,24 +109,24 @@ export interface ModelSpecs {
  */
 export const MODEL_SPECS: ModelSpecs = {
   small: {
-    name: 'DeepSeek-R1-Distill-Qwen-1.5B-Q8_0.gguf',
-    repo: 'unsloth/DeepSeek-R1-Distill-Qwen-1.5B-GGUF',
-    size: '1.5B',
-    quantization: 'Q8_0',
+    name: 'DeepHermes-3-Llama-3-3B-Preview-q4.gguf',
+    repo: 'NousResearch/DeepHermes-3-Llama-3-3B-Preview-GGUF',
+    size: '3B',
+    quantization: 'Q4_0',
     contextSize: 8192,
     tokenizer: {
-      name: 'deepseek-ai/deepseek-llm-7b-base',
+      name: 'NousResearch/DeepHermes-3-Llama-3-3B-Preview',
       type: 'llama',
     },
   },
   medium: {
-    name: 'DeepSeek-R1-Distill-Qwen-7B-Q8_0.gguf',
-    repo: 'bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF',
-    size: '7B',
-    quantization: 'Q8_0',
+    name: 'DeepHermes-3-Llama-3-8B-q4.gguf',
+    repo: 'NousResearch/DeepHermes-3-Llama-3-8B-Preview-GGUF',
+    size: '8B',
+    quantization: 'Q4_0',
     contextSize: 8192,
     tokenizer: {
-      name: 'deepseek-ai/deepseek-llm-7b-base',
+      name: 'NousResearch/DeepHermes-3-Llama-3-8B-Preview',
       type: 'llama',
     },
   },

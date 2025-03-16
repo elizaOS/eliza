@@ -6422,7 +6422,6 @@ COINGECKO_API_KEY=
     "test:app": "turbo run test --concurrency 20 --filter=./packages/app"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
     "@types/bun": "latest",
     "@types/node": "^22.13.10",
     "@vitest/eslint-plugin": "1.0.1",
@@ -6486,7 +6485,6 @@ COINGECKO_API_KEY=
     "form-data": "4.0.2"
   },
   "trustedDependencies": [
-    "@biomejs/biome",
     "@elizaos/plugin-browser",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-storage-s3",

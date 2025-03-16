@@ -130,8 +130,8 @@ function hasRequiredEnvVars(agent: any): boolean {
 
 // Filter agents based on available environment variables
 const availableAgents = [
-  devRel,
-  // communityManager,
+  // devRel,
+  communityManager,
   // investmentManager,
   // liaison,
   // projectManager,
