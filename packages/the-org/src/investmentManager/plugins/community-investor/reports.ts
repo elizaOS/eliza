@@ -79,6 +79,8 @@ function formatPrice(price: number): string {
     currency: 'USD',
     minimumFractionDigits: price < 1 ? 6 : 2,
     maximumFractionDigits: price < 1 ? 6 : 2,
+
+    asdfs,
   }).format(price);
 }
 
