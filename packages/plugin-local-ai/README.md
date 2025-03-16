@@ -98,7 +98,7 @@ The plugin provides these model classes:
 
 ```typescript
 const { title, description } = await runtime.useModel(
-  ModelClass.IMAGE_DESCRIPTION,
+  ModelType.IMAGE_DESCRIPTION,
   'https://example.com/image.jpg'
 );
 ```
@@ -106,26 +106,26 @@ const { title, description } = await runtime.useModel(
 ### Text-to-Speech
 
 ```typescript
-const audioStream = await runtime.useModel(ModelClass.TEXT_TO_SPEECH, 'Text to convert to speech');
+const audioStream = await runtime.useModel(ModelType.TEXT_TO_SPEECH, 'Text to convert to speech');
 ```
 
 ### Audio Transcription
 
 ```typescript
-const transcription = await runtime.useModel(ModelClass.TRANSCRIPTION, audioBuffer);
+const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 ```
 
 ### Text Generation
 
 ```typescript
 // Using small model
-const smallResponse = await runtime.useModel(ModelClass.TEXT_SMALL, {
+const smallResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
   context: 'Generate a short response',
   stopSequences: [],
 });
 
 // Using large model
-const largeResponse = await runtime.useModel(ModelClass.TEXT_LARGE, {
+const largeResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
   context: 'Generate a detailed response',
   stopSequences: [],
 });

@@ -1,7 +1,7 @@
 import type { ChildProcess, ExecException, ExecOptions } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { type IAgentRuntime, ModelTypes, type Plugin, logger } from '@elizaos/core';
+import { type IAgentRuntime, ModelType, type Plugin, logger } from '@elizaos/core';
 import type { IOptions } from 'nodejs-whisper';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { TEST_PATHS, createMockRuntime } from './test-utils';
@@ -129,7 +129,7 @@ describe('LocalAI Audio Transcription', () => {
       header: audioBuffer.toString('hex').substring(0, 32),
     });
 
-    const result = await mockRuntime.useModel(ModelTypes.TRANSCRIPTION, audioBuffer);
+    const result = await mockRuntime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
     logger.info('Transcription result:', {
       result,
@@ -152,7 +152,7 @@ describe('LocalAI Audio Transcription', () => {
     });
 
     try {
-      await mockRuntime.useModel(ModelTypes.TRANSCRIPTION, emptyBuffer);
+      await mockRuntime.useModel(ModelType.TRANSCRIPTION, emptyBuffer);
       throw new Error("Should have failed but didn't");
     } catch (error) {
       logger.info('Empty buffer test failed as expected:', {
@@ -172,7 +172,7 @@ describe('LocalAI Audio Transcription', () => {
     });
 
     try {
-      await mockRuntime.useModel(ModelTypes.TRANSCRIPTION, invalidBuffer);
+      await mockRuntime.useModel(ModelType.TRANSCRIPTION, invalidBuffer);
       throw new Error("Should have failed but didn't");
     } catch (error) {
       logger.info('Invalid format test failed as expected:', {
@@ -234,7 +234,7 @@ describe('LocalAI Audio Transcription', () => {
     });
 
     try {
-      await mockRuntime.useModel(ModelTypes.TRANSCRIPTION, audioBuffer);
+      await mockRuntime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
       throw new Error("Should have failed but didn't");
     } catch (error) {
       logger.info('Conversion failure test failed as expected:', {
@@ -271,7 +271,7 @@ describe('LocalAI Audio Transcription', () => {
     });
 
     try {
-      await mockRuntime.useModel(ModelTypes.TRANSCRIPTION, audioBuffer);
+      await mockRuntime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
       throw new Error("Should have failed but didn't");
     } catch (error) {
       logger.info('Whisper failure test failed as expected:', {
@@ -305,7 +305,7 @@ describe('LocalAI Audio Transcription', () => {
       header: audioBuffer.toString('hex').substring(0, 24),
     });
 
-    await mockRuntime.useModel(ModelTypes.TRANSCRIPTION, audioBuffer);
+    await mockRuntime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
     // Check that no temporary files are left in the cache directory
     const cacheDir = path.join(TEST_PATHS.CACHE_DIR, 'whisper');

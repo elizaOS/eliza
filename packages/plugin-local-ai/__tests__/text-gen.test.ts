@@ -1,4 +1,4 @@
-import { type IAgentRuntime, ModelTypes, type Plugin, logger } from '@elizaos/core';
+import { type IAgentRuntime, ModelType, type Plugin, logger } from '@elizaos/core';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { MODEL_SPECS, type ModelSpec } from '../src/types';
 import { TEST_PATHS, createMockRuntime, downloadModelMock } from './test-utils';
@@ -60,11 +60,11 @@ describe('LocalAI Text Generation', () => {
   }, 300000);
 
   test('should attempt to download small model when using TEXT_SMALL', async () => {
-    const result = await mockRuntime.useModel(ModelTypes.TEXT_SMALL, {
+    const result = await mockRuntime.useModel(ModelType.TEXT_SMALL, {
       context: 'Generate a test response.',
       stopSequences: [],
       runtime: mockRuntime,
-      modelClass: ModelTypes.TEXT_SMALL,
+      modelClass: ModelType.TEXT_SMALL,
     });
 
     expect(downloadModelMock).toHaveBeenCalledTimes(1);
@@ -77,11 +77,11 @@ describe('LocalAI Text Generation', () => {
   });
 
   test('should attempt to download large model when using TEXT_LARGE', async () => {
-    const result = await mockRuntime.useModel(ModelTypes.TEXT_LARGE, {
+    const result = await mockRuntime.useModel(ModelType.TEXT_LARGE, {
       context: 'Debug Mode: Generate a one-sentence response about artificial intelligence.',
       stopSequences: [],
       runtime: mockRuntime,
-      modelClass: ModelTypes.TEXT_LARGE,
+      modelClass: ModelType.TEXT_LARGE,
     });
 
     expect(downloadModelMock).toHaveBeenCalledTimes(1);
@@ -99,11 +99,11 @@ describe('LocalAI Text Generation', () => {
     downloadModelMock.mockRejectedValueOnce(new Error('Download failed'));
 
     await expect(
-      mockRuntime.useModel(ModelTypes.TEXT_SMALL, {
+      mockRuntime.useModel(ModelType.TEXT_SMALL, {
         context: 'This should fail due to download error',
         stopSequences: [],
         runtime: mockRuntime,
-        modelClass: ModelTypes.TEXT_SMALL,
+        modelClass: ModelType.TEXT_SMALL,
       })
     ).rejects.toThrow('Download failed');
 
@@ -112,21 +112,21 @@ describe('LocalAI Text Generation', () => {
 
   test('should handle empty context', async () => {
     await expect(
-      mockRuntime.useModel(ModelTypes.TEXT_SMALL, {
+      mockRuntime.useModel(ModelType.TEXT_SMALL, {
         context: '',
         stopSequences: [],
         runtime: mockRuntime,
-        modelClass: ModelTypes.TEXT_SMALL,
+        modelClass: ModelType.TEXT_SMALL,
       })
     ).resolves.toBeDefined();
   });
 
   test('should handle stop sequences', async () => {
-    const result = await mockRuntime.useModel(ModelTypes.TEXT_SMALL, {
+    const result = await mockRuntime.useModel(ModelType.TEXT_SMALL, {
       context: 'Generate a response with stop sequence.',
       stopSequences: ['STOP'],
       runtime: mockRuntime,
-      modelClass: ModelTypes.TEXT_SMALL,
+      modelClass: ModelType.TEXT_SMALL,
     });
 
     expect(result).toBeDefined();
@@ -135,19 +135,19 @@ describe('LocalAI Text Generation', () => {
 
   test('should handle model switching', async () => {
     // First use TEXT_SMALL
-    const smallResult = await mockRuntime.useModel(ModelTypes.TEXT_SMALL, {
+    const smallResult = await mockRuntime.useModel(ModelType.TEXT_SMALL, {
       context: 'Small model test',
       stopSequences: [],
       runtime: mockRuntime,
-      modelClass: ModelTypes.TEXT_SMALL,
+      modelClass: ModelType.TEXT_SMALL,
     });
 
     // Then use TEXT_LARGE
-    const largeResult = await mockRuntime.useModel(ModelTypes.TEXT_LARGE, {
+    const largeResult = await mockRuntime.useModel(ModelType.TEXT_LARGE, {
       context: 'Large model test',
       stopSequences: [],
       runtime: mockRuntime,
-      modelClass: ModelTypes.TEXT_LARGE,
+      modelClass: ModelType.TEXT_LARGE,
     });
 
     expect(smallResult).toBeDefined();

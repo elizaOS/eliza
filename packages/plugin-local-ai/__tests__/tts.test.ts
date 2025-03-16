@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { ModelTypes, type Plugin } from '@elizaos/core';
+import { ModelType, type Plugin } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import type { LlamaContext, LlamaContextSequence, LlamaModel } from 'node-llama-cpp';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
@@ -90,7 +90,7 @@ describe('LocalAI Text-to-Speech', () => {
     llamaMock.mockRejectedValueOnce(new Error('Failed to initialize TTS model'));
 
     try {
-      await mockRuntime.useModel(ModelTypes.TEXT_TO_SPEECH, 'Test text');
+      await mockRuntime.useModel(ModelType.TEXT_TO_SPEECH, 'Test text');
       throw new Error("Should have failed but didn't");
     } catch (error) {
       logger.info('Model initialization failure test failed as expected:', {
@@ -119,7 +119,7 @@ describe('LocalAI Text-to-Speech', () => {
     llamaMock.mockRejectedValueOnce(new Error('Audio generation failed'));
 
     try {
-      await mockRuntime.useModel(ModelTypes.TEXT_TO_SPEECH, 'Test text');
+      await mockRuntime.useModel(ModelType.TEXT_TO_SPEECH, 'Test text');
       throw new Error("Should have failed but didn't");
     } catch (error) {
       logger.info('Audio generation failure test failed as expected:', {
@@ -142,7 +142,7 @@ describe('LocalAI Text-to-Speech', () => {
     logger.info('Testing with text:', testText);
 
     try {
-      const result = await mockRuntime.useModel(ModelTypes.TEXT_TO_SPEECH, testText);
+      const result = await mockRuntime.useModel(ModelType.TEXT_TO_SPEECH, testText);
       logger.info('TTS generation result type:', typeof result);
 
       expect(result).toBeDefined();
@@ -181,7 +181,7 @@ describe('LocalAI Text-to-Speech', () => {
     const emptyText = '';
 
     try {
-      await mockRuntime.useModel(ModelTypes.TEXT_TO_SPEECH, emptyText);
+      await mockRuntime.useModel(ModelType.TEXT_TO_SPEECH, emptyText);
       throw new Error("Should have failed but didn't");
     } catch (error) {
       logger.info('Empty text test failed as expected:', {
@@ -197,7 +197,7 @@ describe('LocalAI Text-to-Speech', () => {
     const invalidInput = { text: 'not-a-string' };
 
     try {
-      await mockRuntime.useModel(ModelTypes.TEXT_TO_SPEECH, invalidInput as unknown as string);
+      await mockRuntime.useModel(ModelType.TEXT_TO_SPEECH, invalidInput as unknown as string);
       throw new Error("Should have failed but didn't");
     } catch (error) {
       logger.info('Non-string input test failed as expected:', {

@@ -242,18 +242,18 @@ export const anthropicPlugin: Plugin = {
           }
 
           // Validate against schema if provided
-          if (params.schema) {
-            try {
-              return z.object(params.schema).parse(jsonObject);
-            } catch (zodError) {
-              logger.error('Schema validation failed:', zodError);
-              // If we have partial data that matches the schema structure, return what we have
-              if (isReflection && jsonObject.thought) {
-                return jsonObject;
-              }
-              throw zodError;
-            }
-          }
+          // if (params.schema) {
+          //   try {
+          //     return z.object(params.schema).parse(jsonObject);
+          //   } catch (zodError) {
+          //     logger.error('Schema validation failed:', zodError);
+          //     // If we have partial data that matches the schema structure, return what we have
+          //     if (isReflection && jsonObject.thought) {
+          //       return jsonObject;
+          //     }
+          //     throw zodError;
+          //   }
+          // }
 
           return jsonObject;
         } catch (parseError) {
@@ -267,7 +267,7 @@ export const anthropicPlugin: Plugin = {
       }
     },
 
-    [ModelTypes.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
+    [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
       const largeModel = runtime.getSetting('ANTHROPIC_LARGE_MODEL') ?? 'claude-3-5-sonnet-latest';
       try {
         // Check if this is a reflection schema request (has specific format)
@@ -413,18 +413,18 @@ export const anthropicPlugin: Plugin = {
           }
 
           // Validate against schema if provided
-          if (params.schema) {
-            try {
-              return z.object(params.schema).parse(jsonObject);
-            } catch (zodError) {
-              logger.error('Schema validation failed:', zodError);
-              // If we have partial data that matches the schema structure, return what we have
-              if (isReflection && jsonObject.thought) {
-                return jsonObject;
-              }
-              throw zodError;
-            }
-          }
+          // if (params.schema) {
+          //   try {
+          //     return z.object(params.schema).parse(jsonObject);
+          //   } catch (zodError) {
+          //     logger.error('Schema validation failed:', zodError);
+          //     // If we have partial data that matches the schema structure, return what we have
+          //     if (isReflection && jsonObject.thought) {
+          //       return jsonObject;
+          //     }
+          //     throw zodError;
+          //   }
+          // }
 
           return jsonObject;
         } catch (parseError) {

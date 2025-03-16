@@ -8,8 +8,6 @@
       "cache": false
     },
     "lint": {
-      "dependsOn": ["build", "^lint"],
-      "outputs": ["dist/**"],
       "cache": false
     },
     "format": {
