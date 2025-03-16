@@ -8,7 +8,7 @@
     "dev": "turbo run dev --filter=./packages/the-org",
     "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
     "build:core": "turbo run build --filter=@elizaos/core --no-cache",
-    "build": "bun run build:core && turbo run build --filter=@elizaos/plugin-* --filter=@elizaos/client --no-cache && turbo run build --filter=!@elizaos/core --filter=!@elizaos/plugin-* --filter=!@elizaos/docs --no-cache",
+    "build": "bun run build:core && turbo run build --filter=@elizaos/plugin-* --filter=@elizaos/client --no-cache && turbo run build --filter=!@elizaos/core --filter=!@elizaos/plugin-* --no-cache",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* && turbo run clean --filter=./packages/*",
     "lint": "turbo run lint --filter=./packages/*",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",

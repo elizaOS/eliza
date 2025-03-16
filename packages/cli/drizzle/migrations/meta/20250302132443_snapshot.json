@@ -15,6 +15,13 @@
 			"notNull": true,
 			"default": "gen_random_uuid()"
 		  },
+		  "enabled": {
+			"name": "enabled",
+			"type": "boolean",
+			"primaryKey": false,
+			"notNull": true,
+			"default": "true"
+		  },
 		  "createdAt": {
 			"name": "createdAt",
 			"type": "timestamptz",

@@ -141,7 +141,7 @@ export async function startAgent(
 		try {
 			// For local plugins, use regular import
 			pluginModule = await import(plugin);
-		logger.debug(`Successfully loaded plugin ${plugin}`);
+			logger.debug(`Successfully loaded plugin ${plugin}`);
 		} catch (error) {
 			logger.info(`Plugin ${plugin} not installed, installing into ${process.cwd()}...`);
 			await installPlugin(plugin, process.cwd(), version);
@@ -150,89 +150,36 @@ export async function startAgent(
 				// For local plugins, use regular import
 				pluginModule = await import(plugin);
 				logger.debug(`Successfully loaded plugin ${plugin} after installation`);
-			} catch (error) {
-				if (error.message && 
-					(error.message.includes('base64 is not a function') || 
-					error.message.includes('z8.string'))) {
-					logger.warn(`Plugin ${plugin} has Zod validation issue: ${error.message}`);
-					logger.warn('This is likely due to bundled Zod (z8). Creating a stub implementation.');
+			} catch (importError) {
+				// Try to import from the project's node_modules directory
+				try {
+					const projectNodeModulesPath = path.join(process.cwd(), 'node_modules', plugin);
+					logger.debug(`Attempting to import from project path: ${projectNodeModulesPath}`);
 					
-					// For any plugin, provide a basic stub to prevent crashes
-					const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
-					pluginModule = {
-						default: {
-							name: pluginName,
-							description: `${pluginName} plugin (stub)`,
-							init: async () => {
-								logger.warn(`Using stub ${pluginName} plugin due to import error`);
-								return {};
-							}
-						}
-					};
-					
-					// Special handling for Anthropic
-					if (plugin.includes('anthropic')) {
-						pluginModule = {
-							default: {
-								name: 'anthropic',
-								description: 'Anthropic plugin (stub)',
-								models: {
-									[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-									[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
-								},
-								init: async () => {
-									logger.warn('Using stub Anthropic plugin due to Zod validation error');
-									return {};
-								}
-							},
-							anthropicPlugin: {
-								name: 'anthropic',
-								description: 'Anthropic plugin (stub)',
-								models: {
-									[ModelType.TEXT_LARGE]: async () => "Anthropic plugin stub - requires API key configuration",
-									[ModelType.TEXT_SMALL]: async () => "Anthropic plugin stub - requires API key configuration"
-								},
-								init: async () => {
-									logger.warn('Using stub Anthropic plugin due to Zod validation error');
-									return {};
-								}
-							}
-						};
+					// Read the package.json to find the entry point
+					const packageJsonPath = path.join(projectNodeModulesPath, 'package.json');
+					if (fs.existsSync(packageJsonPath)) {
+						const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+						const entryPoint = packageJson.module || packageJson.main || 'dist/index.js';
+						const fullEntryPath = path.join(projectNodeModulesPath, entryPoint);
+						
+						logger.debug(`Found entry point in package.json: ${entryPoint}`);
+						logger.debug(`Importing from: ${fullEntryPath}`);
+						
+						pluginModule = await import(fullEntryPath);
+						logger.debug(`Successfully loaded plugin from project node_modules: ${plugin}`);
+					} else {
+						// Fallback to a common pattern if package.json doesn't exist
+						const commonEntryPath = path.join(projectNodeModulesPath, 'dist/index.js');
+						logger.debug(`No package.json found, trying common entry point: ${commonEntryPath}`);
+						pluginModule = await import(commonEntryPath);
+						logger.debug(`Successfully loaded plugin from common entry point: ${plugin}`);
 					}
-				} else {
-					logger.error(`Failed to install plugin ${plugin}: ${error}`);
-					
-					// Create a minimal stub to keep things running
-					const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
-					pluginModule = {
-						default: {
-							name: pluginName,
-							description: `${pluginName} plugin (error stub)`,
-							init: async () => {
-								logger.warn(`Using minimal stub for ${pluginName} plugin due to import error`);
-								return {};
-							}
-						}
-					};
+				} catch (projectImportError) {
+						logger.error(`Failed to install plugin ${plugin}: ${importError}`);
+						logger.error(`Also failed to import from project node_modules: ${projectImportError.message}`);
 				}
 			}
-		}
-		
-		if (!pluginModule) {
-			logger.error(`Failed to load plugin ${plugin}, using minimal stub`);
-			
-			// Create a minimal stub to prevent undefined errors
-			const pluginName = plugin.split('/').pop()?.replace('plugin-', '') || plugin;
-			pluginModule = {
-				default: {
-					name: pluginName,
-					description: `${pluginName} plugin (minimal stub)`,
-					init: async () => {
-						logger.warn(`Using minimal stub for ${pluginName} plugin`);
-						return {};
-					}
-				}
-			};
 		}
 		
 		// Process the plugin to get the actual plugin object
@@ -414,7 +361,7 @@ const startAgents = async (options: {
 	server.loadCharacterTryPath = loadCharacterTryPath;
 	server.jsonToCharacter = jsonToCharacter;
 
-	let serverPort =
+	const serverPort =
 		options.port || Number.parseInt(settings.SERVER_PORT || "3000");
 
 	// Try to find a project or plugin in the current directory
@@ -655,16 +602,6 @@ const startAgents = async (options: {
 		const { character: defaultElizaCharacter } = await import("../characters/eliza");
 		logger.info("Using default Eliza character with all plugins");
 		await startAgent(defaultElizaCharacter, server);
-	}
-
-	// Rest of the function remains the same...
-	while (!(await checkPortAvailable(serverPort))) {
-		logger.warn(`Port ${serverPort} is in use, trying ${serverPort + 1}`);
-		serverPort++;
-	}
-
-	if (serverPort !== Number.parseInt(settings.SERVER_PORT || "3000")) {
-		logger.info(`Server started on alternate port ${serverPort}`);
 	}
 
 	// Display link to the client UI

@@ -1,6 +1,7 @@
 import type { MessageExample } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import {
+	boolean,
 	jsonb,
 	pgTable,
 	text,
@@ -18,6 +19,7 @@ export const agentTable = pgTable(
 	"agents",
 	{
 		id: uuid("id").primaryKey().defaultRandom(),
+		enabled: boolean("enabled").default(true).notNull(),
 		createdAt: numberTimestamp("createdAt").default(sql`now()`).notNull(),
 
 		updatedAt: numberTimestamp("updatedAt").default(sql`now()`).notNull(),

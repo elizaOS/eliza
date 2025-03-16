@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import { Readable } from "node:stream";
 import type {
 	Agent,
 	Character,
@@ -12,13 +10,15 @@ import {
 	ChannelType,
 	ModelType,
 	composePrompt,
+	composePromptFromState,
 	createUniqueUuid,
 	logger,
 	messageHandlerTemplate,
-	parseJSONObjectFromText,
 	validateUuid
 } from "@elizaos/core";
 import express from "express";
+import fs from "node:fs";
+import { Readable } from "node:stream";
 import type { AgentServer } from "..";
 import { upload } from "../loader";
 
@@ -1618,18 +1618,27 @@ export function agentRouter(
 				createdAt: Date.now(),
 			};
 
-			let state = await runtime.composeState(userMessage);
+			// save message
+			await runtime.createMemory(memory, "messages");
 
-			const prompt = composePrompt({
+			console.log("*** memory", memory);
+
+			let state = await runtime.composeState(memory);
+
+			console.log("*** state", state);
+
+			const prompt = composePromptFromState({
 				state,
 				template: messageHandlerTemplate,
 			});
 
-			const responseText = await runtime.useModel(ModelType.TEXT_LARGE, {
+			console.log("*** prompt", prompt);
+
+			const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
 				prompt,
 			});
 
-			const response = parseJSONObjectFromText(responseText) as Content;
+			console.log("*** response", response);
 
 			if (!response) {
 				res.status(500).json({
