@@ -553,7 +553,7 @@
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-anthropic": "workspace:*",
+        "@elizaos/plugin-anthropic": "1.0.0-alpha.63",
         "@elizaos/plugin-discord": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
