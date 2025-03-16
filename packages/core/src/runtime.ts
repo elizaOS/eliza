@@ -553,7 +553,7 @@ export class AgentRuntime implements IAgentRuntime {
       count: 5,
       match_threshold: 0.1,
     });
-    
+
     const uniqueSources = [
       ...new Set(
         fragments
@@ -561,8 +561,8 @@ export class AgentRuntime implements IAgentRuntime {
             this.runtimeLogger.log(
               `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
             );
-            return memory?.metadata?.type === MemoryType.FRAGMENT 
-              ? memory?.metadata?.documentId 
+            return memory?.metadata?.type === MemoryType.FRAGMENT
+              ? memory?.metadata?.documentId
               : undefined;
           })
           .filter(Boolean)
@@ -647,14 +647,14 @@ export class AgentRuntime implements IAgentRuntime {
           type: MemoryType.DOCUMENT,
           timestamp: Date.now(),
         };
-        
+
         const pathMatch = item.match(/^Path: (.+?)(?:\n|\r\n)/);
         if (pathMatch) {
           const filePath = pathMatch[1].trim();
           const extension = filePath.split('.').pop() || '';
           const filename = filePath.split('/').pop() || '';
           const title = filename.replace(`.${extension}`, '');
-          
+
           metadata = {
             ...metadata,
             path: filePath,
@@ -663,7 +663,7 @@ export class AgentRuntime implements IAgentRuntime {
             title: title,
             fileType: `text/${extension || 'plain'}`,
             fileSize: item.length,
-            source: "character"
+            source: 'character',
           };
         }
 
