@@ -109,7 +109,6 @@
     "core-js",
     "core-js-pure",
     "cpu-features",
-    "es5-ext",
     "esbuild",
     "node-llama-cpp",
     "nx",
