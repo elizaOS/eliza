@@ -199,7 +199,7 @@ For detailed information about plugin development and usage, see the [ElizaOS Re
 To run multiple agents:
 
 ```bash
-pnpm start --characters="characters/agent1.json,characters/agent2.json"
+bun start --characters="characters/agent1.json,characters/agent2.json"
 ```
 
 Or use environment variables:

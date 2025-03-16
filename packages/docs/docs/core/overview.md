@@ -54,7 +54,7 @@ This architecture allows for dynamic composition of objects and extensible data 
 
 ### [Services](./services.md)
 
-Services connect agents to different platforms (Discord, Telegram, etc.) and provide specialized capabilities:
+Services connect agents to different platforms (Discord, X/Twitter, Telegram, etc.) and provide specialized capabilities:
 
 - **Platform Services**: Connect to external platforms
 - **Core Services**: Provide essential functionality (speech, vision, etc.)
@@ -267,4 +267,4 @@ Services provide a more comprehensive integration model than the previous "clien
 
 ## Getting Started
 
-To create your first ElizaOS project, see the [Quick Start Guide](../getting-started/quickstart.md) or explore the [Tutorials](../tutorials/your-first-agent.md) section.
+To create your first ElizaOS project, see the [Quick Start Guide](../quickstart.md) or explore the [Tutorials](../tutorials/your-first-agent.md) section.

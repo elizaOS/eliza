@@ -16,7 +16,7 @@ This package provides Twitter/X integration for the Eliza AI agent.
 ### Prerequisites
 
 - A Twitter/X Developer Account with API access
-- Node.js and pnpm installed
+- Node.js and bun installed
 - Discord bot (if using approval workflow)
 - ElevenLabs API key (if using Spaces with TTS)
 
@@ -122,10 +122,10 @@ Optional Discord-based approval system for tweets:
 
 ```bash
 # Run tests
-pnpm test
+bun test
 
 # Run with debug logging
-DEBUG=eliza:* pnpm start
+DEBUG=eliza:* bun start
 ```
 
 ### Common Issues

@@ -16,7 +16,7 @@ The TrustGo plugin enables fetching EVM account information from the TrustGo web
 ## Installation
 
 ```bash
-pnpm install @toddli/plugin-trustgo
+bun install @toddli/plugin-trustgo
 ```
 
 ## Configuration

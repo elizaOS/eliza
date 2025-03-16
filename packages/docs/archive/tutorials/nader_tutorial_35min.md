@@ -49,9 +49,9 @@ Untested in over a month, this might not work!
 ```
 git clone https://github.com/elizaOS/eliza-plugin-starter.git
 cd eliza-plugin-starter
-pnpm install
-pnpm tsc
-pnpm mock-eliza --characters=./characters/eternalai.character.json
+bun install
+bun tsc
+bun mock-eliza --characters=./characters/eternalai.character.json
 ```
 
 ### Option 2: Building from Scratch
@@ -296,19 +296,19 @@ const validateNasaConfig = (runtime: IAgentRuntime) => {
 
 ```bash
 # Using mock client
-pnpm mock-eliza --characters=./characters/eternalai.character.json
+bun mock-eliza --characters=./characters/eternalai.character.json
 ```
 
 ### Production Testing
 
 ```bash
 # Web interface
-pnpm start client
+bun start client
 # Visit localhost:5173
 
 # Twitter integration
 # Ensure Twitter credentials are configured in .env
-pnpm start
+bun start
 ```
 
 ---

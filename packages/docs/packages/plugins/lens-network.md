@@ -9,7 +9,7 @@ The Abstract plugin enables seamless token transfers on the Abstract testnet. It
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-lensNetwork
+bun install @elizaos/plugin-lensNetwork
 ```
 
 ## Configuration
@@ -85,17 +85,17 @@ Transfers tokens from the agent's wallet to another address.
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run the plugin:
 
 ```bash
-pnpm run dev
+bun run dev
 ```

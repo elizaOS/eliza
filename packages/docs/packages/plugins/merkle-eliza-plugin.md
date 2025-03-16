@@ -49,13 +49,13 @@ Agent: "Successfully market order BTC with 1000 pay and 10 leverage, Transaction
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm build
+bun build
 ```
 
 ## Dependencies

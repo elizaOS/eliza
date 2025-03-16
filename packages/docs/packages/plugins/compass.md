@@ -42,7 +42,7 @@ To install the plugin:
 
 ```
 npx elizaos plugins add @elizaos-plugins/plugin-compass
-pnpm run build
+bun run build
 ```
 
 before starting up eliza

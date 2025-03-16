@@ -19,7 +19,7 @@ This client leverages GitHub's REST API via the `@octokit/rest` library and incl
 
 Install the package as part of the Eliza framework:
 bash
-pnpm add @elizaos/client-github
+bun add @elizaos/client-github
 
 ## Configuration
 
@@ -112,13 +112,13 @@ await client.createCommit('Update configuration', [
 
 ```bash
 # Build the project
-pnpm run build
+bun run build
 
 # Development with watch mode
-pnpm run dev
+bun run dev
 
 # Lint the codebase
-pnpm run lint
+bun run lint
 ```
 
 ## Dependencies

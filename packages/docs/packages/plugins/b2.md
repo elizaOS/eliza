@@ -9,7 +9,7 @@ The B2 Network Plugin offers a set of features that can be integrated into the E
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-b2
+bun install @elizaos/plugin-b2
 ```
 
 ## Configuration
@@ -71,13 +71,13 @@ const TOKENS = {
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run linting:
 
 ```bash
-pnpm run lint
+bun run lint
 ```
 
 ## Dependencies

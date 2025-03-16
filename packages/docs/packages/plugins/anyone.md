@@ -5,7 +5,7 @@ A plugin for integrating Anyone protocol proxy services into Eliza agents.
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-anyone
+bun add @elizaos/plugin-anyone
 ```
 
 ## Features

@@ -27,7 +27,7 @@ This plugin serves as a unified interface for cross-chain interactions, allowing
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-multichain
+bun install @elizaos/plugin-multichain
 ```
 
 ## Configuration
@@ -194,13 +194,13 @@ const portfolioInfo = await eliza.getProvider('multichain');
 ## Testing
 
 ```bash
-pnpm test
+bun test
 ```
 
 Development mode:
 
 ```bash
-pnpm test:watch
+bun test:watch
 ```
 
 ## Dependencies

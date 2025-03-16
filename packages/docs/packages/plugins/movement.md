@@ -11,7 +11,7 @@ Movement Network plugin for Eliza OS. This plugin enables Movement Network block
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-movement
+bun add @elizaos/plugin-movement
 ```
 
 ## Instructions

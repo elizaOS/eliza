@@ -16,7 +16,7 @@ The plugin lets agents:
 ## Installation
 
 ```
-pnpm add @elizaos/plugin-lightlink
+bun add @elizaos/plugin-lightlink
 ```
 
 ## Configuration
@@ -88,8 +88,8 @@ Whats the contract address for the USDC (sometimes written as USDC.e) token on l
 
 1. Clone the repository
 2. Install dependencies:
-   pnpm install
+   bun install
 3. Build the plugin:
-   pnpm run build
+   bun run build
 4. Run tests:
-   pnpm test
+   bun test

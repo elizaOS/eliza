@@ -19,7 +19,7 @@ The EchoChambers plugin enables ELIZA to interact in chat rooms, providing conve
 1. Install the plugin package:
 
 ```bash
-pnpm install @elizaos/plugin-echochambers
+bun install @elizaos/plugin-echochambers
 ```
 
 OR copy the plugin code into your eliza project node_modules directory. (node_modules\@elizaos)
@@ -128,19 +128,19 @@ The plugin will automatically initialize when your character configuration inclu
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run in development mode:
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## API Reference

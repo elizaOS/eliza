@@ -8,7 +8,7 @@ npm-debug.log_
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
-.pnpm-debug.log*
+.bun-debug.log*
 
 # Caches
 

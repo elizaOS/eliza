@@ -11,7 +11,7 @@ See full info and docs at [Edwin docs](https://docs.edwin.finance).
 1. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 2. Configure environment variables for chains you want to support:
@@ -50,13 +50,13 @@ Find a meteora pool with high liquidity and add to td 10 USDC and 0.01 SOL.
 1. Build the plugin:
 
 ```bash
-pnpm build
+bun build
 ```
 
 2. Run in development mode:
 
 ```bash
-pnpm dev
+bun dev
 ```
 
 ## Dependencies

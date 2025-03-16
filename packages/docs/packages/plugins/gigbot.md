@@ -13,7 +13,7 @@ This package provides GigBot integration for the Eliza AI agent, enabling task a
 
 ### Prerequisites
 
-- Node.js and pnpm installed
+- Node.js and bun installed
 - Eliza runtime
 
 ### Step 1: Configure Environment Variables
@@ -117,10 +117,10 @@ Handles:
 
 ```bash
 # Run tests
-pnpm test
+bun test
 
 # Run with debug logging
-DEBUG=eliza:* pnpm start
+DEBUG=eliza:* bun start
 ```
 
 ### Common Issues

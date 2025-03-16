@@ -11,7 +11,7 @@ This plugin provides integration with the Isaac X API, enabling ElizaOS Agents t
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-isaacx
+bun add @elizaos/plugin-isaacx
 ```
 
 ## Configuration
@@ -66,10 +66,10 @@ interface IsaacXResponse {
 
 ```bash
 # Build the plugin
-pnpm build
+bun build
 
 # Run tests
-pnpm test
+bun test
 ```
 
 ## License

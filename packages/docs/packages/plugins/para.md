@@ -27,8 +27,8 @@ You can install the plugin using your preferred package manager:
 # npm
 npm install @elizaos/plugin-para
 
-# pnpm
-pnpm add @elizaos/plugin-para
+# bun
+bun add @elizaos/plugin-para
 
 # yarn
 yarn add @elizaos/plugin-para

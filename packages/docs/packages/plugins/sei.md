@@ -12,7 +12,7 @@ This plugin provides functionality to:
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-sei
+bun install @elizaos/plugin-sei
 ```
 
 ## Configuration
@@ -80,13 +80,13 @@ Assistant: 'Your wallet contains 10.5 SEI ($5.25 USD)...';
 ### Building
 
 ```bash
-pnpm build
+bun build
 ```
 
 ### Testing
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## Future Enhancements

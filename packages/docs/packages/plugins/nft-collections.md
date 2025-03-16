@@ -88,7 +88,7 @@ A powerful plugin for interacting with NFT collections, providing comprehensive 
 ### Installation
 
 ```bash
-pnpm add @elizaos/plugin-nft-collections
+bun add @elizaos/plugin-nft-collections
 ```
 
 ## Configuration
@@ -206,7 +206,7 @@ Social Metrics       350ms     60ms     2.8s
 ### Building
 
 ```bash
-pnpm build
+bun build
 ```
 
 ### Resource Usage

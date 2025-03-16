@@ -8,7 +8,7 @@ This plugin is a Proof of Concept (POC) implementation for Trikon token transfer
 
 ## Installation
 
-pnpm add @elizaos/plugin-trikon
+bun add @elizaos/plugin-trikon
 
 ## Configuration
 

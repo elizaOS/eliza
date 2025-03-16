@@ -98,70 +98,18 @@ bun start # npm will work too
 
 ### Interact via Browser
 
-Once the agent is running, you should see the message to run "bun start:client" at the end.
+Once the agent is running, you can visit http://localhost:3000 to interact with your agent through a web interface. The interface provides:
 
-Open another terminal, move to the same directory, run the command below, then follow the URL to chat with your agent.
-
-```bash
-bun start:client
-```
-
-Then read the [Documentation](https://elizaos.github.io/eliza/) to learn how to customize your Eliza.
+- Real-time chat with your agent
+- Character configuration options
+- Plugin management
+- Memory and conversation history
 
 ---
 
 ### Automatically Start Eliza
 
 The start script provides an automated way to set up and run Eliza:
-
-```bash
-sh scripts/start.sh
-```
-
-For detailed instructions on using the start script, including character management and troubleshooting, see our [Start Script Guide](./docs/docs/guides/start-script.md).
-
-> **Note**: The start script handles all dependencies, environment setup, and character management automatically.
-
----
-
-### Modify Character
-
-1. Open `packages/core/src/defaultCharacter.ts` to modify the default character. Uncomment and edit.
-
-2. To load custom characters:
-   - Use `bun start --characters="path/to/your/character.json"`
-   - Multiple character files can be loaded simultaneously
-3. Connect with X (Twitter)
-   - change `"clients": []` to `"clients": ["twitter"]` in the character file to connect with X
-
----
-
-#### Additional Requirements
-
-You may need to install Sharp. If you see an error when starting up, try installing it with the following command:
-
-```
-bun install --include=optional sharp
-```
-
----
-
-### Deploy Eliza in one click
-
-Use [Fleek](https://fleek.xyz/eliza/) to deploy Eliza in one click. This opens Eliza to non-developers and provides the following options to build your agent:
-
-1. Start with a template
-2. Build characterfile from scratch
-3. Upload pre-made characterfile
-
-Click [here](https://fleek.xyz/eliza/) to get started!
-
----
-
-### Community & contact
-
-- [GitHub Issues](https://github.com/elizaos/eliza/issues). Best for: bugs you encounter using Eliza, and feature proposals.
-- [Discord](https://discord.gg/ai16z). Best for: sharing your applications and hanging out with the community.
 
 ## Citation
 

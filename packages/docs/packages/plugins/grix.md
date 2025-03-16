@@ -41,7 +41,7 @@ Retrieves real-time price data:
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-grix
+bun add @elizaos/plugin-grix
 ```
 
 ## Configuration
@@ -88,7 +88,7 @@ GRIX_API_KEY=your_api_key
 ### Building
 
 ```bash
-pnpm build
+bun build
 ```
 
 ### Running with Eliza
@@ -96,7 +96,7 @@ pnpm build
 1. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 2. Configure your API key using one of the methods described in the Configuration section
@@ -104,7 +104,7 @@ pnpm install
 3. Start Eliza with your character:
 
 ```bash
-pnpm start --character="characters/your_character.character.json"
+bun start --character="characters/your_character.character.json"
 ```
 
 ## License

@@ -35,8 +35,8 @@ You can install Gramine packages in your SGX machine or use the docker image. Fo
 Then, start eliza in SGX:
 
 ```bash
-pnpm i
-pnpm build
+bun i
+bun build
 
 # Start default character
 SGX=1 make start
@@ -77,7 +77,7 @@ gramine-sgx-gen-private-key
 
 cd /root/eliza/
 
-# Install nodejs and pnpm
+# Install nodejs and bun
 # Node.js will be installed at `/usr/bin/node`.
 # Gramine will utilize this path as the default Node.js location to run Eliza.
 # If you prefer to use nvm for installing Node.js, please ensure to specify the Node.js path in the Makefile, as the installation path for nvm is not `/usr/bin/node`.
@@ -86,11 +86,11 @@ apt install -y build-essential
 apt install -y curl
 curl -fsSL https://deb.nodesource.com/setup_23.x | bash -
 apt install -y nodejs=23.3.0-1nodesource1
-npm install -g pnpm
+npm install -g bun
 
 # Build Eliza
-pnpm i
-pnpm build
+bun i
+bun build
 
 # Copy the .env.example file to .env
 cp .env.example .env
