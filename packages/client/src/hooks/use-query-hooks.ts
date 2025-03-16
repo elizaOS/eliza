@@ -527,15 +527,15 @@ export function useDeleteLog() {
 /**
  * Fetches memories for a specific agent, optionally filtered by room
  */
-export function useAgentMemories(agentId: UUID, roomId?: UUID) {
+export function useAgentMemories(agentId: UUID, tableName?: string, roomId?: UUID) {
 	const queryKey = roomId 
-		? ['agents', agentId, 'rooms', roomId, 'memories'] 
-		: ['agents', agentId, 'memories'];
+		? ['agents', agentId, 'rooms', roomId, 'memories', tableName] 
+		: ['agents', agentId, 'memories', tableName];
 	
 	return useQuery({
 		queryKey,
 		queryFn: async () => {
-			const result = await apiClient.getAgentMemories(agentId, roomId);
+			const result = await apiClient.getAgentMemories(agentId, roomId, tableName);
 			return result.data || [];
 		},
 		staleTime: 1000,
@@ -566,7 +566,7 @@ export function useDeleteMemory() {
 				predicate: (query) => query.queryKey.length > 3 && query.queryKey[4] === 'memories'
 			});
 		},
-});
+	});
 }
 
 /**

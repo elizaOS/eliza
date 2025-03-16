@@ -1479,9 +1479,12 @@ export function agentRouter(
 			return;
 		}
 
+		// Get tableName from query params, default to "messages"
+		const tableName = req.query.tableName as string || "messages";
+
 		const memories = await runtime.getMemories({
 			agentId,
-			tableName: "messages",
+			tableName,
 		});
 
 		const cleanMemories = memories.map((memory) => {
@@ -1705,108 +1708,7 @@ export function agentRouter(
 	});
 
 	// Knowledge management routes
-	router.get("/:agentId/knowledge", async (req, res) => {
-		const agentId = validateUuid(req.params.agentId);
-
-		if (!agentId) {
-			res.status(400).json({
-				success: false,
-				error: {
-					code: "INVALID_ID",
-					message: "Invalid agent ID format",
-				},
-			});
-			return;
-		}
-
-		const runtime = agents.get(agentId);
-
-		if (!runtime) {
-			res.status(404).json({
-				success: false,
-				error: {
-					code: "NOT_FOUND",
-					message: "Agent not found",
-				},
-			});
-			return;
-		}
-
-		try {
-			// Get knowledge documents from the agent's database
-			const memories = await runtime.getMemories({
-				roomId: agentId,
-				tableName: "documents",
-			});
-			
-			res.json({ 
-				success: true, 
-				data: memories.map(memory => {
-					// Access metadata safely
-					const metadata = memory.metadata || {};
-					// Access content metadata for filename, type, and size
-					const contentMetadata = memory.content?.metadata as Record<string, any> || {};
-					
-					// Extract filename from content text if available
-					let filename = contentMetadata.filename || "Unknown Document";
-					let preview = 'No preview available';
-					
-					// Try to extract path/filename from content text
-					if (memory.content?.text) {
-						const pathMatch = memory.content?.text.match(/Path: ([^\n]+)/);
-						if (pathMatch?.[1]) {
-							filename = pathMatch[1];
-						}
-						
-						// Get preview text - skip the Path: line and empty lines
-						const textLines = memory.content?.text.split('\n');
-						const startIndex = textLines.findIndex(line => line.startsWith('Path:')) + 1;
-						// Skip empty lines after the Path: line
-						let contentStartIndex = startIndex;
-						while (contentStartIndex < textLines.length && textLines[contentStartIndex].trim() === '') {
-							contentStartIndex++;
-						}
-						
-						const previewText = textLines.slice(contentStartIndex).join('\n').trim();
-						preview = previewText.length > 0 ? 
-							`${previewText.substring(0, 150)}${previewText.length > 150 ? '...' : ''}` : 
-							'No preview available';
-					}
-					
-					// Determine file type based on filename extension
-					const fileExt = filename.split('.').pop()?.toLowerCase() || '';
-					let fileType = contentMetadata.fileType || "text/plain";
-					
-					if (fileExt === 'md') {
-						fileType = "text/markdown";
-					} else if (fileExt === 'ts' || fileExt === 'tsx') {
-						fileType = "application/typescript";
-					}
-					
-					return {
-						id: memory.id,
-						filename: filename,
-						type: fileType,
-						size: contentMetadata.size || memory.content?.text?.length || 0,
-						uploadedAt: (metadata as any).timestamp || Date.now(),
-						preview: preview
-					};
-				})
-			});
-		} catch (error) {
-			logger.error(`[KNOWLEDGE GET] Error retrieving knowledge: ${error}`);
-			res.status(500).json({
-				success: false,
-				error: {
-					code: 500,
-					message: "Failed to retrieve knowledge",
-					details: error.message,
-				},
-			});
-		}
-	});
-
-	router.post("/:agentId/knowledge", upload.array("files"), async (req, res) => {
+	router.post("/:agentId/memories/upload-knowledge", upload.array("files"), async (req, res) => {
 		const agentId = validateUuid(req.params.agentId);
 
 		if (!agentId) {
@@ -1932,57 +1834,6 @@ export function agentRouter(
 				error: {
 					code: 500,
 					message: "Failed to upload knowledge",
-					details: error.message,
-				},
-			});
-		}
-	});
-
-	router.delete("/:agentId/knowledge/:knowledgeId", async (req, res) => {
-		const agentId = validateUuid(req.params.agentId);
-		const knowledgeId = validateUuid(req.params.knowledgeId);
-
-		if (!agentId || !knowledgeId) {
-			res.status(400).json({
-				success: false,
-				error: {
-					code: "INVALID_ID",
-					message: "Invalid agent ID or knowledge ID format",
-				},
-			});
-			return;
-		}
-
-		const runtime = agents.get(agentId);
-
-		if (!runtime) {
-			res.status(404).json({
-				success: false,
-				error: {
-					code: "NOT_FOUND",
-					message: "Agent not found",
-				},
-			});
-			return;
-		}
-		
-		try {
-			// Delete the main document
-			await runtime.deleteMemory(knowledgeId);
-			
-			res.json({
-				success: true,
-				data: {
-					message: "Knowledge item and its fragments deleted successfully",
-				},
-			});
-		} catch (error) {
-			logger.error(`[KNOWLEDGE DELETE] Error deleting knowledge: ${error}`);
-			res.status(500).json({
-				success: false,
-				error: {
-					code: 500,
-					message: "Failed to delete knowledge",
 					details: error.message,
 				},
 			});
