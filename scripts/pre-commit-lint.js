@@ -3,31 +3,39 @@
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
-// Get all staged files
-const stagedFiles = execSync('git diff --cached --name-only --diff-filter=ACMR')
-  .toString()
-  .trim()
-  .split('\n')
-  .filter(Boolean);
+// Log that we're starting
+console.log('Running pre-commit hook...');
 
-if (stagedFiles.length === 0) {
-  console.log('No staged files to lint');
-  process.exit(0);
-}
-
-// Filter for files we want to process
-const filesToLint = stagedFiles.filter((file) => {
-  const extensions = ['.js', '.jsx', '.ts', '.tsx', '.json', '.css', '.md'];
-  return extensions.some((ext) => file.endsWith(ext));
-});
-
-if (filesToLint.length === 0) {
-  console.log('No matching files to lint');
-  process.exit(0);
-}
-
-// Run prettier on the files
 try {
+  // Get all staged files using git diff --staged instead
+  console.log('Checking for staged files...');
+  const stagedFiles = execSync('git diff --staged --name-only')
+    .toString()
+    .trim()
+    .split('\n')
+    .filter(Boolean);
+
+  console.log(`Found ${stagedFiles.length} staged files.`);
+
+  if (stagedFiles.length === 0) {
+    console.log('No staged files to lint');
+    process.exit(0);
+  }
+
+  // Filter for files we want to process
+  const filesToLint = stagedFiles.filter((file) => {
+    const extensions = ['.js', '.jsx', '.ts', '.tsx', '.json', '.css', '.md'];
+    return extensions.some((ext) => file.endsWith(ext));
+  });
+
+  console.log(`Found ${filesToLint.length} files to format: ${filesToLint.join(', ')}`);
+
+  if (filesToLint.length === 0) {
+    console.log('No matching files to lint');
+    process.exit(0);
+  }
+
+  // Run prettier on the files
   console.log('Running prettier on staged files...');
   const fileList = filesToLint.join(' ');
   execSync(`bun prettier --write ${fileList}`, { stdio: 'inherit' });

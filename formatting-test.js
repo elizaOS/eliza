@@ -1,6 +1,8 @@
-// This file has intentional formatting issues for testing the pre-commit hook
-function badlyFormattedFunction() {
-  const greeting = 'hello world';
-  console.log(greeting);
-  return 1 + 1;
+// This file has VERY BAD formatting issues for testing
+function reallyBadlyFormattedFunction() {
+  const newGreeting = 'THIS IS A TEST';
+  for (let i = 0; i < 5; i++) {
+    console.log(newGreeting + i);
+  }
+  return 1 + 2 + 3 + 4 + 5;
 }
