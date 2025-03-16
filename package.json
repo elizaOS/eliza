@@ -89,10 +89,6 @@
     "form-data": "4.0.2"
   },
   "trustedDependencies": [
-    "@elizaos/plugin-browser",
-    "@elizaos/plugin-pdf",
-    "@elizaos/plugin-storage-s3",
-    "@elizaos/plugin-video-understanding",
     "@swc/core",
     "bigint-buffer",
     "bufferutil",
