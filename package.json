@@ -15,6 +15,7 @@
     "lint:format": "bun run format && bun run format:check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "pre-commit": "bun run scripts/pre-commit-lint.js",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
     "release:alpha": "lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
@@ -25,27 +26,29 @@
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
     "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/the-org --filter=!./packages/docs --filter=!./packages/plugin-video-understanding",
-    "test:app": "turbo run test --concurrency 20 --filter=./packages/app"
+    "test:app": "turbo run test --concurrency 20 --filter=./packages/app",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^22.13.10",
+    "@types/uuid": "^9.0.8",
     "@vitest/eslint-plugin": "1.0.1",
     "bun": "1.2.5",
     "concurrently": "9.1.0",
     "cross-env": "7.0.3",
-    "husky": "9.1.7",
+    "husky": "^9.1.7",
     "lerna": "8.1.4",
+    "lint-staged": "^15.5.0",
     "only-allow": "^1.2.1",
     "prettier": "3.5.3",
     "sharp": "0.33.5",
+    "tsup": "8.4.0",
     "turbo": "^2.4.4",
     "typedoc": "0.27.9",
     "typescript": "5.8.2",
     "vite": "5.4.12",
-    "vitest": "3.0.5",
-    "@types/uuid": "^9.0.8",
-    "tsup": "8.4.0"
+    "vitest": "3.0.5"
   },
   "bun": {
     "overrides": {

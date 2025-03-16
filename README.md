@@ -185,3 +185,15 @@ We now have a [paper](https://arxiv.org/pdf/2501.06781) you can cite for the Eli
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=elizaos/eliza&type=Date)](https://star-history.com/#elizaos/eliza&Date)
+
+## Git Hooks
+
+This project uses git hooks to ensure code quality:
+
+- **pre-commit**: Automatically formats staged files using Prettier before committing
+
+To run the pre-commit hook manually:
+
+```bash
+bun run pre-commit
+```
