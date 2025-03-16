@@ -11,9 +11,9 @@ import {
   type Task,
   type UUID,
   type World,
+  type Log,
   logger,
 } from '@elizaos/core';
-import type { Log } from '@elizaos/core';
 import {
   Column,
   and,

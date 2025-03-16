@@ -1,23 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type Character, logger, validateCharacterConfig } from '@elizaos/core';
+import { type Character, logger } from '@elizaos/core';
 import multer from 'multer';
 import { character as defaultCharacter } from '../characters/eliza';
-import os from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Define directory for uploads
-export const UPLOADS_DIR = path.join(os.tmpdir(), 'elizaos-uploads');
-
-// Ensure directory exists
-function ensureDirectoryExists(dir: string): void {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
 
 /**
  * Attempts to load a file from the given file path.
@@ -65,8 +54,6 @@ export async function loadCharactersFromUrl(url: string): Promise<Character[]> {
  * @returns {Promise<Character>} - A Promise that resolves to a Character object.
  */
 export async function jsonToCharacter(character: any): Promise<Character> {
-  validateCharacterConfig(character);
-
   // .id isn't really valid
   const characterId = character.id || character.name;
   const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/ /g, '_')}.`;
