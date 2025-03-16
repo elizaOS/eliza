@@ -2,8 +2,8 @@ import {
 	type IAgentRuntime,
 	type IPdfService,
 	Service,
-	type ServiceTypeName,
 	ServiceType,
+	type ServiceTypeName,
 } from "@elizaos/core";
 import { type PDFDocumentProxy, getDocument } from "pdfjs-dist";
 import type {

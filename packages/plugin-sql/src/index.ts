@@ -5,10 +5,10 @@ import {
 	type Plugin,
 	logger
 } from "@elizaos/core";
-import { PgliteDatabaseAdapter } from "./pglite/adapter";
-import { PGliteClientManager } from "./pglite/manager";
 import { PgDatabaseAdapter } from "./pg/adapter";
 import { PostgresConnectionManager } from "./pg/manager";
+import { PgliteDatabaseAdapter } from "./pglite/adapter";
+import { PGliteClientManager } from "./pglite/manager";
 
 /**
  * Global Singleton Instances (Package-scoped)

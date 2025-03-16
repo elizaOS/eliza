@@ -7,8 +7,8 @@ import {
 	type Media,
 	ModelType,
 	Service,
-	type ServiceTypeName,
 	ServiceType,
+	type ServiceTypeName,
 	logger,
 	stringToUuid,
 } from "@elizaos/core";

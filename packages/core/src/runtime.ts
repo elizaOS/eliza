@@ -21,6 +21,7 @@ import type {
   KnowledgeItem,
   Log,
   Memory,
+  MemoryMetadata,
   ModelParamsMap,
   ModelResultMap,
   ModelTypeName,
@@ -1553,7 +1554,9 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async getMemories(params: {
-    roomId: UUID;
+    entityId?: UUID;
+    agentId?: UUID;
+    roomId?: UUID;
     count?: number;
     unique?: boolean;
     tableName: string;
@@ -1618,6 +1621,10 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.createMemory(memory, tableName, unique);
   }
 
+  async updateMemory(memory: Partial<Memory> & { id: UUID, metadata?: MemoryMetadata }): Promise<boolean> {
+    return await this.adapter.updateMemory(memory);
+  }
+  
   async deleteMemory(memoryId: UUID): Promise<void> {
     await this.adapter.deleteMemory(memoryId);
   }
