@@ -8,6 +8,8 @@ Actions define how agents respond to and interact with messages. They enable age
 
 ## Overview
 
+Actions are core components that define an agent's capabilities and how it can respond to conversations. Each action represents a distinct operation that an agent can perform, ranging from simple replies to complex interactions with external systems.
+
 1. Structure:
 
 An Action consists of:
@@ -20,155 +22,280 @@ An Action consists of:
 - `examples`: Sample usage patterns
 - `suppressInitialMessage`: Optional flag to suppress initial response
 
-2. Validation:
+2. Agent Decision Flow:
 
-- Checks if the action can be executed
-- Consider conversation state
-- Validate required
+When a message is received:
+
+- The agent evaluates all available actions using their validation functions
+- Valid actions are provided to the LLM via the `actionsProvider`
+- The LLM decides which action(s) to execute
+- Each action's handler generates a response including a "thought" component (agent's internal reasoning)
+- The response is processed and sent back to the conversation
+
+3. Integration:
+
+Actions work in concert with:
+
+- **Providers** - Supply context before the agent decides what action to take
+- **Evaluators** - Process conversations after actions to extract insights and update memory
+- **Services** - Enable actions to interact with external systems
 
 ---
 
 ## Implementation
 
+The core Action interface includes the following components:
+
 ```typescript
 interface Action {
-  name: string;
-  similes: string[];
-  description: string;
+  name: string; // Unique identifier
+  similes: string[]; // Alternative names/triggers
+  description: string; // Purpose and usage explanation
+  validate: (runtime: IAgentRuntime, message: Memory, state?: State) => Promise<boolean>;
+  handler: (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: any,
+    callback?: HandlerCallback
+  ) => Promise<boolean>;
   examples: ActionExample[][];
-  handler: Handler;
-  validate: Validator;
-  suppressInitialMessage?: boolean;
+  suppressInitialMessage?: boolean; // Optional flag
+}
+
+// Handler callback for generating responses
+type HandlerCallback = (content: Content) => Promise<void>;
+
+// Response content structure
+interface Content {
+  text: string;
+  thought?: string; // Internal reasoning (not shown to users)
+  actions?: string[]; // List of action names being performed
+  action?: string; // Legacy single action name
+  attachments?: Attachment[]; // Optional media attachments
 }
 ```
 
-Source: https://github.com/elizaOS/eliza/blob/main/packages/core/src/types.ts
-
 ### Basic Action Template
+
+Here's a simplified template for creating a custom action:
 
 ```typescript
 const customAction: Action = {
   name: 'CUSTOM_ACTION',
   similes: ['ALTERNATE_NAME', 'OTHER_TRIGGER'],
   description: 'Detailed description of when and how to use this action',
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
-    // Validation logic
-    return true;
+
+  validate: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+    // Logic to determine if this action applies to the current message
+    // Should be efficient and quick to check
+    return true; // Return true if action is valid for this message
   },
-  handler: async (runtime: IAgentRuntime, message: Memory) => {
-    // Implementation logic
-    return true;
+
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: any,
+    callback?: HandlerCallback
+  ) => {
+    // Implementation logic - what the action actually does
+
+    // Generate a response with thought and text components
+    const responseContent = {
+      thought: 'Internal reasoning about what to do (not shown to users)',
+      text: 'The actual message to send to the conversation',
+      actions: ['CUSTOM_ACTION'], // List of actions being performed
+    };
+
+    // Send the response using the callback
+    if (callback) {
+      await callback(responseContent);
+    }
+
+    return true; // Return true if action executed successfully
   },
+
   examples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{name1}}',
         content: { text: 'Trigger message' },
       },
       {
-        user: '{{user2}}',
-        content: { text: 'Response', action: 'CUSTOM_ACTION' },
+        name: '{{name2}}',
+        content: {
+          text: 'Response',
+          thought: 'Internal reasoning',
+          actions: ['CUSTOM_ACTION'],
+        },
       },
     ],
   ],
 };
 ```
 
-#### Character File Example
+### Character File Example
 
-Actions can be used in character files as well. Here's an example from: https://github.com/elizaOS/characters/blob/main/sbf.character.json
+Actions can be referenced in character files to define how an agent should respond to specific types of messages:
 
 ```json
-    "messageExamples": [
-        [
-            {
-                "user": "{{user1}}",
-                "content": {
-                    "text": "Can you help transfer some SOL?"
-                }
-            },
-            {
-                "user": "SBF",
-                "content": {
-                    "text": "yeah yeah for sure, sending SOL is pretty straightforward. just need the recipient and amount. everything else is basically fine, trust me.",
-                    "action": "SEND_SOL"
-                }
+"messageExamples": [
+    [
+        {
+            "user": "{{user1}}",
+            "content": {
+                "text": "Can you help transfer some SOL?"
             }
-        ],
+        },
+        {
+            "user": "SBF",
+            "content": {
+                "text": "yeah yeah for sure, sending SOL is pretty straightforward. just need the recipient and amount. everything else is basically fine, trust me.",
+                "actions": ["SEND_SOL"]
+            }
+        }
+    ]
+]
+```
+
+### The Reply Action
+
+The most fundamental action is the `REPLY` action, which allows agents to respond to messages with text. It serves as the default action when no specialized behavior is needed:
+
+```typescript
+const replyAction: Action = {
+  name: 'REPLY',
+  similes: ['GREET', 'REPLY_TO_MESSAGE', 'SEND_REPLY', 'RESPOND', 'RESPONSE'],
+  description: 'Replies to the current conversation with the text from the generated message.',
+
+  validate: async (_runtime: IAgentRuntime) => true, // Always valid
+
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    _options: any,
+    callback: HandlerCallback
+  ) => {
+    // Compose state with necessary providers
+    state = await runtime.composeState(message, [
+      ...(message.content.providers ?? []),
+      'RECENT_MESSAGES',
+    ]);
+
+    // Generate response using LLM
+    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: composePromptFromState({
+        state,
+        template: replyTemplate,
+      }),
+    });
+
+    // Parse and format response
+    const responseContentObj = parseJSONObjectFromText(response);
+    const responseContent = {
+      thought: responseContentObj.thought,
+      text: responseContentObj.message || '',
+      actions: ['REPLY'],
+    };
+
+    // Send response via callback
+    await callback(responseContent);
+    return true;
+  },
+
+  examples: [
+    /* Examples omitted for brevity */
+  ],
+};
 ```
 
 ---
 
+## Actions Provider Integration
+
+The actions provider is responsible for making valid actions available to the agent's reasoning process. When a message is received:
+
+1. The provider validates all available actions against the current message
+2. It formats the valid actions for inclusion in the agent context
+3. This formatted information is used by the agent to decide which action(s) to take
+
+```typescript
+const actionsProvider: Provider = {
+  name: 'ACTIONS',
+  description: 'Possible response actions',
+  position: -1, // High priority provider
+  get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    // Validate all actions for this message
+    const actionPromises = runtime.actions.map(async (action: Action) => {
+      const result = await action.validate(runtime, message, state);
+      return result ? action : null;
+    });
+
+    const resolvedActions = await Promise.all(actionPromises);
+    const actionsData = resolvedActions.filter(Boolean);
+
+    // Format action information for the agent
+    const values = {
+      actionNames: `Possible response actions: ${formatActionNames(actionsData)}`,
+      actions: formatActions(actionsData),
+      actionExamples: composeActionExamples(actionsData, 10),
+    };
+
+    // Return data, values, and text representation
+    return {
+      data: { actionsData },
+      values,
+      text: [values.actionNames, values.actionExamples, values.actions]
+        .filter(Boolean)
+        .join('\n\n'),
+    };
+  },
+};
+```
+
 ## Example Implementations
 
-Actions can be found across various plugins in the Eliza ecosystem, with a comprehensive collection available at https://github.com/elizaos-plugins. Here are some notable examples:
+ElizaOS includes a wide variety of predefined actions across various plugins in the ecosystem. Here are some key categories:
+
+### Communication Actions
+
+- **REPLY**: Standard text response
+- **CONTINUE**: Extend the conversation
+- **IGNORE**: End the conversation or ignore irrelevant messages
 
 ### Blockchain and Token Actions
 
-- Transfers: `SEND_TOKEN`, `SEND_SOL`, `SEND_NEAR`, `SEND_AVAIL`, `SEND_TON`, `SEND_TOKENS`, `COSMOS_TRANSFER`, `CROSS_CHAIN_TRANSFER`
-- Token Management: `CREATE_TOKEN`, `GET_TOKEN_INFO`, `GET_BALANCE`, `GET_TOKEN_PRICE`, `TOKEN_SWAP`, `SWAP_TOKEN`, `EXECUTE_SPOT_TRADE`
-- Blockchain Interactions: `READ_CONTRACT`, `WRITE_CONTRACT`, `DEPLOY_CONTRACT`, `DEPLOY_TOKEN`, `GET_TRANSACTION`, `GET_CURRENT_NONCE`, `GET_CONTRACT_SCHEMA`
-
-### Cryptographic and Security Actions
-
-- Signature and Authentication: `ECDSA_SIGN`, `LIT_ACTION`, `REMOTE_ATTESTATION`, `AUTHENTICATE`
-- Wallet and Key Management: `ERC20_TRANSFER`, `WALLET_TRANSFER`, `BRIDGE_OPERATIONS`
-
-### Staking and Governance
-
-- Staking Actions: `STAKE`, `DELEGATE_TOKEN`, `UNDELEGATE_TOKEN`, `GET_STAKE_BALANCE`, `TOKENS_REDELEGATE`
-- Governance Actions: `VOTE_ON_PROPOSAL`, `PROPOSE`, `EXECUTE_PROPOSAL`, `QUEUE_PROPOSAL`
-
-### AI and Agent Management
-
-- Agent Creation: `LAUNCH_AGENT`, `START_SESSION`, `CREATE_AND_REGISTER_AGENT`
-- AI-Specific Actions: `GENERATE_IMAGE`, `DESCRIBE_IMAGE`, `GENERATE_VIDEO`, `GENERATE_MUSIC`, `GET_INFERENCE`, `GENERATE_MEME`
+- **SEND_TOKEN**: Transfer cryptocurrency
+- **CREATE_TOKEN**: Create a new token on a blockchain
+- **READ_CONTRACT/WRITE_CONTRACT**: Interact with smart contracts
 
 ### Media and Content Generation
 
-- Image and Multimedia: `SEND_GIF`, `GENERATE_3D`, `GENERATE_COLLECTION`, `MINT_NFT`, `LIST_NFT`, `SWEEP_FLOOR_NFT`
-- Audio and Voice: `EXTEND_AUDIO`, `CREATE_TTS`
+- **GENERATE_IMAGE**: Create images from text descriptions
+- **SEND_GIF**: Share animated content
+- **GENERATE_3D**: Create 3D content
 
-### Decentralized Infrastructure (DePIN)
+### AI and Agent Management
 
-- Project Interactions: `DEPIN_TOKENS`, `DEPIN_ON_CHAIN`, `ANALYZE_DEPIN_PROJECTS`
+- **LAUNCH_AGENT**: Create and start a new agent
+- **START_SESSION**: Begin an interactive session
+- **GENERATE_MEME**: Create humorous content
 
-### Search and Information Retrieval
+### Example Image Generation Action
 
-- Data Search: `WEB_SEARCH`, `GET_TOKEN_PRICE_BY_ADDRESS`, `GET_TRENDING_POOLS`, `GET_NEW_COINS`, `GET_MARKETS`
-
-### Blockchain and Trading
-
-- Specialized Actions: `GET_QUOTE_0X`, `EXECUTE_SWAP_0X`, `CANCEL_ORDERS`, `GET_INDICATIVE_PRICE`
-
-### Social and Communication
-
-- Platform Interactions: `TWEET`, `POST_TWEET`, `QUOTE`, `JOIN_VOICE`, `LEAVE_VOICE`, `TRANSCRIBE_MEDIA`, `SUMMARIZE_CONVERSATION`
-
-### Utility Actions
-
-- General Utilities: `FAUCET`, `SUBMIT_DATA`, `PRICE_CHECK`, `WEATHER`, `NEWS`
-
-Check out the [ElizaOS Plugins org](https://github.com/elizaos-plugins) on GitHub if interested in studying or using any of these.
-
-### Image Generation Action
-
-Here's a comprehensive example of an image generation action:
+Here's a more detailed example of an image generation action:
 
 ```typescript
-import { Action, IAgentRuntime, Memory, State } from '@elizaos/core';
-
-// Example image generation action
 const generateImageAction: Action = {
   name: 'GENERATE_IMAGE',
   similes: ['CREATE_IMAGE', 'MAKE_IMAGE', 'DRAW'],
   description: "Generates an image based on the user's description",
-  suppressInitialMessage: true, // Suppress initial response since we'll generate our own
+  suppressInitialMessage: true, // Don't send initial text response
 
-  // Validate if this action should be used
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     const text = message.content.text.toLowerCase();
-    // Check if message contains image generation triggers
     return (
       text.includes('generate') ||
       text.includes('create') ||
@@ -177,204 +304,145 @@ const generateImageAction: Action = {
     );
   },
 
-  // Handle the action execution
-  handler: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    _options?: any,
+    callback?: HandlerCallback
+  ) => {
     try {
-      // Get image service
+      // Get appropriate service
       const imageService = runtime.getService(ServiceType.IMAGE_GENERATION);
+
+      // Generate the response with thought component
+      const responseContent = {
+        thought:
+          "This request is asking for image generation. I'll use the image service to create a visual based on the user's description.",
+        text: "I'm generating that image for you now...",
+        actions: ['GENERATE_IMAGE'],
+      };
+
+      // Send initial response if callback provided
+      if (callback) {
+        await callback(responseContent);
+      }
 
       // Generate image
       const imageUrl = await imageService.generateImage(message.content.text);
 
-      // Create response with generated image
-      await runtime.messageManager.createMemory({
-        id: generateId(),
-        content: {
-          text: "Here's the image I generated:",
-          attachments: [
-            {
-              type: 'image',
-              url: imageUrl,
-            },
-          ],
+      // Create follow-up message with the generated image
+      await runtime.createMemory(
+        {
+          id: generateId(),
+          content: {
+            text: "Here's the image I generated:",
+            attachments: [
+              {
+                type: 'image',
+                url: imageUrl,
+              },
+            ],
+          },
+          agentId: runtime.agentId,
+          roomId: message.roomId,
         },
-        userId: runtime.agentId,
-        roomId: message.roomId,
-      });
+        'messages'
+      );
 
       return true;
     } catch (error) {
       console.error('Image generation failed:', error);
+
+      // Send error response if callback provided
+      if (callback) {
+        await callback({
+          thought: 'The image generation failed due to an error.',
+          text: "I'm sorry, I wasn't able to generate that image. There was a technical problem.",
+          actions: ['REPLY'],
+        });
+      }
+
       return false;
     }
   },
 
-  // Example usage patterns
   examples: [
-    [
-      {
-        user: '{{user1}}',
-        content: {
-          text: 'Can you generate an image of a sunset?',
-        },
-      },
-      {
-        user: '{{user2}}',
-        content: {
-          text: "I'll create that image for you",
-          action: 'GENERATE_IMAGE',
-        },
-      },
-    ],
+    /* Examples omitted for brevity */
   ],
 };
 ```
 
-### Basic Conversation Actions
+## Action-Evaluator-Provider Cycle
 
-You can find these samples in the plugin-bootstrap package: https://github.com/elizaOS/eliza/tree/main/packages/plugin-bootstrap/src/actions
+Actions are part of a larger cycle in ElizaOS agents:
 
-#### CONTINUE
+1. **Providers** fetch relevant context for decision-making
+2. **Actions** execute the agent's chosen response
+3. **Evaluators** process the conversation to extract insights
+4. These insights are stored in memory
+5. Future **Providers** can access these insights
+6. This informs future **Actions**
 
-For continuing conversations:
+For example:
 
-```typescript
-const continueAction: Action = {
-  name: 'CONTINUE',
-  similes: ['ELABORATE', 'GO_ON'],
-  description: 'Continues the conversation when appropriate',
-
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
-    // Check if message warrants continuation
-    const text = message.content.text.toLowerCase();
-    return (
-      text.includes('tell me more') ||
-      text.includes('what else') ||
-      text.includes('continue') ||
-      text.endsWith('?')
-    );
-  },
-
-  handler: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
-    // Get recent conversation context
-    const recentMessages = await runtime.messageManager.getMemories({
-      roomId: message.roomId,
-      count: 5,
-    });
-
-    // Generate contextual response
-    const response = await runtime.generateResponse(message, recentMessages, state);
-
-    // Store response
-    await runtime.messageManager.createMemory({
-      id: generateId(),
-      content: response,
-      userId: runtime.agentId,
-      roomId: message.roomId,
-    });
-
-    return true;
-  },
-
-  examples: [
-    [
-      {
-        user: '{{user1}}',
-        content: { text: 'Tell me more about that' },
-      },
-      {
-        user: '{{user2}}',
-        content: {
-          text: "I'll continue explaining...",
-          action: 'CONTINUE',
-        },
-      },
-    ],
-  ],
-};
-```
-
-#### IGNORE
-
-For ending conversations:
-
-```typescript
-const ignoreAction: Action = {
-  name: 'IGNORE',
-  similes: ['STOP_TALKING', 'END_CONVERSATION'],
-  description: 'Stops responding when conversation is complete or irrelevant',
-
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
-    const text = message.content.text.toLowerCase();
-    return (
-      text.includes('goodbye') || text.includes('bye') || text.includes('thanks') || text.length < 2
-    );
-  },
-
-  handler: async (runtime: IAgentRuntime, message: Memory) => {
-    // No response needed
-    return true;
-  },
-
-  examples: [
-    [
-      {
-        user: '{{user1}}',
-        content: { text: 'Thanks, goodbye!' },
-      },
-      {
-        user: '{{user2}}',
-        content: {
-          text: '',
-          action: 'IGNORE',
-        },
-      },
-    ],
-  ],
-};
-```
+- The FACTS provider retrieves relevant facts about users
+- The agent uses this context to decide on an appropriate action
+- After the action, the reflection evaluator extracts new facts and relationships
+- These are stored in memory and available for future interactions
+- This creates a virtuous cycle of continuous learning and improvement
 
 ---
 
 ## FAQ
 
-### What are Actions in Eliza?
+### What are Actions in ElizaOS?
 
-Actions are core building blocks that define how agents interact with messages and perform tasks beyond simple text responses.
+Actions are core components that define how agents respond to messages and perform tasks. They encapsulate specific behaviors and capabilities, ranging from simple text replies to complex interactions with external systems.
 
 ### How do Actions work?
 
-Actions consist of a name, description, validation function, and handler function that determine when and how an agent can perform a specific task.
+When a message is received, the agent evaluates all available actions using their validation functions. The agent then decides which action(s) to execute based on the message content and context. Each action's handler generates a response, which may include text, thought processes, and attachments.
 
-### What can Actions do?
+### What's the difference between actions and evaluators?
 
-Actions enable agents to interact with external systems, modify behavior, process complex workflows, and extend capabilities beyond conversational responses.
+Actions are executed during an agent's response to perform tasks and generate content. Evaluators run after responses to analyze conversations, extract information, and update the agent's memory. Actions are about doing, evaluators are about learning.
 
-### What are some example Actions?
+### What role do "thoughts" play in actions?
 
-Common actions include CONTINUE (extend dialogue), IGNORE (end conversation), GENERATE_IMAGE (create images), TRANSFER (move tokens), and READ_CONTRACT (retrieve blockchain data).
+The thought component provides an internal reasoning process for the agent, explaining its decision-making. These thoughts aren't shown to users but help with debugging and understanding the agent's behavior. They're similar to the self-reflection component in evaluators.
 
-### How do I create a custom Action?
+### How do I create a custom action?
 
-Define an action with a unique name, validation function to check eligibility, handler function to implement the logic, and provide usage examples.
+Define an action object with a name, similes, description, validation function, handler function, and examples. The validation function determines when the action should be used, while the handler contains the implementation logic and generates a response.
 
-### What makes a good Action?
+### Can actions be chained together?
 
-A good action has a clear, single purpose, robust input validation, comprehensive error handling, and provides meaningful interactions.
+Yes! Actions can call other actions or services as part of their implementation. This allows for complex workflows that combine multiple capabilities. For example, an action might first reply to a user, then generate an image, and finally store data in a database.
 
-### Can Actions be chained together?
+### How does an agent choose which action to use?
 
-Yes, actions can be composed and chained to create complex workflows and multi-step interactions.
+The agent uses the following process:
 
-### How are Actions different from tools?
+1. All actions are validated against the current message
+2. Valid actions are formatted and included in the agent's context
+3. The LLM decides which action(s) to execute based on the message and context
+4. The chosen action's handler is executed to generate a response
 
-Actions are more comprehensive, ensuring the entire process happens, while tools are typically more focused on specific, discrete operations.
+### How do actions integrate with services?
 
-### Where are Actions defined?
+Actions often use services to interact with external systems. The action handler can retrieve a service from the runtime (e.g., `imageService = runtime.getService(ServiceType.IMAGE_GENERATION)`) and then call methods on that service to perform operations.
 
-Actions can be defined in character files, plugins, or directly in agent configurations.
+### What's the difference between `actions` and `action` in responses?
+
+The `actions` array is the modern way to specify multiple actions being performed in a single response. The singular `action` field is maintained for backward compatibility but is deprecated in favor of the array format.
+
+### Can I add custom actions to an existing agent?
+
+Yes! You can create a plugin that defines new actions and then add that plugin to your agent's configuration. This allows you to extend the agent's capabilities without modifying its core implementation.
 
 ## Further Reading
 
-- [characterfile](./characterfile.md)
-- [providers](./providers.md)
+- [Evaluators](./evaluators.md)
+- [Providers](./providers.md)
+- [Services](./services.md)

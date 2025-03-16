@@ -2,349 +2,419 @@
 sidebar_position: 7
 ---
 
-# 💾 Database Adapters
+# 💾 Database System
 
-Database adapters provide persistent storage capabilities for ElizaOS agents. They handle memory storage, relationship tracking, and knowledge management across different database backends.
+The ElizaOS database system provides persistent storage capabilities for agents. It handles memory storage, entity relationships, knowledge management, and more through a flexible adapter-based architecture.
 
 ## Overview
 
-Database adapters implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAdapter) interface to provide consistent data access across different storage solutions. Each adapter optimizes for specific use cases:
+ElizaOS uses a unified database architecture based on Drizzle ORM with adapters that implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAdapter) interface. The current release includes support for:
 
-| Adapter                                                           | Best For                   | Key Features                                                          |
-| ----------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------- |
-| [MongoDB](https://github.com/elizaos-plugins/adapter-mongodb)     | Production deployments     | Sharding, vector search, real-time participant management             |
-| [PostgreSQL](https://github.com/elizaos-plugins/adapter-postgres) | Enterprise & vector search | Dynamic vector dimensions, fuzzy matching, comprehensive logging      |
-| [SQLite](https://github.com/elizaos-plugins/adapter-sqlite)       | Development & embedded     | Lightweight, file-based, vector BLOB support                          |
-| [Supabase](https://github.com/elizaos-plugins/adapter-supabase)   | Cloud-hosted vector DB     | Multiple embedding sizes, real-time subscriptions, row-level security |
-| [PGLite](https://github.com/elizaos-plugins/adapter-pglite)       | Browser environments       | Lightweight PostgreSQL implementation, HNSW indexing                  |
-| [Qdrant](https://github.com/elizaos-plugins/adapter-qdrant)       | Vector-focused deployments | Optimized for RAG applications, sophisticated preprocessing           |
-| [SQL.js](https://github.com/elizaos-plugins/adapter-sqljs)        | Browser environments       | Full SQLite functionality in browser, complex queries                 |
+| Adapter        | Best For                    | Key Features                                                      |
+| -------------- | --------------------------- | ----------------------------------------------------------------- |
+| **PGLite**     | Local development & testing | Lightweight PostgreSQL implementation running in Node.js process  |
+| **PostgreSQL** | Production deployments      | Full PostgreSQL with vector search, scaling, and high reliability |
+
+Additional database adapters will be supported in future releases as ElizaOS continues to evolve.
 
 ## Core Functionality
 
-All adapters extend the [`DatabaseAdapter`](/api/classes/DatabaseAdapter) base class and implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAdapter) interface. Here's a comprehensive overview of available methods:
+All database adapters extend the `BaseDrizzleAdapter` abstract class, which provides a comprehensive set of methods for managing all aspects of agent data:
 
-| Category                 | Method                        | Description                         | Parameters                                                                                                                                                      |
-| ------------------------ | ----------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ----- |
-| **Database Lifecycle**   |
-|                          | `init()`                      | Initialize database connection      | -                                                                                                                                                               |
-|                          | `close()`                     | Close database connection           | -                                                                                                                                                               |
-| **Memory Management**    |
-|                          | `createMemory()`              | Store new memory                    | `memory: Memory, tableName: string, unique?: boolean`                                                                                                           |
-|                          | `getMemoryById()`             | Retrieve specific memory            | `id: UUID`                                                                                                                                                      |
-|                          | `getMemories()`               | Get memories matching criteria      | `{ roomId: UUID, count?: number, unique?: boolean, tableName: string, agentId: UUID, start?: number, end?: number }`                                            |
-|                          | `getMemoriesByIds()`          | Get multiple memories by IDs        | `memoryIds: UUID[], tableName?: string`                                                                                                                         |
-|                          | `getMemoriesByRoomIds()`      | Get memories from multiple rooms    | `{ agentId: UUID, roomIds: UUID[], tableName: string, limit?: number }`                                                                                         |
-|                          | `searchMemories()`            | Search with vector similarity       | `{ tableName: string, agentId: UUID, roomId: UUID, embedding: number[], match_threshold: number, match_count: number, unique: boolean }`                        |
-|                          | `searchMemoriesByEmbedding()` | Search memories by embedding vector | `embedding: number[], { match_threshold?: number, count?: number, roomId?: UUID, agentId?: UUID, unique?: boolean, tableName: string }`                         |
-|                          | `deleteMemory()`              | Remove specific memory              | `memoryId: UUID, tableName: string`                                                                                                                             |
-|                          | `deleteAllMemories()`         | Remove all memories in room         | `roomId: UUID, tableName: string`                                                                                                                               |
-|                          | `countMemories()`             | Count memories in room              | `roomId: UUID, unique?: boolean, tableName?: string`                                                                                                            |
-| **Knowledge Management** |
-|                          | `createKnowledge()`           | Store new knowledge item            | `knowledge: RAGKnowledgeItem`                                                                                                                                   |
-|                          | `getKnowledge()`              | Retrieve knowledge                  | `{ id?: UUID, agentId: UUID, limit?: number, query?: string, conversationContext?: string }`                                                                    |
-|                          | `searchKnowledge()`           | Semantic knowledge search           | `{ agentId: UUID, embedding: Float32Array, match_threshold: number, match_count: number, searchText?: string }`                                                 |
-|                          | `removeKnowledge()`           | Remove knowledge item               | `id: UUID`                                                                                                                                                      |
-|                          | `clearKnowledge()`            | Remove all knowledge                | `agentId: UUID, shared?: boolean`                                                                                                                               |
-| **Room & Participants**  |
-|                          | `createRoom()`                | Create new conversation room        | `roomId?: UUID`                                                                                                                                                 |
-|                          | `getRoom()`                   | Get room by ID                      | `roomId: UUID`                                                                                                                                                  |
-|                          | `removeRoom()`                | Remove room                         | `roomId: UUID`                                                                                                                                                  |
-|                          | `addParticipant()`            | Add user to room                    | `userId: UUID, roomId: UUID`                                                                                                                                    |
-|                          | `removeParticipant()`         | Remove user from room               | `userId: UUID, roomId: UUID`                                                                                                                                    |
-|                          | `getParticipantsForRoom()`    | List room participants              | `roomId: UUID`                                                                                                                                                  |
-|                          | `getParticipantsForAccount()` | Get user's room participations      | `userId: UUID`                                                                                                                                                  |
-|                          | `getRoomsForParticipant()`    | Get rooms for user                  | `userId: UUID`                                                                                                                                                  |
-|                          | `getRoomsForParticipants()`   | Get shared rooms for users          | `userIds: UUID[]`                                                                                                                                               |
-|                          | `getParticipantUserState()`   | Get participant's state             | `roomId: UUID, userId: UUID`                                                                                                                                    |
-|                          | `setParticipantUserState()`   | Update participant state            | `roomId: UUID, userId: UUID, state: "FOLLOWED"                                                                                                                  | "MUTED" | null` |
-| **Account Management**   |
-|                          | `createAccount()`             | Create new user account             | `account: Account`                                                                                                                                              |
-|                          | `getAccountById()`            | Retrieve user account               | `userId: UUID`                                                                                                                                                  |
-|                          | `getActorDetails()`           | Get actor information               | `{ roomId: UUID }`                                                                                                                                              |
-| **Relationships**        |
-|                          | `createRelationship()`        | Create user connection              | `{ userA: UUID, userB: UUID }`                                                                                                                                  |
-|                          | `getRelationship()`           | Get relationship details            | `{ userA: UUID, userB: UUID }`                                                                                                                                  |
-|                          | `getRelationships()`          | Get all relationships               | `{ userId: UUID }`                                                                                                                                              |
-| **Goals**                |
-|                          | `createGoal()`                | Create new goal                     | `goal: Goal`                                                                                                                                                    |
-|                          | `updateGoal()`                | Update goal                         | `goal: Goal`                                                                                                                                                    |
-|                          | `updateGoalStatus()`          | Update goal status                  | `{ goalId: UUID, status: GoalStatus }`                                                                                                                          |
-|                          | `getGoals()`                  | Get goals matching criteria         | `{ agentId: UUID, roomId: UUID, userId?: UUID, onlyInProgress?: boolean, count?: number }`                                                                      |
-|                          | `removeGoal()`                | Remove specific goal                | `goalId: UUID`                                                                                                                                                  |
-|                          | `removeAllGoals()`            | Remove all goals in room            | `roomId: UUID`                                                                                                                                                  |
-| **Caching & Embedding**  |
-|                          | `getCachedEmbeddings()`       | Retrieve cached embeddings          | `{ query_table_name: string, query_threshold: number, query_input: string, query_field_name: string, query_field_sub_name: string, query_match_count: number }` |
-| **Logging**              |
-|                          | `log()`                       | Log event or action                 | `{ body: { [key: string]: unknown }, userId: UUID, roomId: UUID, type: string }`                                                                                |
+### Entity System
 
-### Implementation Notes
+| Method                 | Description                           |
+| ---------------------- | ------------------------------------- |
+| `createEntity()`       | Create a new entity                   |
+| `getEntityById()`      | Retrieve an entity by ID              |
+| `getEntitiesForRoom()` | Get all entities in a room            |
+| `updateEntity()`       | Update entity attributes              |
+| `getComponent()`       | Get a specific component of an entity |
+| `getComponents()`      | Get all components for an entity      |
+| `createComponent()`    | Add a component to an entity          |
+| `updateComponent()`    | Update a component                    |
+| `deleteComponent()`    | Remove a component                    |
 
-Each adapter optimizes these methods for their specific database backend:
+### Memory Management
 
-- **MongoDB**: Uses aggregation pipelines for vector operations
-- **PostgreSQL**: Leverages pgvector extension
-- **SQLite**: Implements BLOB storage for vectors
-- **Qdrant**: Optimizes with HNSW indexing
-- **Supabase**: Adds real-time capabilities
+| Method                        | Description                          |
+| ----------------------------- | ------------------------------------ |
+| `createMemory()`              | Store a new memory with metadata     |
+| `getMemoryById()`             | Retrieve a specific memory           |
+| `getMemories()`               | Get memories matching criteria       |
+| `getMemoriesByIds()`          | Get multiple memories by IDs         |
+| `getMemoriesByRoomIds()`      | Get memories from multiple rooms     |
+| `searchMemories()`            | Search memories by vector similarity |
+| `searchMemoriesByEmbedding()` | Search using raw embedding vector    |
+| `deleteMemory()`              | Remove a specific memory             |
+| `deleteAllMemories()`         | Remove all memories in a room        |
+| `countMemories()`             | Count memories matching criteria     |
 
-> Note: For detailed implementation examples, see each adapter's source repository (https://github.com/elizaos-plugins)
+### Room & Participant Management
 
-All adapters provide:
+| Method                       | Description                     |
+| ---------------------------- | ------------------------------- |
+| `createRoom()`               | Create a new conversation room  |
+| `getRoom()`                  | Get room by ID                  |
+| `getRooms()`                 | Get all rooms in a world        |
+| `updateRoom()`               | Update room attributes          |
+| `deleteRoom()`               | Remove a room                   |
+| `addParticipant()`           | Add entity to room              |
+| `removeParticipant()`        | Remove entity from room         |
+| `getParticipantsForEntity()` | Get all rooms an entity is in   |
+| `getParticipantsForRoom()`   | List entities in a room         |
+| `getParticipantUserState()`  | Get entity's state in a room    |
+| `setParticipantUserState()`  | Update entity's state in a room |
+
+### Relationship Management
+
+| Method                 | Description                            |
+| ---------------------- | -------------------------------------- |
+| `createRelationship()` | Create a relationship between entities |
+| `updateRelationship()` | Update relationship attributes         |
+| `getRelationship()`    | Get a specific relationship            |
+| `getRelationships()`   | Get all relationships for an entity    |
+
+### Caching System
+
+| Method          | Description            |
+| --------------- | ---------------------- |
+| `getCache()`    | Retrieve cached data   |
+| `setCache()`    | Store data in cache    |
+| `deleteCache()` | Remove data from cache |
+
+### World & Task Management
+
+| Method             | Description                 |
+| ------------------ | --------------------------- |
+| `createWorld()`    | Create a new world          |
+| `getWorld()`       | Get world by ID             |
+| `getAllWorlds()`   | List all worlds             |
+| `updateWorld()`    | Update world attributes     |
+| `removeWorld()`    | Delete a world              |
+| `createTask()`     | Create a new task           |
+| `getTasks()`       | Get tasks matching criteria |
+| `getTasksByName()` | Find tasks by name          |
+| `getTask()`        | Get task by ID              |
+| `updateTask()`     | Update task attributes      |
+| `deleteTask()`     | Remove a task               |
+
+### Agent Management
+
+| Method          | Description               |
+| --------------- | ------------------------- |
+| `createAgent()` | Create a new agent record |
+| `getAgent()`    | Get agent by ID           |
+| `getAgents()`   | List all agents           |
+| `updateAgent()` | Update agent attributes   |
+| `deleteAgent()` | Remove an agent           |
+| `countAgents()` | Count total agents        |
+
+### Embedding & Search
+
+| Method                        | Description                    |
+| ----------------------------- | ------------------------------ |
+| `ensureEmbeddingDimension()`  | Configure embedding dimensions |
+| `getCachedEmbeddings()`       | Retrieve cached embeddings     |
+| `searchMemories()`            | Vector search for memories     |
+| `searchMemoriesByEmbedding()` | Advanced vector search         |
+
+## Architecture
+
+ElizaOS uses a singleton pattern for database connections to ensure efficient resource usage:
+
+```
+┌─────────────────────────────────────┐
+│           AgentRuntime              │
+└───────────────┬─────────────────────┘
+                │
+                ▼
+┌─────────────────────────────────────┐
+│        IDatabaseAdapter             │
+└───────────────┬─────────────────────┘
+                │
+                ▼
+┌─────────────────────────────────────┐
+│       BaseDrizzleAdapter            │
+└───────────────┬─────────────────────┘
+                │
+        ┌───────┴───────┐
+        ▼               ▼
+┌───────────────┐ ┌─────────────────┐
+│ PGLiteAdapter │ │ PostgresAdapter │
+└───────┬───────┘ └────────┬────────┘
+        │                  │
+        ▼                  ▼
+┌───────────────┐ ┌─────────────────┐
+│PGLiteManager  │ │PostgresManager  │
+│  (Singleton)  │ │  (Singleton)    │
+└───────────────┘ └─────────────────┘
+```
+
+Each adapter is associated with a singleton connection manager that ensures only one database connection is maintained per process, regardless of how many agents are running.
+
+## Implementation
+
+### Initialization
+
+The database adapter is initialized through the SQL plugin:
 
 ```typescript
-interface IDatabaseAdapter {
-  // Memory Management
-  createMemory(memory: Memory, tableName: string): Promise<void>;
-  getMemories(params: { roomId: UUID; count?: number }): Promise<Memory[]>;
-  searchMemories(params: SearchParams): Promise<Memory[]>;
-  deleteMemory(memoryId: UUID): Promise<void>;
+// Plugin registration in project configuration
+const project = {
+  plugins: ['@elizaos/plugin-sql'],
+  // ...
+};
+```
 
-  // Account & Room Management
-  createAccount(account: Account): Promise<boolean>;
-  getAccountById(userId: UUID): Promise<Account>;
-  createRoom(roomId?: UUID): Promise<UUID>;
-  getRoom(roomId: UUID): Promise<UUID>;
+The SQL plugin automatically selects and initializes the appropriate database adapter based on environment settings:
 
-  // Participant Management
-  addParticipant(userId: UUID, roomId: UUID): Promise<boolean>;
-  getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
+```typescript
+function createDatabaseAdapter(
+  config: {
+    dataDir?: string;
+    postgresUrl?: string;
+  },
+  agentId: UUID
+): IDatabaseAdapter {
+  if (config.postgresUrl) {
+    return new PgDatabaseAdapter(agentId, postgresConnectionManager);
+  }
 
-  // Knowledge Management
-  createKnowledge(knowledge: RAGKnowledgeItem): Promise<void>;
-  searchKnowledge(params: SearchParams): Promise<RAGKnowledgeItem[]>;
-
-  // Goal Management
-  createGoal(goal: Goal): Promise<void>;
-  updateGoalStatus(params: { goalId: UUID; status: GoalStatus }): Promise<void>;
+  // Default to PGLite
+  return new PgliteDatabaseAdapter(agentId, pgLiteClientManager);
 }
 ```
 
-<details>
-<summary>Relationship Management</summary>
-```typescript
-interface IDatabaseAdapter {
-    // Room Management
-    createRoom(roomId?: UUID): Promise<UUID>;
-    getRoom(roomId: UUID): Promise<UUID | null>;
-    getRoomsForParticipant(userId: UUID): Promise<UUID[]>;
-    
-    // Participant Management
-    addParticipant(userId: UUID, roomId: UUID): Promise<boolean>;
-    getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
-    getParticipantUserState(roomId: UUID, userId: UUID): Promise<"FOLLOWED" | "MUTED" | null>;
-    
-    // Relationship Tracking
-    createRelationship(params: { userA: UUID; userB: UUID }): Promise<boolean>;
-    getRelationship(params: { userA: UUID; userB: UUID }): Promise<Relationship | null>;
-}
-```
-</details>
+### Configuration
 
-<details>
-<summary>Cache & Goal Management</summary>
-```typescript
-interface IDatabaseCacheAdapter {
-    getCache(params: {
-        agentId: UUID;
-        key: string;
-    }): Promise<string | undefined>;
-    
-    setCache(params: {
-        agentId: UUID;
-        key: string;
-        value: string;
-    }): Promise<boolean>;
-}
-
-interface IDatabaseAdapter {
-// Goal Management
-createGoal(goal: Goal): Promise<void>;
-updateGoal(goal: Goal): Promise<void>;
-getGoals(params: {
-agentId: UUID;
-roomId: UUID;
-userId?: UUID | null;
-onlyInProgress?: boolean;
-count?: number;
-}): Promise<Goal[]>;
-}
-
-````
-</details>
-
----
-
-## Adapter Implementations
-
-### Quick Start
+Configure the database adapter using environment variables or settings:
 
 ```typescript
-// MongoDB
-import { MongoDBAdapter } from '@elizaos/adapter-mongodb';
-const mongoAdapter = new MongoDBAdapter({
-    uri: process.env.MONGODB_URI,
-    dbName: process.env.MONGODB_DB_NAME
-});
+// For PostgreSQL
+process.env.POSTGRES_URL = 'postgresql://username:password@localhost:5432/elizaos';
 
-// PostgreSQL
-import { PostgresAdapter } from '@elizaos/adapter-postgres';
-const pgAdapter = new PostgresAdapter({
-    connectionString: process.env.POSTGRES_URI
-});
-
-// SQLite
-import { SqliteDatabaseAdapter } from '@elizaos/adapter-sqlite';
-const sqliteAdapter = new SqliteDatabaseAdapter('path/to/database.db');
-
-// Supabase
-import { SupabaseAdapter } from '@elizaos/adapter-supabase';
-const supabaseAdapter = new SupabaseAdapter({
-    url: process.env.SUPABASE_URL,
-    apiKey: process.env.SUPABASE_API_KEY
-});
-````
-
-## Adapter Comparison
-
-| Feature                | MongoDB                                              | PostgreSQL                                       | SQLite                                            | Supabase                                              |
-| ---------------------- | ---------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------- |
-| **Best For**           | Production deployments                               | Enterprise & vector search                       | Development & embedded                            | Cloud-hosted vector DB                                |
-| **Vector Support**     | Native sharding                                      | Multiple dimensions (384d-1536d)                 | BLOB storage                                      | Multi-dimension tables                                |
-| **Key Features**       | Auto-sharding, Real-time tracking, Auto-reconnection | Fuzzy matching, UUID keys, Comprehensive logging | JSON validation, FK constraints, Built-in caching | Real-time subs, Row-level security, Type-safe queries |
-| **Setup Requirements** | None                                                 | pgvector extension                               | None                                              | None                                                  |
-| **Collections/Tables** | rooms, participants, accounts, memories, knowledge   | Same as MongoDB + vector extensions              | Same as MongoDB + metadata JSON                   | Same as PostgreSQL + dimension-specific tables        |
-
-## Implementation Details
-
-### PostgreSQL Requirements
-
-```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+// For PGLite (default)
+process.env.PGLITE_DATA_DIR = './elizadb'; // Optional, defaults to './pglite'
 ```
 
-### SQLite Schema
+### Retry Logic & Error Handling
 
-```sql
-CREATE TABLE memories (
-    id TEXT PRIMARY KEY,
-    type TEXT,
-    content TEXT,
-    embedding BLOB,
-    userId TEXT FK,
-    roomId TEXT FK,
-    agentId TEXT FK
-);
-
-CREATE TABLE knowledge (
-    id TEXT PRIMARY KEY,
-    content TEXT NOT NULL,
-    embedding BLOB,
-    metadata JSON
-);
-```
-
-### Supabase Vector Tables
-
-```sql
-CREATE TABLE memories_1536 (id UUID PRIMARY KEY, embedding vector(1536));
-CREATE TABLE memories_1024 (id UUID PRIMARY KEY, embedding vector(1024));
-```
-
-## Embedding Support
-
-| Adapter    | Supported Dimensions                                       |
-| ---------- | ---------------------------------------------------------- |
-| MongoDB    | All (as arrays)                                            |
-| PostgreSQL | OpenAI (1536d), Ollama (1024d), GAIANET (768d), BGE (384d) |
-| SQLite     | All (as BLOB)                                              |
-| Supabase   | Configurable (384d-1536d)                                  |
-
-Source code: [elizaos-plugins](https://github.com/elizaos-plugins)
-
----
-
-## Transaction & Error Handling
-
-All adapters extend the [`DatabaseAdapter`](/api/classes/DatabaseAdapter) base class which provides built-in transaction support and error handling through the [`CircuitBreaker`](/api/classes/CircuitBreaker) pattern. See [database.ts](https://github.com/elizaos-plugins/core/blob/main/src/database.ts) for implementation details, as well as the [PostgreSQL Adapter Implementation](https://github.com/elizaos-plugins/adapter-postgres/blob/main/src/index.ts) or [SQLite Adapter Implementation](https://github.com/elizaos-plugins/adapter-sqlite/blob/main/src/index.ts) for detailed examples.
+The database system includes built-in retry logic with exponential backoff and jitter:
 
 ```typescript
-// Transaction handling
-const result = await adapter.withTransaction(async (client) => {
-    await client.query("BEGIN");
-    // Perform multiple operations
-    await client.query("COMMIT");
-    return result;
-});
+protected async withRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let attempt = 0;
+  let lastError: Error | null = null;
 
-// Error handling with circuit breaker
-protected async withCircuitBreaker<T>(
-    operation: () => Promise<T>,
-    context: string
-): Promise<T> {
+  while (attempt < this.maxRetries) {
     try {
-        return await this.circuitBreaker.execute(operation);
+      return await operation();
     } catch (error) {
-        // Circuit breaker prevents cascading failures
-        elizaLogger.error(`Circuit breaker error in ${context}:`, error);
-        throw error;
+      lastError = error as Error;
+      const isRetryable = this.isRetryableError(error);
+
+      if (!isRetryable) {
+        break;
+      }
+
+      // Calculate delay with exponential backoff and jitter
+      const delay = Math.min(
+        this.baseDelay * Math.pow(2, attempt) + Math.random() * this.jitterMax,
+        this.maxDelay
+      );
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+      attempt++;
     }
+  }
+
+  throw lastError;
 }
 ```
 
-Implemented features include:
+## Example Usage
 
-- Automatic rollback on errors
-- Circuit breaker pattern to prevent cascading failures ([source](https://github.com/elizaOS/eliza/blob/main/packages/core/src/database/CircuitBreaker.ts))
-- Connection pool management
-- Error type classification
+Here are examples of common database operations:
 
----
+### Store a Memory
+
+```typescript
+await runtime.createMemory(
+  {
+    entityId: message.entityId,
+    agentId: runtime.agentId,
+    content: { text: 'Important information to remember' },
+    roomId: message.roomId,
+    embedding: await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+      text: 'Important information to remember',
+    }),
+  },
+  'facts'
+);
+```
+
+### Search for Memories
+
+```typescript
+const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+  text: 'What did we discuss about databases?',
+});
+
+const relevantMemories = await runtime.searchMemories({
+  tableName: 'messages',
+  embedding,
+  roomId: message.roomId,
+  count: 5,
+});
+```
+
+### Manage Entity Relationships
+
+```typescript
+// Create a relationship between entities
+await runtime.createRelationship({
+  sourceEntityId: userEntityId,
+  targetEntityId: agentEntityId,
+  tags: ['friend', 'frequent_interaction'],
+  metadata: {
+    interactions: 42,
+    trust_level: 'high',
+  },
+});
+
+// Retrieve relationships
+const relationships = await runtime.getRelationships({
+  entityId: userEntityId,
+  tags: ['friend'],
+});
+```
+
+## Database Schema
+
+The schema is managed by Drizzle ORM and includes the following key tables:
+
+### Core Tables
+
+- **entities**: The fundamental objects in the system (users, agents, etc.)
+- **components**: Modular data attached to entities (profiles, settings, etc.)
+- **memories**: Conversation history and other remembered information
+- **relationships**: Connections between entities
+- **rooms**: Conversation channels
+- **participants**: Entity participation in rooms
+- **worlds**: Container for multiple rooms
+- **tasks**: Scheduled or queued operations
+- **cache**: Temporary key-value storage
+- **agents**: Agent configuration and state
+
+### Entity-Component System
+
+ElizaOS uses an entity-component architecture where:
+
+- Entities are the base objects (users, agents, etc.)
+- Components are pieces of data attached to entities
+- This allows for flexible data modeling and extension
+
+For example, a user entity might have profile, preferences, and authentication components.
+
+## Vector Search
+
+Both adapters support vector-based semantic search with some differences:
+
+- **PostgreSQL**: Uses pgvector extension for optimized vector operations
+- **PGLite**: Implements vector search in JavaScript with an efficient algorithm
+
+The embedding dimension is configurable based on the model used:
+
+```typescript
+await adapter.ensureEmbeddingDimension(1536); // For OpenAI embeddings
+```
 
 ## FAQ
 
-### How do I choose the right adapter?
+### How do I choose between PGLite and PostgreSQL?
 
-Select based on your deployment needs. Use MongoDB/PostgreSQL for production, SQLite for development, SQL.js/PGLite for browser environments, and Qdrant/Supabase for vector-focused applications.
+- Use **PGLite** for:
 
-### Can I switch adapters later?
+  - Local development and testing
+  - Single-user deployments
+  - Situations where installing PostgreSQL is impractical
 
-Yes, all adapters implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAdapter) interface. Data migration between adapters is possible but requires additional steps.
+- Use **PostgreSQL** for:
+  - Production deployments
+  - Multi-user systems
+  - High-volume data
+  - When you need advanced scaling features
 
-### How are vector embeddings handled?
+### How do I configure the database connection?
 
-Each adapter implements vector storage based on its native capabilities - PostgreSQL/Supabase use native vector types, MongoDB uses array fields with indexes, SQLite uses BLOB storage, and Qdrant uses optimized vector stores.
+For PostgreSQL, set the `POSTGRES_URL` environment variable:
 
-### What about data migration?
+```
+POSTGRES_URL=postgresql://username:password@localhost:5432/elizaos
+```
 
-Use the adapter's export/import methods defined in the [`DatabaseAdapter`](/api/classes/DatabaseAdapter) base class.
+For PGLite, set the data directory (optional):
 
-### How do I handle schema updates?
+```
+PGLITE_DATA_DIR=./my-data
+```
 
-Run migrations using the adapter-specific CLI tools. Each adapter provides its own migration system - check the adapter's README in the [elizaos-plugins](https://github.com/elizaos-plugins) repository.
+### How can I inspect the database contents?
 
-### How do I fix database connection issues?
+For PostgreSQL, use standard PostgreSQL tools like pgAdmin or psql.
 
-Check your connection string format, verify the database exists and is accessible, ensure proper adapter configuration, and consider using environment variables for credentials.
-
-### How do I resolve embedding dimension mismatch errors?
-
-Set USE_OPENAI_EMBEDDING=TRUE in your .env file. Different models use different vector dimensions (e.g., OpenAI uses 1536, some local models use 384). Clear your database when switching embedding models.
-
-### How do I clear/reset my database?
-
-Delete the db.sqlite file in your data directory and restart the agent. For production databases, use proper database management tools for cleanup.
-
-### Which database should I use in production?
-
-PostgreSQL with vector extensions is recommended for production deployments. SQLite works well for development but may not scale as effectively for production loads.
+For PGLite, the data is stored in the specified data directory as files. You can use tools like DB Browser for SQLite to inspect the SQLite files that PGLite generates.
 
 ### How do I migrate between different database adapters?
 
-Use the export/import methods provided by the DatabaseAdapter base class. Each adapter implements these methods for data migration, though you may need to handle schema differences manually.
+Currently, there's no built-in migration tool between adapters. For production systems, it's recommended to start with PostgreSQL if you anticipate needing its features.
+
+### What about vector embedding dimension mismatches?
+
+The system automatically handles embedding dimensions based on the model used. If you change embedding models, make sure to:
+
+1. Set the correct dimension with `ensureEmbeddingDimension()`
+2. Be aware that mixing different dimensions in the same database can cause issues
+
+### How does the entity-component system work?
+
+The entity-component system (ECS) provides a flexible way to model data:
+
+- **Entities** are base objects with unique IDs
+- **Components** are pieces of data attached to entities
+- This allows for dynamic composition of objects without complex inheritance
+
+For example, a user entity might have profile, preferences, and authentication components.
+
+### How can I improve database performance?
+
+- For **PostgreSQL**:
+
+  - Ensure the pgvector extension is properly installed
+  - Index frequently queried fields
+  - Use connection pooling
+  - Consider partitioning for large datasets
+
+- For **PGLite**:
+  - Keep database size reasonable (under 1GB)
+  - Regularly clean up old memories
+  - Limit the number of concurrent operations
+
+### Will other database adapters be supported in the future?
+
+Yes, future releases will add support for additional databases such as:
+
+- MongoDB
+- SQLite
+- Supabase
+- Qdrant
+- SQL.js
+
+The adapter interface is designed to be extensible to support a wide range of storage solutions.
 
 ## Further Reading
 
 - [Memory Management](../guides/memory-management.md)
-- [State Management](./agents.md)
+- [Entity System](./entities.md)
+- [Agent Runtime](./agents.md)

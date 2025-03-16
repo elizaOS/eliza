@@ -327,7 +327,7 @@ export class AgentRuntime implements IAgentRuntime {
       const agentEntity = await this.adapter.getEntityById(this.agentId);
 
       if (!agentEntity) {
-        const created = await this.adapter.createEntity({
+        const created = await this.createEntity({
           id: this.agentId,
           agentId: this.agentId,
           names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
@@ -1353,6 +1353,9 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async createEntity(entity: Entity): Promise<boolean> {
+    if (!entity.agentId) {
+      entity.agentId = this.agentId;
+    }
     return await this.adapter.createEntity(entity);
   }
 

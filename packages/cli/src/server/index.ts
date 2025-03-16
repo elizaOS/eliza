@@ -41,6 +41,7 @@ export interface ServerOptions {
   middlewares?: ServerMiddleware[];
   dataDir?: string;
   postgresUrl?: string;
+  enableWebsockets?: boolean;
 }
 const AGENT_RUNTIME_URL =
   process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') || 'http://localhost:3000';
@@ -53,22 +54,15 @@ const AGENT_RUNTIME_URL =
 export class AgentServer {
   public app: express.Application;
   private agents: Map<UUID, IAgentRuntime>;
-  public server: any;
-  public database: any;
+  public server: ReturnType<express.Application['listen']>;
+  private options: ServerOptions;
+  public database: ReturnType<typeof createDatabaseAdapter>;
   public startAgent!: (character: Character) => Promise<IAgentRuntime>;
   public stopAgent!: (runtime: IAgentRuntime) => void;
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
   public jsonToCharacter!: (character: unknown) => Promise<Character>;
   private socketIO: SocketIOServer;
-  private socketIORouter: SocketIORouter | null = null;
-
-  /**
-   * Get the SocketIORouter instance
-   * @returns {SocketIORouter | null} The SocketIORouter instance or null if not initialized
-   */
-  public getSocketIORouter(): SocketIORouter | null {
-    return this.socketIORouter;
-  }
+  private socketIORouter: SocketIORouter;
 
   /**
    * Constructor for AgentServer class.
@@ -81,6 +75,7 @@ export class AgentServer {
       logger.info('Initializing AgentServer...');
       this.app = express();
       this.agents = new Map();
+      this.options = options || {};
 
       let dataDir = options?.dataDir ?? process.env.PGLITE_DATA_DIR ?? './elizadb';
 
@@ -228,7 +223,7 @@ export class AgentServer {
 
           try {
             // Try to find the plugin's directory
-            let pluginDir;
+            let pluginDir: string;
             try {
               const packagePath = require.resolve(`${plugin.name}/package.json`, {
                 paths: [process.cwd()],
@@ -463,13 +458,36 @@ export class AgentServer {
       logger.debug(`Current agents count: ${this.agents.size}`);
       logger.debug(`Environment: ${process.env.NODE_ENV}`);
 
-      this.socketIO = new SocketIOServer(this.server);
+      this.server = this.app.listen(port, () => {
+        logger.success(
+          `REST API bound to 0.0.0.0:${port}. If running locally, access it at http://localhost:${port}.`
+        );
+        logger.debug(`Active agents: ${this.agents.size}`);
+        this.agents.forEach((agent, id) => {
+          logger.debug(`- Agent ${id}: ${agent.character.name}`);
+        });
+      });
 
-      const socketIORouter = new SocketIORouter(this.agents);
-      this.socketIORouter = socketIORouter;
-      socketIORouter.setupListeners(this.socketIO);
+      // Initialize Socket.IO
+      // Check if WebSockets should be enabled - default to true if not explicitly set
+      const enableWebsockets = this.options.enableWebsockets !== false;
+      if (enableWebsockets) {
+        this.socketIO = new SocketIOServer(this.server, {
+          cors: {
+            origin: '*',
+            methods: ['GET', 'POST'],
+          },
+          transports: ['websocket', 'polling'],
+          pingTimeout: 30000,
+          pingInterval: 10000,
+          connectTimeout: 30000,
+          path: '/socket.io',
+        });
 
-      this.socketIO = new SocketIOServer(this.server);
+        const socketIORouter = new SocketIORouter(this.agents);
+        this.socketIORouter = socketIORouter;
+        socketIORouter.setupListeners(this.socketIO);
+      }
 
       // Enhanced graceful shutdown
       const gracefulShutdown = async () => {

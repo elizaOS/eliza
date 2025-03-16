@@ -22,10 +22,11 @@ try {
     process.exit(0);
   }
 
-  // Filter for files we want to process
+  // Filter for files we want to process and check that they exist
   const filesToLint = stagedFiles.filter((file) => {
     const extensions = ['.js', '.jsx', '.ts', '.tsx', '.json', '.css', '.md'];
-    return extensions.some((ext) => file.endsWith(ext));
+    // Only include files that have valid extensions AND still exist (not deleted)
+    return extensions.some((ext) => file.endsWith(ext)) && existsSync(file);
   });
 
   console.log(`Found ${filesToLint.length} files to format: ${filesToLint.join(', ')}`);

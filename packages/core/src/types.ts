@@ -502,8 +502,8 @@ export type Media = {
 
 export enum ChannelType {
   SELF = 'SELF', // Messages to self
-  DM = 'DM', // Direct messages between two participants
-  GROUP = 'GROUP', // Group messages with multiple participants
+  DM = 'dm', // Direct messages between two participants
+  GROUP = 'group', // Group messages with multiple participants
   VOICE_DM = 'VOICE_DM', // Voice direct messages
   VOICE_GROUP = 'VOICE_GROUP', // Voice channels with multiple participants
   FEED = 'FEED', // Social media feed

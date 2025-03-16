@@ -16,7 +16,7 @@ import type { Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { Activity, MenuIcon, Paperclip, Send, Terminal, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AgentActionViewer } from './action-viewer';
 import { AudioRecorder } from './audio-recorder';
@@ -28,6 +28,9 @@ import ChatTtsButton from './ui/chat/chat-tts-button';
 import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+import { v4 as uuidv4 } from 'uuid';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 const SOURCE_NAME = 'client_chat';
 
@@ -104,98 +107,316 @@ function MessageContent({
   );
 }
 
-export default function Page({ agentId }: { agentId: UUID }) {
+export default function Chat() {
+  const { agentId, roomId: roomIdFromParams } = useParams();
+  const navigate = useNavigate();
+  const socketIOManager = useMemo(() => SocketIOManager.getInstance(), []);
+
+  // Redirect if no agent ID is found
+  useEffect(() => {
+    if (!agentId) {
+      navigate('/agents', { replace: true });
+    }
+  }, [agentId, navigate]);
+
+  // Determine if the room ID is a conceptual room
+  const isConceptualRoom = useMemo(() => {
+    return roomIdFromParams && roomIdFromParams.length >= 36;
+  }, [roomIdFromParams]);
+
+  // Store both IDs, using different state variables for clarity
+  const [conceptualRoomId] = useState<string | undefined>(
+    isConceptualRoom ? roomIdFromParams : undefined
+  );
+
+  const [roomId] = useState<string | undefined>(
+    !isConceptualRoom && roomIdFromParams ? roomIdFromParams : agentId
+  );
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [detailsTab, setDetailsTab] = useState<'actions' | 'logs'>('actions');
+  const [messages, setMessages] = useState<ContentWithUser[]>([]);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const queryClient = useQueryClient();
-  const worldId = WorldManager.getWorldId();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialScrollRef = useRef<boolean>(false);
 
-  const agentData = useAgent(agentId)?.data?.data;
+  // Only try to use the hooks that require UUID when we have a valid agentId
+  const validAgentId =
+    typeof agentId === 'string' && agentId.length >= 36 ? (agentId as UUID) : null;
+  const validRoomId =
+    typeof roomId === 'string' && roomId.length >= 36 ? (roomId as UUID) : validAgentId;
+
+  const agentData = validAgentId ? useAgent(validAgentId)?.data?.data : undefined;
   const entityId = getEntityId();
-  const roomId = agentId;
 
-  const { data: messages = [] } = useMessages(agentId, roomId);
-
-  const socketIOManager = SocketIOManager.getInstance();
-
+  // Only log when we have valid IDs to prevent console spam
   useEffect(() => {
-    // Only connect with the agent's ID to the room
-    // The user ID will be set in the message payload when sending
-    socketIOManager.connect(agentId, roomId);
+    if (agentId) {
+      console.log(`[Chat] Initializing chat with agent ${agentId} and room ${roomId || 'default'}`);
+    }
+  }, [agentId, roomId]);
 
-    const handleMessageBroadcasting = (data: ContentWithUser) => {
-      // Only add messages from other users (the agent) to the UI
-      // User's own messages are added directly in handleSendMessage
-      if (data.entityId !== entityId) {
-        queryClient.setQueryData(
-          ['messages', agentId, roomId, worldId],
-          (old: ContentWithUser[] = []) => [...old, { ...data, name: data.userName }]
-        );
-      }
-    };
+  // Use useMessages to get messages for this room if we have valid IDs
+  const { data: fetchedMessages = [] } =
+    validAgentId && validRoomId ? useMessages(validAgentId, validRoomId) : { data: [] };
 
-    socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
+  // Update state messages when fetched messages change
+  useEffect(() => {
+    // Only update if we have messages and they're different from current state
+    if (fetchedMessages && fetchedMessages.length > 0) {
+      setMessages((prevMessages) => {
+        // Deep compare to prevent unnecessary updates
+        if (
+          prevMessages.length === fetchedMessages.length &&
+          JSON.stringify(prevMessages) === JSON.stringify(fetchedMessages)
+        ) {
+          return prevMessages;
+        }
+        return fetchedMessages as ContentWithUser[];
+      });
+    }
+  }, [fetchedMessages]);
+
+  // Setup WebSocket connection
+  useEffect(() => {
+    if (!agentId) {
+      return; // Don't attempt connection without agentId
+    }
+
+    console.log(
+      `Setting up socket connection for ${isConceptualRoom ? 'conceptual room' : 'direct room'}`
+    );
+
+    setIsConnecting(true);
+
+    // Connect to the room - use the correct connect method parameters
+    socketIOManager.connectToRoom(roomId || agentId);
+    setIsConnected(true);
+    setIsConnecting(false);
 
     return () => {
-      socketIOManager.disconnectAll();
-      socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
+      // Disconnect when component unmounts - use the correct disconnect method
+      if (roomId) {
+        socketIOManager.disconnectFromRoom(roomId);
+      } else if (agentId) {
+        socketIOManager.disconnectFromRoom(agentId);
+      }
     };
-  }, [roomId]);
+  }, [agentId, roomId, isConceptualRoom, socketIOManager]);
 
-  const getMessageVariant = (id: UUID) => (id !== entityId ? 'received' : 'sent');
+  // Scroll to bottom function
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messagesEndRef]);
 
-  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } = useAutoScroll({
-    smooth: true,
-  });
-
+  // Setup message listener with direct event emitter approach
   useEffect(() => {
-    scrollToBottom();
-  }, [messages!.length]);
+    if (!socketIOManager || !agentId) return;
 
+    // Handle both types of events we might receive
+    const handleMessageEvent = (data: {
+      id?: string;
+      messageId?: string;
+      text?: string;
+      message?: string;
+      entityId?: string;
+      senderId?: string;
+      userName?: string;
+      createdAt?: number;
+      timestamp?: number;
+      file?: string;
+    }) => {
+      console.log('Received message event:', data);
+
+      // Create a common message format regardless of event source
+      const messageData = {
+        id: data.id || data.messageId || `msg-${Date.now()}`,
+        text: data.text || data.message || '',
+        sender: data.entityId || data.senderId || '',
+        userName: data.userName || 'User',
+        createdAt: data.createdAt || data.timestamp || Date.now(),
+        file: data.file,
+      };
+
+      // Create UI message
+      const newMessage: ContentWithUser = {
+        id: messageData.id,
+        text: messageData.text,
+        sender: messageData.sender,
+        name: messageData.userName,
+        createdAt: messageData.createdAt,
+        isLoading: false,
+        files: messageData.file ? [messageData.file] : [],
+      };
+
+      // Add to messages if not already present
+      setMessages((prevMessages) => {
+        if (prevMessages.some((m) => m.id === newMessage.id)) {
+          return prevMessages;
+        }
+        return [...prevMessages, newMessage];
+      });
+
+      // Auto-scroll to bottom
+      setTimeout(scrollToBottom, 100);
+    };
+
+    // Subscribe directly to socket events using EventEmitter
+    socketIOManager.on('messageBroadcast', handleMessageEvent);
+
+    return () => {
+      socketIOManager.off('messageBroadcast', handleMessageEvent);
+    };
+  }, [agentId, socketIOManager, scrollToBottom]);
+
+  // Helper function to safely get agent/room ID for functions that require UUID
+  const getSafeUUID = (id?: string) => {
+    if (typeof id === 'string' && id.length >= 36) {
+      return id as UUID;
+    }
+    return undefined;
+  };
+
+  // Use the helper function when passing IDs to components
+  const safeAgentId = getSafeUUID(agentId);
+  const safeRoomId = getSafeUUID(roomId);
+
+  // Initial scroll when messages are loaded
   useEffect(() => {
-    scrollToBottom();
-  }, []);
+    if (!initialScrollRef.current && messages.length > 0) {
+      scrollToBottom();
+      initialScrollRef.current = true;
+    }
+  }, [messages.length]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       if (e.nativeEvent.isComposing) return;
-      handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
+      handleSendMessage();
     }
   };
 
-  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!input) return;
+  const handleSendMessage = async () => {
+    if (!input.trim() && !selectedFile) return;
 
-    // Immediately add the user's message to the UI
-    const userMessage = {
-      entityId,
-      userName: USER_NAME,
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    // Create new message for UI display
+    const newMessage: ContentWithUser = {
+      id: messageId,
       text: input,
-      roomId,
+      sender: entityId,
+      name: 'You',
       createdAt: Date.now(),
-      source: SOURCE_NAME,
-      name: USER_NAME,
+      isLoading: false,
+      files: selectedFile ? [selectedFile.name] : [],
     };
 
-    // Add to the UI
-    queryClient.setQueryData(
-      ['messages', agentId, roomId, worldId],
-      (old: ContentWithUser[] = []) => [...old, userMessage]
-    );
+    // Save the message text before clearing the input
+    const messageText = input;
 
-    // Send via WebSocket to the agent
-    socketIOManager.handleBroadcastMessage(entityId, USER_NAME, input, roomId, SOURCE_NAME);
+    // Update messages state immediately for UI responsiveness
+    setMessages((prev) => [...prev, newMessage]);
 
-    setSelectedFile(null);
+    // Clear input field
     setInput('');
-    formRef.current?.reset();
+    setSelectedFile(null);
+
+    try {
+      let filePath = null;
+
+      // Handle file upload if needed
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        try {
+          const response = await axios.post(
+            `${import.meta.env.VITE_API_URL || ''}/api/upload`,
+            formData,
+            {
+              headers: {
+                'Content-Type': 'multipart/form-data',
+              },
+            }
+          );
+
+          if (response.data.success) {
+            filePath = response.data.data;
+            console.log('File uploaded successfully:', filePath);
+          } else {
+            console.error('File upload failed', response.data);
+            setConnectionError('File upload failed');
+          }
+        } catch (uploadError) {
+          console.error('Error uploading file:', uploadError);
+          setConnectionError('Error uploading file');
+        }
+      }
+
+      // Get the target room ID - make sure we have a valid value
+      const targetRoomId = roomId || agentId || '';
+      if (!targetRoomId) {
+        console.error('No valid room ID for sending message');
+        setConnectionError('Error: No valid room to send message to');
+        return;
+      }
+
+      console.log(`Sending message to room ${targetRoomId}: ${messageText.substring(0, 50)}`);
+
+      // First check if socket is connected
+      if (!socketIOManager.isConnected()) {
+        console.log('Socket not connected, attempting to connect...');
+        try {
+          const connected = await socketIOManager.connect();
+          if (!connected) {
+            console.error('Failed to establish connection');
+            setConnectionError('Failed to establish connection');
+            return;
+          }
+        } catch (connError) {
+          console.error('Connection error:', connError);
+          setConnectionError('Failed to establish connection');
+          return;
+        }
+      }
+
+      // Attempt to send the message using the broadcast method
+      const success = await socketIOManager.handleBroadcastMessage(
+        entityId,
+        'You',
+        messageText,
+        targetRoomId,
+        'user'
+      );
+
+      if (!success) {
+        console.error('Failed to send message');
+        setConnectionError('Failed to send message - connection issue');
+      } else {
+        // Clear any previous error since we succeeded
+        setConnectionError(null);
+      }
+
+      // Scroll to bottom
+      setTimeout(scrollToBottom, 100);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      setConnectionError('Error sending message');
+    }
   };
 
   useEffect(() => {
@@ -213,6 +434,14 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
   const toggleDetails = () => {
     setShowDetails(!showDetails);
+  };
+
+  const { scrollRef, isAtBottom, disableAutoScroll } = useAutoScroll({
+    smooth: true,
+  });
+
+  const getMessageVariant = (id: string) => {
+    return id ? 'received' : 'sent';
   };
 
   return (
@@ -290,7 +519,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
                   className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
                 >
                   <ChatBubble
-                    variant={getMessageVariant(isUser ? entityId : agentId)}
+                    variant={getMessageVariant(isUser ? entityId : safeAgentId || '')}
                     className={`flex flex-row items-center gap-2 ${
                       isUser ? 'flex-row-reverse' : ''
                     }`}
@@ -310,7 +539,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
                     </Avatar>
                     <MessageContent
                       message={message}
-                      agentId={agentId}
+                      agentId={safeAgentId || ('' as UUID)}
                       isLastMessage={index === messages.length - 1}
                     />
                   </ChatBubble>
@@ -323,7 +552,10 @@ export default function Page({ agentId }: { agentId: UUID }) {
           <div className="px-4 pb-4 mt-auto">
             <form
               ref={formRef}
-              onSubmit={handleSendMessage}
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendMessage();
+              }}
               className="relative rounded-md border bg-card"
             >
               {selectedFile ? (
@@ -384,10 +616,12 @@ export default function Page({ agentId }: { agentId: UUID }) {
                     <p>Attach file</p>
                   </TooltipContent>
                 </Tooltip>
-                <AudioRecorder
-                  agentId={agentId}
-                  onChange={(newInput: string) => setInput(newInput)}
-                />
+                {safeAgentId && (
+                  <AudioRecorder
+                    agentId={safeAgentId}
+                    onChange={(newInput: string) => setInput(newInput)}
+                  />
+                )}
                 <Button type="submit" size="sm" className="ml-auto gap-1.5 h-[30px]">
                   <Send className="size-3.5" />
                 </Button>
@@ -419,7 +653,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
               </div>
 
               <TabsContent value="actions" className="overflow-y-scroll">
-                <AgentActionViewer agentId={agentId} roomId={roomId} />
+                {safeAgentId && <AgentActionViewer agentId={safeAgentId} roomId={safeRoomId} />}
               </TabsContent>
               <TabsContent value="logs">
                 <LogViewer agentName={agentData?.name} level="all" hideTitle />

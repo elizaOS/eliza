@@ -1,16 +1,128 @@
-# RAG Knowledge Documentation
+# Knowledge Management in ElizaOS
 
 ## Overview
 
-The RAG (Retrieval-Augmented Generation) Knowledge feature is a powerful system that enables agents to process, store, and retrieve information from various document types (PDF, Markdown, and text files). This feature enhances the agent's ability to provide contextually relevant responses by leveraging stored knowledge during conversations.
+The Knowledge Management system in ElizaOS is a powerful Retrieval-Augmented Generation (RAG) feature that enables agents to process, store, and retrieve information from various sources. This allows agents to provide contextually relevant responses by leveraging stored knowledge during conversations.
+
+## Adding Knowledge to Agents
+
+ElizaOS provides multiple ways to add knowledge to your agents, both during initialization and at runtime.
+
+### Adding Knowledge During Runtime Creation
+
+#### 1. Via Character Definition
+
+The simplest approach is to define knowledge directly in your character configuration:
+
+```typescript
+const character: Character = {
+  name: 'My Agent',
+  // Other character properties...
+  knowledge: [
+    // Direct string knowledge
+    'Important fact: ElizaOS supports multiple knowledge formats',
+
+    // File references
+    { path: 'knowledge/documentation.md', shared: false },
+
+    // Directory references
+    { directory: 'knowledge/guides', shared: true },
+  ],
+};
+```
+
+The knowledge array supports three formats:
+
+- String literals for direct knowledge
+- File objects pointing to specific files
+- Directory objects for entire folders of content
+
+#### 2. Programmatically Before Runtime Initialization
+
+You can dynamically load knowledge before creating your runtime:
+
+```typescript
+// Load knowledge from files or other sources
+const knowledge = [];
+
+// Example: Recursively load documentation files
+function loadDocumentation(directoryPath) {
+  const files = getFilesRecursively(directoryPath, ['.md']);
+  return files.map((filePath) => {
+    const relativePath = path.relative(basePath, filePath);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return `Path: ${relativePath}\n\n${content}`;
+  });
+}
+
+// Load documentation
+const docKnowledge = loadDocumentation('./docs');
+knowledge.push(...docKnowledge);
+
+// Then include in your character definition
+const character: Character = {
+  // Other character properties...
+  knowledge: knowledge,
+};
+```
+
+### Adding Knowledge After Runtime Creation
+
+#### 1. Using the `addKnowledge` Method
+
+Add knowledge programmatically after the runtime is initialized:
+
+```typescript
+// Import needed utilities
+import { createUniqueUuid } from '@elizaos/core';
+
+// Create a knowledge item
+const knowledgeItem = {
+  id: createUniqueUuid(runtime, 'unique-knowledge-identifier'),
+  content: {
+    text: 'Important information the agent should know...',
+  },
+};
+
+// Add to runtime with default chunking settings
+await runtime.addKnowledge(knowledgeItem);
+
+// Or with custom chunking settings
+await runtime.addKnowledge(knowledgeItem, {
+  targetTokens: 1500, // Target chunk size (default: 3000)
+  overlap: 100, // Overlap between chunks (default: 200)
+  modelContextSize: 8192, // Context size of your model (default: 4096)
+});
+```
+
+#### 2. Processing Files at Runtime
+
+You can dynamically process files at runtime:
+
+```typescript
+// For PDF files, use the PDF service
+const pdfService = runtime.getService<IPdfService>('pdf');
+if (pdfService) {
+  const pdfBuffer = fs.readFileSync('./knowledge/document.pdf');
+  const textContent = await pdfService.convertPdfToText(pdfBuffer);
+
+  const knowledgeItem = {
+    id: createUniqueUuid(runtime, 'document.pdf'),
+    content: { text: textContent },
+  };
+
+  await runtime.addKnowledge(knowledgeItem);
+}
+```
 
 ## Directory Structure
 
+ElizaOS expects knowledge files to be organized in the following structure:
+
 ```
-characters/
-└── knowledge/        # Root knowledge directory
-    ├── shared/       # Shared knowledge accessible to all agents
-    └── {agent-name}/ # Agent-specific knowledge directories
+knowledge/          # Root knowledge directory
+├── shared/         # Shared knowledge accessible to all agents
+└── {agent-name}/   # Agent-specific knowledge directories
 ```
 
 ## Supported File Types
@@ -19,135 +131,63 @@ characters/
 - Markdown files (`.md`)
 - Text files (`.txt`)
 
-## Setting Up RAG Knowledge
+## Knowledge Modes
 
-### 1. Directory Setup
+ElizaOS supports two knowledge modes:
 
-1. Create a `characters/knowledge` directory in your project root if it doesn't exist
-2. Create subdirectories for:
-   - `shared/`: Documents accessible to all agents
-   - `{agent-name}/`: Agent-specific documents (replace `{agent-name}` with your agent's name)
+### Classic Mode (Default)
 
-### 2. Configuration
+- Direct string knowledge added to character's context
+- No chunking or semantic search
+- Enabled by default (`settings.ragKnowledge: false`)
+- Only processes string knowledge entries
+- Simpler but less sophisticated
 
-Update your agent's character configuration file with the appropriate knowledge entries:
+### RAG Mode
 
-```json
-{
-  "knowledge": [
-    {
-      "directory": "characters/knowledge/shared",
-      "shared": true
-    },
-    {
-      "directory": "characters/knowledge/{agent-name}",
-      "shared": false
-    },
-    {
-      "path": "characters/knowledge/{agent-name}/specific-file.pdf",
-      "shared": false
-    }
-  ]
-}
+- Advanced knowledge processing with semantic search
+- Chunks content and uses embeddings
+- Must be explicitly enabled (`settings.ragKnowledge: true`)
+- Supports three knowledge types:
+  1. Direct string knowledge
+  2. Single file references: `{ "path": "path/to/file.md", "shared": false }`
+  3. Directory references: `{ "directory": "knowledge/dir", "shared": false }`
+- Supported file types: .md, .txt, .pdf
+- Optional `shared` flag for knowledge reuse across characters
+
+To enable RAG mode, add this to your character settings:
+
+```typescript
+const character: Character = {
+  // Other character properties...
+  settings: {
+    ragKnowledge: true,
+  },
+};
 ```
 
-## How It Works
-
-1. **Document Processing**:
-
-   - When documents are added to the knowledge directories, they are automatically processed
-   - Documents are split into manageable chunks for better retrieval
-   - Each chunk is embedded using the configured embedding model
-   - The embeddings and metadata are stored in the database for efficient retrieval
-
-2. **Knowledge Retrieval**:
-   - During conversations, relevant knowledge is retrieved based on semantic similarity
-   - The system uses a default similarity threshold of 0.85
-   - By default, it retrieves the top 5 most relevant matches
-   - Both shared and agent-specific knowledge are searched
-
-## Best Practices
-
-1. **Document Organization**:
-
-   - Keep files organized in appropriate directories
-   - Use descriptive filenames
-   - Break large documents into logical smaller files
-   - Include metadata and context in markdown files
-
-2. **Content Management**:
-
-   - Regularly review and update knowledge files
-   - Remove outdated or irrelevant documents
-   - Ensure documents are in the correct format
-   - Verify file permissions are set correctly
-
-3. **Performance Optimization**:
-   - Keep individual documents focused on specific topics
-   - Break down large documents into smaller, focused chunks
-   - Use appropriate file formats for the content type
-   - Regular maintenance of the knowledge base
-
-## Troubleshooting
-
-### Common Issues and Solutions
-
-1. **Documents Not Being Retrieved**:
-
-   - Verify the file is in a supported format (PDF, MD, TXT)
-   - Check if the file is in the correct directory under `characters/knowledge`
-   - Ensure the configuration file correctly references the knowledge directory
-   - Verify file permissions
-
-2. **Poor Quality Retrievals**:
-
-   - Break down large documents into smaller, focused files
-   - Ensure document content is clear and well-structured
-   - Review and clean up any formatting issues in the source documents
-   - Check if the query contains too many common words (stop words like "a", "the", "is" are filtered out)
-
-3. **Performance Issues**:
-   - Check the size of individual documents
-   - Verify the total size of the knowledge base
-   - Consider cleaning up unused or redundant documents
-   - Monitor embedding processing time for large documents
-
-## Technical Implementation
+## How Knowledge Processing Works
 
 ### Document Processing Flow
 
-The RAG system processes documents through several stages to optimize both storage and retrieval:
+The RAG system processes documents through several stages:
 
 1. **Directory Processing**
 
-   - The system scans configured directories in `characters/knowledge/`
+   - The system scans configured directories in `knowledge/`
    - Files are processed based on their shared/private status and file type
 
 2. **File Processing Pipeline**
 
-   a. **Preprocessing**
+   - **Preprocessing**: Reading, cleaning, and normalizing text
+   - **Document-level Processing**: Generating embeddings for the entire document
+   - **Chunk Processing**: Splitting content into manageable chunks and generating embeddings for each
 
-   - Read the file content
-   - Clean and normalize text through preprocessing
-
-   b. **Main Document Processing**
-
-   - Generate embeddings for the entire document
-   - Store the complete document with:
-     - Full text content
-     - Document-level embeddings
-     - Metadata (file path, type, shared status)
-
-   c. **Chunk Processing**
-
-   - Split the preprocessed content into chunks
-     - Default chunk size: 512 tokens
-     - Overlap between chunks: 20 tokens
-   - Process chunks in parallel batches of 10 for efficiency
-   - For each chunk:
-     - Generate embeddings
-     - Store with metadata linking back to the original document
-     - Include chunk-specific metadata (chunk index, original document ID)
+3. **Retrieval Process**
+   - When a user message is received, its embedding is generated
+   - This embedding is compared to stored knowledge embeddings
+   - The most semantically similar chunks are retrieved
+   - Retrieved knowledge is incorporated into the agent's context
 
 This multi-level approach enables:
 
@@ -156,9 +196,7 @@ This multi-level approach enables:
 - Efficient parallel processing of large documents
 - Maintenance of document context through metadata linking
 
-### Knowledge Processing Flow
-
-The following diagram illustrates how the RAG system processes documents:
+### Knowledge Processing Flow Diagram
 
 ```mermaid
 graph TB
@@ -212,25 +250,109 @@ graph TB
     style Chunk_Storage fill:#bff,stroke:#333,stroke-width:2px
 ```
 
-Key Features:
-
-1. **Parallel Processing**: Chunks are processed in batches of 10 for optimal performance
-2. **Dual Storage**: Both full documents and chunks are stored with embeddings
-3. **Metadata Linking**: Chunks maintain references to their source documents
-4. **Overlapping Chunks**: 20-token overlap ensures context preservation
-5. **Configurable Size**: Default chunk size of 512 tokens balances detail and performance
-
 ### Processing Parameters
 
-- Chunk Size: 512 tokens
-- Chunk Overlap: 20 tokens
-- Processing Batch Size: 10 chunks
-- Default Similarity Threshold: 0.85
-- Default Match Count: 5 results
+- **Chunk Size**: 512 tokens (default, configurable when adding knowledge)
+- **Chunk Overlap**: 20 tokens (default, configurable)
+- **Processing Batch Size**: 10 chunks processed concurrently
+- **Default Similarity Threshold**: 0.85 for retrieval
+- **Default Match Count**: 5 results returned
 
-## Knowledge ID Relationships
+## Best Practices for Knowledge Management
 
-The RAG system uses a hierarchical ID structure to maintain relationships between documents and their fragments:
+### Content Organization
+
+1. **Document Structure**
+
+   - Use clear section headings and hierarchical organization
+   - Break large documents into logical smaller files
+   - Include metadata and context in markdown files
+   - Structure information from general to specific
+
+2. **File Management**
+
+   - Use descriptive filenames that reflect content
+   - Group related files in subdirectories
+   - Keep paths short and meaningful
+   - Avoid special characters in filenames
+
+3. **Knowledge Optimization**
+   - Keep individual documents focused on specific topics
+   - For very detailed information, use smaller chunks (200-300 tokens) by setting `targetTokens`
+   - Balance the total number of knowledge items for performance
+   - Prefer markdown (.md) files for best processing results
+
+### Processing Large Knowledge Bases
+
+When adding many knowledge items at once, consider implementing a semaphore pattern:
+
+```typescript
+import { Semaphore } from '@elizaos/core';
+
+// Create semaphore to limit concurrent processing
+const semaphore = new Semaphore(10);
+
+// Process items with controlled concurrency
+await Promise.all(
+  items.map(async (item) => {
+    await semaphore.acquire();
+    try {
+      await runtime.addKnowledge(item);
+    } finally {
+      semaphore.release();
+    }
+  })
+);
+```
+
+### Knowledge ID Management
+
+When adding knowledge programmatically, use consistent ID generation:
+
+```typescript
+import { createUniqueUuid } from '@elizaos/core';
+const knowledgeId = createUniqueUuid(runtime, 'my-content');
+```
+
+This ensures deterministic IDs that remain stable across sessions.
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+1. **Knowledge Not Being Retrieved**:
+
+   - Verify the file is in a supported format (PDF, MD, TXT)
+   - Check if embeddings were properly generated
+   - Ensure similarity threshold isn't too high (default: 0.85)
+   - Test retrieval with more specific queries
+   - Verify RAG mode is enabled if using file/directory references
+
+2. **Poor Quality Retrievals**:
+
+   - Break down large documents into smaller, focused files
+   - Ensure document content is clear and well-structured
+   - Review the chunking size and overlap settings
+   - Check if the query contains too many common words
+
+3. **Performance Issues**:
+
+   - Monitor the total number of knowledge items
+   - Consider reducing the match count for faster retrieval
+   - Check embedding processing time for large documents
+   - Use shared knowledge efficiently across agents
+
+4. **File Processing Errors**:
+   - Verify file permissions
+   - Check if paths are correctly structured
+   - Ensure PDF files are readable and not password-protected
+   - Validate that text encoding is UTF-8
+
+## Technical Implementation Details
+
+### Knowledge ID Relationships
+
+The RAG system uses a hierarchical ID structure to maintain relationships:
 
 ```mermaid
 classDiagram
@@ -257,178 +379,45 @@ classDiagram
 
 #### ID Generation and Linking
 
-1. **Document ID Generation**
-
-   ```mermaid
-   graph LR
-       A[File Path] --> B[Hash Function]
-       C[Is Shared?] --> B
-       B --> D[Document UUID]
-       style D fill:#f9f,stroke:#333,stroke-width:2px
-   ```
-
-   - Generated using `generateScopedId(path, isShared)`
-   - Deterministic: same file path + shared status = same ID
-   - Stored as `id` in the knowledge database
-
-2. **Fragment ID Generation**
-   ```mermaid
-   graph LR
-       A[Document UUID] --> B[Fragment ID]
-       C[Chunk Index] --> B
-       B --> D["fragmentId = `${documentId}-chunk-${index}`"]
-       style D fill:#bbf,stroke:#333,stroke-width:2px
-   ```
-   - Based on parent document's UUID and chunk index
-   - Format: `${documentId}-chunk-${index}`
-   - Ensures unique identification while maintaining lineage
-
-#### Metadata Structure
-
-```mermaid
-graph TB
-    subgraph Document_Metadata
-        A[Document] --> B[id: UUID]
-        A --> C[agentId: UUID]
-        A --> D[content: Object]
-        D --> E[text: String]
-        D --> F[metadata: Object]
-        F --> G[source: String]
-        F --> H[type: String]
-        F --> I[isShared: Boolean]
-    end
-
-    subgraph Fragment_Metadata
-        J[Fragment] --> K[id: UUID]
-        J --> L[agentId: UUID]
-        J --> M[content: Object]
-        M --> N[text: String]
-        M --> O[metadata: Object]
-        O --> P[originalId: UUID]
-        O --> Q[chunkIndex: Number]
-        O --> R[originalPath: String]
-        O --> S[isChunk: true]
-    end
-
-    A -.-> J
-```
-
-#### Key Points
-
-1. **Document IDs**
-
-   - Unique per file path and shared status
-   - Used as reference point for all fragments
-   - Stored in main knowledge table
-
-2. **Fragment IDs**
-
-   - Always linked to parent document
-   - Include chunk index for ordering
-   - Maintain complete lineage to source
-
-3. **Querying Relationships**
-
-   - Find all fragments: `SELECT * FROM knowledge WHERE originalId = {documentId}`
-   - Get source document: `SELECT * FROM knowledge WHERE id = {fragment.originalId}`
-   - List chunks in order: Sort by `chunkIndex`
-
-4. **Metadata Preservation**
-   - Documents store file-level metadata
-   - Fragments maintain references to source
-   - Both contain embeddings for search
-
-This ID system enables:
-
-- Efficient document-fragment relationship tracking
-- Quick retrieval of related content
-- Maintenance of document hierarchy
-- Proper context preservation in search results
+Documents IDs are generated using `createUniqueUuid(runtime, path, isShared)`, making them deterministic. Fragment IDs follow the format `${documentId}-chunk-${index}` to maintain the relationship to their source document.
 
 ## API Reference
 
-### Key Classes and Methods
+### Key Methods
 
-#### RAGKnowledgeManager
+#### `runtime.addKnowledge(item: KnowledgeItem, options?): Promise<void>`
 
-The main class responsible for managing RAG knowledge. Here are the key methods:
-
-##### `createKnowledge(item: RAGKnowledgeItem): Promise<void>`
-
-Adds new knowledge to the database.
+Adds new knowledge to the agent.
 
 - Parameters:
-  - `item`: A RAGKnowledgeItem containing:
+  - `item`: A knowledge item containing:
     - `id`: UUID
-    - `agentId`: UUID
-    - `content`:
-      - `text`: string
-      - `metadata`:
-        - `source`: string
-        - `type`: "pdf" | "md" | "txt"
-        - `isShared`: boolean
-    - `embedding`: Float32Array
-    - `createdAt`: number
+    - `content`: Object with `text` property
+  - `options`: Optional processing configuration:
+    - `targetTokens`: Number (default: 3000)
+    - `overlap`: Number (default: 200)
+    - `modelContextSize`: Number (default: 4096)
 
-##### `getKnowledge(params): Promise<RAGKnowledgeItem[]>`
+#### `runtime.getKnowledge(message: Memory): Promise<KnowledgeItem[]>`
 
-Retrieves knowledge based on query or ID.
+Retrieves knowledge based on a message's content.
 
 - Parameters:
-  - `query?`: string - Optional search query
-  - `id?`: UUID - Optional specific knowledge ID
-  - `conversationContext?`: string - Optional conversation context
-  - `limit?`: number - Optional result limit
-  - `agentId?`: UUID - Optional agent ID filter
-- Returns: Array of matching RAGKnowledgeItem objects
+  - `message`: Memory object containing user message
+- Returns: Array of matching KnowledgeItem objects
 
-##### `searchKnowledge(params): Promise<RAGKnowledgeItem[]>`
+### Knowledge Item Definition
 
-Performs semantic search with configurable parameters.
-
-- Parameters:
-  - `agentId`: UUID - Agent ID to search within
-  - `embedding`: Float32Array | number[] - Vector to search against
-  - `match_threshold?`: number - Similarity threshold (default: 0.85)
-  - `match_count?`: number - Number of results (default: 5)
-  - `searchText?`: string - Optional text to search for
-- Returns: Array of matching RAGKnowledgeItem objects
-
-##### `clearKnowledge(shared?: boolean): Promise<void>`
-
-Clears knowledge entries.
-
-- Parameters:
-  - `shared?`: boolean - If true, clears shared knowledge as well
-- Returns: Promise that resolves when operation completes
-
-##### `processFile(file): Promise<void>`
-
-Processes a new knowledge file.
-
-- Parameters:
-  - `file`:
-    - `path`: string - File path
-    - `content`: string - File contents
-    - `type`: "pdf" | "md" | "txt" - File type
-    - `isShared?`: boolean - Whether the knowledge is shared
-- Returns: Promise that resolves when processing completes
-
-##### `listAllKnowledge(agentId: UUID): Promise<RAGKnowledgeItem[]>`
-
-Lists all knowledge entries for an agent without semantic search.
-
-- Parameters:
-  - `agentId`: UUID - Agent ID to list knowledge for
-- Returns: Array of all RAGKnowledgeItem entries for the agent
-
-##### `removeKnowledge(id: UUID): Promise<void>`
-
-Removes a specific knowledge entry.
-
-- Parameters:
-  - `id`: UUID - ID of the knowledge to remove
-- Returns: Promise that resolves when deletion completes
+```typescript
+interface KnowledgeItem {
+  id: UUID;
+  content: {
+    text: string;
+    // Optional additional metadata
+    [key: string]: any;
+  };
+}
+```
 
 ## Security Considerations
 

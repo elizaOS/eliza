@@ -1,5 +1,3 @@
-// TODO: Review ensureConnection and other runtime helper methods and their usage and implement, they may be helpful
-
 import { v4 as uuidv4 } from 'uuid';
 import {
   ChannelType,

@@ -1,6 +1,6 @@
 import type { Character, EntityPayload, MessagePayload, WorldPayload } from '@elizaos/core';
 import type {
-  Client,
+  Client as DiscordJsClient,
   Guild,
   GuildMember,
   Message,
@@ -109,14 +109,12 @@ export interface DiscordEventPayloadMap {
  * Interface representing a Discord service.
  *
  * @typedef {Object} IDiscordService
- * @property {Client} client - The Discord client object.
+ * @property {DiscordJsClient} client - The Discord client object.
  * @property {Character} character - The character object.
  */
 export interface IDiscordService {
-  client: Client;
+  client: DiscordJsClient;
   character: Character;
 }
 
-export const ServiceType = {
-  DISCORD: 'discord',
-} as const;
+export const DISCORD_SERVICE_NAME = 'discord';

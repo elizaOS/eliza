@@ -1148,9 +1148,14 @@ export function agentRouter(
     }
 
     try {
-      const { name, worldId, roomId, entityId } = req.body;
+      const { name, worldId, roomId: requestedRoomId, entityId } = req.body;
       const roomName = name || `Chat ${new Date().toLocaleString()}`;
       const roomType = req.body.type || ChannelType.GROUP; // Default to GROUP for new rooms
+
+      // Generate a room ID if not provided
+      const roomId = requestedRoomId || createUniqueUuid(runtime, `room-${Date.now()}`);
+
+      logger.info(`[ROOM CREATE] Creating room with ID ${roomId}`);
 
       // Validate the room type (only allow DM or GROUP)
       if (roomType !== ChannelType.DM && roomType !== ChannelType.GROUP) {
@@ -1164,6 +1169,73 @@ export function agentRouter(
         return;
       }
 
+      // Ensure the admin user exists
+      const ADMIN_ID = '10000000-0000-0000-0000-000000000000';
+      try {
+        // Check if admin user exists
+        try {
+          const entity = await runtime.getEntityById(ADMIN_ID as UUID);
+          if (!entity) {
+            // Create the admin user with a complete entity object
+            logger.info(`[ROOM CREATE] Admin user not found, creating it with ID ${ADMIN_ID}`);
+
+            // Create a complete entity object with required fields
+            const adminEntity = {
+              id: ADMIN_ID as UUID,
+              name: 'Admin User',
+              agentId: runtime.agentId,
+              metadata: {
+                websocket: {
+                  username: 'admin',
+                  name: 'Administrator',
+                },
+              },
+            };
+
+            // Log the entity being created for debugging
+            logger.info(`[ROOM CREATE] Creating admin entity: ${JSON.stringify(adminEntity)}`);
+
+            // Create the entity with all required fields
+            await runtime.createEntity(adminEntity as any);
+            logger.info(`[ROOM CREATE] Admin user created successfully`);
+          }
+        } catch (error) {
+          // Entity doesn't exist, create it with full entity structure
+          logger.info(`[ROOM CREATE] Error checking admin user, creating it with ID ${ADMIN_ID}`);
+
+          // Create a complete entity object with all required fields
+          const adminEntity = {
+            id: ADMIN_ID as UUID,
+            name: 'Admin User',
+            agentId: runtime.agentId,
+            metadata: {
+              websocket: {
+                username: 'admin',
+                name: 'Administrator',
+              },
+            },
+          };
+
+          // Log the entity being created for debugging
+          logger.info(`[ROOM CREATE] Creating admin entity: ${JSON.stringify(adminEntity)}`);
+
+          // Ensure all required fields are present
+          await runtime.createEntity(adminEntity as any);
+          logger.info(`[ROOM CREATE] Admin user created successfully`);
+        }
+      } catch (adminError) {
+        logger.error(`[ROOM CREATE] Failed to ensure admin user exists: ${adminError.message}`);
+        res.status(500).json({
+          success: false,
+          error: {
+            code: 'CREATE_ERROR',
+            message: 'Failed to ensure admin user exists',
+            details: adminError.message,
+          },
+        });
+        return;
+      }
+
       await runtime.ensureRoomExists({
         id: roomId,
         name: roomName,
@@ -1172,12 +1244,16 @@ export function agentRouter(
         worldId,
       });
 
+      logger.info(`[ROOM CREATE] Room ${roomId} created successfully`);
+
       // Add the agent to the room
       await runtime.addParticipant(runtime.agentId, roomId);
+      logger.info(`[ROOM CREATE] Agent ${runtime.agentId} added to room ${roomId}`);
 
       // Always add the requesting user (admin) to the room
       await runtime.ensureParticipantInRoom(entityId, roomId);
       await runtime.setParticipantUserState(roomId, entityId, 'FOLLOWED');
+      logger.info(`[ROOM CREATE] User ${entityId} added to room ${roomId}`);
 
       res.status(201).json({
         success: true,
@@ -1253,6 +1329,80 @@ export function agentRouter(
           error: {
             code: 'NOT_FOUND',
             message: 'Room not found',
+          },
+        });
+        return;
+      }
+
+      // Check if the participant exists; if not, create them
+      try {
+        // Try to get the entity first to check if it exists
+        try {
+          const entity = await runtime.getEntityById(participantId as UUID);
+          if (!entity) {
+            // Create the user entity with complete structure
+            logger.info(
+              `[ROOM PARTICIPANT ADD] Participant ${participantId} not found, creating it`
+            );
+
+            // Create complete participant entity with required fields
+            const participantEntity = {
+              id: participantId as UUID,
+              name: 'User',
+              agentId: runtime.agentId,
+              metadata: {
+                websocket: {
+                  username: 'user',
+                  name: 'User',
+                },
+              },
+            };
+
+            // Log entity creation for debugging
+            logger.info(
+              `[ROOM PARTICIPANT ADD] Creating participant entity: ${JSON.stringify(participantEntity)}`
+            );
+
+            await runtime.createEntity(participantEntity as any);
+            logger.info(`[ROOM PARTICIPANT ADD] Participant created successfully`);
+          }
+        } catch (error) {
+          // Entity doesn't exist, create it with complete structure
+          logger.info(
+            `[ROOM PARTICIPANT ADD] Error checking participant, creating it with ID ${participantId}`
+          );
+
+          // Create complete participant entity with required fields
+          const participantEntity = {
+            id: participantId as UUID,
+            name: 'User',
+            agentId: runtime.agentId,
+            metadata: {
+              websocket: {
+                username: 'user',
+                name: 'User',
+              },
+            },
+          };
+
+          // Log entity creation for debugging
+          logger.info(
+            `[ROOM PARTICIPANT ADD] Creating participant entity: ${JSON.stringify(participantEntity)}`
+          );
+
+          await runtime.createEntity(participantEntity as any);
+          logger.info(`[ROOM PARTICIPANT ADD] Participant created successfully`);
+        }
+      } catch (entityError) {
+        logger.error(
+          `[ROOM PARTICIPANT ADD] Failed to ensure participant exists: ${entityError.message}`
+        );
+        res.status(500).json({
+          success: false,
+          error: {
+            code: 'UPDATE_ERROR',
+            message: 'Failed to ensure participant exists',
+            details: entityError.message,
           },
         });
         return;
@@ -1421,6 +1571,408 @@ export function agentRouter(
         error: {
           code: 'RETRIEVAL_ERROR',
           message: 'Failed to get room participants',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  router.get('/:agentId/rooms/:roomId', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    const runtime = agents.get(agentId);
+
+    const roomId = validateUuid(req.params.roomId);
+
+    if (!agentId || !roomId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID or room ID format',
+        },
+      });
+      return;
+    }
+
+    try {
+      const room = await runtime.getRoom(roomId);
+      if (!room) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Room not found',
+          },
+        });
+        return;
+      }
+
+      const entities = await runtime.getEntitiesForRoom(roomId, true);
+
+      res.json({
+        success: true,
+        data: {
+          id: roomId,
+          name: room.name,
+          source: room.source,
+          type: room.type,
+          worldId: room.worldId,
+          entities: entities,
+        },
+      });
+    } catch (error) {
+      logger.error(`[ROOM GET] Error retrieving room ${roomId}:`, error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 500,
+          message: 'Failed to retrieve room',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  router.patch('/:agentId/rooms/:roomId', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    const runtime = agents.get(agentId);
+
+    const roomId = validateUuid(req.params.roomId);
+
+    if (!agentId || !roomId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID or room ID format',
+        },
+      });
+      return;
+    }
+
+    try {
+      const room = await runtime.getRoom(roomId);
+      if (!room) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Room not found',
+          },
+        });
+        return;
+      }
+
+      const updates = req.body;
+
+      // Validate room type if being updated
+      if (updates.type && updates.type !== ChannelType.DM && updates.type !== ChannelType.GROUP) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_CHANNEL_TYPE',
+            message: 'Room type must be DM or GROUP',
+          },
+        });
+        return;
+      }
+
+      await runtime.updateRoom({ ...updates, roomId });
+
+      const updatedRoom = await runtime.getRoom(roomId);
+      res.json({
+        success: true,
+        data: updatedRoom,
+      });
+    } catch (error) {
+      logger.error(`[ROOM UPDATE] Error updating room ${roomId}:`, error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'UPDATE_ERROR',
+          message: 'Failed to update room',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  router.delete('/:agentId/rooms/:roomId', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    const runtime = agents.get(agentId);
+
+    const roomId = validateUuid(req.params.roomId);
+
+    if (!agentId || !roomId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID or room ID format',
+        },
+      });
+      return;
+    }
+
+    try {
+      // Don't allow deleting default rooms (when roomId === agentId)
+      if (roomId === agentId) {
+        res.status(403).json({
+          success: false,
+          error: {
+            code: 'FORBIDDEN',
+            message: 'Cannot delete default agent room',
+          },
+        });
+        return;
+      }
+
+      await runtime.deleteRoom(roomId);
+      res.status(204).send();
+    } catch (error) {
+      logger.error(`[ROOM DELETE] Error deleting room ${roomId}:`, error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DELETE_ERROR',
+          message: 'Failed to delete room',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  // Get memories for a specific room
+  router.get('/:agentId/rooms/:roomId/memories', async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+    const roomId = validateUuid(req.params.roomId);
+
+    if (!agentId || !roomId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID or room ID format',
+        },
+      });
+      return;
+    }
+
+    const runtime = agents.get(agentId);
+
+    if (!runtime) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Agent not found',
+        },
+      });
+      return;
+    }
+
+    try {
+      const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 20;
+      const before = req.query.before
+        ? Number.parseInt(req.query.before as string, 10)
+        : Date.now();
+      const _worldId = req.query.worldId as string;
+
+      const memories = await runtime.getMemories({
+        tableName: 'messages',
+        roomId,
+        count: limit,
+        end: before,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          memories,
+        },
+      });
+    } catch (error) {
+      logger.error('[MEMORIES GET] Error retrieving memories for room:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 500,
+          message: 'Failed to retrieve memories',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  router.post('/:agentId/message', async (req: CustomRequest, res) => {
+    logger.info('[MESSAGES CREATE] Creating new message');
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    // get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Agent not found',
+        },
+      });
+      return;
+    }
+
+    const entityId = createUniqueUuid(runtime, req.body.senderId);
+    const roomId = createUniqueUuid(runtime, req.body.roomId);
+
+    const source = req.body.source;
+    const text = req.body.text.trim();
+
+    try {
+      // Get the room to determine channel type
+      const room = await runtime.getRoom(roomId);
+      const channelType = room?.type || ChannelType.DM; // Default to DM if room not found
+
+      const messageId = createUniqueUuid(runtime, Date.now().toString());
+
+      const content: Content = {
+        text,
+        attachments: [],
+        source,
+        inReplyTo: undefined,
+        channelType: channelType, // Use the room's channel type
+      };
+
+      const userMessage = {
+        content,
+        entityId,
+        roomId,
+        agentId: runtime.agentId,
+      };
+
+      const memory: Memory = {
+        id: createUniqueUuid(runtime, messageId),
+        ...userMessage,
+        agentId: runtime.agentId,
+        entityId,
+        roomId,
+        content,
+        createdAt: Date.now(),
+      };
+
+      // save message
+      await runtime.createMemory(memory, 'messages');
+
+      console.log('*** memory', memory);
+
+      let state = await runtime.composeState(memory);
+
+      console.log('*** state', state);
+
+      const prompt = composePromptFromState({
+        state,
+        template: messageHandlerTemplate,
+      });
+
+      console.log('*** prompt', prompt);
+
+      const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
+        prompt,
+      });
+
+      console.log('*** response', response);
+
+      if (!response) {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: 'MODEL_ERROR',
+            message: 'No response from model',
+          },
+        });
+        return;
+      }
+
+      const responseMessage: Memory = {
+        id: createUniqueUuid(runtime, messageId),
+        ...userMessage,
+        entityId: runtime.agentId,
+        content: response,
+        createdAt: Date.now(),
+      };
+
+      state = await runtime.composeState(responseMessage, ['RECENT_MESSAGES']);
+
+      const replyHandler = async (message: Content) => {
+        res.status(201).json({
+          success: true,
+          data: {
+            message,
+            messageId,
+            name: runtime.character.name,
+            roomId: req.body.roomId,
+            source,
+          },
+        });
+        return [memory];
+      };
+
+      await runtime.processActions(memory, [responseMessage], state, replyHandler);
+
+      await runtime.evaluate(memory, state);
+
+      if (!res.headersSent) {
+        res.status(202).json();
+      }
+    } catch (error) {
+      logger.error('Error processing message:', error.message);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'PROCESSING_ERROR',
+          message: 'Error processing message',
           details: error.message,
         },
       });

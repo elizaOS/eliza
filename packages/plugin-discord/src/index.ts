@@ -12,7 +12,7 @@ import { DiscordTestSuite } from './tests';
 
 const discordPlugin: Plugin = {
   name: 'discord',
-  description: 'Discord client plugin',
+  description: 'Discord service plugin for integration with Discord servers and channels',
   services: [DiscordService],
   actions: [chatWithAttachments, downloadMedia, joinVoice, leaveVoice, summarize, transcribeMedia],
   providers: [channelStateProvider, voiceStateProvider],

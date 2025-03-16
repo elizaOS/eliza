@@ -1,6 +1,7 @@
 import {
   ChannelType,
   type Content,
+  EventTypes,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -290,134 +291,198 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
   }
 
   /**
-   * Process a message with the agent runtime
+   * Handle incoming text message and process it
    */
   private async processAgentMessage(payload: TextMessagePayload): Promise<void> {
     if (!this.runtime) {
-      logger.warn(`[WebSocketService] No runtime available for entity ${this.entityId}`);
+      logger.warn(`[WebSocketService] Cannot process message: runtime not available`);
       return;
     }
 
+    const runtime = this.runtime;
+
     try {
-      const { entityId, text, roomId, source } = payload;
-
-      // Log detailed information about the incoming message
-      logger.info(`[WebSocketService][${this.entityId}] Processing message:`);
-      logger.info(`  - From: ${entityId}`);
-      logger.info(`  - Room: ${roomId}`);
-      logger.info(`  - Text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
-      logger.info(`  - Source: ${source || 'websocket'}`);
-      logger.info(`  - Agent ID: ${this.runtime.agentId}`);
-
-      // Log runtime state
-      logger.info(`[WebSocketService][${this.entityId}] Runtime state:`);
-      logger.info(`  - Agent Name: ${this.runtime.character?.name || 'Unknown'}`);
-
-      const typedRoomId = createUniqueUuid(this.runtime, roomId);
-      const typedEntityId = createUniqueUuid(this.runtime, entityId);
-
-      logger.info(`[WebSocketService][${this.entityId}] Typed IDs:`);
-      logger.info(`  - Typed Entity ID: ${typedEntityId}`);
-      logger.info(`  - Typed Room ID: ${typedRoomId}`);
-
-      // Ensure connection
       logger.info(
-        `[WebSocketService][${this.entityId}] Ensuring connection for entity ${entityId}`
+        `[WebSocketService] Processing message from ${payload.entityId} to agent ${runtime.agentId}`
       );
-      await this.runtime.ensureConnection({
-        entityId: typedEntityId,
-        roomId: typedRoomId,
-        userName: payload.userName,
-        name: payload.userName,
-        source: source || 'websocket',
-        type: ChannelType.API,
-        worldId: payload.worldId as UUID,
-      });
 
-      // Create message memory
-      const messageId = createUniqueUuid(this.runtime, Date.now().toString());
-      const content: Content = {
-        text,
-        attachments: [],
-        source: source || 'websocket',
-        inReplyTo: undefined,
-        channelType: ChannelType.API,
-      };
+      // Generate proper UUIDs for entity and room
+      const typedEntityId = createUniqueUuid(runtime, payload.entityId);
+      const typedRoomId = createUniqueUuid(runtime, payload.roomId);
 
-      const memory: Memory = {
-        id: messageId,
-        agentId: this.runtime.agentId,
-        entityId: typedEntityId,
-        roomId: typedRoomId,
-        content,
-        createdAt: Date.now(),
-      };
-
-      logger.info(`[WebSocketService][${this.entityId}] Created memory object:`);
-      logger.info(`  - Memory ID: ${memory.id}`);
-      logger.info(`  - Agent ID: ${memory.agentId}`);
-      logger.info(`  - Entity ID: ${memory.entityId}`);
-      logger.info(`  - Room ID: ${memory.roomId}`);
-
-      logger.info(`[WebSocketService][${this.entityId}] Saving message memory ${messageId}`);
-
-      // Save incoming message to memory
-      await this.runtime.createMemory(memory, 'messages');
-
-      // Compose state for message processing
-      logger.info(`[WebSocketService][${this.entityId}] Composing state for message processing`);
-      const state = await this.runtime.composeState(memory);
-      logger.info(`[WebSocketService][${this.entityId}] State composed successfully`);
-
-      // Use the agent's LLM to generate a response
-      logger.info(`[WebSocketService][${this.entityId}] Generating response with LLM`);
-      const response = await this.useModelWithErrorHandling(state);
-      if (!response) {
-        logger.error(`[WebSocketService][${this.entityId}] Failed to get response from LLM`);
-        return;
+      // 1. Ensure connection exists
+      try {
+        logger.info(`[WebSocketService] Ensuring connection for entity ${typedEntityId}`);
+        await this.ensureConnection(typedEntityId.toString(), typedRoomId, ChannelType.API);
+      } catch (connectionError) {
+        logger.error(
+          `[WebSocketService] Error ensuring connection: ${connectionError.message}`,
+          connectionError
+        );
+        // Continue despite error - might still work
       }
 
-      logger.info(
-        `[WebSocketService][${this.entityId}] Got response: "${response.substring(0, 50)}${response.length > 50 ? '...' : ''}"`
-      );
-
-      // Create a memory for the agent's response
-      const responseMemory: Memory = {
-        id: createUniqueUuid(this.runtime, Date.now().toString()),
-        agentId: this.runtime.agentId,
-        entityId: this.runtime.agentId,
+      // 2. Create memory for message
+      const messageId = createUniqueUuid(runtime, `${Date.now()}-${Math.random()}`);
+      const newMessage: Memory = {
+        id: messageId,
+        entityId: typedEntityId,
+        agentId: runtime.agentId,
         roomId: typedRoomId,
         content: {
-          ...content,
-          text: response,
+          text: payload.text,
+          attachments: [],
+          source: payload.source || 'websocket',
+          channelType: ChannelType.API,
         },
         createdAt: Date.now(),
       };
 
-      // Save response to memory
-      logger.info(
-        `[WebSocketService][${this.entityId}] Saving response memory ${responseMemory.id}`
-      );
-      await this.runtime.createMemory(responseMemory, 'messages');
+      // Save the incoming message to memory
+      logger.info(`[WebSocketService] Creating memory for message ${messageId}`);
+      await runtime.createMemory(newMessage, 'messages');
 
-      // Send the agent's response back to the room
-      logger.info(`[WebSocketService][${this.entityId}] Sending response to room ${roomId}`);
-      this.sendTextMessage({
-        entityId: this.runtime.agentId,
-        userName: this.runtime.character.name,
-        text: response,
-        roomId,
-        source: source || 'websocket',
-        worldId: payload.worldId,
+      // 3. Define callback for agent responses
+      const callback = async (content: Content) => {
+        try {
+          logger.info(
+            `[WebSocketService] Agent ${runtime.agentId} responding to message ${messageId}`
+          );
+
+          // Create memory object for response
+          const responseId = createUniqueUuid(runtime, `response-${Date.now()}`);
+          const responseMemory: Memory = {
+            id: responseId,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: {
+              ...content,
+              inReplyTo: messageId,
+              source: payload.source || 'websocket',
+              channelType: ChannelType.API,
+            },
+            roomId: typedRoomId,
+            createdAt: Date.now(),
+          };
+
+          // Save response to memory
+          await runtime.createMemory(responseMemory, 'messages');
+
+          // Send response back over WebSocket
+          this.socket?.emit('message', {
+            type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
+            payload: {
+              entityId: runtime.agentId,
+              userName: runtime.character?.name,
+              text: content.text,
+              roomId: payload.roomId,
+              source: payload.source || 'websocket',
+            },
+          });
+
+          // Return memories (required by Bootstrap)
+          return [responseMemory];
+        } catch (error) {
+          logger.error(`[WebSocketService] Error in response callback: ${error.message}`, error);
+          return [];
+        }
+      };
+
+      // 4. Emit event to trigger Bootstrap handler
+      await runtime.emitEvent(EventTypes.MESSAGE_RECEIVED, {
+        runtime,
+        message: newMessage,
+        callback,
       });
 
-      // Evaluate the interaction
-      logger.info(`[WebSocketService][${this.entityId}] Evaluating interaction`);
-      await this.runtime.evaluate(memory, state);
-
-      logger.info(`[WebSocketService][${this.entityId}] Message processing complete`);
+      logger.info(`[WebSocketService] Message event emitted to agent ${runtime.agentId}`);
     } catch (error) {
-      logger.error(`[WebSocketService][${this.entityId}] Error processing agent message:`, error);
+      logger.error(`[WebSocketService] Error processing message: ${error.message}`, error);
+    }
+  }
+
+  /**
+   * Ensure the agent and user are connected to the room
+   */
+  private async ensureConnection(
+    entityId: string,
+    roomId: UUID,
+    channelType: ChannelType
+  ): Promise<void> {
+    if (!this.runtime) {
+      return;
+    }
+
+    try {
+      // Ensure the entity exists
+      const entityUuid = createUniqueUuid(this.runtime, entityId);
+      let entity = null;
+
+      try {
+        entity = await this.runtime.getEntityById(entityUuid);
+      } catch (error) {
+        logger.info(`[WebSocketService] Entity ${entityUuid} not found, will create it`);
+      }
+
+      if (!entity) {
+        // Create a complete entity object
+        const userEntity = {
+          id: entityUuid,
+          name: 'User',
+          agentId: this.runtime.agentId,
+          metadata: {
+            websocket: {
+              username: 'user',
+              name: 'User',
+            },
+          },
+        };
+
+        // Log entity creation for debugging
+        logger.info(`[WebSocketService] Creating entity: ${JSON.stringify(userEntity)}`);
+
+        await this.runtime.createEntity(userEntity as any);
+        logger.info(`[WebSocketService] Created entity for user ${entityUuid}`);
+      }
+
+      // Ensure the room exists
+      const room = await this.runtime.getRoom(roomId);
+
+      if (!room) {
+        // Create the room if it doesn't exist
+        await this.runtime.ensureRoomExists({
+          id: roomId,
+          name: `Chat ${new Date().toLocaleString()}`,
+          source: 'websocket',
+          type: channelType,
+        });
+
+        logger.info(`[WebSocketService] Created room ${roomId} with type ${channelType}`);
+      } else if (room.type === ChannelType.API) {
+        // Update room type from legacy API to appropriate type
+        await this.runtime.updateRoom({
+          id: roomId,
+          name: room.name,
+          source: room.source,
+          type: channelType,
+          worldId: room.worldId,
+          agentId: room.agentId,
+          channelId: room.channelId,
+          serverId: room.serverId,
+          metadata: room.metadata,
+        });
+
+        logger.info(`[WebSocketService] Updated room ${roomId} from API to ${channelType}`);
+      }
+
+      // Ensure user is in the room
+      await this.runtime.ensureParticipantInRoom(entityUuid, roomId);
+
+      // Ensure agent is in the room
+      await this.runtime.ensureParticipantInRoom(this.runtime.agentId, roomId);
+    } catch (error) {
+      logger.error(`[WebSocketService] Error ensuring connection: ${error.message}`);
+      throw error;
     }
   }
 

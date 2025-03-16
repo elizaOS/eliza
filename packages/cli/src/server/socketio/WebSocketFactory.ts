@@ -90,13 +90,21 @@ export class WebSocketFactory {
     logger.info(
       `[WebSocketFactory] Creating new WebSocketService for agent ${agentId} in room ${roomId}`
     );
-    const service = new WebSocketService(this.serverUrl, agentId, roomId, runtime, router);
+    logger.info(`[WebSocketFactory] Using agentId as entityId to ensure proper message routing`);
+
+    const service = new WebSocketService(
+      this.serverUrl,
+      agentId, // Use agentId as entityId for the agent's socket
+      roomId,
+      runtime,
+      router
+    );
 
     // Store service reference
     this.services.set(serviceKey, service);
 
     logger.info(
-      `[WebSocketFactory] Created WebSocketService for agent ${agentId} in room ${roomId}`
+      `[WebSocketFactory] Successfully created WebSocketService for agent ${agentId} in room ${roomId}`
     );
     return service;
   }
