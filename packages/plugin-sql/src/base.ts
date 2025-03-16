@@ -4,6 +4,7 @@ import {
 	DatabaseAdapter,
 	type Entity,
 	type Memory,
+	type MemoryMetadata,
 	type Participant,
 	type Relationship,
 	type Room,
@@ -14,6 +15,7 @@ import {
 } from "@elizaos/core";
 import type { Log } from "@elizaos/core";
 import {
+	Column,
 	and,
 	cosineDistance,
 	count,
@@ -60,16 +62,6 @@ import type { DrizzleOperations } from "./types";
  * @property {number} [position] - The position of the memory.
  */
 
-type MemoryMetadata = {
-	type: string;
-	source?: string;
-	sourceId?: UUID;
-	scope?: string;
-	timestamp?: number;
-	tags?: string[];
-	documentId?: UUID;
-	position?: number;
-};
 
 /**
  * Abstract class representing a base Drizzle adapter for working with databases.
@@ -654,35 +646,49 @@ export abstract class BaseDrizzleAdapter<
 	 * @returns {Promise<Memory[]>} A Promise that resolves to an array of memories.
 	 */
 	async getMemories(params: {
-		roomId: UUID;
+		entityId?: UUID;
+		agentId?: UUID;
+		roomId?: UUID;
 		count?: number;
 		unique?: boolean;
 		tableName: string;
 		start?: number;
 		end?: number;
 	}): Promise<Memory[]> {
-		if (!params.tableName) throw new Error("tableName is required");
-		if (!params.roomId) throw new Error("roomId is required");
+
+		const { entityId, agentId, roomId, tableName, count, unique, start, end } = params;
+
+		if (!tableName) throw new Error("tableName is required");
+		if (!roomId && !entityId && !agentId) throw new Error("roomId, entityId, or agentId is required");
 
 		return this.withDatabase(async () => {
 			const conditions = [
-				eq(memoryTable.type, params.tableName),
-				eq(memoryTable.roomId, params.roomId),
+				eq(memoryTable.type, tableName),
 			];
 
-			if (params.start) {
-				conditions.push(gte(memoryTable.createdAt, params.start));
+			if (start) {
+				conditions.push(gte(memoryTable.createdAt, start));
 			}
 
-			if (params.end) {
-				conditions.push(lte(memoryTable.createdAt, params.end));
+			if (entityId) {
+				conditions.push(eq(memoryTable.entityId, entityId));
 			}
 
-			if (params.unique) {
+			if (roomId) {
+				conditions.push(eq(memoryTable.roomId, roomId));
+			}
+
+			if (end) {
+				conditions.push(lte(memoryTable.createdAt, end));
+			}
+
+			if (unique) {
 				conditions.push(eq(memoryTable.unique, true));
 			}
 
-			conditions.push(eq(memoryTable.agentId, this.agentId));
+			if (agentId) {
+				conditions.push(eq(memoryTable.agentId, agentId));
+			}
 
 			const query = this.db
 				.select({
@@ -695,6 +701,7 @@ export abstract class BaseDrizzleAdapter<
 						agentId: memoryTable.agentId,
 						roomId: memoryTable.roomId,
 						unique: memoryTable.unique,
+						metadata: memoryTable.metadata,
 					},
 					embedding: embeddingTable[this.embeddingDimension],
 				})
@@ -1216,6 +1223,93 @@ export abstract class BaseDrizzleAdapter<
 
 		return memoryId;
 	}
+
+	/**
+     * Updates an existing memory in the database.
+     * @param memory The memory object with updated content and optional embedding
+     * @returns Promise resolving to boolean indicating success
+     */
+    async updateMemory(memory: Partial<Memory> & { id: UUID, metadata?: MemoryMetadata }): Promise<boolean> {
+        return this.withDatabase(async () => {
+            try {
+                logger.debug("Updating memory:", {
+                    memoryId: memory.id,
+                    hasEmbedding: !!memory.embedding,
+                });
+
+                await this.db.transaction(async (tx) => {
+                    // Update memory content if provided
+                    if (memory.content) {
+                        const contentToUpdate = typeof memory.content === "string"
+                            ? JSON.parse(memory.content)
+                            : memory.content;
+
+                        await tx
+                            .update(memoryTable)
+                            .set({
+                                content: sql`${contentToUpdate}::jsonb`,
+                                ...(memory.metadata && { metadata: sql`${memory.metadata}::jsonb` }),
+                            })
+                            .where(eq(memoryTable.id, memory.id));
+                    } else if (memory.metadata) {
+                        // Update only metadata if content is not provided
+                        await tx
+                            .update(memoryTable)
+                            .set({
+                                metadata: sql`${memory.metadata}::jsonb`,
+                            })
+                            .where(eq(memoryTable.id, memory.id));
+                    }
+
+                    // Update embedding if provided
+                    if (memory.embedding && Array.isArray(memory.embedding)) {
+                        const cleanVector = memory.embedding.map((n) =>
+                            Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+                        );
+
+                        // Check if embedding exists
+                        const existingEmbedding = await tx
+                            .select({ id: embeddingTable.id })
+                            .from(embeddingTable)
+                            .where(eq(embeddingTable.memoryId, memory.id))
+                            .limit(1);
+
+                        if (existingEmbedding.length > 0) {
+                            // Update existing embedding
+                            const updateValues: Record<string, unknown> = {};
+                            updateValues[this.embeddingDimension] = cleanVector;
+
+                            await tx
+                                .update(embeddingTable)
+                                .set(updateValues)
+                                .where(eq(embeddingTable.memoryId, memory.id));
+                        } else {
+                            // Create new embedding
+                            const embeddingValues: Record<string, unknown> = {
+                                id: v4(),
+                                memoryId: memory.id,
+                                createdAt: Date.now(),
+                            };
+                            embeddingValues[this.embeddingDimension] = cleanVector;
+
+                            await tx.insert(embeddingTable).values([embeddingValues]);
+                        }
+                    }
+                });
+
+                logger.debug("Memory updated successfully:", {
+                    memoryId: memory.id,
+                });
+                return true;
+            } catch (error) {
+                logger.error("Error updating memory:", {
+                    error: error instanceof Error ? error.message : String(error),
+                    memoryId: memory.id,
+                });
+                return false;
+            }
+        });
+    }
 
 	/**
 	 * Asynchronously deletes a memory from the database based on the provided parameters.

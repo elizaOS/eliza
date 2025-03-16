@@ -2,7 +2,7 @@ import type { Content, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { ChannelType, createUniqueUuid, logger, validateUuid } from "@elizaos/core";
 import { SOCKET_MESSAGE_TYPE } from "@elizaos/core";
 import type { Server as SocketIOServer } from "socket.io";
-import type { Socket, RemoteSocket } from "socket.io";
+import type { RemoteSocket, Socket } from "socket.io";
 import type { DefaultEventsMap } from "socket.io/dist/typed-events";
 
 export class SocketIORouter {

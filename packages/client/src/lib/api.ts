@@ -1,4 +1,4 @@
-import type { Agent, Character, UUID } from "@elizaos/core";
+import type { Agent, Character, Memory, UUID } from "@elizaos/core";
 import { WorldManager } from "./world-manager";
 
 //const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
@@ -146,6 +146,9 @@ interface AgentLog {
  * 		getLogs: (level: string) => Promise<LogResponse>;
  * 		getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }) => Promise<{ success: boolean; data: AgentLog[] }>;
  * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
+ * 		getAgentMemories: (agentId: UUID, roomId?: UUID) => Promise<any>;
+ * 		deleteAgentMemory: (agentId: UUID, memoryId: string) => Promise<any>;
+ * 		updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => Promise<any>;
  * 	}
  * }}
  */
@@ -382,14 +385,7 @@ export const apiClient = {
 		});
 	},
 
-	// Knowledge management functions
-	getKnowledge: (agentId: string): Promise<any> => {
-		return fetcher({
-			url: `/agents/${agentId}/knowledge`,
-			method: "GET"
-		});
-	},
-
+	// Method to upload knowledge for an agent
 	uploadKnowledge: async (agentId: string, files: File[]): Promise<any> => {
 		const formData = new FormData();
 		
@@ -404,10 +400,31 @@ export const apiClient = {
 		});
 	},
 
-	deleteKnowledge: (agentId: string, knowledgeId: string): Promise<any> => {
+	// Method to get all memories for an agent, optionally filtered by room
+	getAgentMemories: (agentId: UUID, roomId?: UUID) => {
+		const url = roomId 
+			? `/agents/${agentId}/rooms/${roomId}/memories` 
+			: `/agents/${agentId}/memories`;
+		
 		return fetcher({
-			url: `/agents/${agentId}/knowledge/${knowledgeId}`,
-			method: "DELETE"
+			url,
+			method: "GET",
 		});
-	}
+	},
+
+	// Method to delete a specific memory for an agent
+	deleteAgentMemory: (agentId: UUID, memoryId: string) => {
+		return fetcher({
+			url: `/agents/${agentId}/memories/${memoryId}`,
+			method: "DELETE",
+		});
+	},
+
+	updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => {
+		return fetcher({
+			url: `/agents/${agentId}/memories/${memoryId}`,
+			method: "PATCH",
+			body: memoryData,
+		});
+	},
 };
