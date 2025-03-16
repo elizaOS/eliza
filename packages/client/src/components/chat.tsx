@@ -213,8 +213,6 @@ export default function Page({ agentId }: { agentId: UUID }) {
     };
   }, [roomId, agentId, entityId]);
 
-  const getMessageVariant = (id: UUID) => (id !== entityId ? 'received' : 'sent');
-
   // Use a stable ID for refs to avoid excessive updates
   const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
 
