@@ -39,7 +39,7 @@ jobs:
         run: bun install
 
       - name: Build packages
-        run: bun run build
+        run: bun run build && bun run build:docs
 
       - name: Tag and Publish Packages
         id: tag_publish

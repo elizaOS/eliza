@@ -54,12 +54,13 @@ function MessageContent({
         isLoading={message.isLoading}
         {...(message.name === USER_NAME ? { variant: "sent" } : {})}
       >
-        {message.name === USER_NAME ? 
-          message.text :
-          (isLastMessage && message.name !== USER_NAME) ? 
-            <AIWriter>{message.text}</AIWriter> : 
-            message.text
-        }
+        {message.name === USER_NAME ? (
+          message.text
+        ) : isLastMessage && message.name !== USER_NAME ? (
+          <AIWriter>{message.text}</AIWriter>
+        ) : (
+          message.text
+        )}
         {/* Attachments */}
         <div>
           {message.attachments?.map((attachment: IAttachment) => (
@@ -132,18 +133,24 @@ export default function Page({ agentId }: { agentId: UUID }) {
   const socketIOManager = SocketIOManager.getInstance();
 
   useEffect(() => {
+    // Only connect with the agent's ID to the room
+    // The user ID will be set in the message payload when sending
     socketIOManager.connect(agentId, roomId);
-    socketIOManager.connect(entityId, roomId);
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
-      queryClient.setQueryData(
-        ["messages", agentId, roomId, worldId],
-        (old: ContentWithUser[] = []) => [
-          ...old,
-          { ...data, name: data.senderName },
-        ]
-      );
+      // Only add messages from other users (the agent) to the UI
+      // User's own messages are added directly in handleSendMessage
+      if (data.entityId !== entityId) {
+        queryClient.setQueryData(
+          ["messages", agentId, roomId, worldId],
+          (old: ContentWithUser[] = []) => [
+            ...old,
+            { ...data, name: data.userName },
+          ]
+        );
+      }
     };
+
     socketIOManager.on("messageBroadcast", handleMessageBroadcasting);
 
     return () => {
@@ -180,6 +187,24 @@ export default function Page({ agentId }: { agentId: UUID }) {
     e.preventDefault();
     if (!input) return;
 
+    // Immediately add the user's message to the UI
+    const userMessage = {
+      entityId,
+      userName: USER_NAME,
+      text: input,
+      roomId,
+      createdAt: Date.now(),
+      source: SOURCE_NAME,
+      name: USER_NAME,
+    };
+
+    // Add to the UI
+    queryClient.setQueryData(
+      ["messages", agentId, roomId, worldId],
+      (old: ContentWithUser[] = []) => [...old, userMessage]
+    );
+
+    // Send via WebSocket to the agent
     socketIOManager.handleBroadcastMessage(
       entityId,
       USER_NAME,
@@ -313,7 +338,11 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
                       {isUser && <AvatarFallback>U</AvatarFallback>}
                     </Avatar>
-                    <MessageContent message={message} agentId={agentId} isLastMessage={index === messages.length - 1}/>
+                    <MessageContent
+                      message={message}
+                      agentId={agentId}
+                      isLastMessage={index === messages.length - 1}
+                    />
                   </ChatBubble>
                 </div>
               );

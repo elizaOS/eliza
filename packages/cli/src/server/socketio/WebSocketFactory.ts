@@ -1,61 +1,100 @@
 import { logger, type IAgentRuntime, type UUID } from "@elizaos/core";
 import { WebSocketService } from "./WebSocketService";
+import type { SocketIORouter } from ".";
 
 /**
  * Factory class for creating WebSocket service instances
  */
 export class WebSocketFactory {
-  private static instance: WebSocketFactory | null = null;
+  private static instances: Map<string, WebSocketFactory> = new Map();
+  private services: Map<string, WebSocketService> = new Map();
   private serverUrl: string;
-  private services = new Map<string, WebSocketService>();
+  private socketIORouter?: SocketIORouter;
   
-  /**
-   * Get the singleton instance of the WebSocketFactory
-   */
-  public static getInstance(serverUrl?: string): WebSocketFactory {
-    if (!WebSocketFactory.instance) {
-      if (!serverUrl) {
-        throw new Error("Server URL must be provided when creating WebSocketFactory");
-      }
-      WebSocketFactory.instance = new WebSocketFactory(serverUrl);
-    }
-    return WebSocketFactory.instance;
+  private constructor(serverUrl: string, router?: SocketIORouter) {
+    this.serverUrl = serverUrl;
+    this.socketIORouter = router;
+    logger.info(`[WebSocketFactory] Initialized with serverUrl: ${serverUrl}`);
   }
   
-  private constructor(serverUrl: string) {
-    this.serverUrl = serverUrl;
-    logger.info(`[WebSocketFactory] Initialized with server URL: ${serverUrl}`);
+  /**
+   * Get a WebSocketFactory instance for the specified server URL
+   */
+  public static getInstance(serverUrl: string, router?: SocketIORouter): WebSocketFactory {
+    if (!WebSocketFactory.instances.has(serverUrl)) {
+      WebSocketFactory.instances.set(
+        serverUrl, 
+        new WebSocketFactory(serverUrl, router)
+      );
+    }
+    return WebSocketFactory.instances.get(serverUrl)!;
+  }
+  
+  /**
+   * Get a service key for the given entity and room
+   */
+  private getServiceKey(entityId: string, roomId: string): string {
+    return `agent:${entityId}:${roomId}`;
   }
   
   /**
    * Create a new WebSocketService for a client
    */
   public createClientService(entityId: string, roomId: string): WebSocketService {
-    const serviceKey = `client:${entityId}:${roomId}`;
+    // Use the provided entityId - should already be the fixed zero ID
+    const clientId = entityId;
+    const serviceKey = `client:${clientId}:${roomId}`;
     
     if (this.services.has(serviceKey)) {
+      logger.info(`[WebSocketFactory] Returning existing service for client ${clientId} in room ${roomId}`);
       return this.services.get(serviceKey)!;
     }
     
-    const service = new WebSocketService(this.serverUrl, entityId, roomId);
+    logger.info(`[WebSocketFactory] Creating new WebSocketService for client ${clientId} in room ${roomId}`);
+    const service = new WebSocketService(this.serverUrl, clientId, roomId);
     this.services.set(serviceKey, service);
     
     return service;
   }
   
   /**
-   * Create a new WebSocketService for an agent
+   * Create a WebSocketService instance for an agent
    */
-  public createAgentService(agentId: UUID, roomId: string, runtime: IAgentRuntime): WebSocketService {
-    const serviceKey = `agent:${agentId}:${roomId}`;
+  public createAgentService(
+    agentId: string, 
+    roomId: string,
+    runtime: IAgentRuntime,
+  ): WebSocketService {
+    const serviceKey = this.getServiceKey(agentId, roomId);
     
+    // Use existing service if available
     if (this.services.has(serviceKey)) {
-      return this.services.get(serviceKey)!;
+      logger.info(`[WebSocketFactory] Returning existing service for agent ${agentId} in room ${roomId}`);
+      return this.services.get(serviceKey) as WebSocketService;
     }
     
-    const service = new WebSocketService(this.serverUrl, agentId, roomId, runtime);
+    // Get the router instance
+    const router = this.socketIORouter;
+    if (!router) {
+      logger.warn(`[WebSocketFactory] No SocketIORouter available, agent ${agentId} won't be registered`);
+    } else {
+      logger.info(`[WebSocketFactory] SocketIORouter is available for agent ${agentId}`);
+    }
+    
+    // Create new WebSocketService
+    logger.info(`[WebSocketFactory] Creating new WebSocketService for agent ${agentId} in room ${roomId}`);
+    const service = new WebSocketService(
+      this.serverUrl,
+      agentId,
+      roomId,
+      runtime,
+      router
+    );
+    
+    // Store service reference
     this.services.set(serviceKey, service);
     
+    logger.info(`[WebSocketFactory] Created WebSocketService for agent ${agentId} in room ${roomId}`);
     return service;
   }
   

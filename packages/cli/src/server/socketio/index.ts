@@ -97,15 +97,20 @@ export class SocketIORouter {
                     
                 case SOCKET_MESSAGE_TYPE.SEND_MESSAGE:
                     logger.info(`[SocketIO] Handling message sending via 'message' event`);
+                    logger.info(`[SocketIO] Message payload: ${JSON.stringify({
+                        entityId: payload.entityId,
+                        roomId: payload.roomId,
+                        text: payload.text?.substring(0, 30)
+                    })}`);
                     this.handleBroadcastMessage(socket, payload);
                     break;
                     
                 default:
-                    logger.warn(`[SocketIO] Unknown message type received: ${type}`);
+                    logger.info(`[SocketIO] Unhandled message type: ${type}`);
                     break;
             }
         } catch (error) {
-            logger.error(`[SocketIO] Error processing 'message' event: ${error.message}`);
+            logger.error(`[SocketIO] Error handling message event: ${error.message}`, error);
         }
     }
 
@@ -144,6 +149,15 @@ export class SocketIORouter {
     }
 
     private async handleBroadcastMessage(socket: Socket, payload: any) {
+        // EXTREME DEBUG LOGGING
+        logger.info(`[SocketIO] 🚨 VERBOSE DEBUGGING FOR BROADCAST MESSAGE 🚨`);
+        logger.info(`[SocketIO] Payload: ${JSON.stringify(payload, null, 2)}`);
+        logger.info(`[SocketIO] Socket ID: ${socket.id}`);
+        logger.info(`[SocketIO] Connected Sockets: ${socket.nsp.sockets.size}`);
+        logger.info(`[SocketIO] Known Connections: ${Array.from(this.connections.entries()).map(([id, entity]) => `${id}=${entity}`).join(', ')}`);
+        logger.info(`[SocketIO] Available Agents: ${Array.from(this.agents.keys()).join(', ')}`);
+        logger.info(`[SocketIO] Agent Services: ${Array.from(this.agentServices.keys()).join(', ')}`);
+
         // Convert from old field names if necessary for backward compatibility
         const entityId = payload.entityId || payload.senderId;
         const userName = payload.userName || payload.senderName;
@@ -171,11 +185,17 @@ export class SocketIORouter {
             // Get all participants in this room
             const socketsInRoom = await socket.to(roomId).fetchSockets();
             logger.info(`[SocketIO] Found ${socketsInRoom.length} sockets in room ${roomId}`);
+            // Log each socket in room
+            for (const clientSocket of socketsInRoom) {
+                const recipientId = this.connections.get(clientSocket.id);
+                logger.info(`[SocketIO] Socket ${clientSocket.id} in room ${roomId} is for entity: ${recipientId || 'unknown'}`);
+            }
             
             // Find a valid runtime to create UUIDs
             let runtime: IAgentRuntime | undefined;
             for (const [agentId, agentRuntime] of this.agents.entries()) {
                 runtime = agentRuntime;
+                logger.info(`[SocketIO] Using runtime for agent ${agentId}`);
                 break;
             }
             
@@ -193,7 +213,13 @@ export class SocketIORouter {
                 const recipientId = this.connections.get(clientSocket.id);
                 
                 // Skip if no entity ID is associated or it's the sender
-                if (!recipientId || recipientId === entityId) {
+                if (!recipientId) {
+                    logger.info(`[SocketIO] Skipping socket ${clientSocket.id} - no entity ID associated`);
+                    continue;
+                }
+                
+                if (recipientId === entityId) {
+                    logger.info(`[SocketIO] Skipping socket ${clientSocket.id} - same as sender (${entityId})`);
                     continue;
                 }
                 
@@ -201,10 +227,11 @@ export class SocketIORouter {
                 const agentRuntime = this.agents.get(recipientId);
                 if (!agentRuntime) {
                     // This is a client, not an agent - skip
+                    logger.info(`[SocketIO] Skipping socket ${clientSocket.id} - not an agent`);
                     continue;
                 }
                 
-                logger.info(`[SocketIO] Delivering message to agent ${recipientId} in room ${roomId}`);
+                logger.info(`[SocketIO] 🚨 FOUND ELIGIBLE AGENT RECIPIENT: ${recipientId} 🚨`);
                 
                 // Create message memory for this agent
                 await this.createMessageMemoryForAgent(agentRuntime, {

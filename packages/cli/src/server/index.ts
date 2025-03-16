@@ -59,13 +59,21 @@ export class AgentServer {
 	public app: express.Application;
 	private agents: Map<UUID, IAgentRuntime>;
 	public server: any;
-
 	public database: any;
 	public startAgent!: (character: Character) => Promise<IAgentRuntime>;
 	public stopAgent!: (runtime: IAgentRuntime) => void;
 	public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
 	public jsonToCharacter!: (character: unknown) => Promise<Character>;
 	private socketIO: SocketIOServer;
+	private socketIORouter: SocketIORouter | null = null;
+
+	/**
+	 * Get the SocketIORouter instance
+	 * @returns {SocketIORouter | null} The SocketIORouter instance or null if not initialized
+	 */
+	public getSocketIORouter(): SocketIORouter | null {
+		return this.socketIORouter;
+	}
 
 	/**
 	 * Constructor for AgentServer class.
@@ -504,7 +512,8 @@ export class AgentServer {
 
 			this.socketIO = new SocketIOServer(this.server);
 			
-			const socketIORouter = new SocketIORouter(this.agents, this);
+			const socketIORouter = new SocketIORouter(this.agents);
+			this.socketIORouter = socketIORouter;
 			socketIORouter.setupListeners(this.socketIO);
 
 			// Enhanced graceful shutdown
