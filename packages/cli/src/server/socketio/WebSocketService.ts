@@ -421,7 +421,9 @@ export class WebSocketService extends EventEmitter implements IWebSocketService 
    * Start monitoring memory for new messages
    */
   private async startMemoryMonitoring() {
-    logger.info(`[WebSocket] Starting memory monitoring for agent ${this.runtime!.agentId}`);
+    if (!this.runtime) return;
+    
+    logger.info(`[WebSocketService] Starting memory monitoring for agent ${this.runtime.agentId}`);
     // Implementation would depend on your memory architecture
     // For example, you might poll the database or set up a subscription
   }
