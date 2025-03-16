@@ -152,7 +152,7 @@ To update the schema:
 1. Install drizzle-kit (if not already installed):
 
 ```bash
-pnpm add -D drizzle-kit
+bun add -D drizzle-kit
 ```
 
 2. Create or update your schema files (e.g., `schema/account.ts`):
@@ -199,7 +199,7 @@ c. Using the provided migration script:
 ```bash
 npm run migrate
 # or
-pnpm migrate
+bun migrate
 ```
 
 d. Using drizzle-kit migrate command:

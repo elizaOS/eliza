@@ -16,7 +16,7 @@ Intiface/Buttplug.io integration plugin for Eliza OS that enables control of int
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-intiface
+bun install @elizaos/plugin-intiface
 ```
 
 ## Configuration
@@ -80,7 +80,7 @@ The plugin supports various devices through the Buttplug protocol, including but
 The plugin includes a simulation mode for testing without physical hardware:
 
 ```bash
-pnpm test-via-bun
+bun test-via-bun
 ```
 
 ## Dependencies

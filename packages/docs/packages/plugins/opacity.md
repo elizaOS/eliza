@@ -7,7 +7,7 @@ This adapter integrates Opacity proofs into ElizaOS, enabling verifiable inferen
 ## Installation
 
 ```bash
-pnpm add @elizaos/adapter-opacity
+bun add @elizaos/adapter-opacity
 ```
 
 ## Configuration

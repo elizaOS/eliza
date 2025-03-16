@@ -30,8 +30,8 @@ https://github.com/messari/plugin-messari-ai-toolkit/blob/master/.github/assets/
 
 2. Install dependencies and build the project:
    ```bash
-   pnpm install
-   pnpm build
+   bun install
+   bun build
    ```
 
 ### Installing the Messari Plugin
@@ -41,13 +41,13 @@ Depending on which repository you cloned, use one of the following commands:
 **For Main Eliza Repository:**
 
 ```bash
-pnpm --filter agent add github:messari/plugin-messari-ai-toolkit
+bun --filter agent add github:messari/plugin-messari-ai-toolkit
 ```
 
 **For Eliza Starter:**
 
 ```bash
-pnpm add github:messari/plugin-messari-ai-toolkit
+bun add github:messari/plugin-messari-ai-toolkit
 ```
 
 > Note: For the latest plugin mappings and compatibility information, refer to the [eliza-plugins registry](https://github.com/elizaos-plugins/registry/blob/645ba61508a7404c5b890f47e43c005448592510/index.json#L60).

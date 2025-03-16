@@ -20,7 +20,7 @@ The EVM plugin provides comprehensive functionality for interacting with EVM-com
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-evm
+bun install @elizaos/plugin-evm
 ```
 
 ## Configuration
@@ -182,19 +182,19 @@ Execute the proposal with ID 1 on the 0xdeadbeef00000000000000000000000000000000
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run tests:
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## API Reference
@@ -293,7 +293,7 @@ We welcome community feedback and contributions to help prioritize these enhance
 The plugin contains tests. Whether you're using **TDD** or not, please make sure to run the tests before submitting a PR:
 
 ```bash
-pnpm test
+bun test
 ```
 
 Contributions are welcome! Please see the CONTRIBUTING.md file for more information.

@@ -12,7 +12,7 @@ A powerful plugin for interacting with the Akash Network, enabling deployment ma
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-akash
+bun add @elizaos/plugin-akash
 ```
 
 ## Configuration
@@ -123,13 +123,13 @@ The plugin includes comprehensive error handling with specific error codes:
 ### Running Tests
 
 ```bash
-pnpm test
+bun test
 ```
 
 ### Building
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 ## License

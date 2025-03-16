@@ -25,10 +25,10 @@ Install the adapter via npm:
 npm install @elizaos-plugins/adapter-postgres
 ```
 
-Or using pnpm:
+Or using bun:
 
 ```bash
-pnpm add @elizaos-plugins/adapter-postgres
+bun add @elizaos-plugins/adapter-postgres
 ```
 
 ## Configuration
@@ -156,7 +156,7 @@ Tests require Docker to spin up a PostgreSQL instance with pgvector support.
 ### Building
 
 ```bash
-pnpm build
+bun build
 ```
 
 ## Troubleshooting

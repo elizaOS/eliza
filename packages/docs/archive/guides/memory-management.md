@@ -338,7 +338,7 @@ Set `USE_OPENAI_EMBEDDING=TRUE` in .env file or ensure consistent embedding mode
 
 ### How do I reset my agent's memory?
 
-Delete db.sqlite in the agent/data directory and restart the agent. For a complete reset, run `pnpm clean` followed by `pnpm install`.
+Delete db.sqlite in the agent/data directory and restart the agent. For a complete reset, run `bun clean` followed by `bun install`.
 
 ### What storage options exist for agent memory?
 

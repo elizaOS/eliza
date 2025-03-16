@@ -26,10 +26,10 @@ Install the plugin via npm:
 npm install @elizaos-plugins/plugin-story
 ```
 
-Or using pnpm:
+Or using bun:
 
 ```bash
-pnpm add @elizaos-plugins/plugin-story
+bun add @elizaos-plugins/plugin-story
 ```
 
 ## Configuration
@@ -177,19 +177,19 @@ For developers wanting to extend the plugin:
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Run tests
-pnpm test
+bun test
 
 # Build the plugin
-pnpm build
+bun build
 
 # Lint code
-pnpm lint
+bun lint
 
 # Format code
-pnpm format:fix
+bun format:fix
 ```
 
 ## Links and Resources

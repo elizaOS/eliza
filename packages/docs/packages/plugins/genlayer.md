@@ -5,7 +5,7 @@ A plugin for interacting with the GenLayer protocol, enabling contract deploymen
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-genlayer
+bun add @elizaos/plugin-genlayer
 ```
 
 ## Configuration

@@ -9,7 +9,7 @@ The Bittensor plugin enables agents to interact with BitMind's API to access a r
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-bittensor
+bun install @elizaos/plugin-bittensor
 ```
 
 ## Features

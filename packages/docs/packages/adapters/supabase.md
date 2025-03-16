@@ -6,7 +6,7 @@ This adapter enables ElizaOS to integrate with Supabase for data persistence and
 
 - Supabase account and project
 - ElizaOS installation
-- Node.js and npm/yarn/pnpm
+- Node.js and npm/yarn/bun
 
 ## Installation
 

@@ -22,7 +22,7 @@ This plugin aims to be the basis of all interactions with the NEAR ecosystem, pr
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-near
+bun install @elizaos/plugin-near
 ```
 
 ## Configuration
@@ -176,13 +176,13 @@ const walletInfo = await eliza.getProvider('wallet');
 Run the test suite:
 
 ```bash
-pnpm test
+bun test
 ```
 
 Watch mode for development:
 
 ```bash
-pnpm test:watch
+bun test:watch
 ```
 
 ## Dependencies

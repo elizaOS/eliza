@@ -114,13 +114,13 @@ custodyAddress: string;
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm build
+bun build
 ```
 
 ## API Reference

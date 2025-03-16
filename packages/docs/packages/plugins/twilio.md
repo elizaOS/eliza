@@ -19,7 +19,7 @@ A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.
 ## Installation
 
 ```bash
-pnpm add @elizaos-plugins/plugin-twilio
+bun add @elizaos-plugins/plugin-twilio
 ```
 
 ## Configuration
@@ -166,10 +166,10 @@ Call +1234567890 to say that we need to schedule a meeting
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 
 # Build the plugin
-pnpm build
+bun build
 ```
 
 ## Webhook Setup

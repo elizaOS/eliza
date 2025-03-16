@@ -17,7 +17,7 @@ An Instagram client implementation for ElizaOS, enabling Instagram integration w
 As this is a workspace package, it's installed as part of the ElizaOS monorepo:
 
 ```bash
-pnpm install
+bun install
 ```
 
 ## Configuration

@@ -5,7 +5,7 @@ Devin API integration plugin for Eliza, providing automated engineering assistan
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-devin
+bun add @elizaos/plugin-devin
 ```
 
 ## Configuration
@@ -65,7 +65,7 @@ console.log(devinState.url);
 Run the test suite:
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## API Documentation

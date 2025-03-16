@@ -28,7 +28,7 @@ interface Plugin {
 1. Install the desired plugin package:
 
 ```bash
-pnpm add @elizaos/plugin-[name]
+bun add @elizaos/plugin-[name]
 ```
 
 2. Import and register the plugin in your character configuration:
@@ -1027,7 +1027,7 @@ For detailed API documentation and examples, see the [API Reference](/api).
 
 ### How do I add and configure plugins?
 
-Add plugin names to the plugins array in character.json, run `pnpm build`, and configure any required settings in `.env` or character file.
+Add plugin names to the plugins array in character.json, run `bun build`, and configure any required settings in `.env` or character file.
 
 ### Can plugins interact with each other?
 

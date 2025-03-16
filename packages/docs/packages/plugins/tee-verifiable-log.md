@@ -3,9 +3,9 @@
 Execute the following command to build the code.
 
 ```
-pnpm clean
-pnpm install  or  pnpm install --no-frozen-lockfile
-pnpm build
+bun clean
+bun install  or  bun install --no-frozen-lockfile
+bun build
 ```
 
 ## Configuration
@@ -34,6 +34,6 @@ VLOG="true"
 Test files are located in the `test` folder. To run the tests, execute the following command:
 
 ```shell
-pnpm test
+bun test
 
 ```

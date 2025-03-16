@@ -13,7 +13,7 @@ The Youtube to text Plugin allows users to retrieve a text output of a Youtube v
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-youtube-to-text
+bun install @elizaos/plugin-youtube-to-text
 ```
 
 ## Development
@@ -22,17 +22,17 @@ pnpm install @elizaos/plugin-youtube-to-text
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run tests:
 
 ```bash
-pnpm test
+bun test
 ```

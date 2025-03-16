@@ -149,9 +149,9 @@ To set up your environment for TEE development:
    Make sure to set the `TEE_MODE` environment variable to `LOCAL`. Then you can install the dependencies and run the agent locally:
 
    ```bash
-   pnpm i
-   pnpm build
-   pnpm start --character=./characters/yourcharacter.character.json
+   bun i
+   bun build
+   bun start --character=./characters/yourcharacter.character.json
    ```
 
 4. **Verify TEE Attestation**
@@ -232,7 +232,7 @@ Next, you will need to take the docker-compose.yaml file in the root folder of t
 # docker-compose.yaml
 services:
   tee:
-    command: ['pnpm', 'start', '--character=./characters/yourcharacter.character.json']
+    command: ['bun', 'start', '--character=./characters/yourcharacter.character.json']
     image: username/eliza-agent:latest
     stdin_open: true
     tty: true

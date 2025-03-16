@@ -9,7 +9,7 @@ The Plugin Stargaze provides a simple interface to get NFT data from Stargaze co
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-stargaze
+bun add @elizaos/plugin-stargaze
 ```
 
 ## Configuration

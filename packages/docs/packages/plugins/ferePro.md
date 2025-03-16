@@ -20,7 +20,7 @@ The FerePro plugin enables real-time communication with the FerePro API through 
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-ferepro
+bun install @elizaos/plugin-ferepro
 ```
 
 ## Configuration
@@ -74,19 +74,19 @@ REQUEST_TIMEOUT: Number of milliseconds before a request times out
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run in development mode:
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## API Reference

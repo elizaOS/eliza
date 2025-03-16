@@ -5,7 +5,7 @@ A plugin for accessing DexScreener's token data and price information through yo
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-dexscreener
+bun add @elizaos/plugin-dexscreener
 ```
 
 ## Usage

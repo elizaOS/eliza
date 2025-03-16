@@ -74,8 +74,8 @@ Video: https://youtu.be/uouSdtcWXTQ?si=cm13L4T7DQUMXd0C
 2. Install dependencies:
 
    ```bash
-   pnpm install
-   pnpm build
+   bun install
+   bun build
    ```
 
 3. Add your character JSON file to `characters/`
@@ -92,7 +92,7 @@ Video: https://youtu.be/uouSdtcWXTQ?si=cm13L4T7DQUMXd0C
 1. Start agent with your character file:
 
    ```bash
-   pnpm start --character characters/yourcharacter.json
+   bun start --character characters/yourcharacter.json
    ```
 
 2. Agent will log in and post an initial tweet

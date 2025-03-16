@@ -9,7 +9,7 @@ The text-to-speech(TTS) plugin enables AI-powered creation of speech through FAL
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-tts
+bun install @elizaos/plugin-tts
 ```
 
 ## Configuration
@@ -91,19 +91,19 @@ Generates speech audio based on text input.
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run the plugin:
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## Future Enhancements

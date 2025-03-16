@@ -9,7 +9,7 @@ This plugin provides essential functionality for interacting with the Fuel block
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-fuel
+bun install @elizaos/plugin-fuel
 ```
 
 ## Configuration
@@ -99,19 +99,19 @@ interface TransferParams {
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run tests:
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## Future Enhancements

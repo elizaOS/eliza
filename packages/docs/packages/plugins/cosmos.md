@@ -19,7 +19,7 @@ Ensure the appropriate environment variables are added for the plugin. If they a
 Run Eliza
 
 ```
-pnpm run dev
+bun run dev
 ```
 
 ## Configuration
@@ -240,7 +240,7 @@ The plugin includes comprehensive tests. Before submitting any pull requests, en
 Navigate to the `plugin-cosmos` directory and execute:
 
 ```bash
-pnpm  test
+bun  test
 ```
 
 ---

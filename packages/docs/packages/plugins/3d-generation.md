@@ -9,7 +9,7 @@ The 3D Generation plugin enables AI-powered creation of 3D models through FAL.ai
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-3d-generation
+bun install @elizaos/plugin-3d-generation
 ```
 
 ## Configuration
@@ -96,19 +96,19 @@ Generates 3D models based on text descriptions.
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run the plugin:
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## Future Enhancements

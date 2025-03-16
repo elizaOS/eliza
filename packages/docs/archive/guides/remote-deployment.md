@@ -113,24 +113,24 @@ nvm install v23.3.0
 nvm use v23.3.0
 ```
 
-Install pnpm globally and verify the installation:
+Install bun globally and verify the installation:
 
 ```bash
-# Install pnpm
-npm install -g pnpm
-pnpm setup
+# Install bun
+npm install -g bun
+bun setup
 source ~/.bashrc
 
-# Verify pnpm installation and path
-which pnpm
-# Should output something like: /opt/elizaos/.local/share/pnpm/pnpm
+# Verify bun installation and path
+which bun
+# Should output something like: /opt/elizaos/.local/share/bun/bun
 ```
 
 Install and build the workspace.
 
 ```bash
-pnpm install --no-frozen-lockfile
-pnpm build
+bun install --no-frozen-lockfile
+bun build
 ```
 
 ### Configure Environment
@@ -168,7 +168,7 @@ chmod 750 data
 
 ### Shell Environment Setup
 
-We need to properly configure the shell environment for the `eliza` user so nvm/pnpm works:
+We need to properly configure the shell environment for the `eliza` user so nvm/bun works:
 
 ```bash
 sudo tee /opt/elizaos/.profile << 'EOL'
@@ -176,8 +176,8 @@ sudo tee /opt/elizaos/.profile << 'EOL'
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-# pnpm setup
-export PNPM_HOME="$HOME/.local/share/pnpm"
+# bun setup
+export PNPM_HOME="$HOME/.local/share/bun"
 case ":$PATH:" in
   *":$PNPM_HOME:"*) ;;
   *) export PATH="$PNPM_HOME:$PATH" ;;
@@ -215,11 +215,11 @@ WorkingDirectory=/opt/elizaos/eliza
 Environment=NODE_ENV=production
 Environment=HOME=/opt/elizaos
 Environment=HTTP_PORT=3000
-Environment=PATH=/opt/elizaos/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/opt/elizaos/.local/share/bun:/usr/local/bin:/usr/bin:/bin
 Environment=NVM_DIR=/opt/elizaos/.nvm
 
 # Source NVM and start app
-ExecStart=/bin/bash -c '. $NVM_DIR/nvm.sh && exec pnpm start --characters="characters/default.character.json"'
+ExecStart=/bin/bash -c '. $NVM_DIR/nvm.sh && exec bun start --characters="characters/default.character.json"'
 
 # Logging
 StandardOutput=append:/var/log/eliza/eliza.log

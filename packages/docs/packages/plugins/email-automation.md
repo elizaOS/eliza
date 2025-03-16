@@ -127,15 +127,15 @@ This template produces professional emails like the example shown in the image a
 
 ```bash
 # Installation
-pnpm install
+bun install
 
 # Testing
-pnpm test
-pnpm test:watch
-pnpm test:coverage
+bun test
+bun test:watch
+bun test:coverage
 
 # Building
-pnpm build
+bun build
 ```
 
 ## Testing Coverage

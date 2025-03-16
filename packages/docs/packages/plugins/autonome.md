@@ -5,7 +5,7 @@ A plugin that enables launching new Eliza agents through the [Autonome platform]
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-autonome
+bun add @elizaos/plugin-autonome
 ```
 
 ## Configuration

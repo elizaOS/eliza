@@ -5,7 +5,7 @@ Seamlessly empowers Eliza agents with real-time, advanced, self-improving AI inf
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-allora
+bun add @elizaos/plugin-allora
 ```
 
 ## Configuration

@@ -53,8 +53,8 @@ To verify the code running inside the TEE, use instructions [from here](https://
     Reminder of how to run an agent is [here](https://elizaos.github.io/eliza/docs/quickstart/#create-your-first-agent).
 
     ```bash
-    pnpm start --character="characters/<your_character>.json"
-    pnpm start:client
+    bun start --character="characters/<your_character>.json"
+    bun start:client
     ```
 
 5.  **Get the history of all of your verified inference calls**

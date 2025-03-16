@@ -52,24 +52,85 @@ Note: It's recommended for devs to keep working with v1, v2 will be mostly backw
 ### What are the system requirements for running Eliza?
 
 - Node.js version 23+ (specifically 23.3.0 is recommended)
-- pnpm package manager
 - At least 2GB RAM
 - For Windows users: WSL2 (Windows Subsystem for Linux)
 
 ### How do I get started with Eliza?
 
-1. Follow the [quick start guide](/docs/quickstart.md) in the README
-2. Watch the AI Agent Dev School videos on YouTube for step-by-step guidance
-3. Join the Discord community for support
+You have several paths to get started:
+
+1. **Simple Start**: Use the ElizaOS CLI:
+
+   ```bash
+   # Install globally (optional but recommended)
+   npm install -g @elizaos/cli
+
+   # Start with default settings
+   npx elizaos start
+   ```
+
+   To chat with your agent using the web interface:
+
+   ```bash
+   # Start the client for a web interface
+   npx elizaos start:client
+
+   # Then visit http://localhost:5173/
+   ```
+
+2. **Creating a Project**: Build a custom ElizaOS project:
+
+   ```bash
+   # Create a new project with the interactive wizard
+   npx elizaos create
+
+   # Navigate to your project directory
+   cd my-project-name
+
+   # Start your project
+   npx elizaos start
+   ```
+
+   Add plugins to your project:
+
+   ```bash
+   # List available plugins
+   npx elizaos project list-plugins
+
+   # Add a plugin
+   npx elizaos project add-plugin @elizaos/plugin-discord
+   ```
+
+3. **Creating a Plugin**: Extend ElizaOS functionality:
+
+   ```bash
+   # Create a new plugin project
+   npx elizaos create --type plugin
+
+   # Test your plugin
+   npx elizaos start
+
+   # Publish your plugin when ready
+   npx elizaos plugin publish
+   ```
+
+4. **Contributing to Core**: Work with the monorepo:
+   ```bash
+   git clone git@github.com:elizaOS/eliza.git
+   cd eliza
+   bun install
+   bun build
+   bun start
+   ```
 
 ### How do I fix common installation issues?
 
 If you encounter build failures or dependency errors:
 
 1. Ensure you're using Node.js v23.3.0: `nvm install 23.3.0 && nvm use 23.3.0`
-2. Clean your environment: `pnpm clean`
-3. Install dependencies: `pnpm install --no-frozen-lockfile`
-4. Rebuild: `pnpm build`
+2. Clean your environment: `bun clean`
+3. Install dependencies: `bun install --no-frozen-lockfile`
+4. Rebuild: `bun build`
 5. If issues persist, try checking out the latest release:
    ```bash
    git checkout $(git describe --tags --abbrev=0)
@@ -81,10 +142,20 @@ Use **Ollama** for local models. Install Ollama, download the desired model (e.g
 
 ### How do I update Eliza to the latest version?
 
-1. Pull the latest changes
-2. Clean your environment: `pnpm clean`
-3. Reinstall dependencies: `pnpm install --no-frozen-lockfile`
-4. Rebuild: `pnpm build`
+For CLI projects:
+
+```bash
+npm update -g @elizaos/cli
+```
+
+For monorepo development:
+
+```bash
+git pull
+bun clean
+bun install --no-frozen-lockfile
+bun build
+```
 
 ---
 
@@ -94,9 +165,9 @@ Use **Ollama** for local models. Install Ollama, download the desired model (e.g
 
 You have several options:
 
-1. Use the command line:
+1. Use the CLI:
    ```bash
-   pnpm start --characters="characters/agent1.json,characters/agent2.json"
+   npx elizaos start --characters="characters/agent1.json,characters/agent2.json"
    ```
 2. Create separate projects for each agent with their own configurations
 3. For production, use separate Docker containers for each agent
@@ -231,9 +302,16 @@ Check your database for null memory entries and ensure proper content formatting
 
 ### How do I clear or reset my agent's memory?
 
+Using the CLI:
+
+```bash
+npx elizaos agent reset-memory
+```
+
+Or manually:
+
 1. Delete the db.sqlite file in the agent/data directory
 2. Restart your agent
-3. Alternatively, use `pnpm cleanstart`
 
 ### How do I add custom knowledge or use RAG with my agent?
 
@@ -247,22 +325,33 @@ Check your database for null memory entries and ensure proper content formatting
 
 ### How do I add plugins to my agent?
 
+Using the CLI:
+
+```bash
+npx elizaos project add-plugin @elizaos/plugin-name
+```
+
+Or manually:
+
 1. Add the plugin to your character.json:
    ```json
    {
      "plugins": ["@elizaos/plugin-name"]
    }
    ```
-2. Install the plugin: `pnpm install @elizaos/plugin-name`
-3. Rebuild: `pnpm build`
+2. Install the plugin: `bun install @elizaos/plugin-name`
+3. Rebuild: `bun build`
 4. Configure any required plugin settings in .env or character file
 
 ### How do I create custom plugins?
 
-1. Create a new directory in packages/plugins
+1. Use the CLI to scaffold a plugin:
+   ```bash
+   npx elizaos create --type plugin
+   ```
 2. Implement required interfaces (actions, providers, evaluators)
-3. Add to your character's plugins array
-4. Test locally before deployment
+3. Test with `npx elizaos start`
+4. Publish with `npx elizaos plugin publish`
 
 ---
 
@@ -283,7 +372,7 @@ Check your database for null memory entries and ensure proper content formatting
 1. Use a process manager like PM2:
    ```bash
    npm install -g pm2
-   pm2 start "pnpm start" --name eliza
+   pm2 start "npx elizaos start" --name eliza
    pm2 save
    ```
 2. Set up monitoring and automatic restarts
@@ -316,7 +405,7 @@ Check your database for null memory entries and ensure proper content formatting
 ### How do I resolve embedding dimension mismatch errors?
 
 1. Set `USE_OPENAI_EMBEDDING=true` in .env
-2. Delete db.sqlite to reset embeddings
+2. Reset your agent's memory with `npx elizaos agent reset-memory`
 3. Ensure consistent embedding models across your setup
 
 ### Why does my agent post in JSON format sometimes?
@@ -333,21 +422,20 @@ Add a mention filter to your character's configuration and set `ENABLE_ACTION_PR
 
 Eliza welcomes contributions from individuals with a wide range of skills:
 
-- **Participate in community discussions**: Share your memecoin insights, propose new ideas, and engage with other community members.
-- **Contribute to the development of the Eliza platform**: https://github.com/elizaOS/eliza
-- **Help build the Eliza ecosystem**: Create applications / tools, resources, and memes. Give feedback, and spread the word
+- **Participate in community discussions**: Share your insights, propose new ideas, and engage with other community members
+- **Contribute to the development**: https://github.com/elizaOS/eliza
+- **Extend the ecosystem**: Create plugins, clients, and tools
 
 #### Technical Contributions
 
-- **Develop new actions, clients, providers, and evaluators**: Extend Eliza's functionality by creating new modules or enhancing existing ones.
-- **Contribute to database management**: Improve or expand Eliza's database capabilities using PostgreSQL, SQLite, or SQL.js.
-- **Enhance local development workflows**: Improve documentation and tools for local development using SQLite and VS Code.
-- **Fine-tune models**: Optimize existing models or implement new models for specific tasks and personalities.
-- **Contribute to the autonomous trading system and trust engine**: Leverage expertise in market analysis, technical analysis, and risk management to enhance these features.
+- **Develop new plugins**: Create new functionality using the plugin system
+- **Improve the core**: Enhance the ElizaOS core functionality
+- **Fine-tune models**: Optimize models for specific personalities and use cases
+- **Enhance clients**: Improve platform integrations for Twitter, Discord, etc.
 
 #### Non-Technical Contributions
 
-- **Community Management**: Onboard new members, organize events, moderate discussions, and foster a welcoming community.
-- **Content Creation**: Create memes, tutorials, documentation, and videos to share project updates.
-- **Translation**: Translate documentation and other materials to make Eliza accessible to a global audience.
-- **Domain Expertise**: Provide insights and feedback on specific applications of Eliza in various fields.
+- **Community Management**: Onboard new members, organize events, and foster a welcoming community
+- **Content Creation**: Create tutorials, documentation, and videos
+- **Translation**: Help make ElizaOS accessible to a global audience
+- **Domain Expertise**: Provide insights for specific applications of ElizaOS

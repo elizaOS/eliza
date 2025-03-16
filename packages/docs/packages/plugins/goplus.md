@@ -5,7 +5,7 @@ A plugin that enables on-chain security checks through the GoPlus API integratio
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-goplus
+bun add @elizaos/plugin-goplus
 ```
 
 ## Configuration

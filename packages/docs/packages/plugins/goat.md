@@ -14,7 +14,7 @@ This plugin integrates GOAT with Eliza, giving your agent the ability to interac
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-goat
+bun install @elizaos/plugin-goat
 ```
 
 ## Configuration
@@ -31,7 +31,7 @@ EVM_PROVIDER_URL=<Your RPC provider URL (e.g., Infura, Alchemy)>
 1. Configure the chain you want to use by updating the `wallet.ts` file (see all available chains at [https://ohmygoat.dev/chains](https://ohmygoat.dev/chains))
 2. Specify the actions you want to have by updating the `actions.ts` file
 3. Add the plugins you need to perform these actions to the `getOnChainTools` function (uniswap, polymarket, etc. see all available plugins at [https://ohmygoat.dev/chains-wallets-plugins](https://ohmygoat.dev/chains-wallets-plugins))
-4. Build the project running `pnpm build`
+4. Build the project running `bun build`
 5. Add the necessary environment variables to set up your wallet and plugins
 6. Run your agent!
 
@@ -113,13 +113,13 @@ Read more about wallets at [https://ohmygoat.dev/wallets](https://ohmygoat.dev/w
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 ## Future Enhancements

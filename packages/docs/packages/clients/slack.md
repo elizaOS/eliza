@@ -8,7 +8,7 @@ This package provides Slack integration for the Eliza AI agent.
 
 - A Slack workspace where you have permissions to install apps
 - ngrok installed for local development (`brew install ngrok` on macOS)
-- Node.js and pnpm installed
+- Node.js and bun installed
 
 ### Step 1: Start ngrok
 
@@ -164,7 +164,7 @@ If you restart ngrok, you'll get a new URL. You'll need to:
 
 1. Start ngrok: `ngrok http 3069`
 2. Update Slack App URLs with new ngrok URL
-3. Start the server: `pnpm start`
+3. Start the server: `bun start`
 4. Monitor logs for events and errors
 
 ### Debugging

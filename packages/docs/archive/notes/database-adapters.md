@@ -17,16 +17,16 @@ Eliza includes the following database adapters:
 
 ```bash
 # PostgreSQL
-pnpm add @eliza/adapter-postgres
+bun add @eliza/adapter-postgres
 
 # SQLite
-pnpm add @eliza/adapter-sqlite
+bun add @eliza/adapter-sqlite
 
 # SQL.js
-pnpm add @eliza/adapter-sqljs
+bun add @eliza/adapter-sqljs
 
 # Supabase
-pnpm add @eliza/adapter-supabase
+bun add @eliza/adapter-supabase
 ```
 
 ## Quick Start
