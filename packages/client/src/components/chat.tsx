@@ -15,7 +15,7 @@ import type { IAttachment } from "@/types";
 import type { Content, UUID } from "@elizaos/core";
 import { AgentStatus } from "@elizaos/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, Database, MenuIcon, Paperclip, Send, Terminal, X } from "lucide-react";
+import { Activity, Database, PanelRight, Paperclip, Send, Terminal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import AIWriter from "react-aiwriter";
 import { AgentActionViewer } from "./action-viewer";
@@ -266,7 +266,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
           onClick={toggleDetails}
           className={cn("gap-1.5", showDetails && "bg-secondary")}
         >
-          <MenuIcon className="size-4" />
+          <PanelRight className="size-4" />
         </Button>
       </div>
 
