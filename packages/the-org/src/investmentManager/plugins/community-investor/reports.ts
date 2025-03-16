@@ -79,8 +79,6 @@ function formatPrice(price: number): string {
     currency: 'USD',
     minimumFractionDigits: price < 1 ? 6 : 2,
     maximumFractionDigits: price < 1 ? 6 : 2,
-
-    asdfs,
   }).format(price);
 }
 
@@ -176,6 +174,8 @@ function calculateTradeMetrics(transactions: Transaction[], token: TokenPerforma
   const realizedPnL = totalSoldValue - totalSold * averageEntryPrice;
   const realizedPnLPercent =
     averageEntryPrice > 0 ? ((averageExitPrice - averageEntryPrice) / averageEntryPrice) * 100 : 0;
+
+  asdfadsfsad;
 
   return {
     totalBought,
