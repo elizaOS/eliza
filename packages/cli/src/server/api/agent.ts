@@ -396,6 +396,40 @@ export function agentRouter(
 	});
 
 
+	// Delete Memory
+	router.delete("/:agentId/memories/:memoryId", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+		const memoryId = validateUuid(req.params.memoryId);
+		
+		if (!agentId || !memoryId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID or memory ID format",
+				},
+			});
+			return;
+		}
+		
+
+		const runtime = agents.get(agentId);
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+
+		await runtime.deleteMemory(memoryId);
+		
+		res.status(204).send();
+	});
+
 	// Get Agent Logs
 	router.get("/:agentId/logs", async (req, res) => {
 		const agentId = validateUuid(req.params.agentId);
@@ -1388,10 +1422,17 @@ export function agentRouter(
 				end: before,
 			});
 
+			const cleanMemories = memories.map((memory) => {
+				return {
+					...memory,
+					embedding: undefined,
+				};
+			});
+
 			res.json({
 				success: true,
 				data: {
-					memories,
+					memories: cleanMemories,
 				},
 			});
 		} catch (error) {
@@ -1406,6 +1447,112 @@ export function agentRouter(
 			});
 		}
 	});
+
+	// get all memories for an agent
+	router.get("/:agentId/memories", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+
+		if (!agentId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID",
+				},
+			});
+			return;
+		}
+
+		const runtime = agents.get(agentId);
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				},
+			});
+			return;
+		}
+
+		const memories = await runtime.getMemories({
+			agentId,
+			tableName: "messages",
+		});
+
+		const cleanMemories = memories.map((memory) => {
+			return {
+				...memory,
+				embedding: undefined,
+			};
+		});
+
+		res.json({
+			success: true,
+			data: cleanMemories,
+		});
+	})
+
+	// update a specific memory for an agent
+	router.patch("/:agentId/memories/:memoryId", async (req, res) => {
+		const agentId = validateUuid(req.params.agentId);
+		const memoryId = validateUuid(req.params.memoryId);
+
+		const memory = req.body;
+
+		if (!agentId || !memoryId) {
+			res.status(400).json({
+				success: false,
+				error: {
+					code: "INVALID_ID",
+					message: "Invalid agent ID or memory ID format",
+				},
+			});
+			return;
+		}
+
+		const runtime = agents.get(agentId);
+		if (!runtime) {
+			res.status(404).json({
+				success: false,
+				error: {
+					code: "NOT_FOUND",
+					message: "Agent not found",
+				}
+			});
+			return;
+		}
+
+		try {
+			// Ensure memory has the correct ID from the path
+			const memoryToUpdate = {
+				...memory,
+				id: memoryId,
+			};
+			
+			await runtime.updateMemory(memoryToUpdate);
+			
+			logger.success(`[MEMORY UPDATE] Successfully updated memory ${memoryId}`);
+			res.json({
+				success: true,
+				data: {
+					id: memoryId,
+					message: "Memory updated successfully",
+				},
+			});
+		} catch (error) {
+			logger.error(`[MEMORY UPDATE] Error updating memory ${memoryId}:`, error);
+			res.status(500).json({
+				success: false,
+				error: {
+					code: "UPDATE_ERROR",
+					message: "Failed to update memory",
+					details: error.message,
+				},
+			});
+		}
+	});
+
 
 	router.post("/:agentId/message", async (req: CustomRequest, res) => {
 		logger.info("[MESSAGES CREATE] Creating new message");

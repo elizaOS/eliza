@@ -10,7 +10,8 @@ import type {
 	Room,
 	Task,
 	UUID,
-	World
+	World,
+	MemoryMetadata
 } from "./types";
 
 /**
@@ -125,10 +126,14 @@ export abstract class DatabaseAdapter<DB = unknown>
 	 * @returns A Promise that resolves to an array of Memory objects.
 	 */
 	abstract getMemories(params: {
-		roomId: UUID;
+		entityId?: UUID;
+		agentId?: UUID;
+		roomId?: UUID;
 		count?: number;
 		unique?: boolean;
 		tableName: string;
+		start?: number;
+		end?: number;
 	}): Promise<Memory[]>;
 
 	abstract getMemoriesByRoomIds(params: {
@@ -236,6 +241,13 @@ export abstract class DatabaseAdapter<DB = unknown>
 		tableName: string,
 		unique?: boolean,
 	): Promise<UUID>;
+
+	/**
+     * Updates an existing memory in the database.
+     * @param memory The memory object with updated content and optional embedding
+     * @returns Promise resolving to boolean indicating success
+     */
+	abstract updateMemory(memory: Partial<Memory> & { id: UUID, metadata?: MemoryMetadata }): Promise<boolean>; 
 
 	/**
 	 * Removes a specific memory from the database.
