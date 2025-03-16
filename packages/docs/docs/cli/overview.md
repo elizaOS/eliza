@@ -116,6 +116,6 @@ npx @elizaos/cli env list
 
 ## Further Resources
 
-- [ElizaOS Documentation](../getting-started/installation.md)
-- [Creating Your First Agent](../tutorials/your-first-agent.md)
+- [Quickstat](../quickstart.md)
+- [ElizaOS Documentation](../getting-started.md)
 - [Plugin Development Guide](../plugins/creating-plugins.md)

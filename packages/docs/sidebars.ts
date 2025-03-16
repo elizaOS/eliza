@@ -21,52 +21,9 @@ const sidebars = {
           label: '❓ FAQ',
         },
         {
-          type: 'category',
-          label: 'Tutorials',
-          items: [
-            {
-              type: 'category',
-              label: 'AI Agent Dev School',
-              link: {
-                type: 'doc',
-                id: 'tutorials/devschool/index',
-              },
-              collapsed: false,
-              items: [
-                {
-                  type: 'doc',
-                  id: 'tutorials/devschool/part1',
-                  label: 'Part 1',
-                },
-                {
-                  type: 'doc',
-                  id: 'tutorials/devschool/part2',
-                  label: 'Part 2',
-                },
-                {
-                  type: 'doc',
-                  id: 'tutorials/devschool/part3',
-                  label: 'Part 3',
-                },
-              ],
-            },
-            {
-              type: 'doc',
-              id: 'tutorials/nader_tutorial_10min',
-              label: 'Clone Yourself in 10min',
-            },
-            {
-              type: 'doc',
-              id: 'tutorials/nader_tutorial_15min',
-              label: 'Build Social Agents in 15min',
-            },
-            {
-              type: 'doc',
-              id: 'tutorials/nader_tutorial_35min',
-              label: 'Build a Plugin in 35min',
-            },
-          ],
-          collapsed: true, // Expand by default
+          type: 'doc',
+          id: 'contributing',
+          label: '👥 Contributing',
         },
       ],
       collapsed: false,
@@ -83,8 +40,8 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'core/characterfile',
-          label: 'Character Files',
+          id: 'core/bootstrap',
+          label: 'Bootstrap',
         },
         {
           type: 'doc',
@@ -109,7 +66,7 @@ const sidebars = {
         {
           type: 'doc',
           id: 'core/knowledge',
-          label: 'RAG Knowledge',
+          label: 'Knowledge',
         },
         {
           type: 'doc',
@@ -123,82 +80,161 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'core/database',
-          label: 'Database Adapters',
+          id: 'core/entities',
+          label: 'Entities',
+        },
+        {
+          type: 'doc',
+          id: 'core/project',
+          label: 'Project',
+        },
+        {
+          type: 'doc',
+          id: 'core/reflection',
+          label: 'Reflection',
+        },
+        {
+          type: 'doc',
+          id: 'core/rooms',
+          label: 'Rooms',
+        },
+        {
+          type: 'doc',
+          id: 'core/services',
+          label: 'Services',
+        },
+        {
+          type: 'doc',
+          id: 'core/tasks',
+          label: 'Tasks',
+        },
+        {
+          type: 'doc',
+          id: 'core/worlds',
+          label: 'Worlds',
         },
       ],
     },
     {
       type: 'category',
-      label: '📘 Guides',
+      label: '🖥️ CLI',
       collapsed: false,
       items: [
         {
           type: 'doc',
-          id: 'guides/configuration',
-          label: 'Configuration',
+          id: 'cli/overview',
+          label: 'Overview',
         },
         {
           type: 'doc',
-          id: 'guides/remote-deployment',
-          label: 'Deployment',
+          id: 'cli/agent',
+          label: 'Agent',
         },
         {
           type: 'doc',
-          id: 'guides/fine-tuning',
-          label: 'Fine Tuning',
+          id: 'cli/create',
+          label: 'Create',
         },
         {
           type: 'doc',
-          id: 'guides/secrets-management',
-          label: 'Secrets Management',
+          id: 'cli/dev',
+          label: 'Dev',
         },
         {
           type: 'doc',
-          id: 'guides/memory-management',
-          label: 'Memory Management',
+          id: 'cli/env',
+          label: 'Environment',
         },
         {
           type: 'doc',
-          id: 'guides/wsl',
-          label: 'WSL Setup',
+          id: 'cli/plugins',
+          label: 'Plugins',
+        },
+        {
+          type: 'doc',
+          id: 'cli/projects',
+          label: 'Projects',
+        },
+        {
+          type: 'doc',
+          id: 'cli/publish',
+          label: 'Publish',
+        },
+        {
+          type: 'doc',
+          id: 'cli/start',
+          label: 'Start',
+        },
+        {
+          type: 'doc',
+          id: 'cli/test',
+          label: 'Test',
+        },
+        {
+          type: 'doc',
+          id: 'cli/update',
+          label: 'Update',
         },
       ],
-    },
-    {
-      type: 'category',
-      label: '🎓 Advanced Topics',
-      items: [
-        {
-          type: 'doc',
-          id: 'advanced/trust-engine',
-          label: 'Trust Engine',
-        },
-        {
-          type: 'doc',
-          id: 'advanced/autonomous-trading',
-          label: 'Autonomous Trading',
-        },
-        {
-          type: 'doc',
-          id: 'advanced/eliza-in-tee',
-          label: 'Eliza in TEE',
-        },
-        {
-          type: 'doc',
-          id: 'advanced/verified-inference',
-          label: 'Verified Inference',
-        },
-      ],
-      collapsed: true,
     },
     {
       type: 'category',
       label: '🌐 REST API',
       items: [
         {
-          type: 'autogenerated',
-          dirName: 'rest',
+          type: 'doc',
+          id: 'rest/eliza-os-api',
+          label: 'Overview',
+        },
+        {
+          type: 'doc',
+          id: 'rest/get-api-root',
+          label: 'Get API Root',
+        },
+        {
+          type: 'doc',
+          id: 'rest/get-hello',
+          label: 'Get Hello',
+        },
+        {
+          type: 'doc',
+          id: 'rest/list-agents',
+          label: 'List Agents',
+        },
+        {
+          type: 'doc',
+          id: 'rest/get-agent',
+          label: 'Get Agent',
+        },
+        {
+          type: 'doc',
+          id: 'rest/set-agent',
+          label: 'Set Agent',
+        },
+        {
+          type: 'doc',
+          id: 'rest/delete-agent',
+          label: 'Delete Agent',
+        },
+        {
+          type: 'doc',
+          id: 'rest/start-agent',
+          label: 'Start Agent',
+        },
+        {
+          type: 'doc',
+          id: 'rest/stop-agent',
+          label: 'Stop Agent',
+        },
+        {
+          type: 'doc',
+          id: 'rest/get-memories',
+          label: 'Get Memories',
+        },
+        {
+          type: 'doc',
+          id: 'rest/list-stored-characters',
+          label: 'List Stored Characters',
         },
       ],
       collapsed: true,
