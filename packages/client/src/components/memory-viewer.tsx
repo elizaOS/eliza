@@ -129,115 +129,9 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
 				return <File className="h-4 w-4 text-yellow-500" />;
 			case 'json':
 				return <File className="h-4 w-4 text-green-500" />;
-			case 'txt':
 			default:
 				return <FileText className="h-4 w-4 text-gray-500" />;
 		}
-	};
-
-	// Extract a more meaningful title from the content
-	const getDocumentTitle = (content: any) => {
-		const metadata = content?.metadata || {};
-		let filename = metadata.filename || "Unknown Document";
-		
-		// Try to extract a title from the first lines of the file content
-		if (content?.text) {
-			// First try to get the filename from "Path:" line
-			const pathMatch = content.text.match(/Path: ([^\n]+)/);
-			if (pathMatch?.[1]) {
-				filename = pathMatch[1].split('/').pop() || filename;
-			}
-			
-			// Then try to find a heading that might serve as a title
-			const textLines = content.text.split('\n');
-			for (let i = 0; i < Math.min(20, textLines.length); i++) {
-				const line: string = textLines[i].trim();
-				// Match markdown headings or lines that look like titles (capitalized, not too long)
-				if (line.startsWith('# ')) {
-					return line.replace(/^# /, '');
-				}
-				
-				// Look for title: pattern
-				if (line.toLowerCase().startsWith('title:')) {
-					return line.replace(/^title:\s*/i, '').trim();
-				}
-				
-				// Look for Survey Note: pattern
-				if (line.includes('Survey Note:')) {
-					return line.replace('Survey Note:', '').trim();
-				}
-				
-				// Look for all-caps lines or lines with mostly capitalized words
-				if (line.length > 0 && line.length < 60 && (/^[A-Z][A-Za-z\s]+$/.test(line) || line === line.toUpperCase())) {
-					return line;
-				}
-			}
-		}
-		
-		return filename;
-	};
-	
-	// Extract a description from content
-	const getDocumentDescription = (content: any) => {
-		if (!content?.text) return null;
-		
-		const textLines = content.text.split('\n');
-		let description = '';
-		let inDescription = false;
-		let skipLines = 0;
-		
-		// Skip Path: line and empty lines at the beginning
-		for (let i = 0; i < textLines.length; i++) {
-			if (textLines[i].startsWith('Path:')) {
-				skipLines = i + 1;
-				break;
-			}
-		}
-		
-		// Skip title and empty lines
-		for (let i = skipLines; i < Math.min(skipLines + 15, textLines.length); i++) {
-			const line = textLines[i].trim();
-			
-			// Skip empty lines at the beginning
-			if (!inDescription && line === '') continue;
-			
-			// Skip the title (assuming the first non-empty line after Path: could be a title)
-			if (!inDescription && line.startsWith('#')) {
-				inDescription = true;
-				continue;
-			}
-			
-			// Skip "description:" prefix
-			if (line.toLowerCase().startsWith('description:')) {
-				description = line.replace(/^description:\s*/i, '').trim();
-				inDescription = true;
-				continue;
-			}
-			
-			// If we've found content, mark as in description
-			if (line !== '') {
-				inDescription = true;
-			}
-			
-			// Start collecting description text
-			if (inDescription) {
-				// Don't add markdown headers to description
-				if (line.startsWith('#')) continue;
-				
-				if (description && line) {
-					description += ' ' + line;
-				} else if (line) {
-					description = line;
-				}
-				
-				// Get about 150 chars of description
-				if (description.length > 150) {
-					break;
-				}
-			}
-		}
-		
-		return description ? description.trim().substring(0, 150) + (description.length > 150 ? '...' : '') : null;
 	};
 
 	const handleDelete = (memoryId: string) => {
@@ -386,33 +280,15 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
 						{selectedType === "knowledge" && (
 							<div className="flex flex-col gap-4 max-w-3xl mx-auto">
 								{visibleMemories.map((memory: Memory, index: number) => {
-									const content = memory.content as any;
-									const metadata = content?.metadata || {};
-									const title = getDocumentTitle(content);
-									const description = getDocumentDescription(content);
+									const metadata = memory.metadata as any || {};
+									const title = metadata.title || memory.id || "Unknown Document";
 									const filename = metadata.filename || "Unknown Document";
-									const fileExt = filename.split('.').pop()?.toLowerCase() || '';
+									const fileExt = metadata.fileExt || filename.split('.').pop()?.toLowerCase() || '';
 									
-									// Get a preview if description not available
-									let preview = description;
-									if (!preview && content?.text) {
-										const textLines = content.text.split('\n');
-										const pathLineIndex = textLines.findIndex((line: string) => line.startsWith('Path:'));
-										
-										if (pathLineIndex !== -1) {
-											const contentStart = pathLineIndex + 1;
-											// Skip empty lines after Path:
-											let startLine = contentStart;
-											while (startLine < textLines.length && textLines[startLine].trim() === '') {
-												startLine++;
-											}
-											
-											const previewText = textLines.slice(startLine).join('\n').trim();
-											preview = previewText.length > 0 ? 
-												`${previewText.substring(0, 150)}${previewText.length > 150 ? '...' : ''}` : 
-												'No preview available';
-										}
-									}
+									// Use the document title or filename for display
+									const displayName = title || filename;
+									// Use path information or filename as the subtitle
+									const subtitle = metadata.path || filename;
 									
 									return (
 										<div 
@@ -429,22 +305,17 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
 											<div className="p-3 flex-1 pl-10">
 												{/* Path/filename as a small badge */}
 												<div className="text-xs text-muted-foreground mb-1 line-clamp-1">
-													{filename}
+													{subtitle}
 												</div>
 												
 												{/* Title and description section */}
 												<div className="mb-2">
-													<div className="text-sm font-medium mb-1">{title}</div>
-													{description && (
+													<div className="text-sm font-medium mb-1">{displayName}</div>
+													{metadata.description && (
 														<div className="text-xs text-muted-foreground line-clamp-2">
-															description: "{description}"
+															{metadata.description}
 														</div>
 													)}
-												</div>
-												
-												{/* First header or content as preview */}
-												<div className="text-xs mt-3 text-foreground/80 line-clamp-2">
-													{preview && !description ? preview : null}
 												</div>
 											</div>
 											
@@ -635,21 +506,21 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
 					<DialogHeader className="border-b pb-3">
 						<DialogTitle className="flex items-center">
 							{(() => {
-								const content = viewingContent?.content as any;
-								const metadata = content?.metadata || {};
+								const metadata = viewingContent?.metadata as any || {};
 								const filename = metadata.filename || "Unknown Document";
+								const title = metadata.title || filename;
 								
 								return (
 									<>
 										{getFileIcon(filename)}
-										<span className="ml-2">{getDocumentTitle(content)}</span>
+										<span className="ml-2">{title}</span>
 									</>
 								);
 							})()}
 						</DialogTitle>
 						<DialogDescription className="flex items-center mt-1">
 							<Clock className="h-3.5 w-3.5 mr-1" />
-							Added on {viewingContent ? formatDate(viewingContent.createdAt || 0) : ''}
+							Added on {viewingContent ? formatDate(viewingContent.createdAt || viewingContent.metadata?.timestamp || 0) : ''}
 						</DialogDescription>
 					</DialogHeader>
 

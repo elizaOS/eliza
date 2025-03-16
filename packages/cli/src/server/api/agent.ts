@@ -14,7 +14,8 @@ import {
 	createUniqueUuid,
 	logger,
 	messageHandlerTemplate,
-	validateUuid
+	validateUuid,
+	MemoryType,
 } from "@elizaos/core";
 import express from "express";
 import fs from "node:fs";
@@ -1760,17 +1761,27 @@ export function agentRouter(
 					const relativePath = file.originalname;
 					const formattedContent = `Path: ${relativePath}\n\n${content}`;
 					
-					// Create knowledge item
+					// Create knowledge item with proper metadata
 					const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
+					const fileExt = file.originalname.split('.').pop()?.toLowerCase() || '';
+					const filename = file.originalname;
+					const title = filename.replace(`.${fileExt}`, '');
+					
 					const knowledgeItem = {
 						id: knowledgeId,
 						content: {
 							text: formattedContent,
-							metadata: {
-								filename: file.originalname,
-								fileType: file.mimetype,
-								size: file.size,
-							}
+						},
+						metadata: {
+							type: MemoryType.DOCUMENT,
+							timestamp: Date.now(),
+							filename: filename,
+							fileExt: fileExt,
+							title: title,
+							path: relativePath,
+							fileType: file.mimetype,
+							fileSize: file.size,
+							source: 'upload'
 						}
 					};
 					
@@ -1786,18 +1797,15 @@ export function agentRouter(
 						fs.unlinkSync(file.path);
 					}
 					
-					// Extract preview from the content
-					const preview = content.length > 0 ? 
-						`${content.substring(0, 150)}${content.length > 150 ? '...' : ''}` : 
-						'No preview available';
-					
 					results.push({
 						id: knowledgeId,
 						filename: relativePath,
 						type: file.mimetype,
 						size: file.size,
 						uploadedAt: Date.now(),
-						preview: preview
+						preview: formattedContent.length > 0 ? 
+							`${formattedContent.substring(0, 150)}${formattedContent.length > 150 ? '...' : ''}` : 
+							'No preview available'
 					});
 				} catch (fileError) {
 					logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
