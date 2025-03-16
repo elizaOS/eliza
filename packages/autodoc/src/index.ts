@@ -97,7 +97,7 @@ async function main() {
 						? branchName
 						: `docs-update-readme-${Date.now()}`;
 
-				if (!configuration.generateJsDoc) {
+				if (!configuration.generateJsDoc && configuration.createBranch) {
 					await gitManager.createBranch(targetBranch, configuration.branch);
 				}
 
@@ -109,7 +109,7 @@ async function main() {
 				);
 
 				// Only create PR if we're not also generating JSDoc (otherwise changes go in JSDoc PR)
-				if (!configuration.generateJsDoc) {
+				if (!configuration.generateJsDoc && configuration.createBranch) {
 					const prContent = {
 						title: "docs: Update plugin documentation",
 						body: "Updates plugin documentation with latest changes",

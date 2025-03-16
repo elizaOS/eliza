@@ -14,6 +14,7 @@ import { AIService } from "../AIService.js";
 import type { FileDocsGroup, OrganizedDocs } from "../types";
 import { CodeFormatter } from "../utils/CodeFormatter.js";
 import { DocumentOrganizer } from "../utils/DocumentOrganizer.js";
+import { publicDecrypt } from "node:crypto";
 
 /**
  * Interface representing a Frequently Asked Question (FAQ) with a question and its corresponding answer.
@@ -116,44 +117,70 @@ export class FullDocumentationGenerator {
 			exports.evaluators,
 		);
 
-		// Generate overview, FAQ, and troubleshooting together
+	    // Generate overview, FAQ, and troubleshooting together
+	    //console.log("OVERVIEW DOCS",organizedDocs);
+	    //console.log("OVERVIEW PACK",packageJson);
 		const overviewResponse = await this.generateOverview(
 			organizedDocs,
 			packageJson,
 		);
+	    console.log("OVERVIEW1",overviewResponse);
+		// needs to have purpose, keyFeatures
 		const parsedOverview = JSON.parse(overviewResponse);
+		let overviewData = '{	"purpose" : "placeholder" 		}';
+		let installation = "";
+		let configuration = "";
+		let usage = "";
+		let apiRef = "";
+		let todoSection: TodoSection = { todos: "", todoCount: 0 };
+		let formattedFAQ = "";
+		let formattedTroubleshooting = "";
+		
+		if (!parsedOverview.overview){
+			console.log("OVERVIEW2 errors", parsedOverview, overviewResponse);					
+		} else {
+			//parsedOverview
+			const [installation, configuration, usage, apiRef, todoSection] =
+				await Promise.all([
+					this.generateInstallation(packageJson),
+					this.generateConfiguration(envUsages),
+					this.generateUsage(organizedDocs, packageJson),
+					this.generateApiReference(organizedDocs),
+					this.generateTodoSection(todoItems),
+				]);
 
-		const [installation, configuration, usage, apiRef, todoSection] =
-			await Promise.all([
-				this.generateInstallation(packageJson),
-				this.generateConfiguration(envUsages),
-				this.generateUsage(organizedDocs, packageJson),
-				this.generateApiReference(organizedDocs),
-				this.generateTodoSection(todoItems),
-			]);
+			// Format the FAQ and troubleshooting sections
+			const formattedFAQ = this.formatFAQSection(parsedOverview.faq);
+			const formattedTroubleshooting = this.formatTroubleshootingSection(
+				parsedOverview.troubleshooting,
+			);
 
-		// Format the FAQ and troubleshooting sections
-		const formattedFAQ = this.formatFAQSection(parsedOverview.faq);
-		const formattedTroubleshooting = this.formatTroubleshootingSection(
-			parsedOverview.troubleshooting,
-		);
+			overviewData = '{	"purpose" : "placeholder" 		}';
+			try {
+				overviewData= this.formatOverviewSection({ overview: parsedOverview.overview });
 
-		return {
-			overview: this.formatOverviewSection(parsedOverview.overview),
-			installation,
-			configuration,
-			usage,
-			apiReference: apiRef,
-			troubleshooting: formattedTroubleshooting,
-			faq: formattedFAQ,
-			todos: todoSection.todos,
-			actionsDocumentation,
-			providersDocumentation,
-			evaluatorsDocumentation,
-		};
-	}
+			} catch(error: any){
+				console.log(error);
+			}
+			
+		}
+			return {
+				overview: overviewData,
+				installation,
+				configuration,
+				usage,
+				apiReference: apiRef,
+				troubleshooting: formattedTroubleshooting,
+				faq: formattedFAQ,
+				todos: todoSection.todos,
+				actionsDocumentation,
+				providersDocumentation,
+				evaluatorsDocumentation,
+			};
+		}
 
-	private formatOverviewSection(overview: any): string {
+    private formatOverviewSection({ overview }: { overview: { purpose: string; keyFeatures: string[]; }; }): string {
+	console.log("OVERVIEW2",overview)
 		return `### Purpose\n${overview.purpose}\n\n### Key Features\n${overview.keyFeatures}`;
 	}
 
@@ -204,6 +231,7 @@ export class FullDocumentationGenerator {
 		const prompt = PROMPT_TEMPLATES.overview(packageJson, docs);
 		try {
 			const overview = await this.aiService.generateComment(prompt, true);
+			console.log("OVERVIEW raw", overview);
 			return this.cleanJSONResponse(overview);
 		} catch (error) {
 			console.error("Error generating overview:", error);

@@ -40,6 +40,7 @@ export class Configuration implements Omit<ConfigurationData, "rootDirectory"> {
 	private readonly repoRoot: string;
 	private _branch = "develop";
 	private _generateJsDoc = true;
+	private _createBranch = true;
 	private _generateReadme = false;
 
 	public excludedDirectories: string[] = [];
@@ -79,6 +80,9 @@ export class Configuration implements Omit<ConfigurationData, "rootDirectory"> {
 	get relativePath(): string {
 		return this._rootDirectory.relative;
 	}
+	get createBranch(): boolean {
+		return this._createBranch ;
+	}
 
 	public toRelativePath(absolutePath: string): string {
 		return path.relative(this.repoRoot, absolutePath);
@@ -102,6 +106,11 @@ export class Configuration implements Omit<ConfigurationData, "rootDirectory"> {
 		this._generateJsDoc = process.env.INPUT_JSDOC
 			? process.env.INPUT_JSDOC.toUpperCase() === "T"
 			: true; // Default from workflow
+
+		this._createBranch = process.env.CREATE_BRANCH 
+			? process.env.CREATE_BRANCH.toUpperCase() === "T"
+			: true; 
+
 		this._generateReadme = process.env.INPUT_README
 			? process.env.INPUT_README.toUpperCase() === "T"
 			: true; // Default from workflow
@@ -184,6 +193,17 @@ export class Configuration implements Omit<ConfigurationData, "rootDirectory"> {
 
 		this._branch = process.env.INPUT_BRANCH || "develop";
 		console.log("Using branch:", this._branch);
+
+		if (process.env["GITHUB_REPOSITORY"]) {
+            console.log( "Setting repo from env:", process.env["GITHUB_REPOSITORY"] );
+            this.repository.name =  process.env["GITHUB_REPOSITORY"];
+        }
+
+        if (process.env["GITHUB_ACTOR"]) {
+            console.log( "Setting owner from env:",  process.env["GITHUB_ACTOR"] );
+            this.repository.owner =  process.env["GITHUB_ACTOR"];
+        }
+
 	}
 
 	private parseCommaSeparatedInput(
