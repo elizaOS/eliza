@@ -16,6 +16,19 @@ export default defineConfig(({ mode }): UserConfig => {
         ext: '.br',
         threshold: 1024,
       }) as Plugin,
+      // Custom plugin to filter out externalization warnings
+      {
+        name: 'filter-externalization-warnings',
+        enforce: 'pre',
+        configureServer(server) {
+          const originalInfo = server.config.logger.info;
+          server.config.logger.info = (msg) => {
+            if (!msg.includes('has been externalized for browser compatibility')) {
+              originalInfo(msg);
+            }
+          };
+        },
+      },
     ],
     clearScreen: false,
     envDir,
@@ -28,6 +41,19 @@ export default defineConfig(({ mode }): UserConfig => {
       cssMinify: true,
       sourcemap: true,
       cssCodeSplit: true,
+      rollupOptions: {
+        onwarn(warning, warn) {
+          // Suppress specific externalized warnings
+          if (
+            warning.code === 'UNRESOLVED_IMPORT' &&
+            typeof warning.message === 'string' &&
+            /node:|fs|path|crypto|stream|tty|worker_threads|assert/.test(warning.message)
+          ) {
+            return;
+          }
+          warn(warning);
+        },
+      },
     },
     resolve: {
       alias: {

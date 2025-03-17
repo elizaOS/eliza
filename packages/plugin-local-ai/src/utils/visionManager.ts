@@ -98,12 +98,7 @@ export class VisionManager {
     this.ensureModelsDirExists();
     this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
     this.platformConfig = this.getPlatformConfig();
-    logger.info('VisionManager initialized');
-    // logger.info("VisionManager initialized with configuration:", {
-    //   modelsDir: this.modelsDir,
-    //   exists: existsSync(this.modelsDir),
-    //   platform: this.platformConfig
-    // });
+    logger.debug('VisionManager initialized');
   }
 
   /**
@@ -139,13 +134,6 @@ export class VisionManager {
         };
       }
     }
-
-    logger.info('Platform configuration detected:', {
-      platform,
-      arch,
-      config,
-    });
-
     return config;
   }
 
@@ -154,7 +142,7 @@ export class VisionManager {
    */
   private ensureModelsDirExists(): void {
     if (!existsSync(this.modelsDir)) {
-      logger.info(`Creating models directory at: ${this.modelsDir}`);
+      logger.debug(`Creating models directory at: ${this.modelsDir}`);
       fs.mkdirSync(this.modelsDir, { recursive: true });
     }
   }

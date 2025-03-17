@@ -100,7 +100,7 @@ export function agentRouter(
     try {
       const agent = await db.getAgent(agentId);
       if (!agent) {
-        logger.warn('[AGENT GET] Agent not found');
+        logger.debug('[AGENT GET] Agent not found');
         res.status(404).json({
           success: false,
           error: {
@@ -135,7 +135,7 @@ export function agentRouter(
 
   // Create new agent
   router.post('/', async (req, res) => {
-    logger.info('[AGENT CREATE] Creating new agent');
+    logger.debug('[AGENT CREATE] Creating new agent');
     const { characterPath, characterJson } = req.body;
 
     try {
@@ -234,7 +234,7 @@ export function agentRouter(
   router.put('/:agentId', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
-      logger.warn('[AGENT STOP] Invalid agent ID format');
+      logger.debug('[AGENT STOP] Invalid agent ID format');
       res.status(400).json({
         success: false,
         error: {
@@ -289,7 +289,7 @@ export function agentRouter(
       const agent = await db.getAgent(agentId);
 
       if (!agent) {
-        logger.warn('[AGENT START] Agent not found');
+        logger.debug('[AGENT START] Agent not found');
         res.status(404).json({
           success: false,
           error: {
@@ -304,7 +304,7 @@ export function agentRouter(
 
       // Check if agent is already running
       if (isActive) {
-        logger.info(`[AGENT START] Agent ${agentId} is already running`);
+        logger.debug(`[AGENT START] Agent ${agentId} is already running`);
         res.json({
           success: true,
           data: {
@@ -508,7 +508,7 @@ export function agentRouter(
     '/:agentId/audio-messages',
     upload.single('file'),
     async (req: CustomRequest, res) => {
-      logger.info('[AUDIO MESSAGE] Processing audio message');
+      logger.debug('[AUDIO MESSAGE] Processing audio message');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {
         res.status(400).json({
@@ -653,7 +653,7 @@ export function agentRouter(
 
   // Speech-related endpoints
   router.post('/:agentId/speech/generate', async (req, res) => {
-    logger.info('[SPEECH GENERATE] Request to generate speech from text');
+    logger.debug('[SPEECH GENERATE] Request to generate speech from text');
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
       res.status(400).json({
@@ -692,7 +692,7 @@ export function agentRouter(
     }
 
     try {
-      logger.info('[SPEECH GENERATE] Using text-to-speech model');
+      logger.debug('[SPEECH GENERATE] Using text-to-speech model');
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
 
       // Convert to Buffer if not already a Buffer
@@ -821,7 +821,7 @@ export function agentRouter(
         template: messageHandlerTemplate,
       });
 
-      logger.info('[SPEECH CONVERSATION] Using LLM for response');
+      logger.debug('[SPEECH CONVERSATION] Using LLM for response');
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
         messages: [
           {
@@ -862,7 +862,7 @@ export function agentRouter(
         memory,
       ]);
 
-      logger.info('[SPEECH CONVERSATION] Generating speech response');
+      logger.debug('[SPEECH CONVERSATION] Generating speech response');
 
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
 
@@ -909,7 +909,7 @@ export function agentRouter(
     '/:agentId/transcriptions',
     upload.single('file'),
     async (req: CustomRequest, res) => {
-      logger.info('[TRANSCRIPTION] Request to transcribe audio');
+      logger.debug('[TRANSCRIPTION] Request to transcribe audio');
       const agentId = validateUuid(req.params.agentId);
       if (!agentId) {
         res.status(400).json({
@@ -951,7 +951,7 @@ export function agentRouter(
         logger.debug('[TRANSCRIPTION] Reading audio file');
         const audioBuffer = fs.readFileSync(audioFile.path);
 
-        logger.info('[TRANSCRIPTION] Transcribing audio');
+        logger.debug('[TRANSCRIPTION] Transcribing audio');
         const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
 
         // Clean up the temporary file
@@ -1482,7 +1482,7 @@ export function agentRouter(
   });
 
   router.post('/:agentId/message', async (req: CustomRequest, res) => {
-    logger.info('[MESSAGES CREATE] Creating new message');
+    logger.debug('[MESSAGES CREATE] Creating new message');
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
       res.status(400).json({
