@@ -5,12 +5,14 @@ AI-powered email automation plugin for Eliza that intelligently detects email-wo
 ## Features
 
 ### 1. Intelligent Detection
+
 - Partnership opportunity detection
 - Technical discussion recognition
 - Business proposal identification
 - Follow-up requirement analysis
 
 ### 2. AI-Powered Generation
+
 - Structured email formatting
 - Context-aware content
 - Professional tone maintenance
@@ -19,6 +21,7 @@ AI-powered email automation plugin for Eliza that intelligently detects email-wo
 ## Configuration
 
 ### AI Email Automation Setup
+
 ```typescript
 # Required
 RESEND_API_KEY=           # Your Resend API key
@@ -31,6 +34,7 @@ EMAIL_EVALUATION_PROMPT=        # Custom detection criteria for shouldEmail
 ```
 
 ### Basic Usage
+
 ```typescript
 import { emailAutomationPlugin } from '@elizaos/plugin-email-automation';
 
@@ -45,69 +49,76 @@ import { emailAutomationPlugin } from '@elizaos/plugin-email-automation';
 ```
 
 ### Email Template Example
+
 The plugin uses Handlebars for templating. Here's an example output:
 
 ```handlebars
-{{!-- email-template.hbs --}}
-<div class="email-container">
-    <h1>{{subject}}</h1>
+{{! email-template.hbs }}
+<div class='email-container'>
+  <h1>{{subject}}</h1>
 
-    <div class="background-section">
-        {{background}}
-    </div>
+  <div class='background-section'>
+    {{background}}
+  </div>
 
-    <div class="key-points-section">
-        <h2>Key Points</h2>
-        <ul>
-            {{#each keyPoints}}
-                <li>{{this}}</li>
-            {{/each}}
-        </ul>
-    </div>
+  <div class='key-points-section'>
+    <h2>Key Points</h2>
+    <ul>
+      {{#each keyPoints}}
+        <li>{{this}}</li>
+      {{/each}}
+    </ul>
+  </div>
 
-    {{#if technicalDetails}}
-    <div class="technical-section">
-        <h2>Technical Details</h2>
-        <ul>
-            {{#each technicalDetails}}
-                <li>{{this}}</li>
-            {{/each}}
-        </ul>
+  {{#if technicalDetails}}
+    <div class='technical-section'>
+      <h2>Technical Details</h2>
+      <ul>
+        {{#each technicalDetails}}
+          <li>{{this}}</li>
+        {{/each}}
+      </ul>
     </div>
-    {{/if}}
+  {{/if}}
 
-    <div class="next-steps-section">
-        <h2>Next Steps</h2>
-        <ul>
-            {{#each nextSteps}}
-                <li>{{this}}</li>
-            {{/each}}
-        </ul>
-    </div>
+  <div class='next-steps-section'>
+    <h2>Next Steps</h2>
+    <ul>
+      {{#each nextSteps}}
+        <li>{{this}}</li>
+      {{/each}}
+    </ul>
+  </div>
 
-    <div class="footer">
-        Powered by ElizaOS
-    </div>
+  <div class='footer'>
+    Powered by ElizaOS
+  </div>
 </div>
 
 <style>
-    .email-container {
-        max-width: 600px;
-        margin: 0 auto;
-        font-family: Arial, sans-serif;
-        line-height: 1.6;
-    }
-    h1, h2 { color: #333; }
-    ul { padding-left: 20px; }
-    .footer {
-        margin-top: 30px;
-        color: #666;
-        font-size: 0.9em;
-    }
+  .email-container {
+    max-width: 600px;
+    margin: 0 auto;
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+  }
+  h1,
+  h2 {
+    color: #333;
+  }
+  ul {
+    padding-left: 20px;
+  }
+  .footer {
+    margin-top: 30px;
+    color: #666;
+    font-size: 0.9em;
+  }
 </style>
 ```
 
 This template produces professional emails like the example shown in the image above. You can customize the template by:
+
 1. Creating your own `.hbs` file
 2. Registering it with the template manager
 3. Specifying your template when sending emails
@@ -116,18 +127,19 @@ This template produces professional emails like the example shown in the image a
 
 ```bash
 # Installation
-pnpm install
+bun install
 
 # Testing
-pnpm test
-pnpm test:watch
-pnpm test:coverage
+bun test
+bun test:watch
+bun test:coverage
 
 # Building
-pnpm build
+bun build
 ```
 
 ## Testing Coverage
+
 - Unit tests for all services
 - Integration tests for end-to-end flows
 - Throttling and rate limiting tests
@@ -135,6 +147,7 @@ pnpm build
 - Mock providers for testing
 
 ## Architecture
+
 ```mermaid
 graph TD
     A[Email Trigger] --> B[Automation Service]
@@ -146,6 +159,7 @@ graph TD
 ```
 
 Architecture Overview:
+
 - Resend Provider support (more to come)
 - AI-powered email detection
 - Context-aware content generation
@@ -159,9 +173,11 @@ This plugin integrates with and builds upon:
 - [Handlebars](https://handlebarsjs.com): Templating engine for email formatting
 
 For more information about Resend capabilities:
+
 - [Resend Documentation](https://resend.com/docs)
 - [Email API Reference](https://resend.com/docs/api-reference/introduction)
 - [Developer Portal](https://resend.com/overview)
 
 ## License
+
 This plugin is part of the Eliza project. See the main project repository for license information.

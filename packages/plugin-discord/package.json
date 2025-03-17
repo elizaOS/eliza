@@ -1,50 +1,53 @@
 {
-	"name": "@elizaos/plugin-discord",
-	"version": "1.0.0-alpha.63",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/elizaos-plugins/plugin-discord"
-	},
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"dependencies": {
-		"@discordjs/rest": "2.4.0",
-		"@discordjs/voice": "0.18.0",
-		"discord.js": "14.16.3",
-		"get-func-name": "^3.0.0",
-		"prism-media": "1.3.5",
-		"zod": "3.24.2"
-	},
-	"devDependencies": {
-		"tsup": "8.4.0",
-		"vitest": "1.6.1"
-	},
-	"scripts": {
-		"build": "tsup",
-		"dev": "tsup --watch",
-		"test": "vitest run",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
-	},
-	"peerDependencies": {
-		"whatwg-url": "7.1.0"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
+  "name": "@elizaos/plugin-discord",
+  "version": "1.0.0-alpha.67",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-discord"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@discordjs/rest": "2.4.0",
+    "@discordjs/voice": "0.18.0",
+    "discord.js": "14.16.3",
+    "get-func-name": "^3.0.0",
+    "prism-media": "1.3.5",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "vitest": "1.6.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
 }

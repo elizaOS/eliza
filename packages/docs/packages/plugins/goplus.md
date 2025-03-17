@@ -5,7 +5,7 @@ A plugin that enables on-chain security checks through the GoPlus API integratio
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-goplus
+bun add @elizaos/plugin-goplus
 ```
 
 ## Configuration
@@ -21,10 +21,10 @@ GOPLUS_API_KEY=your_api_key  # Required: GoPlus API key for authentication
 Add the plugin to your character configuration:
 
 ```typescript
-import { goplusPlugin } from "@elizaos/plugin-goplus";
+import { goplusPlugin } from '@elizaos/plugin-goplus';
 
 const character = {
-    plugins: [goplusPlugin]
+  plugins: [goplusPlugin],
 };
 ```
 
@@ -46,6 +46,7 @@ const character = {
 ## Supported Networks
 
 The plugin supports various networks including:
+
 - Ethereum (1)
 - BSC (56)
 - Polygon (137)
@@ -58,26 +59,30 @@ The plugin supports various networks including:
 ## Security Check Types
 
 ### Token Security
+
 - `EVMTOKEN_SECURITY_CHECK`: ERC20 token contract security analysis
 - `SOLTOKEN_SECURITY_CHECK`: SPL token security verification
 - `SUITOKEN_SECURITY_CHECK`: Sui token contract analysis
 
 ### Contract & NFT Security
+
 - `RUGPULL_SECURITY_CHECK`: Rugpull risk detection
 - `NFT_SECURITY_CHECK`: NFT contract security analysis
 - `APPROVAL_SECURITY_CHECK`: Smart contract approval analysis
 
 ### Account & Address Security
+
 - `ADDRESS_SECURITY_CHECK`: Malicious address detection
 - `ACCOUNT_ERC20_SECURITY_CHECK`: ERC20 token security
 - `ACCOUNT_ERC721_SECURITY_CHECK`: NFT asset security
 - `ACCOUNT_ERC1155_SECURITY_CHECK`: Multi-token asset security
 
 ### Additional Checks
+
 - `SIGNATURE_SECURITY_CHECK`: Signature verification
 - `URL_SECURITY_CHECK`: Phishing and malicious URL detection
 
 ## Dependencies
 
-- @elizaos/core: workspace:*
+- @elizaos/core: workspace:\*
 - ws: ^8.18.0

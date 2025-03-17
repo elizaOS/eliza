@@ -34,27 +34,27 @@ The client requires the following configurations, which can be set via environme
 
 ### Required Settings
 
-| Parameter | Description |
-|-----------|-------------|
-| `FARCASTER_NEYNAR_API_KEY` | Neynar API key for accessing Farcaster |
+| Parameter                      | Description                            |
+| ------------------------------ | -------------------------------------- |
+| `FARCASTER_NEYNAR_API_KEY`     | Neynar API key for accessing Farcaster |
 | `FARCASTER_NEYNAR_SIGNER_UUID` | Signer UUID for your Farcaster account |
-| `FARCASTER_FID` | Your Farcaster FID (identifier) |
+| `FARCASTER_FID`                | Your Farcaster FID (identifier)        |
 
 ### Optional Settings
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `FARCASTER_DRY_RUN` | Run in simulation mode without posting (true/false) | false |
-| `MAX_CAST_LENGTH` | Maximum length of casts | 320 |
-| `FARCASTER_POLL_INTERVAL` | Interval for checking mentions (minutes) | 2 |
-| `ENABLE_POST` | Enable automatic posting (true/false) | true |
-| `POST_INTERVAL_MIN` | Minimum time between posts (minutes) | 90 |
-| `POST_INTERVAL_MAX` | Maximum time between posts (minutes) | 180 |
-| `ENABLE_ACTION_PROCESSING` | Enable processing interactions (true/false) | false |
-| `ACTION_INTERVAL` | Interval for processing actions (minutes) | 5 |
-| `POST_IMMEDIATELY` | Post immediately on startup (true/false) | false |
-| `MAX_ACTIONS_PROCESSING` | Maximum actions to process in one cycle | 1 |
-| `ACTION_TIMELINE_TYPE` | Type of timeline to use for actions | ForYou |
+| Parameter                  | Description                                         | Default |
+| -------------------------- | --------------------------------------------------- | ------- |
+| `FARCASTER_DRY_RUN`        | Run in simulation mode without posting (true/false) | false   |
+| `MAX_CAST_LENGTH`          | Maximum length of casts                             | 320     |
+| `FARCASTER_POLL_INTERVAL`  | Interval for checking mentions (minutes)            | 2       |
+| `ENABLE_POST`              | Enable automatic posting (true/false)               | true    |
+| `POST_INTERVAL_MIN`        | Minimum time between posts (minutes)                | 90      |
+| `POST_INTERVAL_MAX`        | Maximum time between posts (minutes)                | 180     |
+| `ENABLE_ACTION_PROCESSING` | Enable processing interactions (true/false)         | false   |
+| `ACTION_INTERVAL`          | Interval for processing actions (minutes)           | 5       |
+| `POST_IMMEDIATELY`         | Post immediately on startup (true/false)            | false   |
+| `MAX_ACTIONS_PROCESSING`   | Maximum actions to process in one cycle             | 1       |
+| `ACTION_TIMELINE_TYPE`     | Type of timeline to use for actions                 | ForYou  |
 
 ## Usage
 
@@ -82,8 +82,8 @@ You can customize the templates used for generating casts by providing custom te
 
 ```typescript
 const myCharacter = {
-  name: "My Agent",
-  bio: "A helpful AI assistant on Farcaster",
+  name: 'My Agent',
+  bio: 'A helpful AI assistant on Farcaster',
   templates: {
     farcasterPostTemplate: `
       # Custom post template
@@ -96,8 +96,8 @@ const myCharacter = {
     farcasterShouldRespondTemplate: `
       # Custom response decision template
       Determine if {{agentName}} should respond to {{currentPost}}.
-    `
-  }
+    `,
+  },
 };
 ```
 
@@ -138,6 +138,7 @@ The client is organized into several core components:
 ## Testing
 
 The client includes comprehensive tests for:
+
 - Cast creation and management
 - Interaction handling
 - Timeline processing

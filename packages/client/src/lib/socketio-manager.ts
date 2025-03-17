@@ -1,24 +1,27 @@
-import { SOCKET_MESSAGE_TYPE } from "@elizaos/core";
+import { USER_NAME } from '@/constants';
+import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
 import EventEmitter from 'eventemitter3';
 import { io, type Socket } from 'socket.io-client';
-import { apiClient } from "./api";
-import { WorldManager } from "./world-manager";
+import { WorldManager } from './world-manager';
 
 const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 
-type MessagePayload = Record<string, any>;
-
+/**
+ * SocketIOManager handles real-time communication between the client and server
+ * using Socket.io. It maintains a single connection to the server and allows
+ * joining and messaging in multiple rooms.
+ */
 class SocketIOManager extends EventEmitter {
   private static instance: SocketIOManager | null = null;
-  private sockets: Map<string, Socket>;
-  private readyPromises: Map<string, Promise<void>>;
-  private resolveReadyMap: Map<string, () => void>;
-  
+  private socket: Socket | null = null;
+  private isConnected = false;
+  private connectPromise: Promise<void> | null = null;
+  private resolveConnect: (() => void) | null = null;
+  private activeRooms: Set<string> = new Set();
+  private entityId: string | null = null;
+
   private constructor() {
     super();
-    this.sockets = new Map();
-    this.readyPromises = new Map();
-    this.resolveReadyMap = new Map();
   }
 
   public static getInstance(): SocketIOManager {
@@ -28,144 +31,197 @@ class SocketIOManager extends EventEmitter {
     return SocketIOManager.instance;
   }
 
-  connect(agentId: string, roomId: string): void {
-    if (this.sockets.has(agentId)) {
-      console.warn(`[SocketIO] Socket for agent ${agentId} already exists.`);
+  /**
+   * Initialize the Socket.io connection to the server
+   * @param entityId The client entity ID
+   */
+  public initialize(entityId: string): void {
+    if (this.socket) {
+      console.warn('[SocketIO] Socket already initialized');
       return;
     }
 
-    const socket = io(BASE_URL, {
-      query: {
-        agentId,
-        roomId
-      },
+    this.entityId = entityId;
+
+    // Create a single socket connection
+    this.socket = io(BASE_URL, {
       autoConnect: true,
-      reconnection: true
+      reconnection: true,
     });
 
-    const readyPromise = new Promise<void>((resolve) => {
-      this.resolveReadyMap.set(agentId, resolve);
-    });
-    this.readyPromises.set(agentId, readyPromise);
-
-    socket.on('connect', () => {
-      console.log(`[SocketIO] Connected for agent ${agentId}`);
-      this.resolveReadyMap.get(agentId)?.();
-      const data = {
-        type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
-        payload: {
-          agentId,
-          roomId,
-        }
-      };
-      this.sendMessage(agentId, data);
+    // Set up connection promise for async operations that depend on connection
+    this.connectPromise = new Promise<void>((resolve) => {
+      this.resolveConnect = resolve;
     });
 
-    socket.on('message', async (messageData) => {
-      console.log(`[SocketIO] Message for agent ${agentId}:`, messageData, messageData.type);
+    this.socket.on('connect', () => {
+      console.log('[SocketIO] Connected to server');
+      this.isConnected = true;
+      this.resolveConnect?.();
 
-      const payload = messageData.payload;
+      // Rejoin any active rooms after reconnection
+      this.activeRooms.forEach((roomId) => {
+        this.joinRoom(roomId);
+      });
+    });
 
-      if (messageData.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
-        const response = await apiClient.getAgentCompletion(
-          agentId,
-          payload.senderId,
-          payload.message,
-          payload.roomId,
-          payload.source,
+    this.socket.on('messageBroadcast', (data) => {
+      console.log(`[SocketIO] Message broadcast received:`, data);
+
+      // Log the full data structure to understand formats
+      console.log('[SocketIO] Message broadcast data structure:', {
+        keys: Object.keys(data),
+        senderId: data.senderId,
+        senderNameType: typeof data.senderName,
+        textType: typeof data.text,
+        textLength: data.text ? data.text.length : 0,
+        hasThought: 'thought' in data,
+        hasActions: 'actions' in data,
+        additionalKeys: Object.keys(data).filter(
+          (k) =>
+            ![
+              'senderId',
+              'senderName',
+              'text',
+              'roomId',
+              'createdAt',
+              'source',
+              'thought',
+              'actions',
+            ].includes(k)
+        ),
+      });
+
+      // Check if this is a message for one of our active rooms
+      if (this.activeRooms.has(data.roomId)) {
+        console.log(`[SocketIO] Handling message for active room ${data.roomId}`);
+        this.emit('messageBroadcast', data);
+      } else {
+        console.warn(
+          `[SocketIO] Received message for inactive room ${data.roomId}, active rooms:`,
+          Array.from(this.activeRooms)
         );
-
-        if (response?.data?.message?.text) {
-          this.handleBroadcastMessage(
-            agentId, 
-            response?.data?.name,
-            response.data.message.text, 
-            response.data.roomId,
-            response.data.source,
-          );
-        }
       }
     });
 
-    socket.on('connect_error', (error) => {
-      console.error(`[SocketIO] Connection error for agent ${agentId}:`, error);
-    });
+    this.socket.on('disconnect', (reason) => {
+      console.log(`[SocketIO] Disconnected. Reason: ${reason}`);
+      this.isConnected = false;
 
-    socket.on('disconnect', (reason) => {
-      console.log(`[SocketIO] Disconnected for agent ${agentId}. Reason:`, reason);
-      
+      // Reset connect promise for next connection
+      this.connectPromise = new Promise<void>((resolve) => {
+        this.resolveConnect = resolve;
+      });
+
       if (reason === 'io server disconnect') {
-        socket.connect();
+        this.socket?.connect();
       }
     });
 
-    this.sockets.set(agentId, socket);
+    this.socket.on('connect_error', (error) => {
+      console.error('[SocketIO] Connection error:', error);
+    });
   }
 
-  async sendMessage(agentId: string, message: MessagePayload): Promise<void> {
-    const socket = this.sockets.get(agentId);
-    const readyPromise = this.readyPromises.get(agentId);
-
-    if (!socket) {
-      console.warn(`[SocketIO] Cannot send message, Socket for agent ${agentId} does not exist.`);
+  /**
+   * Join a room to receive messages from it
+   * @param roomId Room/Agent ID to join
+   */
+  public async joinRoom(roomId: string): Promise<void> {
+    if (!this.socket) {
+      console.error('[SocketIO] Cannot join room: socket not initialized');
       return;
     }
 
-    await readyPromise;
-
-    if (socket.connected) {
-      socket.emit('message', message);
-    } else {
-      console.warn(`[SocketIO] Socket for agent ${agentId} is not connected.`);
+    // Wait for connection if needed
+    if (!this.isConnected) {
+      await this.connectPromise;
     }
+
+    this.activeRooms.add(roomId);
+    this.socket.emit('message', {
+      type: SOCKET_MESSAGE_TYPE.ROOM_JOINING,
+      payload: {
+        roomId,
+        entityId: this.entityId,
+      },
+    });
+
+    console.log(`[SocketIO] Joined room ${roomId}`);
   }
 
-  private cleanupSocket(agentId: string): void {
-    this.sockets.delete(agentId);
-    this.readyPromises.delete(agentId);
-    this.resolveReadyMap.delete(agentId);
+  /**
+   * Leave a room to stop receiving messages from it
+   * @param roomId Room/Agent ID to leave
+   */
+  public leaveRoom(roomId: string): void {
+    if (!this.socket || !this.isConnected) {
+      console.warn(`[SocketIO] Cannot leave room ${roomId}: not connected`);
+      return;
+    }
+
+    this.activeRooms.delete(roomId);
+    console.log(`[SocketIO] Left room ${roomId}`);
   }
 
-  handleBroadcastMessage(senderId: string, senderName: string, text: string, roomId: string, source: string) {
-    console.log(`[SocketIO] Broadcasting: ${senderId} sent "${text}" to room ${roomId}`)
-    
-    this.emit("messageBroadcast", { senderId, senderName, text, roomId, createdAt: Date.now(), source});
-    this.sendMessage(senderId, {
+  /**
+   * Send a message to a specific room
+   * @param message Message text to send
+   * @param roomId Room/Agent ID to send the message to
+   * @param source Source identifier (e.g., 'client_chat')
+   */
+  public async sendMessage(message: string, roomId: string, source: string): Promise<void> {
+    if (!this.socket) {
+      console.error('[SocketIO] Cannot send message: socket not initialized');
+      return;
+    }
+
+    // Wait for connection if needed
+    if (!this.isConnected) {
+      await this.connectPromise;
+    }
+
+    const messageId = crypto.randomUUID();
+    const worldId = WorldManager.getWorldId();
+
+    console.log(`[SocketIO] Sending message to room ${roomId}`);
+
+    // Emit message to server
+    this.socket.emit('message', {
       type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
       payload: {
-        senderId,
-        senderName,
-        message: text,
+        senderId: this.entityId,
+        senderName: USER_NAME,
+        message,
         roomId,
-        worldId: WorldManager.getWorldId(),
+        worldId,
+        messageId,
         source,
-      }
-    })
-  }
-
-  disconnect(agentId: string): void {
-    const socket = this.sockets.get(agentId);
-    if (socket) {
-      socket.disconnect();
-      this.cleanupSocket(agentId);
-      console.log(`[SocketIO] Socket for agent ${agentId} disconnected.`);
-    } else {
-      console.warn(`[SocketIO] No Socket found for agent ${agentId}.`);
-    }
-  }
-
-  disconnectAll(): void {
-    this.sockets.forEach((socket, agentId) => {
-      console.log(`[SocketIO] Closing Socket for agent ${agentId}`);
-      
-      if (socket.connected) {
-        socket.disconnect();
-        this.cleanupSocket(agentId);
-      } else {
-        this.cleanupSocket(agentId);
-        console.warn(`[SocketIO] Socket for agent ${agentId} is already disconnected.`);
-      }
+      },
     });
+
+    // Immediately broadcast message locally so UI updates instantly
+    this.emit('messageBroadcast', {
+      senderId: this.entityId,
+      senderName: USER_NAME,
+      text: message,
+      roomId,
+      createdAt: Date.now(),
+      source,
+    });
+  }
+
+  /**
+   * Disconnect from the server
+   */
+  public disconnect(): void {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+      this.isConnected = false;
+      this.activeRooms.clear();
+      console.log('[SocketIO] Disconnected from server');
+    }
   }
 }
 

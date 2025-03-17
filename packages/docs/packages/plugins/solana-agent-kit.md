@@ -5,7 +5,7 @@ A plugin that integrates Solana Agent Kit functionality into Eliza, enabling tok
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-solana-agent-kit
+bun add @elizaos/plugin-solana-agent-kit
 ```
 
 ## Configuration
@@ -28,12 +28,14 @@ WALLET_SECRET_SALT=your_salt  # Only if TEE_MODE is enabled
 ## Features
 
 ### Token Operations
+
 - Create new tokens with custom parameters
 - Transfer tokens between addresses
 - Get token information and metadata
 - Manage token supply and decimals
 
 ### DeFi Operations
+
 - Swap tokens using Jupiter aggregator
 - Lend assets on supported platforms
 - Stake tokens
@@ -42,31 +44,37 @@ WALLET_SECRET_SALT=your_salt  # Only if TEE_MODE is enabled
 ## Usage Examples
 
 ### Token Creation
+
 ```plaintext
 "Create token, name is Example Token, symbol is EXMPL, decimals is 9"
 ```
 
 ### Token Transfers
+
 ```plaintext
 "Send 69 EZSIS to <wallet_address>"
 ```
 
 ### Token Swaps
+
 ```plaintext
 "Swap 0.1 SOL for USDC"
 ```
 
 ### Lending
+
 ```plaintext
 "Lend 100 USDC"
 ```
 
 ### Staking
+
 ```plaintext
 "Stake 100 tokens"
 ```
 
 ### GibWork Tasks
+
 ```plaintext
 "Create a GibWork task for building a Solana dApp, offering 100 USDC"
 ```
@@ -82,11 +90,13 @@ WALLET_SECRET_SALT=your_salt  # Only if TEE_MODE is enabled
 ## Technical Details
 
 ### Security Features
+
 - TEE mode support for secure key derivation
 - Multiple key format support (base58, base64)
 - Public key verification
 
 ### Address Management
+
 - Supports both public key and full keypair operations
 - Base58 and base64 private key formats
 - TEE-based key derivation when enabled

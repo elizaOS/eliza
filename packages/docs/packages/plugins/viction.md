@@ -9,6 +9,7 @@ The Viction plugin serves as a foundational component of Eliza OS, bridging Vict
 ## Features
 
 ### Token Operations
+
 - **Token Information**: Provide Viction information
 - **Token Transfers**: Send and receive tokens securely native and non-native
 
@@ -24,9 +25,9 @@ Configure the plugin by setting the following environment variables:
 
 ```typescript
 const victionEnvSchema = {
-    VICTION_ADDRESS: string,
-    VICTION_PRIVATE_KEY: string,
-    VICTION_RPC_URL: string
+  VICTION_ADDRESS: string,
+  VICTION_PRIVATE_KEY: string,
+  VICTION_RPC_URL: string,
 };
 ```
 
@@ -35,11 +36,11 @@ const victionEnvSchema = {
 ### Basic Setup
 
 ```typescript
-import { victionPlugin } from "@elizaos/plugin-viction";
+import { victionPlugin } from '@elizaos/plugin-viction';
 
 // Initialize the plugin
 const runtime = await initializeRuntime({
-    plugins: [victionPlugin],
+  plugins: [victionPlugin],
 });
 ```
 
@@ -51,7 +52,7 @@ Provide Viction's information
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("GIVE_VICTION_INFOMATION", {});
+const result = await runtime.executeAction('GIVE_VICTION_INFOMATION', {});
 ```
 
 ### transferVic
@@ -60,11 +61,12 @@ Transfers VIC between wallets.
 
 ```typescript
 // Example usage
-const result = await runtime.executeAction("SEND_VIC", {
-    recipient: "RecipientAddressHere",
-    amount: "1000",
+const result = await runtime.executeAction('SEND_VIC', {
+  recipient: 'RecipientAddressHere',
+  amount: '1000',
 });
 ```
+
 ### transferTokens
 
 Transfers tokens between wallets.
@@ -77,24 +79,25 @@ const result = await runtime.executeAction("SEND_TOKEN", {
     amount: "1000",
 });
 ```
+
 ## Performance Optimization
 
 1. **Cache Management**
 
-    - Implement token data caching
-    - Configure cache TTL settings
-    - Monitor cache hit rates
+   - Implement token data caching
+   - Configure cache TTL settings
+   - Monitor cache hit rates
 
 2. **RPC Optimization**
 
-    - Use connection pooling
-    - Implement request batching
-    - Monitor RPC usage
+   - Use connection pooling
+   - Implement request batching
+   - Monitor RPC usage
 
 3. **Transaction Management**
-    - Optimize transaction bundling
-    - Implement retry strategies
-    - Monitor transaction success rates
+   - Optimize transaction bundling
+   - Implement retry strategies
+   - Monitor transaction success rates
 
 ## System Requirements
 
@@ -127,35 +130,34 @@ Error: Transaction failed
 - Verify transaction parameters
 - Ensure proper fee configuration
 
-
 ## Safety & Security
 
 ### Best Practices
 
 1. **Environment Variables**
 
-    - Store sensitive keys in environment variables
-    - Use .env.example for non-sensitive defaults
-    - Never commit real credentials to version control
+   - Store sensitive keys in environment variables
+   - Use .env.example for non-sensitive defaults
+   - Never commit real credentials to version control
 
 ## Performance Optimization
 
 1. **Cache Management**
 
-    - Implement token data caching
-    - Configure cache TTL settings
-    - Monitor cache hit rates
+   - Implement token data caching
+   - Configure cache TTL settings
+   - Monitor cache hit rates
 
 2. **RPC Optimization**
 
-    - Use connection pooling
-    - Implement request batching
-    - Monitor RPC usage
+   - Use connection pooling
+   - Implement request batching
+   - Monitor RPC usage
 
 3. **Transaction Management**
-    - Optimize transaction bundling
-    - Implement retry strategies
-    - Monitor transaction success rates
+   - Optimize transaction bundling
+   - Implement retry strategies
+   - Monitor transaction success rates
 
 ## Support
 
@@ -164,10 +166,10 @@ For issues and feature requests, please:
 1. Check the troubleshooting guide above
 2. Review existing GitHub issues
 3. Submit a new issue with:
-    - System information
-    - Error logs
-    - Steps to reproduce
-    - Transaction IDs (if applicable)
+   - System information
+   - Error logs
+   - Steps to reproduce
+   - Transaction IDs (if applicable)
 
 ## Contributing
 

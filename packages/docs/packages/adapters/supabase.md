@@ -6,7 +6,7 @@ This adapter enables ElizaOS to integrate with Supabase for data persistence and
 
 - Supabase account and project
 - ElizaOS installation
-- Node.js and npm/yarn/pnpm
+- Node.js and npm/yarn/bun
 
 ## Installation
 
@@ -52,6 +52,7 @@ You can find these values in your Supabase project dashboard under Project Setti
 ## Database Setup
 
 Before using the adapter, ensure you've run both migration files:
+
 - `schema.sql`: Sets up the required database tables and relationships
 - `seed.sql`: Populates initial data (if any)
 
@@ -60,6 +61,7 @@ These migrations must be executed before starting the adapter to ensure proper f
 ## Usage
 
 Once configured, the adapter will automatically handle:
+
 - Data persistence for character states and interactions
 - Real-time updates for multi-user environments
 - State synchronization across different instances

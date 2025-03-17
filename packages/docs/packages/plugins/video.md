@@ -3,8 +3,9 @@
 The VideoService provides comprehensive video processing capabilities with a focus on efficient handling and transcription:
 
 **Key Features:**
+
 - **Video Download**: Supports both YouTube videos and direct MP4 URLs
-- **Format Handling**: 
+- **Format Handling**:
   - Automatic format detection and conversion
   - MP4 to MP3 conversion for audio processing
   - Support for various video platforms (YouTube, Vimeo)
@@ -22,6 +23,7 @@ The VideoService provides comprehensive video processing capabilities with a foc
   - Automatic cleanup of temporary files
 
 **Usage Example:**
+
 ```typescript
 const videoService = runtime.getService<IVideoService>(ServiceType.VIDEO);
 

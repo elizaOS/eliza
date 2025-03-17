@@ -14,7 +14,7 @@ This plugin integrates GOAT with Eliza, giving your agent the ability to interac
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-goat
+bun install @elizaos/plugin-goat
 ```
 
 ## Configuration
@@ -31,15 +31,15 @@ EVM_PROVIDER_URL=<Your RPC provider URL (e.g., Infura, Alchemy)>
 1. Configure the chain you want to use by updating the `wallet.ts` file (see all available chains at [https://ohmygoat.dev/chains](https://ohmygoat.dev/chains))
 2. Specify the actions you want to have by updating the `actions.ts` file
 3. Add the plugins you need to perform these actions to the `getOnChainTools` function (uniswap, polymarket, etc. see all available plugins at [https://ohmygoat.dev/chains-wallets-plugins](https://ohmygoat.dev/chains-wallets-plugins))
-4. Build the project running `pnpm build`
+4. Build the project running `bun build`
 5. Add the necessary environment variables to set up your wallet and plugins
 6. Run your agent!
 
 ## Common Issues
 
 1. **Agent not executing an action**:
-    - If you are also using the EVM Plugin, sometimes the agent might confuse the action name with an EVM Plugin action name instead of the GOAT Plugin action. Removing the EVM Plugin should fix this issue. There is no need for you to use both plugins at the same time.
-    - If you are using Trump as a character it might be tricky to get them to perform any action since the character is full of prompts that aim to change the topic of the conversation. To fix this try using a different character or create your own with prompts that are more suitable to what the agent is supposed to do.
+   - If you are also using the EVM Plugin, sometimes the agent might confuse the action name with an EVM Plugin action name instead of the GOAT Plugin action. Removing the EVM Plugin should fix this issue. There is no need for you to use both plugins at the same time.
+   - If you are using Trump as a character it might be tricky to get them to perform any action since the character is full of prompts that aim to change the topic of the conversation. To fix this try using a different character or create your own with prompts that are more suitable to what the agent is supposed to do.
 
 ## Plugins
 
@@ -49,14 +49,14 @@ You can easily add them by installing them and adding them to the `getOnChainAct
 
 ```typescript
 const tools = getOnChainActions({
-    wallet: walletClient,
-    plugins: [
-        sendETH(),
-        erc20({ tokens: [USDC, PEPE] }),
-        polymarket(),
-        uniswap(),
-        // ...
-    ],
+  wallet: walletClient,
+  plugins: [
+    sendETH(),
+    erc20({ tokens: [USDC, PEPE] }),
+    polymarket(),
+    uniswap(),
+    // ...
+  ],
 });
 ```
 
@@ -66,19 +66,19 @@ See all available plugins at [https://ohmygoat.dev/chains-wallets-plugins](https
 
 1. **Agent not executing an action**:
 
-    - If you are also using the EVM Plugin, sometimes the agent might confuse the action name with an EVM Plugin action name instead of the GOAT Plugin action. Removing the EVM Plugin should fix this issue. There is no need for you to use both plugins at the same time.
-    - If you are using Trump as a character it might be tricky to get them to perform any action since the character is full of prompts that aim to change the topic of the conversation. To fix this try using a different character or create your own with prompts that are more suitable to what the agent is supposed to do.
+   - If you are also using the EVM Plugin, sometimes the agent might confuse the action name with an EVM Plugin action name instead of the GOAT Plugin action. Removing the EVM Plugin should fix this issue. There is no need for you to use both plugins at the same time.
+   - If you are using Trump as a character it might be tricky to get them to perform any action since the character is full of prompts that aim to change the topic of the conversation. To fix this try using a different character or create your own with prompts that are more suitable to what the agent is supposed to do.
 
 2. **Wallet Connection Issues**
 
-    - Verify private key is correctly formatted
-    - Check RPC endpoint availability
-    - Ensure sufficient network balance
+   - Verify private key is correctly formatted
+   - Check RPC endpoint availability
+   - Ensure sufficient network balance
 
 3. **Transaction Issues**
-    - Verify gas availability
-    - Check network congestion
-    - Confirm transaction parameters
+   - Verify gas availability
+   - Check network congestion
+   - Confirm transaction parameters
 
 ## Wallets
 
@@ -90,20 +90,20 @@ Read more about wallets at [https://ohmygoat.dev/wallets](https://ohmygoat.dev/w
 
 1. **Key Management**
 
-    - Store private keys securely
-    - Use environment variables
-    - Never expose keys in code
+   - Store private keys securely
+   - Use environment variables
+   - Never expose keys in code
 
 2. **Transaction Safety**
 
-    - Implement transaction limits
-    - Validate recipient addresses
-    - Double-check transaction amounts
+   - Implement transaction limits
+   - Validate recipient addresses
+   - Double-check transaction amounts
 
 3. **Network Security**
-    - Use secure RPC endpoints
-    - Implement rate limiting
-    - Monitor for suspicious activity
+   - Use secure RPC endpoints
+   - Implement rate limiting
+   - Monitor for suspicious activity
 
 ## Development Guide
 
@@ -113,13 +113,13 @@ Read more about wallets at [https://ohmygoat.dev/wallets](https://ohmygoat.dev/w
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 ## Future Enhancements

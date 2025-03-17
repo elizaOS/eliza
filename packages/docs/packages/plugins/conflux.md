@@ -9,7 +9,7 @@ The Conflux plugin enables seamless interaction with both Conflux Core Space and
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-conflux
+bun install @elizaos/plugin-conflux
 ```
 
 ## Configuration
@@ -27,24 +27,24 @@ CONFLUX_MEME_CONTRACT_ADDRESS=<ConfiPump contract address>
 ### Basic Integration
 
 ```typescript
-import { confluxPlugin } from "@elizaos/plugin-conflux";
+import { confluxPlugin } from '@elizaos/plugin-conflux';
 ```
 
 ### Example Usage
 
 ```typescript
 // Core Space Transfer
-"Send 1 CFX to cfx:aaejuaaaaaaaaaaaaaaaaaaaaaaaaaaaa2eaeg85p5";
+'Send 1 CFX to cfx:aaejuaaaaaaaaaaaaaaaaaaaaaaaaaaaa2eaeg85p5';
 
 // Cross-Space Bridge Transfer
-"Send 1 CFX to eSpace Address 0x119DA8bbe74B1C5c987D0c64D10eC1dB301d4752";
+'Send 1 CFX to eSpace Address 0x119DA8bbe74B1C5c987D0c64D10eC1dB301d4752';
 
 // ConfiPump Token Creation
-"Create a new token called GLITCHIZA with symbol GLITCHIZA and generate a description about it";
+'Create a new token called GLITCHIZA with symbol GLITCHIZA and generate a description about it';
 
 // ConfiPump Token Trading
-"Buy 0.00069 CFX worth of GLITCHIZA(0x1234567890abcdef)";
-"Sell 0.00069 CFX worth of GLITCHIZA(0x1234567890abcdef)";
+'Buy 0.00069 CFX worth of GLITCHIZA(0x1234567890abcdef)';
+'Sell 0.00069 CFX worth of GLITCHIZA(0x1234567890abcdef)';
 ```
 
 ## API Reference
@@ -65,8 +65,8 @@ Transfers CFX tokens within Conflux Core Space.
 
 ```typescript
 interface TransferContent {
-    to: string; // Conflux Core Space address (cfx: prefix)
-    amount: string; // Amount of CFX to send
+  to: string; // Conflux Core Space address (cfx: prefix)
+  amount: string; // Amount of CFX to send
 }
 ```
 
@@ -85,8 +85,8 @@ Transfers CFX tokens from Core Space to eSpace.
 
 ```typescript
 interface TransferContent {
-    to: string; // Conflux eSpace address (0x prefix)
-    amount: string; // Amount of CFX to send
+  to: string; // Conflux eSpace address (0x prefix)
+  amount: string; // Amount of CFX to send
 }
 ```
 
@@ -104,30 +104,30 @@ Manages ConfiPump token operations.
 
 ```typescript
 interface PumpContent {
-    action: "CREATE_TOKEN" | "BUY_TOKEN" | "SELL_TOKEN";
-    params: {
-        name?: string;
-        symbol?: string;
-        description?: string;
-        tokenAddress?: string;
-        value?: string;
-    };
+  action: 'CREATE_TOKEN' | 'BUY_TOKEN' | 'SELL_TOKEN';
+  params: {
+    name?: string;
+    symbol?: string;
+    description?: string;
+    tokenAddress?: string;
+    value?: string;
+  };
 }
 ```
 
 ## Common Issues & Troubleshooting
 
 1. **Transaction Failures**
-    - Ensure sufficient CFX balance for transactions
-    - Verify correct address format (cfx: for Core Space, 0x for eSpace)
-    - Check RPC endpoint connectivity
+   - Ensure sufficient CFX balance for transactions
+   - Verify correct address format (cfx: for Core Space, 0x for eSpace)
+   - Check RPC endpoint connectivity
 
 ## Security Best Practices
 
 1. **Private Key Management**
-    - Store private keys securely using environment variables
-    - Never expose private keys in code or logs
-    - Use separate accounts for development and production
+   - Store private keys securely using environment variables
+   - Never expose private keys in code or logs
+   - Use separate accounts for development and production
 
 ## Development Guide
 
@@ -137,70 +137,70 @@ interface PumpContent {
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run the plugin:
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## Future Enhancements
 
 1. **Advanced Token Management**
 
-    - Batch token transfers
-    - Token allowance management
-    - Advanced meme token features
-    - Token metadata management
+   - Batch token transfers
+   - Token allowance management
+   - Advanced meme token features
+   - Token metadata management
 
 2. **Enhanced Bridge Operations**
 
-    - Multi-token bridge support
-    - Automated bridge fee optimization
-    - Bridge transaction status tracking
-    - Cross-space batch operations
+   - Multi-token bridge support
+   - Automated bridge fee optimization
+   - Bridge transaction status tracking
+   - Cross-space batch operations
 
 3. **Smart Contract Integration**
 
-    - Contract deployment tools
-    - Contract interaction templates
-    - ABI management system
-    - Contract verification tools
+   - Contract deployment tools
+   - Contract interaction templates
+   - ABI management system
+   - Contract verification tools
 
 4. **Performance Optimizations**
 
-    - Transaction batching
-    - Improved caching mechanisms
-    - Gas optimization strategies
-    - Network request optimization
+   - Transaction batching
+   - Improved caching mechanisms
+   - Gas optimization strategies
+   - Network request optimization
 
 5. **Developer Tools**
 
-    - CLI tools for common operations
-    - Development environment templates
-    - Testing utilities
-    - Documentation generator
+   - CLI tools for common operations
+   - Development environment templates
+   - Testing utilities
+   - Documentation generator
 
 6. **Security Features**
 
-    - Transaction simulation
-    - Risk assessment tools
-    - Address validation improvements
-    - Rate limiting controls
+   - Transaction simulation
+   - Risk assessment tools
+   - Address validation improvements
+   - Rate limiting controls
 
 7. **Monitoring and Analytics**
-    - Transaction tracking dashboard
-    - Performance metrics
-    - Error reporting system
-    - Usage analytics
+   - Transaction tracking dashboard
+   - Performance metrics
+   - Error reporting system
+   - Usage analytics
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 

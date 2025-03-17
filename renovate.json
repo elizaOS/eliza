@@ -9,12 +9,7 @@
     },
     {
       "groupName": "TypeScript and related",
-      "matchPackagePatterns": [
-        "^@typescript-eslint/",
-        "^typescript$",
-        "^ts-",
-        "^tslib$"
-      ]
+      "matchPackagePatterns": ["^@typescript-eslint/", "^typescript$", "^ts-", "^tslib$"]
     },
     {
       "groupName": "Rollup and plugins",
@@ -26,11 +21,7 @@
     },
     {
       "groupName": "SQLite related",
-      "matchPackagePatterns": [
-        "sqlite",
-        "^@types/better-sqlite3",
-        "^@types/sql.js"
-      ]
+      "matchPackagePatterns": ["sqlite", "^@types/better-sqlite3", "^@types/sql.js"]
     }
   ],
   "timezone": "UTC",

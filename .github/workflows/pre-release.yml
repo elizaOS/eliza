@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_type:
-        description: "Type of release (prerelease, prepatch, patch, minor, preminor, major)"
+        description: 'Type of release (prerelease, prepatch, patch, minor, preminor, major)'
         required: true
-        default: "prerelease"
+        default: 'prerelease'
 
 jobs:
   release:
@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "23"
+          node-version: '23'
 
       - uses: oven-sh/setup-bun@v2
 
@@ -27,7 +27,7 @@ jobs:
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: "Setup npm for npmjs"
+      - name: 'Setup npm for npmjs'
         run: |
           npm config set registry https://registry.npmjs.org/
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
@@ -39,7 +39,7 @@ jobs:
         run: bun install
 
       - name: Build packages
-        run: bun run build
+        run: bun run build && bun run build:docs
 
       - name: Tag and Publish Packages
         id: tag_publish

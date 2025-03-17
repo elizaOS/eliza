@@ -1,6 +1,5 @@
 # `@elizaos-plugins/plugin-d.a.t.a`
 
-
 The **`@elizaos-plugins/plugin-d.a.t.a`** (Data Authentication, Trust, and Attestation framework) plugin is a plugin from CARV. It enhances the Eliza Agent Framework with powerful data processing capabilities, enabling agents to analyze, transform, and derive insights from various data sources.
 
 - **Comprehensive Data Processing:** Transform raw data into actionable insights through advanced analysis techniques.
@@ -22,6 +21,7 @@ Integrate **`@elizaos-plugins/plugin-d.a.t.a`** to empower your AI agents with s
 **A**: Searching the results from d.a.t.a, please wait a moment... Analyzing Aave (AAVE) token data. Aave is a decentralized lending and borrowing protocol operating on multiple blockchains, including Ethereum, Polygon, Avalanche, and others. The AAVE token is primarily used for governance, allowing holders to vote on protocol upgrades and changes. It also serves as a safety mechanism, where staked AAVE can be used to cover shortfalls in the protocol. Aave is categorized under 'Decentralized Finance (DeFi)', 'Lending/Borrowing Protocols', and multiple ecosystem integrations, indicating its broad utility and adoption across various blockchain environments. The token is deployed on 12 different platforms, showcasing its cross-chain capabilities. Would you like a deeper analysis of its technical features, market trends, or specific use cases?
 
 Logs:
+
 ```
  ◎ LOGS
    %%%% D.A.T.A. Querying token info for ticker:

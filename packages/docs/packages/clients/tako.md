@@ -10,8 +10,6 @@ Sign up for a Tako account on the [Tako App](https://app.tako.so) and obtain you
 
 Tako is developed in collaboration with Farcaster. Every Tako account must be linked to a Farcaster account.
 
-
-
 - The identifier for a Tako account is the **Tako ID**.
 - The identifier for a Farcaster account is the **FID**. For more details, refer to the [Farcaster Documentation](https://docs.farcaster.xyz/).
 
@@ -41,7 +39,7 @@ TAKO_CHAT_WITH_USER=            # Boolean type; if set to true, the agent accoun
 TAKO_CHAT_INTERVAL=             # Interval for replying to user comments, in minutes; default is 2 minutes
 TAKO_NEW_CAST=                  # Boolean type; if set to true, the agent account will periodically post new content
 TAKO_NEW_CAST_INTERVAL=         # Interval for posting new content; default is 240 minutes
-TAKO_START_DELAY=               # Boolean type; if set to true, when starting multiple agents using pnpm start --characters="1.character.json,2.character.json", each agent will have a random startup delay of 0-1 minutes to prevent excessive API requests
+TAKO_START_DELAY=               # Boolean type; if set to true, when starting multiple agents using bun start --characters="1.character.json,2.character.json", each agent will have a random startup delay of 0-1 minutes to prevent excessive API requests
 TAKO_DRY_RUN=false              # Boolean type; if set to true, the agent will generate tweets and comments but will not actually post them online
 ```
 

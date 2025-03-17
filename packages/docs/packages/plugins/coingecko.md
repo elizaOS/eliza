@@ -11,22 +11,22 @@ This plugin uses the [CoinGecko Pro API](https://docs.coingecko.com/reference/in
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-coingecko
+bun add @elizaos/plugin-coingecko
 ```
 
 ## Configuration
 
 Set up your environment with the required CoinGecko API key:
 
-| Variable Name       | Description            |
-| ------------------- | ---------------------- |
-| `COINGECKO_API_KEY` | Your CoinGecko Pro API key |
+| Variable Name           | Description                |
+| ----------------------- | -------------------------- |
+| `COINGECKO_API_KEY`     | Your CoinGecko Pro API key |
 | `COINGECKO_PRO_API_KEY` | Your CoinGecko Pro API key |
 
 ## Usage
 
 ```typescript
-import { coingeckoPlugin } from "@elizaos/plugin-coingecko";
+import { coingeckoPlugin } from '@elizaos/plugin-coingecko';
 
 // Initialize the plugin
 const plugin = coingeckoPlugin;
@@ -39,6 +39,7 @@ const plugin = coingeckoPlugin;
 Fetches the current price and market data for one or more cryptocurrencies.
 
 Features:
+
 - Multiple currency support (e.g., USD, EUR, JPY)
 - Optional market cap data
 - Optional 24h volume data
@@ -46,6 +47,7 @@ Features:
 - Optional last update timestamp
 
 Examples:
+
 - "What's the current price of Bitcoin?"
 - "Check ETH price in EUR with market cap"
 - "Show me BTC and ETH prices in USD and EUR"
@@ -56,11 +58,13 @@ Examples:
 Fetches the current trending cryptocurrencies on CoinGecko.
 
 Features:
+
 - Includes trending coins with market data
 - Optional NFT inclusion
 - Optional category inclusion
 
 Examples:
+
 - "What's trending in crypto?"
 - "Show me trending coins only"
 - "What are the hot cryptocurrencies right now?"
@@ -70,12 +74,14 @@ Examples:
 Fetches the top gaining and losing cryptocurrencies by price change.
 
 Features:
+
 - Customizable time range (1h, 24h, 7d, 14d, 30d, 60d, 1y)
 - Configurable number of top coins to include
 - Multiple currency support
 - Market cap ranking included
 
 Examples:
+
 - "Show me the biggest gainers and losers today"
 - "What are the top movers in EUR for the past week?"
 - "Show me monthly performance of top 100 coins"
@@ -83,6 +89,7 @@ Examples:
 ## Response Format
 
 All actions return structured data including:
+
 - Formatted text for easy reading
 - Raw data for programmatic use
 - Request parameters used
@@ -91,6 +98,7 @@ All actions return structured data including:
 ## Error Handling
 
 The plugin handles various error scenarios:
+
 - Rate limiting
 - API key validation
 - Invalid parameters

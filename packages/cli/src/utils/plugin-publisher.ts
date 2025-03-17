@@ -11,6 +11,7 @@ import {
   forkRepository,
   getFileContent,
   updateFile,
+  ensureDirectory,
 } from './github';
 import { getGitHubToken, getRegistrySettings } from './registry';
 
@@ -114,7 +115,7 @@ export async function testPublishToNpm(cwd: string): Promise<boolean> {
 export async function testPublishToGitHub(
   cwd: string,
   packageJson: PackageJson,
-  username: string,
+  username: string
 ): Promise<boolean> {
   try {
     // Check GitHub token
@@ -139,10 +140,13 @@ export async function testPublishToGitHub(
     const settings = await getRegistrySettings();
     const [registryOwner, registryRepo] = settings.defaultRegistry.split('/');
 
+    // Log the registry we're testing with
+    logger.info(`Testing with registry: ${registryOwner}/${registryRepo}`);
+
     // Check fork permissions and create fork if needed
     const hasFork = await forkExists(token, registryOwner, registryRepo, username);
     logger.info(hasFork ? '✓ Fork exists' : '✓ Can create fork');
-    
+
     if (!hasFork) {
       logger.info('Creating fork...');
       const forkCreated = await forkRepository(token, registryOwner, registryRepo);
@@ -151,16 +155,16 @@ export async function testPublishToGitHub(
         return false;
       }
       logger.info('✓ Fork created');
-      
+
       // Wait a moment for GitHub to complete the fork
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
     }
 
     // Test branch creation
     const branchName = `test-${packageJson.name.replace(/^@elizaos\//, '')}-${packageJson.version}`;
     const hasBranch = await branchExists(token, username, registryRepo, branchName);
     logger.info(hasBranch ? '✓ Test branch exists' : '✓ Can create branch');
-    
+
     if (!hasBranch) {
       logger.info('Creating branch...');
       const branchCreated = await createBranch(token, username, registryRepo, branchName, 'main');
@@ -171,11 +175,24 @@ export async function testPublishToGitHub(
       logger.info('✓ Branch created');
     }
 
-    // Test file update permissions
+    // Test file update permissions - try a test file in the test directory
     const simpleName = packageJson.name.replace(/^@elizaos\//, '').replace(/[^a-zA-Z0-9-]/g, '-');
-    const testPath = `${simpleName}-test.json`;
+    // Change the path to try "test-files" directory rather than root
+    const testPath = `test-files/${simpleName}-test.json`;
     logger.info(`Attempting to create test file: ${testPath} in branch: ${branchName}`);
-    
+
+    // Try to create the directory first if needed
+    const dirCreated = await ensureDirectory(
+      token,
+      username,
+      registryRepo,
+      'test-files',
+      branchName
+    );
+    if (!dirCreated) {
+      logger.warn('Failed to create test directory, but continuing with file creation');
+    }
+
     const canUpdate = await updateFile(
       token,
       username,
@@ -183,21 +200,17 @@ export async function testPublishToGitHub(
       testPath,
       JSON.stringify({ test: true, timestamp: new Date().toISOString() }),
       'Test file update',
-      branchName, // Use the test branch instead of main
+      branchName // Use the test branch instead of main
     );
     if (!canUpdate) {
       logger.error('Cannot update files in repository');
       return false;
     }
-    logger.info('✓ Can update files');
+    logger.info('✓ Can create and update files');
 
     return true;
   } catch (error) {
     logger.error('Test failed:', error);
-    if (error instanceof Error) {
-      logger.error(`Error message: ${error.message}`);
-      logger.error(`Error stack: ${error.stack}`);
-    }
     return false;
   }
 }
@@ -227,7 +240,7 @@ export async function publishToGitHub(
   packageJson: PackageJson,
   cliVersion: string,
   username: string,
-  isTest = false,
+  isTest = false
 ): Promise<boolean> {
   const token = await getGitHubToken();
   if (!token) {
@@ -281,12 +294,12 @@ export async function publishToGitHub(
   let metadata: PluginMetadata;
   const currentDate = new Date().toISOString();
   const repositoryUrl = packageJson.repository?.url || `github:${username}/${packageName}`;
-  
+
   if (existingContent) {
     try {
       metadata = JSON.parse(existingContent);
-      
-      if (metadata.versions.some(v => v.version === packageJson.version)) {
+
+      if (metadata.versions.some((v) => v.version === packageJson.version)) {
         logger.error(`Version ${packageJson.version} already exists in registry.`);
         return false;
       }
@@ -298,34 +311,36 @@ export async function publishToGitHub(
         gitTag: `v${packageJson.version}`,
         runtimeVersion: cliVersion,
         releaseDate: currentDate,
-        deprecated: false
+        deprecated: false,
       });
-      
+
       metadata.latestVersion = packageJson.version;
-      
+
       // Update latestStable if this is a stable release
-      if (!semver.prerelease(packageJson.version) && 
-          (!metadata.latestStable || semver.gt(packageJson.version, metadata.latestStable))) {
+      if (
+        !semver.prerelease(packageJson.version) &&
+        (!metadata.latestStable || semver.gt(packageJson.version, metadata.latestStable))
+      ) {
         metadata.latestStable = packageJson.version;
       }
-      
+
       // Update type if specified
       if (packageJson.type) {
         metadata.type = packageJson.type;
         // Projects are not installable in agents
         metadata.installable = packageJson.type === 'plugin';
       }
-      
+
       // Update platform if specified
       if (packageJson.platform) {
         metadata.platform = packageJson.platform;
       }
-      
+
       // Update tags and categories if changed
       if (packageJson.keywords?.length) {
         metadata.tags = packageJson.keywords;
       }
-      
+
       if (packageJson.categories?.length) {
         metadata.categories = packageJson.categories;
       }
@@ -343,28 +358,32 @@ export async function publishToGitHub(
       description: packageJson.description || '',
       repository: {
         type: repositoryUrl.startsWith('npm:') ? 'npm' : 'git',
-        url: repositoryUrl
+        url: repositoryUrl,
       },
-      maintainers: [{
-        name: username,
-        github: username
-      }],
+      maintainers: [
+        {
+          name: username,
+          github: username,
+        },
+      ],
       categories: packageJson.categories || [],
       tags: packageJson.keywords || [],
-      versions: [{
-        version: packageJson.version,
-        gitBranch: packageJson.version,
-        gitTag: `v${packageJson.version}`,
-        runtimeVersion: cliVersion,
-        releaseDate: currentDate,
-        deprecated: false
-      }],
+      versions: [
+        {
+          version: packageJson.version,
+          gitBranch: packageJson.version,
+          gitTag: `v${packageJson.version}`,
+          runtimeVersion: cliVersion,
+          releaseDate: currentDate,
+          deprecated: false,
+        },
+      ],
       latestStable: semver.prerelease(packageJson.version) ? null : packageJson.version,
       latestVersion: packageJson.version,
       type: entityType,
-      installable: entityType === 'plugin' // Only plugins are installable
+      installable: entityType === 'plugin', // Only plugins are installable
     };
-    
+
     // Add platform if specified
     if (packageJson.platform) {
       metadata.platform = packageJson.platform;
@@ -380,7 +399,7 @@ export async function publishToGitHub(
       packagePath,
       JSON.stringify(metadata, null, 2),
       `Update ${packageJson.name} to version ${packageJson.version}`,
-      branchName,
+      branchName
     );
 
     if (!updated) {
@@ -394,7 +413,7 @@ export async function publishToGitHub(
       if (indexContent) {
         const index = JSON.parse(indexContent);
         const isNew = !index.__v2?.packages?.[packageJson.name];
-        
+
         // Ensure v2 structure exists
         if (!index.__v2) {
           index.__v2 = {
@@ -403,22 +422,22 @@ export async function publishToGitHub(
             categories: {},
             types: {
               plugin: [],
-              project: []
-            }
+              project: [],
+            },
           };
         }
-        
+
         // Ensure types collection exists
         if (!index.__v2.types) {
           index.__v2.types = {
             plugin: [],
-            project: []
+            project: [],
           };
         }
-        
+
         // Update package entry
         index.__v2.packages[packageJson.name] = packagePath;
-        
+
         // Update type collections
         const type = packageJson.type || 'plugin';
         if (!index.__v2.types[type]) {
@@ -427,9 +446,9 @@ export async function publishToGitHub(
         if (!index.__v2.types[type].includes(packageJson.name)) {
           index.__v2.types[type].push(packageJson.name);
         }
-        
+
         // Update categories
-        metadata.categories.forEach(category => {
+        metadata.categories.forEach((category) => {
           if (!index.__v2.categories[category]) {
             index.__v2.categories[category] = [];
           }
@@ -437,7 +456,7 @@ export async function publishToGitHub(
             index.__v2.categories[category].push(packageJson.name);
           }
         });
-        
+
         // Update index.json
         const indexUpdated = await updateFile(
           token,
@@ -446,9 +465,9 @@ export async function publishToGitHub(
           'index.json',
           JSON.stringify(index, null, 2),
           `${isNew ? 'Add' : 'Update'} ${packageJson.name} in registry index`,
-          branchName,
+          branchName
         );
-        
+
         if (!indexUpdated) {
           logger.warn('Failed to update registry index.');
         }
@@ -478,7 +497,7 @@ export async function publishToGitHub(
 
 Submitted by: @${username}`,
       `${username}:${branchName}`,
-      'main',
+      'main'
     );
 
     if (!prCreated) {
@@ -492,9 +511,11 @@ Submitted by: @${username}`,
     logger.info('Would create:');
     logger.info(`- Branch: ${branchName}`);
     logger.info(`- Package file: ${packagePath}`);
-    logger.info(`- Type: ${packageJson.type || 'plugin'} (${(packageJson.type || 'plugin') === 'plugin' ? 'installable' : 'not installable'})`);
+    logger.info(
+      `- Type: ${packageJson.type || 'plugin'} (${(packageJson.type || 'plugin') === 'plugin' ? 'installable' : 'not installable'})`
+    );
     logger.info(`- Pull request: Add ${packageJson.name}@${packageJson.version} to registry`);
   }
 
   return true;
-} 
+}

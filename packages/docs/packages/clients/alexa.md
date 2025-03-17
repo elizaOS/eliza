@@ -64,11 +64,11 @@ npm run format
 
 ## Settings Reference
 
-| Setting Name | Description | Required |
-|--------------|-------------|----------|
-| ALEXA_SKILL_ID | The unique identifier for your Alexa skill | Yes |
-| ALEXA_CLIENT_ID | OAuth2 client ID for your Alexa skill | Yes |
-| ALEXA_CLIENT_SECRET | OAuth2 client secret for your Alexa skill | Yes |
+| Setting Name        | Description                                | Required |
+| ------------------- | ------------------------------------------ | -------- |
+| ALEXA_SKILL_ID      | The unique identifier for your Alexa skill | Yes      |
+| ALEXA_CLIENT_ID     | OAuth2 client ID for your Alexa skill      | Yes      |
+| ALEXA_CLIENT_SECRET | OAuth2 client secret for your Alexa skill  | Yes      |
 
 ## Limitations
 

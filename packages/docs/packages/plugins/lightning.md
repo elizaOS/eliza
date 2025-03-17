@@ -13,7 +13,7 @@ Add the plugin to your Eliza configuration:
 
 ```json
 {
-    "plugins": ["@elizaos/plugin-lightning"]
+  "plugins": ["@elizaos/plugin-lightning"]
 }
 ```
 

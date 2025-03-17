@@ -3,6 +3,7 @@
 A powerful plugin for interacting with the Akash Network, enabling deployment management and cloud compute operations through Eliza.
 
 ## Table of Contents
+
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Directory Structure](#directory-structure)
@@ -11,12 +12,13 @@ A powerful plugin for interacting with the Akash Network, enabling deployment ma
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-akash
+bun add @elizaos/plugin-akash
 ```
 
 ## Configuration
 
 ### Environment Variables
+
 Create a `.env` file in your project root with the following configuration:
 
 ```env
@@ -46,6 +48,7 @@ AKASH_SDL=deployment.yml                # Default SDL file name
 ```
 
 **Important Notes:**
+
 - `AKASH_MNEMONIC`: Your 12-word wallet mnemonic phrase (required)
 - `AKASH_MANIFEST_MODE`: Controls manifest generation behavior
 - `AKASH_MANIFEST_VALIDATION_LEVEL`: Sets SDL validation strictness
@@ -53,33 +56,36 @@ AKASH_SDL=deployment.yml                # Default SDL file name
 
 ⚠️ Never commit your `.env` file with real credentials to version control!
 
-
 #### SDL (Stack Definition Language)
+
 ```
 src/sdl/example.sdl.yml
 ```
+
 Place your SDL configuration files here. The plugin looks for SDL files in this directory by default.
 
 #### Certificates
+
 ```
 src/.certificates/
 ```
+
 SSL certificates for secure provider communication are stored here.
 
 ## Available Actions
 
-| Action               | Description                                    | Parameters                                  |
-|---------------------|------------------------------------------------|---------------------------------------------|
-| CREATE_DEPLOYMENT   | Create a new deployment                         | `sdl`, `sdlFile`, `deposit`                 |
-| CLOSE_DEPLOYMENT    | Close an existing deployment                    | `dseq`, `owner`                            |
-| GET_PROVIDER_INFO   | Get provider information                        | `provider`                                  |
-| GET_DEPLOYMENT_STATUS| Check deployment status                        | `dseq`, `owner`                            |
-| GET_GPU_PRICING     | Get GPU pricing comparison                      | `cpu`, `memory`, `storage`                  |
-| GET_MANIFEST        | Generate deployment manifest                    | `sdl`, `sdlFile`                           |
-| GET_PROVIDERS_LIST  | List available providers                        | `filter: { active, hasGPU, region }`        |
-
+| Action                | Description                  | Parameters                           |
+| --------------------- | ---------------------------- | ------------------------------------ |
+| CREATE_DEPLOYMENT     | Create a new deployment      | `sdl`, `sdlFile`, `deposit`          |
+| CLOSE_DEPLOYMENT      | Close an existing deployment | `dseq`, `owner`                      |
+| GET_PROVIDER_INFO     | Get provider information     | `provider`                           |
+| GET_DEPLOYMENT_STATUS | Check deployment status      | `dseq`, `owner`                      |
+| GET_GPU_PRICING       | Get GPU pricing comparison   | `cpu`, `memory`, `storage`           |
+| GET_MANIFEST          | Generate deployment manifest | `sdl`, `sdlFile`                     |
+| GET_PROVIDERS_LIST    | List available providers     | `filter: { active, hasGPU, region }` |
 
 Each action returns a structured response with:
+
 ```typescript
 {
     text: string;           // Human-readable response
@@ -115,13 +121,15 @@ The plugin includes comprehensive error handling with specific error codes:
 ## Development
 
 ### Running Tests
+
 ```bash
-pnpm test
+bun test
 ```
 
 ### Building
+
 ```bash
-pnpm run build
+bun run build
 ```
 
 ## License

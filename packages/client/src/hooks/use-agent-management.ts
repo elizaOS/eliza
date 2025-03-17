@@ -1,9 +1,9 @@
-import type { Agent, UUID } from "@elizaos/core";
-import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useStartAgent, useStopAgent } from "./use-query-hooks";
-import { useToast } from "./use-toast";
+import type { Agent, UUID } from '@elizaos/core';
+import { useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useStartAgent, useStopAgent } from './use-query-hooks';
+import { useToast } from './use-toast';
 
 /**
  * Custom hook for managing agents (starting, stopping, and tracking status)
@@ -15,134 +15,131 @@ import { useToast } from "./use-toast";
  * @returns Object with functions for starting and stopping agents, checking agent status, and lists of agents in starting and stopping processes.
  */
 export function useAgentManagement() {
-	const navigate = useNavigate();
-	const queryClient = useQueryClient();
-	const { toast } = useToast();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
-	// Mutations for starting and stopping agents
-	const startAgentMutation = useStartAgent();
-	const stopAgentMutation = useStopAgent();
+  // Mutations for starting and stopping agents
+  const startAgentMutation = useStartAgent();
+  const stopAgentMutation = useStopAgent();
 
-	// Track agents that are currently in the process of starting or stopping
-	const [startingAgents, setStartingAgents] = useState<UUID[]>([]);
-	const [stoppingAgents, setStoppingAgents] = useState<UUID[]>([]);
+  // Track agents that are currently in the process of starting or stopping
+  const [startingAgents, setStartingAgents] = useState<UUID[]>([]);
+  const [stoppingAgents, setStoppingAgents] = useState<UUID[]>([]);
 
-	/**
-	 * Start an agent and navigate to its chat
-	 */
-	const startAgent = async (agent: Agent) => {
-		if (!agent.id) {
-			toast({
-				title: "Error",
-				description: "Agent ID is missing",
-				variant: "destructive",
-			});
-			return;
-		}
+  /**
+   * Start an agent and navigate to its chat
+   */
+  const startAgent = async (agent: Agent) => {
+    if (!agent.id) {
+      toast({
+        title: 'Error',
+        description: 'Agent ID is missing',
+        variant: 'destructive',
+      });
+      return;
+    }
 
-		const agentId = agent.id as UUID;
+    const agentId = agent.id as UUID;
 
-		// Prevent starting if already in progress
-		if (startingAgents.includes(agentId)) {
-			return;
-		}
+    // Prevent starting if already in progress
+    if (startingAgents.includes(agentId)) {
+      return;
+    }
 
-		try {
-			// Add agent to starting list
-			setStartingAgents((prev) => [...prev, agentId]);
+    try {
+      // Add agent to starting list
+      setStartingAgents((prev) => [...prev, agentId]);
 
-			// Start the agent
-			await startAgentMutation.mutateAsync(agentId);
+      // Start the agent
+      await startAgentMutation.mutateAsync(agentId);
 
-			// Refresh active agents list
-			queryClient.invalidateQueries({ queryKey: ["active-agents"] });
+      // Refresh active agents list
+      queryClient.invalidateQueries({ queryKey: ['active-agents'] });
+    } catch (error) {
+      console.error('Failed to start agent:', error);
 
-		} catch (error) {
-			console.error("Failed to start agent:", error);
+      toast({
+        title: 'Error Starting Agent',
+        description: error instanceof Error ? error.message : 'Failed to start agent',
+        variant: 'destructive',
+      });
+    } finally {
+      // Remove agent from starting list regardless of success/failure
+      setStartingAgents((prev) => prev.filter((id) => id !== agentId));
+    }
+  };
 
-			toast({
-				title: "Error Starting Agent",
-				description:
-					error instanceof Error ? error.message : "Failed to start agent",
-				variant: "destructive",
-			});
-		} finally {
-			// Remove agent from starting list regardless of success/failure
-			setStartingAgents((prev) => prev.filter((id) => id !== agentId));
-		}
-	};
+  /**
+   * Stop an agent
+   */
+  const stopAgent = async (agent: Agent) => {
+    if (!agent.id) {
+      toast({
+        title: 'Error',
+        description: 'Agent ID is missing',
+        variant: 'destructive',
+      });
+      return;
+    }
 
-	/**
-	 * Stop an agent
-	 */
-	const stopAgent = async (agent: Agent) => {
-		if (!agent.id) {
-			toast({
-				title: "Error",
-				description: "Agent ID is missing",
-				variant: "destructive",
-			});
-			return;
-		}
+    const agentId = agent.id as UUID;
 
-		const agentId = agent.id as UUID;
+    // Prevent stopping if already in progress
+    if (stoppingAgents.includes(agentId)) {
+      return;
+    }
 
-		// Prevent stopping if already in progress
-		if (stoppingAgents.includes(agentId)) {
-			return;
-		}
+    try {
+      // Add agent to stopping list
+      setStoppingAgents((prev) => [...prev, agentId]);
 
-		try {
-			// Add agent to stopping list
-			setStoppingAgents((prev) => [...prev, agentId]);
+      // Stop the agent
+      await stopAgentMutation.mutateAsync(agentId);
 
-			// Stop the agent
-			await stopAgentMutation.mutateAsync(agentId);
+      // Refresh active agents list
+      queryClient.invalidateQueries({ queryKey: ['active-agents'] });
 
-			// Refresh active agents list
-			queryClient.invalidateQueries({ queryKey: ["active-agents"] });
+      toast({
+        title: 'Agent Stopped',
+        description: `${agent.name} has been stopped`,
+      });
+    } catch (error) {
+      console.error('Failed to stop agent:', error);
 
-			toast({
-				title: "Agent Stopped",
-				description: `${agent.name} has been stopped`,
-			});
-		} catch (error) {
-			console.error("Failed to stop agent:", error);
+      toast({
+        title: 'Error Stopping Agent',
+        description: error instanceof Error ? error.message : 'Failed to stop agent',
+        variant: 'destructive',
+      });
+    } finally {
+      // Remove agent from stopping list regardless of success/failure
+      setStoppingAgents((prev) => prev.filter((id) => id !== agentId));
+    }
+  };
 
-			toast({
-				title: "Error Stopping Agent",
-				description:
-					error instanceof Error ? error.message : "Failed to stop agent",
-				variant: "destructive",
-			});
-		} finally {
-			// Remove agent from stopping list regardless of success/failure
-			setStoppingAgents((prev) => prev.filter((id) => id !== agentId));
-		}
-	};
+  /**
+   * Check if an agent is currently starting
+   */
+  const isAgentStarting = (agentId: UUID | undefined | null) => {
+    if (!agentId) return false;
+    return startingAgents.includes(agentId);
+  };
 
-	/**
-	 * Check if an agent is currently starting
-	 */
-	const isAgentStarting = (agentId: UUID | undefined | null) => {
-		if (!agentId) return false;
-		return startingAgents.includes(agentId);
-	};
+  /**
+   * Check if an agent is currently stopping
+   */
+  const isAgentStopping = (agentId: UUID | undefined | null) => {
+    if (!agentId) return false;
+    return stoppingAgents.includes(agentId);
+  };
 
-	/**
-	 * Check if an agent is currently stopping
-	 */
-	const isAgentStopping = (agentId: UUID | undefined | null) => {
-		if (!agentId) return false;
-		return stoppingAgents.includes(agentId);
-	};
-
-	return {
-		startAgent,
-		stopAgent,
-		isAgentStarting,
-		isAgentStopping,
-		startingAgents,
-		stoppingAgents,
-	};
+  return {
+    startAgent,
+    stopAgent,
+    isAgentStarting,
+    isAgentStopping,
+    startingAgents,
+    stoppingAgents,
+  };
 }

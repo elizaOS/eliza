@@ -1,49 +1,51 @@
 {
-	"name": "@elizaos/plugin-solana",
-	"version": "1.0.0-alpha.63",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/elizaos-plugins/plugin-solana"
-	},
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"dependencies": {
-		"@elizaos/core": "^1.0.0-alpha.63",
-		"@solana/spl-token": "0.4.9",
-		"@solana/web3.js": "^1.98.0",
-		"bignumber.js": "9.1.2",
-		"bs58": "6.0.0",
-		"tsup": "8.4.0",
-		"vitest": "2.1.9"
-	},
-	"devDependencies": {
-		"tsup": "8.4.0"
-	},
-	"scripts": {
-		"build": "tsup",
-		"dev": "tsup --watch",
-		"test": "vitest run",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
-	},
-	"peerDependencies": {
-		"@biomejs/biome": "^1.9.4",
-		"form-data": "4.0.2",
-		"whatwg-url": "7.1.0"
-	},
-	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
+  "name": "@elizaos/plugin-solana",
+  "version": "1.0.0-alpha.67",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-solana"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.0.0-alpha.67",
+    "@solana/spl-token": "0.4.9",
+    "@solana/web3.js": "^1.98.0",
+    "bignumber.js": "9.1.2",
+    "bs58": "6.0.0",
+    "tsup": "8.4.0",
+    "vitest": "2.1.9"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "tsup": "8.4.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "peerDependencies": {
+    "form-data": "4.0.2",
+    "whatwg-url": "7.1.0"
+  },
+  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
 }

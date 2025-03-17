@@ -55,11 +55,11 @@ When synthesizing insights:
 - Identify patterns that could be replicated
 - Note areas of consensus and disagreement
 - Consider implications for different stakeholders:
-    - DAO contributors
-    - DAO leaders
-    - Developers
-    - Community members
-    - Token holders
+  - DAO contributors
+  - DAO leaders
+  - Developers
+  - Community members
+  - Token holders
 
 ## Output Format
 

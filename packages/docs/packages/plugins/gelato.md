@@ -6,23 +6,23 @@ A powerful plugin to interact with smart contracts using Gelato Relay, supportin
 
 ## Features
 
--   **Sponsored Calls**: Interact with contracts without needing gas on the user's side.
--   **ERC2771 Support**: Execute meta-transactions via Gelato's `sponsoredCallERC2771`.
--   **Customizable**: Easily configure chains, contracts, and user-specific settings.
+- **Sponsored Calls**: Interact with contracts without needing gas on the user's side.
+- **ERC2771 Support**: Execute meta-transactions via Gelato's `sponsoredCallERC2771`.
+- **Customizable**: Easily configure chains, contracts, and user-specific settings.
 
 ---
 
 ## Prerequisites
 
--   pnpm
--   A Gelato Relay API key
+- bun
+- A Gelato Relay API key
 
 ---
 
 ## Installation
 
 ```
-pnpm install elizaos/plugin-gelato
+bun install elizaos/plugin-gelato
 ```
 
 ---
@@ -83,14 +83,14 @@ For both scenarios, successful execution returns:
 
 ### Code Structure
 
--   **`utils.ts`**:
-    Contains functions for `sponsoredCall` and `sponsoredCallERC2771`.
+- **`utils.ts`**:
+  Contains functions for `sponsoredCall` and `sponsoredCallERC2771`.
 
--   **`schemas.ts`**:
-    Defines Zod schemas to validate user input.
+- **`schemas.ts`**:
+  Defines Zod schemas to validate user input.
 
--   **`actions.ts`**:
-    Contains the action logic, including parsing natural language input and invoking Gelato Relay.
+- **`actions.ts`**:
+  Contains the action logic, including parsing natural language input and invoking Gelato Relay.
 
 ### Testing
 
@@ -101,9 +101,9 @@ For both scenarios, successful execution returns:
 
 ## Troubleshooting
 
--   Ensure your `.env` file is properly configured.
--   Verify that your contract ABI, function name, and chain match the deployed contract details.
--   For ERC2771 calls, confirm the `User` address is correct and matches the expected `_msgSender` logic in the contract.
+- Ensure your `.env` file is properly configured.
+- Verify that your contract ABI, function name, and chain match the deployed contract details.
+- For ERC2771 calls, confirm the `User` address is correct and matches the expected `_msgSender` logic in the contract.
 
 ---
 

@@ -53,7 +53,7 @@
     "featured": true
   },
   "@elizaos-plugins/client-eliza-home": {
-    "custom_preview":"/eliza/logos/home-assistant.png",
+    "custom_preview": "/eliza/logos/home-assistant.png",
     "description": "Provides integration with Eliza Home environment for home automation and intelligent assistant features."
   },
   "@elizaos-plugins/client-farcaster": {

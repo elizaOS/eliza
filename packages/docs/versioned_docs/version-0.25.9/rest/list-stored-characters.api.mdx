@@ -1,0 +1,122 @@
+---
+id: list-stored-characters
+title: 'List stored character files'
+description: 'Lists all character files available in storage'
+sidebar_label: 'List stored character files'
+hide_title: true
+hide_table_of_contents: true
+api: eJytk8Fu2zAMhl+F4NmLgw49zLegCIYAA1as3SnNgZEZW60seRKdNjP87gPttGmbYsCA+SJbFvn/Ij/2KFQlLNbYiXVWLCfcZFhyMtG2YoPHAr/ZJAnIOTA1RTLCEXbWcQLak3W0dQzWQ5IQqWLMMLQcSYNXJRbobJIbCZHLq+fwhBlGTm3wiRMWPV7M57qc60LYvVfFDE3wwl40hNrWWTOq5fdJ43pMpuaG9E0OLWOBYXvPRjDDNqq38ZpFj1O60zGKkQ6YoRVuXu8nidZXOExPhpcfuV3GGCJEptL66lUx/pNX1vR/8dSw1EHLXfEYTFJjgfnJR+K418oX6x676LDAWqQt8twFQ64OSYrP8/kcz7qvv6HkPbvQNuwFpkw4bDK0fhdGU1aculo6+5vg+w0srldnmRbXKyiD6TTJWATYhQgvIZ9gATvHT1Z5Il9CMjTBtVgBVaq8i9TwY4gPszt/529rm1QIbIKSk608lyABtgxd4hIerdRAMN7PHSB23mtrJkHrk5A3PIOlL9tg/YR4eBxNmcgk1lcZ3PmGPFXju5qyXlhp1EyjwLO5BFLH0FUq+WN5czud3JHhGWaopZ+qMJ9dXM6+HMEgM4LhqXlTvavQNJ23ojCeepWKPK+s1N12ZkKTs54OaVpRGWhDkob8q4zjCKVx+D4Yozft6U+k/vvEH6EUfpK8dWQ9Dkfn/RHFNT6f3mSotOlW328p8c/ohkG3f3UcD1isNxnuKVqV0a8hw5qp5Diy+8AHZckYbhX0PblunN33s6V4vgzF1+UtDsMfxnS26w==
+sidebar_class_name: 'get api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import ApiTabs from '@theme/ApiTabs';
+import DiscriminatorTabs from '@theme/DiscriminatorTabs';
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import SecuritySchemes from '@theme/ApiExplorer/SecuritySchemes';
+import MimeTabs from '@theme/MimeTabs';
+import ParamsItem from '@theme/ParamsItem';
+import ResponseSamples from '@theme/ResponseSamples';
+import SchemaItem from '@theme/SchemaItem';
+import SchemaTabs from '@theme/SchemaTabs';
+import Heading from '@theme/Heading';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+
+<Heading
+  as={'h1'}
+  className={'openapi__heading'}
+  children={'List stored character files'}
+></Heading>
+
+<MethodEndpoint method={'get'} path={'/storage'}></MethodEndpoint>
+
+Lists all character files available in storage
+
+<div>
+  <div>
+    <ApiTabs label={undefined} id={undefined}>
+      <TabItem label={'200'} value={'200'}>
+        <div>List of character files</div>
+        <div>
+          <MimeTabs className={'openapi-tabs__mime'} schemaType={'response'}>
+            <TabItem label={'application/json'} value={'application/json'}>
+              <SchemaTabs className={'openapi-tabs__schema'}>
+                <TabItem label={'Schema'} value={'Schema'}>
+                  <details
+                    style={{}}
+                    className={'openapi-markdown__details response'}
+                    data-collapsed={false}
+                    open={true}
+                  >
+                    <summary style={{}} className={'openapi-markdown__details-summary-response'}>
+                      <strong>Schema</strong>
+                    </summary>
+                    <div style={{ textAlign: 'left', marginLeft: '1rem' }}></div>
+                    <ul style={{ marginLeft: '1rem' }}>
+                      <SchemaItem
+                        collapsible={false}
+                        name={'files'}
+                        required={false}
+                        schemaName={'string[]'}
+                        qualifierMessage={undefined}
+                        schema={{ type: 'array', items: { type: 'string' } }}
+                      ></SchemaItem>
+                    </ul>
+                  </details>
+                </TabItem>
+                <TabItem label={'Example (from schema)'} value={'Example (from schema)'}>
+                  <ResponseSamples
+                    responseExample={'{\n  "files": [\n    "string"\n  ]\n}'}
+                    language={'json'}
+                  ></ResponseSamples>
+                </TabItem>
+              </SchemaTabs>
+            </TabItem>
+          </MimeTabs>
+        </div>
+      </TabItem>
+      <TabItem label={'500'} value={'500'}>
+        <div>Error reading storage</div>
+        <div>
+          <MimeTabs className={'openapi-tabs__mime'} schemaType={'response'}>
+            <TabItem label={'application/json'} value={'application/json'}>
+              <SchemaTabs className={'openapi-tabs__schema'}>
+                <TabItem label={'Schema'} value={'Schema'}>
+                  <details
+                    style={{}}
+                    className={'openapi-markdown__details response'}
+                    data-collapsed={false}
+                    open={true}
+                  >
+                    <summary style={{}} className={'openapi-markdown__details-summary-response'}>
+                      <strong>Schema</strong>
+                    </summary>
+                    <div style={{ textAlign: 'left', marginLeft: '1rem' }}></div>
+                    <ul style={{ marginLeft: '1rem' }}>
+                      <SchemaItem
+                        collapsible={false}
+                        name={'error'}
+                        required={false}
+                        schemaName={'string'}
+                        qualifierMessage={undefined}
+                        schema={{ type: 'string' }}
+                      ></SchemaItem>
+                    </ul>
+                  </details>
+                </TabItem>
+                <TabItem label={'Example (from schema)'} value={'Example (from schema)'}>
+                  <ResponseSamples
+                    responseExample={'{\n  "error": "string"\n}'}
+                    language={'json'}
+                  ></ResponseSamples>
+                </TabItem>
+              </SchemaTabs>
+            </TabItem>
+          </MimeTabs>
+        </div>
+      </TabItem>
+    </ApiTabs>
+  </div>
+</div>

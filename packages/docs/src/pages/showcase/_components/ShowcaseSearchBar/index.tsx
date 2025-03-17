@@ -5,7 +5,7 @@ import styles from './styles.module.css';
 
 export default function ShowcaseSearchBar({
   onChange,
-  value
+  value,
 }: {
   onChange: (value: string) => void;
   value: string;
@@ -31,7 +31,7 @@ export default function ShowcaseSearchBar({
           aria-label="Search packages"
         />
         {value && (
-          <button 
+          <button
             className={styles.clearButton}
             onClick={() => onChange('')}
             aria-label="Clear search"

@@ -1,50 +1,53 @@
 {
-	"name": "@elizaos/plugin-starter",
-	"description": "Plugin starter for elizaOS",
-	"version": "1.0.0-alpha.42",
-	"private": true,
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/elizaos-plugins/plugin-starter"
-	},
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"dependencies": {
-		"@elizaos/cli": "^1.0.0-alpha.42",
-		"@elizaos/core": "^1.0.0-alpha.42",
-		"zod": "3.24.2"
-	},
-	"devDependencies": {
-		"tsup": "8.4.0"
-	},
-	"scripts": {
-		"start": "npx @elizaos/cli@alpha start",
-		"test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
-		"dev": "npx @elizaos/cli@alpha dev",
-		"build": "tsup",
-		"lint": "biome check --config-path=./ --write",
-		"test": "npx @elizaos/cli@alpha test",
-		"publish": "npx @elizaos/cli@alpha plugin publish"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"resolutions": {
-		"zod": "3.24.2"
-	},
-	"gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
+  "name": "@elizaos/plugin-starter",
+  "description": "Plugin starter for elizaOS",
+  "version": "1.0.0-alpha.42",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-starter"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/cli": "^1.0.0-alpha.42",
+    "@elizaos/core": "^1.0.0-alpha.42",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "tsup": "8.4.0",
+    "prettier": "3.5.3"
+  },
+  "scripts": {
+    "start": "npx @elizaos/cli start",
+    "test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
+    "dev": "npx @elizaos/cli dev",
+    "build": "tsup",
+    "lint": "prettier --write ./src",
+    "test": "npx @elizaos/cli test",
+    "publish": "npx @elizaos/cli plugin publish",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "resolutions": {
+    "zod": "3.24.2"
+  },
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
 }

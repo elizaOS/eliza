@@ -1,0 +1,150 @@
+---
+id: get-agent
+title: 'Get agent details'
+description: 'Returns detailed information about a specific agent'
+sidebar_label: 'Get agent details'
+hide_title: true
+hide_table_of_contents: true
+api: eJztVk1v2zgQ/SvEnHYB1nZ3uxfdjCYoDBS7RZKeEh/G5EhiS5EKOXSSNfTfF6TkxInTJthDTvXFkjjz5uPNcGYHjE2E6hKwIccR1hI0RRVMz8Y7qOCMOAUXhSZGY0kL42ofOszHAjc+sUARe1KmNkoUFJDgewpFZKWhgoZ4OR30GLAjppCN7sBhR1CNxlcaJJhss0duQUKg62QCaag4JJIQVUsdQrUDvuuzWuRgXAMSRo+ggpSMhuFpDKsT4WvBLY3+CfYiEAdDW4JhnQ3F3rtIMWP/sVjkv8cIxf0pBxEkKO84B1TtAPveGlWCnX+LWXp37KnffCNV4g85NWxGWzEpRTEeCG68t4QOJNAtdr2lMfgcEvIrEI1+OT9P0/PVmetEwmhybGpDQdQ+PKQr53Pk6Rj4MdDf2NGjTGfVyMgpPqdMLnWl9BSbLRXyp8ejKvyYQsgMjGBPbAwS2HBO1cjTytUehvKT8OE5Oldui9boqRxWJ2/MaI02ZkopBB9exlRevyL5pxlMFNlBQkcxYvNqtb14aZ2xyF/UPNnfCCWMw3sBxtTvSSkmYE/Hhx91l/Msap+c/sXGW7Hx13PNcU5hS2HE+UXF21BRHOPWT9OyDEpuoYI59mY+zub5bhqTA0iIhaRxiKZgoYKWua/mc+sV2tZHrv5cLBZHvn3Ox0LTlqzvu3KlFqQyB7OnJby9f9b8i+Kfc7H8sjpCWn5ZCe1VyiDjNpCnxr3K9v1sMVu8Q9u3KN6Jpagt3ZqNJYFOi6jQYn5ZrqZLuM57wY0P32dX7spdtCZmq8LkzSOaxpHOY3tDIkXS4sZwK1CUYO2dCMk545rJunGR0SmaiVOne28cR4HW+pvioQqEbFwjr1yHDpv8WHwyjinkAeSaEX/vWxTcBp+abPHs9PxilKxR0QwkZBrGjBxEPPUNqtI305Zzn5uPvuuSM3wH8oC8WM3njeE2bWbKd3PK0j6O/2XI9T5yh+4A8RPxlL6H1eQRS7uH9v2fm9xU6ky3PO8tGpdboTi9m2r0ErA3IPcbpIRqv86tJeRKzCK73QYjfQ12GPLn60ThDqrLtYQtBpNLoZSyNjE/6+kq+Ek0v51N2+Hv4mfr3Q8CmD6iyxRs0ab8BhK+093BOjqsBwktoaZQvBtPl0pRzwd6R9di7qX7dv50egHD8B/KI/Nh
+sidebar_class_name: 'get api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Get agent details'}></Heading>
+
+<MethodEndpoint method={'get'} path={'/api/agents/{agentId}'} context={'endpoint'}></MethodEndpoint>
+
+Returns detailed information about a specific agent
+
+<Heading
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
+
+<ParamsDetails
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent to retrieve',
+    },
+  ]}
+></ParamsDetails>
+
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '200': {
+      description: 'Agent details',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'Unique identifier for the agent',
+                  },
+                  name: { type: 'string', description: 'Name of the agent' },
+                  status: {
+                    type: 'string',
+                    enum: ['active', 'inactive'],
+                    description: 'Current status of the agent',
+                  },
+                },
+                title: 'AgentInfo',
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Server error',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

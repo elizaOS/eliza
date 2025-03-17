@@ -8,14 +8,14 @@ This package provides Slack integration for the Eliza AI agent.
 
 - A Slack workspace where you have permissions to install apps
 - ngrok installed for local development (`brew install ngrok` on macOS)
-- Node.js and pnpm installed
+- Node.js and bun installed
 
 ### Step 1: Start ngrok
 
 1. Open a terminal and start ngrok on port 3069 (or your configured port):
-    ```bash
-    ngrok http 3069
-    ```
+   ```bash
+   ngrok http 3069
+   ```
 2. Copy the HTTPS URL (e.g., `https://xxxx-xx-xx-xx-xx.ngrok-free.app`)
 3. Keep this terminal open - closing it will invalidate the URL
 
@@ -29,52 +29,52 @@ This package provides Slack integration for the Eliza AI agent.
 
 ```yaml
 display_information:
-    name: eve
-    description: Eve elizaos
-    background_color: "#143187"
+  name: eve
+  description: Eve elizaos
+  background_color: '#143187'
 features:
-    app_home:
-        home_tab_enabled: true
-        messages_tab_enabled: true
-        messages_tab_read_only_enabled: false
-    bot_user:
-        display_name: eve
-        always_online: false
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: eve
+    always_online: false
 oauth_config:
-    scopes:
-        bot:
-            - app_mentions:read
-            - channels:history
-            - channels:join
-            - channels:read
-            - chat:write
-            - files:read
-            - files:write
-            - groups:history
-            - groups:read
-            - im:history
-            - im:read
-            - im:write
-            - mpim:history
-            - mpim:read
-            - mpim:write
-            - users:read
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - channels:join
+      - channels:read
+      - chat:write
+      - files:read
+      - files:write
+      - groups:history
+      - groups:read
+      - im:history
+      - im:read
+      - im:write
+      - mpim:history
+      - mpim:read
+      - mpim:write
+      - users:read
 settings:
-    event_subscriptions:
-        request_url: YOUR_NGROK_URL/slack/events
-        bot_events:
-            - app_mention
-            - message.channels
-            - message.groups
-            - message.im
-            - message.mpim
-            - file_shared
-    interactivity:
-        is_enabled: true
-        request_url: YOUR_NGROK_URL/slack/interactions
-    org_deploy_enabled: false
-    socket_mode_enabled: false
-    token_rotation_enabled: false
+  event_subscriptions:
+    request_url: YOUR_NGROK_URL/slack/events
+    bot_events:
+      - app_mention
+      - message.channels
+      - message.groups
+      - message.im
+      - message.mpim
+      - file_shared
+  interactivity:
+    is_enabled: true
+    request_url: YOUR_NGROK_URL/slack/interactions
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
 ```
 
 6. Click "Create"
@@ -94,15 +94,15 @@ Before proceeding to install the app, make sure to verify the event subscription
 ### Step 3: Configure Environment Variables
 
 1. Create or edit `.env` file in your project root:
-    ```bash
-    SLACK_APP_ID=           # From Basic Information > App Credentials > App ID
-    SLACK_CLIENT_ID=        # From Basic Information > App Credentials > Client ID
-    SLACK_CLIENT_SECRET=    # From Basic Information > App Credentials > Client Secret
-    SLACK_SIGNING_SECRET=   # From Basic Information > App Credentials > Signing Secret
-    SLACK_BOT_TOKEN=        # From OAuth & Permissions > Bot User OAuth Token (starts with xoxb-)
-    SLACK_VERIFICATION_TOKEN= # From Basic Information > App Credentials > Verification Token
-    SLACK_SERVER_PORT=3069  # Must match the port you used with ngrok
-    ```
+   ```bash
+   SLACK_APP_ID=           # From Basic Information > App Credentials > App ID
+   SLACK_CLIENT_ID=        # From Basic Information > App Credentials > Client ID
+   SLACK_CLIENT_SECRET=    # From Basic Information > App Credentials > Client Secret
+   SLACK_SIGNING_SECRET=   # From Basic Information > App Credentials > Signing Secret
+   SLACK_BOT_TOKEN=        # From OAuth & Permissions > Bot User OAuth Token (starts with xoxb-)
+   SLACK_VERIFICATION_TOKEN= # From Basic Information > App Credentials > Verification Token
+   SLACK_SERVER_PORT=3069  # Must match the port you used with ngrok
+   ```
 
 ### Step 4: Install the App
 
@@ -115,9 +115,9 @@ Before proceeding to install the app, make sure to verify the event subscription
 1. Start your Eliza server
 2. Check the logs for successful connection
 3. Test the bot:
-    - In Slack, invite the bot to a channel: `/invite @eve`
-    - Try mentioning the bot: `@eve hello`
-    - Check your server logs for event reception
+   - In Slack, invite the bot to a channel: `/invite @eve`
+   - Try mentioning the bot: `@eve hello`
+   - Check your server logs for event reception
 
 ### Common Issues and Solutions
 
@@ -147,8 +147,8 @@ If you restart ngrok, you'll get a new URL. You'll need to:
 
 1. Copy the new ngrok HTTPS URL
 2. Update the Request URLs in your Slack App settings:
-    - Event Subscriptions > Request URL
-    - Interactivity & Shortcuts > Request URL
+   - Event Subscriptions > Request URL
+   - Interactivity & Shortcuts > Request URL
 3. Wait for URL verification to complete
 
 ### Security Notes
@@ -164,7 +164,7 @@ If you restart ngrok, you'll get a new URL. You'll need to:
 
 1. Start ngrok: `ngrok http 3069`
 2. Update Slack App URLs with new ngrok URL
-3. Start the server: `pnpm start`
+3. Start the server: `bun start`
 4. Monitor logs for events and errors
 
 ### Debugging
@@ -189,6 +189,6 @@ For issues or questions:
 2. Review server logs for errors
 3. Verify all setup steps are completed
 4. Open an issue with:
-    - Error messages
-    - Server logs
-    - Steps to reproduce
+   - Error messages
+   - Server logs
+   - Steps to reproduce

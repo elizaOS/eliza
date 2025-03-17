@@ -42,7 +42,7 @@ graph TD
 ```bash
 # XMTP
 
-pnpm add @elizaos/client-xmtp
+bun add @elizaos/client-xmtp
 ```
 
 ## XMTP Client

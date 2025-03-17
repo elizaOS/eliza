@@ -17,7 +17,7 @@ The Plugin Image Generation offers developers tools to handle image-related oper
 To install the plugin, use the following command:
 
 ```bash
-pnpm install plugin-image-generation
+bun install plugin-image-generation
 ```
 
 ## Configuration Requirements
@@ -38,12 +38,12 @@ The plugin assumes a TypeScript environment. Ensure your `tsconfig.json` include
 
 ```json
 {
-    "compilerOptions": {
-        "module": "ESNext",
-        "target": "ES6",
-        "moduleResolution": "node",
-        "strict": true
-    }
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "ES6",
+    "moduleResolution": "node",
+    "strict": true
+  }
 }
 ```
 
@@ -54,17 +54,17 @@ The plugin assumes a TypeScript environment. Ensure your `tsconfig.json` include
 The main functionality allows generating an image dynamically.
 
 ```typescript
-import { generateImage } from "plugin-image-generation";
+import { generateImage } from 'plugin-image-generation';
 
 const image = await generateImage({
-    width: 800,
-    height: 600,
-    backgroundColor: "#ffffff",
-    text: "Hello World",
-    font: "Arial",
+  width: 800,
+  height: 600,
+  backgroundColor: '#ffffff',
+  text: 'Hello World',
+  font: 'Arial',
 });
 
-console.log("Generated Image:", image);
+console.log('Generated Image:', image);
 ```
 
 ### Upload to Storage
@@ -72,14 +72,14 @@ console.log("Generated Image:", image);
 The plugin supports direct integration with storage solutions for uploading images.
 
 ```typescript
-import { uploadImage } from "plugin-image-generation";
+import { uploadImage } from 'plugin-image-generation';
 
 const uploadResult = await uploadImage({
-    imagePath: "path/to/image.png",
-    bucketName: "my-storage-bucket",
+  imagePath: 'path/to/image.png',
+  bucketName: 'my-storage-bucket',
 });
 
-console.log("Image uploaded successfully:", uploadResult);
+console.log('Image uploaded successfully:', uploadResult);
 ```
 
 ## API Reference
@@ -131,7 +131,7 @@ Include sample projects in the `examples/` directory for users to reference.
 
 ### Testing Guide
 
-- Run tests using `pnpm test`.
+- Run tests using `bun test`.
 - Ensure integration tests cover all major functionalities.
 
 ### Plugin Development Guide

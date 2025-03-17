@@ -1,0 +1,78 @@
+---
+id: get-health
+title: 'Health check endpoint'
+description: 'Detailed health check for the system'
+sidebar_label: 'Health check endpoint'
+hide_title: true
+hide_table_of_contents: true
+api: eJytVMFu2zAM/RWBZzfOVuziW7AFa7EBLdbulPbAyIytVpY0iU6bBf73gYrTpmvX9jBfbEvk4yP5yC0wNgmqBaRNYurguoCako4msPEOKvhCjMZSrVpCy63SLelbtfJRcUtq9CrAB4ooLqc1VNAQn2RzKCBSCt4lSlBt4eN0Kq+nIS4yiDJpjLGBArR3TI7FGEOwRmfw8iaJxxaSbqlD+eJNIKjAL29IMxQQolBhs4uXGLlPB3aJo3ENFED32AUrR2ffYChgTTGZHfhT06EANh0lxi68BLTysUOGCmpkOhJTcakpkKvJ6ZHI6zSxIcdv0NzXZhifAj5Nj18rZu/+fzl7rSkdEl16bwndIdMV2kRDARSjj29jal/TS5k/TWsuYCrbDgV0lBI273bbm+e+iJxfLPU/dJ/TUMbt+iyXu+qz4dyXHALGlnTErR8nQDJFbqGCEoMp2/1AJIoiNqgWW+ijldYyh6osrddoW5+4Op5Op88YfZdrVdOarA8dOVY7JBiuCxB+Oak9K2t+ozq7ULPz02dIs/NTVXvdC0hOKc/zg8v6w2Q6mR6hDS2qIzVTK0v3ZmlJoatV0mhRfmanKutWrSJ2dOfj7eTKXbnL1iSJKhKsKZnGUa3YqyWpPlGt7gy3ClVO1m5U7J0zrhmjG5cYnaaJmrs6eOM4KbTW32WGOhKycU1x5Tp02Mhn5mQcU0Qtdzv8PbekuI2+byTij/nF5c5yhZomcDDzcJDxOC2o87Q47J6U87Pvut4ZlqF6bF6qyrIx3PbLifZdSWLt0+4NoovgE3foDhBPDtcpjcn+3ant4+C+dxGPqma65zJYNE5Un5luRzkuAIOBYlwosvFFc3K+3S4x0c9oh0GOf/UUN1AtrgtYYzTSdPkbsmtNMSv4ljaiKK0pCP012l7iP9syItKH6fg6v4Rh+ANRWD8B
+sidebar_class_name: 'get api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Health check endpoint'}></Heading>
+
+<MethodEndpoint method={'get'} path={'/api/health'} context={'endpoint'}></MethodEndpoint>
+
+Detailed health check for the system
+
+<ParamsDetails parameters={undefined}></ParamsDetails>
+
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '200': {
+      description: 'System is healthy',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              status: { type: 'string', example: 'OK' },
+              version: { type: 'string' },
+              timestamp: { type: 'string', format: 'date-time' },
+              dependencies: {
+                type: 'object',
+                properties: { agents: { type: 'string', example: 'healthy' } },
+              },
+            },
+          },
+        },
+      },
+    },
+    '503': {
+      description: 'System is unhealthy',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

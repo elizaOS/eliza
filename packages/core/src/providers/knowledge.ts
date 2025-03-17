@@ -1,5 +1,5 @@
-import { addHeader } from "../prompts";
-import type { IAgentRuntime, Memory, Provider } from "../types";
+import { addHeader } from '../prompts';
+import type { IAgentRuntime, Memory, Provider } from '../types';
 
 /**
  * Represents a knowledge provider that retrieves knowledge from the knowledge base.
@@ -13,30 +13,28 @@ import type { IAgentRuntime, Memory, Provider } from "../types";
  * @returns {Object} An object containing the retrieved knowledge data, values, and text.
  */
 export const knowledgeProvider: Provider = {
-	name: "KNOWLEDGE",
-	description: "Knowledge from the knowledge base that the agent knows",
-	dynamic: true,
-	get: async (runtime: IAgentRuntime, message: Memory) => {
-		const knowledgeData = await runtime.getKnowledge(message);
+  name: 'KNOWLEDGE',
+  description: 'Knowledge from the knowledge base that the agent knows',
+  dynamic: true,
+  get: async (runtime: IAgentRuntime, message: Memory) => {
+    const knowledgeData = await runtime.getKnowledge(message);
 
-		const knowledge =
-			knowledgeData && knowledgeData.length > 0
-				? addHeader(
-						"# Knowledge",
-						knowledgeData
-							.map((knowledge) => `- ${knowledge.content.text}`)
-							.join("\n"),
-					)
-				: "";
+    const knowledge =
+      knowledgeData && knowledgeData.length > 0
+        ? addHeader(
+            '# Knowledge',
+            knowledgeData.map((knowledge) => `- ${knowledge.content.text}`).join('\n')
+          )
+        : '';
 
-		return {
-			data: {
-				knowledge,
-			},
-			values: {
-				knowledge,
-			},
-			text: knowledge,
-		};
-	},
+    return {
+      data: {
+        knowledge,
+      },
+      values: {
+        knowledge,
+      },
+      text: knowledge,
+    };
+  },
 };

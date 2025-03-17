@@ -5,7 +5,7 @@ A plugin for integrating Anyone protocol proxy services into Eliza agents.
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-anyone
+bun add @elizaos/plugin-anyone
 ```
 
 ## Features
@@ -20,19 +20,21 @@ pnpm add @elizaos/plugin-anyone
 Add the plugin to your agent's configuration:
 
 ```typescript
-import { anyonePlugin } from "@elizaos/plugin-anyone";
+import { anyonePlugin } from '@elizaos/plugin-anyone';
 
 const character = {
-    plugins: [anyonePlugin]
+  plugins: [anyonePlugin],
 };
 ```
 
 ### Available Actions
 
 #### START_ANYONE
+
 Starts the Anyone client and configures proxy settings.
 
 Example commands:
+
 ```plaintext
 "Can you start Anyone for me?"
 "Initialize the Anyone client please"
@@ -40,9 +42,11 @@ Example commands:
 ```
 
 #### STOP_ANYONE
+
 Stops the Anyone client and cleans up proxy settings.
 
 Example commands:
+
 ```plaintext
 "Can you stop Anyone for me?"
 "Please shut down Anyone"
@@ -54,14 +58,15 @@ Example commands:
 The plugin provides two main services:
 
 1. `AnyoneClientService`: Manages the Anyone client instance
-    - Singleton pattern implementation
-    - Handles client initialization and cleanup
-    - Configures SOCKS proxy on port 9050
+
+   - Singleton pattern implementation
+   - Handles client initialization and cleanup
+   - Configures SOCKS proxy on port 9050
 
 2. `AnyoneProxyService`: Handles axios proxy configuration
-    - Preserves original axios settings
-    - Automatically applies proxy settings
-    - Provides clean restoration of original config
+   - Preserves original axios settings
+   - Automatically applies proxy settings
+   - Provides clean restoration of original config
 
 ## Dependencies
 

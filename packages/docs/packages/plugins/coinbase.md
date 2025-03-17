@@ -31,16 +31,16 @@ COINBASE_NOTIFICATION_URI=your_webhook_notification_uri
 ## Usage
 
 ```typescript
-import { plugins } from "@elizaos/plugin-coinbase";
+import { plugins } from '@elizaos/plugin-coinbase';
 
 // Register all plugins
 const {
-    coinbaseMassPaymentsPlugin,
-    coinbaseCommercePlugin,
-    tradePlugin,
-    tokenContractPlugin,
-    webhookPlugin,
-    advancedTradePlugin,
+  coinbaseMassPaymentsPlugin,
+  coinbaseCommercePlugin,
+  tradePlugin,
+  tokenContractPlugin,
+  webhookPlugin,
+  advancedTradePlugin,
 } = plugins;
 
 // Register individual plugins as needed
@@ -116,66 +116,66 @@ The plugin automatically logs various operations to CSV files:
 
 1. **Advanced Trading Features**
 
-    - Real-time market data streaming
-    - Advanced order types (OCO, trailing stop)
-    - Portfolio rebalancing automation
-    - Custom trading strategies implementation
-    - Multi-exchange arbitrage support
+   - Real-time market data streaming
+   - Advanced order types (OCO, trailing stop)
+   - Portfolio rebalancing automation
+   - Custom trading strategies implementation
+   - Multi-exchange arbitrage support
 
 2. **Enhanced Commerce Integration**
 
-    - Subscription payment handling
-    - Multi-currency checkout optimization
-    - Advanced refund management
-    - Custom payment flow templates
-    - Automated invoice generation
+   - Subscription payment handling
+   - Multi-currency checkout optimization
+   - Advanced refund management
+   - Custom payment flow templates
+   - Automated invoice generation
 
 3. **Improved Token Management**
 
-    - Batch token operations
-    - Gas optimization for token contracts
-    - Token metadata management system
-    - Automated token listing process
-    - Smart contract deployment templates
+   - Batch token operations
+   - Gas optimization for token contracts
+   - Token metadata management system
+   - Automated token listing process
+   - Smart contract deployment templates
 
 4. **Security Enhancements**
 
-    - Advanced API key management
-    - Multi-signature support
-    - Transaction monitoring system
-    - Risk assessment tools
-    - Rate limiting improvements
+   - Advanced API key management
+   - Multi-signature support
+   - Transaction monitoring system
+   - Risk assessment tools
+   - Rate limiting improvements
 
 5. **Analytics and Reporting**
 
-    - Custom report generation
-    - Trading performance analytics
-    - Payment flow analytics
-    - Real-time monitoring dashboard
-    - Historical data analysis tools
+   - Custom report generation
+   - Trading performance analytics
+   - Payment flow analytics
+   - Real-time monitoring dashboard
+   - Historical data analysis tools
 
 6. **Webhook Management**
 
-    - Enhanced event filtering
-    - Retry mechanism improvements
-    - Webhook monitoring dashboard
-    - Custom webhook templates
-    - Event batching support
+   - Enhanced event filtering
+   - Retry mechanism improvements
+   - Webhook monitoring dashboard
+   - Custom webhook templates
+   - Event batching support
 
 7. **Developer Tools**
 
-    - SDK expansion
-    - Testing environment improvements
-    - Documentation generator
-    - CLI tools for common operations
-    - Integration templates
+   - SDK expansion
+   - Testing environment improvements
+   - Documentation generator
+   - CLI tools for common operations
+   - Integration templates
 
 8. **Cross-Platform Integration**
-    - Mobile SDK support
-    - Browser extension support
-    - Desktop application integration
-    - IoT device support
-    - Cross-chain bridging capabilities
+   - Mobile SDK support
+   - Browser extension support
+   - Desktop application integration
+   - IoT device support
+   - Cross-chain bridging capabilities
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 

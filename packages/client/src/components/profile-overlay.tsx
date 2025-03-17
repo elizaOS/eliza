@@ -1,18 +1,11 @@
-import { useAgentManagement } from "@/hooks/use-agent-management";
-import { formatAgentName } from "@/lib/utils";
-import type { Agent } from "@elizaos/core";
-import {
-  Cog,
-  Loader2,
-  MessageSquare,
-  MoreHorizontal,
-  Play,
-  Square,
-} from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
-import { Button } from "./ui/button";
-import { Card, CardContent } from "./ui/card";
+import { useAgentManagement } from '@/hooks/use-agent-management';
+import { formatAgentName } from '@/lib/utils';
+import type { Agent } from '@elizaos/core';
+import { Cog, Loader2, MessageSquare, MoreHorizontal, Play, Square } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
+import { Button } from './ui/button';
+import { Card, CardContent } from './ui/card';
 
 interface ProfileOverlayProps {
   isOpen: boolean;
@@ -21,19 +14,14 @@ interface ProfileOverlayProps {
   agents: Agent[];
 }
 
-export default function ProfileOverlay({
-  isOpen,
-  onClose,
-  agent,
-}: ProfileOverlayProps) {
+export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverlayProps) {
   if (!isOpen) return null;
 
-  const { startAgent, stopAgent, isAgentStarting, isAgentStopping } =
-    useAgentManagement();
+  const { startAgent, stopAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
   const navigate = useNavigate();
 
-  const isActive = (agent as Agent & { status?: string }).status === "active";
+  const isActive = (agent as Agent & { status?: string }).status === 'active';
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
   const isProcessing = isStarting || isStopping;
@@ -41,31 +29,29 @@ export default function ProfileOverlay({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // handle Start/Stop button
-  let buttonLabel = "Start";
+  let buttonLabel = 'Start';
   let buttonIcon = <Play />;
   if (isStarting) {
-    buttonLabel = "Starting...";
+    buttonLabel = 'Starting...';
     buttonIcon = <Loader2 className="animate-spin" />;
   } else if (isStopping) {
-    buttonLabel = "Stopping...";
+    buttonLabel = 'Stopping...';
     buttonIcon = <Loader2 className="animate-spin" />;
   } else if (isActive) {
+    buttonLabel = 'Stop';
     buttonIcon = <Square fill="#EF4444" size={16} />;
   }
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
       }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
 
@@ -97,21 +83,19 @@ export default function ProfileOverlay({
                 )}
                 <div
                   className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-white ${
-                    isActive ? "bg-green-500" : "bg-muted-foreground"
+                    isActive ? 'bg-green-500' : 'bg-muted-foreground'
                   }`}
                 />
               </div>
               <div className="flex justify-center items-center mr-4 font-bold">
-                {agent && (
-                  <div className="text-xl truncate max-w-48">{agent.name}</div>
-                )}
+                {agent && <div className="text-xl truncate max-w-48">{agent.name}</div>}
               </div>
             </div>
 
             <div className="flex flex-col items-end justify-end h-full">
               <div className="flex gap-1">
                 <Button
-                  variant={"secondary"}
+                  variant={'secondary'}
                   className={`mr-4`}
                   onClick={() => {
                     setIsDropdownOpen(false);
@@ -126,26 +110,26 @@ export default function ProfileOverlay({
                 </Button>
 
                 <Button
-                  variant={"secondary"}
+                  variant={'secondary'}
                   className={`mr-4`}
                   onClick={() => {
                     if (isActive) {
                       navigate(`/chat/${agent.id}`);
                     }
                   }}
-                  size={"default"}
+                  size={'default'}
                   disabled={!isActive}
                 >
                   <MessageSquare
-                    className={"w-10 h-10 rounded-full"}
+                    className={'w-10 h-10 rounded-full'}
                     style={{ height: 14, width: 14 }}
                   />
-                  {"Message"}
+                  {'Message'}
                 </Button>
 
                 <Button
-                  variant={"secondary"}
-                  className={`mr-4 ${isActive ? "text-red-500" : ""}`}
+                  variant={'secondary'}
+                  className={`mr-4 ${isActive ? 'text-red-500' : ''}`}
                   onClick={() => {
                     if (isProcessing) return; // Prevent action while processing
 
@@ -155,7 +139,7 @@ export default function ProfileOverlay({
                       stopAgent(agent);
                     }
                   }}
-                  size={"default"}
+                  size={'default'}
                   disabled={isProcessing}
                 >
                   {buttonIcon}
@@ -171,11 +155,7 @@ export default function ProfileOverlay({
               <div className="p-6 overflow-scroll flex flex-col gap-2">
                 <div>
                   <p className="font-light">About Me</p>
-                  {agent && (
-                    <p className="font-light text-sm text-gray-500">
-                      {agent?.system}
-                    </p>
-                  )}
+                  {agent && <p className="font-light text-sm text-gray-500">{agent?.system}</p>}
                 </div>
               </div>
             </div>

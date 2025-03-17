@@ -5,7 +5,7 @@ Seamlessly empowers Eliza agents with real-time, advanced, self-improving AI inf
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-allora
+bun add @elizaos/plugin-allora
 ```
 
 ## Configuration
@@ -22,15 +22,15 @@ ALLORA_CHAIN_SLUG=testnet            # Optional: Defaults to testnet
 Add the plugin to your character's configuration:
 
 ```typescript
-import { alloraPlugin } from "@elizaos/plugin-allora";
+import { alloraPlugin } from '@elizaos/plugin-allora';
 
 const character = {
-    plugins: [alloraPlugin],
-    settings: {
-        secrets: {
-            ALLORA_API_KEY: "your_api_key"
-        }
-    }
+  plugins: [alloraPlugin],
+  settings: {
+    secrets: {
+      ALLORA_API_KEY: 'your_api_key',
+    },
+  },
 };
 ```
 
@@ -51,6 +51,7 @@ Users can request inferences using natural language:
 ```
 
 Example Response:
+
 ```plaintext
 "Inference provided by Allora Network on topic ETH 5min (Topic ID: 13): 3393.364326646801085508"
 ```
@@ -76,6 +77,7 @@ Example Response:
 ### Common Issues
 
 1. "No active Allora Network topic matches your request"
+
    - Verify that your requested topic exists and is active
    - Check that the topic matches the timeframe of your request
 

@@ -9,15 +9,15 @@ The **Plugin Giphy** enhances your agent's interactions by enabling it to respon
 ## Installation
 
 ```bash
-pnpm add @elizaos/plugin-giphy
+bun add @elizaos/plugin-giphy
 ```
 
 ## Configuration
 
 Set up your environment with the required Giphy API key:
 
-| Variable Name | Description |
-|--------------|-------------|
+| Variable Name   | Description                               |
+| --------------- | ----------------------------------------- |
 | `GIPHY_API_KEY` | Giphy API key for authenticating requests |
 
 You need to obtain an API key by signing up at [Giphy Developers](https://developers.giphy.com/).
@@ -25,7 +25,7 @@ You need to obtain an API key by signing up at [Giphy Developers](https://develo
 ## Usage
 
 ```typescript
-import { giphyPlugin } from "@elizaos/plugin-giphy";
+import { giphyPlugin } from '@elizaos/plugin-giphy';
 
 // Initialize the plugin
 const plugin = giphyPlugin;

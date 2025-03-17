@@ -9,7 +9,7 @@ The Cronos zkEVM plugin enables seamless token transfers on the Cronos zkEVM net
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-cronoszkevm
+bun install @elizaos/plugin-cronoszkevm
 ```
 
 ## Configuration
@@ -26,20 +26,20 @@ CRONOSZKEVM_PRIVATE_KEY=<Your Cronos zkEVM private key>
 ### Basic Integration
 
 ```typescript
-import { cronosZkEVMPlugin } from "@elizaos/plugin-cronoszkevm";
+import { cronosZkEVMPlugin } from '@elizaos/plugin-cronoszkevm';
 ```
 
 ### Example Usage
 
 ```typescript
 // Send USDC tokens
-"Send 100 USDC to 0xCCa8009f5e09F8C5dB63cb0031052F9CB635Af62";
+'Send 100 USDC to 0xCCa8009f5e09F8C5dB63cb0031052F9CB635Af62';
 
 // Send ZKCRO tokens
-"Send 100 ZKCRO to 0xbD8679cf79137042214fA4239b02F4022208EE82";
+'Send 100 ZKCRO to 0xbD8679cf79137042214fA4239b02F4022208EE82';
 
 // Send ETH tokens
-"Transfer 1 ETH to 0x123...";
+'Transfer 1 ETH to 0x123...';
 ```
 
 ## API Reference
@@ -65,9 +65,9 @@ Transfers tokens on the Cronos zkEVM network.
 
 ```typescript
 interface TransferContent {
-    tokenAddress: string; // The token contract address
-    recipient: string; // The recipient's address
-    amount: string | number; // Amount to transfer
+  tokenAddress: string; // The token contract address
+  recipient: string; // The recipient's address
+  amount: string | number; // Amount to transfer
 }
 ```
 
@@ -75,27 +75,27 @@ interface TransferContent {
 
 1. **Transaction Failures**
 
-    - Ensure sufficient token balance for transfers
-    - Verify correct recipient address format (must start with 0x)
-    - Check network connectivity to Cronos zkEVM RPC endpoint
+   - Ensure sufficient token balance for transfers
+   - Verify correct recipient address format (must start with 0x)
+   - Check network connectivity to Cronos zkEVM RPC endpoint
 
 2. **Configuration Issues**
-    - Verify CRONOSZKEVM_ADDRESS is properly set
-    - Ensure CRONOSZKEVM_PRIVATE_KEY is valid and secure
-    - Confirm RPC endpoint is accessible
+   - Verify CRONOSZKEVM_ADDRESS is properly set
+   - Ensure CRONOSZKEVM_PRIVATE_KEY is valid and secure
+   - Confirm RPC endpoint is accessible
 
 ## Security Best Practices
 
 1. **Private Key Management**
 
-    - Store private keys securely using environment variables
-    - Never expose private keys in code or logs
-    - Use separate accounts for development and production
+   - Store private keys securely using environment variables
+   - Never expose private keys in code or logs
+   - Use separate accounts for development and production
 
 2. **Transaction Validation**
-    - Always validate addresses before sending transactions
-    - Verify token amounts and decimals
-    - Implement proper error handling
+   - Always validate addresses before sending transactions
+   - Verify token amounts and decimals
+   - Implement proper error handling
 
 ## Development Guide
 
@@ -105,19 +105,19 @@ interface TransferContent {
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run the plugin:
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## Common Token Addresses

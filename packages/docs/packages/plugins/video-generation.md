@@ -31,11 +31,11 @@ LUMA_API_KEY=your_luma_api_key    # Required: API key for Luma AI
 Import and register the plugin in your Eliza configuration:
 
 ```typescript
-import { videoGenerationPlugin } from "@elizaos/plugin-video-generation";
+import { videoGenerationPlugin } from '@elizaos/plugin-video-generation';
 
 export default {
-    plugins: [videoGenerationPlugin],
-    // ... other configuration
+  plugins: [videoGenerationPlugin],
+  // ... other configuration
 };
 ```
 
@@ -46,17 +46,17 @@ export default {
 The plugin uses Luma AI's API to generate videos from text prompts:
 
 ```typescript
-import { videoGeneration } from "@elizaos/plugin-video-generation";
+import { videoGeneration } from '@elizaos/plugin-video-generation';
 
 // Generate video from prompt
 const result = await videoGeneration.handler(
-    runtime,
-    {
-        content: { text: "Generate a video of a sunset on the beach" },
-    },
-    state,
-    {},
-    callback
+  runtime,
+  {
+    content: { text: 'Generate a video of a sunset on the beach' },
+  },
+  state,
+  {},
+  callback
 );
 ```
 
@@ -66,9 +66,9 @@ const result = await videoGeneration.handler(
 // The plugin automatically handles progress monitoring
 const result = await generateVideo(prompt, runtime);
 if (result.success) {
-    console.log("Video URL:", result.data);
+  console.log('Video URL:', result.data);
 } else {
-    console.error("Generation failed:", result.error);
+  console.error('Generation failed:', result.error);
 }
 ```
 
@@ -104,24 +104,24 @@ npm run dev
 
 ```typescript
 interface Action {
-    name: "GENERATE_VIDEO";
-    similes: string[];
-    description: string;
-    validate: (runtime: IAgentRuntime, message: Memory) => Promise<boolean>;
-    handler: (
-        runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
-        callback: HandlerCallback
-    ) => Promise<void>;
-    examples: Array<Array<any>>;
+  name: 'GENERATE_VIDEO';
+  similes: string[];
+  description: string;
+  validate: (runtime: IAgentRuntime, message: Memory) => Promise<boolean>;
+  handler: (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    options: any,
+    callback: HandlerCallback
+  ) => Promise<void>;
+  examples: Array<Array<any>>;
 }
 
 interface GenerationResult {
-    success: boolean;
-    data?: string;
-    error?: string;
+  success: boolean;
+  data?: string;
+  error?: string;
 }
 ```
 
@@ -163,8 +163,8 @@ The plugin uses predefined constants for API configuration:
 
 ```typescript
 export const LUMA_CONSTANTS = {
-    API_URL: "https://api.lumalabs.ai/dream-machine/v1/generations",
-    API_KEY_SETTING: "LUMA_API_KEY",
+  API_URL: 'https://api.lumalabs.ai/dream-machine/v1/generations',
+  API_KEY_SETTING: 'LUMA_API_KEY',
 };
 ```
 
@@ -172,20 +172,20 @@ export const LUMA_CONSTANTS = {
 
 ```typescript
 // Basic video generation
-const videoPrompt = "Create a video of a futuristic city at night";
+const videoPrompt = 'Create a video of a futuristic city at night';
 const result = await generateVideo(videoPrompt, runtime);
 
 // With callback handling
 videoGeneration.handler(
-    runtime,
-    {
-        content: { text: videoPrompt },
-    },
-    state,
-    {},
-    (response) => {
-        console.log("Generation status:", response);
-    }
+  runtime,
+  {
+    content: { text: videoPrompt },
+  },
+  state,
+  {},
+  (response) => {
+    console.log('Generation status:', response);
+  }
 );
 ```
 
@@ -193,74 +193,74 @@ videoGeneration.handler(
 
 1. **Generation Features**
 
-    - Advanced style control
-    - Multi-scene composition
-    - Custom duration settings
-    - Resolution options
-    - Frame rate control
-    - Audio integration
+   - Advanced style control
+   - Multi-scene composition
+   - Custom duration settings
+   - Resolution options
+   - Frame rate control
+   - Audio integration
 
 2. **Video Editing**
 
-    - Scene transitions
-    - Text overlay tools
-    - Effect templates
-    - Color correction
-    - Motion tracking
-    - Timeline editing
+   - Scene transitions
+   - Text overlay tools
+   - Effect templates
+   - Color correction
+   - Motion tracking
+   - Timeline editing
 
 3. **Asset Management**
 
-    - Asset library
-    - Template system
-    - Style presets
-    - Resource optimization
-    - Version control
-    - Batch processing
+   - Asset library
+   - Template system
+   - Style presets
+   - Resource optimization
+   - Version control
+   - Batch processing
 
 4. **Quality Improvements**
 
-    - Enhanced resolution
-    - Frame interpolation
-    - Artifact reduction
-    - Stability features
-    - Lighting optimization
-    - Detail enhancement
+   - Enhanced resolution
+   - Frame interpolation
+   - Artifact reduction
+   - Stability features
+   - Lighting optimization
+   - Detail enhancement
 
 5. **Performance Optimization**
 
-    - Generation speed
-    - Resource usage
-    - Parallel processing
-    - Caching system
-    - Queue management
-    - Load balancing
+   - Generation speed
+   - Resource usage
+   - Parallel processing
+   - Caching system
+   - Queue management
+   - Load balancing
 
 6. **Export Options**
 
-    - Multiple formats
-    - Compression settings
-    - Streaming support
-    - Progressive loading
-    - Thumbnail generation
-    - Metadata handling
+   - Multiple formats
+   - Compression settings
+   - Streaming support
+   - Progressive loading
+   - Thumbnail generation
+   - Metadata handling
 
 7. **Developer Tools**
 
-    - API expansion
-    - Testing framework
-    - Documentation generator
-    - Debug visualization
-    - Performance monitoring
-    - Integration templates
+   - API expansion
+   - Testing framework
+   - Documentation generator
+   - Debug visualization
+   - Performance monitoring
+   - Integration templates
 
 8. **AI Features**
-    - Style transfer
-    - Scene understanding
-    - Content awareness
-    - Motion synthesis
-    - Character animation
-    - Environment generation
+   - Style transfer
+   - Scene understanding
+   - Content awareness
+   - Motion synthesis
+   - Character animation
+   - Environment generation
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 

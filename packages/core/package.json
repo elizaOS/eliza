@@ -1,72 +1,76 @@
 {
-	"name": "@elizaos/core",
-	"version": "1.0.0-alpha.63",
-	"description": "",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"scripts": {
-		"build": "tsup && tsc -p tsconfig.build.json",
-		"watch": "tsc --watch",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-		"dev": "tsup --watch",
-		"build:docs": "cd docs && bun run build",
-		"test": "vitest run",
-		"test:coverage": "vitest run --coverage",
-		"test:watch": "vitest"
-	},
-	"author": "",
-	"license": "MIT",
-	"devDependencies": {
-		"@eslint/js": "9.16.0",
-		"@rollup/plugin-commonjs": "25.0.8",
-		"@rollup/plugin-json": "6.1.0",
-		"@rollup/plugin-replace": "5.0.7",
-		"@rollup/plugin-terser": "0.1.0",
-		"@rollup/plugin-typescript": "11.1.6",
-		"@types/mocha": "10.0.10",
-		"@types/node": "^22.13.9",
-		"@types/uuid": "10.0.0",
-		"@typescript-eslint/eslint-plugin": "8.26.0",
-		"@typescript-eslint/parser": "8.26.0",
-		"@vitest/coverage-v8": "2.1.5",
-		"lint-staged": "15.2.10",
-		"nodemon": "3.1.7",
-		"pm2": "5.4.3",
-		"rimraf": "6.0.1",
-		"rollup": "2.79.2",
-		"ts-node": "10.9.2",
-		"tslib": "2.8.1",
-		"tsup": "^8.4.0",
-		"typescript": "5.8.2"
-	},
-	"dependencies": {
-		"dotenv": "16.4.5",
-		"events": "^3.3.0",
-		"glob": "11.0.0",
-		"handlebars": "^4.7.8",
-		"js-sha1": "0.7.0",
-		"langchain": "^0.3.15",
-		"pino": "^9.6.0",
-		"pino-pretty": "^13.0.0",
-		"unique-names-generator": "4.7.1",
-		"uuid": "11.0.3"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
+  "name": "@elizaos/core",
+  "version": "1.0.0-alpha.67",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "dev": "tsup --watch",
+    "build:docs": "cd docs && bun run build",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "lint": "prettier --write ./src"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "9.16.0",
+    "@rollup/plugin-commonjs": "25.0.8",
+    "@rollup/plugin-json": "6.1.0",
+    "@rollup/plugin-replace": "5.0.7",
+    "@rollup/plugin-terser": "0.1.0",
+    "@rollup/plugin-typescript": "11.1.6",
+    "@types/mocha": "10.0.10",
+    "@types/node": "^22.13.9",
+    "@types/uuid": "10.0.0",
+    "@typescript-eslint/eslint-plugin": "8.26.0",
+    "@typescript-eslint/parser": "8.26.0",
+    "@vitest/coverage-v8": "2.1.5",
+    "lint-staged": "15.2.10",
+    "nodemon": "3.1.7",
+    "pm2": "5.4.3",
+    "prettier": "3.5.3",
+    "rimraf": "6.0.1",
+    "rollup": "2.79.2",
+    "ts-node": "10.9.2",
+    "tslib": "2.8.1",
+    "tsup": "^8.4.0",
+    "typescript": "5.8.2"
+  },
+  "dependencies": {
+    "dotenv": "16.4.5",
+    "events": "^3.3.0",
+    "glob": "11.0.0",
+    "handlebars": "^4.7.8",
+    "js-sha1": "0.7.0",
+    "langchain": "^0.3.15",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "unique-names-generator": "4.7.1",
+    "uuid": "11.0.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
 }

@@ -22,7 +22,7 @@ This plugin aims to be the basis of all interactions with the NEAR ecosystem, pr
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-near
+bun install @elizaos/plugin-near
 ```
 
 ## Configuration
@@ -43,15 +43,15 @@ NEAR_SLIPPAGE=0.01  # 1% slippage tolerance
 ### Token Transfer
 
 ```typescript
-import { nearPlugin } from "@elizaos/plugin-near";
+import { nearPlugin } from '@elizaos/plugin-near';
 
 // Send NEAR
 const result = await eliza.execute({
-    action: "SEND_NEAR",
-    content: {
-        recipient: "bob.near",
-        amount: "1.5",
-    },
+  action: 'SEND_NEAR',
+  content: {
+    recipient: 'bob.near',
+    amount: '1.5',
+  },
 });
 ```
 
@@ -59,12 +59,12 @@ const result = await eliza.execute({
 
 ```typescript
 const result = await eliza.execute({
-    action: "EXECUTE_SWAP_NEAR",
-    content: {
-        inputTokenId: "wrap.near",
-        outputTokenId: "token.v2.ref-finance.near",
-        amount: "10",
-    },
+  action: 'EXECUTE_SWAP_NEAR',
+  content: {
+    inputTokenId: 'wrap.near',
+    outputTokenId: 'token.v2.ref-finance.near',
+    amount: '10',
+  },
 });
 ```
 
@@ -110,7 +110,7 @@ Executes a token swap using Ref Finance.
 Provides wallet information and portfolio tracking.
 
 ```typescript
-const walletInfo = await eliza.getProvider("wallet");
+const walletInfo = await eliza.getProvider('wallet');
 // Returns formatted portfolio including:
 // - Account balance
 // - Token balances
@@ -124,65 +124,65 @@ const walletInfo = await eliza.getProvider("wallet");
 
 1. **Transaction Failures**
 
-    - Check account balance
-    - Verify storage deposits
-    - Ensure sufficient gas
-    - Confirm slippage tolerance
+   - Check account balance
+   - Verify storage deposits
+   - Ensure sufficient gas
+   - Confirm slippage tolerance
 
 2. **Connection Problems**
 
-    - Verify RPC endpoint
-    - Check network selection
-    - Ensure valid credentials
-    - Monitor API rate limits
+   - Verify RPC endpoint
+   - Check network selection
+   - Ensure valid credentials
+   - Monitor API rate limits
 
 3. **Swap Issues**
-    - Verify token pairs exist
-    - Check liquidity pools
-    - Confirm price impact
-    - Monitor slippage settings
+   - Verify token pairs exist
+   - Check liquidity pools
+   - Confirm price impact
+   - Monitor slippage settings
 
 ## Security Best Practices
 
 1. **Key Management**
 
-    - Store private keys securely
-    - Use environment variables
-    - Implement key rotation
-    - Monitor account activity
+   - Store private keys securely
+   - Use environment variables
+   - Implement key rotation
+   - Monitor account activity
 
 2. **Transaction Safety**
 
-    - Validate all inputs
-    - Implement amount limits
-    - Double-check recipients
-    - Monitor transaction status
+   - Validate all inputs
+   - Implement amount limits
+   - Double-check recipients
+   - Monitor transaction status
 
 3. **Network Security**
 
-    - Use secure RPC endpoints
-    - Implement retry mechanisms
-    - Monitor for suspicious activity
-    - Keep dependencies updated
+   - Use secure RPC endpoints
+   - Implement retry mechanisms
+   - Monitor for suspicious activity
+   - Keep dependencies updated
 
 4. **Error Handling**
-    - Log all transaction attempts
-    - Handle timeouts gracefully
-    - Validate all user inputs
-    - Provide clear error messages
+   - Log all transaction attempts
+   - Handle timeouts gracefully
+   - Validate all user inputs
+   - Provide clear error messages
 
 ## Testing
 
 Run the test suite:
 
 ```bash
-pnpm test
+bun test
 ```
 
 Watch mode for development:
 
 ```bash
-pnpm test:watch
+bun test:watch
 ```
 
 ## Dependencies

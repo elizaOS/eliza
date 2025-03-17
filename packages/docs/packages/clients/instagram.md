@@ -17,7 +17,7 @@ An Instagram client implementation for ElizaOS, enabling Instagram integration w
 As this is a workspace package, it's installed as part of the ElizaOS monorepo:
 
 ```bash
-pnpm install
+bun install
 ```
 
 ## Configuration
@@ -60,20 +60,22 @@ All posts on Instagram must include media (image, video, or carousel):
 ```typescript
 // Post a single image
 await instagramManager.post.createPost({
-  media: [{
-    type: 'IMAGE',
-    url: 'path/to/image.jpg'
-  }],
-  caption: 'Hello Instagram!'
+  media: [
+    {
+      type: 'IMAGE',
+      url: 'path/to/image.jpg',
+    },
+  ],
+  caption: 'Hello Instagram!',
 });
 
 // Post a carousel
 await instagramManager.post.createPost({
   media: [
     { type: 'IMAGE', url: 'path/to/image1.jpg' },
-    { type: 'IMAGE', url: 'path/to/image2.jpg' }
+    { type: 'IMAGE', url: 'path/to/image2.jpg' },
   ],
-  caption: 'Check out these photos!'
+  caption: 'Check out these photos!',
 });
 ```
 
@@ -84,7 +86,7 @@ await instagramManager.post.createPost({
 await instagramManager.interaction.handleComment({
   mediaId: 'media-123',
   comment: 'Great post!',
-  userId: 'user-123'
+  userId: 'user-123',
 });
 
 // Like media
@@ -94,20 +96,18 @@ await instagramManager.interaction.likeMedia('media-123');
 ## Key Components
 
 1. ClientBase
-    - Handles authentication and session management
-    - Manages API rate limiting
-    - Provides core API functionality
 
+   - Handles authentication and session management
+   - Manages API rate limiting
+   - Provides core API functionality
 
 2. PostClient
-    - Manages media uploads
-    - Handles post scheduling
-    - Processes media before upload
 
+   - Manages media uploads
+   - Handles post scheduling
+   - Processes media before upload
 
 3. InteractionClient
-    - Handles comments and likes
-    - Manages user interactions
-    - Processes notifications
-
-
+   - Handles comments and likes
+   - Manages user interactions
+   - Processes notifications

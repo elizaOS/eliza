@@ -15,6 +15,7 @@ npm install @elizaos/plugin-ccxt
 ```
 
 ## Configuration
+
 Get your API keys from your preferred cryptocurrency exchanges.
 
 Set up your environment variables:
@@ -24,6 +25,7 @@ Set up your environment variables:
 CCXT_<EXCHANGE>_API_KEY=your_api_key
 CCXT_<EXCHANGE>_API_SECRET=your_api_secret
 ```
+
 ### FOR EXAMPLE
 
 ```bash
@@ -34,18 +36,19 @@ CCXT_BYBIT_API_KEY=your_bybit_api_key
 CCXT_BYBIT_API_SECRET=your_bybit_api_secret
 ```
 
-
 ## Available Actions
 
 ### checkbalance
+
 Retrieves the current balance of your assets from a specified exchange.
 
 ### placeorder
+
 Places a market or limit buy/sell order on a specified exchange.
 
 ### getarbitrageopportunity
-Analyzes price differences across exchanges to identify profitable trades.
 
+Analyzes price differences across exchanges to identify profitable trades.
 
 ## Rate Limits
 
@@ -59,4 +62,5 @@ For support, please open an issue in the repository or reach out to the maintain
 - [GMAIL](mailto:pranavjadhavworks@gmail.com)
 
 ## Links
+
 - [CCXT DOCUMENTATION](https://docs.ccxt.com/)

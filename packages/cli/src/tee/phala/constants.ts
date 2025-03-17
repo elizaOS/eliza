@@ -1,8 +1,8 @@
-export const CLI_VERSION = "0.1.0";
-export const PHALA_CLOUD_API_URL = "https://cloud-api.phala.network";
-export const CLOUD_URL = "https://cloud.phala.network";
-export const TEE_SIMULATOR = "phalanetwork/tappd-simulator:latest";
-export const COMPOSE_FILES_DIR = ".tee-cloud/compose-files";
+export const CLI_VERSION = '0.1.0';
+export const PHALA_CLOUD_API_URL = 'https://cloud-api.phala.network';
+export const CLOUD_URL = 'https://cloud.phala.network';
+export const TEE_SIMULATOR = 'phalanetwork/tappd-simulator:latest';
+export const COMPOSE_FILES_DIR = '.tee-cloud/compose-files';
 
 /**
  * Docker Compose Eliza V2 Template

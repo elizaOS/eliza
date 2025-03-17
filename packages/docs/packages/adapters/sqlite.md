@@ -37,7 +37,7 @@ import { IAgentRuntime } from '@elizaos/core';
 
 // Initialize with ElizaOS runtime
 function initializeAgent(runtime: IAgentRuntime) {
-    runtime.use(sqlitePlugin);
+  runtime.use(sqlitePlugin);
 }
 
 // Or initialize directly
@@ -67,7 +67,7 @@ The adapter creates and manages these tables with appropriate indexes and constr
 - `memories`: Memory entries with BLOB embeddings and JSON content
 - `goals`: Task tracking with JSON objectives
 - `logs`: System event logging
-- `participants`: Room participation management 
+- `participants`: Room participation management
 - `relationships`: User relationship tracking
 - `rooms`: Conversation room management
 - `cache`: Temporary data storage with JSON validation
@@ -81,12 +81,14 @@ The adapter implements vector similarity search using `sqlite-vec` for efficient
 
 ```typescript
 const memories = await adapter.searchMemories({
-    tableName: "memories",
-    roomId: "room-id",
-    embedding: [/* vector */],
-    match_threshold: 0.95,
-    match_count: 10,
-    unique: true
+  tableName: 'memories',
+  roomId: 'room-id',
+  embedding: [
+    /* vector */
+  ],
+  match_threshold: 0.95,
+  match_count: 10,
+  unique: true,
 });
 ```
 

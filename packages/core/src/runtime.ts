@@ -1,12 +1,12 @@
-import { v4 as uuidv4 } from "uuid";
-import { bootstrapPlugin } from "./bootstrap";
-import { createUniqueUuid } from "./entities";
-import { settings } from "./environment";
-import { handlePluginImporting } from "./index";
-import logger from "./logger";
-import { splitChunks } from "./prompts";
+import { v4 as uuidv4 } from 'uuid';
+import { bootstrapPlugin } from './bootstrap';
+import { createUniqueUuid } from './entities';
+import { handlePluginImporting } from './index';
+import logger from './logger';
+import { splitChunks } from './prompts';
 // Import enums and values that are used as values
-import { ChannelType, MemoryType, ModelType } from "./types";
+import { ChannelType, MemoryType, ModelType } from './types';
+
 // Import types with the 'type' keyword
 import type {
   Action,
@@ -38,8 +38,123 @@ import type {
   TaskWorker,
   UUID,
   World,
-} from "./types";
-import { stringToUuid } from "./uuid";
+} from './types';
+import { stringToUuid } from './uuid';
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+/**
+ * Interface for settings object with key-value pairs.
+ */
+interface Settings {
+  [key: string]: string | undefined;
+}
+
+/**
+ * Represents a collection of settings grouped by namespace.
+ *
+ * @typedef {Object} NamespacedSettings
+ * @property {Settings} namespace - The namespace key and corresponding Settings value.
+ */
+interface NamespacedSettings {
+  [namespace: string]: Settings;
+}
+
+/**
+ * Initialize an empty object for storing environment settings.
+ */
+let environmentSettings: Settings = {};
+
+/**
+ * Loads environment variables from the nearest .env file in Node.js
+ * or returns configured settings in browser
+ * @returns {Settings} Environment variables object
+ */
+export function loadEnvConfig(): Settings {
+  // For browser environments, return the configured settings
+  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+    return environmentSettings;
+  }
+
+  // Only import dotenv in Node.js environment
+  let dotenv = null;
+  try {
+    // This code block will only execute in Node.js environments
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      dotenv = require('dotenv');
+    }
+  } catch (err) {
+    // Silently fail if require is not available (e.g., in browser environments)
+    logger.debug('dotenv module not available');
+  }
+
+  function findNearestEnvFile(startDir = process.cwd()) {
+    let currentDir = startDir;
+
+    // Continue searching until we reach the root directory
+    while (currentDir !== path.parse(currentDir).root) {
+      const envPath = path.join(currentDir, '.env');
+
+      if (fs.existsSync(envPath)) {
+        return envPath;
+      }
+
+      // Move up to parent directory
+      currentDir = path.dirname(currentDir);
+    }
+
+    // Check root directory as well
+    const rootEnvPath = path.join(path.parse(currentDir).root, '.env');
+    return fs.existsSync(rootEnvPath) ? rootEnvPath : null;
+  }
+
+  // Node.js environment: load from .env file
+  const envPath = findNearestEnvFile();
+
+  // Load the .env file into process.env synchronously
+  try {
+    if (dotenv) {
+      const result = dotenv.config(envPath ? { path: envPath } : {});
+      if (!result.error && envPath) {
+        logger.log(`Loaded .env file from: ${envPath}`);
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to load .env file:', err);
+  }
+
+  // Parse namespaced settings
+  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+  const namespacedSettings = parseNamespacedSettings(env as Settings);
+
+  // Attach to process.env for backward compatibility if available
+  if (typeof process !== 'undefined') {
+    Object.entries(namespacedSettings).forEach(([namespace, settings]) => {
+      process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
+    });
+  }
+
+  return env as Settings;
+}
+
+// Add this function to parse namespaced settings
+function parseNamespacedSettings(env: Settings): NamespacedSettings {
+  const namespaced: NamespacedSettings = {};
+
+  for (const [key, value] of Object.entries(env)) {
+    if (!value) continue;
+
+    const [namespace, ...rest] = key.split('.');
+    if (!namespace || rest.length === 0) continue;
+
+    const settingKey = rest.join('.');
+    namespaced[namespace] = namespaced[namespace] || {};
+    namespaced[namespace][settingKey] = value;
+  }
+
+  return namespaced;
+}
 
 // Semaphore implementation for controlling concurrent operations
 export class Semaphore {
@@ -109,10 +224,7 @@ export class AgentRuntime implements IAgentRuntime {
 
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service>();
-  models = new Map<
-    string,
-    Array<(runtime: IAgentRuntime, params: any) => Promise<any>>
-  >();
+  models = new Map<string, Array<(runtime: IAgentRuntime, params: any) => Promise<any>>>();
   routes: Route[] = [];
 
   private taskWorkers = new Map<string, TaskWorker>();
@@ -122,6 +234,7 @@ export class AgentRuntime implements IAgentRuntime {
 
   private runtimeLogger;
   private knowledgeProcessingSemaphore = new Semaphore(10);
+  private settings: Settings;
 
   constructor(opts: {
     conversationLength?: number;
@@ -135,30 +248,34 @@ export class AgentRuntime implements IAgentRuntime {
   }) {
     // use the character id if it exists, otherwise use the agentId if it is passed in, otherwise use the character name
     this.agentId =
-      opts.character?.id ??
-      opts?.agentId ??
-      stringToUuid(opts.character?.name ?? uuidv4());
+      opts.character?.id ?? opts?.agentId ?? stringToUuid(opts.character?.name ?? uuidv4());
     this.character = opts.character;
 
+    // Get log level from environment or default to info
+    const logLevel = process.env.LOG_LEVEL || 'info';
+
+    // Create the logger with appropriate level - only show debug logs when explicitly configured
     this.runtimeLogger = logger.child({
       agentName: this.character?.name,
       agentId: this.agentId,
+      level: logLevel === 'debug' ? 'debug' : 'error', // Show only errors unless debug mode is enabled
     });
 
-    this.runtimeLogger.debug(
-      `[AgentRuntime] Process working directory: ${process.cwd()}`
-    );
+    this.runtimeLogger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
 
-    this.#conversationLength =
-      opts.conversationLength ?? this.#conversationLength;
+    this.#conversationLength = opts.conversationLength ?? this.#conversationLength;
 
     if (opts.adapter) {
       this.registerDatabaseAdapter(opts.adapter);
     }
 
-    this.runtimeLogger.success(`Agent ID: ${this.agentId}`);
-
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
+
+    if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+      this.settings = environmentSettings;
+    } else {
+      this.settings = loadEnvConfig();
+    }
 
     // Register plugins from options or empty array
     const plugins = opts?.plugins ?? [];
@@ -170,6 +287,8 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
+
+    this.runtimeLogger.debug(`Success: Agent ID: ${this.agentId}`);
   }
 
   /**
@@ -178,8 +297,8 @@ export class AgentRuntime implements IAgentRuntime {
    */
   async registerPlugin(plugin: Plugin): Promise<void> {
     if (!plugin) {
-      this.runtimeLogger.error("*** registerPlugin plugin is undefined");
-      throw new Error("*** registerPlugin plugin is undefined");
+      this.runtimeLogger.error('*** registerPlugin plugin is undefined');
+      throw new Error('*** registerPlugin plugin is undefined');
     }
 
     // Add to plugins array if not already present - but only if it was not passed there initially
@@ -187,36 +306,29 @@ export class AgentRuntime implements IAgentRuntime {
     if (!this.plugins.some((p) => p.name === plugin.name)) {
       // Push to plugins array - this works because we're modifying the array, not reassigning it
       this.plugins.push(plugin);
-      this.runtimeLogger.success(
-        `Plugin ${plugin.name} registered successfully`
-      );
+      this.runtimeLogger.debug(`Success: Plugin ${plugin.name} registered successfully`);
     }
 
     // Initialize the plugin if it has an init function
     if (plugin.init) {
       try {
         await plugin.init(plugin.config || {}, this);
-        this.runtimeLogger.success(
-          `Plugin ${plugin.name} initialized successfully`
-        );
+        this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
       } catch (error) {
         // Check if the error is related to missing API keys
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
 
         if (
-          errorMessage.includes("API key") ||
-          errorMessage.includes("environment variables") ||
-          errorMessage.includes("Invalid plugin configuration")
+          errorMessage.includes('API key') ||
+          errorMessage.includes('environment variables') ||
+          errorMessage.includes('Invalid plugin configuration')
         ) {
           // Instead of throwing an error, log a friendly message
+          console.warn(`Plugin ${plugin.name} requires configuration. ${errorMessage}`);
           console.warn(
-            `Plugin ${plugin.name} requires configuration. ${errorMessage}`
+            'Please check your environment variables and ensure all required API keys are set.'
           );
-          console.warn(
-            "Please check your environment variables and ensure all required API keys are set."
-          );
-          console.warn("You can set these in your .eliza/.env file.");
+          console.warn('You can set these in your .eliza/.env file.');
 
           // We don't throw here, allowing the application to continue
           // with reduced functionality
@@ -229,9 +341,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Register plugin adapter
     if (plugin.adapter) {
-      this.runtimeLogger.debug(
-        `Registering database adapter for plugin ${plugin.name}`
-      );
+      this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
       this.registerDatabaseAdapter(plugin.adapter);
     }
 
@@ -259,10 +369,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Register plugin models
     if (plugin.models) {
       for (const [modelType, handler] of Object.entries(plugin.models)) {
-        this.registerModel(
-          modelType as ModelTypeName,
-          handler as (params: any) => Promise<any>
-        );
+        this.registerModel(modelType as ModelTypeName, handler as (params: any) => Promise<any>);
       }
     }
 
@@ -284,9 +391,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Register plugin services
     if (plugin.services) {
-      await Promise.all(
-        plugin.services.map((service) => this.registerService(service))
-      );
+      await Promise.all(plugin.services.map((service) => this.registerService(service)));
     }
   }
 
@@ -295,15 +400,11 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async stop() {
-    this.runtimeLogger.debug(
-      `runtime::stop - character ${this.character.name}`
-    );
+    this.runtimeLogger.debug(`runtime::stop - character ${this.character.name}`);
 
     // Stop all registered clients
     for (const [serviceName, service] of this.services) {
-      this.runtimeLogger.log(
-        `runtime::stop - requesting service stop for ${serviceName}`
-      );
+      this.runtimeLogger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
       await service.stop();
     }
   }
@@ -316,9 +417,7 @@ export class AgentRuntime implements IAgentRuntime {
     const pluginRegistrationPromises = [];
 
     if (this.character.plugins) {
-      const characterPlugins = (await handlePluginImporting(
-        this.character.plugins
-      )) as Plugin[];
+      const characterPlugins = (await handlePluginImporting(this.character.plugins)) as Plugin[];
 
       // Register each character plugin
       for (const plugin of characterPlugins) {
@@ -342,9 +441,7 @@ export class AgentRuntime implements IAgentRuntime {
     // First create the agent entity directly
     try {
       // Ensure agent exists first (this is critical for test mode)
-      const agentExists = await this.adapter.ensureAgentExists(
-        this.character as Partial<Agent>
-      );
+      const agentExists = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
 
       // Verify agent exists before proceeding
       const agent = await this.adapter.getAgent(this.agentId);
@@ -358,12 +455,10 @@ export class AgentRuntime implements IAgentRuntime {
       const agentEntity = await this.adapter.getEntityById(this.agentId);
 
       if (!agentEntity) {
-        const created = await this.adapter.createEntity({
+        const created = await this.createEntity({
           id: this.agentId,
           agentId: this.agentId,
-          names: Array.from(
-            new Set([this.character.name].filter(Boolean))
-          ) as string[],
+          names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
           metadata: {},
         });
 
@@ -371,15 +466,13 @@ export class AgentRuntime implements IAgentRuntime {
           throw new Error(`Failed to create entity for agent ${this.agentId}`);
         }
 
-        this.runtimeLogger.success(
-          `Agent entity created successfully for ${this.character.name}`
+        this.runtimeLogger.debug(
+          `Success: Agent entity created successfully for ${this.character.name}`
         );
       }
     } catch (error) {
       this.runtimeLogger.error(
-        `Failed to create agent entity: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Failed to create agent entity: ${error instanceof Error ? error.message : String(error)}`
       );
       throw error;
     }
@@ -390,16 +483,14 @@ export class AgentRuntime implements IAgentRuntime {
         this.ensureRoomExists({
           id: this.agentId,
           name: this.character.name,
-          source: "self",
+          source: 'self',
           type: ChannelType.SELF,
         }),
         ...pluginRegistrationPromises,
       ]);
     } catch (error) {
       this.runtimeLogger.error(
-        `Failed to initialize: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`
       );
       throw error;
     }
@@ -407,20 +498,13 @@ export class AgentRuntime implements IAgentRuntime {
     // Add agent as participant in its own room
     try {
       // No need to transform agent ID
-      const participants = await this.adapter.getParticipantsForRoom(
-        this.agentId
-      );
+      const participants = await this.adapter.getParticipantsForRoom(this.agentId);
       if (!participants.includes(this.agentId)) {
-        const added = await this.adapter.addParticipant(
-          this.agentId,
-          this.agentId
-        );
+        const added = await this.adapter.addParticipant(this.agentId, this.agentId);
         if (!added) {
-          throw new Error(
-            `Failed to add agent ${this.agentId} as participant to its own room`
-          );
+          throw new Error(`Failed to add agent ${this.agentId} as participant to its own room`);
         }
-        this.runtimeLogger.success(
+        this.runtimeLogger.debug(
           `Agent ${this.character.name} linked to its own room successfully`
         );
       }
@@ -447,17 +531,14 @@ export class AgentRuntime implements IAgentRuntime {
     // Process character knowledge
     if (this.character?.knowledge && this.character.knowledge.length > 0) {
       const stringKnowledge = this.character.knowledge.filter(
-        (item): item is string => typeof item === "string"
+        (item): item is string => typeof item === 'string'
       );
       await this.processCharacterKnowledge(stringKnowledge);
     }
   }
 
   private async handleProcessingError(error: any, context: string) {
-    this.runtimeLogger.error(
-      `Error ${context}:`,
-      error?.message || error || "Unknown error"
-    );
+    this.runtimeLogger.error(`Error ${context}:`, error?.message || error || 'Unknown error');
     throw error;
   }
 
@@ -469,7 +550,7 @@ export class AgentRuntime implements IAgentRuntime {
   async getKnowledge(message: Memory): Promise<KnowledgeItem[]> {
     // Add validation for message
     if (!message?.content?.text) {
-      this.runtimeLogger.warn("Invalid message for knowledge query:", {
+      this.runtimeLogger.warn('Invalid message for knowledge query:', {
         message,
         content: message?.content,
         text: message?.content?.text,
@@ -479,7 +560,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Validate processed text
     if (!message?.content?.text || message?.content?.text.trim().length === 0) {
-      this.runtimeLogger.warn("Empty text for knowledge query");
+      this.runtimeLogger.warn('Empty text for knowledge query');
       return [];
     }
 
@@ -487,7 +568,7 @@ export class AgentRuntime implements IAgentRuntime {
       text: message?.content?.text,
     });
     const fragments = await this.searchMemories({
-      tableName: "knowledge",
+      tableName: 'knowledge',
       embedding,
       roomId: message.agentId,
       count: 5,
@@ -496,12 +577,16 @@ export class AgentRuntime implements IAgentRuntime {
 
     const uniqueSources = [
       ...new Set(
-        fragments.map((memory) => {
-          this.runtimeLogger.log(
-            `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
-          );
-          return memory.content.source;
-        })
+        fragments
+          .map((memory) => {
+            this.runtimeLogger.debug(
+              `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
+            );
+            return memory?.metadata?.type === MemoryType.FRAGMENT
+              ? memory?.metadata?.documentId
+              : undefined;
+          })
+          .filter(Boolean)
       ),
     ];
 
@@ -529,27 +614,20 @@ export class AgentRuntime implements IAgentRuntime {
       roomId: this.agentId,
       entityId: this.agentId,
       content: item.content,
-      metadata: {
+      metadata: item.metadata || {
         type: MemoryType.DOCUMENT,
         timestamp: Date.now(),
       },
     };
 
-    await this.createMemory(documentMemory, "documents");
+    await this.createMemory(documentMemory, 'documents');
 
     // Create fragments using splitChunks
-    const fragments = await splitChunks(
-      item.content.text,
-      options.targetTokens,
-      options.overlap
-    );
+    const fragments = await splitChunks(item.content.text, options.targetTokens, options.overlap);
 
     // Store each fragment with link to source document
     for (let i = 0; i < fragments.length; i++) {
-      const embedding = await this.useModel(
-        ModelType.TEXT_EMBEDDING,
-        fragments[i]
-      );
+      const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, fragments[i]);
       const fragmentMemory: Memory = {
         id: createUniqueUuid(this, `${item.id}-fragment-${i}`),
         agentId: this.agentId,
@@ -565,7 +643,7 @@ export class AgentRuntime implements IAgentRuntime {
         },
       };
 
-      await this.createMemory(fragmentMemory, "knowledge");
+      await this.createMemory(fragmentMemory, 'knowledge');
     }
   }
 
@@ -578,24 +656,47 @@ export class AgentRuntime implements IAgentRuntime {
           return;
         }
 
-        this.runtimeLogger.info(
-          "Processing knowledge for ",
+        this.runtimeLogger.debug(
+          'Processing knowledge for ',
           this.character.name,
-          " - ",
+          ' - ',
           item.slice(0, 100)
         );
+
+        // Extract metadata from the knowledge item
+        let metadata: MemoryMetadata = {
+          type: MemoryType.DOCUMENT,
+          timestamp: Date.now(),
+        };
+
+        const pathMatch = item.match(/^Path: (.+?)(?:\n|\r\n)/);
+        if (pathMatch) {
+          const filePath = pathMatch[1].trim();
+          const extension = filePath.split('.').pop() || '';
+          const filename = filePath.split('/').pop() || '';
+          const title = filename.replace(`.${extension}`, '');
+
+          metadata = {
+            ...metadata,
+            path: filePath,
+            filename: filename,
+            fileExt: extension,
+            title: title,
+            fileType: `text/${extension || 'plain'}`,
+            fileSize: item.length,
+            source: 'character',
+          };
+        }
 
         await this.addKnowledge({
           id: knowledgeId,
           content: {
             text: item,
           },
+          metadata,
         });
       } catch (error) {
-        await this.handleProcessingError(
-          error,
-          "processing character knowledge"
-        );
+        await this.handleProcessingError(error, 'processing character knowledge');
       } finally {
         this.knowledgeProcessingSemaphore.release();
       }
@@ -604,11 +705,7 @@ export class AgentRuntime implements IAgentRuntime {
     await Promise.all(processingPromises);
   }
 
-  setSetting(
-    key: string,
-    value: string | boolean | null | any,
-    secret = false
-  ) {
+  setSetting(key: string, value: string | boolean | null | any, secret = false) {
     if (secret) {
       if (!this.character.secrets) {
         this.character.secrets = {};
@@ -627,10 +724,10 @@ export class AgentRuntime implements IAgentRuntime {
       this.character.secrets?.[key] ||
       this.character.settings?.[key] ||
       this.character.settings?.secrets?.[key] ||
-      settings[key];
+      this.settings[key];
 
-    if (value === "true") return true;
-    if (value === "false") return false;
+    if (value === 'true') return true;
+    if (value === 'false') return false;
     return value || null;
   }
 
@@ -645,11 +742,11 @@ export class AgentRuntime implements IAgentRuntime {
   registerDatabaseAdapter(adapter: IDatabaseAdapter) {
     if (this.adapter) {
       this.runtimeLogger.warn(
-        "Database adapter already registered. Additional adapters will be ignored. This may lead to unexpected behavior."
+        'Database adapter already registered. Additional adapters will be ignored. This may lead to unexpected behavior.'
       );
     } else {
       this.adapter = adapter;
-      this.runtimeLogger.success("Database adapter registered successfully.");
+      this.runtimeLogger.debug('Success: Database adapter registered successfully.');
     }
   }
 
@@ -659,9 +756,7 @@ export class AgentRuntime implements IAgentRuntime {
    */
   registerProvider(provider: Provider) {
     this.providers.push(provider);
-    this.runtimeLogger.success(
-      `Provider ${provider.name} registered successfully.`
-    );
+    this.runtimeLogger.debug(`Success: Provider ${provider.name} registered successfully.`);
   }
 
   /**
@@ -679,7 +774,7 @@ export class AgentRuntime implements IAgentRuntime {
       );
     } else {
       this.actions.push(action);
-      this.runtimeLogger.success(
+      this.runtimeLogger.debug(
         `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
       );
     }
@@ -716,23 +811,23 @@ export class AgentRuntime implements IAgentRuntime {
   ): Promise<void> {
     for (const response of responses) {
       if (!response.content?.actions || response.content.actions.length === 0) {
-        this.runtimeLogger.warn("No action found in the response content.");
+        this.runtimeLogger.warn('No action found in the response content.');
         continue;
       }
 
       const actions = response.content.actions;
 
       function normalizeAction(action: string) {
-        return action.toLowerCase().replace("_", "");
+        return action.toLowerCase().replace('_', '');
       }
-      this.runtimeLogger.success(
+      this.runtimeLogger.debug(
         `Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`
       );
 
       for (const responseAction of actions) {
-        state = await this.composeState(message, ["RECENT_MESSAGES"]);
+        state = await this.composeState(message, ['RECENT_MESSAGES']);
 
-        this.runtimeLogger.success(`Calling action: ${responseAction}`);
+        this.runtimeLogger.debug(`Success: Calling action: ${responseAction}`);
         const normalizedResponseAction = normalizeAction(responseAction);
         let action = this.actions.find(
           (a: { name: string }) =>
@@ -741,39 +836,25 @@ export class AgentRuntime implements IAgentRuntime {
         );
 
         if (action) {
-          this.runtimeLogger.success(`Found action: ${action?.name}`);
+          this.runtimeLogger.debug(`Success: Found action: ${action?.name}`);
         } else {
-          this.runtimeLogger.error(`No action found for: ${responseAction}`);
-        }
-
-        if (!action) {
-          this.runtimeLogger.info("Attempting to find action in similes.");
+          this.runtimeLogger.debug('Attempting to find action in similes.');
           for (const _action of this.actions) {
             const simileAction = _action.similes?.find(
               (simile) =>
-                simile
-                  .toLowerCase()
-                  .replace("_", "")
-                  .includes(normalizedResponseAction) ||
-                normalizedResponseAction.includes(
-                  simile.toLowerCase().replace("_", "")
-                )
+                simile.toLowerCase().replace('_', '').includes(normalizedResponseAction) ||
+                normalizedResponseAction.includes(simile.toLowerCase().replace('_', ''))
             );
             if (simileAction) {
               action = _action;
-              this.runtimeLogger.success(
-                `Action found in similes: ${action.name}`
-              );
+              this.runtimeLogger.debug(`Success: Action found in similes: ${action.name}`);
               break;
             }
           }
         }
 
         if (!action) {
-          this.runtimeLogger.error(
-            "No action found in",
-            JSON.stringify(response)
-          );
+          this.runtimeLogger.error(`No action found for: ${responseAction}`);
           continue;
         }
 
@@ -783,21 +864,17 @@ export class AgentRuntime implements IAgentRuntime {
         }
 
         try {
-          this.runtimeLogger.info(
-            `Executing handler for action: ${action.name}`
-          );
+          this.runtimeLogger.debug(`Executing handler for action: ${action.name}`);
 
           await action.handler(this, message, state, {}, callback, responses);
 
-          this.runtimeLogger.success(
-            `Action ${action.name} executed successfully.`
-          );
+          this.runtimeLogger.debug(`Success: Action ${action.name} executed successfully.`);
 
           // log to database
           this.adapter.log({
             entityId: message.entityId,
             roomId: message.roomId,
-            type: "action",
+            type: 'action',
             body: {
               action: action.name,
               message: message.content.text,
@@ -829,26 +906,22 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[]
   ) {
-    const evaluatorPromises = this.evaluators.map(
-      async (evaluator: Evaluator) => {
-        if (!evaluator.handler) {
-          return null;
-        }
-        if (!didRespond && !evaluator.alwaysRun) {
-          return null;
-        }
-        const result = await evaluator.validate(this, message, state);
-
-        if (result) {
-          return evaluator;
-        }
+    const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
+      if (!evaluator.handler) {
         return null;
       }
-    );
+      if (!didRespond && !evaluator.alwaysRun) {
+        return null;
+      }
+      const result = await evaluator.validate(this, message, state);
 
-    const evaluators = (await Promise.all(evaluatorPromises)).filter(
-      Boolean
-    ) as Evaluator[];
+      if (result) {
+        return evaluator;
+      }
+      return null;
+    });
+
+    const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
 
     // get the evaluators that were chosen by the response handler
 
@@ -856,24 +929,17 @@ export class AgentRuntime implements IAgentRuntime {
       return [];
     }
 
-    state = await this.composeState(message, ["RECENT_MESSAGES", "EVALUATORS"]);
+    state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
 
     await Promise.all(
       evaluators.map(async (evaluator) => {
         if (evaluator.handler) {
-          await evaluator.handler(
-            this,
-            message,
-            state,
-            {},
-            callback,
-            responses
-          );
+          await evaluator.handler(this, message, state, {}, callback, responses);
           // log to database
           this.adapter.log({
             entityId: message.entityId,
             roomId: message.roomId,
-            type: "evaluator",
+            type: 'evaluator',
             body: {
               evaluator: evaluator.name,
               messageId: message.id,
@@ -886,38 +952,6 @@ export class AgentRuntime implements IAgentRuntime {
     );
 
     return evaluators;
-  }
-
-  async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
-    // Make sure entity exists in database before adding as participant
-    const entity = await this.adapter.getEntityById(entityId);
-    if (!entity) {
-      throw new Error(`User ${entityId} not found`);
-    }
-    // Get current participants
-    const participants = await this.adapter.getParticipantsForRoom(roomId);
-
-    // Only add if not already a participant
-    if (!participants.includes(entityId)) {
-      // Add participant using the tenant-specific ID that now exists in the entities table
-      const added = await this.adapter.addParticipant(entityId, roomId);
-
-      if (!added) {
-        throw new Error(
-          `Failed to add participant ${entityId} to room ${roomId}`
-        );
-      }
-
-      if (entityId === this.agentId) {
-        this.runtimeLogger.log(
-          `Agent ${this.character.name} linked to room ${roomId} successfully.`
-        );
-      } else {
-        this.runtimeLogger.log(
-          `User ${entityId} linked to room ${roomId} successfully.`
-        );
-      }
-    }
   }
 
   async ensureConnection({
@@ -942,14 +976,14 @@ export class AgentRuntime implements IAgentRuntime {
     worldId?: UUID;
   }) {
     if (entityId === this.agentId) {
-      throw new Error("Agent should not connect to itself");
+      throw new Error('Agent should not connect to itself');
     }
 
     if (!worldId && serverId) {
       worldId = createUniqueUuid(this, serverId);
     }
 
-    const names = [name, userName];
+    const names = [name, userName].filter(Boolean);
     const metadata = {
       [source]: {
         name: name,
@@ -957,63 +991,174 @@ export class AgentRuntime implements IAgentRuntime {
       },
     };
 
-    const entity = await this.adapter.getEntityById(entityId);
-
-    if (!entity) {
-      await this.adapter.createEntity({
-        id: entityId,
-        names,
-        metadata,
-        agentId: this.agentId,
-      });
-    }
-
-    // Ensure world exists if worldId is provided
-    if (worldId) {
-      await this.ensureWorldExists({
-        id: worldId,
-        name: serverId
-          ? `World for server ${serverId}`
-          : `World for room ${roomId}`,
-        agentId: this.agentId,
-        serverId: serverId || "default",
-        metadata,
-      });
-    }
-
-    // Ensure room exists
-    await this.ensureRoomExists({
-      id: roomId,
-      source,
-      type,
-      channelId,
-      serverId,
-      worldId,
-    });
-
-    // Now add participants using the original IDs (will be transformed internally)
+    // Step 1: Handle entity creation/update with proper error handling
     try {
-      await this.ensureParticipantInRoom(entityId, roomId);
+      // First check if the entity exists
+      let entity = await this.adapter.getEntityById(entityId);
+
+      if (!entity) {
+        // Try to create the entity
+        try {
+          const success = await this.adapter.createEntity({
+            id: entityId,
+            names,
+            metadata,
+            agentId: this.agentId,
+          });
+
+          if (success) {
+            this.runtimeLogger.debug(
+              `Created new entity ${entityId} for user ${name || userName || 'unknown'}`
+            );
+          } else {
+            throw new Error(`Failed to create entity ${entityId}`);
+          }
+        } catch (error) {
+          // If we get a duplicate key error, the entity exists in the database but isn't
+          // associated with this agent - this is expected in multi-agent scenarios
+          if (error.message?.includes('duplicate key') || error.code === '23505') {
+            this.runtimeLogger.debug(
+              `Entity ${entityId} exists in database but not for this agent. This is normal in multi-agent setups.`
+            );
+          } else {
+            // For any other errors, re-throw
+            throw error;
+          }
+        }
+      } else {
+        // Entity exists for this agent, update if needed
+        await this.adapter.updateEntity({
+          id: entityId,
+          names: [...new Set([...(entity.names || []), ...names])].filter(Boolean),
+          metadata: {
+            ...entity.metadata,
+            [source]: {
+              ...entity.metadata?.[source],
+              name: name,
+              userName: userName,
+            },
+          },
+          agentId: this.agentId,
+        });
+      }
+
+      // Step 2: Ensure world exists
+      if (worldId) {
+        await this.ensureWorldExists({
+          id: worldId,
+          name: serverId ? `World for server ${serverId}` : `World for room ${roomId}`,
+          agentId: this.agentId,
+          serverId: serverId || 'default',
+          metadata,
+        });
+      }
+
+      // Step 3: Ensure room exists
+      await this.ensureRoomExists({
+        id: roomId,
+        name: name,
+        source,
+        type,
+        channelId,
+        serverId,
+        worldId,
+      });
+
+      // Step 4: Add participants to the room
+      // For the user entity, we'll try even if we couldn't retrieve it
+      try {
+        await this.ensureParticipantInRoom(entityId, roomId);
+      } catch (error) {
+        // If the normal flow fails because the entity isn't found,
+        // try direct participant addition as a clean fallback
+        if (error.message?.includes('not found')) {
+          const added = await this.adapter.addParticipant(entityId, roomId);
+          if (!added) {
+            throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
+          }
+          this.runtimeLogger.debug(`Added participant ${entityId} to room ${roomId} directly`);
+        } else {
+          throw error;
+        }
+      }
+
+      // Always add the agent to the room
       await this.ensureParticipantInRoom(this.agentId, roomId);
+
+      this.runtimeLogger.debug(
+        `Success: Successfully connected entity ${entityId} in room ${roomId}`
+      );
     } catch (error) {
       this.runtimeLogger.error(
-        `Failed to add participants: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Failed to ensure connection: ${error instanceof Error ? error.message : String(error)}`
       );
       throw error;
     }
   }
 
   /**
+   * Ensures a participant is added to a room, checking that the entity exists first
+   */
+  async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
+    // Make sure entity exists in database before adding as participant
+    const entity = await this.adapter.getEntityById(entityId);
+
+    // If entity is not found but it's not the agent itself, we might still want to proceed
+    // This can happen when an entity exists in the database but isn't associated with this agent
+    if (!entity && entityId !== this.agentId) {
+      this.runtimeLogger.warn(
+        `Entity ${entityId} not directly accessible to agent ${this.agentId}. Will attempt to add as participant anyway.`
+      );
+    } else if (!entity) {
+      throw new Error(`User ${entityId} not found`);
+    }
+
+    // Get current participants
+    const participants = await this.adapter.getParticipantsForRoom(roomId);
+
+    // Only add if not already a participant
+    if (!participants.includes(entityId)) {
+      // Add participant using the ID
+      const added = await this.adapter.addParticipant(entityId, roomId);
+
+      if (!added) {
+        throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
+      }
+
+      if (entityId === this.agentId) {
+        this.runtimeLogger.debug(
+          `Agent ${this.character.name} linked to room ${roomId} successfully.`
+        );
+      } else {
+        this.runtimeLogger.debug(`User ${entityId} linked to room ${roomId} successfully.`);
+      }
+    }
+  }
+
+  async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+    return await this.adapter.removeParticipant(entityId, roomId);
+  }
+
+  async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
+    return await this.adapter.getParticipantsForEntity(entityId);
+  }
+
+  async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
+    return await this.adapter.getParticipantsForRoom(roomId);
+  }
+
+  async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+    return await this.adapter.addParticipant(entityId, roomId);
+  }
+
+  /**
    * Ensure the existence of a world.
    */
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
-    console.trace("ensureWorldExists");
     // try {
     const world = await this.getWorld(id);
     if (!world) {
-      this.runtimeLogger.info("Creating world:", {
+      this.runtimeLogger.debug('Creating world:', {
         id,
         name,
         serverId,
@@ -1023,10 +1168,10 @@ export class AgentRuntime implements IAgentRuntime {
         id,
         name,
         agentId: this.agentId,
-        serverId: serverId || "default",
+        serverId: serverId || 'default',
         metadata,
       });
-      this.runtimeLogger.info(`World ${id} created successfully.`);
+      this.runtimeLogger.debug(`World ${id} created successfully.`);
     }
     // } catch (error) {
     //   this.runtimeLogger.error(
@@ -1045,15 +1190,7 @@ export class AgentRuntime implements IAgentRuntime {
    * @returns The room ID of the room between the agent and the user.
    * @throws An error if the room cannot be created.
    */
-  async ensureRoomExists({
-    id,
-    name,
-    source,
-    type,
-    channelId,
-    serverId,
-    worldId,
-  }: Room) {
+  async ensureRoomExists({ id, name, source, type, channelId, serverId, worldId }: Room) {
     const room = await this.adapter.getRoom(id);
     if (!room) {
       await this.adapter.createRoom({
@@ -1066,7 +1203,7 @@ export class AgentRuntime implements IAgentRuntime {
         serverId,
         worldId,
       });
-      this.runtimeLogger.log(`Room ${id} created successfully.`);
+      this.runtimeLogger.debug(`Room ${id} created successfully.`);
     }
   }
 
@@ -1086,7 +1223,7 @@ export class AgentRuntime implements IAgentRuntime {
     const cachedState = (await this.stateCache.get(message.id)) || {
       values: {},
       data: {},
-      text: "",
+      text: '',
     };
 
     // Get existing provider names from cache (if any)
@@ -1103,10 +1240,7 @@ export class AgentRuntime implements IAgentRuntime {
     } else {
       // Otherwise, start with all non-private, non-dynamic providers that aren't cached
       this.providers
-        .filter(
-          (p) =>
-            !p.private && !p.dynamic && !existingProviderNames.includes(p.name)
-        )
+        .filter((p) => !p.private && !p.dynamic && !existingProviderNames.includes(p.name))
         .forEach((p) => providerNames.add(p.name));
     }
 
@@ -1126,9 +1260,7 @@ export class AgentRuntime implements IAgentRuntime {
         const start = Date.now();
         const result = await provider.get(this, message, cachedState);
         const duration = Date.now() - start;
-        this.runtimeLogger.warn(
-          `${provider.name} Provider took ${duration}ms to respond`
-        );
+        this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
         return {
           ...result,
           providerName: provider.name,
@@ -1151,11 +1283,11 @@ export class AgentRuntime implements IAgentRuntime {
     // Collect provider text from newly fetched providers
     const newProvidersText = providerData
       .map((result) => result.text)
-      .filter((text) => text !== "")
-      .join("\n");
+      .filter((text) => text !== '')
+      .join('\n');
 
     // Combine with existing text if available
-    let providersText = "";
+    let providersText = '';
     if (cachedState.text && newProvidersText) {
       providersText = `${cachedState.text}\n${newProvidersText}`;
     } else if (newProvidersText) {
@@ -1172,7 +1304,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Safely merge all provider values
     for (const providerName in combinedValues) {
       const providerValues = combinedValues[providerName];
-      if (providerValues && typeof providerValues === "object") {
+      if (providerValues && typeof providerValues === 'object') {
         Object.assign(values, providerValues);
       }
     }
@@ -1209,7 +1341,7 @@ export class AgentRuntime implements IAgentRuntime {
     if (!serviceType) {
       return;
     }
-    this.runtimeLogger.log(
+    this.runtimeLogger.debug(
       `${this.character.name}(${this.agentId}) - Registering service:`,
       serviceType
     );
@@ -1225,17 +1357,13 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Add the service to the services map
     this.services.set(serviceType, serviceInstance);
-    this.runtimeLogger.success(
+    this.runtimeLogger.debug(
       `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
     );
   }
 
-  registerModel(
-    modelType: ModelTypeName,
-    handler: (params: any) => Promise<any>
-  ) {
-    const modelKey =
-      typeof modelType === "string" ? modelType : ModelType[modelType];
+  registerModel(modelType: ModelTypeName, handler: (params: any) => Promise<any>) {
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     if (!this.models.has(modelKey)) {
       this.models.set(modelKey, []);
     }
@@ -1245,8 +1373,7 @@ export class AgentRuntime implements IAgentRuntime {
   getModel(
     modelType: ModelTypeName
   ): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined {
-    const modelKey =
-      typeof modelType === "string" ? modelType : ModelType[modelType];
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     const models = this.models.get(modelKey);
     if (!models?.length) {
       return undefined;
@@ -1264,20 +1391,16 @@ export class AgentRuntime implements IAgentRuntime {
    */
   async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], "runtime"> | any
+    params: Omit<ModelParamsMap[T], 'runtime'> | any
   ): Promise<R> {
-    const modelKey =
-      typeof modelType === "string" ? modelType : ModelType[modelType];
+    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     const model = this.getModel(modelKey);
     if (!model) {
       throw new Error(`No handler found for delegate type: ${modelKey}`);
     }
 
     // Log input parameters
-    this.runtimeLogger.debug(
-      `[useModel] ${modelKey} input:`,
-      JSON.stringify(params, null, 2)
-    );
+    this.runtimeLogger.debug(`[useModel] ${modelKey} input:`, JSON.stringify(params, null, 2));
 
     // Handle different parameter formats
     let paramsWithRuntime: any;
@@ -1286,9 +1409,9 @@ export class AgentRuntime implements IAgentRuntime {
     if (
       params === null ||
       params === undefined ||
-      typeof params !== "object" ||
+      typeof params !== 'object' ||
       Array.isArray(params) ||
-      (typeof Buffer !== "undefined" && Buffer.isBuffer(params))
+      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
     ) {
       paramsWithRuntime = params;
     } else {
@@ -1309,9 +1432,7 @@ export class AgentRuntime implements IAgentRuntime {
     const elapsedTime = performance.now() - startTime;
 
     // Log timing
-    this.runtimeLogger.info(
-      `[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`
-    );
+    this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`);
 
     // Log response
     this.runtimeLogger.debug(
@@ -1331,15 +1452,10 @@ export class AgentRuntime implements IAgentRuntime {
       body: {
         modelType,
         modelKey,
-        params: params
-          ? typeof params === "object"
-            ? Object.keys(params)
-            : typeof params
-          : null,
+        params: params ? (typeof params === 'object' ? Object.keys(params) : typeof params) : null,
         response:
-          Array.isArray(response) &&
-          response.every((x) => typeof x === "number")
-            ? "[array]"
+          Array.isArray(response) && response.every((x) => typeof x === 'number')
+            ? '[array]'
             : response,
       },
       type: `useModel:${modelKey}`,
@@ -1398,9 +1514,7 @@ export class AgentRuntime implements IAgentRuntime {
       const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
 
       if (!embedding || !embedding.length) {
-        throw new Error(
-          `[AgentRuntime][${this.character.name}] Invalid embedding received`
-        );
+        throw new Error(`[AgentRuntime][${this.character.name}] Invalid embedding received`);
       }
 
       this.runtimeLogger.debug(
@@ -1411,7 +1525,7 @@ export class AgentRuntime implements IAgentRuntime {
         `[AgentRuntime][${this.character.name}] Successfully set embedding dimension`
       );
     } catch (error) {
-      this.runtimeLogger.info(
+      this.runtimeLogger.debug(
         `[AgentRuntime][${this.character.name}] Error in ensureEmbeddingDimension:`,
         error
       );
@@ -1477,14 +1591,14 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getEntityById(entityId);
   }
 
-  async getEntitiesForRoom(
-    roomId: UUID,
-    includeComponents?: boolean
-  ): Promise<Entity[]> {
+  async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
     return await this.adapter.getEntitiesForRoom(roomId, includeComponents);
   }
 
   async createEntity(entity: Entity): Promise<boolean> {
+    if (!entity.agentId) {
+      entity.agentId = this.agentId;
+    }
     return await this.adapter.createEntity(entity);
   }
 
@@ -1498,19 +1612,10 @@ export class AgentRuntime implements IAgentRuntime {
     worldId?: UUID,
     sourceEntityId?: UUID
   ): Promise<Component | null> {
-    return await this.adapter.getComponent(
-      entityId,
-      type,
-      worldId,
-      sourceEntityId
-    );
+    return await this.adapter.getComponent(entityId, type, worldId, sourceEntityId);
   }
 
-  async getComponents(
-    entityId: UUID,
-    worldId?: UUID,
-    sourceEntityId?: UUID
-  ): Promise<Component[]> {
+  async getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
     return await this.adapter.getComponents(entityId, worldId, sourceEntityId);
   }
 
@@ -1536,7 +1641,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Validate memory has text content
     if (!memoryText) {
-      throw new Error("Cannot generate embedding: Memory content is empty");
+      throw new Error('Cannot generate embedding: Memory content is empty');
     }
 
     try {
@@ -1545,7 +1650,7 @@ export class AgentRuntime implements IAgentRuntime {
         text: memoryText,
       });
     } catch (error) {
-      logger.error("Failed to generate embedding:", error);
+      logger.error('Failed to generate embedding:', error);
       // Fallback to zero vector if embedding fails
       memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
     }
@@ -1613,18 +1718,16 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.searchMemories(params);
   }
 
-  async createMemory(
-    memory: Memory,
-    tableName: string,
-    unique?: boolean
-  ): Promise<UUID> {
+  async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
     return await this.adapter.createMemory(memory, tableName, unique);
   }
 
-  async updateMemory(memory: Partial<Memory> & { id: UUID, metadata?: MemoryMetadata }): Promise<boolean> {
+  async updateMemory(
+    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
+  ): Promise<boolean> {
     return await this.adapter.updateMemory(memory);
   }
-  
+
   async deleteMemory(memoryId: UUID): Promise<void> {
     await this.adapter.deleteMemory(memoryId);
   }
@@ -1633,11 +1736,7 @@ export class AgentRuntime implements IAgentRuntime {
     await this.adapter.deleteAllMemories(roomId, tableName);
   }
 
-  async countMemories(
-    roomId: UUID,
-    unique?: boolean,
-    tableName?: string
-  ): Promise<number> {
+  async countMemories(roomId: UUID, unique?: boolean, tableName?: string): Promise<number> {
     return await this.adapter.countMemories(roomId, unique, tableName);
   }
 
@@ -1675,15 +1774,7 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getRoom(roomId);
   }
 
-  async createRoom({
-    id,
-    name,
-    source,
-    type,
-    channelId,
-    serverId,
-    worldId,
-  }: Room): Promise<UUID> {
+  async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
     return await this.adapter.createRoom({
       id,
       name,
@@ -1715,33 +1806,17 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getRooms(worldId);
   }
 
-  async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.addParticipant(entityId, roomId);
-  }
-
-  async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.removeParticipant(entityId, roomId);
-  }
-
-  async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
-    return await this.adapter.getParticipantsForEntity(entityId);
-  }
-
-  async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
-    return await this.adapter.getParticipantsForRoom(roomId);
-  }
-
   async getParticipantUserState(
     roomId: UUID,
     entityId: UUID
-  ): Promise<"FOLLOWED" | "MUTED" | null> {
+  ): Promise<'FOLLOWED' | 'MUTED' | null> {
     return await this.adapter.getParticipantUserState(roomId, entityId);
   }
 
   async setParticipantUserState(
     roomId: UUID,
     entityId: UUID,
-    state: "FOLLOWED" | "MUTED" | null
+    state: 'FOLLOWED' | 'MUTED' | null
   ): Promise<void> {
     await this.adapter.setParticipantUserState(roomId, entityId, state);
   }
@@ -1766,10 +1841,7 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getRelationship(params);
   }
 
-  async getRelationships(params: {
-    entityId: UUID;
-    tags?: string[];
-  }): Promise<Relationship[]> {
+  async getRelationships(params: { entityId: UUID; tags?: string[] }): Promise<Relationship[]> {
     return await this.adapter.getRelationships(params);
   }
 

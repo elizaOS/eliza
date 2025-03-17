@@ -20,7 +20,7 @@ The EVM plugin provides comprehensive functionality for interacting with EVM-com
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-evm
+bun install @elizaos/plugin-evm
 ```
 
 ## Configuration
@@ -116,10 +116,10 @@ Swap 1 ETH for USDC on Base
 Propose a proposal to a governor on a specific chain.
 
 - **Proposal**
-    - **Targets**
-    - **Values**
-    - **Calldatas**
-    - **Description**
+  - **Targets**
+  - **Values**
+  - **Calldatas**
+  - **Description**
 - **Chain**
 - **Governor**
 
@@ -149,10 +149,10 @@ Vote on the proposal with ID 1 to support the proposal on the 0xdeadbeef00000000
 Queue a proposal to a governor on a specific chain.
 
 - **Proposal**
-    - **Targets**
-    - **Values**
-    - **Calldatas**
-    - **Description**
+  - **Targets**
+  - **Values**
+  - **Calldatas**
+  - **Description**
 - **Chain**
 - **Governor**
 
@@ -182,19 +182,19 @@ Execute the proposal with ID 1 on the 0xdeadbeef00000000000000000000000000000000
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run tests:
 
 ```bash
-pnpm test
+bun test
 ```
 
 ## API Reference
@@ -203,88 +203,88 @@ pnpm test
 
 1. **WalletProvider**
 
-    - Manages wallet connections
-    - Handles chain switching
-    - Manages RPC endpoints
-    - Tracks balances
+   - Manages wallet connections
+   - Handles chain switching
+   - Manages RPC endpoints
+   - Tracks balances
 
 2. **Actions**
-    - TransferAction: Native token transfers
-    - BridgeAction: Cross-chain transfers
-    - SwapAction: Same-chain token swaps
+   - TransferAction: Native token transfers
+   - BridgeAction: Cross-chain transfers
+   - SwapAction: Same-chain token swaps
 
 ## Future Enhancements
 
 1. **Cross-Chain Operations**
 
-    - Enhanced bridge aggregation
-    - Multi-chain transaction batching
-    - Cross-chain liquidity management
-    - Bridge fee optimization
-    - Chain-specific gas strategies
-    - Cross-chain messaging
+   - Enhanced bridge aggregation
+   - Multi-chain transaction batching
+   - Cross-chain liquidity management
+   - Bridge fee optimization
+   - Chain-specific gas strategies
+   - Cross-chain messaging
 
 2. **DeFi Integration**
 
-    - Advanced swap routing
-    - Yield farming automation
-    - Liquidity pool management
-    - Position management tools
-    - MEV protection features
-    - Flash loan integration
+   - Advanced swap routing
+   - Yield farming automation
+   - Liquidity pool management
+   - Position management tools
+   - MEV protection features
+   - Flash loan integration
 
 3. **Smart Contract Management**
 
-    - Contract deployment templates
-    - Verification automation
-    - Upgrade management
-    - Security analysis tools
-    - Gas optimization
-    - ABI management system
+   - Contract deployment templates
+   - Verification automation
+   - Upgrade management
+   - Security analysis tools
+   - Gas optimization
+   - ABI management system
 
 4. **Token Operations**
 
-    - Batch transfer tools
-    - Token approval management
-    - Token metadata handling
-    - Custom token standards
-    - Token bridging optimization
-    - NFT support enhancement
+   - Batch transfer tools
+   - Token approval management
+   - Token metadata handling
+   - Custom token standards
+   - Token bridging optimization
+   - NFT support enhancement
 
 5. **Wallet Features**
 
-    - Multi-signature support
-    - Account abstraction
-    - Hardware wallet integration
-    - Social recovery options
-    - Transaction simulation
-    - Batch transaction processing
+   - Multi-signature support
+   - Account abstraction
+   - Hardware wallet integration
+   - Social recovery options
+   - Transaction simulation
+   - Batch transaction processing
 
 6. **Network Management**
 
-    - Dynamic RPC management
-    - Network health monitoring
-    - Fallback provider system
-    - Custom network addition
-    - Gas price optimization
-    - Network analytics
+   - Dynamic RPC management
+   - Network health monitoring
+   - Fallback provider system
+   - Custom network addition
+   - Gas price optimization
+   - Network analytics
 
 7. **Security Enhancements**
 
-    - Transaction validation
-    - Risk assessment tools
-    - Fraud detection
-    - Rate limiting
-    - Emergency shutdown
-    - Audit integration
+   - Transaction validation
+   - Risk assessment tools
+   - Fraud detection
+   - Rate limiting
+   - Emergency shutdown
+   - Audit integration
 
 8. **Developer Tools**
-    - Enhanced debugging
-    - Testing framework
-    - Documentation generator
-    - CLI improvements
-    - Performance profiling
-    - Integration templates
+   - Enhanced debugging
+   - Testing framework
+   - Documentation generator
+   - CLI improvements
+   - Performance profiling
+   - Integration templates
 
 We welcome community feedback and contributions to help prioritize these enhancements.
 
@@ -293,7 +293,7 @@ We welcome community feedback and contributions to help prioritize these enhance
 The plugin contains tests. Whether you're using **TDD** or not, please make sure to run the tests before submitting a PR:
 
 ```bash
-pnpm test
+bun test
 ```
 
 Contributions are welcome! Please see the CONTRIBUTING.md file for more information.

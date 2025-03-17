@@ -30,12 +30,12 @@ ZERION_API_KEY=your_api_key
 3. Register the plugin in your Eliza configuration:
 
 ```typescript
-import { zerionPlugin } from "@elizaos/plugin-zerion";
+import { zerionPlugin } from '@elizaos/plugin-zerion';
 
 // In your Eliza configuration
 plugins: [
-    zerionPlugin,
-    // ... other plugins
+  zerionPlugin,
+  // ... other plugins
 ];
 ```
 
@@ -54,6 +54,7 @@ The plugin responds to natural language queries about wallet data. Here are some
 #### getWallet_portfolio
 
 Fetches comprehensive portfolio data for a wallet address, including:
+
 - Total portfolio value
 - Chain distribution
 - Position type distribution
@@ -68,13 +69,14 @@ Fetches comprehensive portfolio data for a wallet address, including:
   changes: {
     absolute_1d: number;
     percent_1d: number;
-  };
+  }
 }
 ```
 
 #### getWallet_positions
 
 Fetches detailed information about all token positions in a wallet:
+
 - Token name and symbol
 - Quantity and current value
 - Price and 24h change
@@ -102,9 +104,9 @@ Fetches detailed information about all token positions in a wallet:
 
 ### Environment Variables
 
-| Variable       | Description          | Required |
-| ------------- | -------------------- | -------- |
-| ZERION_API_KEY | Your Zerion API key  | Yes      |
+| Variable       | Description         | Required |
+| -------------- | ------------------- | -------- |
+| ZERION_API_KEY | Your Zerion API key | Yes      |
 
 ## Error Handling
 
@@ -116,4 +118,4 @@ telegram: @singhal_pranav
 ## Links
 
 - [Zerion API Documentation](https://developers.zerion.io/reference/intro)
-- [GitHub Repository](https://github.com/elizaos/eliza/tree/main/packages/plugin-zerion) 
+- [GitHub Repository](https://github.com/elizaos/eliza/tree/main/packages/plugin-zerion)

@@ -1,52 +1,55 @@
 {
-	"name": "@elizaos/plugin-sql",
-	"version": "1.0.0-alpha.63",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/elizaos-plugins/plugin-sql"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": [
-		"dist",
-		"drizzle"
-	],
-	"dependencies": {
-		"@electric-sql/pglite": "^0.2.17",
-		"@elizaos/core": "^1.0.0-alpha.63",
-		"@types/pg": "8.11.10",
-		"drizzle-kit": "^0.30.4",
-		"drizzle-orm": "^0.39.1",
-		"pg": "^8.13.3"
-	},
-	"devDependencies": {
-		"dockerode": "^4.0.4",
-		"tsup": "8.4.0"
-	},
-	"scripts": {
-		"build": "tsup",
-		"dev": "tsup --watch",
-		"migrate:generate": "drizzle-kit generate:pg",
-		"migrate": "tsup src/migrate.ts --format esm --clean=false --onSuccess=\"node dist/migrate.js\"",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write",
-		"clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
-	},
-	"peerDependencies": {
-		"typescript": "5.8.2"
-	},
-	"gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
+  "name": "@elizaos/plugin-sql",
+  "version": "1.0.0-alpha.67",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-sql"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "drizzle"
+  ],
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@elizaos/core": "^1.0.0-alpha.67",
+    "@types/pg": "8.11.10",
+    "drizzle-kit": "^0.30.4",
+    "drizzle-orm": "^0.39.1",
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "dockerode": "^4.0.4",
+    "prettier": "3.5.3",
+    "tsup": "8.4.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "migrate:generate": "drizzle-kit generate:pg",
+    "migrate": "tsup src/migrate.ts --format esm --clean=false --onSuccess=\"node dist/migrate.js\"",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "peerDependencies": {
+    "typescript": "5.8.2"
+  },
+  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
 }

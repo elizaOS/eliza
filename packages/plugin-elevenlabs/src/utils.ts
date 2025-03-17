@@ -1,5 +1,5 @@
-import { PassThrough } from "node:stream";
-import type { Readable } from "node:stream";
+import { PassThrough } from 'node:stream';
+import type { Readable } from 'node:stream';
 
 /**
  * Generates a WAV file header based on the provided audio parameters.
@@ -10,26 +10,26 @@ import type { Readable } from "node:stream";
  * @returns {Buffer} The WAV file header as a Buffer object.
  */
 export function getWavHeader(
-	audioLength: number,
-	sampleRate: number,
-	channelCount = 1,
-	bitsPerSample = 16,
+  audioLength: number,
+  sampleRate: number,
+  channelCount = 1,
+  bitsPerSample = 16
 ): Buffer {
-	const wavHeader = Buffer.alloc(44);
-	wavHeader.write("RIFF", 0);
-	wavHeader.writeUInt32LE(36 + audioLength, 4); // Length of entire file in bytes minus 8
-	wavHeader.write("WAVE", 8);
-	wavHeader.write("fmt ", 12);
-	wavHeader.writeUInt32LE(16, 16); // Length of format data
-	wavHeader.writeUInt16LE(1, 20); // Type of format (1 is PCM)
-	wavHeader.writeUInt16LE(channelCount, 22); // Number of channels
-	wavHeader.writeUInt32LE(sampleRate, 24); // Sample rate
-	wavHeader.writeUInt32LE((sampleRate * bitsPerSample * channelCount) / 8, 28); // Byte rate
-	wavHeader.writeUInt16LE((bitsPerSample * channelCount) / 8, 32); // Block align ((BitsPerSample * Channels) / 8)
-	wavHeader.writeUInt16LE(bitsPerSample, 34); // Bits per sample
-	wavHeader.write("data", 36); // Data chunk header
-	wavHeader.writeUInt32LE(audioLength, 40); // Data chunk size
-	return wavHeader;
+  const wavHeader = Buffer.alloc(44);
+  wavHeader.write('RIFF', 0);
+  wavHeader.writeUInt32LE(36 + audioLength, 4); // Length of entire file in bytes minus 8
+  wavHeader.write('WAVE', 8);
+  wavHeader.write('fmt ', 12);
+  wavHeader.writeUInt32LE(16, 16); // Length of format data
+  wavHeader.writeUInt16LE(1, 20); // Type of format (1 is PCM)
+  wavHeader.writeUInt16LE(channelCount, 22); // Number of channels
+  wavHeader.writeUInt32LE(sampleRate, 24); // Sample rate
+  wavHeader.writeUInt32LE((sampleRate * bitsPerSample * channelCount) / 8, 28); // Byte rate
+  wavHeader.writeUInt16LE((bitsPerSample * channelCount) / 8, 32); // Block align ((BitsPerSample * Channels) / 8)
+  wavHeader.writeUInt16LE(bitsPerSample, 34); // Bits per sample
+  wavHeader.write('data', 36); // Data chunk header
+  wavHeader.writeUInt32LE(audioLength, 40); // Data chunk size
+  return wavHeader;
 }
 
 /**
@@ -43,29 +43,24 @@ export function getWavHeader(
  * @returns {Readable} A new readable stream with the WAV header prepended to the audio data.
  */
 export function prependWavHeader(
-	readable: Readable,
-	audioLength: number,
-	sampleRate: number,
-	channelCount = 1,
-	bitsPerSample = 16,
+  readable: Readable,
+  audioLength: number,
+  sampleRate: number,
+  channelCount = 1,
+  bitsPerSample = 16
 ): Readable {
-	const wavHeader = getWavHeader(
-		audioLength,
-		sampleRate,
-		channelCount,
-		bitsPerSample,
-	);
-	let pushedHeader = false;
-	const passThrough = new PassThrough();
-	readable.on("data", (data) => {
-		if (!pushedHeader) {
-			passThrough.push(wavHeader);
-			pushedHeader = true;
-		}
-		passThrough.push(data);
-	});
-	readable.on("end", () => {
-		passThrough.end();
-	});
-	return passThrough;
+  const wavHeader = getWavHeader(audioLength, sampleRate, channelCount, bitsPerSample);
+  let pushedHeader = false;
+  const passThrough = new PassThrough();
+  readable.on('data', (data) => {
+    if (!pushedHeader) {
+      passThrough.push(wavHeader);
+      pushedHeader = true;
+    }
+    passThrough.push(data);
+  });
+  readable.on('end', () => {
+    passThrough.end();
+  });
+  return passThrough;
 }

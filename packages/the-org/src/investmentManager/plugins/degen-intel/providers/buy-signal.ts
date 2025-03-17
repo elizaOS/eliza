@@ -1,9 +1,9 @@
-import { type IAgentRuntime, ModelType, logger } from "@elizaos/core";
-import type { Sentiment } from "../schemas";
-import type { IToken } from "../types";
+import { type IAgentRuntime, ModelType, logger } from '@elizaos/core';
+import type { Sentiment } from '../schemas';
+import type { IToken } from '../types';
 
-const DEGEN_WALLET = "BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq";
-const _rolePrompt = "You are a buy signal analyzer.";
+const DEGEN_WALLET = 'BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq';
+const _rolePrompt = 'You are a buy signal analyzer.';
 /**
  * Template for generating a crypto buy signal based on sentiment analysis and trending tokens.
  *
@@ -55,55 +55,52 @@ buy_amount: "number, for example: 0.1"
  * @property {string} buy_amount - The amount to buy.
  */
 interface IBuySignalOutput {
-	recommended_buy: string;
-	recommend_buy_address: string;
-	marketcap: number;
-	reason: string;
-	buy_amount: string;
+  recommended_buy: string;
+  recommend_buy_address: string;
+  marketcap: number;
+  reason: string;
+  buy_amount: string;
 }
 
 export default class BuySignal {
-	apiKey: string;
-	runtime: IAgentRuntime;
-	constructor(runtime: IAgentRuntime) {
-		this.runtime = runtime;
-	}
+  apiKey: string;
+  runtime: IAgentRuntime;
+  constructor(runtime: IAgentRuntime) {
+    this.runtime = runtime;
+  }
 
-	async generateSignal(): Promise<boolean> {
-		logger.debug("Updating latest buy signal");
-		/** Get all sentiments */
-		const sentimentsData =
-			(await this.runtime.getCache<Sentiment[]>("sentiments")) || [];
-		let sentiments = "";
+  async generateSignal(): Promise<boolean> {
+    logger.debug('Updating latest buy signal');
+    /** Get all sentiments */
+    const sentimentsData = (await this.runtime.getCache<Sentiment[]>('sentiments')) || [];
+    let sentiments = '';
 
-		let idx = 1;
-		for (const sentiment of sentimentsData) {
-			if (!sentiment?.occuringTokens?.length) continue;
-			sentiments += `ENTRY ${idx}\nTIME: ${sentiment.timeslot}\nTOKEN ANALYSIS:\n`;
-			for (const token of sentiment.occuringTokens) {
-				sentiments += `${token.token} - Sentiment: ${token.sentiment}\n${token.reason}\n`;
-			}
+    let idx = 1;
+    for (const sentiment of sentimentsData) {
+      if (!sentiment?.occuringTokens?.length) continue;
+      sentiments += `ENTRY ${idx}\nTIME: ${sentiment.timeslot}\nTOKEN ANALYSIS:\n`;
+      for (const token of sentiment.occuringTokens) {
+        sentiments += `${token.token} - Sentiment: ${token.sentiment}\n${token.reason}\n`;
+      }
 
-			sentiments += "\n-------------------\n";
-			idx++;
-		}
+      sentiments += '\n-------------------\n';
+      idx++;
+    }
 
-		/** Get all trending tokens */
-		const trendingData =
-			(await this.runtime.getCache<IToken[]>("tokens")) ||
-			[];
-		let tokens = "";
-		let index = 1;
-		for (const token of trendingData) {
-			tokens += `ENTRY ${index}\n\nTOKEN SYMBOL: ${token.name}\nTOKEN ADDRESS: ${token.address}\nPRICE: ${token.price}\n24H CHANGE: ${token.price24hChangePercent}\nLIQUIDITY: ${token.liquidity}`;
-			tokens += "\n-------------------\n";
-			index++;
-		}
+    /** Get all trending tokens */
+    const trendingData = (await this.runtime.getCache<IToken[]>('tokens')) || [];
+    let tokens = '';
+    let index = 1;
+    for (const token of trendingData) {
+      tokens += `ENTRY ${index}\n\nTOKEN SYMBOL: ${token.name}\nTOKEN ADDRESS: ${token.address}\nPRICE: ${token.price}\n24H CHANGE: ${token.price24hChangePercent}\nLIQUIDITY: ${token.liquidity}`;
+      tokens += '\n-------------------\n';
+      index++;
+    }
 
-		const solanaBalance = await this.getBalance();
+    const solanaBalance = await this.getBalance();
 
-		// Construct prompt with all the data
-		const prompt = `
+    // Construct prompt with all the data
+    const prompt = `
 			Based on sentiment analysis and trending token data, recommend a Solana token to buy.
 			
 			SENTIMENT DATA:
@@ -123,100 +120,98 @@ export default class BuySignal {
 			}
 			`;
 
-		// Use the runtime model service instead of direct API calls
-		const responseText = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-			system:
-				"You are a token recommender bot for a trading bot. Only respond with valid JSON.",
-			temperature: 0.2,
-			maxTokens: 4096,
-			object: true,
-		});
+    // Use the runtime model service instead of direct API calls
+    const responseText = await this.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+      system: 'You are a token recommender bot for a trading bot. Only respond with valid JSON.',
+      temperature: 0.2,
+      maxTokens: 4096,
+      object: true,
+    });
 
-		// Parse the JSON response
-		const json = JSON.parse(responseText || "{}");
-		if (!json.recommended_buy || !json.recommend_buy_address || !json.reason) {
-			throw new Error("Invalid JSON from model");
-		}
+    // Parse the JSON response
+    const json = JSON.parse(responseText || '{}');
+    if (!json.recommended_buy || !json.recommend_buy_address || !json.reason) {
+      throw new Error('Invalid JSON from model');
+    }
 
-		/** Fetch the recommended buy's current marketcap */
-		const options = {
-			method: "GET",
-			headers: {
-				accept: "application/json",
-				"x-chain": "solana",
-				"X-API-KEY": this.runtime.getSetting("BIRDEYE_API_KEY"),
-			},
-		};
+    /** Fetch the recommended buy's current marketcap */
+    const options = {
+      method: 'GET',
+      headers: {
+        accept: 'application/json',
+        'x-chain': 'solana',
+        'X-API-KEY': this.runtime.getSetting('BIRDEYE_API_KEY'),
+      },
+    };
 
-		const birdeyeResponse = await fetch(
-			`https://public-api.birdeye.so/defi/token_overview?address=${json.recommend_buy_address}`,
-			options,
-		);
-		if (!birdeyeResponse.ok)
-			throw new Error("Birdeye marketcap request failed");
+    const birdeyeResponse = await fetch(
+      `https://public-api.birdeye.so/defi/token_overview?address=${json.recommend_buy_address}`,
+      options
+    );
+    if (!birdeyeResponse.ok) throw new Error('Birdeye marketcap request failed');
 
-		const birdeyeData = await birdeyeResponse.json();
-		const marketcap = birdeyeData?.data?.realMc;
+    const birdeyeData = await birdeyeResponse.json();
+    const marketcap = birdeyeData?.data?.realMc;
 
-		const data = {
-			...json,
-			marketcap: Number(marketcap),
-		};
+    const data = {
+      ...json,
+      marketcap: Number(marketcap),
+    };
 
-		// Store in cache
-		await this.runtime.setCache<any>("buy_signals", {
-			key: "BUY_SIGNAL",
-			data,
-		});
+    // Store in cache
+    await this.runtime.setCache<any>('buy_signals', {
+      key: 'BUY_SIGNAL',
+      data,
+    });
 
-		// Create a buy task to execute the trade
-		const { v4: uuidv4 } = require("uuid");
-		const { ServiceType } = require("../../degen-trader/types");
+    // Create a buy task to execute the trade
+    const { v4: uuidv4 } = require('uuid');
+    const { ServiceType } = require('../../degen-trader/types');
 
-		await this.runtime.createTask({
-			id: uuidv4(),
-			roomId: this.runtime.agentId,
-			name: "EXECUTE_BUY_SIGNAL",
-			description: `Buy token ${data.recommended_buy} (${data.recommend_buy_address})`,
-			tags: ["queue", ServiceType.DEGEN_TRADING],
-			metadata: {
-				signal: {
-					positionId: uuidv4(),
-					tokenAddress: data.recommend_buy_address,
-					entityId: "default",
-				},
-				tradeAmount: Number(data.buy_amount) || 0.1,
-				reason: data.reason,
-				updatedAt: Date.now(),
-			},
-		});
+    await this.runtime.createTask({
+      id: uuidv4(),
+      roomId: this.runtime.agentId,
+      name: 'EXECUTE_BUY_SIGNAL',
+      description: `Buy token ${data.recommended_buy} (${data.recommend_buy_address})`,
+      tags: ['queue', ServiceType.DEGEN_TRADING],
+      metadata: {
+        signal: {
+          positionId: uuidv4(),
+          tokenAddress: data.recommend_buy_address,
+          entityId: 'default',
+        },
+        tradeAmount: Number(data.buy_amount) || 0.1,
+        reason: data.reason,
+        updatedAt: Date.now(),
+      },
+    });
 
-		return true;
-	}
+    return true;
+  }
 
-	async getBalance() {
-		const url = "https://zondra-wil7oz-fast-mainnet.helius-rpc.com";
-		const headers = {
-			"Content-Type": "application/json",
-		};
+  async getBalance() {
+    const url = 'https://zondra-wil7oz-fast-mainnet.helius-rpc.com';
+    const headers = {
+      'Content-Type': 'application/json',
+    };
 
-		const data = {
-			jsonrpc: "2.0",
-			id: 1,
-			method: "getBalance",
-			params: [DEGEN_WALLET],
-		};
-		const response = await fetch(url, {
-			method: "POST",
-			headers: headers,
-			body: JSON.stringify(data),
-		});
+    const data = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getBalance',
+      params: [DEGEN_WALLET],
+    };
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(data),
+    });
 
-		const result = await response.json();
+    const result = await response.json();
 
-		const lamportsBalance = result?.result?.value;
+    const lamportsBalance = result?.result?.value;
 
-		return lamportsBalance / 1000000000;
-	}
+    return lamportsBalance / 1000000000;
+  }
 }

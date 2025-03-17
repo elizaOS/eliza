@@ -55,9 +55,7 @@ Add the Telegram Account client to your agent's configuration:
 
 ```json
 {
-  "clients": [
-    "telegramAccount"
-  ]
+  "clients": ["telegramAccount"]
 }
 ```
 
@@ -82,13 +80,13 @@ Once configured, your agent will:
 
 ## Configuration Options
 
-| Environment Variable | Required | Description |
-|---------------------|----------|-------------|
-| `TELEGRAM_ACCOUNT_PHONE` | Yes | Phone number with country code |
-| `TELEGRAM_ACCOUNT_APP_ID` | Yes | Telegram API application ID |
-| `TELEGRAM_ACCOUNT_APP_HASH` | Yes | Telegram API application hash |
-| `TELEGRAM_ACCOUNT_DEVICE_MODEL` | Yes | Device model shown to other users |
-| `TELEGRAM_ACCOUNT_SYSTEM_VERSION` | Yes | System version shown to other users |
+| Environment Variable              | Required | Description                         |
+| --------------------------------- | -------- | ----------------------------------- |
+| `TELEGRAM_ACCOUNT_PHONE`          | Yes      | Phone number with country code      |
+| `TELEGRAM_ACCOUNT_APP_ID`         | Yes      | Telegram API application ID         |
+| `TELEGRAM_ACCOUNT_APP_HASH`       | Yes      | Telegram API application hash       |
+| `TELEGRAM_ACCOUNT_DEVICE_MODEL`   | Yes      | Device model shown to other users   |
+| `TELEGRAM_ACCOUNT_SYSTEM_VERSION` | Yes      | System version shown to other users |
 
 ## Security Considerations
 

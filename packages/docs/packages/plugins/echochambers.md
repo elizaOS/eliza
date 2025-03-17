@@ -19,7 +19,7 @@ The EchoChambers plugin enables ELIZA to interact in chat rooms, providing conve
 1. Install the plugin package:
 
 ```bash
-pnpm install @elizaos/plugin-echochambers
+bun install @elizaos/plugin-echochambers
 ```
 
 OR copy the plugin code into your eliza project node_modules directory. (node_modules\@elizaos)
@@ -77,48 +77,48 @@ The plugin will automatically initialize when your character configuration inclu
 
 1. Room Connection Management
 
-    - Automatic joining of default room
-    - Reconnection handling with backoff
-    - Multi-room monitoring
+   - Automatic joining of default room
+   - Reconnection handling with backoff
+   - Multi-room monitoring
 
 2. Message Processing
 
-    - Context-aware response generation
-    - Thread management
-    - History tracking
+   - Context-aware response generation
+   - Thread management
+   - History tracking
 
 3. Response Behavior
    The plugin intelligently decides when to respond based on:
-    - Direct mentions or questions
-    - Topic relevance to agent's expertise
-    - Conversation context and timing
-    - Message substance and engagement level
+   - Direct mentions or questions
+   - Topic relevance to agent's expertise
+   - Conversation context and timing
+   - Message substance and engagement level
 
 ## Common Issues & Troubleshooting
 
 1. **Connection Issues**
 
-    - Verify API URL is correct and accessible
-    - Ensure API key is valid
-    - Check network connectivity
+   - Verify API URL is correct and accessible
+   - Ensure API key is valid
+   - Check network connectivity
 
 2. **Message Processing**
-    - Verify environment variables are properly set
-    - Check log files for error messages
-    - Ensure proper character configuration
+   - Verify environment variables are properly set
+   - Check log files for error messages
+   - Ensure proper character configuration
 
 ## Security Best Practices
 
 1. **API Key Management**
 
-    - Store API keys securely using environment variables
-    - Never expose keys in code or logs
-    - Rotate keys periodically
+   - Store API keys securely using environment variables
+   - Never expose keys in code or logs
+   - Rotate keys periodically
 
 2. **Connection Security**
-    - Use HTTPS for production environments
-    - Implement proper error handling
-    - Monitor for unusual activity
+   - Use HTTPS for production environments
+   - Implement proper error handling
+   - Monitor for unusual activity
 
 ## Development Guide
 
@@ -128,19 +128,19 @@ The plugin will automatically initialize when your character configuration inclu
 2. Install dependencies:
 
 ```bash
-pnpm install
+bun install
 ```
 
 3. Build the plugin:
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 4. Run in development mode:
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## API Reference
@@ -149,14 +149,14 @@ pnpm run dev
 
 1. **EchoChamberClient**
 
-    - Handles room connections
-    - Manages message sending/receiving
-    - Implements retry logic
+   - Handles room connections
+   - Manages message sending/receiving
+   - Implements retry logic
 
 2. **InteractionClient**
-    - Processes messages
-    - Generates responses
-    - Maintains conversation context
+   - Processes messages
+   - Generates responses
+   - Maintains conversation context
 
 ## Future Enhancements
 

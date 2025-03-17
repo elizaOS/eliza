@@ -15,7 +15,7 @@ This plugin provides functionality to:
 ## Installation
 
 ```bash
-pnpm install @elizaos/plugin-web-search
+bun install @elizaos/plugin-web-search
 ```
 
 ## Configuration
@@ -31,11 +31,11 @@ TAVILY_API_KEY=your_api_key    # Required: API key for search service
 Import and register the plugin in your Eliza configuration.
 
 ```typescript
-import { webSearchPlugin } from "@elizaos/plugin-web-search";
+import { webSearchPlugin } from '@elizaos/plugin-web-search';
 
 export default {
-    plugins: [webSearchPlugin],
-    // ... other configuration
+  plugins: [webSearchPlugin],
+  // ... other configuration
 };
 ```
 
@@ -68,17 +68,17 @@ const state = await this.runtime.composeState(
 The plugin provides comprehensive web search capabilities:
 
 ```typescript
-import { webSearch } from "@elizaos/plugin-web-search";
+import { webSearch } from '@elizaos/plugin-web-search';
 
 // Execute a search query
 const result = await webSearch.handler(
-    runtime,
-    {
-        content: { text: "What is the latest news about AI?" },
-    },
-    state,
-    {},
-    callback
+  runtime,
+  {
+    content: { text: 'What is the latest news about AI?' },
+  },
+  state,
+  {},
+  callback
 );
 ```
 
@@ -97,19 +97,19 @@ const response = MaxTokens(searchResult, DEFAULT_MAX_WEB_SEARCH_TOKENS);
 ### Building
 
 ```bash
-pnpm run build
+bun run build
 ```
 
 ### Testing
 
 ```bash
-pnpm run test
+bun run test
 ```
 
 ### Development Mode
 
 ```bash
-pnpm run dev
+bun run dev
 ```
 
 ## Dependencies
@@ -125,28 +125,28 @@ pnpm run dev
 
 ```typescript
 interface Action {
-    name: "WEB_SEARCH";
-    similes: string[];
-    description: string;
-    validate: (runtime: IAgentRuntime, message: Memory) => Promise<boolean>;
-    handler: (
-        runtime: IAgentRuntime,
-        message: Memory,
-        state: State,
-        options: any,
-        callback: HandlerCallback
-    ) => Promise<void>;
-    examples: Array<Array<any>>;
+  name: 'WEB_SEARCH';
+  similes: string[];
+  description: string;
+  validate: (runtime: IAgentRuntime, message: Memory) => Promise<boolean>;
+  handler: (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    options: any,
+    callback: HandlerCallback
+  ) => Promise<void>;
+  examples: Array<Array<any>>;
 }
 
 interface SearchResult {
+  title: string;
+  url: string;
+  answer?: string;
+  results?: Array<{
     title: string;
     url: string;
-    answer?: string;
-    results?: Array<{
-        title: string;
-        url: string;
-    }>;
+  }>;
 }
 ```
 
@@ -187,16 +187,14 @@ interface SearchResult {
 
 ```typescript
 // Basic search
-const searchQuery = "Latest developments in quantum computing";
+const searchQuery = 'Latest developments in quantum computing';
 const results = await generateWebSearch(searchQuery, runtime);
 
 // With formatted response
 if (results && results.results.length) {
-    const formattedResponse = `${results.answer}\n\nFor more details, check out:\n${results.results
-        .map(
-            (result, index) => `${index + 1}. [${result.title}](${result.url})`
-        )
-        .join("\n")}`;
+  const formattedResponse = `${results.answer}\n\nFor more details, check out:\n${results.results
+    .map((result, index) => `${index + 1}. [${result.title}](${result.url})`)
+    .join('\n')}`;
 }
 ```
 
@@ -205,7 +203,7 @@ if (results && results.results.length) {
 ### Token Management
 
 ```typescript
-const DEFAULT_MODEL_ENCODING = "gpt-3.5-turbo";
+const DEFAULT_MODEL_ENCODING = 'gpt-3.5-turbo';
 const DEFAULT_MAX_WEB_SEARCH_TOKENS = 4000;
 ```
 
