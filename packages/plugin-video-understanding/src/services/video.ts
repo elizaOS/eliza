@@ -244,9 +244,8 @@ export class VideoService extends Service implements IVideoService {
 
     try {
       logger.log('Cache miss, processing video');
-      logger.log('Fetching video info');
       const videoInfo = await this.fetchVideoInfo(url);
-      console.log('Getting transcript');
+      logger.debug('Getting transcript');
       const transcript = await this.getTranscript(url, videoInfo, runtime);
 
       const result: Media = {
@@ -282,7 +281,7 @@ export class VideoService extends Service implements IVideoService {
    * @returns {Promise<any>} A Promise resolving to the fetched video information or rejecting with an error message
    */
   async fetchVideoInfo(url: string): Promise<any> {
-    console.log('url', url);
+    logger.debug('url', url);
     if (url.endsWith('.mp4') || url.includes('.mp4?')) {
       try {
         const response = await fetch(url);

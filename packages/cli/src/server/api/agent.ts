@@ -1546,24 +1546,16 @@ export function agentRouter(
       // save message
       await runtime.createMemory(memory, 'messages');
 
-      console.log('*** memory', memory);
-
       let state = await runtime.composeState(memory);
-
-      console.log('*** state', state);
 
       const prompt = composePromptFromState({
         state,
         template: messageHandlerTemplate,
       });
 
-      console.log('*** prompt', prompt);
-
       const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
         prompt,
       });
-
-      console.log('*** response', response);
 
       if (!response) {
         res.status(500).json({

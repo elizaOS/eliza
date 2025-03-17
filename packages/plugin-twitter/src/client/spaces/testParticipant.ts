@@ -4,6 +4,7 @@ import 'dotenv/config';
 import { Client } from '../client';
 import { SpaceParticipant } from './core/SpaceParticipant';
 import { SttTtsPlugin } from './plugins/SttTtsPlugin';
+import { logger } from '@elizaos/core';
 
 /**
  * Main test entry point for the "participant" flow:
@@ -27,7 +28,7 @@ import { SttTtsPlugin } from './plugins/SttTtsPlugin';
  * 9) Initiates a graceful shutdown process after 60 seconds or catches SIGINT for manual stop.
  */
 async function main() {
-  console.log('[TestParticipant] Starting...');
+  logger.debug('[TestParticipant] Starting...');
 
   // 1) Twitter login via Client
   const client = new Client();
@@ -52,22 +53,22 @@ async function main() {
 
   // 3) Join the Space in listener mode
   await participant.joinAsListener();
-  console.log('[TestParticipant] HLS URL =>', participant.getHlsUrl());
+  logger.debug('[TestParticipant] HLS URL =>', participant.getHlsUrl());
 
   // 4) Request the speaker role => returns { sessionUUID }
   const { sessionUUID } = await participant.requestSpeaker();
-  console.log('[TestParticipant] Requested speaker =>', sessionUUID);
+  logger.debug('[TestParticipant] Requested speaker =>', sessionUUID);
 
   // 5) Wait for host acceptance with a maximum wait time (e.g., 15 seconds).
   try {
     await waitForApproval(participant, sessionUUID, 15000);
-    console.log('[TestParticipant] Speaker approval sequence completed (ok or timed out).');
+    logger.debug('[TestParticipant] Speaker approval sequence completed (ok or timed out).');
   } catch (err) {
     console.error('[TestParticipant] Approval error or timeout =>', err);
     // Optionally cancel the request if we timed out or got an error
     try {
       await participant.cancelSpeakerRequest();
-      console.log('[TestParticipant] Speaker request canceled after timeout or error.');
+      logger.debug('[TestParticipant] Speaker request canceled after timeout or error.');
     } catch (cancelErr) {
       console.error('[TestParticipant] Could not cancel the request =>', cancelErr);
     }
@@ -75,10 +76,10 @@ async function main() {
 
   // (Optional) Mute/unmute test
   await participant.muteSelf();
-  console.log('[TestParticipant] Muted.');
+  logger.debug('[TestParticipant] Muted.');
   await new Promise((resolve) => setTimeout(resolve, 3000));
   await participant.unmuteSelf();
-  console.log('[TestParticipant] Unmuted.');
+  logger.debug('[TestParticipant] Unmuted.');
 
   // ---------------------------------------------------------
   // Example beep generation (sends PCM frames if we're speaker)
@@ -98,7 +99,7 @@ async function main() {
 
   const FRAME_SIZE = 160;
   async function sendBeep() {
-    console.log('[TestParticipant] Starting beep...');
+    logger.debug('[TestParticipant] Starting beep...');
     for (let offset = 0; offset < beepFull.length; offset += FRAME_SIZE) {
       const portion = beepFull.subarray(offset, offset + FRAME_SIZE);
       const frame = new Int16Array(FRAME_SIZE);
@@ -106,7 +107,7 @@ async function main() {
       participant.pushAudio(frame, sampleRate);
       await new Promise((r) => setTimeout(r, 10));
     }
-    console.log('[TestParticipant] Finished beep.');
+    logger.debug('[TestParticipant] Finished beep.');
   }
 
   // Example: send beep every 10s
@@ -117,17 +118,17 @@ async function main() {
   // Graceful shutdown after 60s
   const shutdownTimer = setTimeout(async () => {
     await participant.leaveSpace();
-    console.log('[TestParticipant] Left space. Bye!');
+    logger.debug('[TestParticipant] Left space. Bye!');
     process.exit(0);
   }, 60000);
 
   // Catch SIGINT for manual stop
   process.on('SIGINT', async () => {
-    console.log('\n[TestParticipant] Caught interrupt signal, stopping...');
+    logger.debug('\n[TestParticipant] Caught interrupt signal, stopping...');
     clearInterval(beepInterval);
     clearTimeout(shutdownTimer);
     await participant.leaveSpace();
-    console.log('[TestParticipant] Space left. Bye!');
+    logger.debug('[TestParticipant] Space left. Bye!');
     process.exit(0);
   });
 }
@@ -150,7 +151,7 @@ function waitForApproval(
         participant.off('newSpeakerAccepted', handler);
         try {
           await participant.becomeSpeaker();
-          console.log('[TestParticipant] Successfully became speaker!');
+          logger.debug('[TestParticipant] Successfully became speaker!');
           resolve();
         } catch (err) {
           reject(err);

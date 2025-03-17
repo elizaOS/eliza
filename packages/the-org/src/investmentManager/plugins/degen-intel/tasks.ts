@@ -223,7 +223,6 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       // Check if we have some sentiment data before proceeding
       const sentimentsData = (await runtime.getCache<Sentiment[]>('sentiments')) || [];
       if (sentimentsData.length === 0) {
-        logger.warn('No sentiment data available, skipping buy signal generation');
         return false;
       }
       return true;

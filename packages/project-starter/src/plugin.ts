@@ -218,30 +218,30 @@ const plugin: Plugin = {
   events: {
     MESSAGE_RECEIVED: [
       async (params) => {
-        console.log('MESSAGE_RECEIVED event received');
+        logger.info('MESSAGE_RECEIVED event received');
         // print the keys
-        console.log(Object.keys(params));
+        logger.info(Object.keys(params));
       },
     ],
     VOICE_MESSAGE_RECEIVED: [
       async (params) => {
-        console.log('VOICE_MESSAGE_RECEIVED event received');
+        logger.info('VOICE_MESSAGE_RECEIVED event received');
         // print the keys
-        console.log(Object.keys(params));
+        logger.info(Object.keys(params));
       },
     ],
     WORLD_CONNECTED: [
       async (params) => {
-        console.log('WORLD_CONNECTED event received');
+        logger.info('WORLD_CONNECTED event received');
         // print the keys
-        console.log(Object.keys(params));
+        logger.info(Object.keys(params));
       },
     ],
     WORLD_JOINED: [
       async (params) => {
-        console.log('WORLD_JOINED event received');
+        logger.info('WORLD_JOINED event received');
         // print the keys
-        console.log(Object.keys(params));
+        logger.info(Object.keys(params));
       },
     ],
   },

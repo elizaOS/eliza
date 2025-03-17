@@ -7,6 +7,7 @@ import { HlsRecordPlugin } from './plugins/HlsRecordPlugin';
 import { IdleMonitorPlugin } from './plugins/IdleMonitorPlugin';
 import { RecordToDiskPlugin } from './plugins/RecordToDiskPlugin';
 import { SttTtsPlugin } from './plugins/SttTtsPlugin';
+import { logger } from '@elizaos/core';
 
 /**
  * Main test entry point
@@ -24,7 +25,7 @@ import { SttTtsPlugin } from './plugins/SttTtsPlugin';
  * The function includes event listeners for interrupt signal handling for graceful shutdown.
  */
 async function main() {
-  console.log('[Test] Starting...');
+  logger.debug('[Test] Starting...');
 
   // 1) Twitter login with your client
   const client = new Client();
@@ -65,11 +66,11 @@ async function main() {
 
   // If idle occurs, say goodbye and end the Space
   space.on('idleTimeout', async (info) => {
-    console.log(`[Test] idleTimeout => no audio for ${info.idleMs}ms.`);
+    logger.debug(`[Test] idleTimeout => no audio for ${info.idleMs}ms.`);
     await sttTtsPlugin.speakText('Ending Space due to inactivity. Goodbye!');
     await new Promise((r) => setTimeout(r, 10_000));
     await space.stop();
-    console.log('[Test] Space stopped due to silence.');
+    logger.debug('[Test] Space stopped due to silence.');
     process.exit(0);
   });
 
@@ -83,32 +84,32 @@ async function main() {
 
   const broadcastInfo = await space.initialize(config);
   const spaceUrl = broadcastInfo.share_url.replace('broadcasts', 'spaces');
-  console.log('[Test] Space created =>', spaceUrl);
+  logger.debug('[Test] Space created =>', spaceUrl);
 
   // (Optional) Tweet out the Space link
   await client.sendTweet(`${config.title} ${spaceUrl}`);
-  console.log('[Test] Tweet sent');
+  logger.debug('[Test] Tweet sent');
 
   // ---------------------------------------
   // Example of dynamic GPT usage:
   // You can change the system prompt at runtime
   setTimeout(() => {
-    console.log('[Test] Changing system prompt to a new persona...');
+    logger.debug('[Test] Changing system prompt to a new persona...');
     sttTtsPlugin.setSystemPrompt('You are a very sarcastic AI who uses short answers.');
   }, 45_000);
 
   // Another example: after some time, switch to GPT-4
   setTimeout(() => {
-    console.log('[Test] Switching GPT model to "gpt-4" (if available)...');
+    logger.debug('[Test] Switching GPT model to "gpt-4" (if available)...');
     sttTtsPlugin.setGptModel('gpt-4');
   }, 60_000);
 
   // Also, demonstrate how to manually call askChatGPT and speak the result
   setTimeout(async () => {
-    console.log('[Test] Asking GPT for an introduction...');
+    logger.debug('[Test] Asking GPT for an introduction...');
     try {
       const response = await sttTtsPlugin.askChatGPT('Introduce yourself');
-      console.log('[Test] ChatGPT introduction =>', response);
+      logger.debug('[Test] ChatGPT introduction =>', response);
 
       // Then speak it
       await sttTtsPlugin.speakText(response);
@@ -126,12 +127,12 @@ async function main() {
 
   // 4) Some event listeners
   space.on('speakerRequest', async (req) => {
-    console.log('[Test] Speaker request =>', req);
+    logger.debug('[Test] Speaker request =>', req);
     await space.approveSpeaker(req.userId, req.sessionUUID);
 
     // Remove the speaker after 60 seconds (testing only)
     setTimeout(() => {
-      console.log(`[Test] Removing speaker => userId=${req.userId} (after 60s)`);
+      logger.debug(`[Test] Removing speaker => userId=${req.userId} (after 60s)`);
       space.removeSpeaker(req.userId).catch((err) => {
         console.error('[Test] removeSpeaker error =>', err);
       });
@@ -171,7 +172,7 @@ async function main() {
    * Send a beep by slicing beepFull into frames of 160 samples
    */
   async function sendBeep() {
-    console.log('[Test] Starting beep...');
+    logger.debug('[Test] Starting beep...');
     for (let offset = 0; offset < beepFull.length; offset += FRAME_SIZE) {
       const portion = beepFull.subarray(offset, offset + FRAME_SIZE);
       const frame = new Int16Array(FRAME_SIZE);
@@ -179,7 +180,7 @@ async function main() {
       space.pushAudio(frame, sampleRate);
       await new Promise((r) => setTimeout(r, 10));
     }
-    console.log('[Test] Finished beep');
+    logger.debug('[Test] Finished beep');
   }
 
   // Example: Send beep every 5s (currently commented out)
@@ -187,13 +188,13 @@ async function main() {
   //   sendBeep().catch((err) => console.error('[Test] beep error =>', err));
   // }, 5000);
 
-  console.log('[Test] Space is running... press Ctrl+C to exit.');
+  logger.debug('[Test] Space is running... press Ctrl+C to exit.');
 
   // Graceful shutdown
   process.on('SIGINT', async () => {
-    console.log('\n[Test] Caught interrupt signal, stopping...');
+    logger.debug('\n[Test] Caught interrupt signal, stopping...');
     await space.stop();
-    console.log('[Test] Space stopped. Bye!');
+    logger.debug('[Test] Space stopped. Bye!');
     process.exit(0);
   });
 }

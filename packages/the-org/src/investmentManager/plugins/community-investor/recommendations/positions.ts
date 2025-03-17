@@ -37,7 +37,6 @@ export const getPositions: Action = {
   similes: ['GET_POSITIONS', 'SHOW_PORTFOLIO'],
 
   async handler(runtime, message, _state, _options, callback: any) {
-    console.log('getPositions is running');
     const tradingService = runtime.getService<CommunityInvestorService>(
       ServiceType.COMMUNITY_INVESTOR
     );
@@ -51,7 +50,6 @@ export const getPositions: Action = {
         tradingService.getOpenPositionsWithBalance(),
         runtime.getEntityById(message.entityId),
       ]);
-      // console.log("Positions:", positions);
 
       if (!user) {
         logger.error('No User Found, no entity score can be generated');
@@ -155,7 +153,7 @@ export const getPositions: Action = {
             const currentValue = token.price
               ? (Number(position.balance) * token.price).toString()
               : '0';
-            console.log('Calculated current value:', currentValue);
+
             const pnlPercent =
               token.price && position.initialPrice
                 ? (

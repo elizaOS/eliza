@@ -17,6 +17,7 @@ import type {
 } from '../types';
 import { WalletProvider } from '../wallet';
 import { JitoRegion, sendTxUsingJito } from './jitoBundle';
+import { logger } from '@elizaos/core';
 
 /**
  * Represents the result of a quote generated for a trade on the Jupiter protocol.
@@ -67,7 +68,6 @@ export function loadPrivateKey(runtime: IAgentRuntime) {
     throw new Error(`Invalid private key length: ${secretKey.length}. Expected 64 bytes.`);
   }
 
-  console.log('Creating keypair...');
   const keypair = Keypair.fromSecretKey(secretKey);
 
   // Verify the public key matches what we expect
@@ -249,13 +249,10 @@ export class SolanaTrustWalletProvider implements TrustWalletProvider<JupiterQuo
     outputToken: string;
     swapData: any;
   }) {
-    console.log('Deserializing transaction...');
     const transactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
     const transaction = VersionedTransaction.deserialize(transactionBuf);
-    console.log('Preparing to sign transaction...');
 
     const keypair = loadPrivateKey(this.runtime);
-    console.log('Signing transaction...');
     transaction.sign([keypair]);
 
     const latestBlockhash = await this.connection.getLatestBlockhash();

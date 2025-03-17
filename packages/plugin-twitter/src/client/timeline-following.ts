@@ -75,8 +75,6 @@ export async function fetchFollowingTimeline(
     'GET'
   )) as RequestApiResult<HomeLatestTimelineResponse>;
 
-  console.log('res', res);
-
   if (!res.success) {
     if ((res as any).err instanceof ApiError) {
       console.error('Error details:', (res as any).err.data);

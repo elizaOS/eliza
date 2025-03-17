@@ -156,7 +156,7 @@ class SgxAttestationProvider extends RemoteAttestationProvider {
         quote: quote,
         timestamp: Date.now(),
       };
-      // console.log("SGX remote attestation: ", attestation);
+
       return attestation;
     } catch (error) {
       console.error('Error generating SGX remote attestation:', error);
@@ -202,7 +202,6 @@ const sgxAttestationProvider: Provider = {
     const agentId = runtime.agentId;
 
     try {
-      // console.log("Generating attestation for agent: ", agentId);
       const attestation = await provider.generateAttestation(agentId);
 
       return {

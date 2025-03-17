@@ -81,7 +81,6 @@ export class TwitterService extends Service {
     clientId: string,
     state: any
   ): Promise<TwitterClientInstance> {
-    console.log('Creating client', clientId);
     if (runtime.getSetting('TWITTER_2FA_SECRET') === null) {
       runtime.setSetting('TWITTER_2FA_SECRET', undefined, false);
     }

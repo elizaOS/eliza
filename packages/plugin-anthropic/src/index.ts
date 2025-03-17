@@ -69,8 +69,8 @@ export const anthropicPlugin: Plugin = {
   models: {
     [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
       const temperature = 0.7;
-      const maxTokens = 8192;
-      const smallModel = runtime.getSetting('ANTHROPIC_SMALL_MODEL') ?? 'claude-3-haiku-latest';
+      const smallModel = runtime.getSetting('ANTHROPIC_SMALL_MODEL') ?? 'claude-3-haiku-20240307';
+      const maxTokens = smallModel.includes('-3-') ? 4096 : 8192;
 
       const { text } = await generateText({
         model: anthropic(smallModel),
@@ -112,7 +112,7 @@ export const anthropicPlugin: Plugin = {
     },
 
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
-      const smallModel = runtime.getSetting('ANTHROPIC_SMALL_MODEL') ?? 'claude-3-haiku-latest';
+      const smallModel = runtime.getSetting('ANTHROPIC_SMALL_MODEL') ?? 'claude-3-haiku-20240307';
       try {
         // Check if this is a reflection schema request (has specific format)
         const isReflection = params.schema?.facts && params.schema.relationships;

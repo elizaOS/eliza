@@ -68,7 +68,7 @@ const getDateRange = async (runtime: IAgentRuntime, _message: Memory, state: Sta
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
-    console.log('response', response);
+
     // try parsing to a json object
     const parsedResponse = parseJSONObjectFromText(response) as {
       objective: string;
@@ -101,11 +101,7 @@ const getDateRange = async (runtime: IAgentRuntime, _message: Memory, state: Sta
         // multiply by multiplier
         const startTime = startInteger * multipliers[startMultiplier as keyof typeof multipliers];
 
-        console.log('startTime', startTime);
-
         const endTime = endInteger * multipliers[endMultiplier as keyof typeof multipliers];
-
-        console.log('endTime', endTime);
 
         // get the current time and subtract the start and end times
         parsedResponse.start = Date.now() - startTime;

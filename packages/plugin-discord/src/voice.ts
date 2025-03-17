@@ -68,7 +68,6 @@ export class AudioMonitor {
     this.readable = readable;
     this.maxSize = maxSize;
     this.readable.on('data', (chunk: Buffer) => {
-      //console.log('AudioMonitor got data');
       if (this.lastFlagged < 0) {
         this.lastFlagged = this.buffers.length;
       }
@@ -447,24 +446,24 @@ export class VoiceManager extends EventEmitter {
     });
     pipeline(receiveStream as AudioReceiveStream, opusDecoder as any, (err: Error | null) => {
       if (err) {
-        console.log(`Opus decoding pipeline error: ${err}`);
+        logger.debug(`Opus decoding pipeline error: ${err}`);
       }
     });
     this.streams.set(entityId, opusDecoder);
     this.connections.set(entityId, connection as VoiceConnection);
     opusDecoder.on('error', (err: any) => {
-      console.log(`Opus decoding error: ${err}`);
+      logger.debug(`Opus decoding error: ${err}`);
     });
     const errorHandler = (err: any) => {
-      console.log(`Opus decoding error: ${err}`);
+      logger.debug(`Opus decoding error: ${err}`);
     };
     const streamCloseHandler = () => {
-      console.log(`voice stream from ${member?.displayName} closed`);
+      logger.debug(`voice stream from ${member?.displayName} closed`);
       this.streams.delete(entityId);
       this.connections.delete(entityId);
     };
     const closeHandler = () => {
-      console.log(`Opus decoder for ${member?.displayName} closed`);
+      logger.debug(`Opus decoder for ${member?.displayName} closed`);
       opusDecoder.removeListener('error', errorHandler);
       opusDecoder.removeListener('close', closeHandler);
       receiveStream?.removeListener('close', streamCloseHandler);
@@ -496,7 +495,7 @@ export class VoiceManager extends EventEmitter {
       }
     }
 
-    console.log(`Left voice channel: ${channel.name} (${channel.id})`);
+    logger.debug(`Left voice channel: ${channel.name} (${channel.id})`);
   }
 
   /**
@@ -509,7 +508,7 @@ export class VoiceManager extends EventEmitter {
       monitorInfo.monitor.stop();
       this.activeMonitors.delete(memberId);
       this.streams.delete(memberId);
-      console.log(`Stopped monitoring user ${memberId}`);
+      logger.debug(`Stopped monitoring user ${memberId}`);
     }
   }
 
@@ -579,7 +578,7 @@ export class VoiceManager extends EventEmitter {
     audioStream: Readable
   ) {
     const entityId = createUniqueUuid(this.runtime, userId);
-    console.log(`Starting audio monitor for user: ${entityId}`);
+    logger.debug(`Starting audio monitor for user: ${entityId}`);
     if (!this.userStates.has(entityId)) {
       this.userStates.set(entityId, {
         buffers: [],
@@ -646,7 +645,7 @@ export class VoiceManager extends EventEmitter {
       state.totalLength = 0;
       // Convert Opus to WAV
       const wavBuffer = await this.convertOpusToWav(inputBuffer);
-      console.log('Starting transcription...');
+      logger.debug('Starting transcription...');
 
       const transcriptionText = await this.runtime.useModel(ModelType.TRANSCRIPTION, wavBuffer);
       function isValidTranscription(text: string): boolean {
@@ -825,7 +824,7 @@ export class VoiceManager extends EventEmitter {
       }
 
       if (chosenChannel) {
-        console.log(`Joining channel: ${chosenChannel.name}`);
+        logger.debug(`Joining channel: ${chosenChannel.name}`);
         await this.joinChannel(chosenChannel);
       } else {
         logger.debug('Warning: No suitable voice channel found to join.');
@@ -845,7 +844,7 @@ export class VoiceManager extends EventEmitter {
   async playAudioStream(entityId: UUID, audioStream: Readable) {
     const connection = this.connections.get(entityId);
     if (connection == null) {
-      console.log(`No connection for user ${entityId}`);
+      logger.debug(`No connection for user ${entityId}`);
       return;
     }
     this.cleanupAudioPlayer(this.activeAudioPlayer);
@@ -865,13 +864,13 @@ export class VoiceManager extends EventEmitter {
     audioPlayer.play(resource);
 
     audioPlayer.on('error', (err: any) => {
-      console.log(`Audio player error: ${err}`);
+      logger.debug(`Audio player error: ${err}`);
     });
 
     audioPlayer.on('stateChange', (_oldState: any, newState: { status: string }) => {
       if (newState.status === 'idle') {
         const idleTime = Date.now();
-        console.log(`Audio playback took: ${idleTime - audioStartTime}ms`);
+        logger.debug(`Audio playback took: ${idleTime - audioStartTime}ms`);
       }
     });
   }

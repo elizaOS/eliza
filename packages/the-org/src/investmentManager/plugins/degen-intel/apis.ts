@@ -27,9 +27,7 @@ export const routes: Route[] = [
     type: 'GET',
     path: '/degen-intel',
     handler: async (_req: any, res: any) => {
-      console.log('degen-intel');
       const route = _req.url;
-      console.log('frontendDist is', frontendDist);
       res.sendFile(path.resolve(frontendDist, 'index.html'));
     },
   },
@@ -37,7 +35,6 @@ export const routes: Route[] = [
     type: 'GET',
     path: '/degen-intel/assets/*',
     handler: async (req: any, res: any) => {
-      console.log('degen-intel/assets');
       const assetPath = `/dist/assets/${req.path.split('/assets/')[1]}`;
       const cwd = process.cwd();
       const filePath = cwd + path.resolve(cwd, assetPath);
@@ -49,19 +46,9 @@ export const routes: Route[] = [
     },
   },
   {
-    type: 'GET',
-    path: '/testing',
-    handler: async (_req: any, res: any) => {
-      console.log('testing');
-      // return  hello world
-      res.json({ message: 'hello world' });
-    },
-  },
-  {
     type: 'POST',
     path: '/trending',
     handler: async (_req: any, res: any, runtime) => {
-      console.log('trending');
       try {
         const cachedTokens = await runtime.getCache<IToken[]>('tokens_solana');
         const tokens: IToken[] = cachedTokens ? cachedTokens : [];

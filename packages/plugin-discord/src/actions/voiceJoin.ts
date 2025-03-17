@@ -71,8 +71,6 @@ export const joinVoice: Action = {
       return false;
     }
 
-    console.log('Running handler on provider', room.name);
-
     const serverId = room.serverId;
 
     if (!serverId) {

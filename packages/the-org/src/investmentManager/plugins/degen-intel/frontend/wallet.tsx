@@ -37,8 +37,6 @@ export default function Wallet() {
     return <Loader />;
   }
 
-  console.log(history);
-
   return (
     <div className="flex flex-col gap-4">
       <h3 className="font-semibold text-2xl">Live Portfolio</h3>

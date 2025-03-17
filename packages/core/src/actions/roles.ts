@@ -233,11 +233,7 @@ const updateRoleAction: Action = {
     for (const assignment of result) {
       let targetEntity = entities.find((e) => e.id === assignment.entityId);
       if (!targetEntity) {
-        targetEntity = entities.find((e) => e.id === assignment.entityId);
-        console.log('Trying to write to generated tenant ID');
-      }
-      if (!targetEntity) {
-        console.log('Could not find an ID ot assign to');
+        logger.error('Could not find an ID ot assign to');
       }
 
       const currentRole = world.metadata.roles[assignment.entityId];

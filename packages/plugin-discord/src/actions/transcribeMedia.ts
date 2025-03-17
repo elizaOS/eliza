@@ -58,7 +58,6 @@ const getMediaAttachmentId = async (
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
-    console.log('response', response);
 
     const parsedResponse = parseJSONObjectFromText(response) as {
       attachmentId: string;

@@ -206,7 +206,7 @@ export const starterPlugin: Plugin = {
         {
           name: 'example_test',
           fn: async (runtime) => {
-            console.log('example_test run by ', runtime.character.name);
+            logger.debug('example_test run by ', runtime.character.name);
             // Add a proper assertion that will pass
             if (runtime.character.name !== 'Eliza') {
               throw new Error(
@@ -251,30 +251,30 @@ export const starterPlugin: Plugin = {
   events: {
     MESSAGE_RECEIVED: [
       async (params) => {
-        console.log('MESSAGE_RECEIVED event received');
+        logger.debug('MESSAGE_RECEIVED event received');
         // print the keys
-        console.log(Object.keys(params));
+        logger.debug(Object.keys(params));
       },
     ],
     VOICE_MESSAGE_RECEIVED: [
       async (params) => {
-        console.log('VOICE_MESSAGE_RECEIVED event received');
+        logger.debug('VOICE_MESSAGE_RECEIVED event received');
         // print the keys
-        console.log(Object.keys(params));
+        logger.debug(Object.keys(params));
       },
     ],
     WORLD_CONNECTED: [
       async (params) => {
-        console.log('WORLD_CONNECTED event received');
+        logger.debug('WORLD_CONNECTED event received');
         // print the keys
-        console.log(Object.keys(params));
+        logger.debug(Object.keys(params));
       },
     ],
     WORLD_JOINED: [
       async (params) => {
-        console.log('WORLD_JOINED event received');
+        logger.debug('WORLD_JOINED event received');
         // print the keys
-        console.log(Object.keys(params));
+        logger.debug(Object.keys(params));
       },
     ],
   },
@@ -288,17 +288,17 @@ export const starterPlugin: Plugin = {
   const debugPlugin = () => {
     // Add this temporary code to print info about the tests
     // Will be removed after debugging
-    console.log('DEBUG: PLUGIN STRUCTURE:');
-    console.log('Plugin name:', starterPlugin.name);
-    console.log('Tests array exists:', !!starterPlugin.tests);
-    console.log('Tests array length:', starterPlugin.tests?.length);
+    logger.debug('DEBUG: PLUGIN STRUCTURE:');
+    logger.debug('Plugin name:', starterPlugin.name);
+    logger.debug('Tests array exists:', !!starterPlugin.tests);
+    logger.debug('Tests array length:', starterPlugin.tests?.length);
     if (starterPlugin.tests && starterPlugin.tests.length > 0) {
-      console.log('First test suite name:', starterPlugin.tests[0].name);
-      console.log('First test suite has tests array:', !!starterPlugin.tests[0].tests);
-      console.log('First test suite tests length:', starterPlugin.tests[0].tests?.length);
+      logger.debug('First test suite name:', starterPlugin.tests[0].name);
+      logger.debug('First test suite has tests array:', !!starterPlugin.tests[0].tests);
+      logger.debug('First test suite tests length:', starterPlugin.tests[0].tests?.length);
       if (starterPlugin.tests[0].tests && starterPlugin.tests[0].tests.length > 0) {
-        console.log('First test name:', starterPlugin.tests[0].tests[0].name);
-        console.log('First test has fn:', !!starterPlugin.tests[0].tests[0].fn);
+        logger.debug('First test name:', starterPlugin.tests[0].tests[0].name);
+        logger.debug('First test has fn:', !!starterPlugin.tests[0].tests[0].fn);
       }
     }
   };

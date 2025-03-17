@@ -386,8 +386,6 @@ export class DexscreenerClient {
       if (cached) return cached;
     }
 
-    console.log('Fetching DexScreener: ', { path, params });
-
     const res = await http.get.json<T>(`https://api.dexscreener.com/${path}`, params);
 
     if (options?.expires) {
@@ -515,8 +513,6 @@ export class HeliusClient {
       if (cached) return cached;
     }
 
-    console.log('fetching holder list for:', address);
-
     const allHoldersMap = new Map<string, number>();
     let page = 1;
     const limit = 1000;
@@ -537,8 +533,6 @@ export class HeliusClient {
           params.cursor = cursor;
         }
 
-        console.log(`Fetching holders - Page ${page}`);
-
         if (page > 2) {
           break;
         }
@@ -551,11 +545,8 @@ export class HeliusClient {
           !data.result.token_accounts ||
           data.result.token_accounts.length === 0
         ) {
-          console.log(`No more holders found. Total pages fetched: ${page - 1}`);
           break;
         }
-
-        console.log(`Processing ${data.result.token_accounts.length} holders from page ${page}`);
 
         data.result.token_accounts.forEach((account: any) => {
           const owner = account.owner;
@@ -577,8 +568,6 @@ export class HeliusClient {
           balance: balance.toString(),
         })
       );
-
-      console.log(`Total unique holders fetched: ${holders.length}`);
 
       if (options?.expires)
         await this.runtime.setCache<HolderData[]>(`helius/token-holders/${address}`, holders);
@@ -648,11 +637,6 @@ export class CoingeckoClient {
       const cached = await this.runtime.getCache<T>(cacheKey);
       if (cached) return cached;
     }
-
-    console.log('fetching coingecko', {
-      path,
-      params,
-    });
 
     const res = await http.get.json<T>(`https://api.coingecko.com/api/v3/${path}`, params, {
       headers: {
@@ -869,11 +853,6 @@ export class BirdeyeClient {
       const cached = await this.runtime.getCache<T>(cacheKey);
       if (cached) return cached;
     }
-
-    console.log('fetching birdeye', {
-      path,
-      params,
-    });
 
     const response = await BirdeyeClient.request<T>(
       this.apiKey,

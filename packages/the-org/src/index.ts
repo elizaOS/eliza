@@ -130,12 +130,12 @@ function hasRequiredEnvVars(agent: any): boolean {
 
 // Filter agents based on available environment variables
 const availableAgents = [
-  // devRel,
+  devRel,
   communityManager,
-  // investmentManager,
-  // liaison,
-  // projectManager,
-  // socialMediaManager,
+  investmentManager,
+  liaison,
+  projectManager,
+  socialMediaManager,
 ].filter(hasRequiredEnvVars);
 
 export const project = {

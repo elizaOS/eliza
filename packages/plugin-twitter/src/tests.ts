@@ -126,7 +126,7 @@ export class TwitterTestSuite implements TestSuite {
         SearchMode.Latest
       );
 
-      console.log(`Successfully fetched ${tweets.tweets.length} search tweets.`);
+      logger.debug(`Successfully fetched ${tweets.tweets.length} search tweets.`);
     } catch (error) {
       throw new Error(`Error fetching search tweets: ${error}`);
     }

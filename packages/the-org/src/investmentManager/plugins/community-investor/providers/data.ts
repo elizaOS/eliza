@@ -5,6 +5,7 @@ import {
   type State,
   type UUID,
   composePromptFromState,
+  logger,
 } from '@elizaos/core';
 import { z } from 'zod';
 import { formatRecommenderReport } from '../reports';
@@ -269,7 +270,7 @@ export const dataProvider: Provider = {
         text: renderedText,
       };
     } catch (error) {
-      console.log(error);
+      logger.error(error);
       return {
         data: {},
         values: {},
