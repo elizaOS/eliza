@@ -1,10 +1,13 @@
 {
   "name": "@elizaos-plugins/plugin-evm",
-  "version": "0.1.9",
+  "version": "1.0.0-alpha.63",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     "./package.json": "./package.json",
     ".": {
