@@ -51,8 +51,6 @@ export const getAgentPositions: any = {
   similes: ['GET_AGENT_POSITIONS', 'SHOW_AGENT_PORTFOLIO'],
 
   async handler(runtime, message, _state, _options, callback: (memory: Memory) => Promise<Memory>) {
-    console.log('getAgentPositions is running');
-
     const tradingService = runtime.getService(ServiceType.COMMUNITY_INVESTOR);
 
     try {
@@ -112,7 +110,7 @@ export const getAgentPositions: any = {
             const currentValue = token.price
               ? (Number(position.balance) * token.price).toString()
               : '0';
-            console.log('Calculated current value:', currentValue);
+
             const pnlPercent =
               token.price && position.initialPrice
                 ? (

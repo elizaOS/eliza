@@ -12,6 +12,7 @@ import {
   type TeeLogQuery,
   type TeePageQuery,
   TeeType,
+  logger,
 } from '@elizaos/core';
 import { SqliteTeeLogDAO } from '../adapters/sqliteDAO';
 import { TeeLogManager } from './teeLogManager';
@@ -62,7 +63,7 @@ export class TeeLogService extends Service implements ITeeLogService {
     }
     service.enableTeeLog = enableValues.includes(enableTeeLog.toLowerCase());
     if (!service.enableTeeLog) {
-      console.log('TEE log is not enabled.');
+      logger.debug('TEE log is not enabled.');
       return;
     }
 

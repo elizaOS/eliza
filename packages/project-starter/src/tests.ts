@@ -71,15 +71,9 @@ export class StarterTestSuite implements TestSuite {
         };
         let responseReceived = false;
 
-        console.log(
-          'Available actions:',
-          runtime.actions.map((a) => a.name)
-        );
-
         // Test the hello world action
         try {
           await runtime.processActions(message, [], state, async (content: Content) => {
-            console.log('Received content in callback:', JSON.stringify(content));
             if (content.text === 'hello world!' && content.actions?.includes('HELLO_WORLD')) {
               responseReceived = true;
             }
@@ -96,7 +90,6 @@ export class StarterTestSuite implements TestSuite {
                 state,
                 {},
                 async (content: Content) => {
-                  console.log('Direct action execution result:', JSON.stringify(content));
                   if (content.text === 'hello world!' && content.actions?.includes('HELLO_WORLD')) {
                     responseReceived = true;
                   }
@@ -137,9 +130,6 @@ export class StarterTestSuite implements TestSuite {
 
         // Test the hello world provider
         try {
-          // Check if providers exist and log them for debugging
-          console.log(`Runtime providers: ${JSON.stringify(runtime.providers.map((p) => p.name))}`);
-
           if (!runtime.providers || runtime.providers.length === 0) {
             throw new Error('No providers found in runtime');
           }

@@ -87,7 +87,6 @@ export const getSimulatedPositions: Action = {
   similes: ['GET_SIMULATED_POSITIONS', 'SHOW_SIMULATED_PORTFOLIO'],
 
   async handler(runtime, message, _state, _options, callback: any) {
-    console.log('getSimulatedPositions is running');
     const tradingService = runtime.getService<CommunityInvestorService>(
       ServiceType.COMMUNITY_INVESTOR
     );
@@ -188,7 +187,7 @@ export const getSimulatedPositions: Action = {
             const currentValue = token.price
               ? (Number(position.balance) * token.price).toString()
               : '0';
-            console.log('Calculated current value:', currentValue);
+
             const pnlPercent =
               token.price && position.initialPrice
                 ? (

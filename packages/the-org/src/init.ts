@@ -115,8 +115,6 @@ export async function initializeAllSystems(
 
       await runtime.ensureWorldExists(world);
       await initializeOnboarding(runtime, world, config);
-      // Start onboarding DM with server owner
-      console.log('starting onboarding DM');
       await startOnboardingDM(runtime, server, worldId);
     }
   } catch (error) {

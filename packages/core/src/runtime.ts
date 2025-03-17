@@ -65,13 +65,32 @@ interface NamespacedSettings {
  */
 let environmentSettings: Settings = {};
 
+// Use a self-executing function to load dotenv synchronously in Node.js environments
+// This way we avoid top-level await and have immediate access to environment variables
+const dotenvLoader = (() => {
+  // Skip in browser environments
+  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+    return { config: () => ({ error: null }) };
+  }
+
+  try {
+    // Direct import/require works in CommonJS
+    // In ESM, this will be transformed appropriately by bundlers/transpilers
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return typeof require !== 'undefined' ? require('dotenv') : { config: () => ({ error: null }) };
+  } catch (e) {
+    logger.warn('Could not load dotenv module:', e);
+    // Return a mock implementation if loading fails
+    return { config: () => ({ error: null }) };
+  }
+})();
+
 /**
  * Loads environment variables from the nearest .env file in Node.js
  * or returns configured settings in browser
  * @returns {Settings} Environment variables object
- * @throws {Error} If no .env file is found in Node.js environment
  */
-export async function loadEnvConfig(): Promise<Settings> {
+export function loadEnvConfig(): Settings {
   // For browser environments, return the configured settings
   if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
     return environmentSettings;
@@ -100,12 +119,14 @@ export async function loadEnvConfig(): Promise<Settings> {
   // Node.js environment: load from .env file
   const envPath = findNearestEnvFile();
 
-  // attempt to Load the .env file into process.env
-  const dotenv = await import('dotenv');
-  const result = dotenv.default.config(envPath ? { path: envPath } : {});
-
-  if (!result.error) {
-    logger.log(`Loaded .env file from: ${envPath}`);
+  // Load the .env file into process.env synchronously
+  try {
+    const result = dotenvLoader.config(envPath ? { path: envPath } : {});
+    if (!result.error && envPath) {
+      logger.log(`Loaded .env file from: ${envPath}`);
+    }
+  } catch (err) {
+    logger.warn('Failed to load .env file:', err);
   }
 
   // Parse namespaced settings
@@ -253,9 +274,7 @@ export class AgentRuntime implements IAgentRuntime {
     if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
       this.settings = environmentSettings;
     } else {
-      loadEnvConfig().then((settings) => {
-        this.settings = settings;
-      });
+      this.settings = loadEnvConfig();
     }
 
     // Register plugins from options or empty array
@@ -937,34 +956,6 @@ export class AgentRuntime implements IAgentRuntime {
     return evaluators;
   }
 
-  async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
-    // Make sure entity exists in database before adding as participant
-    const entity = await this.adapter.getEntityById(entityId);
-    if (!entity) {
-      throw new Error(`User ${entityId} not found`);
-    }
-    // Get current participants
-    const participants = await this.adapter.getParticipantsForRoom(roomId);
-
-    // Only add if not already a participant
-    if (!participants.includes(entityId)) {
-      // Add participant using the tenant-specific ID that now exists in the entities table
-      const added = await this.adapter.addParticipant(entityId, roomId);
-
-      if (!added) {
-        throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
-      }
-
-      if (entityId === this.agentId) {
-        this.runtimeLogger.log(
-          `Agent ${this.character.name} linked to room ${roomId} successfully.`
-        );
-      } else {
-        this.runtimeLogger.log(`User ${entityId} linked to room ${roomId} successfully.`);
-      }
-    }
-  }
-
   async ensureConnection({
     entityId,
     roomId,
@@ -994,7 +985,7 @@ export class AgentRuntime implements IAgentRuntime {
       worldId = createUniqueUuid(this, serverId);
     }
 
-    const names = [name, userName];
+    const names = [name, userName].filter(Boolean);
     const metadata = {
       [source]: {
         name: name,
@@ -1002,48 +993,162 @@ export class AgentRuntime implements IAgentRuntime {
       },
     };
 
-    const entity = await this.adapter.getEntityById(entityId);
-
-    if (!entity) {
-      await this.adapter.createEntity({
-        id: entityId,
-        names,
-        metadata,
-        agentId: this.agentId,
-      });
-    }
-
-    // Ensure world exists if worldId is provided
-    if (worldId) {
-      await this.ensureWorldExists({
-        id: worldId,
-        name: serverId ? `World for server ${serverId}` : `World for room ${roomId}`,
-        agentId: this.agentId,
-        serverId: serverId || 'default',
-        metadata,
-      });
-    }
-
-    // Ensure room exists
-    await this.ensureRoomExists({
-      id: roomId,
-      source,
-      type,
-      channelId,
-      serverId,
-      worldId,
-    });
-
-    // Now add participants using the original IDs (will be transformed internally)
+    // Step 1: Handle entity creation/update with proper error handling
     try {
-      await this.ensureParticipantInRoom(entityId, roomId);
+      // First check if the entity exists
+      let entity = await this.adapter.getEntityById(entityId);
+
+      if (!entity) {
+        // Try to create the entity
+        try {
+          const success = await this.adapter.createEntity({
+            id: entityId,
+            names,
+            metadata,
+            agentId: this.agentId,
+          });
+
+          if (success) {
+            this.runtimeLogger.debug(
+              `Created new entity ${entityId} for user ${name || userName || 'unknown'}`
+            );
+          } else {
+            throw new Error(`Failed to create entity ${entityId}`);
+          }
+        } catch (error) {
+          // If we get a duplicate key error, the entity exists in the database but isn't
+          // associated with this agent - this is expected in multi-agent scenarios
+          if (error.message?.includes('duplicate key') || error.code === '23505') {
+            this.runtimeLogger.debug(
+              `Entity ${entityId} exists in database but not for this agent. This is normal in multi-agent setups.`
+            );
+          } else {
+            // For any other errors, re-throw
+            throw error;
+          }
+        }
+      } else {
+        // Entity exists for this agent, update if needed
+        await this.adapter.updateEntity({
+          id: entityId,
+          names: [...new Set([...(entity.names || []), ...names])].filter(Boolean),
+          metadata: {
+            ...entity.metadata,
+            [source]: {
+              ...entity.metadata?.[source],
+              name: name,
+              userName: userName,
+            },
+          },
+          agentId: this.agentId,
+        });
+      }
+
+      // Step 2: Ensure world exists
+      if (worldId) {
+        await this.ensureWorldExists({
+          id: worldId,
+          name: serverId ? `World for server ${serverId}` : `World for room ${roomId}`,
+          agentId: this.agentId,
+          serverId: serverId || 'default',
+          metadata,
+        });
+      }
+
+      // Step 3: Ensure room exists
+      await this.ensureRoomExists({
+        id: roomId,
+        name: name,
+        source,
+        type,
+        channelId,
+        serverId,
+        worldId,
+      });
+
+      // Step 4: Add participants to the room
+      // For the user entity, we'll try even if we couldn't retrieve it
+      try {
+        await this.ensureParticipantInRoom(entityId, roomId);
+      } catch (error) {
+        // If the normal flow fails because the entity isn't found,
+        // try direct participant addition as a clean fallback
+        if (error.message?.includes('not found')) {
+          const added = await this.adapter.addParticipant(entityId, roomId);
+          if (!added) {
+            throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
+          }
+          this.runtimeLogger.debug(`Added participant ${entityId} to room ${roomId} directly`);
+        } else {
+          throw error;
+        }
+      }
+
+      // Always add the agent to the room
       await this.ensureParticipantInRoom(this.agentId, roomId);
+
+      this.runtimeLogger.success(`Successfully connected entity ${entityId} in room ${roomId}`);
     } catch (error) {
       this.runtimeLogger.error(
-        `Failed to add participants: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to ensure connection: ${error instanceof Error ? error.message : String(error)}`
       );
       throw error;
     }
+  }
+
+  /**
+   * Ensures a participant is added to a room, checking that the entity exists first
+   */
+  async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
+    // Make sure entity exists in database before adding as participant
+    const entity = await this.adapter.getEntityById(entityId);
+
+    // If entity is not found but it's not the agent itself, we might still want to proceed
+    // This can happen when an entity exists in the database but isn't associated with this agent
+    if (!entity && entityId !== this.agentId) {
+      this.runtimeLogger.warn(
+        `Entity ${entityId} not directly accessible to agent ${this.agentId}. Will attempt to add as participant anyway.`
+      );
+    } else if (!entity) {
+      throw new Error(`User ${entityId} not found`);
+    }
+
+    // Get current participants
+    const participants = await this.adapter.getParticipantsForRoom(roomId);
+
+    // Only add if not already a participant
+    if (!participants.includes(entityId)) {
+      // Add participant using the ID
+      const added = await this.adapter.addParticipant(entityId, roomId);
+
+      if (!added) {
+        throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
+      }
+
+      if (entityId === this.agentId) {
+        this.runtimeLogger.log(
+          `Agent ${this.character.name} linked to room ${roomId} successfully.`
+        );
+      } else {
+        this.runtimeLogger.log(`User ${entityId} linked to room ${roomId} successfully.`);
+      }
+    }
+  }
+
+  async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+    return await this.adapter.removeParticipant(entityId, roomId);
+  }
+
+  async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
+    return await this.adapter.getParticipantsForEntity(entityId);
+  }
+
+  async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
+    return await this.adapter.getParticipantsForRoom(roomId);
+  }
+
+  async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+    return await this.adapter.addParticipant(entityId, roomId);
   }
 
   /**
@@ -1700,22 +1805,6 @@ export class AgentRuntime implements IAgentRuntime {
 
   async getRooms(worldId: UUID): Promise<Room[]> {
     return await this.adapter.getRooms(worldId);
-  }
-
-  async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.addParticipant(entityId, roomId);
-  }
-
-  async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    return await this.adapter.removeParticipant(entityId, roomId);
-  }
-
-  async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
-    return await this.adapter.getParticipantsForEntity(entityId);
-  }
-
-  async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
-    return await this.adapter.getParticipantsForRoom(roomId);
   }
 
   async getParticipantUserState(

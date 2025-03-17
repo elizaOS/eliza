@@ -113,7 +113,6 @@ const messageReceivedHandler = async ({
   message,
   callback,
 }: MessageReceivedHandlerParams): Promise<void> => {
-  console.log('*** messageReceivedHandler for ' + runtime.character.name + ' ***', message);
   // Generate a new response ID
   const responseId = v4();
   // Get or create the agent-specific map
@@ -182,7 +181,7 @@ const messageReceivedHandler = async ({
         agentUserState === 'MUTED' &&
         !message.content.text?.toLowerCase().includes(runtime.character.name.toLowerCase())
       ) {
-        console.log('Ignoring muted room');
+        logger.debug('Ignoring muted room');
         return;
       }
 
@@ -200,7 +199,7 @@ const messageReceivedHandler = async ({
       });
 
       logger.debug(
-        `*** Should Respond Prompt for ${runtime.character.name} ***`,
+        `*** Should Respond Prompt for ${runtime.character.name} ***\n`,
         shouldRespondPrompt
       );
 
@@ -208,7 +207,7 @@ const messageReceivedHandler = async ({
         prompt: shouldRespondPrompt,
       });
 
-      logger.debug(`*** Should Respond Response for ${runtime.character.name} ***`, response);
+      logger.debug(`*** Should Respond Response for ${runtime.character.name} ***\n`, response);
 
       const responseObject = parseJSONObjectFromText(response);
 
@@ -244,7 +243,6 @@ const messageReceivedHandler = async ({
           retries++;
           if ((!responseContent?.thought || !responseContent?.plan) && !responseContent?.actions) {
             logger.warn('*** Missing required fields, retrying... ***');
-            console.log('*** responseContent is', responseContent);
           }
         }
 
@@ -465,10 +463,6 @@ const postGeneratedHandler = async ({
   // 	}
   // }
 
-  // console.log("mediaData is", mediaData)
-
-  console.log('creating memory');
-
   // Create the response memory
   const responseMessages = [
     {
@@ -489,8 +483,6 @@ const postGeneratedHandler = async ({
   ];
 
   for (const message of responseMessages) {
-    console.log('message is', message);
-    console.log('message.content is', message.content);
     await callback(message.content);
   }
 
@@ -567,9 +559,6 @@ const syncSingleUser = async (
 const handleServerSync = async ({ runtime, world, rooms, entities, source }: WorldPayload) => {
   logger.info(`Handling server sync event for server: ${world.name}`);
   try {
-    console.log('world.id', world.id);
-    console.log('agentId', runtime.agentId);
-    console.log('runtime.serverId', runtime.agentId);
     // Create/ensure the world exists for this server
     await runtime.ensureWorldExists({
       id: world.id,

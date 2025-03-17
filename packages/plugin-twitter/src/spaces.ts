@@ -533,7 +533,7 @@ export class TwitterSpaceClient {
 
       const handleSpeakerRemove = async (evt: { sessionUUID: string }) => {
         if (evt.sessionUUID === sessionUUID) {
-          console.log('[SpaceParticipant] Speaker removed:', evt);
+          logger.debug('[SpaceParticipant] Speaker removed:', evt);
           try {
             await this.spaceParticipant.removeFromSpeaker();
           } catch (err) {
@@ -562,7 +562,7 @@ export class TwitterSpaceClient {
 
           try {
             await this.spaceParticipant.cancelSpeakerRequest();
-            console.log('[SpaceParticipant] Speaker request canceled after timeout or error.');
+            logger.debug('[SpaceParticipant] Speaker request canceled after timeout or error.');
           } catch (cancelErr) {
             console.error('[SpaceParticipant] Could not cancel the request =>', cancelErr);
           }
@@ -603,7 +603,7 @@ export class TwitterSpaceClient {
           participant.off('newSpeakerAccepted', handler);
           try {
             await participant.becomeSpeaker();
-            console.log('[SpaceParticipant] Successfully became speaker!');
+            logger.debug('[SpaceParticipant] Successfully became speaker!');
             resolve();
           } catch (err) {
             reject(err);

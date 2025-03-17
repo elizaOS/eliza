@@ -8,6 +8,7 @@ import type { Space } from '../core/Space';
 import type { SpaceParticipant } from '../core/SpaceParticipant';
 import { Logger } from '../logger';
 import type { AudioDataWithUser, Plugin } from '../types';
+import { logger } from '@elizaos/core';
 
 /**
  * Interface for configuring a plugin
@@ -119,7 +120,7 @@ export class SttTtsPlugin implements Plugin {
     const debugEnabled = params.pluginConfig?.debug ?? false;
     this.logger = new Logger(debugEnabled);
 
-    console.log('[SttTtsPlugin] onAttach => plugin attached');
+    logger.debug('[SttTtsPlugin] onAttach => plugin attached');
   }
 
   /**

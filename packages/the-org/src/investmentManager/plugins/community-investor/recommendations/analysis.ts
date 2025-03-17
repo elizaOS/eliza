@@ -248,7 +248,6 @@ export const getTokenDetails: any = {
 
   async handler(runtime: IAgentRuntime, message: Memory, _state: State, _options, callback: any) {
     if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
-      console.log('no trading service');
       return;
     }
 

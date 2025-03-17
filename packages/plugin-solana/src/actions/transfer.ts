@@ -165,8 +165,6 @@ export default {
 
     const content = parseJSONObjectFromText(result);
 
-    console.log('Content:', content);
-
     if (!isTransferContent(content)) {
       if (callback) {
         callback({

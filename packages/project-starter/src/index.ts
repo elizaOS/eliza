@@ -1,4 +1,10 @@
-import type { Character, IAgentRuntime, Project, ProjectAgent } from '@elizaos/core';
+import {
+  logger,
+  type Character,
+  type IAgentRuntime,
+  type Project,
+  type ProjectAgent,
+} from '@elizaos/core';
 import dotenv from 'dotenv';
 import starterPlugin from './plugin';
 dotenv.config({ path: '../../.env' });
@@ -337,8 +343,8 @@ export const character: Character = {
 };
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
-  console.log('Initializing character');
-  console.log('Name: ', character.name);
+  logger.info('Initializing character');
+  logger.info('Name: ', character.name);
 };
 
 export const projectAgent: ProjectAgent = {

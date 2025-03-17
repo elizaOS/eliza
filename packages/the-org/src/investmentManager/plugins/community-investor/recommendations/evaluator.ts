@@ -394,11 +394,6 @@ export const recommendationEvaluator: Evaluator = {
   similes: [],
   alwaysRun: true,
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
-    console.log(
-      'validating message for recommendation',
-      message.content.text.length < 5 ? false : message.entityId !== message.agentId
-    );
-
     if (message.content.text.length < 5) {
       return false;
     }
@@ -434,13 +429,11 @@ async function handler(
   _options?: { [key: string]: unknown },
   callback?: any
 ) {
-  console.log('Running the evaluator');
   if (!state) return;
 
   const { agentId, roomId } = message;
 
   if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
-    console.log('no trading service');
     return;
   }
 
@@ -449,14 +442,10 @@ async function handler(
   )!;
 
   if (!tradingService.hasWallet('solana')) {
-    console.log('no registered solana wallet in trading service');
     return;
   }
 
   if (message.entityId === message.agentId) return;
-  console.log('evaluating recommendations....');
-
-  console.log('message', message.content.text);
 
   const sentimentPrompt = composePrompt({
     template: sentimentTemplate,
@@ -472,8 +461,6 @@ async function handler(
   const signal = extractXMLFromResponse(sentimentText, 'signal');
 
   const signalInt = parseSignalResponse(signal);
-
-  console.log('signalInt', signalInt);
 
   if (signalInt === 2 && callback) {
     const responseMemory: Memory = {
@@ -495,9 +482,9 @@ async function handler(
   }
 
   if (signalInt === 3) {
-    console.log('signal is 3, skipping not related to tokens at all');
     return;
   }
+
   // Get recommendations from trust db by user that sent the message
   const recentRecommendations = (await runtime.getMemories({
     tableName: 'recommendations',
@@ -511,8 +498,6 @@ async function handler(
       .filter((r) => r.createdAt && Date.now() - r.createdAt > 10 * 60 * 1000)
       .map((r) => runtime.deleteMemory(r.id as UUID))
   );
-
-  console.log('message', message);
 
   const messageData = {
     text: message.content.text,
@@ -544,14 +529,11 @@ async function handler(
     runtime.getParticipantsForRoom(message.roomId),
   ]);
 
-  console.log('Participants', participants);
-
   const newRecommendationsBlock = extractXMLFromResponse(text, 'new_recommendations');
 
   const parsedRecommendations = parseRecommendationsResponse(newRecommendationsBlock);
 
   if (parsedRecommendations.length === 0) {
-    console.log('no recommendations found');
     return;
   }
 
@@ -573,7 +555,6 @@ async function handler(
     .filter((rec) => !tokenRecommendationsSet.has(rec.tokenAddress));
 
   if (filteredRecommendations.length === 0) {
-    console.log('no new recommendations found');
     return;
   }
 
@@ -604,8 +585,6 @@ async function handler(
     const token = await tradingService.getTokenOverview('solana', recommendation.tokenAddress!);
 
     recommendation.ticker = token.symbol;
-
-    console.log('users', users);
 
     // find the first user Id from a user with the username that we extracted
     const user = users.find((user) => {
@@ -640,8 +619,6 @@ async function handler(
         const extractedXML = extractXMLFromResponse(text, 'message');
 
         const formattedResponse = parseConfirmationResponse(extractedXML);
-
-        console.log(formattedResponse);
 
         if (callback) {
           const responseMemory: Memory = {
@@ -680,10 +657,7 @@ async function handler(
       return v;
     });
 
-    console.log('forming memory from message', message);
-
     if (callback && !hasAgentRepliedTo) {
-      console.log('generating text');
       if (signalInt === 0) {
         const responseMemory: Memory = {
           content: {
@@ -703,8 +677,6 @@ async function handler(
         return;
       }
       if (recommendation.conviction === 'MEDIUM' || recommendation.conviction === 'HIGH') {
-        // temp message/memory
-        console.log('message', message.metadata);
         const actionMemory = {
           id: message.id,
           entityId: message.entityId,
@@ -738,8 +710,6 @@ async function handler(
         template: recommendationConfirmTemplate,
       });
 
-      console.log('prompt', prompt);
-
       const res = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
       });
@@ -747,9 +717,6 @@ async function handler(
       const agentResponseMsg = extractXMLFromResponse(res, 'message');
       const question = parseConfirmationResponse(agentResponseMsg);
 
-      console.log('question', question);
-
-      console.log('forming response memory');
       const responseMemory: Memory = {
         content: {
           text: question,
@@ -764,7 +731,6 @@ async function handler(
         metadata: message.metadata,
         createdAt: Date.now() * 1000,
       };
-      console.log('response memory', responseMemory);
       await callback(responseMemory);
       hasAgentRepliedTo = true;
     }

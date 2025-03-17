@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AgentRuntime } from '@elizaos/core';
+import { AgentRuntime, logger } from '@elizaos/core';
 import type { Character } from '@elizaos/core/src/types';
 import dotenv from 'dotenv';
 import { initCharacter } from '../init';
@@ -43,14 +43,14 @@ function getFilesRecursively(dir: string, extensions: string[]): string[] {
       try {
         return getFilesRecursively(folder, extensions);
       } catch (error) {
-        console.warn(`Error accessing folder ${folder}:`, error);
+        logger.warn(`Error accessing folder ${folder}:`, error);
         return [];
       }
     });
 
     return [...files, ...subFiles];
   } catch (error) {
-    console.warn(`Error reading directory ${dir}:`, error);
+    logger.warn(`Error reading directory ${dir}:`, error);
     return [];
   }
 }
@@ -73,7 +73,7 @@ function loadDocumentation(directoryPath: string): string[] {
         const content = fs.readFileSync(filePath, 'utf-8');
         return `Path: ${relativePath}\n\n${content}`;
       } catch (error) {
-        console.warn(`Error reading file ${filePath}:`, error);
+        logger.warn(`Error reading file ${filePath}:`, error);
         return `Path: ${path.relative(basePath, filePath)}\n\nError reading file: ${error}`;
       }
     });
@@ -115,7 +115,7 @@ function loadSourceCode(packagesDir: string): string[] {
         const content = fs.readFileSync(filePath, 'utf-8');
         return `Path: ${relativePath}\n\n${content}`;
       } catch (error) {
-        console.warn(`Error reading file ${filePath}:`, error);
+        logger.warn(`Error reading file ${filePath}:`, error);
         return `Path: ${path.relative(basePath, filePath)}\n\nError reading file: ${error}`;
       }
     });
@@ -135,12 +135,12 @@ if (process.env.DEVREL_IMPORT_KNOWLEDGE) {
     docsPath = path.resolve(path.join(__dirname, '../../docs/docs'));
   }
   if (fs.existsSync(docsPath)) {
-    console.log('Loading documentation...');
+    logger.debug('Loading documentation...');
     const docKnowledge = loadDocumentation(docsPath);
     knowledge.push(...docKnowledge);
-    console.log(`Loaded ${docKnowledge.length} documentation files into knowledge base`);
+    logger.debug(`Loaded ${docKnowledge.length} documentation files into knowledge base`);
   } else {
-    console.warn('Documentation directory not found:', docsPath);
+    logger.warn('Documentation directory not found:', docsPath);
   }
 
   // Load source code
@@ -150,12 +150,12 @@ if (process.env.DEVREL_IMPORT_KNOWLEDGE) {
     packagesPath = path.resolve(path.join(__dirname, '../..'));
   }
   if (fs.existsSync(packagesPath)) {
-    console.log('Loading source code...');
+    logger.debug('Loading source code...');
     const sourceKnowledge = loadSourceCode(packagesPath);
     knowledge.push(...sourceKnowledge);
-    console.log(`Loaded ${sourceKnowledge.length} source files into knowledge base`);
+    logger.debug(`Loaded ${sourceKnowledge.length} source files into knowledge base`);
   } else {
-    console.warn('Packages directory not found:', packagesPath);
+    logger.warn('Packages directory not found:', packagesPath);
   }
 }
 
@@ -224,7 +224,6 @@ export const devRel = {
   init: async (runtime) => {
     // Initialize the character
     await initCharacter({ runtime, config });
-    console.log('Character initialized successfully');
   },
 };
 

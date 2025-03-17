@@ -27,15 +27,12 @@ function ElizaWrapper() {
   useEffect(() => {
     const startServer = async () => {
       try {
-        console.log('Server should already be running or will be started through the backend');
         setStatus('running');
 
         // Start polling to check if the server is accessible
         const checkInterval = setInterval(async () => {
-          console.log('Checking server accessibility...');
           const isAccessible = await checkServerAccessibility();
           if (isAccessible) {
-            console.log('Server is accessible!');
             setIsServerAccessible(true);
             clearInterval(checkInterval);
           }

@@ -86,9 +86,7 @@ export const confirmRecommendation: Action = {
   similes: ['CONFIRM_RECOMMENDATION'],
 
   async handler(runtime: IAgentRuntime, message, _state, _options, callback: any) {
-    console.log('confirmRecommendation is running');
     if (!runtime.getService(ServiceType.COMMUNITY_INVESTOR)) {
-      console.log('no trading service');
       await runtime.createMemory(
         {
           entityId: runtime.agentId,
@@ -106,7 +104,6 @@ export const confirmRecommendation: Action = {
 
     // Emote to signal that the recommendation is being confirmed
     if (callback) {
-      console.log('emoting to signal that the recommendation is being confirmed');
       const responseMemory: Memory = {
         content: {
           text: 'Placing recommendation...',
@@ -133,7 +130,6 @@ export const confirmRecommendation: Action = {
     )!;
 
     if (!tradingService.hasWallet('solana')) {
-      console.log('no registered solana wallet in trading service');
       await runtime.createMemory(
         {
           entityId: runtime.agentId,

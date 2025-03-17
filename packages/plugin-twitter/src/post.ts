@@ -314,8 +314,6 @@ export class TwitterPostClient {
           // Post the tweet
           const result = await this.postToTwitter(content.text, content.mediaData as MediaData[]);
 
-          console.log('result is', result);
-
           const tweetId =
             (result as any).rest_id || (result as any).id_str || (result as any).legacy?.id_str;
 
@@ -352,8 +350,6 @@ export class TwitterPostClient {
           return [];
         }
       };
-
-      console.log('emitting event');
 
       // Emit event to handle the post generation using standard handlers
       this.runtime.emitEvent([EventType.POST_GENERATED, TwitterEventTypes.POST_GENERATED], {

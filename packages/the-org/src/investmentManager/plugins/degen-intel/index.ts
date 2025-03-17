@@ -1,6 +1,7 @@
 import type { IAgentRuntime, Plugin } from '@elizaos/core';
 import routes from './apis';
 import { registerTasks } from './tasks';
+import { logger } from '@elizaos/core';
 
 // create a new plugin
 export const degenIntelPlugin: Plugin = {
@@ -14,7 +15,7 @@ export const degenIntelPlugin: Plugin = {
         {
           name: 'test for degen-intel',
           fn: async (runtime: IAgentRuntime) => {
-            console.log('test in degen-intel working');
+            logger.info('test in degen-intel working');
           },
         },
       ],

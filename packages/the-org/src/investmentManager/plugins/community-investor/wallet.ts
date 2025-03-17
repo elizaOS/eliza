@@ -112,8 +112,6 @@ interface Prices {
 }
 
 export async function sendTransaction(connection: Connection, transaction: VersionedTransaction) {
-  console.log('Sending transaction...');
-
   const latestBlockhash = await connection.getLatestBlockhash();
 
   const txid = await connection.sendTransaction(transaction, {
@@ -121,8 +119,6 @@ export async function sendTransaction(connection: Connection, transaction: Versi
     maxRetries: 3,
     preflightCommitment: 'confirmed',
   });
-
-  console.log('Transaction sent:', txid);
 
   // Confirm transaction using the blockhash
   const confirmation = await connection.confirmTransaction(

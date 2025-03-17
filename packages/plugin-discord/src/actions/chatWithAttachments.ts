@@ -68,7 +68,6 @@ const getAttachmentIds = async (
     const response = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
     });
-    console.log('response', response);
     // try parsing to a json object
     const parsedResponse = parseJSONObjectFromText(response) as {
       objective: string;
@@ -268,19 +267,12 @@ ${currentSummary.trim()}
       const summaryFilename = `${summaryDir}/summary_${Date.now()}.md`;
       try {
         await fs.promises.mkdir(summaryDir, { recursive: true });
-        // Debug: Log before file operations
-        console.log('Creating summary file:', {
-          filename: summaryFilename,
-          summaryLength: currentSummary.length,
-        });
 
         // Write file directly first
         await fs.promises.writeFile(summaryFilename, currentSummary, 'utf8');
-        console.log('File written successfully');
 
         // Then cache it
         await runtime.setCache<string>(summaryFilename, currentSummary);
-        console.log('Cache set operation completed');
 
         await callback(
           {
@@ -289,7 +281,6 @@ ${currentSummary.trim()}
           },
           [summaryFilename]
         );
-        console.log('Callback completed with summary file');
       } catch (error) {
         console.error('Error in file/cache process:', error);
         throw error;
