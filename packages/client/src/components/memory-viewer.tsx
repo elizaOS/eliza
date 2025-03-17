@@ -5,21 +5,20 @@ import {
   Database,
   File,
   FileText,
+  Globe,
   LoaderIcon,
   MailCheck,
   MessageSquareShare,
   Pencil,
   Trash2,
   Upload,
-  Download,
-  Globe,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAgentMemories, useDeleteMemory } from '../hooks/use-query-hooks';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+import { Card, CardFooter, CardHeader } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Card, CardContent, CardFooter, CardHeader } from './ui/card';
 
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api';
@@ -261,6 +260,203 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
   const visibleMemories = filteredMemories.slice(0, visibleItems);
   const hasMoreToLoad = visibleItems < filteredMemories.length;
 
+  // Internal components for better organization
+  const LoadingIndicator = () => (
+    <div className="flex justify-center p-4">
+      {loadingMore ? (
+        <div className="flex items-center gap-2">
+          <LoaderIcon className="h-4 w-4 animate-spin" />
+          <span className="text-sm text-muted-foreground">Loading more...</span>
+        </div>
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setVisibleItems((prev) => prev + ITEMS_PER_PAGE)}
+          className="text-xs"
+        >
+          Show more
+        </Button>
+      )}
+    </div>
+  );
+
+  const EmptyState = () => (
+    <div className="text-muted-foreground text-center p-8 flex flex-col items-center gap-2">
+      {selectedType === 'knowledge' ? (
+        <>
+          <Book className="h-12 w-12 opacity-20" />
+          <p>No knowledge documents yet</p>
+          <Button variant="outline" className="mt-2" onClick={handleUploadClick}>
+            <Upload className="h-4 w-4 mr-2" />
+            Upload Documents
+          </Button>
+        </>
+      ) : (
+        <>No memories recorded yet</>
+      )}
+    </div>
+  );
+
+  const KnowledgeCard = ({ memory, index }: { memory: Memory; index: number }) => {
+    const metadata = (memory.metadata as MemoryMetadata) || {};
+    const title = metadata.title || memory.id || 'Unknown Document';
+    const filename = metadata.filename || 'Unknown Document';
+    const fileExt = metadata.fileExt || filename.split('.').pop()?.toLowerCase() || '';
+    const displayName = title || filename;
+    const subtitle = metadata.path || filename;
+
+    return (
+      <button
+        key={memory.id || index}
+        type="button"
+        className="w-full text-left"
+        onClick={() => setViewingContent(memory)}
+      >
+        <Card className="hover:bg-accent/10 transition-colors relative group">
+          <div className="absolute top-3 left-3 opacity-70">{getFileIcon(filename)}</div>
+
+          <CardHeader className="p-3 pb-2 pl-10">
+            <div className="text-xs text-muted-foreground mb-1 line-clamp-1">{subtitle}</div>
+
+            <div className="mb-2">
+              <div className="text-sm font-medium mb-1">{displayName}</div>
+              {metadata.description && (
+                <div className="text-xs text-muted-foreground line-clamp-2">
+                  {metadata.description}
+                </div>
+              )}
+            </div>
+          </CardHeader>
+
+          <CardFooter className="p-2 border-t bg-muted/30 text-xs text-muted-foreground">
+            <div className="flex justify-between items-center w-full">
+              <div className="flex items-center">
+                <Clock className="h-3 w-3 mr-1.5" />
+                <span>
+                  {new Date(memory.createdAt || 0).toLocaleString(undefined, {
+                    month: 'numeric',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: 'numeric',
+                  })}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="px-1.5 py-0 h-5">
+                  {fileExt || 'unknown document'}
+                </Badge>
+
+                {memory.id && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      handleDelete(memory.id || '');
+                    }}
+                    title="Delete knowledge"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardFooter>
+        </Card>
+      </button>
+    );
+  };
+
+  const MemoryCard = ({ memory, index }: { memory: Memory; index: number }) => {
+    const memoryType = memory.metadata?.type || 'Memory';
+    const content = memory.content as MemoryContent;
+    const source = content?.source;
+
+    return (
+      <div
+        key={memory.id || index}
+        className="border rounded-md p-3 bg-card hover:bg-accent/10 transition-colors relative group"
+      >
+        {memory.id && (
+          <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setEditingMemory(memory);
+              }}
+              title="Edit memory"
+            >
+              <Pencil className="h-4 w-4 text-regular" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                handleDelete(memory.id || '');
+              }}
+              title="Delete memory"
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium flex items-center gap-1">
+            {getMemoryIcon(memory, content)} {getMemoryLabel(memoryType, content)}
+          </span>
+          <div className="flex items-center gap-2">
+            {source && (
+              <Badge variant="secondary" className="text-xs">
+                {source}
+              </Badge>
+            )}
+            <Badge variant="outline" className="text-xs group-hover:mr-8 transition-all">
+              {formatDate(memory.createdAt || 0)}
+            </Badge>
+          </div>
+        </div>
+
+        <div className="mt-2 grid gap-2 rounded-full">
+          {memory.id && (
+            <div className="text-xs bg-muted px-2 py-1 rounded">
+              <span className="font-semibold">ID: </span>
+              {memory.id}
+            </div>
+          )}
+
+          {memory.content && (
+            <div className="text-xs bg-muted px-2 py-1 rounded max-h-40 overflow-y-auto">
+              <span className="font-semibold">Content: </span>
+              {typeof memory.content === 'object'
+                ? JSON.stringify(memory.content, null, 2)
+                : memory.content}
+            </div>
+          )}
+
+          {memory.metadata && Object.keys(memory.metadata).length > 0 && (
+            <div className="text-xs bg-muted px-2 py-1 rounded max-h-32 overflow-y-auto">
+              <span className="font-semibold">Metadata: </span>
+              {typeof memory.metadata === 'object'
+                ? JSON.stringify(memory.metadata, null, 2)
+                : memory.metadata}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[400px] w-full">
       <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none">
@@ -312,244 +508,26 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
         style={{ height: 'calc(100% - 60px)' }}
       >
         {filteredMemories.length === 0 ? (
-          <div className="text-muted-foreground text-center p-8 flex flex-col items-center gap-2">
-            {selectedType === 'knowledge' ? (
-              <>
-                <Book className="h-12 w-12 opacity-20" />
-                <p>No knowledge documents yet</p>
-                <Button variant="outline" className="mt-2" onClick={handleUploadClick}>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Upload Documents
-                </Button>
-              </>
-            ) : (
-              <>No memories recorded yet</>
-            )}
-          </div>
+          <EmptyState />
         ) : (
           <div className="space-y-4">
-            {/* For knowledge files display - Single column layout */}
+            {/* Knowledge memories */}
             {selectedType === 'knowledge' && (
               <div className="flex flex-col gap-4 max-w-3xl mx-auto">
-                {visibleMemories.map((memory: Memory, index: number) => {
-                  const metadata = (memory.metadata as MemoryMetadata) || {};
-                  const title = metadata.title || memory.id || 'Unknown Document';
-                  const filename = metadata.filename || 'Unknown Document';
-                  const fileExt =
-                    metadata.fileExt || filename.split('.').pop()?.toLowerCase() || '';
-
-                  // Use the document title or filename for display
-                  const displayName = title || filename;
-                  // Use path information or filename as the subtitle
-                  const subtitle = metadata.path || filename;
-
-                  return (
-                    <button
-                      key={memory.id || index}
-                      type="button"
-                      className="w-full text-left"
-                      onClick={() => setViewingContent(memory)}
-                    >
-                      <Card className="hover:bg-accent/10 transition-colors relative group">
-                        {/* Icon and document type */}
-                        <div className="absolute top-3 left-3 opacity-70">
-                          {getFileIcon(filename)}
-                        </div>
-
-                        <CardHeader className="p-3 pb-2 pl-10">
-                          {/* Path/filename as a small badge */}
-                          <div className="text-xs text-muted-foreground mb-1 line-clamp-1">
-                            {subtitle}
-                          </div>
-
-                          {/* Title and description section */}
-                          <div className="mb-2">
-                            <div className="text-sm font-medium mb-1">{displayName}</div>
-                            {metadata.description && (
-                              <div className="text-xs text-muted-foreground line-clamp-2">
-                                {metadata.description}
-                              </div>
-                            )}
-                          </div>
-                        </CardHeader>
-
-                        <CardFooter className="p-2 border-t bg-muted/30 text-xs text-muted-foreground">
-                          <div className="flex justify-between items-center w-full">
-                            <div className="flex items-center">
-                              <Clock className="h-3 w-3 mr-1.5" />
-                              <span>
-                                {new Date(memory.createdAt || 0).toLocaleString(undefined, {
-                                  month: 'numeric',
-                                  day: 'numeric',
-                                  year: 'numeric',
-                                  hour: 'numeric',
-                                  minute: 'numeric',
-                                })}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="px-1.5 py-0 h-5">
-                                {fileExt || 'unknown document'}
-                              </Badge>
-
-                              {memory.id && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    handleDelete(memory.id || '');
-                                  }}
-                                  title="Delete knowledge"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </CardFooter>
-                      </Card>
-                    </button>
-                  );
-                })}
-
-                {/* Loading indicator for infinite scroll */}
-                {hasMoreToLoad && (
-                  <div className="flex justify-center p-4">
-                    {loadingMore ? (
-                      <div className="flex items-center gap-2">
-                        <LoaderIcon className="h-4 w-4 animate-spin" />
-                        <span className="text-sm text-muted-foreground">Loading more...</span>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setVisibleItems((prev) => prev + ITEMS_PER_PAGE)}
-                        className="text-xs"
-                      >
-                        Show more
-                      </Button>
-                    )}
-                  </div>
-                )}
+                {visibleMemories.map((memory: Memory, index: number) => (
+                  <KnowledgeCard key={memory.id || index} memory={memory} index={index} />
+                ))}
+                {hasMoreToLoad && <LoadingIndicator />}
               </div>
             )}
 
-            {/* For non-knowledge memories - keep existing layout */}
+            {/* Regular memories */}
             {selectedType !== 'knowledge' && (
               <div className="space-y-3">
-                {visibleMemories.map((memory: Memory, index: number) => {
-                  const memoryType = memory.metadata?.type || 'Memory';
-                  const content = memory.content as MemoryContent;
-                  const source = content?.source;
-
-                  return (
-                    <div
-                      key={memory.id || index}
-                      className="border rounded-md p-3 bg-card hover:bg-accent/10 transition-colors relative group"
-                    >
-                      {memory.id && (
-                        <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button
-                            variant="secondary"
-                            size="icon"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              setEditingMemory(memory);
-                            }}
-                            title="Edit memory"
-                          >
-                            <Pencil className="h-4 w-4 text-regular" />
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="icon"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              handleDelete(memory.id || '');
-                            }}
-                            title="Delete memory"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium flex items-center gap-1">
-                          {getMemoryIcon(memory, content)} {getMemoryLabel(memoryType, content)}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {source && (
-                            <Badge variant="secondary" className="text-xs">
-                              {source}
-                            </Badge>
-                          )}
-                          <Badge
-                            variant="outline"
-                            className="text-xs group-hover:mr-8 transition-all"
-                          >
-                            {formatDate(memory.createdAt || 0)}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <div className="mt-2 grid gap-2 rounded-full">
-                        {memory.id && (
-                          <div className="text-xs bg-muted px-2 py-1 rounded">
-                            <span className="font-semibold">ID: </span>
-                            {memory.id}
-                          </div>
-                        )}
-
-                        {memory.content && (
-                          <div className="text-xs bg-muted px-2 py-1 rounded max-h-40 overflow-y-auto">
-                            <span className="font-semibold">Content: </span>
-                            {typeof memory.content === 'object'
-                              ? JSON.stringify(memory.content, null, 2)
-                              : memory.content}
-                          </div>
-                        )}
-
-                        {memory.metadata && Object.keys(memory.metadata).length > 0 && (
-                          <div className="text-xs bg-muted px-2 py-1 rounded max-h-32 overflow-y-auto">
-                            <span className="font-semibold">Metadata: </span>
-                            {typeof memory.metadata === 'object'
-                              ? JSON.stringify(memory.metadata, null, 2)
-                              : memory.metadata}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Loading indicator for non-knowledge memories */}
-                {hasMoreToLoad && (
-                  <div className="flex justify-center p-4">
-                    {loadingMore ? (
-                      <div className="flex items-center gap-2">
-                        <LoaderIcon className="h-4 w-4 animate-spin" />
-                        <span className="text-sm text-muted-foreground">Loading more...</span>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setVisibleItems((prev) => prev + ITEMS_PER_PAGE)}
-                        className="text-xs"
-                      >
-                        Show more
-                      </Button>
-                    )}
-                  </div>
-                )}
+                {visibleMemories.map((memory: Memory, index: number) => (
+                  <MemoryCard key={memory.id || index} memory={memory} index={index} />
+                ))}
+                {hasMoreToLoad && <LoadingIndicator />}
               </div>
             )}
           </div>
