@@ -59,7 +59,6 @@ function MessageContent({
   agentId: UUID;
   isLastMessage: boolean;
 }) {
-  console.log('message', message);
   // Only log message details in development mode
   if (import.meta.env.DEV) {
     console.log(`[Chat] Rendering message from ${message.name}:`, {
@@ -195,7 +194,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
       console.log(`[Chat] Received message broadcast:`, data);
 
       // Skip messages that don't have required content
-      if (!data || !data.text) {
+      if (!data) {
         console.warn('[Chat] Received empty or invalid message data:', data);
         return;
       }

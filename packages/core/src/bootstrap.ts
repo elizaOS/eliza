@@ -266,21 +266,7 @@ const messageReceivedHandler = async ({
             },
           ];
 
-          // save the plan to a new reply memory
-          await runtime.createMemory(
-            {
-              entityId: runtime.agentId,
-              agentId: runtime.agentId,
-              content: {
-                thought: responseContent.thought,
-                actions: responseContent.actions,
-                providers: responseContent.providers,
-              },
-              roomId: message.roomId,
-              createdAt: Date.now(),
-            },
-            'messages'
-          );
+          callback(responseContent);
         }
 
         // Clean up the response ID
