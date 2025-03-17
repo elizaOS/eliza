@@ -603,6 +603,35 @@ export function createApiRouter(
   router.get('/logs', logsHandler);
   router.post('/logs', logsHandler);
 
+  // Handler for clearing logs
+  const logsClearHandler = (_req, res) => {
+    try {
+      // Access the underlying logger instance
+      const destination = (logger as unknown)[Symbol.for('pino-destination')];
+
+      if (!destination?.clear) {
+        return res.status(500).json({
+          error: 'Logger clear method not available',
+          message: 'The logger is not configured to clear logs',
+        });
+      }
+
+      // Clear the logs
+      destination.clear();
+
+      logger.debug('Logs cleared via API endpoint');
+      res.json({ status: 'success', message: 'Logs cleared successfully' });
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to clear logs',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  };
+
+  // Add DELETE endpoint for clearing logs
+  router.delete('/logs', logsClearHandler);
+
   // Health check endpoints
   router.get('/health', (_req, res) => {
     logger.log({ apiRoute: '/health' }, 'Health check route hit');

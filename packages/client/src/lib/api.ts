@@ -369,6 +369,14 @@ export const apiClient = {
     });
   },
 
+  // Method to clear logs
+  deleteLogs: (): Promise<{ status: string; message: string }> => {
+    return fetcher({
+      url: '/logs',
+      method: 'DELETE',
+    });
+  },
+
   getAgentCompletion: (
     agentId: string,
     senderId: string,
