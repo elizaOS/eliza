@@ -174,7 +174,7 @@ interface AgentLog {
  * 		getLogs: (level: string) => Promise<LogResponse>;
  * 		getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }) => Promise<{ success: boolean; data: AgentLog[] }>;
  * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
- * 		getAgentMemories: (agentId: UUID, roomId?: UUID) => Promise<any>;
+ * 		getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => Promise<any>;
  * 		deleteAgentMemory: (agentId: UUID, memoryId: string) => Promise<any>;
  * 		updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => Promise<any>;
  * 	}
@@ -404,6 +404,7 @@ export const apiClient = {
       method: 'GET',
     });
   },
+
   deleteLog: (agentId: string, logId: string): Promise<void> => {
     return fetcher({
       url: `/agents/${agentId}/logs/${logId}`,
@@ -412,10 +413,13 @@ export const apiClient = {
   },
 
   // Method to get all memories for an agent, optionally filtered by room
-  getAgentMemories: (agentId: UUID, roomId?: UUID) => {
+  getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => {
+    const params = new URLSearchParams();
+    if (tableName) params.append('tableName', tableName);
+
     const url = roomId
       ? `/agents/${agentId}/rooms/${roomId}/memories`
-      : `/agents/${agentId}/memories`;
+      : `/agents/${agentId}/memories${params.toString() ? `?${params.toString()}` : ''}`;
 
     return fetcher({
       url,
@@ -436,6 +440,21 @@ export const apiClient = {
       url: `/agents/${agentId}/memories/${memoryId}`,
       method: 'PATCH',
       body: memoryData,
+    });
+  },
+
+  // Method to upload knowledge for an agent
+  uploadKnowledge: async (agentId: string, files: File[]): Promise<any> => {
+    const formData = new FormData();
+
+    for (const file of files) {
+      formData.append('files', file);
+    }
+
+    return fetcher({
+      url: `/agents/${agentId}/memories/upload-knowledge`,
+      method: 'POST',
+      body: formData,
     });
   },
 };

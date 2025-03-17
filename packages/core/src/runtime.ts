@@ -577,12 +577,16 @@ export class AgentRuntime implements IAgentRuntime {
 
     const uniqueSources = [
       ...new Set(
-        fragments.map((memory) => {
-          this.runtimeLogger.debug(
-            `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
-          );
-          return memory.content.source;
-        })
+        fragments
+          .map((memory) => {
+            this.runtimeLogger.debug(
+              `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
+            );
+            return memory?.metadata?.type === MemoryType.FRAGMENT
+              ? memory?.metadata?.documentId
+              : undefined;
+          })
+          .filter(Boolean)
       ),
     ];
 
@@ -610,7 +614,7 @@ export class AgentRuntime implements IAgentRuntime {
       roomId: this.agentId,
       entityId: this.agentId,
       content: item.content,
-      metadata: {
+      metadata: item.metadata || {
         type: MemoryType.DOCUMENT,
         timestamp: Date.now(),
       },
@@ -659,11 +663,37 @@ export class AgentRuntime implements IAgentRuntime {
           item.slice(0, 100)
         );
 
+        // Extract metadata from the knowledge item
+        let metadata: MemoryMetadata = {
+          type: MemoryType.DOCUMENT,
+          timestamp: Date.now(),
+        };
+
+        const pathMatch = item.match(/^Path: (.+?)(?:\n|\r\n)/);
+        if (pathMatch) {
+          const filePath = pathMatch[1].trim();
+          const extension = filePath.split('.').pop() || '';
+          const filename = filePath.split('/').pop() || '';
+          const title = filename.replace(`.${extension}`, '');
+
+          metadata = {
+            ...metadata,
+            path: filePath,
+            filename: filename,
+            fileExt: extension,
+            title: title,
+            fileType: `text/${extension || 'plain'}`,
+            fileSize: item.length,
+            source: 'character',
+          };
+        }
+
         await this.addKnowledge({
           id: knowledgeId,
           content: {
             text: item,
           },
+          metadata,
         });
       } catch (error) {
         await this.handleProcessingError(error, 'processing character knowledge');
