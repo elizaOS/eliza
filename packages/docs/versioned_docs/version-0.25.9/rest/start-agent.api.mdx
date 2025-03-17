@@ -1,0 +1,439 @@
+---
+id: start-agent
+title: "Start a new agent"
+description: "Starts a new agent using either a character path or JSON configuration"
+sidebar_label: "Start a new agent"
+hide_title: true
+hide_table_of_contents: true
+api: eJytVk2T2kYQ/StdfYldJQPlJIfoRpw94KS8lMGnhUMjNdJ4RzPamREsofTfXT0SC+wSxy6WCxJ0v9ff3XsMVHhM75AKNsHjMsGcfeZUHZQ1mOIskAseCAxvIQpB45UpgFUo2QFBVpKjLLCDmkIJ1sHH2e0nyKxZq6JxFIEStDV3z5McU/QCOxY4TNDxQ8M+/GnzHab7+Koc55gG13CCmTVBBNM9Ul1rlUWY4VcvBu7RZyVXJE/W8O0a07s9hl3NmKJdfeXswNBB3uGTvVMKJS7b5AfFPwrfsl22bduKiK+t8eyF+P1oJF/nkYveQXSUc/BNlrH360brHf6ET89Nq50EMqiOWOUnMj44ZQpMcG1dRQFTbBqV4/OMTv4Cu4ZQ8pNtMa3YJkdfLzGfBsVQxVIr11vzxaiHhkHlbIJaK3awti5adzSmTTrCC+DnYJ+o4oNzZ+qVzVlPnd2o/My5/8CZlwxRBepeB4KFxjO84UExSGAh5WxILVCeyYTS2VplC3wrbCtl/59jVloXYKVs4agudxfN1tadek3OkRSPClz5lwztc4qbx8Am5xwEB8jksKLsvnC2MTko0yVGRCVC7D0VfPNIVa3ZX8UaIaBH9DGhxyERHCnTK9bWh1dkFLjv0QXJ0TVE8whwnidQHu6N3WrOC6aVZqCVbWI7US6tozZXOTdl560hrcIuOhP8xVJ5MuEKqr8PGLAiz5cbsdZNocxVDnUI0k45rHYvKTyHoEzhLw2hc6gPB7V3vuZMrVUGT8oCFHaafwLlFw+ZrarG9OMYOgBB2vnA1Q80dZSTqVHV4VIApQpVEKuOtNi23U757dIamZgNaSX9WjcB3pxuW9ctYuese/t6OyXiXcjjwcqKQ2llh0u7ibas0RSHcYsM405BSaLbsPNxGzdOY4plCHU6HGqbkS6tD+mvo9HoRQT/kb8h5w1rW1dxg0YkbJcJiiufj8dC3/di6/lSPy0+mXPRmz7sN1r9S3A7g/F08oJ9PJ1AbrNGiLsSkBw+qbyDMaw1P6rY5iYHn5GOPT+e9MfR2lHFW+vuBwuzMPNSeSGSIZGzV4XhXFbJirvy36pQAkGMid6Ba4zMqp5QGR/IZDyAG5PXVhm5w7S2227EOSap9AQWpiJDRXymONkDSzAEKRIcjJPJ5WxTCOXnm9m8k1xTxgNMUNLVRWE0eP/74I++oiiLFdUt4GP0PnSNEqTzj/n16XBYqFA2q0FmqyGLtPXddyx+qZmKzAliPDBP78vnSdkfC/v1rtG+tgM/hmGtScUdGP3Y9wXdn8RSyrGklwlK1cof+73Mxy9Ot638/NCw22F6t0xwQ05JPchbm2DJFO+Nuz3e8056vvPk3VzoRVw3cYQ+b1c5SjuNcZZxHb4ruzzpyentbI4JrvpTWo4YTNHRVg442mKK8RQX7djs8bc9ajJFQ7I8sMOUzzcJEjvP
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import ApiTabs from "@theme/ApiTabs";
+import DiscriminatorTabs from "@theme/DiscriminatorTabs";
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import SecuritySchemes from "@theme/ApiExplorer/SecuritySchemes";
+import MimeTabs from "@theme/MimeTabs";
+import ParamsItem from "@theme/ParamsItem";
+import ResponseSamples from "@theme/ResponseSamples";
+import SchemaItem from "@theme/SchemaItem";
+import SchemaTabs from "@theme/SchemaTabs";
+import Heading from "@theme/Heading";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Start a new agent"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/agent/start"}
+>
+  
+</MethodEndpoint>
+
+
+
+Starts a new agent using either a character path or JSON configuration
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<MimeTabs
+  className={"openapi-tabs__mime"}
+>
+  <TabItem
+    label={"application/json"}
+    value={"application/json-schema"}
+  >
+    <details
+      style={{}}
+      className={"openapi-markdown__details mime"}
+      data-collapsed={false}
+      open={true}
+    >
+      <summary
+        style={{}}
+        className={"openapi-markdown__details-summary-mime"}
+      >
+        <h3
+          className={"openapi-markdown__details-summary-header-body"}
+        >
+          Body
+        </h3><strong
+          className={"openapi-schema__required"}
+        >
+          required
+        </strong>
+      </summary><div
+        style={{"textAlign":"left","marginLeft":"1rem"}}
+      >
+        
+      </div><ul
+        style={{"marginLeft":"1rem"}}
+      >
+        <div>
+          <span
+            className={"badge badge--info"}
+            style={{"marginBottom":"1rem"}}
+          >
+            oneOf
+          </span><SchemaTabs>
+            <TabItem
+              label={"MOD1"}
+              value={"0-item-properties"}
+            >
+              <SchemaItem
+                collapsible={false}
+                name={"characterPath"}
+                required={true}
+                schemaName={"string"}
+                qualifierMessage={undefined}
+                schema={{"type":"string","description":"Path to a character file"}}
+              >
+                
+              </SchemaItem>
+            </TabItem><TabItem
+              label={"MOD2"}
+              value={"1-item-properties"}
+            >
+              <SchemaItem
+                collapsible={false}
+                name={"characterJson"}
+                required={true}
+                schemaName={"object"}
+                qualifierMessage={undefined}
+                schema={{"type":"object","description":"Character configuration in JSON format"}}
+              >
+                
+              </SchemaItem>
+            </TabItem>
+          </SchemaTabs>
+        </div>
+      </ul>
+    </details>
+  </TabItem>
+</MimeTabs><div>
+  <div>
+    <ApiTabs
+      label={undefined}
+      id={undefined}
+    >
+      <TabItem
+        label={"200"}
+        value={"200"}
+      >
+        <div>
+          
+          
+          Agent started successfully
+          
+          
+        </div><div>
+          <MimeTabs
+            className={"openapi-tabs__mime"}
+            schemaType={"response"}
+          >
+            <TabItem
+              label={"application/json"}
+              value={"application/json"}
+            >
+              <SchemaTabs
+                className={"openapi-tabs__schema"}
+              >
+                <TabItem
+                  label={"Schema"}
+                  value={"Schema"}
+                >
+                  <details
+                    style={{}}
+                    className={"openapi-markdown__details response"}
+                    data-collapsed={false}
+                    open={true}
+                  >
+                    <summary
+                      style={{}}
+                      className={"openapi-markdown__details-summary-response"}
+                    >
+                      <strong>
+                        Schema
+                      </strong>
+                    </summary><div
+                      style={{"textAlign":"left","marginLeft":"1rem"}}
+                    >
+                      
+                    </div><ul
+                      style={{"marginLeft":"1rem"}}
+                    >
+                      <SchemaItem
+                        collapsible={false}
+                        name={"id"}
+                        required={false}
+                        schemaName={"uuid"}
+                        qualifierMessage={undefined}
+                        schema={{"type":"string","format":"uuid","description":"ID of the started agent"}}
+                      >
+                        
+                      </SchemaItem><SchemaItem
+                        collapsible={true}
+                        className={"schemaItem"}
+                      >
+                        <details
+                          style={{}}
+                          className={"openapi-markdown__details"}
+                        >
+                          <summary
+                            style={{}}
+                          >
+                            <span
+                              className={"openapi-schema__container"}
+                            >
+                              <strong
+                                className={"openapi-schema__property"}
+                              >
+                                character
+                              </strong><span
+                                className={"openapi-schema__name"}
+                              >
+                                 object
+                              </span>
+                            </span>
+                          </summary><div
+                            style={{"marginLeft":"1rem"}}
+                          >
+                            <SchemaItem
+                              collapsible={false}
+                              name={"id"}
+                              required={false}
+                              schemaName={"uuid"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"string","format":"uuid","description":"Unique identifier for the character"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"name"}
+                              required={true}
+                              schemaName={"string"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"string","description":"Name of the character"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"modelProvider"}
+                              required={false}
+                              schemaName={"string"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"string","description":"The model provider to use (e.g., \"openai\", \"anthropic\")"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"bio"}
+                              required={false}
+                              schemaName={"string"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"string","description":"Short biography of the character"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"lore"}
+                              required={false}
+                              schemaName={"string[]"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"array","items":{"type":"string"},"description":"Extended lore and background information"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"messageExamples"}
+                              required={false}
+                              schemaName={"string[]"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"array","items":{"type":"string"},"description":"Example messages for character training"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"postExamples"}
+                              required={false}
+                              schemaName={"string[]"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"array","items":{"type":"string"},"description":"Example posts for character training"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"topics"}
+                              required={false}
+                              schemaName={"string[]"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"array","items":{"type":"string"},"description":"Topics the character is knowledgeable about"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"adjectives"}
+                              required={false}
+                              schemaName={"string[]"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"array","items":{"type":"string"},"description":"Personality traits of the character"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"knowledge"}
+                              required={false}
+                              schemaName={"string[]"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"array","items":{"type":"string"},"description":"Knowledge base for the character"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"plugins"}
+                              required={false}
+                              schemaName={"string[]"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"array","items":{"type":"string"},"description":"Plugins used by the character"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"settings"}
+                              required={false}
+                              schemaName={"object"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"object","description":"Character-specific settings"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"style"}
+                              required={false}
+                              schemaName={"object"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"object","description":"Character's communication style"}}
+                            >
+                              
+                            </SchemaItem><SchemaItem
+                              collapsible={false}
+                              name={"system"}
+                              required={false}
+                              schemaName={"string"}
+                              qualifierMessage={undefined}
+                              schema={{"type":"string","description":"System prompt for the character"}}
+                            >
+                              
+                            </SchemaItem>
+                          </div>
+                        </details>
+                      </SchemaItem>
+                    </ul>
+                  </details>
+                </TabItem><TabItem
+                  label={"Example (from schema)"}
+                  value={"Example (from schema)"}
+                >
+                  <ResponseSamples
+                    responseExample={"{\n  \"id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n  \"character\": {\n    \"id\": \"3fa85f64-5717-4562-b3fc-2c963f66afa6\",\n    \"name\": \"string\",\n    \"modelProvider\": \"string\",\n    \"bio\": \"string\",\n    \"lore\": [\n      \"string\"\n    ],\n    \"messageExamples\": [\n      \"string\"\n    ],\n    \"postExamples\": [\n      \"string\"\n    ],\n    \"topics\": [\n      \"string\"\n    ],\n    \"adjectives\": [\n      \"string\"\n    ],\n    \"knowledge\": [\n      \"string\"\n    ],\n    \"plugins\": [\n      \"string\"\n    ],\n    \"settings\": {},\n    \"style\": {},\n    \"system\": \"string\"\n  }\n}"}
+                    language={"json"}
+                  >
+                    
+                  </ResponseSamples>
+                </TabItem>
+              </SchemaTabs>
+            </TabItem>
+          </MimeTabs>
+        </div>
+      </TabItem><TabItem
+        label={"400"}
+        value={"400"}
+      >
+        <div>
+          
+          
+          Invalid input (character parsing error)
+          
+          
+        </div><div>
+          <MimeTabs
+            className={"openapi-tabs__mime"}
+            schemaType={"response"}
+          >
+            <TabItem
+              label={"application/json"}
+              value={"application/json"}
+            >
+              <SchemaTabs
+                className={"openapi-tabs__schema"}
+              >
+                <TabItem
+                  label={"Schema"}
+                  value={"Schema"}
+                >
+                  <details
+                    style={{}}
+                    className={"openapi-markdown__details response"}
+                    data-collapsed={false}
+                    open={true}
+                  >
+                    <summary
+                      style={{}}
+                      className={"openapi-markdown__details-summary-response"}
+                    >
+                      <strong>
+                        Schema
+                      </strong>
+                    </summary><div
+                      style={{"textAlign":"left","marginLeft":"1rem"}}
+                    >
+                      
+                    </div><ul
+                      style={{"marginLeft":"1rem"}}
+                    >
+                      <SchemaItem
+                        collapsible={false}
+                        name={"error"}
+                        required={false}
+                        schemaName={"string"}
+                        qualifierMessage={undefined}
+                        schema={{"type":"string"}}
+                      >
+                        
+                      </SchemaItem>
+                    </ul>
+                  </details>
+                </TabItem><TabItem
+                  label={"Example (from schema)"}
+                  value={"Example (from schema)"}
+                >
+                  <ResponseSamples
+                    responseExample={"{\n  \"error\": \"string\"\n}"}
+                    language={"json"}
+                  >
+                    
+                  </ResponseSamples>
+                </TabItem>
+              </SchemaTabs>
+            </TabItem>
+          </MimeTabs>
+        </div>
+      </TabItem>
+    </ApiTabs>
+  </div>
+</div>
+      

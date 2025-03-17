@@ -40,7 +40,7 @@ Eliza can be used to create:
 
 ## Architecture
 
-![](/img/eliza-architecture.jpg)
+[![](/img/architecture.png)](/img/architecture.png)
 Source: https://x.com/0xCygaar/status/1874575841763770492
 
 The characterfile contains everything about the agent's personality, backstory, knowledge, and topics to talk about, as well as which clients / models / and plugins to load. The database is where an agent stores relevant info for generating responses, including previous tweets, interactions, and embeddings. Without a db, agent's wouldn't be able to give good responses.
@@ -77,8 +77,6 @@ npx elizaos start
 
 Visit https://localhost:3000 to interact with your agent through a web interface.
 
-````
-
 #### 2. Create Your Own Project
 
 ```bash
@@ -90,7 +88,7 @@ cd my-project-name
 
 # Start your project
 npx elizaos start
-````
+```
 
 Add plugins to your project:
 

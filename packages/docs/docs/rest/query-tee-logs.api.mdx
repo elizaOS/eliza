@@ -1,0 +1,71 @@
+---
+id: query-tee-logs
+title: "Query TEE logs"
+description: "Queries logs from the Trusted Execution Environment"
+sidebar_label: "Query TEE logs"
+hide_title: true
+hide_table_of_contents: true
+api: eJytVktv2zgQ/ivEnOVXHu6ubtmuDwEKNG28pySHsTSS2FKkSo6cuIb++2IoO5YTo8kuqoss8hvO65vP3AJjGSC9AyaCBIwrAzwkkFPIvG5YOwspfGnJawpKdlXhXa24IrX0bWDK1eKJslaQamHX2jtbk2VIwDXkUdavc0jhR0t+syT6JB4S8PSjpcB/uXwD6TZ+ak85pOxbSiBzluWUdAvYNEZn8aDJtyDxbCFkFdUov3jTEKTgVt8oE6eNF7esKchudPo2DEuyLFE+AwN7bUtIoHC+RoYU2lbn0CXgnavfCSXLmjfvBPeAl8CuLwVqGz4eSvIKExg9L3VNgbFuBhBtmUryQ4fa8vyiDy//byZdl0CDJZ0E51RgaxjS2Q51q3++hZx28RE2hMbZ0HfjbDqV1zEFl4tFT79HzZVCZok77v02skTun0AdB/LJlSrSSnkKreEgpRzGc6LZr1MZGuyLcHkq74X3zitP7DWttS3VvhC/L+/QZhmFYeor5wyhlJaesG4MQVqgCSSkkXjePjNz+Qk2v6xEn1zEdgnUFMIxu35ptod3ss2oTXjb8u8IpFzFNJS2PcX3XUiANUu2vQvYNaYmrpxoWONCTBW5ghQm2OgJE0127Qjk1+RFTLfQegMpVMxNOpkYl6GpXOD0fDqdnmBUhkbltCbjGtFO1Z8E3UMC0syvB61c7Psx0LZn9YLzAv+4LOYXo8sPsw+ji8v52Wh1XmSjs+zP+Xkxn2OBczhI2HvxBx17r8XLLrzSsMPWS+mavhSm6bPqzIbCMpN1aWDs+r5tRv9E9flWXd1cv6rz1c21yl3WSoljz1XhvHo2Wc/G0/F0hKapUI3UlSoMPemVIYU2VyFDg/Jxda1iwVXhsaZH57+P7+29XVY6iFelg8op6NJSrtipFak2UL6TLRWpYDbKt9bKNPfetQ2MNqOxWti8cdpyUGiMe4wRZp6QtS2Te1ujxVJ+xphEUj1mstefv48tKK68a0vx+HVxu+yRBWY0hgSEpH1FBhnvm5RFObFYH5Xzo6vr1mreQDKgdkgnk1Jz1a7GmasnJGgX+jfEPwsXuEY7OPFLVM6Bhh21aHuQtP9559gRj+mJJ41BbUUeYsTb3djeATZakEf3HZlO2dtuVxjoH2+6TpZ3M3b3kMAavRYCyFeXQEWYk4+z/p02kMKO2qOlRCBw00okr4S5S/YWV1lGDf8S+zAQn5vPt0tIYLW7MdVRYcHjo0w0PkIK8c4l1lEJ49oWDNqyjeMD/Zny/AtEd2bl
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Query TEE logs"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/tee/logs"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Queries logs from the Trusted Execution Environment
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={undefined}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"query":{"type":"object","properties":{"agentId":{"type":"string","format":"uuid"},"roomId":{"type":"string","format":"uuid"},"entityId":{"type":"string","format":"uuid"},"type":{"type":"string"},"containsContent":{"type":"string"},"startTimestamp":{"type":"integer","format":"int64"},"endTimestamp":{"type":"integer","format":"int64"}}},"page":{"type":"integer","default":1},"pageSize":{"type":"integer","default":10}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"TEE logs with attestation","content":{"application/json":{"schema":{"type":"object","properties":{"logs":{"type":"object","description":"Log query results"},"attestation":{"type":"string","description":"TEE attestation"}}}}}},"500":{"description":"Error retrieving TEE logs","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

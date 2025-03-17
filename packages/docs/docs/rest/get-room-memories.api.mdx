@@ -1,0 +1,71 @@
+---
+id: get-room-memories
+title: "Get room memories"
+description: "Retrieves memories for a specific room"
+sidebar_label: "Get room memories"
+hide_title: true
+hide_table_of_contents: true
+api: eJztWN9v2zYQ/leIe9kGqJHXZXvQm9FkhYEVK5L0qc3DWTpLbChSJak4nqH/vThSstTYddwWyB62IIB/6Hjfd3ffkTxvwWPpIHsPNdXGSnKQgDWm5lcsSXsHtwkU5HIrGy+NhgyuyFtJ9+TEsEisjBUoXEO5XMlcsAdIwDRkkRctCsigJH9lTP1mBGrQYk2eLDPYgsaaIIuwiwISkIzWoK+YFH1qpaUCMm9bSsDlFdUI2Rb8puFlzlupS0hgZWyNHjJoW1lA95j94kKYlfAViQAEXbJDZtrPARzSM8FVspZ+gP3Ukt3AARypPZVkgf2usFUespezPZQ3+CDrtha6rZdkGXFXJG+EJd9aPcVe0spYOhl8D+8qeBxBckvoqRDRr/CVdMLLmpzHupkCr41VxZjtryKfmt4/pfJkRyLLjQgQYnEB3S3X0TVGO3Ls++Vsxi+PQjGmFpM+yI32rJBsC9g0SuZBy+lHx9bbfaZm+ZFyrmNjWfleRizX5jk5NzFcGqMINSRAD1g3iqK2OCT0J3jccRwt0Vrk9ElPtXvagyyezvDjBL/T8lNLQhakvVxJsqHrWc+Bz4ZLwo/8ZvEd3sfuiD4EOmdyGbS0lr6KShqRhl3iB4CCi6dw+j3hB2DYw9SrWJIyuuR+ZIC+Yeb+YKvvQKT2f5wfqsnD2F5iXZGeVESscdeQAWoU9HF5eHrwh0L+EvyGHrzofQ7B1uQclsRovjJtWZ3gZ851+MkJjtpqVKJfKRprQud0CTQK9eme2FoYKyyhM5otWTE5W53SNL33vS1mHj1MxLNG7cPG6vEuBO1Ma3N6mul1sDuQNamvqFGbG/Mjkuv9RdXxvxaWvQbJcWmk500HXvWCmH73ppf+8JfA+aHNcqHvUcmizwND26j0xcUzb50rVI73TrLW2Kd95qY4oT6X7EwE2y6BoT4nLpuUsyCPUh0Q1+OVF8GQChHCEFLHWvPDWIWhPgEChsqc71cmNMGuHNp4sTKtLv6vynNV5fdD/RI52Hh1lrr8ty4a/9m6BGK+Mv0oEsYPX0EGKTYyjbNOuu2vFV0ahqB0G4//Lp1Uy5G9H0aW1irIoPK+ydJUmRxVZZzPfpvNZnuc/+LHoqB7UqapuUejp3A75QhC2ANvJf9B8fe1mL9d7B9zbxeiMHnLTkLQ4Sa2W3L/69nsbPYCVVOheCHmYqXoQS4VCdSFcDkq5A/zRb95r3gKWxt7d/ZBf9A3fGYwgnSiICdLTQWfcEsSrRsuSShCsGojbKv5gO3RpXYedU5n4lIXjZF8OqJSZh0YhquI1GXyQdeoseS3gVM4+fl81mX0P3Djs9byZUCguLq8vomWK8zpDBLgMsSMTCLu+wnz0E/9sLHLzStT162Wno/9sXguS9NS+qpdnuWmTomtjYuv4XBsjPN1vIH0Hl+TjxvsRBlfVGk7tvXpE3Over5/pY1CyaNa5Lnt5foesJHjcJ5ANs7Lw+Ce7QbZHbnbBFiZvH67XaKjd1Z1HX8dBy8WcyEdC6PoN4kj8Zw0ZH4lmjvaTEbee1Qt24TJ8HQC3zZ1HmWyG4C/k8qxufMo8DgAj8i3/MFKhv7Gkvx81f9O8Yt4/AvHV1gMl2C9mVIY2A2q+rZkHGRxTNvHSfQ67m67BCrCgmzISnw4z3NqphraOzs5nbs9//XlDXTdZ0YyjNg=
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get room memories"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/agents/{agentId}/rooms/{roomId}/memories"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Retrieves memories for a specific room
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"roomId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the room"},{"name":"limit","in":"query","schema":{"type":"integer","default":20},"description":"Maximum number of memories to return"},{"name":"before","in":"query","schema":{"type":"integer"},"description":"Return memories created before this timestamp"},{"name":"worldId","in":"query","schema":{"type":"string","format":"uuid"},"description":"Filter memories by world ID"}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Room memories","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"memories":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the memory"},"entityId":{"type":"string","format":"uuid","description":"ID of the entity associated with this memory"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent associated with this memory"},"roomId":{"type":"string","format":"uuid","description":"ID of the room this memory belongs to"},"createdAt":{"type":"integer","format":"int64","description":"Unix timestamp when the memory was created"},"content":{"type":"object","properties":{"text":{"type":"string","description":"Text content of the message"},"thought":{"type":"string","description":"Agent's internal thought process"},"plan":{"type":"string","description":"Agent's plan or reasoning"},"actions":{"type":"array","items":{"type":"string"},"description":"Actions the agent wants to take"},"source":{"type":"string","description":"Source of the message"},"inReplyTo":{"type":"string","format":"uuid","description":"ID of the message this is in reply to"}},"title":"Content"}},"title":"Memory"}}}}}}}}},"400":{"description":"Invalid agent ID or room ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent or room not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error retrieving memories","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      
