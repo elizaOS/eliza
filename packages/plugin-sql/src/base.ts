@@ -1369,7 +1369,16 @@ export abstract class BaseDrizzleAdapter<
    * @param {Room} room - The room object to create.
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created room.
    */
-  async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
+  async createRoom({
+    id,
+    name,
+    source,
+    type,
+    channelId,
+    serverId,
+    worldId,
+    metadata,
+  }: Room): Promise<UUID> {
     return this.withDatabase(async () => {
       const newRoomId = id || v4();
       await this.db
@@ -1383,6 +1392,7 @@ export abstract class BaseDrizzleAdapter<
           channelId,
           serverId,
           worldId,
+          metadata,
         })
         .onConflictDoNothing({ target: roomTable.id });
       return newRoomId as UUID;

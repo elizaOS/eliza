@@ -184,7 +184,9 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
                   if (selectedAgentIds.length > 0) {
                     await Promise.all(
                       selectedAgentIds.map(async (agentId) => {
-                        await apiClient.createRoom(agentId, chatName, 'client_group_chat');
+                        await apiClient.createRoom(agentId, chatName, 'client_group_chat', {
+                          thumbnail: avatar,
+                        });
                       })
                     );
                   }
