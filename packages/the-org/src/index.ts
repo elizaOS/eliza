@@ -42,7 +42,7 @@ function hasRequiredEnvVars(agent: any): boolean {
         }
       } else {
         // If it's a direct value, it's already available
-        logger.info(`Agent "${agent.character.name}" has direct Discord Application ID value`);
+        logger.debug(`Agent "${agent.character.name}" has direct Discord Application ID value`);
       }
     } else {
       logger.warn(`Agent "${agent.character.name}" missing DISCORD_APPLICATION_ID configuration`);
@@ -60,7 +60,7 @@ function hasRequiredEnvVars(agent: any): boolean {
         }
       } else {
         // If it's a direct value, it's already available
-        logger.info(`Agent "${agent.character.name}" has direct Discord API Token value`);
+        logger.debug(`Agent "${agent.character.name}" has direct Discord API Token value`);
       }
     } else {
       logger.warn(`Agent "${agent.character.name}" missing DISCORD_API_TOKEN configuration`);
@@ -89,7 +89,7 @@ function hasRequiredEnvVars(agent: any): boolean {
         }
       } else {
         // If it's a direct value, it's already available
-        logger.info(`Agent "${agent.character.name}" has direct Telegram Bot Token value`);
+        logger.debug(`Agent "${agent.character.name}" has direct Telegram Bot Token value`);
       }
     } else {
       logger.warn(`Agent "${agent.character.name}" missing TELEGRAM_BOT_TOKEN configuration`);
@@ -124,7 +124,7 @@ function hasRequiredEnvVars(agent: any): boolean {
   }
 
   // If at least one platform is configured, the agent can run
-  logger.info(`Agent "${agent.character.name}" enabled with all required environment variables`);
+  logger.debug(`Agent "${agent.character.name}" enabled with all required environment variables`);
   return true;
 }
 

@@ -6,6 +6,7 @@ import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
 import { ChannelType, MemoryType, ModelType } from './types';
+
 // Import types with the 'type' keyword
 import type {
   Action,
@@ -65,26 +66,6 @@ interface NamespacedSettings {
  */
 let environmentSettings: Settings = {};
 
-// Use a self-executing function to load dotenv synchronously in Node.js environments
-// This way we avoid top-level await and have immediate access to environment variables
-const dotenvLoader = (() => {
-  // Skip in browser environments
-  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-    return { config: () => ({ error: null }) };
-  }
-
-  try {
-    // Direct import/require works in CommonJS
-    // In ESM, this will be transformed appropriately by bundlers/transpilers
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return typeof require !== 'undefined' ? require('dotenv') : { config: () => ({ error: null }) };
-  } catch (e) {
-    logger.warn('Could not load dotenv module:', e);
-    // Return a mock implementation if loading fails
-    return { config: () => ({ error: null }) };
-  }
-})();
-
 /**
  * Loads environment variables from the nearest .env file in Node.js
  * or returns configured settings in browser
@@ -94,6 +75,18 @@ export function loadEnvConfig(): Settings {
   // For browser environments, return the configured settings
   if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
     return environmentSettings;
+  }
+
+  // Only import dotenv in Node.js environment
+  let dotenv = null;
+  try {
+    // This code block will only execute in Node.js environments
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      dotenv = require('dotenv');
+    }
+  } catch (err) {
+    // Silently fail if require is not available (e.g., in browser environments)
+    logger.debug('dotenv module not available');
   }
 
   function findNearestEnvFile(startDir = process.cwd()) {
@@ -121,9 +114,11 @@ export function loadEnvConfig(): Settings {
 
   // Load the .env file into process.env synchronously
   try {
-    const result = dotenvLoader.config(envPath ? { path: envPath } : {});
-    if (!result.error && envPath) {
-      logger.log(`Loaded .env file from: ${envPath}`);
+    if (dotenv) {
+      const result = dotenv.config(envPath ? { path: envPath } : {});
+      if (!result.error && envPath) {
+        logger.log(`Loaded .env file from: ${envPath}`);
+      }
     }
   } catch (err) {
     logger.warn('Failed to load .env file:', err);
@@ -256,9 +251,14 @@ export class AgentRuntime implements IAgentRuntime {
       opts.character?.id ?? opts?.agentId ?? stringToUuid(opts.character?.name ?? uuidv4());
     this.character = opts.character;
 
+    // Get log level from environment or default to info
+    const logLevel = process.env.LOG_LEVEL || 'info';
+
+    // Create the logger with appropriate level - only show debug logs when explicitly configured
     this.runtimeLogger = logger.child({
       agentName: this.character?.name,
       agentId: this.agentId,
+      level: logLevel === 'debug' ? 'debug' : 'error', // Show only errors unless debug mode is enabled
     });
 
     this.runtimeLogger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
@@ -288,7 +288,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
 
-    this.runtimeLogger.success(`Agent ID: ${this.agentId}`);
+    this.runtimeLogger.debug(`Success: Agent ID: ${this.agentId}`);
   }
 
   /**
@@ -306,14 +306,14 @@ export class AgentRuntime implements IAgentRuntime {
     if (!this.plugins.some((p) => p.name === plugin.name)) {
       // Push to plugins array - this works because we're modifying the array, not reassigning it
       this.plugins.push(plugin);
-      this.runtimeLogger.success(`Plugin ${plugin.name} registered successfully`);
+      this.runtimeLogger.debug(`Success: Plugin ${plugin.name} registered successfully`);
     }
 
     // Initialize the plugin if it has an init function
     if (plugin.init) {
       try {
         await plugin.init(plugin.config || {}, this);
-        this.runtimeLogger.success(`Plugin ${plugin.name} initialized successfully`);
+        this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
       } catch (error) {
         // Check if the error is related to missing API keys
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -404,7 +404,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Stop all registered clients
     for (const [serviceName, service] of this.services) {
-      this.runtimeLogger.log(`runtime::stop - requesting service stop for ${serviceName}`);
+      this.runtimeLogger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
       await service.stop();
     }
   }
@@ -466,7 +466,9 @@ export class AgentRuntime implements IAgentRuntime {
           throw new Error(`Failed to create entity for agent ${this.agentId}`);
         }
 
-        this.runtimeLogger.success(`Agent entity created successfully for ${this.character.name}`);
+        this.runtimeLogger.debug(
+          `Success: Agent entity created successfully for ${this.character.name}`
+        );
       }
     } catch (error) {
       this.runtimeLogger.error(
@@ -502,7 +504,7 @@ export class AgentRuntime implements IAgentRuntime {
         if (!added) {
           throw new Error(`Failed to add agent ${this.agentId} as participant to its own room`);
         }
-        this.runtimeLogger.success(
+        this.runtimeLogger.debug(
           `Agent ${this.character.name} linked to its own room successfully`
         );
       }
@@ -577,7 +579,7 @@ export class AgentRuntime implements IAgentRuntime {
       ...new Set(
         fragments
           .map((memory) => {
-            this.runtimeLogger.log(
+            this.runtimeLogger.debug(
               `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
             );
             return memory?.metadata?.type === MemoryType.FRAGMENT
@@ -654,7 +656,7 @@ export class AgentRuntime implements IAgentRuntime {
           return;
         }
 
-        this.runtimeLogger.info(
+        this.runtimeLogger.debug(
           'Processing knowledge for ',
           this.character.name,
           ' - ',
@@ -744,7 +746,7 @@ export class AgentRuntime implements IAgentRuntime {
       );
     } else {
       this.adapter = adapter;
-      this.runtimeLogger.success('Database adapter registered successfully.');
+      this.runtimeLogger.debug('Success: Database adapter registered successfully.');
     }
   }
 
@@ -754,7 +756,7 @@ export class AgentRuntime implements IAgentRuntime {
    */
   registerProvider(provider: Provider) {
     this.providers.push(provider);
-    this.runtimeLogger.success(`Provider ${provider.name} registered successfully.`);
+    this.runtimeLogger.debug(`Success: Provider ${provider.name} registered successfully.`);
   }
 
   /**
@@ -772,7 +774,7 @@ export class AgentRuntime implements IAgentRuntime {
       );
     } else {
       this.actions.push(action);
-      this.runtimeLogger.success(
+      this.runtimeLogger.debug(
         `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
       );
     }
@@ -818,14 +820,14 @@ export class AgentRuntime implements IAgentRuntime {
       function normalizeAction(action: string) {
         return action.toLowerCase().replace('_', '');
       }
-      this.runtimeLogger.success(
+      this.runtimeLogger.debug(
         `Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`
       );
 
       for (const responseAction of actions) {
         state = await this.composeState(message, ['RECENT_MESSAGES']);
 
-        this.runtimeLogger.success(`Calling action: ${responseAction}`);
+        this.runtimeLogger.debug(`Success: Calling action: ${responseAction}`);
         const normalizedResponseAction = normalizeAction(responseAction);
         let action = this.actions.find(
           (a: { name: string }) =>
@@ -834,13 +836,9 @@ export class AgentRuntime implements IAgentRuntime {
         );
 
         if (action) {
-          this.runtimeLogger.success(`Found action: ${action?.name}`);
+          this.runtimeLogger.debug(`Success: Found action: ${action?.name}`);
         } else {
-          this.runtimeLogger.error(`No action found for: ${responseAction}`);
-        }
-
-        if (!action) {
-          this.runtimeLogger.info('Attempting to find action in similes.');
+          this.runtimeLogger.debug('Attempting to find action in similes.');
           for (const _action of this.actions) {
             const simileAction = _action.similes?.find(
               (simile) =>
@@ -849,14 +847,14 @@ export class AgentRuntime implements IAgentRuntime {
             );
             if (simileAction) {
               action = _action;
-              this.runtimeLogger.success(`Action found in similes: ${action.name}`);
+              this.runtimeLogger.debug(`Success: Action found in similes: ${action.name}`);
               break;
             }
           }
         }
 
         if (!action) {
-          this.runtimeLogger.error('No action found in', JSON.stringify(response));
+          this.runtimeLogger.error(`No action found for: ${responseAction}`);
           continue;
         }
 
@@ -866,11 +864,11 @@ export class AgentRuntime implements IAgentRuntime {
         }
 
         try {
-          this.runtimeLogger.info(`Executing handler for action: ${action.name}`);
+          this.runtimeLogger.debug(`Executing handler for action: ${action.name}`);
 
           await action.handler(this, message, state, {}, callback, responses);
 
-          this.runtimeLogger.success(`Action ${action.name} executed successfully.`);
+          this.runtimeLogger.debug(`Success: Action ${action.name} executed successfully.`);
 
           // log to database
           this.adapter.log({
@@ -1087,7 +1085,9 @@ export class AgentRuntime implements IAgentRuntime {
       // Always add the agent to the room
       await this.ensureParticipantInRoom(this.agentId, roomId);
 
-      this.runtimeLogger.success(`Successfully connected entity ${entityId} in room ${roomId}`);
+      this.runtimeLogger.debug(
+        `Success: Successfully connected entity ${entityId} in room ${roomId}`
+      );
     } catch (error) {
       this.runtimeLogger.error(
         `Failed to ensure connection: ${error instanceof Error ? error.message : String(error)}`
@@ -1126,11 +1126,11 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       if (entityId === this.agentId) {
-        this.runtimeLogger.log(
+        this.runtimeLogger.debug(
           `Agent ${this.character.name} linked to room ${roomId} successfully.`
         );
       } else {
-        this.runtimeLogger.log(`User ${entityId} linked to room ${roomId} successfully.`);
+        this.runtimeLogger.debug(`User ${entityId} linked to room ${roomId} successfully.`);
       }
     }
   }
@@ -1155,11 +1155,10 @@ export class AgentRuntime implements IAgentRuntime {
    * Ensure the existence of a world.
    */
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
-    console.trace('ensureWorldExists');
     // try {
     const world = await this.getWorld(id);
     if (!world) {
-      this.runtimeLogger.info('Creating world:', {
+      this.runtimeLogger.debug('Creating world:', {
         id,
         name,
         serverId,
@@ -1172,7 +1171,7 @@ export class AgentRuntime implements IAgentRuntime {
         serverId: serverId || 'default',
         metadata,
       });
-      this.runtimeLogger.info(`World ${id} created successfully.`);
+      this.runtimeLogger.debug(`World ${id} created successfully.`);
     }
     // } catch (error) {
     //   this.runtimeLogger.error(
@@ -1204,7 +1203,7 @@ export class AgentRuntime implements IAgentRuntime {
         serverId,
         worldId,
       });
-      this.runtimeLogger.log(`Room ${id} created successfully.`);
+      this.runtimeLogger.debug(`Room ${id} created successfully.`);
     }
   }
 
@@ -1261,7 +1260,7 @@ export class AgentRuntime implements IAgentRuntime {
         const start = Date.now();
         const result = await provider.get(this, message, cachedState);
         const duration = Date.now() - start;
-        this.runtimeLogger.warn(`${provider.name} Provider took ${duration}ms to respond`);
+        this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
         return {
           ...result,
           providerName: provider.name,
@@ -1342,7 +1341,7 @@ export class AgentRuntime implements IAgentRuntime {
     if (!serviceType) {
       return;
     }
-    this.runtimeLogger.log(
+    this.runtimeLogger.debug(
       `${this.character.name}(${this.agentId}) - Registering service:`,
       serviceType
     );
@@ -1358,7 +1357,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Add the service to the services map
     this.services.set(serviceType, serviceInstance);
-    this.runtimeLogger.success(
+    this.runtimeLogger.debug(
       `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
     );
   }
@@ -1433,7 +1432,7 @@ export class AgentRuntime implements IAgentRuntime {
     const elapsedTime = performance.now() - startTime;
 
     // Log timing
-    this.runtimeLogger.info(`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`);
+    this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`);
 
     // Log response
     this.runtimeLogger.debug(
@@ -1526,7 +1525,7 @@ export class AgentRuntime implements IAgentRuntime {
         `[AgentRuntime][${this.character.name}] Successfully set embedding dimension`
       );
     } catch (error) {
-      this.runtimeLogger.info(
+      this.runtimeLogger.debug(
         `[AgentRuntime][${this.character.name}] Error in ensureEmbeddingDimension:`,
         error
       );

@@ -98,7 +98,7 @@ export class TelegramTestSuite implements TestSuite {
     this.telegramClient = runtime.getService('telegram') as TelegramService;
     this.bot = this.telegramClient.messageManager.bot;
     this.messageManager = this.telegramClient.messageManager;
-    logger.success('Telegram bot initialized successfully.');
+    logger.debug('Telegram bot initialized successfully.');
   }
 
   async testSendingTextMessage(runtime: IAgentRuntime) {
@@ -107,7 +107,7 @@ export class TelegramTestSuite implements TestSuite {
 
       const chatId = this.validateChatId(runtime);
       await this.bot.telegram.sendMessage(chatId, 'Testing Telegram message!');
-      logger.success('Message sent successfully.');
+      logger.debug('Message sent successfully.');
     } catch (error) {
       throw new Error(`Error sending Telegram message: ${error}`);
     }

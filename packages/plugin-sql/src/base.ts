@@ -447,7 +447,7 @@ export abstract class BaseDrizzleAdapter<
           name: entity.metadata?.name,
         });
         // trace the error
-        console.trace(error);
+        logger.trace(error);
         return false;
       }
     });
@@ -1943,7 +1943,6 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created world.
    */
   async createWorld(world: World): Promise<UUID> {
-    console.trace('*** creating world', world, 'with id', world.id);
     return this.withDatabase(async () => {
       const newWorldId = world.id || v4();
       await this.db.insert(worldTable).values({
@@ -1986,7 +1985,6 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<void>} A Promise that resolves when the world is updated.
    */
   async updateWorld(world: World): Promise<void> {
-    console.trace('*** updating world', world, 'with id', world.id);
     return this.withDatabase(async () => {
       await this.db.update(worldTable).set(world).where(eq(worldTable.id, world.id));
     });

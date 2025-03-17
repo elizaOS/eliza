@@ -21,6 +21,7 @@ import { displayConfigStatus, loadConfig, saveConfig } from '../utils/config-man
 import { promptForEnvVars } from '../utils/env-prompt.js';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
+import { displayBanner } from '../displayBanner';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,7 +123,7 @@ export async function startAgent(
 
   // for each plugin, check if it installed, and install if it is not
   for (const plugin of character.plugins) {
-    logger.info('Checking if plugin is installed: ', plugin);
+    logger.debug('Checking if plugin is installed: ', plugin);
     let pluginModule: any;
 
     // Try to load the plugin
@@ -252,30 +253,6 @@ async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
 }
 
 /**
- * Check if a port is available for listening.
- *
- * @param {number} port - The port number to check availability for.
- * @returns {Promise<boolean>} A Promise that resolves to true if the port is available, and false if it is not.
- */
-const checkPortAvailable = (port: number): Promise<boolean> => {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EADDRINUSE') {
-        resolve(false);
-      }
-    });
-
-    server.once('listening', () => {
-      server.close();
-      resolve(true);
-    });
-
-    server.listen(port);
-  });
-};
-
-/**
  * Function that starts the agents.
  *
  * @param {Object} options - Command options
@@ -302,7 +279,7 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
 
   // Set the database directory in environment variables
   process.env.PGLITE_DATA_DIR = elizaDbDir;
-  logger.info(`Using database directory: ${elizaDbDir}`);
+  logger.debug(`Using database directory: ${elizaDbDir}`);
 
   // Load environment variables from .eliza/.env if it exists
   if (fs.existsSync(envFilePath)) {
@@ -440,7 +417,7 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
             ) {
               isProject = true;
               projectModule = importedModule;
-              logger.info(
+              logger.debug(
                 `Loaded project with ${projectModule.default?.agents?.length || 0} agents`
               );
             }
@@ -460,7 +437,6 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
   logger.debug(`Classification results - isProject: ${isProject}, isPlugin: ${isPlugin}`);
 
   if (isProject) {
-    logger.info('Found project configuration');
     if (projectModule?.default) {
       const project = projectModule.default;
       const agents = Array.isArray(project.agents)
@@ -468,26 +444,29 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
         : project.agent
           ? [project.agent]
           : [];
-      logger.info(`Project contains ${agents.length} agent(s)`);
+      logger.debug(`Project contains ${agents.length} agent(s)`);
 
       // Log agent names
       if (agents.length > 0) {
-        logger.info(`Agents: ${agents.map((a) => a.character?.name || 'unnamed').join(', ')}`);
+        logger.debug(`Agents: ${agents.map((a) => a.character?.name || 'unnamed').join(', ')}`);
       }
     } else {
       logger.warn("Project module doesn't contain a valid default export");
     }
   } else if (isPlugin) {
-    logger.info(`Found plugin: ${pluginModule?.name || 'unnamed'}`);
+    logger.debug(`Found plugin: ${pluginModule?.name || 'unnamed'}`);
   } else {
     // Change the log message to be clearer about what we're doing
-    logger.info('Running in standalone mode - using default Eliza character');
-    logger.debug('Will load the default Eliza character from ../characters/eliza');
+    logger.debug(
+      'Running in standalone mode - using default Eliza character from ../characters/eliza'
+    );
   }
 
   await server.initialize();
 
   server.start(serverPort);
+
+  console.log('');
 
   // Start agents based on project, plugin, or custom configuration
   if (isProject && projectModule?.default) {
@@ -502,7 +481,7 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
         : [];
 
     if (agents.length > 0) {
-      logger.info(`Found ${agents.length} agents in project`);
+      logger.debug(`Found ${agents.length} agents in project`);
 
       // Prompt for environment variables for all plugins in the project
       try {
@@ -514,7 +493,7 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
       const startedAgents = [];
       for (const agent of agents) {
         try {
-          logger.info(`Starting agent: ${agent.character.name}`);
+          logger.debug(`Starting agent: ${agent.character.name}`);
           const runtime = await startAgent(
             agent.character,
             server,
@@ -533,7 +512,7 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
         logger.warn('Failed to start any agents from project, falling back to custom character');
         await startAgent(defaultCharacter, server);
       } else {
-        logger.info(`Successfully started ${startedAgents.length} agents from project`);
+        logger.debug(`Successfully started ${startedAgents.length} agents from project`);
       }
     } else {
       logger.warn('Project found but no agents defined, falling back to custom character');
@@ -598,6 +577,7 @@ export const start = new Command()
   .option('--character <character>', 'Path or URL to character file to use instead of default')
   .option('--build', 'Build the project before starting')
   .action(async (options) => {
+    displayBanner();
     try {
       // Build the project first unless skip-build is specified
       if (options.build) {

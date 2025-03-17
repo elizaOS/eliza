@@ -198,7 +198,7 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
     // Check for thought messages based on channelType or actual thought property
     if (selectedType === 'thought') {
       return (
-        content?.thought === true ||
+        content?.thought ||
         content?.channelType === 'thought' ||
         memory.metadata?.type === 'thought'
       );
@@ -206,7 +206,7 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
     // Messages are anything that's not a thought
     if (selectedType === 'message') {
       return !(
-        content?.thought === true ||
+        content?.thought ||
         content?.channelType === 'thought' ||
         memory.metadata?.type === 'thought'
       );

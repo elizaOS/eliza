@@ -82,7 +82,7 @@ export function createDatabaseAdapter(
 }
 
 /**
- * Drizzle plugin for database adapter using Drizzle ORM
+ * SQL plugin for database adapter using Drizzle ORM
  *
  * @typedef {Object} Plugin
  * @property {string} name - The name of the plugin
@@ -91,9 +91,9 @@ export function createDatabaseAdapter(
  * @param {any} _ - Input parameter
  * @param {IAgentRuntime} runtime - The runtime environment for the agent
  */
-const drizzlePlugin: Plugin = {
-  name: 'drizzle',
-  description: 'Database adapter plugin using Drizzle ORM',
+const sqlPlugin: Plugin = {
+  name: 'sql',
+  description: 'SQL database adapter plugin using Drizzle ORM',
   init: async (_, runtime: IAgentRuntime) => {
     const config = {
       dataDir: runtime.getSetting('PGLITE_DATA_DIR') ?? './pglite',
@@ -111,4 +111,4 @@ const drizzlePlugin: Plugin = {
   },
 };
 
-export default drizzlePlugin;
+export default sqlPlugin;

@@ -179,10 +179,6 @@ export class TaskService extends Service {
       // validate the tasks and sort them
       const tasks = await this.validateTasks(allTasks);
 
-      if (tasks.length > 0) {
-        logger.debug(`Found ${tasks.length} queued tasks`);
-      }
-
       const now = Date.now();
 
       for (const task of tasks) {

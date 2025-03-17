@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+process.env.NODE_OPTIONS = '--no-deprecation';
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { dirname } from 'node:path';
@@ -17,6 +19,7 @@ import { teeCommand as tee } from './commands/tee.js';
 import { test } from './commands/test.js';
 import { update } from './commands/update.js';
 import { loadEnvironment } from './utils/get-config.js';
+import { displayBanner } from './displayBanner';
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
@@ -44,10 +47,7 @@ async function main() {
     version = packageJson.version;
   }
 
-  const program = new Command()
-    .name('eliza')
-    .description('elizaOS CLI - Manage your project and plugins')
-    .version(version);
+  const program = new Command().name('elizaos').version(version);
 
   program
     .addCommand(create)
@@ -61,6 +61,11 @@ async function main() {
     .addCommand(env)
     .addCommand(dev)
     .addCommand(publish);
+
+  // if no args are passed, display the banner
+  if (process.argv.length === 2) {
+    displayBanner(version);
+  }
 
   await program.parseAsync();
 }

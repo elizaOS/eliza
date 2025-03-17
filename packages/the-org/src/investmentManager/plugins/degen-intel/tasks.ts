@@ -186,7 +186,9 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
   } else {
     // Set the flag to indicate tasks haven't been created
     await runtime.setCache('twitter_tasks_removed', true);
-    logger.warn('Twitter service not found, skipping creation of INTEL_SYNC_RAW_TWEETS task');
+    logger.debug(
+      'WARNING: Twitter service not found, skipping creation of INTEL_SYNC_RAW_TWEETS task'
+    );
   }
 
   runtime.registerTaskWorker({

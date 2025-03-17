@@ -43,8 +43,6 @@ async function updatePackageJson(packagePath, cliVersion) {
 
 async function main() {
   try {
-    // Ensure the CLI is built
-    console.log('Checking if CLI is built...');
     if (!fs.existsSync(CLI_DIST_DIR)) {
       console.error('CLI build not found! Build the CLI first.');
       process.exit(1);
@@ -62,7 +60,6 @@ async function main() {
     const cliPackageJsonPath = path.resolve(ROOT_DIR, 'packages/cli/package.json');
     const cliPackageData = JSON.parse(await fs.readFile(cliPackageJsonPath, 'utf-8'));
     const cliVersion = cliPackageData.version;
-    console.log('CLI version:', cliVersion);
 
     // Define templates to copy
     const templates = [
@@ -80,15 +77,12 @@ async function main() {
 
     // Copy each template and update its package.json
     for (const template of templates) {
-      console.log(`Copying from ${template.src} to ${template.dest}`);
       await fs.copy(template.src, template.dest);
 
       // Update package.json with correct version
       const packageJsonPath = path.resolve(template.dest, 'package.json');
       await updatePackageJson(packageJsonPath, cliVersion);
     }
-
-    console.log('Templates successfully copied to packages/cli/templates.');
   } catch (error) {
     console.error('Error copying templates:', error);
     process.exit(1);

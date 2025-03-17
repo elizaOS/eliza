@@ -1,0 +1,57 @@
+{
+  "name": "@elizaos/plugin-evm",
+  "version": "1.0.0-alpha.65",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@elizaos/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/plugin-tee": "^1.0.0-alpha.65",
+    "@lifi/data-types": "5.15.5",
+    "@lifi/sdk": "3.4.1",
+    "@lifi/types": "16.3.0",
+    "tsup": "8.3.5"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3"
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch",
+    "test": "vitest run",
+    "lint": "prettier --write ./src",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "EVM_PRIVATE_KEY": {
+        "type": "string"
+      },
+      "EVM_PROVIDER_URL": {
+        "type": "string"
+      }
+    }
+  },
+  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
+}

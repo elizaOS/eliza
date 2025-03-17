@@ -93,7 +93,7 @@ export async function initializeAllSystems(
 
       const existingWorld = await runtime.getWorld(worldId);
       if (existingWorld.metadata?.settings) {
-        logger.info('Onboarding already initialized for server', server.id);
+        logger.debug('Onboarding already initialized for server', server.id);
         continue;
       }
 
