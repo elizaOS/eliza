@@ -15,6 +15,7 @@ import Chat from './routes/chat';
 import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
 import Settings from './routes/settings';
+import { AgentsSidebar } from './components/agent-sidebar';
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({
@@ -88,6 +89,7 @@ function App() {
                   <Route path="/logs" element={<LogViewer />} />
                 </Routes>
               </SidebarInset>
+              <AgentsSidebar />
             </SidebarProvider>
             <Toaster />
           </TooltipProvider>
