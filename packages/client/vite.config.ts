@@ -8,6 +8,24 @@ export default defineConfig(({ mode }): UserConfig => {
   const envDir = path.resolve(__dirname, '../..');
   const env = loadEnv(mode, envDir, '');
 
+  // Custom plugin to filter out externalization warnings
+  const filterExternalizationWarnings: Plugin = {
+    name: 'filter-externalization-warnings',
+    apply: 'build', // Only apply during build
+    configResolved(config) {
+      const originalLogFn = config.logger.info;
+      config.logger.info = (msg, options) => {
+        if (
+          typeof msg === 'string' &&
+          msg.includes('has been externalized for browser compatibility')
+        ) {
+          return; // Suppress the warning
+        }
+        originalLogFn(msg, options);
+      };
+    },
+  };
+
   return {
     plugins: [
       react() as unknown as Plugin,
@@ -16,19 +34,7 @@ export default defineConfig(({ mode }): UserConfig => {
         ext: '.br',
         threshold: 1024,
       }) as Plugin,
-      // Custom plugin to filter out externalization warnings
-      {
-        name: 'filter-externalization-warnings',
-        enforce: 'pre',
-        configureServer(server) {
-          const originalInfo = server.config.logger.info;
-          server.config.logger.info = (msg) => {
-            if (!msg.includes('has been externalized for browser compatibility')) {
-              originalInfo(msg);
-            }
-          };
-        },
-      },
+      filterExternalizationWarnings,
     ],
     clearScreen: false,
     envDir,
@@ -60,5 +66,6 @@ export default defineConfig(({ mode }): UserConfig => {
         '@': '/src',
       },
     },
+    logLevel: 'error', // Only show errors, not warnings
   };
 });

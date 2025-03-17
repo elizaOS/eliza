@@ -5,7 +5,9 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "start": "bun ../cli/dist/index.js start",
     "build": "vite build && tsup",
