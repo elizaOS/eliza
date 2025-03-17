@@ -1,5 +1,5 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { logger as Logger, logger } from '@elizaos/core';
+import { createUniqueUuid, logger as Logger, logger } from '@elizaos/core';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
@@ -85,34 +85,17 @@ export function setupSocketIO(
         const primaryAgentId = targetRoomId as UUID;
         const agentRuntime = agents.get(primaryAgentId);
 
+        const entityId = createUniqueUuid(agentRuntime, payload.senderId);
+
         if (!agentRuntime) {
           logger.warn(`Agent runtime not found for ${primaryAgentId}`);
           return;
         }
 
         try {
-          // Ensure world exists first (similar to Discord plugin)
-          await agentRuntime.ensureWorldExists({
-            id: worldId,
-            name: `Client Chat World`,
-            agentId: agentRuntime.agentId,
-            serverId: 'client-chat', // Using a constant server ID for client chat
-          });
-
-          // Ensure room exists
-          await agentRuntime.ensureRoomExists({
-            id: targetRoomId,
-            name: `Chat with ${agentRuntime.character.name}`,
-            source: 'client_chat',
-            type: ChannelType.DM, // Using DM as the channel type
-            channelId: targetRoomId,
-            serverId: 'client-chat',
-            worldId: worldId,
-          });
-
           // Ensure connection between entity and room (just like Discord)
           await agentRuntime.ensureConnection({
-            entityId: payload.senderId,
+            entityId: entityId,
             roomId: targetRoomId,
             userName: payload.senderName || 'User',
             name: payload.senderName || 'User',
@@ -129,7 +112,7 @@ export function setupSocketIO(
           // Create message object for the agent
           const newMessage = {
             id: messageId,
-            entityId: payload.senderId,
+            entityId: entityId,
             agentId: agentRuntime.agentId,
             roomId: targetRoomId,
             content: {

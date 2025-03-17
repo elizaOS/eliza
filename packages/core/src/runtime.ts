@@ -6,7 +6,7 @@ import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
 import { ChannelType, MemoryType, ModelType } from './types';
-import dotenv from 'dotenv';
+
 // Import types with the 'type' keyword
 import type {
   Action,
@@ -77,6 +77,18 @@ export function loadEnvConfig(): Settings {
     return environmentSettings;
   }
 
+  // Only import dotenv in Node.js environment
+  let dotenv = null;
+  try {
+    // This code block will only execute in Node.js environments
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      dotenv = require('dotenv');
+    }
+  } catch (err) {
+    // Silently fail if require is not available (e.g., in browser environments)
+    logger.debug('dotenv module not available');
+  }
+
   function findNearestEnvFile(startDir = process.cwd()) {
     let currentDir = startDir;
 
@@ -102,9 +114,11 @@ export function loadEnvConfig(): Settings {
 
   // Load the .env file into process.env synchronously
   try {
-    const result = dotenv.config(envPath ? { path: envPath } : {});
-    if (!result.error && envPath) {
-      logger.log(`Loaded .env file from: ${envPath}`);
+    if (dotenv) {
+      const result = dotenv.config(envPath ? { path: envPath } : {});
+      if (!result.error && envPath) {
+        logger.log(`Loaded .env file from: ${envPath}`);
+      }
     }
   } catch (err) {
     logger.warn('Failed to load .env file:', err);
