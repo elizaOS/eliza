@@ -62,7 +62,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       try {
         await cmc.syncTokens();
       } catch (error) {
-        logger.error('Failed to sync tokens', error);
+        logger.debug('Failed to sync tokens', error);
         // kill this task
         await runtime.deleteTask(task.id);
       }
@@ -87,7 +87,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       const twitterService = runtime.getService('twitter');
       if (!twitterService) {
         // Log only once when we'll be removing the task
-        logger.warn('Twitter service not available, removing INTEL_SYNC_RAW_TWEETS task');
+        logger.debug('Twitter service not available, removing INTEL_SYNC_RAW_TWEETS task');
 
         // Get all tasks of this type
         const tasks = await runtime.getTasksByName('INTEL_SYNC_RAW_TWEETS');

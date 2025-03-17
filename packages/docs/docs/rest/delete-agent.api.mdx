@@ -1,34 +1,33 @@
 ---
 id: delete-agent
 title: 'Delete an agent'
-description: 'Delete a running agent'
+description: 'Deletes an agent from the system'
 sidebar_label: 'Delete an agent'
 hide_title: true
 hide_table_of_contents: true
-api: eJytVE2P2zYQ/SvEnBqAtYw0PVQ3o+uDgQAJku0p68OYHElMKFIhR7vrCvrvxVCyd5Pt9lRdJGq+HmfevAkY2wz1F8CWAmc4arCUTXIDuxighhvyxKRQpTEEF1pVHEFDHCihOB0s1GCL2261DZiwJ6YkqScI2BPUS4mDBQ1OMg/IHWhI9H10iSzUnEbSkE1HPUI9AZ8HCcucXGhBQxNTjww1jKOzMP+M9HCjYqO4owWi4qgWVDAfpUweYsiUJfPb7Tt5/RhfwK8hVuXRGMq5Gb0/gwYTA8vd6glwGLwz5erV1yyh00vQ8fSVTGlFkkaxWwqvWZ85nmL0hAE00CP2g6elD3N5NLx7HWmIrJo4Bvv/waOUYvq31l+xvag9X5D2xF18okJhAXdQQ7VQq5rW+c+gIVO6v7BjTB5q6JiHuqp8NOi7mLn+bbvdws8zfi9mZemefBx6QbJkKiN2oYkFvOMCde/d36g+fFa7j4cXmXYfD8pGM0qS0izVxKSuIb+qnWo8PbqTJ4XBqmzQoxx2h5VfjXD8IaZvm7twF247l6WQcllZyq4NZIWCJ1JjJqseHHcKVbmfP1+3aSnoQmYMhjZqH+wQXeCs0Pv4UECZRMgutFrdhR4DtuVbQLnAlNCIcSlwAZcVdymOrZT8tP98u3g2aGgDGqT1Sxe2m7e/b/5YCYSmEGjd1msr/ox9PwbHsgZPs8p1VbWOu/G0MbGvSLxjXt4gfBhi5h7Ds4wXKQlXDflhJNMTi19XnZWYTI9cDR5dEB0oqKaVb1cp01BfFOeoQTglxmk6Yaa/kp9n+f19pHSG+stRwz0mJxMupLQuy7eFukGf6T+g/vJpFbA36nUFegX4+hOD9PYe/Sgn0PCNzs/0cj7OGjpCS6lgW6w7Y2jgZ3EvFl924rqVN/v3+9s9zPM/wsYLPA==
+api: eJztVTuP2zgQ/ivEVBeAsZxLrlFnxC4MBLgg2VS7LsbkWGJCkQxJedcn6L8fhpIdJ86ruuoqUeTMfN+8B8jYJKjvARtyOcFOgqakognZeAc1rMlSpiTQiSIiDtF3Irck0ill6kCCDxSRxbcaatBFYcWyICFgxI4yRQYZwGFHUE9gWw0SDGMEzC1IiPS5N5E01Dn2JCGpljqEeoB8CqyWcjSuAQkHHzvMUEPfGw3jt5y3a+EPheNEOXsxsYJxxzApeJcoseU/l6/487V+IT+raJF6pSilQ2/tibFeLZe3Klt3RGv0DLhdgwTlXeYg1ANgCNaoEqPqY2KF4dY7v/9IqsQsckSzmRjO8FeCe+8toQMJ9IRdsAT1AW2iUQLF6OOvbSqv6Xtx/dqnDRsTRXaU0FFK2Py22lm8JCejsenXmusiSFoUN4RxU575cRzHUUI2mb2dIOa7v76XjolDyaBxzZSV/1Py36SkEMut/zIMyhzILdRQYTDVNGqqYZ4CI0hIFI/nGdFHCzW0OYe6qqxXaFufcv1yuVze0HvDz0LTkawPHbfeZKk0OpMtHp4pWvMPir/fi9Xb7Y2l1dut0F71bKT4Jw4+iovK8cViuVg+RxtaFM/FShwsPZm9JYFOi6TQIv+stpcpiR09+vhp8eAe3F1rEqMKk4SmZBpHmqfSnkSfSItHk1uBojhrTyL2znHZTujGpYxO0UJsnA7euJwEWusfC0MVCbnG5YPr0GHDx8LJuEwRVan/Yv/MLYncRt83jPhu8/5ukjygogVI4DRMEbnyeG4dVKV15iF+ic1r33W9M/kE8ip5qa6qxuS23y+U7ypiaZ+mL3CRBJ9yh+7K4rRrLqvm2xwNX/r3d9bSXNiZnnIVLBrHhV/4DXM53gMGA/K8+yTU58W0k8BFxyLDsMdEH6IdR77+3FM8QX2/k3DEaDjrpWq1SXzWc+P/hPof7+Y990z8eFH9gP58iY5jfUTb8x9I+ESnq7U67kYJLaGmWLhNryulKOQrvZsRyE1zad315s3mbgPj+C/TW84O
 sidebar_class_name: 'delete api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import ApiTabs from '@theme/ApiTabs';
-import DiscriminatorTabs from '@theme/DiscriminatorTabs';
 import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
-import SecuritySchemes from '@theme/ApiExplorer/SecuritySchemes';
-import MimeTabs from '@theme/MimeTabs';
-import ParamsItem from '@theme/ParamsItem';
-import ResponseSamples from '@theme/ResponseSamples';
-import SchemaItem from '@theme/SchemaItem';
-import SchemaTabs from '@theme/SchemaTabs';
-import Heading from '@theme/Heading';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
 import OperationTabs from '@theme/OperationTabs';
 import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
 <Heading as={'h1'} className={'openapi__heading'} children={'Delete an agent'}></Heading>
 
-<MethodEndpoint method={'delete'} path={'/agents/{agentId}'}></MethodEndpoint>
+<MethodEndpoint
+  method={'delete'}
+  path={'/api/agents/{agentId}'}
+  context={'endpoint'}
+></MethodEndpoint>
 
-Delete a running agent
+Deletes an agent from the system
 
 <Heading
   id={'request'}
@@ -37,113 +36,68 @@ Delete a running agent
   children={'Request'}
 ></Heading>
 
-<details
-  style={{ marginBottom: '1rem' }}
-  className={'openapi-markdown__details'}
-  data-collapsed={false}
-  open={true}
->
-  <summary style={{}}>
-    <h3 className={'openapi-markdown__details-summary-header-params'}>Path Parameters</h3>
-  </summary>
-  <div>
-    <ul>
-      <ParamsItem
-        className={'paramsItem'}
-        param={{
-          name: 'agentId',
-          in: 'path',
-          required: true,
-          schema: { type: 'string', format: 'uuid' },
-          description: 'ID of the agent to delete',
-        }}
-      ></ParamsItem>
-    </ul>
-  </div>
-</details>
-<div>
-  <div>
-    <ApiTabs label={undefined} id={undefined}>
-      <TabItem label={'204'} value={'204'}>
-        <div>Agent deleted successfully</div>
-        <div>
-          <MimeTabs className={'openapi-tabs__mime'} schemaType={'response'}>
-            <TabItem label={'application/json'} value={'application/json'}>
-              <SchemaTabs className={'openapi-tabs__schema'}>
-                <TabItem label={'Schema'} value={'Schema'}>
-                  <details
-                    style={{}}
-                    className={'openapi-markdown__details response'}
-                    data-collapsed={false}
-                    open={true}
-                  >
-                    <summary style={{}} className={'openapi-markdown__details-summary-response'}>
-                      <strong>Schema</strong>
-                    </summary>
-                    <div style={{ textAlign: 'left', marginLeft: '1rem' }}></div>
-                    <ul style={{ marginLeft: '1rem' }}>
-                      <SchemaItem
-                        collapsible={false}
-                        name={'success'}
-                        required={false}
-                        schemaName={'boolean'}
-                        qualifierMessage={undefined}
-                        schema={{ type: 'boolean', example: true }}
-                      ></SchemaItem>
-                    </ul>
-                  </details>
-                </TabItem>
-                <TabItem label={'Example (from schema)'} value={'Example (from schema)'}>
-                  <ResponseSamples
-                    responseExample={'{\n  "success": true\n}'}
-                    language={'json'}
-                  ></ResponseSamples>
-                </TabItem>
-              </SchemaTabs>
-            </TabItem>
-          </MimeTabs>
-        </div>
-      </TabItem>
-      <TabItem label={'404'} value={'404'}>
-        <div>Agent not found</div>
-        <div>
-          <MimeTabs className={'openapi-tabs__mime'} schemaType={'response'}>
-            <TabItem label={'application/json'} value={'application/json'}>
-              <SchemaTabs className={'openapi-tabs__schema'}>
-                <TabItem label={'Schema'} value={'Schema'}>
-                  <details
-                    style={{}}
-                    className={'openapi-markdown__details response'}
-                    data-collapsed={false}
-                    open={true}
-                  >
-                    <summary style={{}} className={'openapi-markdown__details-summary-response'}>
-                      <strong>Schema</strong>
-                    </summary>
-                    <div style={{ textAlign: 'left', marginLeft: '1rem' }}></div>
-                    <ul style={{ marginLeft: '1rem' }}>
-                      <SchemaItem
-                        collapsible={false}
-                        name={'error'}
-                        required={false}
-                        schemaName={'string'}
-                        qualifierMessage={undefined}
-                        schema={{ type: 'string', example: 'Agent not found' }}
-                      ></SchemaItem>
-                    </ul>
-                  </details>
-                </TabItem>
-                <TabItem label={'Example (from schema)'} value={'Example (from schema)'}>
-                  <ResponseSamples
-                    responseExample={'{\n  "error": "Agent not found"\n}'}
-                    language={'json'}
-                  ></ResponseSamples>
-                </TabItem>
-              </SchemaTabs>
-            </TabItem>
-          </MimeTabs>
-        </div>
-      </TabItem>
-    </ApiTabs>
-  </div>
-</div>
+<ParamsDetails
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent to delete',
+    },
+  ]}
+></ParamsDetails>
+
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '204': { description: 'Agent deleted successfully' },
+    '400': {
+      description: 'Invalid agent ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error deleting agent',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

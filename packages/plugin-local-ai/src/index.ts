@@ -176,7 +176,7 @@ class LocalAIManager {
       // Ensure models directory exists
       if (!fs.existsSync(modelsDir)) {
         fs.mkdirSync(modelsDir, { recursive: true });
-        logger.info('Created models directory');
+        logger.debug('Created models directory');
       }
       this.modelsDir = modelsDir;
     }
@@ -195,7 +195,7 @@ class LocalAIManager {
       // Ensure cache directory exists
       if (!fs.existsSync(cacheDir)) {
         fs.mkdirSync(cacheDir, { recursive: true });
-        logger.info('Ensuring cache directory exists:', cacheDir);
+        logger.debug('Ensuring cache directory exists:', cacheDir);
       }
       this.cacheDir = cacheDir;
     }
@@ -1046,7 +1046,7 @@ export const localAIPlugin: Plugin = {
 
   async init() {
     try {
-      logger.info('Initializing local-ai plugin...');
+      logger.debug('Initializing local-ai plugin...');
       // Only validate config - actual models will be lazy-loaded when needed
       logger.success('Local AI plugin configuration validated and initialized');
     } catch (error) {
@@ -1117,25 +1117,6 @@ export const localAIPlugin: Plugin = {
     [ModelType.TEXT_EMBEDDING]: async (_runtime: IAgentRuntime, params: TextEmbeddingParams) => {
       const text = params?.text;
       try {
-        // Add detailed logging of the input text and its structure
-        logger.info('TEXT_EMBEDDING handler - Initial input:', {
-          text,
-          // type: typeof text,
-          // isString: typeof text === 'string',
-          // isObject: typeof text === 'object',
-          // hasThinkTag: typeof text === 'string' && text.includes('<think>'),
-          length: text?.length,
-          rawText: text, // Log the complete raw text
-        });
-
-        // If text is an object, log its structure
-        if (typeof text === 'object' && text !== null) {
-          logger.info('TEXT_EMBEDDING handler - Object structure:', {
-            keys: Object.keys(text),
-            stringified: JSON.stringify(text, null, 2),
-          });
-        }
-
         // Handle null/undefined/empty text
         if (!text) {
           logger.debug('Null or empty text input for embedding, returning zero vector');

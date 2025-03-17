@@ -49,13 +49,7 @@ export class TTSManager {
       : path.join(process.cwd(), 'models');
     this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
     this.ensureCacheDirectory();
-    logger.info('TTSManager initialized');
-    // Add a variable to deactivate the logging of the configuration
-    // logger.info("TTSManager initialized with configuration:", {
-    //   cacheDir: this.cacheDir,
-    //   modelsDir: this.modelsDir,
-    //   timestamp: new Date().toISOString()
-    // });
+    logger.debug('TTSManager initialized');
   }
 
   /**
@@ -77,7 +71,7 @@ export class TTSManager {
   private ensureCacheDirectory(): void {
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
-      logger.info('Created TTS cache directory:', this.cacheDir);
+      logger.debug('Created TTS cache directory:', this.cacheDir);
     }
   }
 

@@ -87,32 +87,3 @@ export function getPluginStatus(): Record<string, boolean> {
 
   return status;
 }
-
-/**
- * Display the current configuration status
- */
-export function displayConfigStatus(): void {
-  const config = loadConfig();
-  const pluginStatus = getPluginStatus();
-
-  logger.info('\n=== Current Configuration ===');
-
-  // Indicate if this is a default configuration
-  if (config.isDefault) {
-    logger.info(
-      colors.yellow('Using default configuration - you will be prompted to customize your setup.')
-    );
-  }
-
-  // Display last updated timestamp
-  if (config.lastUpdated && !config.isDefault) {
-    logger.info(`Last updated: ${colors.gray(new Date(config.lastUpdated).toLocaleString())}`);
-  }
-
-  // Add a helpful note about reconfiguration (only if not default)
-  if (!config.isDefault) {
-    logger.info('\nTo change this configuration, run with the --configure flag');
-  }
-
-  logger.info('');
-}

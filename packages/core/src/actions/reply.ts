@@ -72,15 +72,13 @@ export const replyAction = {
       template: replyTemplate,
     });
 
-    const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+    const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
       prompt,
     });
 
-    const responseContentObj = parseJSONObjectFromText(response) as Content;
-
     const responseContent = {
-      thought: responseContentObj.thought,
-      text: (responseContentObj.message as string) || '',
+      thought: response.thought,
+      text: (response.message as string) || '',
       actions: ['REPLY'],
     };
 

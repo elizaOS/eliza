@@ -1,0 +1,188 @@
+---
+id: create-room
+title: 'Create a room'
+description: 'Creates a new room for an agent'
+sidebar_label: 'Create a room'
+hide_title: true
+hide_table_of_contents: true
+api: eJztV0tv4zYQ/ivEnFpAfuS5rW5ukoOBogmS7CnxYSyNLO5SpEJS9rqG/3sxpGQ78WZjBNuc1hdJ1ry/b0bDFXicOUgfwBpTOUgAZ6S9g0kCObnMytpLoyGFC0voyQkUmhaCpUVhrEAtggYkYGqyyNLjHFLIgvytMRUkUKPFijxZdrUCjRVBGl2Nc0hAsocafQkJWHpqpKUcUm8bSsBlJVUI6Qr8smY1563UM0igMLZCDyk0jcxh/TLi8aUwhfAltRGuJ9E4Of+XyZds8aWvzGjPoukKsK6VzEI+gy+ODa72QzHTL5Rx7rXl7L0kx29jfvsBP4/vH6yoi5DryRksjFU51++tbF9PNphgW2zzPaauww0qkTXOmypiPb5kk6S99Mv3GL0KmmJ8KbwRmOd82SYefoyOq412sYjHwyO+PDfDfBKRWrlwTZaRc0Wj1BJ+Gnit1R3BqTGKUEMC9A2rWlGkCxMO/QEW5Tvq9VnLp4aEzLnkhSQbum2XKu8nmTONzQ7QvQty/xdFhS+li+SakjJ65oQ3G5K1pWs9oLXIEEtPlfs5BX+1goGJ3yGvJCek3kYNLOelZzoEXm5ofDoc7jN3rOeoZB5nEbfTxxK2QOWYsWStsW/bzEx+AEGu2JgIsusEKnIOZwerdeKh2h6lcm9rXgZBykVIQ0gdMeWXsfQdHsEFdHCc7sMxCjBo40VhGp3/QuOj0Dj7XnO0ofNcl3oW2+sXIh+CSAjMl4Z3ttq4kCovYikMsJaDuA4OVu2uth50e6IjO+/2ucYqSKH0vk4HA2UyVKVxPj0ZDod7If7Nr0VOc1KmrrgJo6WwnjG0t9sV7apDZ7MybvLefIXgpMA/zorz097Zp6NPvdOz8+Pe9KTIesfZn+cnxfk5FngO223oUPntqnOYxpq32MIEjLoiK/kvius7MboZ79VhdDMWuckaLkFAKHzgNyrzo/6wP+yhqksUPTEShaJvcqpIoM6Fy1AhP4zG7Qel4AV7YezX/qN+1Pf8kWIP0omcnJxpChvXlETjKBcL6UuBIkCllsI2WnPfRe9SO486o7640nltpPZOoFJmESLsmjR51BVqnPFtiElqTxaz0MDBfhebE760ppmxx9uru/soWWBGfUiASRQrspNx2/yY+R3sN7W5MFXVaOl5I9hSz6WDwUz6spn2M1MNiKWNi9fwrWZ2V6h3LMYzjcBu4DxDaLWdPwccftq+9PTND2qFUjMhQnCrtp8eAGu5PWAlkG7PP7GpJglw37DoajVFR5+tWq/576eG7BLSh0kCc7SSoQ+Nl0vH93k7v36QwW+37VHnd/HyXPRK8N3qpbnMc1QNP0ECX2m5c3ZbT9YJlIQ52RBRfHsR/fbu2cZWe2+Kr5NOY5RlVPsfyk52JtXN9d09JDBtz3FVGMdgccHFxEWM1IQ6hLEZ/luBQj1rwgyGaJN//wHUsSMq
+sidebar_class_name: 'post api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Create a room'}></Heading>
+
+<MethodEndpoint
+  method={'post'}
+  path={'/api/agents/{agentId}/rooms'}
+  context={'endpoint'}
+></MethodEndpoint>
+
+Creates a new room for an agent
+
+<Heading
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
+
+<ParamsDetails
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+  ]}
+></ParamsDetails>
+
+<RequestSchema
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Name of the room' },
+            worldId: { type: 'string', format: 'uuid', description: 'ID of the world' },
+            roomId: { type: 'string', format: 'uuid', description: 'Optional custom room ID' },
+            entityId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Entity ID to add to the room',
+            },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '201': {
+      description: 'Room created successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'Unique identifier for the room',
+                  },
+                  name: { type: 'string', description: 'Name of the room' },
+                  source: { type: 'string', description: 'Source of the room' },
+                  worldId: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'ID of the world this room belongs to',
+                  },
+                  entities: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string', format: 'uuid' },
+                        name: { type: 'string' },
+                      },
+                    },
+                    description: 'Entities in this room',
+                  },
+                },
+                title: 'Room',
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error creating room',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

@@ -19,7 +19,7 @@ ElizaOS is a framework for creating AI agents that can interact across multiple 
 
 ElizaOS consists of these core architectural components:
 
-![](/img/eliza-architecture.jpg)
+[![](/img/architecture.png)](/img/architecture.png)
 
 ### [Agent Runtime](./agents.md)
 

@@ -46,10 +46,9 @@ export class DownloadManager {
    * Ensure that the cache directory exists.
    */
   private ensureCacheDirectory(): void {
-    logger.info('Ensuring cache directory exists:', this.cacheDir);
     if (!fs.existsSync(this.cacheDir)) {
       fs.mkdirSync(this.cacheDir, { recursive: true });
-      logger.info('Created cache directory');
+      logger.debug('Created cache directory');
     }
   }
 
@@ -57,10 +56,10 @@ export class DownloadManager {
    * Ensure that the models directory exists. If it does not exist, create it.
    */
   private ensureModelsDirectory(): void {
-    logger.info('Ensuring models directory exists:', this.modelsDir);
+    logger.debug('Ensuring models directory exists:', this.modelsDir);
     if (!fs.existsSync(this.modelsDir)) {
       fs.mkdirSync(this.modelsDir, { recursive: true });
-      logger.info('Created models directory');
+      logger.debug('Created models directory');
     }
   }
 
