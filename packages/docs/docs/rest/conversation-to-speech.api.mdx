@@ -1,0 +1,71 @@
+---
+id: conversation-to-speech
+title: "Process conversation and return speech"
+description: "Processes a conversational message and returns synthesized speech"
+sidebar_label: "Process conversation and return speech"
+hide_title: true
+hide_table_of_contents: true
+api: eJztVktz2zYQ/iuYPbUztKi26YU3NfZBM53GYysnx4cVsSKRgAADgLIVDv97ZwFKpG219iGTU3ghCez721cPASsPxR34lqisIQOsyAQP9xlI8qVTbVDWQAHXzpbkPXmBorRmT84jX6EWDXmPFQk0UjgKnTNe+IMJNXn1jaQ4ybYtuci0llDAXMrG3h6JWnTYUCDHdvVgsCEokllrCRkotqbFwLSOvnbKkYQiuI4y8GVNDULRQzi0zOaDU6aCDHbWNRiggK5TEobn3q0vhd2JUJOIimC4T8LJh7+sPLDE57pKawKTFj1g22pVRkfyz54F9i9NsdvPVAZ20HEcgiIfb+kxnDP4qX0begzHOLP1ztqGg/ga3421jVhfMguZoMLhLUxXkXJk6zy5fyIGr7F99OREhGvIRtjeqCkxxYfD7ltrfIrO78slv55yrTqprPDBETbiQYX6fLbNAWKOvGmpOgvNyyzZKoPuAMmid+eMWJs9aiVTvgjOHyca5b0ylYiYfrcM8V3JlTcj3FqrCQ1kQI/YtJqg2KH2xCg7Z93rMksr3wIPCxORdsjgmH5vZJtlq6SASvvXOS8jIUkR3RDKJED4MkERVGBvk4oTPO/O5EiExdggdrYz8icaPwqNP88VS7KhTSOEK2Te+39i82OwiYaF2vLsba2PrvIYLSDHVuVp8Of9OGmHPDXS/BlUntz+OJs7p6GAOoS2yHNtS9S19aH4Y7lcvjD4b74WkvakbdtwcSZJcdQy0DfTuL06YnUcj1MUjoNvOpnm2nQ2Da3pzDz5H3iR2Nmo4hgprb6h+HArVtfrF+avrtdC2rJjy2MoxM46cWLZ/7ZYLpYXqNsaxYVYiZ2mR7XVaSnyJWrkn9V6nBc73nEerPuy+GQ+mU2tPGsVygtJXlWGpAhWbEl0nmSacShihPVBuM4YLqKkXRkf0JS0EFdGtlaZ4AVqbR+ihaUjDMpU2SfToMGKP6NNygRyWPJdkn+0zYtQO9tVrPHm6naTKHdY0gIyYOxTRGYejxWMZazgMdCn2Ly3TdMZFQ4MzCljfJHnlQp1t12UtsmJqa1Pb+Bc5RRt0Mwkjivok+YxWzqnyf8Eun7qLt9liR3rkhMzbzUqE7ck9qsf6+kOsFXTKp1BMW2v8+1kKqv7DLhymLXvt+jpo9PDwMdfO3IHKO7uM9ijU5xFsfSk8vwtx372Pz7/cjMurr+K51vufzgzHqJhxPaoO/6DDL7QYbaJD/dDBjWhJBctSrfvk96LDcuYuF909SE7cqzKktowp52WNe4Np551/eF2Axlsx328iY0ZHD5wW8CHZKONEYgNNJ71oNFUXezGkDTz8y/mYoMe
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Process conversation and return speech"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/agents/{agentId}/speech/conversation"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Processes a conversational message and returns synthesized speech
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"text":{"type":"string","description":"Text message"},"roomId":{"type":"string","description":"Room ID"},"entityId":{"type":"string","description":"Entity ID"},"userName":{"type":"string","description":"User name"},"name":{"type":"string","description":"Entity name"}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"Audio stream with synthesized speech","content":{"audio/mpeg":{"schema":{"type":"string","format":"binary"}}}},"400":{"description":"Invalid agent ID or missing text","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error processing conversation","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

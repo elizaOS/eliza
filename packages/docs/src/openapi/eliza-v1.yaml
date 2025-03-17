@@ -1,0 +1,1871 @@
+openapi: 3.0.0
+info:
+  title: Eliza OS API
+  description: |-
+    API documentation for Eliza OS v1.0.0-alpha - A flexible and scalable AI agent framework.
+
+    This API is designed to be used with a locally running Eliza instance. Endpoints allow for creating,
+    managing, and interacting with AI agents through a REST interface.
+  version: 1.0.0-alpha
+  contact:
+    name: Eliza OS Community
+    url: https://github.com/elizaos/eliza
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+tags:
+  - name: system
+    description: System-wide operations
+  - name: agents
+    description: Operations for managing AI agents
+  - name: rooms
+    description: Operations for managing conversation rooms
+  - name: messages
+    description: Operations for interacting with agents via text messages
+  - name: memories
+    description: Operations for accessing agent memories
+  - name: logs
+    description: Operations for accessing system and agent logs
+  - name: speech
+    description: Operations for speech and audio processing
+  - name: tee
+    description: Trusted Execution Environment operations
+
+paths:
+  /api/hello:
+    get:
+      tags:
+        - system
+      summary: Basic health check
+      description: Simple hello world test endpoint
+      operationId: getHello
+      responses:
+        '200':
+          description: Hello world response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Hello World!'
+
+  /api/status:
+    get:
+      tags:
+        - system
+      summary: Get system status
+      description: Returns the current status of the system with agent count and timestamp
+      operationId: getStatus
+      responses:
+        '200':
+          description: System status information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: 'ok'
+                  agentCount:
+                    type: integer
+                    description: Number of active agents
+                  timestamp:
+                    type: string
+                    format: date-time
+                    description: Current timestamp
+
+  /api/health:
+    get:
+      tags:
+        - system
+      summary: Health check endpoint
+      description: Detailed health check for the system
+      operationId: getHealth
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: 'OK'
+                  version:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+                  dependencies:
+                    type: object
+                    properties:
+                      agents:
+                        type: string
+                        example: 'healthy'
+        '503':
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/logs:
+    get:
+      tags:
+        - logs
+      summary: Get system logs
+      description: Retrieve system logs with optional filtering
+      operationId: getLogs
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: integer
+            description: Timestamp (ms) to get logs from
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [all, trace, debug, info, warn, error, fatal]
+            default: info
+        - name: agentName
+          in: query
+          schema:
+            type: string
+        - name: agentId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+      responses:
+        '200':
+          description: System logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LogEntry'
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  level:
+                    type: string
+                  levels:
+                    type: array
+                    items:
+                      type: string
+        '500':
+          description: Error retrieving logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - logs
+      summary: Get system logs (POST)
+      description: Retrieve system logs with optional filtering using POST method
+      operationId: postLogs
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                since:
+                  type: integer
+                  description: Timestamp (ms) to get logs from
+                level:
+                  type: string
+                  enum: [all, trace, debug, info, warn, error, fatal]
+                  default: info
+                agentName:
+                  type: string
+                agentId:
+                  type: string
+                  format: uuid
+                limit:
+                  type: integer
+                  default: 100
+                  maximum: 1000
+      responses:
+        '200':
+          description: System logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LogEntry'
+                  count:
+                    type: integer
+                  total:
+                    type: integer
+                  level:
+                    type: string
+                  levels:
+                    type: array
+                    items:
+                      type: string
+        '500':
+          description: Error retrieving logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/stop:
+    get:
+      tags:
+        - system
+      summary: Stop the server
+      description: Initiates server shutdown
+      operationId: stopServer
+      responses:
+        '200':
+          description: Server is shutting down
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Server stopping...'
+
+  /api/agents:
+    get:
+      tags:
+        - agents
+      summary: List all agents
+      description: Returns a list of all available agents
+      operationId: listAgents
+      responses:
+        '200':
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      agents:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AgentInfo'
+        '500':
+          description: Error retrieving agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - agents
+      summary: Create a new agent
+      description: Creates a new agent from character configuration
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                characterPath:
+                  type: string
+                  description: Path to a character file
+                characterJson:
+                  type: object
+                  description: Character configuration in JSON format
+      responses:
+        '201':
+          description: Agent created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      character:
+                        $ref: '#/components/schemas/Character'
+        '400':
+          description: Error creating agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}:
+    get:
+      tags:
+        - agents
+      summary: Get agent details
+      description: Returns detailed information about a specific agent
+      operationId: getAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to retrieve
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/AgentInfo'
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - agents
+      summary: Start an agent
+      description: Starts an existing agent
+      operationId: startAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to start
+      responses:
+        '200':
+          description: Agent started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      status:
+                        type: string
+                        enum: [active]
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error starting agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags:
+        - agents
+      summary: Update agent
+      description: Update an existing agent
+      operationId: updateAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Agent updates
+      responses:
+        '200':
+          description: Agent updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/AgentInfo'
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error updating agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - agents
+      summary: Stop an agent
+      description: Stops a running agent
+      operationId: stopAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to stop
+      responses:
+        '200':
+          description: Agent stopped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: 'Agent stopped'
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - agents
+      summary: Delete an agent
+      description: Deletes an agent from the system
+      operationId: deleteAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to delete
+      responses:
+        '204':
+          description: Agent deleted successfully
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error deleting agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/logs:
+    get:
+      tags:
+        - logs
+        - agents
+      summary: Get agent logs
+      description: Retrieves logs for a specific agent
+      operationId: getAgentLogs
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter logs by room ID
+        - name: type
+          in: query
+          schema:
+            type: string
+          description: Filter logs by type
+        - name: count
+          in: query
+          schema:
+            type: integer
+          description: Maximum number of logs to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+          description: Log offset for pagination
+      responses:
+        '200':
+          description: Agent logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LogEntry'
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/logs/{logId}:
+    delete:
+      tags:
+        - logs
+        - agents
+      summary: Delete an agent log
+      description: Deletes a specific log entry for an agent
+      operationId: deleteAgentLog
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: logId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the log to delete
+      responses:
+        '204':
+          description: Log deleted successfully
+        '400':
+          description: Invalid agent ID or log ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent or log not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/memories:
+    get:
+      tags:
+        - memories
+        - agents
+      summary: Get agent memories
+      description: Retrieves all memories for a specific agent
+      operationId: getAgentMemories
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      responses:
+        '200':
+          description: Agent memories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Memory'
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/memories/{memoryId}:
+    patch:
+      tags:
+        - memories
+        - agents
+      summary: Update a memory
+      description: Updates a specific memory for an agent
+      operationId: updateMemory
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: memoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the memory to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Memory'
+      responses:
+        '200':
+          description: Memory updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      message:
+                        type: string
+                        example: 'Memory updated successfully'
+        '400':
+          description: Invalid agent ID or memory ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent or memory not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error updating memory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - memories
+        - agents
+      summary: Delete a memory
+      description: Deletes a specific memory for an agent
+      operationId: deleteMemory
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: memoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the memory to delete
+      responses:
+        '204':
+          description: Memory deleted successfully
+        '400':
+          description: Invalid agent ID or memory ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent or memory not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/rooms:
+    get:
+      tags:
+        - rooms
+        - agents
+      summary: Get agent rooms
+      description: Retrieves all rooms for a specific agent
+      operationId: getAgentRooms
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: worldId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter rooms by world ID
+      responses:
+        '200':
+          description: Agent rooms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Room'
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error retrieving rooms
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - rooms
+        - agents
+      summary: Create a room
+      description: Creates a new room for an agent
+      operationId: createRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name of the room
+                worldId:
+                  type: string
+                  format: uuid
+                  description: ID of the world
+                roomId:
+                  type: string
+                  format: uuid
+                  description: Optional custom room ID
+                entityId:
+                  type: string
+                  format: uuid
+                  description: Entity ID to add to the room
+      responses:
+        '201':
+          description: Room created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Room'
+        '400':
+          description: Invalid agent ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error creating room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/rooms/{roomId}:
+    get:
+      tags:
+        - rooms
+        - agents
+      summary: Get room details
+      description: Retrieves details about a specific room
+      operationId: getRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room
+      responses:
+        '200':
+          description: Room details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Room'
+        '400':
+          description: Invalid agent ID or room ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent or room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error retrieving room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags:
+        - rooms
+        - agents
+      summary: Update a room
+      description: Updates a specific room
+      operationId: updateRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: New name for the room
+      responses:
+        '200':
+          description: Room updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Room'
+        '400':
+          description: Invalid agent ID or room ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent or room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error updating room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - rooms
+        - agents
+      summary: Delete a room
+      description: Deletes a specific room
+      operationId: deleteRoom
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room to delete
+      responses:
+        '204':
+          description: Room deleted successfully
+        '400':
+          description: Invalid agent ID or room ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent or room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error deleting room
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/rooms/{roomId}/memories:
+    get:
+      tags:
+        - memories
+        - rooms
+        - agents
+      summary: Get room memories
+      description: Retrieves memories for a specific room
+      operationId: getRoomMemories
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+          description: Maximum number of memories to return
+        - name: before
+          in: query
+          schema:
+            type: integer
+          description: Return memories created before this timestamp
+        - name: worldId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter memories by world ID
+      responses:
+        '200':
+          description: Room memories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      memories:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Memory'
+        '400':
+          description: Invalid agent ID or room ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent or room not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error retrieving memories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/message:
+    post:
+      tags:
+        - messages
+        - agents
+      summary: Send a message to an agent
+      description: Sends a message to an agent and receives a response
+      operationId: sendMessage
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                senderId:
+                  type: string
+                  description: ID of the sender
+                roomId:
+                  type: string
+                  description: ID of the room
+                text:
+                  type: string
+                  description: Message text
+                source:
+                  type: string
+                  description: Source of the message
+      responses:
+        '201':
+          description: Message sent and processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        $ref: '#/components/schemas/Content'
+                      messageId:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      roomId:
+                        type: string
+                      source:
+                        type: string
+        '400':
+          description: Invalid agent ID or request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error processing message
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/audio-messages:
+      post:
+        tags:
+          - speech
+          - agents
+        summary: Send an audio message
+        description: Sends an audio message to an agent for processing
+        operationId: sendAudioMessage
+        parameters:
+          - name: agentId
+            in: path
+            required: true
+            schema:
+              type: string
+              format: uuid
+            description: ID of the agent
+        requestBody:
+          required: true
+          content:
+            multipart/form-data:
+              schema:
+                type: object
+                properties:
+                  file:
+                    type: string
+                    format: binary
+                    description: Audio file
+        responses:
+          '201':
+            description: Audio message processed successfully
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    success:
+                      type: boolean
+                      example: true
+                    data:
+                      type: object
+                      properties:
+                        message:
+                          $ref: '#/components/schemas/Content'
+          '400':
+            description: Invalid agent ID or missing audio file
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Error'
+          '404':
+            description: Agent not found
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Error'
+          '500':
+            description: Error processing audio
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/audio-messages/synthesize:
+    post:
+      tags:
+        - speech
+        - agents
+      summary: Convert text to speech
+      description: Converts text to speech using the agent's voice
+      operationId: synthesizeSpeech
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: Text to convert to speech
+      responses:
+        '200':
+          description: Audio stream with synthesized speech
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid agent ID or missing text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error generating speech
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/speech/generate:
+    post:
+      tags:
+        - speech
+        - agents
+      summary: Generate speech from text
+      description: Generates speech from text using the agent's voice
+      operationId: generateSpeech
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: Text to convert to speech
+      responses:
+        '200':
+          description: Audio stream with generated speech
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid agent ID or missing text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error generating speech
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/speech/conversation:
+    post:
+      tags:
+        - speech
+        - agents
+      summary: Process conversation and return speech
+      description: Processes a conversational message and returns synthesized speech
+      operationId: conversationToSpeech
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: Text message
+                roomId:
+                  type: string
+                  description: Room ID
+                entityId:
+                  type: string
+                  description: Entity ID
+                userName:
+                  type: string
+                  description: User name
+                name:
+                  type: string
+                  description: Entity name
+      responses:
+        '200':
+          description: Audio stream with synthesized speech
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid agent ID or missing text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error processing conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/agents/{agentId}/transcriptions:
+    post:
+      tags:
+        - speech
+        - agents
+      summary: Transcribe audio to text
+      description: Transcribes an audio file to text
+      operationId: transcribeAudio
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file to transcribe
+      responses:
+        '200':
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                        description: Transcribed text
+        '400':
+          description: Invalid agent ID or missing audio file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error transcribing audio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/tee/agents:
+    get:
+      tags:
+        - tee
+      summary: List TEE agents
+      description: Lists all agents with TEE (Trusted Execution Environment) support
+      operationId: listTeeAgents
+      responses:
+        '200':
+          description: TEE agent list with attestation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TeeAgent'
+                  attestation:
+                    type: string
+                    description: TEE attestation
+        '500':
+          description: Error retrieving TEE agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/tee/agents/{agentId}:
+    get:
+      tags:
+        - tee
+      summary: Get TEE agent details
+      description: Gets details about a specific TEE agent with attestation
+      operationId: getTeeAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the TEE agent
+      responses:
+        '200':
+          description: TEE agent details with attestation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent:
+                    $ref: '#/components/schemas/TeeAgent'
+                  attestation:
+                    type: string
+                    description: TEE attestation
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error retrieving TEE agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/tee/logs:
+    post:
+      tags:
+        - tee
+        - logs
+      summary: Query TEE logs
+      description: Queries logs from the Trusted Execution Environment
+      operationId: queryTeeLogs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: object
+                  properties:
+                    agentId:
+                      type: string
+                      format: uuid
+                    roomId:
+                      type: string
+                      format: uuid
+                    entityId:
+                      type: string
+                      format: uuid
+                    type:
+                      type: string
+                    containsContent:
+                      type: string
+                    startTimestamp:
+                      type: integer
+                      format: int64
+                    endTimestamp:
+                      type: integer
+                      format: int64
+                page:
+                  type: integer
+                  default: 1
+                pageSize:
+                  type: integer
+                  default: 10
+      responses:
+        '200':
+          description: TEE logs with attestation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: object
+                    description: Log query results
+                  attestation:
+                    type: string
+                    description: TEE attestation
+        '500':
+          description: Error retrieving TEE logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Error code
+            message:
+              type: string
+              description: Error message
+            details:
+              type: string
+              description: Detailed error information
+
+    AgentInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the agent
+        name:
+          type: string
+          description: Name of the agent
+        status:
+          type: string
+          enum: [active, inactive]
+          description: Current status of the agent
+
+    Character:
+      type: object
+      required:
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the character
+        name:
+          type: string
+          description: Name of the character
+        bio:
+          type: string
+          description: Short biography of the character
+        settings:
+          type: object
+          description: Character-specific settings
+        system:
+          type: string
+          description: System prompt for the character
+        style:
+          type: object
+          description: Character's communication style
+        lore:
+          type: array
+          items:
+            type: string
+          description: Extended lore and background information
+        messageExamples:
+          type: array
+          items:
+            type: string
+          description: Example messages for character training
+        topics:
+          type: array
+          items:
+            type: string
+          description: Topics the character is knowledgeable about
+        plugins:
+          type: array
+          items:
+            type: string
+          description: Plugins used by the character
+
+    Content:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Text content of the message
+        thought:
+          type: string
+          description: Agent's internal thought process
+        plan:
+          type: string
+          description: Agent's plan or reasoning
+        actions:
+          type: array
+          items:
+            type: string
+          description: Actions the agent wants to take
+        source:
+          type: string
+          description: Source of the message
+        inReplyTo:
+          type: string
+          format: uuid
+          description: ID of the message this is in reply to
+
+    Memory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the memory
+        entityId:
+          type: string
+          format: uuid
+          description: ID of the entity associated with this memory
+        agentId:
+          type: string
+          format: uuid
+          description: ID of the agent associated with this memory
+        roomId:
+          type: string
+          format: uuid
+          description: ID of the room this memory belongs to
+        createdAt:
+          type: integer
+          format: int64
+          description: Unix timestamp when the memory was created
+        content:
+          $ref: '#/components/schemas/Content'
+
+    Room:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the room
+        name:
+          type: string
+          description: Name of the room
+        source:
+          type: string
+          description: Source of the room
+        worldId:
+          type: string
+          format: uuid
+          description: ID of the world this room belongs to
+        entities:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+          description: Entities in this room
+
+    LogEntry:
+      type: object
+      properties:
+        level:
+          type: number
+          description: Log level
+        time:
+          type: number
+          format: int64
+          description: Timestamp of the log entry
+        msg:
+          type: string
+          description: Log message
+        agentId:
+          type: string
+          format: uuid
+          description: ID of the related agent (if applicable)
+        agentName:
+          type: string
+          description: Name of the related agent (if applicable)
+
+    TeeAgent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the TEE agent
+        name:
+          type: string
+          description: Name of the TEE agent
+        attestation:
+          type: object
+          description: TEE attestation data

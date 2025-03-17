@@ -2,7 +2,7 @@
 
 The `AgentRuntime` is the core runtime environment for Eliza agents. It handles message processing, state management, plugin integration, and interaction with external services. You can think of it as the brains that provide the high-level orchestration layer for Eliza agents.
 
-![](/img/eliza-architecture.jpg)
+[![](/img/architecture.png)](/img/architecture.png)
 
 The runtime follows this general flow:
 
