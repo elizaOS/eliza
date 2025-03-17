@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/the-org",
-  "version": "1.0.0-alpha.66",
+  "version": "1.0.0-alpha.67",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
