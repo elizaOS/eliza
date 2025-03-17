@@ -171,7 +171,7 @@ const config = {
         docsPluginId: 'classic',
         config: {
           eliza_api: {
-            specPath: './src/openapi/eliza-api.yaml',
+            specPath: './src/openapi/eliza-v1.yaml',
             outputDir: 'docs/rest',
             sidebarOptions: {
               groupPathsBy: 'tag',

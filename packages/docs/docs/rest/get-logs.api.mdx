@@ -1,0 +1,71 @@
+---
+id: get-logs
+title: "Get system logs"
+description: "Retrieve system logs with optional filtering"
+sidebar_label: "Get system logs"
+hide_title: true
+hide_table_of_contents: true
+api: eJytVktv20gM/isDnlpAtZXu46CbsQ0KA8Vu0WRPSQ60REnTzkM7QyXxGvrvC47kR2x34wL1xbb0kfxIfhzOBhibCMUdGN9EeMigolgG3bH2Dgr4Qhw0PZKK68hklaDUk+ZW+QRBo2ptmIJ2DWTgOwooz5cVFNAQfxKvGXQY0BJTkFAbcGgJCojalQQZaIn0T09hDRnEsiWLUGyA152gtGNqKMAxtVttKTLaTr2x8a1irxrikWAdvIVhyHaRDD2SeTVS5CkNcr2VmqARIw6YaFa06pvkpPaQwRMGJ9gQvJCrkdGMBayxN5yY1/4FDWzI8Z/y+0IqJ8bL6vIsah8sCo++19XLcmir+YcKP6V0lecZWHzWVgp0lef5MDxkECh23kWKYv0+z+XrZbNu9vKBDErvmBwLDLvO6DJpZv41CnZzysSvvlIphLsgCmM9Rkre9igMASURzWTjBdZJE3uY6+3qjMw++UaN0CED1lK/U5NdqbXj33/9H6n6WnFLUgdFjsNanNrYnGvfKQ1LMWJDYrMVw6ttP/az/LDlEMggU6WSK/VG12rqxcrQ212MpNZX2QnqQr+pimxozOl6LMIgmuhHRRypT/BeRuvsq+MmbudmenOJPHajlj4Z/HZOv9cy5SqMp6F2zU9WcuzLkuIhq5X3hjAdMM9oO6lXjSbSsD1xXvVZ+uqCzo2JJaxIcVLYhWYHgqyIUZszdT22/JCAVKmUhpIzUvQqL8f6b9WRQsDUFEvc+mmnpH3CLRQwx07Pp05ECo/b/dIHAwW0zF0xnxtfoml95OKXPM/PDFaJRlWiFt9ZkezoCeRgSye4pLTlZPS/qP66UYvPyxNPi89LVfmyFycpIVX7oHYmj1ezfJa/Q9O1qN6phaoNPeuVIYWuUrFEIxOiFstpcmpZmU8+fJvdu3t32+ooUZWOqqKoG0eV7LwVqT5SNe5kVClZs1ahd05kOkbXLjK6kmbq2lWd146jQmP8U2JYBkLWrsnunUWHjfxMnGTOApbybvS/5RYVt8H3jUT8cn1zOyJrLGkGGUgbxoocZDzNCpZpVqY9tKvNH97a3mmW+dw3LxbzeaO57Vez0ts5CdrH8TudGZ2PbNEdePxIfHhVOe7RZj+wP3q1mVTN9MzzzqB2ovrEdTPJ8Q6w05DtblKiOXm62aww0t/BDIM8HvetyLTSUVpeTaOdwTdaH1yLHtH0EhJkc38Hu73YXII9vH1cjE8XjouYTHeKPfZB/gQtYCjuHoYMWsKKQsp9NFqUJXWHVieHqHjZDf/H61sYhv8A7Z+lbg==
+sidebar_class_name: "get api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Get system logs"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"get"}
+  path={"/api/logs"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Retrieve system logs with optional filtering
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"since","in":"query","schema":{"type":"integer","description":"Timestamp (ms) to get logs from"}},{"name":"level","in":"query","schema":{"type":"string","enum":["all","trace","debug","info","warn","error","fatal"],"default":"info"}},{"name":"agentName","in":"query","schema":{"type":"string"}},{"name":"agentId","in":"query","schema":{"type":"string","format":"uuid"}},{"name":"limit","in":"query","schema":{"type":"integer","default":100,"maximum":1000}}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={undefined}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"200":{"description":"System logs","content":{"application/json":{"schema":{"type":"object","properties":{"logs":{"type":"array","items":{"type":"object","properties":{"level":{"type":"number","description":"Log level"},"time":{"type":"number","format":"int64","description":"Timestamp of the log entry"},"msg":{"type":"string","description":"Log message"},"agentId":{"type":"string","format":"uuid","description":"ID of the related agent (if applicable)"},"agentName":{"type":"string","description":"Name of the related agent (if applicable)"}},"title":"LogEntry"}},"count":{"type":"integer"},"total":{"type":"integer"},"level":{"type":"string"},"levels":{"type":"array","items":{"type":"string"}}}}}}},"500":{"description":"Error retrieving logs","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      

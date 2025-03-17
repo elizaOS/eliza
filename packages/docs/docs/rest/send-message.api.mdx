@@ -1,0 +1,71 @@
+---
+id: send-message
+title: "Send a message to an agent"
+description: "Sends a message to an agent and receives a response"
+sidebar_label: "Send a message to an agent"
+hide_title: true
+hide_table_of_contents: true
+api: eJztV01v4zgM/SsCL7sLeJLM7uzFt8xMDwF2MEXbPbU5MBZjaypLHklOmg383xeU7Dpo0ja7GPQ0RoD4g6RIPpJ62kPA0kN+CzV5jyV5yABLMsHDMgNJvnCqCcoayOGajPQCRS8qghVoRJQWaKRwVJDaEIs48o01niAD25BDtrCQkIMnI78kfcigQYc1BXLswh4M1gR5Wn8hIQPFyzYYKsjA0fdWOZKQB9dSBr6oqEbI9xB2Dav54JQpIYO1dTUGyKFtlYTuaRiLz8KuRagouQ7dMhknHz5auWOLT9cqrAksmu8Bm0arIgY0/ebZ4P7YFbv6RkXgAB2HHxT5KEdGkuM8HDv9nI9Jh6Nw1tb/TZc1WDPQQ3hd78sAK0t3GXjbuoJe17uOcsOafXFAFy/ObKqEmIDfZ+/57/S6fqijxtmCvCcpfFvw3brVegc/DoZk9UBwZa0mNJABPWDdaErAc+lgOMPiEPSrguchcUMPQfTBHuU1g1DZtqzOsDPn+v7FC2UCOYNa9JpDhtlYo9Gcb4mlhXXCEXprWLLLAAuWOswnOocMmApU+2PrRy05TxbGphRbNMHzhAl4Tz+gGnmWXFGjdzf29ZHxfEc9jr5KecE/IxxbFcECV3tQgYsHPvWV2mVDbZzu3KNRlUbgiYQ91/0vpKbrhib8MJsd993CbFAr2SecY2Rc4xwUKx6Eb9twa9SeO46cs+51m4WVZ1TDBRsTUXaE4ly1g+KRFFDpE6X8VPNzFCQpYhhCmYQwf0xQDBUSl4ABng/H8MSWE8YGsbatkT/ReCs0/jzVLMmHfm4qUz668xOWN4ElOhYqyxyysT6Gyrwwhyk2apoo63TfU8duOsLjyW0Ggtk6DTlUITT5dKptgbqyPuR/zGazIyf/4s9C0oa0bWruxWQp8kUG92rkjBcDPoccb4x+mN3jm8QDxudhhB9Mdc5KTOWQC63+QfH1WswvF8f78+VCSFu07GdMpFhbJx5VNu8ns8nsHeqmQvFOzMVa04NaaYp8yxeokR/mi34zWDMt31p3P7kzd+aGNzteQXkhyavSkOSteUWiZZa2VaESKGI+9U641jAz6FdXxgc0BU3EhZGNVbyto9Z2Gz0sHGFQpszuTI0GS76NPkXKwsTClMn+4BuTBMcsRqC4uri+SZJrLGgCGTDSKSMHEfc9ikXs0f6Q8ZibT7auW6MC73djffh8Oi1VqNrVpLD1lFja+vQfd3ouwjpRp94iH49On46ewrUfZ8b/PFT1/cVlNG00KsMVE73f931xC9io8TCXQT4eq4bmWGbA9c/C+/0KPf3tdNfx6+8tuR3kt8sMNugUV0dsIKk838t+Er0Q169X/RnqN/H0wPWM+wN3NIzEBnXLT5DBPe0ODoXdssugIuRDEXuUvvZ8690N2xi1j+Zxlw0a86KgJrwouzyYOZdfr28gg1V/QKzjYAWHW25v3CZPbfNIhOO7PWg0ZRunKSSbfP0Lmv1bBw==
+sidebar_class_name: "post api-method"
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
+import ParamsDetails from "@theme/ParamsDetails";
+import RequestSchema from "@theme/RequestSchema";
+import StatusCodes from "@theme/StatusCodes";
+import OperationTabs from "@theme/OperationTabs";
+import TabItem from "@theme/TabItem";
+import Heading from "@theme/Heading";
+
+<Heading
+  as={"h1"}
+  className={"openapi__heading"}
+  children={"Send a message to an agent"}
+>
+</Heading>
+
+<MethodEndpoint
+  method={"post"}
+  path={"/api/agents/{agentId}/message"}
+  context={"endpoint"}
+>
+  
+</MethodEndpoint>
+
+
+
+Sends a message to an agent and receives a response
+
+<Heading
+  id={"request"}
+  as={"h2"}
+  className={"openapi-tabs__heading"}
+  children={"Request"}
+>
+</Heading>
+
+<ParamsDetails
+  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
+>
+  
+</ParamsDetails>
+
+<RequestSchema
+  title={"Body"}
+  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"senderId":{"type":"string","description":"ID of the sender"},"roomId":{"type":"string","description":"ID of the room"},"text":{"type":"string","description":"Message text"},"source":{"type":"string","description":"Source of the message"}}}}}}}
+>
+  
+</RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{"201":{"description":"Message sent and processed successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"message":{"type":"object","properties":{"text":{"type":"string","description":"Text content of the message"},"thought":{"type":"string","description":"Agent's internal thought process"},"plan":{"type":"string","description":"Agent's plan or reasoning"},"actions":{"type":"array","items":{"type":"string"},"description":"Actions the agent wants to take"},"source":{"type":"string","description":"Source of the message"},"inReplyTo":{"type":"string","format":"uuid","description":"ID of the message this is in reply to"}},"title":"Content"},"messageId":{"type":"string","format":"uuid"},"name":{"type":"string"},"roomId":{"type":"string"},"source":{"type":"string"}}}}}}}},"400":{"description":"Invalid agent ID or request body","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error processing message","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
+>
+  
+</StatusCodes>
+
+
+      
