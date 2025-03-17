@@ -675,15 +675,14 @@ const updateSettingsAction: Action = {
   validate: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<boolean> => {
     try {
       if (message.content.channelType !== ChannelType.DM) {
-        logger.info(`Skipping settings in non-DM channel (type: ${message.content.channelType})`);
+        logger.debug(`Skipping settings in non-DM channel (type: ${message.content.channelType})`);
         return false;
       }
 
       // Find the server where this user is the owner
-      logger.info(`Looking for server where user ${message.entityId} is owner`);
+      logger.debug(`Looking for server where user ${message.entityId} is owner`);
       const world = await findWorldForOwner(runtime, message.entityId);
       if (!world) {
-        logger.error(`No server ownership found for user ${message.entityId}`);
         return false;
       }
 
@@ -695,7 +694,7 @@ const updateSettingsAction: Action = {
         return false;
       }
 
-      logger.info(`Found valid settings state for server ${world.serverId}`);
+      logger.debug(`Found valid settings state for server ${world.serverId}`);
       return true;
     } catch (error) {
       logger.error(`Error validating settings action: ${error}`);

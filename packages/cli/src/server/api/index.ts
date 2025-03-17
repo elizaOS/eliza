@@ -256,7 +256,7 @@ export function setupSocketIO(
 
     // Handle disconnections
     socket.on('disconnect', () => {
-      logger.info('Socket disconnected', { socketId: socket.id });
+      logger.debug('Socket disconnected', { socketId: socket.id });
       // Note: We're not removing agents from rooms on disconnect
       // as they should remain participants even when not connected
     });

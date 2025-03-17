@@ -160,6 +160,11 @@ export const settingsProvider: Provider = {
         try {
           world = await runtime.getWorld(room.worldId);
 
+          if (!world) {
+            logger.error(`No world found for room ${room.worldId}`);
+            throw new Error(`No world found for room ${room.worldId}`);
+          }
+
           serverId = world.serverId;
 
           // Once we have the serverId, get the settings
