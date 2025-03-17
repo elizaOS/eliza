@@ -19,6 +19,7 @@ class SocketIOManager extends EventEmitter {
   private resolveConnect: (() => void) | null = null;
   private activeRooms: Set<string> = new Set();
   private entityId: string | null = null;
+  private agentIds: string[] | null = null;
 
   private constructor() {
     super();
@@ -35,13 +36,14 @@ class SocketIOManager extends EventEmitter {
    * Initialize the Socket.io connection to the server
    * @param entityId The client entity ID
    */
-  public initialize(entityId: string): void {
+  public initialize(entityId: string, agentIds: string[]): void {
+    this.entityId = entityId;
+    this.agentIds = agentIds;
+
     if (this.socket) {
       console.warn('[SocketIO] Socket already initialized');
       return;
     }
-
-    this.entityId = entityId;
 
     // Create a single socket connection
     this.socket = io(BASE_URL, {
@@ -96,6 +98,19 @@ class SocketIOManager extends EventEmitter {
       if (this.activeRooms.has(data.roomId)) {
         console.log(`[SocketIO] Handling message for active room ${data.roomId}`);
         this.emit('messageBroadcast', data);
+        if (this.socket) {
+          this.socket.emit('message', {
+            type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
+            payload: {
+              senderId: data.senderId,
+              senderName: data.senderName,
+              message: data.text,
+              roomId: data.roomId,
+              worldId: WorldManager.getWorldId(),
+              source: data.source,
+            },
+          });
+        }
       } else {
         console.warn(
           `[SocketIO] Received message for inactive room ${data.roomId}, active rooms:`,
@@ -144,6 +159,7 @@ class SocketIOManager extends EventEmitter {
       payload: {
         roomId,
         entityId: this.entityId,
+        agentIds: this.agentIds,
       },
     });
 

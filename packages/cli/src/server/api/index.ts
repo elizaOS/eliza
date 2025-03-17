@@ -75,191 +75,196 @@ export function setupSocketIO(
 
       if (messageData.type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
         const payload = messageData.payload;
-        const targetRoomId = payload.roomId;
+        const socketRoomId = payload.roomId;
         const worldId = payload.worldId;
 
         // Get all agents in this room
-        const agentsInRoom = roomParticipants.get(targetRoomId) || new Set([targetRoomId as UUID]);
+        const agentsInRoom = roomParticipants.get(socketRoomId) || new Set([socketRoomId as UUID]);
 
-        // Find the primary agent for this room (for simple 1:1 chats)
-        // In more complex implementations, we'd have a proper room management system
-        const primaryAgentId = targetRoomId as UUID;
-        const agentRuntime = agents.get(primaryAgentId);
+        for (const agentId of agentsInRoom) {
+          // Find the primary agent for this room (for simple 1:1 chats)
+          // In more complex implementations, we'd have a proper room management system
+          const agentRuntime = agents.get(agentId);
 
-        const entityId = createUniqueUuid(agentRuntime, payload.senderId);
+          const entityId = createUniqueUuid(agentRuntime, payload.senderId);
 
-        if (!agentRuntime) {
-          logger.warn(`Agent runtime not found for ${primaryAgentId}`);
-          return;
-        }
+          if (!agentRuntime) {
+            logger.warn(`Agent runtime not found for ${agentId}`);
+            return;
+          }
 
-        if (payload.senderId === primaryAgentId) {
-          logger.warn(`sameee sneder`);
-          return;
-        }
+          if (payload.senderId === agentId) {
+            logger.warn(`same sender`);
+            return;
+          }
 
-        if (!payload.message || !payload.message.length) {
-          logger.warn(`no message found`);
-          return;
-        }
+          if (!payload.message || !payload.message.length) {
+            logger.warn(`no message found`);
+            return;
+          }
 
-        try {
-          // Ensure connection between entity and room (just like Discord)
-          await agentRuntime.ensureConnection({
-            entityId: entityId,
-            roomId: targetRoomId,
-            userName: payload.senderName || 'User',
-            name: payload.senderName || 'User',
-            source: 'client_chat',
-            channelId: targetRoomId,
-            serverId: 'client-chat',
-            type: ChannelType.DM,
-            worldId: worldId,
-          });
-
-          // Create unique message ID
-          const messageId = crypto.randomUUID() as UUID;
-
-          // Create message object for the agent
-          const newMessage = {
-            id: messageId,
-            entityId: entityId,
-            agentId: agentRuntime.agentId,
-            roomId: targetRoomId,
-            content: {
-              text: payload.message,
-              source: payload.source || 'client_chat',
-            },
-            createdAt: Date.now(),
-          };
-
-          // No need to save the message here, the bootstrap handler will do it
-          // Let the messageReceivedHandler in bootstrap.ts handle the memory creation
-
-          // Define callback for agent responses (pattern matching Discord's approach)
-          const callback = async (content) => {
-            try {
-              // Log the content object we received
-              logger.debug('Callback received content:', {
-                contentType: typeof content,
-                contentKeys: content ? Object.keys(content) : 'null',
-                content: JSON.stringify(content),
-              });
-
-              // Make sure we have inReplyTo set correctly
-              if (messageId && !content.inReplyTo) {
-                content.inReplyTo = messageId;
-              }
-
-              // Prepare broadcast data - more direct and explicit
-              // Only include required fields to avoid schema validation issues
-              const broadcastData: Record<string, any> = {
-                senderId: agentRuntime.agentId,
-                senderName: agentRuntime.character.name,
-                text: content.text || '',
-                roomId: targetRoomId,
-                createdAt: Date.now(),
-                source: content.source || 'agent',
-              };
-
-              // Add optional fields only if they exist in the original content
-              if (content.thought) broadcastData.thought = content.thought;
-              if (content.actions) broadcastData.actions = content.actions;
-
-              // Log exact broadcast data
-              logger.debug(`Broadcasting message to room ${targetRoomId}`, {
-                room: targetRoomId,
-                clients: io.sockets.adapter.rooms.get(targetRoomId)?.size || 0,
-                messageText: broadcastData.text?.substring(0, 50),
-              });
-
-              logger.debug('Broadcasting data:', JSON.stringify(broadcastData));
-
-              // Send to specific room first
-              io.to(targetRoomId).emit('messageBroadcast', broadcastData);
-
-              // Also send to all connected clients as a fallback
-              logger.debug('Also broadcasting to all clients as fallback');
-              io.emit('messageBroadcast', broadcastData);
-
-              // Create memory for the response message (matching Discord's pattern)
-              const memory = {
-                id: crypto.randomUUID() as UUID,
-                entityId: agentRuntime.agentId,
-                agentId: agentRuntime.agentId,
-                content: {
-                  ...content,
-                  inReplyTo: messageId,
-                  channelType: ChannelType.DM,
-                },
-                roomId: targetRoomId,
-                createdAt: Date.now(),
-              };
-
-              // Log the memory object we're creating
-              logger.debug('Memory object for response:', {
-                memoryId: memory.id,
-                contentKeys: Object.keys(memory.content),
-              });
-
-              // Save the memory for the response
-              await agentRuntime.createMemory(memory, 'messages');
-
-              // Return content for bootstrap's processing
-              logger.debug('Returning content directly');
-              return [content];
-            } catch (error) {
-              logger.error('Error in socket message callback:', error);
-              return [];
-            }
-          };
-
-          // Log the message and runtime details before calling emitEvent
-          logger.debug('Emitting MESSAGE_RECEIVED with:', {
-            messageId: newMessage.id,
-            entityId: newMessage.entityId,
-            agentId: newMessage.agentId,
-            text: newMessage.content.text,
-            callbackType: typeof callback,
-          });
-
-          // Monkey-patch the emitEvent method to log its arguments
-          const originalEmitEvent = agentRuntime.emitEvent;
-          agentRuntime.emitEvent = function (eventType, payload) {
-            logger.debug('emitEvent called with eventType:', eventType);
-            logger.debug('emitEvent payload structure:', {
-              hasRuntime: !!payload.runtime,
-              hasMessage: !!payload.message,
-              hasCallback: !!payload.callback,
-              callbackType: typeof payload.callback,
+          const uniqueRoomId = createUniqueUuid(agentRuntime, socketRoomId);
+          const source = payload.source;
+          try {
+            // Ensure connection between entity and room (just like Discord)
+            await agentRuntime.ensureConnection({
+              entityId: entityId,
+              roomId: uniqueRoomId,
+              userName: payload.senderName || 'User',
+              name: payload.senderName || 'User',
+              source,
+              channelId: uniqueRoomId,
+              serverId: source,
+              type: ChannelType.DM,
+              worldId: worldId,
             });
-            return originalEmitEvent.call(this, eventType, payload);
-          };
 
-          // Emit message received event to trigger agent's message handler
-          agentRuntime.emitEvent(EventType.MESSAGE_RECEIVED, {
-            runtime: agentRuntime,
-            message: newMessage,
-            callback,
-          });
-        } catch (error) {
-          logger.error('Error processing message:', error);
+            // Create unique message ID
+            const messageId = crypto.randomUUID() as UUID;
+
+            // Create message object for the agent
+            const newMessage = {
+              id: messageId,
+              entityId: entityId,
+              agentId: agentRuntime.agentId,
+              roomId: uniqueRoomId,
+              content: {
+                text: payload.message,
+                source,
+              },
+              createdAt: Date.now(),
+            };
+
+            // No need to save the message here, the bootstrap handler will do it
+            // Let the messageReceivedHandler in bootstrap.ts handle the memory creation
+
+            // Define callback for agent responses (pattern matching Discord's approach)
+            const callback = async (content) => {
+              try {
+                // Log the content object we received
+                logger.debug('Callback received content:', {
+                  contentType: typeof content,
+                  contentKeys: content ? Object.keys(content) : 'null',
+                  content: JSON.stringify(content),
+                });
+
+                // Make sure we have inReplyTo set correctly
+                if (messageId && !content.inReplyTo) {
+                  content.inReplyTo = messageId;
+                }
+
+                // Prepare broadcast data - more direct and explicit
+                // Only include required fields to avoid schema validation issues
+                const broadcastData: Record<string, any> = {
+                  senderId: agentRuntime.agentId,
+                  senderName: agentRuntime.character.name,
+                  text: content.text || '',
+                  roomId: socketRoomId,
+                  createdAt: Date.now(),
+                  source: content.source || 'agent',
+                };
+
+                // Add optional fields only if they exist in the original content
+                if (content.thought) broadcastData.thought = content.thought;
+                if (content.actions) broadcastData.actions = content.actions;
+
+                // Log exact broadcast data
+                logger.debug(`Broadcasting message to room ${socketRoomId}`, {
+                  room: socketRoomId,
+                  clients: io.sockets.adapter.rooms.get(socketRoomId)?.size || 0,
+                  messageText: broadcastData.text?.substring(0, 50),
+                });
+
+                logger.debug('Broadcasting data:', JSON.stringify(broadcastData));
+
+                // Send to specific room first
+                io.to(socketRoomId).emit('messageBroadcast', broadcastData);
+
+                // Also send to all connected clients as a fallback
+                logger.debug('Also broadcasting to all clients as fallback');
+                io.emit('messageBroadcast', broadcastData);
+
+                // Create memory for the response message (matching Discord's pattern)
+                const memory = {
+                  id: crypto.randomUUID() as UUID,
+                  entityId: agentRuntime.agentId,
+                  agentId: agentRuntime.agentId,
+                  content: {
+                    ...content,
+                    inReplyTo: messageId,
+                    channelType: ChannelType.DM,
+                  },
+                  roomId: uniqueRoomId,
+                  createdAt: Date.now(),
+                };
+
+                // Log the memory object we're creating
+                logger.debug('Memory object for response:', {
+                  memoryId: memory.id,
+                  contentKeys: Object.keys(memory.content),
+                });
+
+                // Save the memory for the response
+                await agentRuntime.createMemory(memory, 'messages');
+
+                // Return content for bootstrap's processing
+                logger.debug('Returning content directly');
+                return [content];
+              } catch (error) {
+                logger.error('Error in socket message callback:', error);
+                return [];
+              }
+            };
+
+            // Log the message and runtime details before calling emitEvent
+            logger.debug('Emitting MESSAGE_RECEIVED with:', {
+              messageId: newMessage.id,
+              entityId: newMessage.entityId,
+              agentId: newMessage.agentId,
+              text: newMessage.content.text,
+              callbackType: typeof callback,
+            });
+
+            // Monkey-patch the emitEvent method to log its arguments
+            const originalEmitEvent = agentRuntime.emitEvent;
+            agentRuntime.emitEvent = function (eventType, payload) {
+              logger.debug('emitEvent called with eventType:', eventType);
+              logger.debug('emitEvent payload structure:', {
+                hasRuntime: !!payload.runtime,
+                hasMessage: !!payload.message,
+                hasCallback: !!payload.callback,
+                callbackType: typeof payload.callback,
+              });
+              return originalEmitEvent.call(this, eventType, payload);
+            };
+
+            // Emit message received event to trigger agent's message handler
+            agentRuntime.emitEvent(EventType.MESSAGE_RECEIVED, {
+              runtime: agentRuntime,
+              message: newMessage,
+              callback,
+            });
+          } catch (error) {
+            logger.error('Error processing message:', error);
+          }
         }
       } else if (messageData.type === SOCKET_MESSAGE_TYPE.ROOM_JOINING) {
         const payload = messageData.payload;
         const roomId = payload.roomId;
-        const entityId = payload.entityId;
+        const agentIds = payload.agentIds;
 
-        // Add entity to room participants if it's an agent
-        if (agents.has(entityId as UUID)) {
-          // Initialize Set if not exists
-          if (!roomParticipants.has(roomId)) {
-            roomParticipants.set(roomId, new Set());
+        agentIds.forEach((agentId: UUID) => {
+          if (agents.has(agentId as UUID)) {
+            // Initialize Set if not exists
+            if (!roomParticipants.has(roomId)) {
+              roomParticipants.set(roomId, new Set());
+            }
+            // Add agent to room participants
+            roomParticipants.get(roomId)!.add(agentId as UUID);
+            logger.debug(`Agent ${agentId} joined room ${roomId}`);
           }
-          // Add agent to room participants
-          roomParticipants.get(roomId)!.add(entityId as UUID);
-          logger.debug(`Agent ${entityId} joined room ${roomId}`);
-        }
+          roomParticipants.get(roomId)!.add(agentId as UUID);
+        });
 
         logger.debug(`Client ${socket.id} joining room ${roomId}`);
       }

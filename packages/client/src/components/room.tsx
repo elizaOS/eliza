@@ -7,7 +7,7 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useAgent, useMessages } from '@/hooks/use-query-hooks';
+import { useAgent, useAgents, useMessages, useRooms } from '@/hooks/use-query-hooks';
 import { cn, getEntityId, moment } from '@/lib/utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { WorldManager } from '@/lib/world-manager';
@@ -165,7 +165,7 @@ function MessageContent({
   );
 }
 
-export default function Page({ agentId }: { agentId: UUID }) {
+export default function Page({ roomName }: { roomName: string }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
   const [showDetails, setShowDetails] = useState(false);
@@ -176,17 +176,36 @@ export default function Page({ agentId }: { agentId: UUID }) {
   const queryClient = useQueryClient();
   const worldId = WorldManager.getWorldId();
 
-  const agentData = useAgent(agentId)?.data?.data;
+  const { data: roomsData } = useRooms();
+
+  const agentData = [];
+  const agentId = 'test';
   const entityId = getEntityId();
-  const roomId = WorldManager.generateRoomId(agentId);
+  const roomId = roomName;
 
   const { data: messages = [] } = useMessages(agentId, roomId);
 
   const socketIOManager = SocketIOManager.getInstance();
 
+  const { data: { data: agentsData } = {}, isLoading, isError, error } = useAgents();
+  const agents = agentsData?.agents || [];
+
   useEffect(() => {
     // Initialize Socket.io connection once with our entity ID
-    socketIOManager.initialize(entityId, [agentId]);
+    let roomAgentIds: UUID[] = [];
+    if (roomsData) {
+      roomsData.forEach((data, name) => {
+        if (name === roomName) {
+          data.forEach((roomData) => {
+            const agentData = agents.find((agent) => agent.id === roomData.agentId);
+            if (agentData && agentData.status === AgentStatus.ACTIVE) {
+              roomAgentIds.push(roomData.agentId as UUID);
+            }
+          });
+        }
+      });
+    }
+    socketIOManager.initialize(entityId, roomAgentIds);
 
     // Join the room for this agent
     socketIOManager.joinRoom(roomId);

@@ -12,6 +12,7 @@ import { STALE_TIMES } from './hooks/use-query-hooks';
 import useVersion from './hooks/use-version';
 import { apiClient } from './lib/api';
 import Chat from './routes/chat';
+import Room from './routes/room';
 import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
 import Settings from './routes/settings';
@@ -87,6 +88,7 @@ function App() {
                   <Route path="agents/new" element={<AgentCreatorRoute />} />
                   <Route path="/create" element={<AgentCreator />} />
                   <Route path="/logs" element={<LogViewer />} />
+                  <Route path="room" element={<Room />} />
                 </Routes>
               </SidebarInset>
               <AgentsSidebar />
