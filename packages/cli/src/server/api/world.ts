@@ -39,6 +39,7 @@ export function worldRouter(server?: AgentServer): express.Router {
               worldId: roomData.worldId,
               participants: participants.filter(Boolean),
               agentId: roomData.agentId,
+              metadata: roomData.metadata,
             };
           } catch (error) {
             logger.error(`[ROOMS GET] Error getting details for room ${roomData.id}:`, error);

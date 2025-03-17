@@ -1555,9 +1555,7 @@ export abstract class BaseDrizzleAdapter<
       const result = await this.db
         .select({ entityId: participantTable.entityId })
         .from(participantTable)
-        .where(
-          and(eq(participantTable.roomId, roomId), eq(participantTable.agentId, this.agentId))
-        );
+        .where(eq(participantTable.roomId, roomId));
 
       return result.map((row) => row.entityId as UUID);
     });

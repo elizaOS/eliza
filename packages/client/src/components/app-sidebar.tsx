@@ -11,7 +11,7 @@ import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
-import { useAgents } from '@/hooks/use-query-hooks';
+import { useAgents, useRooms } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
 import { formatAgentName } from '@/lib/utils';
 import { type Agent, AgentStatus } from '@elizaos/core';
@@ -32,6 +32,8 @@ export function AppSidebar() {
   const safeData = data || {};
   const safeDataData = (safeData as any).data || {};
   const agents = safeDataData.agents || [];
+
+  const { data: roomsData } = useRooms();
 
   return (
     <>
@@ -92,30 +94,41 @@ export function AppSidebar() {
                                 <span className="text-base">{'Add room'}</span>
                               </div>
                             </SidebarMenuButton>
-                            {/* {roomsData && Array.from(roomsData.keys()).map((roomName) => (
-                                <SidebarMenuItem key={roomName}>
-                                  <NavLink to={`/room/?roomname=${roomName}`}>
-                                    <SidebarMenuButton
-                                      className="transition-colors px-4 my-4 rounded-md"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 flex justify-center items-center">
-                                          <div className="relative bg-muted rounded-full w-full h-full">
-                                            {roomName && (
-                                              <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
-                                                {formatAgentName(roomName)}
-                                              </div>
-                                            )}
+                            {roomsData &&
+                              Array.from(roomsData.entries()).map(([roomName, roomArray]) => {
+                                // Ensure the array exists and has elements before accessing metadata
+                                const thumbnail =
+                                  roomArray.length > 0 ? roomArray[0]?.metadata?.thumbnail : null;
+
+                                return (
+                                  <SidebarMenuItem key={roomName}>
+                                    <NavLink to={`/room/?roomname=${roomName}`}>
+                                      <SidebarMenuButton className="transition-colors px-4 my-4 rounded-md">
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-8 h-8 flex justify-center items-center">
+                                            <div className="relative bg-muted rounded-full w-full h-full">
+                                              {thumbnail ? (
+                                                <img
+                                                  src={thumbnail}
+                                                  alt={`${roomName} thumbnail`}
+                                                  className="rounded-full w-full h-full object-cover"
+                                                />
+                                              ) : (
+                                                <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
+                                                  {formatAgentName(roomName)}
+                                                </div>
+                                              )}
+                                            </div>
                                           </div>
+                                          <span className="text-base truncate max-w-24">
+                                            {roomName}
+                                          </span>
                                         </div>
-                                        <span className="text-base truncate max-w-24">
-                                          {roomName}
-                                        </span>
-                                      </div>
-                                    </SidebarMenuButton>
-                                  </NavLink>
-                                </SidebarMenuItem>
-                              ))} */}
+                                      </SidebarMenuButton>
+                                    </NavLink>
+                                  </SidebarMenuItem>
+                                );
+                              })}
                           </SidebarMenuItem>
                         </>
                       );

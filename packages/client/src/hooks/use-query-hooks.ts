@@ -1,7 +1,7 @@
 import { USER_NAME } from '@/constants';
 import { apiClient } from '@/lib/api';
 import { WorldManager } from '@/lib/world-manager';
-import type { Agent, Content, Memory, UUID } from '@elizaos/core';
+import type { Agent, Content, Memory, UUID, Room } from '@elizaos/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useToast } from './use-toast';
@@ -612,5 +612,31 @@ export function useUpdateMemory() {
         variant: 'destructive',
       });
     },
+  });
+}
+
+export function useRooms(options = {}) {
+  const network = useNetworkStatus();
+
+  return useQuery<Map<string, Room[]>>({
+    queryKey: ['rooms'],
+    queryFn: async () => {
+      const rooms = await apiClient.getRooms();
+      const worldRooms = rooms.data.filter(
+        (room: Room) => room.worldId === WorldManager.getWorldId()
+      );
+
+      const roomMap: Map<string, Room[]> = new Map();
+      worldRooms.forEach((room: Room) => {
+        const { name, ...rest } = room;
+        roomMap.set(name, [...(roomMap.get(name) || []), { name, ...rest }]);
+      });
+
+      return roomMap;
+    },
+    staleTime: STALE_TIMES.FREQUENT,
+    refetchInterval: !network.isOffline ? STALE_TIMES.FREQUENT : false,
+    refetchIntervalInBackground: false,
+    ...options,
   });
 }
