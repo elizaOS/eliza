@@ -88,7 +88,8 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
         </div>
 
         <div
-          className="w-24 h-24 rounded-full overflow-hidden bg-muted flex items-center justify-center"
+          className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center cursor-pointer bg-cover bg-center bg-muted"
+          style={{ backgroundImage: avatar ? `url(${avatar})` : undefined }}
           onClick={() => fileInputRef.current?.click()}
         >
           <input
@@ -98,20 +99,7 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
             ref={fileInputRef}
             onChange={handleFileUpload}
           />
-          {avatar ? (
-            <div className="relative w-full h-full">
-              <img src={avatar} alt="Character Avatar" className="object-cover rounded-lg border" />
-              <button
-                className="absolute -top-2 -right-2 bg-white p-1 rounded-full shadow-md"
-                onClick={() => setAvatar(null)}
-                type="button"
-              >
-                <X className="w-5 h-5 text-card" />
-              </button>
-            </div>
-          ) : (
-            <ImageIcon className="w-10 h-10" />
-          )}
+          {!avatar && <ImageIcon className="w-6 h-6 text-white" />}
         </div>
 
         <CardContent className="w-full grow flex flex-col items-center">
@@ -196,6 +184,7 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
                 } finally {
                   setCreating(false);
                   navigate(`/room/?roomname=${chatName}`);
+                  onClose();
                 }
               }}
               size={'default'}
