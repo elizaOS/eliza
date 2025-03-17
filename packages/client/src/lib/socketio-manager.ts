@@ -79,7 +79,6 @@ class SocketIOManager extends EventEmitter {
         textType: typeof data.text,
         textLength: data.text ? data.text.length : 0,
         hasThought: 'thought' in data,
-        hasPlan: 'plan' in data,
         hasActions: 'actions' in data,
         additionalKeys: Object.keys(data).filter(
           (k) =>
@@ -91,7 +90,6 @@ class SocketIOManager extends EventEmitter {
               'createdAt',
               'source',
               'thought',
-              'plan',
               'actions',
             ].includes(k)
         ),

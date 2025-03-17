@@ -19,7 +19,6 @@ export type UUID = `${string}-${string}-${string}-${string}-${string}`;
 export function asUUID(id: string): UUID
 export interface Content {
   thought?: string;
-  plan?: string;
   text?: string;
   actions?: string[];
   providers?: string[];

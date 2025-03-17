@@ -12,8 +12,11 @@ export function displayBanner(version: string | null = null, hideBanner = false)
   const red = '\x1b[38;5;196m';
   let versionColor = lightblue;
 
+  // assume __dirname doesnt exist
+  const __dirname = path.resolve(import.meta.dirname, '..');
+
   if (!version) {
-    const packageJsonPath = path.join(process.cwd(), 'package.json');
+    const packageJsonPath = path.join(__dirname, 'package.json');
     if (!fs.existsSync(packageJsonPath)) {
     } else {
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));

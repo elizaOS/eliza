@@ -25,9 +25,6 @@ export interface Content {
   /** The agent's internal thought process */
   thought?: string;
 
-  /** The agent's plan for the next message */
-  plan?: string;
-
   /** The main text content visible to users */
   text?: string;
 

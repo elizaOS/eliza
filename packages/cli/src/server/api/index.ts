@@ -153,7 +153,6 @@ export function setupSocketIO(
 
               // Add optional fields only if they exist in the original content
               if (content.thought) broadcastData.thought = content.thought;
-              if (content.plan) broadcastData.plan = content.plan;
               if (content.actions) broadcastData.actions = content.actions;
 
               // Log exact broadcast data
