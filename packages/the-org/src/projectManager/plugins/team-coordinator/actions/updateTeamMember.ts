@@ -5,8 +5,8 @@ import {
   type UUID,
   createUniqueUuid,
   logger,
-} from "@elizaos/core";
-import type { EmploymentStatus, PlatformContact, TeamMember, WeekDay } from "../../../types";
+} from '@elizaos/core';
+import type { EmploymentStatus, PlatformContact, TeamMember, WeekDay } from '../../../types';
 
 /**
  * Interface for team member memory content
@@ -21,9 +21,9 @@ interface TeamMemberContent {
  * Action to update an existing team member in the system
  */
 export const updateTeamMember: Action = {
-  name: "updateTeamMember",
+  name: 'updateTeamMember',
   description: "Updates an existing team member's information",
-  similes: ["modifyTeamMember", "editTeamMember"],
+  similes: ['modifyTeamMember', 'editTeamMember'],
   validate: async (runtime: IAgentRuntime, message: any) => {
     // Basic validation logic - just check if teamMemberId exists
     return Boolean(message?.teamMemberId);
@@ -35,7 +35,7 @@ export const updateTeamMember: Action = {
     context: any
   ): Promise<boolean> => {
     try {
-      const { 
+      const {
         teamMemberId,
         name,
         workDays,
@@ -46,30 +46,32 @@ export const updateTeamMember: Action = {
         employmentStatus,
         contacts,
         skills,
-        discordHandle 
+        discordHandle,
       } = message;
 
       logger.info(`Updating team member with ID: ${teamMemberId}`);
-      
+
       // Create a unique room ID for team members
-      const teamMembersRoomId = createUniqueUuid(runtime, "team-members");
-      
+      const teamMembersRoomId = createUniqueUuid(runtime, 'team-members');
+
       // Get all team member memories
-      const teamMemberMemories = await runtime.getMemoryManager("messages").getMemories({
-        roomId: teamMembersRoomId
+      const teamMemberMemories = await runtime.getMemories({
+        tableName: 'messages',
+        roomId: teamMembersRoomId,
       });
-      
+
       // Find the team member with the given ID
-      const teamMemberMemory = (teamMemberMemories as Array<Memory & { content: TeamMemberContent }>)
-        .find(memory => memory.content.member.id === teamMemberId);
-      
+      const teamMemberMemory = (
+        teamMemberMemories as Array<Memory & { content: TeamMemberContent }>
+      ).find((memory) => memory.content.member.id === teamMemberId);
+
       if (!teamMemberMemory) {
         logger.warn(`Team member with ID ${teamMemberId} not found`);
         return false;
       }
-      
+
       const teamMember = teamMemberMemory.content.member;
-      
+
       // Update team member object with new values
       const updatedTeamMember: TeamMember = {
         ...teamMember,
@@ -87,21 +89,24 @@ export const updateTeamMember: Action = {
         contacts: contacts || teamMember.contacts,
         skills: skills || teamMember.skills,
       };
-      
+
       // Save updated team member to memory
-      await runtime.getMemoryManager("messages").createMemory({
-        id: teamMemberMemory.id,
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: {
-          type: 'team-member',
-          member: updatedTeamMember,
-          discordHandle: discordHandle || teamMemberMemory.content.discordHandle
+      await runtime.createMemory(
+        {
+          id: teamMemberMemory.id,
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: {
+            type: 'team-member',
+            member: updatedTeamMember,
+            discordHandle: discordHandle || teamMemberMemory.content.discordHandle,
+          },
+          roomId: teamMembersRoomId,
+          createdAt: teamMemberMemory.createdAt,
         },
-        roomId: teamMembersRoomId,
-        createdAt: teamMemberMemory.createdAt
-      });
-      
+        'messages'
+      );
+
       logger.info(`Successfully updated team member: ${updatedTeamMember.name}`);
       return true;
     } catch (error) {
@@ -112,12 +117,12 @@ export const updateTeamMember: Action = {
   examples: [
     [
       {
-        name: "admin",
+        name: 'admin',
         content: { text: "Update John's timezone to EST" },
       },
       {
-        name: "jimmy",
-        content: { text: "I'll update John's timezone to EST", actions: ["updateTeamMember"] },
+        name: 'jimmy',
+        content: { text: "I'll update John's timezone to EST", actions: ['updateTeamMember'] },
       },
     ],
   ],

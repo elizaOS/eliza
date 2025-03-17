@@ -24,7 +24,7 @@ const character: Character = {
   name: 'Jimmy',
   plugins: [
     '@elizaos/plugin-sql',
-    '@elizaos/plugin-anthropic',
+    // '@elizaos/plugin-anthropic',
     '@elizaos/plugin-openai',
     '@elizaos/plugin-discord',
     '@elizaos/plugin-pdf',
@@ -374,7 +374,7 @@ export const projectManager: ProjectAgent = {
     }
 
     // Initialize the character with config
-    await initCharacter({ runtime, config });
+    await initCharacter({ runtime, config: null });
   },
 };
 
