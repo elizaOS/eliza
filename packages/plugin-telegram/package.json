@@ -1,38 +1,45 @@
 {
-	"name": "@elizaos/plugin-telegram",
-	"version": "1.0.0-alpha.20",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		"./package.json": "./package.json",
-		".": {
-			"import": {
-				"@elizaos/source": "./src/index.ts",
-				"types": "./dist/index.d.ts",
-				"default": "./dist/index.js"
-			}
-		}
-	},
-	"files": ["dist"],
-	"dependencies": {
-		"@telegraf/types": "7.1.0",
-		"telegraf": "4.16.3"
-	},
-	"devDependencies": {
-		"tsup": "8.4.0",
-		"vitest": "1.6.1"
-	},
-	"scripts": {
-		"build": "tsup",
-		"dev": "tsup --watch",
-		"test": "vitest run",
-		"test:watch": "vitest",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"gitHead": "dcfef9ba49395832bf10815ef9ec87d40255c0bf"
+  "name": "@elizaos/plugin-telegram",
+  "version": "1.0.0-alpha.67",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@telegraf/types": "7.1.0",
+    "strip-literal": "^3.0.0",
+    "telegraf": "4.16.3",
+    "type-detect": "^4.1.0"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "vitest": "1.6.1"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
 }

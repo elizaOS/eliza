@@ -1,20 +1,27 @@
 #!/usr/bin/env node
-import fs from "node:fs";
-import path from "node:path";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { agent } from "@/src/commands/agent";
-import { init } from "@/src/commands/init";
-import { plugins } from "@/src/commands/plugins";
-import { start } from "@/src/commands/start";
-import { teeCommand as tee } from "@/src/commands/tee";
-import { test } from "@/src/commands/test";
-import { loadEnvironment } from "@/src/utils/get-config";
-import { logger } from "@elizaos/core";
-import { Command } from "commander";
+process.env.NODE_OPTIONS = '--no-deprecation';
 
-process.on("SIGINT", () => process.exit(0));
-process.on("SIGTERM", () => process.exit(0));
+import fs from 'node:fs';
+import path from 'node:path';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { logger } from '@elizaos/core';
+import { Command } from 'commander';
+import { agent } from './commands/agent.js';
+import { create } from './commands/create.js';
+import { dev } from './commands/dev.js';
+import { env } from './commands/env.js';
+import { plugin } from './commands/plugin.js';
+import { project } from './commands/project.js';
+import { publish } from './commands/publish.js';
+import { start } from './commands/start.js';
+import { teeCommand as tee } from './commands/tee.js';
+import { test } from './commands/test.js';
+import { update } from './commands/update.js';
+import { loadEnvironment } from './utils/get-config.js';
+import { displayBanner } from './displayBanner';
+process.on('SIGINT', () => process.exit(0));
+process.on('SIGTERM', () => process.exit(0));
 
 /**
  * Asynchronous function that serves as the main entry point for the application.
@@ -22,40 +29,48 @@ process.on("SIGTERM", () => process.exit(0));
  * @returns {Promise<void>}
  */
 async function main() {
-	// Load environment variables, trying project .env first, then global ~/.eliza/.env
-	await loadEnvironment();
+  // Load environment variables, trying project .env first, then global ~/.eliza/.env
+  await loadEnvironment();
 
-	// For ESM modules we need to use import.meta.url instead of __dirname
-	const __filename = fileURLToPath(import.meta.url);
-	const __dirname = dirname(__filename);
+  // For ESM modules we need to use import.meta.url instead of __dirname
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
 
-	// Find package.json relative to the current file
-	const packageJsonPath = path.resolve(__dirname, "../package.json");
+  // Find package.json relative to the current file
+  const packageJsonPath = path.resolve(__dirname, '../package.json');
 
-	// Add a simple check in case the path is incorrect
-	let version = "0.0.0"; // Fallback version
-	if (!fs.existsSync(packageJsonPath)) {
-	} else {
-		const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
-		version = packageJson.version;
-	}
+  // Add a simple check in case the path is incorrect
+  let version = '0.0.0'; // Fallback version
+  if (!fs.existsSync(packageJsonPath)) {
+  } else {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    version = packageJson.version;
+  }
 
-	const program = new Command()
-		.name("eliza")
-		.description("elizaOS CLI - Manage your AI agents and plugins")
-		.version(version);
+  const program = new Command().name('elizaos').version(version);
 
-	program
-		.addCommand(init)
-		.addCommand(plugins)
-		.addCommand(agent)
-		.addCommand(tee)
-		.addCommand(start)
-		.addCommand(test);
-	program.parse(process.argv);
+  program
+    .addCommand(create)
+    .addCommand(project)
+    .addCommand(plugin)
+    .addCommand(agent)
+    .addCommand(tee)
+    .addCommand(start)
+    .addCommand(update)
+    .addCommand(test)
+    .addCommand(env)
+    .addCommand(dev)
+    .addCommand(publish);
+
+  // if no args are passed, display the banner
+  if (process.argv.length === 2) {
+    displayBanner(version);
+  }
+
+  await program.parseAsync();
 }
 
 main().catch((error) => {
-	logger.error("An error occurred:", error);
-	process.exit(1);
+  logger.error('An error occurred:', error);
+  process.exit(1);
 });

@@ -1,11 +1,11 @@
 import {
-	type Connection,
-	LAMPORTS_PER_SOL,
-	PublicKey,
-	SystemProgram,
-	Transaction,
-	type TransactionInstruction,
-} from "@solana/web3.js";
+  type Connection,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+  type TransactionInstruction,
+} from '@solana/web3.js';
 
 /**
  * Interface representing the parameters for a token swap.
@@ -17,11 +17,11 @@ import {
  * @property {("ExactIn" | "ExactOut")} [swapMode="ExactIn"] - The swap mode, either "ExactIn" or "ExactOut".
  */
 export interface SwapParams {
-	fromToken: string;
-	toToken: string;
-	amount: number;
-	slippage: number;
-	swapMode?: "ExactIn" | "ExactOut";
+  fromToken: string;
+  toToken: string;
+  amount: number;
+  slippage: number;
+  swapMode?: 'ExactIn' | 'ExactOut';
 }
 
 /**
@@ -33,27 +33,27 @@ export interface SwapParams {
  * @returns {Promise<{ signature: string }>} A Promise that resolves to an object containing the signature of the transaction.
  */
 export async function executeSwap(
-	connection: Connection,
-	walletPubkey: PublicKey,
-	params: SwapParams,
+  connection: Connection,
+  walletPubkey: PublicKey,
+  params: SwapParams
 ): Promise<{ signature: string }> {
-	// Create transaction
-	const tx = new Transaction();
+  // Create transaction
+  const tx = new Transaction();
 
-	// Add swap instruction
-	const swapIx = await createSwapInstruction(connection, walletPubkey, params);
-	tx.add(swapIx);
+  // Add swap instruction
+  const swapIx = await createSwapInstruction(connection, walletPubkey, params);
+  tx.add(swapIx);
 
-	// Get recent blockhash
-	const { blockhash } = await connection.getRecentBlockhash();
-	tx.recentBlockhash = blockhash;
-	tx.feePayer = walletPubkey;
+  // Get recent blockhash
+  const { blockhash } = await connection.getRecentBlockhash();
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = walletPubkey;
 
-	// Send and confirm transaction
-	const signature = await connection.sendTransaction(tx, []);
-	await connection.confirmTransaction(signature);
+  // Send and confirm transaction
+  const signature = await connection.sendTransaction(tx, []);
+  await connection.confirmTransaction(signature);
 
-	return { signature };
+  return { signature };
 }
 
 /**
@@ -64,16 +64,16 @@ export async function executeSwap(
  * @returns {Promise<TransactionInstruction>} - A promise that resolves to a transaction instruction for the swap
  */
 export async function createSwapInstruction(
-	_connection: Connection,
-	walletPubkey: PublicKey,
-	params: SwapParams,
+  _connection: Connection,
+  walletPubkey: PublicKey,
+  params: SwapParams
 ): Promise<TransactionInstruction> {
-	// For now, just create a simple SOL transfer instruction
-	return SystemProgram.transfer({
-		fromPubkey: walletPubkey,
-		toPubkey: new PublicKey(params.toToken),
-		lamports: params.amount * LAMPORTS_PER_SOL,
-	});
+  // For now, just create a simple SOL transfer instruction
+  return SystemProgram.transfer({
+    fromPubkey: walletPubkey,
+    toPubkey: new PublicKey(params.toToken),
+    lamports: params.amount * LAMPORTS_PER_SOL,
+  });
 }
 
 /**
@@ -84,10 +84,10 @@ export async function createSwapInstruction(
  * @returns {Promise<PublicKey>} - The public key of the token account.
  */
 export async function getTokenAccount(
-	_connection: Connection,
-	walletPubkey: PublicKey,
-	_mint: PublicKey,
+  _connection: Connection,
+  walletPubkey: PublicKey,
+  _mint: PublicKey
 ): Promise<PublicKey> {
-	// For SOL transfers, just return the wallet pubkey
-	return walletPubkey;
+  // For SOL transfers, just return the wallet pubkey
+  return walletPubkey;
 }

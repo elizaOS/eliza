@@ -3,12 +3,16 @@
     "outDir": "dist",
     "module": "ESNext",
     "target": "ESNext",
-    "moduleResolution": "Bundler",
+    "moduleResolution": "Node",
     "types": ["node"],
     "jsx": "react-jsx",
+    "allowJs": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
     "paths": {
-      "@elizaos/core": ["../../packages/core/src"],
-      "@elizaos/core/*": ["../../packages/core/src/*"]
+      "@elizaos/core": ["../core/src"],
+      "@elizaos/core/*": ["../core/src/*"]
     }
   },
   "ts-node": {

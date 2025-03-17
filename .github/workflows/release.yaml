@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "23"
+          node-version: '23'
 
       - uses: oven-sh/setup-bun@v2
 
@@ -24,7 +24,7 @@ jobs:
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: "Setup npm for npmjs"
+      - name: 'Setup npm for npmjs'
         run: |
           npm config set registry https://registry.npmjs.org/
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
@@ -35,16 +35,14 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Setup Biome CLI
-        uses: biomejs/setup-biome@v2
-        with:
-          version: latest
+      - name: Check format
+        run: bun run format:check
 
-      - name: Run Biome
+      - name: Run lint
         run: bun run lint
 
       - name: Build packages
-        run: bun run build
+        run: bun run build && bun run build:docs
 
       - name: Publish Packages
         id: publish

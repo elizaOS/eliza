@@ -9,7 +9,7 @@
  * original object with the specified key set to be non-nullable.
  */
 export type NonNullableField<T, K extends keyof T> = {
-	[P in K]-?: T[P];
+  [P in K]-?: T[P];
 } & T;
 
 /**
@@ -21,7 +21,7 @@ export type NonNullableField<T, K extends keyof T> = {
  * @returns {(value: T) => value is NonNullableField<T, K>} A function that checks if the field is defined
  */
 export function isFieldDefined<T, K extends keyof T>(key: K) {
-	return (value: T): value is NonNullableField<T, K> => isDefined(value[key]);
+  return (value: T): value is NonNullableField<T, K> => isDefined(value[key]);
 }
 
 /**
@@ -31,5 +31,5 @@ export function isFieldDefined<T, K extends keyof T>(key: K) {
  * @return {value is T} Returns true if the value is defined, false otherwise.
  */
 export function isDefined<T>(value: T | null | undefined): value is T {
-	return value != null;
+  return value != null;
 }

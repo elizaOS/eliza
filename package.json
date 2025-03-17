@@ -1,55 +1,51 @@
 {
   "name": "eliza",
   "scripts": {
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "cli": "bun --filter=@elizaos/cli cli",
-    "lint": "turbo run lint --filter=./packages/*",
-    "preinstall": "npx only-allow bun",
+    "preinstall": "only-allow bun",
+    "start": "cd ./packages/the-org && bun run start",
+    "start:debug": "LOG_LEVEL=debug elizaos start",
+    "start:app": "turbo run start --filter=./packages/app",
+    "dev": "turbo run dev --filter=./packages/the-org",
+    "build:docs": "turbo run build --filter=@elizaos/docs",
+    "build": "turbo run build --filter=@elizaos/client && turbo run build --filter=!@elizaos/docs",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* && turbo run clean --filter=./packages/*",
+    "lint": "turbo run lint --filter=./packages/* && prettier --write . && prettier --check .",
+    "pre-commit": "bun run scripts/pre-commit-lint.js",
+    "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
+    "release:alpha": "lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
-    "build": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/plugin-sql && turbo run build --filter=!./packages/docs",
-    "build:docker": "turbo run build --filter=./packages/core && turbo run build --filter=./packages/* --filter=!./packages/docs",
-    "start": "turbo run start --filter=!./packages/docs",
-    "start:debug": "LOG_LEVEL=debug turbo run start --filter=!./packages/docs",
-    "start:no-warnings": "BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run start --filter=!./packages/docs",
-    "build:no-warnings": "BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run build --filter=./packages/core && BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run build --filter=./packages/plugin-sql && BUN_INSTALL_IGNORE_MISSING_PEER_DEPENDENCIES=1 turbo run build --filter=!./packages/docs",
-    "agent": "turbo run start --filter=@elizaos/the-org",
-    "dev": "turbo run build --filter=./packages/core && turbo run dev --filter=!./packages/core --filter=!./packages/docs --concurrency=20",
-    "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
-    "release:alpha": "bun run build && bun lint && lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose && bun lint",
     "docker:build": "bash ./scripts/docker.sh build",
     "docker:run": "bash ./scripts/docker.sh run",
     "docker:bash": "bash ./scripts/docker.sh bash",
     "docker:start": "bash ./scripts/docker.sh start",
     "docker": "bun docker:build && bun docker:run && bun docker:bash",
-    "test": "turbo run test --filter=@elizaos/the-org",
-    "update-sourcemaps": "bash ./update-tsup-config.sh && bun run build",
-    "reset-sourcemaps": "find packages -name \"tsup.config.ts.bak\" -exec bash -c 'cp \"{}\" \"${0%.bak}\"' {} \\;"
+    "test": "turbo run test --concurrency 20 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!./packages/the-org --filter=!./packages/docs --filter=!./packages/plugin-video-understanding",
+    "test:app": "turbo run test --concurrency 20 --filter=./packages/app",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
     "@types/bun": "latest",
     "@types/node": "^22.13.10",
+    "@types/uuid": "^9.0.8",
     "@vitest/eslint-plugin": "1.0.1",
-    "bun": "1.2.2",
+    "bun": "1.2.5",
     "concurrently": "9.1.0",
     "cross-env": "7.0.3",
-    "husky": "9.1.7",
+    "husky": "^9.1.7",
     "lerna": "8.1.4",
+    "lint-staged": "^15.5.0",
     "only-allow": "^1.2.1",
+    "sharp": "0.33.5",
+    "tsup": "8.4.0",
     "turbo": "^2.4.4",
-    "typedoc": "0.26.11",
+    "typedoc": "0.27.9",
     "typescript": "5.8.2",
     "vite": "5.4.12",
-    "vitest": "3.0.5",
-    "@types/uuid": "^9.0.8",
-    "tsup": "8.4.0"
+    "vitest": "3.0.5"
   },
   "bun": {
     "overrides": {
-      "onnxruntime-node": "1.20.1",
-      "@ai-sdk/provider": "1.0.6",
-      "@ai-sdk/provider-utils": "2.1.6",
       "cookie": "0.7.0",
       "bs58": "5.0.0",
       "secp256k1": "5.0.1",
@@ -58,10 +54,6 @@
       "eslint": "9.22.0",
       "react": "19.0.0",
       "react-dom": "19.0.0",
-      "solana-bankrun": "0.3.1",
-      "@metaplex-foundation/umi": "0.9.2",
-      "buffer": "6.0.3",
-      "@solana/spl-token": "0.4.9",
       "got": "12.6.1"
     }
   },
@@ -69,9 +61,12 @@
     "node": "23.3.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@babel/generator": "^7.26.9",
+    "vittest": "^1.0.2",
     "zod": "3.24.1"
   },
-  "packageManager": "bun@1.2.2",
+  "packageManager": "bun@1.2.5",
   "workspaces": [
     "packages/*"
   ],
@@ -86,10 +81,24 @@
     "react-dom": "19.0.0",
     "vitest": "3.0.5",
     "@metaplex-foundation/umi": "0.9.2",
+    "typedoc-plugin-markdown": "4.2.10",
     "buffer": "6.0.3",
     "@solana/spl-token": "0.4.9",
     "solana-bankrun": "0.3.1",
     "got": "12.6.1",
     "form-data": "4.0.2"
-  }
+  },
+  "trustedDependencies": [
+    "@swc/core",
+    "bigint-buffer",
+    "bufferutil",
+    "bun",
+    "canvas",
+    "esbuild",
+    "husky",
+    "node-llama-cpp",
+    "protobufjs",
+    "sharp",
+    "utf-8-validate"
+  ]
 }

@@ -1,5 +1,5 @@
-import { names, uniqueNamesGenerator } from "unique-names-generator";
-import type { Action, ActionExample } from "./types";
+import { names, uniqueNamesGenerator } from 'unique-names-generator';
+import type { Action, ActionExample } from './types';
 
 /**
  * Composes a set of example conversations based on provided actions and a specified count.
@@ -16,48 +16,43 @@ import type { Action, ActionExample } from "./types";
  * @returns {string} The formatted action examples.
  */
 export const composeActionExamples = (actionsData: Action[], count: number) => {
-	const data: ActionExample[][][] = actionsData.map((action: Action) => [
-		...action.examples,
-	]);
+  const data: ActionExample[][][] = actionsData.map((action: Action) => [...action.examples]);
 
-	const actionExamples: ActionExample[][] = [];
-	let length = data.length;
-	for (let i = 0; i < count && length; i++) {
-		const actionId = i % length;
-		const examples = data[actionId];
-		if (examples.length) {
-			const rand = ~~(Math.random() * examples.length);
-			actionExamples[i] = examples.splice(rand, 1)[0];
-		} else {
-			i--;
-		}
+  const actionExamples: ActionExample[][] = [];
+  let length = data.length;
+  for (let i = 0; i < count && length; i++) {
+    const actionId = i % length;
+    const examples = data[actionId];
+    if (examples.length) {
+      const rand = ~~(Math.random() * examples.length);
+      actionExamples[i] = examples.splice(rand, 1)[0];
+    } else {
+      i--;
+    }
 
-		if (examples.length === 0) {
-			data.splice(actionId, 1);
-			length--;
-		}
-	}
+    if (examples.length === 0) {
+      data.splice(actionId, 1);
+      length--;
+    }
+  }
 
-	const formattedExamples = actionExamples.map((example) => {
-		const exampleNames = Array.from({ length: 5 }, () =>
-			uniqueNamesGenerator({ dictionaries: [names] }),
-		);
+  const formattedExamples = actionExamples.map((example) => {
+    const exampleNames = Array.from({ length: 5 }, () =>
+      uniqueNamesGenerator({ dictionaries: [names] })
+    );
 
-		return `\n${example
-			.map((message) => {
-				let messageString = `${message.name}: ${message.content.text}${message.content.actions ? ` (actions: ${message.content.actions.join(", ")})` : ""}`;
-				for (let i = 0; i < exampleNames.length; i++) {
-					messageString = messageString.replaceAll(
-						`{{name${i + 1}}}`,
-						exampleNames[i],
-					);
-				}
-				return messageString;
-			})
-			.join("\n")}`;
-	});
+    return `\n${example
+      .map((message) => {
+        let messageString = `${message.name}: ${message.content.text}${message.content.action ? ` (action: ${message.content.action})` : ''}${message.content.actions ? ` (actions: ${message.content.actions.join(', ')})` : ''}`;
+        for (let i = 0; i < exampleNames.length; i++) {
+          messageString = messageString.replaceAll(`{{name${i + 1}}}`, exampleNames[i]);
+        }
+        return messageString;
+      })
+      .join('\n')}`;
+  });
 
-	return formattedExamples.join("\n");
+  return formattedExamples.join('\n');
 };
 
 /**
@@ -66,10 +61,10 @@ export const composeActionExamples = (actionsData: Action[], count: number) => {
  * @returns A comma-separated string of action names.
  */
 export function formatActionNames(actions: Action[]) {
-	return actions
-		.sort(() => 0.5 - Math.random())
-		.map((action: Action) => `${action.name}`)
-		.join(", ");
+  return actions
+    .sort(() => 0.5 - Math.random())
+    .map((action: Action) => `${action.name}`)
+    .join(', ');
 }
 
 /**
@@ -78,8 +73,8 @@ export function formatActionNames(actions: Action[]) {
  * @returns A detailed string of actions, including names and descriptions.
  */
 export function formatActions(actions: Action[]) {
-	return actions
-		.sort(() => 0.5 - Math.random())
-		.map((action: Action) => `${action.name}: ${action.description}`)
-		.join(",\n");
+  return actions
+    .sort(() => 0.5 - Math.random())
+    .map((action: Action) => `${action.name}: ${action.description}`)
+    .join(',\n');
 }

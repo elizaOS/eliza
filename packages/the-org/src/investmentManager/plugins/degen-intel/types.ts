@@ -1,12 +1,14 @@
+import type { Content } from '@elizaos/core';
+
 /**
  * Represents a type that can be one of four values: "solana", "base", "ethereum", or "L1".
  */
-export type TChain = "solana" | "base" | "ethereum" | "L1";
+export type TChain = 'solana' | 'base' | 'ethereum' | 'L1';
 /**
  * Type representing different data providers.
  * Possible values are "birdeye" and "coinmarketcap".
  */
-export type TDataProvider = "birdeye" | "coinmarketcap";
+export type TDataProvider = 'birdeye' | 'coinmarketcap';
 
 /**
  * Interface representing a token with various properties.
@@ -27,20 +29,20 @@ export type TDataProvider = "birdeye" | "coinmarketcap";
  * @property { Date } last_updated - The date when the token data was last updated.
  */
 export interface IToken {
-	provider: TDataProvider;
-	chain: TChain;
-	address: string;
-	decimals: number;
-	liquidity: number;
-	marketcap: number;
-	logoURI: string;
-	name: string;
-	symbol: string;
-	volume24hUSD: number;
-	rank: number;
-	price: number;
-	price24hChangePercent: number;
-	last_updated: Date;
+  provider: TDataProvider;
+  chain: TChain;
+  address: string;
+  decimals: number;
+  liquidity: number;
+  marketcap: number;
+  logoURI: string;
+  name: string;
+  symbol: string;
+  volume24hUSD: number;
+  rank: number;
+  price: number;
+  price24hChangePercent: number;
+  last_updated: Date;
 }
 
 /**
@@ -52,9 +54,9 @@ export interface IToken {
  * @property {string} reason - The reason for the sentiment value.
  */
 export interface ISentimentToken {
-	token: string;
-	sentiment: number;
-	reason: string;
+  token: string;
+  sentiment: number;
+  reason: string;
 }
 
 /**
@@ -66,10 +68,10 @@ export interface ISentimentToken {
  * @property {ISentimentToken[]} occuringTokens - Array of sentiment tokens found in the text.
  */
 export interface ISentiment {
-	timeslot: Date;
-	processed?: boolean;
-	text: string;
-	occuringTokens: ISentimentToken[];
+  timeslot: Date;
+  processed?: boolean;
+  text: string;
+  occuringTokens: ISentimentToken[];
 }
 
 /**
@@ -79,8 +81,8 @@ export interface ISentiment {
  * @property {string} key - The key associated with the data object.
  */
 export interface IData {
-	data: object;
-	key: string;
+  data: object;
+  key: string;
 }
 
 /**
@@ -91,9 +93,9 @@ export interface IData {
  * @property {object} data - Additional data associated with the transaction.
  */
 export interface ITransactionHistory {
-	txHash: string;
-	blockTime: Date;
-	data: object;
+  txHash: string;
+  blockTime: Date;
+  data: object;
 }
 
 /**
@@ -104,7 +106,49 @@ export interface ITransactionHistory {
  * @property {any} data - Additional data related to the job.
  */
 export type Job = {
-	id: string;
-	name: string;
-	data: any;
+  id: string;
+  name: string;
+  data: any;
 };
+
+/**
+ * Interface representing a sentiment object.
+ * @interface
+ * @property {string} timeslot - The timeslot of the sentiment.
+ * @property {boolean} processed - Indicates if the sentiment has been processed.
+ * @property {string} [text] - The text associated with the sentiment.
+ * @property {Array<{ token: string; sentiment: number; reason: string; }>} [occuringTokens] - The array of tokens with their sentiment and reason.
+ */
+export interface Sentiment {
+  timeslot: string;
+  processed: boolean;
+  text?: string;
+  occuringTokens?: Array<{
+    token: string;
+    sentiment: number;
+    reason: string;
+  }>;
+}
+
+/**
+ * Interface representing content from Twitter.
+ * Extends the Content interface.
+ * @property {string} text - The text content of the tweet.
+ * @property {"twitter"} source - The source of the content, always "twitter".
+ * @property {string} [url] - Optional URL of the tweet.
+ * @property {Object} tweet - Object containing tweet details.
+ * @property {string} tweet.username - The username of the tweet author.
+ * @property {number} [tweet.likes] - Optional number of likes on the tweet.
+ * @property {number} [tweet.retweets] - Optional number of retweets of the tweet.
+ */
+
+export interface TwitterContent extends Content {
+  text: string;
+  source: 'twitter';
+  url?: string;
+  tweet?: {
+    username: string;
+    likes?: number;
+    retweets?: number;
+  };
+}

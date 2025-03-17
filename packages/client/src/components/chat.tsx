@@ -1,404 +1,601 @@
-import { Button } from "@/components/ui/button";
+import { Button } from '@/components/ui/button';
 import {
-	ChatBubble,
-	ChatBubbleMessage,
-	ChatBubbleTimestamp,
-} from "@/components/ui/chat/chat-bubble";
-import { ChatInput } from "@/components/ui/chat/chat-input";
-import { ChatMessageList } from "@/components/ui/chat/chat-message-list";
-import { useAgent, useAgentMessages } from "@/hooks/use-query-hooks";
-import { useToast } from "@/hooks/use-toast";
-import { apiClient } from "@/lib/api";
-import { cn, moment } from "@/lib/utils";
-import { WorldManager } from "@/lib/world-manager";
-import type { IAttachment } from "@/types";
-import type { Content, UUID } from "@elizaos/core";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Paperclip, Send, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import AIWriter from "react-aiwriter";
-import { AudioRecorder } from "./audio-recorder";
-import CopyButton from "./copy-button";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { Badge } from "./ui/badge";
-import ChatTtsButton from "./ui/chat/chat-tts-button";
-import { useAutoScroll } from "./ui/chat/hooks/useAutoScroll";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+  ChatBubble,
+  ChatBubbleMessage,
+  ChatBubbleTimestamp,
+} from '@/components/ui/chat/chat-bubble';
+import { ChatInput } from '@/components/ui/chat/chat-input';
+import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
+import { USER_NAME } from '@/constants';
+import { useAgent, useMessages } from '@/hooks/use-query-hooks';
+import { cn, getEntityId, moment } from '@/lib/utils';
+import SocketIOManager from '@/lib/socketio-manager';
+import { WorldManager } from '@/lib/world-manager';
+import type { IAttachment } from '@/types';
+import type { Content, UUID } from '@elizaos/core';
+import { AgentStatus } from '@elizaos/core';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  Activity,
+  ChevronRight,
+  Database,
+  PanelRight,
+  Paperclip,
+  Send,
+  Terminal,
+  X,
+} from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import AIWriter from 'react-aiwriter';
+import { AgentActionViewer } from './action-viewer';
+import { AudioRecorder } from './audio-recorder';
+import CopyButton from './copy-button';
+import { LogViewer } from './log-viewer';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Badge } from './ui/badge';
+import ChatTtsButton from './ui/chat/chat-tts-button';
+import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+import { AgentMemoryViewer } from './memory-viewer';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
+
+const SOURCE_NAME = 'client_chat';
 
 type ExtraContentFields = {
-	name: string;
-	createdAt: number;
-	isLoading?: boolean;
+  name: string;
+  createdAt: number;
+  isLoading?: boolean;
 };
 
 type ContentWithUser = Content & ExtraContentFields;
 
-type NewMessagesResponse = {
-	data: {
-		message: ContentWithUser;
-	};
-};
-
 function MessageContent({
-	message,
-	agentId,
+  message,
+  agentId,
+  isLastMessage,
 }: {
-	message: ContentWithUser;
-	agentId: UUID;
+  message: ContentWithUser;
+  agentId: UUID;
+  isLastMessage: boolean;
 }) {
-	return (
-		<div className="flex flex-col">
-			<ChatBubbleMessage
-				isLoading={message.isLoading}
-				{...(message.name === "Anon" ? { variant: "sent" } : {})}
-			>
-				{message.name === "Anon" ? (
-					message.text
-				) : (
-					<AIWriter>{message.text}</AIWriter>
-				)}
-				{/* Attachments */}
-				<div>
-					{message.attachments?.map((attachment: IAttachment) => (
-						<div
-							className="flex flex-col gap-1 mt-2"
-							key={`${attachment.url}-${attachment.title}`}
-						>
-							<img
-								alt="attachment"
-								src={attachment.url}
-								width="100%"
-								height="100%"
-								className="w-64 rounded-md"
-							/>
-							<div className="flex items-center justify-between gap-4">
-								<span />
-								<span />
-							</div>
-						</div>
-					))}
-				</div>
-			</ChatBubbleMessage>
-			<div className="flex items-center gap-4 justify-between w-full mt-1">
-				{message.text && !message.isLoading ? (
-					<div className="flex items-center gap-1">
-						<CopyButton text={message.text} />
-						<ChatTtsButton agentId={agentId} text={message.text} />
-					</div>
-				) : null}
-				<div
-					className={cn([
-						message.isLoading ? "mt-2" : "",
-						"flex items-center justify-between gap-4 select-none",
-					])}
-				>
-					{message.source ? (
-						<Badge variant="outline">{message.source}</Badge>
-					) : null}
-					{message.actions ? (
-						<Badge variant="outline">{message.actions.join(", ")}</Badge>
-					) : null}
-					{message.createdAt ? (
-						<ChatBubbleTimestamp
-							timestamp={moment(message.createdAt).format("LT")}
-						/>
-					) : null}
-				</div>
-			</div>
-		</div>
-	);
+  console.log('message', message);
+  // Only log message details in development mode
+  if (import.meta.env.DEV) {
+    console.log(`[Chat] Rendering message from ${message.name}:`, {
+      isUser: message.name === USER_NAME,
+      text: message.text?.substring(0, 20) + '...',
+      senderId: message.senderId,
+      source: message.source,
+    });
+  }
+
+  return (
+    <ChatBubbleMessage
+      isLoading={message.isLoading}
+      {...(message.name === USER_NAME ? { variant: 'sent' } : {})}
+      {...(!message.text ? { className: 'bg-transparent' } : {})}
+    >
+      <div className="flex flex-col w-full m-0 p-0">
+        {message.name !== USER_NAME && (
+          <>
+            <div className="flex justify-end mb-2 absolute top-2 right-2">
+              {message.text && !message.isLoading ? (
+                <div className="flex items-center gap-4">
+                  <CopyButton text={message.text} />
+                  <ChatTtsButton agentId={agentId} text={message.text} />
+                </div>
+              ) : (
+                <div />
+              )}
+            </div>
+            {message.text && message.thought && (
+              <Collapsible className="mb-1">
+                <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
+                  <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+                  Thought Process
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-5 pt-1">
+                  <Badge variant="outline" className="text-xs">
+                    {message.thought}
+                  </Badge>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </>
+        )}
+      </div>
+
+      {message.name === USER_NAME ? (
+        message.text
+      ) : isLastMessage && message.name !== USER_NAME ? (
+        <AIWriter>{message.text}</AIWriter>
+      ) : (
+        message.text
+      )}
+
+      {!message.text && message.thought && (
+        <>
+          {message.name === USER_NAME ? (
+            message.thought
+          ) : isLastMessage && message.name !== USER_NAME ? (
+            <AIWriter>
+              <span className="italic text-muted-foreground">{message.thought}</span>
+            </AIWriter>
+          ) : (
+            <span className="italic text-muted-foreground">{message.thought}</span>
+          )}
+        </>
+      )}
+
+      {message.text && message.actions && (
+        <div className="mt-2">
+          Actions: <span className="font-bold">{message.actions}</span>
+        </div>
+      )}
+
+      {message.attachments?.map((attachment: IAttachment) => (
+        <div className="flex flex-col gap-1" key={`${attachment.url}-${attachment.title}`}>
+          <img
+            alt="attachment"
+            src={attachment.url}
+            width="100%"
+            height="100%"
+            className="w-64 rounded-md"
+          />
+          <div className="flex items-center justify-between gap-4">
+            <span />
+            <span />
+          </div>
+        </div>
+      ))}
+      {message.text && message.createdAt && (
+        <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
+      )}
+    </ChatBubbleMessage>
+  );
 }
 
 export default function Page({ agentId }: { agentId: UUID }) {
-	const { toast } = useToast();
-	const [selectedFile, setSelectedFile] = useState<File | null>(null);
-	const [input, setInput] = useState("");
-	const inputRef = useRef<HTMLTextAreaElement>(null);
-	const fileInputRef = useRef<HTMLInputElement>(null);
-	const formRef = useRef<HTMLFormElement>(null);
-	const queryClient = useQueryClient();
-	const worldId = WorldManager.getWorldId();
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [input, setInput] = useState('');
+  const [showDetails, setShowDetails] = useState(false);
+  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs' | 'memories'>('actions');
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const queryClient = useQueryClient();
+  const worldId = WorldManager.getWorldId();
 
-	const { messages } = useAgentMessages(agentId);
+  const agentData = useAgent(agentId)?.data?.data;
+  const entityId = getEntityId();
+  const roomId = WorldManager.generateRoomId(agentId);
 
-	const agentData = useAgent(agentId)?.data?.data;
+  const { data: messages = [] } = useMessages(agentId, roomId);
 
-	const getMessageVariant = (role: string) =>
-		role !== "user" ? "received" : "sent";
+  const socketIOManager = SocketIOManager.getInstance();
 
-	const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } =
-		useAutoScroll({
-			smooth: true,
-		});
+  useEffect(() => {
+    // Initialize Socket.io connection once with our entity ID
+    socketIOManager.initialize(entityId);
 
-	useEffect(() => {
-		scrollToBottom();
-	}, [queryClient.getQueryData(["messages", agentId, worldId])]);
+    // Join the room for this agent
+    socketIOManager.joinRoom(roomId);
 
-	useEffect(() => {
-		scrollToBottom();
-	}, []);
+    console.log(`[Chat] Joined room ${roomId} with entityId ${entityId}`);
 
-	const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === "Enter" && !e.shiftKey) {
-			e.preventDefault();
-			if (e.nativeEvent.isComposing) return;
-			handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
-		}
-	};
+    const handleMessageBroadcasting = (data: ContentWithUser) => {
+      console.log(`[Chat] Received message broadcast:`, data);
 
-	const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
-		e.preventDefault();
-		if (!input) return;
+      // Skip messages that don't have required content
+      if (!data || !data.text) {
+        console.warn('[Chat] Received empty or invalid message data:', data);
+        return;
+      }
 
-		const attachments: IAttachment[] | undefined = selectedFile
-			? [
-				{
-					url: URL.createObjectURL(selectedFile),
-					contentType: selectedFile.type,
-					title: selectedFile.name,
-				},
-			]
-			: undefined;
+      // Skip messages not for this room
+      if (data.roomId !== roomId) {
+        console.log(
+          `[Chat] Ignoring message for different room: ${data.roomId}, we're in ${roomId}`
+        );
+        return;
+      }
 
-		const newMessages = [
-			{
-				text: input,
-				name: "Anon",
-				createdAt: Date.now(),
-				attachments,
-				worldId,
-			},
-			{
-				text: input,
-				name: "system",
-				isLoading: true,
-				createdAt: Date.now(),
-				worldId,
-			},
-		];
+      // Check if the message is from the current user or from the agent
+      const isCurrentUser = data.senderId === entityId;
 
-		queryClient.setQueryData(
-			["messages", agentId, worldId],
-			(old: ContentWithUser[] = []) => [...old, ...newMessages],
-		);
+      // Build a proper ContentWithUser object that matches what the messages query expects
+      const newMessage: ContentWithUser = {
+        ...data,
+        // Set the correct name based on who sent the message
+        name: isCurrentUser ? USER_NAME : (data.senderName as string),
+        createdAt: data.createdAt || Date.now(),
+        isLoading: false,
+      };
 
-		sendMessageMutation.mutate({
-			message: input,
-			selectedFile: selectedFile ? selectedFile : null,
-		});
+      console.log(`[Chat] Adding new message to UI from ${newMessage.name}:`, newMessage);
 
-		setSelectedFile(null);
-		setInput("");
-		formRef.current?.reset();
-	};
+      // Update the message list without triggering a re-render cascade
+      queryClient.setQueryData(
+        ['messages', agentId, roomId, worldId],
+        (old: ContentWithUser[] = []) => {
+          console.log(`[Chat] Current messages:`, old?.length || 0);
 
-	useEffect(() => {
-		if (inputRef.current) {
-			inputRef.current.focus();
-		}
-	}, []);
+          // Check if this message is already in the list (avoid duplicates)
+          const isDuplicate = old.some(
+            (msg) =>
+              msg.text === newMessage.text &&
+              msg.name === newMessage.name &&
+              Math.abs((msg.createdAt || 0) - (newMessage.createdAt || 0)) < 5000 // Within 5 seconds
+          );
 
-	const sendMessageMutation = useMutation({
-		mutationKey: ["send_message", agentId],
-		mutationFn: ({
-			message,
-			selectedFile,
-		}: {
-			message: string;
-			selectedFile?: File | null;
-		}) => apiClient.sendMessage(agentId, message, selectedFile),
-		onSuccess: (newMessages: NewMessagesResponse) => {
-			if (newMessages) {
-				queryClient.setQueryData(
-					["messages", agentId, worldId],
-					(old: ContentWithUser[] = []) => [
-						...old.filter((msg) => !msg.isLoading),
-						{ ...newMessages.data.message, createdAt: Date.now() },
-					],
-				);
-			} else {
-				queryClient.setQueryData(
-					["messages", agentId, worldId],
-					(old: ContentWithUser[] = []) => [
-						...old.filter((msg) => !msg.isLoading),
-					],
-				);
-			}
-		},
-		onError: (e) => {
-			toast({
-				variant: "destructive",
-				title: "Unable to send message",
-				description: e.message,
-			});
-		},
-	});
+          if (isDuplicate) {
+            console.log('[Chat] Skipping duplicate message');
+            return old;
+          }
 
-	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		const file = e.target.files?.[0];
-		if (file?.type.startsWith("image/")) {
-			setSelectedFile(file);
-		}
-	};
+          return [...old, newMessage];
+        }
+      );
 
-	return (
-		<div className="flex flex-col w-full h-[calc(100dvh)] p-4">
-			{/* Agent Header */}
-			<div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
-				<div className="flex items-center gap-3">
-					<Avatar className="size-10 border rounded-full">
-						<AvatarImage src="/elizaos-icon.png" />
-					</Avatar>
-					<div className="flex flex-col">
-						<div className="flex items-center gap-2">
-							<h2 className="font-semibold text-lg">
-								{agentData?.name || "Agent"}
-							</h2>
-							{agentData?.enabled ? (
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
-									</TooltipTrigger>
-									<TooltipContent side="right">
-										<p>Agent is active</p>
-									</TooltipContent>
-								</Tooltip>
-							) : (
-								<Tooltip>
-									<TooltipTrigger asChild>
-										<div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20" />
-									</TooltipTrigger>
-									<TooltipContent side="right">
-										<p>Agent is inactive</p>
-									</TooltipContent>
-								</Tooltip>
-							)}
-						</div>
-						{agentData?.bio && (
-							<p className="text-sm text-muted-foreground line-clamp-1">
-								{Array.isArray(agentData.bio)
-									? agentData.bio[0]
-									: agentData.bio}
-							</p>
-						)}
-					</div>
-				</div>
-			</div>
+      // Remove the redundant state update that was causing render loops
+      // setInput(prev => prev + '');
+    };
 
+    // Add listener for message broadcasts
+    console.log(`[Chat] Adding messageBroadcast listener`);
+    socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
 
-			{/* Chat Messages */}
+    return () => {
+      // When leaving this chat, leave the room but don't disconnect
+      console.log(`[Chat] Leaving room ${roomId}`);
+      socketIOManager.leaveRoom(roomId);
+      socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
+    };
+  }, [roomId, agentId, entityId]);
 
-			<ChatMessageList
-				scrollRef={scrollRef}
-				isAtBottom={isAtBottom}
-				scrollToBottom={scrollToBottom}
-				disableAutoScroll={disableAutoScroll}
-			>
-				{messages.map((message: ContentWithUser) => {
-					const isUser = message.name === "Anon";
+  // Use a stable ID for refs to avoid excessive updates
+  const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
 
-					return (
-						<div
-							key={message.name + message.createdAt}
-							className={`flex flex-column gap-1 p-1 ${isUser ? "justify-end" : ""}`}
-						>
-							<ChatBubble
-								variant={getMessageVariant(message.name)}
-								className={`flex flex-row items-center gap-2 ${isUser ? "flex-row-reverse" : ""}`}
-							>
-								<Avatar className="size-8 p-1 border rounded-full select-none">
-									<AvatarImage src={isUser ? "/user-icon.png" : "/elizaos-icon.png"} />
-									{isUser && <AvatarFallback>U</AvatarFallback>}
-								</Avatar>
-								<MessageContent message={message} agentId={agentId} />
-							</ChatBubble>
-						</div>
-					);
-				})}
-			</ChatMessageList>
+  const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } = useAutoScroll({
+    smooth: true,
+  });
 
-			{/* Chat Input */}
-			<div className="px-4 pb-4">
-				<form
-					ref={formRef}
-					onSubmit={handleSendMessage}
-					className="relative rounded-md border bg-card"
-				>
-					{selectedFile ? (
-						<div className="p-3 flex">
-							<div className="relative rounded-md border p-2">
-								<Button
-									onClick={() => setSelectedFile(null)}
-									className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
-									variant="outline"
-									size="icon"
-								>
-									<X />
-								</Button>
-								<img
-									alt="Selected file"
-									src={URL.createObjectURL(selectedFile)}
-									height="100%"
-									width="100%"
-									className="aspect-square object-contain w-16"
-								/>
-							</div>
-						</div>
-					) : null}
-					<ChatInput
-						ref={inputRef}
-						onKeyDown={handleKeyDown}
-						value={input}
-						onChange={({ target }) => setInput(target.value)}
-						placeholder="Type your message here..."
-						className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-					/>
-					<div className="flex items-center p-3 pt-0">
-						<Tooltip>
-							<TooltipTrigger asChild>
-								<div>
-									<Button
-										variant="ghost"
-										size="icon"
-										onClick={() => {
-											if (fileInputRef.current) {
-												fileInputRef.current.click();
-											}
-										}}
-									>
-										<Paperclip className="size-4" />
-										<span className="sr-only">Attach file</span>
-									</Button>
-									<input
-										type="file"
-										ref={fileInputRef}
-										onChange={handleFileChange}
-										accept="image/*"
-										className="hidden"
-									/>
-								</div>
-							</TooltipTrigger>
-							<TooltipContent side="left">
-								<p>Attach file</p>
-							</TooltipContent>
-						</Tooltip>
-						<AudioRecorder
-							agentId={agentId}
-							onChange={(newInput: string) => setInput(newInput)}
-						/>
-						<Button
-							disabled={!input || sendMessageMutation?.isPending}
-							type="submit"
-							size="sm"
-							className="ml-auto gap-1.5 h-[30px]"
-						>
-							{sendMessageMutation?.isPending ? "..." : "Send Message"}
-							<Send className="size-3.5" />
-						</Button>
-					</div>
-				</form>
-			</div>
-		</div>
-	);
+  // Use a ref to track the previous message count to avoid excessive scrolling
+  const prevMessageCountRef = useRef(0);
+
+  // Update scroll without creating a circular dependency
+  const safeScrollToBottom = useCallback(() => {
+    // Add a small delay to avoid render loops
+    setTimeout(() => {
+      scrollToBottom();
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    // Only scroll if the message count has changed
+    if (messages.length !== prevMessageCountRef.current) {
+      console.log(`[Chat][${scrollRefId}] Messages updated, scrolling to bottom`);
+      safeScrollToBottom();
+      prevMessageCountRef.current = messages.length;
+    }
+  }, [messages.length, safeScrollToBottom, scrollRefId]);
+
+  useEffect(() => {
+    safeScrollToBottom();
+  }, [safeScrollToBottom]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (e.nativeEvent.isComposing) return;
+      handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
+    }
+  };
+
+  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!input) return;
+
+    // Always add the user's message immediately to the UI before sending it to the server
+    const userMessage: ContentWithUser = {
+      text: input,
+      name: USER_NAME,
+      createdAt: Date.now(),
+      senderId: entityId,
+      senderName: USER_NAME,
+      roomId: roomId,
+      source: SOURCE_NAME,
+      id: crypto.randomUUID(), // Add a unique ID for React keys and duplicate detection
+    };
+
+    console.log('[Chat] Adding user message to UI:', userMessage);
+
+    // Update the local message list first for immediate feedback
+    queryClient.setQueryData(
+      ['messages', agentId, roomId, worldId],
+      (old: ContentWithUser[] = []) => {
+        // Check if exact same message exists already to prevent duplicates
+        const exists = old.some(
+          (msg) =>
+            msg.text === userMessage.text &&
+            msg.name === USER_NAME &&
+            Math.abs((msg.createdAt || 0) - userMessage.createdAt) < 1000
+        );
+
+        if (exists) {
+          console.log('[Chat] Skipping duplicate user message');
+          return old;
+        }
+
+        return [...old, userMessage];
+      }
+    );
+
+    // We don't need to call scrollToBottom here, the message count change will trigger it
+    // via the useEffect hook
+
+    // Send the message to the server/agent
+    socketIOManager.sendMessage(input, roomId, SOURCE_NAME);
+
+    setSelectedFile(null);
+    setInput('');
+    formRef.current?.reset();
+  };
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file?.type.startsWith('image/')) {
+      setSelectedFile(file);
+    }
+  };
+
+  const toggleDetails = () => {
+    setShowDetails(!showDetails);
+  };
+
+  return (
+    <div className="flex flex-col w-full h-screen p-4">
+      {/* Agent Header */}
+      <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
+        <div className="flex items-center gap-3">
+          <Avatar className="size-10 border rounded-full">
+            <AvatarImage
+              src={agentData?.settings?.avatar ? agentData?.settings?.avatar : '/elizaos-icon.png'}
+            />
+          </Avatar>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <h2 className="font-semibold text-lg">{agentData?.name || 'Agent'}</h2>
+              {agentData?.status === AgentStatus.ACTIVE ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Agent is active</p>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Agent is inactive</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+            {agentData?.bio && (
+              <p className="text-sm text-muted-foreground line-clamp-1">
+                {Array.isArray(agentData.bio) ? agentData.bio[0] : agentData.bio}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={toggleDetails}
+          className={cn('gap-1.5', showDetails && 'bg-secondary')}
+        >
+          <PanelRight className="size-4" />
+        </Button>
+      </div>
+
+      <div className="flex flex-row w-full overflow-y-auto grow gap-4">
+        {/* Main Chat Area */}
+        <div
+          className={cn(
+            'flex flex-col transition-all duration-300',
+            showDetails ? 'w-3/5' : 'w-full'
+          )}
+        >
+          {/* Chat Messages */}
+          <ChatMessageList
+            scrollRef={scrollRef}
+            isAtBottom={isAtBottom}
+            scrollToBottom={safeScrollToBottom}
+            disableAutoScroll={disableAutoScroll}
+          >
+            {messages.map((message: ContentWithUser, index: number) => {
+              // Ensure user messages are correctly identified by either name or source
+              const isUser =
+                message.name === USER_NAME ||
+                message.source === SOURCE_NAME ||
+                message.senderId === entityId;
+
+              // Add debugging to see why user message might be misattributed
+              if (!isUser && (message.source === SOURCE_NAME || message.senderId === entityId)) {
+                console.warn('[Chat] Message attribution issue detected:', {
+                  message,
+                  name: message.name,
+                  expectedName: USER_NAME,
+                  source: message.source,
+                  expectedSource: SOURCE_NAME,
+                  senderId: message.senderId,
+                  entityId,
+                });
+              }
+
+              return (
+                <div
+                  key={`${message.id as string}-${message.createdAt}`}
+                  className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
+                >
+                  <ChatBubble
+                    variant={isUser ? 'sent' : 'received'}
+                    className={`flex flex-row items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}
+                  >
+                    {message.text && !isUser && (
+                      <Avatar className="size-8 border rounded-full select-none mb-2">
+                        <AvatarImage
+                          src={
+                            isUser
+                              ? '/user-icon.png'
+                              : agentData?.settings?.avatar
+                                ? agentData?.settings?.avatar
+                                : '/elizaos-icon.png'
+                          }
+                        />
+                      </Avatar>
+                    )}
+
+                    <MessageContent
+                      message={message}
+                      agentId={agentId}
+                      isLastMessage={index === messages.length - 1}
+                    />
+                  </ChatBubble>
+                </div>
+              );
+            })}
+          </ChatMessageList>
+
+          {/* Chat Input */}
+          <div className="px-4 pb-4 mt-auto">
+            <form
+              ref={formRef}
+              onSubmit={handleSendMessage}
+              className="relative rounded-md border bg-card"
+            >
+              {selectedFile ? (
+                <div className="p-3 flex">
+                  <div className="relative rounded-md border p-2">
+                    <Button
+                      onClick={() => setSelectedFile(null)}
+                      className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
+                      variant="outline"
+                      size="icon"
+                    >
+                      <X />
+                    </Button>
+                    <img
+                      alt="Selected file"
+                      src={URL.createObjectURL(selectedFile)}
+                      height="100%"
+                      width="100%"
+                      className="aspect-square object-contain w-16"
+                    />
+                  </div>
+                </div>
+              ) : null}
+              <ChatInput
+                ref={inputRef}
+                onKeyDown={handleKeyDown}
+                value={input}
+                onChange={({ target }) => setInput(target.value)}
+                placeholder="Type your message here..."
+                className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
+              />
+              <div className="flex items-center p-3 pt-0">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          if (fileInputRef.current) {
+                            fileInputRef.current.click();
+                          }
+                        }}
+                      >
+                        <Paperclip className="size-4" />
+                        <span className="sr-only">Attach file</span>
+                      </Button>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    <p>Attach file</p>
+                  </TooltipContent>
+                </Tooltip>
+                <AudioRecorder
+                  agentId={agentId}
+                  onChange={(newInput: string) => setInput(newInput)}
+                />
+                <Button type="submit" size="sm" className="ml-auto gap-1.5 h-[30px]">
+                  <Send className="size-3.5" />
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        {/* Details Column */}
+        {showDetails && (
+          <div className="w-2/5 border rounded-lg overflow-hidden pb-4 bg-background flex flex-col h-full">
+            <Tabs
+              defaultValue="actions"
+              value={detailsTab}
+              onValueChange={(v) => setDetailsTab(v as 'actions' | 'logs' | 'memories')}
+              className="flex flex-col h-full"
+            >
+              <div className="border-b px-4 py-2">
+                <TabsList className="grid grid-cols-3">
+                  <TabsTrigger value="actions" className="flex items-center gap-1.5">
+                    <Activity className="h-4 w-4" />
+                    <span>Agent Actions</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="logs" className="flex items-center gap-1.5">
+                    <Terminal className="h-4 w-4" />
+                    <span>Logs</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="memories" className="flex items-center gap-1.5">
+                    <Database className="h-4 w-4" />
+                    <span>Memories</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value="actions" className="overflow-y-scroll">
+                <AgentActionViewer agentId={agentId} roomId={roomId} />
+              </TabsContent>
+              <TabsContent value="logs">
+                <LogViewer agentName={agentData?.name} level="all" hideTitle />
+              </TabsContent>
+              <TabsContent value="memories">
+                <AgentMemoryViewer agentId={agentId} />
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

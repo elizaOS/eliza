@@ -1,0 +1,561 @@
+openapi: 3.0.0
+info:
+  title: Eliza OS API
+  description: |-
+    API documentation for Eliza OS - A flexible and scalable AI agent framework.
+
+    This API is designed to be used with a locally running Eliza instance. Endpoints allow for creating, 
+    managing, and interacting with AI agents through a REST interface.
+  version: 0.25.9
+  contact:
+    name: Eliza OS Community
+    url: https://github.com/elizaos/eliza
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+tags:
+  - name: agents
+    description: Operations for managing AI agents
+  - name: messages
+    description: Operations for interacting with agents via text messages
+  - name: memory
+    description: Operations for accessing agent memories
+  - name: utilities
+    description: Miscellaneous utility endpoints
+
+paths:
+  /:
+    get:
+      tags:
+        - utilities
+      summary: API root
+      description: Welcome message for the API root
+      operationId: getApiRoot
+      responses:
+        '200':
+          description: Welcome message
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: 'Welcome, this is the REST API!'
+
+  /hello:
+    get:
+      tags:
+        - utilities
+      summary: Hello world endpoint
+      description: Simple hello world test endpoint
+      operationId: getHello
+      responses:
+        '200':
+          description: Hello world response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: 'Hello World!'
+
+  /agents:
+    get:
+      tags:
+        - agents
+      summary: List all agents
+      description: Returns a list of all available agents running in the system
+      operationId: listAgents
+      responses:
+        '200':
+          description: A successful response containing a list of agents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AgentInfo'
+
+  /storage:
+    get:
+      tags:
+        - utilities
+      summary: List stored character files
+      description: Lists all character files available in storage
+      operationId: listStoredCharacters
+      responses:
+        '200':
+          description: List of character files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    items:
+                      type: string
+        '500':
+          description: Error reading storage
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /agents/{agentId}:
+    get:
+      tags:
+        - agents
+      summary: Get agent details
+      description: Returns detailed information about a specific agent
+      operationId: getAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to retrieve
+      responses:
+        '200':
+          description: Successful response with agent details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  character:
+                    $ref: '#/components/schemas/Character'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Agent not found
+    delete:
+      tags:
+        - agents
+      summary: Delete an agent
+      description: Delete a running agent
+      operationId: deleteAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to delete
+      responses:
+        '204':
+          description: Agent deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Agent not found
+
+  /agents/{agentId}/set:
+    post:
+      tags:
+        - agents
+      summary: Update or create an agent
+      description: Updates an existing agent or creates a new one with the specified configuration
+      operationId: setAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Character'
+      responses:
+        '200':
+          description: Agent updated or created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  character:
+                    $ref: '#/components/schemas/Character'
+        '400':
+          description: Invalid character configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+        '500':
+          description: Error starting agent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+
+  /agents/{agentId}/{roomId}/memories:
+    get:
+      tags:
+        - memory
+      summary: Get agent memories for a room
+      description: Retrieves memories (message history) for a specific agent in a specific room
+      operationId: getMemories
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the room (conversation context)
+      responses:
+        '200':
+          description: List of memories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agentId:
+                    type: string
+                    format: uuid
+                  roomId:
+                    type: string
+                    format: uuid
+                  memories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Memory'
+        '404':
+          description: Agent not found
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Agent not found
+        '500':
+          description: Error fetching memories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Failed to fetch memories
+
+  /agent/start:
+    post:
+      tags:
+        - agents
+      summary: Start a new agent
+      description: Starts a new agent using either a character path or JSON configuration
+      operationId: startAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf: # Switch to oneOf for exclusivity, if applicable
+                - type: object
+                  properties:
+                    characterPath:
+                      type: string
+                      description: Path to a character file
+                  required:
+                    - characterPath
+                - type: object
+                  properties:
+                    characterJson:
+                      type: object
+                      description: Character configuration in JSON format
+                      # Add properties if known, e.g.:
+                      # properties:
+                      #   name:
+                      #     type: string
+                  required:
+                    - characterJson
+      responses:
+        '200':
+          description: Agent started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    description: ID of the started agent
+                  character:
+                    $ref: '#/components/schemas/Character'
+        '400':
+          description: Invalid input (character parsing error)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /agents/{agentId}/stop:
+    post:
+      tags:
+        - agents
+      summary: Stop an agent
+      description: Stops a running agent
+      operationId: stopAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent to stop
+      responses:
+        '200':
+          description: Agent stopped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Agent not found
+
+components:
+  schemas:
+    AgentInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the agent
+        name:
+          type: string
+          description: Name of the agent
+        clients:
+          type: array
+          items:
+            type: string
+          description: List of client interfaces the agent is connected to
+
+    Character:
+      type: object
+      required:
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the character
+        name:
+          type: string
+          description: Name of the character
+        modelProvider:
+          type: string
+          description: The model provider to use (e.g., "openai", "anthropic")
+        bio:
+          type: string
+          description: Short biography of the character
+        lore:
+          type: array
+          items:
+            type: string
+          description: Extended lore and background information
+        messageExamples:
+          type: array
+          items:
+            type: string
+          description: Example messages for character training
+        postExamples:
+          type: array
+          items:
+            type: string
+          description: Example posts for character training
+        topics:
+          type: array
+          items:
+            type: string
+          description: Topics the character is knowledgeable about
+        adjectives:
+          type: array
+          items:
+            type: string
+          description: Personality traits of the character
+        knowledge:
+          type: array
+          items:
+            type: string
+          description: Knowledge base for the character
+        plugins:
+          type: array
+          items:
+            type: string
+          description: Plugins used by the character
+        settings:
+          type: object
+          description: Character-specific settings
+        style:
+          type: object
+          description: Character's communication style
+        system:
+          type: string
+          description: System prompt for the character
+
+    Content:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Text content of the message
+        action:
+          type: string
+          description: Action associated with the message (if any)
+        source:
+          type: string
+          description: Source of the message (e.g., "direct", "hyperfi")
+        url:
+          type: string
+          description: URL associated with the message (if any)
+        inReplyTo:
+          type: string
+          description: ID of the message this is in reply to (if any)
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+          description: List of attachments
+
+    Attachment:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the attachment
+        url:
+          type: string
+          description: URL or path to the attachment file
+        title:
+          type: string
+          description: Title of the attachment
+        source:
+          type: string
+          description: Source of the attachment
+        description:
+          type: string
+          description: Description of the attachment
+        text:
+          type: string
+          description: Text content extracted from the attachment (if applicable)
+        contentType:
+          type: string
+          description: MIME type of the attachment
+
+    Memory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the memory
+        userId:
+          type: string
+          format: uuid
+          description: ID of the user associated with this memory
+        agentId:
+          type: string
+          format: uuid
+          description: ID of the agent associated with this memory
+        createdAt:
+          type: integer
+          format: int64
+          description: Unix timestamp when the memory was created
+        content:
+          $ref: '#/components/schemas/Content'
+        embedding:
+          type: array
+          items:
+            type: number
+            format: float
+          description: Vector embedding for semantic search
+        roomId:
+          type: string
+          format: uuid
+          description: ID of the room this memory belongs to
+        unique:
+          type: boolean
+          description: Whether this memory is unique
+        similarity:
+          type: number
+          format: float
+          description: Similarity score (if this was retrieved via search)

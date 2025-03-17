@@ -1,18 +1,13 @@
-import {
-	type Config,
-	adjectives,
-	names,
-	uniqueNamesGenerator,
-} from "unique-names-generator";
-import { addHeader } from "../prompts";
-import type { IAgentRuntime, Memory, Provider } from "../types";
+import { type Config, adjectives, names, uniqueNamesGenerator } from 'unique-names-generator';
+import { addHeader } from '../prompts';
+import type { IAgentRuntime, Memory, Provider } from '../types';
 
 // Configuration for name generation
 const nameConfig: Config = {
-	dictionaries: [adjectives, names],
-	separator: "",
-	length: 2,
-	style: "capital",
+  dictionaries: [adjectives, names],
+  separator: '',
+  length: 2,
+  style: 'capital',
 };
 
 // Example messages to determine if the agent should respond
@@ -22,16 +17,16 @@ const nameConfig: Config = {
  * Examples can include requests for help, questions, stories, or simple interactions like saying "marco".
  */
 const messageExamples = [
-	// Examples where agent should RESPOND
-	`// {{name1}}: Hey {{agentName}}, can you help me with something
+  // Examples where agent should RESPOND
+  `// {{name1}}: Hey {{agentName}}, can you help me with something
 // Response: RESPOND`,
 
-	`// {{name1}}: Hey {{agentName}}, can I ask you a question
+  `// {{name1}}: Hey {{agentName}}, can I ask you a question
 // {{agentName}}: Sure, what is it
 // {{name1}}: can you help me create a basic react module that demonstrates a counter
 // Response: RESPOND`,
 
-	`// {{name1}}: {{agentName}} can you tell me a story
+  `// {{name1}}: {{agentName}} can you tell me a story
 // {{name1}}: about a girl named {{characterName}}
 // {{agentName}}: Sure.
 // {{agentName}}: Once upon a time, in a quaint little village, there was a curious girl named {{characterName}}.
@@ -39,40 +34,40 @@ const messageExamples = [
 // {{name1}}: I'm loving it, keep going
 // Response: RESPOND`,
 
-	`// {{name1}}: okay, i want to test something. can you say marco?
+  `// {{name1}}: okay, i want to test something. can you say marco?
 // {{agentName}}: marco
 // {{name1}}: great. okay, now do it again
 // Response: RESPOND`,
 
-	`// {{name1}}: what do you think about artificial intelligence?
+  `// {{name1}}: what do you think about artificial intelligence?
 // Response: RESPOND`,
 
-	// Examples where agent should IGNORE
-	`// {{name1}}: I just saw a really great movie
+  // Examples where agent should IGNORE
+  `// {{name1}}: I just saw a really great movie
 // {{name2}}: Oh? Which movie?
 // Response: IGNORE`,
 
-	`// {{name1}}: i need help
+  `// {{name1}}: i need help
 // {{agentName}}: how can I help you?
 // {{name1}}: no. i need help from {{name2}}
 // Response: IGNORE`,
 
-	`// {{name1}}: {{name2}} can you answer a question for me?
+  `// {{name1}}: {{name2}} can you answer a question for me?
 // Response: IGNORE`,
 
-	`// {{agentName}}: Oh, this is my favorite scene
+  `// {{agentName}}: Oh, this is my favorite scene
 // {{name1}}: sick
 // {{name2}}: wait, why is it your favorite scene
 // Response: RESPOND`,
 
-	// Examples where agent should STOP
-	`// {{name1}}: {{agentName}} stop responding plz
+  // Examples where agent should STOP
+  `// {{name1}}: {{agentName}} stop responding plz
 // Response: STOP`,
 
-	`// {{name1}}: stfu bot
+  `// {{name1}}: stfu bot
 // Response: STOP`,
 
-	`// {{name1}}: {{agentName}} stfu plz
+  `// {{name1}}: {{agentName}} stfu plz
 // Response: STOP`,
 ];
 
@@ -81,41 +76,35 @@ const messageExamples = [
  * @type {Provider}
  */
 export const shouldRespondProvider: Provider = {
-	name: "SHOULD_RESPOND",
-	description:
-		"Examples of when the agent should respond, ignore, or stop responding",
-	position: -1,
-	get: async (runtime: IAgentRuntime, _message: Memory) => {
-		// Get agent name
-		const agentName = runtime.character.name;
+  name: 'SHOULD_RESPOND',
+  description: 'Examples of when the agent should respond, ignore, or stop responding',
+  position: -1,
+  get: async (runtime: IAgentRuntime, _message: Memory) => {
+    // Get agent name
+    const agentName = runtime.character.name;
 
-		// Create random user names and character name
-		const name1 = uniqueNamesGenerator(nameConfig);
-		const name2 = uniqueNamesGenerator(nameConfig);
-		const characterName = uniqueNamesGenerator(nameConfig);
+    // Create random user names and character name
+    const name1 = uniqueNamesGenerator(nameConfig);
+    const name2 = uniqueNamesGenerator(nameConfig);
+    const characterName = uniqueNamesGenerator(nameConfig);
 
-		// Shuffle the message examples array
-		const shuffledExamples = [...messageExamples]
-			.sort(() => 0.5 - Math.random())
-			.slice(0, 7); // Use a subset of examples
+    // Shuffle the message examples array
+    const shuffledExamples = [...messageExamples].sort(() => 0.5 - Math.random()).slice(0, 7); // Use a subset of examples
 
-		// Replace placeholders with generated names
-		const formattedExamples = shuffledExamples.map((example) => {
-			return example
-				.replace(/{{name1}}/g, name1)
-				.replace(/{{name2}}/g, name2)
-				.replace(/{{agentName}}/g, agentName)
-				.replace(/{{characterName}}/g, characterName);
-		});
+    // Replace placeholders with generated names
+    const formattedExamples = shuffledExamples.map((example) => {
+      return example
+        .replace(/{{name1}}/g, name1)
+        .replace(/{{name2}}/g, name2)
+        .replace(/{{agentName}}/g, agentName)
+        .replace(/{{characterName}}/g, characterName);
+    });
 
-		// Join examples with newlines
-		const text = addHeader(
-			"# RESPONSE EXAMPLES",
-			formattedExamples.join("\n\n"),
-		);
+    // Join examples with newlines
+    const text = addHeader('# RESPONSE EXAMPLES', formattedExamples.join('\n\n'));
 
-		return {
-			text,
-		};
-	},
+    return {
+      text,
+    };
+  },
 };

@@ -7,6 +7,7 @@ Spartan is an AI-powered DeFi trading agent specializing in Solana-based trading
 ## 2. Core Functionality
 
 ### Pool Management
+
 - Create trading pools with shared ownership
 - Manage pool permissions and access
 - Support multiple co-owners per pool
@@ -14,6 +15,7 @@ Spartan is an AI-powered DeFi trading agent specializing in Solana-based trading
 - Enable/disable trading and LP features per pool
 
 ### Trading Operations
+
 - Execute trades across multiple Solana DEXs
 - Support for Orca, Raydium, and Meteora
 - Real-time token data from Defined.fi
@@ -22,6 +24,7 @@ Spartan is an AI-powered DeFi trading agent specializing in Solana-based trading
 - Autonomous trading strategies (for entertainment)
 
 ### Liquidity Pool Management
+
 - Manage LP positions across multiple DEXs
 - Monitor and compare pool APRs
 - Automated position rebalancing
@@ -31,6 +34,7 @@ Spartan is an AI-powered DeFi trading agent specializing in Solana-based trading
 ## 3. Workflows
 
 ### Pool Creation
+
 1. User requests new pool creation
 2. Collect owner information and permissions
 3. Generate new wallet/authority
@@ -39,6 +43,7 @@ Spartan is an AI-powered DeFi trading agent specializing in Solana-based trading
 6. Initialize pool tracking
 
 ### Trading Flow
+
 1. Receive trade request (manual or copy-trade)
 2. Validate against risk limits
 3. Check pool permissions
@@ -47,6 +52,7 @@ Spartan is an AI-powered DeFi trading agent specializing in Solana-based trading
 6. Update pool state and notify users
 
 ### LP Management
+
 1. Monitor LP opportunities
 2. Compare APRs across DEXs
 3. Check against minimum thresholds
@@ -55,6 +61,7 @@ Spartan is an AI-powered DeFi trading agent specializing in Solana-based trading
 6. Rebalance when needed
 
 ### Copy Trading
+
 1. Configure source wallet tracking
 2. Monitor wallet transactions
 3. Filter trades based on settings
@@ -69,8 +76,8 @@ Spartan
 -> Could add copytrading -- what wallets do you want him to follow?
 -> pools can be autonomously traded
 -> Strategy selection
-  -> Can autonomously trade (but this is a fun thing, not necessarily profitable)
-  -> Community investing / trust marketplace model
+-> Can autonomously trade (but this is a fun thing, not necessarily profitable)
+-> Community investing / trust marketplace model
 -> LP management with Orca (maybe also Raydium and Meteora)
 
 https://github.com/warp-id/solana-trading-bot

@@ -1,23 +1,23 @@
 import {
-	type Action,
-	type ActionExample,
-	type HandlerCallback,
-	type IAgentRuntime,
-	type Memory,
-	ModelTypes,
-	type State,
-	composePromptFromState,
-	logger,
-	parseJSONObjectFromText,
-	settings,
-} from "@elizaos/core";
-import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
-import BigNumber from "bignumber.js";
-import { SOLANA_SERVICE_NAME } from "../constants";
-import { getWalletKey } from "../keypairUtils";
-import type { SolanaService } from "../service";
+  type Action,
+  type ActionExample,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  type State,
+  composePromptFromState,
+  logger,
+  parseJSONObjectFromText,
+  settings,
+} from '@elizaos/core';
+import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
+import BigNumber from 'bignumber.js';
+import { SOLANA_SERVICE_NAME } from '../constants';
+import { getWalletKey } from '../keypairUtils';
+import type { SolanaService } from '../service';
 
-import type { Item } from "../types";
+import type { Item } from '../types';
 /**
  * Fetches the number of decimals for a given token mint address.
  *
@@ -26,25 +26,22 @@ import type { Item } from "../types";
  * @returns {Promise<number>} - Number of decimals for the token.
  * @throws {Error} - If unable to fetch token decimals.
  */
-async function getTokenDecimals(
-	connection: Connection,
-	mintAddress: string,
-): Promise<number> {
-	const mintPublicKey = new PublicKey(mintAddress);
-	const tokenAccountInfo = await connection.getParsedAccountInfo(mintPublicKey);
+async function getTokenDecimals(connection: Connection, mintAddress: string): Promise<number> {
+  const mintPublicKey = new PublicKey(mintAddress);
+  const tokenAccountInfo = await connection.getParsedAccountInfo(mintPublicKey);
 
-	if (
-		tokenAccountInfo.value &&
-		typeof tokenAccountInfo.value.data === "object" &&
-		"parsed" in tokenAccountInfo.value.data
-	) {
-		const parsedInfo = tokenAccountInfo.value.data.parsed?.info;
-		if (parsedInfo && typeof parsedInfo.decimals === "number") {
-			return parsedInfo.decimals;
-		}
-	}
+  if (
+    tokenAccountInfo.value &&
+    typeof tokenAccountInfo.value.data === 'object' &&
+    'parsed' in tokenAccountInfo.value.data
+  ) {
+    const parsedInfo = tokenAccountInfo.value.data.parsed?.info;
+    if (parsedInfo && typeof parsedInfo.decimals === 'number') {
+      return parsedInfo.decimals;
+    }
+  }
 
-	throw new Error("Unable to fetch token decimals");
+  throw new Error('Unable to fetch token decimals');
 }
 
 /**
@@ -59,76 +56,70 @@ async function getTokenDecimals(
  * @returns {Promise<unknown>} A Promise that resolves to the swap data object.
  */
 async function swapToken(
-	connection: Connection,
-	walletPublicKey: PublicKey,
-	inputTokenCA: string,
-	outputTokenCA: string,
-	amount: number,
+  connection: Connection,
+  walletPublicKey: PublicKey,
+  inputTokenCA: string,
+  outputTokenCA: string,
+  amount: number
 ): Promise<unknown> {
-	try {
-		const decimals =
-			inputTokenCA === settings.SOL_ADDRESS
-				? new BigNumber(9)
-				: new BigNumber(await getTokenDecimals(connection, inputTokenCA));
+  try {
+    const decimals =
+      inputTokenCA === settings.SOL_ADDRESS
+        ? new BigNumber(9)
+        : new BigNumber(await getTokenDecimals(connection, inputTokenCA));
 
-		logger.log("Decimals:", decimals.toString());
+    logger.log('Decimals:', decimals.toString());
 
-		const amountBN = new BigNumber(amount);
-		const adjustedAmount = amountBN.multipliedBy(
-			new BigNumber(10).pow(decimals),
-		);
+    const amountBN = new BigNumber(amount);
+    const adjustedAmount = amountBN.multipliedBy(new BigNumber(10).pow(decimals));
 
-		logger.log("Fetching quote with params:", {
-			inputMint: inputTokenCA,
-			outputMint: outputTokenCA,
-			amount: adjustedAmount,
-		});
+    logger.log('Fetching quote with params:', {
+      inputMint: inputTokenCA,
+      outputMint: outputTokenCA,
+      amount: adjustedAmount,
+    });
 
-		const quoteResponse = await fetch(
-			`https://quote-api.jup.ag/v6/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${adjustedAmount}&dynamicSlippage=true&maxAccounts=64`,
-		);
-		const quoteData = await quoteResponse.json();
+    const quoteResponse = await fetch(
+      `https://quote-api.jup.ag/v6/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${adjustedAmount}&dynamicSlippage=true&maxAccounts=64`
+    );
+    const quoteData = await quoteResponse.json();
 
-		if (!quoteData || quoteData.error) {
-			logger.error("Quote error:", quoteData);
-			throw new Error(
-				`Failed to get quote: ${quoteData?.error || "Unknown error"}`,
-			);
-		}
+    if (!quoteData || quoteData.error) {
+      logger.error('Quote error:', quoteData);
+      throw new Error(`Failed to get quote: ${quoteData?.error || 'Unknown error'}`);
+    }
 
-		const swapRequestBody = {
-			quoteResponse: quoteData,
-			userPublicKey: walletPublicKey.toBase58(),
-			dynamicComputeUnitLimit: true,
-			dynamicSlippage: true,
-			priorityLevelWithMaxLamports: {
-				maxLamports: 4000000,
-				priorityLevel: "veryHigh",
-			},
-		};
+    const swapRequestBody = {
+      quoteResponse: quoteData,
+      userPublicKey: walletPublicKey.toBase58(),
+      dynamicComputeUnitLimit: true,
+      dynamicSlippage: true,
+      priorityLevelWithMaxLamports: {
+        maxLamports: 4000000,
+        priorityLevel: 'veryHigh',
+      },
+    };
 
-		const swapResponse = await fetch("https://quote-api.jup.ag/v6/swap", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(swapRequestBody),
-		});
+    const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(swapRequestBody),
+    });
 
-		const swapData = await swapResponse.json();
+    const swapData = await swapResponse.json();
 
-		if (!swapData || !swapData.swapTransaction) {
-			logger.error("Swap error:", swapData);
-			throw new Error(
-				`Failed to get swap transaction: ${
-					swapData?.error || "No swap transaction returned"
-				}`,
-			);
-		}
+    if (!swapData || !swapData.swapTransaction) {
+      logger.error('Swap error:', swapData);
+      throw new Error(
+        `Failed to get swap transaction: ${swapData?.error || 'No swap transaction returned'}`
+      );
+    }
 
-		return swapData;
-	} catch (error) {
-		logger.error("Error in swapToken:", error);
-		throw error;
-	}
+    return swapData;
+  } catch (error) {
+    logger.error('Error in swapToken:', error);
+    throw error;
+  }
 }
 
 // Get token from wallet data using SolanaService
@@ -140,31 +131,29 @@ async function swapToken(
  * @returns {Promise<string|null>} The token address if found, null otherwise.
  */
 async function getTokenFromWallet(
-	runtime: IAgentRuntime,
-	tokenSymbol: string,
+  runtime: IAgentRuntime,
+  tokenSymbol: string
 ): Promise<string | null> {
-	try {
-		const solanaService = runtime.getService(
-			SOLANA_SERVICE_NAME,
-		) as SolanaService;
-		if (!solanaService) {
-			throw new Error("SolanaService not initialized");
-		}
+  try {
+    const solanaService = runtime.getService(SOLANA_SERVICE_NAME) as SolanaService;
+    if (!solanaService) {
+      throw new Error('SolanaService not initialized');
+    }
 
-		const walletData = await solanaService.getCachedData();
-		if (!walletData) {
-			return null;
-		}
+    const walletData = await solanaService.getCachedData();
+    if (!walletData) {
+      return null;
+    }
 
-		const token = walletData.items.find(
-			(item: Item) => item.symbol.toLowerCase() === tokenSymbol.toLowerCase(),
-		);
+    const token = walletData.items.find(
+      (item: Item) => item.symbol.toLowerCase() === tokenSymbol.toLowerCase()
+    );
 
-		return token ? token.address : null;
-	} catch (error) {
-		logger.error("Error checking token in wallet:", error);
-		return null;
-	}
+    return token ? token.address : null;
+  } catch (error) {
+    logger.error('Error checking token in wallet:', error);
+    return null;
+  }
 }
 
 /**
@@ -237,165 +226,154 @@ Respond with a JSON markdown block containing only the extracted values. Use nul
  */
 
 export const executeSwap: Action = {
-	name: "SWAP_SOLANA",
-	similes: [
-		"SWAP_SOL",
-		"SWAP_TOKENS_SOLANA",
-		"TOKEN_SWAP_SOLANA",
-		"TRADE_TOKENS_SOLANA",
-		"EXCHANGE_TOKENS_SOLANA",
-	],
-	validate: async (runtime: IAgentRuntime, _message: Memory) => {
-		const solanaService = runtime.getService(SOLANA_SERVICE_NAME);
-		return !!solanaService;
-	},
-	description:
-		"Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.",
-	handler: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State,
-		_options: { [key: string]: unknown },
-		callback?: HandlerCallback,
-	): Promise<boolean> => {
-		state = await runtime.composeState(message, ["RECENT_MESSAGES"]);
+  name: 'SWAP_SOLANA',
+  similes: [
+    'SWAP_SOL',
+    'SWAP_TOKENS_SOLANA',
+    'TOKEN_SWAP_SOLANA',
+    'TRADE_TOKENS_SOLANA',
+    'EXCHANGE_TOKENS_SOLANA',
+  ],
+  validate: async (runtime: IAgentRuntime, _message: Memory) => {
+    const solanaService = runtime.getService(SOLANA_SERVICE_NAME);
+    return !!solanaService;
+  },
+  description:
+    'Perform a token swap from one token to another on Solana. Works with SOL and SPL tokens.',
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    _options: { [key: string]: unknown },
+    callback?: HandlerCallback
+  ): Promise<boolean> => {
+    state = await runtime.composeState(message, ['RECENT_MESSAGES']);
 
-		try {
-			const solanaService = runtime.getService(
-				SOLANA_SERVICE_NAME,
-			) as SolanaService;
-			if (!solanaService) {
-				throw new Error("SolanaService not initialized");
-			}
+    try {
+      const solanaService = runtime.getService(SOLANA_SERVICE_NAME) as SolanaService;
+      if (!solanaService) {
+        throw new Error('SolanaService not initialized');
+      }
 
-			const walletData = await solanaService.getCachedData();
-			state.values.walletInfo = walletData;
+      const walletData = await solanaService.getCachedData();
+      state.values.walletInfo = walletData;
 
-			const swapPrompt = composePromptFromState({
-				state,
-				template: swapTemplate,
-			});
+      const swapPrompt = composePromptFromState({
+        state,
+        template: swapTemplate,
+      });
 
-			const result = await runtime.useModel(ModelTypes.TEXT_LARGE, {
-				prompt: swapPrompt,
-			});
+      const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: swapPrompt,
+      });
 
-			const response = parseJSONObjectFromText(result);
+      const response = parseJSONObjectFromText(result);
 
-			// Handle SOL addresses
-			if (response.inputTokenSymbol?.toUpperCase() === "SOL") {
-				response.inputTokenCA = settings.SOL_ADDRESS;
-			}
-			if (response.outputTokenSymbol?.toUpperCase() === "SOL") {
-				response.outputTokenCA = settings.SOL_ADDRESS;
-			}
+      // Handle SOL addresses
+      if (response.inputTokenSymbol?.toUpperCase() === 'SOL') {
+        response.inputTokenCA = settings.SOL_ADDRESS;
+      }
+      if (response.outputTokenSymbol?.toUpperCase() === 'SOL') {
+        response.outputTokenCA = settings.SOL_ADDRESS;
+      }
 
-			// Resolve token addresses if needed
-			if (!response.inputTokenCA && response.inputTokenSymbol) {
-				response.inputTokenCA = await getTokenFromWallet(
-					runtime,
-					response.inputTokenSymbol,
-				);
-				if (!response.inputTokenCA) {
-					callback?.({ text: "Could not find the input token in your wallet" });
-					return false;
-				}
-			}
+      // Resolve token addresses if needed
+      if (!response.inputTokenCA && response.inputTokenSymbol) {
+        response.inputTokenCA = await getTokenFromWallet(runtime, response.inputTokenSymbol);
+        if (!response.inputTokenCA) {
+          callback?.({ text: 'Could not find the input token in your wallet' });
+          return false;
+        }
+      }
 
-			if (!response.outputTokenCA && response.outputTokenSymbol) {
-				response.outputTokenCA = await getTokenFromWallet(
-					runtime,
-					response.outputTokenSymbol,
-				);
-				if (!response.outputTokenCA) {
-					callback?.({
-						text: "Could not find the output token in your wallet",
-					});
-					return false;
-				}
-			}
+      if (!response.outputTokenCA && response.outputTokenSymbol) {
+        response.outputTokenCA = await getTokenFromWallet(runtime, response.outputTokenSymbol);
+        if (!response.outputTokenCA) {
+          callback?.({
+            text: 'Could not find the output token in your wallet',
+          });
+          return false;
+        }
+      }
 
-			if (!response.amount) {
-				callback?.({ text: "Please specify the amount you want to swap" });
-				return false;
-			}
+      if (!response.amount) {
+        callback?.({ text: 'Please specify the amount you want to swap' });
+        return false;
+      }
 
-			const connection = new Connection(
-				runtime.getSetting("SOLANA_RPC_URL") ||
-					"https://api.mainnet-beta.solana.com",
-			);
-			const { publicKey: walletPublicKey } = await getWalletKey(runtime, false);
+      const connection = new Connection(
+        runtime.getSetting('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com'
+      );
+      const { publicKey: walletPublicKey } = await getWalletKey(runtime, false);
 
-			const swapResult = (await swapToken(
-				connection,
-				walletPublicKey,
-				response.inputTokenCA as string,
-				response.outputTokenCA as string,
-				response.amount as number,
-			)) as { swapTransaction: string };
+      const swapResult = (await swapToken(
+        connection,
+        walletPublicKey,
+        response.inputTokenCA as string,
+        response.outputTokenCA as string,
+        response.amount as number
+      )) as { swapTransaction: string };
 
-			const transactionBuf = Buffer.from(swapResult.swapTransaction, "base64");
-			const transaction = VersionedTransaction.deserialize(transactionBuf);
+      const transactionBuf = Buffer.from(swapResult.swapTransaction, 'base64');
+      const transaction = VersionedTransaction.deserialize(transactionBuf);
 
-			const { keypair } = await getWalletKey(runtime, true);
-			if (keypair.publicKey.toBase58() !== walletPublicKey.toBase58()) {
-				throw new Error(
-					"Generated public key doesn't match expected public key",
-				);
-			}
+      const { keypair } = await getWalletKey(runtime, true);
+      if (keypair.publicKey.toBase58() !== walletPublicKey.toBase58()) {
+        throw new Error("Generated public key doesn't match expected public key");
+      }
 
-			transaction.sign([keypair]);
+      transaction.sign([keypair]);
 
-			const latestBlockhash = await connection.getLatestBlockhash();
-			const txid = await connection.sendTransaction(transaction, {
-				skipPreflight: false,
-				maxRetries: 3,
-				preflightCommitment: "confirmed",
-			});
+      const latestBlockhash = await connection.getLatestBlockhash();
+      const txid = await connection.sendTransaction(transaction, {
+        skipPreflight: false,
+        maxRetries: 3,
+        preflightCommitment: 'confirmed',
+      });
 
-			const confirmation = await connection.confirmTransaction(
-				{
-					signature: txid,
-					blockhash: latestBlockhash.blockhash,
-					lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-				},
-				"confirmed",
-			);
+      const confirmation = await connection.confirmTransaction(
+        {
+          signature: txid,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        },
+        'confirmed'
+      );
 
-			if (confirmation.value.err) {
-				throw new Error(`Transaction failed: ${confirmation.value.err}`);
-			}
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${confirmation.value.err}`);
+      }
 
-			callback?.({
-				text: `Swap completed successfully! Transaction ID: ${txid}`,
-				content: { success: true, txid },
-			});
+      callback?.({
+        text: `Swap completed successfully! Transaction ID: ${txid}`,
+        content: { success: true, txid },
+      });
 
-			return true;
-		} catch (error) {
-			logger.error("Error during token swap:", error);
-			callback?.({
-				text: `Swap failed: ${error.message}`,
-				content: { error: error.message },
-			});
-			return false;
-		}
-	},
-	examples: [
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "Swap 0.1 SOL for USDC",
-				},
-			},
-			{
-				name: "{{name2}}",
-				content: {
-					text: "I'll help you swap 0.1 SOL for USDC",
-					actions: ["SWAP_SOLANA"],
-				},
-			},
-		],
-	] as ActionExample[][],
+      return true;
+    } catch (error) {
+      logger.error('Error during token swap:', error);
+      callback?.({
+        text: `Swap failed: ${error.message}`,
+        content: { error: error.message },
+      });
+      return false;
+    }
+  },
+  examples: [
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'Swap 0.1 SOL for USDC',
+        },
+      },
+      {
+        name: '{{name2}}',
+        content: {
+          text: "I'll help you swap 0.1 SOL for USDC",
+          actions: ['SWAP_SOLANA'],
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

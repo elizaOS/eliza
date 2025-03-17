@@ -1,0 +1,175 @@
+---
+id: send-audio-message
+title: 'Send an audio message'
+description: 'Sends an audio message to an agent for processing'
+sidebar_label: 'Send an audio message'
+hide_title: true
+hide_table_of_contents: true
+api: eJztV0tv4zYQ/ivEXNoCsuVttxfd3N0cDLTYIHFPiQ9jcSxxQ5FcknLiGvrvxVBS7NreJOghpzUMWLLm8c2L82kPEasAxR0ER1TWkAFWZGKAVQaSQumVi8oaKOCWjAwCjcBWKisaCgErEtGm/1hJbKwXztuSQlCmggysI4+sv5BQQCAj56z8V68LGTj02FAkzxj2YLAhKHoICwkZKPbsMDIwT99a5UlCEX1LGYSypgah2EPcOVYL0fduN9Y3GKGAtlUSutNIFp+F3YhYUw8bulVvnEL8w8odWzz1VVoTWbTYQ9PqqBz6mLObicSYMJyhseuvVEaO0XMaoqLATzdK04uY18qg38Ep6JQ4kbS79GHMwVkTeru/zj7wzyWlsVRDaUiK0JZ8tWm1Zk9H0aFzWpWpZvnXwEbeHtpg9Uhwba0mNJABPWHjOHLOJ1dkSNvLFgfkrwtGeoqXsvrfdCzpKYoh2LEFRhddBrG2bVW/wc6c2+anIJSJ5A1qMWiOGWZjTqN5uyWWFtYLTxisYckuAyxZ6jif6D1ywVSkJpxbP+v0eW/h0OviEU0MPLQRH1LQwba+vNiRJ+Of5C5kTZkbcnq3tK9P4vcH8fk0qVUQ/DXCs1URLXCrRxW5eeDT0KldNw7Bx9nsvO8XZotaySFmduNFo9KpNBxfaZDet/M3qAO3Pnlv/es2SyvfUJYrNiaSbJddmJcX1Y6qKCmi0hd66lTzcxIkKVIYQpm+xPywL8hYquQCxiJ9vHA4peIYy3ujNfJHNd6rGr9fGpkew2F793PyoyjvU5QELNaWaZKzIYXKrKeAHJ3Ke06W7wdi1OWpOJMBXIAMAvntyKJar6GAOkZX5Lm2Jerahlj8NpvNzrD+yY+FpC1p6xoeyN5SIkWMPIU74tXqHxRfbsX8enG+yq4XQtqyZSMp2EQHn1W2H6az6WyC2tUoJmIuNpqe1FqTQCNFKFEj38wXI5dkYvho/cP03tybJe8F9qCCkBRUZUjyFluTaJnQPKpYCxQpWL0TvjW8RAfvyoSIpqSpuDLSWcUbELW2jwlh6QmjMlV2bxo0WPFlwpS2O+9gU/X2R2y8Tz0vfIHi5up22UtusKQpZMBl6DNyFPEwR1imORpo7nNuPtmmaY2KvNoPxQtFnlcq1u16WtomJ5a2of9NS5EbpelZxmCROfoZRT+t1P4w0v+L1A/Nz5QrdxqV4eFIsPdD094BOnV4lcigODD6k85dZcDNyTr7/RoD/e111/Hf31ryOyjuVhls0SvujtTdUgW+lsNp8UJwP98MLP4XcUr5vxPFSLMMV2KLuuU7yOCBdkevJd2qy6AmlOQTov7pQE0mS7Zx0L70utBlo9K8LMnFI/GzI5bn8PlouP5yu4QM1sNbSpPOv0Sykt3scFncrbqu+xeE3NGq
+sidebar_class_name: 'post api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Send an audio message'}></Heading>
+
+<MethodEndpoint
+  method={'post'}
+  path={'/api/agents/{agentId}/audio-messages'}
+  context={'endpoint'}
+></MethodEndpoint>
+
+Sends an audio message to an agent for processing
+
+<Heading
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
+
+<ParamsDetails
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+  ]}
+></ParamsDetails>
+
+<RequestSchema
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          properties: { file: { type: 'string', format: 'binary', description: 'Audio file' } },
+        },
+      },
+    },
+  }}
+></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '201': {
+      description: 'Audio message processed successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  message: {
+                    type: 'object',
+                    properties: {
+                      text: { type: 'string', description: 'Text content of the message' },
+                      thought: { type: 'string', description: "Agent's internal thought process" },
+                      plan: { type: 'string', description: "Agent's plan or reasoning" },
+                      actions: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Actions the agent wants to take',
+                      },
+                      source: { type: 'string', description: 'Source of the message' },
+                      inReplyTo: {
+                        type: 'string',
+                        format: 'uuid',
+                        description: 'ID of the message this is in reply to',
+                      },
+                    },
+                    title: 'Content',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID or missing audio file',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error processing audio',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

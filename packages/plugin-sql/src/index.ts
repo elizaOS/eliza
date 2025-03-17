@@ -1,27 +1,44 @@
-import * as os from "node:os";
-import type { IDatabaseAdapter, UUID } from "@elizaos/core";
-import {
-	type IAgentRuntime,
-	type Plugin,
-	logger
-} from "@elizaos/core";
-import { PgliteDatabaseAdapter } from "./pg-lite/adapter";
-import { PGliteClientManager } from "./pg-lite/manager";
-import { PgDatabaseAdapter } from "./pg/adapter";
-import { PostgresConnectionManager } from "./pg/manager";
+import * as os from 'node:os';
+import type { IDatabaseAdapter, UUID } from '@elizaos/core';
+import { type IAgentRuntime, type Plugin, logger } from '@elizaos/core';
+import { PgliteDatabaseAdapter } from './pglite/adapter';
+import { PGliteClientManager } from './pglite/manager';
+import { PgDatabaseAdapter } from './pg/adapter';
+import { PostgresConnectionManager } from './pg/manager';
 
-// Singleton connection managers
-let pgLiteClientManager: PGliteClientManager;
-let postgresConnectionManager: PostgresConnectionManager;
+/**
+ * Global Singleton Instances (Package-scoped)
+ *
+ * These instances are stored globally within the package scope to ensure a single shared instance across multiple adapters within this package.
+ * This approach prevents multiple instantiations due to module caching or multiple imports within the same process.
+ *
+ * IMPORTANT:
+ * - Do NOT directly modify these instances outside their intended initialization logic.
+ * - These instances are NOT exported and should NOT be accessed outside this package.
+ */
+const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
+
+interface GlobalSingletons {
+  pgLiteClientManager?: PGliteClientManager;
+  postgresConnectionManager?: PostgresConnectionManager;
+}
+
+const globalSymbols = global as unknown as Record<symbol, GlobalSingletons>;
+
+if (!globalSymbols[GLOBAL_SINGLETONS]) {
+  globalSymbols[GLOBAL_SINGLETONS] = {};
+}
+
+const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
 
 /**
  * Helper function to expand tilde in paths
  */
 function expandTildePath(filepath: string): string {
-	if (filepath && typeof filepath === "string" && filepath.startsWith("~")) {
-		return filepath.replace(/^~/, os.homedir());
-	}
-	return filepath;
+  if (filepath && typeof filepath === 'string' && filepath.startsWith('~')) {
+    return filepath.replace(/^~/, os.homedir());
+  }
+  return filepath;
 }
 
 /**
@@ -36,36 +53,36 @@ function expandTildePath(filepath: string): string {
  * @returns {IDatabaseAdapter} The created database adapter.
  */
 export function createDatabaseAdapter(
-	config: {
-		dataDir?: string;
-		postgresUrl?: string;
-	},
-	agentId: UUID,
+  config: {
+    dataDir?: string;
+    postgresUrl?: string;
+  },
+  agentId: UUID
 ): IDatabaseAdapter {
-	// Expand tilde in database directory path if provided
-	if (config.dataDir) {
-		config.dataDir = expandTildePath(config.dataDir);
-	}
+  if (config.dataDir) {
+    config.dataDir = expandTildePath(config.dataDir);
+  }
 
-	if (config.postgresUrl) {
-		if (!postgresConnectionManager) {
-			postgresConnectionManager = new PostgresConnectionManager(
-				config.postgresUrl,
-			);
-		}
-		return new PgDatabaseAdapter(agentId, postgresConnectionManager);
-	}
+  if (config.postgresUrl) {
+    if (!globalSingletons.postgresConnectionManager) {
+      globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
+        config.postgresUrl
+      );
+    }
+    return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
+  }
 
-	const dataDir = config.dataDir ?? "./elizadb";
+  const dataDir = config.dataDir ?? './elizadb';
 
-	if (!pgLiteClientManager) {
-		pgLiteClientManager = new PGliteClientManager({ dataDir });
-	}
-	return new PgliteDatabaseAdapter(agentId, pgLiteClientManager);
+  if (!globalSingletons.pgLiteClientManager) {
+    globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
+  }
+
+  return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
 }
 
 /**
- * Drizzle plugin for database adapter using Drizzle ORM
+ * SQL plugin for database adapter using Drizzle ORM
  *
  * @typedef {Object} Plugin
  * @property {string} name - The name of the plugin
@@ -74,24 +91,24 @@ export function createDatabaseAdapter(
  * @param {any} _ - Input parameter
  * @param {IAgentRuntime} runtime - The runtime environment for the agent
  */
-const drizzlePlugin: Plugin = {
-	name: "drizzle",
-	description: "Database adapter plugin using Drizzle ORM",
-	init: async (_, runtime: IAgentRuntime) => {
-		const config = {
-			dataDir: runtime.getSetting("PGLITE_DATA_DIR") ?? "./pglite",
-			postgresUrl: runtime.getSetting("POSTGRES_URL"),
-		};
+const sqlPlugin: Plugin = {
+  name: 'sql',
+  description: 'SQL database adapter plugin using Drizzle ORM',
+  init: async (_, runtime: IAgentRuntime) => {
+    const config = {
+      dataDir: runtime.getSetting('PGLITE_DATA_DIR') ?? './pglite',
+      postgresUrl: runtime.getSetting('POSTGRES_URL'),
+    };
 
-		try {
-			const db = createDatabaseAdapter(config, runtime.agentId);
-			logger.success("Database connection established successfully");
-			runtime.registerDatabaseAdapter(db);
-		} catch (error) {
-			logger.error("Failed to initialize database:", error);
-			throw error;
-		}
-	},
+    try {
+      const db = createDatabaseAdapter(config, runtime.agentId);
+      logger.success('Database connection established successfully');
+      runtime.registerDatabaseAdapter(db);
+    } catch (error) {
+      logger.error('Failed to initialize database:', error);
+      throw error;
+    }
+  },
 };
 
-export default drizzlePlugin;
+export default sqlPlugin;

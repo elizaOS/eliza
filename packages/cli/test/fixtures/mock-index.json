@@ -1,0 +1,16 @@
+{
+  "@elizaos/plugin-solana": "github:elizaos/plugin-solana",
+  "@elizaos/plugin-openai": "github:elizaos/plugin-openai",
+  "@elizaos/plugin-twitter": "github:elizaos/plugin-twitter",
+  "__v2": {
+    "version": "2.0.0",
+    "packages": {
+      "@elizaos/plugin-solana": "packages/plugin-solana.json",
+      "@elizaos/plugin-openai": "packages/plugin-openai.json"
+    },
+    "categories": {
+      "blockchain": ["@elizaos/plugin-solana"],
+      "ai": ["@elizaos/plugin-openai"]
+    }
+  }
+}

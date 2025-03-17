@@ -1,25 +1,24 @@
 {
-	"compilerOptions": {
-		"target": "ES2020",
-		"module": "commonjs",
-		"moduleResolution": "node",
-		"esModuleInterop": true,
-		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": true,
-		"allowImportingTsExtensions": true,
-		"noEmit": true,
-		"allowSyntheticDefaultImports": true,
-		"baseUrl": ".",
-		"paths": {
-			"@elizaos/core": ["packages/core/src"],
-			"@elizaos/core/*": ["packages/core/src/*"]
-		},
-		"sourceMap": true
-	},
-	"files": [],
-	"references": [
-		{
-			"path": "packages/core"
-		}
-	]
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["packages/core/src"],
+      "@elizaos/core/*": ["packages/core/src/*"]
+    }
+  },
+  "files": [],
+  "references": [
+    {
+      "path": "packages/core"
+    }
+  ]
 }

@@ -1,0 +1,29 @@
+{
+  "name": "@elizaos/plugin-test",
+  "description": "Test plugin for publishing workflow",
+  "repository": {
+    "type": "git",
+    "url": "github:elizaos/plugin-test"
+  },
+  "maintainers": [
+    {
+      "name": "testuser",
+      "github": "testuser"
+    }
+  ],
+  "categories": ["test"],
+  "tags": ["test", "plugin"],
+  "versions": [
+    {
+      "version": "0.9.0",
+      "gitBranch": "0.9.0",
+      "gitTag": "v0.9.0",
+      "runtimeVersion": "0.9.0",
+      "releaseDate": "2023-12-01T00:00:00Z",
+      "deprecated": false
+    }
+  ],
+  "latestStable": "0.9.0",
+  "latestVersion": "0.9.0",
+  "platform": "node"
+}

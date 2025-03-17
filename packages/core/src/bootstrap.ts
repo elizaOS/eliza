@@ -1,133 +1,106 @@
-import type { UUID } from "node:crypto";
-import { v4 } from "uuid";
-import { choiceAction } from "./actions/choice";
-import { followRoomAction } from "./actions/followRoom";
-import { ignoreAction } from "./actions/ignore";
-import { muteRoomAction } from "./actions/muteRoom";
-import { noneAction } from "./actions/none";
-import { replyAction } from "./actions/reply";
-import updateRoleAction from "./actions/roles";
-import { sendMessageAction } from "./actions/sendMessage";
-import updateSettingsAction from "./actions/settings";
-import { unfollowRoomAction } from "./actions/unfollowRoom";
-import { unmuteRoomAction } from "./actions/unmuteRoom";
-import { updateEntityAction } from "./actions/updateEntity";
-import { createUniqueUuid } from "./entities";
-import { reflectionEvaluator } from "./evaluators/reflection";
-import { logger } from "./logger";
+import type { UUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { v4 } from 'uuid';
+import { choiceAction } from './actions/choice';
+import { followRoomAction } from './actions/followRoom';
+import { ignoreAction } from './actions/ignore';
+import { muteRoomAction } from './actions/muteRoom';
+import { noneAction } from './actions/none';
+import { replyAction } from './actions/reply';
+import updateRoleAction from './actions/roles';
+import { sendMessageAction } from './actions/sendMessage';
+import updateSettingsAction from './actions/settings';
+import { unfollowRoomAction } from './actions/unfollowRoom';
+import { unmuteRoomAction } from './actions/unmuteRoom';
+import { updateEntityAction } from './actions/updateEntity';
+import { createUniqueUuid } from './entities';
+import { reflectionEvaluator } from './evaluators/reflection';
+import { logger } from './logger';
 import {
-	composePromptFromState,
-	messageHandlerTemplate,
-	parseJSONObjectFromText,
-	shouldRespondTemplate,
-} from "./prompts";
-import { actionsProvider } from "./providers/actions";
-import { anxietyProvider } from "./providers/anxiety";
-import { attachmentsProvider } from "./providers/attachments";
-import { capabilitiesProvider } from "./providers/capabilities";
-import { characterProvider } from "./providers/character";
-import { choiceProvider } from "./providers/choice";
-import { entitiesProvider } from "./providers/entities";
-import { evaluatorsProvider } from "./providers/evaluators";
-import { factsProvider } from "./providers/facts";
-import { knowledgeProvider } from "./providers/knowledge";
-import { providersProvider } from "./providers/providers";
-import { recentMessagesProvider } from "./providers/recentMessages";
-import { relationshipsProvider } from "./providers/relationships";
-import { roleProvider } from "./providers/roles";
-import { settingsProvider } from "./providers/settings";
-import { timeProvider } from "./providers/time";
-import { ScenarioService } from "./services/scenario";
-import { TaskService } from "./services/task";
+  composePrompt,
+  composePromptFromState,
+  messageHandlerTemplate,
+  parseJSONObjectFromText,
+  postCreationTemplate,
+  shouldRespondTemplate,
+  truncateToCompleteSentence,
+} from './prompts';
+import { actionsProvider } from './providers/actions';
+import { anxietyProvider } from './providers/anxiety';
+import { attachmentsProvider } from './providers/attachments';
+import { capabilitiesProvider } from './providers/capabilities';
+import { characterProvider } from './providers/character';
+import { choiceProvider } from './providers/choice';
+import { entitiesProvider } from './providers/entities';
+import { evaluatorsProvider } from './providers/evaluators';
+import { factsProvider } from './providers/facts';
+import { knowledgeProvider } from './providers/knowledge';
+import { providersProvider } from './providers/providers';
+import { recentMessagesProvider } from './providers/recentMessages';
+import { relationshipsProvider } from './providers/relationships';
+import { roleProvider } from './providers/roles';
+import { settingsProvider } from './providers/settings';
+import { timeProvider } from './providers/time';
+import { ScenarioService } from './services/scenario';
+import { TaskService } from './services/task';
 import {
-	type ChannelType,
-	type Content,
-	type Entity,
-	type HandlerCallback,
-	type IAgentRuntime,
-	type Memory,
-	ModelTypes,
-	type Plugin,
-	type Room,
-	type World,
-	EventTypes,
-	type MessageReceivedPayload,
-	type MessageSentPayload,
-	type PostGeneratedPayload,
-	type PostSentPayload,
-	type ReactionReceivedPayload,
-	type ServerPayload,
-	type UserJoinedPayload,
-	type UserLeftPayload,
-	type VoiceMessageReceivedPayload,
-} from "./types";
+  type ActionEventPayload,
+  ChannelType,
+  type Content,
+  type Entity,
+  type EntityPayload,
+  type EvaluatorEventPayload,
+  EventType,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type InvokePayload,
+  type Media,
+  type Memory,
+  type MessagePayload,
+  ModelType,
+  type MessageReceivedHandlerParams,
+  type Plugin,
+  type WorldPayload,
+  asUUID,
+} from './types';
 
-/**
- * Represents the parameters passed when a server is joined.
- * @typedef {Object} ServerJoinedParams
- * @property {IAgentRuntime} runtime - The agent runtime object.
- * @property {any} world - The platform-specific server object.
- * @property {string} source - The source platform of the server (e.g. "discord", "telegram").
- */
-type ServerJoinedParams = {
-	runtime: IAgentRuntime;
-	world: any; // Platform-specific server object
-	source: string; // "discord", "telegram", etc.
-};
-
-// Add this to your types.ts file
-/**
- * Represents the parameters required when a server is connected.
- * @typedef { Object } ServerConnectedParams
- * @property { IAgentRuntime } runtime - The runtime of the agent.
- * @property { World } world - The world connected to the server.
- * @property {Room[]} rooms - The array of rooms connected to the server.
- * @property {Entity[]} users - The array of users connected to the server.
- * @property { string } source - The source of the connection.
- */
-type ServerConnectedParams = {
-	runtime: IAgentRuntime;
-	world: World;
-	rooms: Room[];
-	users: Entity[];
-	source: string;
-};
-
-/**
- * Represents the parameters when a user joins a server.
- * @typedef {Object} UserJoinedParams
- * @property {IAgentRuntime} runtime - The runtime object for the agent.
- * @property {any} user - The user who joined.
- * @property {string} serverId - The ID of the server the user joined.
- * @property {UUID} entityId - The entity ID of the user.
- * @property {string} channelId - The ID of the channel the user joined.
- * @property {ChannelType} channelType - The type of channel the user joined.
- * @property {string} source - The source of the user joining.
- */
-type UserJoinedParams = {
-	runtime: IAgentRuntime;
-	user: any;
-	serverId: string;
-	entityId: UUID;
-	channelId: string;
-	channelType: ChannelType;
-	source: string;
-};
-
-/**
- * Represents the parameters for a message received handler.
- * @typedef {Object} MessageReceivedHandlerParams
- * @property {IAgentRuntime} runtime - The agent runtime associated with the message.
- * @property {Memory} message - The message received.
- * @property {HandlerCallback} callback - The callback function to be executed after handling the message.
- */
-type MessageReceivedHandlerParams = {
-	runtime: IAgentRuntime;
-	message: Memory;
-	callback: HandlerCallback;
+type MediaData = {
+  data: Buffer;
+  mediaType: string;
 };
 
 const latestResponseIds = new Map<string, Map<string, string>>();
+
+/**
+ * Fetches media data from a list of attachments, supporting both HTTP URLs and local file paths.
+ *
+ * @param attachments Array of Media objects containing URLs or file paths to fetch media from
+ * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
+ */
+export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]> {
+  return Promise.all(
+    attachments.map(async (attachment: Media) => {
+      if (/^(http|https):\/\//.test(attachment.url)) {
+        // Handle HTTP URLs
+        const response = await fetch(attachment.url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch file: ${attachment.url}`);
+        }
+        const mediaBuffer = Buffer.from(await response.arrayBuffer());
+        const mediaType = attachment.contentType || 'image/png';
+        return { data: mediaBuffer, mediaType };
+      }
+      if (fs.existsSync(attachment.url)) {
+        // Handle local file paths
+        const mediaBuffer = await fs.promises.readFile(path.resolve(attachment.url));
+        const mediaType = attachment.contentType || 'image/png';
+        return { data: mediaBuffer, mediaType };
+      }
+      throw new Error(`File not found: ${attachment.url}. Make sure the path is correct.`);
+    })
+  );
+}
 
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
@@ -136,173 +109,228 @@ const latestResponseIds = new Map<string, Map<string, string>>();
  * @returns {Promise<void>} - A promise that resolves once the message handling and response generation is complete.
  */
 const messageReceivedHandler = async ({
-	runtime,
-	message,
-	callback,
-}: MessageReceivedHandlerParams) => {
-	// Generate a new response ID
-	const responseId = v4();
-	// Get or create the agent-specific map
-	if (!latestResponseIds.has(runtime.agentId)) {
-		latestResponseIds.set(runtime.agentId, new Map());
-	}
-	const agentResponses = latestResponseIds.get(runtime.agentId)!;
+  runtime,
+  message,
+  callback,
+}: MessageReceivedHandlerParams): Promise<void> => {
+  // Generate a new response ID
+  const responseId = v4();
+  // Get or create the agent-specific map
+  if (!latestResponseIds.has(runtime.agentId)) {
+    latestResponseIds.set(runtime.agentId, new Map<string, string>());
+  }
+  const agentResponses = latestResponseIds.get(runtime.agentId)!;
 
-	// Set this as the latest response ID for this agent+room
-	agentResponses.set(message.roomId, responseId);
+  // Set this as the latest response ID for this agent+room
+  agentResponses.set(message.roomId, responseId);
 
-	if (message.entityId === runtime.agentId) {
-		throw new Error("Message is from the agent itself");
-	}
+  // Generate a unique run ID for tracking this message handler execution
+  const runId = asUUID(v4());
+  const startTime = Date.now();
 
-	// First, save the incoming message
-	await Promise.all([
-		runtime.getMemoryManager("messages").addEmbeddingToMemory(message),
-		runtime.getMemoryManager("messages").createMemory(message),
-	]);
+  // Emit run started event
+  await runtime.emitEvent(EventType.RUN_STARTED, {
+    runtime,
+    runId,
+    messageId: message.id,
+    roomId: message.roomId,
+    entityId: message.entityId,
+    startTime,
+    status: 'started',
+    source: 'messageHandler',
+  });
 
-	const agentUserState = await runtime
-		
-		.getParticipantUserState(message.roomId, runtime.agentId);
+  // Set up timeout monitoring
+  const timeoutDuration = 5 * 60 * 1000; // 5 minutes
+  let timeoutId: NodeJS.Timer;
 
-	if (
-		agentUserState === "MUTED" &&
-		!message.content.text
-			.toLowerCase()
-			.includes(runtime.character.name.toLowerCase())
-	) {
-		console.log("Ignoring muted room");
-		return;
-	}
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(async () => {
+      await runtime.emitEvent(EventType.RUN_TIMEOUT, {
+        runtime,
+        runId,
+        messageId: message.id,
+        roomId: message.roomId,
+        entityId: message.entityId,
+        startTime,
+        status: 'timeout',
+        endTime: Date.now(),
+        duration: Date.now() - startTime,
+        error: 'Run exceeded 5 minute timeout',
+        source: 'messageHandler',
+      });
+      reject(new Error('Run exceeded 5 minute timeout'));
+    }, timeoutDuration);
+  });
 
-	let state = await runtime.composeState(message, [
-		"PROVIDERS",
-		"SHOULD_RESPOND",
-		"CHARACTER",
-		"RECENT_MESSAGES",
-		"ENTITIES",
-	]);
+  const processingPromise = (async () => {
+    try {
+      if (message.entityId === runtime.agentId) {
+        throw new Error('Message is from the agent itself');
+      }
 
-	const shouldRespondPrompt = composePromptFromState({
-		state,
-		template:
-			runtime.character.templates?.shouldRespondTemplate ||
-			shouldRespondTemplate,
-	});
+      // First, save the incoming message
+      await Promise.all([
+        runtime.addEmbeddingToMemory(message),
+        runtime.createMemory(message, 'messages'),
+      ]);
 
-	logger.debug(
-		`*** Should Respond Prompt for ${runtime.character.name} ***`,
-		shouldRespondPrompt,
-	);
+      const agentUserState = await runtime.getParticipantUserState(message.roomId, runtime.agentId);
 
-	const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
-		prompt: shouldRespondPrompt,
-	});
+      if (
+        agentUserState === 'MUTED' &&
+        !message.content.text?.toLowerCase().includes(runtime.character.name.toLowerCase())
+      ) {
+        logger.debug('Ignoring muted room');
+        return;
+      }
 
-	logger.debug(
-		`*** Should Respond Response for ${runtime.character.name} ***`,
-		response,
-	);
+      let state = await runtime.composeState(message, [
+        'PROVIDERS',
+        'SHOULD_RESPOND',
+        'CHARACTER',
+        'RECENT_MESSAGES',
+        'ENTITIES',
+      ]);
 
-	const responseObject = parseJSONObjectFromText(response);
+      const shouldRespondPrompt = composePromptFromState({
+        state,
+        template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+      });
 
-	const providers = responseObject.providers;
+      logger.debug(
+        `*** Should Respond Prompt for ${runtime.character.name} ***\n`,
+        shouldRespondPrompt
+      );
 
-	const shouldRespond =
-		responseObject?.action && responseObject.action === "RESPOND";
+      const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt: shouldRespondPrompt,
+      });
 
-	state = await runtime.composeState(message, null, providers);
+      logger.debug(`*** Should Respond Response for ${runtime.character.name} ***\n`, response);
 
-	let responseMessages: Memory[] = [];
+      const responseObject = parseJSONObjectFromText(response);
 
-	if (shouldRespond) {
-		const prompt = composePromptFromState({
-			state,
-			template:
-				runtime.character.templates?.messageHandlerTemplate ||
-				messageHandlerTemplate,
-		});
+      const providers = responseObject.providers as string[] | undefined;
 
-		let responseContent = null;
+      const shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
 
-		// Retry if missing required fields
-		let retries = 0;
-		const maxRetries = 3;
-		while (
-			retries < maxRetries &&
-			(!responseContent?.thought ||
-				!responseContent?.plan ||
-				!responseContent?.actions)
-		) {
-			const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
-				prompt,
-			});
+      state = await runtime.composeState(message, null, providers);
 
-			responseContent = parseJSONObjectFromText(response) as Content;
+      let responseMessages: Memory[] = [];
 
-			retries++;
-			if (
-				!responseContent?.thought ||
-				!responseContent?.plan ||
-				!responseContent?.actions
-			) {
-				logger.warn("*** Missing required fields, retrying... ***");
-			}
-		}
+      if (shouldRespond) {
+        const prompt = composePromptFromState({
+          state,
+          template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+        });
 
-		// Check if this is still the latest response ID for this agent+room
-		const currentResponseId = agentResponses.get(message.roomId);
-		if (currentResponseId !== responseId) {
-			logger.info(
-				`Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`,
-			);
-			return;
-		}
+        let responseContent: Content | null = null;
 
-		responseContent.plan = responseContent.plan?.trim();
-		responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
+        // Retry if missing required fields
+        let retries = 0;
+        const maxRetries = 3;
+        while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
+          const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+            prompt,
+          });
 
-		responseMessages = [
-			{
-				id: v4() as UUID,
-				entityId: runtime.agentId,
-				agentId: runtime.agentId,
-				content: responseContent,
-				roomId: message.roomId,
-				createdAt: Date.now(),
-			},
-		];
+          responseContent = parseJSONObjectFromText(response) as Content;
 
-		// save the plan to a new reply memory
-		await runtime.getMemoryManager("messages").createMemory({
-			entityId: runtime.agentId,
-			agentId: runtime.agentId,
-			content: {
-				thought: responseContent.thought,
-				plan: responseContent.plan,
-				actions: responseContent.actions,
-				providers: responseContent.providers,
-			},
-			roomId: message.roomId,
-			createdAt: Date.now(),
-		});
+          retries++;
+          if (!responseContent?.thought && !responseContent?.actions) {
+            logger.warn('*** Missing required fields, retrying... ***');
+          }
+        }
 
-		// Clean up the response ID
-		agentResponses.delete(message.roomId);
-		if (agentResponses.size === 0) {
-			latestResponseIds.delete(runtime.agentId);
-		}
+        // Check if this is still the latest response ID for this agent+room
+        const currentResponseId = agentResponses.get(message.roomId);
+        if (currentResponseId !== responseId) {
+          logger.info(
+            `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
+          );
+          return;
+        }
 
-		await runtime.processActions(message, responseMessages, state, callback);
-	}
+        if (responseContent) {
+          responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
-	await runtime.evaluate(
-		message,
-		state,
-		shouldRespond,
-		callback,
-		responseMessages,
-	);
+          responseMessages = [
+            {
+              id: asUUID(v4()),
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              content: responseContent,
+              roomId: message.roomId,
+              createdAt: Date.now(),
+            },
+          ];
+
+          // save the plan to a new reply memory
+          await runtime.createMemory(
+            {
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              content: {
+                thought: responseContent.thought,
+                actions: responseContent.actions,
+                providers: responseContent.providers,
+              },
+              roomId: message.roomId,
+              createdAt: Date.now(),
+            },
+            'messages'
+          );
+        }
+
+        // Clean up the response ID
+        agentResponses.delete(message.roomId);
+        if (agentResponses.size === 0) {
+          latestResponseIds.delete(runtime.agentId);
+        }
+
+        await runtime.processActions(message, responseMessages, state, callback);
+      }
+
+      await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
+
+      // Emit run ended event on successful completion
+      await runtime.emitEvent(EventType.RUN_ENDED, {
+        runtime,
+        runId,
+        messageId: message.id,
+        roomId: message.roomId,
+        entityId: message.entityId,
+        startTime,
+        status: 'completed',
+        endTime: Date.now(),
+        duration: Date.now() - startTime,
+        source: 'messageHandler',
+      });
+    } catch (error) {
+      // Emit run ended event with error
+      await runtime.emitEvent(EventType.RUN_ENDED, {
+        runtime,
+        runId,
+        messageId: message.id,
+        roomId: message.roomId,
+        entityId: message.entityId,
+        startTime,
+        status: 'completed',
+        endTime: Date.now(),
+        duration: Date.now() - startTime,
+        error: error.message,
+        source: 'messageHandler',
+      });
+      throw error;
+    }
+  })();
+
+  try {
+    await Promise.race([processingPromise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 /**
@@ -314,26 +342,26 @@ const messageReceivedHandler = async ({
  * @returns {void}
  */
 const reactionReceivedHandler = async ({
-	runtime,
-	message,
+  runtime,
+  message,
 }: {
-	runtime: IAgentRuntime;
-	message: Memory;
+  runtime: IAgentRuntime;
+  message: Memory;
 }) => {
-	try {
-		await runtime.getMemoryManager("messages").createMemory(message);
-	} catch (error) {
-		if (error.code === "23505") {
-			logger.warn("Duplicate reaction memory, skipping");
-			return;
-		}
-		logger.error("Error in reaction handler:", error);
-	}
+  try {
+    await runtime.createMemory(message, 'messages');
+  } catch (error) {
+    if (error.code === '23505') {
+      logger.warn('Duplicate reaction memory, skipping');
+      return;
+    }
+    logger.error('Error in reaction handler:', error);
+  }
 };
 
 /**
  * Handles the generation of a post (like a Tweet) and creates a memory for it.
- * 
+ *
  * @param {Object} params - The parameters for the function.
  * @param {IAgentRuntime} params.runtime - The agent runtime object.
  * @param {Memory} params.message - The post message to be processed.
@@ -341,105 +369,128 @@ const reactionReceivedHandler = async ({
  * @returns {Promise<void>}
  */
 const postGeneratedHandler = async ({
-	runtime,
-	message,
-	callback,
-}: MessageReceivedHandlerParams) => {
-	// First, save the post to memory
-	await Promise.all([
-		runtime.getMemoryManager("messages").addEmbeddingToMemory(message),
-		runtime.getMemoryManager("messages").createMemory(message),
-	]);
+  runtime,
+  callback,
+  worldId,
+  userId,
+  roomId,
+}: InvokePayload) => {
+  logger.info('Generating new tweet...');
+  // Ensure world exists first
+  await runtime.ensureWorldExists({
+    id: worldId,
+    name: `${runtime.character.name}'s Feed`,
+    agentId: runtime.agentId,
+    serverId: userId,
+  });
 
-	// Compose state with providers for generating content
-	let state = await runtime.composeState(message, [
-		"PROVIDERS",
-		"CHARACTER",
-		"RECENT_MESSAGES",
-		"ENTITIES",
-	]);
+  // Ensure timeline room exists
+  await runtime.ensureRoomExists({
+    id: roomId,
+    name: `${runtime.character.name}'s Feed`,
+    source: 'twitter',
+    type: ChannelType.FEED,
+    channelId: `${userId}-home`,
+    serverId: userId,
+    worldId: worldId,
+  });
 
-	// Since posts are agent-generated content, we always respond
-	const providers = state.providers || [];
+  const message = {
+    id: createUniqueUuid(runtime, `tweet-${Date.now()}`) as UUID,
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    roomId: roomId,
+    content: {},
+  };
 
-	// Update state with additional providers
-	state = await runtime.composeState(message, null, providers);
+  // Compose state with relevant context for tweet generation
+  const state = await runtime.composeState(message, null, [
+    'CHARACTER',
+    'RECENT_MESSAGES',
+    'ENTITIES',
+  ]);
 
-	// Get prompt template - use post template if available, otherwise default to messageHandler
-	const promptTemplate = 
-		runtime.character.templates?.postTemplate || 
-		runtime.character.templates?.messageHandlerTemplate || 
-		messageHandlerTemplate;
+  // Generate prompt for tweet content
+  const tweetPrompt = composePrompt({
+    state,
+    template: runtime.character.templates?.postCreationTemplate || postCreationTemplate,
+  });
 
-	const prompt = composePromptFromState({
-		state,
-		template: promptTemplate,
-	});
+  const jsonResponse = await runtime.useModel(ModelType.OBJECT_LARGE, {
+    prompt: tweetPrompt,
+    output: 'no-schema',
+  });
 
-	let responseContent = null;
+  /**
+   * Cleans up a tweet text by removing quotes and fixing newlines
+   */
+  function cleanupTweetText(text: string): string {
+    // Remove quotes
+    let cleanedText = text.replace(/^['"](.*)['"]$/, '$1');
+    // Fix newlines
+    cleanedText = cleanedText.replaceAll(/\\n/g, '\n\n');
+    // Truncate to Twitter's character limit (280)
+    if (cleanedText.length > 280) {
+      cleanedText = truncateToCompleteSentence(cleanedText, 280);
+    }
+    return cleanedText;
+  }
 
-	// Retry if missing required fields
-	let retries = 0;
-	const maxRetries = 3;
-	while (
-		retries < maxRetries &&
-		(!responseContent?.thought ||
-			!responseContent?.plan ||
-			!responseContent?.text)
-	) {
-		const response = await runtime.useModel(ModelTypes.TEXT_SMALL, {
-			prompt,
-		});
+  // Cleanup the tweet text
+  const cleanedText = cleanupTweetText(jsonResponse.post);
 
-		responseContent = parseJSONObjectFromText(response) as Content;
+  // Prepare media if included
+  // const mediaData: MediaData[] = [];
+  // if (jsonResponse.imagePrompt) {
+  // 	const images = await runtime.useModel(ModelType.IMAGE, {
+  // 		prompt: jsonResponse.imagePrompt,
+  // 		output: "no-schema",
+  // 	});
+  // 	try {
+  // 		// Convert image prompt to Media format for fetchMediaData
+  // 		const imagePromptMedia: any[] = images
 
-		retries++;
-		if (
-			!responseContent?.thought ||
-			!responseContent?.plan ||
-			!responseContent?.text
-		) {
-			logger.warn("*** Missing required fields, retrying... ***");
-		}
-	}
+  // 		// Fetch media using the utility function
+  // 		const fetchedMedia = await fetchMediaData(imagePromptMedia);
+  // 		mediaData.push(...fetchedMedia);
+  // 	} catch (error) {
+  // 		logger.error("Error fetching media for tweet:", error);
+  // 	}
+  // }
 
-	// Create the response memory
-	const responseMessages = [
-		{
-			id: v4() as UUID,
-			entityId: runtime.agentId,
-			agentId: runtime.agentId,
-			content: responseContent,
-			roomId: message.roomId,
-			createdAt: Date.now(),
-		},
-	];
+  // Create the response memory
+  const responseMessages = [
+    {
+      id: v4() as UUID,
+      entityId: runtime.agentId,
+      agentId: runtime.agentId,
+      content: {
+        text: cleanedText,
+        source: 'twitter',
+        channelType: ChannelType.FEED,
+        thought: jsonResponse.thought || '',
+        type: 'post',
+      },
+      roomId: message.roomId,
+      createdAt: Date.now(),
+    },
+  ];
 
-	// Save the response plan to memory
-	await runtime.getMemoryManager("messages").createMemory({
-		entityId: runtime.agentId,
-		agentId: runtime.agentId,
-		content: {
-			thought: responseContent.thought,
-			plan: responseContent.plan,
-			text: responseContent.text,
-			providers: responseContent.providers,
-		},
-		roomId: message.roomId,
-		createdAt: Date.now(),
-	});
+  for (const message of responseMessages) {
+    await callback(message.content);
+  }
 
-	// Process the actions and execute the callback
-	await runtime.processActions(message, responseMessages, state, callback);
+  // Process the actions and execute the callback
+  // await runtime.processActions(message, responseMessages, state, callback);
 
-	// Run any configured evaluators
-	await runtime.evaluate(
-		message,
-		state,
-		true, // Post generation is always a "responding" scenario
-		callback,
-		responseMessages,
-	);
+  // // Run any configured evaluators
+  // await runtime.evaluate(
+  // 	message,
+  // 	state,
+  // 	true, // Post generation is always a "responding" scenario
+  // 	callback,
+  // 	responseMessages,
+  // );
 };
 
 /**
@@ -458,310 +509,277 @@ const postGeneratedHandler = async ({
  * @returns {Promise<void>} A promise that resolves once the user is synced.
  */
 const syncSingleUser = async (
-	entityId: UUID,
-	runtime: IAgentRuntime,
-	user: any,
-	serverId: string,
-	channelId: string,
-	type: ChannelType,
-	source: string,
+  entityId: UUID,
+  runtime: IAgentRuntime,
+  serverId: string,
+  channelId: string,
+  type: ChannelType,
+  source: string
 ) => {
-	logger.info(`Syncing user: ${user.username || user.id}`);
+  const entity = await runtime.getEntityById(entityId);
+  logger.info(`Syncing user: ${entity.metadata[source].username || entity.id}`);
 
-	try {
-		// Ensure we're not using WORLD type and that we have a valid channelId
-		if (!channelId) {
-			logger.warn(`Cannot sync user ${user.id} without a valid channelId`);
-			return;
-		}
+  try {
+    // Ensure we're not using WORLD type and that we have a valid channelId
+    if (!channelId) {
+      logger.warn(`Cannot sync user ${entity.id} without a valid channelId`);
+      return;
+    }
 
-		const roomId = createUniqueUuid(runtime, channelId);
-		const worldId = createUniqueUuid(runtime, serverId);
+    const roomId = createUniqueUuid(runtime, channelId);
+    const worldId = createUniqueUuid(runtime, serverId);
 
-		await runtime.ensureConnection({
-			entityId,
-			roomId,
-			userName: user.username || user.displayName || `User${user.id}`,
-			name: user.displayName || user.username || `User${user.id}`,
-			source,
-			channelId,
-			serverId,
-			type,
-			worldId,
-		});
+    await runtime.ensureConnection({
+      entityId,
+      roomId,
+      userName: entity.metadata[source].username || entity.id,
+      name: entity.metadata[source].name || entity.metadata[source].username || `User${entity.id}`,
+      source,
+      channelId,
+      serverId,
+      type,
+      worldId,
+    });
 
-		logger.success(`Successfully synced user: ${user.username || user.id}`);
-	} catch (error) {
-		logger.error(
-			`Error syncing user: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
-	}
+    logger.success(`Successfully synced user: ${entity.id}`);
+  } catch (error) {
+    logger.error(`Error syncing user: ${error instanceof Error ? error.message : String(error)}`);
+  }
 };
 
 /**
- * Handles standardized server data for both SERVER_JOINED and SERVER_CONNECTED events
+ * Handles standardized server data for both WORLD_JOINED and WORLD_CONNECTED events
  */
-const handleServerSync = async ({
-	runtime,
-	world,
-	rooms,
-	users,
-	source,
-}: ServerConnectedParams) => {
-	logger.info(`Handling server sync event for server: ${world.name}`);
-	try {
-		// Create/ensure the world exists for this server
-		await runtime.ensureWorldExists({
-			id: world.id,
-			name: world.name,
-			agentId: runtime.agentId,
-			serverId: world.serverId,
-			metadata: {
-				...world.metadata,
-			},
-		});
+const handleServerSync = async ({ runtime, world, rooms, entities, source }: WorldPayload) => {
+  logger.debug(`Handling server sync event for server: ${world.name}`);
+  try {
+    // Create/ensure the world exists for this server
+    await runtime.ensureWorldExists({
+      id: world.id,
+      name: world.name,
+      agentId: runtime.agentId,
+      serverId: world.serverId,
+      metadata: {
+        ...world.metadata,
+      },
+    });
 
-		// First sync all rooms/channels
-		if (rooms && rooms.length > 0) {
-			for (const room of rooms) {
-				await runtime.ensureRoomExists({
-					id: room.id,
-					name: room.name,
-					source: source,
-					type: room.type,
-					channelId: room.channelId,
-					serverId: world.serverId,
-					worldId: world.id,
-				});
-			}
-		}
+    // First sync all rooms/channels
+    if (rooms && rooms.length > 0) {
+      for (const room of rooms) {
+        await runtime.ensureRoomExists({
+          id: room.id,
+          name: room.name,
+          source: source,
+          type: room.type,
+          channelId: room.channelId,
+          serverId: world.serverId,
+          worldId: world.id,
+        });
+      }
+    }
 
-		// Then sync all users
-		if (users && users.length > 0) {
-			// Process users in batches to avoid overwhelming the system
-			const batchSize = 50;
-			for (let i = 0; i < users.length; i += batchSize) {
-				const entityBatch = users.slice(i, i + batchSize);
+    // Then sync all users
+    if (entities && entities.length > 0) {
+      // Process entities in batches to avoid overwhelming the system
+      const batchSize = 50;
+      for (let i = 0; i < entities.length; i += batchSize) {
+        const entityBatch = entities.slice(i, i + batchSize);
 
-				// check if user is in any of these rooms in rooms
-				const firstRoomUserIsIn = rooms.length > 0 ? rooms[0] : null;
+        // check if user is in any of these rooms in rooms
+        const firstRoomUserIsIn = rooms.length > 0 ? rooms[0] : null;
 
-				// Process each user in the batch
-				await Promise.all(
-					entityBatch.map(async (entity: Entity) => {
-						try {
-							await runtime.ensureConnection({
-								entityId: entity.id,
-								roomId: firstRoomUserIsIn.id,
-								userName: entity.metadata[source].username,
-								name: entity.metadata[source].name,
-								source: source,
-								channelId: firstRoomUserIsIn.channelId,
-								serverId: world.serverId,
-								type: firstRoomUserIsIn.type,
-								worldId: world.id,
-							});
-						} catch (err) {
-							logger.warn(
-								`Failed to sync user ${entity.metadata.username}: ${err}`,
-							);
-						}
-					}),
-				);
+        // Process each user in the batch
+        await Promise.all(
+          entityBatch.map(async (entity: Entity) => {
+            try {
+              await runtime.ensureConnection({
+                entityId: entity.id,
+                roomId: firstRoomUserIsIn.id,
+                userName: entity.metadata[source].username,
+                name: entity.metadata[source].name,
+                source: source,
+                channelId: firstRoomUserIsIn.channelId,
+                serverId: world.serverId,
+                type: firstRoomUserIsIn.type,
+                worldId: world.id,
+              });
+            } catch (err) {
+              logger.warn(`Failed to sync user ${entity.metadata.username}: ${err}`);
+            }
+          })
+        );
 
-				// Add a small delay between batches if not the last batch
-				if (i + batchSize < users.length) {
-					await new Promise((resolve) => setTimeout(resolve, 500));
-				}
-			}
-		}
+        // Add a small delay between batches if not the last batch
+        if (i + batchSize < entities.length) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+    }
 
-		logger.success(
-			`Successfully synced standardized world structure for ${world.name}`,
-		);
-	} catch (error) {
-		logger.error(
-			`Error processing standardized server data: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
-	}
+    logger.debug(`Successfully synced standardized world structure for ${world.name}`);
+  } catch (error) {
+    logger.error(
+      `Error processing standardized server data: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
 };
 
 const events = {
-	[EventTypes.MESSAGE_RECEIVED]: [
-		async (payload: MessageReceivedPayload) => {
-			await messageReceivedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
-		},
-	],
-	
-	[EventTypes.VOICE_MESSAGE_RECEIVED]: [
-		async (payload: VoiceMessageReceivedPayload) => {
-			await messageReceivedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
-		},
-	],
-	
-	[EventTypes.REACTION_RECEIVED]: [
-		async (payload: ReactionReceivedPayload) => {
-			await reactionReceivedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-			});
-		}
-	],
-	
-	[EventTypes.POST_GENERATED]: [
-		async (payload: PostGeneratedPayload) => {
-			await postGeneratedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
-		},
-	],
-	
-	[EventTypes.MESSAGE_SENT]: [
-		async (payload: MessageSentPayload) => {
-			// Message sent tracking
-			logger.debug(`Tracked ${payload.messages.length} sent messages`);
-		}
-	],
-	
-	[EventTypes.POST_SENT]: [
-		async (payload: PostSentPayload) => {
-			// Post sent tracking
-			logger.debug(`Tracked ${payload.messages.length} sent posts`);
-		}
-	],
+  [EventType.MESSAGE_RECEIVED]: [
+    async (payload: MessagePayload) => {
+      await messageReceivedHandler({
+        runtime: payload.runtime,
+        message: payload.message,
+        callback: payload.callback,
+      });
+    },
+  ],
 
-	[EventTypes.SERVER_JOINED]: [
-		async (payload: ServerPayload) => {
-			await handleServerSync(payload);
-		}
-	],
-	
-	[EventTypes.SERVER_CONNECTED]: [
-		async (payload: ServerPayload) => {
-			await handleServerSync(payload);
-		}
-	],
+  [EventType.VOICE_MESSAGE_RECEIVED]: [
+    async (payload: MessagePayload) => {
+      await messageReceivedHandler({
+        runtime: payload.runtime,
+        message: payload.message,
+        callback: payload.callback,
+      });
+    },
+  ],
 
-	[EventTypes.USER_JOINED]: [
-		async (payload: UserJoinedPayload) => {
-			await syncSingleUser(
-				payload.entityId,
-				payload.runtime,
-				payload.user,
-				payload.serverId,
-				payload.channelId,
-				payload.channelType,
-				payload.source,
-			);
-		},
-	],
-	
-	[EventTypes.USER_LEFT]: [
-		async (payload: UserLeftPayload) => {
-			try {
-				// Update entity to inactive
-				const entity = await payload.runtime.getEntityById(payload.entityId);
-				if (entity) {
-					entity.metadata = {
-						...entity.metadata,
-						status: "INACTIVE",
-						leftAt: Date.now(),
-					};
-					await payload.runtime.updateEntity(entity);
-				}
-				logger.info(`User ${payload.user?.username || payload.entityId} left server ${payload.serverId}`);
-			} catch (error) {
-				logger.error(`Error handling user left: ${error.message}`);
-			}
-		}
-	],
-	
-	// Also include platform-specific events that map to the same handlers
-	"DISCORD_MESSAGE_RECEIVED": [
-		async (payload: MessageReceivedPayload) => {
-			await messageReceivedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
-		},
-	],
-	
-	"TELEGRAM_MESSAGE_RECEIVED": [
-		async (payload: MessageReceivedPayload) => {
-			await messageReceivedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
-		},
-	],
-	
-	"TWITTER_MESSAGE_RECEIVED": [
-		async (payload: MessageReceivedPayload) => {
-			await messageReceivedHandler({
-				runtime: payload.runtime,
-				message: payload.message,
-				callback: payload.callback,
-			});
-		},
-	],
-	
-	// Add other platform-specific events as needed...
+  [EventType.REACTION_RECEIVED]: [
+    async (payload: MessagePayload) => {
+      await reactionReceivedHandler({
+        runtime: payload.runtime,
+        message: payload.message,
+      });
+    },
+  ],
+
+  [EventType.POST_GENERATED]: [
+    async (payload: InvokePayload) => {
+      await postGeneratedHandler(payload);
+    },
+  ],
+
+  [EventType.MESSAGE_SENT]: [
+    async (payload: MessagePayload) => {
+      // Message sent tracking
+      logger.debug(`Message sent: ${payload.message.content.text}`);
+    },
+  ],
+
+  [EventType.WORLD_JOINED]: [
+    async (payload: WorldPayload) => {
+      await handleServerSync(payload);
+    },
+  ],
+
+  [EventType.WORLD_CONNECTED]: [
+    async (payload: WorldPayload) => {
+      await handleServerSync(payload);
+    },
+  ],
+
+  [EventType.ENTITY_JOINED]: [
+    async (payload: EntityPayload) => {
+      await syncSingleUser(
+        payload.entityId,
+        payload.runtime,
+        payload.worldId,
+        payload.roomId,
+        payload.metadata.type,
+        payload.source
+      );
+    },
+  ],
+
+  [EventType.ENTITY_LEFT]: [
+    async (payload: EntityPayload) => {
+      try {
+        // Update entity to inactive
+        const entity = await payload.runtime.getEntityById(payload.entityId);
+        if (entity) {
+          entity.metadata = {
+            ...entity.metadata,
+            status: 'INACTIVE',
+            leftAt: Date.now(),
+          };
+          await payload.runtime.updateEntity(entity);
+        }
+        logger.info(`User ${payload.entityId} left world ${payload.worldId}`);
+      } catch (error) {
+        logger.error(`Error handling user left: ${error.message}`);
+      }
+    },
+  ],
+
+  [EventType.ACTION_STARTED]: [
+    async (payload: ActionEventPayload) => {
+      logger.debug(`Action started: ${payload.actionName} (${payload.actionId})`);
+    },
+  ],
+
+  [EventType.ACTION_COMPLETED]: [
+    async (payload: ActionEventPayload) => {
+      const status = payload.error ? `failed: ${payload.error.message}` : 'completed';
+      logger.debug(`Action ${status}: ${payload.actionName} (${payload.actionId})`);
+    },
+  ],
+
+  [EventType.EVALUATOR_STARTED]: [
+    async (payload: EvaluatorEventPayload) => {
+      logger.debug(`Evaluator started: ${payload.evaluatorName} (${payload.evaluatorId})`);
+    },
+  ],
+
+  [EventType.EVALUATOR_COMPLETED]: [
+    async (payload: EvaluatorEventPayload) => {
+      const status = payload.error ? `failed: ${payload.error.message}` : 'completed';
+      logger.debug(`Evaluator ${status}: ${payload.evaluatorName} (${payload.evaluatorId})`);
+    },
+  ],
 };
 
 export const bootstrapPlugin: Plugin = {
-	name: "bootstrap",
-	description: "Agent bootstrap with basic actions and evaluators",
-	actions: [
-		replyAction,
-		followRoomAction,
-		unfollowRoomAction,
-		ignoreAction,
-		noneAction,
-		muteRoomAction,
-		unmuteRoomAction,
-		sendMessageAction,
-		updateEntityAction,
-		choiceAction,
-		updateRoleAction,
-		updateSettingsAction,
-	],
-	events,
-	evaluators: [reflectionEvaluator],
-	providers: [
-		evaluatorsProvider,
-		anxietyProvider,
-		knowledgeProvider,
-		timeProvider,
-		entitiesProvider,
-		relationshipsProvider,
-		choiceProvider,
-		factsProvider,
-		roleProvider,
-		settingsProvider,
-		capabilitiesProvider,
-		attachmentsProvider,
-		providersProvider,
-		actionsProvider,
-		characterProvider,
-		recentMessagesProvider,
-	],
-	services: [TaskService, ScenarioService],
+  name: 'bootstrap',
+  description: 'Agent bootstrap with basic actions and evaluators',
+  actions: [
+    replyAction,
+    followRoomAction,
+    unfollowRoomAction,
+    ignoreAction,
+    noneAction,
+    muteRoomAction,
+    unmuteRoomAction,
+    sendMessageAction,
+    updateEntityAction,
+    choiceAction,
+    updateRoleAction,
+    updateSettingsAction,
+  ],
+  events,
+  evaluators: [reflectionEvaluator],
+  providers: [
+    evaluatorsProvider,
+    anxietyProvider,
+    knowledgeProvider,
+    timeProvider,
+    entitiesProvider,
+    relationshipsProvider,
+    choiceProvider,
+    factsProvider,
+    roleProvider,
+    settingsProvider,
+    capabilitiesProvider,
+    attachmentsProvider,
+    providersProvider,
+    actionsProvider,
+    characterProvider,
+    recentMessagesProvider,
+  ],
+  services: [TaskService, ScenarioService],
 };
 
 export default bootstrapPlugin;

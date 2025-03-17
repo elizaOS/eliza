@@ -1,0 +1,21 @@
+{
+  "name": "@elizaos/plugin-test",
+  "version": "1.0.0",
+  "description": "Test plugin for publishing workflow",
+  "author": "Test Author",
+  "repository": {
+    "url": "github:elizaos/plugin-test"
+  },
+  "keywords": ["test", "plugin", "elizaos"],
+  "categories": ["test", "misc"],
+  "platform": "universal",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "echo 'Mock build completed'"
+  },
+  "dependencies": {
+    "@elizaos/core": "^1.0.0"
+  }
+}

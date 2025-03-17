@@ -1,29 +1,32 @@
 name: Integration Tests
+
 on:
   push:
     branches:
-      - "*"
+      - '*'
   pull_request_target:
     branches:
-      - "*"
+      - '*'
+
+env:
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
 
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      TURBO_REMOTE_ONLY: true # Enforces remote-only caching
-      TURBO_CACHE: remote:rw # allow r/w to remote cache
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
 
-      - uses: actions/setup-node@v4
+      - name: Install Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "23"
+          node-version: '23'
 
       - name: Install required packages
         run: |
@@ -32,10 +35,6 @@ jobs:
 
       - name: Install dependencies
         run: bun install
-
-      - name: Trust all package managers
-        run: |
-          bun pm trust --all
 
       - name: Build packages
         run: bun run build

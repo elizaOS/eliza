@@ -9,12 +9,14 @@ Jimmy is an AI-powered project manager agent designed to help teams manage proje
 Jimmy provides two main functions:
 
 ### Project Management
+
 - Create and maintain projects
 - Track project progress through daily updates
 - Identify and report on blockers and risks
 - Generate weekly status reports
 
 ### Team Coordination
+
 - Add team members to projects
 - Track work hours and availability
 - Daily check-ins with team members
@@ -28,21 +30,29 @@ Jimmy provides two main functions:
 interface Project {
   id: UUID;
   name: string;
-  teamMembers: UUID[];  // Team member IDs
+  teamMembers: UUID[]; // Team member IDs
 }
 
 interface TeamMember {
   id: UUID;
   name: string;
   availability: {
-    workDays: ("Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday")[];
+    workDays: (
+      | 'Monday'
+      | 'Tuesday'
+      | 'Wednesday'
+      | 'Thursday'
+      | 'Friday'
+      | 'Saturday'
+      | 'Sunday'
+    )[];
     workHours: {
-      start: string;  // HH:MM format
-      end: string;    // HH:MM format
+      start: string; // HH:MM format
+      end: string; // HH:MM format
     };
     timeZone: string; // e.g., "America/Los_Angeles"
     hoursPerWeek: number;
-    employmentStatus: "FULL_TIME" | "PART_TIME" | "FREELANCE" | "NONE";
+    employmentStatus: 'FULL_TIME' | 'PART_TIME' | 'FREELANCE' | 'NONE';
   };
 }
 
@@ -50,13 +60,13 @@ interface DailyUpdate {
   id: UUID;
   teamMemberId: UUID;
   projectId: UUID;
-  date: string;  // ISO date format
-  summary: string;  // Paragraph summary of work done
+  date: string; // ISO date format
+  summary: string; // Paragraph summary of work done
 }
 
 interface Report {
   id: UUID;
-  type: "DAILY" | "WEEKLY";
+  type: 'DAILY' | 'WEEKLY';
   projectId: UUID;
   generatedAt: string;
   summary: string;
@@ -74,7 +84,7 @@ interface Report {
 interface ProjectConfig {
   id: UUID;
   name: string;
-  team: UUID[];  // Team member IDs
+  team: UUID[]; // Team member IDs
 }
 
 interface TeamMemberConfig {
@@ -87,14 +97,14 @@ interface TeamMemberConfig {
   };
   timeZone: string;
   hoursPerWeek: number;
-  employmentStatus: "FULL_TIME" | "PART_TIME" | "FREELANCE" | "NONE";
+  employmentStatus: 'FULL_TIME' | 'PART_TIME' | 'FREELANCE' | 'NONE';
 }
 
 const config: OnboardingConfig = {
   settings: {
     PROJECTS: {
-      name: "Projects",
-      description: "List of projects to manage",
+      name: 'Projects',
+      description: 'List of projects to manage',
       required: true,
       public: true,
       secret: false,
@@ -102,8 +112,8 @@ const config: OnboardingConfig = {
       validation: (value: ProjectConfig[]) => Array.isArray(value),
     },
     TEAM: {
-      name: "Team Members",
-      description: "List of team members",
+      name: 'Team Members',
+      description: 'List of team members',
       required: true,
       public: true,
       secret: false,
@@ -111,14 +121,14 @@ const config: OnboardingConfig = {
       validation: (value: TeamMemberConfig[]) => Array.isArray(value),
     },
     REPORT_CHANNEL: {
-      name: "Report Channel",
-      description: "Discord channel for reports (DMs if not specified)",
+      name: 'Report Channel',
+      description: 'Discord channel for reports (DMs if not specified)',
       required: false,
       public: true,
       secret: false,
-      validation: (value: string) => typeof value === "string",
-    }
-  }
+      validation: (value: string) => typeof value === 'string',
+    },
+  },
 };
 ```
 
@@ -126,26 +136,27 @@ const config: OnboardingConfig = {
 
 ```typescript
 const character: Character = {
-  name: "Jimmy",
+  name: 'Jimmy',
   plugins: [
-    "@elizaos/plugin-anthropic",
-    "@elizaos/plugin-openai",
-    "@elizaos/plugin-discord",
-    "@elizaos/plugin-node",
-    "@elizaos/plugin-sql",
+    '@elizaos/plugin-anthropic',
+    '@elizaos/plugin-openai',
+    '@elizaos/plugin-discord',
+    '@elizaos/plugin-node',
+    '@elizaos/plugin-sql',
   ],
   settings: {
-      secrets: {
+    secrets: {
       DISCORD_APPLICATION_ID: process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.PROJECT_MANAGER_DISCORD_API_TOKEN,
-    }
-  }
+    },
+  },
 };
 ```
 
 ## 4. Workflows
 
 ### Onboarding
+
 1. Jimmy joins server/team
 2. Collects project and team information
 3. Sets up data structures
@@ -153,11 +164,13 @@ const character: Character = {
 5. Begins daily check-ins
 
 ### Daily Operations
+
 1. Check in with each team member during their work hours
 2. Follow up on missing updates
 3. Generate end-of-week report after last team member update
 
 ### Weekly Report Format
+
 ```
 📊 Project Summary:
 [Overall progress and key points]
@@ -207,12 +220,13 @@ PM: I tried to reach out to Kelsey, but her account is not accepting messages. C
 You: Sure
 <...>
 PM: Okay, time for my daily report!
-  - I heard back from Laura and Kelsey. I'll give Gary a few more hours.
-  - Laura is working on a couple of marketing tasks, but she wasn't very specific
-  - Kelsey said she's just community managing and waiting for tasks
-All in all, I think Laura could be better utilized, and Kelsey is doing her job as I saw her chatting a lot with people in the Discord all day, but we could probably manage her with some tasks better. Let me know if you can get me in touch with Gary.
-You: Yeah he's not online today. Probably tomorrow.
-PM: Okay, no problem. I'll report back tomorrow with my update, let me know if you need anything!
+
+- I heard back from Laura and Kelsey. I'll give Gary a few more hours.
+- Laura is working on a couple of marketing tasks, but she wasn't very specific
+- Kelsey said she's just community managing and waiting for tasks
+  All in all, I think Laura could be better utilized, and Kelsey is doing her job as I saw her chatting a lot with people in the Discord all day, but we could probably manage her with some tasks better. Let me know if you can get me in touch with Gary.
+  You: Yeah he's not online today. Probably tomorrow.
+  PM: Okay, no problem. I'll report back tomorrow with my update, let me know if you need anything!
 
 PM: Hey there! I've been invited to join your team as a PM. I'd like to get a sense of your work hours and habits.
 Employee: Yeah sure.
@@ -224,7 +238,7 @@ PM: What time zone are you in?
 Employee: I'm in Montenegro.
 PM: Okay, so you work 10am-8pm Monday through Friday on MNT?
 Employee: That sounds right.
-PM: Alright then. I'll reach out to you around 7pm every day. Just need a quick few bulletpoints or summary of what you got done for the day. Is there a time you are 
+PM: Alright then. I'll reach out to you around 7pm every day. Just need a quick few bulletpoints or summary of what you got done for the day. Is there a time you are
 
 PM: Hey there! I've been invited to join your team as a PM. I'd like to get a sense of your work hours and habits.
 Freelancer: Uh I just work on this part time when asked, like when I have a ticket
@@ -233,7 +247,6 @@ Freelancer: Uh yeah I've been working on setting up my laptop so I could run the
 PM: Okay, do you have an idea of when you'll be done with that, and would you want more tasks after that?
 Freelancer: Uh I should be done today, maybe tomorrow at the latest, then I'm free for whatever
 PM: Okay got it. I'll get back to you!
-
 
 Settings from owner
 PROJECTS
@@ -268,15 +281,14 @@ Future
 Need linear integration
 Need Google Meets / Calendar integration (for setting standups)
 
-
 3. Project management agent
--> Checks in with the team and creates reports for leadership one what everyone is doing and when
--> Special abilities: Create projects, add users to projects, post daily updates from projects
-  Once a user is added to the project, we need to get information from the user
-    What are their work hours / days?
-  Then contact the user every day at the time if they haven't already given their update for the day
-  Then users are contacted at the time if they haven't already given their update for the day
--> Special ability: Creating standup events
-  -> Standup events are created by the project management agent on Discord or Google
--> Set goals for the week with each person and see what we got done?
--> process data
+   -> Checks in with the team and creates reports for leadership one what everyone is doing and when
+   -> Special abilities: Create projects, add users to projects, post daily updates from projects
+   Once a user is added to the project, we need to get information from the user
+   What are their work hours / days?
+   Then contact the user every day at the time if they haven't already given their update for the day
+   Then users are contacted at the time if they haven't already given their update for the day
+   -> Special ability: Creating standup events
+   -> Standup events are created by the project management agent on Discord or Google
+   -> Set goals for the week with each person and see what we got done?
+   -> process data

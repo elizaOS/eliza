@@ -7,12 +7,12 @@
 // import { plugincoinbase } from "@elizaos/plugin-coinbase"
 
 export const availablePlugins = {
-	//   "@elizaos/client-auto": clientauto,
-	// "@elizaos/client-discord": clientdiscord,
-	// "@elizaos/client-farcaster": clientfarcaster,
-	// "@elizaos/client-github": clientgithub,
-	// "@elizaos/plugin-binance": pluginbinance,
-	// "@elizaos/plugin-coinbase": plugincoinbase,
+  //   "@elizaos/client-auto": clientauto,
+  // "@elizaos/client-discord": clientdiscord,
+  // "@elizaos/client-farcaster": clientfarcaster,
+  // "@elizaos/client-github": clientgithub,
+  // "@elizaos/plugin-binance": pluginbinance,
+  // "@elizaos/plugin-coinbase": plugincoinbase,
 };
 
 // Helper type

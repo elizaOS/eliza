@@ -4,11 +4,10 @@
 # Production
 /build
 
-./api/*
-
 # Generated files
 .docusaurus
 .cache-loader
+/api
 
 # Misc
 .DS_Store

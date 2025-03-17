@@ -1,0 +1,52 @@
+---
+id: get-status
+title: 'Get system status'
+description: 'Returns the current status of the system with agent count and timestamp'
+sidebar_label: 'Get system status'
+hide_title: true
+hide_table_of_contents: true
+api: eJytVE1v2zAM/SsCz26cbTffgiIYAgxb0XSnNgdGZmy1sqRJdNrM8H8fKLttuuw4X2RJ5Hv8eNQAjE2C6h7SKTF1sCugpqSjCWy8gwpuifvokuKWlO5jJMcqMXKflD/k08lTPRtuFTZyr33vWKGrFZuOEmMXoAAfKKKgbmqooCHeZhgoIFIK3iVKUA3webmU5WMU24ljJjbu4GOXsaAA7R2TY3HCEKzR+aJ8TOI5QNItdSh/fAoEFfj9I2mGAkKUkNhMvBP2mV3iaFwDBdALdsFm1ycYC8hJXkuOZ9bGMTUU4e/6fe+7PUWpFWo2R5pKlATnvTj/IJ0yhApqZLoS0wvo67kd7zjj9BXQEbd+LrNkitxCBSUGU6bXqieKR4rS/AH6aKGCljlUZWm9Rtv6xNWX5XJ5QftNrlVNR7I+dFkPGQnGXQHSmpyO4VyxtTW/Uf3YqtXN5gJpdbNRtde9gOSmqYOP6s3l+GmxXCyv0IYW1ZVaqYOlF7O3lKWVNFqUzWozy+4QsaNnH58WD+7B3bUmCasySdWUTOOoVuzVnlSfqJ71qnKy9qRi75xxzcxuXGJ0mhZq7ergjeOk0Fr/nCPUkZCNa4oH16HDRn5zTCKCKH12zYT/GpvMT/R9I4y36+3dZHlATQsoQNowVeQs41nZqLPKHHYfynntu653hk9QnDUvVWXZGG77/UL7riSx9mlaQXQRfOIO3RniV+LXCX5TxocuDe8D9h8fg1nuTC9cBovGyUDkRIZZrfeAwYhMp6h2BYgk5XwY9pjoZ7TjKMe/eoonqO53BRwxGtGE7MYCWsKaYhb4E51EcFpTkIE4ou2F/+LBEA2/Dc/X9R2M4x/Hwcrp
+sidebar_class_name: 'get api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Get system status'}></Heading>
+
+<MethodEndpoint method={'get'} path={'/api/status'} context={'endpoint'}></MethodEndpoint>
+
+Returns the current status of the system with agent count and timestamp
+
+<ParamsDetails parameters={undefined}></ParamsDetails>
+
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '200': {
+      description: 'System status information',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              status: { type: 'string', example: 'ok' },
+              agentCount: { type: 'integer', description: 'Number of active agents' },
+              timestamp: { type: 'string', format: 'date-time', description: 'Current timestamp' },
+            },
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

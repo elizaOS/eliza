@@ -1,5 +1,4 @@
 .turbo/
-.vscode/
 .cursorrules
 
 **/dist/**
@@ -11,4 +10,3 @@
 *.lock
 codecov.yml
 LICENSE
-scripts/*

@@ -1,0 +1,145 @@
+---
+id: start-agent
+title: 'Start an agent'
+description: 'Starts an existing agent'
+sidebar_label: 'Start an agent'
+hide_title: true
+hide_table_of_contents: true
+api: eJztVk1v4zYQ/SvEnFqAa7nt9qKb0eRgoMAGm/SU+DAmxxJ3KZJLUk5cQf+9GErOOomzzSmn9UWWOPPmzRdnBsjYJKhvARtyOcFGgqakognZeAc1XGeMOQl0gh5MysY1ooiCBB8oIoutNdSQWHA1HwWM2FGmyNgDOOwI6snGWoMEw9ABcwsSIn3rTSQNdY49SUiqpQ6hHiAfAhXkaFwDEnY+dpihhr43GsbnVNcXwu9EbmliKLIXhRSMG7aSgneJEgP/vlzy46l64T5pkBapV4pS2vXWHkCC8i6za/UAGII1qjhefUmsOrzk7LdfSJVIRA5TNpPhGfVEcOu9JXQggR6wC5amMLBzmN+AaPSbIjVl4LngKDltuU/nMMj1XakMlc2eYDPOPwkfz4Vv7fZojZ5jv75456Dt0CaOGsXo4/9jKq/PxON5RV0ymCiyo4SOUsLmzWpH8VKnGY09G+WnmhdFkLQobgjjpkTy4RT6bDJ7O5mAYzo+vlbNzmex873TP7PxXtn481xzTBzK3XJ6g/5MyTukpBDLrechFXyaxlNuoYYKg6mmwVcN83AaQUKiuD+Orj5aqKHNOdRVZb1C2/qU6z+Wy+ULcn/zsdC0J+tDV6ZJQSoDiKkW/44ErfkXxadrsbpav0BaXa2F9qpnkOKd2PkoHlX2vy2Wi+UHtKFF8UGsxM7Sg9laEui0SAot8stqPd/GO57G9z5+Xdy5O3fTmsRWhUlCUzKNI83DckuiT6TFvcmtQFGctQcRe+e4aCfrxqWMTtFCXDodvHG8HFjr7wtDFQm5wuWd69Bhw38LJ+MyRZ4krpnwj9ySyG30fcMWP19e30ySO1S0AAmchikiJx7PjYOqNM68WzzG5i/fdb0zmaf29+Sluqoak9t+u1C+q4ilfZqewCXCldGhO0Esmw8vPsdufZKi4Xvz/mhHmqs500OugkXjuNoLrWGuwlvAYEAeFzAJ9XFN2kjgWmORYdhion+iHUf+/K2neID6diNhj9FwskuxapP4v567/QeUf/k8b12/ilfXplfYzx/RcYT3aHt+Awlf6XCy442bUUJLqCkWatPpSikK+UTvxbXHrfLYrlefrm9gHP8DvJ6unQ==
+sidebar_class_name: 'post api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Start an agent'}></Heading>
+
+<MethodEndpoint
+  method={'post'}
+  path={'/api/agents/{agentId}'}
+  context={'endpoint'}
+></MethodEndpoint>
+
+Starts an existing agent
+
+<Heading
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
+
+<ParamsDetails
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent to start',
+    },
+  ]}
+></ParamsDetails>
+
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '200': {
+      description: 'Agent started successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  name: { type: 'string' },
+                  status: { type: 'string', enum: ['active'] },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error starting agent',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

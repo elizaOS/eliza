@@ -1,22 +1,23 @@
 import {
-	type IAgentRuntime,
-	type Memory,
-	type Provider,
-	type State,
-	type UUID,
-	composePromptFromState,
-} from "@elizaos/core";
-import { z } from "zod";
-import { formatRecommenderReport } from "../reports";
-import type { CommunityInvestorService } from "../tradingService";
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type State,
+  type UUID,
+  composePromptFromState,
+  logger,
+} from '@elizaos/core';
+import { z } from 'zod';
+import { formatRecommenderReport } from '../reports';
+import type { CommunityInvestorService } from '../tradingService';
 import {
-	type PositionWithBalance,
-	ServiceTypes,
-	type TokenPerformance,
-	type RecommenderMetrics as TypesRecommenderMetrics,
-	type TokenPerformance as TypesTokenPerformance,
-	type Transaction as TypesTransaction,
-} from "../types";
+  type PositionWithBalance,
+  ServiceType,
+  type TokenPerformance,
+  type RecommenderMetrics as TypesRecommenderMetrics,
+  type TokenPerformance as TypesTokenPerformance,
+  type Transaction as TypesTransaction,
+} from '../types';
 // Create a simple formatter module inline if it doesn't exist
 // This will be used until a proper formatters.ts file is created
 /**
@@ -26,8 +27,8 @@ import {
  * @returns {string} A formatted string containing the token's chain, address, symbol, price, liquidity, and 24h change.
  */
 const formatters = {
-	formatTokenPerformance: (token: TypesTokenPerformance): string => {
-		return `
+  formatTokenPerformance: (token: TypesTokenPerformance): string => {
+    return `
         <token>
         Chain: ${token.chain}
         Address: ${token.address}
@@ -37,7 +38,7 @@ const formatters = {
         24h Change: ${token.price24hChange.toFixed(2)}%
         </token>
         `;
-	},
+  },
 };
 
 // Use local formatters until a proper module is created
@@ -97,20 +98,20 @@ Total P&L: {{totalPnL}}
  * @returns {Array<{ name: string, params: object }>} The array of extracted actions, each containing a name and parameters.
  */
 function extractActions(text: string) {
-	const regex = /<action name="([^"]+)">([^<]+)<\/action>/g;
-	const actions = [];
-	const match = regex.exec(text);
-	while (match !== null) {
-		try {
-			const name = match[1];
-			const params = JSON.parse(match[2]);
-			actions.push({ name, params });
-		} catch (error) {
-			console.error("Error parsing action:", error);
-		}
-	}
+  const regex = /<action name="([^"]+)">([^<]+)<\/action>/g;
+  const actions = [];
+  const match = regex.exec(text);
+  while (match !== null) {
+    try {
+      const name = match[1];
+      const params = JSON.parse(match[2]);
+      actions.push({ name, params });
+    } catch (error) {
+      console.error('Error parsing action:', error);
+    }
+  }
 
-	return actions;
+  return actions;
 }
 
 /**
@@ -126,29 +127,29 @@ function extractActions(text: string) {
  */
 
 async function runActions(
-	actions: any[],
-	runtime: IAgentRuntime,
-	message: Memory,
-	tokens: TypesTokenPerformance[],
-	positions: PositionWithBalance[],
-	transactions: TypesTransaction[],
+  actions: any[],
+  runtime: IAgentRuntime,
+  message: Memory,
+  tokens: TypesTokenPerformance[],
+  positions: PositionWithBalance[],
+  transactions: TypesTransaction[]
 ) {
-	const tradingService = runtime.getService<CommunityInvestorService>(
-		ServiceTypes.COMMUNITY_INVESTOR,
-	);
+  const tradingService = runtime.getService<CommunityInvestorService>(
+    ServiceType.COMMUNITY_INVESTOR
+  );
 
-	return Promise.all(
-		actions.map(async (actionCall) => {
-			const action = actions.find((a) => a.name === actionCall.name);
-			if (action) {
-				const params = action.params.parse(actionCall.params);
-				await action.handler(
-					{ runtime, message, tradingService, tokens, positions, transactions },
-					params,
-				);
-			}
-		}),
-	);
+  return Promise.all(
+    actions.map(async (actionCall) => {
+      const action = actions.find((a) => a.name === actionCall.name);
+      if (action) {
+        const params = action.params.parse(actionCall.params);
+        await action.handler(
+          { runtime, message, tradingService, tokens, positions, transactions },
+          params
+        );
+      }
+    })
+  );
 }
 
 /**
@@ -158,126 +159,123 @@ async function runActions(
  * @returns {Object} The data, values, and rendered text based on the retrieved information.
  */
 export const dataProvider: Provider = {
-	name: "data",
-	async get(runtime: IAgentRuntime, message: Memory) {
-		try {
-			// Extract token addresses from message and recent context
-			const messageContent = message.content.text;
+  name: 'data',
+  async get(runtime: IAgentRuntime, message: Memory) {
+    try {
+      // Extract token addresses from message and recent context
+      const messageContent = message.content.text;
 
-			// Extract actions from message content
-			const extractedText = messageContent.match(/<o>(.*?)<\/o>/s);
-			const actions = extractedText ? extractActions(extractedText[1]) : [];
+      // Extract actions from message content
+      const extractedText = messageContent.match(/<o>(.*?)<\/o>/s);
+      const actions = extractedText ? extractActions(extractedText[1]) : [];
 
-			// Initialize data
-			const tokens: TokenPerformance[] = [];
-			const positions: PositionWithBalance[] = [];
-			const transactions: TypesTransaction[] = [];
+      // Initialize data
+      const tokens: TokenPerformance[] = [];
+      const positions: PositionWithBalance[] = [];
+      const transactions: TypesTransaction[] = [];
 
-			// Run extracted actions with a safe environment
-			if (actions.length > 0) {
-				await runActions(
-					actions,
-					runtime,
-					message,
-					tokens as TypesTokenPerformance[],
-					positions,
-					transactions,
-				);
-			}
+      // Run extracted actions with a safe environment
+      if (actions.length > 0) {
+        await runActions(
+          actions,
+          runtime,
+          message,
+          tokens as TypesTokenPerformance[],
+          positions,
+          transactions
+        );
+      }
 
-			// Generate token reports
-			const tokenReports = await Promise.all(
-				tokens.map(async (token) => formatTokenPerformance(token)),
-			);
+      // Generate token reports
+      const tokenReports = await Promise.all(
+        tokens.map(async (token) => formatTokenPerformance(token))
+      );
 
-			// Get entity info if message is from a user
-			const clientUserId =
-				message.entityId === message.agentId ? "" : message.entityId;
-			const entity = await runtime
-				
-				.getEntityById(clientUserId as UUID);
-			const tradingService = runtime.getService<CommunityInvestorService>(
-				ServiceTypes.COMMUNITY_INVESTOR,
-			);
+      // Get entity info if message is from a user
+      const clientUserId = message.entityId === message.agentId ? '' : message.entityId;
+      const entity = await runtime.getEntityById(clientUserId as UUID);
+      const tradingService = runtime.getService<CommunityInvestorService>(
+        ServiceType.COMMUNITY_INVESTOR
+      );
 
-			// Add updatedAt to RecommenderMetrics to make it compatible
-			const recommenderMetrics = entity
-				? await tradingService.getRecommenderMetrics(entity.id)
-				: undefined;
+      // Add updatedAt to RecommenderMetrics to make it compatible
+      const recommenderMetrics = entity
+        ? await tradingService.getRecommenderMetrics(entity.id)
+        : undefined;
 
-			const metrics = recommenderMetrics
-				? ({
-						...recommenderMetrics,
-						updatedAt: Date.now(), // Add missing updatedAt property
-					} as TypesRecommenderMetrics)
-				: undefined;
+      const metrics = recommenderMetrics
+        ? ({
+            ...recommenderMetrics,
+            updatedAt: Date.now(), // Add missing updatedAt property
+          } as TypesRecommenderMetrics)
+        : undefined;
 
-			// Process metrics history if available
-			const metricsHistory = entity
-				? await tradingService.getRecommenderMetricsHistory(entity.id)
-				: [];
+      // Process metrics history if available
+      const metricsHistory = entity
+        ? await tradingService.getRecommenderMetricsHistory(entity.id)
+        : [];
 
-			const typedMetricsHistory = metricsHistory.map((history) => ({
-				...history,
-				historyId: history.entityId,
-			}));
+      const typedMetricsHistory = metricsHistory.map((history) => ({
+        ...history,
+        historyId: history.entityId,
+      }));
 
-			const recommenderReport =
-				entity && metrics
-					? formatRecommenderReport(entity as any, metrics, typedMetricsHistory)
-					: "";
+      const recommenderReport =
+        entity && metrics
+          ? formatRecommenderReport(entity as any, metrics, typedMetricsHistory)
+          : '';
 
-			const totalCurrentValue = "$0.00";
-			const totalRealizedPnL = "$0.00";
-			const totalUnrealizedPnL = "$0.00";
-			const totalPnL = "$0.00";
+      const totalCurrentValue = '$0.00';
+      const totalRealizedPnL = '$0.00';
+      const totalUnrealizedPnL = '$0.00';
+      const totalPnL = '$0.00';
 
-			const stateData = {
-				tokenReports: tokenReports.join("\n"),
-				totalCurrentValue,
-				totalRealizedPnL,
-				totalUnrealizedPnL,
-				totalPnL,
-				entity: recommenderReport,
-				globalMarketData: JSON.stringify({
-					prices: {},
-					marketCapPercentage: {},
-				}),
-			};
+      const stateData = {
+        tokenReports: tokenReports.join('\n'),
+        totalCurrentValue,
+        totalRealizedPnL,
+        totalUnrealizedPnL,
+        totalPnL,
+        entity: recommenderReport,
+        globalMarketData: JSON.stringify({
+          prices: {},
+          marketCapPercentage: {},
+        }),
+      };
 
-			const renderedText = composePromptFromState({
-				state: stateData as unknown as State,
-				template: dataProviderTemplate,
-			});
+      const renderedText = composePromptFromState({
+        state: stateData as unknown as State,
+        template: dataProviderTemplate,
+      });
 
-			return {
-				data: {
-					tokens,
-					positions,
-					transactions,
-					entity,
-					metrics,
-					metricsHistory: typedMetricsHistory,
-				},
-				values: {
-					tokenReports: tokenReports.join("\n"),
-					totalCurrentValue,
-					totalRealizedPnL,
-					totalUnrealizedPnL,
-					totalPnL,
-					recommenderReport,
-					hasTokens: tokens.length > 0 ? "true" : "false",
-					hasPositions: positions.length > 0 ? "true" : "false",
-				},
-				text: renderedText,
-			};
-		} catch (error) {
-			console.log(error);
-			return {
-				data: {},
-				values: {},
-				text: "",
-			};
-		}
-	},
+      return {
+        data: {
+          tokens,
+          positions,
+          transactions,
+          entity,
+          metrics,
+          metricsHistory: typedMetricsHistory,
+        },
+        values: {
+          tokenReports: tokenReports.join('\n'),
+          totalCurrentValue,
+          totalRealizedPnL,
+          totalUnrealizedPnL,
+          totalPnL,
+          recommenderReport,
+          hasTokens: tokens.length > 0 ? 'true' : 'false',
+          hasPositions: positions.length > 0 ? 'true' : 'false',
+        },
+        text: renderedText,
+      };
+    } catch (error) {
+      logger.error(error);
+      return {
+        data: {},
+        values: {},
+        text: '',
+      };
+    }
+  },
 };

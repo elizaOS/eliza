@@ -1,37 +1,40 @@
 {
-	"type": "module",
-	"name": "@elizaos/autodoc",
-	"version": "1.0.0-alpha.7",
-	"description": "",
-	"main": "dist/index.js",
-	"module": "dist/index.mjs",
-	"types": "dist/index.d.ts",
-	"private": true,
-	"scripts": {
-		"build": "tsup",
-		"autodoc:dev": "tsup --watch",
-		"autodoc": "node dist/index.js",
-		"clean": "rm -rf node_modules dist",
-		"lint": "biome check ./src --config-path=./ --apply-unsafe && biome format ./ --config-path=./ --write"
-	},
-	"keywords": [],
-	"author": "",
-	"license": "MIT",
-	"dependencies": {
-		"@langchain/openai": "^0.3.16",
-		"@octokit/rest": "^21.0.2",
-		"@types/node": "^20.11.0",
-		"@typescript-eslint/parser": "8.26.0",
-		"@typescript-eslint/types": "8.26.0",
-		"@typescript-eslint/typescript-estree": "8.26.0",
-		"dotenv": "^16.4.7",
-		"langchain": "^0.3.7",
-		"yaml": "^2.3.4"
-	},
-	"devDependencies": {
-		"ts-node": "^10.9.2",
-		"tsup": "8.4.0",
-		"typescript": "5.8.2"
-	},
-	"gitHead": "45175c735affb7ea45b3d9efecde34223e782b79"
+  "type": "module",
+  "name": "@elizaos/autodoc",
+  "version": "1.0.0-alpha.28",
+  "private": true,
+  "description": "",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "autodoc:dev": "tsup --watch",
+    "autodoc": "node dist/index.js",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "lint": "prettier --write ./src",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@langchain/openai": "^0.3.16",
+    "@octokit/rest": "^21.0.2",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/parser": "8.26.0",
+    "@typescript-eslint/types": "8.26.0",
+    "@typescript-eslint/typescript-estree": "8.26.0",
+    "dotenv": "^16.4.7",
+    "langchain": "^0.3.7",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "tsup": "8.4.0",
+    "typescript": "5.8.2",
+    "prettier": "3.5.3"
+  },
+  "gitHead": "dc32785668d1663c0e7fb81909b4b9961db6e6de"
 }

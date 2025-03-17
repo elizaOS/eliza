@@ -1,6 +1,6 @@
-import { XMLParser } from "fast-xml-parser";
-import type { ZodType } from "zod";
-import zodToJsonSchema from "zod-to-json-schema";
+import { XMLParser } from 'fast-xml-parser';
+import type { ZodType } from 'zod';
+import zodToJsonSchema from 'zod-to-json-schema';
 
 /**
  * Retrieves the JSON schema representation of a Zod schema.
@@ -8,7 +8,7 @@ import zodToJsonSchema from "zod-to-json-schema";
  * @returns {any} The JSON schema representing the Zod schema.
  */
 export function getZodJsonSchema(schema: ZodType<any>) {
-	return zodToJsonSchema(schema, "schema").definitions?.schema;
+  return zodToJsonSchema(schema, 'schema').definitions?.schema;
 }
 
 /**
@@ -19,14 +19,14 @@ export function getZodJsonSchema(schema: ZodType<any>) {
  * @returns {string} The XML content extracted from the input string based on the specified tag. Returns an empty string if the tag is not found.
  */
 export function extractXMLFromResponse(output: string, tag: string) {
-	const start = output.indexOf(`<${tag}>`);
-	const end = output.indexOf(`</${tag}>`) + `</${tag}>`.length;
+  const start = output.indexOf(`<${tag}>`);
+  const end = output.indexOf(`</${tag}>`) + `</${tag}>`.length;
 
-	if (start === -1 || end === -1) {
-		return "";
-	}
+  if (start === -1 || end === -1) {
+    return '';
+  }
 
-	return output.slice(start, end);
+  return output.slice(start, end);
 }
 
 /**
@@ -36,12 +36,12 @@ export function extractXMLFromResponse(output: string, tag: string) {
  * @returns {Array<Object>} An array of recommendation objects extracted from the XML response
  */
 export function parseRecommendationsResponse(xmlResponse: string) {
-	const parser = new XMLParser({
-		ignoreAttributes: false,
-		isArray: (name) => name === "recommendation", // Treat individual recommendations as array elements
-	});
-	const result = parser.parse(xmlResponse);
-	return result.new_recommendations?.recommendation || []; // Access the nested array structure
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    isArray: (name) => name === 'recommendation', // Treat individual recommendations as array elements
+  });
+  const result = parser.parse(xmlResponse);
+  return result.new_recommendations?.recommendation || []; // Access the nested array structure
 }
 
 /**
@@ -51,12 +51,12 @@ export function parseRecommendationsResponse(xmlResponse: string) {
  * @returns {string[]} - An array of token addresses extracted from the XML response
  */
 export function parseTokensResponse(xmlResponse: string) {
-	const parser = new XMLParser({
-		ignoreAttributes: false,
-		isArray: (name) => name === "tokenAddress", // Treat individual recommendations as array elements
-	});
-	const result = parser.parse(xmlResponse);
-	return result.tokens.tokenAddress || []; // Access the nested array structure
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    isArray: (name) => name === 'tokenAddress', // Treat individual recommendations as array elements
+  });
+  const result = parser.parse(xmlResponse);
+  return result.tokens.tokenAddress || []; // Access the nested array structure
 }
 
 /**
@@ -66,11 +66,11 @@ export function parseTokensResponse(xmlResponse: string) {
  * @returns {string} The confirmation message extracted from the XML response, or an empty string if not found
  */
 export function parseConfirmationResponse(xmlResponse: string) {
-	const parser = new XMLParser({
-		ignoreAttributes: false,
-	});
-	const result = parser.parse(xmlResponse);
-	return result.message || "";
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+  });
+  const result = parser.parse(xmlResponse);
+  return result.message || '';
 }
 
 /**
@@ -79,11 +79,11 @@ export function parseConfirmationResponse(xmlResponse: string) {
  * @returns {string} The extracted 'signal' value from the XML response.
  */
 export function parseSignalResponse(xmlResponse: string) {
-	const parser = new XMLParser({
-		ignoreAttributes: false,
-	});
-	const result = parser.parse(xmlResponse);
-	return result.signal;
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+  });
+  const result = parser.parse(xmlResponse);
+  return result.signal;
 }
 
 /**
@@ -93,23 +93,23 @@ export function parseSignalResponse(xmlResponse: string) {
  * @returns {string} The extracted token value.
  */
 export function parseTokenResponse(xmlResponse: string) {
-	const parser = new XMLParser({
-		ignoreAttributes: false,
-	});
-	const result = parser.parse(xmlResponse);
-	return result.token;
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+  });
+  const result = parser.parse(xmlResponse);
+  return result.token;
 }
 
 export const BuyAmountConfig = {
-	MAX_ACCOUNT_PERCENTAGE: 0.05,
-	MIN_BUY_LAMPORTS: BigInt(100000000), // 0.1 SOL
-	MAX_BUY_LAMPORTS: BigInt(10000000000), // 10 SOL,
-	MAX_LIQUIDITY_MULTIPLIER: 1.5,
-	MAX_VOLUME_MULTIPLIER: 1.5,
-	MARKET_CAP_LOWER_BOUND: 750_000,
-	MARKET_CAP_UPPER_BOUND: 10_000_000,
-	HIGH_MARKET_CAP_MULTIPLIER: 1.5,
-	LIQUIDITY_DIVISOR: 1000,
+  MAX_ACCOUNT_PERCENTAGE: 0.05,
+  MIN_BUY_LAMPORTS: BigInt(100000000), // 0.1 SOL
+  MAX_BUY_LAMPORTS: BigInt(10000000000), // 10 SOL,
+  MAX_LIQUIDITY_MULTIPLIER: 1.5,
+  MAX_VOLUME_MULTIPLIER: 1.5,
+  MARKET_CAP_LOWER_BOUND: 750_000,
+  MARKET_CAP_UPPER_BOUND: 10_000_000,
+  HIGH_MARKET_CAP_MULTIPLIER: 1.5,
+  LIQUIDITY_DIVISOR: 1000,
 };
 
 /**
@@ -119,9 +119,9 @@ export const BuyAmountConfig = {
  * @returns {number} The calculated liquidity multiplier.
  */
 export function getLiquidityMultiplier(liquidity: number): number {
-	liquidity = Math.max(0, liquidity);
-	const multiplier = Math.sqrt(liquidity / BuyAmountConfig.LIQUIDITY_DIVISOR);
-	return Math.min(multiplier, BuyAmountConfig.MAX_LIQUIDITY_MULTIPLIER);
+  liquidity = Math.max(0, liquidity);
+  const multiplier = Math.sqrt(liquidity / BuyAmountConfig.LIQUIDITY_DIVISOR);
+  return Math.min(multiplier, BuyAmountConfig.MAX_LIQUIDITY_MULTIPLIER);
 }
 
 /**
@@ -131,9 +131,9 @@ export function getLiquidityMultiplier(liquidity: number): number {
  * @returns {number} The calculated volume multiplier.
  */
 export function getVolumeMultiplier(volume: number): number {
-	volume = Math.max(0, volume);
-	const multiplier = Math.log10(volume + 1);
-	return Math.min(multiplier, BuyAmountConfig.MAX_VOLUME_MULTIPLIER);
+  volume = Math.max(0, volume);
+  const multiplier = Math.log10(volume + 1);
+  return Math.min(multiplier, BuyAmountConfig.MAX_VOLUME_MULTIPLIER);
 }
 
 /**
@@ -147,20 +147,19 @@ export function getVolumeMultiplier(volume: number): number {
  */
 
 export function getMarketCapMultiplier(currentMarketCap: number): number {
-	currentMarketCap = Math.max(0, currentMarketCap);
+  currentMarketCap = Math.max(0, currentMarketCap);
 
-	if (currentMarketCap <= BuyAmountConfig.MARKET_CAP_LOWER_BOUND) {
-		return 1;
-	}
-	if (currentMarketCap >= BuyAmountConfig.MARKET_CAP_UPPER_BOUND) {
-		return BuyAmountConfig.HIGH_MARKET_CAP_MULTIPLIER;
-	}
-	// Linear interpolation between 1 and HIGH_MARKET_CAP_MULTIPLIER.
-	const fraction =
-		(currentMarketCap - BuyAmountConfig.MARKET_CAP_LOWER_BOUND) /
-		(BuyAmountConfig.MARKET_CAP_UPPER_BOUND -
-			BuyAmountConfig.MARKET_CAP_LOWER_BOUND);
-	return 1 + fraction * (BuyAmountConfig.HIGH_MARKET_CAP_MULTIPLIER - 1);
+  if (currentMarketCap <= BuyAmountConfig.MARKET_CAP_LOWER_BOUND) {
+    return 1;
+  }
+  if (currentMarketCap >= BuyAmountConfig.MARKET_CAP_UPPER_BOUND) {
+    return BuyAmountConfig.HIGH_MARKET_CAP_MULTIPLIER;
+  }
+  // Linear interpolation between 1 and HIGH_MARKET_CAP_MULTIPLIER.
+  const fraction =
+    (currentMarketCap - BuyAmountConfig.MARKET_CAP_LOWER_BOUND) /
+    (BuyAmountConfig.MARKET_CAP_UPPER_BOUND - BuyAmountConfig.MARKET_CAP_LOWER_BOUND);
+  return 1 + fraction * (BuyAmountConfig.HIGH_MARKET_CAP_MULTIPLIER - 1);
 }
 
 /**
@@ -168,9 +167,7 @@ export function getMarketCapMultiplier(currentMarketCap: number): number {
  * @param {("NONE" | "LOW" | "MEDIUM" | "HIGH")} conviction The conviction level.
  * @returns {number} The multiplier value corresponding to the input conviction level.
  */
-export function getConvictionMultiplier(
-	conviction: "NONE" | "LOW" | "MEDIUM" | "HIGH",
-): number {
-	const multipliers = { NONE: 0.5, LOW: 1, MEDIUM: 1.5, HIGH: 2 };
-	return multipliers[conviction];
+export function getConvictionMultiplier(conviction: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH'): number {
+  const multipliers = { NONE: 0.5, LOW: 1, MEDIUM: 1.5, HIGH: 2 };
+  return multipliers[conviction];
 }

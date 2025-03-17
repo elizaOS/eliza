@@ -1,5 +1,5 @@
 {
-  "editor.defaultFormatter": "biomejs.biome",
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnPaste": false,
   "editor.formatOnSave": true,
   "typescript.preferences.importModuleSpecifier": "relative",
@@ -8,30 +8,16 @@
   "typescript.preferences.useAliasesForRenames": true,
   "debug.javascript.autoAttachFilter": "smart",
   "debug.javascript.unmapMissingSources": true,
-  "debug.javascript.usePreviewAutoAttach": true,
   "typescript.preferences.importModuleSpecifierEnding": "minimal",
   "javascript.preferences.importModuleSpecifierEnding": "minimal",
   "javascript.updateImportsOnFileMove.enabled": "always",
   "typescript.updateImportsOnFileMove.enabled": "always",
   "typescript.tsdk": "node_modules/typescript/lib",
-  "ts.implicitProjectConfig.checkJs": false,
   "typescript.implementationsCodeLens.enabled": true,
   "typescript.referencesCodeLens.enabled": true,
   "typescript.preferences.includePackageJsonAutoImports": "on",
   "javascript.suggest.paths": true,
   "typescript.suggest.paths": true,
-  "typescript.preferences.preferGoToImplementation": true,
-  "javascript.preferences.preferGoToImplementation": true,
   "javascript.suggest.autoImports": true,
-  "typescript.suggest.autoImports": true,
-  "biome.enabled": true,
-  "biome.configPath": "biome.json",
-  "[typescript]": {
-    "biome.enabled": true,
-    "biome.configPath": "biome.json",
-    "editor.defaultFormatter": "biomejs.biome"
-  },
-  "[json]": {
-    "editor.defaultFormatter": "biomejs.biome"
-  }
+  "typescript.suggest.autoImports": true
 }

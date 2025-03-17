@@ -1,0 +1,58 @@
+{
+  "output": {
+    "filePath": "llms.txt",
+    "style": "markdown",
+    "compress": true,
+    "fileSummary": true,
+    "directoryStructure": true,
+    "removeComments": true,
+    "removeEmptyLines": true,
+    "showLineNumbers": false,
+    "includeEmptyDirectories": false,
+    "topFilesLength": 10,
+    "headerText": "ElizaOS Developer Context - Documentation and essential code",
+    "instructionFilePath": "scripts/dev-instructions.md"
+  },
+  "include": [
+    "packages/docs/docs/intro.md",
+    "packages/docs/docs/quickstart.md",
+    "packages/docs/docs/core/overview.md",
+    "packages/docs/docs/core/actions.md",
+    "packages/docs/docs/core/agents.md",
+    "packages/docs/docs/core/clients.md",
+    "packages/docs/docs/core/database.md",
+    "packages/docs/docs/core/evaluators.md",
+    "packages/docs/docs/core/knowledge.md",
+    "packages/docs/docs/core/plugins.md",
+    "packages/docs/docs/core/providers.md",
+    "packages/docs/docs/guides/configuration.md",
+    "packages/core/src/types.ts",
+    "packages/core/src/index.ts",
+    "packages/cli/src/index.ts",
+    "README.md",
+    "package.json",
+    ".env.example"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "**/*.test.ts",
+      "**/__tests__/**",
+      "**/node_modules/**",
+      "packages/docs/community/**",
+      "packages/docs/news/**",
+      "packages/plugin-*/**",
+      "**/*.ico",
+      "**/*.png",
+      "**/*.jpg",
+      "**/*.svg"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "encoding": "cl100k_base"
+  }
+}
