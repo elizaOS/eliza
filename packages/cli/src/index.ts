@@ -45,10 +45,10 @@ async function main() {
   }
 
   // Color ANSI escape codes
-  const darkblue = '\x1b[38;5;27m';
+  const b = '\x1b[38;5;27m';
   const lightblue = '\x1b[38;5;51m';
-  const white = '\x1b[38;5;255m';
-  const reset = '\x1b[0m';
+  const w = '\x1b[38;5;255m';
+  const r = '\x1b[0m';
   const red = '\x1b[38;5;196m';
   let versionColor = lightblue;
 
@@ -56,18 +56,62 @@ async function main() {
   if (version.includes('beta') || version.includes('alpha')) {
     versionColor = red;
   }
+  const banners = [
+    // Banner 1
+    `
+${b}      _ _         ${w} _____ _____ ${r}
+${b}     | (_)        ${w}|  _  /  ___|${r}
+${b}  ___| |_ ______ _${w}| | | \\ \`--.${r} 
+${b} / _ \\ | |_  / _\` ${w}| | | |\`--. \\${r}
+${b}|  __/ | |/ / (_| ${w}\\ \\_/ /\\__/ /${r}
+${b} \\___|_|_/___\\__,_|${w}\\___/\\____/ ${r}
+    `,
 
-  console.log(`
-${darkblue}      :::::::::::::       ::::::::::::::::::::    ::: ${white}    ::::::::  :::::::: ${reset}
-${darkblue}     :+:       :+:           :+:         :+:   :+: :+:${white}  :+:    :+::+:    :+: ${reset}
-${darkblue}    +:+       +:+           +:+        +:+   +:+   +:+${white} +:+    +:++:+         ${reset}
-${darkblue}   +#++:++#  +#+           +#+       +#+   +#++:++#++:${white}+#+    +:++#++:++#++   ${reset}
-${darkblue}  +#+       +#+           +#+      +#+    +#+     +#+${white}+#+    +#+       +#+    ${reset}
-${darkblue} #+#       #+#           #+#     #+#     #+#     #+##${white}+#    #+##+#    #+#     ${reset}
-${darkblue}###########################################     ####${white} #######  ########       ${reset}`);
+    // Banner 2
+    `
+${b}          ###                                  ${w}  # ###       #######  ${r}
+${b}         ###    #                            / ${w} /###     /       ###  ${r}
+${b}          ##   ###                          /  ${w}/  ###   /         ##  ${r}
+${b}          ##    #                          / ${w} ##   ###  ##        #   ${r}
+${b}          ##                              /  ${w}###    ###  ###          ${r}
+${b}   /##    ##  ###    ######      /###    ${w}##   ##     ## ## ###        ${r}
+${b}  / ###   ##   ###  /#######    / ###  / ${w}##   ##     ##  ### ###      ${r}
+${b} /   ###  ##    ## /      ##   /   ###/  ${w}##   ##     ##    ### ###    ${r}
+${b}##    ### ##    ##        /   ##    ##   ${w}##   ##     ##      ### /##  ${r}
+${b}########  ##    ##       /    ##    ##   ${w}##   ##     ##        #/ /## ${r}
+${b}#######   ##    ##      ###   ##    ##   ${w} ##  ##     ##         #/ ## ${r}
+${b}##        ##    ##       ###  ##    ##   ${w}  ## #      /           # /  ${r}
+${b}####    / ##    ##        ### ##    /#   ${w}   ###     /  /##        /   ${r}
+${b} ######/  ### / ### /      ##  ####/ ##  ${w}    ######/  /  ########/    ${r}
+${b}  #####    ##/   ##/       ##   ###   ## ${w}      ###   /     #####      ${r}
+${b}                           /             ${w}            |                ${r}
+${b}                          /              ${w}             \)              ${r}
+${b}                         /               ${w}                             ${r}
+${b}                        /                ${w}                             ${r}
+`,
+
+    // Banner 3
+    `
+${b}      :::::::::::::      ::::::::::::::::::::    ::: ${w}    ::::::::  :::::::: ${r}
+${b}     :+:       :+:          :+:         :+:   :+: :+:${w}  :+:    :+::+:    :+: ${r}
+${b}    +:+       +:+          +:+        +:+   +:+   +:+${w} +:+    +:++:+         ${r}
+${b}   +#++:++#  +#+          +#+       +#+   +#++:++#++:${w}+#+    +:++#++:++#++   ${r}
+${b}  +#+       +#+          +#+      +#+    +#+     +#+${w}+#+    +#+       +#+    ${r}
+${b} #+#       #+#          #+#     #+#     #+#     #+##${w}+#    #+##+#    #+#     ${r}
+${b}##########################################     #### ${w}#######  ########       ${r}`,
+  ];
+
+  // Randomly select and log one banner
+  const randomBanner = banners[Math.floor(Math.random() * banners.length)];
+
+  if (!process.argv.includes('--nobanner')) {
+    console.log(randomBanner);
+  } else {
+    console.log(`*** elizaOS ***`);
+  }
 
   // log the version
-  console.log(`${versionColor}Version: ${version}${reset}`);
+  console.log(`${versionColor}Version: ${version}${r}`);
 
   const program = new Command().name('elizaos').version(version);
 
