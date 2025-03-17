@@ -28,7 +28,7 @@ export default function ConnectionStatus() {
   };
 
   const getStatusText = () => {
-    if (isLoading) return 'Checking...';
+    if (isLoading) return 'Connecting...';
     return connected ? 'Connected' : 'Disconnected';
   };
 

@@ -307,7 +307,7 @@ export function createApiRouter(
     );
   });
 
-  // Add a simple ping endpoint for connection status checks
+  // Check if the server is running
   router.get('/ping', (_req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.send(
