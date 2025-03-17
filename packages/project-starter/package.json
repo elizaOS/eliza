@@ -32,12 +32,12 @@
     "prettier": "3.5.3"
   },
   "scripts": {
-    "start": "npx @elizaos/cli@alpha start",
-    "dev": "npx @elizaos/cli@alpha dev",
+    "start": "npx @elizaos/cli start",
+    "dev": "npx @elizaos/cli dev",
     "build": "tsup",
     "lint": "prettier --write ./src",
-    "test": "npx @elizaos/cli@alpha test",
-    "deploy": "npx @elizaos/cli@alpha deploy",
+    "test": "npx @elizaos/cli test",
+    "deploy": "npx @elizaos/cli deploy",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },

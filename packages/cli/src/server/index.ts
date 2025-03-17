@@ -110,6 +110,9 @@ export class AgentServer {
       // Only continue with server initialization after database is ready
       await this.initializeServer(options);
 
+      // wait 250 ms
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
       // Move this message here to be more accurate
       console.log(
         `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1m${AGENT_RUNTIME_URL}\x1b[22m\x1b[0m`
