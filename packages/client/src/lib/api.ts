@@ -183,6 +183,7 @@ interface AgentLog {
 export const apiClient = {
   getAgents: () => fetcher({ url: '/agents' }),
   getAgent: (agentId: string): Promise<{ data: Agent }> => fetcher({ url: `/agents/${agentId}` }),
+  ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
   tts: (agentId: string, text: string) =>
     fetcher({
       url: `/agents/${agentId}/speech/generate`,
