@@ -373,9 +373,9 @@ export const dev = new Command()
         await watchDirectory(cwd, rebuildAndRestart);
 
         logger.success(`Dev mode is active! The server will restart when files change.`);
-        logger.info('Press Ctrl+C to exit');
+        logger.success('Press Ctrl+C to exit');
       } else {
-        logger.info('Running in standalone mode without file watching.');
+        logger.debug('Running in standalone mode without file watching.');
       }
     } catch (error) {
       handleError(error);

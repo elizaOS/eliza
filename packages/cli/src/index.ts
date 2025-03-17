@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+process.env.NODE_OPTIONS = '--no-deprecation';
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { dirname } from 'node:path';
@@ -17,6 +19,7 @@ import { teeCommand as tee } from './commands/tee.js';
 import { test } from './commands/test.js';
 import { update } from './commands/update.js';
 import { loadEnvironment } from './utils/get-config.js';
+import { displayBanner } from './displayBanner';
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
@@ -44,75 +47,6 @@ async function main() {
     version = packageJson.version;
   }
 
-  // Color ANSI escape codes
-  const b = '\x1b[38;5;27m';
-  const lightblue = '\x1b[38;5;51m';
-  const w = '\x1b[38;5;255m';
-  const r = '\x1b[0m';
-  const red = '\x1b[38;5;196m';
-  let versionColor = lightblue;
-
-  // if version includes "beta" or "alpha" then use red
-  if (version.includes('beta') || version.includes('alpha')) {
-    versionColor = red;
-  }
-  const banners = [
-    // Banner 1
-    `
-${b}      _ _         ${w} _____ _____ ${r}
-${b}     | (_)        ${w}|  _  /  ___|${r}
-${b}  ___| |_ ______ _${w}| | | \\ \`--.${r} 
-${b} / _ \\ | |_  / _\` ${w}| | | |\`--. \\${r}
-${b}|  __/ | |/ / (_| ${w}\\ \\_/ /\\__/ /${r}
-${b} \\___|_|_/___\\__,_|${w}\\___/\\____/ ${r}
-    `,
-
-    // Banner 2
-    `
-${b}          ###                                  ${w}  # ###       #######  ${r}
-${b}         ###    #                            / ${w} /###     /       ###  ${r}
-${b}          ##   ###                          /  ${w}/  ###   /         ##  ${r}
-${b}          ##    #                          / ${w} ##   ###  ##        #   ${r}
-${b}          ##                              /  ${w}###    ###  ###          ${r}
-${b}   /##    ##  ###    ######      /###    ${w}##   ##     ## ## ###        ${r}
-${b}  / ###   ##   ###  /#######    / ###  / ${w}##   ##     ##  ### ###      ${r}
-${b} /   ###  ##    ## /      ##   /   ###/  ${w}##   ##     ##    ### ###    ${r}
-${b}##    ### ##    ##        /   ##    ##   ${w}##   ##     ##      ### /##  ${r}
-${b}########  ##    ##       /    ##    ##   ${w}##   ##     ##        #/ /## ${r}
-${b}#######   ##    ##      ###   ##    ##   ${w} ##  ##     ##         #/ ## ${r}
-${b}##        ##    ##       ###  ##    ##   ${w}  ## #      /           # /  ${r}
-${b}####    / ##    ##        ### ##    /#   ${w}   ###     /  /##        /   ${r}
-${b} ######/  ### / ### /      ##  ####/ ##  ${w}    ######/  /  ########/    ${r}
-${b}  #####    ##/   ##/       ##   ###   ## ${w}      ###   /     #####      ${r}
-${b}                           /             ${w}            |                ${r}
-${b}                          /              ${w}             \)              ${r}
-${b}                         /               ${w}                             ${r}
-${b}                        /                ${w}                             ${r}
-`,
-
-    // Banner 3
-    `
-${b}      :::::::::::::      ::::::::::::::::::::    ::: ${w}    ::::::::  :::::::: ${r}
-${b}     :+:       :+:          :+:         :+:   :+: :+:${w}  :+:    :+::+:    :+: ${r}
-${b}    +:+       +:+          +:+        +:+   +:+   +:+${w} +:+    +:++:+         ${r}
-${b}   +#++:++#  +#+          +#+       +#+   +#++:++#++:${w}+#+    +:++#++:++#++   ${r}
-${b}  +#+       +#+          +#+      +#+    +#+     +#+${w}+#+    +#+       +#+    ${r}
-${b} #+#       #+#          #+#     #+#     #+#     #+##${w}+#    #+##+#    #+#     ${r}
-${b}##########################################     #### ${w}#######  ########       ${r}`,
-  ];
-
-  // Randomly select and log one banner
-  const randomBanner = banners[Math.floor(Math.random() * banners.length)];
-
-  if (!process.argv.includes('--nobanner')) {
-    console.log(randomBanner);
-  } else {
-    console.log(`*** elizaOS ***`);
-  }
-
-  // log the version
-  console.log(`${versionColor}Version: ${version}${r}`);
-
   const program = new Command().name('elizaos').version(version);
 
   program
@@ -127,6 +61,11 @@ ${b}##########################################     #### ${w}#######  ########   
     .addCommand(env)
     .addCommand(dev)
     .addCommand(publish);
+
+  // if no args are passed, display the banner
+  if (process.argv.length === 2) {
+    displayBanner(version);
+  }
 
   await program.parseAsync();
 }

@@ -174,7 +174,7 @@ export function setupSocketIO(
               if (content.actions) broadcastData.actions = content.actions;
 
               // Log exact broadcast data
-              logger.info(`Broadcasting message to room ${targetRoomId}`, {
+              logger.debug(`Broadcasting message to room ${targetRoomId}`, {
                 room: targetRoomId,
                 clients: io.sockets.adapter.rooms.get(targetRoomId)?.size || 0,
                 messageText: broadcastData.text?.substring(0, 50),
@@ -186,7 +186,7 @@ export function setupSocketIO(
               io.to(targetRoomId).emit('messageBroadcast', broadcastData);
 
               // Also send to all connected clients as a fallback
-              logger.info('Also broadcasting to all clients as fallback');
+              logger.debug('Also broadcasting to all clients as fallback');
               io.emit('messageBroadcast', broadcastData);
 
               // Create memory for the response message (matching Discord's pattern)
