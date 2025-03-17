@@ -82,7 +82,7 @@ export async function findWorldForOwner(
       }
     }
 
-    logger.info(`No server found for owner ${entityId}`);
+    logger.debug(`No server found for owner ${entityId}`);
     return null;
   } catch (error) {
     logger.error(`Error finding server for owner: ${error}`);

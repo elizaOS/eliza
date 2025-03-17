@@ -26,6 +26,3 @@ fi
 
 # Create or overwrite info.json with the version property
 echo "{\"version\": \"$VERSION\"}" > src/lib/info.json
-
-# Confirm success
-echo "info.json created with version: $VERSION"

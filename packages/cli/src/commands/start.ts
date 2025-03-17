@@ -1,8 +1,3 @@
-import fs from 'node:fs';
-import net from 'node:net';
-import os from 'node:os';
-import path, { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { buildProject } from '@/src/utils/build-project';
 import {
   AgentRuntime,
@@ -14,14 +9,18 @@ import {
 } from '@elizaos/core';
 import { Command } from 'commander';
 import * as dotenv from 'dotenv';
+import fs from 'node:fs';
+import os from 'node:os';
+import path, { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { character as defaultCharacter } from '../characters/eliza';
+import { displayBanner } from '../displayBanner';
 import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
-import { displayConfigStatus, loadConfig, saveConfig } from '../utils/config-manager.js';
+import { loadConfig, saveConfig } from '../utils/config-manager.js';
 import { promptForEnvVars } from '../utils/env-prompt.js';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
-import { displayBanner } from '../displayBanner';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -294,9 +293,6 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
 
   // Handle service and model selection
   if (shouldConfigure) {
-    // Display current configuration
-    displayConfigStatus();
-
     // First-time setup or reconfiguration requested
     if (existingConfig.isDefault) {
       logger.info("First time setup. Let's configure your Eliza agent.");
@@ -515,7 +511,7 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
         logger.debug(`Successfully started ${startedAgents.length} agents from project`);
       }
     } else {
-      logger.warn('Project found but no agents defined, falling back to custom character');
+      logger.debug('Project found but no agents defined, falling back to custom character');
       await startAgent(defaultCharacter, server);
     }
   } else if (isPlugin && pluginModule) {

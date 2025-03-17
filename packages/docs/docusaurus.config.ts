@@ -171,7 +171,7 @@ const config = {
         docsPluginId: 'classic',
         config: {
           eliza_api: {
-            specPath: './src/openapi/eliza-api.yaml',
+            specPath: './src/openapi/eliza-v1.yaml',
             outputDir: 'docs/rest',
             sidebarOptions: {
               groupPathsBy: 'tag',
@@ -224,11 +224,23 @@ const config = {
         },
         docs: {
           docItemComponent: '@theme/ApiItem',
-          sidebarPath: './sidebars.ts',
+          sidebarPath: require.resolve('./sidebars.ts'),
           editUrl: 'https://github.com/elizaos/eliza/tree/main/docs/',
           exclude: ['**/_media/**'],
           showLastUpdateAuthor: true,
           showLastUpdateTime: true,
+          lastVersion: '0.25.9',
+          versions: {
+            current: {
+              label: '1.0.0-alpha',
+              path: '',
+              banner: 'none',
+            },
+            '0.25.9': {
+              label: '0.25.9',
+              path: '0.25.9',
+            },
+          },
         },
         theme: {
           customCss: './src/css/custom.css',
@@ -247,7 +259,6 @@ const config = {
         },
       },
     ],
-    // Removed duplicate OpenAPI plugin from presets
   ],
   themeConfig: {
     mermaid: {
@@ -291,6 +302,10 @@ const config = {
           label: 'Documentation',
         },
         {
+          type: 'docsVersionDropdown',
+          position: 'right',
+        },
+        {
           type: 'doc',
           docsPluginId: 'api',
           position: 'left',
@@ -302,7 +317,7 @@ const config = {
           docsPluginId: 'packages',
           position: 'left',
           label: 'Packages',
-          docId: 'index', // You'll need to create packages/index.md
+          docId: 'index',
         },
         {
           to: 'blog',
@@ -318,7 +333,7 @@ const config = {
         },
         {
           label: 'RSS',
-          position: 'right',
+          position: 'left',
           to: '/eliza/news',
           items: [
             { label: 'RSS (XML)', href: '/eliza/news/rss.xml', target: '_blank' },

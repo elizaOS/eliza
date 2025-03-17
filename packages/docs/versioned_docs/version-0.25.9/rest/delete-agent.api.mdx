@@ -1,0 +1,149 @@
+---
+id: delete-agent
+title: 'Delete an agent'
+description: 'Delete a running agent'
+sidebar_label: 'Delete an agent'
+hide_title: true
+hide_table_of_contents: true
+api: eJytVE2P2zYQ/SvEnBqAtYw0PVQ3o+uDgQAJku0p68OYHElMKFIhR7vrCvrvxVCyd5Pt9lRdJGq+HmfevAkY2wz1F8CWAmc4arCUTXIDuxighhvyxKRQpTEEF1pVHEFDHCihOB0s1GCL2261DZiwJ6YkqScI2BPUS4mDBQ1OMg/IHWhI9H10iSzUnEbSkE1HPUI9AZ8HCcucXGhBQxNTjww1jKOzMP+M9HCjYqO4owWi4qgWVDAfpUweYsiUJfPb7Tt5/RhfwK8hVuXRGMq5Gb0/gwYTA8vd6glwGLwz5erV1yyh00vQ8fSVTGlFkkaxWwqvWZ85nmL0hAE00CP2g6elD3N5NLx7HWmIrJo4Bvv/waOUYvq31l+xvag9X5D2xF18okJhAXdQQ7VQq5rW+c+gIVO6v7BjTB5q6JiHuqp8NOi7mLn+bbvdws8zfi9mZemefBx6QbJkKiN2oYkFvOMCde/d36g+fFa7j4cXmXYfD8pGM0qS0izVxKSuIb+qnWo8PbqTJ4XBqmzQoxx2h5VfjXD8IaZvm7twF247l6WQcllZyq4NZIWCJ1JjJqseHHcKVbmfP1+3aSnoQmYMhjZqH+wQXeCs0Pv4UECZRMgutFrdhR4DtuVbQLnAlNCIcSlwAZcVdymOrZT8tP98u3g2aGgDGqT1Sxe2m7e/b/5YCYSmEGjd1msr/ox9PwbHsgZPs8p1VbWOu/G0MbGvSLxjXt4gfBhi5h7Ds4wXKQlXDflhJNMTi19XnZWYTI9cDR5dEB0oqKaVb1cp01BfFOeoQTglxmk6Yaa/kp9n+f19pHSG+stRwz0mJxMupLQuy7eFukGf6T+g/vJpFbA36nUFegX4+hOD9PYe/Sgn0PCNzs/0cj7OGjpCS6lgW6w7Y2jgZ3EvFl924rqVN/v3+9s9zPM/wsYLPA==
+sidebar_class_name: 'delete api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import ApiTabs from '@theme/ApiTabs';
+import DiscriminatorTabs from '@theme/DiscriminatorTabs';
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import SecuritySchemes from '@theme/ApiExplorer/SecuritySchemes';
+import MimeTabs from '@theme/MimeTabs';
+import ParamsItem from '@theme/ParamsItem';
+import ResponseSamples from '@theme/ResponseSamples';
+import SchemaItem from '@theme/SchemaItem';
+import SchemaTabs from '@theme/SchemaTabs';
+import Heading from '@theme/Heading';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Delete an agent'}></Heading>
+
+<MethodEndpoint method={'delete'} path={'/agents/{agentId}'}></MethodEndpoint>
+
+Delete a running agent
+
+<Heading
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
+
+<details
+  style={{ marginBottom: '1rem' }}
+  className={'openapi-markdown__details'}
+  data-collapsed={false}
+  open={true}
+>
+  <summary style={{}}>
+    <h3 className={'openapi-markdown__details-summary-header-params'}>Path Parameters</h3>
+  </summary>
+  <div>
+    <ul>
+      <ParamsItem
+        className={'paramsItem'}
+        param={{
+          name: 'agentId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+          description: 'ID of the agent to delete',
+        }}
+      ></ParamsItem>
+    </ul>
+  </div>
+</details>
+<div>
+  <div>
+    <ApiTabs label={undefined} id={undefined}>
+      <TabItem label={'204'} value={'204'}>
+        <div>Agent deleted successfully</div>
+        <div>
+          <MimeTabs className={'openapi-tabs__mime'} schemaType={'response'}>
+            <TabItem label={'application/json'} value={'application/json'}>
+              <SchemaTabs className={'openapi-tabs__schema'}>
+                <TabItem label={'Schema'} value={'Schema'}>
+                  <details
+                    style={{}}
+                    className={'openapi-markdown__details response'}
+                    data-collapsed={false}
+                    open={true}
+                  >
+                    <summary style={{}} className={'openapi-markdown__details-summary-response'}>
+                      <strong>Schema</strong>
+                    </summary>
+                    <div style={{ textAlign: 'left', marginLeft: '1rem' }}></div>
+                    <ul style={{ marginLeft: '1rem' }}>
+                      <SchemaItem
+                        collapsible={false}
+                        name={'success'}
+                        required={false}
+                        schemaName={'boolean'}
+                        qualifierMessage={undefined}
+                        schema={{ type: 'boolean', example: true }}
+                      ></SchemaItem>
+                    </ul>
+                  </details>
+                </TabItem>
+                <TabItem label={'Example (from schema)'} value={'Example (from schema)'}>
+                  <ResponseSamples
+                    responseExample={'{\n  "success": true\n}'}
+                    language={'json'}
+                  ></ResponseSamples>
+                </TabItem>
+              </SchemaTabs>
+            </TabItem>
+          </MimeTabs>
+        </div>
+      </TabItem>
+      <TabItem label={'404'} value={'404'}>
+        <div>Agent not found</div>
+        <div>
+          <MimeTabs className={'openapi-tabs__mime'} schemaType={'response'}>
+            <TabItem label={'application/json'} value={'application/json'}>
+              <SchemaTabs className={'openapi-tabs__schema'}>
+                <TabItem label={'Schema'} value={'Schema'}>
+                  <details
+                    style={{}}
+                    className={'openapi-markdown__details response'}
+                    data-collapsed={false}
+                    open={true}
+                  >
+                    <summary style={{}} className={'openapi-markdown__details-summary-response'}>
+                      <strong>Schema</strong>
+                    </summary>
+                    <div style={{ textAlign: 'left', marginLeft: '1rem' }}></div>
+                    <ul style={{ marginLeft: '1rem' }}>
+                      <SchemaItem
+                        collapsible={false}
+                        name={'error'}
+                        required={false}
+                        schemaName={'string'}
+                        qualifierMessage={undefined}
+                        schema={{ type: 'string', example: 'Agent not found' }}
+                      ></SchemaItem>
+                    </ul>
+                  </details>
+                </TabItem>
+                <TabItem label={'Example (from schema)'} value={'Example (from schema)'}>
+                  <ResponseSamples
+                    responseExample={'{\n  "error": "Agent not found"\n}'}
+                    language={'json'}
+                  ></ResponseSamples>
+                </TabItem>
+              </SchemaTabs>
+            </TabItem>
+          </MimeTabs>
+        </div>
+      </TabItem>
+    </ApiTabs>
+  </div>
+</div>

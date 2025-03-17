@@ -1,13 +1,10 @@
+import { USER_NAME } from '@/constants';
 import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
 import EventEmitter from 'eventemitter3';
 import { io, type Socket } from 'socket.io-client';
-import { apiClient } from './api';
 import { WorldManager } from './world-manager';
-import { USER_NAME } from '@/constants';
 
 const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
-
-type MessagePayload = Record<string, any>;
 
 /**
  * SocketIOManager handles real-time communication between the client and server

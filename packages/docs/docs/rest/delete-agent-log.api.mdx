@@ -1,0 +1,110 @@
+---
+id: delete-agent-log
+title: 'Delete an agent log'
+description: 'Deletes a specific log entry for an agent'
+sidebar_label: 'Delete an agent log'
+hide_title: true
+hide_table_of_contents: true
+api: eJztVU2P2zYQ/SvEnFqAsdx2T7oZsQ8GFmiQbE+7PozJkcSEIhWS8q4r6L8XQ8le7zptkhbIqSd9kDPvzdebARLWEcp7sL6OIAFrcinCToKmqILpkvEOSliTpURRoIgdKVMZJayvBbkUjqLyQaAT2RYk+I4Cst1WQwk6W6747NbXIKHDgC0lCow7gMOWoJyAtxokGMbrMDUgIdDn3gTSUKbQk4SoGmoRygHSsWOzmIJx7LXyocUEJfS90TC+5r9dC1+J1NDMcpRnZOvrH4HL6UpeTOmAcccgsfMuUmS/vy5v+PHS+tbXs4EWsVeKYqx6a4+Mc7NcXhts3QGt0VOQgsFDBt6uQYLyLnHs5QDYddaoXKTiY2TT4TpGv/9IigvaBS5pMhPTmcjFxb33ltCBBHrCtrMEZYU20iiBQvDh6z6V1/Sl7L6MbsPORL47SmgpRqy/2ex0PZcoobHx65brfJG0yGEI46Zq8+E4jqOEZBJHO0HM/26+VMnc/6dqOJ9E5Xun/y/KjylKJpYa/6xHWYdSAyUU2Jlikr1imFVoLFgOiyFLwwgSIoXDSbD6YKGEJqWuLArrFdrGx1T+tlwur7je8rHQdCDru5ZbYPKU55+Z53BPfK35E8XvH8Tq3fbK0+rdVmivenaSg82qezY5/LJYLpZv0HYNijdiJSpLT2ZvSaDTIiq0yB+r7SwNFWvwow+fFg/uwd01JjKqMFFoiqZ2pFms9iT6SFo8mtQIFDlYexShd864ekY3LiZ0ihZi43TnjUtRoLX+MTNUgTAZV8sH16LDml8zJ+MSBVR8Nvk/cYsiNcH3NSO+33y4m25WqGgBErgMU0YuIp7nCFWeo1nXz7l569u2dyYdQV4UL5ZFUZvU9PuF8m1BfNvH6QncMZ2PqUV34XFagudVx7P8uk7D80B/186cWz7RUyo6i8bxSGSyw9yo94Cded7QEsrnlTkv73JaZTsJ3JFsMgx7jPRHsOPIvz/3FI5Q3u8kHDAYbonc0tpEftezRPxDTD+9nzfjz+L1Sv2bIOaf6Dj9B7Q9f4GET3S8WPu8j/8ji5cL9l+xmfI37kYJDaGmkLMzna2Uoi5dWF3JNc/0WWbWm9vN3QbG8S+LOjbU
+sidebar_class_name: 'delete api-method'
+info_path: docs/rest/eliza-os-api
+custom_edit_url: null
+---
+
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
+
+<Heading as={'h1'} className={'openapi__heading'} children={'Delete an agent log'}></Heading>
+
+<MethodEndpoint
+  method={'delete'}
+  path={'/api/agents/{agentId}/logs/{logId}'}
+  context={'endpoint'}
+></MethodEndpoint>
+
+Deletes a specific log entry for an agent
+
+<Heading
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
+
+<ParamsDetails
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+    {
+      name: 'logId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the log to delete',
+    },
+  ]}
+></ParamsDetails>
+
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
+
+<StatusCodes
+  id={undefined}
+  label={undefined}
+  responses={{
+    '204': { description: 'Log deleted successfully' },
+    '400': {
+      description: 'Invalid agent ID or log ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent or log not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

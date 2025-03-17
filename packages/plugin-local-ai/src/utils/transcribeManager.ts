@@ -44,7 +44,7 @@ export class TranscribeManager {
    */
   private constructor(cacheDir: string) {
     this.cacheDir = path.join(cacheDir, 'whisper');
-    logger.info('Initializing TranscribeManager', {
+    logger.debug('Initializing TranscribeManager', {
       cacheDir: this.cacheDir,
       timestamp: new Date().toISOString(),
     });

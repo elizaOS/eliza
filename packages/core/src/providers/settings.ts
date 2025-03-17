@@ -130,6 +130,19 @@ export const settingsProvider: Provider = {
         };
       }
 
+      if (!room.worldId) {
+        logger.debug('No world found for settings provider -- settings provider will be skipped');
+        return {
+          data: {
+            settings: [],
+          },
+          values: {
+            settings: 'Room does not have a worldId -- settings provider will be skipped',
+          },
+          text: 'Room does not have a worldId -- settings provider will be skipped',
+        };
+      }
+
       const type = room.type;
       const isOnboarding = type === ChannelType.DM;
 
@@ -159,6 +172,11 @@ export const settingsProvider: Provider = {
         // For non-onboarding, we need to get the world associated with the room
         try {
           world = await runtime.getWorld(room.worldId);
+
+          if (!world) {
+            logger.error(`No world found for room ${room.worldId}`);
+            throw new Error(`No world found for room ${room.worldId}`);
+          }
 
           serverId = world.serverId;
 
