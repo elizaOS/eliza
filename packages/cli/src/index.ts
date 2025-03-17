@@ -44,10 +44,32 @@ async function main() {
     version = packageJson.version;
   }
 
-  const program = new Command()
-    .name('eliza')
-    .description('elizaOS CLI - Manage your project and plugins')
-    .version(version);
+  // Color ANSI escape codes
+  const darkblue = '\x1b[38;5;27m';
+  const lightblue = '\x1b[38;5;51m';
+  const white = '\x1b[38;5;255m';
+  const reset = '\x1b[0m';
+  const red = '\x1b[38;5;196m';
+  let versionColor = lightblue;
+
+  // if version includes "beta" or "alpha" then use red
+  if (version.includes('beta') || version.includes('alpha')) {
+    versionColor = red;
+  }
+
+  console.log(`
+${darkblue}      :::::::::::::       ::::::::::::::::::::    ::: ${white}    ::::::::  :::::::: ${reset}
+${darkblue}     :+:       :+:           :+:         :+:   :+: :+:${white}  :+:    :+::+:    :+: ${reset}
+${darkblue}    +:+       +:+           +:+        +:+   +:+   +:+${white} +:+    +:++:+         ${reset}
+${darkblue}   +#++:++#  +#+           +#+       +#+   +#++:++#++:${white}+#+    +:++#++:++#++   ${reset}
+${darkblue}  +#+       +#+           +#+      +#+    +#+     +#+${white}+#+    +#+       +#+    ${reset}
+${darkblue} #+#       #+#           #+#     #+#     #+#     #+##${white}+#    #+##+#    #+#     ${reset}
+${darkblue}###########################################     ####${white} #######  ########       ${reset}`);
+
+  // log the version
+  console.log(`${versionColor}Version: ${version}${reset}`);
+
+  const program = new Command().name('elizaos').version(version);
 
   program
     .addCommand(create)

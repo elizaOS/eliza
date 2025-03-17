@@ -55,11 +55,59 @@ class InMemoryDestination implements DestinationStream {
    */
   write(data: string | LogEntry): void {
     // Parse the log entry if it's a string
-    const logEntry: LogEntry = typeof data === 'string' ? JSON.parse(data) : data;
+    let logEntry: LogEntry;
+    let stringData: string;
+
+    if (typeof data === 'string') {
+      stringData = data;
+      try {
+        logEntry = JSON.parse(data);
+      } catch (e) {
+        // If it's not valid JSON, just pass it through
+        if (this.stream) {
+          this.stream.write(data);
+        }
+        return;
+      }
+    } else {
+      logEntry = data;
+      stringData = JSON.stringify(data);
+    }
 
     // Add timestamp if not present
     if (!logEntry.time) {
       logEntry.time = Date.now();
+    }
+
+    // Filter out service registration logs unless in debug mode
+    const isDebugMode = (process?.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
+    const isLoggingDiagnostic = Boolean(process?.env?.LOG_DIAGNOSTIC);
+
+    if (isLoggingDiagnostic) {
+      // When diagnostic mode is on, add a marker to every log to see what's being processed
+      logEntry.diagnostic = true;
+    }
+
+    if (!isDebugMode) {
+      // Check if this is a service or agent log that we want to filter
+      if (logEntry.agentName && logEntry.agentId) {
+        const msg = logEntry.msg || '';
+        // Filter only service/agent registration logs, not all agent logs
+        if (
+          typeof msg === 'string' &&
+          (msg.includes('registered successfully') ||
+            msg.includes('Registering') ||
+            msg.includes('Success:') ||
+            msg.includes('linked to') ||
+            msg.includes('Started'))
+        ) {
+          if (isLoggingDiagnostic) {
+            console.error('Filtered log:', stringData);
+          }
+          // This is a service registration/agent log, skip it
+          return;
+        }
+      }
     }
 
     // Add to memory buffer
@@ -72,8 +120,6 @@ class InMemoryDestination implements DestinationStream {
 
     // Forward to pretty print stream if available
     if (this.stream) {
-      // Ensure we pass a string to the stream
-      const stringData = typeof data === 'string' ? data : JSON.stringify(data);
       this.stream.write(stringData);
     }
   }
@@ -102,6 +148,10 @@ const customLevels: Record<string, number> = {
 
 const raw = parseBooleanFromText(process?.env?.LOG_JSON_FORMAT) || false;
 
+// Set default log level to info to allow regular logs, but still filter service logs
+const isDebugMode = (process?.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
+const effectiveLogLevel = isDebugMode ? 'debug' : process?.env?.DEFAULT_LOG_LEVEL || 'info';
+
 const createStream = async () => {
   if (raw) {
     return undefined;
@@ -112,24 +162,13 @@ const createStream = async () => {
     colorize: true,
     translateTime: 'yyyy-mm-dd HH:MM:ss',
     ignore: 'pid,hostname',
+    // Don't use minimumLevel since we're filtering in the destination
   });
 };
 
-const defaultLevel = process?.env?.DEFAULT_LOG_LEVEL || process?.env?.LOG_LEVEL || 'info';
-
-/**
- * Configuration options for logger.
- * @typedef {object} LoggerOptions
- * @property {string} level - The default log level.
- * @property {object} customLevels - Custom log levels.
- * @property {object} hooks - Hooks for customizing log behavior.
- * @property {Function} hooks.logMethod - Custom log method.
- * @param {Array} inputArgs - The arguments passed to the log method.
- * @param {Function} method - The log method to be executed.
- * @returns {void}
- */
+// Create options with appropriate level
 const options = {
-  level: defaultLevel,
+  level: effectiveLogLevel, // Use more restrictive level unless in debug mode
   customLevels,
   hooks: {
     logMethod(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void {
@@ -161,15 +200,63 @@ let logger = pino(options);
 // Enhance logger with custom destination in Node.js environment
 if (typeof process !== 'undefined') {
   // Create the destination with in-memory logging
-  createStream().then((stream) => {
+  // Instead of async initialization, initialize synchronously to avoid race conditions
+  let stream = null;
+
+  if (!raw) {
+    // If we're in a Node.js environment where require is available, use require for pino-pretty
+    // This will ensure synchronous loading
+    try {
+      const pretty = require('pino-pretty');
+      stream = pretty.default
+        ? pretty.default({
+            colorize: true,
+            translateTime: 'yyyy-mm-dd HH:MM:ss',
+            ignore: 'pid,hostname',
+            customLevels: {
+              names: {
+                fatal: 60,
+                error: 50,
+                warn: 40,
+                info: 30,
+                log: 29,
+                progress: 28,
+                success: 27,
+                debug: 20,
+                trace: 10,
+              },
+              // Map custom level values to their display text
+              // This ensures consistent level names in pretty-printed output
+              customLevelNames: {
+                10: 'TRACE',
+                20: 'DEBUG',
+                27: 'SUCCESS',
+                28: 'PROGRESS',
+                29: 'LOG',
+                30: 'INFO',
+                40: 'WARN',
+                50: 'ERROR',
+                60: 'FATAL',
+              },
+            },
+          })
+        : null;
+    } catch (e) {
+      // Fall back to async loading if synchronous loading fails
+      createStream().then((prettyStream) => {
+        const destination = new InMemoryDestination(prettyStream);
+        logger = pino(options, destination);
+        (logger as unknown)[Symbol.for('pino-destination')] = destination;
+      });
+    }
+  }
+
+  // If stream was created synchronously, use it now
+  if (stream !== null || raw) {
     const destination = new InMemoryDestination(stream);
-
-    // Create enhanced logger with custom destination
     logger = pino(options, destination);
-
-    // Expose the destination for accessing recent logs
     (logger as unknown)[Symbol.for('pino-destination')] = destination;
-  });
+  }
 }
 
 export { logger };

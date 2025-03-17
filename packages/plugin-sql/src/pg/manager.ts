@@ -153,7 +153,7 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
   public async initialize(): Promise<void> {
     try {
       await this.testConnection();
-      logger.info('PostgreSQL connection manager initialized successfully');
+      logger.debug('PostgreSQL connection manager initialized successfully');
     } catch (error) {
       logger.error('Failed to initialize connection manager:', error);
       throw error;
@@ -202,7 +202,6 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
       });
     } catch (error) {
       logger.error('Failed to run database migrations (pg):', error);
-      console.trace(error);
     }
   }
 }

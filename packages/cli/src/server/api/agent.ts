@@ -47,7 +47,6 @@ export function agentRouter(
 
   // List all agents
   router.get('/', async (_, res) => {
-    logger.debug('[AGENTS LIST] Retrieving list of all agents');
     try {
       const allAgents = await db.getAgents();
 
@@ -326,7 +325,7 @@ export function agentRouter(
         throw new Error('Failed to start agent');
       }
 
-      logger.success(`[AGENT START] Successfully started agent: ${agent.name}`);
+      logger.debug(`[AGENT START] Successfully started agent: ${agent.name}`);
       res.json({
         success: true,
         data: {

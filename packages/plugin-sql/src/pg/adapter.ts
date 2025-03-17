@@ -54,7 +54,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter<NodePgDatabase> {
   async init(): Promise<void> {
     try {
       await this.manager.runMigrations();
-      logger.info('PgDatabaseAdapter initialized successfully');
+      logger.debug('PgDatabaseAdapter initialized successfully');
     } catch (error) {
       logger.error('Failed to initialize PgDatabaseAdapter:', error);
       throw error;

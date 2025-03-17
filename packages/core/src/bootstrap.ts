@@ -557,7 +557,7 @@ const syncSingleUser = async (
  * Handles standardized server data for both WORLD_JOINED and WORLD_CONNECTED events
  */
 const handleServerSync = async ({ runtime, world, rooms, entities, source }: WorldPayload) => {
-  logger.info(`Handling server sync event for server: ${world.name}`);
+  logger.debug(`Handling server sync event for server: ${world.name}`);
   try {
     // Create/ensure the world exists for this server
     await runtime.ensureWorldExists({
@@ -623,7 +623,7 @@ const handleServerSync = async ({ runtime, world, rooms, entities, source }: Wor
       }
     }
 
-    logger.success(`Successfully synced standardized world structure for ${world.name}`);
+    logger.debug(`Successfully synced standardized world structure for ${world.name}`);
   } catch (error) {
     logger.error(
       `Error processing standardized server data: ${

@@ -60,7 +60,7 @@ export function setupSocketIO(
   io.on('connection', (socket) => {
     const { agentId, roomId } = socket.handshake.query as { agentId: string; roomId: string };
 
-    logger.info('Socket connected', { agentId, roomId, socketId: socket.id });
+    logger.debug('Socket connected', { agentId, roomId, socketId: socket.id });
 
     // Join the specified room
     if (roomId) {

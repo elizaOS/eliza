@@ -290,7 +290,7 @@ agent
         throw new Error('Failed to start agent: No data returned from server');
       }
 
-      logger.success(`Successfully started agent ${result.character.name} (${result.id})`);
+      logger.debug(`Successfully started agent ${result.character.name} (${result.id})`);
     } catch (error) {
       handleError(error);
     }

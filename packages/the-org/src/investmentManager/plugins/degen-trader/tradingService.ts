@@ -239,13 +239,9 @@ export class DegenTradingService extends Service {
       throw new Error(errorMsg);
     }
 
-    logger.success('Settings validated successfully');
-
     try {
-      // Automatically start the trading service after initialization
-      logger.info('Auto-starting trading service...');
       await service.start();
-      logger.info('Trading service initialized successfully', {
+      logger.debug('Trading service initialized successfully', {
         processId: service.processId,
       });
     } catch (error) {

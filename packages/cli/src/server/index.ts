@@ -70,7 +70,7 @@ export class AgentServer {
    */
   constructor(options?: ServerOptions) {
     try {
-      logger.info('Initializing AgentServer...');
+      logger.debug('Initializing AgentServer...');
       this.app = express();
       this.agents = new Map();
 
@@ -111,7 +111,9 @@ export class AgentServer {
       await this.initializeServer(options);
 
       // Move this message here to be more accurate
-      logger.info(`Server started at ${AGENT_RUNTIME_URL}`);
+      console.log(
+        `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1m${AGENT_RUNTIME_URL}\x1b[22m\x1b[0m`
+      );
     } catch (error) {
       logger.error('Failed to initialize:', error);
       throw error;
@@ -202,11 +204,8 @@ export class AgentServer {
         },
       };
 
-      console.log('Serving static assets from the client dist path');
-
       // Serve static assets from the client dist path
       const clientPath = path.join(__dirname, '..', 'dist');
-      logger.info(`Client build path: ${clientPath}`);
       this.app.use('/', express.static(clientPath, staticOptions));
 
       // Serve static assets from plugins

@@ -74,7 +74,7 @@ export class TwitterTestSuite implements TestSuite {
    */
   async testInitializingClient(runtime: IAgentRuntime) {
     try {
-      const manager = runtime.getService(ServiceType.TWITTER);
+      const manager = runtime.getService(ServiceType.TWITTER) as any;
       if (!manager) {
         throw new Error('Twitter client manager not found');
       }
@@ -83,7 +83,7 @@ export class TwitterTestSuite implements TestSuite {
       this.twitterClient = manager.clients.get(manager.getClientKey(clientId, runtime.agentId));
 
       if (this.twitterClient) {
-        logger.success('TwitterClient initialized successfully.');
+        logger.debug('TwitterClient initialized successfully.');
       } else {
         throw new Error('TwitterClient failed to initialize.');
       }

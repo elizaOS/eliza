@@ -331,7 +331,7 @@ const runAgentTests = async (options: {
             // Make a copy of the original character to avoid modifying the project configuration
             const originalCharacter = { ...agent.character };
 
-            logger.info(`Starting agent: ${originalCharacter.name}`);
+            logger.debug(`Starting agent: ${originalCharacter.name}`);
 
             const runtime = await startAgent(
               originalCharacter,
@@ -361,7 +361,7 @@ const runAgentTests = async (options: {
         throw new Error('Failed to start any agents from project');
       }
 
-      logger.info(`Successfully started ${runtimes.length} agents for testing`);
+      logger.debug(`Successfully started ${runtimes.length} agents for testing`);
 
       // Run tests for each agent
       let totalFailed = 0;
@@ -370,9 +370,9 @@ const runAgentTests = async (options: {
         const projectAgent = projectAgents[i];
 
         if (project.isPlugin) {
-          logger.info(`Running tests for plugin: ${project.pluginModule?.name}`);
+          logger.debug(`Running tests for plugin: ${project.pluginModule?.name}`);
         } else {
-          logger.info(`Running tests for agent: ${runtime.character.name}`);
+          logger.debug(`Running tests for agent: ${runtime.character.name}`);
         }
 
         const testRunner = new TestRunner(runtime, projectAgent);
