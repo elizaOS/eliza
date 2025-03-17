@@ -208,9 +208,6 @@ export const formatMessages = ({
   messages: Memory[];
   entities: Entity[];
 }) => {
-  const newestMessageWithContentPlan = messages.find(
-    (message: Memory) => (message.content as Content).plan
-  );
   const messageStrings = messages
     .reverse()
     .filter((message: Memory) => message.entityId)
@@ -254,13 +251,8 @@ export const formatMessages = ({
             } (${formattedName}'s actions: ${messageActions.join(', ')})`
           : null;
 
-      const planString =
-        newestMessageWithContentPlan?.id === message.id
-          ? `(${formattedName}'s plan: ${newestMessageWithContentPlan?.content?.plan})`
-          : null;
-
       // for each thought, action, text or attachment, add a new line, with text first, then thought, then action, then attachment
-      const messageString = [textString, thoughtString, planString, actionString, attachmentString]
+      const messageString = [textString, thoughtString, actionString, attachmentString]
         .filter(Boolean)
         .join('\n');
 
@@ -320,14 +312,12 @@ First, think about what you want to do next and plan your actions. Then, write t
 "actions" should be an array of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY)
 "providers" should be an optional array of the providers that {{agentName}} will use to have the right context for responding and acting
 "evaluators" should be an optional array of the evaluators that {{agentName}} will use to evaluate the conversation after responding
-"plan" should be explanation of the message you plan to send, the actions you plan to take, and the data providers you plan to use.
 These are the available valid actions: {{actionNames}}
 
 Response format should be formatted in a valid JSON block like this:
 \`\`\`json
 {
     "thought": "<string>",
-    "plan": "<string>",
     "actions": ["<string>", "<string>", ...],
     "providers": ["<string>", "<string>", ...]
 }

@@ -15,7 +15,16 @@ import type { IAttachment } from '@/types';
 import type { Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { Activity, Database, PanelRight, Paperclip, Send, Terminal, X } from 'lucide-react';
+import {
+  Activity,
+  ChevronRight,
+  Database,
+  PanelRight,
+  Paperclip,
+  Send,
+  Terminal,
+  X,
+} from 'lucide-react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AgentActionViewer } from './action-viewer';
@@ -29,6 +38,7 @@ import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { AgentMemoryViewer } from './memory-viewer';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 
 const SOURCE_NAME = 'client_chat';
 
@@ -49,6 +59,7 @@ function MessageContent({
   agentId: UUID;
   isLastMessage: boolean;
 }) {
+  console.log('message', message);
   // Only log message details in development mode
   if (import.meta.env.DEV) {
     console.log(`[Chat] Rendering message from ${message.name}:`, {
@@ -60,58 +71,88 @@ function MessageContent({
   }
 
   return (
-    <div className="flex flex-col">
-      <ChatBubbleMessage
-        isLoading={message.isLoading}
-        {...(message.name === USER_NAME ? { variant: 'sent' } : {})}
-      >
-        {message.name === USER_NAME ? (
-          message.text
-        ) : isLastMessage && message.name !== USER_NAME ? (
-          <AIWriter>{message.text}</AIWriter>
-        ) : (
-          message.text
-        )}
-        {/* Attachments */}
-        <div>
-          {message.attachments?.map((attachment: IAttachment) => (
-            <div className="flex flex-col gap-1 mt-2" key={`${attachment.url}-${attachment.title}`}>
-              <img
-                alt="attachment"
-                src={attachment.url}
-                width="100%"
-                height="100%"
-                className="w-64 rounded-md"
-              />
-              <div className="flex items-center justify-between gap-4">
-                <span />
-                <span />
-              </div>
+    <ChatBubbleMessage
+      isLoading={message.isLoading}
+      {...(message.name === USER_NAME ? { variant: 'sent' } : {})}
+      {...(!message.text ? { className: 'bg-transparent' } : {})}
+    >
+      <div className="flex flex-col w-full m-0 p-0">
+        {message.name !== USER_NAME && (
+          <>
+            <div className="flex justify-end mb-2 absolute top-2 right-2">
+              {message.text && !message.isLoading ? (
+                <div className="flex items-center gap-4">
+                  <CopyButton text={message.text} />
+                  <ChatTtsButton agentId={agentId} text={message.text} />
+                </div>
+              ) : (
+                <div />
+              )}
             </div>
-          ))}
-        </div>
-      </ChatBubbleMessage>
-      <div className="flex items-center gap-4 justify-between w-full mt-1">
-        {message.text && !message.isLoading ? (
-          <div className="flex items-center gap-1">
-            <CopyButton text={message.text} />
-            <ChatTtsButton agentId={agentId} text={message.text} />
-          </div>
-        ) : null}
-        <div
-          className={cn([
-            message.isLoading ? 'mt-2' : '',
-            'flex items-center justify-between gap-4 select-none',
-          ])}
-        >
-          {message.thought ? <Badge variant="outline">{message.thought}</Badge> : null}
-          {message.plan ? <Badge variant="outline">{message.plan}</Badge> : null}
-          {message.createdAt ? (
-            <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
-          ) : null}
-        </div>
+            {message.text && message.thought && (
+              <Collapsible className="mb-1">
+                <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
+                  <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]:rotate-90" />
+                  Thought Process
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-5 pt-1">
+                  <Badge variant="outline" className="text-xs">
+                    {message.thought}
+                  </Badge>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </>
+        )}
       </div>
-    </div>
+
+      {message.name === USER_NAME ? (
+        message.text
+      ) : isLastMessage && message.name !== USER_NAME ? (
+        <AIWriter>{message.text}</AIWriter>
+      ) : (
+        message.text
+      )}
+
+      {!message.text && message.thought && (
+        <>
+          {message.name === USER_NAME ? (
+            message.thought
+          ) : isLastMessage && message.name !== USER_NAME ? (
+            <AIWriter>
+              <span className="italic text-muted-foreground">{message.thought}</span>
+            </AIWriter>
+          ) : (
+            <span className="italic text-muted-foreground">{message.thought}</span>
+          )}
+        </>
+      )}
+
+      {message.text && message.actions && (
+        <div className="mt-2">
+          Actions: <span className="font-bold">{message.actions}</span>
+        </div>
+      )}
+
+      {message.attachments?.map((attachment: IAttachment) => (
+        <div className="flex flex-col gap-1" key={`${attachment.url}-${attachment.title}`}>
+          <img
+            alt="attachment"
+            src={attachment.url}
+            width="100%"
+            height="100%"
+            className="w-64 rounded-md"
+          />
+          <div className="flex items-center justify-between gap-4">
+            <span />
+            <span />
+          </div>
+        </div>
+      ))}
+      {message.text && message.createdAt && (
+        <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
+      )}
+    </ChatBubbleMessage>
   );
 }
 
@@ -412,23 +453,22 @@ export default function Page({ agentId }: { agentId: UUID }) {
                 >
                   <ChatBubble
                     variant={isUser ? 'sent' : 'received'}
-                    className={`flex flex-row items-center gap-2 ${
-                      isUser ? 'flex-row-reverse' : ''
-                    }`}
+                    className={`flex flex-row items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}
                   >
-                    <Avatar className="size-8 border rounded-full select-none">
-                      <AvatarImage
-                        src={
-                          isUser
-                            ? '/user-icon.png'
-                            : agentData?.settings?.avatar
-                              ? agentData?.settings?.avatar
-                              : '/elizaos-icon.png'
-                        }
-                      />
+                    {message.text && !isUser && (
+                      <Avatar className="size-8 border rounded-full select-none mb-2">
+                        <AvatarImage
+                          src={
+                            isUser
+                              ? '/user-icon.png'
+                              : agentData?.settings?.avatar
+                                ? agentData?.settings?.avatar
+                                : '/elizaos-icon.png'
+                          }
+                        />
+                      </Avatar>
+                    )}
 
-                      {isUser && <AvatarFallback>U</AvatarFallback>}
-                    </Avatar>
                     <MessageContent
                       message={message}
                       agentId={agentId}

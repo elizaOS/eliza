@@ -230,10 +230,7 @@ const messageReceivedHandler = async ({
         // Retry if missing required fields
         let retries = 0;
         const maxRetries = 3;
-        while (
-          retries < maxRetries &&
-          (!responseContent?.thought || !responseContent?.plan || !responseContent?.actions)
-        ) {
+        while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
           const response = await runtime.useModel(ModelType.TEXT_SMALL, {
             prompt,
           });
@@ -241,7 +238,7 @@ const messageReceivedHandler = async ({
           responseContent = parseJSONObjectFromText(response) as Content;
 
           retries++;
-          if ((!responseContent?.thought || !responseContent?.plan) && !responseContent?.actions) {
+          if (!responseContent?.thought && !responseContent?.actions) {
             logger.warn('*** Missing required fields, retrying... ***');
           }
         }
@@ -256,7 +253,6 @@ const messageReceivedHandler = async ({
         }
 
         if (responseContent) {
-          responseContent.plan = responseContent.plan?.trim();
           responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 
           responseMessages = [
@@ -277,7 +273,6 @@ const messageReceivedHandler = async ({
               agentId: runtime.agentId,
               content: {
                 thought: responseContent.thought,
-                plan: responseContent.plan,
                 actions: responseContent.actions,
                 providers: responseContent.providers,
               },
@@ -474,7 +469,6 @@ const postGeneratedHandler = async ({
         source: 'twitter',
         channelType: ChannelType.FEED,
         thought: jsonResponse.thought || '',
-        plan: jsonResponse.plan || '',
         type: 'post',
       },
       roomId: message.roomId,
