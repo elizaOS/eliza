@@ -1,71 +1,132 @@
 ---
 id: delete-room
-title: "Delete a room"
-description: "Deletes a specific room"
-sidebar_label: "Delete a room"
+title: 'Delete a room'
+description: 'Deletes a specific room'
+sidebar_label: 'Delete a room'
 hide_title: true
 hide_table_of_contents: true
 api: eJztVktv4zYQ/ivEnFqAa7ltetHNWPtgYIEusukp8WFMjiTuUqSWpJy4gv57MZScOHG6W7RATnvSg/P4Zr4ZzgyQsI5Q3kLwvo0gAWtyKcJOgqaogumS8Q5KWJOlRFGgiB0pUxklWAUk+I4CstRWQwk6y11PRx0GbClRYBcDOGwJysnFVoMEw5Y7TA1ICPS1N4E0lCn0JCGqhlqEcoB07FgtpmBcDRIqH1pMUELfGw3jS6TbtfCVSA2J7AhG+eiZEb+FY/YjkhdTMmDcsZfYeRcpsuFfl1f8eK7OOZs1tIi9UhRj1Vt7ZE9Xy+WlxtYd0Bo9xSnYfZhcb9cgQXmXOP5yAOw6a1QmqfgcWXe4DNPvP5NKzFpgSpOZsM5IzgT33ltCBxLoAdvOEpQV2kijBArBh+/bVF7Tawl+Ht6GjYksO0poKUas/7XaSTyzlNDY+H3NdRYkLXIYwriJcD4cx3GUkEziaCcX87+r17hcZUZOdDifROV7p3+w8las/P5av0wYcosZV5/urx+MvAEjGVhq/NOIyOMhNVBCgZ0pprlTDPNwGIs8kIphurJHkBApHE6TpA8WSmhS6sqisF6hbXxM5W/L5fIC7Qc+FpoOZH3Xcl9OlvK1zNhzwCfE1vyF4o9PYvVxe2Fp9XErtFc9G8nhisoH8ahy+GWxXCzfoe0aFO/ESlSWHszekkCnRVRokT9W2/nCrng43vvwZXHn7txNYyJ7FSYKTdHUjjTPkD2JPpIW9yY1AkUO1h5F6J3jIp68GxcTOkULsXG688alKNBaf58RqkDIFS/vXIsOa37NmIxLFFDlbsj2T9iiSE3wfc0erzefbibJChUtQALTMGXkLOK5k1DlTpoH7mNu3vu27Z1JR5Bn5MWyKGqTmn6/UL4tiKV9nJ7ANdP5mFp0ZxanPUTgqXufMTQ8NfM3Fpa5uBM9pKKzaBwXfwY1zCV5C9iZp2VIQvm0s5wWpXJeJnYSuPZYaRj2GOnPYMeRf3/tKRyhvN1JOGAwTH4uXm0iv+v5OvhGDD9dz7vJz+LlVvMPYcw/0XGiD2h7/gIJX+h4tnnxSvQ/UbxYcf4TnDmD426U0BBqCjk/0+FKKerSmdrF5cz9+3iprDcfNjcbGMe/AZE1uQY=
-sidebar_class_name: "delete api-method"
+sidebar_class_name: 'delete api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Delete a room"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Delete a room'}></Heading>
 
 <MethodEndpoint
-  method={"delete"}
-  path={"/api/agents/{agentId}/rooms/{roomId}"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'delete'}
+  path={'/api/agents/{agentId}/rooms/{roomId}'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Deletes a specific room
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"roomId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the room to delete"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+    {
+      name: 'roomId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the room to delete',
+    },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"204":{"description":"Room deleted successfully"},"400":{"description":"Invalid agent ID or room ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent or room not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error deleting room","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '204': { description: 'Room deleted successfully' },
+    '400': {
+      description: 'Invalid agent ID or room ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent or room not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error deleting room',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

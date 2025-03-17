@@ -1,71 +1,186 @@
 ---
 id: update-room
-title: "Update a room"
-description: "Updates a specific room"
-sidebar_label: "Update a room"
+title: 'Update a room'
+description: 'Updates a specific room'
+sidebar_label: 'Update a room'
 hide_title: true
 hide_table_of_contents: true
 api: eJztV01v4zYQ/SvEnFpAidx2e9HNTQLUQNEGSfaU+DAWRxZ3KVIhKTuu4P9eDCnZjr2bBNtFTuuLLWs+3rw3JIc9BFx6KO7BWdt4yACXZIKHeQaSfOlUG5Q1UMDHVmIgL1D4lkpVqVKwC2RgW3LIVjMJBXTR7ia9atFhQ4Ecp+jBYENQpBQzCRkojtxiqCEDR4+dciShCK6jDHxZU4NQ9BA2Lbv54JRZQgaVdQ0GztUpCdtjpLNLYSsRahIxEWyzXWZG/B6JOY8IViQyYDtPWciHP6zccOjjpKU1gcEWPWDbalVGRvNPniP3p5js4hOVgSl2zH9Q5PltqvMU+XOgf9NasKWorNvhhW38MFLfWuNTwF8nE/567s/qDrVJ4buyJO+rTusNfLdChqgHhgtrNaGBDOgJm1ZToo5VwPCGiEq+LulJ0xv12JFQkkxQlSJ3xFj2VsKZ7IPeYE9vO1e+wfc22h17r63TcvYNJe2bNIYQoVY+9euCtDVLL4LlBFzxSN2QAZ1DllgFavz3IfyrDMZOfI78akAklNmjBrYLKnA7xL7ctfGHL3XuzKxQK5l2BsFcuFT87PKde7dC7bl5yTnrXo9ZWvmGXrniYCLabjNoyHtcvtltNI/EB1Tav+55GQ1JiliGUCbJyy+TCqM0MQWMynw4VWYaFRnlMDaIynZG/lDlvVT5/UvrJWGIW70yy/HE/6HIOygSgYXayjSplHWcp0INBeTYqjwNank/TFPbPE5weZ9mnC1k4MmtxtGrcxoKqENoizzXtkRdWx+K3yaTyQnYv/i1kLQibduGl2WKFOcYFvlmP8tcjTrtZqxxA+chq7KRmrE2rf5F8c+tmF7PTpJOr2dC2rLjfJGYeNTuXFa/nE/OJ2eo2xrFmZiKStOTWmgSaKTwJWrkh+ls2NorHjzX1n0+fzAP5o6PC86gvJDk1dKQ5PlsQaLzJMVahVqgiLzojXCdMdzuKbsyPqAp6VxcGdlaZYIXqLVdR4Slo7g2sgfToMEl/4yYlAnksIzrJsYfsXkRame7JWe8ubq9S5YVlnQOGbBiiZGDioc1h2U4IHrHzYVtms6owGfzXmdf5PlShbpbnJe2yYmtrU/f8dRsrQ8NmoOIacYXOK7zZwr1+2X/wmVgWAaBnkLealSGGyGC6ofuvQds1f6ikUGxvw+Ml5BiGNTnGXCbslPfL9DTR6e3W/77sSO3geJ+nsEKnWLxY59L5fm3HDaOF2r46WYYwX8WxzeGr5QxjkGGiV6h7vgJMvhMm4NbDV83/ieKo+vDN8EZGNzOtxnUhJJc5Ce9vEj5z+44xN75ZDPnWpLHtCypDS/azg82rOvp3cWfkMFiuO40cVsGh2tWGdcJqY2ExO0z/teDRrPs4l4MKSh//gOqUAzu
-sidebar_class_name: "patch api-method"
+sidebar_class_name: 'patch api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Update a room"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Update a room'}></Heading>
 
 <MethodEndpoint
-  method={"patch"}
-  path={"/api/agents/{agentId}/rooms/{roomId}"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'patch'}
+  path={'/api/agents/{agentId}/rooms/{roomId}'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Updates a specific room
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"roomId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the room to update"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+    {
+      name: 'roomId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the room to update',
+    },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"name":{"type":"string","description":"New name for the room"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: { name: { type: 'string', description: 'New name for the room' } },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Room updated successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the room"},"name":{"type":"string","description":"Name of the room"},"source":{"type":"string","description":"Source of the room"},"worldId":{"type":"string","format":"uuid","description":"ID of the world this room belongs to"},"entities":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"}}},"description":"Entities in this room"}},"title":"Room"}}}}}},"400":{"description":"Invalid agent ID or room ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent or room not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error updating room","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Room updated successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'Unique identifier for the room',
+                  },
+                  name: { type: 'string', description: 'Name of the room' },
+                  source: { type: 'string', description: 'Source of the room' },
+                  worldId: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'ID of the world this room belongs to',
+                  },
+                  entities: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string', format: 'uuid' },
+                        name: { type: 'string' },
+                      },
+                    },
+                    description: 'Entities in this room',
+                  },
+                },
+                title: 'Room',
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID or room ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent or room not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error updating room',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

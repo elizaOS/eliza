@@ -1,63 +1,97 @@
 ---
 id: list-agents
-title: "List all agents"
-description: "Returns a list of all available agents"
-sidebar_label: "List all agents"
+title: 'List all agents'
+description: 'Returns a list of all available agents'
+sidebar_label: 'List all agents'
 hide_title: true
 hide_table_of_contents: true
 api: eJzFVcFu3DgM/RWBZ3c828VefBt0g2KAolu06SnJgSPTNltZciV6ktmB/31BeZzMJAGa2/pi2Xp8JMVH6giCbYLqBrAlLwnuCqgp2ciDcPBQwVeSMfpk0DhOYkJj0DmDe2SHO0fmZFdAGCiiGm1rqEDBm2UrUhqCT5SgOsL79Vpfl14+LdyLiQ1eyIsicRgc20xd/kgKP0KyHfWoKzkMBBWE3Q+yAgUMUQMRnp2l0VpK6Qy4C8EReiiAHrAfHEElcaSpgBrlDYynCJ9wGCMeoAAW6tPv7bk+wySJ7FsooAmxR4EKxpFreF6D755/jWS4Ji/cMEXThGikO50+TAV47Ok14kuiz9iTHvOFaRKUMb1mTH7sszas8J40R39avpDJhzFG8mJmsmc+pgKERY8asia2vgkwLU8Bf70miasYQzSRJDLt2bf/jzYadEnFQRrN7zltqN9Qhjm1jJ0K6CklbN9stsBVsSTI7tXSXVr+nYFUm5yGYT/rTTfnCizlyS7gVJaepAvazC3lTFE6qKDEgcvHWiSKe4o6QY4wRgcVdCJDVZYuWHRdSFL9uV6vX0T0SbdNTXtyYeizcjITTHcqsybkpJaoHP+L5p9vZvNl+4Jp82Vr6mBHJckp5eZ4NNn/sVqv1u/QDR2ad2ZjGkcPnCeXr02yOI+xzXbWl2ki9nQf4s/Vrb/11x0n9Wo4mZoSt55qI8HsyIyJanPP0ulo1GzcwcTRe5Xq7J19EvSWVubK10NgL0mHZ7jPEdpIKOzb4tb36LHVZY6JvVDUPvPtzL/Elox0MYytevx69e16RjZoaQUFaBnmEznL+NQtaHO3zEPi6Tg/hL4fPYuOr6fipaosW5Zu3K1s6EtSdEjzO/fyEJL06M8Y8/jO98Kii4saHZ9a9u33yUnRQg9SDg7Zq+JzlMeTFG8AB4bi7OpSven/43GHib5HN036+9dI8QDVzV0Be4ysfvRrKqAjrClm9f6kg6rJWhpU7Xt0Yx7vzyeMCvSxMz5eXcM0/Qf+goQE
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"List all agents"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'List all agents'}></Heading>
 
-<MethodEndpoint
-  method={"get"}
-  path={"/api/agents"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+<MethodEndpoint method={'get'} path={'/api/agents'} context={'endpoint'}></MethodEndpoint>
 
 Returns a list of all available agents
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"List of agents","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"agents":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the agent"},"name":{"type":"string","description":"Name of the agent"},"status":{"type":"string","enum":["active","inactive"],"description":"Current status of the agent"}},"title":"AgentInfo"}}}}}}}}},"500":{"description":"Error retrieving agents","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'List of agents',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  agents: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        id: {
+                          type: 'string',
+                          format: 'uuid',
+                          description: 'Unique identifier for the agent',
+                        },
+                        name: { type: 'string', description: 'Name of the agent' },
+                        status: {
+                          type: 'string',
+                          enum: ['active', 'inactive'],
+                          description: 'Current status of the agent',
+                        },
+                      },
+                      title: 'AgentInfo',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error retrieving agents',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

@@ -1245,66 +1245,66 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /api/agents/{agentId}/audio-messages:
-      post:
-        tags:
-          - speech
-          - agents
-        summary: Send an audio message
-        description: Sends an audio message to an agent for processing
-        operationId: sendAudioMessage
-        parameters:
-          - name: agentId
-            in: path
-            required: true
-            schema:
-              type: string
-              format: uuid
-            description: ID of the agent
-        requestBody:
+    post:
+      tags:
+        - speech
+        - agents
+      summary: Send an audio message
+      description: Sends an audio message to an agent for processing
+      operationId: sendAudioMessage
+      parameters:
+        - name: agentId
+          in: path
           required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID of the agent
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file
+      responses:
+        '201':
+          description: Audio message processed successfully
           content:
-            multipart/form-data:
+            application/json:
               schema:
                 type: object
                 properties:
-                  file:
-                    type: string
-                    format: binary
-                    description: Audio file
-        responses:
-          '201':
-            description: Audio message processed successfully
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    success:
-                      type: boolean
-                      example: true
-                    data:
-                      type: object
-                      properties:
-                        message:
-                          $ref: '#/components/schemas/Content'
-          '400':
-            description: Invalid agent ID or missing audio file
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/Error'
-          '404':
-            description: Agent not found
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/Error'
-          '500':
-            description: Error processing audio
-            content:
-              application/json:
-                schema:
-                  $ref: '#/components/schemas/Error'
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        $ref: '#/components/schemas/Content'
+        '400':
+          description: Invalid agent ID or missing audio file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Error processing audio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/agents/{agentId}/audio-messages/synthesize:
     post:

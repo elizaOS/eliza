@@ -1,71 +1,156 @@
 ---
 id: transcribe-audio
-title: "Transcribe audio to text"
-description: "Transcribes an audio file to text"
-sidebar_label: "Transcribe audio to text"
+title: 'Transcribe audio to text'
+description: 'Transcribes an audio file to text'
+sidebar_label: 'Transcribe audio to text'
 hide_title: true
 hide_table_of_contents: true
 api: eJztVktz2zgM/iscnHZnFMvb7V50c9scPNOZZprsKfEBJmGJLUWyJOXE69F/3wElP2K7aU451ReLEh4fgA8EtpCwjlDdQ/REsoECsCabIiwKUBRl0D5pZ6GCu4CWz0uKAq3ATmknVtqQSE4kekpQgPMUkOXnCipIe40ZC0MBHgO2lCiwyy1YbAmqweNcQQGaHXlMjCPQj04HUlCl0FEBUTbUIlRbSBvPajEFbWsoYOVCiwkq6DqtoD8FPv8k3EqkhkR2BP1iME4xfXBqwxZPfUlnE4tWW2g7k7THkEp2c6UwZQxnaNzyG0nOgQ+chaQp8ldO0IuYl9pi2MAp6Nnz9O4zCX3+cQTROxsHL++mU/67XLB8FoFiZxjfUWzovdEyF6z8Flnp9YHFTkqK8Uhw6ZwhtFAAPWHrOW7OJtdjTNrLFjOHLqTqZzRUA+v6fpeS95eyMLdrNFoNtRfMhSBaHaO29RGH3zgvKzSRE0MhuPBrm9KpiyR6Huk1GxNZti+gpRixfrXaTjx3T0Jt4q81P2VBUiKHIbQdSM0fh4IknTjawQXsivT+vEizXBzrkli5zqrf1XiravxzqWUGDPs7Z98pv8vyNmXJwFLjeIZ6F3OoPBMrKNHrchjQ5XYcm32Zji/6CAVECuvdjO2CgQqalHxVlsZJNI2Lqfp7Op2eYf3Mn4WiNRnnW27JwVIemYw8h7vDa/R/KL7citnN/Hx83cyFcrJjIzlYsXJB7FXWf02mk+kVGt+guBIzsTL0pJeGBFolokSDfJjNx2t7xWvDowvfJw/2wd41OrJXoaNQFHVteRY4sSTRRVLiUadGoMjBmo0InbXM4cG7tjGhlTQR11Z5p22KAo1xjxmhDIRJ27p4sC1arPkxY9I2UUDJ3wb7O2xRpCa4rmaPX69v7wbJFUqaQAFchiEjRxGPfYQy99G4BO1z89G1bWd14p3gULxYlWWtU9MtJ9K1JbG0i8M/MGOYKC3aI4uHSTkOusOe9qxY20NXv2rJG/nOp9Ib1Jb7ISPdjjy9B/T6sEoWUB1WvBOyLgpgPrLOdrvESP8G0/f8+kdHYQPV/aKANQbNhMiEVjrysxoviBeC+ePruNb9KU53wJ9EMb5Ey8lfo+n4BAV8p83Rntov+gIaQkUhIxq+fhz8Xt2xjYP2pf2xL3ZKMynJpyPxs1uVW29/G9x8ub2DApbj2trmKy/vktlucXis7hd93/8P+u8gqg==
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Transcribe audio to text"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Transcribe audio to text'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/agents/{agentId}/transcriptions"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/agents/{agentId}/transcriptions'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Transcribes an audio file to text
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"multipart/form-data":{"schema":{"type":"object","properties":{"file":{"type":"string","format":"binary","description":"Audio file to transcribe"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'multipart/form-data': {
+        schema: {
+          type: 'object',
+          properties: {
+            file: { type: 'string', format: 'binary', description: 'Audio file to transcribe' },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Transcription result","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"text":{"type":"string","description":"Transcribed text"}}}}}}}},"400":{"description":"Invalid agent ID or missing audio file","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error transcribing audio","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Transcription result',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: { text: { type: 'string', description: 'Transcribed text' } },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID or missing audio file',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error transcribing audio',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

@@ -1,71 +1,128 @@
 ---
 id: get-tee-agent
-title: "Get TEE agent details"
-description: "Gets details about a specific TEE agent with attestation"
-sidebar_label: "Get TEE agent details"
+title: 'Get TEE agent details'
+description: 'Gets details about a specific TEE agent with attestation'
+sidebar_label: 'Get TEE agent details'
 hide_title: true
 hide_table_of_contents: true
 api: eJztVk2P2zYQ/SvEnFqAsdw2vehmJMbCQNEGiXPa9WFMjiQmFKklR97dGvrvBSl57djeboAWPVUXSeTMmzef5B4Y6wjlLTARbCRoiiqYjo13UMINcRSaGI2NAre+Z4EidqRMZZRYL5cCa3IsHgw3ApkpMmZVCb6jkL9XGkqoiddEiyQMEjoM2BJTSJb34LAlKCFDrTRIMMl2h9yAhED3vQmkoeTQk4SoGmoRyj3wU5fUIgfjapBQ+dAiQwl9bzQM576s3gtfCW7oyBuGTTIQO+8ixYT583yeXt9qHv08hOKKv8o7TpDlHrDrrFF5o/gSE8T+krbffiGVgxFSqNiMBEZer4oZ/XoEzgPw2Zn7noTR5NhUhoKofDgPiJyycQn+Ldjv2NKVeEo4jcoVN65E9qggNDLCMEhgwzbpPRfNi8gv8DtDhiE/Et7O314mOJsQzrOofO/0v5fN2CtFMZ4Ibr23hKlg6BHbLjlZoY00SKAQfHgdU3n9HflZJjCRZQcJLcWI9XerHcRzD+WKf13zfRYkLbIbwrixGA+xP6Y0m5jWfr3WbiOHQBwM7YyrT+rr/8T8J4nJxLjx0+TOE5sbKKHAzhRMVOR0xGI/zewBJEQKu8NE74OFEhrmriwK6xXaxkcuf5nP5xf8fkvbQtOOrO/a1IgjUh7OiW128cDRmj9R/PFJLD6sLpAWH1ZCe9UnkHGepAH3rLL7aTafzd+g7RoUb8RCVJYezdaSQKdFVGgx/SxW07Cv0iH14MPX2Z27c+vGxGRVmHQiRlM70oK92JLoI+npSBDZWfskQu9cqt3RunGR0SmaiaXTnTeOo0Br/UNmqAIhG1fLO9eiwzp9Zk7GMQVUaW/EP3CLgpvg+zpZ/Lj8tB4lK1Q0AwkpDWNETjyeegdV7p3pyH2OzTvftr0z/ATyJHmxLIracNNvZ8q3BSVpH8d3HtOdj9yiO0G8IRYX5+V5pvbHNv4nV4yp7pkeuegsGpf6IrPfTwV7C9iZJEkEcjxbE5nycNXYSEiFmQT3+y1G+hzsMKTl+57CE5S3Gwk7DCZVRq5sbWL61tN0+BvHfvg43Vx+FNeuHi/QnxbRpUzs0PbpDyR8paeTK9KwGSQ0hJpCZjXuLpSijk/0LiZkaqnnzr5ZrmEY/gLOVXMX
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Get TEE agent details"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Get TEE agent details'}></Heading>
 
 <MethodEndpoint
-  method={"get"}
-  path={"/api/tee/agents/{agentId}"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'get'}
+  path={'/api/tee/agents/{agentId}'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Gets details about a specific TEE agent with attestation
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the TEE agent"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the TEE agent',
+    },
+  ]}
+></ParamsDetails>
 
-<RequestSchema
-  title={"Body"}
-  body={undefined}
->
-  
-</RequestSchema>
+<RequestSchema title={'Body'} body={undefined}></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"TEE agent details with attestation","content":{"application/json":{"schema":{"type":"object","properties":{"agent":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the TEE agent"},"name":{"type":"string","description":"Name of the TEE agent"},"attestation":{"type":"object","description":"TEE attestation data"}},"title":"TeeAgent"},"attestation":{"type":"string","description":"TEE attestation"}}}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error retrieving TEE agent","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'TEE agent details with attestation',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              agent: {
+                type: 'object',
+                properties: {
+                  id: {
+                    type: 'string',
+                    format: 'uuid',
+                    description: 'Unique identifier for the TEE agent',
+                  },
+                  name: { type: 'string', description: 'Name of the TEE agent' },
+                  attestation: { type: 'object', description: 'TEE attestation data' },
+                },
+                title: 'TeeAgent',
+              },
+              attestation: { type: 'string', description: 'TEE attestation' },
+            },
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error retrieving TEE agent',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

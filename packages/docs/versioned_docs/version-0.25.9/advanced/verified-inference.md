@@ -58,7 +58,8 @@ To verify the code running inside the TEE, use instructions [from here](https://
     ```
 
 5.  **Get the history of all of your verified inference calls**
-    ```javascript
+
+    ````javascript
     const url = 'https://api.galadriel.com/v1/verified/chat/completions?limit=100&filter=mine';
     const headers = {
     'accept': 'application/json',
@@ -73,6 +74,8 @@ To verify the code running inside the TEE, use instructions [from here](https://
         Use this to build a verified logs terminal to your agent front end, for example:
 
     ![](https://i.imgur.com/yejIlao.png)
+
+    ````
 
 6.  **Check your inferences in the explorer.**
 

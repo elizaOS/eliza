@@ -1,71 +1,207 @@
 ---
 id: update-memory
-title: "Update a memory"
-description: "Updates a specific memory for an agent"
-sidebar_label: "Update a memory"
+title: 'Update a memory'
+description: 'Updates a specific memory for an agent'
+sidebar_label: 'Update a memory'
 hide_title: true
 hide_table_of_contents: true
 api: eJztWN9v2zYQ/leIe9kGyLHbJO6mN68NMAMbVqTpU+qHs3SS2EqkSlJxUkP/+3CkZCmxl3hLkacaBmxJ94v3HU/fcQsOcwvxNVRUaSPJQgSYk3IWVhGkZBMjaye1ghg+1ik6sgKFrSmRmUyE17oTmTYClfCKEIGuySArLVOIofFqf3lJiKBGgxU5Mux2Cworgjj4XKYQgWRXNboCIjD0tZGGUoidaSgCmxRUIcRbcHc1q1lnpMohgkybCh17a2QK7cPQl++EzoQrqIuxjXaewxJewnWXLKdFSAm0q+CHrPtdp3ds/KHbRCvHAcdbwLouZeLzOv1s2fZ2Pyq9/kwJY1AbRsExovEWZPp05HtwK/m1ISFTUk5mkoyHeVgIL5UfOU7ef7Y+pCXYEGitTiQ6SsVGukK4QtqRp75AnuHIm3jKj9G6ep4btjC2KtZUapVb4TQ7SAyx84Ub+ZDKUU5m7EQqNz87hMmtcLIi67CqxaYgNS6tDVrR2feuhuJ5vDwc3bpDS77v/IpunehsDjVtLebE3lyhm7w4ws6CcfjJCl61UViKTlPURidkLRurS1THW2JpoY0whFYrluSKSVjKjqygMcgtSDqq7L71va27CBZGxbNB5RhI4fCLX7TVjUno6Ug/eLkDWZPqkury7ko/p+Q6e6Hq+KuEYau+5Bga6Uo2/LYriPG9rjG3Ld80ZGutbKiK17MZ/9x3GsS7DpYK2yQMWdaUJWf2O7WrzupIcK11SaggArrFqubIuUEyZOi+UwNsI+iBOSC78/toCtruE8HZoewt1Q2WMu2qiQE0/d5dvnvh/GVYWk4gGaPN0zYTnR5R5xdsTHjZx9N5SG20LVJyKMsDm/Sh5jsvSKnwyxBSBUz5YcChr3PvAnpszvax8c1kBIjSTmS6UekPXF4Kl/NDeybE4HebVHn/qv6ByYtg4gNzhU4DM04Kz+BdATFMsZbTMCtMtx09a6f9HDHd9sS6hQgsmZue8TemhBgK5+p4Oi11gmWhrYtPZ7PZXsR/8mOR0g2Vuq54fwZLnjoz0pcDfb7owQrdHk4z/PU8m59Nzt+8ejM5O5+/nqxPs2TyOvltfprN55jhHMYU9liNHRU9VqHnlMfKjyji7D6L8zxtgHdHuYZbgTgN1zsWdN3fWw2sZRAb0ZDjomw9d8kCbenLppTfUPz9QSzeL/e52vulSHXSMIq+5vw4sVO5eXUyO5lNsKwLFBOxEFlJt3JdkkCVCptgiXyxWHbvzoynyI02X04+qU/qiokPe5BWpGRlrihlmrYm0die6aPw1VbeCdMoZomdd6msQ5XQibhQaa0lUzwsS73xEXowpMqjT6pChTn/9TF5+srpVXmw38fGhNEwMALF5cWHqyCZYUInEAHvg5CR0Yq7doaJh7mbTHe5eaurqlHScdcbdo+Np9NcuqJZnyS6mhJLaxt+PTy1tq4KNLqzGCZ4gUMTvYfRdqi144f9ruVwaU7rEqXiluSj3Had4hqwlsO5QgTxMO2Pjh3i3SS+ioBbAmtut2u09NGUbcu3vzZk7iC+XkVwg0ZySfiekkrL/9OuUz+yrp8vuwn7F/HwUOBf1tIPD4rzdYNlw1cQwRe6Gx1c8InCM6PYOx/4XwHtstiu2ggKwpSMz1F43I0Akys2MqjvvUF5PUFjkSRUu0dlV6O3xPvF1ds/IIJ1d6JR+XchGNxwJ8RNiFXXu+HM39tCiSpv/AsQglH+/ANoN1+a
-sidebar_class_name: "patch api-method"
+sidebar_class_name: 'patch api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Update a memory"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Update a memory'}></Heading>
 
 <MethodEndpoint
-  method={"patch"}
-  path={"/api/agents/{agentId}/memories/{memoryId}"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'patch'}
+  path={'/api/agents/{agentId}/memories/{memoryId}'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Updates a specific memory for an agent
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"},{"name":"memoryId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the memory to update"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+    {
+      name: 'memoryId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the memory to update',
+    },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the memory"},"entityId":{"type":"string","format":"uuid","description":"ID of the entity associated with this memory"},"agentId":{"type":"string","format":"uuid","description":"ID of the agent associated with this memory"},"roomId":{"type":"string","format":"uuid","description":"ID of the room this memory belongs to"},"createdAt":{"type":"integer","format":"int64","description":"Unix timestamp when the memory was created"},"content":{"type":"object","properties":{"text":{"type":"string","description":"Text content of the message"},"thought":{"type":"string","description":"Agent's internal thought process"},"plan":{"type":"string","description":"Agent's plan or reasoning"},"actions":{"type":"array","items":{"type":"string"},"description":"Actions the agent wants to take"},"source":{"type":"string","description":"Source of the message"},"inReplyTo":{"type":"string","format":"uuid","description":"ID of the message this is in reply to"}},"title":"Content"}},"title":"Memory"}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid', description: 'Unique identifier for the memory' },
+            entityId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the entity associated with this memory',
+            },
+            agentId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the agent associated with this memory',
+            },
+            roomId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID of the room this memory belongs to',
+            },
+            createdAt: {
+              type: 'integer',
+              format: 'int64',
+              description: 'Unix timestamp when the memory was created',
+            },
+            content: {
+              type: 'object',
+              properties: {
+                text: { type: 'string', description: 'Text content of the message' },
+                thought: { type: 'string', description: "Agent's internal thought process" },
+                plan: { type: 'string', description: "Agent's plan or reasoning" },
+                actions: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Actions the agent wants to take',
+                },
+                source: { type: 'string', description: 'Source of the message' },
+                inReplyTo: {
+                  type: 'string',
+                  format: 'uuid',
+                  description: 'ID of the message this is in reply to',
+                },
+              },
+              title: 'Content',
+            },
+          },
+          title: 'Memory',
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Memory updated successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"id":{"type":"string","format":"uuid"},"message":{"type":"string","example":"Memory updated successfully"}}}}}}}},"400":{"description":"Invalid agent ID or memory ID","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent or memory not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error updating memory","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Memory updated successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  message: { type: 'string', example: 'Memory updated successfully' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Invalid agent ID or memory ID',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent or memory not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error updating memory',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

@@ -1,71 +1,140 @@
 ---
 id: create-agent
-title: "Create a new agent"
-description: "Creates a new agent from character configuration"
-sidebar_label: "Create a new agent"
+title: 'Create a new agent'
+description: 'Creates a new agent from character configuration'
+sidebar_label: 'Create a new agent'
 hide_title: true
 hide_table_of_contents: true
 api: eJy9Vk1z2zYQ/SuYvfRCS0rbE29qooMzndgTOyfHhyWwJBGDAAyAllUN/3tnQdqSJU1j153qIonc77f7dreQsIlQ3gA2ZFOE2wIURRm0T9pZKOFjIEwUBQpLa5GlRB1cJ2SLAWWiIKSztW76gFmlAOdp/H2uoASZDSxZEQoIdN9TTH84tYFym//qQArKFHoqQDqbWLDcAnpvtMx25j8ix7KFKFvqkH+ljScowVU/SLJdH9hr0hT57XNsl5jaPfGYgrYNHObIUiI5gXtJ1doQDMXO1OcphkPPB+U6XRWhrfh8dfFF1C50mGDIHy5H9M7GMepfFx/466XBXDgxFlGJ2EtJMda9MRv4z8o1Wd0TrJwzhAwmPWLnDY0ADQUoTG8B4JToDvQbsNgRN91Lda1OgTbVroS+1+qo8t+svu9JaEU26VozhC6I1NIOVMYzO/xpR3zBjoSrj9Ur7X6ufdW6kESlXRPQt5uThiKlpG0T39BSZ9GT1LWW4lmZDW1iou4VQWU54YPrfDpdm5g2ht4Q0C9RSNd1vZ0aT4wGhgKMC/uGMATkftWJungc6nDoYfWYyCpSgu0ItEpUKO+a4HqrhLZjI7DoUEBHMWJDq7FP47u8ZhNishhzkXaMkAJqOykm57V8j6/rbOAlBEJHcWfd2pBqCCtDAivXJ1b2pm+0fY/Dy9GC6CMpUW0OweecdGL0d/BOLMXvfl8sjqlpFQIXiKlJ22bcDf8zKdVoIrMScSivoCWnXjH8U14su+uv16o9iWcAEmpzApxDzU9ZkJTIabxs8GEfmuwCJkw6Sq3jDetdzKnmXQdz9Ho+bXOmmfBAgTf8FvpgoIQ2JV/O58ZJNK2LqfxtsVgchfQnvxaKHsg43/EKGi3BcFsAQ/l1t8hXT2gcLd5dwodrlBPgPHNxnrIz+i8UF1dieXl+FNDy8lwoJ3uOZSQbns5nlYcPs8VscYbGtyjOxFLUhh51niGrRJRo8kAtz59PGOxo7cLd7Lv9bq9bHdkrT6CiqBtLig+CisZ5WevUChS5ZmYjQm+ZCCbv2saEVtJMrKzyTtsUBRrj1iN/TONRfLcdWmz4Z45J20RcEjaU7T/FxqwQXN+wx6+rq+tRskZJMyiA0RwrspfxNHUo89SNK25Xzo8jRyemi10PxHI+b3Rq+2omXTcnlnZx/M58wG3Vod2zON6C+6fgIUzb3fT/m8txGpNEj2nuDepM8Dnk7dTeN4BeQ7F3rnIP8/PttsJI34IZBn5831PYQHlzW8ADBs3o87+hgJZQ8WFys4U72nCgY8hn1+ydxU2fGfaQvIbiSWMpJfn0j7K3ewN6eXF1DQVU09HbZRaCgGs+hnANJeSrmbUzW+RnWzBomz5TD4w2+fM3S94XZg==
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Create a new agent"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Create a new agent'}></Heading>
 
-<MethodEndpoint
-  method={"post"}
-  path={"/api/agents"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+<MethodEndpoint method={'post'} path={'/api/agents'} context={'endpoint'}></MethodEndpoint>
 
 Creates a new agent from character configuration
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
-<ParamsDetails
-  parameters={undefined}
->
-  
-</ParamsDetails>
+<ParamsDetails parameters={undefined}></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"characterPath":{"type":"string","description":"Path to a character file"},"characterJson":{"type":"object","description":"Character configuration in JSON format"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: {
+            characterPath: { type: 'string', description: 'Path to a character file' },
+            characterJson: {
+              type: 'object',
+              description: 'Character configuration in JSON format',
+            },
+          },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"201":{"description":"Agent created successfully","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":true},"data":{"type":"object","properties":{"character":{"type":"object","required":["name"],"properties":{"id":{"type":"string","format":"uuid","description":"Unique identifier for the character"},"name":{"type":"string","description":"Name of the character"},"bio":{"type":"string","description":"Short biography of the character"},"settings":{"type":"object","description":"Character-specific settings"},"system":{"type":"string","description":"System prompt for the character"},"style":{"type":"object","description":"Character's communication style"},"lore":{"type":"array","items":{"type":"string"},"description":"Extended lore and background information"},"messageExamples":{"type":"array","items":{"type":"string"},"description":"Example messages for character training"},"topics":{"type":"array","items":{"type":"string"},"description":"Topics the character is knowledgeable about"},"plugins":{"type":"array","items":{"type":"string"},"description":"Plugins used by the character"}},"title":"Character"}}}}}}}},"400":{"description":"Error creating agent","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '201': {
+      description: 'Agent created successfully',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: {
+                type: 'object',
+                properties: {
+                  character: {
+                    type: 'object',
+                    required: ['name'],
+                    properties: {
+                      id: {
+                        type: 'string',
+                        format: 'uuid',
+                        description: 'Unique identifier for the character',
+                      },
+                      name: { type: 'string', description: 'Name of the character' },
+                      bio: { type: 'string', description: 'Short biography of the character' },
+                      settings: { type: 'object', description: 'Character-specific settings' },
+                      system: { type: 'string', description: 'System prompt for the character' },
+                      style: { type: 'object', description: "Character's communication style" },
+                      lore: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Extended lore and background information',
+                      },
+                      messageExamples: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Example messages for character training',
+                      },
+                      topics: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Topics the character is knowledgeable about',
+                      },
+                      plugins: {
+                        type: 'array',
+                        items: { type: 'string' },
+                        description: 'Plugins used by the character',
+                      },
+                    },
+                    title: 'Character',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '400': {
+      description: 'Error creating agent',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

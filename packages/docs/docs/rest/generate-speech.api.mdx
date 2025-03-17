@@ -1,71 +1,141 @@
 ---
 id: generate-speech
-title: "Generate speech from text"
+title: 'Generate speech from text'
 description: "Generates speech from text using the agent's voice"
-sidebar_label: "Generate speech from text"
+sidebar_label: 'Generate speech from text'
 hide_title: true
 hide_table_of_contents: true
 api: eJztVk1v4zYQ/SvEXNoCWstttxfd3N2gMFBggyQ9JTmMybHEXYrUkpQTV9B/L4aUbG/sNkXR9rS+WBKHM2/mzdcAEesA1T2Ejkg2UADWZGOAxwIUBel1F7WzUMEvZMljpCCyqNh614pIz1H0QdtaxIZEuvxNEDunJUEBruM72tm1ggrqScXtbKtDjy1F8gxhAIstQZURrBUUoNlwh5FlPX3utScFVfQ9FRBkQy1CNUDcd3wtRK9tDQVsnW8xQgV9rxWMLx1Zvxdue0QL42NWTiH+7NSeNb60JZ2NLFoNgF1ntEw+lR8DKxzOobjNR5KRHfQcgagppFN6jpcAf4nvjkManZDO7sinx4mcMf0YbeicDVnpD8sl/32pY9Ur7USInrAVTzo2Yo69EgemT71i+bLtqL7oz3loN9qi30PG8/YShLXdodEqB1lw0L1odcipwoH418IaeikphBPBjXOG0EIB9IxtZwiqLZpAYwHkvfOv65RO0etUXbEykWTHAloKAeu/fW0WTwkaUZvw+s33SZCUSG4IbTMhfJipiDqyt9nEgZ63FzIk0WJdFFvXW/WVjf+LjZ8uFUvGMNUoV8jFIv3Kyn/ESgIWG8dDqnMhucpTp4ISO13mkVgO02Aay8xOOfdUKCCQ381jrPcGKmhi7KqyNE6iaVyI1Y/L5fIM7K98LBTtyLiu5ZLMmtJUYpJvjpPpauZpniRzBEaelFuXDmbfjP4dxYdbsbpenxldXa+FcrJneykwYuu8OFzZfb9YLpZv0HQNijdiJbaGnvXGkECrRJBokF9W66m3b3mIPzn/afFgH+xdowNbFToIRUHXlhTPsA2JPpDK0whFiovZC99bywmfrWsbIlpJC3FlVee0jUGgMe4pIZSeUnUUD7ZFizU/JkzaRvIoU+Uk/TO2IGLjXV+zxZur27ssuUVJCyiAGcsROfF4qjmUqeamleQQm3eubXur4x6KE55DVZa1jk2/WUjXlsTSLuR/4OzipGrRnmic16mzbeolW8OxBfyzHWyqFpYqO4Pacr4k7MOU5feAnT6ufgVUxxXs0IgOyf5YAOczXxuGDQb6zZtx5M+fe/J7qO4fC9ih15wlqSCUDvyspg7zFw5+ezNtXt+Jl2vanzgyfUTLjOzQ9PwGBXyi/ckqOT6OBTSEinxClE/fZbtv7ljH8fZZnx2L+cZKSuriqexxceKKPXSR6w+3d1DAZloo29QqweMTb7L4lDG6FIHU0tK3AQzauk/9EbJl/v0BXlUJuQ==
-sidebar_class_name: "post api-method"
+sidebar_class_name: 'post api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import ParamsDetails from "@theme/ParamsDetails";
-import RequestSchema from "@theme/RequestSchema";
-import StatusCodes from "@theme/StatusCodes";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
-import Heading from "@theme/Heading";
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import ParamsDetails from '@theme/ParamsDetails';
+import RequestSchema from '@theme/RequestSchema';
+import StatusCodes from '@theme/StatusCodes';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
+import Heading from '@theme/Heading';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Generate speech from text"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Generate speech from text'}></Heading>
 
 <MethodEndpoint
-  method={"post"}
-  path={"/api/agents/{agentId}/speech/generate"}
-  context={"endpoint"}
->
-  
-</MethodEndpoint>
-
-
+  method={'post'}
+  path={'/api/agents/{agentId}/speech/generate'}
+  context={'endpoint'}
+></MethodEndpoint>
 
 Generates speech from text using the agent's voice
 
 <Heading
-  id={"request"}
-  as={"h2"}
-  className={"openapi-tabs__heading"}
-  children={"Request"}
->
-</Heading>
+  id={'request'}
+  as={'h2'}
+  className={'openapi-tabs__heading'}
+  children={'Request'}
+></Heading>
 
 <ParamsDetails
-  parameters={[{"name":"agentId","in":"path","required":true,"schema":{"type":"string","format":"uuid"},"description":"ID of the agent"}]}
->
-  
-</ParamsDetails>
+  parameters={[
+    {
+      name: 'agentId',
+      in: 'path',
+      required: true,
+      schema: { type: 'string', format: 'uuid' },
+      description: 'ID of the agent',
+    },
+  ]}
+></ParamsDetails>
 
 <RequestSchema
-  title={"Body"}
-  body={{"required":true,"content":{"application/json":{"schema":{"type":"object","properties":{"text":{"type":"string","description":"Text to convert to speech"}}}}}}}
->
-  
-</RequestSchema>
+  title={'Body'}
+  body={{
+    required: true,
+    content: {
+      'application/json': {
+        schema: {
+          type: 'object',
+          properties: { text: { type: 'string', description: 'Text to convert to speech' } },
+        },
+      },
+    },
+  }}
+></RequestSchema>
 
 <StatusCodes
   id={undefined}
   label={undefined}
-  responses={{"200":{"description":"Audio stream with generated speech","content":{"audio/mpeg":{"schema":{"type":"string","format":"binary"}}}},"400":{"description":"Invalid agent ID or missing text","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"404":{"description":"Agent not found","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}},"500":{"description":"Error generating speech","content":{"application/json":{"schema":{"type":"object","properties":{"success":{"type":"boolean","example":false},"error":{"type":"object","properties":{"code":{"type":"string","description":"Error code"},"message":{"type":"string","description":"Error message"},"details":{"type":"string","description":"Detailed error information"}}}},"title":"Error"}}}}}}
->
-  
-</StatusCodes>
-
-
-      
+  responses={{
+    '200': {
+      description: 'Audio stream with generated speech',
+      content: { 'audio/mpeg': { schema: { type: 'string', format: 'binary' } } },
+    },
+    '400': {
+      description: 'Invalid agent ID or missing text',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '404': {
+      description: 'Agent not found',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+    '500': {
+      description: 'Error generating speech',
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: false },
+              error: {
+                type: 'object',
+                properties: {
+                  code: { type: 'string', description: 'Error code' },
+                  message: { type: 'string', description: 'Error message' },
+                  details: { type: 'string', description: 'Detailed error information' },
+                },
+              },
+            },
+            title: 'Error',
+          },
+        },
+      },
+    },
+  }}
+></StatusCodes>

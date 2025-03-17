@@ -1,121 +1,72 @@
 ---
 id: get-hello
-title: "Hello world endpoint"
-description: "Simple hello world test endpoint"
-sidebar_label: "Hello world endpoint"
+title: 'Hello world endpoint'
+description: 'Simple hello world test endpoint'
+sidebar_label: 'Hello world endpoint'
 hide_title: true
 hide_table_of_contents: true
 api: eJyNk01v2zAMhv8Kx7MXBx12mG/BEKwBBqxYO+zQ5sDIjK1WljyJTpoZ/u8DbbdL1st80Rf18iX1uEehKmFxj51YZ8Vywm2GJScTbSs2eCzw1jatY6jZuQDHEF0JwkmAfdkG6wUzDC1H0vBNiQVWLNcajBlGTm3wiRMWPV4tlzpcql+fyb5EY4YmeGEvGk9t66wZ5fPHpJd6TKbmhnQmp5axwLB7ZKNW2qhmxkqKHhtOiSo+C0wSra8wQ34mrevVwk+18A6H6cuwYanDXI7qktRYYF7PlSWOB47aux676LDAWqQt8twFQ64OSYoPy+US/+3mVz2Gkg/sQtuwF5iUcNhmaP0+jF6tjM7Wzv4m+HYLq5vNG6XVzQbKYDoVGbsD+xDh9cp7WMHe8bPdOQbyJSRDjnSx2gBVmnkfqeFjiE+LB//g72qbNBHYBCUnW3kuQQLsGLrEJRyt1EAw1udOEDvvra/mhNYnIW94AesZiwTkXDiOpkxkEuurDB58Q56qca6mrBeOZPRwSvBiLoHUMXSVpvy+vr2bIvdkeIEZauunLiwXVx8Xn2ZiyIzEeGouuvc5NE3nrZwwO3urVOR5ZaXudgsTmpw1OqRpRCWgDUka8meK57Ce4X/xLv1fdv/n15mxFH6WvHVkPQ6zyX5m7h4n5rYZKla60fc7SvwjumHQ7V8dxxMW99sMDxStPrKuhgxrppLjCOkTnxQaY7jVvAdynSZ+83cph6/sf1nf4TD8ATfPb64=
-sidebar_class_name: "get api-method"
+sidebar_class_name: 'get api-method'
 info_path: docs/rest/eliza-os-api
 custom_edit_url: null
 ---
 
-import ApiTabs from "@theme/ApiTabs";
-import DiscriminatorTabs from "@theme/DiscriminatorTabs";
-import MethodEndpoint from "@theme/ApiExplorer/MethodEndpoint";
-import SecuritySchemes from "@theme/ApiExplorer/SecuritySchemes";
-import MimeTabs from "@theme/MimeTabs";
-import ParamsItem from "@theme/ParamsItem";
-import ResponseSamples from "@theme/ResponseSamples";
-import SchemaItem from "@theme/SchemaItem";
-import SchemaTabs from "@theme/SchemaTabs";
-import Heading from "@theme/Heading";
-import OperationTabs from "@theme/OperationTabs";
-import TabItem from "@theme/TabItem";
+import ApiTabs from '@theme/ApiTabs';
+import DiscriminatorTabs from '@theme/DiscriminatorTabs';
+import MethodEndpoint from '@theme/ApiExplorer/MethodEndpoint';
+import SecuritySchemes from '@theme/ApiExplorer/SecuritySchemes';
+import MimeTabs from '@theme/MimeTabs';
+import ParamsItem from '@theme/ParamsItem';
+import ResponseSamples from '@theme/ResponseSamples';
+import SchemaItem from '@theme/SchemaItem';
+import SchemaTabs from '@theme/SchemaTabs';
+import Heading from '@theme/Heading';
+import OperationTabs from '@theme/OperationTabs';
+import TabItem from '@theme/TabItem';
 
-<Heading
-  as={"h1"}
-  className={"openapi__heading"}
-  children={"Hello world endpoint"}
->
-</Heading>
+<Heading as={'h1'} className={'openapi__heading'} children={'Hello world endpoint'}></Heading>
 
-<MethodEndpoint
-  method={"get"}
-  path={"/hello"}
->
-  
-</MethodEndpoint>
-
-
+<MethodEndpoint method={'get'} path={'/hello'}></MethodEndpoint>
 
 Simple hello world test endpoint
 
 <div>
   <div>
-    <ApiTabs
-      label={undefined}
-      id={undefined}
-    >
-      <TabItem
-        label={"200"}
-        value={"200"}
-      >
+    <ApiTabs label={undefined} id={undefined}>
+      <TabItem label={'200'} value={'200'}>
+        <div>Hello world response</div>
         <div>
-          
-          
-          Hello world response
-          
-          
-        </div><div>
-          <MimeTabs
-            className={"openapi-tabs__mime"}
-            schemaType={"response"}
-          >
-            <TabItem
-              label={"application/json"}
-              value={"application/json"}
-            >
-              <SchemaTabs
-                className={"openapi-tabs__schema"}
-              >
-                <TabItem
-                  label={"Schema"}
-                  value={"Schema"}
-                >
+          <MimeTabs className={'openapi-tabs__mime'} schemaType={'response'}>
+            <TabItem label={'application/json'} value={'application/json'}>
+              <SchemaTabs className={'openapi-tabs__schema'}>
+                <TabItem label={'Schema'} value={'Schema'}>
                   <details
                     style={{}}
-                    className={"openapi-markdown__details response"}
+                    className={'openapi-markdown__details response'}
                     data-collapsed={false}
                     open={true}
                   >
-                    <summary
-                      style={{}}
-                      className={"openapi-markdown__details-summary-response"}
-                    >
-                      <strong>
-                        Schema
-                      </strong>
-                    </summary><div
-                      style={{"textAlign":"left","marginLeft":"1rem"}}
-                    >
-                      
-                    </div><ul
-                      style={{"marginLeft":"1rem"}}
-                    >
+                    <summary style={{}} className={'openapi-markdown__details-summary-response'}>
+                      <strong>Schema</strong>
+                    </summary>
+                    <div style={{ textAlign: 'left', marginLeft: '1rem' }}></div>
+                    <ul style={{ marginLeft: '1rem' }}>
                       <SchemaItem
                         collapsible={false}
-                        name={"message"}
+                        name={'message'}
                         required={false}
-                        schemaName={"string"}
+                        schemaName={'string'}
                         qualifierMessage={undefined}
-                        schema={{"type":"string","example":"Hello World!"}}
-                      >
-                        
-                      </SchemaItem>
+                        schema={{ type: 'string', example: 'Hello World!' }}
+                      ></SchemaItem>
                     </ul>
                   </details>
-                </TabItem><TabItem
-                  label={"Example (from schema)"}
-                  value={"Example (from schema)"}
-                >
+                </TabItem>
+                <TabItem label={'Example (from schema)'} value={'Example (from schema)'}>
                   <ResponseSamples
-                    responseExample={"{\n  \"message\": \"Hello World!\"\n}"}
-                    language={"json"}
-                  >
-                    
-                  </ResponseSamples>
+                    responseExample={'{\n  "message": "Hello World!"\n}'}
+                    language={'json'}
+                  ></ResponseSamples>
                 </TabItem>
               </SchemaTabs>
             </TabItem>
@@ -125,4 +76,3 @@ Simple hello world test endpoint
     </ApiTabs>
   </div>
 </div>
-      
