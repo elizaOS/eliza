@@ -6,6 +6,7 @@ import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
 import { ChannelType, MemoryType, ModelType } from './types';
+
 // Import types with the 'type' keyword
 import type {
   Action,
@@ -65,26 +66,6 @@ interface NamespacedSettings {
  */
 let environmentSettings: Settings = {};
 
-// Use a self-executing function to load dotenv synchronously in Node.js environments
-// This way we avoid top-level await and have immediate access to environment variables
-const dotenvLoader = (() => {
-  // Skip in browser environments
-  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-    return { config: () => ({ error: null }) };
-  }
-
-  try {
-    // Direct import/require works in CommonJS
-    // In ESM, this will be transformed appropriately by bundlers/transpilers
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    return typeof require !== 'undefined' ? require('dotenv') : { config: () => ({ error: null }) };
-  } catch (e) {
-    logger.warn('Could not load dotenv module:', e);
-    // Return a mock implementation if loading fails
-    return { config: () => ({ error: null }) };
-  }
-})();
-
 /**
  * Loads environment variables from the nearest .env file in Node.js
  * or returns configured settings in browser
@@ -94,6 +75,18 @@ export function loadEnvConfig(): Settings {
   // For browser environments, return the configured settings
   if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
     return environmentSettings;
+  }
+
+  // Only import dotenv in Node.js environment
+  let dotenv = null;
+  try {
+    // This code block will only execute in Node.js environments
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      dotenv = require('dotenv');
+    }
+  } catch (err) {
+    // Silently fail if require is not available (e.g., in browser environments)
+    logger.debug('dotenv module not available');
   }
 
   function findNearestEnvFile(startDir = process.cwd()) {
@@ -121,9 +114,11 @@ export function loadEnvConfig(): Settings {
 
   // Load the .env file into process.env synchronously
   try {
-    const result = dotenvLoader.config(envPath ? { path: envPath } : {});
-    if (!result.error && envPath) {
-      logger.log(`Loaded .env file from: ${envPath}`);
+    if (dotenv) {
+      const result = dotenv.config(envPath ? { path: envPath } : {});
+      if (!result.error && envPath) {
+        logger.log(`Loaded .env file from: ${envPath}`);
+      }
     }
   } catch (err) {
     logger.warn('Failed to load .env file:', err);
@@ -1235,7 +1230,7 @@ export class AgentRuntime implements IAgentRuntime {
         const start = Date.now();
         const result = await provider.get(this, message, cachedState);
         const duration = Date.now() - start;
-        this.runtimeLogger.warn(`${provider.name} Provider took ${duration}ms to respond`);
+        this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
         return {
           ...result,
           providerName: provider.name,

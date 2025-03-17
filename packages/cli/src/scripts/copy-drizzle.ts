@@ -14,12 +14,8 @@ const DRIZZLE_DIR = path.resolve(ROOT_DIR, 'packages/plugin-sql/drizzle');
 
 async function main() {
   try {
-    // create the drizzle directory if it doesn't exist
     await fs.ensureDir(CLI_DIR);
-
     await fs.copy(DRIZZLE_DIR, CLI_DIR);
-
-    console.log('Drizzle successfully copied to packages/cli');
   } catch (error) {
     console.error('Error copying templates:', error);
     process.exit(1);

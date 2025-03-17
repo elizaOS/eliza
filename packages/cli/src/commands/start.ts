@@ -21,6 +21,7 @@ import { displayConfigStatus, loadConfig, saveConfig } from '../utils/config-man
 import { promptForEnvVars } from '../utils/env-prompt.js';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
+import { displayBanner } from '../displayBanner';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -250,30 +251,6 @@ async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
   await runtime.close();
   server.unregisterAgent(runtime.agentId);
 }
-
-/**
- * Check if a port is available for listening.
- *
- * @param {number} port - The port number to check availability for.
- * @returns {Promise<boolean>} A Promise that resolves to true if the port is available, and false if it is not.
- */
-const checkPortAvailable = (port: number): Promise<boolean> => {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EADDRINUSE') {
-        resolve(false);
-      }
-    });
-
-    server.once('listening', () => {
-      server.close();
-      resolve(true);
-    });
-
-    server.listen(port);
-  });
-};
 
 /**
  * Function that starts the agents.
@@ -600,6 +577,7 @@ export const start = new Command()
   .option('--character <character>', 'Path or URL to character file to use instead of default')
   .option('--build', 'Build the project before starting')
   .action(async (options) => {
+    displayBanner();
     try {
       // Build the project first unless skip-build is specified
       if (options.build) {
