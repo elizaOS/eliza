@@ -39,6 +39,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { AgentMemoryViewer } from './memory-viewer';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
+import React from 'react';
 
 const SOURCE_NAME = 'client_chat';
 
@@ -49,6 +50,8 @@ type ExtraContentFields = {
 };
 
 type ContentWithUser = Content & ExtraContentFields;
+
+const MemoizedMessageContent = React.memo(MessageContent);
 
 function MessageContent({
   message,
@@ -475,7 +478,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
                       </Avatar>
                     )}
 
-                    <MessageContent
+                    <MemoizedMessageContent
                       message={message}
                       agentId={agentId}
                       isLastMessage={index === messages.length - 1}
