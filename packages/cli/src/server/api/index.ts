@@ -90,17 +90,17 @@ export function setupSocketIO(
 
           if (!agentRuntime) {
             logger.warn(`Agent runtime not found for ${agentId}`);
-            return;
+            continue;
           }
 
           if (payload.senderId === agentId) {
-            logger.warn(`Message sender and recipient are the same agent (${agentId}), ignoring.`);
-            return;
+            console.log(`Message sender and recipient are the same agent (${agentId}), ignoring.`);
+            continue;
           }
 
           if (!payload.message || !payload.message.length) {
             logger.warn(`no message found`);
-            return;
+            continue;
           }
 
           const uniqueRoomId = createUniqueUuid(agentRuntime, socketRoomId);
@@ -263,7 +263,6 @@ export function setupSocketIO(
             roomParticipants.get(roomId)!.add(agentId as UUID);
             logger.debug(`Agent ${agentId} joined room ${roomId}`);
           }
-          roomParticipants.get(roomId)!.add(agentId as UUID);
         });
         console.log('roomParticipants', roomParticipants);
 

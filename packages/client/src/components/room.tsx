@@ -25,7 +25,7 @@ import {
   Terminal,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import AIWriter from 'react-aiwriter';
 import { AgentActionViewer } from './action-viewer';
 import { AudioRecorder } from './audio-recorder';
@@ -170,6 +170,7 @@ export default function Page({ roomId }: { roomId: UUID }) {
   const [input, setInput] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [detailsTab, setDetailsTab] = useState<'actions' | 'logs' | 'memories'>('actions');
+  const [activeAgentIds, setActiveAgentIds] = useState<UUID[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -177,8 +178,6 @@ export default function Page({ roomId }: { roomId: UUID }) {
   const worldId = WorldManager.getWorldId();
 
   const { data: roomsData } = useRooms();
-
-  console.log(roomsData);
 
   const agentData = [];
   const agentId = 'test';
@@ -188,31 +187,43 @@ export default function Page({ roomId }: { roomId: UUID }) {
 
   const socketIOManager = SocketIOManager.getInstance();
 
-  const { data: { data: agentsData } = {}, isLoading, isError, error } = useAgents();
+  const { data: { data: agentsData } = {}, isLoading, isError } = useAgents();
   const agents = agentsData?.agents || [];
 
+  const prevActiveAgentIdsRef = useRef<UUID[]>([]);
+  const stableActiveAgentIds = useMemo(() => activeAgentIds, [JSON.stringify(activeAgentIds)]);
+
   useEffect(() => {
-    // Initialize Socket.io connection once with our entity ID
-    let roomAgentIds: UUID[] = [];
-    console.log('rooom datatata', roomsData);
-    if (roomsData) {
-      roomsData.forEach((data, id) => {
-        console.log('debug 33333333', id, roomId, id === roomId);
-        if (id === roomId) {
-          data.forEach((roomData) => {
-            const agentData = agents.find((agent) => agent.id === roomData.agentId);
-            console.log('debug 2222222', agents, agentData);
-            if (agentData && agentData.status === AgentStatus.ACTIVE) {
-              roomAgentIds.push(roomData.agentId as UUID);
-            }
-          });
-        }
-      });
-    } else {
-      console.log('nononono room datatat');
+    if (isLoading || isError || !agents || !agents.length || !roomsData) {
+      return;
     }
-    console.log('debuggggg', roomAgentIds);
-    socketIOManager.initialize(entityId, roomAgentIds);
+    let roomAgentIds: UUID[] = [];
+    roomsData.forEach((data, id) => {
+      if (id === roomId) {
+        data.forEach((roomData) => {
+          const agentData = agents.find((agent) => agent.id === roomData.agentId);
+          if (agentData && agentData.status === AgentStatus.ACTIVE) {
+            roomAgentIds.push(roomData.agentId as UUID);
+          }
+        });
+      }
+    });
+
+    setActiveAgentIds(roomAgentIds);
+  }, [isLoading, isError, agents, roomsData]);
+
+  useEffect(() => {
+    if (!roomId) {
+      return;
+    }
+
+    if (JSON.stringify(prevActiveAgentIdsRef.current) === JSON.stringify(stableActiveAgentIds)) {
+      return;
+    }
+
+    prevActiveAgentIdsRef.current = stableActiveAgentIds;
+
+    socketIOManager.initialize(entityId, activeAgentIds);
 
     // Join the room for this agent
     socketIOManager.joinRoom(roomId);
@@ -287,7 +298,7 @@ export default function Page({ roomId }: { roomId: UUID }) {
       socketIOManager.leaveRoom(roomId);
       socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
     };
-  }, [roomId, agentId, entityId]);
+  }, [stableActiveAgentIds, roomId]);
 
   // Use a stable ID for refs to avoid excessive updates
   const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
@@ -580,10 +591,6 @@ export default function Page({ roomId }: { roomId: UUID }) {
                     <p>Attach file</p>
                   </TooltipContent>
                 </Tooltip>
-                <AudioRecorder
-                  agentId={agentId}
-                  onChange={(newInput: string) => setInput(newInput)}
-                />
                 <Button type="submit" size="sm" className="ml-auto gap-1.5 h-[30px]">
                   <Send className="size-3.5" />
                 </Button>
@@ -591,45 +598,6 @@ export default function Page({ roomId }: { roomId: UUID }) {
             </form>
           </div>
         </div>
-
-        {/* Details Column */}
-        {showDetails && (
-          <div className="w-2/5 border rounded-lg overflow-hidden pb-4 bg-background flex flex-col h-full">
-            <Tabs
-              defaultValue="actions"
-              value={detailsTab}
-              onValueChange={(v) => setDetailsTab(v as 'actions' | 'logs' | 'memories')}
-              className="flex flex-col h-full"
-            >
-              <div className="border-b px-4 py-2">
-                <TabsList className="grid grid-cols-3">
-                  <TabsTrigger value="actions" className="flex items-center gap-1.5">
-                    <Activity className="h-4 w-4" />
-                    <span>Agent Actions</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="logs" className="flex items-center gap-1.5">
-                    <Terminal className="h-4 w-4" />
-                    <span>Logs</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="memories" className="flex items-center gap-1.5">
-                    <Database className="h-4 w-4" />
-                    <span>Memories</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent value="actions" className="overflow-y-scroll">
-                <AgentActionViewer agentId={agentId} roomId={roomId} />
-              </TabsContent>
-              <TabsContent value="logs">
-                <LogViewer agentName={agentData?.name} level="all" hideTitle />
-              </TabsContent>
-              <TabsContent value="memories">
-                <AgentMemoryViewer agentId={agentId} />
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
       </div>
     </div>
   );
