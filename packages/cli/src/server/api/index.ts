@@ -307,6 +307,17 @@ export function createApiRouter(
     );
   });
 
+  // Check if the server is running
+  router.get('/ping', (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(
+      JSON.stringify({
+        pong: true,
+        timestamp: Date.now(),
+      })
+    );
+  });
+
   // Define plugin routes middleware function
   const handlePluginRoutes = (
     req: express.Request,

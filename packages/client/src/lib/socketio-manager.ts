@@ -14,7 +14,7 @@ const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 class SocketIOManager extends EventEmitter {
   private static instance: SocketIOManager | null = null;
   private socket: Socket | null = null;
-  private isConnected: boolean = false;
+  private isConnected = false;
   private connectPromise: Promise<void> | null = null;
   private resolveConnect: (() => void) | null = null;
   private activeRooms: Set<string> = new Set();
