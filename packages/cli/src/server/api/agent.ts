@@ -1097,9 +1097,16 @@ export function agentRouter(
     }
 
     try {
-      const { name, worldId, source, metadata } = req.body;
-      const roomId = createUniqueUuid(runtime, name);
+      const { name, worldId, source, metadata, serverId } = req.body;
+      const roomId = createUniqueUuid(runtime, serverId);
       const roomName = name || `Chat ${new Date().toLocaleString()}`;
+
+      if (worldId) {
+        await runtime.ensureWorldExists({
+          id: worldId,
+          name: `World for client chat`,
+        });
+      }
 
       await runtime.ensureRoomExists({
         id: roomId,
@@ -1107,6 +1114,7 @@ export function agentRouter(
         source,
         type: ChannelType.API,
         worldId,
+        serverId,
         metadata,
       });
 

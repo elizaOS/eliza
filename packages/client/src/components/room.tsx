@@ -165,7 +165,7 @@ function MessageContent({
   );
 }
 
-export default function Page({ roomName }: { roomName: string }) {
+export default function Page({ roomId }: { roomId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
   const [showDetails, setShowDetails] = useState(false);
@@ -178,10 +178,11 @@ export default function Page({ roomName }: { roomName: string }) {
 
   const { data: roomsData } = useRooms();
 
+  console.log(roomsData);
+
   const agentData = [];
   const agentId = 'test';
   const entityId = getEntityId();
-  const roomId = roomName;
 
   const { data: messages = [] } = useMessages(agentId, roomId);
 
@@ -193,18 +194,24 @@ export default function Page({ roomName }: { roomName: string }) {
   useEffect(() => {
     // Initialize Socket.io connection once with our entity ID
     let roomAgentIds: UUID[] = [];
+    console.log('rooom datatata', roomsData);
     if (roomsData) {
-      roomsData.forEach((data, name) => {
-        if (name === roomName) {
+      roomsData.forEach((data, id) => {
+        console.log('debug 33333333', id, roomId, id === roomId);
+        if (id === roomId) {
           data.forEach((roomData) => {
             const agentData = agents.find((agent) => agent.id === roomData.agentId);
+            console.log('debug 2222222', agents, agentData);
             if (agentData && agentData.status === AgentStatus.ACTIVE) {
               roomAgentIds.push(roomData.agentId as UUID);
             }
           });
         }
       });
+    } else {
+      console.log('nononono room datatat');
     }
+    console.log('debuggggg', roomAgentIds);
     socketIOManager.initialize(entityId, roomAgentIds);
 
     // Join the room for this agent

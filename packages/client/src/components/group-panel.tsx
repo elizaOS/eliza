@@ -160,6 +160,7 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
               variant={'default'}
               className={`w-[90%]`}
               onClick={async () => {
+                const serverId = crypto.randomUUID() as UUID;
                 if (!chatName || !chatName.length) {
                   return;
                 }
@@ -172,9 +173,15 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
                   if (selectedAgentIds.length > 0) {
                     await Promise.all(
                       selectedAgentIds.map(async (agentId) => {
-                        await apiClient.createRoom(agentId, chatName, 'client_group_chat', {
-                          thumbnail: avatar,
-                        });
+                        await apiClient.createRoom(
+                          agentId,
+                          chatName,
+                          serverId,
+                          'client_group_chat',
+                          {
+                            thumbnail: avatar,
+                          }
+                        );
                       })
                     );
                   }
@@ -183,7 +190,7 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
                   console.error('Failed to create room', error);
                 } finally {
                   setCreating(false);
-                  navigate(`/room/?roomname=${chatName}`);
+                  navigate(`/room/${serverId}`);
                   onClose();
                 }
               }}

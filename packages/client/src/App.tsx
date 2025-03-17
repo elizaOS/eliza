@@ -88,7 +88,7 @@ function App() {
                   <Route path="agents/new" element={<AgentCreatorRoute />} />
                   <Route path="/create" element={<AgentCreator />} />
                   <Route path="/logs" element={<LogViewer />} />
-                  <Route path="room" element={<Room />} />
+                  <Route path="room/:roomId" element={<Room />} />
                 </Routes>
               </SidebarInset>
               <AgentsSidebar />

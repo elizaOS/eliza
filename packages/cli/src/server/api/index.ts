@@ -94,7 +94,7 @@ export function setupSocketIO(
           }
 
           if (payload.senderId === agentId) {
-            logger.warn(`same sender`);
+            logger.warn(`Message sender and recipient are the same agent (${agentId}), ignoring.`);
             return;
           }
 
@@ -265,6 +265,7 @@ export function setupSocketIO(
           }
           roomParticipants.get(roomId)!.add(agentId as UUID);
         });
+        console.log('roomParticipants', roomParticipants);
 
         logger.debug(`Client ${socket.id} joining room ${roomId}`);
       }

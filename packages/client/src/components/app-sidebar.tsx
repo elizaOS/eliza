@@ -95,14 +95,14 @@ export function AppSidebar() {
                               </div>
                             </SidebarMenuButton>
                             {roomsData &&
-                              Array.from(roomsData.entries()).map(([roomName, roomArray]) => {
+                              Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
                                 // Ensure the array exists and has elements before accessing metadata
                                 const thumbnail =
                                   roomArray.length > 0 ? roomArray[0]?.metadata?.thumbnail : null;
-
+                                const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;
                                 return (
-                                  <SidebarMenuItem key={roomName}>
-                                    <NavLink to={`/room/?roomname=${roomName}`}>
+                                  <SidebarMenuItem key={roomId}>
+                                    <NavLink to={`/room/${roomId}`}>
                                       <SidebarMenuButton className="transition-colors px-4 my-4 rounded-md">
                                         <div className="flex items-center gap-2">
                                           <div className="w-8 h-8 flex justify-center items-center">

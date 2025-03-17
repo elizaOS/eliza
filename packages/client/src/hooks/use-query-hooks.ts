@@ -628,8 +628,8 @@ export function useRooms(options = {}) {
 
       const roomMap: Map<string, Room[]> = new Map();
       worldRooms.forEach((room: Room) => {
-        const { name, ...rest } = room;
-        roomMap.set(name, [...(roomMap.get(name) || []), { name, ...rest }]);
+        const { serverId, ...rest } = room;
+        roomMap.set(serverId, [...(roomMap.get(serverId) || []), { serverId, ...rest }]);
       });
 
       return roomMap;
