@@ -346,12 +346,20 @@ export const apiClient = {
   },
 
   // Add this new method
-  getLogs: ({ level = '', agentName = 'all', agentId = 'all' }): Promise<LogResponse> => {
+  getLogs: ({
+    level,
+    agentName,
+    agentId,
+  }: {
+    level?: string;
+    agentName?: string;
+    agentId?: string;
+  }): Promise<LogResponse> => {
     const params = new URLSearchParams();
 
-    if (level && level !== 'all') params.append('level', level);
-    if (agentName && agentName !== 'all') params.append('agentName', agentName);
-    if (agentId && agentId !== 'all') params.append('agentId', agentId);
+    if (level) params.append('level', level);
+    if (agentName) params.append('agentName', agentName);
+    if (agentId) params.append('agentId', agentId);
 
     const url = `/logs${params.toString() ? `?${params.toString()}` : ''}`;
     return fetcher({

@@ -515,9 +515,9 @@ export function createApiRouter(
   // Logs endpoint
   const logsHandler = (req, res) => {
     const since = req.query.since ? Number(req.query.since) : Date.now() - 3600000; // Default 1 hour
-    const requestedLevel = (req.query.level?.toString().toLowerCase() || 'info') as LogLevel;
-    const agentName = req.query.agentName?.toString();
-    const agentId = req.query.agentId?.toString(); // Add support for agentId parameter
+    const requestedLevel = (req.query.level?.toString().toLowerCase() || 'all') as LogLevel;
+    const requestedAgentName = req.query.agentName?.toString() || 'all';
+    const requestedAgentId = req.query.agentId?.toString() || 'all'; // Add support for agentId parameter
     const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
 
     // Access the underlying logger instance
@@ -540,17 +540,23 @@ export function createApiRouter(
           // Filter by time always
           const timeMatch = log.time >= since;
 
-          // Filter by level
+          // Filter by level - return all logs if requestedLevel is 'all'
           let levelMatch = true;
           if (requestedLevel && requestedLevel !== 'all') {
             levelMatch = log.level === requestedLevelValue;
           }
 
-          // Filter by agentName if provided
-          const agentNameMatch = agentName ? log.agentName === agentName : true;
+          // Filter by agentName if provided - return all if 'all'
+          const agentNameMatch =
+            !requestedAgentName || requestedAgentName === 'all'
+              ? true
+              : log.agentName === requestedAgentName;
 
-          // Filter by agentId if provided
-          const agentIdMatch = agentId ? log.agentId === agentId : true;
+          // Filter by agentId if provided - return all if 'all'
+          const agentIdMatch =
+            !requestedAgentId || requestedAgentId === 'all'
+              ? true
+              : log.agentId === requestedAgentId;
 
           return timeMatch && levelMatch && agentNameMatch && agentIdMatch;
         })
@@ -560,8 +566,8 @@ export function createApiRouter(
       logger.debug('Logs request processed', {
         requestedLevel,
         requestedLevelValue,
-        agentName,
-        agentId,
+        requestedAgentName,
+        requestedAgentId,
         filteredCount: filtered.length,
         totalLogs: recentLogs.length,
       });
@@ -570,7 +576,9 @@ export function createApiRouter(
         logs: filtered,
         count: filtered.length,
         total: recentLogs.length,
-        level: requestedLevel,
+        requestedLevel: requestedLevel,
+        agentName: requestedAgentName,
+        agentId: requestedAgentId,
         levels: Object.keys(LOG_LEVELS),
       });
     } catch (error) {
