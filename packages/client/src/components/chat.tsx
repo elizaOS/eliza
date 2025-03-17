@@ -71,24 +71,14 @@ function MessageContent({
   }
 
   return (
-    <ChatBubbleMessage
-      isLoading={message.isLoading}
-      {...(message.name === USER_NAME ? { variant: 'sent' } : {})}
-      {...(!message.text ? { className: 'bg-transparent' } : {})}
-    >
-      <div className="flex flex-col w-full m-0 p-0">
+    <div className="flex flex-col w-full">
+      <ChatBubbleMessage
+        isLoading={message.isLoading}
+        {...(message.name === USER_NAME ? { variant: 'sent' } : {})}
+        {...(!message.text ? { className: 'bg-transparent' } : {})}
+      >
         {message.name !== USER_NAME && (
-          <>
-            <div className="flex justify-end mb-2 absolute top-2 right-2">
-              {message.text && !message.isLoading ? (
-                <div className="flex items-center gap-4">
-                  <CopyButton text={message.text} />
-                  <ChatTtsButton agentId={agentId} text={message.text} />
-                </div>
-              ) : (
-                <div />
-              )}
-            </div>
+          <div className="w-full">
             {message.text && message.thought && (
               <Collapsible className="mb-1">
                 <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors group">
@@ -102,57 +92,74 @@ function MessageContent({
                 </CollapsibleContent>
               </Collapsible>
             )}
+          </div>
+        )}
+
+        <div className="py-2">
+          {message.name === USER_NAME ? (
+            message.text
+          ) : isLastMessage && message.name !== USER_NAME ? (
+            <AIWriter>{message.text}</AIWriter>
+          ) : (
+            message.text
+          )}
+        </div>
+
+        {!message.text && message.thought && (
+          <>
+            {message.name === USER_NAME ? (
+              message.thought
+            ) : isLastMessage && message.name !== USER_NAME ? (
+              <AIWriter>
+                <span className="italic text-muted-foreground">{message.thought}</span>
+              </AIWriter>
+            ) : (
+              <span className="italic text-muted-foreground">{message.thought}</span>
+            )}
           </>
         )}
-      </div>
 
-      {message.name === USER_NAME ? (
-        message.text
-      ) : isLastMessage && message.name !== USER_NAME ? (
-        <AIWriter>{message.text}</AIWriter>
-      ) : (
-        message.text
-      )}
-
-      {!message.text && message.thought && (
-        <>
-          {message.name === USER_NAME ? (
-            message.thought
-          ) : isLastMessage && message.name !== USER_NAME ? (
-            <AIWriter>
-              <span className="italic text-muted-foreground">{message.thought}</span>
-            </AIWriter>
-          ) : (
-            <span className="italic text-muted-foreground">{message.thought}</span>
-          )}
-        </>
-      )}
-
-      {message.text && message.actions && (
-        <div className="mt-2">
-          Actions: <span className="font-bold">{message.actions}</span>
-        </div>
-      )}
-
-      {message.attachments?.map((attachment: IAttachment) => (
-        <div className="flex flex-col gap-1" key={`${attachment.url}-${attachment.title}`}>
-          <img
-            alt="attachment"
-            src={attachment.url}
-            width="100%"
-            height="100%"
-            className="w-64 rounded-md"
-          />
-          <div className="flex items-center justify-between gap-4">
-            <span />
-            <span />
+        {message.attachments?.map((attachment: IAttachment) => (
+          <div className="flex flex-col gap-1" key={`${attachment.url}-${attachment.title}`}>
+            <img
+              alt="attachment"
+              src={attachment.url}
+              width="100%"
+              height="100%"
+              className="w-64 rounded-md"
+            />
+            <div className="flex items-center justify-between gap-4">
+              <span />
+              <span />
+            </div>
+          </div>
+        ))}
+        {message.text && message.createdAt && (
+          <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
+        )}
+      </ChatBubbleMessage>
+      {message.name !== USER_NAME && (
+        <div className="flex justify-between items-end w-full">
+          <div>
+            {message.text && !message.isLoading ? (
+              <div className="flex items-center gap-2">
+                <CopyButton text={message.text} />
+                <ChatTtsButton agentId={agentId} text={message.text} />
+              </div>
+            ) : (
+              <div />
+            )}
+          </div>
+          <div>
+            {message.text && message.actions && (
+              <Badge variant="outline" className="text-sm">
+                {message.actions}
+              </Badge>
+            )}
           </div>
         </div>
-      ))}
-      {message.text && message.createdAt && (
-        <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
       )}
-    </ChatBubbleMessage>
+    </div>
   );
 }
 
