@@ -45,11 +45,6 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'core/clients',
-          label: 'Clients',
-        },
-        {
-          type: 'doc',
           id: 'core/agents',
           label: 'Agent Runtime',
         },

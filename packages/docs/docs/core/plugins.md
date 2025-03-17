@@ -2,9 +2,9 @@
 
 Plugins are modular extensions that enhance the capabilities of ElizaOS agents. They provide a flexible way to add new functionality, integrate external services, and customize agent behavior across different platforms.
 
-**Browse the various plugins the eliza dev community made here: [Package Showcase](/showcase)**
+**Browse the various plugins the eliza dev community made here: [Package Showcase](/packages)**
 
-[![](/img/plugins.png)](/showcase)
+[![](/img/plugins.png)](/packages)
 
 > elizaOS maintains an official package registry at [github.com/elizaos-plugins/registry](https://github.com/elizaos-plugins/registry).
 
