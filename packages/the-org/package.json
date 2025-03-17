@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/the-org",
-  "version": "1.0.0-alpha.65",
+  "version": "1.0.0-alpha.66",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -75,13 +75,13 @@
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.14.0",
     "postcss": "^8.5.1",
+    "prettier": "3.5.3",
     "tailwindcss": "^3.4.17",
     "ts-node": "10.9.2",
     "tsup": "8.4.0",
     "typescript": "~5.6.2",
     "typescript-eslint": "^8.18.2",
-    "vite": "^6.0.5",
-    "prettier": "3.5.3"
+    "vite": "^6.0.5"
   },
   "gitHead": "e98c03cf7e76ba967b203fdc3fc07cb438797559"
 }
