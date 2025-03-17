@@ -38,6 +38,7 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
     buttonLabel = 'Stopping...';
     buttonIcon = <Loader2 className="animate-spin" />;
   } else if (isActive) {
+    buttonLabel = 'Stop';
     buttonIcon = <Square fill="#EF4444" size={16} />;
   }
 
