@@ -1,11 +1,11 @@
 {
   "name": "@elizaos/plugin-tee",
-  "version": "1.0.0-alpha.64",
+  "version": "1.0.0-alpha.65",
   "main": "dist/index.js",
   "type": "module",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "@elizaos/core": "^1.0.0-alpha.64",
+    "@elizaos/core": "^1.0.0-alpha.65",
     "@phala/dstack-sdk": "^0.1.7",
     "@solana/web3.js": "^1.98.0",
     "better-sqlite3": "11.8.1",
@@ -27,5 +27,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "76f3b7afe96d2e2481678153e483133cc6bcdb3b"
+  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
 }
