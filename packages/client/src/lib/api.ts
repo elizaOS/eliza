@@ -301,7 +301,15 @@ export const apiClient = {
   },
 
   // Room-related routes
-  getRooms: (agentId: string) => {
+  getRooms: () => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/world/${worldId}/rooms`,
+      method: 'GET',
+    });
+  },
+
+  getRoomsForParticipant: (agentId: string) => {
     const worldId = WorldManager.getWorldId();
     return fetcher({
       url: `/agents/${agentId}/rooms`,
