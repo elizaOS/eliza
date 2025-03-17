@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-discord",
-  "version": "1.0.0-alpha.63",
+  "version": "1.0.0-alpha.64",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -30,9 +30,9 @@
     "zod": "3.24.2"
   },
   "devDependencies": {
+    "prettier": "3.5.3",
     "tsup": "8.4.0",
-    "vitest": "1.6.1",
-    "prettier": "3.5.3"
+    "vitest": "1.6.1"
   },
   "scripts": {
     "build": "tsup",

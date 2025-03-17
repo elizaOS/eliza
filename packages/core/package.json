@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.0.0-alpha.63",
+  "version": "1.0.0-alpha.64",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -49,13 +49,13 @@
     "lint-staged": "15.2.10",
     "nodemon": "3.1.7",
     "pm2": "5.4.3",
+    "prettier": "3.5.3",
     "rimraf": "6.0.1",
     "rollup": "2.79.2",
     "ts-node": "10.9.2",
     "tslib": "2.8.1",
     "tsup": "^8.4.0",
-    "typescript": "5.8.2",
-    "prettier": "3.5.3"
+    "typescript": "5.8.2"
   },
   "dependencies": {
     "dotenv": "16.4.5",
