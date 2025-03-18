@@ -12,8 +12,8 @@ function HomepageHeader() {
         <div className={styles.heroSection}>
           <div>
             <h1 className={styles.heroTitle}>
-              eliza is a simple, fast, and{' '}
-              <span className={styles.headerTextGradient}>lightweight AI agent</span> framework
+              A framework for <br />
+              <span className={styles.headerTextGradient}>capable AI agents</span>
             </h1>
             <p className={styles.heroSubtitle}>{siteConfig.tagline}</p>
             <div className={styles.buttonGroup}>

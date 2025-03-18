@@ -3,8 +3,9 @@ import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
 import EventEmitter from 'eventemitter3';
 import { io, type Socket } from 'socket.io-client';
 import { WorldManager } from './world-manager';
+import { randomUUID } from './utils';
 
-const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
+//const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 
 /**
  * SocketIOManager handles real-time communication between the client and server
@@ -44,7 +45,9 @@ class SocketIOManager extends EventEmitter {
     this.entityId = entityId;
 
     // Create a single socket connection
-    this.socket = io(BASE_URL, {
+    const fullURL = window.location.origin + '/';
+    console.log('connecting to', fullURL);
+    this.socket = io(fullURL, {
       autoConnect: true,
       reconnection: true,
     });
@@ -181,7 +184,7 @@ class SocketIOManager extends EventEmitter {
       await this.connectPromise;
     }
 
-    const messageId = crypto.randomUUID();
+    const messageId = randomUUID();
     const worldId = WorldManager.getWorldId();
 
     console.log(`[SocketIO] Sending message to room ${roomId}`);

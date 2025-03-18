@@ -1,65 +1,64 @@
 {
-	"name": "@elizaos/plugin-storage-s3",
-	"version": "1.0.0-alpha.67",
-	"type": "module",
-	"main": "dist/index.js",
-	"module": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"repository": {
-	  "type": "git",
-	  "url": "https://github.com/elizaos-plugins/plugin-storage-s3"
-	},
-	"exports": {
-	  "./package.json": "./package.json",
-	  ".": {
-		"import": {
-		  "types": "./dist/index.d.ts",
-		  "default": "./dist/index.js"
-		}
-	  }
-	},
-	"files": [
-	  "dist",
-	  "scripts",
-	  "package.json",
-	  "LICENSE",
-	  "tsup.config.ts"
-	],
-	"dependencies": {
-	  "@aws-sdk/client-s3": "^3.705.0",
-	  "@aws-sdk/s3-request-presigner": "^3.705.0",
-	  "@elizaos/core": "^1.0.0-alpha.67",
-	  "@types/uuid": "10.0.0",
-	  "capsolver-npm": "2.0.2",
-	  "fluent-ffmpeg": "2.1.3",
-	  "glob": "11.0.0",
-	  "uuid": "11.0.3"
-	},
-	"devDependencies": {
-	  "@types/node": "22.8.4",
-	  "prettier": "3.5.3",
-	  "tsup": "8.4.0",
-	  "zod": "^3.22.4",
+  "name": "@elizaos/plugin-storage-s3",
+  "version": "1.0.0-beta.2",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-storage-s3"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "package.json",
+    "LICENSE",
+    "tsup.config.ts"
+  ],
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.705.0",
+    "@aws-sdk/s3-request-presigner": "^3.705.0",
+    "@elizaos/core": "^1.0.0-beta.2",
+    "@types/uuid": "10.0.0",
+    "capsolver-npm": "2.0.2",
+    "fluent-ffmpeg": "2.1.3",
+    "glob": "11.0.0",
+    "uuid": "11.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.8.4",
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "zod": "^3.22.4",
 	  "vitest": "1.6.1",
 	  "@vitest/coverage-v8": "1.1.3"
-
-	},
-	"scripts": {
-	  "build": "tsup",
-	  "dev": "tsup --watch",
-	  "postinstall": "node scripts/postinstall.js",
-	  "lint": "prettier --write ./src",
-	  "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-	  "format": "prettier --write ./src",
-	  "format:check": "prettier --check ./src",
-	  "test": "vitest run",
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "postinstall": "node scripts/postinstall.js",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "vitest run",
 	  "test:coverage": "vitest run --coverage"
-	},
-	"peerDependencies": {
-	  "whatwg-url": "7.1.0"
-	},
-	"publishConfig": {
-	  "access": "public"
-	},
-	"gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
-  }
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
+}

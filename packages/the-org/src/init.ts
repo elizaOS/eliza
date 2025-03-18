@@ -92,7 +92,11 @@ export async function initializeAllSystems(
       const ownerId = createUniqueUuid(runtime, server.ownerId);
 
       const existingWorld = await runtime.getWorld(worldId);
-      if (existingWorld.metadata?.settings) {
+      if (!existingWorld) {
+        logger.debug('Onboarding not initialized for server', server.id);
+        continue;
+      }
+      if (existingWorld?.metadata?.settings) {
         logger.debug('Onboarding already initialized for server', server.id);
         continue;
       }
@@ -112,10 +116,13 @@ export async function initializeAllSystems(
           },
         },
       };
-
+      console.log('*** ensuring world');
+      console.log(world);
       await runtime.ensureWorldExists(world);
+      console.log('*** ensuring world done');
       await initializeOnboarding(runtime, world, config);
       await startOnboardingDM(runtime, server, worldId);
+      console.log('world', world);
     }
   } catch (error) {
     logger.error('Error initializing systems:', error);

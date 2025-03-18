@@ -30,7 +30,6 @@ COPY packages ./packages
 
 # Install dependencies
 RUN bun install
-RUN bun add better-sqlite3
 
 # Build the project
 RUN bun run build
@@ -63,7 +62,7 @@ COPY --from=builder /app/scripts ./scripts
 ENV NODE_ENV=production
 
 # Expose any necessary ports (if needed)
-EXPOSE 3000 5173
+EXPOSE 3000
 
 # Start the application
 CMD ["bun", "run", "start"] 

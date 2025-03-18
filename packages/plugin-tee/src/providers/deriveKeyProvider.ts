@@ -1,10 +1,9 @@
-import crypto from 'node:crypto';
 import { type IAgentRuntime, type Memory, type Provider, type State, logger } from '@elizaos/core';
 import { type DeriveKeyAttestationData, type RemoteAttestationQuote, TEEMode } from '@elizaos/core';
 import { type DeriveKeyResponse, TappdClient } from '@phala/dstack-sdk';
 import { Keypair } from '@solana/web3.js';
-import { type PrivateKeyAccount, keccak256 } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { toViemAccount } from '@phala/dstack-sdk/viem';
+import { toKeypair } from '@phala/dstack-sdk/solana';
 import { DeriveKeyProvider } from './base';
 import { PhalaRemoteAttestationProvider as RemoteAttestationProvider } from './remoteAttestationProvider';
 
@@ -108,13 +107,7 @@ class PhalaDeriveKeyProvider extends DeriveKeyProvider {
 
       logger.log('Deriving Key in TEE...');
       const derivedKey = await this.client.deriveKey(path, subject);
-      const uint8ArrayDerivedKey = derivedKey.asUint8Array();
-
-      const hash = crypto.createHash('sha256');
-      hash.update(uint8ArrayDerivedKey);
-      const seed = hash.digest();
-      const seedArray = new Uint8Array(seed);
-      const keypair = Keypair.fromSeed(seedArray.slice(0, 32));
+      const keypair = toKeypair(derivedKey);
 
       // Generate an attestation for the derived key data for public to verify
       const attestation = await this.generateDeriveKeyAttestation(
@@ -152,8 +145,7 @@ class PhalaDeriveKeyProvider extends DeriveKeyProvider {
 
       logger.log('Deriving ECDSA Key in TEE...');
       const deriveKeyResponse: DeriveKeyResponse = await this.client.deriveKey(path, subject);
-      const hex = keccak256(deriveKeyResponse.asUint8Array());
-      const keypair: PrivateKeyAccount = privateKeyToAccount(hex);
+      const keypair = toViemAccount(deriveKeyResponse);
 
       // Generate an attestation for the derived key data for public to verify
       const attestation = await this.generateDeriveKeyAttestation(agentId, keypair.address);
@@ -239,29 +231,4 @@ const phalaDeriveKeyProvider: Provider = {
   },
 };
 
-/**
- * SGX Gramine TEE Provider
- * @example
- * ```ts
- * const provider = new SgxGramineDeriveKeyProvider();
- * ```
- */
-class SgxGramineDeriveKeyProvider extends DeriveKeyProvider {}
-
-const sgxGramineDeriveKeyProvider: Provider = {
-  name: 'sgx-gramine-derive-key',
-  get: async (_runtime: IAgentRuntime, _message?: Memory): Promise<ProviderResult> => {
-    return {
-      data: { provider: 'sgx-gramine' },
-      values: { provider_name: 'SGX Gramine' },
-      text: 'SGX Gramine Derive Key Provider',
-    };
-  },
-};
-
-export {
-  phalaDeriveKeyProvider,
-  PhalaDeriveKeyProvider,
-  sgxGramineDeriveKeyProvider,
-  SgxGramineDeriveKeyProvider,
-};
+export { phalaDeriveKeyProvider, PhalaDeriveKeyProvider };
