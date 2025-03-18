@@ -287,24 +287,27 @@ export default function Page({ roomId }: { roomId: UUID }) {
       console.log(`[Chat] Adding new message to UI from ${newMessage.name}:`, newMessage);
 
       // Update the message list without triggering a re-render cascade
-      queryClient.setQueryData(['messages', roomId, worldId], (old: ContentWithUser[] = []) => {
-        console.log(`[Chat] Current messages:`, old?.length || 0);
+      queryClient.setQueryData(
+        ['groupmessages', roomId, worldId],
+        (old: ContentWithUser[] = []) => {
+          console.log(`[Chat] Current messages:`, old?.length || 0);
 
-        // Check if this message is already in the list (avoid duplicates)
-        const isDuplicate = old.some(
-          (msg) =>
-            msg.text === newMessage.text &&
-            msg.name === newMessage.name &&
-            Math.abs((msg.createdAt || 0) - (newMessage.createdAt || 0)) < 5000 // Within 5 seconds
-        );
+          // Check if this message is already in the list (avoid duplicates)
+          const isDuplicate = old.some(
+            (msg) =>
+              msg.text === newMessage.text &&
+              msg.name === newMessage.name &&
+              Math.abs((msg.createdAt || 0) - (newMessage.createdAt || 0)) < 5000 // Within 5 seconds
+          );
 
-        if (isDuplicate) {
-          console.log('[Chat] Skipping duplicate message');
-          return old;
+          if (isDuplicate) {
+            console.log('[Chat] Skipping duplicate message');
+            return old;
+          }
+
+          return [...old, newMessage];
         }
-
-        return [...old, newMessage];
-      });
+      );
 
       // Remove the redundant state update that was causing render loops
       // setInput(prev => prev + '');
@@ -380,7 +383,7 @@ export default function Page({ roomId }: { roomId: UUID }) {
     console.log('[Chat] Adding user message to UI:', userMessage);
 
     // Update the local message list first for immediate feedback
-    queryClient.setQueryData(['messages', roomId, worldId], (old: ContentWithUser[] = []) => {
+    queryClient.setQueryData(['groupmessages', roomId, worldId], (old: ContentWithUser[] = []) => {
       // Check if exact same message exists already to prevent duplicates
       const exists = old.some(
         (msg) =>
@@ -431,7 +434,7 @@ export default function Page({ roomId }: { roomId: UUID }) {
       <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
         <div className="flex items-center gap-3">
           <Avatar className="size-10 border rounded-full">
-            <AvatarImage src={getRoomThumbnail() ? getRoomThumbnail() : '/elizaos-icon.png'} />
+            <AvatarImage src={getRoomThumbnail() || '/elizaos-icon.png'} />
           </Avatar>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
@@ -483,9 +486,9 @@ export default function Page({ roomId }: { roomId: UUID }) {
                           src={
                             isUser
                               ? '/user-icon.png'
-                              : getAvatar(message.agentId)
-                                ? getAvatar(message.agentId)
-                                : '/elizaos-icon.png'
+                              : getAvatar(message.agentId) ||
+                                getAvatar(message.senderId) ||
+                                '/elizaos-icon.png'
                           }
                         />
                       </Avatar>

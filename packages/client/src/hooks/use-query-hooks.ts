@@ -443,11 +443,10 @@ export function useGroupMessages(
 
   // Initial fetch of messages
   const messagesQuery = useQuery({
-    queryKey: ['messages', serverId, worldId],
+    queryKey: ['groupmessages', serverId, worldId],
     queryFn: async () => {
       const result = await apiClient.getGroupMemories(serverId);
       const validSuffixes = [':user', ':agent'];
-      console.log('resultltlt', result);
       const memories = result.data
         .map((memory: Memory): ContentWithUser | null => {
           const source = memory.content?.source ?? '';
@@ -479,8 +478,6 @@ export function useGroupMessages(
           }
           return a.createdAt - b.createdAt;
         });
-
-      console.log('giot ititit', memories);
 
       return memories;
     },
