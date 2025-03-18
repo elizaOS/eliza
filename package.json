@@ -3,7 +3,7 @@
   "scripts": {
     "preinstall": "only-allow bun",
     "start": "cd ./packages/the-org && bun run start",
-    "start:debug": "LOG_LEVEL=debug elizaos start",
+    "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run dev --filter=./packages/the-org",
     "build:docs": "turbo run build --filter=@elizaos/docs",
