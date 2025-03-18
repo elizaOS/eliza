@@ -315,13 +315,7 @@ export const apiClient = {
     });
   },
 
-  createRoom: (
-    agentId: string,
-    roomName: string,
-    serverId: string,
-    source: string,
-    metadata?: any
-  ) => {
+  createRoom: (agentId: string, roomName: string) => {
     const worldId = WorldManager.getWorldId();
     return fetcher({
       url: `/agents/${agentId}/rooms`,
@@ -329,9 +323,6 @@ export const apiClient = {
       body: {
         name: roomName,
         worldId,
-        source,
-        metadata,
-        serverId,
       },
     });
   },
