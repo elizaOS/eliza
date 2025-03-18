@@ -304,6 +304,8 @@ export default function Page({ serverId }: { serverId: UUID }) {
       console.log(`[Chat] Leaving room ${serverId}`);
       socketIOManager.leaveRoom(serverId);
       socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
+      prevServerIdRef.current = null;
+      prevActiveAgentIdsRef.current = [];
     };
   }, [isLoading, isError, agents, roomsData, serverId]);
 
