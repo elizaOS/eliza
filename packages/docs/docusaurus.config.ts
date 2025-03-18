@@ -229,7 +229,7 @@ const config = {
           exclude: ['**/_media/**'],
           showLastUpdateAuthor: true,
           showLastUpdateTime: true,
-          lastVersion: '1.0.0-alpha',
+          lastVersion: 'current',
           versions: {
             current: {
               label: '1.0.0-alpha',
