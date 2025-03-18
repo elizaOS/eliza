@@ -1105,6 +1105,13 @@ export function agentRouter(
       const roomId = createUniqueUuid(runtime, serverId);
       const roomName = name || `Chat ${new Date().toLocaleString()}`;
 
+      await runtime.ensureWorldExists({
+        id: worldId,
+        name: source,
+        agentId: runtime.agentId,
+        serverId: serverId,
+      });
+
       await runtime.ensureRoomExists({
         id: roomId,
         name: roomName,
