@@ -86,8 +86,6 @@ export function setupSocketIO(
           // In more complex implementations, we'd have a proper room management system
           const agentRuntime = agents.get(agentId);
 
-          const entityId = createUniqueUuid(agentRuntime, payload.senderId);
-
           if (!agentRuntime) {
             logger.warn(`Agent runtime not found for ${agentId}`);
             continue;
@@ -102,6 +100,7 @@ export function setupSocketIO(
             logger.warn(`no message found`);
             continue;
           }
+          const entityId = createUniqueUuid(agentRuntime, payload.senderId);
 
           const uniqueRoomId = createUniqueUuid(agentRuntime, socketRoomId);
           const source = payload.source;
