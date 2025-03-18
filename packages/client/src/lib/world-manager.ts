@@ -1,4 +1,5 @@
 import type { UUID } from '@elizaos/core';
+import { randomUUID } from './utils';
 
 // Key used for storing the worldId in localStorage
 const WORLD_ID_KEY = 'elizaos-world-id';
@@ -28,7 +29,7 @@ export const WorldManager = {
     }
 
     // Create a new worldId if one doesn't exist
-    const newWorldId = crypto.randomUUID() as UUID;
+    const newWorldId = randomUUID() as UUID;
     localStorage.setItem(WORLD_ID_KEY, newWorldId);
 
     return newWorldId;
@@ -38,7 +39,7 @@ export const WorldManager = {
    * Reset the world ID (mainly for testing purposes)
    */
   resetWorldId: (): UUID => {
-    const newWorldId = crypto.randomUUID() as UUID;
+    const newWorldId = randomUUID() as UUID;
     localStorage.setItem(WORLD_ID_KEY, newWorldId);
     return newWorldId;
   },
@@ -67,7 +68,7 @@ export const WorldManager = {
 
     if (options?.isGroup) {
       // For group chats, generate a new UUID
-      return crypto.randomUUID() as UUID;
+      return randomUUID() as UUID;
     }
 
     // For 1:1 chats with an agent, use the agent ID as the room ID
