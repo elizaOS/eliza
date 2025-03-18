@@ -23,6 +23,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
   const [chatName, setChatName] = useState(``);
   const [selectedAgents, setSelectedAgents] = useState<{ [key: string]: boolean }>({});
   const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [avatar, setAvatar] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -171,7 +172,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-center w-full grow">
+          <div className="flex flex-col items-center justify-center w-full grow gap-4">
             <Button
               variant={'default'}
               className={`w-[90%]`}
@@ -214,10 +215,35 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                 }
               }}
               size={'default'}
-              disabled={!chatName.length || Object.keys(selectedAgents).length === 0}
+              disabled={
+                !chatName.length || Object.keys(selectedAgents).length === 0 || deleting || creating
+              }
             >
-              {creating ? <Loader2 className="animate-spin" /> : 'Create Chat'}
+              {creating ? <Loader2 className="animate-spin" /> : 'Create Group'}
             </Button>
+            {groupId && (
+              <Button
+                variant={'secondary'}
+                className={`w-[90%] text-red-500`}
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    await apiClient.deleteGroupChat(groupId);
+                  } catch (error) {
+                    console.error('Failed to delete room', error);
+                  } finally {
+                    setDeleting(false);
+                    navigate(`/`);
+                    onClose();
+                    queryClient.invalidateQueries({ queryKey: ['rooms'] });
+                  }
+                }}
+                size={'default'}
+                disabled={deleting || creating}
+              >
+                {deleting ? <Loader2 className="animate-spin" /> : 'Delete Group'}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
