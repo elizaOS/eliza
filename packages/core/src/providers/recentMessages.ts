@@ -2,6 +2,7 @@ import { getEntityDetails } from '../entities';
 import { addHeader, formatMessages, formatPosts } from '../prompts';
 import {
   ChannelType,
+  CustomMetadata,
   type Entity,
   type IAgentRuntime,
   type Memory,
@@ -91,6 +92,12 @@ export const recentMessagesProvider: Provider = {
       formattedRecentPosts && formattedRecentPosts.length > 0
         ? addHeader('# Posts in Thread', formattedRecentPosts)
         : '';
+
+    const metaData = message.metadata as CustomMetadata;
+    const recieveMessage = addHeader(
+      '# Received Message:',
+      `${metaData?.entityName || 'unknown'}: ${message.content.text}`
+    );
 
     const recentMessages =
       formattedRecentMessages && formattedRecentMessages.length > 0
@@ -207,7 +214,9 @@ export const recentMessagesProvider: Provider = {
     };
 
     // Combine all text sections
-    const text = [isPostFormat ? recentPosts : recentMessages].filter(Boolean).join('\n\n');
+    const text = [isPostFormat ? recentPosts : recentMessages + recieveMessage]
+      .filter(Boolean)
+      .join('\n\n');
 
     return {
       data,

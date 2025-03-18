@@ -1,35 +1,27 @@
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
-import { useAgents } from '@/hooks/use-query-hooks';
-import info from '@/lib/info.json';
 import { formatAgentName } from '@/lib/utils';
-import { type Agent, AgentStatus } from '@elizaos/core';
-import { Book, Cog, TerminalIcon } from 'lucide-react';
+import { type Agent } from '@elizaos/core';
 import { NavLink, useLocation } from 'react-router';
-import ConnectionStatus from './connection-status';
 
-export function AgentsSidebar() {
+export function AgentsSidebar({
+  onlineAgents,
+  offlineAgents,
+  isLoading,
+}: {
+  onlineAgents: Agent[];
+  offlineAgents: Agent[];
+  isLoading: boolean;
+}) {
   const location = useLocation();
-
-  // Add more defensive coding to handle any possible null/undefined responses
-  const agentsResult = useAgents();
-  const { data, isPending: isAgentsPending } = agentsResult || { data: undefined, isPending: true };
-
-  // Create a safe data object that can't be null
-  const safeData = data || {};
-  const safeDataData = (safeData as any).data || {};
-  const agents = safeDataData.agents || [];
 
   return (
     <Sidebar className="bg-background" side="right">
@@ -37,7 +29,7 @@ export function AgentsSidebar() {
         <SidebarGroup>
           <SidebarGroupContent className="px-2">
             <SidebarMenu>
-              {isAgentsPending ? (
+              {isLoading ? (
                 <div>
                   {Array.from({ length: 5 }).map((_, _index) => (
                     <SidebarMenuItem key={`skeleton-item-${_index}`}>
@@ -48,31 +40,10 @@ export function AgentsSidebar() {
               ) : (
                 <div>
                   {(() => {
-                    // Sort agents: enabled first, then disabled
-                    const sortedAgents = [...agents].sort((a, b) => {
-                      // Sort by status (active agents first)
-                      if (a.status === AgentStatus.ACTIVE && b.status !== AgentStatus.ACTIVE)
-                        return -1;
-                      if (a.status !== AgentStatus.ACTIVE && b.status === AgentStatus.ACTIVE)
-                        return 1;
-                      // If both have the same status, sort alphabetically by name
-                      return a.name.localeCompare(b.name);
-                    });
-
-                    // Split into enabled and disabled groups
-                    const activeAgents = sortedAgents.filter(
-                      (agent: Partial<Agent & { status: string }>) =>
-                        agent.status === AgentStatus.ACTIVE
-                    );
-                    const inactiveAgents = sortedAgents.filter(
-                      (agent: Partial<Agent & { status: string }>) =>
-                        agent.status === AgentStatus.INACTIVE
-                    );
-
                     return (
                       <>
                         {/* Render active section */}
-                        {activeAgents.length > 0 && (
+                        {onlineAgents.length > 0 && (
                           <div className="px-4 py-1">
                             <div className="flex items-center space-x-2">
                               <span className="text-sm font-medium text-muted-foreground">
@@ -83,7 +54,7 @@ export function AgentsSidebar() {
                         )}
 
                         {/* Render enabled agents */}
-                        {activeAgents.map((agent) => (
+                        {onlineAgents.map((agent) => (
                           <SidebarMenuItem key={agent.id}>
                             <NavLink to={`/chat/${agent.id}`}>
                               <SidebarMenuButton
@@ -119,7 +90,7 @@ export function AgentsSidebar() {
                         ))}
 
                         {/* Render inactive section */}
-                        {inactiveAgents.length > 0 && (
+                        {offlineAgents.length > 0 && (
                           <div className="px-4 py-1 mt-8">
                             <div className="flex items-center space-x-2">
                               <span className="text-sm font-medium text-muted-foreground">
@@ -130,7 +101,7 @@ export function AgentsSidebar() {
                         )}
 
                         {/* Render disabled agents */}
-                        {inactiveAgents.map((agent) => (
+                        {offlineAgents.map((agent) => (
                           <SidebarMenuItem key={agent.id}>
                             <div className="transition-colors px-4 my-4 rounded-md">
                               <div className="flex items-center gap-2">

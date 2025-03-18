@@ -7,42 +7,27 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useAgent, useAgents, useGroupMessages, useRooms } from '@/hooks/use-query-hooks';
-import { cn, getEntityId, moment } from '@/lib/utils';
+import { useAgents, useGroupMessages, useRooms } from '@/hooks/use-query-hooks';
+import { getEntityId, moment } from '@/lib/utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { WorldManager } from '@/lib/world-manager';
 import type { IAttachment } from '@/types';
-import type { Content, UUID } from '@elizaos/core';
+import type { Content, UUID, Agent } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  Activity,
-  ChevronRight,
-  Database,
-  PanelRight,
-  Paperclip,
-  Send,
-  Terminal,
-  X,
-} from 'lucide-react';
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { ChevronRight, Paperclip, Send, X } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import AIWriter from 'react-aiwriter';
-import { AgentActionViewer } from './action-viewer';
-import { AudioRecorder } from './audio-recorder';
 import CopyButton from './copy-button';
-import { LogViewer } from './log-viewer';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Avatar, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import ChatTtsButton from './ui/chat/chat-tts-button';
 import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import { AgentMemoryViewer } from './memory-viewer';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import React from 'react';
-import { apiClient } from '@/lib/api';
-
-const SOURCE_NAME = 'client_group_chat';
+import { GROUP_CHAT_SOURCE } from '@/constants';
+import { AgentsSidebar } from './agent-sidebar';
 
 type ExtraContentFields = {
   name: string;
@@ -166,11 +151,9 @@ function MessageContent({
   );
 }
 
-export default function Page({ roomId }: { roomId: UUID }) {
+export default function Page({ serverId }: { serverId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
-  const [showDetails, setShowDetails] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs' | 'memories'>('actions');
   const [activeAgentIds, setActiveAgentIds] = useState<UUID[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -181,25 +164,22 @@ export default function Page({ roomId }: { roomId: UUID }) {
   const { data: roomsData } = useRooms();
   const entityId = getEntityId();
 
-  const { data: messages = [] } = useGroupMessages(roomId, SOURCE_NAME);
+  const { data: messages = [] } = useGroupMessages(serverId, GROUP_CHAT_SOURCE);
 
   const socketIOManager = SocketIOManager.getInstance();
 
   const { data: { data: agentsData } = {}, isLoading, isError } = useAgents();
   const agents = agentsData?.agents || [];
 
-  const prevActiveAgentIdsRef = useRef<UUID[]>([]);
-  const stableActiveAgentIds = useMemo(() => activeAgentIds, [JSON.stringify(activeAgentIds)]);
-
   const getAvatar = (agentId: string) => {
-    const rooms = roomsData?.get(roomId);
+    const rooms = roomsData?.get(serverId);
     const agent = rooms?.find((room) => room.agentId === agentId);
     const character = agent?.character;
     return character?.settings?.avatar;
   };
 
   const getRoomThumbnail = () => {
-    const rooms = roomsData?.get(roomId);
+    const rooms = roomsData?.get(serverId);
     if (rooms && rooms.length) {
       return rooms[0].metadata?.thumbnail;
     }
@@ -208,7 +188,7 @@ export default function Page({ roomId }: { roomId: UUID }) {
   };
 
   const getRoomName = () => {
-    const rooms = roomsData?.get(roomId);
+    const rooms = roomsData?.get(serverId);
     if (rooms && rooms.length) {
       return rooms[0].name;
     }
@@ -220,40 +200,37 @@ export default function Page({ roomId }: { roomId: UUID }) {
     if (isLoading || isError || !agents || !agents.length || !roomsData) {
       return;
     }
-    let roomAgentIds: UUID[] = [];
-    let roomIds: UUID[] = [];
+    let activeAgentIds: UUID[] = [];
+    let inactiveAgentIds: UUID[] = [];
 
-    const roomDatas = roomsData.get(roomId);
+    const roomDatas = roomsData.get(serverId);
     if (roomDatas) {
       roomDatas.forEach((roomData) => {
         const agentData = agents.find((agent) => agent.id === roomData.agentId);
-        if (agentData && agentData.status === AgentStatus.ACTIVE) {
-          roomAgentIds.push(roomData.agentId as UUID);
-          roomIds.push(roomData.id as UUID);
+        if (agentData) {
+          if (agentData.status === AgentStatus.ACTIVE) {
+            activeAgentIds.push(roomData.agentId as UUID);
+          } else {
+            inactiveAgentIds.push(roomData.agentId as UUID);
+          }
         }
       });
     }
 
-    setActiveAgentIds(roomAgentIds);
+    setActiveAgentIds(activeAgentIds);
   }, [isLoading, isError, agents, roomsData]);
 
   useEffect(() => {
-    if (!roomId) {
+    if (!serverId) {
       return;
     }
-
-    if (JSON.stringify(prevActiveAgentIdsRef.current) === JSON.stringify(stableActiveAgentIds)) {
-      return;
-    }
-
-    prevActiveAgentIdsRef.current = stableActiveAgentIds;
 
     socketIOManager.initialize(entityId, activeAgentIds);
 
     // Join the room for this agent
-    socketIOManager.joinRoom(roomId);
+    socketIOManager.joinRoom(serverId);
 
-    console.log(`[Chat] Joined room ${roomId} with entityId ${entityId}`);
+    console.log(`[Chat] Joined room ${serverId} with entityId ${entityId}`);
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
       console.log(`[Chat] Received message broadcast:`, data);
@@ -265,9 +242,9 @@ export default function Page({ roomId }: { roomId: UUID }) {
       }
 
       // Skip messages not for this room
-      if (data.roomId !== roomId) {
+      if (data.roomId !== serverId) {
         console.log(
-          `[Chat] Ignoring message for different room: ${data.roomId}, we're in ${roomId}`
+          `[Chat] Ignoring message for different room: ${data.roomId}, we're in ${serverId}`
         );
         return;
       }
@@ -288,7 +265,7 @@ export default function Page({ roomId }: { roomId: UUID }) {
 
       // Update the message list without triggering a re-render cascade
       queryClient.setQueryData(
-        ['groupmessages', roomId, worldId],
+        ['groupmessages', serverId, worldId],
         (old: ContentWithUser[] = []) => {
           console.log(`[Chat] Current messages:`, old?.length || 0);
 
@@ -319,11 +296,11 @@ export default function Page({ roomId }: { roomId: UUID }) {
 
     return () => {
       // When leaving this chat, leave the room but don't disconnect
-      console.log(`[Chat] Leaving room ${roomId}`);
-      socketIOManager.leaveRoom(roomId);
+      console.log(`[Chat] Leaving room ${serverId}`);
+      socketIOManager.leaveRoom(serverId);
       socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
     };
-  }, [stableActiveAgentIds, roomId]);
+  }, [serverId, activeAgentIds.length]);
 
   // Use a stable ID for refs to avoid excessive updates
   const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
@@ -375,36 +352,39 @@ export default function Page({ roomId }: { roomId: UUID }) {
       createdAt: Date.now(),
       senderId: entityId,
       senderName: USER_NAME,
-      roomId: roomId,
-      source: SOURCE_NAME,
+      roomId: serverId,
+      source: GROUP_CHAT_SOURCE,
       id: crypto.randomUUID(), // Add a unique ID for React keys and duplicate detection
     };
 
     console.log('[Chat] Adding user message to UI:', userMessage);
 
     // Update the local message list first for immediate feedback
-    queryClient.setQueryData(['groupmessages', roomId, worldId], (old: ContentWithUser[] = []) => {
-      // Check if exact same message exists already to prevent duplicates
-      const exists = old.some(
-        (msg) =>
-          msg.text === userMessage.text &&
-          msg.name === USER_NAME &&
-          Math.abs((msg.createdAt || 0) - userMessage.createdAt) < 1000
-      );
+    queryClient.setQueryData(
+      ['groupmessages', serverId, worldId],
+      (old: ContentWithUser[] = []) => {
+        // Check if exact same message exists already to prevent duplicates
+        const exists = old.some(
+          (msg) =>
+            msg.text === userMessage.text &&
+            msg.name === USER_NAME &&
+            Math.abs((msg.createdAt || 0) - userMessage.createdAt) < 1000
+        );
 
-      if (exists) {
-        console.log('[Chat] Skipping duplicate user message');
-        return old;
+        if (exists) {
+          console.log('[Chat] Skipping duplicate user message');
+          return old;
+        }
+
+        return [...old, userMessage];
       }
-
-      return [...old, userMessage];
-    });
+    );
 
     // We don't need to call scrollToBottom here, the message count change will trigger it
     // via the useEffect hook
 
     // Send the message to the server/agent
-    socketIOManager.sendMessage(input, roomId, SOURCE_NAME);
+    socketIOManager.sendMessage(input, serverId, GROUP_CHAT_SOURCE);
 
     setSelectedFile(null);
     setInput('');
@@ -424,160 +404,168 @@ export default function Page({ roomId }: { roomId: UUID }) {
     }
   };
 
-  const toggleDetails = () => {
-    setShowDetails(!showDetails);
-  };
+  // Sort agents: enabled first, then disabled
+  const sortedAgents = [...agents]
+    .filter((agent) => roomsData?.get(serverId)?.some((room) => room.agentId === agent.id))
+    .sort((a, b) => {
+      // Sort by status (active agents first)
+      if (a.status === AgentStatus.ACTIVE && b.status !== AgentStatus.ACTIVE) return -1;
+      if (a.status !== AgentStatus.ACTIVE && b.status === AgentStatus.ACTIVE) return 1;
+      // If both have the same status, sort alphabetically by name
+      return a.name.localeCompare(b.name);
+    });
+
+  // Split into enabled and disabled groups
+  const activeAgents = sortedAgents.filter(
+    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.ACTIVE
+  );
+  const inactiveAgents = sortedAgents.filter(
+    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.INACTIVE
+  );
 
   return (
-    <div className="flex flex-col w-full h-screen p-4">
-      {/* Agent Header */}
-      <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
-        <div className="flex items-center gap-3">
-          <Avatar className="size-10 border rounded-full">
-            <AvatarImage src={getRoomThumbnail() || '/elizaos-icon.png'} />
-          </Avatar>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-lg">{getRoomName() || 'Group Chat'}</h2>
+    <div className="flex">
+      <div className="flex flex-col w-full h-screen p-4">
+        {/* Agent Header */}
+        <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
+          <div className="flex items-center gap-3">
+            <Avatar className="size-10 border rounded-full">
+              <AvatarImage src={getRoomThumbnail() || '/elizaos-icon.png'} />
+            </Avatar>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold text-lg">{getRoomName() || 'Group Chat'}</h2>
+              </div>
             </div>
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={toggleDetails}
-          className={cn('gap-1.5', showDetails && 'bg-secondary')}
-        >
-          <PanelRight className="size-4" />
-        </Button>
-      </div>
-
-      <div className="flex flex-row w-full overflow-y-auto grow gap-4">
-        {/* Main Chat Area */}
-        <div
-          className={cn(
-            'flex flex-col transition-all duration-300',
-            showDetails ? 'w-3/5' : 'w-full'
-          )}
-        >
-          {/* Chat Messages */}
-          <ChatMessageList
-            scrollRef={scrollRef}
-            isAtBottom={isAtBottom}
-            scrollToBottom={safeScrollToBottom}
-            disableAutoScroll={disableAutoScroll}
-          >
-            {messages.map((message: ContentWithUser, index: number) => {
-              const isUser = message.name === USER_NAME;
-
-              return (
-                <div
-                  key={`${message.id as string}-${message.createdAt}`}
-                  className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
-                >
-                  <ChatBubble
-                    variant={isUser ? 'sent' : 'received'}
-                    className={`flex flex-row items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}
-                  >
-                    {message.text && !isUser && (
-                      <Avatar className="size-8 border rounded-full select-none mb-2">
-                        <AvatarImage
-                          src={
-                            isUser
-                              ? '/user-icon.png'
-                              : getAvatar(message.agentId) ||
-                                getAvatar(message.senderId) ||
-                                '/elizaos-icon.png'
-                          }
-                        />
-                      </Avatar>
-                    )}
-
-                    <MemoizedMessageContent
-                      message={message}
-                      isLastMessage={index === messages.length - 1}
-                      isUser={isUser}
-                    />
-                  </ChatBubble>
-                </div>
-              );
-            })}
-          </ChatMessageList>
-
-          {/* Chat Input */}
-          <div className="px-4 pb-4 mt-auto">
-            <form
-              ref={formRef}
-              onSubmit={handleSendMessage}
-              className="relative rounded-md border bg-card"
+        <div className="flex flex-row w-full overflow-y-auto grow gap-4">
+          {/* Main Chat Area */}
+          <div className={'flex flex-col transition-all duration-300 w-full'}>
+            {/* Chat Messages */}
+            <ChatMessageList
+              scrollRef={scrollRef}
+              isAtBottom={isAtBottom}
+              scrollToBottom={safeScrollToBottom}
+              disableAutoScroll={disableAutoScroll}
             >
-              {selectedFile ? (
-                <div className="p-3 flex">
-                  <div className="relative rounded-md border p-2">
-                    <Button
-                      onClick={() => setSelectedFile(null)}
-                      className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
-                      variant="outline"
-                      size="icon"
+              {messages.map((message: ContentWithUser, index: number) => {
+                const isUser = message.name === USER_NAME;
+
+                return (
+                  <div
+                    key={`${message.id as string}-${message.createdAt}`}
+                    className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
+                  >
+                    <ChatBubble
+                      variant={isUser ? 'sent' : 'received'}
+                      className={`flex flex-row items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}
                     >
-                      <X />
-                    </Button>
-                    <img
-                      alt="Selected file"
-                      src={URL.createObjectURL(selectedFile)}
-                      height="100%"
-                      width="100%"
-                      className="aspect-square object-contain w-16"
-                    />
+                      {message.text && !isUser && (
+                        <Avatar className="size-8 border rounded-full select-none mb-2">
+                          <AvatarImage
+                            src={
+                              isUser
+                                ? '/user-icon.png'
+                                : getAvatar(message.agentId) ||
+                                  getAvatar(message.senderId) ||
+                                  '/elizaos-icon.png'
+                            }
+                          />
+                        </Avatar>
+                      )}
+
+                      <MemoizedMessageContent
+                        message={message}
+                        isLastMessage={index === messages.length - 1}
+                        isUser={isUser}
+                      />
+                    </ChatBubble>
                   </div>
-                </div>
-              ) : null}
-              <ChatInput
-                ref={inputRef}
-                onKeyDown={handleKeyDown}
-                value={input}
-                onChange={({ target }) => setInput(target.value)}
-                placeholder="Type your message here..."
-                className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
-              />
-              <div className="flex items-center p-3 pt-0">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
+                );
+              })}
+            </ChatMessageList>
+
+            {/* Chat Input */}
+            <div className="px-4 pb-4 mt-auto">
+              <form
+                ref={formRef}
+                onSubmit={handleSendMessage}
+                className="relative rounded-md border bg-card"
+              >
+                {selectedFile ? (
+                  <div className="p-3 flex">
+                    <div className="relative rounded-md border p-2">
                       <Button
-                        variant="ghost"
+                        onClick={() => setSelectedFile(null)}
+                        className="absolute -right-2 -top-2 size-[22px] ring-2 ring-background"
+                        variant="outline"
                         size="icon"
-                        onClick={() => {
-                          if (fileInputRef.current) {
-                            fileInputRef.current.click();
-                          }
-                        }}
                       >
-                        <Paperclip className="size-4" />
-                        <span className="sr-only">Attach file</span>
+                        <X />
                       </Button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        accept="image/*"
-                        className="hidden"
+                      <img
+                        alt="Selected file"
+                        src={URL.createObjectURL(selectedFile)}
+                        height="100%"
+                        width="100%"
+                        className="aspect-square object-contain w-16"
                       />
                     </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    <p>Attach file</p>
-                  </TooltipContent>
-                </Tooltip>
-                <Button type="submit" size="sm" className="ml-auto gap-1.5 h-[30px]">
-                  <Send className="size-3.5" />
-                </Button>
-              </div>
-            </form>
+                  </div>
+                ) : null}
+                <ChatInput
+                  ref={inputRef}
+                  onKeyDown={handleKeyDown}
+                  value={input}
+                  onChange={({ target }) => setInput(target.value)}
+                  placeholder="Type your message here..."
+                  className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
+                />
+                <div className="flex items-center p-3 pt-0">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            if (fileInputRef.current) {
+                              fileInputRef.current.click();
+                            }
+                          }}
+                        >
+                          <Paperclip className="size-4" />
+                          <span className="sr-only">Attach file</span>
+                        </Button>
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleFileChange}
+                          accept="image/*"
+                          className="hidden"
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      <p>Attach file</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Button type="submit" size="sm" className="ml-auto gap-1.5 h-[30px]">
+                    <Send className="size-3.5" />
+                  </Button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>
+      <AgentsSidebar
+        onlineAgents={activeAgents}
+        offlineAgents={inactiveAgents}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

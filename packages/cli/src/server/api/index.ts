@@ -130,7 +130,10 @@ export function setupSocketIO(
               roomId: uniqueRoomId,
               content: {
                 text: payload.message,
-                source: payload.senderName === 'user' ? `${source}:user` : source,
+                source: `${source}:${payload.senderName}`,
+              },
+              metadata: {
+                entityName: payload.senderName,
               },
               createdAt: Date.now(),
             };

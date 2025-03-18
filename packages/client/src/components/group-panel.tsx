@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { type Agent, AgentStatus } from '@elizaos/core';
 import { UUID } from 'crypto';
+import { GROUP_CHAT_SOURCE } from '@/constants';
 
 interface GroupPanel {
   agents: Agent[] | undefined;
@@ -88,7 +89,7 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
         </div>
 
         <div
-          className="w-20 h-20 rounded-full overflow-hidden flex items-center justify-center cursor-pointer bg-cover bg-center bg-muted"
+          className="w-20 h-20 rounded-full overflow-hidden flex flex-shrink-0 items-center justify-center cursor-pointer bg-cover bg-center bg-muted"
           style={{ backgroundImage: avatar ? `url(${avatar})` : undefined }}
           onClick={() => fileInputRef.current?.click()}
         >
@@ -102,8 +103,8 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
           {!avatar && <ImageIcon className="w-6 h-6 text-white" />}
         </div>
 
-        <CardContent className="w-full grow flex flex-col items-center">
-          <div className="rounded-md h-full w-full mb-3">
+        <CardContent className="w-full flex grow flex-col items-center overflow-y-auto">
+          <div className="rounded-md w-full mb-3">
             <div className="flex h-full">
               <div className="p-6 flex flex-col gap-4 w-full">
                 <div className="flex flex-col gap-2 w-full">
@@ -155,7 +156,7 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-center w-full">
+          <div className="flex items-center justify-center w-full grow">
             <Button
               variant={'default'}
               className={`w-[90%]`}
@@ -173,25 +174,19 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
                   if (selectedAgentIds.length > 0) {
                     await Promise.all(
                       selectedAgentIds.map(async (agentId) => {
-                        await apiClient.createRoom(
-                          agentId,
-                          chatName,
-                          serverId,
-                          'client_group_chat',
-                          {
-                            thumbnail: avatar,
-                          }
-                        );
+                        await apiClient.createRoom(agentId, chatName, serverId, GROUP_CHAT_SOURCE, {
+                          thumbnail: avatar,
+                        });
                       })
                     );
                   }
-                  // queryClient.invalidateQueries({ queryKey: ["rooms"] });
                 } catch (error) {
                   console.error('Failed to create room', error);
                 } finally {
                   setCreating(false);
                   navigate(`/room/${serverId}`);
                   onClose();
+                  queryClient.invalidateQueries({ queryKey: ['rooms'] });
                 }
               }}
               size={'default'}

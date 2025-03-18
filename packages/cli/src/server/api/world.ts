@@ -68,7 +68,7 @@ export function worldRouter(server?: AgentServer): express.Router {
   router.get('/:worldId/memories/:serverId', async (req, res) => {
     try {
       const { serverId } = req.params;
-      const memories = await db.getMemoriesByServerId({ serverId, count: 30 });
+      const memories = await db.getMemoriesByServerId({ serverId, count: 50 });
 
       res.json({
         success: true,

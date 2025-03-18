@@ -40,8 +40,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { AgentMemoryViewer } from './memory-viewer';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import React from 'react';
-
-const SOURCE_NAME = 'client_chat';
+import { CHAT_SOURCE } from '@/constants';
 
 type ExtraContentFields = {
   name: string;
@@ -314,7 +313,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
       senderId: entityId,
       senderName: USER_NAME,
       roomId: roomId,
-      source: SOURCE_NAME,
+      source: CHAT_SOURCE,
       id: crypto.randomUUID(), // Add a unique ID for React keys and duplicate detection
     };
 
@@ -345,7 +344,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
     // via the useEffect hook
 
     // Send the message to the server/agent
-    socketIOManager.sendMessage(input, roomId, SOURCE_NAME);
+    socketIOManager.sendMessage(input, roomId, CHAT_SOURCE);
 
     setSelectedFile(null);
     setInput('');
@@ -439,17 +438,17 @@ export default function Page({ agentId }: { agentId: UUID }) {
               // Ensure user messages are correctly identified by either name or source
               const isUser =
                 message.name === USER_NAME ||
-                message.source === SOURCE_NAME ||
+                message.source === CHAT_SOURCE ||
                 message.senderId === entityId;
 
               // Add debugging to see why user message might be misattributed
-              if (!isUser && (message.source === SOURCE_NAME || message.senderId === entityId)) {
+              if (!isUser && (message.source === CHAT_SOURCE || message.senderId === entityId)) {
                 console.warn('[Chat] Message attribution issue detected:', {
                   message,
                   name: message.name,
                   expectedName: USER_NAME,
                   source: message.source,
-                  expectedSource: SOURCE_NAME,
+                  expectedSource: CHAT_SOURCE,
                   senderId: message.senderId,
                   entityId,
                 });

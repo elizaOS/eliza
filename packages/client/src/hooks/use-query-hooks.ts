@@ -1,4 +1,4 @@
-import { USER_NAME } from '@/constants';
+import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { apiClient } from '@/lib/api';
 import { WorldManager } from '@/lib/world-manager';
 import type { Agent, Content, Memory, UUID, Room } from '@elizaos/core';
@@ -446,7 +446,7 @@ export function useGroupMessages(
     queryKey: ['groupmessages', serverId, worldId],
     queryFn: async () => {
       const result = await apiClient.getGroupMemories(serverId);
-      const validSuffixes = [':user', ':agent'];
+      const validSuffixes = [`:${USER_NAME}`, ':agent'];
       const memories = result.data
         .map((memory: Memory): ContentWithUser | null => {
           const source = memory.content?.source ?? '';
@@ -683,7 +683,8 @@ export function useRooms(options = {}) {
     queryFn: async () => {
       const rooms = await apiClient.getRooms();
       const worldRooms = rooms.data.filter(
-        (room: Room) => room.worldId === WorldManager.getWorldId()
+        (room: Room) =>
+          room.worldId === WorldManager.getWorldId() && room.source === GROUP_CHAT_SOURCE
       );
 
       const roomMap: Map<string, Room[]> = new Map();
