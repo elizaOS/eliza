@@ -172,12 +172,14 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
                   );
 
                   if (selectedAgentIds.length > 0) {
-                    await Promise.all(
-                      selectedAgentIds.map(async (agentId) => {
-                        await apiClient.createRoom(agentId, chatName, serverId, GROUP_CHAT_SOURCE, {
-                          thumbnail: avatar,
-                        });
-                      })
+                    await apiClient.createGroupChat(
+                      selectedAgentIds,
+                      chatName,
+                      serverId,
+                      GROUP_CHAT_SOURCE,
+                      {
+                        thumbnail: avatar,
+                      }
                     );
                   }
                 } catch (error) {
