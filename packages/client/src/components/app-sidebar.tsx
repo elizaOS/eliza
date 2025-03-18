@@ -84,14 +84,14 @@ export function AppSidebar() {
                               className="transition-colors px-4 my-4 rounded-md"
                             >
                               <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 flex justify-center items-center">
+                                <div className="w-6 h-6 flex justify-center items-center">
                                   <div className="bg-muted rounded-full w-full h-full">
                                     <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
-                                      <Plus />
+                                      <Plus className="w-4 h-4" />
                                     </div>
                                   </div>
                                 </div>
-                                <span className="text-base">{'Add room'}</span>
+                                <span className="text-base">{'Create room'}</span>
                               </div>
                             </SidebarMenuButton>
                             {roomsData &&
