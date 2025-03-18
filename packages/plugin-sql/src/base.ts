@@ -2259,10 +2259,21 @@ export abstract class BaseDrizzleAdapter<
   async deleteRoomsByServerId(serverId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
-        await tx.delete(roomTable).where(eq(roomTable.serverId, serverId));
+        const roomIdsResult = await tx
+          .select({ roomId: roomTable.id })
+          .from(roomTable)
+          .where(eq(roomTable.serverId, serverId));
+
+        if (roomIdsResult.length === 0) return;
+
+        const roomIds = roomIdsResult.map((row) => row.roomId);
+
+        await tx.delete(logTable).where(inArray(logTable.roomId, roomIds));
+
+        await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
       });
 
-      logger.debug('Rooms deleted successfully for server:', {
+      logger.debug('Rooms and related logs deleted successfully for server:', {
         serverId,
       });
     });

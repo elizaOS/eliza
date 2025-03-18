@@ -2,7 +2,7 @@ import { Card, CardContent } from './ui/card';
 import { formatAgentName } from '@/lib/utils';
 import { Button } from './ui/button';
 import { ImageIcon, Loader2, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Input } from './ui/input';
 import { Switch } from './ui/switch-button';
 import { apiClient } from '@/lib/api';
@@ -11,13 +11,15 @@ import { useNavigate } from 'react-router';
 import { type Agent, AgentStatus } from '@elizaos/core';
 import { UUID } from 'crypto';
 import { GROUP_CHAT_SOURCE } from '@/constants';
+import { useRooms } from '@/hooks/use-query-hooks';
 
 interface GroupPanel {
   agents: Agent[] | undefined;
   onClose: () => void;
+  groupId?: UUID;
 }
 
-export default function GroupPanel({ onClose, agents }: GroupPanel) {
+export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
   const [chatName, setChatName] = useState(``);
   const [selectedAgents, setSelectedAgents] = useState<{ [key: string]: boolean }>({});
   const [creating, setCreating] = useState(false);
@@ -25,8 +27,21 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
   const [avatar, setAvatar] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const { data: roomsData } = useRooms();
+
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (groupId) {
+      const rooms = roomsData?.get(groupId);
+      if (!rooms || !rooms.length) {
+        return;
+      }
+      setChatName(rooms[0].name);
+      setAvatar(rooms[0].metadata?.thumbnail);
+    }
+  }, [groupId]);
 
   const toggleAgentSelection = (agentId: string) => {
     setSelectedAgents((prev) => ({
@@ -161,7 +176,7 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
               variant={'default'}
               className={`w-[90%]`}
               onClick={async () => {
-                const serverId = crypto.randomUUID() as UUID;
+                const serverId = groupId || (crypto.randomUUID() as UUID);
                 if (!chatName || !chatName.length) {
                   return;
                 }
@@ -172,6 +187,13 @@ export default function GroupPanel({ onClose, agents }: GroupPanel) {
                   );
 
                   if (selectedAgentIds.length > 0) {
+                    if (groupId) {
+                      try {
+                        await apiClient.deleteGroupChat(groupId);
+                      } catch (error) {
+                        console.error(error);
+                      }
+                    }
                     await apiClient.createGroupChat(
                       selectedAgentIds,
                       chatName,
