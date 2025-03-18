@@ -5,12 +5,11 @@ import {
   type TeeVendorConfig,
   logger,
 } from '@elizaos/core';
-import { TeeLogService } from './services/teeLogService';
-import { TeeVendorNames, getVendor } from './vendors';
+import { TeeVendorNames } from './vendors/types';
+import { getVendor } from './vendors/index';
 
 export { PhalaDeriveKeyProvider } from './providers/deriveKeyProvider';
 export { PhalaRemoteAttestationProvider } from './providers/remoteAttestationProvider';
-export { TeeLogService };
 export type { TeeVendorConfig };
 
 /**
@@ -28,14 +27,6 @@ async function initializeTEE(config: Record<string, string>, runtime: IAgentRunt
       case 'phala':
         plugin = teePlugin({
           vendor: TeeVendorNames.PHALA,
-          vendorConfig: {
-            apiKey: runtime.getSetting('TEE_API_KEY'),
-          },
-        });
-        break;
-      case 'sgx-gramine':
-        plugin = teePlugin({
-          vendor: TeeVendorNames.SGX_GRAMINE,
         });
         break;
       default:
@@ -69,6 +60,6 @@ export const teePlugin = (config?: TeePluginConfig): Plugin => {
     actions: vendor.getActions(),
     evaluators: [],
     providers: vendor.getProviders(),
-    services: [TeeLogService],
+    services: [],
   };
 };
