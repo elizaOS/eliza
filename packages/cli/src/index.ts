@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 process.env.NODE_OPTIONS = '--no-deprecation';
+process.env.NODE_NO_WARNINGS = '1';
 
 import fs from 'node:fs';
 import path from 'node:path';
