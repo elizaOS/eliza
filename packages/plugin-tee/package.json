@@ -6,10 +6,9 @@
   "types": "dist/index.d.ts",
   "dependencies": {
     "@elizaos/core": "^1.0.0-alpha.67",
-    "@phala/dstack-sdk": "^0.1.7",
-    "@solana/web3.js": "^1.98.0",
-    "better-sqlite3": "11.8.1",
-    "elliptic": "6.6.1"
+    "@phala/dstack-sdk": "0.1.11",
+    "@solana/web3.js": "1.98.0",
+    "viem": "2.23.11"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
