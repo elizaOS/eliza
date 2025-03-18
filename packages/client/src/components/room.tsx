@@ -171,6 +171,9 @@ export default function Page({ serverId }: { serverId: UUID }) {
   const { data: { data: agentsData } = {}, isLoading, isError } = useAgents();
   const agents = agentsData?.agents || [];
 
+  const prevServerIdRef = useRef<UUID | null>(null);
+  const prevActiveAgentIdsRef = useRef<UUID[]>([]);
+
   const getAvatar = (agentId: string) => {
     const rooms = roomsData?.get(serverId);
     const agent = rooms?.find((room) => room.agentId === agentId);
@@ -201,7 +204,6 @@ export default function Page({ serverId }: { serverId: UUID }) {
       return;
     }
     let activeAgentIds: UUID[] = [];
-    let inactiveAgentIds: UUID[] = [];
 
     const roomDatas = roomsData.get(serverId);
     if (roomDatas) {
@@ -210,20 +212,23 @@ export default function Page({ serverId }: { serverId: UUID }) {
         if (agentData) {
           if (agentData.status === AgentStatus.ACTIVE) {
             activeAgentIds.push(roomData.agentId as UUID);
-          } else {
-            inactiveAgentIds.push(roomData.agentId as UUID);
           }
         }
       });
     }
 
-    setActiveAgentIds(activeAgentIds);
-  }, [isLoading, isError, agents, roomsData]);
+    const isSameServer = prevServerIdRef.current === serverId;
+    const isSameAgents =
+      activeAgentIds.length === prevActiveAgentIdsRef.current.length &&
+      activeAgentIds.every((id, index) => id === prevActiveAgentIdsRef.current[index]);
 
-  useEffect(() => {
-    if (!serverId) {
-      return;
+    if (isSameServer && isSameAgents) {
+      return; // No changes, avoid reconnecting
     }
+
+    // Update refs
+    prevServerIdRef.current = serverId;
+    prevActiveAgentIdsRef.current = activeAgentIds;
 
     socketIOManager.initialize(entityId, activeAgentIds);
 
@@ -300,7 +305,7 @@ export default function Page({ serverId }: { serverId: UUID }) {
       socketIOManager.leaveRoom(serverId);
       socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
     };
-  }, [serverId, activeAgentIds.length]);
+  }, [isLoading, isError, agents, roomsData, serverId]);
 
   // Use a stable ID for refs to avoid excessive updates
   const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
