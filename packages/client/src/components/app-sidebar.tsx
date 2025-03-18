@@ -60,7 +60,7 @@ export function AppSidebar() {
                           <div className="px-4 py-1 mt-2">
                             <div className="flex items-center space-x-2">
                               <span className="text-sm font-medium text-muted-foreground">
-                                Rooms
+                                Groups
                               </span>
                             </div>
                           </div>
