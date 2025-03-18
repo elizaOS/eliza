@@ -62,7 +62,7 @@ export default function Home() {
   return (
     <>
       <div className="flex">
-        <div className="flex flex-col gap-4 h-full p-4">
+        <div className="flex flex-col gap-4 h-full p-3">
           <div className="flex items-center justify-between">
             <PageTitle title="Agents" />
           </div>
@@ -84,7 +84,7 @@ export default function Home() {
           )}
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-3">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-2">
               {agents
                 ?.sort((a: Agent, b: Agent) => Number(b?.enabled) - Number(a?.enabled))
                 .map((agent: Agent) => {
@@ -93,7 +93,7 @@ export default function Home() {
                       key={agent.id}
                       title={
                         <div className="flex gap-2 items-center">
-                          <div className="">{agent.name}</div>
+                          <div className="truncate max-w-24">{agent.name}</div>
                           {agent?.status === AgentStatus.ACTIVE ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -121,17 +121,20 @@ export default function Home() {
                           onClick={() => openOverlay(agent)}
                         >
                           <div
-                            className={
-                              agent.status === AgentStatus.ACTIVE
-                                ? 'brightness-[100%] hover:brightness-[107%]'
-                                : 'grayscale brightness-[75%] opacity-50 hover:brightness-[85%]'
-                            }
+                            className={`
+                              w-full h-full flex items-center justify-center
+                              ${
+                                agent.status === AgentStatus.ACTIVE
+                                  ? 'brightness-[100%] hover:brightness-[107%]'
+                                  : 'grayscale }brightness-[75%] opacity-50 hover:brightness-[85%]'
+                              }
+                            `}
                           >
                             {agent.settings?.avatar ? (
                               <img
                                 src={agent.settings.avatar}
                                 alt="Agent Avatar"
-                                className="w-full h-full object-contain"
+                                className="w-full h-full object-cover"
                               />
                             ) : (
                               formatAgentName(agent.name)
@@ -198,7 +201,7 @@ export default function Home() {
           </div>
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-3">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-2">
               {roomsData &&
                 Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
                   const thumbnail = roomArray.length > 0 ? roomArray[0]?.metadata?.thumbnail : null;
@@ -208,7 +211,7 @@ export default function Home() {
                       key={roomId}
                       title={
                         <div className="flex gap-2 items-center">
-                          <div className="">{roomName}</div>
+                          <div className="truncate max-w-24">{roomName}</div>
                         </div>
                       }
                       content={
@@ -216,12 +219,12 @@ export default function Home() {
                           className="relative cursor-pointer h-full w-full flex items-center justify-center group"
                           onClick={() => navigate(`/room/${roomId}`)}
                         >
-                          <div className="brightness-[100%] hover:brightness-[107%]">
+                          <div className="brightness-[100%] hover:brightness-[107%] w-full h-full flex items-center justify-center">
                             {thumbnail ? (
                               <img
                                 src={thumbnail}
-                                alt="Agent Avatar"
-                                className="w-full h-full object-contain"
+                                alt="Room Thumbnail"
+                                className="w-full h-full object-cover"
                               />
                             ) : (
                               formatAgentName(roomName)
@@ -242,8 +245,8 @@ export default function Home() {
                           icon: <Cog style={{ height: 16, width: 16 }} />,
                           className: 'w-10 h-10 rounded-full',
                           action: () => {
-                            setIsGroupPanelOpen(true);
                             setSelectedGroupId(roomId);
+                            setIsGroupPanelOpen(true);
                           },
                           variant: 'outline',
                         },
@@ -251,6 +254,19 @@ export default function Home() {
                     />
                   );
                 })}
+              {/* Create new Group card */}
+              <Card
+                className="flex flex-col items-center justify-center h-full cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() => {
+                  setSelectedGroupId(null);
+                  setIsGroupPanelOpen(true);
+                }}
+              >
+                <div className="flex flex-col items-center justify-center gap-2 p-8">
+                  <Plus size={40} className="text-muted-foreground" />
+                  <span className="text-muted-foreground whitespace-nowrap">Create New Group</span>
+                </div>
+              </Card>
             </div>
           )}
         </div>

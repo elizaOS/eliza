@@ -219,7 +219,13 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                 !chatName.length || Object.keys(selectedAgents).length === 0 || deleting || creating
               }
             >
-              {creating ? <Loader2 className="animate-spin" /> : 'Create Group'}
+              {creating ? (
+                <Loader2 className="animate-spin" />
+              ) : groupId ? (
+                'Update Group'
+              ) : (
+                'Create Group'
+              )}
             </Button>
             {groupId && (
               <Button

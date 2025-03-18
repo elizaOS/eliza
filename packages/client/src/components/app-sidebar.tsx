@@ -11,29 +11,15 @@ import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
-import { useAgents, useRooms } from '@/hooks/use-query-hooks';
+import { useRooms } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
 import { formatAgentName } from '@/lib/utils';
-import { type Agent, AgentStatus } from '@elizaos/core';
-import { Book, Cog, Plus, TerminalIcon } from 'lucide-react';
-import { NavLink, useLocation } from 'react-router';
+import { Book, Cog, TerminalIcon } from 'lucide-react';
+import { NavLink } from 'react-router';
 import ConnectionStatus from './connection-status';
-import { useState } from 'react';
-import GroupPanel from './group-panel';
 
 export function AppSidebar() {
-  const location = useLocation();
-
-  // Add more defensive coding to handle any possible null/undefined responses
-  const agentsResult = useAgents();
-  const { data, isPending: isAgentsPending } = agentsResult || { data: undefined, isPending: true };
-  const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
-  // Create a safe data object that can't be null
-  const safeData = data || {};
-  const safeDataData = (safeData as any).data || {};
-  const agents = safeDataData.agents || [];
-
-  const { data: roomsData } = useRooms();
+  const { data: roomsData, isLoading } = useRooms();
 
   return (
     <>
@@ -58,7 +44,7 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupContent className="px-2">
               <SidebarMenu>
-                {isAgentsPending ? (
+                {isLoading ? (
                   <div>
                     {Array.from({ length: 5 }).map((_, _index) => (
                       <SidebarMenuItem key={`skeleton-item-${_index}`}>
@@ -71,7 +57,7 @@ export function AppSidebar() {
                     {(() => {
                       return (
                         <>
-                          <div className="px-4 py-1 mt-8">
+                          <div className="px-4 py-1 mt-2">
                             <div className="flex items-center space-x-2">
                               <span className="text-sm font-medium text-muted-foreground">
                                 Rooms
@@ -79,21 +65,6 @@ export function AppSidebar() {
                             </div>
                           </div>
                           <SidebarMenuItem>
-                            <SidebarMenuButton
-                              onClick={() => setIsGroupPanelOpen(true)}
-                              className="transition-colors px-4 my-4 rounded-md"
-                            >
-                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 flex justify-center items-center">
-                                  <div className="bg-muted rounded-full w-full h-full">
-                                    <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
-                                      <Plus className="w-4 h-4" />
-                                    </div>
-                                  </div>
-                                </div>
-                                <span className="text-base">{'Create room'}</span>
-                              </div>
-                            </SidebarMenuButton>
                             {roomsData &&
                               Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
                                 // Ensure the array exists and has elements before accessing metadata
@@ -103,18 +74,18 @@ export function AppSidebar() {
                                 return (
                                   <SidebarMenuItem key={roomId}>
                                     <NavLink to={`/room/${roomId}`}>
-                                      <SidebarMenuButton className="transition-colors px-4 my-4 rounded-md">
+                                      <div className="transition-colors px-4 my-4 rounded-md">
                                         <div className="flex items-center gap-2">
-                                          <div className="w-8 h-8 flex justify-center items-center">
-                                            <div className="relative bg-muted rounded-full w-full h-full">
+                                          <div className="w-10 h-10 flex justify-center items-center">
+                                            <div className="relative bg-muted rounded-sm w-full h-full">
                                               {thumbnail ? (
                                                 <img
                                                   src={thumbnail}
                                                   alt={`${roomName} thumbnail`}
-                                                  className="rounded-full w-full h-full object-cover"
+                                                  className="rounded-sm w-full h-full object-cover"
                                                 />
                                               ) : (
-                                                <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
+                                                <div className="text-sm rounded-sm h-full w-full flex justify-center items-center overflow-hidden">
                                                   {formatAgentName(roomName)}
                                                 </div>
                                               )}
@@ -124,7 +95,7 @@ export function AppSidebar() {
                                             {roomName}
                                           </span>
                                         </div>
-                                      </SidebarMenuButton>
+                                      </div>
                                     </NavLink>
                                   </SidebarMenuItem>
                                 );
@@ -167,9 +138,6 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
-      {isGroupPanelOpen && (
-        <GroupPanel agents={agents} onClose={() => setIsGroupPanelOpen(false)} />
-      )}
     </>
   );
 }
