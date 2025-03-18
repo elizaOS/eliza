@@ -27,17 +27,14 @@ export function worldRouter(server?: AgentServer): express.Router {
               return null;
             }
 
-            const participantsIds = await db.getParticipantsForRoom(roomData.id);
-            const participants = await Promise.all(
-              participantsIds.map(async (agentId) => await db.getAgent(agentId))
-            );
+            const character = await db.getAgent(roomData.agentId);
 
             return {
               id: roomData.id,
               name: roomData.name,
               source: roomData.source,
               worldId: roomData.worldId,
-              participants: participants.filter(Boolean),
+              character,
               agentId: roomData.agentId,
               metadata: roomData.metadata,
               serverId: roomData.serverId,
@@ -62,6 +59,28 @@ export function worldRouter(server?: AgentServer): express.Router {
         error: {
           code: 'FETCH_ERROR',
           message: 'Failed to retrieve rooms',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  router.get('/:worldId/memories/:serverId', async (req, res) => {
+    try {
+      const { serverId } = req.params;
+      const memories = await db.getMemoriesByServerId({ serverId, count: 30 });
+
+      res.json({
+        success: true,
+        data: memories,
+      });
+    } catch (error) {
+      logger.error(`[ROOMS GET] Error retrieving memories`, error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'FETCH_ERROR',
+          message: 'Failed to retrieve memories',
           details: error.message,
         },
       });

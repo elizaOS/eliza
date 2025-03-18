@@ -130,7 +130,7 @@ export function setupSocketIO(
               roomId: uniqueRoomId,
               content: {
                 text: payload.message,
-                source,
+                source: payload.senderName === 'user' ? `${source}:user` : source,
               },
               createdAt: Date.now(),
             };
@@ -161,7 +161,7 @@ export function setupSocketIO(
                   text: content.text || '',
                   roomId: socketRoomId,
                   createdAt: Date.now(),
-                  source: content.source || 'agent',
+                  source,
                 };
 
                 // Add optional fields only if they exist in the original content
@@ -193,6 +193,7 @@ export function setupSocketIO(
                     ...content,
                     inReplyTo: messageId,
                     channelType: ChannelType.DM,
+                    source: `${source}:agent`,
                   },
                   roomId: uniqueRoomId,
                   createdAt: Date.now(),

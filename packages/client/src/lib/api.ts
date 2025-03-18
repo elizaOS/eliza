@@ -447,4 +447,12 @@ export const apiClient = {
       body: memoryData,
     });
   },
+
+  getGroupMemories: (serverId: UUID) => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/world/${worldId}/memories/${serverId}`,
+      method: 'GET',
+    });
+  },
 };

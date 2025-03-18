@@ -7,7 +7,7 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useAgent, useAgents, useMessages, useRooms } from '@/hooks/use-query-hooks';
+import { useAgent, useAgents, useGroupMessages, useRooms } from '@/hooks/use-query-hooks';
 import { cn, getEntityId, moment } from '@/lib/utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { WorldManager } from '@/lib/world-manager';
@@ -40,8 +40,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { AgentMemoryViewer } from './memory-viewer';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import React from 'react';
+import { apiClient } from '@/lib/api';
 
-const SOURCE_NAME = 'client_chat';
+const SOURCE_NAME = 'client_group_chat';
 
 type ExtraContentFields = {
   name: string;
@@ -55,17 +56,17 @@ const MemoizedMessageContent = React.memo(MessageContent);
 
 function MessageContent({
   message,
-  agentId,
   isLastMessage,
+  isUser,
 }: {
   message: ContentWithUser;
-  agentId: UUID;
   isLastMessage: boolean;
+  isUser: boolean;
 }) {
   // Only log message details in development mode
   if (import.meta.env.DEV) {
     console.log(`[Chat] Rendering message from ${message.name}:`, {
-      isUser: message.name === USER_NAME,
+      isUser: isUser,
       text: message.text?.substring(0, 20) + '...',
       senderId: message.senderId,
       source: message.source,
@@ -76,10 +77,10 @@ function MessageContent({
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
         isLoading={message.isLoading}
-        {...(message.name === USER_NAME ? { variant: 'sent' } : {})}
+        {...(isUser ? { variant: 'sent' } : {})}
         {...(!message.text ? { className: 'bg-transparent' } : {})}
       >
-        {message.name !== USER_NAME && (
+        {!isUser && (
           <div className="w-full">
             {message.text && message.thought && (
               <Collapsible className="mb-1">
@@ -98,9 +99,9 @@ function MessageContent({
         )}
 
         <div className="py-2">
-          {message.name === USER_NAME ? (
+          {isUser ? (
             message.text
-          ) : isLastMessage && message.name !== USER_NAME ? (
+          ) : isLastMessage && !isUser ? (
             <AIWriter>{message.text}</AIWriter>
           ) : (
             message.text
@@ -109,9 +110,9 @@ function MessageContent({
 
         {!message.text && message.thought && (
           <>
-            {message.name === USER_NAME ? (
+            {isUser ? (
               message.thought
-            ) : isLastMessage && message.name !== USER_NAME ? (
+            ) : isLastMessage && !isUser ? (
               <AIWriter>
                 <span className="italic text-muted-foreground">{message.thought}</span>
               </AIWriter>
@@ -140,13 +141,13 @@ function MessageContent({
           <ChatBubbleTimestamp timestamp={moment(message.createdAt).format('LT')} />
         )}
       </ChatBubbleMessage>
-      {message.name !== USER_NAME && (
+      {!isUser && (
         <div className="flex justify-between items-end w-full">
           <div>
             {message.text && !message.isLoading ? (
               <div className="flex items-center gap-2">
                 <CopyButton text={message.text} />
-                <ChatTtsButton agentId={agentId} text={message.text} />
+                <ChatTtsButton agentId={message.agentId} text={message.text} />
               </div>
             ) : (
               <div />
@@ -178,12 +179,9 @@ export default function Page({ roomId }: { roomId: UUID }) {
   const worldId = WorldManager.getWorldId();
 
   const { data: roomsData } = useRooms();
-
-  const agentData = [];
-  const agentId = 'test';
   const entityId = getEntityId();
 
-  const { data: messages = [] } = useMessages(agentId, roomId);
+  const { data: messages = [] } = useGroupMessages(roomId, SOURCE_NAME);
 
   const socketIOManager = SocketIOManager.getInstance();
 
@@ -193,21 +191,48 @@ export default function Page({ roomId }: { roomId: UUID }) {
   const prevActiveAgentIdsRef = useRef<UUID[]>([]);
   const stableActiveAgentIds = useMemo(() => activeAgentIds, [JSON.stringify(activeAgentIds)]);
 
+  const getAvatar = (agentId: string) => {
+    const rooms = roomsData?.get(roomId);
+    const agent = rooms?.find((room) => room.agentId === agentId);
+    const character = agent?.character;
+    return character?.settings?.avatar;
+  };
+
+  const getRoomThumbnail = () => {
+    const rooms = roomsData?.get(roomId);
+    if (rooms && rooms.length) {
+      return rooms[0].metadata?.thumbnail;
+    }
+
+    return null;
+  };
+
+  const getRoomName = () => {
+    const rooms = roomsData?.get(roomId);
+    if (rooms && rooms.length) {
+      return rooms[0].name;
+    }
+
+    return null;
+  };
+
   useEffect(() => {
     if (isLoading || isError || !agents || !agents.length || !roomsData) {
       return;
     }
     let roomAgentIds: UUID[] = [];
-    roomsData.forEach((data, id) => {
-      if (id === roomId) {
-        data.forEach((roomData) => {
-          const agentData = agents.find((agent) => agent.id === roomData.agentId);
-          if (agentData && agentData.status === AgentStatus.ACTIVE) {
-            roomAgentIds.push(roomData.agentId as UUID);
-          }
-        });
-      }
-    });
+    let roomIds: UUID[] = [];
+
+    const roomDatas = roomsData.get(roomId);
+    if (roomDatas) {
+      roomDatas.forEach((roomData) => {
+        const agentData = agents.find((agent) => agent.id === roomData.agentId);
+        if (agentData && agentData.status === AgentStatus.ACTIVE) {
+          roomAgentIds.push(roomData.agentId as UUID);
+          roomIds.push(roomData.id as UUID);
+        }
+      });
+    }
 
     setActiveAgentIds(roomAgentIds);
   }, [isLoading, isError, agents, roomsData]);
@@ -262,27 +287,24 @@ export default function Page({ roomId }: { roomId: UUID }) {
       console.log(`[Chat] Adding new message to UI from ${newMessage.name}:`, newMessage);
 
       // Update the message list without triggering a re-render cascade
-      queryClient.setQueryData(
-        ['messages', agentId, roomId, worldId],
-        (old: ContentWithUser[] = []) => {
-          console.log(`[Chat] Current messages:`, old?.length || 0);
+      queryClient.setQueryData(['messages', roomId, worldId], (old: ContentWithUser[] = []) => {
+        console.log(`[Chat] Current messages:`, old?.length || 0);
 
-          // Check if this message is already in the list (avoid duplicates)
-          const isDuplicate = old.some(
-            (msg) =>
-              msg.text === newMessage.text &&
-              msg.name === newMessage.name &&
-              Math.abs((msg.createdAt || 0) - (newMessage.createdAt || 0)) < 5000 // Within 5 seconds
-          );
+        // Check if this message is already in the list (avoid duplicates)
+        const isDuplicate = old.some(
+          (msg) =>
+            msg.text === newMessage.text &&
+            msg.name === newMessage.name &&
+            Math.abs((msg.createdAt || 0) - (newMessage.createdAt || 0)) < 5000 // Within 5 seconds
+        );
 
-          if (isDuplicate) {
-            console.log('[Chat] Skipping duplicate message');
-            return old;
-          }
-
-          return [...old, newMessage];
+        if (isDuplicate) {
+          console.log('[Chat] Skipping duplicate message');
+          return old;
         }
-      );
+
+        return [...old, newMessage];
+      });
 
       // Remove the redundant state update that was causing render loops
       // setInput(prev => prev + '');
@@ -358,25 +380,22 @@ export default function Page({ roomId }: { roomId: UUID }) {
     console.log('[Chat] Adding user message to UI:', userMessage);
 
     // Update the local message list first for immediate feedback
-    queryClient.setQueryData(
-      ['messages', agentId, roomId, worldId],
-      (old: ContentWithUser[] = []) => {
-        // Check if exact same message exists already to prevent duplicates
-        const exists = old.some(
-          (msg) =>
-            msg.text === userMessage.text &&
-            msg.name === USER_NAME &&
-            Math.abs((msg.createdAt || 0) - userMessage.createdAt) < 1000
-        );
+    queryClient.setQueryData(['messages', roomId, worldId], (old: ContentWithUser[] = []) => {
+      // Check if exact same message exists already to prevent duplicates
+      const exists = old.some(
+        (msg) =>
+          msg.text === userMessage.text &&
+          msg.name === USER_NAME &&
+          Math.abs((msg.createdAt || 0) - userMessage.createdAt) < 1000
+      );
 
-        if (exists) {
-          console.log('[Chat] Skipping duplicate user message');
-          return old;
-        }
-
-        return [...old, userMessage];
+      if (exists) {
+        console.log('[Chat] Skipping duplicate user message');
+        return old;
       }
-    );
+
+      return [...old, userMessage];
+    });
 
     // We don't need to call scrollToBottom here, the message count change will trigger it
     // via the useEffect hook
@@ -412,38 +431,12 @@ export default function Page({ roomId }: { roomId: UUID }) {
       <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
         <div className="flex items-center gap-3">
           <Avatar className="size-10 border rounded-full">
-            <AvatarImage
-              src={agentData?.settings?.avatar ? agentData?.settings?.avatar : '/elizaos-icon.png'}
-            />
+            <AvatarImage src={getRoomThumbnail() ? getRoomThumbnail() : '/elizaos-icon.png'} />
           </Avatar>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-lg">{agentData?.name || 'Agent'}</h2>
-              {agentData?.status === AgentStatus.ACTIVE ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="size-2.5 rounded-full bg-green-500 ring-2 ring-green-500/20 animate-pulse" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Agent is active</p>
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="size-2.5 rounded-full bg-gray-300 ring-2 ring-gray-300/20" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Agent is inactive</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
+              <h2 className="font-semibold text-lg">{getRoomName() || 'Group Chat'}</h2>
             </div>
-            {agentData?.bio && (
-              <p className="text-sm text-muted-foreground line-clamp-1">
-                {Array.isArray(agentData.bio) ? agentData.bio[0] : agentData.bio}
-              </p>
-            )}
           </div>
         </div>
 
@@ -473,24 +466,7 @@ export default function Page({ roomId }: { roomId: UUID }) {
             disableAutoScroll={disableAutoScroll}
           >
             {messages.map((message: ContentWithUser, index: number) => {
-              // Ensure user messages are correctly identified by either name or source
-              const isUser =
-                message.name === USER_NAME ||
-                message.source === SOURCE_NAME ||
-                message.senderId === entityId;
-
-              // Add debugging to see why user message might be misattributed
-              if (!isUser && (message.source === SOURCE_NAME || message.senderId === entityId)) {
-                console.warn('[Chat] Message attribution issue detected:', {
-                  message,
-                  name: message.name,
-                  expectedName: USER_NAME,
-                  source: message.source,
-                  expectedSource: SOURCE_NAME,
-                  senderId: message.senderId,
-                  entityId,
-                });
-              }
+              const isUser = message.name === USER_NAME;
 
               return (
                 <div
@@ -507,8 +483,8 @@ export default function Page({ roomId }: { roomId: UUID }) {
                           src={
                             isUser
                               ? '/user-icon.png'
-                              : agentData?.settings?.avatar
-                                ? agentData?.settings?.avatar
+                              : getAvatar(message.agentId)
+                                ? getAvatar(message.agentId)
                                 : '/elizaos-icon.png'
                           }
                         />
@@ -517,8 +493,8 @@ export default function Page({ roomId }: { roomId: UUID }) {
 
                     <MemoizedMessageContent
                       message={message}
-                      agentId={agentId}
                       isLastMessage={index === messages.length - 1}
+                      isUser={isUser}
                     />
                   </ChatBubble>
                 </div>

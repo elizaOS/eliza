@@ -430,6 +430,69 @@ export function useMessages(
   };
 }
 
+export function useGroupMessages(
+  serverId: UUID,
+  groupChatSource: string
+): {
+  data: ContentWithUser[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+} {
+  const worldId = WorldManager.getWorldId();
+
+  // Initial fetch of messages
+  const messagesQuery = useQuery({
+    queryKey: ['messages', serverId, worldId],
+    queryFn: async () => {
+      const result = await apiClient.getGroupMemories(serverId);
+      const validSuffixes = [':user', ':agent'];
+      console.log('resultltlt', result);
+      const memories = result.data
+        .map((memory: Memory): ContentWithUser | null => {
+          const source = memory.content?.source ?? '';
+          if (
+            !source.startsWith(groupChatSource) ||
+            !validSuffixes.some((suffix) => source.endsWith(suffix))
+          ) {
+            return null;
+          }
+
+          return {
+            text: memory.content.text,
+            roomId: memory.roomId,
+            name: source.endsWith(validSuffixes[0]) ? USER_NAME : 'agent',
+            agentId: memory.agentId,
+            entityId: memory.entityId,
+            createdAt: memory.createdAt || 0,
+            attachments: memory.content.attachments,
+            source: memory.content.source,
+            worldId,
+            id: memory.id,
+            thought: memory.content.thought,
+          };
+        })
+        .filter(Boolean) // Remove null values from the array
+        .sort((a: ContentWithUser, b: ContentWithUser) => {
+          if (a.createdAt === undefined || b.createdAt === undefined) {
+            return 0;
+          }
+          return a.createdAt - b.createdAt;
+        });
+
+      console.log('giot ititit', memories);
+
+      return memories;
+    },
+    enabled: Boolean(serverId && groupChatSource),
+    staleTime: STALE_TIMES.FREQUENT,
+  });
+
+  return {
+    ...messagesQuery,
+  };
+}
+
 // Hook for fetching agent actions
 /**
  * Custom hook to fetch agent actions for a specific agent and room.
