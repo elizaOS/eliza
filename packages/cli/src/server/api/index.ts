@@ -256,7 +256,7 @@ export function setupSocketIO(
         const roomId = payload.roomId;
         const agentIds = payload.agentIds;
 
-        agentIds.forEach((agentId: UUID) => {
+        agentIds?.forEach((agentId: UUID) => {
           if (agents.has(agentId as UUID)) {
             // Initialize Set if not exists
             if (!roomParticipants.has(roomId)) {

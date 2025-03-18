@@ -141,7 +141,7 @@ const messageReceivedHandler = async ({
   });
 
   // Set up timeout monitoring
-  const timeoutDuration = 5 * 60 * 1000; // 5 minutes
+  const timeoutDuration = 60 * 60 * 1000; // 1 hour
   let timeoutId: NodeJS.Timer;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -156,10 +156,10 @@ const messageReceivedHandler = async ({
         status: 'timeout',
         endTime: Date.now(),
         duration: Date.now() - startTime,
-        error: 'Run exceeded 5 minute timeout',
+        error: 'Run exceeded 60 minute timeout',
         source: 'messageHandler',
       });
-      reject(new Error('Run exceeded 5 minute timeout'));
+      reject(new Error('Run exceeded 60 minute timeout'));
     }, timeoutDuration);
   });
 

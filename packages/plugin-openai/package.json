@@ -49,7 +49,7 @@
       }
     }
   },
-  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55",
+  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e",
   "devDependencies": {
     "prettier": "3.5.3"
   }

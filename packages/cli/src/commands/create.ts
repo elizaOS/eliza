@@ -406,7 +406,7 @@ export const create = new Command()
       // Show next steps with updated message
       logger.info(`\nYour project is ready! Here's what you can do next:
 1. \`cd ${targetDir}\` to change into your project directory
-2. Run \`npx @elizaos/cli start\` to start your project
+2. Run \`npx @elizaos/cli@beta start\` to start your project
 3. Visit \`http://localhost:3000\` to view your project in the browser`);
 
       // exit successfully
