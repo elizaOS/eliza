@@ -1,59 +1,237 @@
+/* src/components/HomepageFeatures/styles.module.css */
 .features {
-  display: flex;
-  align-items: center;
-  padding: 2rem 0;
+  padding: 4rem 0;
   width: 100%;
-  flex-wrap: wrap;
 }
 
-.featureSvg {
-  height: 200px;
-  width: 200px;
+.sectionHeader {
+  text-align: center;
+  margin-bottom: 3rem;
 }
 
-.featureIcon {
-  height: 100px;
-  width: 100px;
-  font-size: 2rem;
+.sectionTitle {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  font-weight: 700;
+}
+
+.sectionSubtitle {
+  font-size: 1.2rem;
+  opacity: 0.8;
+  max-width: 700px;
+  margin: 0 auto;
 }
 
 .featureGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  margin-bottom: 4rem;
+}
+
+.featureCard {
+  background: var(--ifm-card-background-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  transition: all 0.3s ease;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.featureCard:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+  border-color: var(--ifm-color-primary-lighter);
+}
+
+.featureIconWrapper {
+  padding: 2rem 1.5rem 0;
+}
+
+.featureIcon {
+  font-size: 2.5rem;
+  line-height: 1;
+  margin-bottom: 1rem;
+}
+
+.featureContent {
+  padding: 1.5rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.featureTitle {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.featureDescription {
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+  font-size: 0.95rem;
+  flex: 1;
+}
+
+.featureLink {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ifm-color-primary);
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+  margin-top: auto;
+}
+
+.featureLink:hover {
+  color: var(--ifm-color-primary-darker);
+  text-decoration: none;
+}
+
+.arrowIcon {
+  transition: transform 0.2s ease;
+  margin-left: 5px;
+}
+
+.featureLink:hover .arrowIcon {
+  transform: translateX(4px);
+}
+
+.sectionDivider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  margin: 2rem 0 4rem;
+}
+
+.useCaseGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+  margin-bottom: 4rem;
+}
+
+.useCaseItem {
+  background: var(--ifm-background-surface-color);
+  border-radius: 10px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.useCaseItem:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  border-color: var(--ifm-color-primary-lighter);
+  background: var(--ifm-card-background-color);
+}
+
+.useCaseIcon {
+  font-size: 1.8rem;
+  background: rgba(255, 166, 0, 0.1);
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.useCaseTitle {
+  font-size: 1.2rem;
+  margin: 0 0 0.8rem;
+  font-weight: 600;
+}
+
+.useCaseDescription {
+  margin: 0;
+  font-size: 0.95rem;
+  opacity: 0.9;
+  line-height: 1.5;
+}
+
+.actionSection {
+  text-align: center;
+  margin-top: 3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 1rem;
 }
 
-@media (max-width: 768px) {
+.communityLink {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ifm-color-primary);
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  font-size: 1rem;
+  margin-top: 1rem;
+}
+
+.communityLink:hover {
+  color: var(--ifm-color-primary-darker);
+  text-decoration: none;
+}
+
+.communityLink:hover .arrowIcon {
+  transform: translateX(4px);
+}
+
+/* Media Queries for Responsiveness */
+@media (max-width: 996px) {
   .featureGrid {
     grid-template-columns: repeat(2, 1fr);
-    gap: 0rem;
   }
 
-  .featureSvg {
-    height: 150px;
-    width: 150px;
-  }
-
-  .featureIcon {
-    height: 80px;
-    width: 80px;
-    font-size: 1.5rem;
+  .sectionTitle {
+    font-size: 2.2rem;
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 768px) {
+  .features {
+    padding: 3rem 0;
+  }
+
+  .useCaseGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionTitle {
+    font-size: 2rem;
+  }
+}
+
+@media (max-width: 576px) {
   .featureGrid {
     grid-template-columns: 1fr;
   }
 
-  .featureSvg {
-    height: 100px;
-    width: 100px;
+  .sectionTitle {
+    font-size: 1.8rem;
   }
 
-  .featureIcon {
-    height: 60px;
-    width: 60px;
-    font-size: 1.2rem;
+  .useCaseItem {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .useCaseIcon {
+    margin-bottom: 1rem;
   }
 }

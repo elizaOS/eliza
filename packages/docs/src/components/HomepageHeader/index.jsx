@@ -1,5 +1,7 @@
+// src/components/HomepageHeader/index.jsx
 import React from 'react';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+import Link from '@docusaurus/Link';
 import Heading from '@theme/Heading';
 
 import styles from './styles.module.css';
@@ -10,22 +12,26 @@ function HomepageHeader() {
     <header className={styles.heroBanner}>
       <div className="container">
         <div className={styles.heroSection}>
-          <div>
+          <div className={styles.heroLeft}>
             <h1 className={styles.heroTitle}>
-              eliza is a simple, fast, and{' '}
-              <span className={styles.headerTextGradient}>lightweight AI agent</span> framework
+              <span className={styles.heroTitlePrefix}>eliza</span> is a{' '}
+              <span className={styles.heroTitleHighlight}>powerful AI agent framework</span> for
+              autonomy & personality
             </h1>
             <p className={styles.heroSubtitle}>{siteConfig.tagline}</p>
             <div className={styles.buttonGroup}>
-              <a className="button button--primary button--lg" href="./docs/intro/#">
+              <Link className="button button--primary button--lg" to="/docs/intro">
                 Get Started
-              </a>
+              </Link>
+              <Link className={styles.secondaryButton} to="/docs/quickstart">
+                View Quickstart
+              </Link>
               <div className={styles.githubButton}>
                 <iframe
                   src="https://ghbtns.com/github-btn.html?user=elizaos&repo=eliza&type=star&count=true&size=large"
-                  frameborder="0"
+                  frameBorder="0"
                   scrolling="0"
-                  width="135"
+                  width="170"
                   height="30"
                   title="GitHub"
                 ></iframe>
@@ -33,10 +39,29 @@ function HomepageHeader() {
             </div>
           </div>
           <div className={styles.heroRight}>
-            <img src="/eliza/img/blurback.png" className={styles.blurPhoto} alt="blurred" />
-            <pre className={styles.codeBlock}>
-              <code className="language-bash">{`npm install @elizaos/core`}</code>
-            </pre>
+            <div className={styles.heroVisual}>
+              <div className={styles.blurCircle}></div>
+              <div className={styles.codeBlockWrapper}>
+                <div className={styles.codeBlockHeader}>
+                  <div className={styles.codeBlockDot}></div>
+                  <div className={styles.codeBlockDot}></div>
+                  <div className={styles.codeBlockDot}></div>
+                  <div className={styles.codeFileName}>terminal</div>
+                </div>
+                <pre className={styles.codeBlock}>
+                  <code>
+                    <span className={styles.comment}># Create your first AI agent</span>
+                    <br />
+                    <span className={styles.prompt}>$</span> npm create eliza@beta
+                    <br />
+                    <span className={styles.successText}>✓ Project initialized successfully!</span>
+                    <br />
+                    <span className={styles.prompt}>$</span> cd my-agent && npm run start
+                    <br />
+                  </code>
+                </pre>
+              </div>
+            </div>
           </div>
         </div>
       </div>
