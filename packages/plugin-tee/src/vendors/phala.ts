@@ -1,13 +1,12 @@
-import { TeeVendors } from '@elizaos/core';
 import { phalaRemoteAttestationAction as remoteAttestationAction } from '../actions/remoteAttestationAction';
 import { phalaDeriveKeyProvider as deriveKeyProvider } from '../providers/deriveKeyProvider';
 import { phalaRemoteAttestationProvider as remoteAttestationProvider } from '../providers/remoteAttestationProvider';
-import type { TeeVendor } from './types';
+import { type TeeVendor, TeeVendorNames } from './types';
 
 /**
  * A class representing a vendor for Phala TEE.
  * * @implements { TeeVendor }
- * @type {TeeVendors.PHALA}
+ * @type {TeeVendorNames.PHALA}
  *//**
  * Get the actions for the PhalaVendor.
  * * @returns { Array } An array of actions.
@@ -22,7 +21,7 @@ import type { TeeVendor } from './types';
  * * @returns { string } The description of the vendor.
  */
 export class PhalaVendor implements TeeVendor {
-  type = TeeVendors.PHALA;
+  type = TeeVendorNames.PHALA;
 
   /**
    * Returns an array of actions.
