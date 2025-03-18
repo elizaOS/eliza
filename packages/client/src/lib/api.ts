@@ -479,12 +479,33 @@ export const apiClient = {
       body: formData,
     });
   },
-  
+
   getGroupMemories: (serverId: UUID) => {
     const worldId = WorldManager.getWorldId();
     return fetcher({
       url: `/world/${worldId}/memories/${serverId}`,
       method: 'GET',
     });
-  }
+  },
+
+  createGroupChat: (
+    agentIds: string[],
+    roomName: string,
+    serverId: string,
+    source: string,
+    metadata?: any
+  ) => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/agents/groups/${serverId}`,
+      method: 'POST',
+      body: {
+        agentIds,
+        name: roomName,
+        worldId,
+        source,
+        metadata,
+      },
+    });
+  },
 };
