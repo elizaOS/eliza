@@ -41,6 +41,11 @@ export function urlToCharacterName(urlName: string): string {
   return urlName.replace(/-+/g, ' ');
 }
 
+// crypto.randomUUID only works in https context in firefox
+export function randomUUID(): UUID {
+  return URL.createObjectURL(new Blob()).split('/').pop();
+}
+
 export function getEntityId(): UUID {
   const USER_ID_KEY = 'elizaos-client-user-id';
   const existingUserId = localStorage.getItem(USER_ID_KEY);
@@ -49,7 +54,7 @@ export function getEntityId(): UUID {
     return existingUserId as UUID;
   }
 
-  const newUserId = crypto.randomUUID() as UUID;
+  const newUserId = randomUUID() as UUID;
   localStorage.setItem(USER_ID_KEY, newUserId);
 
   return newUserId;

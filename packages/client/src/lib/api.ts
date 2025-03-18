@@ -2,7 +2,6 @@ import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 import { WorldManager } from './world-manager';
 
 const API_PREFIX = '/api';
-const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}${API_PREFIX}`;
 
 /**
  * A function that handles fetching data from a specified URL with various options.
@@ -25,12 +24,9 @@ const fetcher = async ({
   headers?: HeadersInit;
 }) => {
   // Ensure URL starts with a slash if it's a relative path
-  const normalizedUrl = url.startsWith('/') ? url : `/${url}`;
+  const normalizedUrl = API_PREFIX + (url.startsWith('/') ? url : `/${url}`);
 
-  // Construct the full URL
-  const fullUrl = `${BASE_URL}${normalizedUrl}`;
-
-  console.log('API Request:', method || 'GET', fullUrl);
+  console.log('API Request:', method || 'GET', normalizedUrl);
 
   const options: RequestInit = {
     method: method ?? 'GET',
@@ -59,7 +55,7 @@ const fetcher = async ({
   }
 
   try {
-    const response = await fetch(fullUrl, options);
+    const response = await fetch(normalizedUrl, options);
     const contentType = response.headers.get('Content-Type');
 
     if (contentType === 'audio/mpeg') {
