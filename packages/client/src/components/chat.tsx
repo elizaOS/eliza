@@ -11,6 +11,7 @@ import { useAgent, useMessages } from '@/hooks/use-query-hooks';
 import { cn, getEntityId, moment } from '@/lib/utils';
 import SocketIOManager from '@/lib/socketio-manager';
 import { WorldManager } from '@/lib/world-manager';
+import { randomUUID } from '@/lib/utils';
 import type { IAttachment } from '@/types';
 import type { Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
@@ -314,7 +315,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
       senderName: USER_NAME,
       roomId: roomId,
       source: CHAT_SOURCE,
-      id: crypto.randomUUID(), // Add a unique ID for React keys and duplicate detection
+      id: randomUUID(), // Add a unique ID for React keys and duplicate detection
     };
 
     console.log('[Chat] Adding user message to UI:', userMessage);

@@ -132,6 +132,15 @@ class InMemoryDestination implements DestinationStream {
   recentLogs(): LogEntry[] {
     return this.logs;
   }
+
+  /**
+   * Clears all logs from memory.
+   *
+   * @returns {void}
+   */
+  clear(): void {
+    this.logs = [];
+  }
 }
 
 const customLevels: Record<string, number> = {
@@ -197,6 +206,11 @@ const options = {
 // Create basic logger initially
 let logger = pino(options);
 
+// Add type for logger with clear method
+interface LoggerWithClear extends pino.Logger {
+  clear: () => void;
+}
+
 // Enhance logger with custom destination in Node.js environment
 if (typeof process !== 'undefined') {
   // Create the destination with in-memory logging
@@ -247,6 +261,14 @@ if (typeof process !== 'undefined') {
         const destination = new InMemoryDestination(prettyStream);
         logger = pino(options, destination);
         (logger as unknown)[Symbol.for('pino-destination')] = destination;
+
+        // Add clear method to logger
+        (logger as unknown as LoggerWithClear).clear = () => {
+          const destination = (logger as unknown)[Symbol.for('pino-destination')];
+          if (destination instanceof InMemoryDestination) {
+            destination.clear();
+          }
+        };
       });
     }
   }
@@ -256,6 +278,14 @@ if (typeof process !== 'undefined') {
     const destination = new InMemoryDestination(stream);
     logger = pino(options, destination);
     (logger as unknown)[Symbol.for('pino-destination')] = destination;
+
+    // Add clear method to logger
+    (logger as unknown as LoggerWithClear).clear = () => {
+      const destination = (logger as unknown)[Symbol.for('pino-destination')];
+      if (destination instanceof InMemoryDestination) {
+        destination.clear();
+      }
+    };
   }
 }
 

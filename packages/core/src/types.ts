@@ -1092,6 +1092,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 export type KnowledgeItem = {
   id: UUID;
   content: Content;
+  metadata?: MemoryMetadata;
 };
 
 export enum KnowledgeScope {
@@ -1166,21 +1167,6 @@ export interface IFileService extends Service {
   generateSignedUrl(fileName: string, expiresIn: number): Promise<string>;
 }
 
-export interface ITeeLogService extends Service {
-  log(
-    agentId: string,
-    roomId: string,
-    entityId: string,
-    type: string,
-    content: string
-  ): Promise<boolean>;
-
-  generateAttestation<T>(reportData: string, hashAlgorithm?: T | any): Promise<string>;
-  getAllAgents(): Promise<TeeAgent[]>;
-  getAgent(agentId: string): Promise<TeeAgent | null>;
-  getLogs(query: TeeLogQuery, page: number, pageSize: number): Promise<TeePageQuery<TeeLog[]>>;
-}
-
 export interface TestCase {
   name: string;
   fn: (runtime: IAgentRuntime) => Promise<void> | void;
@@ -1189,28 +1175,6 @@ export interface TestCase {
 export interface TestSuite {
   name: string;
   tests: TestCase[];
-}
-
-// Represents a log entry in the TeeLog table, containing details about agent activities.
-export interface TeeLog {
-  id: string;
-  agentId: string;
-  roomId: string;
-  entityId: string;
-  type: string;
-  content: string;
-  timestamp: number;
-  signature: string;
-}
-
-export interface TeeLogQuery {
-  agentId?: string;
-  roomId?: string;
-  entityId?: string;
-  type?: string;
-  containsContent?: string;
-  startTimestamp?: number;
-  endTimestamp?: number;
 }
 
 // Represents an agent in the TeeAgent table, containing details about the agent.
@@ -1224,33 +1188,6 @@ export interface TeeAgent {
   createdAt: number;
   publicKey: string;
   attestation: string;
-}
-
-export interface TeePageQuery<Result = any> {
-  page: number;
-  pageSize: number;
-  total?: number;
-  data?: Result;
-}
-
-export abstract class TeeLogDAO<DB = any> {
-  db: DB;
-
-  abstract initialize(): Promise<void>;
-
-  abstract addLog(log: TeeLog): Promise<boolean>;
-
-  abstract getPagedLogs(
-    query: TeeLogQuery,
-    page: number,
-    pageSize: number
-  ): Promise<TeePageQuery<TeeLog[]>>;
-
-  abstract addAgent(agent: TeeAgent): Promise<boolean>;
-
-  abstract getAgent(agentId: string): Promise<TeeAgent>;
-
-  abstract getAllAgents(): Promise<TeeAgent[]>;
 }
 
 export enum TEEMode {
@@ -1281,13 +1218,7 @@ export interface RemoteAttestationMessage {
   };
 }
 
-export interface SgxAttestation {
-  quote: string;
-  timestamp: number;
-}
-
 export enum TeeType {
-  SGX_GRAMINE = 'sgx_gramine',
   TDX_DSTACK = 'tdx_dstack',
 }
 

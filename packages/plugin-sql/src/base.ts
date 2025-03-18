@@ -4,16 +4,29 @@ import {
   DatabaseAdapter,
   type Entity,
   type Memory,
+  type MemoryMetadata,
   type Participant,
   type Relationship,
   type Room,
   type Task,
   type UUID,
   type World,
+  type Log,
   logger,
 } from '@elizaos/core';
-import type { Log, MemoryMetadata } from '@elizaos/core';
-import { and, cosineDistance, count, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
+import {
+  Column,
+  and,
+  cosineDistance,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lte,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { v4 } from 'uuid';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
 import {
@@ -706,6 +719,7 @@ export abstract class BaseDrizzleAdapter<
           agentId: memoryTable.agentId,
           roomId: memoryTable.roomId,
           unique: memoryTable.unique,
+          metadata: memoryTable.metadata,
         })
         .from(memoryTable)
         .where(and(...conditions))
@@ -721,6 +735,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.agentId as UUID,
         roomId: row.roomId as UUID,
         unique: row.unique,
+        metadata: row.metadata,
       })) as Memory[];
     });
   }
@@ -799,6 +814,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
+        metadata: row.memory.metadata,
         embedding: row.embedding ?? undefined,
       }));
     });
@@ -1072,6 +1088,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
+        metadata: row.memory.metadata,
         embedding: row.embedding ?? undefined,
         similarity: row.similarity,
       }));
@@ -1241,15 +1258,66 @@ export abstract class BaseDrizzleAdapter<
   async deleteMemory(memoryId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        // See if there are any fragments that we need to delete
+        await this.deleteMemoryFragments(tx, memoryId);
+
+        // Then delete the embedding for the main memory
         await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
 
-        await tx.delete(memoryTable).where(and(eq(memoryTable.id, memoryId)));
+        // Finally delete the memory itself
+        await tx.delete(memoryTable).where(eq(memoryTable.id, memoryId));
       });
 
-      logger.debug('Memory removed successfully:', {
+      logger.debug('Memory and related fragments removed successfully:', {
         memoryId,
       });
     });
+  }
+
+  /**
+   * Deletes all memory fragments that reference a specific document memory
+   * @param tx The database transaction
+   * @param documentId The UUID of the document memory whose fragments should be deleted
+   * @private
+   */
+  private async deleteMemoryFragments(tx: DrizzleOperations, documentId: UUID): Promise<void> {
+    const fragmentsToDelete = await this.getMemoryFragments(tx, documentId);
+
+    if (fragmentsToDelete.length > 0) {
+      const fragmentIds = fragmentsToDelete.map((f) => f.id) as UUID[];
+
+      // Delete embeddings for fragments
+      await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, fragmentIds));
+
+      // Delete the fragments
+      await tx.delete(memoryTable).where(inArray(memoryTable.id, fragmentIds));
+
+      logger.debug('Deleted related fragments:', {
+        documentId,
+        fragmentCount: fragmentsToDelete.length,
+      });
+    }
+  }
+
+  /**
+   * Retrieves all memory fragments that reference a specific document memory
+   * @param tx The database transaction
+   * @param documentId The UUID of the document memory whose fragments should be retrieved
+   * @returns An array of memory fragments
+   * @private
+   */
+  private async getMemoryFragments(tx: DrizzleOperations, documentId: UUID): Promise<Memory[]> {
+    const fragments = await tx
+      .select({ id: memoryTable.id })
+      .from(memoryTable)
+      .where(
+        and(
+          eq(memoryTable.agentId, this.agentId),
+          sql`${memoryTable.metadata}->>'documentId' = ${documentId}`
+        )
+      );
+
+    return fragments;
   }
 
   /**
