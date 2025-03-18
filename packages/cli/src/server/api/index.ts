@@ -111,9 +111,9 @@ export function setupSocketIO(
               roomId: uniqueRoomId,
               userName: payload.senderName || 'User',
               name: payload.senderName || 'User',
-              source,
+              source: 'client_chat',
               channelId: uniqueRoomId,
-              serverId: source,
+              serverId: 'client-chat',
               type: ChannelType.DM,
               worldId: worldId,
             });
