@@ -1850,5 +1850,24 @@ export function agentRouter(
     });
   });
 
+  router.delete('/groups/:serverId', async (req, res) => {
+    const serverId = validateUuid(req.params.serverId);
+    try {
+      await db.deleteRoomsByServerId(serverId);
+
+      res.status(204).send();
+    } catch (error) {
+      logger.error('[GROUP DELETE] Error deleting group:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DELETE_ERROR',
+          message: 'Error deleting group',
+          details: error.message,
+        },
+      });
+    }
+  });
+
   return router;
 }

@@ -499,4 +499,11 @@ export const apiClient = {
       },
     });
   },
+
+  deleteGroupChat: (serverId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}`,
+      method: 'DELETE',
+    });
+  },
 };

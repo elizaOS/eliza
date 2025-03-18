@@ -2250,4 +2250,21 @@ export abstract class BaseDrizzleAdapter<
       }));
     });
   }
+
+  /**
+   * Asynchronously deletes all rooms associated with a specific serverId.
+   * @param {UUID} serverId - The server ID to delete rooms for.
+   * @returns {Promise<void>} A Promise that resolves when the rooms are deleted.
+   */
+  async deleteRoomsByServerId(serverId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        await tx.delete(roomTable).where(eq(roomTable.serverId, serverId));
+      });
+
+      logger.debug('Rooms deleted successfully for server:', {
+        serverId,
+      });
+    });
+  }
 }
