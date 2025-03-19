@@ -97,7 +97,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
         </div>
 
         <div
-          className="w-20 h-20 rounded-full overflow-hidden flex flex-shrink-0 items-center justify-center cursor-pointer bg-cover bg-center bg-muted"
+          className="w-20 h-20 rounded-full overflow-hidden flex flex-shrink-0 items-center justify-center cursor-pointer bg-cover bg-center bg-muted hover:opacity-50"
           style={{ backgroundImage: avatar ? `url(${avatar})` : undefined }}
           onClick={() => fileInputRef.current?.click()}
         >
