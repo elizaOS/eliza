@@ -1,144 +1,61 @@
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSkeleton,
-} from '@/components/ui/sidebar';
-import { formatAgentName } from '@/lib/utils';
-import { type Agent } from '@elizaos/core';
-import { NavLink, useLocation } from 'react-router';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Activity, Book, Database, Terminal } from 'lucide-react';
+import { AgentActionViewer } from './action-viewer';
+import { LogViewer } from './log-viewer';
+import { AgentMemoryViewer } from './memory-viewer';
+import { KnowledgeManager } from './knowledge-manager';
+import type { UUID } from '@elizaos/core';
+import { useState } from 'react';
 
-export function AgentsSidebar({
-  onlineAgents,
-  offlineAgents,
-  isLoading,
-}: {
-  onlineAgents: Agent[];
-  offlineAgents: Agent[];
-  isLoading: boolean;
-}) {
-  const location = useLocation();
+type AgentSidebarProps = {
+  agentId: UUID;
+  agentName: string;
+};
 
+export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
+  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs' | 'memories' | 'knowledge'>(
+    'actions'
+  );
   return (
-    <Sidebar className="bg-background" side="right">
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent className="px-2">
-            <SidebarMenu>
-              {isLoading ? (
-                <div>
-                  {Array.from({ length: 5 }).map((_, _index) => (
-                    <SidebarMenuItem key={`skeleton-item-${_index}`}>
-                      <SidebarMenuSkeleton />
-                    </SidebarMenuItem>
-                  ))}
-                </div>
-              ) : (
-                <div>
-                  {(() => {
-                    return (
-                      <>
-                        {/* Render active section */}
-                        {onlineAgents.length > 0 && (
-                          <div className="px-4 py-1">
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm font-medium text-muted-foreground">
-                                Online
-                              </span>
-                            </div>
-                          </div>
-                        )}
+    <Tabs
+      defaultValue="actions"
+      value={detailsTab}
+      onValueChange={(v) => setDetailsTab(v as 'actions' | 'logs' | 'memories' | 'knowledge')}
+      className="flex flex-col h-full"
+    >
+      <div className="border-b px-4 py-2">
+        <TabsList className="grid grid-cols-4">
+          <TabsTrigger value="actions" className="flex items-center gap-1.5">
+            <Activity className="h-4 w-4" />
+            <span>Actions</span>
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="flex items-center gap-1.5">
+            <Terminal className="h-4 w-4" />
+            <span>Logs</span>
+          </TabsTrigger>
+          <TabsTrigger value="memories" className="flex items-center gap-1.5">
+            <Database className="h-4 w-4" />
+            <span>Memories</span>
+          </TabsTrigger>
+          <TabsTrigger value="knowledge" className="flex items-center gap-1.5">
+            <Book className="h-4 w-4" />
+            <span>Knowledge</span>
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
-                        {/* Render enabled agents */}
-                        {onlineAgents.map((agent) => (
-                          <SidebarMenuItem key={agent.id}>
-                            <NavLink to={`/chat/${agent.id}`}>
-                              <SidebarMenuButton
-                                isActive={location.pathname.includes(agent.id as string)}
-                                className="transition-colors px-4 my-4 rounded-md"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 flex justify-center items-center">
-                                    <div className="relative bg-muted rounded-full w-full h-full">
-                                      {agent && (
-                                        <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
-                                          {agent.settings?.avatar ? (
-                                            <img
-                                              src={agent.settings?.avatar}
-                                              alt="Agent Avatar"
-                                              className="w-full h-full object-contain"
-                                            />
-                                          ) : (
-                                            formatAgentName(agent.name)
-                                          )}
-                                          <div
-                                            className={`absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border-[1px] border-white bg-green-500`}
-                                          />
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span className="text-base">{agent.name}</span>
-                                </div>
-                              </SidebarMenuButton>
-                            </NavLink>
-                          </SidebarMenuItem>
-                        ))}
-
-                        {/* Render inactive section */}
-                        {offlineAgents.length > 0 && (
-                          <div className="px-4 py-1 mt-8">
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm font-medium text-muted-foreground">
-                                Offline
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Render disabled agents */}
-                        {offlineAgents.map((agent) => (
-                          <SidebarMenuItem key={agent.id}>
-                            <div className="transition-colors px-4 my-4 rounded-md">
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 flex justify-center items-center">
-                                  <div className="relative bg-muted rounded-full w-full h-full">
-                                    {agent && (
-                                      <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
-                                        {agent.settings?.avatar ? (
-                                          <img
-                                            src={agent.settings.avatar}
-                                            alt="Agent Avatar"
-                                            className="w-full h-full object-contain"
-                                          />
-                                        ) : (
-                                          formatAgentName(agent.name)
-                                        )}
-                                        <div
-                                          className={`absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border-[1px] border-white bg-muted-foreground`}
-                                        />
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                <span className="text-base truncate max-w-24">{agent.name}</span>
-                              </div>
-                            </div>
-                          </SidebarMenuItem>
-                        ))}
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-    </Sidebar>
+      <TabsContent value="actions" className="overflow-y-scroll">
+        <AgentActionViewer agentId={agentId} />
+      </TabsContent>
+      <TabsContent value="logs">
+        <LogViewer agentName={agentName} level="all" hideTitle />
+      </TabsContent>
+      <TabsContent value="memories">
+        <AgentMemoryViewer agentId={agentId} />
+      </TabsContent>
+      <TabsContent value="knowledge">
+        <KnowledgeManager agentId={agentId} />
+      </TabsContent>
+    </Tabs>
   );
 }

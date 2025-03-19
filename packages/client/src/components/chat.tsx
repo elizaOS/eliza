@@ -7,44 +7,28 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useAgent, useMessages } from '@/hooks/use-query-hooks';
-import { cn, getEntityId, moment } from '@/lib/utils';
+import { useMessages } from '@/hooks/use-query-hooks';
 import SocketIOManager from '@/lib/socketio-manager';
+import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
-import { randomUUID } from '@/lib/utils';
 import type { IAttachment } from '@/types';
-import type { Content, UUID } from '@elizaos/core';
+import type { Agent, Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
+
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  Activity,
-  Book,
-  ChevronRight,
-  Database,
-  PanelRight,
-  Paperclip,
-  Send,
-  Terminal,
-  X,
-} from 'lucide-react';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { ChevronRight, PanelRight, Paperclip, Send, X } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
-import { AgentActionViewer } from './action-viewer';
 import { AudioRecorder } from './audio-recorder';
 import CopyButton from './copy-button';
-import { LogViewer } from './log-viewer';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Avatar, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import ChatTtsButton from './ui/chat/chat-tts-button';
 import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import { AgentMemoryViewer } from './memory-viewer';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
-import React from 'react';
 
 import { CHAT_SOURCE } from '@/constants';
-import { KnowledgeManager } from './knowledge-manager';
 
 type ExtraContentFields = {
   name: string;
@@ -165,20 +149,27 @@ function MessageContent({
   );
 }
 
-export default function Page({ agentId }: { agentId: UUID }) {
+export default function Page({
+  agentId,
+  worldId,
+  agentData,
+  showDetails,
+  toggleDetails,
+}: {
+  agentId: UUID;
+  worldId: UUID;
+  agentData: Agent;
+  showDetails: boolean;
+  toggleDetails: () => void;
+}) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
-  const [showDetails, setShowDetails] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs' | 'memories' | 'knowledge'>(
-    'actions'
-  );
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const queryClient = useQueryClient();
-  const worldId = WorldManager.getWorldId();
 
-  const agentData = useAgent(agentId)?.data?.data;
   const entityId = getEntityId();
   const roomId = WorldManager.generateRoomId(agentId);
 
@@ -367,12 +358,10 @@ export default function Page({ agentId }: { agentId: UUID }) {
     }
   };
 
-  const toggleDetails = () => {
-    setShowDetails(!showDetails);
-  };
-
   return (
-    <div className="flex flex-col w-full h-screen p-4">
+    <div
+      className={`flex flex-col w-full h-screen p-4 ${showDetails ? 'col-span-3' : 'col-span-4'}`}
+    >
       {/* Agent Header */}
       <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
         <div className="flex items-center gap-3">
@@ -424,12 +413,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
       <div className="flex flex-row w-full overflow-y-auto grow gap-4">
         {/* Main Chat Area */}
-        <div
-          className={cn(
-            'flex flex-col transition-all duration-300',
-            showDetails ? 'w-3/5' : 'w-full'
-          )}
-        >
+        <div className={cn('flex flex-col transition-all duration-300 w-full')}>
           {/* Chat Messages */}
           <ChatMessageList
             scrollRef={scrollRef}
@@ -567,54 +551,6 @@ export default function Page({ agentId }: { agentId: UUID }) {
             </form>
           </div>
         </div>
-
-        {/* Details Column */}
-        {showDetails && (
-          <div className="w-2/5 border rounded-lg overflow-hidden pb-4 bg-background flex flex-col h-full">
-            <Tabs
-              defaultValue="actions"
-              value={detailsTab}
-              onValueChange={(v) =>
-                setDetailsTab(v as 'actions' | 'logs' | 'memories' | 'knowledge')
-              }
-              className="flex flex-col h-full"
-            >
-              <div className="border-b px-4 py-2">
-                <TabsList className="grid grid-cols-4">
-                  <TabsTrigger value="actions" className="flex items-center gap-1.5">
-                    <Activity className="h-4 w-4" />
-                    <span>Agent Actions</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="logs" className="flex items-center gap-1.5">
-                    <Terminal className="h-4 w-4" />
-                    <span>Logs</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="memories" className="flex items-center gap-1.5">
-                    <Database className="h-4 w-4" />
-                    <span>Memories</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="knowledge" className="flex items-center gap-1.5">
-                    <Book className="h-4 w-4" />
-                    <span>Knowledge</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent value="actions" className="overflow-y-scroll">
-                <AgentActionViewer agentId={agentId} roomId={roomId} />
-              </TabsContent>
-              <TabsContent value="logs">
-                <LogViewer agentName={agentData?.name} level="all" hideTitle />
-              </TabsContent>
-              <TabsContent value="memories">
-                <AgentMemoryViewer agentId={agentId} />
-              </TabsContent>
-              <TabsContent value="knowledge">
-                <KnowledgeManager agentId={agentId} />
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
       </div>
     </div>
   );
