@@ -22,7 +22,7 @@ export default function AgentAvatarStack({
   const avatarSizeClass = size === 'sm' ? 'size-6' : size === 'lg' ? 'size-10' : 'size-8';
 
   // Calculate overlap based on number of agents - more agents means more overlap
-  const overlapFactor = displayAgents.length > 2 ? 0.6 : 0.5;
+  const overlapFactor = 1.0 - 1.0 / displayAgents.length;
   const avatarSize = size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
   const offsetPixels = Math.floor(avatarSize * overlapFactor);
 
@@ -60,6 +60,7 @@ export default function AgentAvatarStack({
         style={{
           width: `${(displayAgents.length + (remainingCount > 0 ? 1 : 0)) * offsetPixels - (offsetPixels - avatarSize)}px`,
           height: avatarSizeClass,
+          paddingRight: displayAgents.length > 1 ? '5px' : '0px',
         }}
       ></div>
     </div>

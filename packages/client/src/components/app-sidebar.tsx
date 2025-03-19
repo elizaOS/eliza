@@ -200,7 +200,7 @@ export function AppSidebar() {
                             <NavLink to={`/room/${roomId}`}>
                               <div className="transition-colors px-4 my-4 rounded-md">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-10 h-10 flex justify-center items-center">
+                                  <div className="flex justify-center items-center">
                                     <AgentAvatarStack
                                       agentIds={roomAgentIds}
                                       agentAvatars={agentAvatars}
