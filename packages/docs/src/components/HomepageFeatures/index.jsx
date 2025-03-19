@@ -131,6 +131,11 @@ const QuickActionsList = [
       <>
         Explore the ecosystem of plugins that extend your agent's abilities and integrations across
         platforms.
+        <div className={styles.secondaryLinks}>
+          <a href="/packages" className={styles.secondaryLink}>
+            <span className={styles.secondaryLinkIcon}>📋</span> See package showcase
+          </a>
+        </div>
       </>
     ),
     link: '/packages',
@@ -142,9 +147,14 @@ const QuickActionsList = [
       <>
         Browse examples and resources from the community to spark ideas for your next AI agent
         project.
+        <div className={styles.secondaryLinks}>
+          <a href="/docs/awesome-eliza" className={styles.secondaryLink}>
+            <span className={styles.secondaryLinkIcon}>📋</span> View awesome-eliza
+          </a>
+        </div>
       </>
     ),
-    link: '/docs/intro',
+    link: '/docs/awesome-eliza',
   },
 ];
 
