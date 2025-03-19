@@ -18,6 +18,7 @@ import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Activity,
+  Book,
   ChevronRight,
   Database,
   PanelRight,
@@ -41,6 +42,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { AgentMemoryViewer } from './memory-viewer';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import React from 'react';
+import { KnowledgeManager } from './knowledge-manager';
 
 const SOURCE_NAME = 'client_chat';
 
@@ -170,7 +172,9 @@ export default function Page({ agentId }: { agentId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
   const [showDetails, setShowDetails] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs' | 'memories'>('actions');
+  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs' | 'memories' | 'knowledge'>(
+    'actions'
+  );
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -573,11 +577,13 @@ export default function Page({ agentId }: { agentId: UUID }) {
             <Tabs
               defaultValue="actions"
               value={detailsTab}
-              onValueChange={(v) => setDetailsTab(v as 'actions' | 'logs' | 'memories')}
+              onValueChange={(v) =>
+                setDetailsTab(v as 'actions' | 'logs' | 'memories' | 'knowledge')
+              }
               className="flex flex-col h-full"
             >
               <div className="border-b px-4 py-2">
-                <TabsList className="grid grid-cols-3">
+                <TabsList className="grid grid-cols-4">
                   <TabsTrigger value="actions" className="flex items-center gap-1.5">
                     <Activity className="h-4 w-4" />
                     <span>Agent Actions</span>
@@ -590,6 +596,10 @@ export default function Page({ agentId }: { agentId: UUID }) {
                     <Database className="h-4 w-4" />
                     <span>Memories</span>
                   </TabsTrigger>
+                  <TabsTrigger value="knowledge" className="flex items-center gap-1.5">
+                    <Book className="h-4 w-4" />
+                    <span>Knowledge</span>
+                  </TabsTrigger>
                 </TabsList>
               </div>
 
@@ -601,6 +611,9 @@ export default function Page({ agentId }: { agentId: UUID }) {
               </TabsContent>
               <TabsContent value="memories">
                 <AgentMemoryViewer agentId={agentId} />
+              </TabsContent>
+              <TabsContent value="knowledge">
+                <KnowledgeManager agentId={agentId} />
               </TabsContent>
             </Tabs>
           </div>
