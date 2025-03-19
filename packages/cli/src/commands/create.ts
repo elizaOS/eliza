@@ -91,10 +91,65 @@ async function storePostgresUrl(url: string): Promise<void> {
     const homeDir = os.homedir();
     const globalEnvPath = path.join(homeDir, '.eliza', '.env');
 
+    // Ensure .eliza directory exists
+    const elizaDir = path.join(homeDir, '.eliza');
+    if (!existsSync(elizaDir)) {
+      await fs.mkdir(elizaDir, { recursive: true });
+    }
+
+    // Create .env file if it doesn't exist
+    if (!existsSync(globalEnvPath)) {
+      await fs.writeFile(globalEnvPath, '', { encoding: 'utf8' });
+    }
+
     await fs.writeFile(globalEnvPath, `POSTGRES_URL=${url}\n`, { flag: 'a' });
+
+    // Also set in process.env for the current session
+    process.env.POSTGRES_URL = url;
+
     logger.success('Postgres URL saved to configuration');
   } catch (error) {
     logger.warn('Error saving database configuration:', error);
+  }
+}
+
+/**
+ * Sets up and configures PGLite database
+ * @param elizaDbDir The directory for PGLite database
+ */
+async function setupPgLiteDir(elizaDbDir: string): Promise<void> {
+  try {
+    const homeDir = os.homedir();
+    const elizaDir = path.join(homeDir, '.eliza');
+    const envFilePath = path.join(elizaDir, '.env');
+
+    // Ensure .eliza directory exists
+    if (!existsSync(elizaDir)) {
+      await fs.mkdir(elizaDir, { recursive: true });
+      logger.info(`Created directory: ${elizaDir}`);
+    }
+
+    // Ensure the PGLite database directory exists
+    if (!existsSync(elizaDbDir)) {
+      await fs.mkdir(elizaDbDir, { recursive: true });
+      logger.info(`Created PGLite database directory: ${elizaDbDir}`);
+    }
+
+    // Create or update .env file
+    if (!existsSync(envFilePath)) {
+      await fs.writeFile(envFilePath, '', { encoding: 'utf8' });
+    }
+
+    // Store PGLITE_DATA_DIR in the environment file
+    await fs.writeFile(envFilePath, `PGLITE_DATA_DIR=${elizaDbDir}\n`, { flag: 'a' });
+
+    // Also set in process.env for the current session
+    process.env.PGLITE_DATA_DIR = elizaDbDir;
+
+    logger.success('PGLite configuration saved');
+  } catch (error) {
+    logger.error('Error setting up PGLite directory:', error);
+    throw error;
   }
 }
 
@@ -351,38 +406,18 @@ export const create = new Command()
       // Copy project template
       await copyTemplate('project', targetDir, name);
 
-      // Create a database directory in the user's home folder, similar to start.ts
-      let dbPath = '../../pglite'; // Default fallback path
-      try {
-        // Get the user's home directory
-        const homeDir = os.homedir();
-        const elizaDir = path.join(homeDir, '.eliza');
-        const elizaDbDir = path.join(elizaDir, 'db');
+      // Database configuration
+      const homeDir = os.homedir();
+      const elizaDir = path.join(homeDir, '.eliza');
+      const elizaDbDir = path.join(elizaDir, 'db');
 
-        // Check if .eliza directory exists, create if not
-        if (!existsSync(elizaDir)) {
-          logger.info(`Creating .eliza directory at: ${elizaDir}`);
-          await fs.mkdir(elizaDir, { recursive: true });
-        }
-
-        // Check if db directory exists in .eliza, create if not
-        if (!existsSync(elizaDbDir)) {
-          logger.info(`Creating db directory at: ${elizaDbDir}`);
-          await fs.mkdir(elizaDbDir, { recursive: true });
-        }
-
-        // Use the db directory path
-        dbPath = elizaDbDir;
-        logger.debug(`Using database directory: ${dbPath}`);
-      } catch (error) {
-        logger.warn(
-          'Failed to create database directory in home directory, using fallback location:',
-          error
-        );
-        // On failure, use the fallback path
-      }
-
-      if (database === 'postgres' && !postgresUrl) {
+      // Only create directories and configure based on database choice
+      if (database === 'pglite') {
+        // Set up PGLite directory and configuration
+        await setupPgLiteDir(elizaDbDir);
+        logger.debug(`Using PGLite database directory: ${elizaDbDir}`);
+      } else if (database === 'postgres' && !postgresUrl) {
+        // Handle Postgres configuration
         postgresUrl = await promptAndStorePostgresUrl();
       }
 
