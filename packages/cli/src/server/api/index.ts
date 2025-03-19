@@ -259,7 +259,7 @@ export function setupSocketIO(
 
         roomParticipants.set(roomId, new Set());
 
-        agentIds.forEach((agentId: UUID) => {
+        agentIds?.forEach((agentId: UUID) => {
           if (agents.has(agentId as UUID)) {
             // Add agent to room participants
             roomParticipants.get(roomId)!.add(agentId as UUID);

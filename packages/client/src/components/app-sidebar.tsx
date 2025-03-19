@@ -86,7 +86,7 @@ export function AppSidebar() {
                                                 />
                                               ) : (
                                                 <div className="text-sm rounded-sm h-full w-full flex justify-center items-center overflow-hidden">
-                                                  {formatAgentName(roomName)}
+                                                  {formatAgentName(roomName ?? 'Unknown')}
                                                 </div>
                                               )}
                                             </div>
