@@ -89,7 +89,7 @@ jobs:
           npx phala cvms ls
       - name: Update Docker Compose
         run: |
-          sed -i "s|\${DOCKER_IMAGE_FULL_NAME}|${DOCKER_IMAGE_FULL_NAME}|g" ./tee-docker-compose.yaml
+          sed -i "s|\${DOCKER_IMAGE_FULL_NAME}|${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}|g" ./tee-docker-compose.yaml
       - name: Make envfile
         uses: SpicyPizza/create-envfile@v2.0
         with:
