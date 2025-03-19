@@ -306,9 +306,7 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
  */
 export const dev = new Command()
   .name('dev')
-  .description(
-    'Start the project or plugin in development mode with auto-rebuild and restart on file changes'
-  )
+  .description('Start the project or plugin in development mode and rebuild on file changes')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
   .option('--character <character>', 'Path or URL to character file to use instead of default')

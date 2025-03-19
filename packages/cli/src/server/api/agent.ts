@@ -1,7 +1,6 @@
 import type { Agent, Character, Content, IAgentRuntime, Memory, UUID } from '@elizaos/core';
 import {
   ChannelType,
-  EventType,
   ModelType,
   composePrompt,
   composePromptFromState,
@@ -9,6 +8,7 @@ import {
   logger,
   messageHandlerTemplate,
   validateUuid,
+  MemoryType,
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
@@ -21,13 +21,17 @@ import { upload } from '../loader';
  * @interface CustomRequest
  * @extends express.Request
  * @property {Express.Multer.File} [file] - Optional property representing a file uploaded with the request
+ * @property {Express.Multer.File[]} [files] - Optional property representing multiple files uploaded with the request
  * @property {Object} params - Object representing parameters included in the request
  * @property {string} params.agentId - The unique identifier for the agent associated with the request
+ * @property {string} [params.knowledgeId] - Optional knowledge ID parameter
  */
 interface CustomRequest extends express.Request {
   file?: Express.Multer.File;
+  files?: Express.Multer.File[];
   params: {
     agentId: string;
+    knowledgeId?: string;
   };
 }
 
@@ -1403,9 +1407,12 @@ export function agentRouter(
       return;
     }
 
+    // Get tableName from query params, default to "messages"
+    const tableName = (req.query.tableName as string) || 'messages';
+
     const memories = await runtime.getMemories({
       agentId,
-      tableName: 'messages',
+      tableName,
     });
 
     const cleanMemories = memories.map((memory) => {
@@ -1605,6 +1612,149 @@ export function agentRouter(
         error: {
           code: 'PROCESSING_ERROR',
           message: 'Error processing message',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  // Knowledge management routes
+  router.post('/:agentId/memories/upload-knowledge', upload.array('files'), async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    const runtime = agents.get(agentId);
+
+    if (!runtime) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Agent not found',
+        },
+      });
+      return;
+    }
+
+    const files = req.files as Express.Multer.File[];
+
+    if (!files || files.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'NO_FILES',
+          message: 'No files uploaded',
+        },
+      });
+      return;
+    }
+
+    try {
+      const results = [];
+
+      for (const file of files) {
+        try {
+          // Read file content
+          const content = fs.readFileSync(file.path, 'utf8');
+
+          // Format the content with Path: prefix like in the devRel/index.ts example
+          const relativePath = file.originalname;
+          const formattedContent = `Path: ${relativePath}\n\n${content}`;
+
+          // Create knowledge item with proper metadata
+          const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
+          const fileExt = file.originalname.split('.').pop()?.toLowerCase() || '';
+          const filename = file.originalname;
+          const title = filename.replace(`.${fileExt}`, '');
+
+          const knowledgeItem = {
+            id: knowledgeId,
+            content: {
+              text: formattedContent,
+            },
+            metadata: {
+              type: MemoryType.DOCUMENT,
+              timestamp: Date.now(),
+              filename: filename,
+              fileExt: fileExt,
+              title: title,
+              path: relativePath,
+              fileType: file.mimetype,
+              fileSize: file.size,
+              source: 'upload',
+            },
+          };
+
+          // Add knowledge to agent
+          await runtime.addKnowledge(knowledgeItem, {
+            targetTokens: 3000,
+            overlap: 200,
+            modelContextSize: 4096,
+          });
+
+          // Clean up temp file immediately after successful processing
+          if (file.path && fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+
+          results.push({
+            id: knowledgeId,
+            filename: relativePath,
+            type: file.mimetype,
+            size: file.size,
+            uploadedAt: Date.now(),
+            preview:
+              formattedContent.length > 0
+                ? `${formattedContent.substring(0, 150)}${formattedContent.length > 150 ? '...' : ''}`
+                : 'No preview available',
+          });
+        } catch (fileError) {
+          logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
+          // Clean up this file if it exists
+          if (file.path && fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+          // Continue with other files even if one fails
+        }
+      }
+
+      res.json({
+        success: true,
+        data: results,
+      });
+    } catch (error) {
+      logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
+
+      // Clean up any remaining files
+      if (files) {
+        for (const file of files) {
+          if (file.path && fs.existsSync(file.path)) {
+            try {
+              fs.unlinkSync(file.path);
+            } catch (cleanupError) {
+              logger.error(
+                `[KNOWLEDGE POST] Error cleaning up file ${file.originalname}: ${cleanupError}`
+              );
+            }
+          }
+        }
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 500,
+          message: 'Failed to upload knowledge',
           details: error.message,
         },
       });

@@ -1,7 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { buildProject } from '@/src/utils/build-project';
 import { copyTemplate } from '@/src/utils/copy-template';
 import { handleError } from '@/src/utils/handle-error';
@@ -9,9 +5,14 @@ import { runBunCommand } from '@/src/utils/run-bun';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
+import { existsSync, readFileSync } from 'node:fs';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
+import { displayBanner } from '../displayBanner';
 
 /**
  * This module handles creating both projects and plugins.
@@ -80,6 +81,99 @@ async function installDependencies(targetDir: string) {
 }
 
 /**
+ * Stores Postgres URL in the global .env file
+ * @param url The Postgres URL to store
+ */
+async function storePostgresUrl(url: string): Promise<void> {
+  if (!url) return;
+
+  try {
+    const homeDir = os.homedir();
+    const globalEnvPath = path.join(homeDir, '.eliza', '.env');
+
+    await fs.writeFile(globalEnvPath, `POSTGRES_URL=${url}\n`, { flag: 'a' });
+    logger.success('Postgres URL saved to configuration');
+  } catch (error) {
+    logger.warn('Error saving database configuration:', error);
+  }
+}
+
+/**
+ * Validates a Postgres URL format
+ * @param url The URL to validate
+ * @returns True if the URL appears valid
+ */
+function isValidPostgresUrl(url: string): boolean {
+  if (!url) return false;
+
+  // Basic pattern: postgresql://user:password@host:port/dbname
+  const basicPattern = /^postgresql:\/\/[^:]+:[^@]+@[^:]+:\d+\/\w+$/;
+
+  // More permissive pattern (allows missing password, different formats)
+  const permissivePattern = /^postgresql:\/\/.*@.*:\d+\/.*$/;
+
+  return basicPattern.test(url) || permissivePattern.test(url);
+}
+
+/**
+ * Prompts the user for a Postgres URL, validates it, and stores it
+ * @returns The configured Postgres URL or null if user skips
+ */
+async function promptAndStorePostgresUrl(): Promise<string | null> {
+  let isValidUrl = false;
+  let userUrl = '';
+
+  while (!isValidUrl) {
+    // Prompt for postgres url with simpler message
+    const reply = await prompts({
+      type: 'text',
+      name: 'postgresUrl',
+      message: 'Enter your Postgres URL:',
+      validate: (value) => value.trim() !== '' || 'Postgres URL cannot be empty',
+    });
+
+    // Handle cancellation
+    if (!reply.postgresUrl) {
+      const { continueAnyway } = await prompts({
+        type: 'confirm',
+        name: 'continueAnyway',
+        message: 'Continue without configuring Postgres?',
+        initial: false,
+      });
+
+      if (continueAnyway) return null;
+      continue;
+    }
+
+    userUrl = reply.postgresUrl;
+
+    // Validate URL format
+    if (!isValidPostgresUrl(userUrl)) {
+      logger.warn("The URL format doesn't appear to be valid.");
+      logger.info('Expected format: postgresql://user:password@host:port/dbname');
+
+      const { useAnyway } = await prompts({
+        type: 'confirm',
+        name: 'useAnyway',
+        message: 'Use this URL anyway? (Choose Yes if you have a custom setup)',
+        initial: false,
+      });
+
+      if (!useAnyway) continue;
+    }
+
+    isValidUrl = true;
+  }
+
+  if (userUrl) {
+    await storePostgresUrl(userUrl);
+    return userUrl;
+  }
+
+  return null;
+}
+
+/**
  * Initialize a new project or plugin.
  *
  * @param {Object} opts - Options for initialization.
@@ -96,6 +190,7 @@ export const create = new Command()
   .option('-y, --yes', 'skip confirmation', false)
   .option('-t, --type <type>', 'type of template to use (project or plugin)', '')
   .action(async (opts) => {
+    displayBanner();
     try {
       // Parse options but use "" as the default for type to force prompting
       const initialOptions = {
@@ -288,13 +383,7 @@ export const create = new Command()
       }
 
       if (database === 'postgres' && !postgresUrl) {
-        // prompt for postgres url
-        const reply = await prompts({
-          type: 'text',
-          name: 'postgresUrl',
-          message: 'Enter your postgres url',
-        });
-        postgresUrl = reply.postgresUrl;
+        postgresUrl = await promptAndStorePostgresUrl();
       }
 
       // Set up src directory

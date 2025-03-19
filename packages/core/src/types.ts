@@ -1092,6 +1092,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 export type KnowledgeItem = {
   id: UUID;
   content: Content;
+  metadata?: MemoryMetadata;
 };
 
 export enum KnowledgeScope {
