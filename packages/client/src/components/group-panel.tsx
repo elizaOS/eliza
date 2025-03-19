@@ -1,10 +1,8 @@
 import { Card, CardContent } from './ui/card';
-import { formatAgentName } from '@/lib/utils';
 import { Button } from './ui/button';
 import { ImageIcon, Loader2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Input } from './ui/input';
-import { Switch } from './ui/switch-button';
 import { apiClient } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
@@ -12,6 +10,7 @@ import { type Agent, AgentStatus } from '@elizaos/core';
 import { UUID } from 'crypto';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useRooms } from '@/hooks/use-query-hooks';
+import MultiSelectCombobox from './combobox';
 
 interface GroupPanel {
   agents: Agent[] | undefined;
@@ -21,7 +20,7 @@ interface GroupPanel {
 
 export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
   const [chatName, setChatName] = useState(``);
-  const [selectedAgents, setSelectedAgents] = useState<{ [key: string]: boolean }>({});
+  const [selectedAgents, setSelectedAgents] = useState<Agent[]>([]);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -43,13 +42,6 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
       setAvatar(rooms[0].metadata?.thumbnail);
     }
   }, [groupId]);
-
-  const toggleAgentSelection = (agentId: string) => {
-    setSelectedAgents((prev) => ({
-      ...prev,
-      [agentId]: !prev[agentId],
-    }));
-  };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -119,7 +111,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
           {!avatar && <ImageIcon className="w-6 h-6 text-white" />}
         </div>
 
-        <CardContent className="w-full flex grow flex-col items-center overflow-y-auto">
+        <CardContent className="w-full flex grow flex-col items-center">
           <div className="rounded-md w-full mb-3">
             <div className="flex h-full">
               <div className="p-6 flex flex-col gap-4 w-full">
@@ -133,42 +125,19 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                   />
                 </div>
                 <div className="font-light">Invite Agents</div>
-                <div className="overflow-scroll">
-                  <div className="flex flex-col gap-4 pt-3">
-                    {agents
+                <MultiSelectCombobox
+                  options={
+                    agents
                       ?.filter((agent) => agent.status === AgentStatus.ACTIVE)
-                      .map((agent) => {
-                        return (
-                          <div key={agent.id} className="bg-muted rounded-sm h-16">
-                            <div className="flex w-full h-full justify-between items-center">
-                              <div className="flex gap-2 items-center h-full w-full p-4">
-                                <div className="bg-card rounded-full w-12 h-12 flex justify-center items-center overflow-hidden">
-                                  {agent && agent.settings?.avatar ? (
-                                    <img
-                                      src={agent.settings.avatar}
-                                      alt="Agent Avatar"
-                                      className="w-full h-full object-contain"
-                                    />
-                                  ) : (
-                                    formatAgentName(agent.name)
-                                  )}
-                                </div>
-                                <div className="flex flex-col justify-center items-center ml-2">
-                                  <div className="text-lg">{agent.name}</div>
-                                </div>
-                              </div>
-                              <div className="mr-6">
-                                <Switch
-                                  checked={selectedAgents[agent.id as UUID]}
-                                  onChange={() => toggleAgentSelection(agent.id as UUID)}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
+                      .map((agent) => ({
+                        icon: agent.settings?.avatar || '',
+                        label: agent.name,
+                        id: agent.id,
+                      })) || []
+                  }
+                  onSelect={(selected) => setSelectedAgents(selected)}
+                  className="w-full"
+                />
               </div>
             </div>
           </div>
@@ -183,11 +152,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                 }
                 setCreating(true);
                 try {
-                  const selectedAgentIds = Object.keys(selectedAgents).filter(
-                    (agentId) => selectedAgents[agentId]
-                  );
-
-                  if (selectedAgentIds.length > 0) {
+                  if (selectedAgents.length > 0) {
                     if (groupId) {
                       try {
                         await apiClient.deleteGroupChat(groupId);
@@ -196,13 +161,11 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                       }
                     }
                     await apiClient.createGroupChat(
-                      selectedAgentIds,
+                      selectedAgents.map((agent) => agent.id),
                       chatName,
                       serverId,
                       GROUP_CHAT_SOURCE,
-                      {
-                        thumbnail: avatar,
-                      }
+                      { thumbnail: avatar }
                     );
                   }
                 } catch (error) {
