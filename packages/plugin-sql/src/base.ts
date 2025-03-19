@@ -2268,6 +2268,21 @@ export abstract class BaseDrizzleAdapter<
 
         const roomIds = roomIdsResult.map((row) => row.roomId);
 
+        await tx
+          .delete(embeddingTable)
+          .where(
+            inArray(
+              embeddingTable.memoryId,
+              tx
+                .select({ id: memoryTable.id })
+                .from(memoryTable)
+                .where(inArray(memoryTable.roomId, roomIds))
+            )
+          );
+        await tx.delete(memoryTable).where(inArray(memoryTable.roomId, roomIds));
+
+        await tx.delete(participantTable).where(inArray(participantTable.roomId, roomIds));
+
         await tx.delete(logTable).where(inArray(logTable.roomId, roomIds));
 
         await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
