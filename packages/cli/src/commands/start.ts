@@ -18,9 +18,11 @@ import { displayBanner } from '../displayBanner';
 import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
 import { loadConfig, saveConfig } from '../utils/config-manager.js';
-import { promptForEnvVars } from '../utils/env-prompt.js';
+import { promptForEnvVars, readEnvFile, writeEnvFile } from '../utils/env-prompt.js';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
+import inquirer from 'inquirer';
+import colors from 'yoctocolors';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -299,6 +301,38 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
     } else {
       logger.info('Reconfiguration requested.');
     }
+
+    // Prompt for database configuration
+    logger.info('Configuring database connection...');
+
+    // Force reconfiguration of database by temporarily clearing the environment variable
+    const currentPostgresUrl = process.env.POSTGRES_URL;
+    delete process.env.POSTGRES_URL;
+
+    // Get existing env vars
+    const envVars = readEnvFile();
+
+    // Prompt for PostgreSQL URL - simplified version
+    const { value } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'value',
+        message: 'Enter your PostgreSQL URL:',
+        default: envVars.POSTGRES_URL || '', // Show the current value as default
+        prefix: '',
+      },
+    ]);
+
+    // Save the new value if provided, otherwise restore the original
+    if (value && value.trim() !== '') {
+      process.env.POSTGRES_URL = value.trim();
+      envVars.POSTGRES_URL = value.trim();
+      writeEnvFile(envVars);
+    } else if (currentPostgresUrl) {
+      // Restore the original value if no new one provided
+      process.env.POSTGRES_URL = currentPostgresUrl;
+    }
+
     // Save the configuration AFTER user has made selections
     saveConfig({
       lastUpdated: new Date().toISOString(),
