@@ -1,39 +1,24 @@
 import type { UUID } from '@elizaos/core';
 import {
-  Book,
-  Clock,
   Database,
   File,
   FileText,
-  Globe,
   LoaderIcon,
   MailCheck,
   MessageSquareShare,
   Pencil,
   Trash2,
-  Upload,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAgentMemories, useDeleteMemory } from '../hooks/use-query-hooks';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Card, CardFooter, CardHeader } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 import { useToast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
-import { cn } from '@/lib/utils';
 import type { Memory } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
 import MemoryEditOverlay from './memory-edit-overlay';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog';
 
 // Number of items to load per batch
 const ITEMS_PER_PAGE = 10;
@@ -52,16 +37,6 @@ interface MemoryContent {
   };
 }
 
-interface MemoryMetadata {
-  type?: string;
-  title?: string;
-  filename?: string;
-  path?: string;
-  description?: string;
-  fileExt?: string;
-  timestamp?: number;
-}
-
 enum MemoryType {
   all = 'all',
   facts = 'facts',
@@ -76,8 +51,6 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
   const [visibleItems, setVisibleItems] = useState(ITEMS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   // Determine if we need to use the 'documents' table for knowledge
   const tableName =
@@ -321,7 +294,7 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] min-h-[400px] w-full">
+    <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
       <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none">
         <div className="flex items-center gap-2">
           <h3 className="text-lg font-medium">Agent Memories</h3>
@@ -343,8 +316,7 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
       </div>
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-4 pb-4"
-        style={{ height: 'calc(100% - 60px)' }}
+        className="flex-1 overflow-y-auto px-4 pb-4 h-[calc(100vh-60px)]"
       >
         {filteredMemories.length === 0 ? (
           <EmptyState />
