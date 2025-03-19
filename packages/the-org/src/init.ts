@@ -116,10 +116,13 @@ export async function initializeAllSystems(
           },
         },
       };
-
+      console.log('*** ensuring world');
+      console.log(world);
       await runtime.ensureWorldExists(world);
+      console.log('*** ensuring world done');
       await initializeOnboarding(runtime, world, config);
-      // await startOnboardingDM(runtime, server, worldId);
+      await startOnboardingDM(runtime, server, worldId);
+      console.log('world', world);
     }
   } catch (error) {
     logger.error('Error initializing systems:', error);

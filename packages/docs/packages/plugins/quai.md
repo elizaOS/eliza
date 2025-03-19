@@ -132,7 +132,7 @@ bun test
 
 ## Dependencies
 
-- quais: ^1.0.0-alpha.25
+- quais: ^1.0.0-beta.0
 - @elizaos/core: workspace:\*
 
 ## Contributing

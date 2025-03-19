@@ -33,6 +33,7 @@ characters/**/*.key
 characters/**/private/
 
 cache/*
+models/*
 
 tsup.config.bundled_*.mjs
 
