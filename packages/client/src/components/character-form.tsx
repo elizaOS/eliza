@@ -5,7 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { AVATAR_IMAGE_MAX_SIZE } from '@/constants';
 import { useToast } from '@/hooks/use-toast';
+import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
 import { type FormEvent, type ReactNode, useState } from 'react';
@@ -200,12 +202,36 @@ export default function CharacterForm({
     });
   };
 
+  const ensureAvatarSize = async (char: Agent): Promise<Agent> => {
+    if (char.settings?.avatar) {
+      const img = new Image();
+      img.src = char.settings.avatar;
+      await new Promise((resolve) => (img.onload = resolve));
+
+      if (img.width > AVATAR_IMAGE_MAX_SIZE || img.height > AVATAR_IMAGE_MAX_SIZE) {
+        const response = await fetch(char.settings.avatar);
+        const blob = await response.blob();
+        const file = new File([blob], 'avatar.jpg', { type: blob.type });
+        const compressedImage = await compressImage(file);
+        return {
+          ...char,
+          settings: {
+            ...char.settings,
+            avatar: compressedImage,
+          },
+        };
+      }
+    }
+    return char;
+  };
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      await onSubmit(characterValue);
+      const updatedCharacter = await ensureAvatarSize(characterValue);
+      await onSubmit(updatedCharacter);
     } catch (error) {
       toast({
         title: 'Error',

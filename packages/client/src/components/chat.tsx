@@ -7,40 +7,27 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
-import { useAgent, useMessages } from '@/hooks/use-query-hooks';
-import { cn, getEntityId, moment } from '@/lib/utils';
+import { useMessages } from '@/hooks/use-query-hooks';
 import SocketIOManager from '@/lib/socketio-manager';
+import { cn, getEntityId, moment, randomUUID } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
-import { randomUUID } from '@/lib/utils';
 import type { IAttachment } from '@/types';
-import type { Content, UUID } from '@elizaos/core';
+import type { Agent, Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
+
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  Activity,
-  ChevronRight,
-  Database,
-  PanelRight,
-  Paperclip,
-  Send,
-  Terminal,
-  X,
-} from 'lucide-react';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { ChevronRight, PanelRight, Paperclip, Send, X } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
-import { AgentActionViewer } from './action-viewer';
 import { AudioRecorder } from './audio-recorder';
 import CopyButton from './copy-button';
-import { LogViewer } from './log-viewer';
-import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import { Avatar, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import ChatTtsButton from './ui/chat/chat-tts-button';
 import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import { AgentMemoryViewer } from './memory-viewer';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
-import React from 'react';
+
 import { CHAT_SOURCE } from '@/constants';
 
 type ExtraContentFields = {
@@ -62,16 +49,6 @@ function MessageContent({
   agentId: UUID;
   isLastMessage: boolean;
 }) {
-  // Only log message details in development mode
-  if (import.meta.env.DEV) {
-    console.log(`[Chat] Rendering message from ${message.name}:`, {
-      isUser: message.name === USER_NAME,
-      text: message.text?.substring(0, 20) + '...',
-      senderId: message.senderId,
-      source: message.source,
-    });
-  }
-
   return (
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
@@ -106,20 +83,17 @@ function MessageContent({
             message.text
           )}
         </div>
-
-        {!message.text && message.thought && (
-          <>
-            {message.name === USER_NAME ? (
-              message.thought
-            ) : isLastMessage && message.name !== USER_NAME ? (
-              <AIWriter>
-                <span className="italic text-muted-foreground">{message.thought}</span>
-              </AIWriter>
-            ) : (
+        {!message.text &&
+          message.thought &&
+          (message.name === USER_NAME ? (
+            message.thought
+          ) : isLastMessage && message.name !== USER_NAME ? (
+            <AIWriter>
               <span className="italic text-muted-foreground">{message.thought}</span>
-            )}
-          </>
-        )}
+            </AIWriter>
+          ) : (
+            <span className="italic text-muted-foreground">{message.thought}</span>
+          ))}
 
         {message.attachments?.map((attachment: IAttachment) => (
           <div className="flex flex-col gap-1" key={`${attachment.url}-${attachment.title}`}>
@@ -165,18 +139,27 @@ function MessageContent({
   );
 }
 
-export default function Page({ agentId }: { agentId: UUID }) {
+export default function Page({
+  agentId,
+  worldId,
+  agentData,
+  showDetails,
+  toggleDetails,
+}: {
+  agentId: UUID;
+  worldId: UUID;
+  agentData: Agent;
+  showDetails: boolean;
+  toggleDetails: () => void;
+}) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
-  const [showDetails, setShowDetails] = useState(false);
-  const [detailsTab, setDetailsTab] = useState<'actions' | 'logs' | 'memories'>('actions');
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const queryClient = useQueryClient();
-  const worldId = WorldManager.getWorldId();
 
-  const agentData = useAgent(agentId)?.data?.data;
   const entityId = getEntityId();
   const roomId = WorldManager.generateRoomId(agentId);
 
@@ -194,7 +177,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
     console.log(`[Chat] Joined room ${roomId} with entityId ${entityId}`);
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
-      console.log(`[Chat] Received message broadcast:`, data);
+      console.log('[Chat] Received message broadcast:', data);
 
       // Skip messages that don't have required content
       if (!data) {
@@ -228,7 +211,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
       queryClient.setQueryData(
         ['messages', agentId, roomId, worldId],
         (old: ContentWithUser[] = []) => {
-          console.log(`[Chat] Current messages:`, old?.length || 0);
+          console.log('[Chat] Current messages:', old?.length || 0);
 
           // Check if this message is already in the list (avoid duplicates)
           const isDuplicate = old.some(
@@ -252,7 +235,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
     };
 
     // Add listener for message broadcasts
-    console.log(`[Chat] Adding messageBroadcast listener`);
+    console.log('[Chat] Adding messageBroadcast listener');
     socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
 
     return () => {
@@ -261,7 +244,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
       socketIOManager.leaveRoom(roomId);
       socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
     };
-  }, [roomId, agentId, entityId]);
+  }, [roomId, agentId, entityId, queryClient, socketIOManager]);
 
   // Use a stable ID for refs to avoid excessive updates
   const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
@@ -365,12 +348,10 @@ export default function Page({ agentId }: { agentId: UUID }) {
     }
   };
 
-  const toggleDetails = () => {
-    setShowDetails(!showDetails);
-  };
-
   return (
-    <div className="flex flex-col w-full h-screen p-4">
+    <div
+      className={`flex flex-col w-full h-screen p-4 ${showDetails ? 'col-span-3' : 'col-span-4'}`}
+    >
       {/* Agent Header */}
       <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
         <div className="flex items-center gap-3">
@@ -422,12 +403,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
 
       <div className="flex flex-row w-full overflow-y-auto grow gap-4">
         {/* Main Chat Area */}
-        <div
-          className={cn(
-            'flex flex-col transition-all duration-300',
-            showDetails ? 'w-3/5' : 'w-full'
-          )}
-        >
+        <div className={cn('flex flex-col transition-all duration-300 w-full')}>
           {/* Chat Messages */}
           <ChatMessageList
             scrollRef={scrollRef}
@@ -436,29 +412,15 @@ export default function Page({ agentId }: { agentId: UUID }) {
             disableAutoScroll={disableAutoScroll}
           >
             {messages.map((message: ContentWithUser, index: number) => {
-              // Ensure user messages are correctly identified by either name or source
-              const isUser =
-                message.name === USER_NAME ||
-                message.source === CHAT_SOURCE ||
-                message.senderId === entityId;
-
-              // Add debugging to see why user message might be misattributed
-              if (!isUser && (message.source === CHAT_SOURCE || message.senderId === entityId)) {
-                console.warn('[Chat] Message attribution issue detected:', {
-                  message,
-                  name: message.name,
-                  expectedName: USER_NAME,
-                  source: message.source,
-                  expectedSource: CHAT_SOURCE,
-                  senderId: message.senderId,
-                  entityId,
-                });
-              }
+              const isUser = message.name === USER_NAME;
 
               return (
                 <div
                   key={`${message.id as string}-${message.createdAt}`}
-                  className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
+                  className={cn(
+                    'flex flex-column gap-1 p-1',
+                    isUser ? 'justify-end' : 'justify-start'
+                  )}
                 >
                   <ChatBubble
                     variant={isUser ? 'sent' : 'received'}
@@ -565,45 +527,6 @@ export default function Page({ agentId }: { agentId: UUID }) {
             </form>
           </div>
         </div>
-
-        {/* Details Column */}
-        {showDetails && (
-          <div className="w-2/5 border rounded-lg overflow-hidden pb-4 bg-background flex flex-col h-full">
-            <Tabs
-              defaultValue="actions"
-              value={detailsTab}
-              onValueChange={(v) => setDetailsTab(v as 'actions' | 'logs' | 'memories')}
-              className="flex flex-col h-full"
-            >
-              <div className="border-b px-4 py-2">
-                <TabsList className="grid grid-cols-3">
-                  <TabsTrigger value="actions" className="flex items-center gap-1.5">
-                    <Activity className="h-4 w-4" />
-                    <span>Agent Actions</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="logs" className="flex items-center gap-1.5">
-                    <Terminal className="h-4 w-4" />
-                    <span>Logs</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="memories" className="flex items-center gap-1.5">
-                    <Database className="h-4 w-4" />
-                    <span>Memories</span>
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-
-              <TabsContent value="actions" className="overflow-y-scroll">
-                <AgentActionViewer agentId={agentId} roomId={roomId} />
-              </TabsContent>
-              <TabsContent value="logs">
-                <LogViewer agentName={agentData?.name} level="all" hideTitle />
-              </TabsContent>
-              <TabsContent value="memories">
-                <AgentMemoryViewer agentId={agentId} />
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
       </div>
     </div>
   );

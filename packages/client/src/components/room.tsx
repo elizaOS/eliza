@@ -7,27 +7,27 @@ import {
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { USER_NAME } from '@/constants';
+import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useAgents, useGroupMessages, useRooms } from '@/hooks/use-query-hooks';
-import { getEntityId, moment } from '@/lib/utils';
 import SocketIOManager from '@/lib/socketio-manager';
+import { getEntityId, moment } from '@/lib/utils';
 import { WorldManager } from '@/lib/world-manager';
 import type { IAttachment } from '@/types';
-import type { Content, UUID, Agent } from '@elizaos/core';
+import type { Agent, Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, Paperclip, Send, X } from 'lucide-react';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import React from 'react';
 import AIWriter from 'react-aiwriter';
+import { AgentStatusSidebar } from './agent-status-sidebar';
 import CopyButton from './copy-button';
 import { Avatar, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import ChatTtsButton from './ui/chat/chat-tts-button';
 import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
-import React from 'react';
-import { GROUP_CHAT_SOURCE } from '@/constants';
-import { AgentsSidebar } from './agent-sidebar';
 
 type ExtraContentFields = {
   name: string;
@@ -92,9 +92,8 @@ function MessageContent({
             message.text
           )}
         </div>
-
         {!message.text && message.thought && (
-          <>
+          <div>
             {isUser ? (
               message.thought
             ) : isLastMessage && !isUser ? (
@@ -104,7 +103,7 @@ function MessageContent({
             ) : (
               <span className="italic text-muted-foreground">{message.thought}</span>
             )}
-          </>
+          </div>
         )}
 
         {message.attachments?.map((attachment: IAttachment) => (
@@ -154,7 +153,6 @@ function MessageContent({
 export default function Page({ serverId }: { serverId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
-  const [activeAgentIds, setActiveAgentIds] = useState<UUID[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -207,14 +205,14 @@ export default function Page({ serverId }: { serverId: UUID }) {
 
     const roomDatas = roomsData.get(serverId);
     if (roomDatas) {
-      roomDatas.forEach((roomData) => {
+      for (const roomData of roomDatas) {
         const agentData = agents.find((agent) => agent.id === roomData.agentId);
         if (agentData) {
           if (agentData.status === AgentStatus.ACTIVE) {
             activeAgentIds.push(roomData.agentId as UUID);
           }
         }
-      });
+      }
     }
 
     const isSameServer = prevServerIdRef.current === serverId;
@@ -568,7 +566,7 @@ export default function Page({ serverId }: { serverId: UUID }) {
           </div>
         </div>
       </div>
-      <AgentsSidebar
+      <AgentStatusSidebar
         onlineAgents={activeAgents}
         offlineAgents={inactiveAgents}
         isLoading={isLoading}
