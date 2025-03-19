@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ChevronDown, X } from 'lucide-react';
@@ -63,9 +62,9 @@ export default function MultiSelectCombobox({
   };
 
   return (
-    <div className={`relative w-80 bg-muted ${className}`} ref={comboboxRef}>
+    <div className={`relative w-80 ${className}`} ref={comboboxRef}>
       <div
-        className="flex items-center gap-2 border border-gray-300 p-2 rounded cursor-pointer"
+        className={`flex items-center gap-2 border p-2 bg-transparent rounded cursor-pointer ${isOpen ? 'border-gray-300' : 'border-input'}`}
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="flex flex-wrap gap-1 w-full">
@@ -103,7 +102,7 @@ export default function MultiSelectCombobox({
         <ChevronDown size={16} />
       </div>
       {isOpen && (
-        <Card className="absolute left-0 mt-2 w-full p-2 shadow-md border border-gray-500 rounded z-40 max-h-60 overflow-y-auto">
+        <Card className="absolute left-0 mt-2 w-full shadow-md border border-gray-500 rounded z-40 max-h-60 overflow-y-auto">
           {options.map((option, index) => (
             <div
               key={index}
