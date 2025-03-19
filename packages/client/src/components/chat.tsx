@@ -15,6 +15,7 @@ import type { IAttachment } from '@/types';
 import type { Agent, Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
+
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, PanelRight, Paperclip, Send, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -27,7 +28,7 @@ import ChatTtsButton from './ui/chat/chat-tts-button';
 import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
-const SOURCE_NAME = 'client_chat';
+import { CHAT_SOURCE } from '@/constants';
 
 type ExtraContentFields = {
   name: string;
@@ -52,7 +53,7 @@ function MessageContent({
   if (import.meta.env.DEV) {
     console.log(`[Chat] Rendering message from ${message.name}:`, {
       isUser: message.name === USER_NAME,
-      text: message.text?.substring(0, 20) + '...',
+      text: `${message.text?.substring(0, 20)}...`,
       senderId: message.senderId,
       source: message.source,
     });
@@ -92,20 +93,17 @@ function MessageContent({
             message.text
           )}
         </div>
-
-        {!message.text && message.thought && (
-          <>
-            {message.name === USER_NAME ? (
-              message.thought
-            ) : isLastMessage && message.name !== USER_NAME ? (
-              <AIWriter>
-                <span className="italic text-muted-foreground">{message.thought}</span>
-              </AIWriter>
-            ) : (
+        {!message.text &&
+          message.thought &&
+          (message.name === USER_NAME ? (
+            message.thought
+          ) : isLastMessage && message.name !== USER_NAME ? (
+            <AIWriter>
               <span className="italic text-muted-foreground">{message.thought}</span>
-            )}
-          </>
-        )}
+            </AIWriter>
+          ) : (
+            <span className="italic text-muted-foreground">{message.thought}</span>
+          ))}
 
         {message.attachments?.map((attachment: IAttachment) => (
           <div className="flex flex-col gap-1" key={`${attachment.url}-${attachment.title}`}>
@@ -181,7 +179,7 @@ export default function Page({
 
   useEffect(() => {
     // Initialize Socket.io connection once with our entity ID
-    socketIOManager.initialize(entityId);
+    socketIOManager.initialize(entityId, [agentId]);
 
     // Join the room for this agent
     socketIOManager.joinRoom(roomId);
@@ -189,7 +187,7 @@ export default function Page({
     console.log(`[Chat] Joined room ${roomId} with entityId ${entityId}`);
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
-      console.log(`[Chat] Received message broadcast:`, data);
+      console.log('[Chat] Received message broadcast:', data);
 
       // Skip messages that don't have required content
       if (!data) {
@@ -223,7 +221,7 @@ export default function Page({
       queryClient.setQueryData(
         ['messages', agentId, roomId, worldId],
         (old: ContentWithUser[] = []) => {
-          console.log(`[Chat] Current messages:`, old?.length || 0);
+          console.log('[Chat] Current messages:', old?.length || 0);
 
           // Check if this message is already in the list (avoid duplicates)
           const isDuplicate = old.some(
@@ -247,7 +245,7 @@ export default function Page({
     };
 
     // Add listener for message broadcasts
-    console.log(`[Chat] Adding messageBroadcast listener`);
+    console.log('[Chat] Adding messageBroadcast listener');
     socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
 
     return () => {
@@ -309,7 +307,7 @@ export default function Page({
       senderId: entityId,
       senderName: USER_NAME,
       roomId: roomId,
-      source: SOURCE_NAME,
+      source: CHAT_SOURCE,
       id: randomUUID(), // Add a unique ID for React keys and duplicate detection
     };
 
@@ -340,7 +338,7 @@ export default function Page({
     // via the useEffect hook
 
     // Send the message to the server/agent
-    socketIOManager.sendMessage(input, roomId, SOURCE_NAME);
+    socketIOManager.sendMessage(input, roomId, CHAT_SOURCE);
 
     setSelectedFile(null);
     setInput('');
@@ -427,17 +425,17 @@ export default function Page({
               // Ensure user messages are correctly identified by either name or source
               const isUser =
                 message.name === USER_NAME ||
-                message.source === SOURCE_NAME ||
+                message.source === CHAT_SOURCE ||
                 message.senderId === entityId;
 
               // Add debugging to see why user message might be misattributed
-              if (!isUser && (message.source === SOURCE_NAME || message.senderId === entityId)) {
+              if (!isUser && (message.source === CHAT_SOURCE || message.senderId === entityId)) {
                 console.warn('[Chat] Message attribution issue detected:', {
                   message,
                   name: message.name,
                   expectedName: USER_NAME,
                   source: message.source,
-                  expectedSource: SOURCE_NAME,
+                  expectedSource: CHAT_SOURCE,
                   senderId: message.senderId,
                   entityId,
                 });
@@ -446,7 +444,7 @@ export default function Page({
               return (
                 <div
                   key={`${message.id as string}-${message.createdAt}`}
-                  className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
+                  className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
                   <ChatBubble
                     variant={isUser ? 'sent' : 'received'}

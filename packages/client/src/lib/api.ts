@@ -298,7 +298,15 @@ export const apiClient = {
   },
 
   // Room-related routes
-  getRooms: (agentId: string) => {
+  getRooms: () => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/world/${worldId}/rooms`,
+      method: 'GET',
+    });
+  },
+
+  getRoomsForParticipant: (agentId: string) => {
     const worldId = WorldManager.getWorldId();
     return fetcher({
       url: `/agents/${agentId}/rooms`,
@@ -460,6 +468,42 @@ export const apiClient = {
       url: `/agents/${agentId}/memories/upload-knowledge`,
       method: 'POST',
       body: formData,
+    });
+  },
+
+  getGroupMemories: (serverId: UUID) => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/world/${worldId}/memories/${serverId}`,
+      method: 'GET',
+    });
+  },
+
+  createGroupChat: (
+    agentIds: string[],
+    roomName: string,
+    serverId: string,
+    source: string,
+    metadata?: any
+  ) => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/agents/groups/${serverId}`,
+      method: 'POST',
+      body: {
+        agentIds,
+        name: roomName,
+        worldId,
+        source,
+        metadata,
+      },
+    });
+  },
+
+  deleteGroupChat: (serverId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}`,
+      method: 'DELETE',
     });
   },
 };
