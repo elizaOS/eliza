@@ -46,8 +46,6 @@ import React from 'react';
 import { CHAT_SOURCE } from '@/constants';
 import { KnowledgeManager } from './knowledge-manager';
 
-const SOURCE_NAME = 'client_chat';
-
 type ExtraContentFields = {
   name: string;
   createdAt: number;
