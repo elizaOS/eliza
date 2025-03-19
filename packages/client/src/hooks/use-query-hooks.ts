@@ -700,10 +700,12 @@ export function useRooms(options = {}) {
       );
 
       const roomMap: Map<string, Room[]> = new Map();
-      worldRooms.forEach((room: Room) => {
+      for (const room of worldRooms) {
         const { serverId, ...rest } = room;
-        roomMap.set(serverId, [...(roomMap.get(serverId) || []), { serverId, ...rest }]);
-      });
+        if (serverId) {
+          roomMap.set(serverId, [...(roomMap.get(serverId) || []), { serverId, ...rest }]);
+        }
+      }
 
       return roomMap;
     },

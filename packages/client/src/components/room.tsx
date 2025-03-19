@@ -27,7 +27,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import React from 'react';
 import { GROUP_CHAT_SOURCE } from '@/constants';
-import { AgentsSidebar } from './agent-sidebar';
 
 type ExtraContentFields = {
   name: string;
@@ -567,11 +566,11 @@ export default function Page({ serverId }: { serverId: UUID }) {
           </div>
         </div>
       </div>
-      <AgentsSidebar
+      {/* <AgentsSidebar
         onlineAgents={activeAgents}
         offlineAgents={inactiveAgents}
         isLoading={isLoading}
-      />
+      /> */}
     </div>
   );
 }

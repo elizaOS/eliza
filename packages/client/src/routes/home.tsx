@@ -4,22 +4,20 @@ import ProfileOverlay from '@/components/profile-overlay';
 import { Card } from '@/components/ui/card';
 import { useAgents, useRooms } from '@/hooks/use-query-hooks';
 import { formatAgentName } from '@/lib/utils';
-import { AgentStatus } from '@elizaos/core';
 import type { Agent, UUID } from '@elizaos/core';
+import { AgentStatus } from '@elizaos/core';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@radix-ui/react-tooltip';
-import { Cog, Info, InfoIcon, Plus } from 'lucide-react';
+import { Cog, InfoIcon, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAgentManagement } from '../hooks/use-agent-management';
-import { AgentsSidebar } from '@/components/agent-sidebar';
-import { apiClient } from '@/lib/api';
-import { useQueryClient } from '@tanstack/react-query';
+
 import GroupPanel from '@/components/group-panel';
+import { RoomSidebar } from '../components/room-sidebar';
 
 export default function Home() {
   const { data: { data: agentsData } = {}, isLoading, isError, error } = useAgents();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   // Extract agents properly from the response
   const agents = agentsData?.agents || [];
@@ -119,6 +117,11 @@ export default function Home() {
                         <div
                           className="relative cursor-pointer h-full w-full flex items-center justify-center group"
                           onClick={() => openOverlay(agent)}
+                          onKeyUp={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              openOverlay(agent);
+                            }
+                          }}
                         >
                           <div
                             className={`
@@ -218,6 +221,11 @@ export default function Home() {
                         <div
                           className="relative cursor-pointer h-full w-full flex items-center justify-center group"
                           onClick={() => navigate(`/room/${roomId}`)}
+                          onKeyUp={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              navigate(`/room/${roomId}`);
+                            }
+                          }}
                         >
                           <div className="brightness-[100%] hover:brightness-[107%] w-full h-full flex items-center justify-center">
                             {thumbnail ? (
@@ -238,14 +246,14 @@ export default function Home() {
                           action: () => {
                             navigate(`/room/${roomId}`);
                           },
-                          className: `w-[80%]`,
+                          className: 'w-[80%]',
                           variant: 'default',
                         },
                         {
                           icon: <Cog style={{ height: 16, width: 16 }} />,
                           className: 'w-10 h-10 rounded-full',
                           action: () => {
-                            setSelectedGroupId(roomId);
+                            setSelectedGroupId(roomId as UUID);
                             setIsGroupPanelOpen(true);
                           },
                           variant: 'outline',
@@ -270,7 +278,7 @@ export default function Home() {
             </div>
           )}
         </div>
-        <AgentsSidebar
+        <RoomSidebar
           onlineAgents={activeAgents}
           offlineAgents={inactiveAgents}
           isLoading={isLoading}
