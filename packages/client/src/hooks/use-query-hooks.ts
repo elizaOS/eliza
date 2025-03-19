@@ -447,7 +447,7 @@ export function useGroupMessages(
     queryFn: async () => {
       const result = await apiClient.getGroupMemories(serverId);
       const validSuffixes = [`:${USER_NAME}`, ':agent'];
-      const memories = result.data
+      let memories = result.data
         .map((memory: Memory): ContentWithUser | null => {
           const source = memory.content?.source ?? '';
           if (
@@ -456,11 +456,12 @@ export function useGroupMessages(
           ) {
             return null;
           }
+          const isUser = source.endsWith(validSuffixes[0]);
 
           return {
             text: memory.content.text,
             roomId: memory.roomId,
-            name: source.endsWith(validSuffixes[0]) ? USER_NAME : 'agent',
+            name: isUser ? USER_NAME : 'agent',
             agentId: memory.agentId,
             entityId: memory.entityId,
             createdAt: memory.createdAt || 0,
@@ -471,13 +472,24 @@ export function useGroupMessages(
             thought: memory.content.thought,
           };
         })
-        .filter(Boolean) // Remove null values from the array
-        .sort((a: ContentWithUser, b: ContentWithUser) => {
-          if (a.createdAt === undefined || b.createdAt === undefined) {
-            return 0;
+        .filter(Boolean); // Remove null values from the array
+
+      const uniqueMessages = new Map<string, string>();
+
+      memories = memories.filter((msg: Memory) => {
+        if (msg.name === USER_NAME) {
+          const key = msg.text;
+          if (uniqueMessages.has(key) && uniqueMessages.get(key) !== msg.agentId) {
+            // If there's already a message with the same text but different agentId, filter it out
+            return false;
           }
-          return a.createdAt - b.createdAt;
-        });
+          uniqueMessages.set(key, msg.agentId);
+        }
+        return true;
+      });
+
+      // Sort messages by createdAt timestamp
+      memories.sort((a: Memory, b: Memory) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
 
       return memories;
     },

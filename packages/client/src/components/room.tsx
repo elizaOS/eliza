@@ -154,7 +154,6 @@ function MessageContent({
 export default function Page({ serverId }: { serverId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
-  const [activeAgentIds, setActiveAgentIds] = useState<UUID[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
