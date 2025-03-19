@@ -334,15 +334,23 @@ export const create = new Command()
           );
         }
 
-        // Change to the created directory
-        logger.info(`Changing to directory: ${targetDir}`);
-        process.chdir(targetDir);
-
         logger.success('Plugin initialized successfully!');
+
+        // Get the relative path for display
+        const cdPath =
+          options.dir === '.'
+            ? projectName // If creating in current directory, just use the name
+            : path.relative(process.cwd(), targetDir); // Otherwise use path relative to current directory
+
         logger.info(`\nYour plugin is ready! Here's what you can do next:
-1. \`${colors.cyan('npx elizaos start')}\` to start development
-2. \`${colors.cyan('npx elizaos test')}\` to test your plugin
-3. \`${colors.cyan('npx elizaos publish')}\` to publish your plugin to the registry`);
+1. \`cd ${cdPath}\` to change into your plugin directory
+2. \`${colors.cyan('npx elizaos start')}\` to start development
+3. \`${colors.cyan('npx elizaos test')}\` to test your plugin
+4. \`${colors.cyan('npx elizaos publish')}\` to publish your plugin to the registry`);
+
+        // Set the user's shell working directory before exiting
+        // Note: This only works if the CLI is run with shell integration
+        process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         return;
       }
 
