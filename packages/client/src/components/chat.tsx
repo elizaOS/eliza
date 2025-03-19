@@ -49,16 +49,6 @@ function MessageContent({
   agentId: UUID;
   isLastMessage: boolean;
 }) {
-  // Only log message details in development mode
-  if (import.meta.env.DEV) {
-    console.log(`[Chat] Rendering message from ${message.name}:`, {
-      isUser: message.name === USER_NAME,
-      text: `${message.text?.substring(0, 20)}...`,
-      senderId: message.senderId,
-      source: message.source,
-    });
-  }
-
   return (
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
@@ -254,7 +244,7 @@ export default function Page({
       socketIOManager.leaveRoom(roomId);
       socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
     };
-  }, [roomId, agentId, entityId]);
+  }, [roomId, agentId, entityId, queryClient, socketIOManager]);
 
   // Use a stable ID for refs to avoid excessive updates
   const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
@@ -422,29 +412,15 @@ export default function Page({
             disableAutoScroll={disableAutoScroll}
           >
             {messages.map((message: ContentWithUser, index: number) => {
-              // Ensure user messages are correctly identified by either name or source
-              const isUser =
-                message.name === USER_NAME ||
-                message.source === CHAT_SOURCE ||
-                message.senderId === entityId;
-
-              // Add debugging to see why user message might be misattributed
-              if (!isUser && (message.source === CHAT_SOURCE || message.senderId === entityId)) {
-                console.warn('[Chat] Message attribution issue detected:', {
-                  message,
-                  name: message.name,
-                  expectedName: USER_NAME,
-                  source: message.source,
-                  expectedSource: CHAT_SOURCE,
-                  senderId: message.senderId,
-                  entityId,
-                });
-              }
+              const isUser = message.name === USER_NAME;
 
               return (
                 <div
                   key={`${message.id as string}-${message.createdAt}`}
-                  className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : 'justify-start'}`}
+                  className={cn(
+                    'flex flex-column gap-1 p-1',
+                    isUser ? 'justify-end' : 'justify-start'
+                  )}
                 >
                   <ChatBubble
                     variant={isUser ? 'sent' : 'received'}
