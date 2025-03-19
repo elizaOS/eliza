@@ -161,18 +161,58 @@ const raw = parseBooleanFromText(process?.env?.LOG_JSON_FORMAT) || false;
 const isDebugMode = (process?.env?.LOG_LEVEL || '').toLowerCase() === 'debug';
 const effectiveLogLevel = isDebugMode ? 'debug' : process?.env?.DEFAULT_LOG_LEVEL || 'info';
 
+// Create a function to generate the pretty configuration
+const createPrettyConfig = () => ({
+  colorize: true,
+  translateTime: 'yyyy-mm-dd HH:MM:ss',
+  ignore: 'pid,hostname',
+  customPrettifiers: {
+    level: (inputData: any) => {
+      let level;
+      if (typeof inputData === 'object' && inputData !== null) {
+        level = inputData.level || inputData.value;
+      } else {
+        level = inputData;
+      }
+
+      const levelNames: Record<number, string> = {
+        10: 'TRACE',
+        20: 'DEBUG',
+        27: 'SUCCESS',
+        28: 'PROGRESS',
+        29: 'LOG',
+        30: 'INFO',
+        40: 'WARN',
+        50: 'ERROR',
+        60: 'FATAL',
+      };
+
+      if (typeof level === 'number') {
+        return levelNames[level] || `LEVEL${level}`;
+      }
+
+      if (level === undefined || level === null) {
+        return 'UNKNOWN';
+      }
+
+      return String(level).toUpperCase();
+    },
+    // Add a custom prettifier for error messages
+    msg: (msg: string) => {
+      // Replace "ERROR (TypeError):" pattern with just "ERROR:"
+      return msg.replace(/ERROR \([^)]+\):/g, 'ERROR:');
+    },
+  },
+  messageFormat: '{msg}',
+});
+
 const createStream = async () => {
   if (raw) {
     return undefined;
   }
   // dynamically import pretty to avoid importing it in the browser
   const pretty = await import('pino-pretty');
-  return pretty.default({
-    colorize: true,
-    translateTime: 'yyyy-mm-dd HH:MM:ss',
-    ignore: 'pid,hostname',
-    // Don't use minimumLevel since we're filtering in the destination
-  });
+  return pretty.default(createPrettyConfig());
 };
 
 // Create options with appropriate level
@@ -183,15 +223,33 @@ const options = {
     logMethod(inputArgs: [string | Record<string, unknown>, ...unknown[]], method: LogFn): void {
       const [arg1, ...rest] = inputArgs;
 
+      const formatError = (err: Error) => ({
+        message: `(${err.name}) ${err.message}`,
+        stack: err.stack?.split('\n').map((line) => line.trim()),
+      });
+
       if (typeof arg1 === 'object') {
-        const messageParts = rest.map((arg) =>
-          typeof arg === 'string' ? arg : JSON.stringify(arg)
-        );
-        const message = messageParts.join(' ');
-        method.apply(this, [arg1, message]);
+        if (arg1 instanceof Error) {
+          method.apply(this, [
+            {
+              error: formatError(arg1),
+            },
+          ]);
+        } else {
+          const messageParts = rest.map((arg) =>
+            typeof arg === 'string' ? arg : JSON.stringify(arg)
+          );
+          const message = messageParts.join(' ');
+          method.apply(this, [arg1, message]);
+        }
       } else {
         const context = {};
-        const messageParts = [arg1, ...rest].map((arg) => (typeof arg === 'string' ? arg : arg));
+        const messageParts = [arg1, ...rest].map((arg) => {
+          if (arg instanceof Error) {
+            return formatError(arg);
+          }
+          return typeof arg === 'string' ? arg : arg;
+        });
         const message = messageParts.filter((part) => typeof part === 'string').join(' ');
         const jsonParts = messageParts.filter((part) => typeof part === 'object');
 
@@ -222,39 +280,7 @@ if (typeof process !== 'undefined') {
     // This will ensure synchronous loading
     try {
       const pretty = require('pino-pretty');
-      stream = pretty.default
-        ? pretty.default({
-            colorize: true,
-            translateTime: 'yyyy-mm-dd HH:MM:ss',
-            ignore: 'pid,hostname',
-            customLevels: {
-              names: {
-                fatal: 60,
-                error: 50,
-                warn: 40,
-                info: 30,
-                log: 29,
-                progress: 28,
-                success: 27,
-                debug: 20,
-                trace: 10,
-              },
-              // Map custom level values to their display text
-              // This ensures consistent level names in pretty-printed output
-              customLevelNames: {
-                10: 'TRACE',
-                20: 'DEBUG',
-                27: 'SUCCESS',
-                28: 'PROGRESS',
-                29: 'LOG',
-                30: 'INFO',
-                40: 'WARN',
-                50: 'ERROR',
-                60: 'FATAL',
-              },
-            },
-          })
-        : null;
+      stream = pretty.default ? pretty.default(createPrettyConfig()) : null;
     } catch (e) {
       // Fall back to async loading if synchronous loading fails
       createStream().then((prettyStream) => {
