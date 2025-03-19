@@ -13,6 +13,7 @@ import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
 import { displayBanner } from '../displayBanner';
+import { setupPgLite, promptAndStorePostgresUrl, getElizaDirectories } from '../utils/get-config';
 
 /**
  * This module handles creating both projects and plugins.
@@ -116,64 +117,6 @@ function isValidPostgresUrl(url: string): boolean {
   const permissivePattern = /^postgresql:\/\/.*@.*:\d+\/.*$/;
 
   return basicPattern.test(url) || cloudPattern.test(url) || permissivePattern.test(url);
-}
-
-/**
- * Prompts the user for a Postgres URL, validates it, and stores it
- * @returns The configured Postgres URL or null if user skips
- */
-async function promptAndStorePostgresUrl(): Promise<string | null> {
-  let isValidUrl = false;
-  let userUrl = '';
-
-  while (!isValidUrl) {
-    // Prompt for postgres url with simpler message
-    const reply = await prompts({
-      type: 'text',
-      name: 'postgresUrl',
-      message: 'Enter your Postgres URL:',
-      validate: (value) => value.trim() !== '' || 'Postgres URL cannot be empty',
-    });
-
-    // Handle cancellation
-    if (!reply.postgresUrl) {
-      const { continueAnyway } = await prompts({
-        type: 'confirm',
-        name: 'continueAnyway',
-        message: 'Continue without configuring Postgres?',
-        initial: false,
-      });
-
-      if (continueAnyway) return null;
-      continue;
-    }
-
-    userUrl = reply.postgresUrl;
-
-    // Validate URL format
-    if (!isValidPostgresUrl(userUrl)) {
-      logger.warn("The URL format doesn't appear to be valid.");
-      logger.info('Expected format: postgresql://user:password@host:port/dbname');
-
-      const { useAnyway } = await prompts({
-        type: 'confirm',
-        name: 'useAnyway',
-        message: 'Use this URL anyway? (Choose Yes if you have a custom setup)',
-        initial: false,
-      });
-
-      if (!useAnyway) continue;
-    }
-
-    isValidUrl = true;
-  }
-
-  if (userUrl) {
-    await storePostgresUrl(userUrl);
-    return userUrl;
-  }
-
-  return null;
 }
 
 /**
@@ -379,39 +322,17 @@ export const create = new Command()
       // Copy project template
       await copyTemplate('project', targetDir, projectName);
 
-      // Create a database directory in the user's home folder, similar to start.ts
-      let dbPath = '../../pglite'; // Default fallback path
-      try {
-        // Get the user's home directory
-        const homeDir = os.homedir();
-        const elizaDir = path.join(homeDir, '.eliza');
-        const elizaDbDir = path.join(elizaDir, 'db');
+      // Database configuration
+      const { elizaDir, elizaDbDir, envFilePath } = getElizaDirectories();
 
-        // Check if .eliza directory exists, create if not
-        if (!existsSync(elizaDir)) {
-          logger.info(`Creating .eliza directory at: ${elizaDir}`);
-          await fs.mkdir(elizaDir, { recursive: true });
-        }
-
-        // Check if db directory exists in .eliza, create if not
-        if (!existsSync(elizaDbDir)) {
-          logger.info(`Creating db directory at: ${elizaDbDir}`);
-          await fs.mkdir(elizaDbDir, { recursive: true });
-        }
-
-        // Use the db directory path
-        dbPath = elizaDbDir;
-        logger.debug(`Using database directory: ${dbPath}`);
-      } catch (error) {
-        logger.warn(
-          'Failed to create database directory in home directory, using fallback location:',
-          error
-        );
-        // On failure, use the fallback path
-      }
-
-      if (database === 'postgres' && !postgresUrl) {
-        postgresUrl = await promptAndStorePostgresUrl();
+      // Only create directories and configure based on database choice
+      if (database === 'pglite') {
+        // Set up PGLite directory and configuration
+        await setupPgLite(elizaDbDir, envFilePath);
+        logger.debug(`Using PGLite database directory: ${elizaDbDir}`);
+      } else if (database === 'postgres' && !postgresUrl) {
+        // Handle Postgres configuration
+        postgresUrl = await promptAndStorePostgresUrl(envFilePath);
       }
 
       // Set up src directory

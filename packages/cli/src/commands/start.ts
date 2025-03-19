@@ -8,9 +8,8 @@ import {
   stringToUuid,
 } from '@elizaos/core';
 import { Command } from 'commander';
-import * as dotenv from 'dotenv';
+import inquirer from 'inquirer';
 import fs from 'node:fs';
-import os from 'node:os';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { character as defaultCharacter } from '../characters/eliza';
@@ -19,10 +18,9 @@ import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
 import { loadConfig, saveConfig } from '../utils/config-manager.js';
 import { promptForEnvVars, readEnvFile, writeEnvFile } from '../utils/env-prompt.js';
+import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
-import inquirer from 'inquirer';
-import colors from 'yoctocolors';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -260,32 +258,14 @@ async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
  * @returns {Promise<void>} A promise that resolves when the agents are successfully started.
  */
 const startAgents = async (options: { configure?: boolean; port?: number; character?: string }) => {
-  // Set up standard paths and load .env
-  const homeDir = os.homedir();
-  const elizaDir = path.join(homeDir, '.eliza');
-  const elizaDbDir = path.join(elizaDir, 'db');
-  const envFilePath = path.join(elizaDir, '.env');
+  // Load environment variables from project .env or .eliza/.env
+  await loadEnvironment();
 
-  // Create .eliza directory if it doesn't exist
-  if (!fs.existsSync(elizaDir)) {
-    fs.mkdirSync(elizaDir, { recursive: true });
-    logger.info(`Created directory: ${elizaDir}`);
-  }
+  // Configure database settings
+  const postgresUrl = await configureDatabaseSettings();
 
-  // Create db directory if it doesn't exist
-  if (!fs.existsSync(elizaDbDir)) {
-    fs.mkdirSync(elizaDbDir, { recursive: true });
-    logger.info(`Created database directory: ${elizaDbDir}`);
-  }
-
-  // Set the database directory in environment variables
-  process.env.PGLITE_DATA_DIR = elizaDbDir;
-  logger.debug(`Using database directory: ${elizaDbDir}`);
-
-  // Load environment variables from .eliza/.env if it exists
-  if (fs.existsSync(envFilePath)) {
-    dotenv.config({ path: envFilePath });
-  }
+  // Get PGLite data directory from environment (may have been set during configuration)
+  const pgliteDataDir = process.env.PGLITE_DATA_DIR;
 
   // Load existing configuration
   const existingConfig = loadConfig();
@@ -338,12 +318,10 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
       lastUpdated: new Date().toISOString(),
     });
   }
-  // Look for PostgreSQL URL in environment variables
-  const postgresUrl = process.env.POSTGRES_URL;
 
-  // Create server instance
+  // Create server instance with appropriate database settings
   const server = new AgentServer({
-    dataDir: elizaDbDir,
+    dataDir: pgliteDataDir,
     postgresUrl,
   });
 
