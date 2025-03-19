@@ -11,6 +11,7 @@ import { UUID } from 'crypto';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useRooms } from '@/hooks/use-query-hooks';
 import MultiSelectCombobox from './combobox';
+import { compressImage } from '@/lib/utils';
 
 interface GroupPanel {
   agents: Agent[] | undefined;
@@ -43,43 +44,15 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
     }
   }, [groupId]);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          const img = new Image();
-          img.src = e.target.result as string;
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const maxSize = 300; // Resize to max 300px width/height
-            let width = img.width;
-            let height = img.height;
-
-            if (width > height) {
-              if (width > maxSize) {
-                height *= maxSize / width;
-                width = maxSize;
-              }
-            } else {
-              if (height > maxSize) {
-                width *= maxSize / height;
-                height = maxSize;
-              }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx?.drawImage(img, 0, 0, width, height);
-            const resizedBase64 = canvas.toDataURL('image/jpeg', 0.8); // Reduce quality to 80%
-
-            setAvatar(resizedBase64);
-          };
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedImage = await compressImage(file);
+        setAvatar(compressedImage);
+      } catch (error) {
+        console.error('Error compressing image:', error);
+      }
     }
   };
 
