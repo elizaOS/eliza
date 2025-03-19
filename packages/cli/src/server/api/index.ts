@@ -256,12 +256,10 @@ export function setupSocketIO(
         const roomId = payload.roomId;
         const agentIds = payload.agentIds;
 
+        roomParticipants.set(roomId, new Set());
+
         agentIds.forEach((agentId: UUID) => {
           if (agents.has(agentId as UUID)) {
-            // Initialize Set if not exists
-            if (!roomParticipants.has(roomId)) {
-              roomParticipants.set(roomId, new Set());
-            }
             // Add agent to room participants
             roomParticipants.get(roomId)!.add(agentId as UUID);
             logger.debug(`Agent ${agentId} joined room ${roomId}`);
