@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { AVATAR_IMAGE_MAX_SIZE } from '@/constants';
 import { useToast } from '@/hooks/use-toast';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
@@ -207,7 +208,7 @@ export default function CharacterForm({
       img.src = char.settings.avatar;
       await new Promise((resolve) => (img.onload = resolve));
 
-      if (img.width > 300 || img.height > 300) {
+      if (img.width > AVATAR_IMAGE_MAX_SIZE || img.height > AVATAR_IMAGE_MAX_SIZE) {
         const response = await fetch(char.settings.avatar);
         const blob = await response.blob();
         const file = new File([blob], 'avatar.jpg', { type: blob.type });

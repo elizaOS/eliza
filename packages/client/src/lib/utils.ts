@@ -1,3 +1,4 @@
+import { AVATAR_IMAGE_MAX_SIZE } from '@/constants';
 import type { UUID } from '@elizaos/core';
 import { type ClassValue, clsx } from 'clsx';
 import dayjs from 'dayjs';
@@ -60,7 +61,11 @@ export function getEntityId(): UUID {
   return newUserId;
 }
 
-export const compressImage = (file: File, maxSize = 300, quality = 0.8): Promise<string> => {
+export const compressImage = (
+  file: File,
+  maxSize = AVATAR_IMAGE_MAX_SIZE,
+  quality = 0.8
+): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
