@@ -29,10 +29,6 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
             <Activity className="h-4 w-4" />
             <span>Actions</span>
           </TabsTrigger>
-          <TabsTrigger value="logs" className="flex items-center gap-1.5">
-            <Terminal className="h-4 w-4" />
-            <span>Logs</span>
-          </TabsTrigger>
           <TabsTrigger value="memories" className="flex items-center gap-1.5">
             <Database className="h-4 w-4" />
             <span>Memories</span>
@@ -40,6 +36,10 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
           <TabsTrigger value="knowledge" className="flex items-center gap-1.5">
             <Book className="h-4 w-4" />
             <span>Knowledge</span>
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="flex items-center gap-1.5">
+            <Terminal className="h-4 w-4" />
+            <span>Logs</span>
           </TabsTrigger>
         </TabsList>
       </div>
