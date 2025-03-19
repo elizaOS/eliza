@@ -1,9 +1,9 @@
-name: Build, Push & Deploy Eliza to Phala Cloud
+name: Build, Push & Deploy to Phala Cloud
 
 on:
   push:
     branches:
-      - v2-develop
+      - main
     paths:
       - "Dockerfile"
   workflow_dispatch:
@@ -25,9 +25,13 @@ env:
   DOCKER_REGISTRY_USERNAME: ${{ vars.DOCKER_REGISTRY_USERNAME || secrets.DOCKER_REGISTRY_USERNAME }}
   DOCKER_REGISTRY_PASSWORD: ${{ vars.DOCKER_REGISTRY_PASSWORD || secrets.DOCKER_REGISTRY_PASSWORD }}
   PHALA_CLOUD_API_KEY: ${{ vars.PHALA_CLOUD_API_KEY || secrets.PHALA_CLOUD_API_KEY }}
-  EVM_CHAINS: ${{ vars.EVM_CHAINS || secrets.EVM_CHAINS }}
   OPENAI_API_KEY: ${{ vars.OPENAI_API_KEY || secrets.OPENAI_API_KEY }}
   ANTHROPIC_API_KEY: ${{ vars.ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}
+  SERVER_PORT: ${{ vars.SERVER_PORT || secrets.SERVER_PORT }}
+  POSTGRES_PASSWORD: ${{ vars.POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD }}
+  POSTGRES_USER: ${{ vars.POSTGRES_USER || secrets.POSTGRES_USER }}
+  POSTGRES_DB: ${{ vars.POSTGRES_DB || secrets.POSTGRES_DB }}
+  EVM_CHAINS: ${{ vars.EVM_CHAINS || secrets.EVM_CHAINS }}
   BIRDEYE_API_KEY: ${{ vars.BIRDEYE_API_KEY || secrets.BIRDEYE_API_KEY }}
   COMMUNITY_MANAGER_DISCORD_APPLICATION_ID: ${{ vars.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID || secrets.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID }}
   COMMUNITY_MANAGER_DISCORD_API_TOKEN: ${{ vars.COMMUNITY_MANAGER_DISCORD_API_TOKEN || secrets.COMMUNITY_MANAGER_DISCORD_API_TOKEN }}
@@ -39,9 +43,13 @@ env:
   PROJECT_MANAGER_DISCORD_API_TOKEN: ${{ vars.PROJECT_MANAGER_DISCORD_API_TOKEN || secrets.PROJECT_MANAGER_DISCORD_API_TOKEN }}
   DEV_REL_DISCORD_APPLICATION_ID: ${{ vars.DEV_REL_DISCORD_APPLICATION_ID || secrets.DEV_REL_DISCORD_APPLICATION_ID }}
   DEV_REL_DISCORD_API_TOKEN: ${{ vars.DEV_REL_DISCORD_API_TOKEN || secrets.DEV_REL_DISCORD_API_TOKEN }}
+  INVESTMENT_MANAGER_DISCORD_APPLICATION_ID: ${{ vars.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID || secrets.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID }}
+  INVESTMENT_MANAGER_DISCORD_API_TOKEN: ${{ vars.INVESTMENT_MANAGER_DISCORD_API_TOKEN || secrets.INVESTMENT_MANAGER_DISCORD_API_TOKEN }}
+  PGLITE_DATA_DIR: ${{ vars.PGLITE_DATA_DIR || secrets.PGLITE_DATA_DIR || '/root/.eliza/db' }}
   TEE_MODE: ${{ vars.TEE_MODE || secrets.TEE_MODE || 'PRODUCTION' }}
-  WALLET_SECRET_SALT: ${{ vars.WALLET_SECRET_SALT || secrets.WALLET_SECRET_SALT || github.sha }}
+  WALLET_SECRET_SALT: ${{ vars.WALLET_SECRET_SALT || secrets.WALLET_SECRET_SALT }}
   TEE_VENDOR: ${{ vars.TEE_VENDOR || secrets.TEE_VENDOR || 'phala' }}
+
 jobs:
   build-and-push:
     permissions:
@@ -66,12 +74,11 @@ jobs:
           file: Dockerfile
           push: true
           tags: |
-            ${{ env.DOCKER_IMAGE }}:latest
-            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+            ${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:latest
+            ${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
       - name: Set Docker Image Full Name
         run: |
-          export DOCKER_IMAGE_FULL_NAME=${{ env.DOCKER_IMAGE }}:${{ github.sha }}
-
+          export DOCKER_IMAGE_FULL_NAME=${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}
       - name: Install Phala Cloud CLI
         run: sudo apt-get update && sudo apt-get install -y nodejs && sudo npm install -g bun
       # Configure Phala Cloud API key
@@ -80,10 +87,40 @@ jobs:
           npx phala auth login ${{ env.PHALA_CLOUD_API_KEY }}
           echo "Verifying Phala Cloud access..."
           npx phala cvms ls
-
       - name: Update Docker Compose
         run: |
-          sed -i "s|\${DOCKER_IMAGE}|${DOCKER_IMAGE_FULL_NAME}|g" ./tee-docker-compose.yaml
+          sed -i "s|\${DOCKER_IMAGE_FULL_NAME}|${DOCKER_IMAGE_FULL_NAME}|g" ./tee-docker-compose.yaml
+      - name: Make envfile
+        uses: SpicyPizza/create-envfile@v2.0
+        with:
+          envkey_DEBUG: false
+          envkey_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          envkey_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          envkey_SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          envkey_POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          envkey_POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          envkey_POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          envkey_EVM_CHAINS: ${{ secrets.EVM_CHAINS }}
+          envkey_BIRDEYE_API_KEY: ${{ secrets.BIRDEYE_API_KEY }}
+          envkey_COMMUNITY_MANAGER_DISCORD_APPLICATION_ID: ${{ secrets.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID }}
+          envkey_COMMUNITY_MANAGER_DISCORD_API_TOKEN: ${{ secrets.COMMUNITY_MANAGER_DISCORD_API_TOKEN }}
+          envkey_SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID: ${{ secrets.SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID }}
+          envkey_SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN: ${{ secrets.SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN }}
+          envkey_LIAISON_DISCORD_APPLICATION_ID: ${{ secrets.LIAISON_DISCORD_APPLICATION_ID }}
+          envkey_LIAISON_DISCORD_API_TOKEN: ${{ secrets.LIAISON_DISCORD_API_TOKEN }}
+          envkey_PROJECT_MANAGER_DISCORD_APPLICATION_ID: ${{ secrets.PROJECT_MANAGER_DISCORD_APPLICATION_ID }}
+          envkey_PROJECT_MANAGER_DISCORD_API_TOKEN: ${{ secrets.PROJECT_MANAGER_DISCORD_API_TOKEN }}
+          envkey_DEV_REL_DISCORD_APPLICATION_ID: ${{ secrets.DEV_REL_DISCORD_APPLICATION_ID }}
+          envkey_DEV_REL_DISCORD_API_TOKEN: ${{ secrets.DEV_REL_DISCORD_API_TOKEN }}
+          envkey_INVESTMENT_MANAGER_DISCORD_APPLICATION_ID: ${{ secrets.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID }}
+          envkey_INVESTMENT_MANAGER_DISCORD_API_TOKEN: ${{ secrets.INVESTMENT_MANAGER_DISCORD_API_TOKEN }}
+          envkey_PGLITE_DATA_DIR: ${{ secrets.PGLITE_DATA_DIR }}
+          envkey_TEE_MODE: ${{ secrets.TEE_MODE }}
+          envkey_WALLET_SECRET_SALT: ${{ secrets.WALLET_SECRET_SALT }}
+          envkey_TEE_VENDOR: ${{ secrets.TEE_VENDOR }}
+          file_name: .env
+          fail_on_empty: false
+          sort_keys: false
 
       - name: Deploy to Phala Cloud
         run: |
@@ -91,7 +128,7 @@ jobs:
           npx phala cvms create \
             -n ${{ env.APP_NAME }} \
             -c tee-docker-compose.yaml \
-            --skip-env \
+            -e .env \
             --vcpu 4 \
             --memory 8192 \
             --disk-size 50 \
