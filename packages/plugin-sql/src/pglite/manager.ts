@@ -152,6 +152,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
 
       await migrate(db, {
         migrationsFolder: pathResolve(__dirname, '../drizzle/migrations'),
+        migrationsSchema: 'public',
       });
     } catch (error) {
       logger.error('Failed to run database migrations (pglite):', error);
