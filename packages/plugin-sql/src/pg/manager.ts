@@ -199,6 +199,7 @@ export class PostgresConnectionManager implements IDatabaseClientManager<PgPool>
 
       await migrate(db, {
         migrationsFolder: path.resolve(__dirname, '../drizzle/migrations'),
+        migrationsSchema: 'public',
       });
     } catch (error) {
       logger.error('Failed to run database migrations (pg):', error);
