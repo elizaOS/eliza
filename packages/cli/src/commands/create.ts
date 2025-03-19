@@ -273,7 +273,9 @@ export const create = new Command()
       }
 
       // Set up target directory
-      const targetDir = options.dir === '.' ? path.resolve(name) : path.resolve(options.dir);
+      // If -d is ".", create in current directory with project name
+      // If -d is specified, create project directory inside that directory
+      const targetDir = path.resolve(options.dir, name);
 
       // Create or check directory
       if (!existsSync(targetDir)) {
@@ -323,9 +325,9 @@ export const create = new Command()
 
         logger.success('Plugin initialized successfully!');
         logger.info(`\nYour plugin is ready! Here's what you can do next:
-1. \`${colors.cyan('npx @elizaos/cli start')}\` to start development
-2. \`${colors.cyan('npx @elizaos/cli test')}\` to test your plugin
-3. \`${colors.cyan('npx @elizaos/cli plugins publish')}\` to publish your plugin to the registry`);
+1. \`${colors.cyan('npx elizaos start')}\` to start development
+2. \`${colors.cyan('npx elizaos test')}\` to test your plugin
+3. \`${colors.cyan('npx elizaos publish')}\` to publish your plugin to the registry`);
         return;
       }
 
@@ -407,9 +409,14 @@ export const create = new Command()
       logger.success('Project initialized successfully!');
 
       // Show next steps with updated message
+      const cdPath =
+        options.dir === '.'
+          ? name // If creating in current directory, just use the name
+          : path.relative(process.cwd(), targetDir); // Otherwise use path relative to current directory
+
       logger.info(`\nYour project is ready! Here's what you can do next:
-1. \`cd ${targetDir}\` to change into your project directory
-2. Run \`npx @elizaos/cli start\` to start your project
+1. \`cd ${cdPath}\` to change into your project directory
+2. Run \`npx elizaos start\` to start your project
 3. Visit \`http://localhost:3000\` to view your project in the browser`);
 
       // exit successfully
