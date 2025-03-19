@@ -5,7 +5,7 @@ export const registryUsers: User[] = [
   {
     title: 'Mongodb',
     description: 'Database adapter for MongoDB enabling document storage with query capabilities.',
-    preview: '/eliza/logos/mongodb.png',
+    preview: '/logos/mongodb.png',
     website: 'https://github.com/elizaos-plugins/adapter-mongodb',
     source: 'https://github.com/elizaos-plugins/adapter-mongodb',
     tags: ['adapter'],
@@ -13,7 +13,7 @@ export const registryUsers: User[] = [
   {
     title: 'Postgres',
     description: 'Database adapter for PostgreSQL with full relational database capabilities.',
-    preview: '/eliza/logos/postgres.jpg',
+    preview: '/logos/postgres.jpg',
     website: 'https://github.com/elizaos-plugins/adapter-postgres',
     source: 'https://github.com/elizaos-plugins/adapter-postgres',
     tags: ['adapter'],
@@ -21,7 +21,7 @@ export const registryUsers: User[] = [
   {
     title: 'Pglite',
     description: 'Lightweight PostgreSQL adapter for embedded database applications.',
-    preview: '/eliza/logos/pglite.png',
+    preview: '/logos/pglite.png',
     website: 'https://github.com/elizaos-plugins/adapter-pglite',
     source: 'https://github.com/elizaos-plugins/adapter-pglite',
     tags: ['adapter'],
@@ -29,7 +29,7 @@ export const registryUsers: User[] = [
   {
     title: 'Qdrant',
     description: 'Vector database adapter for Qdrant with similarity search capabilities.',
-    preview: '/eliza/logos/qdrant.png',
+    preview: '/logos/qdrant.png',
     website: 'https://github.com/elizaos-plugins/adapter-qdrant',
     source: 'https://github.com/elizaos-plugins/adapter-qdrant',
     tags: ['adapter'],
@@ -37,7 +37,7 @@ export const registryUsers: User[] = [
   {
     title: 'Sqljs',
     description: 'In-memory SQL database adapter for browser-based applications.',
-    preview: '/eliza/logos/sqljs.png',
+    preview: '/logos/sqljs.png',
     website: 'https://github.com/elizaos-plugins/adapter-sqljs',
     source: 'https://github.com/elizaos-plugins/adapter-sqljs',
     tags: ['adapter'],
@@ -45,7 +45,7 @@ export const registryUsers: User[] = [
   {
     title: 'Sqlite',
     description: 'File-based SQL database adapter for lightweight local storage.',
-    preview: '/eliza/logos/sqlite.png',
+    preview: '/logos/sqlite.png',
     website: 'https://github.com/elizaos-plugins/adapter-sqlite',
     source: 'https://github.com/elizaos-plugins/adapter-sqlite',
     tags: ['adapter'],
@@ -53,7 +53,7 @@ export const registryUsers: User[] = [
   {
     title: 'Supabase',
     description: 'Database adapter for Supabase with PostgreSQL and realtime capabilities.',
-    preview: '/eliza/logos/supabase.jpg',
+    preview: '/logos/supabase.jpg',
     website: 'https://github.com/elizaos-plugins/adapter-supabase',
     source: 'https://github.com/elizaos-plugins/adapter-supabase',
     tags: ['adapter'],
@@ -61,7 +61,7 @@ export const registryUsers: User[] = [
   {
     title: 'Auto',
     description: 'Auto-detection client for determining optimal communication channels.',
-    preview: '/eliza/logos/auto.jpg',
+    preview: '/logos/auto.jpg',
     website: 'https://github.com/elizaos-plugins/client-auto',
     source: 'https://github.com/elizaos-plugins/client-auto',
     tags: ['client'],
@@ -70,7 +70,7 @@ export const registryUsers: User[] = [
     title: 'Discord',
     description:
       'Discord integration client with messaging and community interaction capabilities.',
-    preview: '/eliza/logos/discord.jpg',
+    preview: '/logos/discord.jpg',
     website: 'https://github.com/elizaos-plugins/client-discord',
     source: 'https://github.com/elizaos-plugins/client-discord',
     tags: ['client', 'favorite'],
@@ -78,7 +78,7 @@ export const registryUsers: User[] = [
   {
     title: 'Farcaster',
     description: 'Client for Farcaster decentralized social media protocol.',
-    preview: '/eliza/logos/farcaster.jpg',
+    preview: '/logos/farcaster.jpg',
     website: 'https://github.com/elizaos-plugins/client-farcaster',
     source: 'https://github.com/elizaos-plugins/client-farcaster',
     tags: ['client'],
@@ -86,7 +86,7 @@ export const registryUsers: User[] = [
   {
     title: 'Github',
     description: 'GitHub client for repository management and code integration.',
-    preview: '/eliza/logos/github.png',
+    preview: '/logos/github.png',
     website: 'https://github.com/elizaos-plugins/client-github',
     source: 'https://github.com/elizaos-plugins/client-github',
     tags: ['client', 'favorite'],
@@ -94,7 +94,7 @@ export const registryUsers: User[] = [
   {
     title: 'Lens',
     description: 'Client for Lens Protocol decentralized social networking.',
-    preview: '/eliza/logos/lens.jpg',
+    preview: '/logos/lens.jpg',
     website: 'https://github.com/elizaos-plugins/client-lens',
     source: 'https://github.com/elizaos-plugins/client-lens',
     tags: ['client'],
@@ -102,7 +102,7 @@ export const registryUsers: User[] = [
   {
     title: 'Slack',
     description: 'Slack integration client with messaging and workspace collaboration features.',
-    preview: '/eliza/logos/slack.jpg',
+    preview: '/logos/slack.jpg',
     website: 'https://github.com/elizaos-plugins/client-slack',
     source: 'https://github.com/elizaos-plugins/client-slack',
     tags: ['client'],
@@ -110,7 +110,7 @@ export const registryUsers: User[] = [
   {
     title: 'Telegram',
     description: 'Telegram messaging client with bot and channel integration capabilities.',
-    preview: '/eliza/logos/telegram.jpg',
+    preview: '/logos/telegram.jpg',
     website: 'https://github.com/elizaos-plugins/client-telegram',
     source: 'https://github.com/elizaos-plugins/client-telegram',
     tags: ['client', 'favorite'],
@@ -118,7 +118,7 @@ export const registryUsers: User[] = [
   {
     title: 'Twitter',
     description: 'Twitter/X client for posting and monitoring social media activity.',
-    preview: '/eliza/logos/x.jpg',
+    preview: '/logos/x.jpg',
     website: 'https://github.com/elizaos-plugins/client-twitter',
     source: 'https://github.com/elizaos-plugins/client-twitter',
     tags: ['client', 'favorite'],
@@ -126,7 +126,7 @@ export const registryUsers: User[] = [
   {
     title: 'Tako',
     description: 'Client for the Tako protocol enabling cross-platform social engagement.',
-    preview: '/eliza/logos/tako.png',
+    preview: '/logos/tako.png',
     website: 'https://github.com/takoprotocol/client-tako',
     source: 'https://github.com/takoprotocol/client-tako',
     tags: ['client'],
@@ -135,7 +135,7 @@ export const registryUsers: User[] = [
     title: '0g',
     description:
       'Provides decentralized file storage capabilities using the Zero Gravity (0G) protocol.',
-    preview: '/eliza/logos/0g.jpg',
+    preview: '/logos/0g.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-0g',
     source: 'https://github.com/elizaos-plugins/plugin-0g',
     tags: ['plugin'],
@@ -143,7 +143,7 @@ export const registryUsers: User[] = [
   {
     title: '3d Generation',
     description: "Generates 3D models from text descriptions using FAL.ai's API services.",
-    preview: '/eliza/logos/falai.png',
+    preview: '/logos/falai.png',
     website: 'https://github.com/elizaos-plugins/plugin-3d-generation',
     source: 'https://github.com/elizaos-plugins/plugin-3d-generation',
     tags: ['plugin'],
@@ -151,7 +151,7 @@ export const registryUsers: User[] = [
   {
     title: 'Abstract',
     description: 'Enables token transfers and operations on the Abstract blockchain network.',
-    preview: '/eliza/logos/abstract.jpg',
+    preview: '/logos/abstract.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-abstract',
     source: 'https://github.com/elizaos-plugins/plugin-abstract',
     tags: ['plugin'],
@@ -159,7 +159,7 @@ export const registryUsers: User[] = [
   {
     title: 'Akash',
     description: 'Manages deployments and cloud compute operations on the Akash Network.',
-    preview: '/eliza/logos/akash.jpg',
+    preview: '/logos/akash.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-akash',
     source: 'https://github.com/elizaos-plugins/plugin-akash',
     tags: ['plugin'],
@@ -168,7 +168,7 @@ export const registryUsers: User[] = [
     title: 'Allora',
     description:
       'Provides real-time AI inferences from the Allora Network for market predictions and analysis.',
-    preview: '/eliza/logos/allora.jpg',
+    preview: '/logos/allora.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-allora',
     source: 'https://github.com/elizaos-plugins/plugin-allora',
     tags: ['plugin'],
@@ -176,7 +176,7 @@ export const registryUsers: User[] = [
   {
     title: 'Anyone',
     description: 'Enables SOCKS proxy configuration for the Anyone protocol proxy services.',
-    preview: '/eliza/logos/anyone.jpg',
+    preview: '/logos/anyone.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-anyone',
     source: 'https://github.com/elizaos-plugins/plugin-anyone',
     tags: ['plugin'],
@@ -184,7 +184,7 @@ export const registryUsers: User[] = [
   {
     title: 'Aptos',
     description: 'Handles token transfers and wallet management on the Aptos blockchain.',
-    preview: '/eliza/logos/aptos.jpg',
+    preview: '/logos/aptos.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-aptos',
     source: 'https://github.com/elizaos-plugins/plugin-aptos',
     tags: ['plugin'],
@@ -192,7 +192,7 @@ export const registryUsers: User[] = [
   {
     title: 'Arthera',
     description: 'Facilitates transactions and token operations on the Arthera network.',
-    preview: '/eliza/logos/arthera.jpg',
+    preview: '/logos/arthera.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-arthera',
     source: 'https://github.com/elizaos-plugins/plugin-arthera',
     tags: ['plugin'],
@@ -200,7 +200,7 @@ export const registryUsers: User[] = [
   {
     title: 'Asterai',
     description: 'Integrates with asterai.io plugins and agents for enhanced AI capabilities.',
-    preview: '/eliza/logos/asterai.jpg',
+    preview: '/logos/asterai.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-asterai',
     source: 'https://github.com/elizaos-plugins/plugin-asterai',
     tags: ['plugin'],
@@ -208,7 +208,7 @@ export const registryUsers: User[] = [
   {
     title: 'ATTPs',
     description: 'Enables verification of agent activities using proof generation and validation.',
-    preview: '/eliza/logos/appro.jpg',
+    preview: '/logos/appro.jpg',
     website: 'https://github.com/APRO-com/plugin-ATTPs',
     source: 'https://github.com/APRO-com/plugin-ATTPs',
     tags: ['plugin'],
@@ -216,7 +216,7 @@ export const registryUsers: User[] = [
   {
     title: 'Autonome',
     description: 'Launches and manages new Eliza agents through the Autonome platform.',
-    preview: '/eliza/logos/autonome.jpg',
+    preview: '/logos/autonome.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-autonome',
     source: 'https://github.com/elizaos-plugins/plugin-autonome',
     tags: ['plugin'],
@@ -224,7 +224,7 @@ export const registryUsers: User[] = [
   {
     title: 'Avail',
     description: 'Interacts with Avail DA network for data availability and token transfers.',
-    preview: '/eliza/logos/avail.png',
+    preview: '/logos/avail.png',
     website: 'https://github.com/elizaos-plugins/plugin-avail',
     source: 'https://github.com/elizaos-plugins/plugin-avail',
     tags: ['plugin'],
@@ -232,7 +232,7 @@ export const registryUsers: User[] = [
   {
     title: 'Avalanche',
     description: 'Enables DeFi operations and token management on the Avalanche blockchain.',
-    preview: '/eliza/logos/avalanche.jpg',
+    preview: '/logos/avalanche.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-avalanche',
     source: 'https://github.com/elizaos-plugins/plugin-avalanche',
     tags: ['plugin'],
@@ -241,7 +241,7 @@ export const registryUsers: User[] = [
     title: 'Binance',
     description:
       "Provides cryptocurrency trading and price checking capabilities through Binance's API.",
-    preview: '/eliza/logos/binance.jpg',
+    preview: '/logos/binance.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-binance',
     source: 'https://github.com/elizaos-plugins/plugin-binance',
     tags: ['plugin'],
@@ -250,7 +250,7 @@ export const registryUsers: User[] = [
     title: 'Ccxt',
     description:
       'Enables cryptocurrency trading and arbitrage across multiple exchanges using CCXT.',
-    preview: '/eliza/logos/ccxt.png',
+    preview: '/logos/ccxt.png',
     website: 'https://github.com/pranavjadhav1363/plugin-ccxt',
     source: 'https://github.com/pranavjadhav1363/plugin-ccxt',
     tags: ['plugin'],
@@ -259,7 +259,7 @@ export const registryUsers: User[] = [
     title: 'Coinbase',
     description:
       "Provides comprehensive integration with Coinbase's various APIs and trading services.",
-    preview: '/eliza/logos/coinbase.png',
+    preview: '/logos/coinbase.png',
     website: 'https://github.com/elizaos-plugins/plugin-coinbase',
     source: 'https://github.com/elizaos-plugins/plugin-coinbase',
     tags: ['plugin'],
@@ -267,7 +267,7 @@ export const registryUsers: User[] = [
   {
     title: 'Coingecko',
     description: "Fetches cryptocurrency price data and market information from CoinGecko's API.",
-    preview: '/eliza/logos/coingecko.jpg',
+    preview: '/logos/coingecko.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-coingecko',
     source: 'https://github.com/elizaos-plugins/plugin-coingecko',
     tags: ['plugin'],
@@ -275,7 +275,7 @@ export const registryUsers: User[] = [
   {
     title: 'Coinmarketcap',
     description: "Enables cryptocurrency price checking using CoinMarketCap's API services.",
-    preview: '/eliza/logos/coinmarketcap.jpg',
+    preview: '/logos/coinmarketcap.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-coinmarketcap',
     source: 'https://github.com/elizaos-plugins/plugin-coinmarketcap',
     tags: ['plugin'],
@@ -283,7 +283,7 @@ export const registryUsers: User[] = [
   {
     title: 'Compass',
     description: 'Integrates with Compass API for executing operations on DeFi protocols.',
-    preview: '/eliza/logos/compass.jpg',
+    preview: '/logos/compass.jpg',
     website: 'https://github.com/CompassLabs/plugin-compass',
     source: 'https://github.com/CompassLabs/plugin-compass',
     tags: ['plugin'],
@@ -291,7 +291,7 @@ export const registryUsers: User[] = [
   {
     title: 'Conflux',
     description: 'Manages token transfers and interactions on the Conflux blockchain network.',
-    preview: '/eliza/logos/conflux.png',
+    preview: '/logos/conflux.png',
     website: 'https://github.com/elizaos-plugins/plugin-conflux',
     source: 'https://github.com/elizaos-plugins/plugin-conflux',
     tags: ['plugin'],
@@ -299,7 +299,7 @@ export const registryUsers: User[] = [
   {
     title: 'Cosmos',
     description: 'Handles token management and transfers using Cosmos-compatible blockchains.',
-    preview: '/eliza/logos/cosmos.jpg',
+    preview: '/logos/cosmos.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-cosmos',
     source: 'https://github.com/elizaos-plugins/plugin-cosmos',
     tags: ['plugin'],
@@ -307,7 +307,7 @@ export const registryUsers: User[] = [
   {
     title: 'Cronoszkevm',
     description: 'Enables token transfers and interactions on the Cronos zkEVM network.',
-    preview: '/eliza/logos/cronos.png',
+    preview: '/logos/cronos.png',
     website: 'https://github.com/elizaos-plugins/plugin-cronoszkevm',
     source: 'https://github.com/elizaos-plugins/plugin-cronoszkevm',
     tags: ['plugin'],
@@ -316,7 +316,7 @@ export const registryUsers: User[] = [
     title: 'D.a.t.a',
     description:
       'Processes and analyzes data from various sources with authentication and trust scoring.',
-    preview: '/eliza/logos/carv.jpg',
+    preview: '/logos/carv.jpg',
     website: 'https://github.com/carv-protocol/plugin-d.a.t.a',
     source: 'https://github.com/carv-protocol/plugin-d.a.t.a',
     tags: ['plugin'],
@@ -324,7 +324,7 @@ export const registryUsers: User[] = [
   {
     title: 'Dcap',
     description: 'Provides Intel Data Center Attestation Primitives for secure cloud environments.',
-    preview: '/eliza/logos/dcap.png',
+    preview: '/logos/dcap.png',
     website: 'https://github.com/elizaos-plugins/plugin-dcap',
     source: 'https://github.com/elizaos-plugins/plugin-dcap',
     tags: ['plugin'],
@@ -333,7 +333,7 @@ export const registryUsers: User[] = [
     title: 'Depin',
     description:
       'Connects AI agents to physical infrastructure through Decentralized Physical Infrastructure Networks.',
-    preview: '/eliza/logos/depin.jpg',
+    preview: '/logos/depin.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-depin',
     source: 'https://github.com/elizaos-plugins/plugin-depin',
     tags: ['plugin'],
@@ -341,7 +341,7 @@ export const registryUsers: User[] = [
   {
     title: 'Di',
     description: 'Provides dependency injection system for Eliza plugins.',
-    preview: '/eliza/logos/di-logo.jpg',
+    preview: '/logos/di-logo.jpg',
     website: 'https://github.com/fixes-world/plugin-di',
     source: 'https://github.com/fixes-world/plugin-di',
     tags: ['plugin'],
@@ -350,7 +350,7 @@ export const registryUsers: User[] = [
     title: 'Echochambers',
     description:
       'Enables chat room interactions with dynamic conversation handling and monitoring.',
-    preview: '/eliza/logos/echochambers.png',
+    preview: '/logos/echochambers.png',
     website: 'https://github.com/elizaos-plugins/plugin-echochambers',
     source: 'https://github.com/elizaos-plugins/plugin-echochambers',
     tags: ['plugin'],
@@ -358,7 +358,7 @@ export const registryUsers: User[] = [
   {
     title: 'Edwin',
     description: 'Enables interaction with Edwin tools for DeFi operations.',
-    preview: '/eliza/logos/edwin.jpg',
+    preview: '/logos/edwin.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-edwin',
     source: 'https://github.com/elizaos-plugins/plugin-edwin',
     tags: ['plugin'],
@@ -366,7 +366,7 @@ export const registryUsers: User[] = [
   {
     title: 'Evm',
     description: 'Provides comprehensive functionality for interacting with EVM-compatible chains.',
-    preview: '/eliza/logos/evm.png',
+    preview: '/logos/evm.png',
     website: 'https://github.com/elizaos-plugins/plugin-evm',
     source: 'https://github.com/elizaos-plugins/plugin-evm',
     tags: ['plugin', 'favorite'],
@@ -374,7 +374,7 @@ export const registryUsers: User[] = [
   {
     title: 'FerePro',
     description: 'Enables WebSocket communication with FerePro API for AI-driven market insights.',
-    preview: '/eliza/logos/ferepro.png',
+    preview: '/logos/ferepro.png',
     website: 'https://github.com/elizaos-plugins/plugin-ferePro',
     source: 'https://github.com/elizaos-plugins/plugin-ferePro',
     tags: ['plugin'],
@@ -382,7 +382,7 @@ export const registryUsers: User[] = [
   {
     title: 'Firecrawl',
     description: 'Provides web scraping and crawling capabilities through the Firecrawl API.',
-    preview: '/eliza/logos/firecrawl.jpg',
+    preview: '/logos/firecrawl.jpg',
     website: 'https://github.com/tobySolutions/plugin-firecrawl',
     source: 'https://github.com/tobySolutions/plugin-firecrawl',
     tags: ['plugin'],
@@ -391,7 +391,7 @@ export const registryUsers: User[] = [
     title: 'Flow',
     description:
       'Manages Flow blockchain interactions including token transfers and smart contracts.',
-    preview: '/eliza/logos/flowchain.png',
+    preview: '/logos/flowchain.png',
     website: 'https://github.com/fixes-world/plugin-flow',
     source: 'https://github.com/fixes-world/plugin-flow',
     tags: ['plugin'],
@@ -399,7 +399,7 @@ export const registryUsers: User[] = [
   {
     title: 'Flow Advanced',
     description: 'The advanced Eliza plugin for Flow Blockchain',
-    preview: '/eliza/logos/flowchain.png',
+    preview: '/logos/flowchain.png',
     website: 'https://github.com/fixes-world/plugin-flow-advanced',
     source: 'https://github.com/fixes-world/plugin-flow-advanced',
     tags: ['plugin'],
@@ -407,7 +407,7 @@ export const registryUsers: User[] = [
   {
     title: 'Fuel',
     description: 'Enables ETH transfers and interactions on the Fuel Ignition network.',
-    preview: '/eliza/logos/fuel.jpg',
+    preview: '/logos/fuel.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-fuel',
     source: 'https://github.com/elizaos-plugins/plugin-fuel',
     tags: ['plugin'],
@@ -415,7 +415,7 @@ export const registryUsers: User[] = [
   {
     title: 'Genlayer',
     description: 'Facilitates contract deployment and interactions on the GenLayer protocol.',
-    preview: '/eliza/logos/genlayer.jpg',
+    preview: '/logos/genlayer.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-genlayer',
     source: 'https://github.com/elizaos-plugins/plugin-genlayer',
     tags: ['plugin'],
@@ -423,7 +423,7 @@ export const registryUsers: User[] = [
   {
     title: 'Gigbot',
     description: 'AI-powered freelance work management and automation toolkit.',
-    preview: '/eliza/logos/gigbot.png',
+    preview: '/logos/gigbot.png',
     website: 'https://github.com/PaymagicXYZ/plugin-gigbot',
     source: 'https://github.com/PaymagicXYZ/plugin-gigbot',
     tags: ['plugin'],
@@ -431,7 +431,7 @@ export const registryUsers: User[] = [
   {
     title: 'Giphy',
     description: 'Enables sending GIFs in response to user messages using the Giphy API.',
-    preview: '/eliza/logos/giphy.jpg',
+    preview: '/logos/giphy.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-giphy',
     source: 'https://github.com/elizaos-plugins/plugin-giphy',
     tags: ['plugin'],
@@ -439,7 +439,7 @@ export const registryUsers: User[] = [
   {
     title: 'Gitbook',
     description: 'Enables querying and retrieving information from GitBook documentation.',
-    preview: '/eliza/logos/gitbook.jpg',
+    preview: '/logos/gitbook.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-gitbook',
     source: 'https://github.com/elizaos-plugins/plugin-gitbook',
     tags: ['plugin'],
@@ -448,7 +448,7 @@ export const registryUsers: User[] = [
     title: 'Goat',
     description:
       'Integrates blockchain capabilities through the GOAT (Great Onchain Agent Toolkit) framework.',
-    preview: '/eliza/logos/goat.jpg',
+    preview: '/logos/goat.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-goat',
     source: 'https://github.com/elizaos-plugins/plugin-goat',
     tags: ['plugin'],
@@ -456,7 +456,7 @@ export const registryUsers: User[] = [
   {
     title: 'Goplus',
     description: 'Enables on-chain security checks through the GoPlus API integration.',
-    preview: '/eliza/logos/goplus.jpg',
+    preview: '/logos/goplus.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-goplus',
     source: 'https://github.com/elizaos-plugins/plugin-goplus',
     tags: ['plugin'],
@@ -464,7 +464,7 @@ export const registryUsers: User[] = [
   {
     title: 'Grix',
     description: 'Enables DeFi options data fetching and price analysis through Grix Finance API.',
-    preview: '/eliza/logos/grix.png',
+    preview: '/logos/grix.png',
     website: 'https://github.com/grixprotocol/plugin-grix',
     source: 'https://github.com/grixprotocol/plugin-grix',
     tags: ['plugin'],
@@ -472,7 +472,7 @@ export const registryUsers: User[] = [
   {
     title: 'Hyperliquid',
     description: 'Provides spot trading capabilities on the Hyperliquid DEX.',
-    preview: '/eliza/logos/hyperliquid.png',
+    preview: '/logos/hyperliquid.png',
     website: 'https://github.com/elizaos-plugins/plugin-hyperliquid',
     source: 'https://github.com/elizaos-plugins/plugin-hyperliquid',
     tags: ['plugin'],
@@ -481,7 +481,7 @@ export const registryUsers: User[] = [
     title: 'Icp',
     description:
       'Enables interaction with Internet Computer Protocol for token and smart contract operations.',
-    preview: '/eliza/logos/ICP.jpg',
+    preview: '/logos/ICP.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-icp',
     source: 'https://github.com/elizaos-plugins/plugin-icp',
     tags: ['plugin'],
@@ -489,7 +489,7 @@ export const registryUsers: User[] = [
   {
     title: 'Image Generation',
     description: 'Generates and manages images with storage integration and optimization features.',
-    preview: '/eliza/logos/imagegen.jpg',
+    preview: '/logos/imagegen.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-image-generation',
     source: 'https://github.com/elizaos-plugins/plugin-image-generation',
     tags: ['plugin'],
@@ -497,7 +497,7 @@ export const registryUsers: User[] = [
   {
     title: 'Intiface',
     description: 'Controls intimate hardware devices through the Buttplug.io protocol.',
-    preview: '/eliza/logos/intiface.png',
+    preview: '/logos/intiface.png',
     website: 'https://github.com/elizaos-plugins/plugin-intiface',
     source: 'https://github.com/elizaos-plugins/plugin-intiface',
     tags: ['plugin'],
@@ -506,7 +506,7 @@ export const registryUsers: User[] = [
     title: 'Irys',
     description:
       'Enables decentralized data storage and retrieval using the Irys datachain platform.',
-    preview: '/eliza/logos/irys.jpg',
+    preview: '/logos/irys.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-irys',
     source: 'https://github.com/elizaos-plugins/plugin-irys',
     tags: ['plugin'],
@@ -514,7 +514,7 @@ export const registryUsers: User[] = [
   {
     title: 'Isaacx',
     description: 'Advanced AI reasoning and cognitive modeling plugin.',
-    preview: '/eliza/logos/isaac.jpg',
+    preview: '/logos/isaac.jpg',
     website: 'https://github.com/isaacx0/plugin-isaacx',
     source: 'https://github.com/isaacx0/plugin-isaacx',
     tags: ['plugin'],
@@ -522,7 +522,7 @@ export const registryUsers: User[] = [
   {
     title: 'Letzai',
     description: "Enables image generation using LetzAI's API and models.",
-    preview: '/eliza/logos/letzai.jpg',
+    preview: '/logos/letzai.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-letzai',
     source: 'https://github.com/elizaos-plugins/plugin-letzai',
     tags: ['plugin'],
@@ -530,7 +530,7 @@ export const registryUsers: User[] = [
   {
     title: 'Lightlink',
     description: 'Enables Ethereum layer 2 operations on the Lightlink blockchain network.',
-    preview: '/eliza/logos/lightlink.jpg',
+    preview: '/logos/lightlink.jpg',
     website: 'https://github.com/lightlink-network/plugin-lightlink',
     source: 'https://github.com/lightlink-network/plugin-lightlink',
     tags: ['plugin'],
@@ -538,7 +538,7 @@ export const registryUsers: User[] = [
   {
     title: 'Massa',
     description: 'Enables interactions with the Massa blockchain ecosystem.',
-    preview: '/eliza/logos/massa.jpg',
+    preview: '/logos/massa.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-massa',
     source: 'https://github.com/elizaos-plugins/plugin-massa',
     tags: ['plugin'],
@@ -547,7 +547,7 @@ export const registryUsers: User[] = [
     title: 'Merkle',
     description:
       'Integrates MerkleTrade platform for trading operations with API-based price tracking and order management.',
-    preview: '/eliza/logos/merkle.jpg',
+    preview: '/logos/merkle.jpg',
     website: 'https://github.com/merkle-trade/merkle-eliza-plugin',
     source: 'https://github.com/merkle-trade/merkle-eliza-plugin',
     tags: ['plugin'],
@@ -555,7 +555,7 @@ export const registryUsers: User[] = [
   {
     title: 'Messari Ai Toolkit',
     description: "Provides crypto market research capabilities using Messari's AI Toolkit.",
-    preview: '/eliza/logos/messari.jpg',
+    preview: '/logos/messari.jpg',
     website: 'https://github.com/messari/plugin-messari-ai-toolkit',
     source: 'https://github.com/messari/plugin-messari-ai-toolkit',
     tags: ['plugin'],
@@ -563,7 +563,7 @@ export const registryUsers: User[] = [
   {
     title: 'Movement',
     description: 'Enables Movement Network blockchain functionality for token operations.',
-    preview: '/eliza/logos/movement.jpg',
+    preview: '/logos/movement.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-movement',
     source: 'https://github.com/elizaos-plugins/plugin-movement',
     tags: ['plugin'],
@@ -571,7 +571,7 @@ export const registryUsers: User[] = [
   {
     title: 'Multichain',
     description: 'Cross-chain interaction capabilities for multiple blockchain networks.',
-    preview: '/eliza/logos/nearai.png',
+    preview: '/logos/nearai.png',
     website: 'https://github.com/near-agent/elizaos-plugin-multichain',
     source: 'https://github.com/near-agent/elizaos-plugin-multichain',
     tags: ['plugin'],
@@ -579,7 +579,7 @@ export const registryUsers: User[] = [
   {
     title: 'Multiversx',
     description: 'Manages token operations and transfers on the MultiversX blockchain.',
-    preview: '/eliza/logos/multiversx.jpg',
+    preview: '/logos/multiversx.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-multiversx',
     source: 'https://github.com/elizaos-plugins/plugin-multiversx',
     tags: ['plugin'],
@@ -587,7 +587,7 @@ export const registryUsers: User[] = [
   {
     title: 'Near',
     description: 'Enables token management and transfers on the NEAR Protocol blockchain.',
-    preview: '/eliza/logos/NEAR.jpg',
+    preview: '/logos/NEAR.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-near',
     source: 'https://github.com/elizaos-plugins/plugin-near',
     tags: ['plugin'],
@@ -595,7 +595,7 @@ export const registryUsers: User[] = [
   {
     title: 'Nft Generation',
     description: 'Creates NFT collections with AI-generated artwork on the Solana blockchain.',
-    preview: '/eliza/logos/nftgen.png',
+    preview: '/logos/nftgen.png',
     website: 'https://github.com/elizaos-plugins/plugin-nft-generation',
     source: 'https://github.com/elizaos-plugins/plugin-nft-generation',
     tags: ['plugin'],
@@ -603,7 +603,7 @@ export const registryUsers: User[] = [
   {
     title: 'Node',
     description: 'Provides core Node.js services for file operations and media processing.',
-    preview: '/eliza/logos/nodejs.jpg',
+    preview: '/logos/nodejs.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-node',
     source: 'https://github.com/elizaos-plugins/plugin-node',
     tags: ['plugin'],
@@ -612,7 +612,7 @@ export const registryUsers: User[] = [
     title: 'Nkn',
     description:
       'Enables communication between multiple AI agents using the NKN protocol for decentralized messaging.',
-    preview: '/eliza/logos/nkn.jpg',
+    preview: '/logos/nkn.jpg',
     website: 'https://github.com/nknorg/eliza-plugin-nkn',
     source: 'https://github.com/nknorg/eliza-plugin-nkn',
     tags: ['plugin'],
@@ -620,7 +620,7 @@ export const registryUsers: User[] = [
   {
     title: 'Obsidian',
     description: 'Enables seamless integration with Obsidian vaults for note management.',
-    preview: '/eliza/logos/obsidian.jpg',
+    preview: '/logos/obsidian.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-obsidian',
     source: 'https://github.com/elizaos-plugins/plugin-obsidian',
     tags: ['plugin'],
@@ -628,7 +628,7 @@ export const registryUsers: User[] = [
   {
     title: 'Okto',
     description: 'Self-custody wallet operations and transaction management.',
-    preview: '/eliza/logos/okto.png',
+    preview: '/logos/okto.png',
     website: 'https://github.com/okto-hq/eliza-plugin',
     source: 'https://github.com/okto-hq/eliza-plugin',
     tags: ['plugin'],
@@ -636,7 +636,7 @@ export const registryUsers: User[] = [
   {
     title: 'Okx',
     description: 'Trading and asset management through OKX exchange API.',
-    preview: '/eliza/logos/okx.png',
+    preview: '/logos/okx.png',
     website: 'https://github.com/elizaos-plugins/plugin-okx',
     source: 'https://github.com/elizaos-plugins/plugin-okx',
     tags: ['plugin'],
@@ -644,7 +644,7 @@ export const registryUsers: User[] = [
   {
     title: 'Omniflix',
     description: 'Facilitates interactions with the OmniFlix Network blockchain.',
-    preview: '/eliza/logos/omniflix.jpg',
+    preview: '/logos/omniflix.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-omniflix',
     source: 'https://github.com/elizaos-plugins/plugin-omniflix',
     tags: ['plugin'],
@@ -652,7 +652,7 @@ export const registryUsers: User[] = [
   {
     title: 'Opacity',
     description: 'Implements verifiable inference results from various AI model providers.',
-    preview: '/eliza/logos/opacity.jpg',
+    preview: '/logos/opacity.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-opacity',
     source: 'https://github.com/elizaos-plugins/plugin-opacity',
     tags: ['plugin'],
@@ -660,7 +660,7 @@ export const registryUsers: User[] = [
   {
     title: 'Open Weather',
     description: 'Fetches weather data using the OpenWeather API.',
-    preview: '/eliza/logos/openweather.jpg',
+    preview: '/logos/openweather.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-open-weather',
     source: 'https://github.com/elizaos-plugins/plugin-open-weather',
     tags: ['plugin'],
@@ -668,7 +668,7 @@ export const registryUsers: User[] = [
   {
     title: 'Primus',
     description: "Verifies agent activities using Primus' zkTLS protocol.",
-    preview: '/eliza/logos/primus.png',
+    preview: '/logos/primus.png',
     website: 'https://github.com/elizaos-plugins/plugin-primus',
     source: 'https://github.com/elizaos-plugins/plugin-primus',
     tags: ['plugin'],
@@ -676,7 +676,7 @@ export const registryUsers: User[] = [
   {
     title: 'Quai',
     description: 'Enables token transfers and blockchain interactions on Quai Network.',
-    preview: '/eliza/logos/quai.jpg',
+    preview: '/logos/quai.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-quai',
     source: 'https://github.com/elizaos-plugins/plugin-quai',
     tags: ['plugin'],
@@ -684,7 +684,7 @@ export const registryUsers: User[] = [
   {
     title: 'Rabbi Trader',
     description: 'Provides automated cryptocurrency trading on Solana with trust scoring.',
-    preview: '/eliza/logos/rabbitrader.jpg',
+    preview: '/logos/rabbitrader.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-rabbi-trader',
     source: 'https://github.com/elizaos-plugins/plugin-rabbi-trader',
     tags: ['plugin'],
@@ -692,7 +692,7 @@ export const registryUsers: User[] = [
   {
     title: 'Sei',
     description: 'Enables token transfers and operations on the Sei blockchain network.',
-    preview: '/eliza/logos/sei.jpg',
+    preview: '/logos/sei.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-sei',
     source: 'https://github.com/elizaos-plugins/plugin-sei',
     tags: ['plugin'],
@@ -700,7 +700,7 @@ export const registryUsers: User[] = [
   {
     title: 'Sgx',
     description: 'Provides Intel SGX attestation capabilities for secure execution.',
-    preview: '/eliza/logos/intelsgx.png',
+    preview: '/logos/intelsgx.png',
     website: 'https://github.com/elizaos-plugins/plugin-sgx',
     source: 'https://github.com/elizaos-plugins/plugin-sgx',
     tags: ['plugin'],
@@ -708,7 +708,7 @@ export const registryUsers: User[] = [
   {
     title: 'Solana',
     description: 'Enables comprehensive DeFi operations on the Solana blockchain.',
-    preview: '/eliza/logos/solana.jpg',
+    preview: '/logos/solana.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-solana',
     source: 'https://github.com/elizaos-plugins/plugin-solana',
     tags: ['plugin'],
@@ -716,7 +716,7 @@ export const registryUsers: User[] = [
   {
     title: 'Solana Agent Kit',
     description: 'Provides token operations and NFT functionality on Solana.',
-    preview: '/eliza/logos/sendai.png',
+    preview: '/logos/sendai.png',
     website: 'https://github.com/elizaos-plugins/plugin-solana-agent-kit',
     source: 'https://github.com/elizaos-plugins/plugin-solana-agent-kit',
     tags: ['plugin', 'favorite'],
@@ -724,7 +724,7 @@ export const registryUsers: User[] = [
   {
     title: 'Spheron',
     description: 'Manages deployments and operations using the Spheron Protocol.',
-    preview: '/eliza/logos/spheron.jpg',
+    preview: '/logos/spheron.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-spheron',
     source: 'https://github.com/elizaos-plugins/plugin-spheron',
     tags: ['plugin'],
@@ -732,7 +732,7 @@ export const registryUsers: User[] = [
   {
     title: 'Stargaze',
     description: 'Fetches NFT data from Stargaze collections.',
-    preview: '/eliza/logos/stargaze.png',
+    preview: '/logos/stargaze.png',
     website: 'https://github.com/elizaos-plugins/plugin-stargaze',
     source: 'https://github.com/elizaos-plugins/plugin-stargaze',
     tags: ['plugin'],
@@ -740,7 +740,7 @@ export const registryUsers: User[] = [
   {
     title: 'Starknet',
     description: 'Enables token and DeFi operations on the Starknet blockchain.',
-    preview: '/eliza/logos/starknet.png',
+    preview: '/logos/starknet.png',
     website: 'https://github.com/elizaos-plugins/plugin-starknet',
     source: 'https://github.com/elizaos-plugins/plugin-starknet',
     tags: ['plugin'],
@@ -749,7 +749,7 @@ export const registryUsers: User[] = [
     title: 'Story',
     description:
       'Generates and manages interactive storytelling experiences with branching narratives.',
-    preview: '/eliza/logos/story.jpg',
+    preview: '/logos/story.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-story',
     source: 'https://github.com/elizaos-plugins/plugin-story',
     tags: ['plugin', 'favorite'],
@@ -757,7 +757,7 @@ export const registryUsers: User[] = [
   {
     title: 'Sui',
     description: 'Manages token transfers and wallet operations on the Sui blockchain.',
-    preview: '/eliza/logos/sui.jpg',
+    preview: '/logos/sui.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-sui',
     source: 'https://github.com/elizaos-plugins/plugin-sui',
     tags: ['plugin'],
@@ -765,7 +765,7 @@ export const registryUsers: User[] = [
   {
     title: 'Tee',
     description: 'Handles Trusted Execution Environment operations and key management.',
-    preview: '/eliza/logos/phalatee.jpg',
+    preview: '/logos/phalatee.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-tee',
     source: 'https://github.com/elizaos-plugins/plugin-tee',
     tags: ['plugin'],
@@ -773,7 +773,7 @@ export const registryUsers: User[] = [
   {
     title: 'Tee Log',
     description: 'Provides secure logging capabilities within Trusted Execution Environments.',
-    preview: '/eliza/logos/tee.png',
+    preview: '/logos/tee.png',
     website: 'https://github.com/elizaos-plugins/plugin-tee-log',
     source: 'https://github.com/elizaos-plugins/plugin-tee-log',
     tags: ['plugin'],
@@ -781,7 +781,7 @@ export const registryUsers: User[] = [
   {
     title: 'Tee Marlin',
     description: 'Enables TEE verification through Marlin Oyster platform.',
-    preview: '/eliza/logos/marlin.jpg',
+    preview: '/logos/marlin.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-tee-marlin',
     source: 'https://github.com/elizaos-plugins/plugin-tee-marlin',
     tags: ['plugin'],
@@ -789,7 +789,7 @@ export const registryUsers: User[] = [
   {
     title: 'Thirdweb',
     description: "Provides access to thirdweb's Nebula AI interface.",
-    preview: '/eliza/logos/thirdweb.jpg',
+    preview: '/logos/thirdweb.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-thirdweb',
     source: 'https://github.com/elizaos-plugins/plugin-thirdweb',
     tags: ['plugin'],
@@ -797,7 +797,7 @@ export const registryUsers: User[] = [
   {
     title: 'Ton',
     description: 'Manages TON blockchain operations and wallet functionality.',
-    preview: '/eliza/logos/ton.png',
+    preview: '/logos/ton.png',
     website: 'https://github.com/elizaos-plugins/plugin-ton',
     source: 'https://github.com/elizaos-plugins/plugin-ton',
     tags: ['plugin'],
@@ -806,7 +806,7 @@ export const registryUsers: User[] = [
     title: 'Trustgo',
     description:
       'Enables fetching EVM account information and MEDIA score attestations from TrustGo.',
-    preview: '/eliza/logos/trusta.jpg',
+    preview: '/logos/trusta.jpg',
     website: 'https://github.com/TrustaLabs/plugin-trustgo',
     source: 'https://github.com/TrustaLabs/plugin-trustgo',
     tags: ['plugin'],
@@ -814,7 +814,7 @@ export const registryUsers: User[] = [
   {
     title: 'Tts',
     description: "Generates speech from text using FAL.ai's API.",
-    preview: '/eliza/logos/fal.jpg',
+    preview: '/logos/fal.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-tts',
     source: 'https://github.com/elizaos-plugins/plugin-tts',
     tags: ['plugin'],
@@ -822,7 +822,7 @@ export const registryUsers: User[] = [
   {
     title: 'Twilio',
     description: 'SMS, voice, and communication capabilities through Twilio API.',
-    preview: '/eliza/logos/twilio.png',
+    preview: '/logos/twilio.png',
     website: 'https://github.com/boolkeys/plugin-twilio',
     source: 'https://github.com/boolkeys/plugin-twilio',
     tags: ['plugin'],
@@ -830,7 +830,7 @@ export const registryUsers: User[] = [
   {
     title: 'Twitter',
     description: 'Enables automated tweet posting with character-aware content generation.',
-    preview: '/eliza/logos/x.jpg',
+    preview: '/logos/x.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-twitter',
     source: 'https://github.com/elizaos-plugins/plugin-twitter',
     tags: ['plugin'],
@@ -839,7 +839,7 @@ export const registryUsers: User[] = [
     title: 'Viction',
     description:
       'Services and actions for token operations, trading, and DeFi integrations using Viction.',
-    preview: '/eliza/logos/viction.jpg',
+    preview: '/logos/viction.jpg',
     website: 'https://github.com/BuildOnViction/plugin-viction',
     source: 'https://github.com/BuildOnViction/plugin-viction',
     tags: ['plugin'],
@@ -847,7 +847,7 @@ export const registryUsers: User[] = [
   {
     title: 'Video Generation',
     description: "Generates videos using Luma AI's API services.",
-    preview: '/eliza/logos/LUMA.jpg',
+    preview: '/logos/LUMA.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-video-generation',
     source: 'https://github.com/elizaos-plugins/plugin-video-generation',
     tags: ['plugin'],
@@ -855,7 +855,7 @@ export const registryUsers: User[] = [
   {
     title: 'Web Search',
     description: 'Provides powerful web search capabilities with customizable API interface.',
-    preview: '/eliza/logos/websearch.jpg',
+    preview: '/logos/websearch.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-web-search',
     source: 'https://github.com/elizaos-plugins/plugin-web-search',
     tags: ['plugin'],
@@ -863,7 +863,7 @@ export const registryUsers: User[] = [
   {
     title: 'Whatsapp',
     description: 'Enables WhatsApp messaging through the Cloud API with comprehensive features.',
-    preview: '/eliza/logos/whatsapp.png',
+    preview: '/logos/whatsapp.png',
     website: 'https://github.com/elizaos-plugins/plugin-whatsapp',
     source: 'https://github.com/elizaos-plugins/plugin-whatsapp',
     tags: ['plugin'],
@@ -871,7 +871,7 @@ export const registryUsers: User[] = [
   {
     title: 'Youtube To Text',
     description: 'Converts YouTube videos to text transcripts.',
-    preview: '/eliza/logos/youtube.png',
+    preview: '/logos/youtube.png',
     website: 'https://github.com/wellaios/plugin-youtube-to-text',
     source: 'https://github.com/wellaios/plugin-youtube-to-text',
     tags: ['plugin'],
@@ -879,7 +879,7 @@ export const registryUsers: User[] = [
   {
     title: 'Zapper',
     description: 'Portfolio tracking and DeFi position management across multiple chains.',
-    preview: '/eliza/logos/zapper.jpg',
+    preview: '/logos/zapper.jpg',
     website: 'https://github.com/ben-dh3/plugin-zapper',
     source: 'https://github.com/ben-dh3/plugin-zapper',
     tags: ['plugin'],
@@ -887,7 +887,7 @@ export const registryUsers: User[] = [
   {
     title: 'Zerion',
     description: 'Fetches wallet portfolio and position data using the Zerion API.',
-    preview: '/eliza/logos/zerion.jpg',
+    preview: '/logos/zerion.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-zerion',
     source: 'https://github.com/elizaos-plugins/plugin-zerion',
     tags: ['plugin'],
@@ -895,7 +895,7 @@ export const registryUsers: User[] = [
   {
     title: 'Zksync Era',
     description: 'Enables token transfers and operations on the zkSync Era network.',
-    preview: '/eliza/logos/zksync.jpg',
+    preview: '/logos/zksync.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-zksync-era',
     source: 'https://github.com/elizaos-plugins/plugin-zksync-era',
     tags: ['plugin'],
@@ -903,7 +903,7 @@ export const registryUsers: User[] = [
   {
     title: 'Para',
     description: 'NFT and digital collectible management platform integration.',
-    preview: '/eliza/logos/para.png',
+    preview: '/logos/para.png',
     website: 'https://github.com/aipop-fun/plugin-para',
     source: 'https://github.com/aipop-fun/plugin-para',
     tags: ['plugin'],
@@ -912,7 +912,7 @@ export const registryUsers: User[] = [
     title: 'cache Redis',
     description:
       'Unmaintained cache plugin that originally lived in @elizaos/core and needs a maintainer.',
-    preview: '/eliza/logos/redis.jpg',
+    preview: '/logos/redis.jpg',
     website: 'https://github.com/elizaos-plugins/cache-redis',
     source: 'https://github.com/elizaos-plugins/cache-redis',
     tags: ['plugin'],
@@ -921,7 +921,7 @@ export const registryUsers: User[] = [
     title: 'Alexa',
     description:
       'Provides integration with Amazon Alexa devices for voice-controlled agent interactions.',
-    preview: '/eliza/logos/alexa.png',
+    preview: '/logos/alexa.png',
     website: 'https://github.com/elizaos-plugins/client-alexa',
     source: 'https://github.com/elizaos-plugins/client-alexa',
     tags: ['client'],
@@ -930,7 +930,7 @@ export const registryUsers: User[] = [
     title: 'Deva',
     description:
       'Enables communication with Deva AI systems for advanced conversational capabilities.',
-    preview: '/eliza/logos/deva.jpg',
+    preview: '/logos/deva.jpg',
     website: 'https://github.com/elizaos-plugins/client-deva',
     source: 'https://github.com/elizaos-plugins/client-deva',
     tags: ['client'],
@@ -938,7 +938,7 @@ export const registryUsers: User[] = [
   {
     title: 'Direct',
     description: 'Deprecated plugin that now lives in @elizaos/core.',
-    preview: '/eliza/logos/direct.png',
+    preview: '/logos/direct.png',
     website: 'https://github.com/elizaos-plugins/client-direct',
     source: 'https://github.com/elizaos-plugins/client-direct',
     tags: ['client'],
@@ -947,7 +947,7 @@ export const registryUsers: User[] = [
     title: 'Eliza Home',
     description:
       'Provides integration with Eliza Home environment for home automation and intelligent assistant features.',
-    preview: '/eliza/logos/home-assistant.png',
+    preview: '/logos/home-assistant.png',
     website: 'https://github.com/elizaos-plugins/client-eliza-home',
     source: 'https://github.com/elizaos-plugins/client-eliza-home',
     tags: ['client'],
@@ -956,7 +956,7 @@ export const registryUsers: User[] = [
     title: 'Instagram',
     description:
       'Enables Instagram integration with support for media posting, comment handling, and interaction management.',
-    preview: '/eliza/logos/instagram.jpg',
+    preview: '/logos/instagram.jpg',
     website: 'https://github.com/elizaos-plugins/client-instagram',
     source: 'https://github.com/elizaos-plugins/client-instagram',
     tags: ['client'],
@@ -964,7 +964,7 @@ export const registryUsers: User[] = [
   {
     title: 'Simsai',
     description: 'Deprecated plugin that needs a maintainer.',
-    preview: '/eliza/logos/simsAI.jpg',
+    preview: '/logos/simsAI.jpg',
     website: 'https://github.com/elizaos-plugins/client-simsai',
     source: 'https://github.com/elizaos-plugins/client-simsai',
     tags: ['client'],
@@ -973,7 +973,7 @@ export const registryUsers: User[] = [
     title: 'Telegram Account',
     description:
       'Provides advanced Telegram account management capabilities beyond basic bot functionality.',
-    preview: '/eliza/logos/telegram.jpg',
+    preview: '/logos/telegram.jpg',
     website: 'https://github.com/elizaos-plugins/client-telegram-account',
     source: 'https://github.com/elizaos-plugins/client-telegram-account',
     tags: ['client'],
@@ -982,7 +982,7 @@ export const registryUsers: User[] = [
     title: 'Xmtp',
     description:
       'Enables secure, decentralized, and end-to-end encrypted messaging through the XMTP protocol.',
-    preview: '/eliza/logos/xmtp.jpg',
+    preview: '/logos/xmtp.jpg',
     website: 'https://github.com/elizaos-plugins/client-xmtp',
     source: 'https://github.com/elizaos-plugins/client-xmtp',
     tags: ['client'],
@@ -991,7 +991,7 @@ export const registryUsers: User[] = [
     title: '0x',
     description:
       'Enables token swaps through 0x Protocol across multiple EVM blockchains with optimized routing and liquidity aggregation.',
-    preview: '/eliza/logos/0x.jpg',
+    preview: '/logos/0x.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-0x',
     source: 'https://github.com/elizaos-plugins/plugin-0x',
     tags: ['plugin'],
@@ -1000,7 +1000,7 @@ export const registryUsers: User[] = [
     title: 'Agentkit',
     description:
       'Integrates CDP AgentKit tools for NFT and token management on various blockchain networks.',
-    preview: '/eliza/logos/agentkitCDB.jpg',
+    preview: '/logos/agentkitCDB.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-agentkit',
     source: 'https://github.com/elizaos-plugins/plugin-agentkit',
     tags: ['plugin'],
@@ -1009,7 +1009,7 @@ export const registryUsers: User[] = [
     title: 'Ankr',
     description:
       'Provides blockchain data query interfaces for wallet information, NFT operations, and token analytics.',
-    preview: '/eliza/logos/ankr.jpg',
+    preview: '/logos/ankr.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-ankr',
     source: 'https://github.com/elizaos-plugins/plugin-ankr',
     tags: ['plugin'],
@@ -1018,7 +1018,7 @@ export const registryUsers: User[] = [
     title: 'Arbitrage',
     description:
       'Identifies and executes cryptocurrency arbitrage opportunities across multiple exchanges.',
-    preview: '/eliza/logos/arbitage.png',
+    preview: '/logos/arbitage.png',
     website: 'https://github.com/elizaos-plugins/plugin-arbitrage',
     source: 'https://github.com/elizaos-plugins/plugin-arbitrage',
     tags: ['plugin'],
@@ -1027,7 +1027,7 @@ export const registryUsers: User[] = [
     title: 'Aws S3',
     description:
       'Provides AWS S3 integration for cloud-based file operations and storage management.',
-    preview: '/eliza/logos/AWS.jpg',
+    preview: '/logos/AWS.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-aws-s3',
     source: 'https://github.com/elizaos-plugins/plugin-aws-s3',
     tags: ['plugin'],
@@ -1036,7 +1036,7 @@ export const registryUsers: User[] = [
     title: 'B2',
     description:
       'Enables token transfers on the B2-Network blockchain with support for B2-BTC and ERC20 tokens.',
-    preview: '/eliza/logos/B2network.jpg',
+    preview: '/logos/B2network.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-b2',
     source: 'https://github.com/elizaos-plugins/plugin-b2',
     tags: ['plugin'],
@@ -1045,7 +1045,7 @@ export const registryUsers: User[] = [
     title: 'Birdeye',
     description:
       "Offers DeFi and token analytics through Birdeye's API with real-time blockchain data across multiple networks.",
-    preview: '/eliza/logos/birdeye.jpg',
+    preview: '/logos/birdeye.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-birdeye',
     source: 'https://github.com/elizaos-plugins/plugin-birdeye',
     tags: ['plugin'],
@@ -1054,7 +1054,7 @@ export const registryUsers: User[] = [
     title: 'Bittensor',
     description:
       "Integrates BitMind's API for accessing AI services on the Bittensor network, especially deepfake detection.",
-    preview: '/eliza/logos/bittensor.jpg',
+    preview: '/logos/bittensor.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-bittensor',
     source: 'https://github.com/elizaos-plugins/plugin-bittensor',
     tags: ['plugin'],
@@ -1063,7 +1063,7 @@ export const registryUsers: User[] = [
     title: 'Bnb',
     description:
       'Enables interactions with BNB Chain ecosystem including BNB Smart Chain, opBNB, and BNB Greenfield networks.',
-    preview: '/eliza/logos/BNBchain.jpg',
+    preview: '/logos/BNBchain.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-bnb',
     source: 'https://github.com/elizaos-plugins/plugin-bnb',
     tags: ['plugin'],
@@ -1072,7 +1072,7 @@ export const registryUsers: User[] = [
     title: 'Bootstrap',
     description:
       'Provides core functionality for ElizaOS agents including conversation management and fact tracking.',
-    preview: '/eliza/logos/bootstrap.jpg',
+    preview: '/logos/bootstrap.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-bootstrap',
     source: 'https://github.com/elizaos-plugins/plugin-bootstrap',
     tags: ['plugin'],
@@ -1081,7 +1081,7 @@ export const registryUsers: User[] = [
     title: 'Browser',
     description:
       'Provides web scraping and browser automation using Playwright with support for multiple browsers and interactions.',
-    preview: '/eliza/logos/browser.playwright.jpg',
+    preview: '/logos/browser.playwright.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-browser',
     source: 'https://github.com/elizaos-plugins/plugin-browser',
     tags: ['plugin'],
@@ -1090,7 +1090,7 @@ export const registryUsers: User[] = [
     title: 'Chainbase',
     description:
       'Bridges on-chain data with AI agents, enabling natural language interactions with blockchain data across networks.',
-    preview: '/eliza/logos/chainbase.jpg',
+    preview: '/logos/chainbase.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-chainbase',
     source: 'https://github.com/elizaos-plugins/plugin-chainbase',
     tags: ['plugin'],
@@ -1099,7 +1099,7 @@ export const registryUsers: User[] = [
     title: 'Cronos',
     description:
       'Extends EVM plugin functionality for Cronos blockchain with native CRO token support and wallet operations.',
-    preview: '/eliza/logos/cronos.jpg',
+    preview: '/logos/cronos.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-cronos',
     source: 'https://github.com/elizaos-plugins/plugin-cronos',
     tags: ['plugin'],
@@ -1108,7 +1108,7 @@ export const registryUsers: User[] = [
     title: 'Desk Exchange',
     description:
       'Integrates with DESK Exchange for perpetual futures trading with support for market and limit orders.',
-    preview: '/eliza/logos/desk.jpg',
+    preview: '/logos/desk.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-desk-exchange',
     source: 'https://github.com/elizaos-plugins/plugin-desk-exchange',
     tags: ['plugin'],
@@ -1117,7 +1117,7 @@ export const registryUsers: User[] = [
     title: 'Devin',
     description:
       'Provides integration with Devin API for automated engineering assistance and session management.',
-    preview: '/eliza/logos/devin.png',
+    preview: '/logos/devin.png',
     website: 'https://github.com/elizaos-plugins/plugin-devin',
     source: 'https://github.com/elizaos-plugins/plugin-devin',
     tags: ['plugin'],
@@ -1126,7 +1126,7 @@ export const registryUsers: User[] = [
     title: 'Dexscreener',
     description:
       "Accesses DexScreener's token data for price information and market trends across multiple blockchains.",
-    preview: '/eliza/logos/dexscreener.jpg',
+    preview: '/logos/dexscreener.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-dexscreener',
     source: 'https://github.com/elizaos-plugins/plugin-dexscreener',
     tags: ['plugin'],
@@ -1135,7 +1135,7 @@ export const registryUsers: User[] = [
     title: 'Dkg',
     description:
       'Enables integration with OriginTrail Decentralized Knowledge Graph for enhanced search capabilities.',
-    preview: '/eliza/logos/OriginTrail.jpg',
+    preview: '/logos/OriginTrail.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-dkg',
     source: 'https://github.com/elizaos-plugins/plugin-dkg',
     tags: ['plugin'],
@@ -1144,7 +1144,7 @@ export const registryUsers: User[] = [
     title: 'Email',
     description:
       'Implements email client functionality for sending and receiving emails through SMTP/IMAP services.',
-    preview: '/eliza/logos/email.png',
+    preview: '/logos/email.png',
     website: 'https://github.com/elizaos-plugins/plugin-email',
     source: 'https://github.com/elizaos-plugins/plugin-email',
     tags: ['plugin'],
@@ -1153,7 +1153,7 @@ export const registryUsers: User[] = [
     title: 'Email Automation',
     description:
       'Intelligently detects email-worthy conversations and handles generation/delivery with AI-powered content formatting.',
-    preview: '/eliza/logos/email.jpg',
+    preview: '/logos/email.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-email-automation',
     source: 'https://github.com/elizaos-plugins/plugin-email-automation',
     tags: ['plugin'],
@@ -1162,7 +1162,7 @@ export const registryUsers: User[] = [
     title: 'Ethstorage',
     description:
       'Enables interaction with EthStorage decentralized storage network for data submission and token transfers.',
-    preview: '/eliza/logos/ETHstorage.jpg',
+    preview: '/logos/ETHstorage.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-ethstorage',
     source: 'https://github.com/elizaos-plugins/plugin-ethstorage',
     tags: ['plugin'],
@@ -1171,7 +1171,7 @@ export const registryUsers: User[] = [
     title: 'Football',
     description:
       'Provides live football match data and league standings information through the Football-Data.org API.',
-    preview: '/eliza/logos/footballDATA.jpg',
+    preview: '/logos/footballDATA.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-football',
     source: 'https://github.com/elizaos-plugins/plugin-football',
     tags: ['plugin'],
@@ -1180,7 +1180,7 @@ export const registryUsers: User[] = [
     title: 'Form',
     description:
       'Integrates Form chain capabilities for curves-based token economics with ERC20 conversion and management.',
-    preview: '/eliza/logos/form.jpg',
+    preview: '/logos/form.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-form',
     source: 'https://github.com/elizaos-plugins/plugin-form',
     tags: ['plugin'],
@@ -1189,7 +1189,7 @@ export const registryUsers: User[] = [
     title: 'Gelato',
     description:
       'Enables smart contract interactions via Gelato Relay supporting both ERC2771 and non-ERC2771 calls on EVM chains.',
-    preview: '/eliza/logos/gelato.jpg',
+    preview: '/logos/gelato.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-gelato',
     source: 'https://github.com/elizaos-plugins/plugin-gelato',
     tags: ['plugin'],
@@ -1198,7 +1198,7 @@ export const registryUsers: User[] = [
     title: 'Gitcoin Passport',
     description:
       'Interacts with Gitcoin Passport API for verifying and managing digital identity credentials.',
-    preview: '/eliza/logos/gitcoin.passport.jpg',
+    preview: '/logos/gitcoin.passport.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-gitcoin-passport',
     source: 'https://github.com/elizaos-plugins/plugin-gitcoin-passport',
     tags: ['plugin'],
@@ -1207,7 +1207,7 @@ export const registryUsers: User[] = [
     title: 'Holdstation',
     description:
       'Enables token swapping on Holdstation DEX with support for ZKsync Era and upcoming Berachain.',
-    preview: '/eliza/logos/holdstation.jpg',
+    preview: '/logos/holdstation.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-holdstation',
     source: 'https://github.com/elizaos-plugins/plugin-holdstation',
     tags: ['plugin'],
@@ -1216,7 +1216,7 @@ export const registryUsers: User[] = [
     title: 'Hyperbolic',
     description:
       'Manages GPU instances on the Hyperbolic platform with capabilities for renting and monitoring resources.',
-    preview: '/eliza/logos/hyperbolic.jpg',
+    preview: '/logos/hyperbolic.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-hyperbolic',
     source: 'https://github.com/elizaos-plugins/plugin-hyperbolic',
     tags: ['plugin'],
@@ -1225,7 +1225,7 @@ export const registryUsers: User[] = [
     title: 'Image',
     description:
       'Processes and analyzes images to generate descriptions with support for multiple vision model providers.',
-    preview: '/eliza/logos/imagegen.jpg',
+    preview: '/logos/imagegen.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-image',
     source: 'https://github.com/elizaos-plugins/plugin-image',
     tags: ['plugin'],
@@ -1233,7 +1233,7 @@ export const registryUsers: User[] = [
   {
     title: 'Imgflip',
     description: 'Generates memes using the imgflip.com API based on user messages.',
-    preview: '/eliza/logos/imgFlip.jpg',
+    preview: '/logos/imgFlip.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-imgflip',
     source: 'https://github.com/elizaos-plugins/plugin-imgflip',
     tags: ['plugin'],
@@ -1242,7 +1242,7 @@ export const registryUsers: User[] = [
     title: 'Initia',
     description:
       'Enables token transfers on the Initia blockchain with support for INIT token transactions.',
-    preview: '/eliza/logos/initia.jpg',
+    preview: '/logos/initia.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-initia',
     source: 'https://github.com/elizaos-plugins/plugin-initia',
     tags: ['plugin'],
@@ -1251,7 +1251,7 @@ export const registryUsers: User[] = [
     title: 'Injective',
     description:
       'Provides comprehensive interaction with the Injective blockchain through module-based action creation.',
-    preview: '/eliza/logos/injective.jpg',
+    preview: '/logos/injective.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-injective',
     source: 'https://github.com/elizaos-plugins/plugin-injective',
     tags: ['plugin'],
@@ -1260,7 +1260,7 @@ export const registryUsers: User[] = [
     title: 'Iq6900',
     description:
       "Provides blockchain inscription functionality through IQ6900's Code-In standard for permanent agent storage.",
-    preview: '/eliza/logos/IQ6900.jpg',
+    preview: '/logos/IQ6900.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-iq6900',
     source: 'https://github.com/elizaos-plugins/plugin-iq6900',
     tags: ['plugin'],
@@ -1268,7 +1268,7 @@ export const registryUsers: User[] = [
   {
     title: 'Lens Network',
     description: 'Integrates with Lens protocol for both native and ERC20 tokens.',
-    preview: '/eliza/logos/lens.jpg',
+    preview: '/logos/lens.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-lens-network',
     source: 'https://github.com/elizaos-plugins/plugin-lens-network',
     tags: ['plugin'],
@@ -1277,7 +1277,7 @@ export const registryUsers: User[] = [
     title: 'Lightning',
     description:
       'Enables Lightning Network integration for creating invoices and making off-chain Bitcoin payments.',
-    preview: '/eliza/logos/lightning.png',
+    preview: '/logos/lightning.png',
     website: 'https://github.com/elizaos-plugins/plugin-lightning',
     source: 'https://github.com/elizaos-plugins/plugin-lightning',
     tags: ['plugin'],
@@ -1286,7 +1286,7 @@ export const registryUsers: User[] = [
     title: 'Lit',
     description:
       'Integrates Lit Protocol for secure and decentralized access control and cryptographic operations.',
-    preview: '/eliza/logos/LitProtocol.jpg',
+    preview: '/logos/LitProtocol.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-lit',
     source: 'https://github.com/elizaos-plugins/plugin-lit',
     tags: ['plugin'],
@@ -1295,7 +1295,7 @@ export const registryUsers: User[] = [
     title: 'Llama',
     description:
       'Provides local LLM capabilities using LLaMA models with CPU and GPU support for efficient text generation.',
-    preview: '/eliza/logos/meta-llama.jpg',
+    preview: '/logos/meta-llama.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-llama',
     source: 'https://github.com/elizaos-plugins/plugin-llama',
     tags: ['plugin'],
@@ -1304,7 +1304,7 @@ export const registryUsers: User[] = [
     title: 'Mina',
     description:
       'Enables Mina blockchain interactions for token transfers, wallet management, and balance queries.',
-    preview: '/eliza/logos/Mina.jpg',
+    preview: '/logos/Mina.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-mina',
     source: 'https://github.com/elizaos-plugins/plugin-mina',
     tags: ['plugin'],
@@ -1313,7 +1313,7 @@ export const registryUsers: User[] = [
     title: 'Mind Network',
     description:
       'Integrates with Mind Network Hubs for secure, privacy-preserving voting using Fully Homomorphic Encryption.',
-    preview: '/eliza/logos/MindNetwork.jpg',
+    preview: '/logos/MindNetwork.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-mind-network',
     source: 'https://github.com/elizaos-plugins/plugin-mind-network',
     tags: ['plugin'],
@@ -1322,7 +1322,7 @@ export const registryUsers: User[] = [
     title: 'Moralis',
     description:
       'Fetches real-time DeFi data including trading pairs, statistics, and price history through Moralis APIs.',
-    preview: '/eliza/logos/moralis.jpg',
+    preview: '/logos/moralis.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-moralis',
     source: 'https://github.com/elizaos-plugins/plugin-moralis',
     tags: ['plugin'],
@@ -1331,7 +1331,7 @@ export const registryUsers: User[] = [
     title: 'News',
     description:
       'Fetches and handles real-time news data through NewsAPI integration with search and summary capabilities.',
-    preview: '/eliza/logos/NewsAPI.jpg',
+    preview: '/logos/NewsAPI.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-news',
     source: 'https://github.com/elizaos-plugins/plugin-news',
     tags: ['plugin'],
@@ -1340,7 +1340,7 @@ export const registryUsers: User[] = [
     title: 'Nft Collections',
     description:
       'Integrates NFT data services for comprehensive market analytics and trading with support for 420+ verified collections.',
-    preview: '/eliza/logos/nftgen.png',
+    preview: '/logos/nftgen.png',
     website: 'https://github.com/elizaos-plugins/plugin-nft-collections',
     source: 'https://github.com/elizaos-plugins/plugin-nft-collections',
     tags: ['plugin'],
@@ -1349,7 +1349,7 @@ export const registryUsers: User[] = [
     title: 'Nvidia Nim',
     description:
       "Integrates NVIDIA's AI foundation models for content analysis including AI image detection and safety checks.",
-    preview: '/eliza/logos/nvidia.jpg',
+    preview: '/logos/nvidia.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-nvidia-nim',
     source: 'https://github.com/elizaos-plugins/plugin-nvidia-nim',
     tags: ['plugin'],
@@ -1358,7 +1358,7 @@ export const registryUsers: User[] = [
     title: 'Openai',
     description:
       "Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
-    preview: '/eliza/logos/openAI.jpg',
+    preview: '/logos/openAI.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-openai',
     source: 'https://github.com/elizaos-plugins/plugin-openai',
     tags: ['plugin'],
@@ -1366,7 +1366,7 @@ export const registryUsers: User[] = [
   {
     title: 'Pdf',
     description: 'Provides PDF text extraction and processing capabilities for document analysis.',
-    preview: '/eliza/logos/PDF.jpg',
+    preview: '/logos/PDF.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-pdf',
     source: 'https://github.com/elizaos-plugins/plugin-pdf',
     tags: ['plugin'],
@@ -1375,7 +1375,7 @@ export const registryUsers: User[] = [
     title: 'Pyth Data',
     description:
       'Integrates with Pyth Network for real-time price feeds and data streams across multiple asset classes.',
-    preview: '/eliza/logos/pyth.jpg',
+    preview: '/logos/pyth.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-pyth-data',
     source: 'https://github.com/elizaos-plugins/plugin-pyth-data',
     tags: ['plugin'],
@@ -1384,7 +1384,7 @@ export const registryUsers: User[] = [
     title: 'Quick Intel',
     description:
       'Performs token security audits and market analysis with support for multiple chains and address formats.',
-    preview: '/eliza/logos/quickintel.jpg',
+    preview: '/logos/quickintel.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-quick-intel',
     source: 'https://github.com/elizaos-plugins/plugin-quick-intel',
     tags: ['plugin'],
@@ -1393,7 +1393,7 @@ export const registryUsers: User[] = [
     title: 'Router Nitro',
     description:
       'Enables cross-chain token transfers using Router Nitro bridge with support for multiple blockchains.',
-    preview: '/eliza/logos/router.jpg',
+    preview: '/logos/router.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-router-nitro',
     source: 'https://github.com/elizaos-plugins/plugin-router-nitro',
     tags: ['plugin'],
@@ -1402,7 +1402,7 @@ export const registryUsers: User[] = [
     title: 'Solana Agentkit',
     description:
       'Enables interaction with the Solana blockchain through AgentKit for wallet and transaction management.',
-    preview: '/eliza/logos/solanaV2.jpg',
+    preview: '/logos/solanaV2.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-solana-agentkit',
     source: 'https://github.com/elizaos-plugins/plugin-solana-agentkit',
     tags: ['plugin'],
@@ -1411,7 +1411,7 @@ export const registryUsers: User[] = [
     title: 'Solana V2',
     description:
       'Leverages @solana/web3.js v2 for modern, efficient Solana integrations with liquidity position management.',
-    preview: '/eliza/logos/solanaV2.jpg',
+    preview: '/logos/solanaV2.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-solana-v2',
     source: 'https://github.com/elizaos-plugins/plugin-solana-v2',
     tags: ['plugin'],
@@ -1420,7 +1420,7 @@ export const registryUsers: User[] = [
     title: 'Speech Tts',
     description:
       'Provides text-to-speech transcription services using OpenAI and ElevenLabs technologies.',
-    preview: '/eliza/logos/TTSelevenlabs.jpg',
+    preview: '/logos/TTSelevenlabs.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-speech-tts',
     source: 'https://github.com/elizaos-plugins/plugin-speech-tts',
     tags: ['plugin'],
@@ -1429,7 +1429,7 @@ export const registryUsers: User[] = [
     title: 'Squid Router',
     description:
       'Enables cross-chain token swaps between blockchains using the Squid Router protocol.',
-    preview: '/eliza/logos/squid.jpg',
+    preview: '/logos/squid.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-squid-router',
     source: 'https://github.com/elizaos-plugins/plugin-squid-router',
     tags: ['plugin'],
@@ -1438,7 +1438,7 @@ export const registryUsers: User[] = [
     title: 'Suno',
     description:
       "Integrates Suno AI's music generation for creating custom music from text prompts with detailed controls.",
-    preview: '/eliza/logos/suno.jpg',
+    preview: '/logos/suno.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-suno',
     source: 'https://github.com/elizaos-plugins/plugin-suno',
     tags: ['plugin'],
@@ -1447,7 +1447,7 @@ export const registryUsers: User[] = [
     title: 'Tee Verifiable Log',
     description:
       'Implements a verifiable logging system within Trusted Execution Environments for secure, auditable records.',
-    preview: '/eliza/logos/tee.png',
+    preview: '/logos/tee.png',
     website: 'https://github.com/elizaos-plugins/plugin-tee-verifiable-log',
     source: 'https://github.com/elizaos-plugins/plugin-tee-verifiable-log',
     tags: ['plugin'],
@@ -1456,7 +1456,7 @@ export const registryUsers: User[] = [
     title: 'Trikon',
     description:
       'Provides token transfer functionality for Trikon with wallet management on ZKsync Era blockchain.',
-    preview: '/eliza/logos/trikon.jpg',
+    preview: '/logos/trikon.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-trikon',
     source: 'https://github.com/elizaos-plugins/plugin-trikon',
     tags: ['plugin'],
@@ -1465,7 +1465,7 @@ export const registryUsers: User[] = [
     title: 'Trustdb',
     description:
       'Manages trust scores and performance metrics in a secure database for recommender tracking and token analysis.',
-    preview: '/eliza/logos/trusta.jpg',
+    preview: '/logos/trusta.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-trustdb',
     source: 'https://github.com/elizaos-plugins/plugin-trustdb',
     tags: ['plugin'],
@@ -1474,7 +1474,7 @@ export const registryUsers: User[] = [
     title: 'Udio',
     description:
       'Enables AI-powered music generation with capabilities for creating and extending audio from text prompts.',
-    preview: '/eliza/logos/UDIO.png',
+    preview: '/logos/UDIO.png',
     website: 'https://github.com/elizaos-plugins/plugin-udio',
     source: 'https://github.com/elizaos-plugins/plugin-udio',
     tags: ['plugin'],
@@ -1483,7 +1483,7 @@ export const registryUsers: User[] = [
     title: 'Video',
     description:
       'Provides comprehensive video processing with download, format handling, and transcription capabilities.',
-    preview: '/eliza/logos/video.jpg',
+    preview: '/logos/video.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-video',
     source: 'https://github.com/elizaos-plugins/plugin-video',
     tags: ['plugin'],
@@ -1492,7 +1492,7 @@ export const registryUsers: User[] = [
     title: 'Zilliqa',
     description:
       'Integrates Zilliqa blockchain capabilities through the GOAT framework for wallet and transaction functionality.',
-    preview: '/eliza/logos/zilliqa.jpg',
+    preview: '/logos/zilliqa.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-zilliqa',
     source: 'https://github.com/elizaos-plugins/plugin-zilliqa',
     tags: ['plugin'],
