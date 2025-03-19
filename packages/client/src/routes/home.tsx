@@ -13,7 +13,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAgentManagement } from '../hooks/use-agent-management';
 
 import GroupPanel from '@/components/group-panel';
-import { AgentStatusSidebar } from '../components/agent-status-sidebar';
 
 export default function Home() {
   const { data: { data: agentsData } = {}, isLoading, isError, error } = useAgents();
@@ -59,8 +58,8 @@ export default function Home() {
 
   return (
     <>
-      <div className="flex">
-        <div className="flex flex-col gap-4 h-full p-3">
+      <div className="flex-1 p-3">
+        <div className="flex flex-col gap-4 h-full">
           <div className="flex items-center justify-between">
             <PageTitle title="Agents" />
           </div>
@@ -230,12 +229,12 @@ export default function Home() {
                           <div className="brightness-[100%] hover:brightness-[107%] w-full h-full flex items-center justify-center">
                             {thumbnail ? (
                               <img
-                                src={thumbnail}
+                                src={thumbnail as string}
                                 alt="Room Thumbnail"
                                 className="w-full h-full object-cover"
                               />
                             ) : (
-                              formatAgentName(roomName)
+                              formatAgentName(roomName ?? '')
                             )}
                           </div>
                         </div>
@@ -278,17 +277,17 @@ export default function Home() {
             </div>
           )}
         </div>
-        <AgentStatusSidebar
-          onlineAgents={activeAgents}
-          offlineAgents={inactiveAgents}
-          isLoading={isLoading}
-        />
       </div>
 
       <ProfileOverlay
         isOpen={isOverlayOpen}
         onClose={closeOverlay}
-        agent={agents.find((a) => a.id === selectedAgent?.id) || selectedAgent}
+        agent={
+          agents.find((a) => a.id === selectedAgent?.id) ||
+          (selectedAgent as Agent) ||
+          agents[0] ||
+          ({} as Agent)
+        }
         agents={agents}
       />
 
@@ -299,7 +298,7 @@ export default function Home() {
             setSelectedGroupId(null);
             setIsGroupPanelOpen(false);
           }}
-          groupId={selectedGroupId}
+          groupId={selectedGroupId ?? undefined}
         />
       )}
     </>

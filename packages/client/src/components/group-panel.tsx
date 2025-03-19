@@ -1,7 +1,7 @@
 import { Card, CardContent } from './ui/card';
 import { Button } from './ui/button';
-import { ImageIcon, Loader2, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Input } from './ui/input';
 import { apiClient } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
@@ -11,7 +11,13 @@ import { UUID } from 'crypto';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useRooms } from '@/hooks/use-query-hooks';
 import MultiSelectCombobox from './combobox';
-import { compressImage } from '@/lib/utils';
+
+// Define the Option type to match what MultiSelectCombobox expects
+interface Option {
+  icon: string;
+  label: string;
+  id?: string; // We'll add this to track agent IDs
+}
 
 interface GroupPanel {
   agents: Agent[] | undefined;
@@ -24,9 +30,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
   const [selectedAgents, setSelectedAgents] = useState<Agent[]>([]);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  const [avatar, setAvatar] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [initialOptions, setInitialOptions] = useState<Option[]>([]);
 
   const { data: roomsData } = useRooms();
 
@@ -39,21 +43,38 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
       if (!rooms || !rooms.length) {
         return;
       }
-      setChatName(rooms[0].name);
-      setAvatar(rooms[0].metadata?.thumbnail);
-    }
-  }, [groupId]);
+      setChatName(rooms[0].name || '');
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      try {
-        const compressedImage = await compressImage(file);
-        setAvatar(compressedImage);
-      } catch (error) {
-        console.error('Error compressing image:', error);
+      // Pre-select agents that are already in the room
+      if (agents) {
+        const roomAgentIds = rooms.map((room) => room.agentId).filter(Boolean);
+        const roomAgents = agents.filter((agent) => roomAgentIds.includes(agent.id));
+
+        setSelectedAgents(roomAgents);
+
+        // Create initial options for the combobox
+        const options = roomAgents.map((agent) => ({
+          icon: agent.settings?.avatar || '',
+          label: agent.name,
+          id: agent.id,
+        }));
+
+        setInitialOptions(options);
       }
     }
+  }, [groupId, roomsData, agents]);
+
+  // Create the options for the combobox
+  const getComboboxOptions = () => {
+    return (
+      agents
+        ?.filter((agent) => agent.status === AgentStatus.ACTIVE)
+        .map((agent) => ({
+          icon: agent.settings?.avatar || '',
+          label: agent.name,
+          id: agent.id,
+        })) || []
+    );
   };
 
   return (
@@ -66,22 +87,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex gap-3 items-center justify-center w-full px-2 py-4">
-          <h1 className="text-xl">Create Group Chat</h1>
-        </div>
-
-        <div
-          className="w-20 h-20 rounded-full overflow-hidden flex flex-shrink-0 items-center justify-center cursor-pointer bg-cover bg-center bg-muted hover:opacity-50"
-          style={{ backgroundImage: avatar ? `url(${avatar})` : undefined }}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-          />
-          {!avatar && <ImageIcon className="w-6 h-6 text-white" />}
+          <h1 className="text-xl">{groupId ? 'Edit Group Chat' : 'Create Group Chat'}</h1>
         </div>
 
         <CardContent className="w-full flex grow flex-col items-center">
@@ -99,17 +105,18 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                 </div>
                 <div className="font-light">Invite Agents</div>
                 <MultiSelectCombobox
-                  options={
-                    agents
-                      ?.filter((agent) => agent.status === AgentStatus.ACTIVE)
-                      .map((agent) => ({
-                        icon: agent.settings?.avatar || '',
-                        label: agent.name,
-                        id: agent.id,
-                      })) || []
-                  }
-                  onSelect={(selected) => setSelectedAgents(selected)}
+                  options={getComboboxOptions()}
+                  onSelect={(selected) => {
+                    if (agents) {
+                      // Convert selected options back to Agent objects by matching on label (name)
+                      const selectedAgentObjects = agents.filter((agent) =>
+                        selected.some((option) => option.label === agent.name)
+                      );
+                      setSelectedAgents(selectedAgentObjects);
+                    }
+                  }}
                   className="w-full"
+                  initialSelected={initialOptions}
                 />
               </div>
             </div>
@@ -134,11 +141,11 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                       }
                     }
                     await apiClient.createGroupChat(
-                      selectedAgents.map((agent) => agent.id),
+                      selectedAgents.map((agent) => agent.id as string),
                       chatName,
                       serverId,
                       GROUP_CHAT_SOURCE,
-                      { thumbnail: avatar }
+                      {}
                     );
                   }
                 } catch (error) {
@@ -151,9 +158,7 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
                 }
               }}
               size={'default'}
-              disabled={
-                !chatName.length || Object.keys(selectedAgents).length === 0 || deleting || creating
-              }
+              disabled={!chatName.length || selectedAgents.length === 0 || deleting || creating}
             >
               {creating ? (
                 <Loader2 className="animate-spin" />

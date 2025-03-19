@@ -6,8 +6,7 @@ import {
 } from '@/components/ui/chat/chat-bubble';
 import { ChatInput } from '@/components/ui/chat/chat-input';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
-import { USER_NAME } from '@/constants';
-import { GROUP_CHAT_SOURCE } from '@/constants';
+import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { useAgents, useGroupMessages, useRooms } from '@/hooks/use-query-hooks';
 import SocketIOManager from '@/lib/socketio-manager';
 import { getEntityId, moment } from '@/lib/utils';
@@ -17,17 +16,16 @@ import type { Agent, Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Paperclip, Send, X } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import React from 'react';
+import { ChevronRight, Edit, Paperclip, Send, X } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AIWriter from 'react-aiwriter';
-import { AgentStatusSidebar } from './agent-status-sidebar';
-import CopyButton from './copy-button';
 import { Avatar, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
 import ChatTtsButton from './ui/chat/chat-tts-button';
 import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
+import AgentAvatarStack from './agent-avatar-stack';
+import GroupPanel from './group-panel';
 
 type ExtraContentFields = {
   name: string;
@@ -130,8 +128,10 @@ function MessageContent({
           <div>
             {message.text && !message.isLoading ? (
               <div className="flex items-center gap-2">
-                <CopyButton text={message.text} />
-                <ChatTtsButton agentId={message.agentId} text={message.text} />
+                <ChatTtsButton
+                  agentId={typeof message.agentId === 'string' ? message.agentId : ''}
+                  text={typeof message.text === 'string' ? message.text : ''}
+                />
               </div>
             ) : (
               <div />
@@ -153,6 +153,7 @@ function MessageContent({
 export default function Page({ serverId }: { serverId: UUID }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
+  const [showGroupPanel, setShowGroupPanel] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -172,11 +173,11 @@ export default function Page({ serverId }: { serverId: UUID }) {
   const prevServerIdRef = useRef<UUID | null>(null);
   const prevActiveAgentIdsRef = useRef<UUID[]>([]);
 
-  const getAvatar = (agentId: string) => {
+  const getAvatar = (agentId: string): string | null => {
     const rooms = roomsData?.get(serverId);
     const agent = rooms?.find((room) => room.agentId === agentId);
-    const character = agent?.character;
-    return character?.settings?.avatar;
+    const avatar = agent?.metadata?.avatar;
+    return typeof avatar === 'string' ? avatar : null;
   };
 
   const getRoomThumbnail = () => {
@@ -428,21 +429,44 @@ export default function Page({ serverId }: { serverId: UUID }) {
     (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.INACTIVE
   );
 
+  // Create a map of agent avatars for easy lookup
+  const agentAvatars: Record<string, string | null> = {};
+  agents.forEach((agent) => {
+    if (agent.id && agent.settings?.avatar) {
+      agentAvatars[agent.id] = agent.settings.avatar;
+    }
+  });
+
+  // Get all agent IDs for this room
+  const getRoomAgentIds = () => {
+    const rooms = roomsData?.get(serverId);
+    if (rooms && rooms.length) {
+      return rooms.map((room) => room.agentId).filter(Boolean) as UUID[];
+    }
+    return [];
+  };
+
   return (
-    <div className="flex">
+    <div className="flex-1">
       <div className="flex flex-col w-full h-screen p-4">
         {/* Agent Header */}
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
-            <Avatar className="size-10 border rounded-full">
-              <AvatarImage src={getRoomThumbnail() || '/elizaos-icon.png'} />
-            </Avatar>
+            <AgentAvatarStack agentIds={getRoomAgentIds()} agentAvatars={agentAvatars} size="md" />
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <h2 className="font-semibold text-lg">{getRoomName() || 'Group Chat'}</h2>
               </div>
             </div>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowGroupPanel(true)}
+            className="ml-auto"
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
         </div>
 
         <div className="flex flex-row w-full overflow-y-auto grow gap-4">
@@ -473,8 +497,10 @@ export default function Page({ serverId }: { serverId: UUID }) {
                             src={
                               isUser
                                 ? '/user-icon.png'
-                                : getAvatar(message.agentId) ||
-                                  getAvatar(message.senderId) ||
+                                : (typeof message.agentId === 'string' &&
+                                    getAvatar(message.agentId)) ||
+                                  (typeof message.senderId === 'string' &&
+                                    getAvatar(message.senderId)) ||
                                   '/elizaos-icon.png'
                             }
                           />
@@ -566,11 +592,10 @@ export default function Page({ serverId }: { serverId: UUID }) {
           </div>
         </div>
       </div>
-      <AgentStatusSidebar
-        onlineAgents={activeAgents}
-        offlineAgents={inactiveAgents}
-        isLoading={isLoading}
-      />
+
+      {showGroupPanel && (
+        <GroupPanel agents={agents} onClose={() => setShowGroupPanel(false)} groupId={serverId} />
+      )}
     </div>
   );
 }

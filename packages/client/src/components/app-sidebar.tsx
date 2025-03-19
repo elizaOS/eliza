@@ -11,15 +11,40 @@ import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
 } from '@/components/ui/sidebar';
-import { useRooms } from '@/hooks/use-query-hooks';
+import { useAgents, useRooms } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
 import { formatAgentName } from '@/lib/utils';
+import { AgentStatus, UUID } from '@elizaos/core';
+import type { Agent } from '@elizaos/core';
 import { Book, Cog, TerminalIcon } from 'lucide-react';
-import { NavLink } from 'react-router';
+import { NavLink, useLocation } from 'react-router';
 import ConnectionStatus from './connection-status';
+import AgentAvatarStack from './agent-avatar-stack';
 
 export function AppSidebar() {
-  const { data: roomsData, isLoading } = useRooms();
+  const { data: roomsData, isLoading: roomsLoading } = useRooms();
+  const { data: { data: agentsData } = {}, isLoading: agentsLoading } = useAgents();
+  const location = useLocation();
+
+  // Extract agents from the response
+  const agents = agentsData?.agents || [];
+
+  // Split into online and offline agents
+  const onlineAgents = agents.filter(
+    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.ACTIVE
+  );
+
+  const offlineAgents = agents.filter(
+    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.INACTIVE
+  );
+
+  // Create a map of agent avatars for easy lookup
+  const agentAvatars: Record<string, string | null> = {};
+  agents.forEach((agent) => {
+    if (agent.id && agent.settings?.avatar) {
+      agentAvatars[agent.id] = agent.settings.avatar;
+    }
+  });
 
   return (
     <>
@@ -41,69 +66,154 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarHeader>
         <SidebarContent>
+          {/* Agents Section */}
           <SidebarGroup>
             <SidebarGroupContent className="px-2">
               <SidebarMenu>
-                {isLoading ? (
+                {agentsLoading ? (
                   <div>
                     {Array.from({ length: 5 }).map((_, _index) => (
-                      <SidebarMenuItem key={`skeleton-item-${_index}`}>
+                      <SidebarMenuItem key={`agent-skeleton-item-${_index}`}>
                         <SidebarMenuSkeleton />
                       </SidebarMenuItem>
                     ))}
                   </div>
                 ) : (
                   <div>
-                    {(() => {
-                      return (
-                        <>
-                          <div className="px-4 py-1 mt-2">
-                            <div className="flex items-center space-x-2">
-                              <span className="text-sm font-medium text-muted-foreground">
-                                Groups
-                              </span>
+                    {/* Online Agents */}
+                    {onlineAgents.length > 0 && (
+                      <div className="px-4 py-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium text-muted-foreground">Online</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Render enabled agents */}
+                    {onlineAgents.map((agent) => (
+                      <SidebarMenuItem key={agent.id}>
+                        <NavLink to={`/chat/${agent.id}`}>
+                          <SidebarMenuButton
+                            isActive={location.pathname.includes(agent.id as string)}
+                            className="transition-colors px-4 my-4 rounded-md"
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 flex justify-center items-center">
+                                <div className="relative bg-muted rounded-full w-full h-full">
+                                  {agent && (
+                                    <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
+                                      {agent.settings?.avatar ? (
+                                        <img
+                                          src={agent.settings.avatar}
+                                          alt="Agent Avatar"
+                                          className="w-full h-full object-contain"
+                                        />
+                                      ) : (
+                                        formatAgentName(agent.name)
+                                      )}
+                                      <div className="absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border-[1px] border-white bg-green-500" />
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="text-base">{agent.name}</span>
                             </div>
+                          </SidebarMenuButton>
+                        </NavLink>
+                      </SidebarMenuItem>
+                    ))}
+
+                    {/* Offline Agents */}
+                    {offlineAgents.length > 0 && (
+                      <div className="px-4 py-1 mt-4">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm font-medium text-muted-foreground">Offline</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Render disabled agents */}
+                    {offlineAgents.map((agent) => (
+                      <SidebarMenuItem key={agent.id}>
+                        <div className="transition-colors px-4 my-4 rounded-md">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 flex justify-center items-center">
+                              <div className="relative bg-muted rounded-full w-full h-full">
+                                {agent && (
+                                  <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
+                                    {agent.settings?.avatar ? (
+                                      <img
+                                        src={agent.settings.avatar}
+                                        alt="Agent Avatar"
+                                        className="w-full h-full object-contain"
+                                      />
+                                    ) : (
+                                      formatAgentName(agent.name)
+                                    )}
+                                    <div className="absolute bottom-0 right-0 w-[10px] h-[10px] rounded-full border-[1px] border-white bg-muted-foreground" />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-base truncate max-w-24">{agent.name}</span>
                           </div>
-                          <SidebarMenuItem>
-                            {roomsData &&
-                              Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
-                                // Ensure the array exists and has elements before accessing metadata
-                                const thumbnail =
-                                  roomArray.length > 0 ? roomArray[0]?.metadata?.thumbnail : null;
-                                const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;
-                                return (
-                                  <SidebarMenuItem key={roomId}>
-                                    <NavLink to={`/room/${roomId}`}>
-                                      <div className="transition-colors px-4 my-4 rounded-md">
-                                        <div className="flex items-center gap-2">
-                                          <div className="w-10 h-10 flex justify-center items-center">
-                                            <div className="relative bg-muted rounded-sm w-full h-full">
-                                              {thumbnail ? (
-                                                <img
-                                                  src={thumbnail}
-                                                  alt={`${roomName} thumbnail`}
-                                                  className="rounded-sm w-full h-full object-cover"
-                                                />
-                                              ) : (
-                                                <div className="text-sm rounded-sm h-full w-full flex justify-center items-center overflow-hidden">
-                                                  {formatAgentName(roomName ?? 'Unknown')}
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <span className="text-base truncate max-w-24">
-                                            {roomName}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </NavLink>
-                                  </SidebarMenuItem>
-                                );
-                              })}
+                        </div>
+                      </SidebarMenuItem>
+                    ))}
+                  </div>
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          {/* Groups Section */}
+          <SidebarGroup>
+            <SidebarGroupContent className="px-2 mt-4">
+              <SidebarMenu>
+                {roomsLoading ? (
+                  <div>
+                    {Array.from({ length: 5 }).map((_, _index) => (
+                      <SidebarMenuItem key={`group-skeleton-item-${_index}`}>
+                        <SidebarMenuSkeleton />
+                      </SidebarMenuItem>
+                    ))}
+                  </div>
+                ) : (
+                  <div>
+                    <div className="px-4 py-1 mt-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-medium text-muted-foreground">Groups</span>
+                      </div>
+                    </div>
+                    {roomsData &&
+                      Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
+                        // Get room name
+                        const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;
+
+                        // Get agent IDs for this room
+                        const roomAgentIds = roomArray
+                          .map((room) => room.agentId)
+                          .filter(Boolean) as UUID[];
+
+                        return (
+                          <SidebarMenuItem key={roomId}>
+                            <NavLink to={`/room/${roomId}`}>
+                              <div className="transition-colors px-4 my-4 rounded-md">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-10 h-10 flex justify-center items-center">
+                                    <AgentAvatarStack
+                                      agentIds={roomAgentIds}
+                                      agentAvatars={agentAvatars}
+                                      size="md"
+                                    />
+                                  </div>
+                                  <span className="text-base truncate max-w-24">{roomName}</span>
+                                </div>
+                              </div>
+                            </NavLink>
                           </SidebarMenuItem>
-                        </>
-                      );
-                    })()}
+                        );
+                      })}
                   </div>
                 )}
               </SidebarMenu>

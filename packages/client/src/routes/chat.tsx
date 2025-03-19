@@ -9,7 +9,7 @@ import type { UUID, Agent } from '@elizaos/core';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
 
 export default function AgentRoute() {
-  const [showDetails, setShowDetails] = useState(true);
+  const [showDetails, setShowDetails] = useState(false);
   const worldId = WorldManager.getWorldId();
 
   const { agentId } = useParams<{ agentId: UUID }>();
