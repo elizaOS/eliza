@@ -66,7 +66,7 @@ function MessageContent({
   if (import.meta.env.DEV) {
     console.log(`[Chat] Rendering message from ${message.name}:`, {
       isUser: message.name === USER_NAME,
-      text: message.text?.substring(0, 20) + '...',
+      text: `${message.text?.substring(0, 20)}...`,
       senderId: message.senderId,
       source: message.source,
     });
@@ -106,20 +106,17 @@ function MessageContent({
             message.text
           )}
         </div>
-
-        {!message.text && message.thought && (
-          <>
-            {message.name === USER_NAME ? (
-              message.thought
-            ) : isLastMessage && message.name !== USER_NAME ? (
-              <AIWriter>
-                <span className="italic text-muted-foreground">{message.thought}</span>
-              </AIWriter>
-            ) : (
+        {!message.text &&
+          message.thought &&
+          (message.name === USER_NAME ? (
+            message.thought
+          ) : isLastMessage && message.name !== USER_NAME ? (
+            <AIWriter>
               <span className="italic text-muted-foreground">{message.thought}</span>
-            )}
-          </>
-        )}
+            </AIWriter>
+          ) : (
+            <span className="italic text-muted-foreground">{message.thought}</span>
+          ))}
 
         {message.attachments?.map((attachment: IAttachment) => (
           <div className="flex flex-col gap-1" key={`${attachment.url}-${attachment.title}`}>
@@ -194,7 +191,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
     console.log(`[Chat] Joined room ${roomId} with entityId ${entityId}`);
 
     const handleMessageBroadcasting = (data: ContentWithUser) => {
-      console.log(`[Chat] Received message broadcast:`, data);
+      console.log('[Chat] Received message broadcast:', data);
 
       // Skip messages that don't have required content
       if (!data) {
@@ -228,7 +225,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
       queryClient.setQueryData(
         ['messages', agentId, roomId, worldId],
         (old: ContentWithUser[] = []) => {
-          console.log(`[Chat] Current messages:`, old?.length || 0);
+          console.log('[Chat] Current messages:', old?.length || 0);
 
           // Check if this message is already in the list (avoid duplicates)
           const isDuplicate = old.some(
@@ -252,7 +249,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
     };
 
     // Add listener for message broadcasts
-    console.log(`[Chat] Adding messageBroadcast listener`);
+    console.log('[Chat] Adding messageBroadcast listener');
     socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
 
     return () => {
@@ -458,7 +455,7 @@ export default function Page({ agentId }: { agentId: UUID }) {
               return (
                 <div
                   key={`${message.id as string}-${message.createdAt}`}
-                  className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
+                  className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : 'justify-start'}`}
                 >
                   <ChatBubble
                     variant={isUser ? 'sent' : 'received'}
