@@ -91,8 +91,9 @@ export function setupSocketIO(
             continue;
           }
 
+          // Ensure the sender and recipient are different agents
           if (payload.senderId === agentId) {
-            console.log(`Message sender and recipient are the same agent (${agentId}), ignoring.`);
+            logger.debug(`Message sender and recipient are the same agent (${agentId}), ignoring.`);
             continue;
           }
 
@@ -265,7 +266,7 @@ export function setupSocketIO(
             logger.debug(`Agent ${agentId} joined room ${roomId}`);
           }
         });
-        console.log('roomParticipants', roomParticipants);
+        logger.debug('roomParticipants', roomParticipants);
 
         logger.debug(`Client ${socket.id} joining room ${roomId}`);
       }
