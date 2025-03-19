@@ -8,8 +8,8 @@ const config = {
   title: 'eliza',
   tagline: 'Flexible, scalable AI agents for everyone',
   favicon: 'img/favicon.ico',
-  url: 'https://elizaos.github.io',
-  baseUrl: '/eliza/',
+  url: 'https://eliza.how',
+  baseUrl: '/',
   organizationName: 'elizaos',
   projectName: 'eliza',
   deploymentBranch: 'gh-pages',
@@ -229,7 +229,7 @@ const config = {
           exclude: ['**/_media/**'],
           showLastUpdateAuthor: true,
           showLastUpdateTime: true,
-          lastVersion: '0.25.9',
+          lastVersion: 'current',
           versions: {
             current: {
               label: '1.0.0-alpha',
@@ -334,11 +334,11 @@ const config = {
         {
           label: 'RSS',
           position: 'left',
-          to: '/eliza/news',
+          to: '/news',
           items: [
-            { label: 'RSS (XML)', href: '/eliza/news/rss.xml', target: '_blank' },
-            { label: 'Atom', href: '/eliza/news/atom.xml', target: '_blank' },
-            { label: 'JSON Feed', href: '/eliza/news/feed.json', target: '_blank' },
+            { label: 'RSS (XML)', href: '/news/rss.xml', target: '_blank' },
+            { label: 'Atom', href: '/news/atom.xml', target: '_blank' },
+            { label: 'JSON Feed', href: '/news/feed.json', target: '_blank' },
           ],
         },
         {
