@@ -109,10 +109,13 @@ function isValidPostgresUrl(url: string): boolean {
   // Basic pattern: postgresql://user:password@host:port/dbname
   const basicPattern = /^postgresql:\/\/[^:]+:[^@]+@[^:]+:\d+\/\w+$/;
 
+  // Cloud pattern: allows for URLs with query parameters like sslmode=require
+  const cloudPattern = /^postgresql:\/\/[^:]+:[^@]+@[^\/]+\/[^?]+(\?.*)?$/;
+
   // More permissive pattern (allows missing password, different formats)
   const permissivePattern = /^postgresql:\/\/.*@.*:\d+\/.*$/;
 
-  return basicPattern.test(url) || permissivePattern.test(url);
+  return basicPattern.test(url) || cloudPattern.test(url) || permissivePattern.test(url);
 }
 
 /**
