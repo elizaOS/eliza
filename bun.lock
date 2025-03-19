@@ -76,7 +76,7 @@
       "name": "@elizaos/cli",
       "version": "1.0.0-beta.2",
       "bin": {
-        "elizaos": "./dist/index.js",
+        "elizaos": "./dist/index.js"
       },
       "dependencies": {
         "@electric-sql/pglite": "^0.2.17",
@@ -226,7 +226,7 @@
       "name": "create-eliza",
       "version": "1.0.0-beta.2",
       "bin": {
-        "create-eliza": "index.mjs",
+        "create-eliza": "index.mjs"
       },
       "dependencies": {
         "@elizaos/cli": "^1.0.0-beta.2",
