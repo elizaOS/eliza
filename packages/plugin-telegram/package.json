@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-telegram",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.3",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
