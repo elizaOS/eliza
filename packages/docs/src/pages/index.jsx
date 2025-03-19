@@ -1,18 +1,23 @@
+// src/pages/index.jsx
 import React from 'react';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import HomepageFeatures from '@site/src/components/HomepageFeatures';
 import Layout from '@theme/Layout';
-
-import styles from './index.module.css';
 import HomepageHeader from '../components/HomepageHeader';
+import HomepageFeatures from '../components/HomepageFeatures';
+import DailyNews from '../components/DailyNews';
+import styles from './index.module.css';
 
 export default function Home() {
   const { siteConfig } = useDocusaurusContext();
   return (
-    <Layout title={`${siteConfig.title}`} description={siteConfig.tagline}>
-      <HomepageHeader />
-      <main>
-        <HomepageFeatures />
+    <Layout title={siteConfig.title} description={siteConfig.tagline}>
+      <main className={styles.mainContent}>
+        <HomepageHeader />
+        <HomepageFeatures type="quickactions" />
+        <HomepageFeatures type="features" showUseCases={true} />
+        <div className={styles.newsSectionWrapper}>
+          <DailyNews />
+        </div>
       </main>
     </Layout>
   );
