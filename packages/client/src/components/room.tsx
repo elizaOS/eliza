@@ -205,14 +205,14 @@ export default function Page({ serverId }: { serverId: UUID }) {
 
     const roomDatas = roomsData.get(serverId);
     if (roomDatas) {
-      roomDatas.forEach((roomData) => {
+      for (const roomData of roomDatas) {
         const agentData = agents.find((agent) => agent.id === roomData.agentId);
         if (agentData) {
           if (agentData.status === AgentStatus.ACTIVE) {
             activeAgentIds.push(roomData.agentId as UUID);
           }
         }
-      });
+      }
     }
 
     const isSameServer = prevServerIdRef.current === serverId;
@@ -566,11 +566,11 @@ export default function Page({ serverId }: { serverId: UUID }) {
           </div>
         </div>
       </div>
-      {/* <AgentsSidebar
+      <AgentStatusSidebar
         onlineAgents={activeAgents}
         offlineAgents={inactiveAgents}
         isLoading={isLoading}
-      /> */}
+      />
     </div>
   );
 }

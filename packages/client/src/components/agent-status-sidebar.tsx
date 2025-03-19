@@ -12,7 +12,7 @@ import { formatAgentName } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import { NavLink, useLocation } from 'react-router';
 
-export function RoomSidebar({
+export function AgentStatusSidebar({
   onlineAgents,
   offlineAgents,
   isLoading,

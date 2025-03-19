@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAgentManagement } from '../hooks/use-agent-management';
 
 import GroupPanel from '@/components/group-panel';
-import { RoomSidebar } from '../components/room-sidebar';
+import { AgentStatusSidebar } from '../components/agent-status-sidebar';
 
 export default function Home() {
   const { data: { data: agentsData } = {}, isLoading, isError, error } = useAgents();
@@ -278,7 +278,7 @@ export default function Home() {
             </div>
           )}
         </div>
-        <RoomSidebar
+        <AgentStatusSidebar
           onlineAgents={activeAgents}
           offlineAgents={inactiveAgents}
           isLoading={isLoading}
