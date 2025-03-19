@@ -23,9 +23,6 @@ function HomepageHeader() {
               <Link className="button button--primary button--lg" to="/docs/intro">
                 Get Started
               </Link>
-              <Link className={styles.secondaryButton} to="/docs/quickstart">
-                View Quickstart
-              </Link>
               <div className={styles.githubButton}>
                 <iframe
                   src="https://ghbtns.com/github-btn.html?user=elizaos&repo=eliza&type=star&count=true&size=large"
@@ -36,6 +33,13 @@ function HomepageHeader() {
                   title="GitHub"
                 ></iframe>
               </div>
+              <p>
+                NEW! Copy{' '}
+                <Link href="/llms.txt" target="_blank">
+                  <b>llms.txt</b>
+                </Link>{' '}
+                to chat with the docs using LLMs
+              </p>
             </div>
           </div>
           <div className={styles.heroRight}>

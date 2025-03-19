@@ -13,7 +13,8 @@ export default function Home() {
     <Layout title={siteConfig.title} description={siteConfig.tagline}>
       <main className={styles.mainContent}>
         <HomepageHeader />
-        <HomepageFeatures />
+        <HomepageFeatures type="quickactions" />
+        <HomepageFeatures type="features" showUseCases={true} />
         <div className={styles.newsSectionWrapper}>
           <DailyNews />
         </div>
