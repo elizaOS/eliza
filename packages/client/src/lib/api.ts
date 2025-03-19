@@ -2,7 +2,6 @@ import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 import { WorldManager } from './world-manager';
 
 const API_PREFIX = '/api';
-const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}${API_PREFIX}`;
 
 /**
  * A function that handles fetching data from a specified URL with various options.
@@ -25,12 +24,9 @@ const fetcher = async ({
   headers?: HeadersInit;
 }) => {
   // Ensure URL starts with a slash if it's a relative path
-  const normalizedUrl = url.startsWith('/') ? url : `/${url}`;
+  const normalizedUrl = API_PREFIX + (url.startsWith('/') ? url : `/${url}`);
 
-  // Construct the full URL
-  const fullUrl = `${BASE_URL}${normalizedUrl}`;
-
-  console.log('API Request:', method || 'GET', fullUrl);
+  console.log('API Request:', method || 'GET', normalizedUrl);
 
   const options: RequestInit = {
     method: method ?? 'GET',
@@ -59,7 +55,7 @@ const fetcher = async ({
   }
 
   try {
-    const response = await fetch(fullUrl, options);
+    const response = await fetch(normalizedUrl, options);
     const contentType = response.headers.get('Content-Type');
 
     if (contentType === 'audio/mpeg') {
@@ -302,7 +298,15 @@ export const apiClient = {
   },
 
   // Room-related routes
-  getRooms: (agentId: string) => {
+  getRooms: () => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/world/${worldId}/rooms`,
+      method: 'GET',
+    });
+  },
+
+  getRoomsForParticipant: (agentId: string) => {
     const worldId = WorldManager.getWorldId();
     return fetcher({
       url: `/agents/${agentId}/rooms`,
@@ -464,6 +468,42 @@ export const apiClient = {
       url: `/agents/${agentId}/memories/upload-knowledge`,
       method: 'POST',
       body: formData,
+    });
+  },
+
+  getGroupMemories: (serverId: UUID) => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/world/${worldId}/memories/${serverId}`,
+      method: 'GET',
+    });
+  },
+
+  createGroupChat: (
+    agentIds: string[],
+    roomName: string,
+    serverId: string,
+    source: string,
+    metadata?: any
+  ) => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/agents/groups/${serverId}`,
+      method: 'POST',
+      body: {
+        agentIds,
+        name: roomName,
+        worldId,
+        source,
+        metadata,
+      },
+    });
+  },
+
+  deleteGroupChat: (serverId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}`,
+      method: 'DELETE',
     });
   },
 };

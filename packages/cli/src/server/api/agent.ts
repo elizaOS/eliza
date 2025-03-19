@@ -1761,5 +1761,113 @@ export function agentRouter(
     }
   });
 
+  router.post('/groups/:serverId', async (req, res) => {
+    const serverId = validateUuid(req.params.serverId);
+
+    const { name, worldId, source, metadata, agentIds = [] } = req.body;
+
+    if (!Array.isArray(agentIds) || agentIds.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'agentIds must be a non-empty array',
+        },
+      });
+    }
+
+    let results = [];
+    let errors = [];
+
+    for (const agentId of agentIds) {
+      const runtime = agents.get(agentId);
+
+      if (!runtime) {
+        errors.push({
+          agentId,
+          code: 'NOT_FOUND',
+          message: 'Agent not found',
+        });
+        continue;
+      }
+
+      try {
+        const roomId = createUniqueUuid(runtime, serverId);
+        const roomName = name || `Chat ${new Date().toLocaleString()}`;
+
+        await runtime.ensureWorldExists({
+          id: worldId,
+          name: source,
+          agentId: runtime.agentId,
+          serverId: serverId,
+        });
+
+        await runtime.ensureRoomExists({
+          id: roomId,
+          name: roomName,
+          source,
+          type: ChannelType.API,
+          worldId,
+          serverId,
+          metadata,
+        });
+
+        await runtime.addParticipant(runtime.agentId, roomId);
+        await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+        await runtime.setParticipantUserState(roomId, runtime.agentId, 'FOLLOWED');
+
+        results.push({
+          id: roomId,
+          name: roomName,
+          createdAt: Date.now(),
+          source: 'client',
+          worldId,
+        });
+      } catch (error) {
+        logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
+        errors.push({
+          agentId,
+          code: 'CREATE_ERROR',
+          message: 'Failed to create room',
+          details: error.message,
+        });
+      }
+    }
+
+    if (results.length === 0) {
+      res.status(500).json({
+        success: false,
+        error: errors.length
+          ? errors
+          : [{ code: 'UNKNOWN_ERROR', message: 'No rooms were created' }],
+      });
+    }
+
+    res.status(errors.length ? 207 : 201).json({
+      success: errors.length === 0,
+      data: results,
+      errors: errors.length ? errors : undefined,
+    });
+  });
+
+  router.delete('/groups/:serverId', async (req, res) => {
+    const serverId = validateUuid(req.params.serverId);
+    try {
+      await db.deleteRoomsByServerId(serverId);
+
+      res.status(204).send();
+    } catch (error) {
+      logger.error('[GROUP DELETE] Error deleting group:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DELETE_ERROR',
+          message: 'Error deleting group',
+          details: error.message,
+        },
+      });
+    }
+  });
+
   return router;
 }

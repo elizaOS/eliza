@@ -288,11 +288,11 @@ const config = {
       },
     },
     navbar: {
-      title: 'eliza',
+      title: 'elizaOS',
       logo: {
         alt: 'Eliza Logo',
-        src: 'img/eliza-os_dark.svg',
-        srcDark: 'img/eliza-os_light.svg',
+        src: 'img/icon.png',
+        srcDark: 'img/icon.png',
       },
       items: [
         {
