@@ -65,7 +65,6 @@ interface MemoryMetadata {
 enum MemoryType {
   all = 'all',
   facts = 'facts',
-  knowledge = 'knowledge',
   messagesSent = 'messagesSent',
   messagesReceived = 'messagesReceived',
   messages = 'messages',
@@ -74,26 +73,21 @@ enum MemoryType {
 export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
   const [selectedType, setSelectedType] = useState<MemoryType>(MemoryType.all);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
-  const [viewingContent, setViewingContent] = useState<Memory | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [visibleItems, setVisibleItems] = useState(ITEMS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Determine if we need to use the 'documents' table for knowledge
   const tableName =
-    selectedType === MemoryType.knowledge
-      ? 'documents'
-      : selectedType === MemoryType.facts
-        ? 'facts'
-        : selectedType === MemoryType.messagesSent || selectedType === MemoryType.messagesReceived
-          ? 'messages'
-          : selectedType === MemoryType.all
-            ? undefined
-            : undefined;
+    selectedType === MemoryType.facts
+      ? 'facts'
+      : selectedType === MemoryType.messagesSent || selectedType === MemoryType.messagesReceived
+        ? 'messages'
+        : selectedType === MemoryType.all
+          ? undefined
+          : undefined;
 
   const { data: memories = [], isLoading, error } = useAgentMemories(agentId, tableName);
   const { mutate: deleteMemory } = useDeleteMemory();
@@ -148,8 +142,6 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
   };
 
   const getMemoryIcon = (memory: Memory, content: MemoryContent) => {
-    if (selectedType === MemoryType.knowledge) return <Book className="w-4 h-4" />;
-    if (selectedType === MemoryType.facts) return <Globe className="w-4 h-4" />;
     if (memory.entityId === memory.agentId) return <MessageSquareShare className="w-4 h-4" />;
     if (memory.entityId !== memory.agentId) return <MailCheck className="w-4 h-4" />;
     if (content?.thought) return <LoaderIcon className="w-4 h-4" />;
@@ -157,8 +149,6 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
   };
 
   const getMemoryLabel = (memoryType: string | undefined, content: MemoryContent) => {
-    if (selectedType === MemoryType.knowledge) return 'Knowledge';
-    if (selectedType === MemoryType.facts) return 'Facts';
     if (content?.thought) return 'Messages Sent';
     if (!content?.thought) return 'Messages Received';
     return memoryType || 'Memory';
@@ -185,47 +175,6 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
   const handleDelete = (memoryId: string) => {
     if (memoryId && window.confirm('Are you sure you want to delete this memory entry?')) {
       deleteMemory({ agentId, memoryId });
-      setViewingContent(null);
-    }
-  };
-
-  const handleUploadClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setIsUploading(true);
-
-    try {
-      const fileArray = Array.from(files);
-      const result = await apiClient.uploadKnowledge(agentId, fileArray);
-
-      if (result.success) {
-        toast({
-          title: 'Knowledge Uploaded',
-          description: `Successfully uploaded ${fileArray.length} file(s)`,
-        });
-
-        queryClient.invalidateQueries({
-          queryKey: ['agents', agentId, 'memories', 'documents'],
-        });
-      }
-    } catch (error) {
-      toast({
-        title: 'Upload Failed',
-        description: error instanceof Error ? error.message : 'Failed to upload knowledge files',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
   };
 
@@ -234,7 +183,6 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
       const content = memory.content as MemoryContent;
       return !(content?.channelType === 'knowledge' || memory.metadata?.type === 'knowledge');
     }
-    if (selectedType === MemoryType.knowledge) return true;
 
     const content = memory.content as MemoryContent;
 
@@ -283,94 +231,9 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
 
   const EmptyState = () => (
     <div className="text-muted-foreground text-center p-8 flex flex-col items-center gap-2">
-      {selectedType === 'knowledge' ? (
-        <>
-          <Book className="h-12 w-12 opacity-20" />
-          <p>No knowledge documents yet</p>
-          <Button variant="outline" className="mt-2" onClick={handleUploadClick}>
-            <Upload className="h-4 w-4 mr-2" />
-            Upload Documents
-          </Button>
-        </>
-      ) : (
-        <>No memories recorded yet</>
-      )}
+      No memories recorded yet
     </div>
   );
-
-  const KnowledgeCard = ({ memory, index }: { memory: Memory; index: number }) => {
-    const metadata = (memory.metadata as MemoryMetadata) || {};
-    const title = metadata.title || memory.id || 'Unknown Document';
-    const filename = metadata.filename || 'Unknown Document';
-    const fileExt = metadata.fileExt || filename.split('.').pop()?.toLowerCase() || '';
-    const displayName = title || filename;
-    const subtitle = metadata.path || filename;
-
-    return (
-      <button
-        key={memory.id || index}
-        type="button"
-        className="w-full text-left"
-        onClick={() => setViewingContent(memory)}
-      >
-        <Card className="hover:bg-accent/10 transition-colors relative group">
-          <div className="absolute top-3 left-3 opacity-70">{getFileIcon(filename)}</div>
-
-          <CardHeader className="p-3 pb-2 pl-10">
-            <div className="text-xs text-muted-foreground mb-1 line-clamp-1">{subtitle}</div>
-
-            <div className="mb-2">
-              <div className="text-sm font-medium mb-1">{displayName}</div>
-              {metadata.description && (
-                <div className="text-xs text-muted-foreground line-clamp-2">
-                  {metadata.description}
-                </div>
-              )}
-            </div>
-          </CardHeader>
-
-          <CardFooter className="p-2 border-t bg-muted/30 text-xs text-muted-foreground">
-            <div className="flex justify-between items-center w-full">
-              <div className="flex items-center">
-                <Clock className="h-3 w-3 mr-1.5" />
-                <span>
-                  {new Date(memory.createdAt || 0).toLocaleString(undefined, {
-                    month: 'numeric',
-                    day: 'numeric',
-                    year: 'numeric',
-                    hour: 'numeric',
-                    minute: 'numeric',
-                  })}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="px-1.5 py-0 h-5">
-                  {fileExt || 'unknown document'}
-                </Badge>
-
-                {memory.id && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      handleDelete(memory.id || '');
-                    }}
-                    title="Delete knowledge"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardFooter>
-        </Card>
-      </button>
-    );
-  };
 
   const MemoryCard = ({ memory, index }: { memory: Memory; index: number }) => {
     const memoryType = memory.metadata?.type || 'Memory';
@@ -461,30 +324,7 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
     <div className="flex flex-col h-[calc(100vh-200px)] min-h-[400px] w-full">
       <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-medium">
-            {selectedType === 'knowledge' ? 'Knowledge Library' : 'Agent Memories'}
-          </h3>
-          {selectedType === 'knowledge' && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleUploadClick}
-              disabled={isUploading}
-              className="rounded-full"
-              title="Upload documents"
-            >
-              <Upload className="h-4 w-4" />
-              <span className="sr-only">{isUploading ? 'Uploading...' : 'Upload Documents'}</span>
-            </Button>
-          )}
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="hidden"
-            multiple
-            accept=".txt,.md,.js,.ts,.jsx,.tsx,.json,.csv,.html,.css,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
-          />
+          <h3 className="text-lg font-medium">Agent Memories</h3>
         </div>
         <Select
           value={selectedType}
@@ -498,7 +338,6 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
             <SelectItem value={MemoryType.facts}>Facts</SelectItem>
             <SelectItem value={MemoryType.messagesSent}>Messages Sent</SelectItem>
             <SelectItem value={MemoryType.messagesReceived}>Messages Received</SelectItem>
-            <SelectItem value={MemoryType.knowledge}>Knowledge</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -511,95 +350,16 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
           <EmptyState />
         ) : (
           <div className="space-y-4">
-            {/* Knowledge memories */}
-            {selectedType === 'knowledge' && (
-              <div className="flex flex-col gap-4 max-w-3xl mx-auto">
-                {visibleMemories.map((memory: Memory, index: number) => (
-                  <KnowledgeCard key={memory.id || index} memory={memory} index={index} />
-                ))}
-                {hasMoreToLoad && <LoadingIndicator />}
-              </div>
-            )}
-
             {/* Regular memories */}
-            {selectedType !== 'knowledge' && (
-              <div className="space-y-3">
-                {visibleMemories.map((memory: Memory, index: number) => (
-                  <MemoryCard key={memory.id || index} memory={memory} index={index} />
-                ))}
-                {hasMoreToLoad && <LoadingIndicator />}
-              </div>
-            )}
+            <div className="space-y-3">
+              {visibleMemories.map((memory: Memory, index: number) => (
+                <MemoryCard key={memory.id || index} memory={memory} index={index} />
+              ))}
+              {hasMoreToLoad && <LoadingIndicator />}
+            </div>
           </div>
         )}
       </div>
-
-      {/* Knowledge content dialog */}
-      <Dialog open={!!viewingContent} onOpenChange={(open) => !open && setViewingContent(null)}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
-          <DialogHeader className="border-b pb-3">
-            <DialogTitle className="flex items-center">
-              {(() => {
-                const metadata = (viewingContent?.metadata as MemoryMetadata) || {};
-                const filename = metadata.filename || 'Unknown Document';
-                const title = metadata.title || filename;
-
-                return (
-                  <>
-                    {getFileIcon(filename)}
-                    <span className="ml-2">{title}</span>
-                  </>
-                );
-              })()}
-            </DialogTitle>
-            <DialogDescription className="flex items-center mt-1">
-              <Clock className="h-3.5 w-3.5 mr-1" />
-              Added on{' '}
-              {viewingContent
-                ? formatDate(viewingContent.createdAt || viewingContent.metadata?.timestamp || 0)
-                : ''}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto my-4 border rounded-md p-4 bg-muted">
-            {viewingContent && (
-              <pre
-                className={cn('text-sm whitespace-pre-wrap', {
-                  'font-mono':
-                    (
-                      (viewingContent.content as MemoryContent)?.metadata?.fileType as string
-                    )?.includes('application/') ||
-                    (
-                      (viewingContent.content as MemoryContent)?.metadata?.fileType as string
-                    )?.includes('text/plain'),
-                  '':
-                    !(
-                      (viewingContent.content as MemoryContent)?.metadata?.fileType as string
-                    )?.includes('application/') &&
-                    !(
-                      (viewingContent.content as MemoryContent)?.metadata?.fileType as string
-                    )?.includes('text/plain'),
-                })}
-              >
-                {viewingContent.content?.text}
-              </pre>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="destructive"
-              onClick={() => viewingContent?.id && handleDelete(viewingContent.id)}
-              className="mr-auto"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </Button>
-
-            <Button onClick={() => setViewingContent(null)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {editingMemory && (
         <MemoryEditOverlay
