@@ -201,7 +201,7 @@ export function AppSidebar() {
                         console.log(roomArray, roomAgentNames);
 
                         return (
-                          <SidebarMenuItem key={roomId} className="flex flex-col gap-1">
+                          <SidebarMenuItem key={roomId}>
                             <NavLink to={`/room/${roomId}`}>
                               <div className="transition-colors px-4 my-4 rounded-md">
                                 <div className="flex items-center gap-3">
