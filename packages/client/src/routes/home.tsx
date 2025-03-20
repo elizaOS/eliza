@@ -206,7 +206,6 @@ export default function Home() {
             <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-2 auto-rows-fr">
               {roomsData &&
                 Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
-                  const thumbnail = roomArray.length > 0 ? roomArray[0]?.metadata?.thumbnail : null;
                   const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;
                   return (
                     <ProfileCard
@@ -227,15 +226,7 @@ export default function Home() {
                           }}
                         >
                           <div className="brightness-[100%] hover:brightness-[107%] w-full h-full flex items-center justify-center">
-                            {thumbnail ? (
-                              <img
-                                src={thumbnail as string}
-                                alt="Room Thumbnail"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              formatAgentName(roomName ?? '')
-                            )}
+                            {formatAgentName(roomName ?? '')}
                           </div>
                         </div>
                       }
