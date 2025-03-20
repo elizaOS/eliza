@@ -1221,6 +1221,32 @@ export const models: Models = {
             },
         },
     },
+    [ModelProviderName.KLUSTERAI]: {
+        endpoint: "https://api.kluster.ai/v1",
+        model: {
+            [ModelClass.SMALL]: {
+                name: settings.SMALL_KLUSTERAI_MODEL || "klusterai/Meta-Llama-3.1-8B-Instruct-Turbo",
+                stop: [],
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                temperature: 0.6,
+            },
+            [ModelClass.MEDIUM]: {
+                name: settings.MEDIUM_KLUSTERAI_MODEL || "klusterai/Meta-Llama-3.3-70B-Instruct-Turbo",
+                stop: [],
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                temperature: 0.6,
+            },
+            [ModelClass.LARGE]: {
+                name: settings.LARGE_KLUSTERAI_MODEL || "klusterai/Meta-Llama-3.1-405B-Instruct-Turbo",
+                stop: [],
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                temperature: 0.6,
+            }
+        },
+    },
 };
 
 export function getModelSettings(
