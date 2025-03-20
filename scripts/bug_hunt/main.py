@@ -27,7 +27,6 @@ def setup_logging():
 logger = setup_logging()
 
 from typing import Dict, Any, List, Optional
-import json
 import asyncio
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskID
 from rich.markdown import Markdown
