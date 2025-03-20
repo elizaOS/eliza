@@ -4,7 +4,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -14,13 +13,21 @@ import {
 import { useAgents, useRooms } from '@/hooks/use-query-hooks';
 import info from '@/lib/info.json';
 import { formatAgentName } from '@/lib/utils';
-import { AgentStatus, UUID } from '@elizaos/core';
+import { AgentStatus, type UUID } from '@elizaos/core';
 import type { Agent } from '@elizaos/core';
-import { Book, Cog, TerminalIcon } from 'lucide-react';
-import { NavLink, useLocation } from 'react-router';
-import ConnectionStatus from './connection-status';
-import AgentAvatarStack from './agent-avatar-stack';
+import { Book, Cog, Plus, TerminalIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { NavLink, useLocation } from 'react-router';
+import AgentAvatarStack from './agent-avatar-stack';
+import ConnectionStatus from './connection-status';
+import GroupPanel from './group-panel';
+import { Button } from './ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 
 export function AppSidebar() {
   const [onlineAgents, setOnlineAgents] = useState<Agent[]>([]);
@@ -38,11 +45,13 @@ export function AppSidebar() {
 
   // Create a map of agent avatars for easy lookup
   const agentAvatars: Record<string, string | null> = {};
-  agents.forEach((agent) => {
+  for (const agent of agents) {
     if (agent.id && agent.settings?.avatar) {
       agentAvatars[agent.id] = agent.settings.avatar;
     }
-  });
+  }
+
+  const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
 
   useEffect(() => {
     // Split into online and offline agents
@@ -88,6 +97,43 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarHeader>
         <SidebarContent>
+          {/* Create Button with Dropdown */}
+          <div className="px-4 py-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="default" className="w-full justify-start">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem asChild>
+                  <NavLink to="/create" className="flex items-center cursor-pointer">
+                    <span>Create Agent</span>
+                  </NavLink>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  asChild
+                  onClick={() => {
+                    setIsGroupPanelOpen(true);
+                  }}
+                  className="flex items-center cursor-pointer"
+                >
+                  <span>Create Room</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {isGroupPanelOpen && (
+            <GroupPanel
+              agents={agents}
+              onClose={() => {
+                setIsGroupPanelOpen(false);
+              }}
+            />
+          )}
+
           {/* Agents Section */}
           <SidebarGroup>
             <SidebarGroupContent className="px-2">
@@ -117,7 +163,7 @@ export function AppSidebar() {
                         <NavLink to={`/chat/${agent.id}`}>
                           <SidebarMenuButton
                             isActive={location.pathname.includes(agent.id as string)}
-                            className="transition-colors px-4 my-4 rounded-md"
+                            className="transition-colors px-4 my-4 h-full py-1 rounded-md"
                           >
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 flex justify-center items-center">
@@ -223,7 +269,7 @@ export function AppSidebar() {
                         return (
                           <SidebarMenuItem key={roomId}>
                             <NavLink to={`/room/${roomId}`}>
-                              <div className="transition-colors px-4 my-4 rounded-md">
+                              <SidebarMenuButton className="px-4 py-2 my-4 h-full rounded-md transition-colors">
                                 <div className="flex items-center gap-3">
                                   <AgentAvatarStack
                                     agentIds={roomAgentIds}
@@ -231,14 +277,14 @@ export function AppSidebar() {
                                     agentAvatars={agentAvatars}
                                     size="md"
                                   />
-                                  <div className="flex flex-col h-full justify-center">
+                                  <div className="flex flex-col justify-center">
                                     <div className="text-base truncate max-w-24">{roomName}</div>
-                                    <div className="text-xs truncate max-w-24">
+                                    <div className="text-xs truncate max-w-24 text-muted-foreground">
                                       {`${roomAgentIds.length} ${roomAgentIds.length === 1 ? 'Member' : 'Members'}`}
                                     </div>
                                   </div>
                                 </div>
-                              </div>
+                              </SidebarMenuButton>
                             </NavLink>
                           </SidebarMenuItem>
                         );
