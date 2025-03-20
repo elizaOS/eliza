@@ -26,6 +26,7 @@ import {
   lte,
   or,
   sql,
+  not,
 } from 'drizzle-orm';
 import { v4 } from 'uuid';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
@@ -291,11 +292,86 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
    */
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    // casacade delete all related for the agent
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        const entities = await this.db
+          .select({ entityId: entityTable.id })
+          .from(entityTable)
+          .where(eq(entityTable.agentId, agentId));
+
+        const entityIds = entities.map((e) => e.entityId);
+
+        let memoryIds: UUID[] = [];
+
+        if (entityIds.length > 0) {
+          const entityMemories = await this.db
+            .select({ memoryId: memoryTable.id })
+            .from(memoryTable)
+            .where(inArray(memoryTable.entityId, entityIds));
+
+          memoryIds = entityMemories.map((m) => m.memoryId);
+        }
+
+        const agentMemories = await this.db
+          .select({ memoryId: memoryTable.id })
+          .from(memoryTable)
+          .where(eq(memoryTable.agentId, agentId));
+
+        memoryIds.push(...agentMemories.map((m) => m.memoryId));
+
+        if (memoryIds.length > 0) {
+          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, memoryIds));
+
+          await tx.delete(memoryTable).where(inArray(memoryTable.id, memoryIds));
+        }
+
+        const rooms = await this.db
+          .select({ roomId: roomTable.id })
+          .from(roomTable)
+          .where(eq(roomTable.agentId, agentId));
+
+        const roomIds = rooms.map((r) => r.roomId);
+
+        if (entityIds.length > 0) {
+          await tx.delete(logTable).where(inArray(logTable.entityId, entityIds));
+          await tx.delete(participantTable).where(inArray(participantTable.entityId, entityIds));
+        }
+
+        if (roomIds.length > 0) {
+          await tx.delete(logTable).where(inArray(logTable.roomId, roomIds));
+          await tx.delete(participantTable).where(inArray(participantTable.roomId, roomIds));
+        }
+
+        await tx.delete(participantTable).where(eq(participantTable.agentId, agentId));
+
+        if (roomIds.length > 0) {
+          await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
+        }
+
+        await tx.delete(cacheTable).where(eq(cacheTable.agentId, agentId));
+
+        await tx.delete(relationshipTable).where(eq(relationshipTable.agentId, agentId));
+
+        await tx.delete(entityTable).where(eq(entityTable.agentId, agentId));
+
+        const newAgent = await this.db
+          .select({ newAgentId: agentTable.id })
+          .from(agentTable)
+          .where(not(eq(agentTable.id, agentId)))
+          .limit(1);
+
+        if (newAgent.length > 0) {
+          await tx
+            .update(worldTable)
+            .set({ agentId: newAgent[0].newAgentId })
+            .where(eq(worldTable.agentId, agentId));
+        } else {
+          await tx.delete(worldTable).where(eq(worldTable.agentId, agentId));
+        }
+
         await tx.delete(agentTable).where(eq(agentTable.id, agentId));
       });
+
       return true;
     });
   }

@@ -7,8 +7,9 @@ import type { Agent } from '@elizaos/core';
 import { Command } from 'commander';
 
 const AGENT_RUNTIME_URL =
-  process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') || 'http://localhost:3000';
-const AGENTS_BASE_URL = `${AGENT_RUNTIME_URL}/agents`;
+  process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') ||
+  `http://localhost:${process.env.SERVER_PORT}`;
+const AGENTS_BASE_URL = `${AGENT_RUNTIME_URL}/api/agents`;
 
 // Define basic agent interface for type safety
 /**
@@ -107,16 +108,6 @@ interface ApiResponse<T> {
     message: string;
     details?: unknown;
   };
-}
-
-/**
- * Interface representing the response from starting an agent.
- * @property {string} id - The unique identifier for the response.
- * @property {Partial<Agent>} character - The partial information of the Agent object associated with the response.
- */
-interface AgentStartResponse {
-  id: string;
-  character: Partial<Agent>;
 }
 
 agent
@@ -283,14 +274,14 @@ agent
         );
       }
 
-      const data = (await response.json()) as ApiResponse<AgentStartResponse>;
+      const data = (await response.json()) as ApiResponse<Agent>;
       const result = data.data;
 
       if (!result) {
         throw new Error('Failed to start agent: No data returned from server');
       }
 
-      logger.debug(`Successfully started agent ${result.character.name} (${result.id})`);
+      logger.debug(`Successfully started agent ${result.name} (${result.id})`);
     } catch (error) {
       handleError(error);
     }
