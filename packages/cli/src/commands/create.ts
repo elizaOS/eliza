@@ -82,44 +82,6 @@ async function installDependencies(targetDir: string) {
 }
 
 /**
- * Stores Postgres URL in the global .env file
- * @param url The Postgres URL to store
- */
-async function storePostgresUrl(url: string): Promise<void> {
-  if (!url) return;
-
-  try {
-    const homeDir = os.homedir();
-    const globalEnvPath = path.join(homeDir, '.eliza', '.env');
-
-    await fs.writeFile(globalEnvPath, `POSTGRES_URL=${url}\n`, { flag: 'a' });
-    logger.success('Postgres URL saved to configuration');
-  } catch (error) {
-    logger.warn('Error saving database configuration:', error);
-  }
-}
-
-/**
- * Validates a Postgres URL format
- * @param url The URL to validate
- * @returns True if the URL appears valid
- */
-function isValidPostgresUrl(url: string): boolean {
-  if (!url) return false;
-
-  // Basic pattern: postgresql://user:password@host:port/dbname
-  const basicPattern = /^postgresql:\/\/[^:]+:[^@]+@[^:]+:\d+\/\w+$/;
-
-  // Cloud pattern: allows for URLs with query parameters like sslmode=require
-  const cloudPattern = /^postgresql:\/\/[^:]+:[^@]+@[^\/]+\/[^?]+(\?.*)?$/;
-
-  // More permissive pattern (allows missing password, different formats)
-  const permissivePattern = /^postgresql:\/\/.*@.*:\d+\/.*$/;
-
-  return basicPattern.test(url) || cloudPattern.test(url) || permissivePattern.test(url);
-}
-
-/**
  * Initialize a new project or plugin.
  *
  * @param {Object} opts - Options for initialization.
@@ -323,7 +285,7 @@ export const create = new Command()
       await copyTemplate('project', targetDir, projectName);
 
       // Database configuration
-      const { elizaDir, elizaDbDir, envFilePath } = getElizaDirectories();
+      const { elizaDbDir, envFilePath } = getElizaDirectories();
 
       // Only create directories and configure based on database choice
       if (database === 'pglite') {
