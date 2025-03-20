@@ -20,8 +20,11 @@ import { Book, Cog, TerminalIcon } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router';
 import ConnectionStatus from './connection-status';
 import AgentAvatarStack from './agent-avatar-stack';
+import { useEffect, useState } from 'react';
 
 export function AppSidebar() {
+  const [onlineAgents, setOnlineAgents] = useState<Agent[]>([]);
+  const [offlineAgents, setOfflineAgents] = useState<Agent[]>([]);
   const { data: roomsData, isLoading: roomsLoading } = useRooms();
   const { data: { data: agentsData } = {}, isLoading: agentsLoading } = useAgents();
   const location = useLocation();
@@ -29,14 +32,9 @@ export function AppSidebar() {
   // Extract agents from the response
   const agents = agentsData?.agents || [];
 
-  // Split into online and offline agents
-  const onlineAgents = agents.filter(
-    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.ACTIVE
-  );
-
-  const offlineAgents = agents.filter(
-    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.INACTIVE
-  );
+  const isRoomPage = location.pathname.startsWith('/room/');
+  const match = location.pathname.match(/^\/room\/([^/]+)$/);
+  const roomId = match ? match[1] : null;
 
   // Create a map of agent avatars for easy lookup
   const agentAvatars: Record<string, string | null> = {};
@@ -45,6 +43,30 @@ export function AppSidebar() {
       agentAvatars[agent.id] = agent.settings.avatar;
     }
   });
+
+  useEffect(() => {
+    // Split into online and offline agents
+    let onlineAgents = agents.filter(
+      (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.ACTIVE
+    );
+
+    let offlineAgents = agents.filter(
+      (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.INACTIVE
+    );
+    if (isRoomPage) {
+      if (roomId) {
+        onlineAgents = [...onlineAgents].filter((agent) =>
+          roomsData?.get(roomId)?.some((room) => room.agentId === agent.id)
+        );
+        offlineAgents = [...offlineAgents].filter((agent) =>
+          roomsData?.get(roomId)?.some((room) => room.agentId === agent.id)
+        );
+      }
+    }
+
+    setOnlineAgents(onlineAgents);
+    setOfflineAgents(offlineAgents);
+  }, [isRoomPage, agentsData, roomId]);
 
   return (
     <>
