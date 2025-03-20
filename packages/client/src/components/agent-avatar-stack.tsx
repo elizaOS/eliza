@@ -1,67 +1,73 @@
 import { UUID } from '@elizaos/core';
 import { Avatar, AvatarImage } from './ui/avatar';
+import { formatAgentName } from '@/lib/utils';
 
 interface AgentAvatarStackProps {
   agentIds: UUID[];
+  agentNames: string[];
   agentAvatars: Record<string, string | null>;
-  maxDisplay?: number;
   size?: 'sm' | 'md' | 'lg';
 }
 
 export default function AgentAvatarStack({
   agentIds,
+  agentNames,
   agentAvatars,
-  maxDisplay = 3,
   size = 'md',
 }: AgentAvatarStackProps) {
-  const displayAgents = agentIds.slice(0, maxDisplay);
-  const remainingCount = agentIds.length - maxDisplay;
+  const displayAgents = agentIds.slice(0, 2);
+  const isMultiple = displayAgents.length > 1;
 
-  // Size classes based on the size prop
-  const avatarSizeClass = size === 'sm' ? 'size-6' : size === 'lg' ? 'size-10' : 'size-8';
+  const baseSize = size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
+  const avatarSizeClass = isMultiple
+    ? size === 'sm'
+      ? 'size-5'
+      : size === 'lg'
+        ? 'size-9'
+        : 'size-7'
+    : size === 'sm'
+      ? 'size-6'
+      : size === 'lg'
+        ? 'size-10'
+        : 'size-8';
 
-  // Calculate overlap based on number of agents - more agents means more overlap
-  const overlapFactor = 1.0 - 1.0 / displayAgents.length;
-  const avatarSize = size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
-  const offsetPixels = Math.floor(avatarSize * overlapFactor);
+  const avatarOffset = Math.floor(baseSize * 0.3);
+
+  const getAvatarContent = (agentId: UUID, index: number) => {
+    const avatarSrc = agentAvatars[agentId] || '/elizaos-icon.png';
+    return agentAvatars[agentId] ? (
+      <AvatarImage src={avatarSrc} alt="Agent avatar" />
+    ) : (
+      <div className="rounded-full bg-gray-600 w-full h-full flex-shrink-0 flex items-center justify-center">
+        {formatAgentName(agentNames[index])}
+      </div>
+    );
+  };
 
   return (
-    <div className="relative flex items-center">
-      {displayAgents.map((agentId, index) => (
-        <div
-          key={agentId}
-          className={`${avatarSizeClass} rounded-full border-2 border-background absolute`}
-          style={{
-            zIndex: displayAgents.length - index,
-            left: `${index * offsetPixels}px`,
-          }}
-        >
-          <Avatar className={`${avatarSizeClass} rounded-full overflow-hidden`}>
-            <AvatarImage src={agentAvatars[agentId] || '/elizaos-icon.png'} alt="Agent avatar" />
+    <div
+      className="relative flex items-center text-xs"
+      style={{ height: baseSize, width: baseSize }}
+    >
+      {displayAgents.length === 1 ? (
+        <Avatar className={`${avatarSizeClass} rounded-full overflow-hidden`}>
+          {getAvatarContent(displayAgents[0], 0)}
+        </Avatar>
+      ) : (
+        displayAgents.map((agentId, index) => (
+          <Avatar
+            key={agentId}
+            className={`${avatarSizeClass} rounded-full overflow-hidden absolute border border-2 border-card`}
+            style={{
+              zIndex: index,
+              left: `${index * avatarOffset}px`,
+              top: `${index * avatarOffset}px`,
+            }}
+          >
+            {getAvatarContent(agentId, index)}
           </Avatar>
-        </div>
-      ))}
-
-      {remainingCount > 0 && (
-        <div
-          className={`${avatarSizeClass} rounded-full bg-muted flex items-center justify-center border-2 border-background absolute`}
-          style={{
-            zIndex: 0,
-            left: `${displayAgents.length * offsetPixels}px`,
-          }}
-        >
-          <span className="text-xs font-medium">+{remainingCount}</span>
-        </div>
+        ))
       )}
-
-      {/* Empty div to maintain proper spacing in the layout */}
-      <div
-        style={{
-          width: `${(displayAgents.length + (remainingCount > 0 ? 1 : 0)) * offsetPixels - (offsetPixels - avatarSize)}px`,
-          height: avatarSizeClass,
-          paddingRight: displayAgents.length > 1 ? '5px' : '0px',
-        }}
-      ></div>
     </div>
   );
 }
