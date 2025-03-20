@@ -1183,6 +1183,32 @@ export const models: Models = {
             },
         },
     },
+    [ModelProviderName.MEM0]: {
+        endpoint: settings.MEM0_API_URL || "https://api.openai.com/v1",
+        model: {
+            [ModelClass.SMALL]: {
+                name: settings.SMALL_MEM0_MODEL || "gpt-4o-mini",
+                stop: [],   
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                temperature: 0.6,
+            },
+            [ModelClass.MEDIUM]: {
+                name: settings.MEDIUM_MEM0_MODEL || "gpt-4o",
+                stop: [],
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                temperature: 0.6,
+            },
+            [ModelClass.LARGE]: {
+                name: settings.LARGE_MEM0_MODEL || "gpt-4o",
+                stop: [],
+                maxInputTokens: 128000,
+                maxOutputTokens: 8192,
+                temperature: 0.6,
+            },
+        },
+    },
     [ModelProviderName.NEARAI]: {
         endpoint: settings.NEARAI_API_URL || "https://api.near.ai/v1",
         model: {

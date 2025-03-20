@@ -579,6 +579,12 @@ export function getTokenForProvider(
                 settings.NEARAI_API_KEY
             );
 
+        case ModelProviderName.MEM0:
+            return (
+                character.settings?.secrets?.MEM0_API_KEY ||
+                settings.MEM0_API_KEY
+            );
+
         default:
             const errorMessage = `Failed to get token - unsupported model provider: ${provider}`;
             elizaLogger.error(errorMessage);
