@@ -5,7 +5,8 @@ import { Cog, Loader2, MessageSquare, Play, Square, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from './ui/button';
-import { Card, CardContent } from './ui/card';
+import { Card, CardContent, CardHeader, CardFooter, CardTitle } from './ui/card';
+import { Separator } from './ui/separator';
 
 interface ProfileOverlayProps {
   isOpen: boolean;
@@ -20,13 +21,13 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
   const { startAgent, stopAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
   const navigate = useNavigate();
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const isActive = (agent as Agent & { status?: string }).status === 'active';
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
   const isProcessing = isStarting || isStopping;
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // handle Start/Stop button
   let buttonLabel = 'Start';
@@ -68,48 +69,44 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
         className="flex flex-col w-full max-w-md md:max-w-xl overflow-hidden relative"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close button - top right */}
-        <div className="absolute top-4 right-4 z-10">
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="w-5 h-5" />
-          </Button>
-        </div>
+        <CardHeader className="p-0 space-y-0">
+          <div className="absolute top-4 right-4 z-10">
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
 
-        {/* Improved header with gradient background */}
-        <div className="p-6 w-full flex items-end bg-gradient-to-b from-primary/20 to-background">
-          <div className="flex w-full justify-between items-end">
-            <div className="flex flex-col gap-2">
-              <div className="w-24 h-24 flex justify-center items-center relative">
-                {agent && (
-                  <div className="text-4xl bg-muted rounded-full h-full w-full flex justify-center items-center overflow-hidden border-4 border-background">
-                    {agent.settings?.avatar ? (
-                      <img
-                        src={agent.settings.avatar}
-                        alt="Agent Avatar"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      formatAgentName(agent.name)
-                    )}
-                  </div>
-                )}
-                <div
-                  className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${
-                    isActive ? 'bg-green-500' : 'bg-muted-foreground'
-                  }`}
-                />
-              </div>
-              <div className="flex flex-col justify-center mr-4">
-                {agent && <div className="text-xl font-bold truncate max-w-48">{agent.name}</div>}
-                {agent && (
-                  <div className="text-xs text-muted-foreground">
-                    ID: {agent.id.substring(0, 8)}
-                  </div>
-                )}
+          <div className="p-6 w-full flex items-end bg-gradient-to-b from-primary/20 to-background">
+            <div className="flex w-full justify-between items-end">
+              <div className="flex flex-col gap-2">
+                <div className="w-24 h-24 flex justify-center items-center relative">
+                  {agent && (
+                    <div className="text-4xl bg-muted rounded-full h-full w-full flex justify-center items-center overflow-hidden border-4 border-background">
+                      {agent.settings?.avatar ? (
+                        <img
+                          src={agent.settings.avatar}
+                          alt="Agent Avatar"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        formatAgentName(agent.name)
+                      )}
+                    </div>
+                  )}
+                  <div
+                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${
+                      isActive ? 'bg-green-500' : 'bg-muted-foreground'
+                    }`}
+                  />
+                </div>
+                <div className="flex flex-col justify-center mr-4">
+                  {agent && <div className="text-xl font-bold truncate max-w-48">{agent.name}</div>}
+                  {agent && <div className="text-xs text-muted-foreground">ID: {agent.id}</div>}
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </CardHeader>
 
         {/* Main content */}
         <CardContent className="p-6 overflow-auto">
@@ -167,7 +164,7 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
         </CardContent>
 
         {/* Action buttons at the bottom */}
-        <div className="p-4 border-t flex justify-between items-center mt-auto">
+        <CardFooter className="flex justify-between items-center p-4 border-t">
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -182,37 +179,29 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
             </Button>
 
             <Button
-              variant="outline"
-              className={`${isActive ? '' : 'opacity-50'} h-9`}
+              variant={isActive ? 'destructive' : 'default'}
               onClick={() => {
-                if (isActive) {
-                  navigate(`/chat/${agent.id}`);
+                if (isProcessing) return;
+
+                if (!isActive) {
+                  startAgent(agent);
+                } else {
+                  stopAgent(agent);
                 }
               }}
-              disabled={!isActive}
+              disabled={isProcessing}
             >
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Message
+              {buttonIcon}
+              <span className="ml-2">{buttonLabel}</span>
             </Button>
           </div>
 
-          <Button
-            variant={isActive ? 'destructive' : 'default'}
-            onClick={() => {
-              if (isProcessing) return;
-
-              if (!isActive) {
-                startAgent(agent);
-              } else {
-                stopAgent(agent);
-              }
-            }}
-            disabled={isProcessing}
-          >
-            {buttonIcon}
-            <span className="ml-2">{buttonLabel}</span>
-          </Button>
-        </div>
+          {isActive && (
+            <Button variant="default" className="h-9" onClick={() => navigate(`/chat/${agent.id}`)}>
+              Message
+            </Button>
+          )}
+        </CardFooter>
       </Card>
     </div>
   );
