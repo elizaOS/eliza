@@ -13,7 +13,13 @@ import { Button } from './ui/button';
 
 interface PluginsPanelProps {
   characterValue: Agent;
-  setCharacterValue: (value: (prev: Agent) => Agent) => void;
+  setCharacterValue: {
+    addPlugin?: (pluginId: string) => void;
+    removePlugin?: (index: number) => void;
+    setPlugins?: (plugins: string[]) => void;
+    updateField?: <T>(path: string, value: T) => void;
+    [key: string]: any;
+  };
 }
 
 export default function PluginsPanel({ characterValue, setCharacterValue }: PluginsPanelProps) {
@@ -38,18 +44,28 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
       .filter((plugin) => plugin.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [pluginNames, safeCharacterPlugins, searchQuery]);
 
-  const handlePluginToggle = (plugin: string) => {
-    setCharacterValue((prev) => {
-      const currentPlugins = Array.isArray(prev.plugins) ? prev.plugins : [];
-      const newPlugins = currentPlugins.includes(plugin)
-        ? currentPlugins.filter((p) => p !== plugin)
-        : [...currentPlugins, plugin];
+  const handlePluginAdd = (plugin: string) => {
+    if (setCharacterValue.addPlugin) {
+      setCharacterValue.addPlugin(plugin);
+    } else if (setCharacterValue.updateField) {
+      const currentPlugins = Array.isArray(characterValue.plugins)
+        ? [...characterValue.plugins]
+        : [];
+      setCharacterValue.updateField('plugins', [...currentPlugins, plugin]);
+    }
+  };
 
-      return {
-        ...prev,
-        plugins: newPlugins,
-      };
-    });
+  const handlePluginRemove = (plugin: string) => {
+    const index = safeCharacterPlugins.indexOf(plugin);
+    if (index !== -1) {
+      if (setCharacterValue.removePlugin) {
+        setCharacterValue.removePlugin(index);
+      } else if (setCharacterValue.updateField) {
+        const newPlugins = [...safeCharacterPlugins];
+        newPlugins.splice(index, 1);
+        setCharacterValue.updateField('plugins', newPlugins);
+      }
+    }
   };
 
   return (
@@ -72,7 +88,7 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
                         size="sm"
                         key={plugin}
                         className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/20 h-auto"
-                        onClick={() => handlePluginToggle(plugin)}
+                        onClick={() => handlePluginRemove(plugin)}
                       >
                         {plugin} ×
                       </Button>
@@ -110,7 +126,7 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
                               variant="ghost"
                               className="w-full justify-start font-normal"
                               onClick={() => {
-                                handlePluginToggle(plugin);
+                                handlePluginAdd(plugin);
                                 setSearchQuery('');
                                 setIsDialogOpen(false);
                               }}
