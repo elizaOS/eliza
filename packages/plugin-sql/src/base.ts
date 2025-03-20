@@ -291,11 +291,46 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
    */
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    // casacade delete all related for the agent
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        const entities = await tx
+          .select({ entityId: entityTable.id })
+          .from(entityTable)
+          .where(eq(entityTable.agentId, agentId));
+
+        const entityIds = entities.map((e) => e.entityId);
+
+        let memoryIds: UUID[] = [];
+
+        if (entityIds.length > 0) {
+          const entityMemories = await tx
+            .select({ memoryId: memoryTable.id })
+            .from(memoryTable)
+            .where(inArray(memoryTable.entityId, entityIds));
+
+          memoryIds = entityMemories.map((m) => m.memoryId);
+        }
+
+        const agentMemories = await tx
+          .select({ memoryId: memoryTable.id })
+          .from(memoryTable)
+          .where(eq(memoryTable.agentId, agentId));
+
+        memoryIds.push(...agentMemories.map((m) => m.memoryId));
+
+        if (memoryIds.length > 0) {
+          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, memoryIds));
+
+          await tx.delete(memoryTable).where(inArray(memoryTable.id, memoryIds));
+        }
+
+        if (entityIds.length > 0) {
+          await tx.delete(logTable).where(inArray(logTable.entityId, entityIds));
+        }
+
         await tx.delete(agentTable).where(eq(agentTable.id, agentId));
       });
+
       return true;
     });
   }
