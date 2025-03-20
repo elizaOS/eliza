@@ -51,7 +51,7 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
         <LogViewer agentName={agentName} level="all" hideTitle />
       </TabsContent>
       <TabsContent value="memories">
-        <AgentMemoryViewer agentId={agentId} />
+        <AgentMemoryViewer agentId={agentId} agentName={agentName} />
       </TabsContent>
       <TabsContent value="knowledge">
         <KnowledgeManager agentId={agentId} />
