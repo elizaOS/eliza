@@ -99,7 +99,7 @@ export function AppSidebar() {
                           >
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 flex justify-center items-center">
-                                <div className="relative bg-muted rounded-full w-full h-full">
+                                <div className="relative bg-gray-600 rounded-full w-full h-full">
                                   {agent && (
                                     <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
                                       {agent.settings?.avatar ? (
@@ -138,7 +138,7 @@ export function AppSidebar() {
                         <div className="transition-colors px-4 my-4 rounded-md">
                           <div className="flex items-center gap-2">
                             <div className="w-8 h-8 flex justify-center items-center">
-                              <div className="relative bg-muted rounded-full w-full h-full">
+                              <div className="relative bg-gray-600 rounded-full w-full h-full">
                                 {agent && (
                                   <div className="text-sm rounded-full h-full w-full flex justify-center items-center overflow-hidden">
                                     {agent.settings?.avatar ? (
@@ -194,20 +194,27 @@ export function AppSidebar() {
                         const roomAgentIds = roomArray
                           .map((room) => room.agentId)
                           .filter(Boolean) as UUID[];
+                        const roomAgentNames = roomArray
+                          .map((room) => room.character.name)
+                          .filter(Boolean) as string[];
+
+                        console.log(roomArray, roomAgentNames);
 
                         return (
-                          <SidebarMenuItem key={roomId}>
+                          <SidebarMenuItem key={roomId} className="flex flex-col gap-1">
                             <NavLink to={`/room/${roomId}`}>
                               <div className="transition-colors px-4 my-4 rounded-md">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex justify-center items-center">
-                                    <AgentAvatarStack
-                                      agentIds={roomAgentIds}
-                                      agentAvatars={agentAvatars}
-                                      size="md"
-                                    />
+                                <div className="flex items-center gap-3">
+                                  <AgentAvatarStack
+                                    agentIds={roomAgentIds}
+                                    agentNames={roomAgentNames}
+                                    agentAvatars={agentAvatars}
+                                    size="md"
+                                  />
+                                  <div className="flex flex-col h-full justify-center">
+                                    <div className="text-base truncate max-w-24">{roomName}</div>
+                                    <div className="text-xs truncate max-w-24">{`${roomAgentIds.length} Members`}</div>
                                   </div>
-                                  <span className="text-base truncate max-w-24">{roomName}</span>
                                 </div>
                               </div>
                             </NavLink>
