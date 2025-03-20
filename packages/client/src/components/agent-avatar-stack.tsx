@@ -7,6 +7,7 @@ interface AgentAvatarStackProps {
   agentNames: string[];
   agentAvatars: Record<string, string | null>;
   size?: 'sm' | 'md' | 'lg';
+  maxStack?: number;
 }
 
 export default function AgentAvatarStack({
@@ -14,8 +15,9 @@ export default function AgentAvatarStack({
   agentNames,
   agentAvatars,
   size = 'md',
+  maxStack = 2,
 }: AgentAvatarStackProps) {
-  const displayAgents = agentIds.slice(0, 2);
+  const displayAgents = agentIds.slice(0, maxStack);
   const isMultiple = displayAgents.length > 1;
 
   const baseSize = size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
@@ -31,7 +33,7 @@ export default function AgentAvatarStack({
         ? 'size-10'
         : 'size-8';
 
-  const avatarOffset = Math.floor(baseSize * 0.3);
+  const avatarOffset = Math.floor(baseSize * (0.6 / maxStack));
 
   const getAvatarContent = (agentId: UUID, index: number) => {
     const avatarSrc = agentAvatars[agentId] || '/elizaos-icon.png';
