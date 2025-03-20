@@ -14,9 +14,13 @@ export default function AgentRoute() {
 
   const { agentId } = useParams<{ agentId: UUID }>();
 
-  const agentData = useAgent(agentId)?.data?.data as Agent;
+  const { data: agentData } = useAgent(agentId);
+
+  const agent = agentData?.data as Agent;
 
   const toggleDetails = () => setShowDetails(!showDetails);
+
+  console.log(agent);
 
   if (!agentId) return <div>No data.</div>;
 
@@ -26,7 +30,7 @@ export default function AgentRoute() {
         <Chat
           agentId={agentId}
           worldId={worldId}
-          agentData={agentData}
+          agentData={agent}
           showDetails={showDetails}
           toggleDetails={toggleDetails}
         />
@@ -37,7 +41,7 @@ export default function AgentRoute() {
           defaultSize={25}
           className="border rounded-lg m-4 overflow-y-scroll bg-background flex flex-col h-[96vh]"
         >
-          <AgentSidebar agentId={agentId} agentName={agentData?.name || ''} />
+          <AgentSidebar agentId={agentId} agentName={agent.name} />
         </ResizablePanel>
       )}
     </ResizablePanelGroup>
