@@ -39,28 +39,11 @@ export default function Home() {
     setOverlayOpen(false);
   };
 
-  // Sort agents: enabled first, then disabled
-  const sortedAgents = [...agents].sort((a, b) => {
-    // Sort by status (active agents first)
-    if (a.status === AgentStatus.ACTIVE && b.status !== AgentStatus.ACTIVE) return -1;
-    if (a.status !== AgentStatus.ACTIVE && b.status === AgentStatus.ACTIVE) return 1;
-    // If both have the same status, sort alphabetically by name
-    return a.name.localeCompare(b.name);
-  });
-
-  // Split into enabled and disabled groups
-  const activeAgents = sortedAgents.filter(
-    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.ACTIVE
-  );
-  const inactiveAgents = sortedAgents.filter(
-    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.INACTIVE
-  );
-
   return (
     <>
       <div className="flex-1 p-3">
         <div className="flex flex-col gap-4 h-full">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between p-2">
             <PageTitle title="Agents" />
           </div>
 
@@ -186,20 +169,10 @@ export default function Home() {
                     />
                   );
                 })}
-              {/* Create new agent card */}
-              <Card
-                className="flex flex-col items-center justify-center h-full cursor-pointer hover:bg-accent/50 transition-colors"
-                onClick={() => navigate('/create')}
-              >
-                <div className="flex flex-col items-center justify-center gap-2 p-8">
-                  <Plus size={40} className="text-muted-foreground" />
-                  <span className="text-muted-foreground whitespace-nowrap">Create New Agent</span>
-                </div>
-              </Card>
             </div>
           )}
-          <div className="flex items-center justify-between">
-            <PageTitle title="Rooms" />
+          <div className="flex items-center justify-between p-2">
+            <PageTitle title="Groups" />
           </div>
 
           {!isLoading && !isError && (
@@ -252,19 +225,6 @@ export default function Home() {
                     />
                   );
                 })}
-              {/* Create new Group card */}
-              <Card
-                className="flex flex-col items-center justify-center h-full cursor-pointer hover:bg-accent/50 transition-colors"
-                onClick={() => {
-                  setSelectedGroupId(null);
-                  setIsGroupPanelOpen(true);
-                }}
-              >
-                <div className="flex flex-col items-center justify-center gap-2 p-8">
-                  <Plus size={40} className="text-muted-foreground" />
-                  <span className="text-muted-foreground whitespace-nowrap">Create New Group</span>
-                </div>
-              </Card>
             </div>
           )}
         </div>
