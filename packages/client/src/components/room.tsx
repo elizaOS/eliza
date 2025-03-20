@@ -438,13 +438,21 @@ export default function Page({ serverId }: { serverId: UUID }) {
     return [];
   };
 
+  const roomArray = roomsData?.get(serverId);
+  const roomAgentNames = roomArray?.map((room) => room.character.name).filter(Boolean) as string[];
+
   return (
     <div className="flex-1">
       <div className="flex flex-col w-full h-screen p-4">
         {/* Agent Header */}
         <div className="flex items-center justify-between mb-4 p-3 bg-card rounded-lg border">
           <div className="flex items-center gap-3">
-            <AgentAvatarStack agentIds={getRoomAgentIds()} agentAvatars={agentAvatars} size="md" />
+            <AgentAvatarStack
+              agentIds={getRoomAgentIds()}
+              agentAvatars={agentAvatars}
+              agentNames={roomAgentNames}
+              size="md"
+            />
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <h2 className="font-semibold text-lg">{getRoomName() || 'Group Chat'}</h2>
