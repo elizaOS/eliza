@@ -44,7 +44,7 @@ export function urlToCharacterName(urlName: string): string {
 
 // crypto.randomUUID only works in https context in firefox
 export function randomUUID(): UUID {
-  return URL.createObjectURL(new Blob()).split('/').pop();
+  return URL.createObjectURL(new Blob()).split('/').pop() as UUID;
 }
 
 export function getEntityId(): UUID {
@@ -104,3 +104,72 @@ export const compressImage = (
     reader.readAsDataURL(file);
   });
 };
+
+/**
+ * Deeply merges multiple objects together
+ * - Arrays are completely replaced (not merged)
+ * - Null values explicitly overwrite existing values
+ * - Undefined values are ignored (don't overwrite)
+ *
+ * @param target The base object to merge into
+ * @param sources One or more source objects to merge from
+ * @returns A new merged object
+ */
+export function deepMerge<T>(target: T, ...sources: Partial<T>[]): T {
+  if (!sources.length) return target;
+
+  const result = { ...target };
+
+  sources.forEach((source) => {
+    if (!source) return;
+
+    Object.keys(source).forEach((key) => {
+      const sourceValue = source[key as keyof typeof source];
+
+      // Skip undefined values - they shouldn't overwrite existing values
+      if (sourceValue === undefined) return;
+
+      // Handle null values - they should explicitly overwrite
+      if (sourceValue === null) {
+        result[key as keyof T] = null as any;
+        return;
+      }
+
+      // For arrays, completely replace them
+      if (Array.isArray(sourceValue)) {
+        result[key as keyof T] = [...sourceValue] as any;
+        return;
+      }
+
+      // For objects, recursively merge
+      if (
+        typeof sourceValue === 'object' &&
+        !Array.isArray(sourceValue) &&
+        sourceValue !== null &&
+        typeof result[key as keyof T] === 'object' &&
+        result[key as keyof T] !== null &&
+        !Array.isArray(result[key as keyof T])
+      ) {
+        result[key as keyof T] = deepMerge(result[key as keyof T] as any, sourceValue as any);
+        return;
+      }
+
+      // For all other values, just replace them
+      result[key as keyof T] = sourceValue as any;
+    });
+  });
+
+  return result;
+}
+
+/**
+ * Prepares agent data for update by ensuring all JSONb fields are properly
+ * merged with the existing agent data
+ *
+ * @param existingAgent The current agent data from the database
+ * @param updates The partial updates to be applied
+ * @returns A merged agent object ready for database update
+ */
+export function prepareAgentUpdate<T>(existingAgent: T, updates: Partial<T>): T {
+  return deepMerge(existingAgent, updates);
+}

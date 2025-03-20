@@ -248,7 +248,84 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
+   * Validates the agent update request
+   * @param agentId The ID of the agent to update
+   * @param agent The agent data to validate
+   * @throws Error if validation fails
+   */
+  private validateAgentUpdate(agentId: UUID, agent: Partial<Agent>): void {
+    if (!agent.id) {
+      throw new Error('Agent ID is required for update');
+    }
+  }
+
+  /**
+   * Merges nested JSONb objects within the agent settings
+   * @param existingAgent The current agent data
+   * @param updates The updates to apply
+   * @returns Merged settings object
+   */
+  private mergeAgentSettings(existingAgent: Agent, updates: Partial<Agent>): Agent['settings'] {
+    if (!updates.settings || !existingAgent.settings) {
+      return updates.settings || existingAgent.settings;
+    }
+
+    const mergedSettings = {
+      ...existingAgent.settings,
+      ...updates.settings,
+    };
+
+    // Handle nested secrets within settings
+    if (updates.settings.secrets && existingAgent.settings.secrets) {
+      mergedSettings.secrets = {
+        ...existingAgent.settings.secrets,
+        ...updates.settings.secrets,
+      };
+    }
+
+    return mergedSettings;
+  }
+
+  /**
+   * Merges style-related fields, handling arrays appropriately
+   * @param existingAgent The current agent data
+   * @param updates The updates to apply
+   * @returns Merged style object
+   */
+  private mergeAgentStyle(existingAgent: Agent, updates: Partial<Agent>): Agent['style'] {
+    if (!updates.style) {
+      return existingAgent.style;
+    }
+
+    return {
+      ...existingAgent.style,
+      ...updates.style,
+    };
+  }
+
+  /**
+   * Merges array fields, replacing them entirely if provided
+   * @param existingAgent The current agent data
+   * @param updates The updates to apply
+   * @returns Object containing merged array fields
+   */
+  private mergeArrayFields(existingAgent: Agent, updates: Partial<Agent>): Partial<Agent> {
+    const mergedFields: Partial<Agent> = {};
+
+    // Handle array JSONb fields - these should be replaced entirely if provided
+    if (updates.plugins !== undefined) mergedFields.plugins = updates.plugins;
+    if (updates.bio !== undefined) mergedFields.bio = updates.bio;
+    if (updates.topics !== undefined) mergedFields.topics = updates.topics;
+    if (updates.adjectives !== undefined) mergedFields.adjectives = updates.adjectives;
+    if (updates.knowledge !== undefined) mergedFields.knowledge = updates.knowledge;
+
+    return mergedFields;
+  }
+
+  /**
    * Updates an agent in the database with the provided agent ID and data.
+   * Properly handles merging of nested JSONb fields.
+   *
    * @param {UUID} agentId - The unique identifier of the agent to update.
    * @param {Partial<Agent>} agent - The partial agent object containing the fields to update.
    * @returns {Promise<boolean>} - A boolean indicating if the agent was successfully updated.
@@ -256,18 +333,26 @@ export abstract class BaseDrizzleAdapter<
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        if (!agent.id) {
-          throw new Error('Agent ID is required for update');
+        this.validateAgentUpdate(agentId, agent);
+
+        // Get the existing agent to properly merge JSONb fields
+        const existingAgent = await this.getAgent(agentId);
+        if (!existingAgent) {
+          throw new Error(`Agent with ID ${agentId} not found`);
         }
 
+        // Merge all fields using helper functions
+        const mergedAgent: Partial<Agent> = {
+          ...existingAgent,
+          ...agent,
+          updatedAt: Date.now(),
+          settings: this.mergeAgentSettings(existingAgent, agent),
+          style: this.mergeAgentStyle(existingAgent, agent),
+          ...this.mergeArrayFields(existingAgent, agent),
+        };
+
         await this.db.transaction(async (tx) => {
-          await tx
-            .update(agentTable)
-            .set({
-              ...agent,
-              updatedAt: Date.now(),
-            })
-            .where(eq(agentTable.id, agentId));
+          await tx.update(agentTable).set(mergedAgent).where(eq(agentTable.id, agentId));
         });
 
         logger.debug('Agent updated successfully:', {
