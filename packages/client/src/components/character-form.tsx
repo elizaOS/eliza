@@ -218,12 +218,6 @@ export default function CharacterForm({
 
   const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-    console.log('[CharacterForm] Form submission triggered');
-    console.log('[CharacterForm] Current characterValue:', characterValue);
-    console.log('[CharacterForm] Settings being submitted:', characterValue.settings);
-    console.log('[CharacterForm] Secrets being submitted:', characterValue.settings?.secrets);
-
     onSubmit?.(characterValue as any);
   };
 

@@ -19,9 +19,6 @@ interface SecretPanelProps {
 
 // Export as named export to match import in other files
 export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
-  console.log('[SecretPanel] MOUNTING with characterValue:', characterValue);
-  console.log('[SecretPanel] Initial secrets:', characterValue?.settings?.secrets);
-
   // Initialize secrets from character data
   const initialSecrets = Object.entries(characterValue?.settings?.secrets || {}).map(
     ([name, value]) => ({
@@ -32,8 +29,6 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
       isDeleted: false,
     })
   );
-
-  console.log('[SecretPanel] Initialized envs with:', initialSecrets);
 
   const [envs, setEnvs] = useState<EnvVariable[]>(initialSecrets);
   const [name, setName] = useState('');
@@ -140,8 +135,6 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
     if (name && value) {
       const exists = envs.some((env) => env.name === name);
       if (!exists) {
-        console.log(`[SecretPanel] Adding new secret: ${name}`);
-
         // If this key was previously deleted, remove it from deletedKeys
         if (deletedKeys.includes(name)) {
           setDeletedKeys(deletedKeys.filter((key) => key !== name));
@@ -205,38 +198,19 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
     // Only update if there are actual changes to prevent unnecessary rerenders
     const hasChanges = envs.some((env) => env.isNew || env.isModified) || deletedKeys.length > 0;
 
-    console.log('[SecretPanel] Checking for changes - hasChanges:', hasChanges);
-    console.log('[SecretPanel] Current envs:', envs);
-    console.log('[SecretPanel] Deleted keys:', deletedKeys);
-
     if (hasChanges) {
-      console.log(`[SecretPanel] --- PROCESSING CHANGES ---`);
-      console.log(
-        `[SecretPanel] New/modified secrets: ${envs
-          .filter((e) => e.isNew || e.isModified)
-          .map((e) => e.name)
-          .join(', ')}`
-      );
-      console.log(`[SecretPanel] Deleted keys: ${deletedKeys.join(', ')}`);
-
       // Start with the original secrets from characterValue
       const currentSettings = characterValue.settings || {};
       const currentSecrets = { ...(currentSettings.secrets || {}) };
 
-      console.log('[SecretPanel] Starting with current secrets:', currentSecrets);
-
       // First, mark deleted keys explicitly as null instead of removing them
       // This ensures the server knows to remove them instead of just not updating them
       deletedKeys.forEach((key) => {
-        console.log(`[SecretPanel] Marking key for deletion: ${key}`);
         currentSecrets[key] = null;
       });
 
       // Then update with current envs
-      envs.forEach(({ name, value, isNew, isModified }) => {
-        console.log(
-          `[SecretPanel] Setting secret: ${name}, value: ${value}, isNew: ${isNew}, isModified: ${isModified}`
-        );
+      envs.forEach(({ name, value }) => {
         currentSecrets[name] = value;
       });
 
@@ -249,13 +223,8 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
         },
       };
 
-      console.log('[SecretPanel] Final updated secrets object:', currentSecrets);
-      console.log('[SecretPanel] Calling onChange with updated agent');
-
       // Call the onChange prop with the updated agent
       onChange(updatedAgent);
-
-      console.log('[SecretPanel] onChange called, now clearing modification flags');
 
       // Clear modification flags to prevent infinite update loops
       setEnvs((prevEnvs) => {
@@ -264,24 +233,17 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
           isNew: false,
           isModified: false,
         }));
-        console.log('[SecretPanel] Cleared modification flags, new envs:', newEnvs);
         return newEnvs;
       });
 
       // Clear deletedKeys after changes are applied
       setDeletedKeys([]);
-      console.log('[SecretPanel] Cleared deletedKeys');
     }
     // Remove characterValue from the dependency array to prevent cycles
   }, [envs, onChange, deletedKeys]);
 
   // Sync envs with characterValue when it changes
   useEffect(() => {
-    console.log(
-      '[SecretPanel] characterValue.settings?.secrets changed:',
-      characterValue.settings?.secrets
-    );
-
     if (characterValue?.settings?.secrets) {
       const currentSecretsEntries = Object.entries(characterValue.settings.secrets);
       // Only update if the secrets have actually changed (different keys/number of entries)
@@ -294,20 +256,11 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
         .sort()
         .join(',');
 
-      console.log('[SecretPanel] Current keys from characterValue:', currentKeys);
-      console.log('[SecretPanel] Current keys from envs:', envKeys);
-      console.log(
-        '[SecretPanel] Any new/modified envs:',
-        envs.some((env) => env.isNew || env.isModified)
-      );
-      console.log('[SecretPanel] Any deleted keys:', deletedKeys.length > 0);
-
       if (
         currentKeys !== envKeys &&
         !envs.some((env) => env.isNew || env.isModified) &&
         deletedKeys.length === 0
       ) {
-        console.log('[SecretPanel] Updating envs from changed characterValue');
         const newEnvs = currentSecretsEntries.map(([name, value]) => ({
           name,
           value: String(value),
@@ -315,7 +268,6 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
           isModified: false,
           isDeleted: false,
         }));
-        console.log('[SecretPanel] Setting new envs:', newEnvs);
         setEnvs(newEnvs);
       }
     }

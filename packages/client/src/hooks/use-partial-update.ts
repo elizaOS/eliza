@@ -245,18 +245,9 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
   // Special handling for updating the entire settings object
   const updateSettings = useCallback(
     (settings: any) => {
-      console.log('[usePartialUpdate] updateSettings called with:', JSON.stringify(settings));
-
       setValue((prevValue) => {
-        console.log(
-          '[usePartialUpdate] Previous value in updateSettings:',
-          JSON.stringify(prevValue)
-        );
-
         // Extract settings but remove 'secrets' key to avoid duplication
         const { secrets, ...otherSettings } = settings;
-        console.log('[usePartialUpdate] Extracted secrets:', JSON.stringify(secrets));
-        console.log('[usePartialUpdate] Other settings:', JSON.stringify(otherSettings));
 
         // Create the updated settings object
         const updatedSettings = {
@@ -264,37 +255,18 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
           ...otherSettings, // Add other settings (not secrets)
         };
 
-        console.log(
-          '[usePartialUpdate] Updated settings before secrets:',
-          JSON.stringify(updatedSettings)
-        );
-
         // Only add secrets if it was included in the update
         if (secrets) {
-          console.log('[usePartialUpdate] Processing secrets update:', JSON.stringify(secrets));
-          console.log('[usePartialUpdate] Secrets keys to process:', Object.keys(secrets));
-
           // Create a new secrets object that only contains non-null values
           const filteredSecrets: Record<string, any> = {};
 
           Object.entries(secrets).forEach(([key, value]) => {
-            console.log(
-              `[usePartialUpdate] Processing secret key: ${key}, value type: ${value === null ? 'null' : typeof value}`
-            );
             // If value is null, don't include it (this is how we delete)
             if (value !== null) {
               filteredSecrets[key] = value;
-              console.log(`[usePartialUpdate] Added key ${key} to filteredSecrets`);
-            } else {
-              console.log(`[usePartialUpdate] Skipping null key ${key} (will be deleted)`);
             }
           });
 
-          console.log(
-            '[usePartialUpdate] Filtered secrets after processing:',
-            JSON.stringify(filteredSecrets)
-          );
-          console.log('[usePartialUpdate] Filtered secret keys:', Object.keys(filteredSecrets));
           updatedSettings.secrets = filteredSecrets;
         }
 
@@ -303,10 +275,6 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
           settings: updatedSettings,
         } as T;
 
-        console.log(
-          '[usePartialUpdate] Final result after settings update:',
-          JSON.stringify(result)
-        );
         return result;
       });
     },
