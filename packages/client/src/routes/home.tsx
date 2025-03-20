@@ -1,7 +1,6 @@
 import PageTitle from '@/components/page-title';
 import ProfileCard from '@/components/profile-card';
 import ProfileOverlay from '@/components/profile-overlay';
-import { Card } from '@/components/ui/card';
 import { useAgents, useRooms } from '@/hooks/use-query-hooks';
 import { formatAgentName } from '@/lib/utils';
 import type { Agent, UUID } from '@elizaos/core';
@@ -13,7 +12,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAgentManagement } from '../hooks/use-agent-management';
 
 import GroupPanel from '@/components/group-panel';
-
+import { Button } from '../components/ui/button';
+import { Separator } from '../components/ui/separator';
 export default function Home() {
   const { data: { data: agentsData } = {}, isLoading, isError, error } = useAgents();
   const navigate = useNavigate();
@@ -43,9 +43,13 @@ export default function Home() {
     <>
       <div className="flex-1 p-3">
         <div className="flex flex-col gap-4 h-full">
-          <div className="flex items-center justify-between p-2">
+          <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Agents" />
+            <Button variant="outline" onClick={() => navigate('/create')}>
+              <Plus className="w-4 h-4" />
+            </Button>
           </div>
+          <Separator />
 
           {isLoading && <div className="text-center py-8">Loading agents...</div>}
 
@@ -137,7 +141,7 @@ export default function Home() {
                           ? {
                               label: 'Message',
                               action: () => navigate(`/chat/${agent.id}`),
-                              className: `w-[80%]`,
+                              className: 'w-[80%]',
                               variant: 'default',
                             }
                           : {
@@ -147,7 +151,7 @@ export default function Home() {
                                   ? 'Stopping...'
                                   : 'Start',
                               action: () => startAgent(agent),
-                              className: `w-[80%]`,
+                              className: 'w-[80%]',
                               variant: 'default',
                               disabled: isAgentStarting(agent.id) || isAgentStopping(agent.id),
                             },
@@ -171,9 +175,13 @@ export default function Home() {
                 })}
             </div>
           )}
-          <div className="flex items-center justify-between p-2">
+          <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Groups" />
+            <Button variant="outline" onClick={() => setIsGroupPanelOpen(true)}>
+              <Plus className="w-2 h-2" />
+            </Button>
           </div>
+          <Separator />
 
           {!isLoading && !isError && (
             <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-2 auto-rows-fr">
@@ -198,7 +206,7 @@ export default function Home() {
                             }
                           }}
                         >
-                          <div className="brightness-[100%] hover:brightness-[107%] w-full h-full flex items-center justify-center">
+                          <div className="w-full h-full flex items-center justify-center brightness-[100%] hover:brightness-[107%]">
                             {formatAgentName(roomName ?? '')}
                           </div>
                         </div>
