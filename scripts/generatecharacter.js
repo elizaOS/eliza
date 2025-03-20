@@ -66,7 +66,7 @@ Remember, your primary goal is to assist users within the bounds of your role an
 const twitterPostTemplate = `# Areas of Expertise
 {{knowledge}}
 
-# About {{agentName}} (@{{twitterUserName}}):
+# About {{AGENT_NAME}} (@{{twitterUserName}}):
 {{bio}}
 {{lore}}
 {{topics}}
@@ -77,12 +77,12 @@ const twitterPostTemplate = `# Areas of Expertise
 
 {{postDirections}}
 
-# Task: Generate a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
-Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
+# Task: Generate a post in the voice and style and perspective of {{AGENT_NAME}} @{{twitterUserName}}.
+Write a post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{AGENT_NAME}}. Do not add commentary or acknowledge this request, just write the post.
 Your response should be 1, 2, or 3 sentences (choose the length at random).
 Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than {{maxTweetLength}}. No emojis. Use \\n\\n (double spaces) between statements if there are multiple statements in your response.`;
 
-const twitterActionTemplate = `# INSTRUCTIONS: Determine actions for {{agentName}} (@{{twitterUserName}}) based on:
+const twitterActionTemplate = `# INSTRUCTIONS: Determine actions for {{AGENT_NAME}} (@{{twitterUserName}}) based on:
 {{bio}}
 {{postDirections}}
 
@@ -101,18 +101,18 @@ Tweet:
 # Respond with qualifying action tags only.
 Choose any combination of [LIKE] or [IGNORE] that are appropriate. Each action must be on its own line. Your response must only include the chosen actions.`;
 
-const discordShouldRespondTemplate = `# Task: Decide if {{agentName}} should respond.
-About {{agentName}}:
+const discordShouldRespondTemplate = `# Task: Decide if {{AGENT_NAME}} should respond.
+About {{AGENT_NAME}}:
 {{bio}}
 
-# INSTRUCTIONS: Determine if {{agentName}} should respond to the message and participate in the conversation. Do not comment. Just respond with "RESPOND" or "IGNORE" or "STOP".
+# INSTRUCTIONS: Determine if {{AGENT_NAME}} should respond to the message and participate in the conversation. Do not comment. Just respond with "RESPOND" or "IGNORE" or "STOP".
 
 # RESPONSE EXAMPLES
 <user 1>: I just saw a really great movie
 <user 2>: Oh? Which movie?
 Result: [IGNORE]
 
-{{agentName}}: Oh, this is my favorite game
+{{AGENT_NAME}}: Oh, this is my favorite game
 <user 1>: sick
 <user 2>: wait, why is it your favorite game
 Result: [RESPOND]
@@ -123,31 +123,31 @@ Result: [STOP]
 <user>: Hey {{agent}}, can you help me with something
 Result: [RESPOND]
 
-<user>: {{agentName}} stfu plz
+<user>: {{AGENT_NAME}} stfu plz
 Result: [STOP]
 
 <user>: i need help
-{{agentName}}: how can I help you?
+{{AGENT_NAME}}: how can I help you?
 <user>: no. i need help from someone else
 Result: [IGNORE]
 
 <user>: Hey {{agent}}, can I ask you a question
-{{agentName}}: Sure, what is it
+{{AGENT_NAME}}: Sure, what is it
 <user>: can you ask claude to create a basic counter game
 Result: [RESPOND]
 
-<user>: {{agentName}} can you create a backstory for a game character named elara
-{{agentName}}: Sure.
-{{agentName}}: Once upon a time, in a quaint little village, there was a curious girl named Elara.
-{{agentName}}: Elara was known for her adventurous spirit and her knack for finding beauty in the mundane.
+<user>: {{AGENT_NAME}} can you create a backstory for a game character named elara
+{{AGENT_NAME}}: Sure.
+{{AGENT_NAME}}: Once upon a time, in a quaint little village, there was a curious girl named Elara.
+{{AGENT_NAME}}: Elara was known for her adventurous spirit and her knack for finding beauty in the mundane.
 <user>: I'm loving it, keep going
 Result: [RESPOND]
 
-<user>: {{agentName}} stop responding plz
+<user>: {{AGENT_NAME}} stop responding plz
 Result: [STOP]
 
 <user>: okay, i want to test something. can you say marco?
-{{agentName}}: marco
+{{AGENT_NAME}}: marco
 <user>: great. okay, now do it again
 Result: [IGNORE]
 
@@ -156,33 +156,33 @@ Result: [IGNORE]
 
 Response options are [RESPOND], [IGNORE] and [STOP].
 
-{{agentName}} is in a room with other users and is very worried about being annoying and saying too much.
-Respond with [RESPOND] to messages that are directed at {{agentName}}, or participate in conversations that are about AI game design and AI game theory.
+{{AGENT_NAME}} is in a room with other users and is very worried about being annoying and saying too much.
+Respond with [RESPOND] to messages that are directed at {{AGENT_NAME}}, or participate in conversations that are about AI game design and AI game theory.
 If a message is not interesting or relevant, respond with [IGNORE]
 Unless directly responding to a user, respond with [IGNORE] to messages that are very short or do not contain much information.
-If a user asks {{agentName}} to be quiet, respond with [STOP]
-If {{agentName}} concludes a conversation and isn't part of the conversation anymore, respond with [STOP]
+If a user asks {{AGENT_NAME}} to be quiet, respond with [STOP]
+If {{AGENT_NAME}} concludes a conversation and isn't part of the conversation anymore, respond with [STOP]
 
-IMPORTANT: {{agentName}} is particularly sensitive about being annoying and saying too much, so if there is any doubt, it is better to respond with [IGNORE].
-If {{agentName}} is conversing with a user and they have not asked to stop, it is better to respond with [RESPOND].
+IMPORTANT: {{AGENT_NAME}} is particularly sensitive about being annoying and saying too much, so if there is any doubt, it is better to respond with [IGNORE].
+If {{AGENT_NAME}} is conversing with a user and they have not asked to stop, it is better to respond with [RESPOND].
 
 {{recentMessages}}
 
-# INSTRUCTIONS: Choose the option that best describes {{agentName}}'s response to the last message and make sure responses are not too long. Ignore messages if they are addressed to someone else.
+# INSTRUCTIONS: Choose the option that best describes {{AGENT_NAME}}'s response to the last message and make sure responses are not too long. Ignore messages if they are addressed to someone else.
 The available options are [RESPOND], [IGNORE], or [STOP]. Choose the most appropriate option.
-If {{agentName}} is talking too much, you can choose [IGNORE]
+If {{AGENT_NAME}} is talking too much, you can choose [IGNORE]
 
 Your response must include one of the options.`;
 
-const discordVoiceHandlerTemplate = `# Task: Generate conversational voice dialog for {{agentName}}.
-About {{agentName}}:
+const discordVoiceHandlerTemplate = `# Task: Generate conversational voice dialog for {{AGENT_NAME}}.
+About {{AGENT_NAME}}:
 {{bio}}
 
 # Attachments
 {{attachments}}
 
 # Capabilities
-Note that {{agentName}} is capable of reading/seeing/hearing various forms of media, including images, videos, audio, plaintext and PDFs. Recent attachments have been included above under the "Attachments" section.
+Note that {{AGENT_NAME}} is capable of reading/seeing/hearing various forms of media, including images, videos, audio, plaintext and PDFs. Recent attachments have been included above under the "Attachments" section.
 
 {{actions}}
 
@@ -190,10 +190,10 @@ Note that {{agentName}} is capable of reading/seeing/hearing various forms of me
 
 {{recentMessages}}
 
-# Instructions: Write the next message for {{agentName}}. Include the IGNORE action everytime. {{actionNames}}
+# Instructions: Write the next message for {{AGENT_NAME}}. Include the IGNORE action everytime. {{actionNames}}
 Response format should be formatted in a JSON block like this:
 \`\`\`json
-{ "user": "{{agentName}}", "text": "string", "action": "IGNORE" }
+{ "user": "{{AGENT_NAME}}", "text": "string", "action": "IGNORE" }
  \`\`\``;
 
 // Define the lc function to convert a string to lowercase
