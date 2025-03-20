@@ -19,7 +19,6 @@
     "packages/docs/docs/core/overview.md",
     "packages/docs/docs/core/actions.md",
     "packages/docs/docs/core/agents.md",
-    "packages/docs/docs/core/clients.md",
     "packages/docs/docs/core/database.md",
     "packages/docs/docs/core/evaluators.md",
     "packages/docs/docs/core/knowledge.md",

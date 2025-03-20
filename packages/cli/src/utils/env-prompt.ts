@@ -114,6 +114,16 @@ const ENV_VAR_CONFIGS: Record<string, EnvVarConfig[]> = {
       secret: false,
     },
   ],
+  postgresql: [
+    {
+      name: 'PostgreSQL URL',
+      key: 'POSTGRES_URL',
+      required: false,
+      description: 'URL for connecting to your PostgreSQL database.',
+      url: 'https://neon.tech/docs/connect/connect-from-any-app',
+      secret: false,
+    },
+  ],
 };
 
 /**
@@ -486,6 +496,19 @@ export function validatePluginConfig(pluginName: string): {
       return {
         valid: true,
         message: 'Anthropic API is properly configured.',
+      };
+
+    case 'postgresql':
+      if (!envVars.POSTGRES_URL || envVars.POSTGRES_URL.trim() === '') {
+        return {
+          valid: true, // Not required by default
+          message: 'PostgreSQL URL is not configured. Using default PGLite database.',
+        };
+      }
+
+      return {
+        valid: true,
+        message: 'PostgreSQL connection is configured.',
       };
 
     default:

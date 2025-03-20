@@ -1,7 +1,7 @@
-import { USER_NAME } from '@/constants';
+import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { apiClient } from '@/lib/api';
 import { WorldManager } from '@/lib/world-manager';
-import type { Agent, Content, Memory, UUID } from '@elizaos/core';
+import type { Agent, Content, Memory, UUID, Room } from '@elizaos/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useToast } from './use-toast';
@@ -430,6 +430,78 @@ export function useMessages(
   };
 }
 
+export function useGroupMessages(
+  serverId: UUID,
+  groupChatSource: string
+): {
+  data: ContentWithUser[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+} {
+  const worldId = WorldManager.getWorldId();
+
+  // Initial fetch of messages
+  const messagesQuery = useQuery({
+    queryKey: ['groupmessages', serverId, worldId],
+    queryFn: async () => {
+      const result = await apiClient.getGroupMemories(serverId);
+      const validSuffixes = [`:${USER_NAME}`, ':agent'];
+      let memories = result.data
+        .map((memory: Memory): ContentWithUser | null => {
+          const source = memory.content?.source ?? '';
+          if (
+            !source.startsWith(groupChatSource) ||
+            !validSuffixes.some((suffix) => source.endsWith(suffix))
+          ) {
+            return null;
+          }
+          const isUser = source.endsWith(validSuffixes[0]);
+
+          return {
+            text: memory.content.text,
+            roomId: memory.roomId,
+            name: isUser ? USER_NAME : 'agent',
+            agentId: memory.agentId,
+            entityId: memory.entityId,
+            createdAt: memory.createdAt || 0,
+            attachments: memory.content.attachments,
+            source: memory.content.source,
+            worldId,
+            id: memory.id,
+            thought: memory.content.thought,
+          };
+        })
+        .filter(Boolean); // Remove null values from the array
+
+      const uniqueMessages = new Map<string, string>();
+
+      memories = memories.filter((msg: Memory) => {
+        if (msg.name === USER_NAME) {
+          const key = msg.text;
+          if (uniqueMessages.has(key) && uniqueMessages.get(key) !== msg.agentId) {
+            // If there's already a message with the same text but different agentId, filter it out
+            return false;
+          }
+          uniqueMessages.set(key, msg.agentId);
+        }
+        return true;
+      });
+
+      // Sort messages by createdAt timestamp
+      memories.sort((a: Memory, b: Memory) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+
+      return memories;
+    },
+    enabled: Boolean(serverId && groupChatSource),
+    staleTime: STALE_TIMES.FREQUENT,
+  });
+
+  return {
+    ...messagesQuery,
+  };
+}
+
 // Hook for fetching agent actions
 /**
  * Custom hook to fetch agent actions for a specific agent and room.
@@ -612,5 +684,34 @@ export function useUpdateMemory() {
         variant: 'destructive',
       });
     },
+  });
+}
+
+export function useRooms(options = {}) {
+  const network = useNetworkStatus();
+
+  return useQuery<Map<string, Room[]>>({
+    queryKey: ['rooms'],
+    queryFn: async () => {
+      const rooms = await apiClient.getRooms();
+      const worldRooms = rooms.data.filter(
+        (room: Room) =>
+          room.worldId === WorldManager.getWorldId() && room.source === GROUP_CHAT_SOURCE
+      );
+
+      const roomMap: Map<string, Room[]> = new Map();
+      for (const room of worldRooms) {
+        const { serverId, ...rest } = room;
+        if (serverId) {
+          roomMap.set(serverId, [...(roomMap.get(serverId) || []), { serverId, ...rest }]);
+        }
+      }
+
+      return roomMap;
+    },
+    staleTime: STALE_TIMES.FREQUENT,
+    refetchInterval: !network.isOffline ? STALE_TIMES.FREQUENT : false,
+    refetchIntervalInBackground: false,
+    ...options,
   });
 }

@@ -116,10 +116,7 @@ export async function initializeAllSystems(
           },
         },
       };
-      console.log('*** ensuring world');
-      console.log(world);
       await runtime.ensureWorldExists(world);
-      console.log('*** ensuring world done');
       await initializeOnboarding(runtime, world, config);
       await startOnboardingDM(runtime, server, worldId);
       console.log('world', world);
