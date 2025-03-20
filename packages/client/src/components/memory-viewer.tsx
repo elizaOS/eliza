@@ -259,7 +259,7 @@ export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agent
               </Badge>
             )}
           </div>
-          <Badge variant="secondary" className="text-xs group-hover:mr-16 transition-all">
+          <Badge variant="secondary" className="text-xs group-hover:mr-8 transition-all">
             {timestamp}
           </Badge>
         </div>
@@ -286,12 +286,17 @@ export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agent
 
         {/* Show providers if available */}
         {content?.providers && content.providers.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
-            {content.providers.map((provider) => (
-              <Badge key={provider} variant="outline" className="text-[10px]">
-                {provider}
-              </Badge>
-            ))}
+          <div className="mt-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-xs font-medium text-muted-foreground">Providers</span>
+            </div>
+            <div className="flex flex-wrap gap-1 p-2 bg-muted/20 rounded text-muted-foreground">
+              {content.providers.map((provider) => (
+                <Badge key={provider} variant="outline" className="text-[10px] bg-muted/40">
+                  {provider}
+                </Badge>
+              ))}
+            </div>
           </div>
         )}
 
