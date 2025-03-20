@@ -18,7 +18,6 @@ export default function AgentAvatarStack({
   const displayAgents = agentIds.slice(0, 2);
   const isMultiple = displayAgents.length > 1;
 
-  // Full size when one avatar, half size when multiple avatars
   const baseSize = size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
   const avatarSizeClass = isMultiple
     ? size === 'sm'
