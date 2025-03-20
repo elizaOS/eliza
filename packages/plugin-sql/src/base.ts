@@ -256,8 +256,6 @@ export abstract class BaseDrizzleAdapter<
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        console.log('[updateAgent] Agent ID:', agentId);
-        console.log('[updateAgent] Updating agent:', agent);
         if (!agent.id) {
           throw new Error('Agent ID is required for update');
         }
