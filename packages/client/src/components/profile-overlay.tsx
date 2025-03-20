@@ -1,12 +1,11 @@
 import { useAgentManagement } from '@/hooks/use-agent-management';
 import { formatAgentName } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
-import { Cog, Loader2, MessageSquare, Play, Square, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Cog, Loader2, Play, Square, X } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { Button } from './ui/button';
-import { Card, CardContent, CardHeader, CardFooter, CardTitle } from './ui/card';
-import { Separator } from './ui/separator';
+import { Card, CardContent, CardFooter, CardHeader } from './ui/card';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 interface ProfileOverlayProps {
   isOpen: boolean;
@@ -21,40 +20,43 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
   const { startAgent, stopAgent, isAgentStarting, isAgentStopping } = useAgentManagement();
 
   const navigate = useNavigate();
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const isActive = (agent as Agent & { status?: string }).status === 'active';
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
   const isProcessing = isStarting || isStopping;
 
-  // handle Start/Stop button
-  let buttonLabel = 'Start';
-  let buttonIcon = <Play />;
+  // Button state configuration
+  const buttonConfig = {
+    label: isActive ? 'Stop' : 'Start',
+    icon: isActive ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />,
+    variant: isActive ? 'destructive' : 'default',
+  };
+
   if (isStarting) {
-    buttonLabel = 'Starting...';
-    buttonIcon = <Loader2 className="animate-spin" />;
+    buttonConfig.label = 'Starting...';
+    buttonConfig.icon = <Loader2 className="animate-spin" />;
   } else if (isStopping) {
-    buttonLabel = 'Stopping...';
-    buttonIcon = <Loader2 className="animate-spin" />;
-  } else if (isActive) {
-    buttonLabel = 'Stop';
-    buttonIcon = <Square fill="#EF4444" size={16} />;
+    buttonConfig.label = 'Stopping...';
+    buttonConfig.icon = <Loader2 className="animate-spin" />;
   }
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    };
+  // Handle agent start/stop
+  const handleAgentToggle = () => {
+    if (isProcessing) return;
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
+    if (!isActive) {
+      startAgent(agent);
+    } else {
+      stopAgent(agent);
+    }
+  };
+
+  // Navigate to settings
+  const navigateToSettings = () => {
+    navigate(`/settings/${agent.id}`);
+  };
+
   return (
     <div
       className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
@@ -80,19 +82,17 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
             <div className="flex w-full justify-between items-end">
               <div className="flex flex-col gap-2">
                 <div className="w-24 h-24 flex justify-center items-center relative">
-                  {agent && (
-                    <div className="text-4xl bg-muted rounded-full h-full w-full flex justify-center items-center overflow-hidden border-4 border-background">
-                      {agent.settings?.avatar ? (
-                        <img
-                          src={agent.settings.avatar}
-                          alt="Agent Avatar"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        formatAgentName(agent.name)
-                      )}
-                    </div>
-                  )}
+                  <div className="text-4xl bg-muted rounded-full h-full w-full flex justify-center items-center overflow-hidden border-4 border-background">
+                    {agent.settings?.avatar ? (
+                      <img
+                        src={agent.settings.avatar}
+                        alt="Agent Avatar"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      formatAgentName(agent.name)
+                    )}
+                  </div>
                   <div
                     className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${
                       isActive ? 'bg-green-500' : 'bg-muted-foreground'
@@ -100,22 +100,47 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
                   />
                 </div>
                 <div className="flex flex-col justify-center mr-4">
-                  {agent && <div className="text-xl font-bold truncate max-w-48">{agent.name}</div>}
-                  {agent && <div className="text-xs text-muted-foreground">ID: {agent.id}</div>}
+                  <div className="text-xl font-bold truncate max-w-48">{agent.name}</div>
+                  <div className="text-xs text-muted-foreground">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          className="cursor-pointer hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (agent.id) {
+                              navigator.clipboard.writeText(agent.id);
+                            }
+                          }}
+                          onKeyUp={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.stopPropagation();
+                              if (agent.id) {
+                                navigator.clipboard.writeText(agent.id);
+                              }
+                            }
+                          }}
+                        >
+                          ID: {agent.id ?? 'N/A'}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p>Click to copy agent ID</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </CardHeader>
 
-        {/* Main content */}
         <CardContent className="p-6 overflow-auto">
           <div className="rounded-md bg-muted p-4 mb-6">
             <p className="font-medium text-sm mb-2">About Me</p>
-            {agent && <p className="font-light text-sm text-gray-500">{agent?.system}</p>}
+            <p className="font-light text-sm text-gray-500">{agent.system}</p>
           </div>
 
-          {/* Additional information sections */}
           <div className="space-y-6">
             <div>
               <p className="font-medium text-sm mb-2">Status</p>
@@ -136,7 +161,6 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
               </p>
             </div>
 
-            {/* Plugins Section */}
             <div>
               <p className="font-medium text-sm mb-2">Plugins</p>
               <div className="flex flex-wrap gap-2">
@@ -163,36 +187,24 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
           </div>
         </CardContent>
 
-        {/* Action buttons at the bottom */}
         <CardFooter className="flex justify-between items-center p-4 border-t">
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="icon"
               className="h-9 w-9 flex items-center justify-center"
-              onClick={() => {
-                setIsDropdownOpen(false);
-                navigate(`/settings/${agent.id}`);
-              }}
+              onClick={navigateToSettings}
             >
               <Cog className="w-4 h-4" />
             </Button>
 
             <Button
-              variant={isActive ? 'destructive' : 'default'}
-              onClick={() => {
-                if (isProcessing) return;
-
-                if (!isActive) {
-                  startAgent(agent);
-                } else {
-                  stopAgent(agent);
-                }
-              }}
+              variant={buttonConfig.variant}
+              onClick={handleAgentToggle}
               disabled={isProcessing}
             >
-              {buttonIcon}
-              <span className="ml-2">{buttonLabel}</span>
+              {buttonConfig.icon}
+              <span className="ml-2">{buttonConfig.label}</span>
             </Button>
           </div>
 
