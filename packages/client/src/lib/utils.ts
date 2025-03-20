@@ -161,15 +161,3 @@ export function deepMerge<T>(target: T, ...sources: Partial<T>[]): T {
 
   return result;
 }
-
-/**
- * Prepares agent data for update by ensuring all JSONb fields are properly
- * merged with the existing agent data
- *
- * @param existingAgent The current agent data from the database
- * @param updates The partial updates to be applied
- * @returns A merged agent object ready for database update
- */
-export function prepareAgentUpdate<T>(existingAgent: T, updates: Partial<T>): T {
-  return deepMerge(existingAgent, updates);
-}
