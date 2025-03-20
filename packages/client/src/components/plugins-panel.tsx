@@ -8,7 +8,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { usePlugins } from '@/hooks/use-plugins';
 import type { Agent } from '@elizaos/core';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Button } from './ui/button';
 
 interface PluginsPanelProps {
@@ -26,17 +26,24 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
   const { data: plugins, error } = usePlugins();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-
-  const pluginNames = useMemo(() => {
-    if (!plugins) return [];
-    return Object.keys(plugins).map((name) => name.replace(/^@elizaos-plugins\//, '@elizaos/'));
-  }, [plugins]);
+  const [hasChanged, setHasChanged] = useState(false);
 
   // Ensure we always have arrays and normalize plugin names
   const safeCharacterPlugins = useMemo(() => {
     if (!Array.isArray(characterValue?.plugins)) return [];
     return characterValue.plugins;
   }, [characterValue?.plugins]);
+
+  // Get plugin names from available plugins
+  const pluginNames = useMemo(() => {
+    if (!plugins) return [];
+    return Object.keys(plugins).map((name) => name.replace(/^@elizaos-plugins\//, '@elizaos/'));
+  }, [plugins]);
+
+  // Reset change tracking when character changes
+  useEffect(() => {
+    setHasChanged(false);
+  }, [characterValue.id]);
 
   const filteredPlugins = useMemo(() => {
     return pluginNames
@@ -45,6 +52,10 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
   }, [pluginNames, safeCharacterPlugins, searchQuery]);
 
   const handlePluginAdd = (plugin: string) => {
+    if (safeCharacterPlugins.includes(plugin)) return;
+
+    setHasChanged(true);
+
     if (setCharacterValue.addPlugin) {
       setCharacterValue.addPlugin(plugin);
     } else if (setCharacterValue.updateField) {
@@ -58,6 +69,8 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
   const handlePluginRemove = (plugin: string) => {
     const index = safeCharacterPlugins.indexOf(plugin);
     if (index !== -1) {
+      setHasChanged(true);
+
       if (setCharacterValue.removePlugin) {
         setCharacterValue.removePlugin(index);
       } else if (setCharacterValue.updateField) {
@@ -140,6 +153,9 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
                   </DialogContent>
                 </Dialog>
               </div>
+              {hasChanged && (
+                <p className="text-xs text-blue-500">Plugins configuration has been updated</p>
+              )}
             </div>
           )}
         </div>

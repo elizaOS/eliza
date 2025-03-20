@@ -1,6 +1,6 @@
 import { usePartialUpdate } from '@/hooks/use-partial-update';
 import type { Agent } from '@elizaos/core';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 /**
  * A custom hook for handling Agent updates with specific handling for JSONb fields.
@@ -11,6 +11,9 @@ import { useCallback } from 'react';
  * @returns Object with agent state and update methods
  */
 export function useAgentUpdate(initialAgent: Agent) {
+  // Keep reference to the initial state for comparison
+  const initialAgentRef = useRef<Agent>(JSON.parse(JSON.stringify(initialAgent)));
+
   const {
     value: agent,
     updateField,
@@ -42,14 +45,9 @@ export function useAgentUpdate(initialAgent: Agent) {
    */
   const setSettings = useCallback(
     (settings: any) => {
-      if (settings.secrets) {
-        const removedKeys = Object.keys(agent.settings?.secrets || {}).filter(
-          (key) => !Object.keys(settings.secrets).includes(key)
-        );
-      }
       updateSettings(settings);
     },
-    [updateSettings, agent.settings?.secrets]
+    [updateSettings]
   );
 
   /**
@@ -263,6 +261,57 @@ export function useAgentUpdate(initialAgent: Agent) {
     [updateSetting]
   );
 
+  /**
+   * Returns an object containing only the fields that have changed
+   * compared to the initial agent state
+   */
+  const getChangedFields = useCallback(() => {
+    const changedFields: Partial<Agent> = {};
+    const current = agent;
+    const initial = initialAgentRef.current;
+
+    // Compare scalar properties
+    const scalarProps = ['name', 'username', 'system'] as const;
+    scalarProps.forEach((prop) => {
+      if (current[prop] !== initial[prop]) {
+        changedFields[prop] = current[prop];
+      }
+    });
+
+    if (current.enabled !== initial.enabled) {
+      changedFields.enabled = current.enabled;
+    }
+
+    // Compare array properties with type safety
+    if (JSON.stringify(current.bio) !== JSON.stringify(initial.bio)) {
+      changedFields.bio = current.bio;
+    }
+
+    if (JSON.stringify(current.topics) !== JSON.stringify(initial.topics)) {
+      changedFields.topics = current.topics;
+    }
+
+    if (JSON.stringify(current.adjectives) !== JSON.stringify(initial.adjectives)) {
+      changedFields.adjectives = current.adjectives;
+    }
+
+    if (JSON.stringify(current.plugins) !== JSON.stringify(initial.plugins)) {
+      changedFields.plugins = current.plugins;
+    }
+
+    // Compare style object
+    if (JSON.stringify(current.style) !== JSON.stringify(initial.style)) {
+      changedFields.style = current.style;
+    }
+
+    // Compare settings object with special handling for secrets
+    if (JSON.stringify(current.settings) !== JSON.stringify(initial.settings)) {
+      changedFields.settings = current.settings;
+    }
+
+    return changedFields;
+  }, [agent]);
+
   return {
     agent,
     // Original methods
@@ -271,6 +320,9 @@ export function useAgentUpdate(initialAgent: Agent) {
     reset,
     updateSettings,
     setSettings,
+
+    // Method to get only changed fields
+    getChangedFields,
 
     // Basic Info Tab
     updateSetting,
