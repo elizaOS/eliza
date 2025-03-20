@@ -175,18 +175,10 @@ export default function Page({ serverId }: { serverId: UUID }) {
 
   const getAvatar = (agentId: string): string | null => {
     const rooms = roomsData?.get(serverId);
-    const agent = rooms?.find((room) => room.agentId === agentId);
-    const avatar = agent?.metadata?.avatar;
+    const room = rooms?.find((room) => room.agentId === agentId);
+    const agent = room?.character;
+    const avatar = agent?.settings?.avatar;
     return typeof avatar === 'string' ? avatar : null;
-  };
-
-  const getRoomThumbnail = () => {
-    const rooms = roomsData?.get(serverId);
-    if (rooms && rooms.length) {
-      return rooms[0].metadata?.thumbnail;
-    }
-
-    return null;
   };
 
   const getRoomName = () => {
