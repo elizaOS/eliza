@@ -41,14 +41,14 @@ const FeatureList = [
   },
   {
     icon: '💭',
-    title: 'Self-Reflection',
+    title: 'Self-Reflection & Learning',
     description: (
       <>
         Agents learn from interactions through built-in reflection mechanisms that extract facts,
         build relationships, and improve responses over time.
       </>
     ),
-    link: '/docs/core/reflection',
+    link: '/docs/core/evaluators',
   },
   {
     icon: '💬',
@@ -277,7 +277,7 @@ export default function HomepageFeatures({ type = 'features', showUseCases = tru
           </div>
 
           <div className={styles.actionSection}>
-            <Link to="/docs/intro" className="button button--primary button--lg">
+            <Link to="/docs/quickstart" className="button button--primary button--lg">
               Get Started with Eliza
             </Link>
             <Link to="/community" className={styles.communityLink}>
