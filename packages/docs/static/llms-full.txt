@@ -231,8 +231,8 @@ import { character as defaultCharacter } from '../characters/eliza';
 import { displayBanner } from '../displayBanner';
 import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
-import { loadConfig, saveConfig } from '../utils/config-manager.js';
-import { promptForEnvVars } from '../utils/env-prompt.js';
+import { loadConfig, saveConfig } from '../utils/config-manager';
+import { promptForEnvVars } from '../utils/env-prompt';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
 ⋮----
@@ -295,12 +295,12 @@ import { Command } from 'commander';
 import { existsSync } from 'node:fs';
 ⋮----
 import path from 'node:path';
-import { loadProject } from '../project.js';
-import { AgentServer } from '../server/index.js';
+import { loadProject } from '../project';
+import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
-import { TestRunner } from '../testRunner.js';
-import { promptForEnvVars } from '../utils/env-prompt.js';
-import { startAgent } from './start.js';
+import { TestRunner } from '../testRunner';
+import { promptForEnvVars } from '../utils/env-prompt';
+import { startAgent } from './start';
 async function checkPortAvailable(port: number): Promise<boolean>
 function checkIfLikelyPluginDir(dir: string): boolean
 const runAgentTests = async (options: {
@@ -322,18 +322,18 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
-import { agent } from './commands/agent.js';
-import { create } from './commands/create.js';
-import { dev } from './commands/dev.js';
-import { env } from './commands/env.js';
-import { plugin } from './commands/plugin.js';
-import { project } from './commands/project.js';
-import { publish } from './commands/publish.js';
-import { start } from './commands/start.js';
-import { teeCommand as tee } from './commands/tee.js';
-import { test } from './commands/test.js';
-import { update } from './commands/update.js';
-import { loadEnvironment } from './utils/get-config.js';
+import { agent } from './commands/agent';
+import { create } from './commands/create';
+import { dev } from './commands/dev';
+import { env } from './commands/env';
+import { plugin } from './commands/plugin';
+import { project } from './commands/project';
+import { publish } from './commands/publish';
+import { start } from './commands/start';
+import { teeCommand as tee } from './commands/tee';
+import { test } from './commands/test';
+import { update } from './commands/update';
+import { loadEnvironment } from './utils/get-config';
 import { displayBanner } from './displayBanner';
 ⋮----
 async function main()
@@ -3165,7 +3165,7 @@ ElizaOS uses a unified database architecture based on Drizzle ORM with adapters 
 
 | Adapter        | Best For                    | Key Features                                                      |
 | -------------- | --------------------------- | ----------------------------------------------------------------- |
-| **PGLite**     | Local development & testing | Lightweight PostgreSQL implementation running in Node.js process  |
+| **PGLite**     | Local development & testing | Lightweight PostgreSQL implementation running in Node process  |
 | **PostgreSQL** | Production deployments      | Full PostgreSQL with vector search, scaling, and high reliability |
 
 Additional database adapters will be supported in future releases as ElizaOS continues to evolve.
@@ -3562,7 +3562,7 @@ Yes, future releases will add support for additional databases such as:
 - SQLite
 - Supabase
 - Qdrant
-- SQL.js
+- SQL
 
 The adapter interface is designed to be extensible to support a wide range of storage solutions.
 
@@ -4444,7 +4444,7 @@ cd eliza
 
 ### Node Version
 
-- Use Node.js 23.3.0+ (`node -v` to check)
+- Use Node 23.3.0+ (`node -v` to check)
 - Try using NVM: `nvm use 23`
 
 ### Installation Problems
@@ -4584,7 +4584,7 @@ COINGECKO_API_KEY=
     "build": "turbo run build --filter=@elizaos/client && turbo run build --filter=!@elizaos/docs",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* && turbo run clean --filter=./packages/*",
     "lint": "turbo run lint --filter=./packages/* && prettier --write . && prettier --check .",
-    "pre-commit": "bun run scripts/pre-commit-lint.js",
+    "pre-commit": "bun run scripts/pre-commit-lint",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
     "release:alpha": "lerna publish prerelease --preid alpha --dist-tag alpha --no-private --force-publish --loglevel verbose",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
@@ -4729,7 +4729,7 @@ COINGECKO_API_KEY=
 ### Prerequisites
 
 - [Python 2.7+](https://www.python.org/downloads/)
-- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Node 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - [bun](https://bun.io/installation)
 
 > **Note for Windows Users:** [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required.
