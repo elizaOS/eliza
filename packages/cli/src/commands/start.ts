@@ -8,7 +8,6 @@ import {
   stringToUuid,
 } from '@elizaos/core';
 import { Command } from 'commander';
-import inquirer from 'inquirer';
 import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +16,7 @@ import { displayBanner } from '../displayBanner';
 import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
 import { loadConfig, saveConfig } from '../utils/config-manager.js';
-import { promptForEnvVars, readEnvFile, writeEnvFile } from '../utils/env-prompt.js';
+import { promptForEnvVars } from '../utils/env-prompt.js';
 import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
@@ -261,8 +260,8 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
   // Load environment variables from project .env or .eliza/.env
   await loadEnvironment();
 
-  // Configure database settings
-  const postgresUrl = await configureDatabaseSettings();
+  // Configure database settings - pass reconfigure option to potentially force reconfiguration
+  const postgresUrl = await configureDatabaseSettings(options.configure);
 
   // Get PGLite data directory from environment (may have been set during configuration)
   const pgliteDataDir = process.env.PGLITE_DATA_DIR;
@@ -280,54 +279,6 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
       logger.info("First time setup. Let's configure your Eliza agent.");
     } else {
       logger.info('Reconfiguration requested.');
-    }
-
-    // Prompt for database configuration
-    logger.info('Configuring database connection...');
-
-    // If we already have a PostgreSQL URL from the configureDatabaseSettings call,
-    // we don't need to prompt again
-    if (!postgresUrl) {
-      // Force reconfiguration of database by temporarily clearing the environment variable
-      const currentPostgresUrl = process.env.POSTGRES_URL;
-      delete process.env.POSTGRES_URL;
-
-      // Get existing env vars
-      const envVars = readEnvFile();
-
-      // Check if we're using PGLite
-      const usingPglite = !!process.env.PGLITE_DATA_DIR;
-
-      // Only prompt for PostgreSQL URL if not using PGLite
-      if (!usingPglite) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        // Prompt for PostgreSQL URL - simplified version
-        const { value } = await inquirer.prompt([
-          {
-            type: 'input',
-            name: 'value',
-            message: 'Enter your PostgreSQL URL:',
-            default: envVars.POSTGRES_URL || '', // Show the current value as default
-            prefix: '',
-          },
-        ]);
-
-        // Save the new value if provided, otherwise restore the original
-        if (value && value.trim() !== '') {
-          process.env.POSTGRES_URL = value.trim();
-          envVars.POSTGRES_URL = value.trim();
-          writeEnvFile(envVars);
-        } else if (currentPostgresUrl) {
-          // Restore the original value if no new one provided
-          process.env.POSTGRES_URL = currentPostgresUrl;
-        }
-      } else {
-        // If using PGLite, restore the current PostgreSQL URL if it exists
-        if (currentPostgresUrl) {
-          process.env.POSTGRES_URL = currentPostgresUrl;
-        }
-        logger.info('Using PGLite as database, skipping PostgreSQL URL prompt');
-      }
     }
 
     // Save the configuration AFTER user has made selections

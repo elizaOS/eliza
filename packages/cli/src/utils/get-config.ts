@@ -35,7 +35,10 @@ export function isValidPostgresUrl(url: string): boolean {
   // More permissive pattern (allows missing password, different formats)
   const permissivePattern = /^postgresql:\/\/.*@.*:\d+\/.*$/;
 
-  return basicPattern.test(url) || permissivePattern.test(url);
+  // Cloud pattern: allows for URLs with query parameters like sslmode=require
+  const cloudPattern = /^postgresql:\/\/[^:]+:[^@]+@[^\/]+\/[^?]+(\?.*)?$/;
+
+  return basicPattern.test(url) || cloudPattern.test(url) || permissivePattern.test(url);
 }
 
 /**
@@ -137,64 +140,61 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
 
 /**
  * Prompts the user for a Postgres URL, validates it, and stores it
- * @param envFilePath Path to the .env file
  * @returns The configured Postgres URL or null if user skips
  */
+/**
+ * Prompts the user for a Postgres URL, validates it, and stores it
+ * @returns The configured Postgres URL or null if user cancels
+ */
 export async function promptAndStorePostgresUrl(envFilePath: string): Promise<string | null> {
-  const { postgresUrlInput } = await prompts({
+  const response = await prompts({
     type: 'text',
-    name: 'postgresUrlInput',
+    name: 'postgresUrl',
     message: 'Enter your Postgres URL:',
-    validate: (value) => value.trim() !== '' || 'Postgres URL cannot be empty',
+    validate: (value) => {
+      if (value.trim() === '') return 'Postgres URL cannot be empty';
+
+      const isValid = isValidPostgresUrl(value);
+      if (!isValid) {
+        return `Invalid URL format. Expected: postgresql://user:password@host:port/dbname.`;
+      }
+      return true;
+    },
   });
 
-  if (!postgresUrlInput || postgresUrlInput.trim() === '') {
+  // Handle user cancellation (Ctrl+C)
+  if (!response.postgresUrl) {
     return null;
   }
 
-  // Basic validation
-  if (!isValidPostgresUrl(postgresUrlInput)) {
-    logger.warn("The URL format doesn't appear to be valid.");
-    logger.info('Expected format: postgresql://user:password@host:port/dbname');
-
-    const { useAnyway } = await prompts({
-      type: 'confirm',
-      name: 'useAnyway',
-      message: 'Use this URL anyway? (Choose Yes if you have a custom setup)',
-      initial: false,
-    });
-
-    if (!useAnyway) {
-      return null;
-    }
-  }
-
   // Store the URL in the .env file
-  await storePostgresUrl(postgresUrlInput, envFilePath);
-  return postgresUrlInput;
+  await storePostgresUrl(response.postgresUrl, envFilePath);
+
+  return response.postgresUrl;
 }
 
 /**
  * Configures the database to use, either PGLite or PostgreSQL
+ * @param reconfigure If true, force reconfiguration even if already configured
  * @returns The postgres URL if using Postgres, otherwise null
  */
-export async function configureDatabaseSettings(): Promise<string | null> {
+export async function configureDatabaseSettings(reconfigure = false): Promise<string | null> {
   // Set up directories and env file
-  const { elizaDir, elizaDbDir, envFilePath } = await ensureElizaDir();
+  const { elizaDbDir, envFilePath } = await ensureElizaDir();
   await ensureEnvFile(envFilePath);
 
   // Check if we already have database configuration in env
   let postgresUrl = process.env.POSTGRES_URL;
   const pgliteDataDir = process.env.PGLITE_DATA_DIR;
 
-  // If we already have a postgres URL configured, use that
-  if (postgresUrl) {
+  // If we already have a postgres URL configured and not reconfiguring, use that
+  if (postgresUrl && !reconfigure) {
     logger.debug('Using existing PostgreSQL configuration');
     return postgresUrl;
   }
 
-  // If we already have PGLITE_DATA_DIR set in env, use PGLite
-  if (pgliteDataDir) {
+  // If we already have PGLITE_DATA_DIR set in env and not reconfiguring, use PGLite
+  if (pgliteDataDir && !reconfigure) {
     logger.debug(`Using existing PGLite configuration: ${pgliteDataDir}`);
 
     // Ensure the directory exists
