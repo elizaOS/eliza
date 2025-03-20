@@ -216,9 +216,22 @@ export default function CharacterForm({
     return char;
   };
 
-  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    onSubmit?.(characterValue as any);
+    setIsSubmitting(true);
+
+    try {
+      const updatedCharacter = await ensureAvatarSize(characterValue);
+      await onSubmit(updatedCharacter);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to update',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const renderInputField = (field: InputField) => (
