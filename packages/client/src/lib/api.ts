@@ -1,6 +1,5 @@
 import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 import { WorldManager } from './world-manager';
-import { deepMerge } from './utils';
 
 const API_PREFIX = '/api';
 
