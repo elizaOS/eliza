@@ -43,10 +43,33 @@ export function useAgentUpdate(initialAgent: Agent) {
    */
   const setSettings = useCallback(
     (settings: any) => {
-      console.log('[useAgentUpdate] setSettings called with:', settings);
+      console.log('[useAgentUpdate] setSettings called with:', JSON.stringify(settings));
+
+      if (settings.secrets) {
+        console.log(
+          '[useAgentUpdate] Current secrets before update:',
+          JSON.stringify(agent.settings?.secrets)
+        );
+        console.log('[useAgentUpdate] New secrets to apply:', JSON.stringify(settings.secrets));
+
+        const removedKeys = Object.keys(agent.settings?.secrets || {}).filter(
+          (key) => !Object.keys(settings.secrets).includes(key)
+        );
+
+        console.log('[useAgentUpdate] Keys that will be removed:', removedKeys);
+      }
+
       updateSettings(settings);
+
+      // Add a timeout to check if the update was applied
+      setTimeout(() => {
+        console.log(
+          '[useAgentUpdate] After setSettings timeout - current secrets:',
+          JSON.stringify(agent.settings?.secrets)
+        );
+      }, 100);
     },
-    [updateSettings]
+    [updateSettings, agent.settings?.secrets]
   );
 
   /**
@@ -71,23 +94,41 @@ export function useAgentUpdate(initialAgent: Agent) {
   const updateSecret = useCallback(
     (key: string, value: string) => {
       console.log('[useAgentUpdate] updateSecret called for key:', key, 'value:', value);
+      console.log('[useAgentUpdate] Current agent settings:', JSON.stringify(agent.settings));
 
       // Handle nested secrets object properly
       const currentSettings = agent.settings || {};
       const currentSecrets = currentSettings.secrets || {};
+
+      console.log(
+        '[useAgentUpdate] Current secrets before update:',
+        JSON.stringify(currentSecrets)
+      );
 
       const newSecrets = {
         ...currentSecrets,
         [key]: value,
       };
 
-      console.log('[useAgentUpdate] New secrets object:', newSecrets);
+      console.log(
+        '[useAgentUpdate] New secrets object after adding/updating key:',
+        JSON.stringify(newSecrets)
+      );
 
       // Update entire settings object for better change detection
+      console.log('[useAgentUpdate] Calling updateSettings with new settings');
       updateSettings({
         ...currentSettings,
         secrets: newSecrets,
       });
+
+      // Add a timeout to check if the update was applied
+      setTimeout(() => {
+        console.log(
+          '[useAgentUpdate] After updateSecret timeout - current secrets:',
+          JSON.stringify(agent.settings?.secrets)
+        );
+      }, 100);
     },
     [agent.settings, updateSettings]
   );

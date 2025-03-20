@@ -25,12 +25,9 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
    * @param newValue The new value for the field
    */
   const updateField = useCallback(<K>(path: string, newValue: K) => {
-    console.log('[usePartialUpdate] updateField called with path:', path, 'value:', newValue);
-
     setValue((prevValue) => {
       // Handle simple (non-nested) case
       if (!path.includes('.')) {
-        console.log('[usePartialUpdate] Updating simple field:', path);
         return {
           ...prevValue,
           [path]: newValue,
@@ -61,14 +58,6 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
           array[index] = updateNestedObject(array[index], deeperPath, newValue);
         }
 
-        console.log(
-          '[usePartialUpdate] Updating array field:',
-          arrayName,
-          'index:',
-          index,
-          'new array:',
-          array
-        );
         return {
           ...prevValue,
           [arrayName]: array,
@@ -78,7 +67,6 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
       // Special case for settings.secrets path
       if (path.startsWith('settings.secrets.')) {
         const secretKey = path.split('.')[2];
-        console.log('[usePartialUpdate] Updating secret:', secretKey, 'with value:', newValue);
 
         const currentSettings = (prevValue as any).settings || {};
         const currentSecrets = currentSettings.secrets || {};
@@ -87,8 +75,6 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
           ...currentSecrets,
           [secretKey]: newValue,
         };
-
-        console.log('[usePartialUpdate] New secrets object:', newSecrets);
 
         return {
           ...prevValue,
@@ -109,7 +95,6 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
         ),
       } as T;
 
-      console.log('[usePartialUpdate] Updated value with nested path:', path, 'Result:', result);
       return result;
     });
   }, []);
@@ -258,16 +243,75 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
   }, [initialValue]);
 
   // Special handling for updating the entire settings object
-  const updateSettings = useCallback((settings: any) => {
-    console.log('[usePartialUpdate] updateSettings called with:', settings);
-    setValue(
-      (prevValue) =>
-        ({
+  const updateSettings = useCallback(
+    (settings: any) => {
+      console.log('[usePartialUpdate] updateSettings called with:', JSON.stringify(settings));
+
+      setValue((prevValue) => {
+        console.log(
+          '[usePartialUpdate] Previous value in updateSettings:',
+          JSON.stringify(prevValue)
+        );
+
+        // Extract settings but remove 'secrets' key to avoid duplication
+        const { secrets, ...otherSettings } = settings;
+        console.log('[usePartialUpdate] Extracted secrets:', JSON.stringify(secrets));
+        console.log('[usePartialUpdate] Other settings:', JSON.stringify(otherSettings));
+
+        // Create the updated settings object
+        const updatedSettings = {
+          ...(prevValue as any).settings, // Start with existing settings
+          ...otherSettings, // Add other settings (not secrets)
+        };
+
+        console.log(
+          '[usePartialUpdate] Updated settings before secrets:',
+          JSON.stringify(updatedSettings)
+        );
+
+        // Only add secrets if it was included in the update
+        if (secrets) {
+          console.log('[usePartialUpdate] Processing secrets update:', JSON.stringify(secrets));
+          console.log('[usePartialUpdate] Secrets keys to process:', Object.keys(secrets));
+
+          // Create a new secrets object that only contains non-null values
+          const filteredSecrets: Record<string, any> = {};
+
+          Object.entries(secrets).forEach(([key, value]) => {
+            console.log(
+              `[usePartialUpdate] Processing secret key: ${key}, value type: ${value === null ? 'null' : typeof value}`
+            );
+            // If value is null, don't include it (this is how we delete)
+            if (value !== null) {
+              filteredSecrets[key] = value;
+              console.log(`[usePartialUpdate] Added key ${key} to filteredSecrets`);
+            } else {
+              console.log(`[usePartialUpdate] Skipping null key ${key} (will be deleted)`);
+            }
+          });
+
+          console.log(
+            '[usePartialUpdate] Filtered secrets after processing:',
+            JSON.stringify(filteredSecrets)
+          );
+          console.log('[usePartialUpdate] Filtered secret keys:', Object.keys(filteredSecrets));
+          updatedSettings.secrets = filteredSecrets;
+        }
+
+        const result = {
           ...prevValue,
-          settings,
-        }) as T
-    );
-  }, []);
+          settings: updatedSettings,
+        } as T;
+
+        console.log(
+          '[usePartialUpdate] Final result after settings update:',
+          JSON.stringify(result)
+        );
+        return result;
+      });
+    },
+    [] // Remove value from dependencies to avoid unnecessary rerenders
+  );
 
   return {
     value,

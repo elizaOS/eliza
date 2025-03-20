@@ -256,29 +256,11 @@ export const apiClient = {
   deleteAgent: (agentId: string): Promise<{ success: boolean }> =>
     fetcher({ url: `/agents/${agentId}`, method: 'DELETE' }),
   updateAgent: async (agentId: string, agent: Agent) => {
-    // First get the current agent to ensure we have complete data
-    try {
-      const currentAgentResponse = await fetcher({ url: `/agents/${agentId}` });
-      const currentAgent = currentAgentResponse.data;
-
-      // If we have the current agent, merge the updates with it
-      // This ensures all JSONb fields are properly handled
-      const mergedAgent = currentAgent ? deepMerge(currentAgent, agent) : agent;
-
-      return fetcher({
-        url: `/agents/${agentId}`,
-        method: 'PATCH',
-        body: mergedAgent,
-      });
-    } catch (error) {
-      // If we can't get the current agent for some reason, just send the update
-      console.warn('Could not fetch current agent data before update:', error);
-      return fetcher({
-        url: `/agents/${agentId}`,
-        method: 'PATCH',
-        body: agent,
-      });
-    }
+    return fetcher({
+      url: `/agents/${agentId}`,
+      method: 'PATCH',
+      body: agent,
+    });
   },
   createAgent: (params: { characterPath?: string; characterJson?: Character }) =>
     fetcher({
