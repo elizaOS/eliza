@@ -163,7 +163,7 @@ export function AppSidebar() {
                         <NavLink to={`/chat/${agent.id}`}>
                           <SidebarMenuButton
                             isActive={location.pathname.includes(agent.id as string)}
-                            className="transition-colors px-4 my-4 rounded-md"
+                            className="transition-colors px-4 my-4 h-full py-1 rounded-md"
                           >
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 flex justify-center items-center">
@@ -269,7 +269,7 @@ export function AppSidebar() {
                         return (
                           <SidebarMenuItem key={roomId}>
                             <NavLink to={`/room/${roomId}`}>
-                              <div className="transition-colors px-4 my-4 rounded-md">
+                              <SidebarMenuButton className="px-4 py-2 my-4 h-full rounded-md transition-colors">
                                 <div className="flex items-center gap-3">
                                   <AgentAvatarStack
                                     agentIds={roomAgentIds}
@@ -277,14 +277,14 @@ export function AppSidebar() {
                                     agentAvatars={agentAvatars}
                                     size="md"
                                   />
-                                  <div className="flex flex-col h-full justify-center">
+                                  <div className="flex flex-col justify-center">
                                     <div className="text-base truncate max-w-24">{roomName}</div>
-                                    <div className="text-xs truncate max-w-24">
+                                    <div className="text-xs truncate max-w-24 text-muted-foreground">
                                       {`${roomAgentIds.length} ${roomAgentIds.length === 1 ? 'Member' : 'Members'}`}
                                     </div>
                                   </div>
                                 </div>
-                              </div>
+                              </SidebarMenuButton>
                             </NavLink>
                           </SidebarMenuItem>
                         );
