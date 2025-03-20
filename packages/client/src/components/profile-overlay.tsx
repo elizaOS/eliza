@@ -136,7 +136,7 @@ export default function ProfileOverlay({ isOpen, onClose, agent }: ProfileOverla
         </CardHeader>
 
         <CardContent className="p-6 overflow-auto">
-          <div className="rounded-md bg-muted p-4 mb-6 h-60 overflow-scroll">
+          <div className="rounded-md bg-muted p-4 mb-6 h-60 overflow-y-auto">
             <p className="font-medium text-sm mb-2">About Me</p>
             <p className="font-light text-sm text-gray-500">{agent.system}</p>
           </div>
