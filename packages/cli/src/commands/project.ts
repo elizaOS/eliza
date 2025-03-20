@@ -44,7 +44,7 @@ project
 project
   .command('add-plugin')
   .description('add a plugin to the project')
-  .argument('<plugin>', 'plugin name')
+  .argument('<plugin>', 'plugin name (e.g., "ton", "plugin-abc", "elizaos/plugin-abc")')
   .option('--no-env-prompt', 'Skip prompting for environment variables')
   .action(async (plugin, opts) => {
     try {
@@ -53,7 +53,14 @@ project
       const repo = await getPluginRepository(plugin);
 
       if (!repo) {
-        logger.error(`Plugin ${plugin} not found in registry`);
+        logger.error(`Plugin "${plugin}" not found in registry`);
+        logger.info('\nYou can specify plugins in multiple formats:');
+        logger.info('  - Just the name: ton');
+        logger.info('  - With plugin- prefix: plugin-abc');
+        logger.info('  - With organization: elizaos/plugin-abc');
+        logger.info('  - Full package name: @elizaos-plugins/plugin-abc');
+        logger.info('\nTry listing available plugins with:');
+        logger.info('  npx elizaos project list-plugins');
         process.exit(1);
       }
 
