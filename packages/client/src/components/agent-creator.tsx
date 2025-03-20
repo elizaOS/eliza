@@ -7,30 +7,24 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
-import { SecretPanel } from './secret-panel';
-import { useAgentUpdate } from '@/hooks/use-agent-update';
+import SecretPanel from './secret-panel';
 
-// Define a partial agent for initialization
-const defaultCharacter: Partial<Agent> = {
+const defaultCharacter = {
   name: '',
   username: '',
   system: '',
   bio: [] as string[],
   topics: [] as string[],
   adjectives: [] as string[],
-  settings: { secrets: {} },
-};
+} as Agent;
 
 export default function AgentCreator() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [initialCharacter] = useState<Partial<Agent>>({
+  const [characterValue, setCharacterValue] = useState<Agent>({
     ...defaultCharacter,
   });
-
-  // Use agent update hook for proper handling of nested fields
-  const agentState = useAgentUpdate(initialCharacter as Agent);
 
   const ensureRequiredFields = (character: Agent): Agent => {
     return {
@@ -46,18 +40,12 @@ export default function AgentCreator() {
         chat: character.style?.chat ?? [],
         post: character.style?.post ?? [],
       },
-      settings: character.settings ?? { secrets: {} },
     };
   };
 
   const handleSubmit = async (character: Agent) => {
     try {
       const completeCharacter = ensureRequiredFields(character);
-
-      console.log('[AgentCreator] Creating agent with:', completeCharacter);
-      console.log('[AgentCreator] Settings:', completeCharacter.settings);
-      console.log('[AgentCreator] Secrets:', completeCharacter.settings?.secrets);
-
       await apiClient.createAgent({
         characterJson: completeCharacter,
       });
@@ -72,7 +60,6 @@ export default function AgentCreator() {
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       navigate('/');
     } catch (error) {
-      console.error('[AgentCreator] Error creating agent:', error);
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to create character',
@@ -83,12 +70,12 @@ export default function AgentCreator() {
 
   return (
     <CharacterForm
-      characterValue={agentState.agent}
-      setCharacterValue={agentState}
+      characterValue={characterValue}
+      setCharacterValue={setCharacterValue}
       title="Character Settings"
       description="Configure your AI character's behavior and capabilities"
       onSubmit={handleSubmit}
-      onReset={agentState.reset}
+      onReset={() => setCharacterValue(defaultCharacter)}
       onDelete={() => {
         navigate('/');
       }}
@@ -97,25 +84,19 @@ export default function AgentCreator() {
         {
           name: 'Plugins',
           component: (
-            <PluginsPanel characterValue={agentState.agent} setCharacterValue={agentState} />
+            <PluginsPanel characterValue={characterValue} setCharacterValue={setCharacterValue} />
           ),
         },
         {
           name: 'Secret',
           component: (
-            <SecretPanel
-              characterValue={agentState.agent}
-              onChange={(updatedAgent) => {
-                console.log('[AgentCreator] SecretPanel onChange called with:', updatedAgent);
-                agentState.updateObject(updatedAgent);
-              }}
-            />
+            <SecretPanel characterValue={characterValue} setCharacterValue={setCharacterValue} />
           ),
         },
         {
           name: 'Avatar',
           component: (
-            <AvatarPanel characterValue={agentState.agent} setCharacterValue={agentState} />
+            <AvatarPanel characterValue={characterValue} setCharacterValue={setCharacterValue} />
           ),
         },
       ]}
