@@ -22,10 +22,10 @@ export default function AgentAvatarStack({
   const baseSize = size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
   const avatarSizeClass = isMultiple
     ? size === 'sm'
-      ? 'size-4'
+      ? 'size-5'
       : size === 'lg'
-        ? 'size-8'
-        : 'size-6'
+        ? 'size-9'
+        : 'size-7'
     : size === 'sm'
       ? 'size-6'
       : size === 'lg'
@@ -58,7 +58,7 @@ export default function AgentAvatarStack({
         displayAgents.map((agentId, index) => (
           <Avatar
             key={agentId}
-            className={`${avatarSizeClass} rounded-full overflow-hidden absolute`}
+            className={`${avatarSizeClass} rounded-full overflow-hidden absolute border border-2 border-card`}
             style={{
               zIndex: index,
               left: `${index * avatarOffset}px`,
