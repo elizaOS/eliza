@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { usePartialUpdate } from '@/hooks/use-partial-update';
 import type { Agent } from '@elizaos/core';
 import { Check, CloudUpload, Eye, EyeOff, MoreVertical, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -15,6 +16,9 @@ interface SecretPanelProps {
 }
 
 export default function EnvSettingsPanel({ characterValue, setCharacterValue }: SecretPanelProps) {
+  // Use our new hook to properly handle updates to nested JSONb fields
+  const [agentState, updateField] = usePartialUpdate(characterValue);
+
   const [envs, setEnvs] = useState<EnvVariable[]>(
     Object.entries(characterValue?.settings?.secrets || {}).map(([name, value]) => ({
       name,
@@ -151,15 +155,17 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
     };
   }, []);
 
+  // Update the agent's settings whenever envs change
   useEffect(() => {
-    setCharacterValue((prev) => ({
-      ...prev,
-      settings: {
-        ...prev.settings,
-        secrets: Object.fromEntries(envs.map(({ name, value }) => [name, value])),
-      },
-    }));
-  }, [envs, setCharacterValue]);
+    // Create the secrets object from the envs array
+    const secrets = Object.fromEntries(envs.map(({ name, value }) => [name, value]));
+
+    // Update just the settings.secrets part without touching other settings
+    updateField('settings.secrets', secrets);
+
+    // Update the parent component's state
+    setCharacterValue(() => agentState);
+  }, [envs, setCharacterValue, updateField, agentState]);
 
   return (
     <div className="rounded-lg w-full flex flex-col gap-3">
