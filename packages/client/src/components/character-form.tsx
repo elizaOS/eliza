@@ -216,22 +216,15 @@ export default function CharacterForm({
     return char;
   };
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
-    try {
-      const updatedCharacter = await ensureAvatarSize(characterValue);
-      await onSubmit(updatedCharacter);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    console.log('[CharacterForm] Form submission triggered');
+    console.log('[CharacterForm] Current characterValue:', characterValue);
+    console.log('[CharacterForm] Settings being submitted:', characterValue.settings);
+    console.log('[CharacterForm] Secrets being submitted:', characterValue.settings?.secrets);
+
+    onSubmit?.(characterValue as any);
   };
 
   const renderInputField = (field: InputField) => (
@@ -287,7 +280,7 @@ export default function CharacterForm({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleFormSubmit}>
         <Tabs defaultValue="basic" className="w-full">
           <TabsList
             className={'grid w-full mb-6'}
