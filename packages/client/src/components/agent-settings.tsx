@@ -21,7 +21,7 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
   // Log whenever agent state changes
   useEffect(() => {}, [agentState.agent]);
 
-  const handleSubmit = async (updatedAgent: Agent) => {
+  const handleSubmit = async () => {
     try {
       if (!agentId) {
         throw new Error('Agent ID is missing');
