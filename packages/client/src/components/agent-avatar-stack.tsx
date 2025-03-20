@@ -1,6 +1,5 @@
 import { UUID } from '@elizaos/core';
 import { Avatar, AvatarImage } from './ui/avatar';
-import { formatAgentName } from '@/lib/utils';
 
 interface AgentAvatarStackProps {
   agentIds: UUID[];
