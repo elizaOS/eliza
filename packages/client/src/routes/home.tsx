@@ -68,7 +68,7 @@ export default function Home() {
           )}
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 p-2 auto-rows-fr">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr">
               {agents
                 ?.sort((a: Agent, b: Agent) => Number(b?.enabled) - Number(a?.enabled))
                 .map((agent: Agent) => {
@@ -184,7 +184,7 @@ export default function Home() {
           <Separator />
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 p-2 auto-rows-fr">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr">
               {roomsData &&
                 Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
                   const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;
