@@ -1,14 +1,5 @@
 import type { UUID } from '@elizaos/core';
-import {
-  Database,
-  File,
-  FileText,
-  LoaderIcon,
-  MailCheck,
-  MessageSquareShare,
-  Pencil,
-  Trash2,
-} from 'lucide-react';
+import { Database, LoaderIcon, MailCheck, MessageSquareShare, Pencil } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAgentMemories, useDeleteMemory } from '../hooks/use-query-hooks';
 import { Badge } from './ui/badge';
@@ -251,19 +242,6 @@ export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agent
               className="h-7 w-7 hover:bg-muted"
             >
               <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                handleDelete(memory.id || '');
-              }}
-              title="Delete memory"
-              className="h-7 w-7 hover:bg-destructive/10"
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
           </div>
         )}
