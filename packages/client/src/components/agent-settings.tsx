@@ -27,23 +27,27 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
         throw new Error('Agent ID is missing');
       }
 
-      // Make sure we're properly handling all JSONb fields
-      const mergedAgent = {
-        ...updatedAgent,
-        // Explicitly ensure all these fields are properly included
+      // Get only the fields that have changed
+      const changedFields = agentState.getChangedFields();
+
+      // No need to send update if nothing changed
+      if (Object.keys(changedFields).length === 0) {
+        toast({
+          title: 'No Changes',
+          description: 'No changes were made to the agent',
+        });
+        navigate('/');
+        return;
+      }
+
+      // Always include the ID
+      const partialUpdate = {
         id: agentId,
-        bio: updatedAgent.bio || [],
-        topics: updatedAgent.topics || [],
-        adjectives: updatedAgent.adjectives || [],
-        plugins: updatedAgent.plugins || [],
-        style: updatedAgent.style || { all: [], chat: [], post: [] },
-        // Keep the settings object exactly as it is without providing fallbacks
-        // that could inadvertently restore deleted secrets
-        settings: updatedAgent.settings || {},
+        ...changedFields,
       };
 
-      // Send the character update request to the agent endpoint
-      await apiClient.updateAgent(agentId, mergedAgent);
+      // Send the partial update
+      await apiClient.updateAgent(agentId, partialUpdate as Agent);
 
       // Invalidate both the agent query and the agents list
       queryClient.invalidateQueries({ queryKey: ['agent', agentId] });

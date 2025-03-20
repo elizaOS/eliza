@@ -40,6 +40,8 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
   const [isDragging, setIsDragging] = useState(false);
   // Keep track of deleted keys to ensure proper removal
   const [deletedKeys, setDeletedKeys] = useState<string[]>([]);
+  // Track if changes are pending to avoid unnecessary updates
+  const [changesPending, setChangesPending] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -143,6 +145,7 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
         setEnvs([...envs, { name, value, isNew: true }]);
         setName('');
         setValue('');
+        setChangesPending(true);
       }
     }
   };
@@ -161,6 +164,7 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
     if (updatedEnvs[index].value !== editedValue) {
       updatedEnvs[index].value = editedValue;
       updatedEnvs[index].isModified = true;
+      setChangesPending(true);
     }
     setEnvs(updatedEnvs);
     setEditingIndex(null);
@@ -177,6 +181,7 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
     setEnvs(envs.filter((_, i) => i !== index));
     setOpenIndex(null);
     setEditingIndex(null);
+    setChangesPending(true);
   };
 
   // Handle clicks outside of dropdown
@@ -193,30 +198,25 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
     };
   }, []);
 
-  // Update character value when envs change
+  // Update character value when envs change, but only if there are actual changes
   useEffect(() => {
-    // Only update if there are actual changes to prevent unnecessary rerenders
-    const hasChanges = envs.some((env) => env.isNew || env.isModified) || deletedKeys.length > 0;
-
-    if (hasChanges) {
-      // Start with the original secrets from characterValue
+    if (changesPending) {
+      // Create a minimal update object to send only the changes
       const currentSettings = characterValue.settings || {};
       const currentSecrets = { ...(currentSettings.secrets || {}) };
 
-      // First, mark deleted keys explicitly as null instead of removing them
-      // This ensures the server knows to remove them instead of just not updating them
+      // Mark deleted keys as null for explicit removal
       deletedKeys.forEach((key) => {
         currentSecrets[key] = null;
       });
 
-      // Then update with current envs
+      // Update with current valid envs
       envs.forEach(({ name, value }) => {
         currentSecrets[name] = value;
       });
 
-      // Create a new agent with updated secrets
-      const updatedAgent: Agent = {
-        ...characterValue,
+      // Create a minimal agent object with just the changes
+      const updatedAgent: Partial<Agent> = {
         settings: {
           ...currentSettings,
           secrets: currentSecrets,
@@ -224,27 +224,26 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
       };
 
       // Call the onChange prop with the updated agent
-      onChange(updatedAgent);
+      onChange(updatedAgent as Agent);
 
-      // Clear modification flags to prevent infinite update loops
+      // Reset change tracking flags
       setEnvs((prevEnvs) => {
-        const newEnvs = prevEnvs.map((env) => ({
+        return prevEnvs.map((env) => ({
           ...env,
           isNew: false,
           isModified: false,
         }));
-        return newEnvs;
       });
 
       // Clear deletedKeys after changes are applied
       setDeletedKeys([]);
+      setChangesPending(false);
     }
-    // Remove characterValue from the dependency array to prevent cycles
-  }, [envs, onChange, deletedKeys]);
+  }, [envs, onChange, deletedKeys, characterValue.settings, changesPending]);
 
-  // Sync envs with characterValue when it changes
+  // Sync envs with characterValue when it changes (only if not in middle of edit)
   useEffect(() => {
-    if (characterValue?.settings?.secrets) {
+    if (characterValue?.settings?.secrets && !changesPending) {
       const currentSecretsEntries = Object.entries(characterValue.settings.secrets);
       // Only update if the secrets have actually changed (different keys/number of entries)
       const currentKeys = currentSecretsEntries
@@ -256,11 +255,7 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
         .sort()
         .join(',');
 
-      if (
-        currentKeys !== envKeys &&
-        !envs.some((env) => env.isNew || env.isModified) &&
-        deletedKeys.length === 0
-      ) {
+      if (currentKeys !== envKeys) {
         const newEnvs = currentSecretsEntries.map(([name, value]) => ({
           name,
           value: String(value),
@@ -271,7 +266,7 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
         setEnvs(newEnvs);
       }
     }
-  }, [characterValue.settings?.secrets, envs, deletedKeys]);
+  }, [characterValue.settings?.secrets, envs, changesPending]);
 
   return (
     <div className="rounded-lg w-full">
