@@ -213,7 +213,9 @@ export function AppSidebar() {
                                   />
                                   <div className="flex flex-col h-full justify-center">
                                     <div className="text-base truncate max-w-24">{roomName}</div>
-                                    <div className="text-xs truncate max-w-24">{`${roomAgentIds.length} Members`}</div>
+                                    <div className="text-xs truncate max-w-24">
+                                      {`${roomAgentIds.length} ${roomAgentIds.length === 1 ? 'Member' : 'Members'}`}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
