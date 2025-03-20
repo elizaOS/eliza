@@ -261,6 +261,11 @@ const config = {
     ],
   ],
   themeConfig: {
+    prism: {
+      theme: require('prism-react-renderer').themes.github,
+      darkTheme: require('prism-react-renderer').themes.dracula,
+      additionalLanguages: ['bash', 'shell-session', 'typescript', 'markdown'],
+    },
     mermaid: {
       theme: {
         light: 'default',
