@@ -198,8 +198,6 @@ export function AppSidebar() {
                           .map((room) => room.character.name)
                           .filter(Boolean) as string[];
 
-                        console.log(roomArray, roomAgentNames);
-
                         return (
                           <SidebarMenuItem key={roomId}>
                             <NavLink to={`/room/${roomId}`}>
