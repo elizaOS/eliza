@@ -148,7 +148,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
         {/* Usage Id */}
         {action.id && (
           <div className="bg-muted/40 px-2 py-1 rounded flex items-center">
-            <span className="text-xs font-semibold text-muted-foreground mr-1">Id:</span>
+            <span className="text-xs font-semibold text-muted-foreground mr-1">ID:</span>
             <code className="text-xs font-mono">{action.id}</code>
           </div>
         )}
