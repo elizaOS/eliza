@@ -119,6 +119,12 @@ export const dkgInsert: Action = {
         try {
             elizaLogger.log("Publishing message to DKG");
 
+            memoryKnowledgeGraph.author = {
+                "@type": "Person",
+                "@id": `https://x.com/${twitterUser}`,
+                username: twitterUser,
+            };
+
             elizaLogger.log(
                 `KA: ${JSON.stringify(memoryKnowledgeGraph, null, 2)}`,
             );
