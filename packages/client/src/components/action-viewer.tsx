@@ -261,7 +261,9 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
       <Brain className="h-12 w-12 text-muted-foreground opacity-20" />
       <h3 className="text-lg font-medium">No Actions</h3>
       <p className="max-w-md text-sm">
-        Actions will appear here once the agent performs operations.
+        {selectedType === ActionType.all
+          ? 'Actions will appear here once the agent has performed operations.'
+          : `No ${selectedType} actions found.`}
       </p>
     </div>
   );
