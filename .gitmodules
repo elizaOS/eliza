@@ -1,0 +1,21 @@
+[submodule "vendor/elizaos/plugin-twitter"]
+	path = vendor/elizaos/plugin-twitter
+	url = https://github.com/meta-introspector/plugin-twitter
+[submodule "vendor/elizaos/agent-twitter-client"]
+	path = vendor/elizaos/agent-twitter-client
+	url = https://github.com/meta-introspector/agent-twitter-client.git
+[submodule "vendor/elizaos/client-twitter"]
+	path = vendor/elizaos/client-twitter
+	url = https://github.com/meta-introspector/client-twitter-eliza-zos
+[submodule "vendor/elizaos/client-discord-eliza"]
+	path = vendor/elizaos/client-discord-eliza
+	url = https://github.com/meta-introspector/client-discord-eliza-zos
+[submodule "vendor/elizaos/plugin-speech-tts"]
+	path = vendor/elizaos/plugin-speech-tts
+	url = https://github.com/meta-introspector/plugin-speech-tts-eliza-zos
+[submodule "vendor/elizaos/client-telegram"]
+	path = vendor/elizaos/client-telegram
+	url = https://github.com/meta-introspector/client-telegram-eliza-zos
+[submodule "characters"]
+	path = characters
+	url = https://github.com/meta-introspector/characters-eliza-zos

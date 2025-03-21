@@ -3,12 +3,15 @@
   "scripts": {
     "preinstall": "only-allow bun",
     "start": "cd ./packages/the-org && bun run start",
+    "start-cli": "cd ./packages/cli && bun run cli start",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run dev --filter=./packages/the-org",
     "build:docs": "turbo run build --filter=@elizaos/docs",
     "build": "turbo run build --filter=@elizaos/client && turbo run build --filter=!@elizaos/docs",
     "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
+    "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
+    "build:core": "turbo run build --filter=@elizaos/core --no-cache",
     "lint": "turbo run lint --filter=./packages/* && prettier --write . && prettier --check .",
     "pre-commit": "bun run scripts/pre-commit-lint.js",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
@@ -63,7 +66,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@babel/generator": "^7.26.9",
+    "@babel/generator": "^7.26.10",
+    "node-opus": "^0.3.3",
+    "opusscript": "^0.1.1",
+    "tide": "^2.3.0",
     "vittest": "^1.0.2",
     "zod": "3.24.1"
   },
