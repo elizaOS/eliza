@@ -44,7 +44,7 @@
     "tsup": "8.4.0",
     "turbo": "^2.4.4",
     "typedoc": "0.27.9",
-    "typescript": "5.8.2",
+    "typescript": "^5.8.2",
     "vite": "5.4.12",
     "vitest": "3.0.5"
   },
@@ -67,6 +67,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@babel/generator": "^7.26.10",
+    "@hapi/shot": "^6.0.1",
+    "@types/hapi": "^18.0.14",
+    "@types/hapi__shot": "^6.0.0",
     "node-opus": "^0.3.3",
     "opusscript": "^0.1.1",
     "vittest": "^1.0.2",
