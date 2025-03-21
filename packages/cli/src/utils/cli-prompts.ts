@@ -1,5 +1,5 @@
 import prompts from 'prompts';
-import { logger } from './logger';
+import { logger } from '@elizaos/core';
 
 export const NAV_BACK = '__back__';
 export const NAV_NEXT = '__next__';

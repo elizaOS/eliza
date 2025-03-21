@@ -283,27 +283,4 @@ export const starterPlugin: Plugin = {
   providers: [helloWorldProvider],
 };
 
-// Add debugging info to help understand why tests aren't running
-{
-  const debugPlugin = () => {
-    // Add this temporary code to print info about the tests
-    // Will be removed after debugging
-    logger.debug('DEBUG: PLUGIN STRUCTURE:');
-    logger.debug('Plugin name:', starterPlugin.name);
-    logger.debug('Tests array exists:', !!starterPlugin.tests);
-    logger.debug('Tests array length:', starterPlugin.tests?.length);
-    if (starterPlugin.tests && starterPlugin.tests.length > 0) {
-      logger.debug('First test suite name:', starterPlugin.tests[0].name);
-      logger.debug('First test suite has tests array:', !!starterPlugin.tests[0].tests);
-      logger.debug('First test suite tests length:', starterPlugin.tests[0].tests?.length);
-      if (starterPlugin.tests[0].tests && starterPlugin.tests[0].tests.length > 0) {
-        logger.debug('First test name:', starterPlugin.tests[0].tests[0].name);
-        logger.debug('First test has fn:', !!starterPlugin.tests[0].tests[0].fn);
-      }
-    }
-  };
-  // Call function but don't display in IDE completion
-  debugPlugin();
-}
-
 export default starterPlugin;

@@ -1,10 +1,14 @@
 {
-  "name": "@elizaos/plugin-telegram",
-  "version": "1.0.0-beta.7",
+  "name": "@elizaos/plugin-groq",
+  "version": "1.0.0-beta.2",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-groq"
+  },
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -18,21 +22,16 @@
     "dist"
   ],
   "dependencies": {
-    "@telegraf/types": "7.1.0",
-    "strip-literal": "^3.0.0",
-    "telegraf": "4.16.3",
-    "type-detect": "^4.1.0"
-  },
-  "devDependencies": {
-    "prettier": "3.5.3",
-    "tsup": "8.4.0",
-    "vitest": "1.6.1"
+    "@ai-sdk/groq": "^1.1.9",
+    "@ai-sdk/ui-utils": "1.1.9",
+    "@elizaos/core": "workspace:*",
+    "ai": "^4.1.25",
+    "js-tiktoken": "^1.0.18",
+    "tsup": "8.4.0"
   },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
     "lint": "prettier --write ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
@@ -41,5 +40,17 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e"
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "GROQ_API_KEY": {
+        "type": "string",
+        "description": "API key for the service"
+      }
+    }
+  },
+  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55",
+  "devDependencies": {
+    "prettier": "3.5.3"
+  }
 }

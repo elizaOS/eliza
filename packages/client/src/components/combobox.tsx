@@ -7,22 +7,32 @@ import { formatAgentName } from '@/lib/utils';
 interface Option {
   icon: string;
   label: string;
+  id?: string;
 }
 
 interface MultiSelectComboboxProps {
   options: Option[];
   className?: string;
   onSelect?: (selected: Option[]) => void;
+  initialSelected?: Option[];
 }
 
 export default function MultiSelectCombobox({
   options = [],
   className = '',
   onSelect,
+  initialSelected = [],
 }: MultiSelectComboboxProps) {
-  const [selected, setSelected] = useState<Option[]>([]);
+  const [selected, setSelected] = useState<Option[]>(initialSelected);
   const [isOpen, setIsOpen] = useState(false);
   const comboboxRef = useRef<HTMLDivElement>(null);
+
+  // Apply initialSelected when it changes
+  useEffect(() => {
+    if (initialSelected.length > 0) {
+      setSelected(initialSelected);
+    }
+  }, [initialSelected]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

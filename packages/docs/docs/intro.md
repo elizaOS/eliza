@@ -117,7 +117,7 @@ cd eliza
 
 # Install dependencies and build
 bun install
-bun build
+bun run build
 
 # Start ElizaOS
 bun start

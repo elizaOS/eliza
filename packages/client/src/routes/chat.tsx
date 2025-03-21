@@ -1,6 +1,6 @@
 import { useAgent } from '@/hooks/use-query-hooks';
 import { WorldManager } from '@/lib/world-manager';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
 
 import Chat from '@/components/chat';
@@ -9,12 +9,14 @@ import type { UUID, Agent } from '@elizaos/core';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '../components/ui/resizable';
 
 export default function AgentRoute() {
-  const [showDetails, setShowDetails] = useState(true);
+  const [showDetails, setShowDetails] = useState(false);
   const worldId = WorldManager.getWorldId();
 
   const { agentId } = useParams<{ agentId: UUID }>();
 
-  const agentData = useAgent(agentId)?.data?.data as Agent;
+  const { data: agentData } = useAgent(agentId);
+
+  const agent = agentData?.data as Agent;
 
   const toggleDetails = () => setShowDetails(!showDetails);
 
@@ -22,11 +24,11 @@ export default function AgentRoute() {
 
   return (
     <ResizablePanelGroup direction="horizontal" className="w-full h-full">
-      <ResizablePanel defaultSize={75}>
+      <ResizablePanel defaultSize={65}>
         <Chat
           agentId={agentId}
           worldId={worldId}
-          agentData={agentData}
+          agentData={agent}
           showDetails={showDetails}
           toggleDetails={toggleDetails}
         />
@@ -34,10 +36,10 @@ export default function AgentRoute() {
       <ResizableHandle />
       {showDetails && (
         <ResizablePanel
-          defaultSize={25}
+          defaultSize={35}
           className="border rounded-lg m-4 overflow-y-scroll bg-background flex flex-col h-[96vh]"
         >
-          <AgentSidebar agentId={agentId} agentName={agentData?.name || ''} />
+          <AgentSidebar agentId={agentId} agentName={agent.name} />
         </ResizablePanel>
       )}
     </ResizablePanelGroup>

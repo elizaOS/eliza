@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "Dockerfile"
+      - 'Dockerfile'
   workflow_dispatch:
     inputs:
       logLevel:

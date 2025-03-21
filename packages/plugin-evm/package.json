@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-evm",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/plugin-tee": "^1.0.0-beta.2",
+    "@elizaos/plugin-tee": "^1.0.0-beta.7",
     "@lifi/data-types": "5.15.5",
     "@lifi/sdk": "3.4.1",
     "@lifi/types": "16.3.0",
@@ -53,5 +53,5 @@
       }
     }
   },
-  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
+  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e"
 }

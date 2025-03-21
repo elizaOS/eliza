@@ -1,7 +1,6 @@
 import PageTitle from '@/components/page-title';
 import ProfileCard from '@/components/profile-card';
 import ProfileOverlay from '@/components/profile-overlay';
-import { Card } from '@/components/ui/card';
 import { useAgents, useRooms } from '@/hooks/use-query-hooks';
 import { formatAgentName } from '@/lib/utils';
 import type { Agent, UUID } from '@elizaos/core';
@@ -13,8 +12,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAgentManagement } from '../hooks/use-agent-management';
 
 import GroupPanel from '@/components/group-panel';
-import { AgentStatusSidebar } from '../components/agent-status-sidebar';
-
+import { Button } from '../components/ui/button';
+import { Separator } from '../components/ui/separator';
 export default function Home() {
   const { data: { data: agentsData } = {}, isLoading, isError, error } = useAgents();
   const navigate = useNavigate();
@@ -40,30 +39,17 @@ export default function Home() {
     setOverlayOpen(false);
   };
 
-  // Sort agents: enabled first, then disabled
-  const sortedAgents = [...agents].sort((a, b) => {
-    // Sort by status (active agents first)
-    if (a.status === AgentStatus.ACTIVE && b.status !== AgentStatus.ACTIVE) return -1;
-    if (a.status !== AgentStatus.ACTIVE && b.status === AgentStatus.ACTIVE) return 1;
-    // If both have the same status, sort alphabetically by name
-    return a.name.localeCompare(b.name);
-  });
-
-  // Split into enabled and disabled groups
-  const activeAgents = sortedAgents.filter(
-    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.ACTIVE
-  );
-  const inactiveAgents = sortedAgents.filter(
-    (agent: Partial<Agent & { status: string }>) => agent.status === AgentStatus.INACTIVE
-  );
-
   return (
     <>
-      <div className="flex">
-        <div className="flex flex-col gap-4 h-full p-3">
-          <div className="flex items-center justify-between">
+      <div className="flex-1 p-3">
+        <div className="flex flex-col gap-4 h-full">
+          <div className="flex items-center justify-between gap-2 p-2">
             <PageTitle title="Agents" />
+            <Button variant="outline" onClick={() => navigate('/create')}>
+              <Plus className="w-4 h-4" />
+            </Button>
           </div>
+          <Separator />
 
           {isLoading && <div className="text-center py-8">Loading agents...</div>}
 
@@ -82,7 +68,7 @@ export default function Home() {
           )}
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-2 auto-rows-fr">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr">
               {agents
                 ?.sort((a: Agent, b: Agent) => Number(b?.enabled) - Number(a?.enabled))
                 .map((agent: Agent) => {
@@ -155,7 +141,7 @@ export default function Home() {
                           ? {
                               label: 'Message',
                               action: () => navigate(`/chat/${agent.id}`),
-                              className: `w-[80%]`,
+                              className: 'w-[80%]',
                               variant: 'default',
                             }
                           : {
@@ -165,7 +151,7 @@ export default function Home() {
                                   ? 'Stopping...'
                                   : 'Start',
                               action: () => startAgent(agent),
-                              className: `w-[80%]`,
+                              className: 'w-[80%]',
                               variant: 'default',
                               disabled: isAgentStarting(agent.id) || isAgentStopping(agent.id),
                             },
@@ -187,27 +173,20 @@ export default function Home() {
                     />
                   );
                 })}
-              {/* Create new agent card */}
-              <Card
-                className="flex flex-col items-center justify-center h-full cursor-pointer hover:bg-accent/50 transition-colors"
-                onClick={() => navigate('/create')}
-              >
-                <div className="flex flex-col items-center justify-center gap-2 p-8">
-                  <Plus size={40} className="text-muted-foreground" />
-                  <span className="text-muted-foreground whitespace-nowrap">Create New Agent</span>
-                </div>
-              </Card>
             </div>
           )}
-          <div className="flex items-center justify-between">
-            <PageTitle title="Rooms" />
+          <div className="flex items-center justify-between gap-2 p-2">
+            <PageTitle title="Groups" />
+            <Button variant="outline" onClick={() => setIsGroupPanelOpen(true)}>
+              <Plus className="w-2 h-2" />
+            </Button>
           </div>
+          <Separator />
 
           {!isLoading && !isError && (
-            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-2 auto-rows-fr">
+            <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6 gap-4 p-2 auto-rows-fr">
               {roomsData &&
                 Array.from(roomsData.entries()).map(([roomId, roomArray]) => {
-                  const thumbnail = roomArray.length > 0 ? roomArray[0]?.metadata?.thumbnail : null;
                   const roomName = roomArray.length > 0 ? roomArray[0]?.name : null;
                   return (
                     <ProfileCard
@@ -227,16 +206,8 @@ export default function Home() {
                             }
                           }}
                         >
-                          <div className="brightness-[100%] hover:brightness-[107%] w-full h-full flex items-center justify-center">
-                            {thumbnail ? (
-                              <img
-                                src={thumbnail}
-                                alt="Room Thumbnail"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              formatAgentName(roomName)
-                            )}
+                          <div className="w-full h-full flex items-center justify-center brightness-[100%] hover:brightness-[107%]">
+                            {formatAgentName(roomName ?? '')}
                           </div>
                         </div>
                       }
@@ -262,33 +233,20 @@ export default function Home() {
                     />
                   );
                 })}
-              {/* Create new Group card */}
-              <Card
-                className="flex flex-col items-center justify-center h-full cursor-pointer hover:bg-accent/50 transition-colors"
-                onClick={() => {
-                  setSelectedGroupId(null);
-                  setIsGroupPanelOpen(true);
-                }}
-              >
-                <div className="flex flex-col items-center justify-center gap-2 p-8">
-                  <Plus size={40} className="text-muted-foreground" />
-                  <span className="text-muted-foreground whitespace-nowrap">Create New Group</span>
-                </div>
-              </Card>
             </div>
           )}
         </div>
-        <AgentStatusSidebar
-          onlineAgents={activeAgents}
-          offlineAgents={inactiveAgents}
-          isLoading={isLoading}
-        />
       </div>
 
       <ProfileOverlay
         isOpen={isOverlayOpen}
         onClose={closeOverlay}
-        agent={agents.find((a) => a.id === selectedAgent?.id) || selectedAgent}
+        agent={
+          agents.find((a) => a.id === selectedAgent?.id) ||
+          (selectedAgent as Agent) ||
+          agents[0] ||
+          ({} as Agent)
+        }
         agents={agents}
       />
 
@@ -299,7 +257,7 @@ export default function Home() {
             setSelectedGroupId(null);
             setIsGroupPanelOpen(false);
           }}
-          groupId={selectedGroupId}
+          groupId={selectedGroupId ?? undefined}
         />
       )}
     </>
