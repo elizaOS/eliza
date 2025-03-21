@@ -131,6 +131,55 @@ project
     try {
       const cwd = process.cwd();
 
+      // Check if we're running under npx (reusing same logic as add-plugin)
+      const isNpx =
+        process.env.npm_lifecycle_event === 'npx' ||
+        process.env.npm_execpath?.includes('npx') ||
+        process.argv[0]?.includes('npx') ||
+        process.env.npm_config_user_agent?.includes('npm') ||
+        process.env._?.includes('npx') ||
+        !!process.env.npm_command;
+
+      // If running under npx, provide clear instructions instead
+      if (isNpx) {
+        // Extract and normalize the plugin name
+        let baseName = plugin;
+
+        // Handle various input formats
+        if (plugin.includes('/')) {
+          // Handle formats like "elizaos/plugin-ton" or "elizaos-plugins/plugin-ton"
+          const parts = plugin.split('/');
+          baseName = parts[parts.length - 1];
+        } else if (plugin.startsWith('@')) {
+          // Handle scoped package format like "@elizaos/plugin-ton"
+          const parts = plugin.split('/');
+          if (parts.length > 1) {
+            baseName = parts[1];
+          }
+        }
+
+        // Remove any existing prefixes and ensure plugin- prefix is added
+        baseName = baseName.replace(/^plugin-/, '');
+        const pluginName = `plugin-${baseName}`;
+
+        // For removing, we need the package name
+        const removeCommand = `bun remove @elizaos/${pluginName}`;
+
+        // Use ANSI color codes
+        const boldCyan = '\x1b[1;36m'; // Bold cyan for command
+        const bold = '\x1b[1m'; // Bold for headers
+        const reset = '\x1b[0m'; // Reset formatting
+
+        // Print entire message with console.log to avoid timestamps and prefixes
+        console.log(
+          `\n🗑️ ${bold}To remove ${pluginName}, you need to manually run this command:${reset}\n`
+        );
+        console.log(`  ${boldCyan}${removeCommand}${reset}\n`);
+        console.log(`Copy and paste the above command into your terminal to remove the plugin.\n`);
+
+        process.exit(0);
+      }
+
       // Uninstall package
       logger.info(`Removing ${plugin}...`);
       await execa('bun', ['remove', plugin], {
