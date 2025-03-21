@@ -1,6 +1,6 @@
 # RedPill Plugin
 
-This plugin provides integration with RedPill's model aggregator through the ElizaOS platform.
+This plugin provides integration with RedPill's model aggregator through the ElizaOS platform. Learn more about RedPill at https://red-pill.ai/
 
 ## Usage
 
@@ -36,7 +36,7 @@ REDPILL_LARGE_MODEL=gpt-4o
 ### Configuration Options
 
 - `REDPILL_API_KEY` (required): Your REDPILL API credentials
-- `REDPILL_BASE_URL`: Custom API endpoint (default: https://api.openai.com/v1)
+- `REDPILL_BASE_URL`: Custom API endpoint (default: https://api.red-pill.ai/v1)
 - `REDPILL_SMALL_MODEL`: Defaults to GPT-4o Mini ("gpt-4o-mini")
 - `REDPILL_LARGE_MODEL`: Defaults to GPT-4o ("gpt-4o")
 
@@ -65,3 +65,9 @@ const { title, description } = await runtime.useModel(
 ```js
 const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, 'text to embed');
 ```
+
+## Resources
+
+- [Website](https://red-pill.ai)
+- [Docs](https://docs.red-pill.ai/)
+- [Phala Cloud](https://cloud.phala.network)
