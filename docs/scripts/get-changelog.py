@@ -117,7 +117,7 @@ def process_content_block(content):
         r'^## (Other.*?)$',
         r'^## (Major changes.*?)$',
         r'^## (New Features.*?)$',
-        r'^## (New Fixes.*?)$'
+        r'^## (New Fixes.*?)$',
         r'^## (New Contributors.*?)$'
     ]
     
