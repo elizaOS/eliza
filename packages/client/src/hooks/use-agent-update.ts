@@ -304,9 +304,60 @@ export function useAgentUpdate(initialAgent: Agent) {
       changedFields.style = current.style;
     }
 
-    // Compare settings object with special handling for secrets
-    if (JSON.stringify(current.settings) !== JSON.stringify(initial.settings)) {
-      changedFields.settings = current.settings;
+    // More granular comparison for settings object
+    const initialSettings = initial.settings || {};
+    const currentSettings = current.settings || {};
+
+    // Check if any settings changed
+    if (JSON.stringify(currentSettings) !== JSON.stringify(initialSettings)) {
+      // Create a partial settings object with only changed fields
+      changedFields.settings = {};
+
+      // Check avatar separately
+      if (currentSettings.avatar !== initialSettings.avatar) {
+        changedFields.settings.avatar = currentSettings.avatar;
+      }
+
+      // Check voice settings
+      if (JSON.stringify(currentSettings.voice) !== JSON.stringify(initialSettings.voice)) {
+        changedFields.settings.voice = currentSettings.voice;
+      }
+
+      // Check secrets with special handling
+      if (JSON.stringify(currentSettings.secrets) !== JSON.stringify(initialSettings.secrets)) {
+        const initialSecrets = initialSettings.secrets || {};
+        const currentSecrets = currentSettings.secrets || {};
+
+        // Only include secrets that were added or modified
+        const changedSecrets: Record<string, any> = {};
+        let hasSecretChanges = false;
+
+        // Find added or modified secrets
+        Object.entries(currentSecrets).forEach(([key, value]) => {
+          if (initialSecrets[key] !== value) {
+            changedSecrets[key] = value;
+            hasSecretChanges = true;
+          }
+        });
+
+        // Find deleted secrets (null values indicate deletion)
+        Object.keys(initialSecrets).forEach((key) => {
+          if (currentSecrets[key] === undefined) {
+            changedSecrets[key] = null;
+            hasSecretChanges = true;
+          }
+        });
+
+        if (hasSecretChanges) {
+          if (!changedFields.settings) changedFields.settings = {};
+          changedFields.settings.secrets = changedSecrets;
+        }
+      }
+
+      // If no specific settings changed, don't include settings object
+      if (Object.keys(changedFields.settings).length === 0) {
+        delete changedFields.settings;
+      }
     }
 
     return changedFields;
