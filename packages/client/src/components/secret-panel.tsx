@@ -165,29 +165,31 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
     <div className="rounded-lg w-full flex flex-col gap-3">
       <h2 className="text-xl font-bold mb-4 pb-5 ml-1">Environment Settings</h2>
 
-      <div
-        ref={dropRef}
-        className={`flex flex-col gap-2 items-center justify-center text-gray-500 w-full border-2 border-dashed border-muted rounded-lg p-16 mb-16 text-center cursor-pointer transition ${
-          isDragging ? 'bg-muted' : ''
-        }`}
-        onClick={() => document.getElementById('env-upload')?.click()}
-      >
-        <CloudUpload />
-        <p className="text-sm">
-          Drag & drop <code>.env</code> file or select file
-        </p>
-        <input
-          id="env-upload"
-          type="file"
-          accept="*/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file && file.name.endsWith('.env')) {
-              handleFile(file);
-            }
-          }}
-        />
+      <div className="flex items-center justify-center w-full px-6">
+        <div
+          ref={dropRef}
+          className={`flex flex-col gap-2 items-center justify-center text-gray-500 w-full border-2 border-dashed border-muted rounded-lg p-16 mb-16 text-center cursor-pointer transition ${
+            isDragging ? 'bg-muted' : ''
+          }`}
+          onClick={() => document.getElementById('env-upload')?.click()}
+        >
+          <CloudUpload />
+          <p className="text-sm">
+            Drag & drop <code>.env</code> file or select file
+          </p>
+          <input
+            id="env-upload"
+            type="file"
+            accept="*/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file && file.name.endsWith('.env')) {
+                handleFile(file);
+              }
+            }}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-[1fr_2fr_auto] gap-4 items-end w-full pb-4">
