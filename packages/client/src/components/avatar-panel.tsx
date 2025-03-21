@@ -52,10 +52,13 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
   // Centralized update function to avoid code duplication
   const updateCharacterAvatar = (avatarUrl: string) => {
     if (setCharacterValue.updateAvatar) {
+      // Use the specialized method for avatar updates when available
       setCharacterValue.updateAvatar(avatarUrl);
     } else if (setCharacterValue.updateSetting) {
+      // Use updateSetting as fallback
       setCharacterValue.updateSetting('avatar', avatarUrl);
     } else if (setCharacterValue.updateField) {
+      // Last resort - use the generic field update
       setCharacterValue.updateField('settings.avatar', avatarUrl);
     }
   };

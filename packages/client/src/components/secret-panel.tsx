@@ -202,23 +202,21 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
   useEffect(() => {
     if (changesPending) {
       // Create a minimal update object to send only the changes
-      const currentSettings = characterValue.settings || {};
-      const currentSecrets = { ...(currentSettings.secrets || {}) };
+      const currentSecrets: Record<string, string | null> = {};
 
-      // Mark deleted keys as null for explicit removal
-      deletedKeys.forEach((key) => {
-        currentSecrets[key] = null;
-      });
-
-      // Update with current valid envs
+      // Map updated values
       envs.forEach(({ name, value }) => {
         currentSecrets[name] = value;
       });
 
-      // Create a minimal agent object with just the changes
+      // Add null values for deleted keys to explicitly mark them for removal
+      deletedKeys.forEach((key) => {
+        currentSecrets[key] = null;
+      });
+
+      // Create a minimal agent object with just the secrets changes
       const updatedAgent: Partial<Agent> = {
         settings: {
-          ...currentSettings,
           secrets: currentSecrets,
         },
       };
@@ -239,7 +237,7 @@ export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
       setDeletedKeys([]);
       setChangesPending(false);
     }
-  }, [envs, onChange, deletedKeys, characterValue.settings, changesPending]);
+  }, [envs, onChange, deletedKeys, changesPending]);
 
   // Sync envs with characterValue when it changes (only if not in middle of edit)
   useEffect(() => {
