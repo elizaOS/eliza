@@ -45,7 +45,7 @@ project
 project
   .command('add-plugin')
   .description('add a plugin to the project')
-  .argument('<plugin>', 'plugin name (e.g., "ton", "plugin-abc", "elizaos/plugin-abc")')
+  .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('--no-env-prompt', 'Skip prompting for environment variables')
   .action(async (plugin, opts) => {
     try {
@@ -126,7 +126,7 @@ project
 project
   .command('remove-plugin')
   .description('remove a plugin from the project')
-  .argument('<plugin>', 'plugin name')
+  .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .action(async (plugin, _opts) => {
     try {
       const cwd = process.cwd();
