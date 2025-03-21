@@ -165,7 +165,7 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
     <div className="rounded-lg w-full flex flex-col gap-3">
       <h2 className="text-xl font-bold mb-4 pb-5 ml-1">Environment Settings</h2>
 
-      <div className="flex items-center justify-center w-full px-6">
+      <div className="flex items-center justify-center w-full px-10">
         <div
           ref={dropRef}
           className={`flex flex-col gap-2 items-center justify-center text-gray-500 w-full border-2 border-dashed border-muted rounded-lg p-16 mb-16 text-center cursor-pointer transition ${
