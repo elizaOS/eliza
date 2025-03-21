@@ -179,6 +179,12 @@ export class DiscordService extends Service implements IDiscordService {
         logger.error(`Error handling interaction: ${error}`);
       }
     });
+
+    this.client.on('userStream', (entityId, name, userName, channel, opusDecoder) => {
+      if (entityId !== this.client?.user?.id) {
+        this.voiceManager.handleUserStream(entityId, name, userName, channel, opusDecoder);
+      }
+    });
   }
 
   /**
