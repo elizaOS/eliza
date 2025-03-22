@@ -67,3 +67,5 @@ tsdoc_cache/
 tsdoc_comments/
 
 **/elizaDb/**
+
+bun.lockb
