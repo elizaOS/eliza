@@ -142,7 +142,7 @@ const messageReceivedHandler = async ({
 
   // Set up timeout monitoring
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
-  let timeoutId: NodeJS.Timer;
+  let timeoutId: NodeJS.Timeout;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(async () => {

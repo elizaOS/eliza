@@ -27,6 +27,7 @@ export default defineConfig({
     'sharp',
     '@solana/web3.js',
     'zod',
+    '@hapi/shot',
   ],
   sourcemap: false,
 });

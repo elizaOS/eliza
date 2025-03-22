@@ -4,6 +4,8 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "sourceMap": true,
+    "typeRoots": ["./node_modules/@types"],
+
     "inlineSources": true,
     "declaration": true,
     "emitDeclarationOnly": true

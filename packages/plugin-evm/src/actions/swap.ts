@@ -171,7 +171,8 @@ export class SwapAction {
       if (!response.ok) {
         throw Error(response.statusText);
       }
-      const data = await response.json();
+      //const data: { routes: { quote: { tx: { data: string, from: string, value: string, to: string, gas: string, gasPrice: string }, approvalTarget: string, buyTokens: { [key: string]: { minimumAmount: string } } } }[] } = await response.json();
+      const data: any = await response.json();
       const route: BebopRoute = {
         data: data.routes[0].quote.tx.data,
         sellAmount: parseUnits(params.amount, fromTokenDecimals).toString(),
