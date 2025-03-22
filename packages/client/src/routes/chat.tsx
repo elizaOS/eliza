@@ -1,6 +1,6 @@
 import { useAgent } from '@/hooks/use-query-hooks';
 import { WorldManager } from '@/lib/world-manager';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router';
 
 import Chat from '@/components/chat';
@@ -20,13 +20,11 @@ export default function AgentRoute() {
 
   const toggleDetails = () => setShowDetails(!showDetails);
 
-  console.log(agent);
-
   if (!agentId) return <div>No data.</div>;
 
   return (
     <ResizablePanelGroup direction="horizontal" className="w-full h-full">
-      <ResizablePanel defaultSize={75}>
+      <ResizablePanel defaultSize={65}>
         <Chat
           agentId={agentId}
           worldId={worldId}
@@ -38,7 +36,7 @@ export default function AgentRoute() {
       <ResizableHandle />
       {showDetails && (
         <ResizablePanel
-          defaultSize={25}
+          defaultSize={35}
           className="border rounded-lg m-4 overflow-y-scroll bg-background flex flex-col h-[96vh]"
         >
           <AgentSidebar agentId={agentId} agentName={agent.name} />
