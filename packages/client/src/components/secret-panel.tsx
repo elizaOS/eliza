@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Agent } from '@elizaos/core';
-import { Check, Eye, EyeOff, MoreVertical, X } from 'lucide-react';
+import { Check, CloudUpload, Eye, EyeOff, MoreVertical, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 type EnvVariable = {
@@ -30,10 +30,90 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
   const [editedValue, setEditedValue] = useState('');
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split('\n');
+
+      const newEnvs: Record<string, string> = {};
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith('#')) continue;
+
+        const [key, ...rest] = trimmedLine.split('=');
+        const val = rest
+          .join('=')
+          .trim()
+          .replace(/^['"]|['"]$/g, '');
+        if (key) newEnvs[key.trim()] = val;
+      }
+
+      setEnvs((prev) => {
+        const merged = new Map(prev.map(({ name, value }) => [name, value]));
+        for (const [key, val] of Object.entries(newEnvs)) {
+          merged.set(key, val);
+        }
+        return Array.from(merged.entries()).map(([name, value]) => ({ name, value }));
+      });
+    };
+    reader.readAsText(file);
+  };
+
+  useEffect(() => {
+    const drop = dropRef.current;
+    if (!drop) return;
+
+    const preventDefaults = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const highlight = () => setIsDragging(true);
+    const unhighlight = () => setIsDragging(false);
+
+    const handleDrop = (e: DragEvent) => {
+      preventDefaults(e);
+      unhighlight();
+
+      const file = e.dataTransfer?.files?.[0];
+      if (file && file.name.endsWith('.env')) {
+        handleFile(file);
+      }
+    };
+
+    ['dragenter', 'dragover'].forEach((event) => drop.addEventListener(event, highlight));
+    ['dragleave', 'drop'].forEach((event) => drop.addEventListener(event, unhighlight));
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((event) =>
+      drop.addEventListener(event, preventDefaults)
+    );
+    drop.addEventListener('drop', handleDrop);
+
+    return () => {
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((event) =>
+        drop.removeEventListener(event, preventDefaults)
+      );
+      ['dragenter', 'dragover'].forEach((event) => drop.removeEventListener(event, highlight));
+      ['dragleave', 'drop'].forEach((event) => drop.removeEventListener(event, unhighlight));
+      drop.removeEventListener('drop', handleDrop);
+    };
+  }, []);
 
   const addEnv = () => {
     if (name && value) {
-      setEnvs([...envs, { name, value }]);
+      setEnvs((prev) => {
+        const updated = [...prev];
+        const existingIndex = updated.findIndex((env) => env.name === name);
+        if (existingIndex !== -1) {
+          updated[existingIndex].value = value;
+        } else {
+          updated.push({ name, value });
+        }
+        return updated;
+      });
       setName('');
       setValue('');
     }
@@ -82,8 +162,35 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
   }, [envs, setCharacterValue]);
 
   return (
-    <div className="rounded-lg w-full">
+    <div className="rounded-lg w-full flex flex-col gap-3">
       <h2 className="text-xl font-bold mb-4 pb-5 ml-1">Environment Settings</h2>
+
+      <div className="flex items-center justify-center w-full px-10">
+        <div
+          ref={dropRef}
+          className={`flex flex-col gap-2 items-center justify-center text-gray-500 w-full border-2 border-dashed border-muted rounded-lg p-16 mb-16 text-center cursor-pointer transition ${
+            isDragging ? 'bg-muted' : ''
+          }`}
+          onClick={() => document.getElementById('env-upload')?.click()}
+        >
+          <CloudUpload />
+          <p className="text-sm">
+            Drag & drop <code>.env</code> file or select file
+          </p>
+          <input
+            id="env-upload"
+            type="file"
+            accept="*/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file && file.name.endsWith('.env')) {
+                handleFile(file);
+              }
+            }}
+          />
+        </div>
+      </div>
 
       <div className="grid grid-cols-[1fr_2fr_auto] gap-4 items-end w-full pb-4">
         <div className="flex flex-col gap-1">

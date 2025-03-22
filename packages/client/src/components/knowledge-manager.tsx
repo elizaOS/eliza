@@ -203,10 +203,11 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
   );
 
   const EmptyState = () => (
-    <div className="text-muted-foreground text-center p-8 flex flex-col items-center gap-2">
-      <Book className="h-12 w-12 opacity-20" />
-      <p>No knowledge documents yet</p>
-      <Button variant="outline" className="mt-2" onClick={handleUploadClick}>
+    <div className="text-muted-foreground text-center p-12 flex flex-col items-center gap-3 border-2 border-dashed rounded-lg mt-8">
+      <Book className="h-12 w-12 text-muted-foreground opacity-20" />
+      <h3 className="text-lg font-medium">No Knowledge Documents</h3>
+      <p className="max-w-md text-sm">No Knowledge Documents found.</p>
+      <Button variant="outline" onClick={handleUploadClick}>
         <Upload className="h-4 w-4 mr-2" />
         Upload Documents
       </Button>
