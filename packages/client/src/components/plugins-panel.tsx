@@ -36,8 +36,14 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
 
   // Get plugin names from available plugins
   const pluginNames = useMemo(() => {
-    if (!plugins) return [];
-    return Object.keys(plugins).map((name) => name.replace(/^@elizaos-plugins\//, '@elizaos/'));
+    const defaultPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-local-ai'];
+    if (!plugins) return defaultPlugins;
+    return [
+      ...defaultPlugins,
+      ...(Array.isArray(plugins) ? plugins : Object.keys(plugins))
+        .map((name) => name.replace(/^@elizaos-plugins\//, '@elizaos/'))
+        .filter((name) => !defaultPlugins.includes(name)),
+    ];
   }, [plugins]);
 
   // Reset change tracking when character changes

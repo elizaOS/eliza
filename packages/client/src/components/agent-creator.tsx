@@ -18,7 +18,7 @@ const defaultCharacter: Partial<Agent> = {
   bio: [] as string[],
   topics: [] as string[],
   adjectives: [] as string[],
-  plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-local-ai'],
+  plugins: [],
   settings: { secrets: {} },
 };
 
@@ -81,7 +81,7 @@ export default function AgentCreator() {
       characterValue={agentState.agent}
       setCharacterValue={agentState}
       title="Character Settings"
-      description="Configure your AI character's behavior and capabilities"
+      description="Configure your AI character's behavior and capabilities. Recommended default plugins: @elizaos/plugin-sql, @elizaos/plugin-local-ai"
       onSubmit={handleSubmit}
       onReset={() => agentState.reset()}
       onDelete={() => {
