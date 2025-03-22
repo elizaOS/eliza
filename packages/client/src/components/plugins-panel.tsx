@@ -8,23 +8,25 @@ import {
 import { Input } from '@/components/ui/input';
 import { usePlugins } from '@/hooks/use-plugins';
 import type { Agent } from '@elizaos/core';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Button } from './ui/button';
 
 interface PluginsPanelProps {
   characterValue: Agent;
-  setCharacterValue: (value: (prev: Agent) => Agent) => void;
+  setCharacterValue: {
+    addPlugin?: (pluginId: string) => void;
+    removePlugin?: (index: number) => void;
+    setPlugins?: (plugins: string[]) => void;
+    updateField?: <T>(path: string, value: T) => void;
+    [key: string]: any;
+  };
 }
 
 export default function PluginsPanel({ characterValue, setCharacterValue }: PluginsPanelProps) {
   const { data: plugins, error } = usePlugins();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-
-  const pluginNames = useMemo(() => {
-    if (!plugins) return [];
-    return Object.keys(plugins).map((name) => name.replace(/^@elizaos-plugins\//, '@elizaos/'));
-  }, [plugins]);
+  const [hasChanged, setHasChanged] = useState(false);
 
   // Ensure we always have arrays and normalize plugin names
   const safeCharacterPlugins = useMemo(() => {
@@ -32,24 +34,57 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
     return characterValue.plugins;
   }, [characterValue?.plugins]);
 
+  // Get plugin names from available plugins
+  const pluginNames = useMemo(() => {
+    const defaultPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-local-ai'];
+    if (!plugins) return defaultPlugins;
+    return [
+      ...defaultPlugins,
+      ...(Array.isArray(plugins) ? plugins : Object.keys(plugins))
+        .map((name) => name.replace(/^@elizaos-plugins\//, '@elizaos/'))
+        .filter((name) => !defaultPlugins.includes(name)),
+    ];
+  }, [plugins]);
+
+  // Reset change tracking when character changes
+  useEffect(() => {
+    setHasChanged(false);
+  }, [characterValue.id]);
+
   const filteredPlugins = useMemo(() => {
     return pluginNames
       .filter((plugin) => !safeCharacterPlugins.includes(plugin))
       .filter((plugin) => plugin.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [pluginNames, safeCharacterPlugins, searchQuery]);
 
-  const handlePluginToggle = (plugin: string) => {
-    setCharacterValue((prev) => {
-      const currentPlugins = Array.isArray(prev.plugins) ? prev.plugins : [];
-      const newPlugins = currentPlugins.includes(plugin)
-        ? currentPlugins.filter((p) => p !== plugin)
-        : [...currentPlugins, plugin];
+  const handlePluginAdd = (plugin: string) => {
+    if (safeCharacterPlugins.includes(plugin)) return;
 
-      return {
-        ...prev,
-        plugins: newPlugins,
-      };
-    });
+    setHasChanged(true);
+
+    if (setCharacterValue.addPlugin) {
+      setCharacterValue.addPlugin(plugin);
+    } else if (setCharacterValue.updateField) {
+      const currentPlugins = Array.isArray(characterValue.plugins)
+        ? [...characterValue.plugins]
+        : [];
+      setCharacterValue.updateField('plugins', [...currentPlugins, plugin]);
+    }
+  };
+
+  const handlePluginRemove = (plugin: string) => {
+    const index = safeCharacterPlugins.indexOf(plugin);
+    if (index !== -1) {
+      setHasChanged(true);
+
+      if (setCharacterValue.removePlugin) {
+        setCharacterValue.removePlugin(index);
+      } else if (setCharacterValue.updateField) {
+        const newPlugins = [...safeCharacterPlugins];
+        newPlugins.splice(index, 1);
+        setCharacterValue.updateField('plugins', newPlugins);
+      }
+    }
   };
 
   return (
@@ -72,7 +107,7 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
                         size="sm"
                         key={plugin}
                         className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/20 h-auto"
-                        onClick={() => handlePluginToggle(plugin)}
+                        onClick={() => handlePluginRemove(plugin)}
                       >
                         {plugin} ×
                       </Button>
@@ -110,7 +145,7 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
                               variant="ghost"
                               className="w-full justify-start font-normal"
                               onClick={() => {
-                                handlePluginToggle(plugin);
+                                handlePluginAdd(plugin);
                                 setSearchQuery('');
                                 setIsDialogOpen(false);
                               }}
@@ -124,6 +159,9 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
                   </DialogContent>
                 </Dialog>
               </div>
+              {hasChanged && (
+                <p className="text-xs text-blue-500">Plugins configuration has been updated</p>
+              )}
             </div>
           )}
         </div>

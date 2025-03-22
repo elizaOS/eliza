@@ -261,6 +261,11 @@ export abstract class BaseDrizzleAdapter<
         }
 
         await this.db.transaction(async (tx) => {
+          // Handle settings update if present
+          if (agent.settings) {
+            agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
+          }
+
           await tx
             .update(agentTable)
             .set({
@@ -283,6 +288,63 @@ export abstract class BaseDrizzleAdapter<
         return false;
       }
     });
+  }
+
+  /**
+   * Merges updated agent settings with existing settings in the database,
+   * with special handling for nested objects like secrets.
+   * @param tx - The database transaction
+   * @param agentId - The ID of the agent
+   * @param updatedSettings - The settings object with updates
+   * @returns The merged settings object
+   * @private
+   */
+  private async mergeAgentSettings(
+    tx: DrizzleOperations,
+    agentId: UUID,
+    updatedSettings: any
+  ): Promise<any> {
+    // First get the current agent data
+    const currentAgent = await tx
+      .select({ settings: agentTable.settings })
+      .from(agentTable)
+      .where(eq(agentTable.id, agentId))
+      .limit(1);
+
+    if (currentAgent.length === 0 || !currentAgent[0].settings) {
+      return updatedSettings;
+    }
+
+    const currentSettings = currentAgent[0].settings;
+
+    // Handle secrets with special null-values treatment
+    if (updatedSettings.secrets) {
+      const currentSecrets = currentSettings.secrets || {};
+      const updatedSecrets = updatedSettings.secrets;
+
+      // Create a new secrets object
+      const mergedSecrets = { ...currentSecrets };
+
+      // Process the incoming secrets updates
+      for (const [key, value] of Object.entries(updatedSecrets)) {
+        if (value === null) {
+          // If value is null, remove the key
+          delete mergedSecrets[key];
+        } else {
+          // Otherwise, update the value
+          mergedSecrets[key] = value;
+        }
+      }
+
+      // Replace the secrets in updatedSettings with our processed version
+      updatedSettings.secrets = mergedSecrets;
+    }
+
+    // Deep merge the settings objects
+    return {
+      ...currentSettings,
+      ...updatedSettings,
+    };
   }
 
   /**

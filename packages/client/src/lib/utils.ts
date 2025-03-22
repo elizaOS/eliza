@@ -44,7 +44,7 @@ export function urlToCharacterName(urlName: string): string {
 
 // crypto.randomUUID only works in https context in firefox
 export function randomUUID(): UUID {
-  return URL.createObjectURL(new Blob()).split('/').pop();
+  return URL.createObjectURL(new Blob()).split('/').pop() as UUID;
 }
 
 export function getEntityId(): UUID {

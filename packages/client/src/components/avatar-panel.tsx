@@ -1,17 +1,29 @@
 import { Button } from '@/components/ui/button';
 import type { Agent } from '@elizaos/core';
 import { Image as ImageIcon, Upload, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { compressImage } from '@/lib/utils';
 
 interface AvatarPanelProps {
   characterValue: Agent;
-  setCharacterValue: (value: (prev: Agent) => Agent) => void;
+  setCharacterValue: {
+    updateAvatar?: (avatarUrl: string) => void;
+    updateSetting?: <T>(path: string, value: T) => void;
+    updateField?: <T>(path: string, value: T) => void;
+    [key: string]: any;
+  };
 }
 
 export default function AvatarPanel({ characterValue, setCharacterValue }: AvatarPanelProps) {
   const [avatar, setAvatar] = useState<string | null>(characterValue?.settings?.avatar || null);
+  const [hasChanged, setHasChanged] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset the change flag when component initializes or character changes
+  useEffect(() => {
+    setAvatar(characterValue?.settings?.avatar || null);
+    setHasChanged(false);
+  }, [characterValue.id]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -19,21 +31,37 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
       try {
         const compressedImage = await compressImage(file);
         setAvatar(compressedImage);
+        setHasChanged(true);
+
+        // Only update when there's a real change
+        updateCharacterAvatar(compressedImage);
       } catch (error) {
         console.error('Error compressing image:', error);
       }
     }
   };
 
-  useEffect(() => {
-    setCharacterValue((prev) => ({
-      ...prev,
-      settings: {
-        ...prev.settings,
-        avatar: avatar,
-      },
-    }));
-  }, [avatar, setCharacterValue]);
+  const handleRemoveAvatar = () => {
+    if (avatar) {
+      setAvatar(null);
+      setHasChanged(true);
+      updateCharacterAvatar('');
+    }
+  };
+
+  // Centralized update function to avoid code duplication
+  const updateCharacterAvatar = (avatarUrl: string) => {
+    if (setCharacterValue.updateAvatar) {
+      // Use the specialized method for avatar updates when available
+      setCharacterValue.updateAvatar(avatarUrl);
+    } else if (setCharacterValue.updateSetting) {
+      // Use updateSetting as fallback
+      setCharacterValue.updateSetting('avatar', avatarUrl);
+    } else if (setCharacterValue.updateField) {
+      // Last resort - use the generic field update
+      setCharacterValue.updateField('settings.avatar', avatarUrl);
+    }
+  };
 
   return (
     <div className="rounded-lg w-full">
@@ -45,7 +73,7 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
             <img src={avatar} alt="Character Avatar" className="object-cover rounded-lg border" />
             <button
               className="absolute -top-2 -right-2 bg-white p-1 rounded-full shadow-md"
-              onClick={() => setAvatar(null)}
+              onClick={handleRemoveAvatar}
               type="button"
             >
               <X className="w-5 h-5 text-card" />
@@ -67,6 +95,8 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
         <Button className="flex items-center gap-2" onClick={() => fileInputRef.current?.click()}>
           <Upload className="w-5 h-5" /> Upload Avatar
         </Button>
+
+        {hasChanged && <p className="text-xs text-blue-500">Avatar has been updated</p>}
       </div>
     </div>
   );
