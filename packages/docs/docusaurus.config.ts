@@ -325,16 +325,16 @@ const config = {
           docId: 'index',
         },
         {
-          to: 'blog',
-          label: 'Blog',
-          position: 'left',
-        },
-        {
           type: 'doc',
           docsPluginId: 'community',
           position: 'left',
           label: 'Community',
           docId: 'index',
+        },
+        {
+          to: 'blog',
+          label: 'Blog',
+          position: 'left',
         },
         {
           label: 'RSS',
