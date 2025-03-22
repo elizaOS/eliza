@@ -571,13 +571,12 @@ export class VoiceManager extends EventEmitter {
    * @param {Readable} audioStream - The audio stream to monitor.
    */
   async handleUserStream(
-    userId: UUID,
+    entityId: UUID,
     name: string,
     userName: string,
     channel: BaseGuildVoiceChannel,
     audioStream: Readable
   ) {
-    const entityId = createUniqueUuid(this.runtime, userId);
     logger.debug(`Starting audio monitor for user: ${entityId}`);
     if (!this.userStates.has(entityId)) {
       this.userStates.set(entityId, {
@@ -693,10 +692,11 @@ export class VoiceManager extends EventEmitter {
       }
 
       const roomId = createUniqueUuid(this.runtime, channelId);
+      const uniqueEntityId = createUniqueUuid(this.runtime, entityId);
       const type = await this.getChannelType(channel as Channel);
 
       await this.runtime.ensureConnection({
-        entityId,
+        entityId: uniqueEntityId,
         roomId,
         userName,
         name: name,
@@ -709,7 +709,7 @@ export class VoiceManager extends EventEmitter {
       const memory: Memory = {
         id: createUniqueUuid(this.runtime, `${channelId}-voice-message-${Date.now()}`),
         agentId: this.runtime.agentId,
-        entityId,
+        entityId: uniqueEntityId,
         roomId,
         content: {
           text: message,
@@ -741,7 +741,7 @@ export class VoiceManager extends EventEmitter {
           };
 
           if (responseMemory.content.text?.trim()) {
-            await this.runtime.createMemory(responseMemory);
+            await this.runtime.createMemory(responseMemory, 'messages');
 
             const responseStream = await this.runtime.useModel(
               ModelType.TEXT_TO_SPEECH,
