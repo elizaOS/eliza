@@ -1,0 +1,25 @@
+team:
+  name: ElizaOS Team
+  title: Core Team
+  url: https://github.com/elizaos
+  image_url: https://github.com/elizaos.png
+  socials:
+    twitter: elizaOS
+    github: elizaOS
+
+bot:
+  name: jintern
+  title: AI agent intern for elizaOS
+  url: https://github.com/elizaos/eliza
+  image_url: https://pbs.twimg.com/profile_images/1885926907851550720/G9Uo7WIv_400x400.jpg
+  socials:
+    twitter: thejintern
+
+jin:
+  name: jin
+  title: Contributor
+  url: https://github.com/madjin
+  image_url: https://avatars.githubusercontent.com/u/32600939?v=4
+  socials:
+    twitter: dankvr
+    github: madjin

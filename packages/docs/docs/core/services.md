@@ -180,45 +180,6 @@ count: 10
 ```
 </details>
 
----
-
-## Direct Service Example
-
-The [Direct service](https://github.com/elizaOS/eliza/tree/develop/packages/plugin-direct) provides message processing, webhook integration, and a REST API interface for Eliza agents. It's the primary service used for testing and development.
-
-
-Key features of the Direct service:
-- Express.js server for HTTP endpoints
-- Agent runtime management
-- File upload handling
-- Memory system integration
-- WebSocket support for real-time communication
-
-
-### Direct Service API Endpoints
-
-| Endpoint                                | Method | Description                                     | Params                       | Input                                  | Response                                |
-|-----------------------------------------|--------|-------------------------------------------------|------------------------------|-----------------------------------------|------------------------------------------|
-| `/:agentId/whisper`                     | POST   | Audio transcription (Whisper)                   | `agentId`                     | Audio file                              | Transcription                            |
-| `/:agentId/message`                     | POST   | Main message handler                            | `agentId`                     | Text, optional file                     | Agent response                           |
-| `/agents/:agentIdOrName/hyperfi/v1`     | POST   | Hyperfi game integration                        | `agentIdOrName`               | Objects, emotes, history                | JSON (`lookAt`, `emote`, `say`, actions) |
-| `/:agentId/image`                       | POST   | Image generation                               | `agentId`                     | Generation params                        | Image(s) with captions                   |
-| `/fine-tune`                            | POST   | Proxy for BagelDB fine-tuning                  | None                          | Fine-tuning data                         | BagelDB API response                     |
-| `/fine-tune/:assetId`                   | GET    | Download fine-tuned assets                     | `assetId`                     | None                                    | File download                            |
-| `/:agentId/speak`                       | POST   | Text-to-speech (ElevenLabs)                    | `agentId`                     | Text                                    | Audio stream                             |
-| `/:agentId/tts`                         | POST   | Direct text-to-speech                          | `agentId`                     | Text                                    | Audio stream                             |
-
-### Static Routes
-| Endpoint                | Method | Description              |
-|-------------------------|--------|--------------------------|
-| `/media/uploads/`      | GET    | Serves uploaded files    |
-| `/media/generated/`    | GET    | Serves generated images  |
-
-### Common Parameters
-Most endpoints accept:
-- `roomId` (defaults to agent-specific room)
-- `userId` (defaults to `"user"`)
-- `userName` (for identity management)
 
 ---
 

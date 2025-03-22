@@ -2,17 +2,72 @@
 
 The `AgentRuntime` is the core runtime environment for Eliza agents. It handles message processing, state management, plugin integration, and interaction with external services. You can think of it as the brains that provide the high-level orchestration layer for Eliza agents.
 
-[![](/img/architecture.png)](/img/architecture.png)
+```mermaid
+sequenceDiagram
+    actor User
+    participant Platform as Platform
+    participant Runtime as Runtime
+    participant State as State
+    participant P as Providers
+    participant A as Actions
+    participant M as Models
+    participant E as Evaluators
+    participant DB as Database
+
+    User->>Platform: Message
+    Platform->>Runtime: Forward
+
+    %% Context building (condensed)
+    Runtime->>State: Get context
+    State->>P: Gather data
+    Note over P: Character, Knowledge,<br>Messages, Time, etc.
+    P-->>State: Context data
+    State-->>Runtime: Assembled context
+
+    %% Action flow (condensed)
+    Runtime->>A: Execute action
+    A->>M: Generate content
+    M-->>A: Generated text
+    A-->>Runtime: Result
+
+    %% Evaluation (condensed)
+    Runtime->>E: Analyze
+    E->>DB: Store insights
+    E-->>Runtime: Evaluation
+
+    %% Delivery
+    Runtime->>Platform: Response
+    Platform->>User: Deliver
+
+    %% Background (simplified)
+    par Background
+        Runtime->>Runtime: Tasks & Events
+    end
+```
 
 The runtime follows this general flow:
 
-1. Agent loads character config, plugins, and services
-   - Processes knowledge sources (e.g., documents, directories)
-2. Receives a message, composes the state
-3. Processes actions and then evaluates
-   - Retrieves relevant knowledge fragments using RAG
-4. Generates and executes responses, then evaluates
-5. Updates memory and state
+1. **Initial Reception**: The user sends a message which is received by the Platform Services
+2. **Context Building**:
+
+   - The Runtime Core requests context from the State Composition system
+   - State gathers data from various Providers (Character, Knowledge, Recent Messages, etc.)
+   - The complete context is returned to the Runtime
+
+3. **Action Processing**:
+
+   - The Runtime determines applicable actions and selects the optimal one
+   - The selected action may request content generation from Models
+   - The action result is returned to the Runtime
+
+4. **Learning & Persistence**:
+
+   - The conversation is analyzed by Evaluators for insights and facts
+   - Knowledge updates are sent to the Memory System
+   - All relevant data is persisted to the Database
+
+5. **Response Delivery**:
+   - The final response is sent back to the user through Platform Services
 
 ---
 
@@ -91,14 +146,9 @@ Source: [/api/interfaces/IAgentRuntime/](/api/interfaces/IAgentRuntime/)
 - **`useModel()`**: Utilizes AI models with typesafe parameters and results.
 - **`ensureRoomExists()` / `ensureConnection()`**: Ensures the existence of communication channels and connections.
 
----
-
 ## Service System
 
 Services provide specialized functionality with standardized interfaces that can be accessed cross-platform:
-
-<details>
-<summary>See Example</summary>
 
 ```typescript
 // Speech Generation
@@ -113,8 +163,6 @@ const textContent = await pdfService.convertPdfToText(pdfBuffer);
 const discordService = runtime.getService<IDiscordService>('discord');
 await discordService.sendMessage(channelId, content);
 ```
-
-</details>
 
 ---
 

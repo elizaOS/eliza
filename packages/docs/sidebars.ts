@@ -32,6 +32,10 @@ const sidebars = {
       type: 'category',
       label: '🧠 Core Concepts',
       collapsed: false,
+      link: {
+        type: 'doc',
+        id: 'core/overview',
+      },
       items: [
         {
           type: 'doc',
@@ -40,8 +44,8 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'core/bootstrap',
-          label: 'Bootstrap',
+          id: 'core/project',
+          label: 'Project',
         },
         {
           type: 'doc',
@@ -57,6 +61,11 @@ const sidebars = {
           type: 'doc',
           id: 'core/providers',
           label: 'Providers',
+        },
+        {
+          type: 'doc',
+          id: 'core/database',
+          label: 'Database Adapters',
         },
         {
           type: 'doc',
@@ -77,16 +86,6 @@ const sidebars = {
           type: 'doc',
           id: 'core/entities',
           label: 'Entities',
-        },
-        {
-          type: 'doc',
-          id: 'core/project',
-          label: 'Project',
-        },
-        {
-          type: 'doc',
-          id: 'core/reflection',
-          label: 'Reflection',
         },
         {
           type: 'doc',

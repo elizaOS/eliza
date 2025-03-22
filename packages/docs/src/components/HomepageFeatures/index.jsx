@@ -41,14 +41,14 @@ const FeatureList = [
   },
   {
     icon: '💭',
-    title: 'Self-Reflection',
+    title: 'Self-Reflection & Learning',
     description: (
       <>
         Agents learn from interactions through built-in reflection mechanisms that extract facts,
         build relationships, and improve responses over time.
       </>
     ),
-    link: '/docs/core/reflection',
+    link: '/docs/core/evaluators',
   },
   {
     icon: '💬',
@@ -131,6 +131,11 @@ const QuickActionsList = [
       <>
         Explore the ecosystem of plugins that extend your agent's abilities and integrations across
         platforms.
+        <div className={styles.secondaryLinks}>
+          <a href="/packages" className={styles.secondaryLink}>
+            <span className={styles.secondaryLinkIcon}>📋</span> See package showcase
+          </a>
+        </div>
       </>
     ),
     link: '/packages',
@@ -142,9 +147,14 @@ const QuickActionsList = [
       <>
         Browse examples and resources from the community to spark ideas for your next AI agent
         project.
+        <div className={styles.secondaryLinks}>
+          <a href="/docs/awesome-eliza" className={styles.secondaryLink}>
+            <span className={styles.secondaryLinkIcon}>📋</span> View awesome-eliza
+          </a>
+        </div>
       </>
     ),
-    link: '/docs/intro',
+    link: '/docs/awesome-eliza',
   },
 ];
 
@@ -267,7 +277,7 @@ export default function HomepageFeatures({ type = 'features', showUseCases = tru
           </div>
 
           <div className={styles.actionSection}>
-            <Link to="/docs/intro" className="button button--primary button--lg">
+            <Link to="/docs/quickstart" className="button button--primary button--lg">
               Get Started with Eliza
             </Link>
             <Link to="/community" className={styles.communityLink}>
