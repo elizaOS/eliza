@@ -22,8 +22,6 @@ The WDYGDTW series played a role in establishing momentum and maintaining it thr
 
 We transcribed, summarized, and uplaoded notes for every Space shortly after each one. However, until now the recordings and notes haven't all been easily accessible all in one place. Showing up is half the battle. These are the pioneers of a grassroots crypto / AI movement.
 
-<details>
-<summary>Expand Timeline</summary>
 ```
 - Nov 15, 2024
 - 1: Social Agents / Advancing towards AGI
@@ -86,7 +84,6 @@ We transcribed, summarized, and uplaoded notes for every Space shortly after eac
     - DUNA Framework for DAOs, Miku updates (MetaHuman, ETHDenver), SolEng Terminal launch, Pixel memory system with backups, SolImp Telegram mod platform, ElizaOS v0.1.9 release with plugin registry, website rework with 3D models, ecosystem updates (tokenomics, self-hosting), HyperPoly plugin and marketplace integration, Degen Spartan trading enhancements, Block Tank show format, Eliza voice device development, Backpack plugin and typing fixes, voice agent model fine-tuning, Gods Unchained tokenomics, AI database interaction library, voice demo with improved latency, Coinbase grant and trading on Base, insurance agents for nature and biodiversity, Gods Unchained plugins and Devotion program
         - https://www.youtube.com/watch?v=SZNuoXJ1Mvs
 ```
-</details>
 
 ## Video Archive for Research
 
