@@ -1,4 +1,3 @@
-import { deepMerge } from '@/lib/utils';
 import { useState, useCallback } from 'react';
 
 /**
@@ -229,13 +228,6 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
   };
 
   /**
-   * Updates the entire object using deep merge
-   */
-  const updateObject = useCallback((newPartialValue: Partial<T>) => {
-    setValue((prev) => deepMerge(prev, newPartialValue));
-  }, []);
-
-  /**
    * Resets to the initial state
    */
   const reset = useCallback(() => {
@@ -286,7 +278,6 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
     updateField,
     addArrayItem,
     removeArrayItem,
-    updateObject,
     reset,
     updateSettings,
   };

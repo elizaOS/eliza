@@ -140,7 +140,6 @@ export type CharacterFormProps = {
     updateField: <T>(path: string, value: T) => void;
     addArrayItem?: <T>(path: string, item: T) => void;
     removeArrayItem?: (path: string, index: number) => void;
-    updateObject?: (newPartialValue: Partial<Agent>) => void;
     updateSetting?: (path: string, value: any) => void;
     [key: string]: any;
   };

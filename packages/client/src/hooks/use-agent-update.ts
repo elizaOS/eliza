@@ -19,7 +19,6 @@ export function useAgentUpdate(initialAgent: Agent) {
     updateField,
     addArrayItem,
     removeArrayItem,
-    updateObject,
     reset,
     updateSettings,
   } = usePartialUpdate(initialAgent);
@@ -365,9 +364,7 @@ export function useAgentUpdate(initialAgent: Agent) {
 
   return {
     agent,
-    // Original methods
     updateField,
-    updateObject,
     reset,
     updateSettings,
     setSettings,
