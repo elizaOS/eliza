@@ -19,7 +19,8 @@ export function tryLoadFile(filePath: string): string | null {
   try {
     return fs.readFileSync(filePath, 'utf8');
   } catch (e) {
-    throw new Error(`Error loading file ${filePath}: ${e}`);
+    logger.error(`Error loading file ${filePath}: ${e}`);
+    return null;
   }
 }
 
@@ -143,6 +144,7 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
     path.resolve(__dirname, 'characters', path.basename(characterPath)),
     path.resolve(__dirname, '../characters', path.basename(characterPath)),
     path.resolve(__dirname, '../../characters', path.basename(characterPath)),
+    path.resolve(__dirname, '../../../characters', path.basename(characterPath)),
   ];
 
   for (const tryPath of pathsToTry) {

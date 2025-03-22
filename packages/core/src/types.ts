@@ -685,6 +685,8 @@ export interface IDatabaseAdapter {
   /** Database instance */
   db: any;
 
+  adapter?: IDatabaseAdapter;
+
   /** Initialize database connection */
   init(): Promise<void>;
 

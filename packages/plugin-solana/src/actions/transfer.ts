@@ -49,21 +49,15 @@ function isTransferContent(content: TransferContent): boolean {
   logger.log('Content for transfer', content);
 
   // Base validation
-  if (!content.recipient || typeof content.recipient !== 'string') {
+  if (!content.recipient || typeof content.recipient !== 'string' || !content.amount) {
     return false;
   }
 
-  // SOL transfer validation
-  if (content.tokenAddress === null) {
-    return typeof content.amount === 'number';
+  if (content.tokenAddress === 'null') {
+    content.tokenAddress = null;
   }
 
-  // SPL token transfer validation
-  if (typeof content.tokenAddress === 'string') {
-    return typeof content.amount === 'string' || typeof content.amount === 'number';
-  }
-
-  return false;
+  return typeof content.amount === 'string' || typeof content.amount === 'number';
 }
 
 /**
@@ -180,12 +174,19 @@ export default {
       const connection = new Connection(
         runtime.getSetting('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com'
       );
+
+      logger.debug('sender address:', senderKeypair.publicKey.toBase58());
+      logger.debug(
+        'solana rpc url:',
+        runtime.getSetting('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com'
+      );
       const recipientPubkey = new PublicKey(content.recipient);
 
       let signature: string;
 
       // Handle SOL transfer
       if (content.tokenAddress === null) {
+        logger.debug('transferring SOL');
         const lamports = Number(content.amount) * 1e9;
 
         const instruction = SystemProgram.transfer({
@@ -219,6 +220,7 @@ export default {
       }
       // Handle SPL token transfer
       else {
+        logger.debug('transferring SPL token');
         const mintPubkey = new PublicKey(content.tokenAddress);
         const mintInfo = await connection.getParsedAccountInfo(mintPubkey);
         const decimals =

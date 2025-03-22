@@ -41,6 +41,9 @@ export class TaskService extends Service {
    * @returns {Promise<TaskService>} A promise that resolves with the TaskService instance.
    */
   static async start(runtime: IAgentRuntime): Promise<TaskService> {
+    if (!runtime) {
+      throw new Error('Runtime is required to start TaskService');
+    }
     const service = new TaskService(runtime);
     await service.startTimer();
     // await service.createTestTasks();
@@ -170,6 +173,10 @@ export class TaskService extends Service {
    * @returns {Promise<void>} Promise that resolves once all tasks are checked and executed
    */
   private async checkTasks() {
+    if (!this.runtime?.adapter) {
+      logger.warn(`runtime ${this.runtime?.character?.name} adapter is not ready`);
+      return;
+    }
     try {
       // Get all tasks with "queue" tag
       const allTasks = await this.runtime.getTasks({
