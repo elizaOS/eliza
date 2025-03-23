@@ -73,9 +73,10 @@ let environmentSettings: Settings = {};
  */
 export function loadEnvConfig(): Settings {
   // For browser environments, return the configured settings
-  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-    return environmentSettings;
-  }
+  // src/runtime.ts:76:14 - error TS2304: Cannot find name 'window'.
+  // if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+  //   return environmentSettings;
+  // }
 
   // Only import dotenv in Node.js environment
   let dotenv = null;
@@ -271,11 +272,11 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
 
-    if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-      this.settings = environmentSettings;
-    } else {
-      this.settings = loadEnvConfig();
-    }
+    // if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+    //   this.settings = environmentSettings;
+    // } else {
+    this.settings = loadEnvConfig();
+    //}
 
     // Register plugins from options or empty array
     const plugins = opts?.plugins ?? [];
