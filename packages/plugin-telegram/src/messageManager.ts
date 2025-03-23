@@ -361,6 +361,9 @@ export class MessageManager {
       // Create callback for handling responses
       const callback: HandlerCallback = async (content: Content, _files?: string[]) => {
         try {
+          // If response is from reasoning do not send it.
+          if (!content.text) return [];
+
           const sentMessages = await this.sendMessageInChunks(ctx, content, message.message_id);
 
           if (!sentMessages) return [];
