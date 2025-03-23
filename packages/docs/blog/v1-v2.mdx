@@ -30,10 +30,103 @@ Source: https://www.youtube.com/watch?v=yUjScwAZsQo
 | **Wallet Overlap**: Multi-chain wallet conflicts | **Unified Inventory**: One wallet with chain-agnostic actions |
 | **Rigid State**: Hardcoded goals and features | **Modular State**: Extensible, optional components for tailored agents |
 | **Basic Action Chaining**: No multi-step foresight | **Strategic Planning**: Agents map out complex, sequenced workflows |
+| **Package Manager Speed**: Lengthy installations and cold starts | **Bun Integration**: Faster installs, reduced build times |
+
 
 ---
 
 ## Technical Implementation Changes
+
+```mermaid
+graph TB
+    %% Main Components with vertical orientation
+    User((User)):::user
+
+    %% First Level - Services
+    PlatformServices[Services]:::services
+
+    %% Second Level - Runtime
+    AgentRuntime[Agent Runtime]:::core
+
+    %% Core Processing Components - Side by side
+    subgraph "Core Processing"
+        direction LR
+        Providers[Providers]:::int
+        Actions[Actions]:::int
+        Evaluators[Evaluators]:::int
+    end
+
+    %% Knowledge and DB - Side by side
+    subgraph "Knowledge & Storage"
+        direction LR
+        Knowledge[Knowledge]:::int
+        DB[(Database)]:::db
+    end
+
+    %% Organization Components - Vertical layout
+    subgraph "Organization"
+        direction TB
+        Worlds[Worlds]:::struct
+        Rooms[Rooms]:::struct
+        Entities[Entities]:::struct
+    end
+
+    %% Development Components - Side by side
+    subgraph "Development & Integration"
+        direction LR
+        Plugins[Plugins]:::dev
+        Projects[Projects]:::dev
+        Tasks[Tasks]:::dev
+    end
+
+    %% Main Flow - Vertical emphasis
+    User <-->|Interaction| PlatformServices
+    PlatformServices -->|Process| AgentRuntime
+
+    %% Runtime connections - Simplified
+    AgentRuntime ---|Context| Providers
+    AgentRuntime ---|Behavior| Actions
+    AgentRuntime ---|Analysis| Evaluators
+
+    %% Data connections
+    AgentRuntime <-->|Storage| DB
+    Knowledge -->|Informs| Providers
+
+    %% Structure connections - Clean vertical hierarchy
+    AgentRuntime -->|Manages| Worlds
+    Worlds -->|Contains| Rooms
+    Rooms -->|Has| Entities
+
+    %% Development connections
+    Projects -->|Configure| AgentRuntime
+    Plugins -->|Extend| AgentRuntime
+    Tasks -->|Scheduled by| AgentRuntime
+
+    %% Clickable nodes with links to docs
+    click AgentRuntime "/docs/core/agents" "Learn about Agent Runtime"
+    click PlatformServices "/docs/core/services" "Learn about Services"
+    click DB "/docs/core/database" "Learn about Database Systems"
+    click Actions "/docs/core/actions" "Learn about Actions"
+    click Providers "/docs/core/providers" "Learn about Providers"
+    click Evaluators "/docs/core/evaluators" "Learn about Evaluators"
+    click Knowledge "/docs/core/knowledge" "Learn about Knowledge System"
+    click Worlds "/docs/core/worlds" "Learn about Worlds"
+    click Rooms "/docs/core/rooms" "Learn about Rooms"
+    click Entities "/docs/core/entities" "Learn about Entities"
+    click Plugins "/docs/core/plugins" "Learn about Plugins"
+    click Projects "/docs/core/project" "Learn about Projects"
+    click Tasks "/docs/core/tasks" "Learn about Tasks"
+
+    %% Styling
+    classDef core fill:#3498db,stroke:#2c3e50,stroke-width:1px,color:#fff,font-weight:bold
+    classDef services fill:#9b59b6,stroke:#2c3e50,stroke-width:1px,color:#fff,font-weight:bold
+    classDef db fill:#27ae60,stroke:#2c3e50,stroke-width:1px,color:#fff,font-weight:bold
+    classDef int fill:#e74c3c,stroke:#2c3e50,stroke-width:1px,color:#fff,font-weight:bold
+    classDef struct fill:#f39c12,stroke:#2c3e50,stroke-width:1px,color:#fff,font-weight:bold
+    classDef dev fill:#1abc9c,stroke:#2c3e50,stroke-width:1px,color:#fff,font-weight:bold
+    classDef user fill:#ecf0f1,stroke:#2c3e50,stroke-width:2px,color:#2c3e50,font-weight:bold,border-radius:50%
+```
+
 
 ### From Clients to Services
 V2 swaps Clients for Services, standardizing platform integration while centralizing message routing—agents now think once, act anywhere (Discord, Twitter, SMS, even phone calls).
