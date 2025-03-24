@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0D1117" />
+      <stop offset="100%" stop-color="#161B22" />
+    </linearGradient>
+    
+    <!-- World glow -->
+    <filter id="worldGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Room glow -->
+    <filter id="roomGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Entity glow -->
+    <filter id="entityGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Connection paths -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4D5BCE" />
+    </marker>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="600" fill="url(#bgGradient)" />
+  
+  <!-- Decorative grid lines -->
+  <g stroke="#343B4A" stroke-width="0.5" opacity="0.15">
+    <path d="M0,100 H800 M0,200 H800 M0,300 H800 M0,400 H800 M0,500 H800" />
+    <path d="M100,0 V600 M200,0 V600 M300,0 V600 M400,0 V600 M500,0 V600 M600,0 V600 M700,0 V600" />
+  </g>
+  
+  <!-- Title -->
+  <text x="400" y="80" font-family="Arial, sans-serif" font-size="42" font-weight="bold" 
+        fill="#E5E9F0" text-anchor="middle">Worlds</text>
+  <text x="400" y="120" font-family="Arial, sans-serif" font-size="18" 
+        fill="#88C0D0" text-anchor="middle">In ElizaOS Framework</text>
+  
+  <!-- Central World - DEV -->
+  <g transform="translate(400, 320)">
+    <!-- World container -->
+    <circle cx="0" cy="0" r="130" fill="#1A1D2D" stroke="#4D5BCE" stroke-width="3" filter="url(#worldGlow)" />
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="26" fill="#4D5BCE" text-anchor="middle" font-weight="bold">DEV</text>
+    
+    <!-- Inner structure - Rooms -->
+    <g opacity="0.9">
+      <circle cx="-60" cy="-40" r="25" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" filter="url(#roomGlow)" />
+      <text x="-60" y="-36" font-family="Arial, sans-serif" font-size="11" fill="#E5E9F0" text-anchor="middle">#general</text>
+      
+      <circle cx="50" cy="-50" r="22" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" filter="url(#roomGlow)" />
+      <text x="50" y="-46" font-family="Arial, sans-serif" font-size="11" fill="#E5E9F0" text-anchor="middle">#bugs</text>
+      
+      <circle cx="10" cy="60" r="30" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" filter="url(#roomGlow)" />
+      <text x="10" y="64" font-family="Arial, sans-serif" font-size="11" fill="#E5E9F0" text-anchor="middle">#roadmap</text>
+      
+      <circle cx="-70" cy="60" r="20" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" filter="url(#roomGlow)" />
+      <text x="-70" y="64" font-family="Arial, sans-serif" font-size="9" fill="#E5E9F0" text-anchor="middle">#support</text>
+    </g>
+  </g>
+  
+  <!-- QA World -->
+  <g transform="translate(220, 230)">
+    <!-- World container -->
+    <circle cx="0" cy="0" r="70" fill="#1A1D2D" stroke="#B48EAD" stroke-width="2.5" filter="url(#worldGlow)" />
+    <text x="0" y="5" font-family="Arial, sans-serif" font-size="20" fill="#B48EAD" text-anchor="middle" font-weight="bold">QA</text>
+    
+    <!-- Inner structure - Rooms -->
+    <g opacity="0.9">
+      <circle cx="-20" cy="-15" r="15" fill="#292E42" stroke="#88C0D0" stroke-width="1" filter="url(#roomGlow)" />
+      <text x="-20" y="-12" font-family="Arial, sans-serif" font-size="8" fill="#E5E9F0" text-anchor="middle">#tests</text>
+      
+      <circle cx="15" cy="20" r="18" fill="#292E42" stroke="#88C0D0" stroke-width="1" filter="url(#roomGlow)" />
+      <text x="15" y="23" font-family="Arial, sans-serif" font-size="8" fill="#E5E9F0" text-anchor="middle">#reports</text>
+    </g>
+  </g>
+  
+  <!-- PROD World -->
+  <g transform="translate(600, 230)">
+    <!-- World container -->
+    <circle cx="0" cy="0" r="80" fill="#1A1D2D" stroke="#A3BE8C" stroke-width="2.5" filter="url(#worldGlow)" />
+    <text x="0" y="5" font-family="Arial, sans-serif" font-size="20" fill="#A3BE8C" text-anchor="middle" font-weight="bold">PROD</text>
+    
+    <!-- Inner structure - Rooms -->
+    <g opacity="0.9">
+      <circle cx="-25" cy="-15" r="20" fill="#292E42" stroke="#88C0D0" stroke-width="1" filter="url(#roomGlow)" />
+      <text x="-25" y="-11" font-family="Arial, sans-serif" font-size="9" fill="#E5E9F0" text-anchor="middle">#main</text>
+      
+      <circle cx="20" cy="25" r="17" fill="#292E42" stroke="#88C0D0" stroke-width="1" filter="url(#roomGlow)" />
+      <text x="20" y="29" font-family="Arial, sans-serif" font-size="9" fill="#E5E9F0" text-anchor="middle">#help</text>
+      
+      <circle cx="25" cy="-20" r="15" fill="#292E42" stroke="#88C0D0" stroke-width="1" filter="url(#roomGlow)" />
+      <text x="25" y="-16" font-family="Arial, sans-serif" font-size="7" fill="#E5E9F0" text-anchor="middle">#status</text>
+    </g>
+  </g>
+  
+  <!-- AI World -->
+  <g transform="translate(500, 450)">
+    <!-- World container -->
+    <circle cx="0" cy="0" r="60" fill="#1A1D2D" stroke="#5E81AC" stroke-width="2.5" filter="url(#worldGlow)" />
+    <text x="0" y="5" font-family="Arial, sans-serif" font-size="20" fill="#5E81AC" text-anchor="middle" font-weight="bold">AI</text>
+    
+    <!-- Inner structure - Rooms -->
+    <g opacity="0.9">
+      <circle cx="0" cy="-15" r="17" fill="#292E42" stroke="#88C0D0" stroke-width="1" filter="url(#roomGlow)" />
+      <text x="0" y="-11" font-family="Arial, sans-serif" font-size="8" fill="#E5E9F0" text-anchor="middle">#models</text>
+      
+      <circle cx="0" cy="15" r="12" fill="#292E42" stroke="#88C0D0" stroke-width="1" filter="url(#roomGlow)" />
+      <text x="0" y="19" font-family="Arial, sans-serif" font-size="7" fill="#E5E9F0" text-anchor="middle">#data</text>
+    </g>
+  </g>
+  
+  <!-- Connection lines between worlds -->
+  <g stroke-width="1.5" stroke-dasharray="5,3" opacity="0.7">
+    <path d="M280,250 L340,290" stroke="#4D5BCE" marker-end="url(#arrowhead)" />
+    <path d="M540,250 L460,290" stroke="#A3BE8C" marker-end="url(#arrowhead)" />
+    <path d="M450,400 L480,410" stroke="#5E81AC" marker-end="url(#arrowhead)" />
+  </g>
+  
+  <!-- Entities scattered across worlds -->
+  <!-- DEV world entities -->
+  <g transform="translate(400, 320)">
+    <circle cx="-65" cy="-50" r="5" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-55" cy="-30" r="5" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="40" cy="-60" r="5" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="60" cy="-40" r="5" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="0" cy="60" r="5" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="20" cy="60" r="5" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-80" cy="60" r="5" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-60" cy="65" r="5" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <!-- QA world entities -->
+  <g transform="translate(220, 230)">
+    <circle cx="-25" cy="-20" r="4" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-15" cy="-10" r="4" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="10" cy="15" r="4" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="20" cy="25" r="4" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <!-- PROD world entities -->
+  <g transform="translate(600, 230)">
+    <circle cx="-30" cy="-20" r="4" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-20" cy="-10" r="4" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="15" cy="20" r="4" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="25" cy="30" r="4" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="20" cy="-25" r="4" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="30" cy="-15" r="4" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <!-- AI world entities -->
+  <g transform="translate(500, 450)">
+    <circle cx="-10" cy="-15" r="4" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="10" cy="-15" r="4" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="0" cy="15" r="4" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <!-- Improved Legend -->
+  <g transform="translate(70, 500)">
+    <rect x="0" y="0" width="180" height="80" rx="8" ry="8" fill="#1A1D2D" stroke="#4C566A" stroke-width="1" opacity="0.8" />
+    <text x="15" y="25" font-family="Arial, sans-serif" font-size="14" fill="#E5E9F0" font-weight="bold">Legend</text>
+    
+    <circle cx="30" cy="45" r="10" fill="#1A1D2D" stroke="#4D5BCE" stroke-width="1.5" />
+    <text x="50" y="49" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0">World</text>
+    
+    <circle cx="30" cy="70" r="7" fill="#292E42" stroke="#88C0D0" stroke-width="1" />
+    <text x="50" y="74" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0">Room</text>
+    
+    <circle cx="110" cy="45" r="5" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" />
+    <text x="130" y="49" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0">User</text>
+    
+    <circle cx="110" cy="70" r="5" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" />
+    <text x="130" y="74" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0">Agent</text>
+  </g>
+  
+  <!-- Bottom descriptor -->
+  <text x="400" y="550" font-family="Arial, sans-serif" font-size="16" fill="#88C0D0" text-anchor="middle">
+    Virtual environments hosting rooms and entities
+  </text>
+  
+  <!-- Decorative elements -->
+  <g opacity="0.3">
+    <circle cx="100" cy="100" r="2" fill="#88C0D0" />
+    <circle cx="150" cy="80" r="1" fill="#88C0D0" />
+    <circle cx="600" cy="120" r="2" fill="#88C0D0" />
+    <circle cx="650" cy="90" r="1" fill="#88C0D0" />
+    <circle cx="200" cy="450" r="1" fill="#88C0D0" />
+    <circle cx="700" cy="450" r="2" fill="#88C0D0" />
+    <circle cx="750" cy="520" r="1" fill="#88C0D0" />
+    <circle cx="300" cy="150" r="1" fill="#88C0D0" />
+    <circle cx="480" cy="180" r="2" fill="#88C0D0" />
+    <circle cx="520" cy="140" r="1" fill="#88C0D0" />
+  </g>
+</svg>

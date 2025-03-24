@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0D1117" />
+      <stop offset="100%" stop-color="#161B22" />
+    </linearGradient>
+    
+    <!-- World glow -->
+    <filter id="worldGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Room glow -->
+    <filter id="roomGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Entity glow -->
+    <filter id="entityGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Connection paths -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4D5BCE" />
+    </marker>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="600" fill="url(#bgGradient)" />
+  
+  <!-- Decorative grid lines -->
+  <g stroke="#343B4A" stroke-width="0.5" opacity="0.2">
+    <path d="M0,100 H800 M0,200 H800 M0,300 H800 M0,400 H800 M0,500 H800" />
+    <path d="M100,0 V600 M200,0 V600 M300,0 V600 M400,0 V600 M500,0 V600 M600,0 V600 M700,0 V600" />
+  </g>
+  
+  <!-- Title -->
+  <text x="400" y="100" font-family="Arial, sans-serif" font-size="42" font-weight="bold" 
+        fill="#E5E9F0" text-anchor="middle">Worlds</text>
+  <text x="400" y="140" font-family="Arial, sans-serif" font-size="18" 
+        fill="#88C0D0" text-anchor="middle">In ElizaOS Framework</text>
+  
+  <!-- Central World -->
+  <g transform="translate(400, 320)">
+    <!-- World container -->
+    <circle cx="0" cy="0" r="150" fill="#1A1D2D" stroke="#4D5BCE" stroke-width="3" filter="url(#worldGlow)" />
+    
+    <!-- Inner structure - Rooms -->
+    <circle cx="-60" cy="-40" r="35" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" opacity="0.8" filter="url(#roomGlow)" />
+    <circle cx="50" cy="-50" r="30" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" opacity="0.8" filter="url(#roomGlow)" />
+    <circle cx="10" cy="60" r="40" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" opacity="0.8" filter="url(#roomGlow)" />
+    <circle cx="-70" cy="60" r="25" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" opacity="0.8" filter="url(#roomGlow)" />
+    
+    <!-- Satellite Worlds -->
+    <g transform="translate(-180, -100)">
+      <circle cx="0" cy="0" r="50" fill="#1A1D2D" stroke="#4D5BCE" stroke-width="2" filter="url(#worldGlow)" />
+      <circle cx="15" cy="-10" r="15" fill="#292E42" stroke="#88C0D0" stroke-width="1" opacity="0.8" />
+      <circle cx="-10" cy="10" r="12" fill="#292E42" stroke="#88C0D0" stroke-width="1" opacity="0.8" />
+    </g>
+    
+    <g transform="translate(200, -110)">
+      <circle cx="0" cy="0" r="60" fill="#1A1D2D" stroke="#4D5BCE" stroke-width="2" filter="url(#worldGlow)" />
+      <circle cx="-20" cy="-15" r="18" fill="#292E42" stroke="#88C0D0" stroke-width="1" opacity="0.8" />
+      <circle cx="15" cy="20" r="16" fill="#292E42" stroke="#88C0D0" stroke-width="1" opacity="0.8" />
+      <circle cx="20" cy="-10" r="12" fill="#292E42" stroke="#88C0D0" stroke-width="1" opacity="0.8" />
+    </g>
+    
+    <g transform="translate(150, 150)">
+      <circle cx="0" cy="0" r="40" fill="#1A1D2D" stroke="#4D5BCE" stroke-width="2" filter="url(#worldGlow)" />
+      <circle cx="0" cy="0" r="15" fill="#292E42" stroke="#88C0D0" stroke-width="1" opacity="0.8" />
+    </g>
+    
+    <!-- Connection lines between worlds -->
+    <path d="M-150,-90 L-30,-20" stroke="#4D5BCE" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.6" marker-end="url(#arrowhead)" />
+    <path d="M150,-100 L30,-20" stroke="#4D5BCE" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.6" marker-end="url(#arrowhead)" />
+    <path d="M130,130 L40,40" stroke="#4D5BCE" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.6" marker-end="url(#arrowhead)" />
+    
+    <!-- Entities scattered across worlds -->
+    <circle cx="-60" cy="-50" r="6" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-50" cy="-30" r="6" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="40" cy="-60" r="6" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="60" cy="-40" r="6" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="0" cy="60" r="6" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="20" cy="60" r="6" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-80" cy="60" r="6" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-60" cy="70" r="6" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    
+    <!-- Satellite world entities -->
+    <circle cx="-175" cy="-105" r="5" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-185" cy="-95" r="5" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="190" cy="-115" r="5" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="210" cy="-105" r="5" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="145" cy="145" r="5" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="155" cy="155" r="5" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <!-- Description text -->
+  <g font-family="Arial, sans-serif" fill="#E5E9F0">
+    <text x="400" y="520" font-size="15" text-anchor="middle" fill="#88C0D0">Virtual environments hosting interconnected rooms and entities</text>
+  </g>
+  
+  <!-- Decorative elements -->
+  <g opacity="0.4">
+    <circle cx="100" cy="100" r="2" fill="#88C0D0" />
+    <circle cx="150" cy="80" r="1" fill="#88C0D0" />
+    <circle cx="600" cy="120" r="2" fill="#88C0D0" />
+    <circle cx="650" cy="90" r="1" fill="#88C0D0" />
+    <circle cx="200" cy="500" r="1" fill="#88C0D0" />
+    <circle cx="700" cy="450" r="2" fill="#88C0D0" />
+    <circle cx="750" cy="520" r="1" fill="#88C0D0" />
+  </g>
+</svg>
