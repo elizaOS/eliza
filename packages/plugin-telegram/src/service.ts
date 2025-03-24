@@ -207,9 +207,12 @@ export class TelegramService extends Service {
         channelType = ChannelType.GROUP;
     }
 
+    // Ensure chatId is properly formatted for UUID creation by removing negative sign if present
+    const formattedChatId = chatId.startsWith('-') ? chatId.substring(1) : chatId;
+
     // Create standardized world data
-    const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
-    const roomId = createUniqueUuid(this.runtime, chatId) as UUID;
+    const worldId = createUniqueUuid(this.runtime, formattedChatId) as UUID;
+    const roomId = createUniqueUuid(this.runtime, formattedChatId) as UUID;
 
     // Build world representation
     const world: World = {
