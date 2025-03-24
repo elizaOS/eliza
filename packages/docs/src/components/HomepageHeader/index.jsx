@@ -20,7 +20,7 @@ function HomepageHeader() {
             </h1>
             <p className={styles.heroSubtitle}>{siteConfig.tagline}</p>
             <div className={styles.buttonGroup}>
-              <Link className="button button--primary button--lg" to="/docs/intro">
+              <Link className="button button--primary button--lg" to="/docs">
                 Get Started
               </Link>
               <div className={styles.githubButton}>

@@ -1,10 +1,9 @@
 /**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
+ * Optimized CSS for eliza documentation site
+ * Performance-focused with reduced transitions and simplified selectors
  */
 
-/* You can override the default Infima variables here. */
+/* Base variables - unchanged to maintain visual identity */
 :root {
   --ifm-color-primary: #ffa600;
   --ifm-color-primary-dark: #e69500;
@@ -19,57 +18,46 @@
     sans-serif;
 }
 
-/* Cool dark mode with modern aesthetics and warm accents */
+/* Dark mode variables - simplified */
 [data-theme='dark'] {
-  /* Warmer primary color - orange-blue balance */
-  --ifm-color-primary: #ff9500; /* Warm orange as primary */
+  --ifm-color-primary: #ff9500;
   --ifm-color-primary-dark: #e68600;
   --ifm-color-primary-darker: #d97e00;
   --ifm-color-primary-darkest: #b36800;
   --ifm-color-primary-light: #ffa01a;
   --ifm-color-primary-lighter: #ffaa33;
   --ifm-color-primary-lightest: #ffb84d;
-
-  /* Accent color for secondary elements - keeping some blue */
-  --ifm-color-secondary-dark: #00a3cc; /* Cyan for accents */
-
-  /* Enhanced backgrounds with warmer undertones */
-  --ifm-background-color: #111827; /* Darker blue-gray background */
-  --ifm-background-surface-color: #1e293b; /* Surface with slight warmth */
-
-  /* Text colors */
+  --ifm-color-secondary-dark: #00a3cc;
+  --ifm-background-color: #111827;
+  --ifm-background-surface-color: #1e293b;
   --ifm-font-color-base: #f1f5f9;
   --ifm-heading-color: #ffffff;
-
-  /* Code and doc elements */
-  --docusaurus-highlighted-code-line-bg: rgba(255, 149, 0, 0.1); /* Warm highlight */
+  --docusaurus-highlighted-code-line-bg: rgba(255, 149, 0, 0.1);
   --ifm-footer-background-color: #1e293b;
   --ifm-table-stripe-background: rgba(255, 255, 255, 0.03);
   --ifm-table-border-color: rgba(255, 255, 255, 0.12);
-  --ifm-toc-border-color: rgba(255, 149, 0, 0.2); /* Warm accent for TOC */
+  --ifm-toc-border-color: rgba(255, 149, 0, 0.2);
   --ifm-color-emphasis-300: rgba(255, 255, 255, 0.25);
-
-  /* Warm accents */
   --warm-accent-light: rgba(255, 149, 0, 0.15);
   --warm-accent-border: rgba(255, 149, 0, 0.3);
 }
 
-/* Subtle gradient background for dark mode pages with warmer undertones */
+/* Performance-optimized background */
 [data-theme='dark'] .main-wrapper {
-  background: radial-gradient(circle at 10% 10%, #1e293b 0%, #111827 90%);
+  background-color: #111827;
 }
 
+/* Fixed footer color */
 .footer {
   background-color: #161b22;
 }
 
-/* Cool gradient buttons */
+/* Button styling - minimal transitions */
 .button--primary {
-  background: linear-gradient(135deg, rgb(249, 140, 19) 0%, rgb(255, 166, 0) 100%);
+  background: linear-gradient(135deg, #f98c13 0%, #ffa600 100%);
   border: none;
   padding: 1rem 2rem;
   font-size: 1.2rem;
-  transition: all 0.3s ease;
   color: white;
   position: relative;
   z-index: 1;
@@ -78,25 +66,26 @@
 }
 
 .button--primary:hover {
-  background: linear-gradient(135deg, rgb(255, 156, 43) 0%, rgb(255, 166, 0) 100%);
+  background: linear-gradient(135deg, #ff9c2b 0%, #ffa600 100%);
   transform: translateY(-2px);
   box-shadow: 0 6px 20px 0 rgba(255, 166, 0, 0.3);
 }
 
 [data-theme='dark'] .button--primary {
-  background: linear-gradient(135deg, rgb(255, 149, 0) 0%, rgb(255, 102, 0) 100%);
+  background: linear-gradient(135deg, #ff9500 0%, #ff6600 100%);
   box-shadow: 0 4px 14px 0 rgba(255, 149, 0, 0.25);
 }
 
 [data-theme='dark'] .button--primary:hover {
-  background: linear-gradient(135deg, rgb(255, 166, 43) 0%, rgb(255, 123, 26) 100%);
+  background: linear-gradient(135deg, #ffa62b 0%, #ff7b1a 100%);
   box-shadow: 0 6px 20px 0 rgba(255, 149, 0, 0.3);
 }
 
+/* Responsive iframe - unchanged */
 .responsive-iframe {
   position: relative;
   width: 100%;
-  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  padding-bottom: 56.25%;
   height: 0;
   overflow: hidden;
   background: #000;
@@ -114,7 +103,7 @@
   border-radius: 8px;
 }
 
-/* Futuristic API Method badges */
+/* API Method badges - optimized selectors */
 .api-method > .menu__link {
   align-items: center;
   justify-content: start;
@@ -132,46 +121,40 @@
   text-align: center;
   flex-shrink: 0;
   color: white;
-  transition: all 0.3s ease;
 }
 
-/* Modern REST API badges for dark mode with warm accents */
+/* API method badges for dark mode - flat colors for better performance */
 [data-theme='dark'] .get > .menu__link::before {
   content: 'get';
-  background: linear-gradient(135deg, #3182ce 0%, #2c5282 100%);
+  background-color: #3182ce;
   color: white;
-  box-shadow: 0 2px 5px rgba(49, 130, 206, 0.3);
 }
 
 [data-theme='dark'] .post > .menu__link::before {
   content: 'post';
-  background: linear-gradient(135deg, #38a169 0%, #276749 100%);
+  background-color: #38a169;
   color: white;
-  box-shadow: 0 2px 5px rgba(56, 161, 105, 0.3);
 }
 
 [data-theme='dark'] .delete > .menu__link::before {
   content: 'del';
-  background: linear-gradient(135deg, #e53e3e 0%, #9b2c2c 100%);
+  background-color: #e53e3e;
   color: white;
-  box-shadow: 0 2px 5px rgba(229, 62, 62, 0.3);
 }
 
 [data-theme='dark'] .put > .menu__link::before {
   content: 'put';
-  background: linear-gradient(135deg, #4299e1 0%, #2b6cb0 100%);
+  background-color: #4299e1;
   color: white;
-  box-shadow: 0 2px 5px rgba(66, 153, 225, 0.3);
 }
 
 [data-theme='dark'] .patch > .menu__link::before {
   content: 'patch';
-  background: linear-gradient(135deg, #ff9500 0%, #c05621 100%);
+  background-color: #ff9500;
   color: white;
-  box-shadow: 0 2px 5px rgba(255, 149, 0, 0.3);
 }
 
-/* Light mode API badges */
+/* Light mode API badges - simplified */
 .get > .menu__link::before {
   content: 'get';
   background-color: var(--ifm-color-primary);
@@ -197,11 +180,11 @@
   background-color: #f97316;
 }
 
-/* Cool tables in dark mode with subtle hover effects */
+/* Optimized tables in dark mode */
 [data-theme='dark'] table {
   border-spacing: 0;
   overflow-x: auto;
-  display: block; /* Make tables responsive */
+  display: block;
   margin: 1.5em 0;
 }
 
@@ -211,11 +194,7 @@
   font-weight: 600;
   border-bottom: 2px solid rgba(255, 149, 0, 0.2);
   padding: 12px 16px;
-  white-space: nowrap; /* Prevents wrapping in headers */
-}
-
-[data-theme='dark'] table tr {
-  transition: background-color 0.2s ease;
+  white-space: nowrap;
 }
 
 [data-theme='dark'] table tr:nth-child(even) {
@@ -231,69 +210,47 @@
   padding: 12px 16px;
 }
 
-/* Stylish sidebar in dark mode */
+/* Performance-optimized sidebar in dark mode */
 [data-theme='dark'] .menu {
   background-color: #161b22;
-  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  /* Use box-shadow instead of border for better performance */
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.05);
+  /* Hardware acceleration */
+  transform: translateZ(0);
 }
 
+/* Optimized active links - remove transitions */
 [data-theme='dark'] .menu__link--active {
-  background-color: var(--warm-accent-light);
+  background-color: rgba(255, 149, 0, 0.15);
   border-left: 3px solid var(--ifm-color-primary);
   font-weight: 600;
+  padding-left: calc(var(--ifm-menu-link-padding-horizontal) - 3px);
 }
 
+/* Simplified hover effect with minimal transition */
 [data-theme='dark'] .menu__link:hover {
   background-color: rgba(255, 255, 255, 0.05);
-  transition: background-color 0.2s ease;
 }
 
-/* Modernized navbar */
+/* Optimized navbar */
 [data-theme='dark'] .navbar {
-  background-color: rgba(22, 27, 34, 0.9);
-  backdrop-filter: blur(10px);
-  box-shadow:
-    0 1px 2px 0 rgba(0, 0, 0, 0.1),
-    0 1px 6px 0 rgba(0, 0, 0, 0.05);
+  background-color: rgba(22, 27, 34, 0.95);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.1);
 }
 
-/* Card styling for dark mode with warm accents */
+/* Card styling for dark mode - optimized */
 [data-theme='dark'] .card {
   background-color: #1e293b;
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  transition:
-    transform 0.3s ease,
-    box-shadow 0.3s ease,
-    border-color 0.3s ease;
   border: 1px solid rgba(255, 255, 255, 0.05);
   overflow: hidden;
 }
 
 [data-theme='dark'] .card:hover {
   border-color: rgba(255, 149, 0, 0.2);
-}
-
-[data-theme='dark'] .card:hover {
   transform: translateY(-5px);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-}
-
-/* Elegant transitions for dark mode */
-[data-theme='dark'] * {
-  transition:
-    background 0.5s ease,
-    background-color 0.2s ease,
-    border-color 1s ease,
-    fill 0.2s ease,
-    stroke 0.5s ease;
-}
-
-/* Cool announcement bar if you have one */
-[data-theme='dark'] .announcement-bar {
-  background: linear-gradient(90deg, #161b22 0%, #0d1117 50%, #161b22 100%);
-  background-size: 200% 100%;
-  animation: gradient-shift 15s ease infinite;
 }
 
 /* Warm accent for blockquotes */
@@ -303,4 +260,42 @@
   margin: 1.5em 0;
   padding: 1em;
   border-radius: 0 8px 8px 0;
+}
+
+/* Use specific will-change properties only where needed */
+.navbar--fixed-top {
+  will-change: transform;
+}
+
+.menu__link {
+  will-change: background-color;
+}
+
+/* Target performance for key interactive components */
+@media (prefers-reduced-motion: no-preference) {
+  /* Apply transitions only for non-reduced motion users */
+  .button--primary {
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .menu__link:hover {
+    transition: background-color 0.15s ease;
+  }
+
+  .card:hover {
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+}
+
+/* Prefers-reduced-motion accommodations */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }

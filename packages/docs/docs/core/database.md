@@ -8,6 +8,46 @@ The ElizaOS database system provides persistent storage capabilities for agents.
 
 ## Overview
 
+```mermaid
+graph TB
+    %% Main Components
+    Runtime([Agent Runtime])
+    DbAdapter([Database Adapter])
+    DbConnection[("Database (PGLite/PostgreSQL)")]
+
+    %% Data Models in compact form
+    DataModels["Data Models: Entities, Components, Memories, Relationships, Rooms, Worlds, Tasks Cache"]
+
+    %% Vector Search
+    VectorStore[(Vector Store)]
+
+    %% Memories Knowledge
+    MemoriesKnowledge[(Memories / Knowledge)]
+
+    %% Connection flow
+    Runtime -->|Uses| DbAdapter
+    DbAdapter -->|Connects to| DbConnection
+    DbConnection -->|Stores & Retrieves| DataModels
+
+    %% Connect Vector Store
+    DbConnection -->|Utilizes| VectorStore
+    VectorStore -->|Enables Search on| MemoriesKnowledge
+
+    %% Styling
+    classDef default fill:#f0f4f8,stroke:#2c3e50,stroke-width:1px;
+    classDef runtime fill:#3498db,stroke:#2c3e50,stroke-width:1px,color:#fff;
+    classDef adapter fill:#9b59b6,stroke:#2c3e50,stroke-width:1px,color:#fff;
+    classDef db fill:#27ae60,stroke:#2c3e50,stroke-width:1px,color:#fff;
+    classDef datamodels fill:#52be80,stroke:#2c3e50,stroke-width:1px,color:#fff;
+    classDef memories fill:#2c5e1a,stroke:#2c3333,stroke-width:1px,color:#fff;
+
+    class Runtime runtime;
+    class DbAdapter adapter;
+    class DbConnection,VectorStore db;
+    class DataModels datamodels;
+    class MemoriesKnowledge memories;
+```
+
 ElizaOS uses a unified database architecture based on Drizzle ORM with adapters that implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAdapter) interface. The current release includes support for:
 
 | Adapter        | Best For                    | Key Features                                                      |
