@@ -32,6 +32,10 @@ const sidebars = {
       type: 'category',
       label: '🧠 Core Concepts',
       collapsed: false,
+      link: {
+        type: 'doc',
+        id: 'core/overview',
+      },
       items: [
         {
           type: 'doc',
@@ -40,8 +44,8 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'core/bootstrap',
-          label: 'Bootstrap',
+          id: 'core/actions',
+          label: 'Actions',
         },
         {
           type: 'doc',
@@ -50,28 +54,8 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'core/plugins',
-          label: 'Plugins',
-        },
-        {
-          type: 'doc',
-          id: 'core/providers',
-          label: 'Providers',
-        },
-        {
-          type: 'doc',
-          id: 'core/knowledge',
-          label: 'Knowledge',
-        },
-        {
-          type: 'doc',
-          id: 'core/actions',
-          label: 'Actions',
-        },
-        {
-          type: 'doc',
-          id: 'core/evaluators',
-          label: 'Evaluators',
+          id: 'core/database',
+          label: 'Database Adapters',
         },
         {
           type: 'doc',
@@ -80,13 +64,28 @@ const sidebars = {
         },
         {
           type: 'doc',
+          id: 'core/evaluators',
+          label: 'Evaluators',
+        },
+        {
+          type: 'doc',
+          id: 'core/knowledge',
+          label: 'Knowledge',
+        },
+        {
+          type: 'doc',
+          id: 'core/plugins',
+          label: 'Plugins',
+        },
+        {
+          type: 'doc',
           id: 'core/project',
           label: 'Project',
         },
         {
           type: 'doc',
-          id: 'core/reflection',
-          label: 'Reflection',
+          id: 'core/providers',
+          label: 'Providers',
         },
         {
           type: 'doc',

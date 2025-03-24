@@ -6,6 +6,8 @@ sidebar_position: 9
 
 Entities in ElizaOS represent users, agents, or any participant that can interact within the system. They form the basis of the entity-component architecture, allowing for flexible data modeling and relationships across the platform.
 
+![](/img/entities-component-architecture.svg)
+
 ## Entity Structure
 
 An entity in ElizaOS has the following properties:

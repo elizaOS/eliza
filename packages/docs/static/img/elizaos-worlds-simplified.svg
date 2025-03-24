@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A1E2D" />
+      <stop offset="100%" stop-color="#252B3D" />
+    </linearGradient>
+    
+    <!-- Glows -->
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="600" fill="url(#bgGradient)" />
+  
+  <!-- Title -->
+  <text x="400" y="80" font-family="Arial, sans-serif" font-size="36" font-weight="bold" 
+        fill="#E5E9F0" text-anchor="middle">Worlds</text>
+  <text x="400" y="120" font-family="Arial, sans-serif" font-size="18" 
+        fill="#4D5BCE" text-anchor="middle">in ElizaOS</text>
+  
+  <!-- Server Selection View (like Discord) -->
+  <g transform="translate(400, 300)">
+    <!-- Server selector sidebar -->
+    <rect x="-300" y="-150" width="80" height="320" fill="#272C36" rx="5" ry="5" stroke="#4C566A" stroke-width="2" />
+    
+    <!-- Server icons -->
+    <circle cx="-260" cy="-120" r="25" fill="#4D5BCE" stroke="#E5E9F0" stroke-width="2" />
+    <text x="-260" y="-115" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle" font-weight="bold">DEV</text>
+    
+    <circle cx="-260" cy="-60" r="25" fill="#5E81AC" stroke="#E5E9F0" stroke-width="3" />
+    <text x="-260" y="-55" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle" font-weight="bold">AI</text>
+    
+    <circle cx="-260" cy="0" r="25" fill="#A3BE8C" />
+    <text x="-260" y="5" font-family="Arial, sans-serif" font-size="12" fill="#2E3440" text-anchor="middle" font-weight="bold">PROD</text>
+    
+    <circle cx="-260" cy="60" r="25" fill="#B48EAD" />
+    <text x="-260" y="65" font-family="Arial, sans-serif" font-size="12" fill="#2E3440" text-anchor="middle" font-weight="bold">QA</text>
+    
+    <circle cx="-260" cy="120" r="25" fill="#D08770" />
+    <text x="-260" y="125" font-family="Arial, sans-serif" font-size="11" fill="#2E3440" text-anchor="middle" font-weight="bold">GAME</text>
+    
+    <!-- Add new server button -->
+    <circle cx="-260" cy="170" r="15" fill="#3B4252" stroke="#81A1C1" stroke-width="2" stroke-dasharray="3,2" />
+    <text x="-260" y="175" font-family="Arial, sans-serif" font-size="16" fill="#81A1C1" text-anchor="middle" font-weight="bold">+</text>
+    
+    <!-- Selected server (World) information -->
+    <rect x="-205" y="-150" width="405" height="320" rx="10" ry="10" fill="#2E3440" stroke="#4C566A" stroke-width="2" />
+    
+    <!-- Server Header -->
+    <rect x="-205" y="-150" width="405" height="50" rx="10" ry="10" fill="#272C36" />
+    <circle cx="-175" cy="-125" r="15" fill="#5E81AC" />
+    <text x="-150" y="-120" font-family="Arial, sans-serif" font-size="18" fill="#E5E9F0" font-weight="bold">AI Research World</text>
+    
+    <!-- Channels / Rooms List -->
+    <g font-family="Arial, sans-serif" font-size="14">
+      <text x="-185" y="-80" fill="#88C0D0" font-weight="bold">TEXT CHANNELS</text>
+      
+      <text x="-175" y="-50" fill="#D8DEE9"># welcome</text>
+      <text x="-175" y="-20" fill="#D8DEE9"># announcements</text>
+      <text x="-175" y="10" fill="#D8DEE9"># general</text>
+      <text x="-175" y="40" fill="#D8DEE9"># support</text>
+      <text x="-175" y="70" fill="#D8DEE9"># research</text>
+      
+      <text x="-185" y="110" fill="#88C0D0" font-weight="bold">VOICE CHANNELS</text>
+      <text x="-175" y="140" fill="#D8DEE9">🔊 Meeting Room</text>
+      
+      <!-- Members Section -->
+      <text x="70" y="-80" fill="#88C0D0" font-weight="bold">MEMBERS (8)</text>
+      
+      <circle cx="60" cy="-50" r="8" fill="#A3BE8C" />
+      <text x="75" y="-45" fill="#D8DEE9">User1</text>
+      
+      <circle cx="60" cy="-20" r="8" fill="#A3BE8C" />
+      <text x="75" y="-15" fill="#D8DEE9">User2</text>
+      
+      <circle cx="60" cy="10" r="8" fill="#B48EAD" />
+      <text x="75" y="15" fill="#D8DEE9">ResearchAgent</text>
+      
+      <circle cx="60" cy="40" r="8" fill="#B48EAD" />
+      <text x="75" y="45" fill="#D8DEE9">AssistantBot</text>
+      
+      <circle cx="60" cy="70" r="8" fill="#A3BE8C" />
+      <text x="75" y="75" fill="#D8DEE9">User3</text>
+      
+      <circle cx="60" cy="100" r="8" fill="#A3BE8C" />
+      <text x="75" y="105" fill="#D8DEE9">User4</text>
+    </g>
+  </g>
+  
+  <!-- Floating explanation bubbles -->
+  <g filter="url(#softGlow)">
+    <!-- World explanation -->
+    <rect x="120" y="460" width="200" height="80" rx="10" ry="10" fill="#4C566A" opacity="0.9" />
+    <text x="220" y="485" font-family="Arial, sans-serif" font-size="14" fill="#ECEFF4" text-anchor="middle" font-weight="bold">Worlds</text>
+    <text x="220" y="510" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle">Like Discord servers or</text>
+    <text x="220" y="530" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle">Slack workspaces</text>
+    
+    <!-- Rooms explanation -->
+    <rect x="530" y="460" width="200" height="80" rx="10" ry="10" fill="#4C566A" opacity="0.9" />
+    <text x="630" y="485" font-family="Arial, sans-serif" font-size="14" fill="#ECEFF4" text-anchor="middle" font-weight="bold">Rooms within Worlds</text>
+    <text x="630" y="510" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle">Like channels in a server</text>
+    <text x="630" y="530" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle">for specific discussions</text>
+    
+    <!-- Line connectors -->
+    <line x1="160" y1="460" x2="145" y2="300" stroke="#4D5BCE" stroke-width="1.5" stroke-dasharray="3,2" />
+    <line x1="580" y1="460" x2="350" y2="330" stroke="#4D5BCE" stroke-width="1.5" stroke-dasharray="3,2" />
+  </g>
+  
+  <!-- Bottom descriptor -->
+  <text x="400" y="570" font-family="Arial, sans-serif" font-size="16" fill="#4D5BCE" text-anchor="middle">
+    Virtual environments containing multiple rooms and entities
+  </text>
+</svg>
