@@ -157,7 +157,7 @@
         "date-fns": "^4.1.0",
         "dayjs": "^1.11.13",
         "eventemitter3": "^5.0.1",
-        "lucide-react": "^0.469.0",
+        "lucide-react": "^0.483.0",
         "react": "^19.0.0",
         "react-aiwriter": "^1.0.0",
         "react-dom": "^19.0.0",
@@ -467,6 +467,21 @@
       },
       "peerDependencies": {
         "whatwg-url": "7.1.0",
+      },
+    },
+    "packages/plugin-redpill": {
+      "name": "@elizaos/plugin-redpill",
+      "version": "1.0.0-beta.2",
+      "dependencies": {
+        "@ai-sdk/openai": "^1.1.9",
+        "@ai-sdk/ui-utils": "1.1.9",
+        "@elizaos/core": "^1.0.0-beta.2",
+        "ai": "^4.1.25",
+        "js-tiktoken": "^1.0.18",
+        "tsup": "8.4.0",
+      },
+      "devDependencies": {
+        "prettier": "3.5.3",
       },
     },
     "packages/plugin-solana": {
@@ -1319,6 +1334,8 @@
     "@elizaos/plugin-openai": ["@elizaos/plugin-openai@workspace:packages/plugin-openai"],
 
     "@elizaos/plugin-pdf": ["@elizaos/plugin-pdf@workspace:packages/plugin-pdf"],
+
+    "@elizaos/plugin-redpill": ["@elizaos/plugin-redpill@workspace:packages/plugin-redpill"],
 
     "@elizaos/plugin-solana": ["@elizaos/plugin-solana@workspace:packages/plugin-solana"],
 
@@ -4268,7 +4285,7 @@
 
     "lru-queue": ["lru-queue@0.1.0", "", { "dependencies": { "es5-ext": "~0.10.2" } }, "sha512-BpdYkt9EvGl8OfWHDQPISVpcl5xZthb+XPsbELj5AQXxIC8IriDZIQYjBJPEm5rS420sjZ0TLEzRcq5KdBhYrQ=="],
 
-    "lucide-react": ["lucide-react@0.469.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-28vvUnnKQ/dBwiCQtwJw7QauYnE7yd2Cyp4tTTJpvglX4EMpbflcdBgrgToX2j71B3YvugK/NH3BGUk+E/p/Fw=="],
+    "lucide-react": ["lucide-react@0.483.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-WldsY17Qb/T3VZdMnVQ9C3DDIP7h1ViDTHVdVGnLZcvHNg30zH/MTQ04RTORjexoGmpsXroiQXZ4QyR0kBy0FA=="],
 
     "lunr": ["lunr@2.3.9", "", {}, "sha512-zTU3DaZaF3Rt9rhN3uBMGQD3dD2/vFQqnvZCDv4dl5iOzq2IZQqTxu90r4E5J+nP70J3ilqVCrbho2eWaeW8Ow=="],
 
