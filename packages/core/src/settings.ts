@@ -44,11 +44,7 @@ export function getSalt(runtime?: IAgentRuntime): string {
       : (import.meta as any).env.SECRET_SALT) || 'secretsalt';
   const agentId = runtime?.agentId;
 
-  if (!agentId) {
-    logger.warn('AgentId is missing when generating encryption salt');
-  }
-
-  const salt = secretSalt + (agentId || '');
+  const salt = secretSalt;
   logger.debug(`Generated salt with length: ${salt.length} (truncated for security)`);
   return salt;
 }
@@ -106,7 +102,9 @@ export function decryptStringValue(value: string, salt: string): string {
     // Split the IV and encrypted value
     const parts = value.split(':');
     if (parts.length !== 2) {
-      logger.warn(`Invalid encrypted value format - expected 'iv:encrypted'`);
+      logger.warn(
+        `Invalid encrypted value format - expected 'iv:encrypted', returning original value`
+      );
       return value; // Return the original value without decryption
     }
 
