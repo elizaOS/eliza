@@ -269,7 +269,7 @@ export function AppSidebar() {
                         return (
                           <SidebarMenuItem key={roomId}>
                             <NavLink to={`/room/${roomId}`}>
-                              <SidebarMenuButton className="px-4 py-2 my-4 h-full rounded-md transition-colors">
+                              <SidebarMenuButton className="px-4 py-2 my-2 h-full rounded-md transition-colors">
                                 <div className="flex items-center gap-3">
                                   <AgentAvatarStack
                                     agentIds={roomAgentIds}

@@ -1,4 +1,4 @@
-# Knowledge Management in ElizaOS
+# Knowledge Management
 
 ## Overview
 

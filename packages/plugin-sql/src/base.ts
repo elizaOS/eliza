@@ -26,6 +26,7 @@ import {
   lte,
   or,
   sql,
+  not,
 } from 'drizzle-orm';
 import { v4 } from 'uuid';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
@@ -260,6 +261,11 @@ export abstract class BaseDrizzleAdapter<
         }
 
         await this.db.transaction(async (tx) => {
+          // Handle settings update if present
+          if (agent.settings) {
+            agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
+          }
+
           await tx
             .update(agentTable)
             .set({
@@ -285,17 +291,149 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
+   * Merges updated agent settings with existing settings in the database,
+   * with special handling for nested objects like secrets.
+   * @param tx - The database transaction
+   * @param agentId - The ID of the agent
+   * @param updatedSettings - The settings object with updates
+   * @returns The merged settings object
+   * @private
+   */
+  private async mergeAgentSettings(
+    tx: DrizzleOperations,
+    agentId: UUID,
+    updatedSettings: any
+  ): Promise<any> {
+    // First get the current agent data
+    const currentAgent = await tx
+      .select({ settings: agentTable.settings })
+      .from(agentTable)
+      .where(eq(agentTable.id, agentId))
+      .limit(1);
+
+    if (currentAgent.length === 0 || !currentAgent[0].settings) {
+      return updatedSettings;
+    }
+
+    const currentSettings = currentAgent[0].settings;
+
+    // Handle secrets with special null-values treatment
+    if (updatedSettings.secrets) {
+      const currentSecrets = currentSettings.secrets || {};
+      const updatedSecrets = updatedSettings.secrets;
+
+      // Create a new secrets object
+      const mergedSecrets = { ...currentSecrets };
+
+      // Process the incoming secrets updates
+      for (const [key, value] of Object.entries(updatedSecrets)) {
+        if (value === null) {
+          // If value is null, remove the key
+          delete mergedSecrets[key];
+        } else {
+          // Otherwise, update the value
+          mergedSecrets[key] = value;
+        }
+      }
+
+      // Replace the secrets in updatedSettings with our processed version
+      updatedSettings.secrets = mergedSecrets;
+    }
+
+    // Deep merge the settings objects
+    return {
+      ...currentSettings,
+      ...updatedSettings,
+    };
+  }
+
+  /**
    * Asynchronously deletes an agent with the specified UUID and all related entries.
    *
    * @param {UUID} agentId - The UUID of the agent to be deleted.
    * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
    */
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    // casacade delete all related for the agent
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        const entities = await this.db
+          .select({ entityId: entityTable.id })
+          .from(entityTable)
+          .where(eq(entityTable.agentId, agentId));
+
+        const entityIds = entities.map((e) => e.entityId);
+
+        let memoryIds: UUID[] = [];
+
+        if (entityIds.length > 0) {
+          const entityMemories = await this.db
+            .select({ memoryId: memoryTable.id })
+            .from(memoryTable)
+            .where(inArray(memoryTable.entityId, entityIds));
+
+          memoryIds = entityMemories.map((m) => m.memoryId);
+        }
+
+        const agentMemories = await this.db
+          .select({ memoryId: memoryTable.id })
+          .from(memoryTable)
+          .where(eq(memoryTable.agentId, agentId));
+
+        memoryIds.push(...agentMemories.map((m) => m.memoryId));
+
+        if (memoryIds.length > 0) {
+          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, memoryIds));
+
+          await tx.delete(memoryTable).where(inArray(memoryTable.id, memoryIds));
+        }
+
+        const rooms = await this.db
+          .select({ roomId: roomTable.id })
+          .from(roomTable)
+          .where(eq(roomTable.agentId, agentId));
+
+        const roomIds = rooms.map((r) => r.roomId);
+
+        if (entityIds.length > 0) {
+          await tx.delete(logTable).where(inArray(logTable.entityId, entityIds));
+          await tx.delete(participantTable).where(inArray(participantTable.entityId, entityIds));
+        }
+
+        if (roomIds.length > 0) {
+          await tx.delete(logTable).where(inArray(logTable.roomId, roomIds));
+          await tx.delete(participantTable).where(inArray(participantTable.roomId, roomIds));
+        }
+
+        await tx.delete(participantTable).where(eq(participantTable.agentId, agentId));
+
+        if (roomIds.length > 0) {
+          await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
+        }
+
+        await tx.delete(cacheTable).where(eq(cacheTable.agentId, agentId));
+
+        await tx.delete(relationshipTable).where(eq(relationshipTable.agentId, agentId));
+
+        await tx.delete(entityTable).where(eq(entityTable.agentId, agentId));
+
+        const newAgent = await this.db
+          .select({ newAgentId: agentTable.id })
+          .from(agentTable)
+          .where(not(eq(agentTable.id, agentId)))
+          .limit(1);
+
+        if (newAgent.length > 0) {
+          await tx
+            .update(worldTable)
+            .set({ agentId: newAgent[0].newAgentId })
+            .where(eq(worldTable.agentId, agentId));
+        } else {
+          await tx.delete(worldTable).where(eq(worldTable.agentId, agentId));
+        }
+
         await tx.delete(agentTable).where(eq(agentTable.id, agentId));
       });
+
       return true;
     });
   }

@@ -9,6 +9,9 @@ import {
   messageHandlerTemplate,
   validateUuid,
   MemoryType,
+  encryptStringValue,
+  getSalt,
+  encryptObjectValues,
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
@@ -159,6 +162,13 @@ export function agentRouter(
         throw new Error('Failed to create character configuration');
       }
 
+      // Encrypt secrets if they exist in the character
+      if (character.settings?.secrets) {
+        logger.debug('[AGENT CREATE] Encrypting secrets');
+        const salt = getSalt();
+        character.settings.secrets = encryptObjectValues(character.settings.secrets, salt);
+      }
+
       await db.ensureAgentExists(character);
 
       res.status(201).json({
@@ -198,6 +208,31 @@ export function agentRouter(
     const updates = req.body;
 
     try {
+      // Handle encryption of secrets if present in updates
+      if (updates.settings?.secrets) {
+        const salt = getSalt();
+        const encryptedSecrets: Record<string, string> = {};
+
+        // Encrypt each secret value
+        // We need to handle null values separately
+        // because they mean delete the secret
+        Object.entries(updates.settings.secrets).forEach(([key, value]) => {
+          if (value === null) {
+            // Null means delete the secret
+            encryptedSecrets[key] = null;
+          } else if (typeof value === 'string') {
+            // Only encrypt string values
+            encryptedSecrets[key] = encryptStringValue(value, salt);
+          } else {
+            // Leave other types as is
+            encryptedSecrets[key] = value as string;
+          }
+        });
+
+        // Replace with encrypted secrets
+        updates.settings.secrets = encryptedSecrets;
+      }
+
       // Handle other updates if any
       if (Object.keys(updates).length > 0) {
         await db.updateAgent(agentId, updates);

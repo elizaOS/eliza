@@ -1,23 +1,12 @@
 import type { UUID } from '@elizaos/core';
-import {
-  Database,
-  File,
-  FileText,
-  LoaderIcon,
-  MailCheck,
-  MessageSquareShare,
-  Pencil,
-  Trash2,
-} from 'lucide-react';
+import { Database, LoaderIcon, MailCheck, MessageSquareShare, Pencil } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAgentMemories, useDeleteMemory } from '../hooks/use-query-hooks';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
-import { useToast } from '@/hooks/use-toast';
 import type { Memory } from '@elizaos/core';
-import { useQueryClient } from '@tanstack/react-query';
 import MemoryEditOverlay from './memory-edit-overlay';
 
 // Number of items to load per batch
@@ -36,21 +25,32 @@ interface MemoryContent {
     description?: string;
   };
 }
+// Add type for message content structure based on API response
+interface ChatMemoryContent extends MemoryContent {
+  text?: string;
+  actions?: string[];
+  thought?: boolean;
+  inReplyTo?: string;
+  providers?: string[];
+  channelType?: string;
+}
 
 enum MemoryType {
   all = 'all',
-  facts = 'facts',
-  messagesSent = 'messagesSent',
   messagesReceived = 'messagesReceived',
-  messages = 'messages',
+  messagesSent = 'messagesSent',
+  thoughts = 'thoughts',
+  facts = 'facts',
 }
 
-export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
+export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agentName: string }) {
   const [selectedType, setSelectedType] = useState<MemoryType>(MemoryType.all);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [visibleItems, setVisibleItems] = useState(ITEMS_PER_PAGE);
   const [loadingMore, setLoadingMore] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  console.log({ agentName, agentId });
 
   // Determine if we need to use the 'documents' table for knowledge
   const tableName =
@@ -121,55 +121,45 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
     return <Database className="w-4 h-4" />;
   };
 
-  const getMemoryLabel = (memoryType: string | undefined, content: MemoryContent) => {
-    if (content?.thought) return 'Messages Sent';
-    if (!content?.thought) return 'Messages Received';
-    return memoryType || 'Memory';
-  };
-
-  const getFileIcon = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase();
-
-    switch (ext) {
-      case 'md':
-        return <File className="h-4 w-4 text-blue-500" />;
-      case 'js':
-      case 'ts':
-      case 'jsx':
-      case 'tsx':
-        return <File className="h-4 w-4 text-yellow-500" />;
-      case 'json':
-        return <File className="h-4 w-4 text-green-500" />;
-      default:
-        return <FileText className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
   const handleDelete = (memoryId: string) => {
     if (memoryId && window.confirm('Are you sure you want to delete this memory entry?')) {
       deleteMemory({ agentId, memoryId });
     }
   };
 
-  const filteredMemories = memories.filter((memory: Memory) => {
-    if (selectedType === MemoryType.all) {
-      const content = memory.content as MemoryContent;
-      return !(content?.channelType === 'knowledge' || memory.metadata?.type === 'knowledge');
+  // Group messages by date for better organization
+  const groupMessagesByDate = (messages: Memory[]) => {
+    const groups: Record<string, Memory[]> = {};
+
+    for (const memory of messages) {
+      const date = new Date(memory.createdAt || 0);
+      const dateKey = date.toLocaleDateString();
+
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(memory);
     }
 
-    const content = memory.content as MemoryContent;
+    return groups;
+  };
 
-    if (selectedType === MemoryType.messages) {
-      return !(
-        content?.thought ||
-        content?.channelType === 'thought' ||
-        memory.metadata?.type === 'thought'
-      );
+  // Filter memories based on selected type
+  const filteredMemories = memories.filter((memory: Memory) => {
+    if (selectedType === MemoryType.all) {
+      return true;
+    }
+
+    const content = memory.content as ChatMemoryContent;
+
+    if (selectedType === MemoryType.thoughts) {
+      return content?.thought !== undefined;
     }
 
     if (selectedType === MemoryType.messagesSent) {
       return memory.entityId === memory.agentId;
     }
+
     if (selectedType === MemoryType.messagesReceived) {
       return memory.entityId !== memory.agentId;
     }
@@ -180,6 +170,8 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
   // Get visible subset for infinite scrolling
   const visibleMemories = filteredMemories.slice(0, visibleItems);
   const hasMoreToLoad = visibleItems < filteredMemories.length;
+
+  const messageGroups = groupMessagesByDate(visibleMemories);
 
   // Internal components for better organization
   const LoadingIndicator = () => (
@@ -203,25 +195,43 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
   );
 
   const EmptyState = () => (
-    <div className="text-muted-foreground text-center p-8 flex flex-col items-center gap-2">
-      No memories recorded yet
+    <div className="text-muted-foreground text-center p-12 flex flex-col items-center gap-3 border-2 border-dashed rounded-lg mt-8">
+      <Database className="h-12 w-12 text-muted-foreground opacity-20" />
+      <h3 className="text-lg font-medium">No Memories</h3>
+      <p className="max-w-md text-sm">
+        Messages will appear here once the agent begins communicating.
+      </p>
     </div>
   );
 
-  const MemoryCard = ({ memory, index }: { memory: Memory; index: number }) => {
-    const memoryType = memory.metadata?.type || 'Memory';
-    const content = memory.content as MemoryContent;
-    const source = content?.source;
+  const MemoryCard = ({
+    memory,
+    index,
+    agentName,
+  }: {
+    memory: Memory;
+    index: number;
+    agentName: string;
+  }) => {
+    const content = memory.content as ChatMemoryContent;
+    const hasThought = content?.thought;
+    const timestamp = formatDate(memory.createdAt || 0);
+
+    // Get entity name with improved logic
+    const entityName = memory.metadata?.entityName ? memory.metadata?.entityName : agentName;
+
+    console.log(entityName, memory.id, agentName);
 
     return (
       <div
         key={memory.id || index}
-        className="border rounded-md p-3 bg-card hover:bg-accent/10 transition-colors relative group"
+        className="border rounded-md p-3 mb-3 bg-card hover:bg-accent/10 transition-colors relative group"
       >
+        {/* Action buttons */}
         {memory.id && (
           <div className="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button
-              variant="secondary"
+              variant="ghost"
               size="icon"
               onClick={(e) => {
                 e.stopPropagation();
@@ -229,64 +239,100 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
                 setEditingMemory(memory);
               }}
               title="Edit memory"
+              className="h-7 w-7 hover:bg-muted"
             >
-              <Pencil className="h-4 w-4 text-regular" />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                handleDelete(memory.id || '');
-              }}
-              title="Delete memory"
-            >
-              <Trash2 className="h-4 w-4 text-destructive" />
+              <Pencil className="h-4 w-4" />
             </Button>
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium flex items-center gap-1">
-            {getMemoryIcon(memory, content)} {getMemoryLabel(memoryType, content)}
-          </span>
+        {/* Memory header - Author and timestamp */}
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            {source && (
-              <Badge variant="secondary" className="text-xs">
-                {source}
+            <span className="text-sm font-medium flex items-center gap-1.5">
+              {getMemoryIcon(memory, content)}
+              <span className="font-semibold">{entityName}</span>
+            </span>
+            {content?.actions && content.actions.length > 0 && (
+              <Badge variant="outline" className="text-xs">
+                {content.actions.join(', ')}
               </Badge>
             )}
-            <Badge variant="outline" className="text-xs group-hover:mr-8 transition-all">
-              {formatDate(memory.createdAt || 0)}
-            </Badge>
+            {content.source && (
+              <Badge variant="outline" className="text-xs">
+                {content.source}
+              </Badge>
+            )}
           </div>
+
+          <Badge variant="secondary" className="text-xs group-hover:mr-8 transition-all">
+            {timestamp}
+          </Badge>
         </div>
 
-        <div className="mt-2 grid gap-2 rounded-full">
+        {/* Message content */}
+        {content?.text && (
+          <div className="bg-muted/30 px-3 py-2 rounded mb-2">
+            <p className="text-sm whitespace-pre-wrap">{content.text}</p>
+          </div>
+        )}
+
+        {/* Thought content */}
+        {hasThought && (
+          <div className="border-t pt-2 mt-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <LoaderIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">Thought Process</span>
+            </div>
+            <div className="bg-muted/20 px-3 py-2 rounded text-muted-foreground">
+              <p className="text-xs italic whitespace-pre-wrap">{content.thought}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Show providers if available */}
+        {content?.providers && content.providers.length > 0 && (
+          <div className="mt-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-xs font-medium text-muted-foreground">Providers</span>
+            </div>
+            <div className="flex flex-wrap gap-1 p-2 bg-muted/20 rounded text-muted-foreground">
+              {content.providers.map((provider) => (
+                <Badge key={provider} variant="outline" className="text-[10px] bg-muted/40">
+                  {provider}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Memory metadata */}
+        <div className="mt-2 grid gap-2">
           {memory.id && (
-            <div className="text-xs bg-muted px-2 py-1 rounded">
-              <span className="font-semibold">ID: </span>
-              {memory.id}
+            <div className="text-xs bg-muted/40 px-2 py-1 rounded flex items-center">
+              <span className="font-semibold text-muted-foreground mr-1">ID:</span>
+              <code className="text-[11px] font-mono">{memory.id}</code>
             </div>
           )}
 
-          {memory.content && (
-            <div className="text-xs bg-muted px-2 py-1 rounded max-h-40 overflow-y-auto">
-              <span className="font-semibold">Content: </span>
-              {typeof memory.content === 'object'
-                ? JSON.stringify(memory.content, null, 2)
-                : memory.content}
+          {content?.inReplyTo && (
+            <div className="text-xs bg-muted/40 px-2 py-1 rounded flex items-center">
+              <span className="font-semibold text-muted-foreground mr-1">In Reply To:</span>
+              <code className="text-[11px] font-mono">{content.inReplyTo}</code>
             </div>
           )}
 
           {memory.metadata && Object.keys(memory.metadata).length > 0 && (
-            <div className="text-xs bg-muted px-2 py-1 rounded max-h-32 overflow-y-auto">
-              <span className="font-semibold">Metadata: </span>
-              {typeof memory.metadata === 'object'
-                ? JSON.stringify(memory.metadata, null, 2)
-                : memory.metadata}
-            </div>
+            <details className="text-xs">
+              <summary className="cursor-pointer font-semibold text-muted-foreground hover:text-foreground">
+                Metadata
+              </summary>
+              <div className="bg-muted/30 px-2 py-1 rounded mt-1 max-h-32 overflow-y-auto">
+                <pre className="text-[11px] font-mono">
+                  {JSON.stringify(memory.metadata, null, 2)}
+                </pre>
+              </div>
+            </details>
           )}
         </div>
       </div>
@@ -295,24 +341,32 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
 
   return (
     <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
-      <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none">
+      <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-medium">Agent Memories</h3>
+          <h3 className="text-lg font-medium">Memories</h3>
+          {!isLoading && (
+            <Badge variant="secondary" className="ml-2">
+              {filteredMemories.length} memories
+            </Badge>
+          )}
         </div>
-        <Select
-          value={selectedType}
-          onValueChange={(value) => setSelectedType(value as MemoryType)}
-        >
-          <SelectTrigger className="w-32">
-            <SelectValue placeholder="Filter memories" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={MemoryType.all}>All</SelectItem>
-            <SelectItem value={MemoryType.facts}>Facts</SelectItem>
-            <SelectItem value={MemoryType.messagesSent}>Messages Sent</SelectItem>
-            <SelectItem value={MemoryType.messagesReceived}>Messages Received</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select
+            value={selectedType}
+            onValueChange={(value) => setSelectedType(value as MemoryType)}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Filter memories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={MemoryType.all}>All Messages</SelectItem>
+              <SelectItem value={MemoryType.messagesSent}>Agent Messages</SelectItem>
+              <SelectItem value={MemoryType.messagesReceived}>User Messages</SelectItem>
+              <SelectItem value={MemoryType.thoughts}>With Thoughts</SelectItem>
+              <SelectItem value={MemoryType.facts}>Facts</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <div
         ref={scrollContainerRef}
@@ -322,13 +376,27 @@ export function AgentMemoryViewer({ agentId }: { agentId: UUID }) {
           <EmptyState />
         ) : (
           <div className="space-y-4">
-            {/* Regular memories */}
-            <div className="space-y-3">
-              {visibleMemories.map((memory: Memory, index: number) => (
-                <MemoryCard key={memory.id || index} memory={memory} index={index} />
-              ))}
-              {hasMoreToLoad && <LoadingIndicator />}
-            </div>
+            {/* Group messages by date */}
+            {Object.entries(messageGroups).map(([date, messages]) => (
+              <div key={date} className="mb-4">
+                <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm mb-2 pb-1 pt-2">
+                  <Badge variant="outline" className="text-xs">
+                    {date}
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  {messages.map((memory: Memory, index: number) => (
+                    <MemoryCard
+                      key={memory.id || index}
+                      memory={memory}
+                      index={index}
+                      agentName={agentName}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+            {hasMoreToLoad && <LoadingIndicator />}
           </div>
         )}
       </div>

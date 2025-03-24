@@ -57,7 +57,7 @@ npx elizaos start
 npx elizaos project list-plugins
 
 # Add a plugin
-npx elizaos project add-plugin @elizaos/plugin-discord
+npx elizaos project add-plugin @elizaos-plugins/client-discord
 ```
 
 ## 3. Creating a Plugin
