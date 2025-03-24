@@ -39,6 +39,7 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "test:setup-commands": "vitest test/setup-commands.test.js",
     "test:agent-commands": "vitest test/agent-commands.test.js",
     "test:agent-customisations": "vitest test/agent-customisation.test.js"
   },
