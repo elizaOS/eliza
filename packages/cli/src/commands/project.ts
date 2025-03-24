@@ -9,6 +9,8 @@ import {
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
+import path from 'path';
+import fs from 'fs';
 
 export const project = new Command().name('project').description('Manage an ElizaOS project');
 
@@ -163,7 +165,7 @@ project
         const pluginName = `plugin-${baseName}`;
 
         // For removing, we need the package name
-        const removeCommand = `bun remove @elizaos/${pluginName}`;
+        const removeCommand = `bun remove @elizaos/${pluginName} && rm -rf ${pluginName}`;
 
         // Use ANSI color codes
         const boldCyan = '\x1b[1;36m'; // Bold cyan for command
@@ -186,6 +188,13 @@ project
         cwd,
         stdio: 'inherit',
       });
+
+      // Remove plugin directory if it exists
+      const pluginDir = path.join(cwd, plugin.replace(/^@elizaos\//, '').replace(/^plugin-/, ''));
+      if (fs.existsSync(pluginDir)) {
+        logger.info(`Removing plugin directory ${pluginDir}...`);
+        fs.rmSync(pluginDir, { recursive: true, force: true });
+      }
 
       logger.success(`Successfully removed ${plugin}`);
     } catch (error) {
