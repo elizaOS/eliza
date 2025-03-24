@@ -185,7 +185,7 @@ const config = {
       {
         showReadingTime: true,
         onUntruncatedBlogPosts: 'ignore',
-        editUrl: 'https://github.com/elizaos/eliza/tree/main/docs/blog/',
+        editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/docs/blog/',
         blogSidebarTitle: 'Recent posts',
         blogSidebarCount: 'ALL',
         showLastUpdateAuthor: true,
@@ -210,7 +210,7 @@ const config = {
           blogTitle: 'AI News',
           blogDescription: 'Automated aggregating and summarization of elizaOS ecosystem updates',
           showReadingTime: true,
-          editUrl: 'https://github.com/elizaos/eliza/tree/main/docs/news',
+          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs/news',
           blogSidebarTitle: 'All posts',
           blogSidebarCount: 'ALL',
           showLastUpdateAuthor: true,
@@ -225,7 +225,7 @@ const config = {
         docs: {
           docItemComponent: '@theme/ApiItem',
           sidebarPath: require.resolve('./sidebars.ts'),
-          editUrl: 'https://github.com/elizaos/eliza/tree/main/docs/',
+          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs/',
           exclude: ['**/_media/**'],
           showLastUpdateAuthor: true,
           showLastUpdateTime: true,
@@ -363,11 +363,23 @@ const config = {
               label: 'General',
               href: './',
             },
+            {
+              label: 'llms.txt',
+              href: 'llms.txt',
+            },
+            {
+              label: 'llms-full.txt',
+              href: 'llms-full.txt',
+            },
           ],
         },
         {
           title: 'Community',
           items: [
+            {
+              label: 'Website',
+              href: 'https://www.elizaos.ai/',
+            },
             {
               label: 'Discord',
               href: 'https://discord.gg/elizaos',
@@ -381,6 +393,10 @@ const config = {
         {
           title: 'More',
           items: [
+            {
+              label: 'Blog',
+              href: '/blog',
+            },
             {
               label: 'GitHub',
               href: 'https://github.com/elizaos/eliza',

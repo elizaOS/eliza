@@ -16,7 +16,7 @@ graph TB
     DbConnection[("Database (PGLite/PostgreSQL)")]
 
     %% Data Models in compact form
-    DataModels["Data Models:\n Entities, Components\n Memories, Relationships\n Rooms, Worlds, Tasks\n Cache"]
+    DataModels["Data Models: Entities, Components, Memories, Relationships, Rooms, Worlds, Tasks Cache"]
 
     %% Vector Search
     VectorStore[(Vector Store)]
@@ -39,11 +39,13 @@ graph TB
     classDef adapter fill:#9b59b6,stroke:#2c3e50,stroke-width:1px,color:#fff;
     classDef db fill:#27ae60,stroke:#2c3e50,stroke-width:1px,color:#fff;
     classDef datamodels fill:#52be80,stroke:#2c3e50,stroke-width:1px,color:#fff;
+    classDef memories fill:#2c5e1a,stroke:#2c3333,stroke-width:1px,color:#fff;
 
     class Runtime runtime;
     class DbAdapter adapter;
     class DbConnection,VectorStore db;
     class DataModels datamodels;
+    class MemoriesKnowledge memories;
 ```
 
 ElizaOS uses a unified database architecture based on Drizzle ORM with adapters that implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAdapter) interface. The current release includes support for:
