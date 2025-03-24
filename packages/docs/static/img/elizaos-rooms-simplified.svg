@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A1E2D" />
+      <stop offset="100%" stop-color="#252B3D" />
+    </linearGradient>
+    
+    <!-- Glows -->
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="600" fill="url(#bgGradient)" />
+  
+  <!-- Title -->
+  <text x="400" y="80" font-family="Arial, sans-serif" font-size="36" font-weight="bold" 
+        fill="#E5E9F0" text-anchor="middle">Rooms</text>
+  <text x="400" y="120" font-family="Arial, sans-serif" font-size="18" 
+        fill="#88C0D0" text-anchor="middle">in ElizaOS</text>
+  
+  <!-- Main Chat Interface -->
+  <g transform="translate(400, 320)">
+    <!-- Chat Container -->
+    <rect x="-250" y="-150" width="500" height="300" rx="10" ry="10" 
+          fill="#2E3440" stroke="#4C566A" stroke-width="2" />
+    
+    <!-- Sidebar - like Discord/Slack -->
+    <rect x="-250" y="-150" width="80" height="300" fill="#272C36" />
+    
+    <!-- Channel list -->
+    <g fill="#88C0D0" font-family="Arial, sans-serif" font-size="12">
+      <text x="-210" y="-115" text-anchor="middle"># general</text>
+      <text x="-210" y="-85" text-anchor="middle" fill="#E5E9F0" font-weight="bold"># support</text>
+      <text x="-210" y="-55" text-anchor="middle"># random</text>
+      <text x="-210" y="-25" text-anchor="middle"># dev</text>
+      
+      <text x="-220" y="20" text-anchor="start">THREADS</text>
+      <text x="-210" y="50" text-anchor="middle" font-size="11"># feature-req</text>
+      <text x="-210" y="80" text-anchor="middle" font-size="11"># bug-report</text>
+    </g>
+    
+    <!-- Chat Header -->
+    <rect x="-170" y="-150" width="420" height="40" fill="#272C36" />
+    <text x="-150" y="-125" font-family="Arial, sans-serif" font-size="16" fill="#E5E9F0" font-weight="bold"># support</text>
+    <text x="180" y="-125" font-family="Arial, sans-serif" font-size="12" fill="#88C0D0">3 members</text>
+    
+    <!-- Chat Messages -->
+    <g font-family="Arial, sans-serif">
+      <!-- User message -->
+      <circle cx="-150" cy="-80" r="15" fill="#88C0D0" />
+      <text x="-120" y="-85" font-size="14" fill="#E5E9F0" font-weight="bold">User1</text>
+      <text x="-120" y="-65" font-size="13" fill="#E5E9F0">How do I connect my app to ElizaOS?</text>
+      
+      <!-- Agent message -->
+      <circle cx="-150" cy="-20" r="15" fill="#B48EAD" />
+      <text x="-120" y="-25" font-size="14" fill="#E5E9F0" font-weight="bold">SupportAgent</text>
+      <text x="-120" y="-5" font-size="13" fill="#E5E9F0">You'll need to use our API. I can help you set up...</text>
+      
+      <!-- Another user message -->
+      <circle cx="-150" cy="40" r="15" fill="#A3BE8C" />
+      <text x="-120" y="35" font-size="14" fill="#E5E9F0" font-weight="bold">User2</text>
+      <text x="-120" y="55" font-size="13" fill="#E5E9F0">I'm having the same issue. Can you share docs?</text>
+      
+      <!-- Thread indicator -->
+      <line x1="-140" y1="70" x2="-120" y2="70" stroke="#4C566A" stroke-width="2" />
+      <text x="-110" y="75" font-size="12" fill="#88C0D0">3 replies</text>
+    </g>
+    
+    <!-- Message input -->
+    <rect x="-160" y="110" width="390" height="30" rx="15" ry="15" 
+          fill="#3B4252" stroke="#4C566A" stroke-width="1" />
+    <text x="-140" y="130" font-family="Arial, sans-serif" font-size="12" fill="#D8DEE9" opacity="0.6">Message #support...</text>
+  </g>
+  
+  <!-- Floating explanation bubbles -->
+  <g filter="url(#softGlow)">
+    <!-- Room explanation -->
+    <rect x="100" y="440" width="160" height="70" rx="10" ry="10" fill="#4C566A" opacity="0.9" />
+    <text x="180" y="465" font-family="Arial, sans-serif" font-size="14" fill="#ECEFF4" text-anchor="middle" font-weight="bold">Rooms</text>
+    <text x="180" y="485" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle">Like channels in Discord</text>
+    <text x="180" y="500" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle">or Slack workspaces</text>
+    
+    <!-- Thread explanation -->
+    <rect x="560" y="440" width="160" height="70" rx="10" ry="10" fill="#4C566A" opacity="0.9" />
+    <text x="640" y="465" font-family="Arial, sans-serif" font-size="14" fill="#ECEFF4" text-anchor="middle" font-weight="bold">Threads</text>
+    <text x="640" y="485" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle">Nested conversations</text>
+    <text x="640" y="500" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle">within a room</text>
+    
+    <!-- Line connectors -->
+    <line x1="150" y1="440" x2="210" y2="380" stroke="#88C0D0" stroke-width="1.5" stroke-dasharray="3,2" />
+    <line x1="600" y1="440" x2="400" y2="390" stroke="#88C0D0" stroke-width="1.5" stroke-dasharray="3,2" />
+  </g>
+  
+  <!-- Bottom descriptor -->
+  <text x="400" y="550" font-family="Arial, sans-serif" font-size="16" fill="#88C0D0" text-anchor="middle">
+    Individual spaces for conversations and interactions
+  </text>
+</svg>

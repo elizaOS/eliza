@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0D1117" />
+      <stop offset="100%" stop-color="#161B22" />
+    </linearGradient>
+    
+    <!-- Room glow -->
+    <filter id="roomGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Entity glow -->
+    <filter id="entityGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Message bubble -->
+    <filter id="messageBubble" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Connection paths -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#88C0D0" />
+    </marker>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="600" fill="url(#bgGradient)" />
+  
+  <!-- Decorative grid lines -->
+  <g stroke="#343B4A" stroke-width="0.5" opacity="0.2">
+    <path d="M0,100 H800 M0,200 H800 M0,300 H800 M0,400 H800 M0,500 H800" />
+    <path d="M100,0 V600 M200,0 V600 M300,0 V600 M400,0 V600 M500,0 V600 M600,0 V600 M700,0 V600" />
+  </g>
+  
+  <!-- Title -->
+  <text x="400" y="100" font-family="Arial, sans-serif" font-size="42" font-weight="bold" 
+        fill="#E5E9F0" text-anchor="middle">Rooms</text>
+  <text x="400" y="140" font-family="Arial, sans-serif" font-size="18" 
+        fill="#4D5BCE" text-anchor="middle">In ElizaOS Framework</text>
+  
+  <!-- Central Room -->
+  <g transform="translate(400, 320)">
+    <!-- Primary Room -->
+    <circle cx="0" cy="0" r="120" fill="#292E42" stroke="#88C0D0" stroke-width="3" filter="url(#roomGlow)" />
+    
+    <!-- Main entities in room -->
+    <circle cx="-40" cy="-20" r="15" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1.5" filter="url(#entityGlow)" />
+    <text x="-40" y="-15" font-family="Arial, sans-serif" font-size="10" fill="#EBCB8B" text-anchor="middle">User</text>
+    
+    <circle cx="40" cy="-20" r="15" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1.5" filter="url(#entityGlow)" />
+    <text x="40" y="-15" font-family="Arial, sans-serif" font-size="10" fill="#EBCB8B" text-anchor="middle">Agent</text>
+    
+    <!-- Message bubbles -->
+    <path d="M-30,-30 Q0,-50 30,-30" stroke="#88C0D0" stroke-width="1.5" fill="none" />
+    <rect x="-60" y="-80" width="120" height="25" rx="10" ry="10" fill="#2E3440" stroke="#88C0D0" 
+          stroke-width="1" filter="url(#messageBubble)" />
+    <text x="0" y="-63" font-family="Arial, sans-serif" font-size="12" fill="#E5E9F0" text-anchor="middle">Conversation</text>
+  </g>
+  
+  <!-- Secondary Rooms -->
+  <g transform="translate(240, 200)">
+    <circle cx="0" cy="0" r="70" fill="#292E42" stroke="#88C0D0" stroke-width="2" filter="url(#roomGlow)" />
+    <text x="0" y="5" font-family="Arial, sans-serif" font-size="16" fill="#88C0D0" text-anchor="middle">Channel A</text>
+    <circle cx="-20" cy="-20" r="10" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="20" cy="20" r="10" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <g transform="translate(560, 210)">
+    <circle cx="0" cy="0" r="80" fill="#292E42" stroke="#88C0D0" stroke-width="2" filter="url(#roomGlow)" />
+    <text x="0" y="5" font-family="Arial, sans-serif" font-size="16" fill="#88C0D0" text-anchor="middle">Thread B</text>
+    <circle cx="-30" cy="-20" r="10" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="0" cy="20" r="10" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="30" cy="-20" r="10" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <g transform="translate(400, 480)">
+    <circle cx="0" cy="0" r="60" fill="#292E42" stroke="#88C0D0" stroke-width="2" filter="url(#roomGlow)" />
+    <text x="0" y="5" font-family="Arial, sans-serif" font-size="16" fill="#88C0D0" text-anchor="middle">DM Space</text>
+    <circle cx="-20" cy="0" r="10" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="20" cy="0" r="10" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <!-- Connection lines between rooms -->
+  <g stroke="#88C0D0" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.7">
+    <path d="M300,230 Q350,250 380,290" marker-end="url(#arrowhead)" />
+    <path d="M500,240 Q450,270 420,290" marker-end="url(#arrowhead)" />
+    <path d="M400,420 L400,380" marker-end="url(#arrowhead)" />
+  </g>
+  
+  <!-- Room Features -->
+  <g transform="translate(600, 400)">
+    <!-- Room features demonstration -->
+    <g opacity="0.8">
+      <rect x="-40" y="-30" width="80" height="60" rx="8" ry="8" fill="none" stroke="#88C0D0" stroke-width="1" />
+      <text x="0" y="-15" font-family="Arial, sans-serif" font-size="10" fill="#88C0D0" text-anchor="middle">Room Features</text>
+      
+      <rect x="-30" y="0" width="60" height="3" fill="#4D5BCE" rx="1" ry="1" />
+      <rect x="-30" y="10" width="50" height="3" fill="#4D5BCE" rx="1" ry="1" />
+      <rect x="-30" y="20" width="40" height="3" fill="#4D5BCE" rx="1" ry="1" />
+    </g>
+  </g>
+  
+  <g transform="translate(190, 400)">
+    <!-- Room access visualization -->
+    <g opacity="0.8">
+      <circle cx="0" cy="0" r="35" fill="none" stroke="#88C0D0" stroke-width="1" />
+      <path d="M0,-25 L0,25" stroke="#88C0D0" stroke-width="1" />
+      <path d="M-25,0 L25,0" stroke="#88C0D0" stroke-width="1" />
+      <circle cx="0" cy="0" r="15" fill="none" stroke="#88C0D0" stroke-width="1" />
+      <path d="M-10,-10 L10,10" stroke="#4D5BCE" stroke-width="1.5" />
+      <path d="M-10,10 L10,-10" stroke="#4D5BCE" stroke-width="1.5" />
+    </g>
+  </g>
+  
+  <!-- Description text -->
+  <g font-family="Arial, sans-serif" fill="#E5E9F0">
+    <text x="400" y="570" font-size="15" text-anchor="middle" fill="#88C0D0">Individual interaction spaces where entities communicate</text>
+  </g>
+  
+  <!-- Decorative elements -->
+  <g opacity="0.4">
+    <circle cx="100" cy="100" r="2" fill="#4D5BCE" />
+    <circle cx="150" cy="80" r="1" fill="#4D5BCE" />
+    <circle cx="600" cy="120" r="2" fill="#4D5BCE" />
+    <circle cx="650" cy="90" r="1" fill="#4D5BCE" />
+    <circle cx="200" cy="500" r="1" fill="#4D5BCE" />
+    <circle cx="700" cy="450" r="2" fill="#4D5BCE" />
+    <circle cx="750" cy="520" r="1" fill="#4D5BCE" />
+  </g>
+</svg>
