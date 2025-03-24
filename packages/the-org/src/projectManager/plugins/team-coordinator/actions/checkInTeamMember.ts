@@ -1,365 +1,384 @@
 import {
   type Action,
+  type Content,
+  type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type UUID,
   createUniqueUuid,
   logger,
+  ChannelType,
 } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import { isToday, getDay } from 'date-fns';
-import type { DailyUpdate, TeamMember } from '../../../types';
+import { sendCheckInScheduleForm } from '../forms/checkInScheduleForm';
+import type { DiscordChannelService } from '../services/DiscordChannelService';
 
-/**
- * Interface for team member memory content
- */
-interface TeamMemberContent {
-  type: 'team-member';
-  member: TeamMember;
-  discordHandle?: string;
+interface CheckInFormData {
+  teamMemberId: string;
+  frequency: 'DAILY' | 'WEEKLY' | 'CUSTOM';
+  timeOfDay: string;
+  timezone: string;
+  daysOfWeek?: string[];
+  channelId?: string; // Added channel ID for check-ins
+}
+
+interface CheckInSchedule {
+  type: 'team-member-checkin-schedule';
+  scheduleId: UUID;
+  teamMemberId: string;
+  frequency: 'DAILY' | 'WEEKLY' | 'CUSTOM';
+  timeOfDay: string; // HH:mm format
+  timezone: string;
+  daysOfWeek?: string[]; // For weekly or custom schedules
+  channelId?: string; // Discord channel where check-ins will be posted
+  isActive: boolean;
+  createdBy: string; // Admin ID
+  createdAt: string;
+  lastModified: string;
 }
 
 /**
- * Interface for daily update memory content
+ * Tracks form state between interactions
  */
-interface DailyUpdateContent {
-  type: 'daily-update';
-  update: DailyUpdate;
+interface FormState {
+  frequency?: 'DAILY' | 'WEEKLY' | 'CUSTOM';
+  timeOfDay?: string;
+  timezone?: string;
+  daysOfWeek?: string[];
+  teamMemberId?: string;
+  channelId?: string; // Added channel ID to form state
+}
+
+interface DiscordInteraction {
+  customId: string;
+  type: number; // 2 for button, 3 for select menu
+  values?: string[]; // Only present for select menu
+}
+
+interface DiscordComponentInteraction {
+  customId: string;
+  componentType: number;
+  values?: string[];
+  selections?: Record<string, string[]>;
+}
+
+interface RuntimeEvents {
+  'discord:interaction': (
+    interaction: DiscordComponentInteraction,
+    callback?: HandlerCallback
+  ) => Promise<void>;
+}
+
+interface ExtendedRuntime extends IAgentRuntime {
+  on<K extends keyof RuntimeEvents>(event: K, listener: RuntimeEvents[K]): void;
+  processMemory(memory: Memory): Promise<void>;
 }
 
 /**
- * Determines if a team member should work today based on their work days schedule
+ * Stores a check-in schedule in the database
  */
-function shouldWorkToday(teamMember: TeamMember): boolean {
-  if (!teamMember.availability?.workDays) {
-    // Default to working on weekdays if work days not specified
-    const today = new Date();
-    const dayOfWeek = getDay(today);
-    return dayOfWeek >= 1 && dayOfWeek <= 5; // Monday-Friday
-  }
-
-  // Get today's day of week (0 = Sunday, 1 = Monday, etc.)
-  const today = new Date();
-  const dayOfWeek = getDay(today);
-
-  // Convert day of week to a day name that matches the TeamMember type
-  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const todayName = dayNames[dayOfWeek].toUpperCase();
-
-  // Check if this day is in their work days
-  return teamMember.availability?.workDays?.includes?.(todayName as any) ?? false;
-}
-
-/**
- * Sends a message to Discord
- */
-async function sendDiscordMessage(
+async function storeCheckInSchedule(
   runtime: IAgentRuntime,
-  discordHandle: string,
-  message: string
-): Promise<boolean> {
+  roomId: UUID,
+  schedule: CheckInSchedule
+): Promise<void> {
+  logger.info(`Storing check-in schedule for team member ${schedule.teamMemberId}`);
+
+  const scheduleContent: Content = {
+    type: 'team-member-checkin-schedule',
+    schedule,
+  };
+
   try {
-    // This is where you would implement sending a message to Discord
-    // Using whatever API or method is available in the runtime
-    logger.info(`Sending Discord message to ${discordHandle}: ${message}`);
-
-    // Mock implementation - this should be replaced with actual Discord API integration
-    if (runtime?.hasPlugin && runtime?.hasPlugin('discord-connector')) {
-      // Example of how this might work with a hypothetical Discord plugin
-      await runtime?.executePluginAction('discord-connector', 'sendDirectMessage', {
-        handle: discordHandle,
-        content: message,
-      });
-      return true;
-    }
-
-    logger.warn('Discord connector not available. Message not sent.');
-    return false;
+    await runtime.createMemory(
+      {
+        id: createUniqueUuid(runtime, `checkin-schedule-${schedule.scheduleId}`),
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        content: scheduleContent,
+        roomId,
+        createdAt: Date.now(),
+      },
+      'messages'
+    );
+    logger.info(`Successfully stored check-in schedule ${schedule.scheduleId}`);
   } catch (error) {
-    logger.error(`Error sending Discord message: ${error}`);
-    return false;
+    logger.error(`Error storing check-in schedule: ${error}`);
+    throw error;
   }
 }
 
-/**
- * Action to record a daily check-in for a team member and send reminders
- */
 export const checkInTeamMember: Action = {
   name: 'checkInTeamMember',
-  description:
-    "Records a daily check-in for a team member or sends reminders to team members who haven't checked in",
-  similes: ['logDailyUpdate', 'submitCheckIn', 'remindTeamMembers'],
-  validate: async (runtime: IAgentRuntime, message: any) => {
-    // If this is a reminder request, we only need projectId
-    if (message?.isReminder) {
-      return Boolean(message?.projectId);
-    }
-
-    // For regular check-ins, we need teamMemberId, projectId, and summary
-    return Boolean(message?.teamMemberId && message?.projectId && message?.summary);
+  description: 'Creates or modifies a check-in schedule for team members',
+  similes: ['scheduleCheckIn', 'createCheckInSchedule', 'setCheckInTime'],
+  validate: async (runtime: IAgentRuntime, message: Memory) => {
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
-    message: any,
-    state: any,
-    context: any
+    message: Memory,
+    state: Record<string, unknown>,
+    context: Record<string, unknown>,
+    callback?: HandlerCallback
   ): Promise<boolean> => {
     try {
-      const {
-        teamMemberId,
-        projectId,
-        summary,
-        tasksCompleted = [],
-        tasksInProgress = [],
-        blockers = '',
-        hoursWorked = 0,
-        discordHandle = '',
-        isReminder = false,
-      } = message;
+      logger.info('=== CHECK-IN HANDLER START ===');
+      logger.info('Message content received:', JSON.stringify(message.content, null, 2));
 
-      // Create a unique room ID for team members
-      const teamMembersRoomId = createUniqueUuid(runtime, 'team-members');
-
-      // Verify team members exist
-      const teamMemberMemories = await runtime.getMemories({
-        tableName: 'messages',
-        roomId: teamMembersRoomId,
-      });
-
-      const typedTeamMemberMemories = teamMemberMemories as Array<
-        Memory & { content: TeamMemberContent }
-      >;
-
-      // If this is a reminder request, send reminders to team members who haven't checked in
-      if (isReminder) {
-        logger.info(`Sending reminders to team members for project ID: ${projectId}`);
-
-        // Create a unique room ID for daily updates
-        const dailyUpdatesRoomId = createUniqueUuid(runtime, 'daily-updates');
-
-        // Get all daily updates
-        const dailyUpdateMemories = await runtime.getMemories({
-          tableName: 'messages',
-          roomId: dailyUpdatesRoomId,
-        });
-
-        const typedDailyUpdateMemories = dailyUpdateMemories as Array<
-          Memory & { content: DailyUpdateContent }
-        >;
-
-        // Get today's date in YYYY-MM-DD format
-        const today = new Date().toISOString().split('T')[0];
-
-        // Filter team members who are assigned to the specified project
-        // This assumes that team members have a projects array in their data
-        const projectTeamMembers = typedTeamMemberMemories.filter((memory) => {
-          const member = memory.content.member;
-          return member?.projects?.includes(projectId as UUID);
-        });
-
-        // For each team member in the project
-        let remindersSent = 0;
-        for (const memberMemory of projectTeamMembers) {
-          const member = memberMemory.content.member;
-          const discordHandle = memberMemory.content.discordHandle;
-
-          // Skip if no Discord handle available
-          if (!discordHandle) {
-            logger.warn(`No Discord handle available for team member ${member.id}`);
-            continue;
-          }
-
-          // Check if they've already checked in today
-          const hasCheckedInToday = typedDailyUpdateMemories.some(
-            (memory) =>
-              memory.content.update.teamMemberId === member.id &&
-              memory.content.update.projectId === projectId &&
-              memory.content.update.date === today
-          );
-
-          // If they haven't checked in and they're expected to work today
-          if (!hasCheckedInToday && shouldWorkToday(member)) {
-            // Send reminder via Discord
-            const reminderMessage = `Hey ${member.name}! Just a friendly reminder to submit your daily check-in for project ${projectId}.`;
-            const sent = await sendDiscordMessage(runtime, discordHandle, reminderMessage);
-
-            if (sent) {
-              remindersSent++;
-              logger.info(`Sent reminder to ${member.name} (${discordHandle})`);
-            }
-          }
-        }
-
-        logger.info(`Sent ${remindersSent} reminders to team members for project ${projectId}`);
-        return remindersSent > 0;
-      }
-
-      // For regular check-in processing:
-      logger.info(
-        `Recording check-in for team member ID: ${teamMemberId}, project ID: ${projectId}`
-      );
-
-      // Find the team member with the given ID
-      const teamMemberMemory = typedTeamMemberMemories.find(
-        (memory) => memory.content.member.id === teamMemberId
-      );
-
-      if (!teamMemberMemory) {
-        logger.error(`Team member with ID ${teamMemberId} not found`);
+      if (!callback) {
+        logger.warn('No callback function provided');
         return false;
       }
 
-      const teamMember = teamMemberMemory.content.member;
+      // Handle Discord component interaction
+      const discordInteraction = message.content?.discordInteraction as DiscordComponentInteraction;
+      if (discordInteraction) {
+        logger.info('Processing Discord component interaction:', {
+          customId: discordInteraction.customId,
+          componentType: discordInteraction.componentType,
+          values: discordInteraction.values,
+        });
 
-      // Create new daily update
-      const today = new Date().toISOString().split('T')[0]; // Get YYYY-MM-DD format
+        // If this is a form submission with complete data
+        if (discordInteraction.customId === 'submit_checkin_schedule') {
+          logger.info('Processing complete form submission');
 
-      // Create a unique room ID for daily updates
-      const dailyUpdatesRoomId = createUniqueUuid(runtime, 'daily-updates');
+          // Get the selections from the interaction
+          const selections = discordInteraction.selections;
+          if (!selections) {
+            logger.warn('No form selections found');
+            await callback(
+              {
+                text: '❌ No form data found. Please fill the form again.',
+                source: 'discord',
+              },
+              []
+            );
+            return true;
+          }
 
-      // Get all daily updates
-      const dailyUpdateMemories = await runtime.getMemories({
-        tableName: 'messages',
-        roomId: dailyUpdatesRoomId,
-      });
+          logger.info('Form selections:', selections);
 
-      // Find if there's an existing update for today's date for this team member and project
-      const existingUpdateMemory = (
-        dailyUpdateMemories as Array<Memory & { content: DailyUpdateContent }>
-      ).find(
-        (memory) =>
-          memory.content.update.teamMemberId === teamMemberId &&
-          memory.content.update.projectId === projectId &&
-          memory.content.update.date === today
-      );
+          const schedule: CheckInSchedule = {
+            type: 'team-member-checkin-schedule',
+            scheduleId: createUniqueUuid(runtime, `schedule-${message.entityId}`),
+            teamMemberId: message.entityId,
+            frequency: selections.checkin_frequency?.[0] as 'DAILY' | 'WEEKLY' | 'CUSTOM',
+            timeOfDay: selections.checkin_time?.[0],
+            timezone: selections.timezone?.[0],
+            daysOfWeek: selections.checkin_days,
+            channelId: selections.checkin_channel?.[0], // Store the selected channel ID
+            isActive: true,
+            createdBy: message.entityId,
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+          };
 
-      if (existingUpdateMemory) {
-        logger.warn(
-          `Team member ${teamMemberId} already checked in for project ${projectId} today`
-        );
+          logger.info('Created check-in schedule with channel:', schedule.channelId);
 
-        // Update the existing check-in
-        const updatedDailyUpdate: DailyUpdate = {
-          ...existingUpdateMemory.content.update,
-          summary,
-          tasksCompleted: tasksCompleted?.map((id) => id as UUID),
-          tasksInProgress: tasksInProgress?.map((id) => id as UUID),
-          blockers,
-          hoursWorked,
-        };
+          // Validate schedule data
+          if (!schedule.frequency || !schedule.timeOfDay || !schedule.timezone) {
+            logger.warn('Missing required fields in form submission');
+            await callback(
+              {
+                text: '❌ Missing required fields in form submission. Please fill all required fields.',
+                source: 'discord',
+              },
+              []
+            );
+            return true;
+          }
 
-        // Save updated check-in to memory
-        await runtime.createMemory(
-          {
-            id: existingUpdateMemory.id,
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            content: {
-              type: 'daily-update',
-              update: updatedDailyUpdate,
+          // For weekly/custom schedules, days are required
+          if (
+            (schedule.frequency === 'WEEKLY' || schedule.frequency === 'CUSTOM') &&
+            (!schedule.daysOfWeek || schedule.daysOfWeek.length === 0)
+          ) {
+            logger.warn('Days required for weekly/custom schedule but not provided');
+            await callback(
+              {
+                text: '❌ Please select the days for check-in',
+                source: 'discord',
+              },
+              []
+            );
+            return true;
+          }
+
+          try {
+            // Store the schedule
+            const checkInSchedulesRoomId = createUniqueUuid(runtime, 'check-in-schedules');
+            await storeCheckInSchedule(runtime, checkInSchedulesRoomId, schedule);
+            logger.info('Successfully stored check-in schedule');
+
+            // Send confirmation
+            await callback(
+              {
+                text: `✅ Successfully created check-in schedule.\nFrequency: ${schedule.frequency}\nTime: ${schedule.timeOfDay} ${schedule.timezone}${
+                  schedule.daysOfWeek ? `\nDays: ${schedule.daysOfWeek.join(', ')}` : ''
+                }${schedule.channelId ? `\nChannel: <#${schedule.channelId}>` : ''}`,
+                source: 'discord',
+              },
+              []
+            );
+            return true;
+          } catch (error) {
+            logger.error('Error saving check-in schedule:', error);
+            await callback(
+              {
+                text: '❌ Error saving check-in schedule. Please try again.',
+                source: 'discord',
+              },
+              []
+            );
+            return false;
+          }
+        } else if (discordInteraction.customId === 'cancel_checkin_schedule') {
+          logger.info('Cancelling check-in schedule creation');
+          await callback(
+            {
+              text: '❌ Check-in schedule creation cancelled.',
+              source: 'discord',
             },
-            roomId: dailyUpdatesRoomId,
-            createdAt: existingUpdateMemory.createdAt,
-          },
-          'messages'
-        );
-
-        // Also update the team member's last check-in date
-        const updatedTeamMember: TeamMember = {
-          ...teamMember,
-          lastCheckIn: new Date().toISOString(),
-        };
-
-        // Save updated team member to memory
-        await runtime.createMemory(
-          {
-            id: teamMemberMemory.id,
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            content: {
-              type: 'team-member',
-              member: updatedTeamMember,
-              discordHandle: teamMemberMemory.content.discordHandle,
-            },
-            roomId: teamMembersRoomId,
-            createdAt: teamMemberMemory.createdAt,
-          },
-          'messages'
-        );
-
-        logger.info(`Updated existing check-in for team member ${teamMemberId}`);
-        return true;
+            []
+          );
+          return true;
+        }
       }
 
-      // Create new check-in record
-      const dailyUpdate: DailyUpdate = {
-        id: uuidv4() as UUID,
-        teamMemberId: teamMemberId as UUID,
-        projectId: projectId as UUID,
-        date: today,
-        summary,
-        tasksCompleted: tasksCompleted?.map((id) => id as UUID),
-        tasksInProgress: tasksInProgress?.map((id) => id as UUID),
-        blockers,
-        hoursWorked,
-      };
+      // If no interaction, show the initial form
+      logger.info('No interaction found - sending initial form...');
 
-      // Save new check-in to memory
-      await runtime.createMemory(
-        {
-          id: createUniqueUuid(runtime, `daily-update-${teamMemberId}-${projectId}-${today}`),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: {
-            type: 'daily-update',
-            update: dailyUpdate,
-          },
-          roomId: dailyUpdatesRoomId,
-          createdAt: Date.now(),
-        },
-        'messages'
-      );
+      // Add a small delay to ensure Discord services are initialized
+      logger.info('Waiting a moment for Discord services to initialize...');
+      await new Promise((resolve) => setTimeout(resolve, 3000));
 
-      // Update team member's last check-in date
-      const updatedTeamMember: TeamMember = {
-        ...teamMember,
-        lastCheckIn: new Date().toISOString(),
-      };
+      // Get available Discord channels from DiscordChannelService
+      let channels = [];
+      try {
+        // Get the DiscordChannelService
+        const discordChannelService = runtime.getService(
+          'discord-channel-service'
+        ) as DiscordChannelService;
 
-      // Save updated team member to memory
-      await runtime.createMemory(
-        {
-          id: teamMemberMemory.id,
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: {
-            type: 'team-member',
-            member: updatedTeamMember,
-            discordHandle: teamMemberMemory.content.discordHandle,
-          },
-          roomId: teamMembersRoomId,
-          createdAt: teamMemberMemory.createdAt,
-        },
-        'messages'
-      );
+        if (discordChannelService) {
+          logger.info('Found DiscordChannelService, getting channels');
+          channels = discordChannelService.getTextChannels();
+          logger.debug(`Retrieved ${channels.length} channels from DiscordChannelService`);
+        }
 
-      logger.info(`Successfully recorded check-in for team member ${teamMemberId}`);
+        // Also try to get direct access to Discord client as a backup approach
+        if (channels.length === 0) {
+          logger.info(
+            'No channels found via DiscordChannelService, trying direct Discord service access'
+          );
+          try {
+            const discordService = runtime.getService('discord');
+            // Use type interface to avoid using 'any'
+            interface DiscordClient {
+              guilds?: {
+                cache?: {
+                  first?: () => {
+                    name?: string;
+                    channels?: {
+                      cache?: Map<
+                        string,
+                        {
+                          id: string;
+                          name: string;
+                          type: number;
+                        }
+                      >;
+                    };
+                  };
+                  size?: number;
+                };
+              };
+            }
+
+            if (discordService && 'client' in discordService && discordService.client) {
+              const client = discordService.client as DiscordClient;
+
+              // Log whether guilds are available - use optional chaining
+              logger.debug('Discord client found, checking for guilds...');
+              if (client.guilds?.cache?.size && client.guilds.cache.size > 0) {
+                const guild = client.guilds.cache.first?.();
+                if (guild?.name) {
+                  logger.info(`Found guild: ${guild.name}`);
+
+                  // Try to get text channels from the first guild - use optional chaining
+                  if (guild.channels?.cache) {
+                    let textChannelCount = 0;
+
+                    // Use for...of instead of forEach
+                    for (const [_, channel] of guild.channels.cache) {
+                      if (channel && channel.type === 0) {
+                        // 0 is TEXT channel in discord.js v14
+                        channels.push({
+                          id: channel.id,
+                          name: channel.name,
+                          type: 'GROUP',
+                        });
+                        textChannelCount++;
+                      }
+                    }
+
+                    logger.info(
+                      `Found ${textChannelCount} text channels directly from Discord service`
+                    );
+                  }
+                }
+              } else {
+                logger.warn('Discord client found but no guilds available');
+              }
+            }
+          } catch (innerError) {
+            logger.warn('Error accessing Discord service directly:', innerError);
+          }
+        }
+
+        // Ensure we always have some default channels if none were found
+        if (channels.length === 0) {
+          logger.warn('No channels found from any source, using default channels');
+          channels = [
+            { id: 'general', name: 'general', type: 'GROUP' },
+            { id: 'announcements', name: 'announcements', type: 'GROUP' },
+            { id: 'check-ins', name: 'check-ins', type: 'GROUP' },
+          ];
+        }
+      } catch (error) {
+        logger.error('Error getting Discord channels:', error);
+        logger.error('Error stack:', error.stack);
+
+        // Provide default channels in case of error
+        channels = [
+          { id: 'general', name: 'general', type: 'GROUP' },
+          { id: 'check-ins', name: 'check-ins', type: 'GROUP' },
+        ];
+      }
+
+      // Send form with channels
+      logger.info(`Sending form with ${channels.length} channels`);
+      await sendCheckInScheduleForm(callback, channels);
+      logger.info('Initial form sent successfully');
       return true;
     } catch (error) {
-      logger.error(`Error recording check-in: ${error}`);
+      logger.error('=== CHECK-IN HANDLER ERROR ===');
+      logger.error(`Error processing check-in schedule setup: ${error}`);
+      logger.error(`Error stack: ${error.stack}`);
       return false;
     }
   },
   examples: [
     [
       {
-        name: 'john',
-        content: { text: 'I want to check in for project Alpha' },
+        name: 'admin',
+        content: { text: 'Set up daily check-ins for the team' },
       },
       {
         name: 'jimmy',
         content: {
-          text: "I'll record your check-in for project Alpha. Please provide a summary of your work today.",
+          text: "I'll help you set up check-in schedules",
           actions: ['checkInTeamMember'],
         },
       },
@@ -367,12 +386,12 @@ export const checkInTeamMember: Action = {
     [
       {
         name: 'admin',
-        content: { text: 'Send check-in reminders to all team members on Project Beta' },
+        content: { text: "let's create a checkin on team members" },
       },
       {
         name: 'jimmy',
         content: {
-          text: "I'll send reminders to all team members who haven't checked in yet for Project Beta.",
+          text: "I'll set up check-in schedules for the team members",
           actions: ['checkInTeamMember'],
         },
       },
