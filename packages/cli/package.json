@@ -38,7 +38,9 @@
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "test:agent-commands": "vitest test/agent-commands.test.js",
+    "test:agent-customisations": "vitest test/agent-customisation.test.js"
   },
   "devDependencies": {
     "@babel/core": "^7.22.1",
