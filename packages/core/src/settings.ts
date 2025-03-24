@@ -32,19 +32,22 @@ export function createSettingFromConfig(configSetting: Omit<Setting, 'value'>): 
 }
 
 /**
- * Retrieves the salt for the agent based on the provided runtime information.
+ * Retrieves the salt based on env variable SECRET_SALT
  *
- * @param {IAgentRuntime} runtime - The runtime information of the agent.
  * @returns {string} The salt for the agent.
  */
-export function getSalt(runtime?: IAgentRuntime): string {
+export function getSalt(): string {
   const secretSalt =
     (typeof process !== 'undefined'
       ? process.env.SECRET_SALT
       : (import.meta as any).env.SECRET_SALT) || 'secretsalt';
-  const agentId = runtime?.agentId;
+
+  if (!secretSalt) {
+    logger.error('SECRET_SALT is not set');
+  }
 
   const salt = secretSalt;
+
   logger.debug(`Generated salt with length: ${salt.length} (truncated for security)`);
   return salt;
 }
