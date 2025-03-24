@@ -7,31 +7,40 @@ import { useEffect, useRef, useState } from 'react';
 type EnvVariable = {
   name: string;
   value: string;
+  isNew?: boolean;
+  isModified?: boolean;
+  isDeleted?: boolean;
 };
 
 interface SecretPanelProps {
   characterValue: Agent;
-  setCharacterValue: (value: (prev: Agent) => Agent) => void;
+  onChange: (updatedAgent: Agent) => void;
 }
 
-export default function EnvSettingsPanel({ characterValue, setCharacterValue }: SecretPanelProps) {
-  const [envs, setEnvs] = useState<EnvVariable[]>(
-    Object.entries(characterValue?.settings?.secrets || {}).map(([name, value]) => ({
+export function SecretPanel({ characterValue, onChange }: SecretPanelProps) {
+  const initialSecrets = Object.entries(characterValue?.settings?.secrets || {}).map(
+    ([name, value]) => ({
       name,
       value: String(value),
-    }))
+      isNew: false,
+      isModified: false,
+      isDeleted: false,
+    })
   );
 
+  const [envs, setEnvs] = useState<EnvVariable[]>(initialSecrets);
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editedValue, setEditedValue] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [deletedKeys, setDeletedKeys] = useState<string[]>([]);
+  const [changesPending, setChangesPending] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
@@ -57,8 +66,19 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
         for (const [key, val] of Object.entries(newEnvs)) {
           merged.set(key, val);
         }
-        return Array.from(merged.entries()).map(([name, value]) => ({ name, value }));
+        return Array.from(merged.entries()).map(([name, value]) => ({
+          name,
+          value,
+          isNew: !prev.some((env) => env.name === name),
+          isModified: prev.some((env) => env.name === name && env.value !== value),
+        }));
       });
+
+      if (deletedKeys.length > 0) {
+        setDeletedKeys((prev) => prev.filter((key) => !Object.keys(newEnvs).includes(key)));
+      }
+
+      setChangesPending(true);
     };
     reader.readAsText(file);
   };
@@ -104,18 +124,22 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
 
   const addEnv = () => {
     if (name && value) {
-      setEnvs((prev) => {
-        const updated = [...prev];
-        const existingIndex = updated.findIndex((env) => env.name === name);
-        if (existingIndex !== -1) {
-          updated[existingIndex].value = value;
-        } else {
-          updated.push({ name, value });
+      const exists = envs.some((env) => env.name === name);
+      if (!exists) {
+        if (deletedKeys.includes(name)) {
+          setDeletedKeys(deletedKeys.filter((key) => key !== name));
         }
-        return updated;
-      });
-      setName('');
-      setValue('');
+
+        setEnvs([...envs, { name, value, isNew: true }]);
+        setName('');
+        setValue('');
+        setChangesPending(true);
+      } else {
+        setEnvs(envs.map((env) => (env.name === name ? { ...env, value, isModified: true } : env)));
+        setName('');
+        setValue('');
+        setChangesPending(true);
+      }
     }
   };
 
@@ -127,15 +151,24 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
 
   const saveEdit = (index: number) => {
     const updatedEnvs = [...envs];
-    updatedEnvs[index].value = editedValue;
+    if (updatedEnvs[index].value !== editedValue) {
+      updatedEnvs[index].value = editedValue;
+      updatedEnvs[index].isModified = true;
+      setChangesPending(true);
+    }
     setEnvs(updatedEnvs);
     setEditingIndex(null);
   };
 
   const removeEnv = (index: number) => {
+    const keyToRemove = envs[index].name;
+
+    setDeletedKeys([...deletedKeys, keyToRemove]);
+
     setEnvs(envs.filter((_, i) => i !== index));
     setOpenIndex(null);
     setEditingIndex(null);
+    setChangesPending(true);
   };
 
   useEffect(() => {
@@ -152,14 +185,37 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
   }, []);
 
   useEffect(() => {
-    setCharacterValue((prev) => ({
-      ...prev,
-      settings: {
-        ...prev.settings,
-        secrets: Object.fromEntries(envs.map(({ name, value }) => [name, value])),
-      },
-    }));
-  }, [envs, setCharacterValue]);
+    if (changesPending) {
+      const currentSecrets: Record<string, string | null> = {};
+
+      envs.forEach(({ name, value }) => {
+        currentSecrets[name] = value;
+      });
+
+      deletedKeys.forEach((key) => {
+        currentSecrets[key] = null;
+      });
+
+      const updatedAgent: Partial<Agent> = {
+        settings: {
+          secrets: currentSecrets,
+        },
+      };
+
+      onChange(updatedAgent as Agent);
+
+      setEnvs((prevEnvs) => {
+        return prevEnvs.map((env) => ({
+          ...env,
+          isNew: false,
+          isModified: false,
+        }));
+      });
+
+      setDeletedKeys([]);
+      setChangesPending(false);
+    }
+  }, [envs, onChange, deletedKeys, changesPending]);
 
   return (
     <div className="rounded-lg w-full flex flex-col gap-3">
@@ -304,3 +360,6 @@ export default function EnvSettingsPanel({ characterValue, setCharacterValue }: 
     </div>
   );
 }
+
+// Also provide a default export for backward compatibility
+export default SecretPanel;
