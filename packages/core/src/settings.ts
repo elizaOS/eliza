@@ -60,6 +60,12 @@ export function getSalt(): string {
  */
 export function encryptStringValue(value: string, salt: string): string {
   try {
+    // Check if value is undefined or null
+    if (value === undefined || value === null) {
+      logger.debug('Attempted to encrypt undefined or null value');
+      return value; // Return the value as is (undefined or null)
+    }
+
     // Check if value is already encrypted (has the format "iv:encrypted")
     const parts = value.split(':');
     if (parts.length === 2) {
@@ -102,6 +108,12 @@ export function encryptStringValue(value: string, salt: string): string {
  */
 export function decryptStringValue(value: string, salt: string): string {
   try {
+    // Check if value is undefined or null
+    if (value === undefined || value === null) {
+      logger.debug('Attempted to decrypt undefined or null value');
+      return value; // Return the value as is (undefined or null)
+    }
+
     // Split the IV and encrypted value
     const parts = value.split(':');
     if (parts.length !== 2) {
