@@ -251,7 +251,7 @@ export const create = new Command()
 1. \`cd ${cdPath}\` to change into your plugin directory
 2. \`${colors.cyan('npx elizaos start')}\` to start development
 3. \`${colors.cyan('npx elizaos test')}\` to test your plugin
-4. \`${colors.cyan('npx elizaos publish')}\` to publish your plugin to the registry`);
+4. \`${colors.cyan('npx elizaos plugin publish')}\` to publish your plugin to the registry`);
 
         // Set the user's shell working directory before exiting
         // Note: This only works if the CLI is run with shell integration
