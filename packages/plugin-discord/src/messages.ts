@@ -20,7 +20,7 @@ import {
   type TextChannel,
 } from 'discord.js';
 import { AttachmentManager } from './attachments';
-import { DiscordEventTypes } from './types';
+import { DiscordEventTypes, DiscordActionRow, DiscordComponentOptions } from './types';
 import { canSendMessage, sendMessageInChunks } from './utils';
 
 /**
@@ -151,16 +151,47 @@ export class MessageManager {
         createdAt: message.createdTimestamp,
       };
 
-      const callback: HandlerCallback = async (content: Content, files: any[]) => {
+      const callback: HandlerCallback = async (
+        content: Content,
+        files: Array<{ attachment: Buffer | string; name: string }>
+      ) => {
         try {
           if (message.id && !content.inReplyTo) {
             content.inReplyTo = createUniqueUuid(this.runtime, message.id);
           }
+
+          // Validate components before sending
+          let validatedComponents: DiscordActionRow[] | undefined;
+          if (Array.isArray(content.components)) {
+            validatedComponents = content.components.filter(
+              (component): component is DiscordActionRow => {
+                if (!component || typeof component !== 'object') return false;
+
+                const isActionRow = component.type === 1 && Array.isArray(component.components);
+                if (!isActionRow) return false;
+
+                // Validate nested components
+                return component.components.every((comp): comp is DiscordComponentOptions => {
+                  if (!comp || typeof comp !== 'object') return false;
+                  if (comp.type !== 2 && comp.type !== 3) return false;
+                  if (!comp.custom_id) return false;
+                  return true;
+                });
+              }
+            );
+
+            if (validatedComponents.length === 0) {
+              logger.warn('No valid components found in content');
+              validatedComponents = undefined;
+            }
+          }
+
           const messages = await sendMessageInChunks(
             message.channel as TextChannel,
-            content.text,
+            content.text || '',
             message.id,
-            files
+            files,
+            validatedComponents
           );
 
           const memories: Memory[] = [];
@@ -174,6 +205,7 @@ export class MessageManager {
               content: {
                 ...content,
                 actions,
+                components: validatedComponents,
                 inReplyTo: messageId,
                 url: m.url,
                 channelType: type,
@@ -189,7 +221,7 @@ export class MessageManager {
           }
           return memories;
         } catch (error) {
-          console.error('Error sending message:', error);
+          logger.error('Error sending message:', error);
           return [];
         }
       };
