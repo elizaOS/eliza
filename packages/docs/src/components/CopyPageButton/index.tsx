@@ -212,7 +212,7 @@ export default function CopyPageButton(): JSX.Element {
   const openInChatGPT = () => {
     const currentUrl = window.location.href;
     // Use the correct ChatGPT URL format
-    const chatGptUrl = `https://chat.openai.com/?model=gpt-4&q=${encodeURIComponent(`Tell me about this page: ${currentUrl}`)}`;
+    const chatGptUrl = `https://chatgpt.com/?q=${encodeURIComponent(`Tell me about this page: ${currentUrl}`)}`;
     window.open(chatGptUrl, '_blank');
     setIsOpen(false);
   };

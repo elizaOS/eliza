@@ -44,8 +44,8 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'core/project',
-          label: 'Project',
+          id: 'core/actions',
+          label: 'Actions',
         },
         {
           type: 'doc',
@@ -54,28 +54,13 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'core/plugins',
-          label: 'Plugins',
-        },
-        {
-          type: 'doc',
-          id: 'core/providers',
-          label: 'Providers',
-        },
-        {
-          type: 'doc',
           id: 'core/database',
           label: 'Database Adapters',
         },
         {
           type: 'doc',
-          id: 'core/knowledge',
-          label: 'Knowledge',
-        },
-        {
-          type: 'doc',
-          id: 'core/actions',
-          label: 'Actions',
+          id: 'core/entities',
+          label: 'Entities',
         },
         {
           type: 'doc',
@@ -84,8 +69,23 @@ const sidebars = {
         },
         {
           type: 'doc',
-          id: 'core/entities',
-          label: 'Entities',
+          id: 'core/knowledge',
+          label: 'Knowledge',
+        },
+        {
+          type: 'doc',
+          id: 'core/plugins',
+          label: 'Plugins',
+        },
+        {
+          type: 'doc',
+          id: 'core/project',
+          label: 'Project',
+        },
+        {
+          type: 'doc',
+          id: 'core/providers',
+          label: 'Providers',
         },
         {
           type: 'doc',
