@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { bootstrapPlugin } from './bootstrap';
 import { createUniqueUuid } from './entities';
-import { handlePluginImporting } from './index';
+import { decryptSecret, getSalt, handlePluginImporting } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -727,9 +727,11 @@ export class AgentRuntime implements IAgentRuntime {
       this.character.settings?.secrets?.[key] ||
       this.settings[key];
 
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    return value || null;
+    const decryptedValue = decryptSecret(value, getSalt());
+
+    if (decryptedValue === 'true') return true;
+    if (decryptedValue === 'false') return false;
+    return decryptedValue || null;
   }
 
   /**

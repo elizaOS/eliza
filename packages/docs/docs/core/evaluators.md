@@ -1,165 +1,201 @@
 ---
-sidebar_position: 5
+sidebar_position: 7
 ---
 
-# 📊 Evaluators
+# 🧠 Evaluators
 
-[Evaluators](/api/interfaces/evaluator) are core components that assess and extract information from conversations. Agents use evaluators to automatically process conversations after they happen to help build up their knowledge and understanding over time.
+Evaluators are cognitive components in the ElizaOS framework that enable agents to process conversations, extract knowledge, and build understanding - similar to how humans form memories after interactions. They provide a structured way for agents to introspect, learn from interactions, and evolve over time.
 
-They integrate with the [`AgentRuntime`](/api/classes/AgentRuntime) evaluation system to enable reflection, fact-gathering, and behavioral adaptation and run after each agent action to help maintain contextual awareness. Enabling agents to reflect on their actions and world state is crucial for improving coherence and problem-solving abilities. For example, by reflecting on its performance, an agent can refine its strategies and improve its interactions over time.
+## Understanding Evaluators
 
----
+Evaluators are specialized functions that work with the [`AgentRuntime`](/api/classes/AgentRuntime) to analyze conversations after a response has been generated. Unlike actions that create responses, evaluators perform background cognitive tasks that enable numerous advanced capabilities:
 
-## How They Work
+- **Knowledge Building**: Automatically extract and store facts from conversations
+- **Relationship Tracking**: Identify connections between entities
+- **Conversation Quality**: Perform self-reflection on interaction quality
+- **Goal Tracking**: Determine if conversation objectives are being met
+- **Tone Analysis**: Evaluate emotional content and adjust future responses
+- **User Profiling**: Build understanding of user preferences and needs over time
+- **Performance Metrics**: Gather data on agent effectiveness and learn from interactions
 
-Evaluators run automatically after each agent action (responses, messages, activities, or API calls) to analyze what happened and update the agent's understanding. They extract important information (like facts about users), track progress on goals, build relationship models, and enable self-reflection.
-
-Let's say you're at a party and meet someone new. During the conversation:
-
-- You learn their name is Sarah
-- They mention living in Seattle
-- They work as a software engineer
-
-After the conversation, your brain:
-
-- Stores these facts for later
-- Updates your understanding of who Sarah is
-- Might note "I should connect Sarah with Bob who's also in tech"
-- Reflects on how the interaction went (e.g., "I think I talked too much about work")
-
-This is exactly how evaluators work for agents. They run in the background to extract insights, track progress, build relationship models, and enable self-reflection. Evaluators are limited to processing current interactions (can't modify past data) and run after actions complete (not during), so they're best for analysis rather than critical operations.
-
-The key thing to remember is: evaluators are your agent's way of learning, reflecting, and growing from each interaction, just like how we naturally process and learn from our conversations.
-
-### Common Uses
-
-- **[Reflection Evaluator](https://github.com/elizaOS/eliza/blob/main/packages/core/src/evaluators/reflection.ts)**: Combines self-monologue, fact extraction, and relationship building
-- **[Fact Evaluator](https://github.com/elizaOS/eliza/blob/main/packages/plugin-bootstrap/src/evaluators/fact.ts)**: Learns and remembers facts about users
-- **[Goal Evaluator](https://github.com/elizaOS/eliza/blob/main/packages/plugin-bootstrap/src/evaluators/goals.ts)**: Tracks progress on objectives
-- **Trust Evaluator**: Builds understanding of relationships
-- **Sentiment Evaluator**: Tracks emotional tone of conversations
-
----
-
-## Implementation
-
-Here's a basic example of an evaluator implementation:
-
-```typescript
-const evaluator = {
-  // Should this evaluator run right now?
-  validate: async (runtime, message) => {
-    // Return true to run, false to skip
-    return shouldRunThisTime;
-  },
-
-  // What to do when it runs
-  handler: async (runtime, message) => {
-    // Extract info, update memory, etc
-    const newInfo = extractFromMessage(message);
-    await storeInMemory(newInfo);
-  },
-};
-```
-
-### Core Interface
+### Core Structure
 
 ```typescript
 interface Evaluator {
   name: string; // Unique identifier
-  similes: string[]; // Similar evaluator descriptions
-  description: string; // Purpose and functionality
-  validate: (runtime: IAgentRuntime, message: Memory) => Promise<boolean>;
-  handler: (runtime: IAgentRuntime, message: Memory) => Promise<any>;
-  examples: EvaluatorExample[];
+  similes?: string[]; // Alternative names/triggers
+  description: string; // Purpose explanation
+  examples: EvaluationExample[]; // Sample usage patterns
+  handler: Handler; // Implementation logic
+  validate: Validator; // Execution criteria check
+  alwaysRun?: boolean; // Run regardless of validation
 }
 ```
 
-For full type definitions, see the [`Evaluator`](/api/interfaces/Evaluator) interface documentation.
+### Evaluator Execution Flow
 
-### Validation Function
+The agent runtime executes evaluators as part of its cognitive cycle:
 
-The `validate` function is critical for determining when an evaluator should run. For peak performance, proper validation ensures evaluators run only when necessary. For instance, a customer service agent might check if all required user data has been collected and only run if data is still missing.
-
-```typescript
-validate: async (runtime: IAgentRuntime, message: Memory) => boolean;
-```
-
-Determines if evaluator should run for current message. Returns true to execute handler, false to skip. Should be efficient and quick to check.
-
-### Handler Function
-
-The handler function contains the evaluator's code. It is where the logic for analyzing data, extracting information, and triggering actions resides.
-
-```typescript
-handler: async (runtime: IAgentRuntime, message: Memory) => any;
-```
-
-Contains main evaluation logic and runs when validate() returns true. Can access [`runtime`](/api/interfaces/IAgentRuntime) services and [`memory`](/api/interfaces/Memory).
-
-:::tip
-**Ensure Evaluators are unique and lightweight**
-
-Avoid complex operations or lengthy computations within the evaluator's handler function and ensure that evaluators have clear and distinct responsibilities not already handled by other components for peak performance.
-:::
-
-### Memory Integration
-
-Results are stored using runtime memory managers:
-
-```typescript
-// Example storing evaluation results
-const memory = await runtime.addEmbeddingToMemory({
-  entityId: message.entityId,
-  agentId: message.agentId,
-  content: { text: evaluationResult },
-  roomId: message.roomId,
-  embedding: await runtime.useModel(ModelType.TEXT_EMBEDDING, { text: evaluationResult }),
-});
-
-await runtime.createMemory(memory, 'facts', true);
-```
+1. Agent processes a message and generates a response
+2. Runtime calls `evaluate()` after response generation
+3. Each evaluator's `validate()` method determines if it should run
+4. For each valid evaluator, the `handler()` function is executed
+5. Results are stored in memory and inform future responses
 
 ---
 
-## Reflection Evaluator
+## Fact Evaluator: Memory Formation System
 
-The Reflection Evaluator is a comprehensive evaluator that combines multiple functions:
+The Fact Evaluator serves as the agent's "episodic memory formation" system - similar to how humans process conversations and form memories. Just as you might reflect after a conversation "Oh, I learned something new about Sarah today", the Fact Evaluator systematically processes conversations to build up the agent's understanding of the world and the people in it.
 
-1. **Self-Monologue**: Generates introspective thoughts about the agent's performance
-2. **Fact Extraction**: Identifies and stores new factual information
-3. **Relationship Building**: Maps connections between entities in the conversation
+### How It Works
 
-The reflection evaluator runs periodically during conversations (by default, every quarter of the conversation length) and performs a deep analysis of the entire context.
-
-### Reflection Output Structure
-
-Reflections are structured with three main components:
+#### 1. Triggering (The "When to Reflect" System)
 
 ```typescript
-interface Reflection {
-  thought: string; // Self-reflective monologue
-  facts: {
-    claim: string; // Factual statement
-    type: 'fact' | 'opinion' | 'status'; // Classification
-    in_bio: boolean; // Already in agent knowledge
-    already_known: boolean; // Previously extracted
-  }[];
-  relationships: {
-    sourceEntityId: UUID; // Entity initiating interaction
-    targetEntityId: UUID; // Entity being interacted with
-    tags: string[]; // Relationship classifiers
-  }[];
-}
+validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  const messageCount = await runtime.messageManager.countMemories(message.roomId);
+  const reflectionCount = Math.ceil(runtime.getConversationLength() / 2);
+  return messageCount % reflectionCount === 0;
+};
 ```
 
-### Example Reflection
+Just like humans don't consciously analyze every single word in real-time, the Fact Evaluator runs periodically rather than after every message. It triggers a "reflection" phase every few messages to process what's been learned.
 
-Here's an example of a reflection from a community manager agent:
+#### 2. Fact Extraction (The "What Did I Learn?" System)
+
+The evaluator uses a template-based approach to extract three types of information:
+
+- **Facts**: Unchanging truths about the world or people
+  - "Bob lives in New York"
+  - "Sarah has a degree in Computer Science"
+- **Status**: Temporary or changeable states
+  - "Bob is currently working on a new project"
+  - "Sarah is visiting Paris this week"
+- **Opinions**: Subjective views, feelings, or non-factual statements
+  - "Bob thinks the project will be successful"
+  - "Sarah loves French cuisine"
+
+#### 3. Memory Deduplication (The "Is This New?" System)
+
+```typescript
+const filteredFacts = facts.filter((fact) => {
+  return (
+    !fact.already_known &&
+    fact.type === 'fact' &&
+    !fact.in_bio &&
+    fact.claim &&
+    fact.claim.trim() !== ''
+  );
+});
+```
+
+Just as humans don't need to consciously re-learn things they already know, the Fact Evaluator:
+
+- Checks if information is already known
+- Verifies if it's in the agent's existing knowledge (bio)
+- Filters out duplicate or corrupted facts
+
+#### 4. Memory Storage (The "Remember This" System)
+
+```typescript
+const factMemory = await factsManager.addEmbeddingToMemory({
+  userId: agentId!,
+  agentId,
+  content: { text: fact },
+  roomId,
+  createdAt: Date.now(),
+});
+```
+
+Facts are stored with embeddings to enable:
+
+- Semantic search of related facts
+- Context-aware recall
+- Temporal tracking (when the fact was learned)
+
+### Example Processing
+
+Given this conversation:
+
+```
+User: "I just moved to Seattle last month!"
+Agent: "How are you finding the weather there?"
+User: "It's rainy, but I love my new job at the tech startup"
+```
+
+The Fact Evaluator might extract:
+
+```json
+[
+  {
+    "claim": "User moved to Seattle last month",
+    "type": "fact",
+    "in_bio": false,
+    "already_known": false
+  },
+  {
+    "claim": "User works at a tech startup",
+    "type": "fact",
+    "in_bio": false,
+    "already_known": false
+  },
+  {
+    "claim": "User enjoys their new job",
+    "type": "opinion",
+    "in_bio": false,
+    "already_known": false
+  }
+]
+```
+
+### Key Design Considerations
+
+1. **Episodic vs Semantic Memory**
+
+   - Facts build up the agent's semantic memory (general knowledge)
+   - The raw conversation remains in episodic memory (specific experiences)
+
+2. **Temporal Awareness**
+
+   - Facts are timestamped to track when they were learned
+   - Status facts can be updated as they change
+
+3. **Confidence and Verification**
+
+   - Multiple mentions of a fact increase confidence
+   - Contradictory facts can be flagged for verification
+
+4. **Privacy and Relevance**
+   - Only stores relevant, conversation-appropriate facts
+   - Respects explicit and implicit privacy boundaries
+
+---
+
+## Reflection Evaluator: Self-Awareness System
+
+The reflection evaluator extends beyond fact extraction to enable agents to develop a form of "self-awareness" about their conversational performance. It allows agents to:
+
+1. Generate self-reflective thoughts about the conversation quality
+2. Extract factual information from conversations (similar to the Fact Evaluator)
+3. Identify and track relationships between entities
+
+### How Reflections Work
+
+When triggered, the reflection evaluator:
+
+1. Analyzes recent conversations and existing knowledge
+2. Generates structured reflection output with:
+   - Self-reflective thoughts about conversation quality
+   - New facts extracted from conversation
+   - Identified relationships between entities
+3. Stores this information in the agent's memory for future reference
+
+### Example Reflection Output
 
 ```json
 {
-  "thought": "I'm engaging appropriately with a new community member, maintaining a welcoming and professional tone. My questions are helping to learn more about John and make him feel welcome.",
+  "thought": "I'm engaging appropriately with John, maintaining a welcoming and professional tone. My questions are helping learn more about him as a new community member.",
   "facts": [
     {
       "claim": "John is new to the community",
@@ -189,192 +225,250 @@ Here's an example of a reflection from a community manager agent:
 }
 ```
 
-In this reflection:
+### Implementation Details
 
-- The agent validates it's using appropriate communication strategies
-- Two new facts are identified about John
-- Two relationship connections are established (bidirectional between agent and user)
-
-### Self-Awareness Through Reflection
-
-The thought component helps agents develop self-awareness. For example, if an agent is dominating a conversation:
-
-```json
-{
-  "thought": "I'm dominating the conversation and not giving others a chance to share their perspectives. I've sent multiple messages in a row without waiting for responses. I need to step back and create space for other members to participate."
-}
-```
-
-This self-awareness allows agents to adjust their behavior in future interactions, creating more natural and balanced conversations.
-
-### Integration with Providers
-
-Facts extracted by evaluators are stored in memory and can be accessed by providers like the `factsProvider`. This creates a virtuous cycle:
-
-1. Evaluators extract and store facts after conversations
-2. The facts provider retrieves relevant facts during future conversations
-3. The agent uses these facts to provide more contextually relevant responses
-4. New facts are identified and stored by evaluators
-
-## Fact Evaluator
-
-The Fact Evaluator is a specialized evaluator focused on extracting meaningful facts from conversations. It processes interactions to:
-
-- Extract meaningful facts and opinions about users and the world
-- Distinguish between permanent facts, opinions, and status
-- Track what information is already known vs new information
-- Build up the agent's understanding over time through embeddings and memory storage
-
-Facts are stored with the following structure:
+The reflection evaluator uses a defined schema to ensure consistent output:
 
 ```typescript
-interface Fact {
-  claim: string; // The actual information extracted
-  type: 'fact' | 'opinion' | 'status'; // Classification of the information
-  in_bio: boolean; // Whether this info is already in the agent's knowledge
-  already_known: boolean; // Whether this was previously extracted
-}
+const reflectionSchema = z.object({
+  facts: z.array(
+    z.object({
+      claim: z.string(),
+      type: z.string(),
+      in_bio: z.boolean(),
+      already_known: z.boolean(),
+    })
+  ),
+  relationships: z.array(relationshipSchema),
+});
+
+const relationshipSchema = z.object({
+  sourceEntityId: z.string(),
+  targetEntityId: z.string(),
+  tags: z.array(z.string()),
+  metadata: z
+    .object({
+      interactions: z.number(),
+    })
+    .optional(),
+});
 ```
 
-#### Example Facts
+### Validation Logic
 
-Here's an example of extracted facts from a conversation:
-
-```
-User: I finally finished my marathon training program!
-Agent: That's a huge accomplishment! How do you feel about it?
-User: I'm really proud of what I achieved. It was tough but worth it.
-Agent: What's next for you?
-User: I'm actually training for a triathlon now. It's a whole new challenge.
-```
+The reflection evaluator includes validation logic that determines when reflection should occur:
 
 ```typescript
-const extractedFacts = [
-  {
-    claim: 'User completed marathon training',
-    type: 'fact', // Permanent info / achievement
-    in_bio: false,
-    already_known: false, // Prevents duplicate storage
+validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  const lastMessageId = await runtime.getCache<string>(
+    `${message.roomId}-reflection-last-processed`
+  );
+  const messages = await runtime.getMemories({
+    tableName: 'messages',
+    roomId: message.roomId,
+    count: runtime.getConversationLength(),
+  });
+
+  if (lastMessageId) {
+    const lastMessageIndex = messages.findIndex((msg) => msg.id === lastMessageId);
+    if (lastMessageIndex !== -1) {
+      messages.splice(0, lastMessageIndex + 1);
+    }
+  }
+
+  const reflectionInterval = Math.ceil(runtime.getConversationLength() / 4);
+
+  return messages.length > reflectionInterval;
+};
+```
+
+This ensures reflections occur at appropriate intervals, typically after a set number of messages have been exchanged.
+
+## Common Memory Formation Patterns
+
+1. **Progressive Learning**
+
+   ```typescript
+   // First conversation
+   "I live in Seattle" -> Stores as fact
+
+   // Later conversation
+   "I live in the Ballard neighborhood" -> Updates/enhances existing fact
+   ```
+
+2. **Fact Chaining**
+
+   ```typescript
+   // Original facts
+   'Works at tech startup';
+   'Startup is in Seattle';
+
+   // Inference potential
+   'Works in Seattle tech industry';
+   ```
+
+3. **Temporal Tracking**
+
+   ```typescript
+   // Status tracking
+   t0: 'Looking for a job'(status);
+   t1: 'Got a new job'(fact);
+   t2: 'Been at job for 3 months'(status);
+   ```
+
+4. **Relationship Building**
+
+   ```typescript
+   // Initial relationship
+   {
+     "sourceEntityId": "user-123",
+     "targetEntityId": "sarah-agent",
+     "tags": ["new_interaction"]
+   }
+
+   // Evolving relationship
+   {
+     "sourceEntityId": "user-123",
+     "targetEntityId": "sarah-agent",
+     "tags": ["frequent_interaction", "positive_sentiment"],
+     "metadata": { "interactions": 15 }
+   }
+   ```
+
+## Integration with Other Systems
+
+Evaluators work alongside other components:
+
+- **Goal Evaluator**: Facts and reflections may influence goal progress
+- **Trust Evaluator**: Fact consistency affects trust scoring
+- **Memory Manager**: Facts enhance context for future conversations
+- **Providers**: Facts inform response generation
+
+---
+
+## Creating Custom Evaluators
+
+You can create your own evaluators by implementing the `Evaluator` interface:
+
+```typescript
+const customEvaluator: Evaluator = {
+  name: 'CUSTOM_EVALUATOR',
+  similes: ['ANALYZE', 'ASSESS'],
+  description: 'Performs custom analysis on conversations',
+
+  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    // Your validation logic here
+    return true;
   },
-  {
-    claim: 'User feels proud of their achievement',
-    type: 'opinion', // Subjective views or feelings
-    in_bio: false,
-    already_known: false,
+
+  handler: async (runtime: IAgentRuntime, message: Memory, state?: State) => {
+    // Your evaluation logic here
+
+    // Example of storing evaluation results
+    await runtime.addEmbeddingToMemory({
+      entityId: runtime.agentId,
+      content: { text: 'Evaluation result' },
+      roomId: message.roomId,
+      createdAt: Date.now(),
+    });
+
+    return { result: 'evaluation complete' };
   },
-  {
-    claim: 'User is currently training for a triathlon',
-    type: 'status', // Ongoing activity, changeable
-    in_bio: false,
-    already_known: false,
-  },
-];
-```
 
-## Goal Evaluator
-
-The Goal Evaluator tracks progress on conversation objectives by analyzing messages and updating goal status. Goals are structured like this:
-
-```typescript
-interface Goal {
-  id: string;
-  name: string;
-  status: 'IN_PROGRESS' | 'DONE' | 'FAILED';
-  objectives: {
-    description: string;
-    completed: boolean;
-  }[];
-}
-```
-
-#### Example Goals
-
-Here's how the goal evaluator processes a conversation:
-
-```typescript
-// Initial goal state
-const goal = {
-  id: 'book-club-123',
-  name: 'Complete reading assignment',
-  status: 'IN_PROGRESS',
-  objectives: [
-    { description: 'Read chapters 1-3', completed: false },
-    { description: 'Take chapter notes', completed: false },
-    { description: 'Share thoughts in book club', completed: false },
+  examples: [
+    {
+      prompt: `Example context`,
+      messages: [
+        { name: 'User', content: { text: 'Example message' } },
+        { name: 'Agent', content: { text: 'Example response' } },
+      ],
+      outcome: `{ "result": "example outcome" }`,
+    },
   ],
 };
-
-// Conversation happens
-const conversation = `
-User: I finished reading the first three chapters last night
-Agent: Great! Did you take any notes while reading?
-User: Yes, I made detailed notes about the main characters
-Agent: Perfect, we can discuss those in the club meeting
-User: I'm looking forward to sharing my thoughts tomorrow
-`;
-
-// Goal evaluator updates the goal status
-const updatedGoal = {
-  id: 'book-club-123',
-  name: 'Complete reading assignment',
-  status: 'IN_PROGRESS', // Still in progress
-  objectives: [
-    { description: 'Read chapters 1-3', completed: true }, // Marked complete
-    { description: 'Take chapter notes', completed: true }, // Marked complete
-    { description: 'Share thoughts in book club', completed: false }, // Still pending
-  ],
-};
-
-// After the book club meeting, goal would be marked DONE
-// If user can't complete objectives, goal could be marked FAILED
 ```
+
+### Registering Custom Evaluators
+
+Custom evaluators can be registered with the agent runtime:
+
+```typescript
+// In your plugin's initialization
+export default {
+  name: 'custom-evaluator-plugin',
+  description: 'Adds custom evaluation capabilities',
+
+  init: async (config: any, runtime: IAgentRuntime) => {
+    // Register your custom evaluator
+    runtime.registerEvaluator(customEvaluator);
+  },
+
+  // Include the evaluator in the plugin exports
+  evaluators: [customEvaluator],
+};
+```
+
+## Best Practices for Memory Formation
+
+1. **Validate Facts**
+
+   - Cross-reference with existing knowledge
+   - Consider source reliability
+   - Track fact confidence levels
+
+2. **Manage Memory Growth**
+
+   - Prioritize important facts
+   - Consolidate related facts
+   - Archive outdated status facts
+
+3. **Handle Contradictions**
+
+   - Flag conflicting facts
+   - Maintain fact history
+   - Update based on newest information
+
+4. **Respect Privacy**
+
+   - Filter sensitive information
+   - Consider contextual appropriateness
+   - Follow data retention policies
+
+5. **Balance Reflection Frequency**
+   - Too frequent: Computational overhead
+   - Too infrequent: Missing important information
+   - Adapt based on conversation complexity and pace
 
 ---
 
 ## FAQ
 
-### How do evaluators differ from providers?
+### What's the difference between actions and evaluators?
 
-While [providers](/api/interfaces/Provider) supply data to the agent before responses, evaluators analyze conversations after responses. Providers inform decisions, evaluators learn from outcomes.
+Actions are triggered during response generation and create visible outputs, while evaluators run after responses and perform background cognitive tasks without direct user visibility.
 
-### Can evaluators modify agent behavior?
+### When should I use the Fact Evaluator vs. the Reflection Evaluator?
 
-Evaluators cannot directly modify agent responses. However, through their extracted facts and self-reflections that are stored in memory, they indirectly influence future behavior by shaping the agent's knowledge and self-awareness.
+Use the Fact Evaluator when you only need to extract and store factual information. Use the Reflection Evaluator when you need both fact extraction and relationship tracking, along with self-reflective assessment.
 
-### How many evaluators can run simultaneously?
+### How often do evaluators run?
 
-There's no hard limit, but each evaluator adds processing overhead. Focus on essential evaluations and use efficient validation to optimize performance. The reflection evaluator can replace multiple specialized evaluators since it combines fact extraction, relationship building, and self-reflection.
+By default, evaluators run at intervals based on conversation length, typically after every few messages, to avoid unnecessary processing while still capturing important information.
 
-### How does the reflection evaluator determine when to run?
+### Can evaluators affect future responses?
 
-The reflection evaluator typically runs at regular intervals during a conversation (e.g., every quarter of the conversation length). This balances the need for regular reflection with performance considerations.
+Yes! Facts and relationships stored by evaluators become part of the agent's memory and context, influencing future responses through the retrieval-augmented generation system.
 
-### How do facts extracted by evaluators get used?
+### How do I debug evaluator issues?
 
-Facts are stored in the agent's memory with embeddings for semantic retrieval. The facts provider can retrieve relevant facts during conversations using semantic search, allowing the agent to remember and use this information in responses.
+Use the logger to inspect evaluator execution and output. The most common issues involve entity resolution failures or schema validation errors.
 
-### What's the difference between 'facts', 'opinions', and 'status'?
+### Can evaluators work across different platforms?
 
-- **Facts**: Permanent truths about entities (e.g., "John lives in Seattle")
-- **Opinions**: Subjective views or feelings (e.g., "John feels proud of his achievement")
-- **Status**: Temporary states that change over time (e.g., "John is currently traveling")
+Yes, evaluators are platform-agnostic and work the same way regardless of whether your agent is deployed on Discord, Twitter, Telegram, or web interfaces.
 
-### Can evaluators communicate with each other?
+## Related Resources
 
-Evaluators don't directly communicate but can share data through the memory system. The reflection evaluator often combines the functionality of multiple evaluators, reducing the need for inter-evaluator communication.
-
-### How are self-reflections used by agents?
-
-Self-reflections help agents become more self-aware and improve their interaction quality. For example, if an agent reflects that it's dominating a conversation, it can adjust its behavior in future interactions to create more balance.
-
-### What's the difference between similes and examples in evaluators?
-
-Similes provide alternative descriptions of the evaluator's purpose, while examples show concrete scenarios with inputs and expected outcomes. Examples help verify correct implementation.
-
-### Can evaluators be conditionally enabled?
-
-Yes, use the validation function to control when evaluators run. This can be based on message content, user status, conversation length, or other runtime conditions.
-
-```
-
-```
+- [Actions Documentation](./actions.md)
+- [Providers Documentation](./providers.md)
+- [Agent Runtime](./agents.md)

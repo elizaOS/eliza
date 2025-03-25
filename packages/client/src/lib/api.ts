@@ -254,12 +254,13 @@ export const apiClient = {
   },
   deleteAgent: (agentId: string): Promise<{ success: boolean }> =>
     fetcher({ url: `/agents/${agentId}`, method: 'DELETE' }),
-  updateAgent: (agentId: string, agent: Agent) =>
-    fetcher({
+  updateAgent: async (agentId: string, agent: Agent) => {
+    return fetcher({
       url: `/agents/${agentId}`,
       method: 'PATCH',
       body: agent,
-    }),
+    });
+  },
   createAgent: (params: { characterPath?: string; characterJson?: Character }) =>
     fetcher({
       url: '/agents/',
