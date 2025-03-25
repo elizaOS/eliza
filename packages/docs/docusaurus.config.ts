@@ -337,8 +337,10 @@ const config = {
           position: 'left',
         },
         {
-          label: 'RSS',
-          position: 'left',
+          href: '/news',
+          position: 'right',
+          className: 'header-rss-link',
+          'aria-label': 'RSS Feed',
           to: '/news',
           items: [
             { label: 'RSS (XML)', href: '/news/rss.xml', target: '_blank' },
@@ -348,7 +350,8 @@ const config = {
         },
         {
           href: 'https://github.com/elizaos/eliza',
-          label: 'GitHub',
+          className: 'header-github-link',
+          'aria-label': 'GitHub repository',
           position: 'right',
         },
       ],
@@ -396,6 +399,10 @@ const config = {
             {
               label: 'Blog',
               href: '/blog',
+            },
+            {
+              label: 'RSS',
+              href: '/news/rss.xml',
             },
             {
               label: 'GitHub',

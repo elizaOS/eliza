@@ -262,15 +262,6 @@
   border-radius: 0 8px 8px 0;
 }
 
-/* Use specific will-change properties only where needed */
-.navbar--fixed-top {
-  will-change: transform;
-}
-
-.menu__link {
-  will-change: background-color;
-}
-
 /* Target performance for key interactive components */
 @media (prefers-reduced-motion: no-preference) {
   /* Apply transitions only for non-reduced motion users */
@@ -298,4 +289,36 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* GitHub icon in navbar */
+.header-github-link {
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  background-image: url('/img/github-mark.svg');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 24px 24px;
+}
+
+html[data-theme='dark'] .header-github-link {
+  background-image: url('/img/github-mark-white.svg');
+}
+
+/* RSS icon in navbar */
+.header-rss-link {
+  padding: 0;
+  width: 24px;
+  height: 36px;
+  background-image: url('/img/rss.svg');
+  background-repeat: no-repeat;
+  background-position: center;
+  position: relative;
+  display: block; /* Better alignment */
+}
+
+/* Hide dropdown arrow for RSS link */
+.header-rss-link.navbar__link:after {
+  display: none;
 }
