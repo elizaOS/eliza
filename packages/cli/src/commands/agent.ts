@@ -8,7 +8,7 @@ import { Command } from 'commander';
 
 const AGENT_RUNTIME_URL =
   process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') ||
-  `http://localhost:${process.env.SERVER_PORT}`;
+  `http://localhost:${process.env.SERVER_PORT ?? 3000}`;
 const AGENTS_BASE_URL = `${AGENT_RUNTIME_URL}/api/agents`;
 
 // Define basic agent interface for type safety
