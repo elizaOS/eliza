@@ -152,9 +152,9 @@ async function listEnvVars(): Promise<void> {
   if (Object.keys(globalEnvVars).length === 0) {
     logger.info('  No global environment variables set');
   } else {
-    Object.entries(globalEnvVars).forEach(([key, value]) => {
+    for (const [key, value] of Object.entries(globalEnvVars)) {
       logger.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
-    });
+    }
   }
 
   if (localEnvPath) {
@@ -162,9 +162,9 @@ async function listEnvVars(): Promise<void> {
     if (Object.keys(localEnvVars).length === 0) {
       logger.info('  No local environment variables set');
     } else {
-      Object.entries(localEnvVars).forEach(([key, value]) => {
+      for (const [key, value] of Object.entries(localEnvVars)) {
         logger.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
-      });
+      }
     }
   } else {
     logger.info(colors.bold('\nNo local .env file found in the current directory'));

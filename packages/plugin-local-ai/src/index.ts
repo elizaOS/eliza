@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -167,7 +168,7 @@ class LocalAIManager {
    */
   private constructor() {
     // Set up models directory consistently, similar to cacheDir
-    const modelsDir = path.join(process.cwd(), 'models');
+    const modelsDir = path.join(os.homedir(), '.eliza', 'models');
 
     // Check if LLAMALOCAL_PATH is set
     if (process.env.LLAMALOCAL_PATH?.trim()) {
@@ -191,7 +192,7 @@ class LocalAIManager {
     if (cacheDirEnv) {
       this.cacheDir = path.resolve(cacheDirEnv);
     } else {
-      const cacheDir = path.join(process.cwd(), 'cache');
+      const cacheDir = path.join(os.homedir(), '.eliza', 'cache');
       // Ensure cache directory exists
       if (!fs.existsSync(cacheDir)) {
         fs.mkdirSync(cacheDir, { recursive: true });

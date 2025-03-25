@@ -1,6 +1,6 @@
 import { buildProject } from '@/src/utils/build-project';
 import { copyTemplate } from '@/src/utils/copy-template';
-import { handleError } from '@/src/utils/handle-error';
+import { checkServer, handleError } from '@/src/utils/handle-error';
 import { runBunCommand } from '@/src/utils/run-bun';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
@@ -100,6 +100,7 @@ export const create = new Command()
   .argument('[name]', 'name for the project or plugin')
   .action(async (name, opts) => {
     displayBanner();
+
     try {
       // Parse options but use "" as the default for type to force prompting
       const initialOptions = {
@@ -251,7 +252,7 @@ export const create = new Command()
 1. \`cd ${cdPath}\` to change into your plugin directory
 2. \`${colors.cyan('npx elizaos start')}\` to start development
 3. \`${colors.cyan('npx elizaos test')}\` to test your plugin
-4. \`${colors.cyan('npx elizaos publish')}\` to publish your plugin to the registry`);
+4. \`${colors.cyan('npx elizaos plugin publish')}\` to publish your plugin to the registry`);
 
         // Set the user's shell working directory before exiting
         // Note: This only works if the CLI is run with shell integration
@@ -331,6 +332,7 @@ export const create = new Command()
       process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
       process.exit(0);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
