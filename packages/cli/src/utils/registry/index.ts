@@ -319,6 +319,44 @@ export async function getRegistryIndex(): Promise<Record<string, string>> {
 }
 
 /**
+ * Normalizes a plugin name to the expected format in the registry
+ *
+ * @param {string} pluginName - The name of the plugin to normalize
+ * @returns {string[]} An array of possible normalized plugin names to try
+ */
+export function normalizePluginName(pluginName: string): string[] {
+  // Extract the base name without any organization prefix
+  let baseName = pluginName;
+
+  // Handle various input formats
+  if (pluginName.includes('/')) {
+    // Handle formats like "elizaos/plugin-ton" or "elizaos-plugins/plugin-ton"
+    const parts = pluginName.split('/');
+    baseName = parts[parts.length - 1];
+  } else if (pluginName.startsWith('@')) {
+    // Handle scoped package format like "@elizaos/plugin-ton"
+    const parts = pluginName.split('/');
+    if (parts.length > 1) {
+      baseName = parts[1];
+    }
+  }
+
+  // Remove any existing prefixes
+  baseName = baseName.replace(/^plugin-/, '');
+
+  // Generate all possible formats to try
+  return [
+    pluginName, // Original input
+    baseName, // Just the base name
+    `plugin-${baseName}`, // With plugin- prefix
+    `@elizaos/${baseName}`, // Scoped with elizaos
+    `@elizaos/plugin-${baseName}`, // Scoped with elizaos and plugin prefix
+    `@elizaos-plugins/${baseName}`, // Scoped with elizaos-plugins
+    `@elizaos-plugins/plugin-${baseName}`, // Scoped with elizaos-plugins and plugin prefix
+  ];
+}
+
+/**
  * Retrieves the repository URL for a given plugin from the registry.
  *
  * @param {string} pluginName - The name of the plugin to fetch the repository URL for.
@@ -327,25 +365,44 @@ export async function getRegistryIndex(): Promise<Record<string, string>> {
  */
 export async function getPluginRepository(pluginName: string): Promise<string | null> {
   try {
+    // Get all possible plugin name formats to try
+    const possibleNames = normalizePluginName(pluginName);
+
     // First try getting from the local/public registry
     const registry = await getLocalRegistryIndex();
-    if (registry[pluginName]) {
-      return registry[pluginName];
+
+    // Try each possible name format in the registry
+    for (const name of possibleNames) {
+      if (registry[name]) {
+        logger.debug(`Found plugin in registry as: ${name}`);
+        return registry[name];
+      }
     }
 
     // Fall back to authenticated method if needed
-    const metadata = await getPluginMetadata(pluginName);
-    return metadata?.repository || null;
-  } catch (error) {
-    logger.debug(`Error getting plugin repository for ${pluginName}: ${error.message}`);
-    // Fall back to authenticated method
-    try {
-      const metadata = await getPluginMetadata(pluginName);
-      return metadata?.repository || null;
-    } catch (fallbackError) {
-      logger.error(`Failed to get plugin repository: ${fallbackError.message}`);
-      return null;
+    for (const name of possibleNames) {
+      try {
+        const metadata = await getPluginMetadata(name);
+        if (metadata?.repository) {
+          logger.debug(`Found plugin metadata for: ${name}`);
+          return metadata.repository;
+        }
+      } catch (error) {
+        // Continue to the next name format
+        logger.debug(`No metadata found for ${name}`);
+      }
     }
+
+    // Direct GitHub shorthand (github:org/repo)
+    if (!pluginName.includes(':') && !pluginName.startsWith('@')) {
+      const baseName = pluginName.replace(/^plugin-/, '');
+      return `github:elizaos-plugins/plugin-${baseName}`;
+    }
+
+    return null;
+  } catch (error) {
+    logger.debug(`Error getting plugin repository: ${error.message}`);
+    return null;
   }
 }
 

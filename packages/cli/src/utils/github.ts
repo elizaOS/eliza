@@ -572,6 +572,26 @@ export async function getGitHubCredentials(): Promise<{
     // No valid credentials found, prompt the user
     const prompt = await import('prompts');
 
+    // First display the instructions separately
+    console.log('\n====== GitHub Authentication Required ======');
+    console.log('To create a GitHub Personal Access Token (Classic):');
+    console.log('1. Go to https://github.com/settings/tokens/new');
+    console.log('2. Give your token a descriptive name (e.g., "ElizaOS CLI")');
+    console.log('3. Select "No expiration" or any expiration date');
+    console.log('4. Select the following scopes (all are required):');
+    console.log('   - repo (Full control of private repositories)');
+    console.log('   - read:org (Read org and team membership, read org projects)');
+    console.log('   - workflow (Update GitHub Action workflows)');
+    console.log('5. Click "Generate token" at the bottom of the page');
+    console.log("6. Copy the displayed token (you won't be able to see it again!)");
+    console.log('');
+    console.log('\u001b[33mNOTE: You must use a Classic token, not a Fine-grained token\u001b[0m');
+    console.log('======================================\n');
+
+    // Wait a moment to ensure output is flushed
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Then prompt for the username with a simple message
     const { promptedUsername } = await prompt.default({
       type: 'text',
       name: 'promptedUsername',
