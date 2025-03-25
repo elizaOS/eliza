@@ -11,19 +11,16 @@ import {
 
 interface CheckInSchedule {
   type: 'team-member-checkin-schedule';
-  scheduleId: UUID;
+  scheduleId: string;
   teamMemberId: string;
-  frequency: 'DAILY' | 'WEEKLY' | 'CUSTOM';
-  timeOfDay: string;
-  timezone: string;
-  daysOfWeek?: string[];
-  isActive: boolean;
-  createdBy: string;
+  checkInType: string;
+  channelId: string;
+  frequency: 'WEEKDAYS' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
+  checkInTime: string;
   createdAt: string;
-  lastModified: string;
 }
 
-async function fetchCheckInSchedules(runtime: IAgentRuntime): Promise<CheckInSchedule[]> {
+export async function fetchCheckInSchedules(runtime: IAgentRuntime): Promise<CheckInSchedule[]> {
   try {
     logger.info('=== FETCH CHECK-IN SCHEDULES START ===');
 
@@ -80,6 +77,10 @@ async function fetchCheckInSchedules(runtime: IAgentRuntime): Promise<CheckInSch
 
     logger.info(`Successfully extracted ${schedules.length} valid schedules`);
     logger.info('=== FETCH CHECK-IN SCHEDULES END ===');
+    // Log detailed information about each schedule for debugging
+    logger.info('=== DETAILED SCHEDULES LOG ===');
+    logger.info('All schedules:', JSON.stringify(schedules, null, 2));
+    logger.info('=== END DETAILED SCHEDULES LOG ===');
     return schedules;
   } catch (error) {
     logger.error('=== FETCH CHECK-IN SCHEDULES ERROR ===');
@@ -95,22 +96,19 @@ async function fetchCheckInSchedules(runtime: IAgentRuntime): Promise<CheckInSch
 function formatSchedule(schedule: CheckInSchedule): string {
   logger.info('Formatting schedule:', {
     scheduleId: schedule.scheduleId,
+    checkInType: schedule.checkInType,
     frequency: schedule.frequency,
-    timeOfDay: schedule.timeOfDay,
+    checkInTime: schedule.checkInTime,
   });
-
-  const frequencyInfo =
-    schedule.frequency === 'DAILY' ? 'Every day' : `On ${schedule.daysOfWeek?.join(', ') || 'N/A'}`;
 
   const formatted = `
 📅 Schedule ID: ${schedule.scheduleId}
 👤 Team Member ID: ${schedule.teamMemberId}
-⏰ Time: ${schedule.timeOfDay} ${schedule.timezone}
-🔄 Frequency: ${schedule.frequency} (${frequencyInfo})
-📌 Status: ${schedule.isActive ? '✅ Active' : '❌ Inactive'}
-👑 Created By: ${schedule.createdBy}
+📝 Type: ${schedule.checkInType}
+📺 Channel ID: ${schedule.channelId}
+⏰ Time: ${schedule.checkInTime}
+🔄 Frequency: ${schedule.frequency}
 📋 Created: ${new Date(schedule.createdAt).toLocaleString()}
-🔄 Last Modified: ${new Date(schedule.lastModified).toLocaleString()}
 `;
 
   logger.info('Successfully formatted schedule');
@@ -220,6 +218,19 @@ export const listCheckInSchedules: Action = {
       {
         name: 'admin',
         content: { text: 'List team check-ins' },
+      },
+      {
+        name: 'jimmy',
+        content: {
+          text: "I'll show you all active check-in schedules",
+          actions: ['listCheckInSchedules'],
+        },
+      },
+    ],
+    [
+      {
+        name: 'admin',
+        content: { text: 'list of checkins' },
       },
       {
         name: 'jimmy',
