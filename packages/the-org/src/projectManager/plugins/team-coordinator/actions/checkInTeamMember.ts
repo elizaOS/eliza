@@ -1,58 +1,20 @@
 import {
   type Action,
+  ChannelType,
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
-  type UUID,
+  ModelType,
+  type State,
+  composePromptFromState,
   createUniqueUuid,
+  getUserServerRole,
+  getWorldSettings,
   logger,
-  ChannelType,
 } from '@elizaos/core';
 import { sendCheckInScheduleForm } from '../forms/checkInScheduleForm';
 import type { DiscordChannelService } from '../services/DiscordChannelService';
-
-interface CheckInFormData {
-  teamMemberId: string;
-  frequency: 'DAILY' | 'WEEKLY' | 'CUSTOM';
-  timeOfDay: string;
-  timezone: string;
-  daysOfWeek?: string[];
-  channelId?: string; // Added channel ID for check-ins
-}
-
-interface CheckInSchedule {
-  type: 'team-member-checkin-schedule';
-  scheduleId: UUID;
-  teamMemberId: string;
-  frequency: 'DAILY' | 'WEEKLY' | 'CUSTOM';
-  timeOfDay: string; // HH:mm format
-  timezone: string;
-  daysOfWeek?: string[]; // For weekly or custom schedules
-  channelId?: string; // Discord channel where check-ins will be posted
-  isActive: boolean;
-  createdBy: string; // Admin ID
-  createdAt: string;
-  lastModified: string;
-}
-
-/**
- * Tracks form state between interactions
- */
-interface FormState {
-  frequency?: 'DAILY' | 'WEEKLY' | 'CUSTOM';
-  timeOfDay?: string;
-  timezone?: string;
-  daysOfWeek?: string[];
-  teamMemberId?: string;
-  channelId?: string; // Added channel ID to form state
-}
-
-interface DiscordInteraction {
-  customId: string;
-  type: number; // 2 for button, 3 for select menu
-  values?: string[]; // Only present for select menu
-}
 
 interface DiscordComponentInteraction {
   customId: string;
@@ -61,48 +23,78 @@ interface DiscordComponentInteraction {
   selections?: Record<string, string[]>;
 }
 
-interface RuntimeEvents {
-  'discord:interaction': (
-    interaction: DiscordComponentInteraction,
-    callback?: HandlerCallback
-  ) => Promise<void>;
-}
+// Required Discord configuration fields
+const REQUIRED_DISCORD_FIELDS = [
+  'PROJECT_MANAGER_DISCORD_APPLICATION_ID',
+  'PROJECT_MANAGER_DISCORD_API_TOKEN',
+];
 
-interface ExtendedRuntime extends IAgentRuntime {
-  on<K extends keyof RuntimeEvents>(event: K, listener: RuntimeEvents[K]): void;
-  processMemory(memory: Memory): Promise<void>;
+/**
+ * Validates the Discord configuration for a specific server.
+ * @param {IAgentRuntime} runtime - The Agent runtime.
+ * @param {string} serverId - The ID of the server to validate.
+ * @returns {Promise<{ isValid: boolean; error?: string }>}
+ */
+async function validateDiscordConfig(
+  runtime: IAgentRuntime,
+  serverId: string
+): Promise<{ isValid: boolean; error?: string }> {
+  try {
+    // logger.info(`Validating Discord config for server ${serverId}`);
+    // const worldSettings = await getWorldSettings(runtime, serverId);
+
+    // // Check required fields
+    // for (const field of REQUIRED_DISCORD_FIELDS) {
+    //   if (!worldSettings[field] || worldSettings[field].value === null) {
+    //     return {
+    //       isValid: false,
+    //       error: `Missing required Discord configuration: ${field}`,
+    //     };
+    //   }
+    // }
+
+    return { isValid: true };
+  } catch (error) {
+    logger.error('Error validating Discord config:', error);
+    return {
+      isValid: false,
+      error: 'Error validating Discord configuration',
+    };
+  }
 }
 
 /**
- * Stores a check-in schedule in the database
+ * Ensures a Discord client exists and is ready
+ * @param {IAgentRuntime} runtime - The Agent runtime
+ * @returns {Promise<any>} The Discord client
  */
-async function storeCheckInSchedule(
-  runtime: IAgentRuntime,
-  roomId: UUID,
-  schedule: CheckInSchedule
-): Promise<void> {
-  logger.info(`Storing check-in schedule for team member ${schedule.teamMemberId}`);
-
-  const scheduleContent: Content = {
-    type: 'team-member-checkin-schedule',
-    schedule,
-  };
+async function ensureDiscordClient(runtime: IAgentRuntime) {
+  logger.info('Ensuring Discord client is available');
 
   try {
-    await runtime.createMemory(
-      {
-        id: createUniqueUuid(runtime, `checkin-schedule-${schedule.scheduleId}`),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: scheduleContent,
-        roomId,
-        createdAt: Date.now(),
-      },
-      'messages'
-    );
-    logger.info(`Successfully stored check-in schedule ${schedule.scheduleId}`);
+    const discordService = runtime.getService('discord');
+    logger.info(`Discord service found: ${!!discordService}`);
+
+    if (!discordService) {
+      logger.error('Discord service not found in runtime');
+      throw new Error('Discord service not found');
+    }
+
+    // Log what's in the service to see its structure
+    logger.info(`Discord service structure: ${JSON.stringify(Object.keys(discordService))}`);
+
+    // Check if client exists and is ready
+    logger.info(`Discord client exists: ${!!discordService?.client}`);
+    if (!discordService?.client) {
+      logger.error('Discord client not initialized in service');
+      throw new Error('Discord client not initialized');
+    }
+
+    logger.info('Discord client successfully validated');
+    return discordService;
   } catch (error) {
-    logger.error(`Error storing check-in schedule: ${error}`);
+    logger.error(`Error ensuring Discord client: ${error.message}`);
+    logger.error(`Error stack: ${error.stack}`);
     throw error;
   }
 }
@@ -111,8 +103,59 @@ export const checkInTeamMember: Action = {
   name: 'checkInTeamMember',
   description: 'Creates or modifies a check-in schedule for team members',
   similes: ['scheduleCheckIn', 'createCheckInSchedule', 'setCheckInTime'],
-  validate: async (runtime: IAgentRuntime, message: Memory) => {
-    return true;
+  validate: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    try {
+      // Existing validation code...
+      const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+      logger.info('Room data:', JSON.stringify(room, null, 2));
+
+      if (!room) {
+        logger.error('No room found for message');
+        return false;
+      }
+
+      const serverId = room.serverId;
+      if (!serverId) {
+        logger.error('No server ID found for room');
+        return false;
+      }
+
+      // Check if user is an admin
+      logger.info(`Checking if user ${message.entityId} is an admin for server ${serverId}`);
+      const userRole = await getUserServerRole(runtime, message.entityId, serverId);
+
+      logger.info(`User role: ${userRole}`);
+
+      // Define valid admin roles (case-insensitive)
+      const adminRoles = ['admin', 'owner', 'moderator', 'administrator'];
+      const isAdminUser =
+        userRole && adminRoles.some((role) => userRole.toLowerCase() === role.toLowerCase());
+
+      if (!isAdminUser) {
+        logger.info(
+          `User ${message.entityId} is not an admin, rejecting action. Role: ${userRole}`
+        );
+        // We'll handle the message in the handler
+        state.data.isAdmin = false;
+        return true; // Still return true so handler can show the error message
+      }
+
+      logger.info(`User ${message.entityId} has admin privileges with role: ${userRole}`);
+      state.data.isAdmin = true;
+      // // Validate Discord configuration
+      // const validation = await validateDiscordConfig(runtime, serverId);
+      // if (!validation.isValid) {
+      //   logger.error(`Discord validation failed: ${validation.error}`);
+      //   return false;
+      // }
+
+      // Ensure Discord client is available
+
+      return true;
+    } catch (error) {
+      logger.error('Error in checkInTeamMember validation:', error);
+      return false;
+    }
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -122,6 +165,84 @@ export const checkInTeamMember: Action = {
     callback?: HandlerCallback
   ): Promise<boolean> => {
     try {
+      // Get Discord client first
+      logger.info('Attempting to get Discord client...');
+      let discordService: any;
+
+      try {
+        discordService = await ensureDiscordClient(runtime);
+        logger.info('Successfully retrieved Discord service with client');
+      } catch (discordError) {
+        logger.error(`Failed to get Discord client: ${discordError.message}`);
+
+        // Try to proceed anyway or handle gracefully
+        if (callback) {
+          await callback(
+            {
+              text: '❌ Unable to connect to Discord services. Please try again later or contact support.',
+              source: 'discord',
+            },
+            []
+          );
+        }
+        return false;
+      }
+
+      let textChannels = [];
+
+      // Check if Discord connection is established
+      logger.info('Checking Discord connection status...');
+
+      // Get room and server ID
+      const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+      if (!room) {
+        logger.error('No room found for the message');
+        return false;
+      }
+
+      const serverId = room.serverId;
+      if (!serverId) {
+        logger.error('No server ID found for room');
+        return false;
+      }
+
+      logger.info(`Using server ID: ${serverId}`);
+
+      // Fetch all channels from the server
+      if (discordService?.client) {
+        try {
+          logger.info(`Fetching all channels from Discord server with ID: ${serverId}`);
+          const guild = discordService?.client.guilds.cache.get(serverId);
+
+          if (guild) {
+            const channels = await guild.channels.fetch();
+            logger.info(`Found ${channels.size} channels in server ${guild.name}`);
+
+            // Define textChannels property if it doesn't exist
+            textChannels = channels
+              .filter((channel) => channel && channel.isTextBased?.() && !channel.isDMBased?.())
+              .map((channel) => ({
+                id: channel.id,
+                name: channel.name,
+                type: channel.type.toString(),
+              }));
+
+            logger.info(`Stored ${textChannels.length} text channels for forms`);
+            logger.info('Text channels:', JSON.stringify(textChannels));
+          } else {
+            logger.error(`Could not find guild with ID ${serverId}`);
+          }
+        } catch (error) {
+          logger.error('Error fetching Discord channels:', error);
+          logger.debug('Error details:', error instanceof Error ? error.stack : String(error));
+        }
+      } else {
+        logger.warn('Discord service or client is not available');
+      }
+
+      logger.info('Text channels variable:', textChannels);
+
+      // Rest of your existing handler code...
       logger.info('=== CHECK-IN HANDLER START ===');
       logger.info('Message content received:', JSON.stringify(message.content, null, 2));
 
@@ -130,236 +251,9 @@ export const checkInTeamMember: Action = {
         return false;
       }
 
-      // Handle Discord component interaction
-      const discordInteraction = message.content?.discordInteraction as DiscordComponentInteraction;
-      if (discordInteraction) {
-        logger.info('Processing Discord component interaction:', {
-          customId: discordInteraction.customId,
-          componentType: discordInteraction.componentType,
-          values: discordInteraction.values,
-        });
-
-        // If this is a form submission with complete data
-        if (discordInteraction.customId === 'submit_checkin_schedule') {
-          logger.info('Processing complete form submission');
-
-          // Get the selections from the interaction
-          const selections = discordInteraction.selections;
-          if (!selections) {
-            logger.warn('No form selections found');
-            await callback(
-              {
-                text: '❌ No form data found. Please fill the form again.',
-                source: 'discord',
-              },
-              []
-            );
-            return true;
-          }
-
-          logger.info('Form selections:', selections);
-
-          const schedule: CheckInSchedule = {
-            type: 'team-member-checkin-schedule',
-            scheduleId: createUniqueUuid(runtime, `schedule-${message.entityId}`),
-            teamMemberId: message.entityId,
-            frequency: selections.checkin_frequency?.[0] as 'DAILY' | 'WEEKLY' | 'CUSTOM',
-            timeOfDay: selections.checkin_time?.[0],
-            timezone: selections.timezone?.[0],
-            daysOfWeek: selections.checkin_days,
-            channelId: selections.checkin_channel?.[0], // Store the selected channel ID
-            isActive: true,
-            createdBy: message.entityId,
-            createdAt: new Date().toISOString(),
-            lastModified: new Date().toISOString(),
-          };
-
-          logger.info('Created check-in schedule with channel:', schedule.channelId);
-
-          // Validate schedule data
-          if (!schedule.frequency || !schedule.timeOfDay || !schedule.timezone) {
-            logger.warn('Missing required fields in form submission');
-            await callback(
-              {
-                text: '❌ Missing required fields in form submission. Please fill all required fields.',
-                source: 'discord',
-              },
-              []
-            );
-            return true;
-          }
-
-          // For weekly/custom schedules, days are required
-          if (
-            (schedule.frequency === 'WEEKLY' || schedule.frequency === 'CUSTOM') &&
-            (!schedule.daysOfWeek || schedule.daysOfWeek.length === 0)
-          ) {
-            logger.warn('Days required for weekly/custom schedule but not provided');
-            await callback(
-              {
-                text: '❌ Please select the days for check-in',
-                source: 'discord',
-              },
-              []
-            );
-            return true;
-          }
-
-          try {
-            // Store the schedule
-            const checkInSchedulesRoomId = createUniqueUuid(runtime, 'check-in-schedules');
-            await storeCheckInSchedule(runtime, checkInSchedulesRoomId, schedule);
-            logger.info('Successfully stored check-in schedule');
-
-            // Send confirmation
-            await callback(
-              {
-                text: `✅ Successfully created check-in schedule.\nFrequency: ${schedule.frequency}\nTime: ${schedule.timeOfDay} ${schedule.timezone}${
-                  schedule.daysOfWeek ? `\nDays: ${schedule.daysOfWeek.join(', ')}` : ''
-                }${schedule.channelId ? `\nChannel: <#${schedule.channelId}>` : ''}`,
-                source: 'discord',
-              },
-              []
-            );
-            return true;
-          } catch (error) {
-            logger.error('Error saving check-in schedule:', error);
-            await callback(
-              {
-                text: '❌ Error saving check-in schedule. Please try again.',
-                source: 'discord',
-              },
-              []
-            );
-            return false;
-          }
-        } else if (discordInteraction.customId === 'cancel_checkin_schedule') {
-          logger.info('Cancelling check-in schedule creation');
-          await callback(
-            {
-              text: '❌ Check-in schedule creation cancelled.',
-              source: 'discord',
-            },
-            []
-          );
-          return true;
-        }
-      }
-
-      // If no interaction, show the initial form
-      logger.info('No interaction found - sending initial form...');
-
-      // Add a small delay to ensure Discord services are initialized
-      logger.info('Waiting a moment for Discord services to initialize...');
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      // Get available Discord channels from DiscordChannelService
-      let channels = [];
-      try {
-        // Get the DiscordChannelService
-        const discordChannelService = runtime.getService(
-          'discord-channel-service'
-        ) as DiscordChannelService;
-
-        if (discordChannelService) {
-          logger.info('Found DiscordChannelService, getting channels');
-          channels = discordChannelService.getTextChannels();
-          logger.debug(`Retrieved ${channels.length} channels from DiscordChannelService`);
-        }
-
-        // Also try to get direct access to Discord client as a backup approach
-        if (channels.length === 0) {
-          logger.info(
-            'No channels found via DiscordChannelService, trying direct Discord service access'
-          );
-          try {
-            const discordService = runtime.getService('discord');
-            // Use type interface to avoid using 'any'
-            interface DiscordClient {
-              guilds?: {
-                cache?: {
-                  first?: () => {
-                    name?: string;
-                    channels?: {
-                      cache?: Map<
-                        string,
-                        {
-                          id: string;
-                          name: string;
-                          type: number;
-                        }
-                      >;
-                    };
-                  };
-                  size?: number;
-                };
-              };
-            }
-
-            if (discordService && 'client' in discordService && discordService.client) {
-              const client = discordService.client as DiscordClient;
-
-              // Log whether guilds are available - use optional chaining
-              logger.debug('Discord client found, checking for guilds...');
-              if (client.guilds?.cache?.size && client.guilds.cache.size > 0) {
-                const guild = client.guilds.cache.first?.();
-                if (guild?.name) {
-                  logger.info(`Found guild: ${guild.name}`);
-
-                  // Try to get text channels from the first guild - use optional chaining
-                  if (guild.channels?.cache) {
-                    let textChannelCount = 0;
-
-                    // Use for...of instead of forEach
-                    for (const [_, channel] of guild.channels.cache) {
-                      if (channel && channel.type === 0) {
-                        // 0 is TEXT channel in discord.js v14
-                        channels.push({
-                          id: channel.id,
-                          name: channel.name,
-                          type: 'GROUP',
-                        });
-                        textChannelCount++;
-                      }
-                    }
-
-                    logger.info(
-                      `Found ${textChannelCount} text channels directly from Discord service`
-                    );
-                  }
-                }
-              } else {
-                logger.warn('Discord client found but no guilds available');
-              }
-            }
-          } catch (innerError) {
-            logger.warn('Error accessing Discord service directly:', innerError);
-          }
-        }
-
-        // Ensure we always have some default channels if none were found
-        if (channels.length === 0) {
-          logger.warn('No channels found from any source, using default channels');
-          channels = [
-            { id: 'general', name: 'general', type: 'GROUP' },
-            { id: 'announcements', name: 'announcements', type: 'GROUP' },
-            { id: 'check-ins', name: 'check-ins', type: 'GROUP' },
-          ];
-        }
-      } catch (error) {
-        logger.error('Error getting Discord channels:', error);
-        logger.error('Error stack:', error.stack);
-
-        // Provide default channels in case of error
-        channels = [
-          { id: 'general', name: 'general', type: 'GROUP' },
-          { id: 'check-ins', name: 'check-ins', type: 'GROUP' },
-        ];
-      }
-
       // Send form with channels
-      logger.info(`Sending form with ${channels.length} channels`);
-      await sendCheckInScheduleForm(callback, channels);
+      logger.info(`Sending form with ${textChannels.length} channels`);
+      await sendCheckInScheduleForm(callback, textChannels);
       logger.info('Initial form sent successfully');
       return true;
     } catch (error) {
@@ -387,6 +281,19 @@ export const checkInTeamMember: Action = {
       {
         name: 'admin',
         content: { text: "let's create a checkin on team members" },
+      },
+      {
+        name: 'jimmy',
+        content: {
+          text: "I'll set up check-in schedules for the team members",
+          actions: ['checkInTeamMember'],
+        },
+      },
+    ],
+    [
+      {
+        name: 'admin',
+        content: { text: 'lolz' },
       },
       {
         name: 'jimmy',
