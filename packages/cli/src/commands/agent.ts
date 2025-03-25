@@ -1,15 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { handleError } from '@/src/utils/handle-error';
+import { checkServer, handleError } from '@/src/utils/handle-error';
 import { displayAgent } from '@/src/utils/helpers';
 import { logger } from '@elizaos/core';
 import type { Agent } from '@elizaos/core';
 import { Command } from 'commander';
 
-const AGENT_RUNTIME_URL =
+export const AGENT_RUNTIME_URL =
   process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') ||
-  `http://localhost:${process.env.SERVER_PORT}`;
-const AGENTS_BASE_URL = `${AGENT_RUNTIME_URL}/api/agents`;
+  `http://localhost:${process.env.SERVER_PORT ?? 3000}`;
+export const AGENTS_BASE_URL = `${AGENT_RUNTIME_URL}/api/agents`;
 
 // Define basic agent interface for type safety
 /**
@@ -140,6 +140,7 @@ agent
 
       process.exit(0);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -180,6 +181,7 @@ agent
 
       process.exit(0);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -283,6 +285,7 @@ agent
 
       logger.debug(`Successfully started agent ${result.name} (${result.id})`);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -310,6 +313,7 @@ agent
 
       logger.success(`Successfully stopped agent ${opts.name}`);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -340,6 +344,7 @@ agent
       // Server returns 204 No Content for successful deletion, no need to parse response
       logger.success(`Successfully removed agent ${opts.name}`);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -396,6 +401,7 @@ agent
         `Successfully updated configuration for agent ${result?.id || resolvedAgentId}`
       );
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });

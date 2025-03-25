@@ -13,7 +13,6 @@ import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { character as defaultCharacter } from '../characters/eliza';
-import { displayBanner } from '../displayBanner';
 import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
 import { loadConfig, saveConfig } from '../utils/config-manager.js';
@@ -21,7 +20,7 @@ import { promptForEnvVars } from '../utils/env-prompt.js';
 import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
-
+import { displayBanner } from '../displayBanner';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -557,6 +556,7 @@ export const start = new Command()
   .option('--build', 'Build the project before starting')
   .action(async (options) => {
     displayBanner();
+
     try {
       // Build the project first unless skip-build is specified
       if (options.build) {
