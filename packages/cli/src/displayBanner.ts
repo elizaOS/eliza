@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function displayBanner(version: string | null = null, hideBanner = false) {
+export function displayBanner() {
   // Color ANSI escape codes
   const b = '\x1b[38;5;27m';
   const lightblue = '\x1b[38;5;51m';
@@ -11,9 +11,9 @@ export function displayBanner(version: string | null = null, hideBanner = false)
   const r = '\x1b[0m';
   const red = '\x1b[38;5;196m';
   let versionColor = lightblue;
-
+  let version = null;
   // assume __dirname doesnt exist
-  const __dirname = path.resolve(import.meta.dirname, '..');
+  const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
   if (!version) {
     const packageJsonPath = path.join(__dirname, 'package.json');
@@ -80,12 +80,10 @@ ${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⡃⠀⠀${w}
   // Randomly select and log one banner
   const randomBanner = banners[Math.floor(Math.random() * banners.length)];
 
-  if (!hideBanner) {
-    console.log(randomBanner);
-  } else {
-    console.log(`*** elizaOS ***`);
-  }
+  console.log(randomBanner);
 
-  // log the version
-  console.log(`${versionColor}Version: ${version}${r}`);
+  if (version) {
+    // log the version
+    console.log(`${versionColor}Version: ${version}${r}`);
+  }
 }

@@ -1,6 +1,6 @@
 import { buildProject } from '@/src/utils/build-project';
 import { copyTemplate } from '@/src/utils/copy-template';
-import { handleError } from '@/src/utils/handle-error';
+import { checkServer, handleError } from '@/src/utils/handle-error';
 import { runBunCommand } from '@/src/utils/run-bun';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
@@ -99,7 +99,6 @@ export const create = new Command()
   .option('-t, --type <type>', 'type of template to use (project or plugin)', '')
   .argument('[name]', 'name for the project or plugin')
   .action(async (name, opts) => {
-    displayBanner();
     try {
       // Parse options but use "" as the default for type to force prompting
       const initialOptions = {
@@ -331,6 +330,7 @@ export const create = new Command()
       process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
       process.exit(0);
     } catch (error) {
+      checkServer();
       handleError(error);
     }
   });

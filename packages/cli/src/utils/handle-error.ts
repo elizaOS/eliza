@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-
+import { AGENT_RUNTIME_URL } from '../commands/agent';
 /**
  * Handles the error by logging it and exiting the process.
  * If the error is a string, it logs the error message and exits.
@@ -18,4 +18,12 @@ export function handleError(error: unknown) {
     logger.error('Error value:', error);
   }
   process.exit(1);
+}
+
+export async function checkServer() {
+  const response = await fetch(`${AGENT_RUNTIME_URL}`);
+  if (!response.ok) {
+    console.error('Agent runtime server is not running');
+    process.exit(1);
+  }
 }

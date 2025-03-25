@@ -556,7 +556,6 @@ export const start = new Command()
   .option('--character <character>', 'Path or URL to character file to use instead of default')
   .option('--build', 'Build the project before starting')
   .action(async (options) => {
-    displayBanner();
     try {
       // Build the project first unless skip-build is specified
       if (options.build) {

@@ -65,7 +65,7 @@ async function main() {
 
   // if no args are passed, display the banner
   if (process.argv.length === 2) {
-    displayBanner(version);
+    displayBanner();
   }
 
   await program.parseAsync();

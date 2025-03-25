@@ -197,7 +197,7 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
     };
 
     // Log file extensions we're watching
-    logger.info(`Will watch files with extensions: .ts, .js, .tsx, .jsx`);
+    logger.info('Will watch files with extensions: .ts, .js, .tsx, .jsx');
 
     // Create a more direct and simple watcher pattern
     const watcher = chokidar.watch(dirToWatch, {
@@ -370,7 +370,7 @@ export const dev = new Command()
         // Pass the rebuildAndRestart function as the onChange callback
         await watchDirectory(cwd, rebuildAndRestart);
 
-        logger.success(`Dev mode is active! The server will restart when files change.`);
+        logger.success('Dev mode is active! The server will restart when files change.');
         logger.success('Press Ctrl+C to exit');
       } else {
         logger.debug('Running in standalone mode without file watching.');
