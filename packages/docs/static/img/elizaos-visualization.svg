@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <!-- Background gradient -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0D1117" />
+      <stop offset="100%" stop-color="#161B22" />
+    </linearGradient>
+    
+    <!-- World glow -->
+    <filter id="worldGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Room glow -->
+    <filter id="roomGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- User/Agent glow -->
+    <filter id="entityGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <!-- Connection paths -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="0" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#4D5BCE" />
+    </marker>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="800" height="600" fill="url(#bgGradient)" />
+  
+  <!-- Decorative grid lines -->
+  <g stroke="#343B4A" stroke-width="0.5" opacity="0.3">
+    <path d="M0,100 H800 M0,200 H800 M0,300 H800 M0,400 H800 M0,500 H800" />
+    <path d="M100,0 V600 M200,0 V600 M300,0 V600 M400,0 V600 M500,0 V600 M600,0 V600 M700,0 V600" />
+  </g>
+  
+  <!-- Title -->
+  <text x="400" y="50" font-family="Arial, sans-serif" font-size="24" font-weight="bold" 
+        fill="#E5E9F0" text-anchor="middle">ElizaOS Architecture</text>
+  
+  <!-- World 1 -->
+  <g transform="translate(250, 180)">
+    <!-- World container -->
+    <circle cx="0" cy="0" r="120" fill="#1A1D2D" stroke="#4D5BCE" stroke-width="2" filter="url(#worldGlow)" />
+    
+    <!-- World label -->
+    <text x="0" y="-85" font-family="Arial, sans-serif" font-size="16" font-weight="bold" 
+          fill="#4D5BCE" text-anchor="middle">World A</text>
+    
+    <!-- Rooms -->
+    <circle cx="-50" cy="-20" r="30" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" filter="url(#roomGlow)" />
+    <text x="-50" y="-17" font-family="Arial, sans-serif" font-size="10" 
+          fill="#88C0D0" text-anchor="middle">Room 1</text>
+          
+    <circle cx="40" cy="-30" r="25" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" filter="url(#roomGlow)" />
+    <text x="40" y="-27" font-family="Arial, sans-serif" font-size="10" 
+          fill="#88C0D0" text-anchor="middle">Room 2</text>
+          
+    <circle cx="0" cy="50" r="35" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" filter="url(#roomGlow)" />
+    <text x="0" y="53" font-family="Arial, sans-serif" font-size="10" 
+          fill="#88C0D0" text-anchor="middle">Room 3</text>
+    
+    <!-- Entities -->
+    <circle cx="-60" cy="-30" r="8" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-40" cy="-10" r="8" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="35" cy="-40" r="8" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="50" cy="-20" r="8" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-15" cy="50" r="8" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="15" cy="50" r="8" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <!-- World 2 -->
+  <g transform="translate(550, 200)">
+    <!-- World container -->
+    <circle cx="0" cy="0" r="100" fill="#1A1D2D" stroke="#4D5BCE" stroke-width="2" filter="url(#worldGlow)" />
+    
+    <!-- World label -->
+    <text x="0" y="-70" font-family="Arial, sans-serif" font-size="16" font-weight="bold" 
+          fill="#4D5BCE" text-anchor="middle">World B</text>
+    
+    <!-- Rooms -->
+    <circle cx="-30" cy="-20" r="25" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" filter="url(#roomGlow)" />
+    <text x="-30" y="-17" font-family="Arial, sans-serif" font-size="10" 
+          fill="#88C0D0" text-anchor="middle">Room 1</text>
+          
+    <circle cx="30" cy="30" r="30" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" filter="url(#roomGlow)" />
+    <text x="30" y="33" font-family="Arial, sans-serif" font-size="10" 
+          fill="#88C0D0" text-anchor="middle">Room 2</text>
+    
+    <!-- Entities -->
+    <circle cx="-40" cy="-30" r="8" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="-20" cy="-10" r="8" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="20" cy="20" r="8" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="40" cy="40" r="8" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <!-- Independent Room -->
+  <g transform="translate(400, 400)">
+    <!-- Room container -->
+    <circle cx="0" cy="0" r="40" fill="#292E42" stroke="#88C0D0" stroke-width="2" filter="url(#roomGlow)" />
+    
+    <!-- Room label -->
+    <text x="0" y="-55" font-family="Arial, sans-serif" font-size="16" font-weight="bold" 
+          fill="#88C0D0" text-anchor="middle">Independent Room</text>
+    
+    <!-- Entities -->
+    <circle cx="-15" cy="0" r="8" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+    <circle cx="15" cy="0" r="8" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" filter="url(#entityGlow)" />
+  </g>
+  
+  <!-- Connections -->
+  <g stroke="#4D5BCE" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.7">
+    <!-- World to world connection -->
+    <path d="M370,180 Q400,130 450,190" marker-end="url(#arrowhead)" />
+    
+    <!-- World to independent room connection -->
+    <path d="M300,280 Q350,350 370,380" marker-end="url(#arrowhead)" />
+    <path d="M500,280 Q450,350 430,380" marker-end="url(#arrowhead)" />
+  </g>
+  
+  <!-- Legend -->
+  <g transform="translate(100, 480)">
+    <text x="0" y="0" font-family="Arial, sans-serif" font-size="14" font-weight="bold" 
+          fill="#E5E9F0">Legend:</text>
+          
+    <circle cx="15" cy="20" r="10" fill="#1A1D2D" stroke="#4D5BCE" stroke-width="1.5" />
+    <text x="35" y="24" font-family="Arial, sans-serif" font-size="12" 
+          fill="#E5E9F0">World</text>
+          
+    <circle cx="15" cy="45" r="10" fill="#292E42" stroke="#88C0D0" stroke-width="1.5" />
+    <text x="35" y="49" font-family="Arial, sans-serif" font-size="12" 
+          fill="#E5E9F0">Room</text>
+          
+    <circle cx="15" cy="70" r="6" fill="#A3BE8C" stroke="#EBCB8B" stroke-width="1" />
+    <text x="35" y="74" font-family="Arial, sans-serif" font-size="12" 
+          fill="#E5E9F0">User</text>
+          
+    <circle cx="15" cy="95" r="6" fill="#B48EAD" stroke="#EBCB8B" stroke-width="1" />
+    <text x="35" y="99" font-family="Arial, sans-serif" font-size="12" 
+          fill="#E5E9F0">Agent</text>
+          
+    <line x1="100" y1="70" x2="130" y2="70" stroke="#4D5BCE" stroke-width="1.5" 
+          stroke-dasharray="5,3" marker-end="url(#arrowhead)" />
+    <text x="140" y="74" font-family="Arial, sans-serif" font-size="12" 
+          fill="#E5E9F0">Connection</text>
+  </g>
+  
+  <!-- Descriptive text -->
+  <g font-family="Arial, sans-serif" fill="#E5E9F0">
+    <text x="680" y="480" font-size="11" text-anchor="end">Worlds contain multiple rooms</text>
+    <text x="680" y="500" font-size="11" text-anchor="end">Rooms host entities (users/agents)</text>
+    <text x="680" y="520" font-size="11" text-anchor="end">Entities interact across rooms</text>
+    <text x="680" y="540" font-size="11" text-anchor="end">Rooms can exist independently</text>
+  </g>
+</svg>

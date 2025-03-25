@@ -6,6 +6,8 @@ sidebar_position: 8
 
 Rooms in ElizaOS represent individual interaction spaces within a world. A room can be a conversation, a channel, a thread, or any other defined space where entities can exchange messages and interact. Rooms are typically contained within a world, though they can also exist independently.
 
+![](/img/elizaos-rooms-simplified.svg)
+
 ## Room Structure
 
 A room in ElizaOS has the following properties:

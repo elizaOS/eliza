@@ -1,0 +1,24 @@
+# Place this file at docs/blog/tags.yml
+human:
+  label: Human-Edited
+  description: Content written and edited by the ElizaOS team
+  
+automated:
+  label: Automated Update
+  description: Automatically generated updates from our systems
+  
+release:
+  label: Release
+  description: Official release announcements
+  
+feature:
+  label: Feature
+  description: New feature announcements
+  
+guide:
+  label: Guide
+  description: How-to guides and tutorials
+  
+community:
+  label: Community
+  description: Community events and announcements

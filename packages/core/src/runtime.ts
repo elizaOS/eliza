@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { bootstrapPlugin } from './bootstrap';
 import { createUniqueUuid } from './entities';
-import { handlePluginImporting } from './index';
+import { decryptSecret, getSalt, handlePluginImporting } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -73,9 +73,10 @@ let environmentSettings: Settings = {};
  */
 export function loadEnvConfig(): Settings {
   // For browser environments, return the configured settings
-  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-    return environmentSettings;
-  }
+  // src/runtime.ts:76:14 - error TS2304: Cannot find name 'window'.
+  // if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+  //   return environmentSettings;
+  // }
 
   // Only import dotenv in Node.js environment
   let dotenv = null;
@@ -271,11 +272,11 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
 
-    if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-      this.settings = environmentSettings;
-    } else {
-      this.settings = loadEnvConfig();
-    }
+    // if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+    //   this.settings = environmentSettings;
+    // } else {
+    this.settings = loadEnvConfig();
+    //}
 
     // Register plugins from options or empty array
     const plugins = opts?.plugins ?? [];
@@ -726,9 +727,11 @@ export class AgentRuntime implements IAgentRuntime {
       this.character.settings?.secrets?.[key] ||
       this.settings[key];
 
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    return value || null;
+    const decryptedValue = decryptSecret(value, getSalt());
+
+    if (decryptedValue === 'true') return true;
+    if (decryptedValue === 'false') return false;
+    return decryptedValue || null;
   }
 
   /**

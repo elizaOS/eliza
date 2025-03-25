@@ -258,7 +258,13 @@ export function AgentMemoryViewer({ agentId, agentName }: { agentId: UUID; agent
                 {content.actions.join(', ')}
               </Badge>
             )}
+            {content.source && (
+              <Badge variant="outline" className="text-xs">
+                {content.source}
+              </Badge>
+            )}
           </div>
+
           <Badge variant="secondary" className="text-xs group-hover:mr-8 transition-all">
             {timestamp}
           </Badge>
