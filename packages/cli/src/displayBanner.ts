@@ -1,7 +1,8 @@
 // Export function to display banner and version
 
 import fs from 'node:fs';
-import path from 'node:path';
+import path, { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export function displayBanner() {
   // Color ANSI escape codes
@@ -11,17 +12,20 @@ export function displayBanner() {
   const r = '\x1b[0m';
   const red = '\x1b[38;5;196m';
   let versionColor = lightblue;
-  let version = null;
-  // assume __dirname doesnt exist
-  const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
-  if (!version) {
-    const packageJsonPath = path.join(__dirname, 'package.json');
-    if (!fs.existsSync(packageJsonPath)) {
-    } else {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-      version = packageJson.version;
-    }
+  // For ESM modules we need to use import.meta.url instead of __dirname
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+
+  // Find package.json relative to the current file
+  const packageJsonPath = path.resolve(__dirname, '../package.json');
+
+  // Add a simple check in case the path is incorrect
+  let version = '0.0.0'; // Fallback version
+  if (!fs.existsSync(packageJsonPath)) {
+  } else {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    version = packageJson.version;
   }
 
   // if version includes "beta" or "alpha" then use red

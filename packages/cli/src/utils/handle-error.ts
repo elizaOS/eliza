@@ -21,11 +21,13 @@ export function handleError(error: unknown) {
 }
 
 export async function checkServer() {
+  const red = '\x1b[38;5;196m';
+  const r = '\x1b[0m';
   try {
     await fetch(`${AGENT_RUNTIME_URL}/api/ping`);
     logger.success('ElizaOS server is running');
   } catch (error) {
-    logger.error('Unable to connect to ElizaOS server, likely not running!');
+    logger.error(`${red}Unable to connect to ElizaOS server, likely not running!${r}`);
     process.exit(1);
   }
 }
