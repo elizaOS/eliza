@@ -14,7 +14,6 @@ import {
   logger,
 } from '@elizaos/core';
 import { sendCheckInScheduleForm } from '../forms/checkInScheduleForm';
-import type { DiscordChannelService } from '../services/DiscordChannelService';
 
 interface DiscordComponentInteraction {
   customId: string;

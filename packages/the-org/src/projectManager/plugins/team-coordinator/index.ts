@@ -6,7 +6,7 @@ import { checkInTeamMember } from './actions/checkInTeamMember';
 import { CheckInService } from './services/CheckInService';
 import { logger } from '@elizaos/core';
 import { listCheckInSchedules } from './actions/listCheckInSchedules';
-import { DiscordChannelService } from './services/DiscordChannelService';
+import { TeamUpdateTrackerService } from './services/TeamUpdateTrackerService';
 import { recordTeamMemberUpdates } from './actions/recordTeamMemberUpdates';
 import { listTeamMemberUpdates } from './actions/listTeamMemberUpdates';
 // import { listTeamMembers } from './actions/listTeamMembers';
@@ -30,8 +30,8 @@ export const teamCoordinatorPlugin: Plugin = {
       logger.info('Initializing Team Coordinator plugin...');
 
       // Register the services
-      logger.info('Registering DiscordChannelService...');
-      await runtime.registerService(DiscordChannelService);
+      logger.info('Registering TeamUpdateTrackerService...');
+      await runtime.registerService(TeamUpdateTrackerService);
 
       // Register and start the CheckIn service
       logger.info('Registering CheckInService...');
@@ -44,7 +44,7 @@ export const teamCoordinatorPlugin: Plugin = {
     }
   },
   // List services that should be registered by the runtime
-  services: [DiscordChannelService, CheckInService],
+  services: [TeamUpdateTrackerService, CheckInService],
 };
 
 export function initialize(runtime: IAgentRuntime) {

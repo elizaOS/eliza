@@ -1,6 +1,5 @@
 import { type Content, logger, type IAgentRuntime } from '@elizaos/core';
 import type { HandlerCallback } from '@elizaos/core';
-import type { DiscordChannelService } from '../services/DiscordChannelService';
 
 /**
  * Sends a check-in schedule setup form to Discord
