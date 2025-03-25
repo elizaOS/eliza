@@ -140,7 +140,7 @@ agent
 
       process.exit(0);
     } catch (error) {
-      checkServer();
+      await checkServer();
       handleError(error);
     }
   });
@@ -181,7 +181,7 @@ agent
 
       process.exit(0);
     } catch (error) {
-      checkServer();
+      await checkServer();
       handleError(error);
     }
   });
@@ -285,7 +285,7 @@ agent
 
       logger.debug(`Successfully started agent ${result.name} (${result.id})`);
     } catch (error) {
-      checkServer();
+      await checkServer();
       handleError(error);
     }
   });
@@ -313,7 +313,7 @@ agent
 
       logger.success(`Successfully stopped agent ${opts.name}`);
     } catch (error) {
-      checkServer();
+      await checkServer();
       handleError(error);
     }
   });
@@ -344,7 +344,7 @@ agent
       // Server returns 204 No Content for successful deletion, no need to parse response
       logger.success(`Successfully removed agent ${opts.name}`);
     } catch (error) {
-      checkServer();
+      await checkServer();
       handleError(error);
     }
   });
@@ -401,7 +401,7 @@ agent
         `Successfully updated configuration for agent ${result?.id || resolvedAgentId}`
       );
     } catch (error) {
-      checkServer();
+      await checkServer();
       handleError(error);
     }
   });

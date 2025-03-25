@@ -13,7 +13,6 @@ import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { character as defaultCharacter } from '../characters/eliza';
-import { displayBanner } from '../displayBanner';
 import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
 import { loadConfig, saveConfig } from '../utils/config-manager.js';
@@ -556,6 +555,8 @@ export const start = new Command()
   .option('--character <character>', 'Path or URL to character file to use instead of default')
   .option('--build', 'Build the project before starting')
   .action(async (options) => {
+    displayBanner();
+
     try {
       // Build the project first unless skip-build is specified
       if (options.build) {

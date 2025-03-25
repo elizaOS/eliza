@@ -21,9 +21,11 @@ export function handleError(error: unknown) {
 }
 
 export async function checkServer() {
-  const response = await fetch(`${AGENT_RUNTIME_URL}`);
-  if (!response.ok) {
-    console.error('Agent runtime server is not running');
+  try {
+    await fetch(`${AGENT_RUNTIME_URL}/api/ping`);
+    logger.success('ElizaOS server is running');
+  } catch (error) {
+    logger.error('Unable to connect to ElizaOS server, likely not running!');
     process.exit(1);
   }
 }

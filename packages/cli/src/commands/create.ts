@@ -99,6 +99,8 @@ export const create = new Command()
   .option('-t, --type <type>', 'type of template to use (project or plugin)', '')
   .argument('[name]', 'name for the project or plugin')
   .action(async (name, opts) => {
+    displayBanner();
+
     try {
       // Parse options but use "" as the default for type to force prompting
       const initialOptions = {
@@ -330,7 +332,7 @@ export const create = new Command()
       process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
       process.exit(0);
     } catch (error) {
-      checkServer();
+      await checkServer();
       handleError(error);
     }
   });

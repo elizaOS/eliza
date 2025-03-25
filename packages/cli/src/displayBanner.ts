@@ -25,7 +25,7 @@ export function displayBanner() {
   }
 
   // if version includes "beta" or "alpha" then use red
-  if (version.includes('beta') || version.includes('alpha')) {
+  if (version?.includes('beta') || version?.includes('alpha')) {
     versionColor = red;
   }
   const banners = [
