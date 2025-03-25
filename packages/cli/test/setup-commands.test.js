@@ -5,15 +5,15 @@ import { promises as fsPromises } from 'fs';
 import path from 'path';
 import os from 'os';
 import { existsSync } from 'fs';
+import { elizaLogger } from '@elizaos/core';
+import { invalidName, testDir, cliCommand, commands } from './utils/constants';
 
 const execAsync = promisify(exec);
 
 describe('CLI Command Structure Tests', () => {
-  const testDir = path.join(os.tmpdir(), 'elizaos-test-' + Date.now());
   const projectName = 'test-project-cli';
   const pluginName = 'test-plugin-cli';
   const agentName = 'test-agent-cli';
-  const cliCommand = 'elizaos'; // Assume elizaos is globally available
 
   beforeEach(async () => {
     // Create test directory if it doesn't exist
@@ -25,12 +25,12 @@ describe('CLI Command Structure Tests', () => {
     try {
       await execAsync('elizaos stop', { reject: false });
     } catch (e) {
-      console.log("error: ", e);
+      elizaLogger.error('error: ', e);
       // Server might not be running
     }
 
     // Give time for processes to clean up
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Remove test directory recursively
     if (existsSync(testDir)) {
@@ -50,7 +50,7 @@ describe('CLI Command Structure Tests', () => {
     expect(result.stdout).toContain('Commands:');
 
     // Check for key commands
-    const commands = ['create', 'start', 'agent', 'plugin', 'env'];
+
     for (const cmd of commands) {
       expect(result.stdout).toContain(cmd);
     }
@@ -78,9 +78,9 @@ describe('CLI Command Structure Tests', () => {
     const execResult = await new Promise((resolve, reject) => {
       const child = exec(command, { cwd: testDir }, (error, stdout, stderr) => {
         if (error) {
-          console.error(`Command failed: ${command}`);
-          console.error(`Stdout: ${stdout}`);
-          console.error(`Stderr: ${stderr}`);
+          elizaLogger.error(`Command failed: ${command}`);
+          elizaLogger.error(`Stdout: ${stdout}`);
+          elizaLogger.error(`Stderr: ${stderr}`);
           reject(error);
         } else {
           setTimeout(() => resolve({ stdout, stderr }), 100);
@@ -92,7 +92,7 @@ describe('CLI Command Structure Tests', () => {
     });
 
     // Wait for creation of files
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     // Assert
     expect(execResult.stderr).toBe('');
@@ -107,9 +107,8 @@ describe('CLI Command Structure Tests', () => {
     const command = `${cliCommand} create plugin ${pluginName}`;
     const result = await execAsync(command, {
       cwd: testDir,
-      reject: false
+      reject: false,
     });
-
 
     const pluginDir = path.join(testDir, pluginName);
 
@@ -129,7 +128,7 @@ describe('CLI Command Structure Tests', () => {
     // Run create agent command and provide responses
     const result = await execAsync(`${cliCommand} create agent ${agentName}`, {
       cwd: testDir,
-      reject: false
+      reject: false,
     });
 
     // Verify file path
@@ -144,7 +143,6 @@ describe('CLI Command Structure Tests', () => {
 
   it('should handle invalid project name', async () => {
     // Use a project name with invalid characters
-    const invalidName = '!invalid@name';
 
     // Run create project command with invalid name
     const result = await execAsync(`${cliCommand} create project ${invalidName}`, {
@@ -161,5 +159,4 @@ describe('CLI Command Structure Tests', () => {
       expect(existsSync(invalidDir)).toBe(false);
     }
   }, 30000);
-
 });
