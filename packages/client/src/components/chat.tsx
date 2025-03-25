@@ -43,11 +43,11 @@ const MemoizedMessageContent = React.memo(MessageContent);
 function MessageContent({
   message,
   agentId,
-  isLastMessage,
+  shouldAnimate,
 }: {
   message: ContentWithUser;
   agentId: UUID;
-  isLastMessage: boolean;
+  shouldAnimate: boolean;
 }) {
   return (
     <div className="flex flex-col w-full">
@@ -77,7 +77,7 @@ function MessageContent({
         <div className="py-2">
           {message.name === USER_NAME ? (
             message.text
-          ) : isLastMessage && message.name !== USER_NAME ? (
+          ) : shouldAnimate ? (
             <AIWriter>{message.text}</AIWriter>
           ) : (
             message.text
@@ -87,7 +87,7 @@ function MessageContent({
           message.thought &&
           (message.name === USER_NAME ? (
             message.thought
-          ) : isLastMessage && message.name !== USER_NAME ? (
+          ) : shouldAnimate ? (
             <AIWriter>
               <span className="italic text-muted-foreground">{message.thought}</span>
             </AIWriter>
@@ -167,6 +167,8 @@ export default function Page({
 
   const socketIOManager = SocketIOManager.getInstance();
 
+  const animatedMessageIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     // Initialize Socket.io connection once with our entity ID
     socketIOManager.initialize(entityId, [agentId]);
@@ -225,6 +227,8 @@ export default function Page({
             console.log('[Chat] Skipping duplicate message');
             return old;
           }
+
+          animatedMessageIdRef.current = newMessage.id;
 
           return [...old, newMessage];
         }
@@ -413,7 +417,10 @@ export default function Page({
           >
             {messages.map((message: ContentWithUser, index: number) => {
               const isUser = message.name === USER_NAME;
-
+              const shouldAnimate =
+                index === messages.length - 1 &&
+                message.name !== USER_NAME &&
+                message.id === animatedMessageIdRef.current;
               return (
                 <div
                   key={`${message.id as string}-${message.createdAt}`}
@@ -443,7 +450,7 @@ export default function Page({
                     <MemoizedMessageContent
                       message={message}
                       agentId={agentId}
-                      isLastMessage={index === messages.length - 1}
+                      shouldAnimate={shouldAnimate}
                     />
                   </ChatBubble>
                 </div>
