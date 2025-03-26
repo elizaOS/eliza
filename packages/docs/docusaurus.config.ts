@@ -232,7 +232,7 @@ const config = {
           lastVersion: 'current',
           versions: {
             current: {
-              label: '1.0.0-alpha',
+              label: '1.0.0-beta',
               path: '',
               banner: 'none',
             },
