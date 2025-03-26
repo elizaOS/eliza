@@ -239,7 +239,6 @@ export default function Page({
     };
 
     const handleMessageComplete = (data: any) => {
-      console.log('debugggg', data, roomId);
       if (data.roomId === roomId) {
         setMessageProcessing(false);
       }
