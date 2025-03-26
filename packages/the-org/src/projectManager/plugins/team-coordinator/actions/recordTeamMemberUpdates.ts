@@ -10,12 +10,14 @@ import {
   createUniqueUuid,
   logger,
   asUUID,
+  type Service,
 } from '@elizaos/core';
 
 interface TeamMemberUpdate {
   type: 'team-member-update';
   updateId: UUID;
   teamMemberId: UUID;
+  teamMemberName?: string;
   currentProgress: string;
   workingOn: string;
   nextSteps: string;
@@ -23,6 +25,150 @@ interface TeamMemberUpdate {
   eta: string;
   timestamp: string;
   channelId?: UUID;
+  serverId?: string;
+}
+
+// Define a simple interface for the Discord service
+interface IDiscordService extends Service {
+  client: {
+    guilds: {
+      cache: Map<
+        string,
+        {
+          name: string;
+          channels: {
+            fetch: () => Promise<{
+              find: (
+                predicate: (channel: Record<string, unknown>) => boolean
+              ) => Record<string, unknown> | undefined;
+            }>;
+          };
+        }
+      >;
+    };
+  };
+}
+
+/**
+ * Posts team member update to the configured Discord channel for the server
+ */
+async function postUpdateToDiscordChannel(
+  runtime: IAgentRuntime,
+  update: TeamMemberUpdate
+): Promise<boolean> {
+  try {
+    logger.info('=== POST TEAM MEMBER UPDATE TO DISCORD START ===');
+
+    // Get the Discord service
+    const discordService = runtime.getService('discord') as IDiscordService | null;
+    if (!discordService) {
+      logger.error('Discord service not available');
+      return false;
+    }
+
+    logger.info('Discord service retrieved successfully');
+
+    // Get report channel config
+    const roomId = createUniqueUuid(runtime, 'report-channel-config');
+    logger.info('Generated roomId for config:', roomId);
+
+    const memories = await runtime.getMemories({
+      roomId: roomId as UUID,
+      tableName: 'messages',
+    });
+
+    logger.info('Retrieved report channel configs:', {
+      count: memories.length,
+    });
+
+    // Find config for this server
+    const config = memories.find((memory) => memory.content?.type === 'report-channel-config');
+
+    if (!config) {
+      logger.warn('No report channel config found');
+      return false;
+    }
+
+    logger.info('Found report channel config:', config);
+
+    const channelId = config.content?.config?.channelId;
+    if (!channelId) {
+      logger.warn('No channel ID in config');
+      return false;
+    }
+
+    // Format the update message
+    const formattedDate = new Date(update.timestamp).toLocaleString();
+    logger.info('Formatting update message with timestamp:', {
+      timestamp: update.timestamp,
+      formatted: formattedDate,
+    });
+
+    const updateMessage = `## Team Member Update
+**Team Member**: ${update.teamMemberName || 'Unknown'} (${update.teamMemberId})
+**Timestamp**: ${formattedDate}
+
+**Current Progress**: ${update.currentProgress}
+**Working On**: ${update.workingOn}
+**Next Steps**: ${update.nextSteps}
+**Blockers**: ${update.blockers}
+**ETA**: ${update.eta}`;
+
+    logger.info('Formatted update message:', { messageLength: updateMessage.length });
+
+    // Get Discord client
+    const client = discordService.client;
+    if (!client) {
+      logger.error('Discord client not available');
+      return false;
+    }
+
+    // Get all guilds/servers
+    const guilds = client.guilds.cache;
+    logger.info(`Found ${guilds.size} Discord servers`);
+
+    let targetChannel = null;
+
+    // Find the configured channel
+    for (const guild of guilds.values()) {
+      logger.info(`Searching for channel ${channelId} in server: ${guild.name}`);
+
+      const channels = await guild.channels.fetch();
+
+      const channel = channels.find((ch) => {
+        return ch && typeof ch === 'object' && 'id' in ch && ch.id === channelId;
+      });
+
+      if (channel) {
+        logger.info(`Found target channel in server: ${guild.name}`);
+        targetChannel = channel;
+        break;
+      }
+    }
+
+    if (!targetChannel) {
+      logger.warn(`Could not find Discord channel with ID ${channelId}`);
+      return false;
+    }
+
+    // Send the message
+    logger.info('Attempting to send update to Discord channel');
+    await (
+      targetChannel as Record<string, unknown> & { send: (content: string) => Promise<unknown> }
+    ).send(updateMessage);
+
+    logger.info('Successfully sent team member update to Discord');
+    logger.info('=== POST TEAM MEMBER UPDATE TO DISCORD END ===');
+    return true;
+  } catch (error) {
+    logger.error('=== POST TEAM MEMBER UPDATE TO DISCORD ERROR ===');
+    logger.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
+    return false;
+  }
 }
 
 async function storeTeamMemberUpdate(
@@ -128,10 +274,24 @@ function parseTeamMemberUpdate(runtime: IAgentRuntime, message: Memory): TeamMem
       return null;
     }
 
+    // Get the user name from the message content
+    let userName = 'Team Member';
+
+    if (message.content) {
+      if (typeof message.content.userName === 'string') {
+        userName = message.content.userName;
+      } else if (typeof message.content.name === 'string') {
+        userName = message.content.name;
+      }
+    }
+
+    logger.info('Found user name from message:', { userName });
+
     const update: TeamMemberUpdate = {
       type: 'team-member-update',
       updateId: createUniqueUuid(runtime, 'team-update'),
       teamMemberId: message.entityId || asUUID('unknown'),
+      teamMemberName: userName,
       currentProgress: currentProgressMatch[1].trim(),
       workingOn: workingOnMatch[1].trim(),
       nextSteps: nextStepsMatch[1].trim(),
@@ -139,11 +299,13 @@ function parseTeamMemberUpdate(runtime: IAgentRuntime, message: Memory): TeamMem
       eta: etaMatch[1].trim(),
       timestamp: new Date().toISOString(),
       channelId: message.roomId,
+      // serverId: message.content?.serverId,
     };
 
     logger.info('Successfully parsed team member update:', {
       updateId: update.updateId,
       teamMemberId: update.teamMemberId,
+      teamMemberName: update.teamMemberName,
     });
 
     logger.info('=== PARSE TEAM MEMBER UPDATE END ===');
@@ -208,6 +370,17 @@ export const recordTeamMemberUpdates: Action = {
         stateKeys: Object.keys(state),
         contextKeys: Object.keys(context),
       });
+      logger.info('Processing message:', {
+        id: message.id,
+        content: JSON.stringify(message.content),
+        entityId: message.entityId,
+        roomId: message.roomId,
+        timestamp: message.metadata?.timestamp,
+        text: message.content?.text,
+        type: message.content?.type,
+        metadata: JSON.stringify(message.metadata),
+        fullMessage: JSON.stringify(message),
+      });
 
       if (!callback) {
         logger.warn('No callback function provided');
@@ -242,9 +415,17 @@ export const recordTeamMemberUpdates: Action = {
         return false;
       }
 
+      // Post update to configured Discord channel
+      const posted = await postUpdateToDiscordChannel(runtime, update);
+      if (posted) {
+        logger.info('Successfully posted team member update to Discord');
+      } else {
+        logger.warn('Could not post update to Discord, but continuing with normal flow');
+      }
+
       // Send confirmation
       const content: Content = {
-        text: `✅ Thanks for your update! I've recorded your progress details.`,
+        text: `✅ Thanks for your update! I've recorded your progress details.${posted ? ' Your update has been posted to the configured channel.' : ''}`,
         source: 'discord',
       };
 
