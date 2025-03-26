@@ -77,6 +77,7 @@ export function setupSocketIO(
         const payload = messageData.payload;
         const socketRoomId = payload.roomId;
         const worldId = payload.worldId;
+        const senderId = payload.senderId;
 
         // Get all agents in this room
         const agentsInRoom = roomParticipants.get(socketRoomId) || new Set([socketRoomId as UUID]);
@@ -92,7 +93,7 @@ export function setupSocketIO(
           }
 
           // Ensure the sender and recipient are different agents
-          if (payload.senderId === agentId) {
+          if (senderId === agentId) {
             logger.debug(`Message sender and recipient are the same agent (${agentId}), ignoring.`);
             continue;
           }
@@ -101,7 +102,7 @@ export function setupSocketIO(
             logger.warn(`no message found`);
             continue;
           }
-          const entityId = createUniqueUuid(agentRuntime, payload.senderId);
+          const entityId = createUniqueUuid(agentRuntime, senderId);
 
           const uniqueRoomId = createUniqueUuid(agentRuntime, socketRoomId);
           const source = payload.source;
@@ -247,6 +248,13 @@ export function setupSocketIO(
               runtime: agentRuntime,
               message: newMessage,
               callback,
+              onComplete: () => {
+                io.emit('messageComplete', {
+                  roomId: socketRoomId,
+                  agentId,
+                  senderId,
+                });
+              },
             });
           } catch (error) {
             logger.error('Error processing message:', error);

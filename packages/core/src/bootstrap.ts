@@ -112,6 +112,7 @@ const messageReceivedHandler = async ({
   runtime,
   message,
   callback,
+  onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
   // Generate a new response ID
   const responseId = v4();
@@ -277,7 +278,7 @@ const messageReceivedHandler = async ({
 
         await runtime.processActions(message, responseMessages, state, callback);
       }
-
+      onComplete();
       await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
 
       // Emit run ended event on successful completion
@@ -294,6 +295,7 @@ const messageReceivedHandler = async ({
         source: 'messageHandler',
       });
     } catch (error) {
+      onComplete();
       // Emit run ended event with error
       await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
@@ -620,6 +622,7 @@ const events = {
         runtime: payload.runtime,
         message: payload.message,
         callback: payload.callback,
+        onComplete: payload.onComplete,
       });
     },
   ],
