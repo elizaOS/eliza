@@ -22,6 +22,7 @@ export default function EnvSettings() {
   const [localEnvs, setLocalEnvs] = useState<Record<string, string>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState(EnvType.GLOBAL);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -282,6 +283,7 @@ export default function EnvSettings() {
       <div className="flex justify-end gap-4 mt-6">
         <div className="flex gap-4">
           <Button
+            disabled={isUpdating}
             type="button"
             variant="outline"
             onClick={() => {
@@ -292,12 +294,17 @@ export default function EnvSettings() {
           </Button>
           <Button
             type="submit"
-            disabled={false}
-            onClick={() => {
-              if (activeTab === EnvType.GLOBAL) {
-                apiClient.updateGlobalEnvs(globalEnvs);
-              } else {
-                apiClient.updateLocalEnvs(localEnvs);
+            disabled={isUpdating}
+            onClick={async () => {
+              setIsUpdating(true);
+              try {
+                if (activeTab === EnvType.GLOBAL) {
+                  await apiClient.updateGlobalEnvs(globalEnvs);
+                } else {
+                  await apiClient.updateLocalEnvs(localEnvs);
+                }
+              } finally {
+                setIsUpdating(false);
               }
             }}
           >
