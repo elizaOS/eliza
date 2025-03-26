@@ -405,7 +405,6 @@ async function extractSettingValues(
         } else if (typeof node === 'object' && node !== null) {
           for (const [key, value] of Object.entries(node)) {
             if (worldSettings[key] && typeof value !== 'object') {
-              // Push in desired format
               extracted.push({ key, value });
             } else {
               walk(value);
