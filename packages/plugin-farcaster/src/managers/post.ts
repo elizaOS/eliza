@@ -1,11 +1,11 @@
 import { type IAgentRuntime, stringToUuid, elizaLogger, ChannelType } from '@elizaos/core';
-import type { FarcasterClient } from './client';
-import { formatTimeline, postTemplate } from './prompts';
-import { castUuid, lastCastCacheKey, MAX_CAST_LENGTH } from './utils';
-import { createCastMemory } from './memory';
-import { sendCast } from './actions';
-import { LastCast } from './types';
-import { FARCASTER_SOURCE } from './constants';
+import type { FarcasterClient } from '../client';
+import { formatTimeline, postTemplate } from '../common/prompts';
+import { castUuid, lastCastCacheKey, MAX_CAST_LENGTH } from '../common/utils';
+import { createCastMemory } from '../memory';
+import { sendCast } from '../actions';
+import { LastCast } from '../common/types';
+import { FARCASTER_SOURCE } from '../common/constants';
 
 export class FarcasterPostManager {
   client: FarcasterClient;

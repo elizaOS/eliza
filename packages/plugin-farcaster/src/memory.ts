@@ -5,11 +5,11 @@ import {
   type Memory,
   type UUID,
 } from '@elizaos/core';
-import type { Cast } from './types';
+import type { Cast } from './common/types';
 import { toHex } from 'viem';
-import { castUuid } from './utils';
+import { castUuid } from './common/utils';
 import type { FarcasterClient } from './client';
-import { FARCASTER_SOURCE } from './constants';
+import { FARCASTER_SOURCE } from './common/constants';
 
 export function createCastMemory({
   roomId,

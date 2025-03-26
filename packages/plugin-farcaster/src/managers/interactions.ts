@@ -9,19 +9,19 @@ import {
   createUniqueUuid,
   ChannelType,
 } from '@elizaos/core';
-import type { FarcasterClient } from './client';
+import type { FarcasterClient } from '../client';
 import { toHex } from 'viem';
-import { buildConversationThread, createCastMemory } from './memory';
-import type { Cast, Profile } from './types';
+import { buildConversationThread, createCastMemory } from '../memory';
+import type { Cast, Profile } from '../common/types';
 import {
   formatCast,
   formatTimeline,
   messageHandlerTemplate,
   shouldRespondTemplate,
-} from './prompts';
-import { castUuid } from './utils';
-import { sendCast } from './actions';
-import { FARCASTER_SOURCE } from './constants';
+} from '../common/prompts';
+import { castUuid } from '../common/utils';
+import { sendCast } from '../actions';
+import { FARCASTER_SOURCE } from '../common/constants';
 
 export class FarcasterInteractionManager {
   private timeout: NodeJS.Timeout | undefined;

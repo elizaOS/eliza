@@ -1,5 +1,5 @@
 import type { FarcasterClient } from '../src/client';
-import type { Cast, Profile } from '../src/types';
+import type { Cast, Profile } from '../src/common/types';
 
 export interface TestInteraction {
   type: 'RECAST' | 'REPLY' | 'LIKE';
