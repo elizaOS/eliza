@@ -278,7 +278,7 @@ const messageReceivedHandler = async ({
 
         await runtime.processActions(message, responseMessages, state, callback);
       }
-      onComplete();
+      onComplete?.();
       await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
 
       // Emit run ended event on successful completion
@@ -295,7 +295,7 @@ const messageReceivedHandler = async ({
         source: 'messageHandler',
       });
     } catch (error) {
-      onComplete();
+      onComplete?.();
       // Emit run ended event with error
       await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
