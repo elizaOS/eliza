@@ -94,6 +94,22 @@ export default function EnvSettings() {
     setEditingIndex(null);
   };
 
+  const addEnv = () => {
+    if (!name || !value) return;
+
+    const updateFn = activeTab === EnvType.GLOBAL ? setGlobalEnvs : setLocalEnvs;
+    const prevData = activeTab === EnvType.GLOBAL ? globalEnvs : localEnvs;
+
+    updateFn({
+      ...prevData,
+      [name]: value,
+    });
+
+    setName('');
+    setValue('');
+    setEditingIndex(null);
+  };
+
   return (
     <div className="container max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -107,8 +123,7 @@ export default function EnvSettings() {
         defaultValue="global"
         className="w-full"
         value={activeTab}
-        onValueChange={(val) => {
-          console.log('Tab changed to:', val);
+        onValueChange={(val: any) => {
           setActiveTab(val);
           setEditingIndex(null);
         }}
@@ -173,7 +188,7 @@ export default function EnvSettings() {
                         </div>
                       </div>
                     </div>
-                    <Button className="shrink-0" onClick={() => {}}>
+                    <Button className="shrink-0" onClick={addEnv}>
                       Add
                     </Button>
                   </div>
