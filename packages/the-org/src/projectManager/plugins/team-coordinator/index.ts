@@ -9,6 +9,7 @@ import { listCheckInSchedules } from './actions/listCheckInSchedules';
 import { TeamUpdateTrackerService } from './services/TeamUpdateTrackerService';
 import { recordTeamMemberUpdates } from './actions/recordTeamMemberUpdates';
 import { listTeamMemberUpdates } from './actions/listTeamMemberUpdates';
+import { registerTasks } from './tasks';
 // import { listTeamMembers } from './actions/listTeamMembers';
 
 /**
@@ -36,6 +37,10 @@ export const teamCoordinatorPlugin: Plugin = {
       // Register and start the CheckIn service
       logger.info('Registering CheckInService...');
       await runtime.registerService(CheckInService);
+
+      // Register tasks
+      logger.info('Registering team coordinator tasks...');
+      await registerTasks(runtime);
 
       logger.info('Team Coordinator plugin initialized successfully');
     } catch (error) {

@@ -17,22 +17,10 @@ export class TeamUpdateTrackerService extends Service {
   async start(): Promise<void> {
     logger.info('Starting Discord Channel Service');
     try {
-      // Try to get the Discord service - it might not be available yet
       const discordService = this.runtime.getService('discord');
       if (discordService?.client) {
         logger.info('Discord service found, client available');
         this.client = discordService.client;
-
-        // Set up interval to run every 30 minutes (30 * 60 * 1000 ms)
-        setInterval(
-          () => {
-            logger.info('Running scheduled check-in service job (30-minute interval)');
-            this.checkInServiceJob();
-          },
-          30 * 60 * 1000
-        );
-
-        logger.info('Check-in service job scheduler initialized');
       } else {
         logger.warn(
           'Discord service not found or client not available - will try to connect later'
@@ -194,7 +182,7 @@ export class TeamUpdateTrackerService extends Service {
     return successfullyMessaged;
   }
 
-  private async checkInServiceJob(): Promise<void> {
+  public async checkInServiceJob(): Promise<void> {
     logger.info('Running check-in service job');
     try {
       const discordService: any = this.runtime.getService('discord');
@@ -401,7 +389,6 @@ export class TeamUpdateTrackerService extends Service {
 
   async stop(): Promise<void> {
     logger.info('Stopping Discord Channel Service');
-    // Any cleanup logic here
   }
 }
 
