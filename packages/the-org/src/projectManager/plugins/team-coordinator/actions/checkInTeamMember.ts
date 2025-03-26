@@ -14,6 +14,7 @@ import {
   logger,
 } from '@elizaos/core';
 import { sendCheckInScheduleForm } from '../forms/checkInScheduleForm';
+import { sendCheckInReportForm } from '../forms/checkInReportForm';
 
 interface DiscordComponentInteraction {
   customId: string;
@@ -250,10 +251,42 @@ export const checkInTeamMember: Action = {
         return false;
       }
 
-      // Send form with channels
-      logger.info(`Sending form with ${textChannels.length} channels`);
-      await sendCheckInScheduleForm(callback, textChannels);
-      logger.info('Initial form sent successfully');
+      // Check if report channel config exists for this server
+      logger.info('Checking for existing report channel configuration');
+      const roomId = createUniqueUuid(runtime, 'report-channel-config');
+      logger.info('Generated roomId:', roomId);
+
+      // Add table name to getMemories call
+      const memories = await runtime.getMemories({
+        roomId: roomId as UUID,
+        tableName: 'messages',
+      });
+      logger.info('Retrieved memories:', JSON.stringify(memories, null, 2));
+      logger.debug('Raw memories object:', memories);
+
+      logger.info('Looking for existing config with serverId:', serverId);
+      const existingConfig = memories.find((memory) => {
+        logger.info('Checking memory:', memory);
+        const isReportConfig = memory.content.type === 'report-channel-config';
+
+        return isReportConfig;
+      });
+      logger.info('Found existing config:', existingConfig);
+
+      if (!existingConfig) {
+        logger.info('No existing report channel config found - sending report form first');
+        logger.info('Using server ID:', serverId);
+        await sendCheckInReportForm(callback, textChannels, {
+          serverId,
+          // serverName: String(message.content.serverName),
+        });
+      } else {
+        logger.info('Found existing report channel config:', existingConfig);
+        logger.info(`Sending schedule form with ${textChannels.length} channels`);
+        await sendCheckInScheduleForm(callback, textChannels);
+      }
+
+      logger.info('Initial forms sent successfully');
       return true;
     } catch (error) {
       logger.error('=== CHECK-IN HANDLER ERROR ===');

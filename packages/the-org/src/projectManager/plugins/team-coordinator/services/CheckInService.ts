@@ -14,6 +14,14 @@ import type {
   User,
 } from 'discord.js';
 
+// Interface for storing report channel configuration
+interface ReportChannelConfig {
+  serverId?: string; // Made optional
+  serverName: string;
+  channelId: string;
+  createdAt: string;
+}
+
 interface CheckInSchedule {
   type: 'team-member-checkin-schedule';
   scheduleId: string;
@@ -39,11 +47,15 @@ interface ExtendedInteraction {
     checkin_days?: string[];
     checkin_type?: string[];
     checkin_channel?: string[];
+    report_channel?: string[]; // Added for report channel selection
+    server_info?: string[]; // Added for server info
   };
+  guildId?: string; // Added for server ID
 }
 
 export class CheckInService extends Service {
   private formSelections: Map<string, Record<string, string[]>> = new Map();
+  private reportChannelConfigs: Map<string, ReportChannelConfig> = new Map(); // Store report channel configs by server ID
   static serviceType = 'CHECKIN_SERVICE';
   capabilityDescription = 'Manages team member check-in schedules';
 
@@ -54,6 +66,7 @@ export class CheckInService extends Service {
   async start(): Promise<void> {
     logger.info('=== INITIALIZING CHECKIN SERVICE ===');
     await this.initialize();
+    await this.loadReportChannelConfigs(); // Load existing report channel configs
 
     // Call the notify function after initialization is complete
     await this.notifyAllUsersInChannel(
@@ -115,6 +128,9 @@ export class CheckInService extends Service {
         if (interaction.customId === 'submit_checkin_schedule') {
           logger.info('Found matching customId: submit_checkin_schedule');
           await this.handleCheckInSubmission(interaction as ExtendedInteraction);
+        } else if (interaction.customId === 'submit_report_channel') {
+          logger.info('Found matching customId: submit_report_channel');
+          await this.handleReportChannelSubmission(interaction as ExtendedInteraction);
         } else {
           logger.info('CustomId did not match. Received:', interaction.customId);
         }
@@ -379,5 +395,116 @@ export class CheckInService extends Service {
       logger.error('Failed to store check-in schedule:', error);
       throw error;
     }
+  }
+
+  // New methods for handling report channel configuration
+  private async handleReportChannelSubmission(interaction: ExtendedInteraction) {
+    try {
+      logger.info('=== HANDLING REPORT CHANNEL SUBMISSION ===');
+      logger.info('Full interaction object:', JSON.stringify(interaction, null, 2));
+
+      // Parse server info from form data
+      let serverInfo: any;
+      try {
+        if (interaction.selections?.server_info?.[0]) {
+          serverInfo = JSON.parse(interaction.selections.server_info[0]);
+          logger.info('Parsed server info:', serverInfo);
+        }
+      } catch (parseError) {
+        logger.error('Error parsing server info:', parseError);
+      }
+
+      const selections = interaction.selections;
+      logger.info('Form selections:', selections);
+
+      if (!selections?.report_channel?.[0]) {
+        logger.warn('Missing report channel selection');
+        logger.warn('Server ID:', serverInfo?.serverId);
+        logger.warn('Report channel selection:', selections?.report_channel);
+        return;
+      }
+
+      const config: ReportChannelConfig = {
+        serverId: serverInfo?.serverId, // Now optional
+        serverName: serverInfo?.serverName || 'Unknown Server',
+        channelId: selections.report_channel[0],
+        createdAt: new Date().toISOString(),
+      };
+
+      await this.storeReportChannelConfig(config);
+      logger.info(`Report channel configured for server ${serverInfo?.serverId}:`, config);
+
+      await this.runtime.emitEvent('DISCORD_RESPONSE', {
+        type: 'REPLY',
+        content: '✅ Report channel has been configured successfully!',
+        ephemeral: true,
+        interaction,
+      });
+    } catch (error) {
+      logger.error('Error in handleReportChannelSubmission:', error);
+      logger.error('Error stack:', error.stack);
+    }
+  }
+
+  private async storeReportChannelConfig(config: ReportChannelConfig): Promise<void> {
+    try {
+      const roomId = createUniqueUuid(this.runtime, 'report-channel-config');
+
+      await this.runtime.ensureRoomExists({
+        id: roomId as UUID,
+        name: 'Report Channel Configurations',
+        source: 'team-coordinator',
+        type: ChannelType.GROUP,
+      });
+
+      const memory = {
+        id: createUniqueUuid(this.runtime, `report-channel-config'}`),
+        entityId: this.runtime.agentId,
+        agentId: this.runtime.agentId,
+        content: {
+          type: 'report-channel-config',
+          config,
+        },
+        roomId: roomId as UUID,
+        createdAt: Date.now(),
+      };
+
+      await this.runtime.createMemory(memory, 'messages');
+      if (config.serverId) {
+        this.reportChannelConfigs.set(config.serverId, config);
+      }
+      logger.info('Successfully stored report channel config');
+    } catch (error) {
+      logger.error('Failed to store report channel config:', error);
+      throw error;
+    }
+  }
+
+  private async loadReportChannelConfigs(): Promise<void> {
+    try {
+      const roomId = createUniqueUuid(this.runtime, 'report-channel-config');
+      const memories = await this.runtime.getMemories({
+        roomId: roomId as UUID,
+        tableName: 'messages',
+      });
+
+      for (const memory of memories) {
+        if (memory.content.type === 'report-channel-config') {
+          const config = memory.content.config as ReportChannelConfig;
+          if (config.serverId) {
+            this.reportChannelConfigs.set(config.serverId, config);
+            logger.info(`Loaded report channel config for server ${config.serverId}`);
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('Error loading report channel configs:', error);
+    }
+  }
+
+  // Helper method to get report channel for a server
+  public getReportChannel(serverId: string): string | undefined {
+    const config = this.reportChannelConfigs.get(serverId);
+    return config?.channelId;
   }
 }
