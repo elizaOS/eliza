@@ -264,7 +264,6 @@
 
 /* Target performance for key interactive components */
 @media (prefers-reduced-motion: no-preference) {
-  /* Apply transitions only for non-reduced motion users */
   .button--primary {
     transition:
       transform 0.2s ease,
@@ -315,7 +314,7 @@ html[data-theme='dark'] .header-github-link {
   background-repeat: no-repeat;
   background-position: center;
   position: relative;
-  display: block; /* Better alignment */
+  display: block;
 }
 
 /* Hide dropdown arrow for RSS link */

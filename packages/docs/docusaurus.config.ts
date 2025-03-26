@@ -110,7 +110,7 @@ const config = {
     [
       'docusaurus-plugin-typedoc',
       {
-        entryPoints: ['../core/src/index.ts'],
+        //entryPoints: ['../core/src/index.ts'],
         tsconfig: '../core/tsconfig.json',
         out: './api',
         skipErrorChecking: true,
@@ -128,7 +128,7 @@ const config = {
         sort: ['source-order', 'required-first', 'visibility'],
         gitRevision: 'main',
         readme: 'none',
-        commentStyle: 'all',
+        commentStyle: 'block',
         preserveAnchorCasing: true,
         hideBreadcrumbs: false,
         preserveWatchOutput: true,
