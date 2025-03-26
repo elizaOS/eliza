@@ -1,0 +1,107 @@
+{
+  "name": "@elizaos-plugins/client-farcaster",
+  "version": "0.25.6-alpha.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@elizaos/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@neynar/nodejs-sdk": "^2.0.3"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "vitest": "^3.0.0"
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:client:1.0.0",
+    "pluginParameters": {
+      "FARCASTER_DRY_RUN": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Expected boolean value to enable or disable dry run mode."
+      },
+      "FARCASTER_FID": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Farcaster fid is required and must be an integer greater than 0."
+      },
+      "MAX_CAST_LENGTH": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Maximum length of a cast, must be an integer."
+      },
+      "FARCASTER_POLL_INTERVAL": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Interval for polling in minutes, must be an integer."
+      },
+      "ENABLE_POST": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Expected boolean value to enable or disable posting."
+      },
+      "POST_INTERVAL_MIN": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Minimum interval between posts in minutes, must be an integer."
+      },
+      "POST_INTERVAL_MAX": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Maximum interval between posts in minutes, must be an integer."
+      },
+      "ENABLE_ACTION_PROCESSING": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Expected boolean value to enable or disable action processing."
+      },
+      "ACTION_INTERVAL": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Interval for action processing in minutes, must be an integer."
+      },
+      "POST_IMMEDIATELY": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Expected boolean value to enable or disable immediate posting."
+      },
+      "MAX_ACTIONS_PROCESSING": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Maximum number of actions to process, must be an integer."
+      },
+      "ACTION_TIMELINE_TYPE": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Type of action timeline, must match an ActionTimelineType enum value."
+      }
+    }
+  }
+}
