@@ -507,4 +507,18 @@ export const apiClient = {
       method: 'DELETE',
     });
   },
+
+  getLocalEnvs: () => {
+    return fetcher({
+      url: `/envs/local`,
+      method: 'GET',
+    });
+  },
+
+  getGlobalEnvs: () => {
+    return fetcher({
+      url: `/envs/global`,
+      method: 'GET',
+    });
+  },
 };
