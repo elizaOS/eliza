@@ -12,6 +12,7 @@ import { SOCKET_MESSAGE_TYPE, EventType, ChannelType } from '@elizaos/core';
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { worldRouter } from './world';
+import { envRouter } from './env';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -529,6 +530,7 @@ export function createApiRouter(
   // Mount sub-routers
   router.use('/agents', agentRouter(agents, server));
   router.use('/world', worldRouter(server));
+  router.use('/envs', envRouter());
   router.use('/tee', teeRouter(agents));
 
   router.get('/stop', (_req, res) => {
