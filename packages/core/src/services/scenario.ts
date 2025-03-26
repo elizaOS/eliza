@@ -15,6 +15,15 @@ import {
 import { createUniqueUuid } from '../entities';
 import logger from '../logger';
 
+/**
+ * Interface representing an action tracker.
+ * @typedef {Object} ActionTracker
+ * @property {UUID} actionId - The unique identifier for the action.
+ * @property {string} actionName - The name of the action.
+ * @property {number} startTime - The starting time of the action.
+ * @property {boolean} completed - Indicates whether the action has been completed.
+ * @property {Error} [error] - Optional field for any error that occurred during the action.
+ */
 interface ActionTracker {
   actionId: UUID;
   actionName: string;
@@ -23,6 +32,15 @@ interface ActionTracker {
   error?: Error;
 }
 
+/**
+ * Interface representing an evaluator tracker.
+ * @typedef {Object} EvaluatorTracker
+ * @property {UUID} evaluatorId - The unique identifier of the evaluator.
+ * @property {string} evaluatorName - The name of the evaluator.
+ * @property {number} startTime - The start time of the evaluation process.
+ * @property {boolean} completed - Indicates whether the evaluation process has been completed.
+ * @property {Error} [error] - Optional error object if an error occurred during evaluation.
+ */
 interface EvaluatorTracker {
   evaluatorId: UUID;
   evaluatorName: string;
@@ -36,6 +54,10 @@ interface EvaluatorTracker {
  * The agent can create rooms, send messages, and communicate with other agents in a live interactive testing environment.
  * @extends Service
  */
+/**
+ * Represents a Scenario Service that allows the agent to interact in a scenario testing environment.
+ * This service can create rooms, send messages, and communicate with other agents in a live interactive testing environment.
+ */  
 export class ScenarioService extends Service {
   static serviceType = 'scenario';
   capabilityDescription =
