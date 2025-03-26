@@ -75,7 +75,7 @@ export function AppSidebar() {
 
     setOnlineAgents(onlineAgents);
     setOfflineAgents(offlineAgents);
-  }, [isRoomPage, agentsData, roomId]);
+  }, [isRoomPage, agentsData, roomId, roomsData]);
 
   return (
     <>

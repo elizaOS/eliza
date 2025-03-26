@@ -39,11 +39,11 @@ const MemoizedMessageContent = React.memo(MessageContent);
 
 function MessageContent({
   message,
-  isLastMessage,
+  shouldAnimate,
   isUser,
 }: {
   message: ContentWithUser;
-  isLastMessage: boolean;
+  shouldAnimate: boolean;
   isUser: boolean;
 }) {
   // Only log message details in development mode
@@ -84,7 +84,7 @@ function MessageContent({
         <div className="py-2">
           {isUser ? (
             message.text
-          ) : isLastMessage && !isUser ? (
+          ) : shouldAnimate ? (
             <AIWriter>{message.text}</AIWriter>
           ) : (
             message.text
@@ -94,7 +94,7 @@ function MessageContent({
           <div>
             {isUser ? (
               message.thought
-            ) : isLastMessage && !isUser ? (
+            ) : shouldAnimate ? (
               <AIWriter>
                 <span className="italic text-muted-foreground">{message.thought}</span>
               </AIWriter>
@@ -172,6 +172,8 @@ export default function Page({ serverId }: { serverId: UUID }) {
 
   const prevServerIdRef = useRef<UUID | null>(null);
   const prevActiveAgentIdsRef = useRef<UUID[]>([]);
+
+  const animatedMessageIdRef = useRef<string | null>(null);
 
   const getAvatar = (agentId: string): string | null => {
     const rooms = roomsData?.get(serverId);
@@ -277,6 +279,8 @@ export default function Page({ serverId }: { serverId: UUID }) {
             console.log('[Chat] Skipping duplicate message');
             return old;
           }
+
+          animatedMessageIdRef.current = newMessage.id;
 
           return [...old, newMessage];
         }
@@ -481,7 +485,10 @@ export default function Page({ serverId }: { serverId: UUID }) {
             >
               {messages.map((message: ContentWithUser, index: number) => {
                 const isUser = message.name === USER_NAME;
-
+                const shouldAnimate =
+                  index === messages.length - 1 &&
+                  message.name !== USER_NAME &&
+                  message.id === animatedMessageIdRef.current;
                 return (
                   <div
                     key={`${message.id as string}-${message.createdAt}`}
@@ -509,7 +516,7 @@ export default function Page({ serverId }: { serverId: UUID }) {
 
                       <MemoizedMessageContent
                         message={message}
-                        isLastMessage={index === messages.length - 1}
+                        shouldAnimate={shouldAnimate}
                         isUser={isUser}
                       />
                     </ChatBubble>
