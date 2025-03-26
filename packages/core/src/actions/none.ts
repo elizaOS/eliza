@@ -7,6 +7,11 @@ import type { Action, ActionExample, IAgentRuntime, Memory } from '../types';
  *
  * @type {Action}
  */
+/**
+ * Represents an action that responds but performs no additional action.
+ * This is the default behavior if the agent is speaking and not doing anything additional.
+ * @type {Action}
+ */
 export const noneAction: Action = {
   name: 'NONE',
   similes: ['NO_ACTION', 'NO_RESPONSE', 'NO_REACTION'],
