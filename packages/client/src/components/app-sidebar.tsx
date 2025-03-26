@@ -75,7 +75,7 @@ export function AppSidebar() {
 
     setOnlineAgents(onlineAgents);
     setOfflineAgents(offlineAgents);
-  }, [isRoomPage, agentsData, roomId]);
+  }, [isRoomPage, agentsData, roomId, roomsData]);
 
   return (
     <>
@@ -314,10 +314,12 @@ export function AppSidebar() {
               </NavLink>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton disabled className="text-muted-foreground/50 rounded-md">
-                <Cog className="size-5" />
-                <span>Settings</span>
-              </SidebarMenuButton>
+              <NavLink to="/settings">
+                <SidebarMenuButton className="text-muted-foreground rounded-md">
+                  <Cog className="size-5" />
+                  <span>Settings</span>
+                </SidebarMenuButton>
+              </NavLink>
             </SidebarMenuItem>
             <ConnectionStatus />
           </SidebarMenu>

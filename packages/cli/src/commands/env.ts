@@ -71,7 +71,7 @@ async function saveCustomEnvPath(customPath: string): Promise<void> {
  * Get the path to the global .env file in the user's home directory or custom location
  * @returns The path to the global .env file
  */
-async function getGlobalEnvPath(): Promise<string> {
+export async function getGlobalEnvPath(): Promise<string> {
   const customPath = await getCustomEnvPath();
   if (customPath) {
     return customPath;
@@ -96,7 +96,7 @@ function getLocalEnvPath(): string | null {
  * @param filePath Path to the .env file
  * @returns Object containing the key-value pairs
  */
-async function parseEnvFile(filePath: string): Promise<Record<string, string>> {
+export async function parseEnvFile(filePath: string): Promise<Record<string, string>> {
   try {
     if (!existsSync(filePath)) {
       return {};
