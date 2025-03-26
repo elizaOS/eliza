@@ -425,7 +425,7 @@ export default function Page({
                 <div
                   key={`${message.id as string}-${message.createdAt}`}
                   className={cn(
-                    'flex flex-column gap-1 p-1',
+                    'flex flex-col gap-1 p-1',
                     isUser ? 'justify-end' : 'justify-start'
                   )}
                 >
