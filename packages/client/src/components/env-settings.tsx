@@ -37,20 +37,32 @@ export default function EnvSettings() {
   }, []);
 
   useEffect(() => {
-    const fetchGlobalEnvs = async () => {
-      const data = await apiClient.getGlobalEnvs();
-      setGlobalEnvs(data.data);
-    };
-
     fetchGlobalEnvs();
-
-    const fetchLocalEnvs = async () => {
-      const data = await apiClient.getLocalEnvs();
-      setLocalEnvs(data.data);
-    };
-
     fetchLocalEnvs();
   }, []);
+
+  const fetchGlobalEnvs = async () => {
+    const data = await apiClient.getGlobalEnvs();
+    setGlobalEnvs(data.data);
+  };
+
+  const fetchLocalEnvs = async () => {
+    const data = await apiClient.getLocalEnvs();
+    setLocalEnvs(data.data);
+  };
+
+  const handleReset = async () => {
+    if (activeTab === EnvType.GLOBAL) {
+      await fetchGlobalEnvs();
+    } else {
+      await fetchLocalEnvs();
+    }
+
+    setEditingIndex(null);
+    setOpenIndex(null);
+    setName('');
+    setValue('');
+  };
 
   const ENV_TABS_SCHEMA = [
     {
@@ -267,6 +279,32 @@ export default function EnvSettings() {
           </CardContent>
         </Card>
       </Tabs>
+      <div className="flex justify-end gap-4 mt-6">
+        <div className="flex gap-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              handleReset();
+            }}
+          >
+            Reset Changes
+          </Button>
+          <Button
+            type="submit"
+            disabled={false}
+            onClick={() => {
+              if (activeTab === EnvType.GLOBAL) {
+                apiClient.updateGlobalEnvs(globalEnvs);
+              } else {
+                apiClient.updateLocalEnvs(localEnvs);
+              }
+            }}
+          >
+            {activeTab === EnvType.GLOBAL ? 'Update Global Envs' : 'Update Local Envs'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
