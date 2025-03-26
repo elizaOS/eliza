@@ -144,7 +144,7 @@ export default function EnvSettings() {
       >
         <TabsList
           className="grid w-full mb-6"
-          style={{ gridTemplateColumns: `repeat(2, minmax(0, 1fr))` }}
+          style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}
         >
           {ENV_TABS_SCHEMA.map((section) => (
             <TabsTrigger key={section.sectionValue} value={section.sectionValue}>
