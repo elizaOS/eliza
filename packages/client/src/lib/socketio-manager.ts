@@ -122,6 +122,10 @@ class SocketIOManager extends EventEmitter {
       }
     });
 
+    this.socket.on('messageComplete', (data) => {
+      this.emit('messageComplete', data);
+    });
+
     this.socket.on('disconnect', (reason) => {
       console.log(`[SocketIO] Disconnected. Reason: ${reason}`);
       this.isConnected = false;

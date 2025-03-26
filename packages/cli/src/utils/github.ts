@@ -384,7 +384,9 @@ export async function updateFile(
   try {
     // Check if file already exists
     const existingContent = await getFileContent(token, owner, repo, path, branch);
-    const method = existingContent !== null ? 'PUT' : 'POST';
+    // GitHub API behavior: PUT works more reliably than POST for creating files
+    // in directories that may not exist yet, so we always use PUT
+    const method = 'PUT';
 
     // Get the SHA if the file exists
     let sha: string | undefined;

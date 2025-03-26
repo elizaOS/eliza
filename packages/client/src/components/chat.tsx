@@ -43,11 +43,11 @@ const MemoizedMessageContent = React.memo(MessageContent);
 function MessageContent({
   message,
   agentId,
-  isLastMessage,
+  shouldAnimate,
 }: {
   message: ContentWithUser;
   agentId: UUID;
-  isLastMessage: boolean;
+  shouldAnimate: boolean;
 }) {
   return (
     <div className="flex flex-col w-full">
@@ -77,7 +77,7 @@ function MessageContent({
         <div className="py-2">
           {message.name === USER_NAME ? (
             message.text
-          ) : isLastMessage && message.name !== USER_NAME ? (
+          ) : shouldAnimate ? (
             <AIWriter>{message.text}</AIWriter>
           ) : (
             message.text
@@ -87,7 +87,7 @@ function MessageContent({
           message.thought &&
           (message.name === USER_NAME ? (
             message.thought
-          ) : isLastMessage && message.name !== USER_NAME ? (
+          ) : shouldAnimate ? (
             <AIWriter>
               <span className="italic text-muted-foreground">{message.thought}</span>
             </AIWriter>
@@ -154,6 +154,7 @@ export default function Page({
 }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
+  const [messageProcessing, setMessageProcessing] = useState<boolean>(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -166,6 +167,8 @@ export default function Page({
   const { data: messages = [] } = useMessages(agentId, roomId);
 
   const socketIOManager = SocketIOManager.getInstance();
+
+  const animatedMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Initialize Socket.io connection once with our entity ID
@@ -212,7 +215,6 @@ export default function Page({
         ['messages', agentId, roomId, worldId],
         (old: ContentWithUser[] = []) => {
           console.log('[Chat] Current messages:', old?.length || 0);
-
           // Check if this message is already in the list (avoid duplicates)
           const isDuplicate = old.some(
             (msg) =>
@@ -226,6 +228,8 @@ export default function Page({
             return old;
           }
 
+          animatedMessageIdRef.current = newMessage.id;
+
           return [...old, newMessage];
         }
       );
@@ -234,15 +238,23 @@ export default function Page({
       // setInput(prev => prev + '');
     };
 
+    const handleMessageComplete = (data: any) => {
+      if (data.roomId === roomId) {
+        setMessageProcessing(false);
+      }
+    };
+
     // Add listener for message broadcasts
     console.log('[Chat] Adding messageBroadcast listener');
     socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
+    socketIOManager.on('messageComplete', handleMessageComplete);
 
     return () => {
       // When leaving this chat, leave the room but don't disconnect
       console.log(`[Chat] Leaving room ${roomId}`);
       socketIOManager.leaveRoom(roomId);
       socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
+      socketIOManager.off('messageComplete', handleMessageComplete);
     };
   }, [roomId, agentId, entityId, queryClient, socketIOManager]);
 
@@ -287,7 +299,9 @@ export default function Page({
 
   const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!input) return;
+    if (!input || messageProcessing) return;
+
+    const messageId = randomUUID();
 
     // Always add the user's message immediately to the UI before sending it to the server
     const userMessage: ContentWithUser = {
@@ -298,7 +312,7 @@ export default function Page({
       senderName: USER_NAME,
       roomId: roomId,
       source: CHAT_SOURCE,
-      id: randomUUID(), // Add a unique ID for React keys and duplicate detection
+      id: messageId, // Add a unique ID for React keys and duplicate detection
     };
 
     console.log('[Chat] Adding user message to UI:', userMessage);
@@ -324,12 +338,10 @@ export default function Page({
       }
     );
 
-    // We don't need to call scrollToBottom here, the message count change will trigger it
-    // via the useEffect hook
-
     // Send the message to the server/agent
     socketIOManager.sendMessage(input, roomId, CHAT_SOURCE);
 
+    setMessageProcessing(true);
     setSelectedFile(null);
     setInput('');
     formRef.current?.reset();
@@ -413,12 +425,15 @@ export default function Page({
           >
             {messages.map((message: ContentWithUser, index: number) => {
               const isUser = message.name === USER_NAME;
-
+              const shouldAnimate =
+                index === messages.length - 1 &&
+                message.name !== USER_NAME &&
+                message.id === animatedMessageIdRef.current;
               return (
                 <div
                   key={`${message.id as string}-${message.createdAt}`}
                   className={cn(
-                    'flex flex-column gap-1 p-1',
+                    'flex flex-col gap-1 p-1',
                     isUser ? 'justify-end' : 'justify-start'
                   )}
                 >
@@ -443,7 +458,7 @@ export default function Page({
                     <MemoizedMessageContent
                       message={message}
                       agentId={agentId}
-                      isLastMessage={index === messages.length - 1}
+                      shouldAnimate={shouldAnimate}
                     />
                   </ChatBubble>
                 </div>
@@ -520,8 +535,21 @@ export default function Page({
                   agentId={agentId}
                   onChange={(newInput: string) => setInput(newInput)}
                 />
-                <Button type="submit" size="sm" className="ml-auto gap-1.5 h-[30px]">
-                  <Send className="size-3.5" />
+                <Button
+                  disabled={messageProcessing}
+                  type="submit"
+                  size="sm"
+                  className="ml-auto gap-1.5 h-[30px]"
+                >
+                  {messageProcessing ? (
+                    <div className="flex gap-0.5 items-center justify-center">
+                      <span className="w-[4px] h-[4px] bg-gray-500 rounded-full animate-bounce [animation-delay:0s]" />
+                      <span className="w-[4px] h-[4px] bg-gray-500 rounded-full animate-bounce [animation-delay:0.2s]" />
+                      <span className="w-[4px] h-[4px] bg-gray-500 rounded-full animate-bounce [animation-delay:0.4s]" />
+                    </div>
+                  ) : (
+                    <Send className="size-3.5" />
+                  )}
                 </Button>
               </div>
             </form>

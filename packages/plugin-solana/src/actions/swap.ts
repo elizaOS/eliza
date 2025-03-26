@@ -9,7 +9,6 @@ import {
   composePromptFromState,
   logger,
   parseJSONObjectFromText,
-  settings,
 } from '@elizaos/core';
 import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import BigNumber from 'bignumber.js';
@@ -64,7 +63,7 @@ async function swapToken(
 ): Promise<unknown> {
   try {
     const decimals =
-      inputTokenCA === settings.SOL_ADDRESS
+      inputTokenCA === process.env.SOL_ADDRESS
         ? new BigNumber(9)
         : new BigNumber(await getTokenDecimals(connection, inputTokenCA));
 
@@ -271,10 +270,10 @@ export const executeSwap: Action = {
 
       // Handle SOL addresses
       if (response.inputTokenSymbol?.toUpperCase() === 'SOL') {
-        response.inputTokenCA = settings.SOL_ADDRESS;
+        response.inputTokenCA = process.env.SOL_ADDRESS;
       }
       if (response.outputTokenSymbol?.toUpperCase() === 'SOL') {
-        response.outputTokenCA = settings.SOL_ADDRESS;
+        response.outputTokenCA = process.env.SOL_ADDRESS;
       }
 
       // Resolve token addresses if needed
