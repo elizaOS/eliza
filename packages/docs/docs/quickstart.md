@@ -173,8 +173,6 @@ docker builder prune -a -f
 Once you have your agent running, explore:
 
 1. 🤖 [Understand Agents](./core/agents.md)
-2. 📝 [Create Custom Characters](./core/characterfile.md)
-3. ⚡ [Add Custom Actions](./core/actions.md)
-4. 🔧 [Advanced Configuration](./guides/configuration.md)
+2. ⚡ [Add Custom Actions](./core/actions.md)
 
 Join the [Discord community](https://discord.gg/elizaOS) for support and to share what you're building!
