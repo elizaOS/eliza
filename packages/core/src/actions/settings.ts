@@ -397,23 +397,23 @@ async function extractSettingValues(
     function extractValidSettings(obj: unknown, worldSettings: WorldSettings) {
       const extracted = [];
 
-      function walk(node: unknown): void {
+      function traverse(node: unknown): void {
         if (Array.isArray(node)) {
           for (const item of node) {
-            walk(item);
+            traverse(item);
           }
         } else if (typeof node === 'object' && node !== null) {
           for (const [key, value] of Object.entries(node)) {
             if (worldSettings[key] && typeof value !== 'object') {
               extracted.push({ key, value });
             } else {
-              walk(value);
+              traverse(value);
             }
           }
         }
       }
 
-      walk(obj);
+      traverse(obj);
       return extracted;
     }
 
