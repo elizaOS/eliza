@@ -492,7 +492,7 @@ export default function Page({ serverId }: { serverId: UUID }) {
                 return (
                   <div
                     key={`${message.id as string}-${message.createdAt}`}
-                    className={`flex flex-column gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
+                    className={`flex flex-col gap-1 p-1 ${isUser ? 'justify-end' : ''}`}
                   >
                     <ChatBubble
                       variant={isUser ? 'sent' : 'received'}

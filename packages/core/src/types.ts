@@ -1581,6 +1581,7 @@ export interface EntityPayload extends EventPayload {
 export interface MessagePayload extends EventPayload {
   message: Memory;
   callback?: HandlerCallback;
+  onComplete?: () => void;
 }
 
 /**
@@ -1641,6 +1642,7 @@ export type MessageReceivedHandlerParams = {
   runtime: IAgentRuntime;
   message: Memory;
   callback: HandlerCallback;
+  onComplete?: () => void;
 };
 
 /**
