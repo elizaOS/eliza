@@ -65,15 +65,16 @@ export default function EnvSettings() {
     },
   ];
 
-  const handleEdit = (sectionType: string, key: string) => {
+  const handleEdit = (key: string) => {
     setEditingIndex(openIndex);
-    setEditedValue(sectionType === EnvType.GLOBAL ? globalEnvs[key] : localEnvs[key]);
+    const envs = activeTab === EnvType.GLOBAL ? globalEnvs : localEnvs;
+    setEditedValue(envs[key]);
     setOpenIndex(null);
   };
 
-  const handleRemove = (sectionType: string, key: string) => {
-    const updateFn = sectionType === EnvType.GLOBAL ? setGlobalEnvs : setLocalEnvs;
-    const prevData = sectionType === EnvType.GLOBAL ? globalEnvs : localEnvs;
+  const handleRemove = (key: string) => {
+    const updateFn = activeTab === EnvType.GLOBAL ? setGlobalEnvs : setLocalEnvs;
+    const prevData = activeTab === EnvType.GLOBAL ? globalEnvs : localEnvs;
 
     const updatedData = { ...prevData };
     delete updatedData[key];
@@ -82,9 +83,9 @@ export default function EnvSettings() {
     setOpenIndex(null);
   };
 
-  const saveEdit = (sectionType: string, key: string) => {
-    const updateFn = sectionType === EnvType.GLOBAL ? setGlobalEnvs : setLocalEnvs;
-    const prevData = sectionType === EnvType.GLOBAL ? globalEnvs : localEnvs;
+  const saveEdit = (key: string) => {
+    const updateFn = activeTab === EnvType.GLOBAL ? setGlobalEnvs : setLocalEnvs;
+    const prevData = activeTab === EnvType.GLOBAL ? globalEnvs : localEnvs;
 
     updateFn({
       ...prevData,
@@ -217,10 +218,7 @@ export default function EnvSettings() {
                                   onChange={(e) => setEditedValue(e.target.value)}
                                   className="w-full"
                                 />
-                                <Button
-                                  variant="ghost"
-                                  onClick={() => saveEdit(section.sectionValue, key)}
-                                >
+                                <Button variant="ghost" onClick={() => saveEdit(key)}>
                                   <Check className="w-5 h-5 text-green-500" />
                                 </Button>
                                 <Button variant="ghost" onClick={() => setEditingIndex(null)}>
@@ -246,14 +244,14 @@ export default function EnvSettings() {
                               >
                                 <button
                                   className="w-full px-4 py-2 text-left hover:opacity-50"
-                                  onClick={() => handleEdit(section.sectionValue, key)}
+                                  onClick={() => handleEdit(key)}
                                   type="button"
                                 >
                                   Edit
                                 </button>
                                 <div
                                   className="w-full px-4 py-2 text-left text-red-500 hover:opacity-50 cursor-pointer"
-                                  onClick={() => handleRemove(section.sectionValue, key)}
+                                  onClick={() => handleRemove(key)}
                                 >
                                   Remove
                                 </div>
