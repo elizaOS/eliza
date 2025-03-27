@@ -12,11 +12,13 @@ import { FarcasterPostManager } from './post';
  * - interactions: handling mentions, replies, likes, etc.
  */
 export class FarcasterAgentManager {
+  readonly runtime: IAgentRuntime;
   readonly client: FarcasterClient;
   readonly posts: FarcasterPostManager;
   readonly interactions: FarcasterInteractionManager;
 
   constructor(runtime: IAgentRuntime, config: FarcasterConfig) {
+    this.runtime = runtime;
     const cache = new Map<string, any>();
     const signerUuid = config.FARCASTER_NEYNAR_SIGNER_UUID;
 

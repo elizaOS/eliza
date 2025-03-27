@@ -389,6 +389,7 @@ const postGeneratedHandler = async ({
   worldId,
   userId,
   roomId,
+  source,
 }: InvokePayload) => {
   logger.info('Generating new tweet...');
   // Ensure world exists first
@@ -403,7 +404,7 @@ const postGeneratedHandler = async ({
   await runtime.ensureRoomExists({
     id: roomId,
     name: `${runtime.character.name}'s Feed`,
-    source: 'twitter',
+    source,
     type: ChannelType.FEED,
     channelId: `${userId}-home`,
     serverId: userId,
@@ -426,20 +427,20 @@ const postGeneratedHandler = async ({
   ]);
 
   // Generate prompt for tweet content
-  const tweetPrompt = composePromptFromState({
+  const postPrompt = composePromptFromState({
     state,
     template: runtime.character.templates?.postCreationTemplate || postCreationTemplate,
   });
 
   const jsonResponse = await runtime.useModel(ModelType.OBJECT_LARGE, {
-    prompt: tweetPrompt,
+    prompt: postPrompt,
     output: 'no-schema',
   });
 
   /**
    * Cleans up a tweet text by removing quotes and fixing newlines
    */
-  function cleanupTweetText(text: string): string {
+  function cleanupPostText(text: string): string {
     // Remove quotes
     let cleanedText = text.replace(/^['"](.*)['"]$/, '$1');
     // Fix newlines
@@ -452,7 +453,7 @@ const postGeneratedHandler = async ({
   }
 
   // Cleanup the tweet text
-  const cleanedText = cleanupTweetText(jsonResponse.post);
+  const cleanedText = cleanupPostText(jsonResponse.post);
 
   // Prepare media if included
   // const mediaData: MediaData[] = [];
@@ -481,7 +482,7 @@ const postGeneratedHandler = async ({
       agentId: runtime.agentId,
       content: {
         text: cleanedText,
-        source: 'twitter',
+        source,
         channelType: ChannelType.FEED,
         thought: jsonResponse.thought || '',
         type: 'post',

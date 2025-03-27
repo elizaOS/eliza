@@ -57,9 +57,9 @@ export class FarcasterService extends Service {
   async stop(): Promise<void> {
     logger.debug('Stopping ALL Farcaster services');
     for (const manager of Array.from(this.managers.values())) {
-      const agentId = manager.client.runtime.agentId;
+      const agentId = manager.runtime.agentId;
       try {
-        await FarcasterService.stop(manager.client.runtime);
+        await FarcasterService.stop(manager.runtime);
       } catch (error) {
         logger.error('Error stopping Farcaster service', agentId, error);
       }

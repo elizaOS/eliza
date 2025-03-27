@@ -69,3 +69,11 @@ export const FarcasterConfigSchema = z.object({
 });
 
 export type FarcasterConfig = z.infer<typeof FarcasterConfigSchema>;
+
+export enum FarcasterEventTypes {
+  POST_GENERATED = 'FARCASTER_POST_GENERATED',
+  // CAST_GENERATED = 'FARCASTER_CAST_GENERATED',
+  // CAST_SENT = 'FARCASTER_CAST_SENT',
+  // CAST_REACTION_RECEIVED = 'FARCASTER_CAST_REACTION_RECEIVED',
+  // CAST_REACTION_SENT = 'FARCASTER_CAST_REACTION_SENT',
+}
