@@ -387,8 +387,6 @@ async function extractSettingValues(
       }
     );
 
-    console.log('extracted settings response: ', result);
-
     // Validate the extracted settings
     if (!result) {
       return [];
@@ -419,7 +417,6 @@ async function extractSettingValues(
 
     const extractedSettings = extractValidSettings(result, worldSettings);
 
-    console.log('extractedSettings:', extractedSettings);
     return extractedSettings;
   } catch (error) {
     console.error('Error extracting settings:', error);

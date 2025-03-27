@@ -266,8 +266,6 @@ export const settingsProvider: Provider = {
       // Generate the status message based on the settings
       const output = generateStatusMessage(runtime, worldSettings, isOnboarding, state);
 
-      console.log('output', output);
-
       return {
         data: {
           settings: worldSettings,
