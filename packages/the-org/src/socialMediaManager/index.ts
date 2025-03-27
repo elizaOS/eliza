@@ -305,7 +305,7 @@ export const config: OnboardingConfig = {
  * Test suite for the Social Media Manager agent
  * Tests onboarding and cross-platform functionality
  */
-class SocialMediaManagerTestSuite implements TestSuite {
+export class SocialMediaManagerTestSuite implements TestSuite {
   name = 'social-media-manager';
   description = 'Tests for the social media manager agent';
   private scenarioService: any;
@@ -348,6 +348,12 @@ class SocialMediaManagerTestSuite implements TestSuite {
     {
       name: 'Test Cross-Platform Post Creation',
       fn: async (runtime: IAgentRuntime) => {
+
+        this.scenarioService = runtime.getService('scenario');
+        if (!this.scenarioService) {
+          throw new Error('Scenario service not found');
+        }
+
         // Create test world and room
         const worldId = await this.scenarioService.createWorld('Cross-Platform Test', 'Test Owner');
         const roomId = await this.scenarioService.createRoom(worldId, 'social-media');
@@ -375,6 +381,12 @@ class SocialMediaManagerTestSuite implements TestSuite {
     {
       name: 'Test Response to User Queries',
       fn: async (runtime: IAgentRuntime) => {
+
+        this.scenarioService = runtime.getService('scenario');
+        if (!this.scenarioService) {
+          throw new Error('Scenario service not found');
+        }
+
         // Create test environment
         const worldId = await this.scenarioService.createWorld('Query Test', 'Test Owner');
         const roomId = await this.scenarioService.createRoom(worldId, 'help');
