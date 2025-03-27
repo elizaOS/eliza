@@ -2,8 +2,8 @@ import type { Plugin } from '@elizaos/core';
 import { CommunityManagerService } from './communityService';
 
 export const communityManagerPlugin: Plugin = {
-  name: 'community manager plugin',
-  description: 'community manager plugin plugin',
+  name: 'community-manager',
+  description: 'Community Manager Plugin for Eliza',
   evaluators: [],
   providers: [],
   actions: [],
