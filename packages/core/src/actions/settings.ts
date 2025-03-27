@@ -25,6 +25,12 @@ import dedent from 'dedent';
  * @property {string} key - The key of the setting to be updated.
  * @property {string|boolean} value - The new value for the setting, can be a string or a boolean.
  */
+/**
+ * Interface for updating settings.
+ * @typedef {Object} SettingUpdate
+ * @property {string} key - The key of the setting to update.
+ * @property {string | boolean} value - The new value of the setting, can be a string or a boolean.
+ */
 interface SettingUpdate {
   key: string;
   value: string | boolean;

@@ -65,6 +65,12 @@ import {
   asUUID,
 } from './types';
 
+/**
+ * Represents media data containing a buffer of data and the media type.
+ * @typedef {Object} MediaData
+ * @property {Buffer} data - The buffer of data.
+ * @property {string} mediaType - The type of media.
+ */
 type MediaData = {
   data: Buffer;
   mediaType: string;
@@ -77,6 +83,11 @@ const latestResponseIds = new Map<string, Map<string, string>>();
  *
  * @param attachments Array of Media objects containing URLs or file paths to fetch media from
  * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
+ */
+/**
+ * Fetches media data from given attachments.
+ * @param {Media[]} attachments - Array of Media objects to fetch data from.
+ * @returns {Promise<MediaData[]>} - A Promise that resolves with an array of MediaData objects.
  */
 export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]> {
   return Promise.all(
