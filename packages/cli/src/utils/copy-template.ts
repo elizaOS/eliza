@@ -266,6 +266,33 @@ Provide clear documentation about:
 - Example usage
 `
       );
+
+      // Update the index.ts file to use the plugin name from package.json
+      try {
+        const indexTsPath = path.join(targetDir, 'src', 'index.ts');
+        let indexTsContent = await fs.readFile(indexTsPath, 'utf8');
+
+        // Extract the plugin name without scope for use in the plugin definition
+        const pluginNameWithoutScope = name.replace('@elizaos/', '');
+        const description = packageJson.description || 'ElizaOS Plugin';
+
+        // Replace hardcoded plugin name in the starterPlugin export
+        indexTsContent = indexTsContent.replace(
+          /name: 'plugin-starter',/g,
+          `name: '${pluginNameWithoutScope}',`
+        );
+
+        // Replace the description if present
+        indexTsContent = indexTsContent.replace(
+          /description: 'Plugin starter for elizaOS',/g,
+          `description: '${description}',`
+        );
+
+        await fs.writeFile(indexTsPath, indexTsContent);
+        logger.success(`Updated plugin name in index.ts to ${pluginNameWithoutScope}`);
+      } catch (error) {
+        logger.error(`Error updating index.ts: ${error}`);
+      }
     }
 
     // Write the updated package.json
