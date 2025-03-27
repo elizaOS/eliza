@@ -235,7 +235,6 @@ export async function startTGOnboardingDM(
     const randomMessage = onboardingMessages[Math.floor(Math.random() * onboardingMessages.length)];
 
     const telegramClient = runtime.getService('telegram') as any;
-    // Attempt to DM the owner via bot
 
     await telegramClient.messageManager.sendMessage(ownerId, { text: randomMessage });
 
