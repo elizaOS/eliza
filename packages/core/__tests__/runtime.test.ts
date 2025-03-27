@@ -7,6 +7,10 @@ import type { Action, IDatabaseAdapter, Memory, UUID } from '../src/types';
  * Mock database adapter for testing purposes.
  * @type {IDatabaseAdapter}
  */
+/**
+ * Mock database adapter for testing purposes.
+ * Implements the IDatabaseAdapter interface with mock functions that return predefined values.
+ */
 const mockDatabaseAdapter: IDatabaseAdapter = {
   db: {},
   init: vi.fn().mockResolvedValue(undefined),

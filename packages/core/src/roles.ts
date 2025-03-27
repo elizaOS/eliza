@@ -8,6 +8,10 @@ import { type IAgentRuntime, Role, type World } from './types';
 /**
  * Represents the state of server ownership, including a mapping of server IDs to their respective World objects.
  */
+/**
+ * Interface representing the ownership state of servers.
+ * @property {Object.<string, World>} servers - The servers and their corresponding worlds, where the key is the server ID and the value is the World object.
+ */
 export interface ServerOwnershipState {
   servers: {
     [serverId: string]: World;

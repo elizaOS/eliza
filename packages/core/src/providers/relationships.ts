@@ -6,6 +6,13 @@ import type { Entity, IAgentRuntime, Memory, Provider, Relationship, UUID } from
  * @param {Relationship[]} relationships - The relationships to format.
  * @returns {string} The formatted relationships as a string.
  */
+/**
+ * Asynchronously formats relationships based on their interaction strength.
+ *
+ * @param {IAgentRuntime} runtime The runtime instance.
+ * @param {Relationship[]} relationships The relationships to be formatted.
+ * @returns {Promise<string>} A formatted string of the relationships.
+ */
 async function formatRelationships(runtime: IAgentRuntime, relationships: Relationship[]) {
   // Sort relationships by interaction strength (descending)
   const sortedRelationships = relationships

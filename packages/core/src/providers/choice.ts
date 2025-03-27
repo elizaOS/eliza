@@ -8,6 +8,12 @@ import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from '../
  * @property {string} name - The name of the option.
  * @property {string} [description] - The description of the option (optional).
  */
+/**
+ * Interface for an object representing an option.
+ * @typedef {Object} OptionObject
+ * @property {string} name - The name of the option.
+ * @property {string} [description] - The description of the option (optional).
+ */
 interface OptionObject {
   name: string;
   description?: string;

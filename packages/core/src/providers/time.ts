@@ -9,6 +9,10 @@ import type { IAgentRuntime, Memory, Provider, State } from '../types';
  * @returns An object containing the current date and time data, human-readable date and time string,
  * and a text response with the current date and time information.
  */
+/**
+ * Represents a time provider for retrieving current date and time information.
+ * @type {Provider}
+ */
 export const timeProvider: Provider = {
   name: 'TIME',
   get: async (_runtime: IAgentRuntime, _message: Memory) => {

@@ -47,6 +47,9 @@ import path from 'node:path';
 /**
  * Interface for settings object with key-value pairs.
  */
+/**
+ * Interface representing settings with string key-value pairs.
+ */
 interface Settings {
   [key: string]: string | undefined;
 }

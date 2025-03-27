@@ -2,6 +2,10 @@ import { formatEntities, getEntityDetails } from '../entities';
 import { addHeader } from '../prompts';
 import type { Entity, IAgentRuntime, Memory, Provider } from '../types';
 
+/**
+ * Provider for fetching entities related to the current conversation.
+ * @type { Provider }
+ */
 export const entitiesProvider: Provider = {
   name: 'ENTITIES',
   description: 'People in the current conversation',

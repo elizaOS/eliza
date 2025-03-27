@@ -1,5 +1,11 @@
 import pino, { type LogFn, type DestinationStream } from 'pino';
 
+/**
+ * Parses a boolean value from text input.
+ *
+ * @param {string | undefined | null} value - The text input to be parsed.
+ * @returns {boolean} - The boolean value parsed from the text input.
+ */
 function parseBooleanFromText(value: string | undefined | null): boolean {
   if (!value) return false;
 
@@ -23,6 +29,13 @@ function parseBooleanFromText(value: string | undefined | null): boolean {
  * Interface representing a log entry.
  * @property {number} [time] - The timestamp of the log entry.
  * @property {unknown} [key] - Additional properties that can be added to the log entry.
+ */
+/**
+ * Interface representing a log entry.
+ * @typedef {Object} LogEntry
+ * @property {number} [time] - The time the log entry was created.
+ * @property {string} key - The key for the log entry.
+ * @property {unknown} value - The value associated with the key in the log entry.
  */
 interface LogEntry {
   time?: number;

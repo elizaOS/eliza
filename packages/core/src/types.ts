@@ -4,6 +4,9 @@ import type { Readable } from 'node:stream';
  * Type definition for a Universally Unique Identifier (UUID) using a specific format.
  * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
  */
+/**
+ * Defines a custom type UUID representing a universally unique identifier
+ */
 export type UUID = `${string}-${string}-${string}-${string}-${string}`;
 
 /**

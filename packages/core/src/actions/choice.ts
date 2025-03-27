@@ -43,6 +43,39 @@ import {
  *
  * Make sure to include the ```json``` tags around the JSON object.
  */
+/**
+ * Task: Extract selected task and option from user message
+ *
+ * Available Tasks:
+ * {{#each tasks}}
+ * Task ID: {{taskId}} - {{name}}
+ * Available options:
+ * {{#each options}}
+ * - {{name}}: {{description}}
+ * {{/each}}
+ * - ABORT: Cancel this task
+ * 
+ * {{/each}}
+ *
+ * Recent Messages:
+ * {{recentMessages}}
+ *
+ * Instructions:
+ * 1. Review the user's message and identify which task and option they are selecting
+ * 2. Match against the available tasks and their options, including ABORT
+ * 3. Return the task ID (shortened UUID) and selected option name exactly as listed above
+ * 4. If no clear selection is made, return null for both fields
+ *
+ * Return in JSON format:
+ * ```json
+ * {
+ *   "taskId": "string" | null,
+ *   "selectedOption": "OPTION_NAME" | null
+ * }
+ * ```
+ * 
+ * Make sure to include the ```json``` tags around the JSON object.
+ */
 const optionExtractionTemplate = `# Task: Extract selected task and option from user message
 
 # Available Tasks:
