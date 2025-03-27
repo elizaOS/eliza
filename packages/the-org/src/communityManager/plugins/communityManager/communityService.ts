@@ -11,6 +11,7 @@ import {
   ChannelType,
 } from '@elizaos/core';
 import { ServiceType } from './types';
+import dedent from 'dedent';
 
 export class CommunityManagerService extends Service {
   static serviceType = ServiceType.COMMUNITY_MANAGER;
@@ -77,6 +78,50 @@ export class CommunityManagerService extends Service {
     return null;
   }
 
+  async getGreetingMessage(runtime: IAgentRuntime, userName: string, greetingMessage?: string) {
+    const basePrompt = dedent`
+      You're a helpful assistant generating welcome messages for new users.
+
+      Please create a warm and friendly welcome message for a new user named "${userName}".
+
+      ${
+        greetingMessage
+          ? `Here are some keywords or ideas the server owner would like to include: "${greetingMessage}".`
+          : ''
+      }
+
+      Make sure the message feels personal and inviting.
+      Return only the welcome message as a raw string. Do not wrap it in JSON or add any labels.
+    `;
+
+    const message = await runtime.useModel(ModelType.OBJECT_LARGE, {
+      prompt: basePrompt,
+    });
+
+    function extractString(value: unknown): string {
+      let result = '';
+
+      function traverse(node: unknown): void {
+        if (typeof node === 'string') {
+          result += node;
+        } else if (Array.isArray(node)) {
+          for (const item of node) {
+            traverse(item);
+          }
+        } else if (typeof node === 'object' && node !== null) {
+          for (const val of Object.values(node)) {
+            traverse(val);
+          }
+        }
+      }
+
+      traverse(value);
+      return result.trim();
+    }
+
+    return typeof message === 'string' ? message : extractString(message);
+  }
+
   async onDiscordUserJoined(params) {
     const runtime = params.runtime;
     const member = params.member;
@@ -88,13 +133,28 @@ export class CommunityManagerService extends Service {
 
     const greetChannelId = this.getDiscordGreetChannelId(world, guild);
 
-    if (greetChannelId) {
+    if (world && greetChannelId) {
+      const greetingMsgSettings = world.metadata?.settings['GREETING_MESSAGE']?.value;
       const channel = guild.channels.cache.get(greetChannelId);
       if (channel?.isTextBased()) {
-        // TODO: Allow agents to use a custom greeting prompt from metadata.
-        // This allows server owners to personalize the bot's introduction message for new members.
+        let greetingMessage = await this.getGreetingMessage(
+          runtime,
+          `<@${member.id}>`,
+          greetingMsgSettings
+        );
 
-        const welcomeText = `Welcome <@${member.id}>! I'm ${runtime.character.name}, the community manager. Feel free to introduce yourself!`;
+        //Replace any plain member ID with a proper Discord mention format, but skip ones already formatted
+        if (greetingMessage) {
+          greetingMessage = greetingMessage.replace(
+            new RegExp(`(?<!<@)${member.id}(?!>)`, 'g'),
+            `<@${member.id}>`
+          );
+        }
+
+        const welcomeText =
+          greetingMessage ||
+          `Welcome <@${member.id}>! I'm ${runtime.character.name}, the community manager. Feel free to introduce yourself!`;
+
         await channel.send(welcomeText);
 
         const roomId = createUniqueUuid(runtime, greetChannelId);
