@@ -29,14 +29,18 @@
   },
   "devDependencies": {
     "tsup": "8.4.0",
-    "prettier": "3.5.3"
+    "prettier": "3.5.3",
+    "vitest": "2.1.5",
+    "@vitest/coverage-v8": "2.1.5"
   },
   "scripts": {
     "start": "npx @elizaos/cli start",
     "dev": "npx @elizaos/cli dev",
     "build": "tsup",
     "lint": "prettier --write ./src",
-    "test": "npx @elizaos/cli test",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
     "deploy": "npx @elizaos/cli deploy",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
