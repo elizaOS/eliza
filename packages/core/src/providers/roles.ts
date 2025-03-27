@@ -21,6 +21,10 @@ import {
  * @param { State } state - The state object.
  * @returns {Promise<ProviderResult>} The result containing roles data, values, and text.
  */
+/**
+ * A provider for retrieving and formatting the role hierarchy in a server.
+ * @type {Provider}
+ */
 export const roleProvider: Provider = {
   name: 'ROLES',
   description: 'Roles in the server, default are OWNER, ADMIN and MEMBER (as well as NONE)',
