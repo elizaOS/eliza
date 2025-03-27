@@ -241,7 +241,7 @@ export async function publishToGitHub(
   cliVersion: string,
   username: string,
   isTest = false
-): Promise<boolean> {
+): Promise<boolean | { success: boolean; prUrl?: string }> {
   const token = await getGitHubToken();
   if (!token) {
     logger.error('GitHub token not found. Please set it using the login command.');
@@ -447,6 +447,19 @@ export async function publishToGitHub(
           index.__v2.types[type].push(packageJson.name);
         }
 
+        // Remove from other type collections if it was previously there
+        const otherTypes = Object.keys(index.__v2.types).filter((t) => t !== type);
+        otherTypes.forEach((otherType) => {
+          if (
+            index.__v2.types[otherType] &&
+            index.__v2.types[otherType].includes(packageJson.name)
+          ) {
+            index.__v2.types[otherType] = index.__v2.types[otherType].filter(
+              (name) => name !== packageJson.name
+            );
+          }
+        });
+
         // Update categories
         metadata.categories.forEach((category) => {
           if (!index.__v2.categories[category]) {
@@ -477,7 +490,7 @@ export async function publishToGitHub(
     }
 
     // Create pull request
-    const prCreated = await createPullRequest(
+    const prUrl = await createPullRequest(
       token,
       registryOwner,
       registryRepo,
@@ -500,12 +513,18 @@ Submitted by: @${username}`,
       'main'
     );
 
-    if (!prCreated) {
+    if (!prUrl) {
       logger.error('Failed to create pull request.');
       return false;
     }
 
-    logger.success(`Pull request created: ${prCreated}`);
+    logger.success(`Pull request created: ${prUrl}`);
+
+    // Return success with PR URL
+    return {
+      success: true,
+      prUrl: prUrl,
+    };
   } else {
     logger.info('Test successful - all checks passed');
     logger.info('Would create:');

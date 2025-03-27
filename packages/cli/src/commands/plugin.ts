@@ -19,6 +19,7 @@ import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
 import prompts from 'prompts';
+import readline from 'node:readline';
 
 export const plugin = new Command()
   .name('plugin')
@@ -226,27 +227,51 @@ plugin
 
       // Only prompt for description in non-test mode and ensure it's done before other checks
       if (isGenericDescription && !opts.test) {
-        logger.info('\n📝 Your plugin needs a meaningful description:');
-
-        const { newDescription } = await prompts({
-          type: 'text',
-          name: 'newDescription',
-          message: 'Enter a meaningful description for your plugin:',
-          validate: (input) =>
-            input.length >= 10 ? true : 'Description must be at least 10 characters',
+        // Use readline directly instead of prompts to avoid the display issue
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
         });
 
-        if (newDescription) {
+        logger.info('\n📝 Enter a meaningful description for your plugin:');
+
+        const newDescription = await new Promise<string>((resolve) => {
+          rl.question('', (answer) => {
+            rl.close();
+            resolve(answer.trim());
+          });
+        });
+
+        if (newDescription && newDescription.length >= 10) {
           packageJson.description = newDescription;
           await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
           logger.success('Updated description in package.json');
           isGenericDescription = false;
         } else {
-          logger.warn('Please add a meaningful description to your package.json before publishing');
+          logger.warn(
+            'Description must be at least 10 characters. Please update your package.json before publishing.'
+          );
         }
       }
 
-      // Display requirements status
+      // Check if any requirements are missing
+      const userProvidedMissing = [
+        requirements.hasLogoImage,
+        requirements.hasBannerImage,
+        !isGenericDescription,
+      ].some((req) => !req);
+
+      // Check if any template-provided requirements are missing
+      const templateProvidedMissing = [
+        requirements.nameCorrect,
+        requirements.hasRepoUrl,
+        requirements.correctRepoUrl,
+        requirements.hasImagesDir,
+        requirements.hasAgentConfig,
+        requirements.hasCorrectStructure,
+      ].some((req) => !req);
+
+      // First display all the requirements status
       logger.info('\n🔍 Registry Requirements Status:');
 
       // Core requirements (should automatically pass due to template)
@@ -266,23 +291,7 @@ plugin
       logger.info(`${requirements.hasBannerImage ? '✅' : '❌'} Images/banner.jpg (1280x640px)`);
       logger.info(`${isGenericDescription ? '❌' : '✅'} Meaningful description in package.json`);
 
-      // Check if any requirements are missing
-      const userProvidedMissing = [
-        requirements.hasLogoImage,
-        requirements.hasBannerImage,
-        !isGenericDescription,
-      ].some((req) => !req);
-
-      // Check if any template-provided requirements are missing
-      const templateProvidedMissing = [
-        requirements.nameCorrect,
-        requirements.hasRepoUrl,
-        requirements.correctRepoUrl,
-        requirements.hasImagesDir,
-        requirements.hasAgentConfig,
-        requirements.hasCorrectStructure,
-      ].some((req) => !req);
-
+      // Now show warnings for missing items
       if (userProvidedMissing) {
         logger.warn('\n⚠️ Please add the following:');
 
@@ -300,13 +309,35 @@ plugin
           );
         }
 
-        logger.info(
-          '\n📝 Please add these files/information and run "elizaos plugin publish --test" again.'
-        );
-
-        // Skip the rest of the process if this is a test and requirements are missing
         if (opts.test) {
+          logger.info(
+            '\n📝 Please add these files/information and run "elizaos plugin publish --test" again.'
+          );
           return;
+        } else {
+          // If not in test mode, use readline directly instead of prompts to avoid the issue
+          logger.warn('\n⚠️ Your plugin is missing required files and may be rejected.');
+          logger.warn('Do you want to continue anyway? (y/N)');
+
+          const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
+
+          const shouldContinue = await new Promise<boolean>((resolve) => {
+            rl.question('', (answer) => {
+              rl.close();
+              const input = answer.trim().toLowerCase();
+              resolve(input === 'y' || input === 'yes');
+            });
+          });
+
+          if (!shouldContinue) {
+            logger.info('\n📝 Please add the missing files and try again when ready.');
+            process.exit(0);
+          }
+
+          logger.warn('\n⚠️ Proceeding with incomplete requirements. Your PR may be rejected.');
         }
       }
 
@@ -568,28 +599,6 @@ These files are required for registry submission. Your plugin submission will no
             logger.info('Please fix the missing requirements before publishing.');
             return;
           }
-        } else {
-          // In test mode, just focus on user-provided requirements
-          if (userProvidedMissing) {
-            logger.info('\n📝 To complete your plugin, you need to:');
-
-            if (!requirements.hasLogoImage) {
-              logger.info('• Add images/logo.jpg (400x400px, max 500KB)');
-            }
-            if (!requirements.hasBannerImage) {
-              logger.info('• Add images/banner.jpg (1280x640px, max 1MB)');
-            }
-            if (isGenericDescription) {
-              logger.info(
-                '• Add a meaningful description to package.json - explain what your plugin does'
-              );
-            }
-
-            logger.info(
-              '\nAfter adding these, run "elizaos plugin publish --test" again to verify.'
-            );
-            return;
-          }
         }
       } else {
         logger.success('\n✅ All registry requirements are met!');
@@ -682,6 +691,165 @@ These files are required for registry submission. Your plugin submission will no
         return;
       }
 
+      // For the actual publish, we first run the checks with --test to ensure everything's in order
+      logger.info('\n🔍 Running final checks before publishing...');
+      const checkResult = await testPublishToGitHub(cwd, packageJson, credentials.username);
+      if (!checkResult) {
+        logger.error('Final checks failed. Please run with --test flag to debug');
+        process.exit(1);
+      }
+      logger.success('✅ Final checks passed!');
+
+      // Check if the plugin has a GitHub repository already, if not create one
+      if (!packageJson.repository?.url || !packageJson.repository.url.startsWith('github:')) {
+        logger.info('\n🚀 Setting up GitHub repository for plugin...');
+
+        // Extract plugin name for repository creation
+        const pluginName = packageJson.name.replace('@elizaos/', '');
+
+        // Create a GitHub repository
+        const result = await createGitHubRepository(
+          credentials.token,
+          pluginName,
+          packageJson.description || `${pluginName} - ElizaOS plugin`,
+          false, // public repository
+          ['elizaos-plugins'] // topics
+        );
+
+        if (!result.success) {
+          logger.error(`Failed to create GitHub repository: ${result.message}`);
+          process.exit(1);
+        }
+
+        const githubUrl = result.repoUrl
+          .replace(/https?:\/\/github\.com\//, 'github:')
+          .replace(/\.git$/, '');
+
+        // Update package.json with the new repository URL
+        packageJson.repository = {
+          type: 'git',
+          url: githubUrl,
+        };
+
+        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+        logger.success(`Updated package.json with GitHub repository: ${githubUrl}`);
+
+        // Push code to GitHub repository
+        logger.info('\n📤 Pushing code to GitHub repository...');
+
+        // Use a more robust push approach with force by default
+        let pushResult = false;
+        try {
+          // Initialize git repo if needed
+          await execa('git', ['init'], { cwd });
+          logger.info('Git repository initialized');
+
+          // Create and checkout main branch
+          await execa('git', ['checkout', '-b', 'main'], { cwd });
+          logger.info('Created main branch');
+
+          // Add remote
+          await execa('git', ['remote', 'add', 'origin', result.repoUrl], { cwd });
+          logger.info(`Added remote: ${result.repoUrl}`);
+
+          // Add all files
+          await execa('git', ['add', '.'], { cwd });
+          logger.info('Added files to git');
+
+          // Commit changes
+          await execa('git', ['commit', '-m', 'Initial commit'], { cwd });
+          logger.info('Committed changes');
+
+          // Push directly with force-with-lease to avoid errors
+          logger.info('Pushing to GitHub...');
+          await execa('git', ['push', '-u', 'origin', 'main', '--force-with-lease'], {
+            cwd,
+            stdio: 'pipe',
+          });
+
+          logger.success('✅ Successfully pushed code to GitHub repository!');
+          pushResult = true;
+        } catch (error) {
+          logger.error('Failed to push to GitHub:', error.message);
+
+          const { shouldContinue } = await prompts({
+            type: 'confirm',
+            name: 'shouldContinue',
+            message: 'Failed to push code to GitHub. Continue with publishing to registry anyway?',
+            initial: false,
+          });
+
+          if (!shouldContinue) {
+            process.exit(1);
+          }
+
+          pushResult = false;
+        }
+      } else {
+        // Repository URL exists, but we should verify repo actually exists on GitHub
+        logger.info('\n🔍 Verifying GitHub repository exists...');
+
+        try {
+          // Convert github:username/repo to https://github.com/username/repo
+          const repoUrlParts = packageJson.repository.url.replace('github:', '').split('/');
+          const repoOwner = repoUrlParts[0];
+          const repoName = repoUrlParts[1];
+
+          const response = await fetch(`https://api.github.com/repos/${repoOwner}/${repoName}`, {
+            headers: {
+              Authorization: `token ${credentials.token}`,
+              Accept: 'application/vnd.github.v3+json',
+            },
+          });
+
+          if (!response.ok) {
+            logger.warn(
+              `Repository at ${packageJson.repository.url} does not exist or is not accessible.`
+            );
+            logger.info('Creating repository and pushing code...');
+
+            // Create repository with the same name
+            const result = await createGitHubRepository(
+              credentials.token,
+              repoName,
+              packageJson.description || `${repoName} - ElizaOS plugin`,
+              false, // public repository
+              ['elizaos-plugins'] // topics
+            );
+
+            if (!result.success) {
+              logger.error(`Failed to create GitHub repository: ${result.message}`);
+              process.exit(1);
+            }
+
+            // Push code to GitHub
+            logger.info('\n📤 Pushing code to GitHub repository...');
+            const pushResult = await pushToGitHub(cwd, result.repoUrl, 'main');
+
+            if (!pushResult) {
+              logger.error('Failed to push code to GitHub.');
+              const { shouldContinue } = await prompts({
+                type: 'confirm',
+                name: 'shouldContinue',
+                message: 'Continue with publishing to registry anyway?',
+                initial: false,
+              });
+
+              if (!shouldContinue) {
+                process.exit(1);
+              }
+            } else {
+              logger.success('✅ Successfully pushed code to GitHub repository!');
+            }
+          } else {
+            logger.success('✅ GitHub repository verified!');
+          }
+        } catch (error) {
+          logger.error('Error verifying GitHub repository:', error);
+          process.exit(1);
+        }
+      }
+
       // Handle npm publishing
       if (opts.npm) {
         logger.info('Publishing to npm...');
@@ -703,11 +871,30 @@ These files are required for registry submission. Your plugin submission will no
         await execa('npm', ['publish'], { cwd, stdio: 'inherit' });
 
         logger.success(`Successfully published ${packageJson.name}@${packageJson.version} to npm`);
-        return;
+      } else {
+        // Even if not explicitly publishing to npm, we should build the package
+        logger.info('Building package...');
+        try {
+          await execa('npm', ['run', 'build'], { cwd, stdio: 'inherit' });
+          logger.success('Build completed successfully');
+        } catch (error) {
+          logger.error('Failed to build package. Please check your build script.');
+          const { shouldContinue } = await prompts({
+            type: 'confirm',
+            name: 'shouldContinue',
+            message: 'Continue with publishing to registry anyway?',
+            initial: false,
+          });
+
+          if (!shouldContinue) {
+            process.exit(1);
+          }
+        }
       }
 
-      // Handle GitHub publishing
-      const success = await publishToGitHub(
+      // Now publish to the ElizaOS registry
+      logger.info('\n🚀 Publishing to ElizaOS registry...');
+      const result = await publishToGitHub(
         cwd,
         packageJson,
         cliVersion,
@@ -715,17 +902,27 @@ These files are required for registry submission. Your plugin submission will no
         false
       );
 
-      if (!success) {
+      if (!result || (typeof result === 'boolean' && !result)) {
+        logger.error('Failed to publish to ElizaOS registry.');
         process.exit(1);
       }
 
       logger.success(
         `\n🎉 Successfully published ${packageJson.name}@${packageJson.version} to the registry!`
       );
-      logger.info('\nA pull request has been created to add your plugin to the registry.');
+
+      // Show PR URL if available
+      if (result && typeof result === 'object' && result.prUrl) {
+        logger.info(`\n📝 Pull request created: ${result.prUrl}`);
+        logger.info('Please visit this URL to track your plugin submission.');
+      } else {
+        logger.info('\nA pull request has been created to add your plugin to the registry.');
+      }
+
       logger.info(
         'The ElizaOS team will review your plugin and merge it if it meets all requirements.'
       );
+      logger.info('\nThank you for contributing to the ElizaOS ecosystem! 🙌');
     } catch (error) {
       handleError(error);
     }
