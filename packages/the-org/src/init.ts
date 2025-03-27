@@ -67,6 +67,16 @@ export const initCharacter = async ({
   runtime.registerEvent('DISCORD_SERVER_CONNECTED', async (params: { server: Guild }) => {
     await initializeAllSystems(runtime, [params.server], config);
   });
+
+  // Register runtime events
+  runtime.registerEvent(
+    'TELEGRAM_WORLD_JOINED',
+    async (params: { world: World; entities: any[] }) => {
+      await runtime.ensureWorldExists(params.world);
+      await initializeOnboarding(runtime, params.world, config);
+      await startTGOnboardingDM(runtime, params.world, params.entities);
+    }
+  );
 };
 
 /**
@@ -191,5 +201,81 @@ export async function startOnboardingDM(
   } catch (error) {
     logger.error(`Error starting DM with owner: ${error}`);
     throw error;
+  }
+}
+
+/**
+ * Starts the settings DM with the server owner
+ */
+export async function startTGOnboardingDM(
+  runtime: IAgentRuntime,
+  world: World,
+  entities: any[]
+): Promise<void> {
+  logger.info('startTGOnboardingDM - worldId', world.id);
+
+  try {
+    let ownerId = null;
+
+    entities.forEach((entity) => {
+      if (entity.metadata?.telegram?.adminTitle === 'Owner') {
+        ownerId = entity?.metadata?.telegram?.id;
+      }
+    });
+
+    if (!ownerId) {
+      logger.warn('no ownerId found');
+    }
+
+    const onboardingMessages = [
+      'Hi! I need to collect some information to get set up. Is now a good time?',
+      'Hey there! I need to configure a few things. Do you have a moment?',
+      'Hello! Could we take a few minutes to get everything set up?',
+    ];
+    const randomMessage = onboardingMessages[Math.floor(Math.random() * onboardingMessages.length)];
+
+    const telegramClient = runtime.getService('telegram') as any;
+    // Attempt to DM the owner via bot
+
+    await telegramClient.messageManager.sendMessage(ownerId, { text: randomMessage });
+
+    const roomId = createUniqueUuid(runtime, ownerId);
+
+    await runtime.ensureRoomExists({
+      id: roomId,
+      name: `Chat with Telegram User ${ownerId}`,
+      source: 'telegram',
+      type: ChannelType.DM,
+      channelId: roomId,
+      serverId: roomId,
+      worldId: world.id,
+    });
+
+    const entity = await runtime.getEntityById(runtime.agentId);
+    if (!entity) {
+      await runtime.createEntity({
+        id: runtime.agentId,
+        names: [runtime.character.name],
+        agentId: runtime.agentId,
+      });
+    }
+
+    await runtime.createMemory(
+      {
+        agentId: runtime.agentId,
+        entityId: runtime.agentId,
+        roomId,
+        content: {
+          text: randomMessage,
+          actions: ['BEGIN_ONBOARDING'],
+        },
+        createdAt: Date.now(),
+      },
+      'messages'
+    );
+
+    logger.info(`Started onboarding DM with Telegram user ${ownerId} for world ${world.id}`);
+  } catch (error) {
+    logger.error(`Error starting Telegram onboarding DM:`, error);
   }
 }
