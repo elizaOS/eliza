@@ -3,6 +3,12 @@ import type { SOCKET_MESSAGE_TYPE } from '../types';
 /**
  * Base interface for a service provider
  */
+/**
+ * Represents a service provider.
+ * @interface
+ * @readonly
+ * @property {string} name - The name of the service provider.
+ */
 export interface IServiceProvider {
   readonly name: string;
 }

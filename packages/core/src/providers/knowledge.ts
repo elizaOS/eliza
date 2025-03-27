@@ -12,6 +12,14 @@ import type { IAgentRuntime, Memory, Provider } from '../types';
  * @param {Memory} message - The message containing the query for knowledge retrieval.
  * @returns {Object} An object containing the retrieved knowledge data, values, and text.
  */
+/**
+ * Represents a provider for knowledge data.
+ * @type {Provider}
+ * @property {string} name - The name of the knowledge provider.
+ * @property {string} description - A description of the knowledge provider.
+ * @property {boolean} dynamic - Indicates if the knowledge provider is dynamic.
+ * @property {Function} get - Retrieves knowledge data based on the provided parameters.
+ */
 export const knowledgeProvider: Provider = {
   name: 'KNOWLEDGE',
   description: 'Knowledge from the knowledge base that the agent knows',

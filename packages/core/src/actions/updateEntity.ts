@@ -26,6 +26,11 @@ import {
  *
  * @type {string}
  */
+/**
+ * Component Template for extracting source and updating component data.
+ *
+ * @type {string}
+ */
 const componentTemplate = `# Task: Extract Source and Update Component Data
 
 {{recentMessages}}
