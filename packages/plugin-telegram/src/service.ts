@@ -211,6 +211,13 @@ export class TelegramService extends Service {
     const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
     const roomId = createUniqueUuid(this.runtime, chatId) as UUID;
 
+    const admins = await ctx.getChatAdministrators();
+    const owner = admins.find((admin) => admin.status === 'creator');
+    let ownerId = chatId;
+    if (owner) {
+      ownerId = createUniqueUuid(this.runtime, String(owner.user.id)) as UUID;
+    }
+
     // Build world representation
     const world: World = {
       id: worldId,
@@ -219,9 +226,9 @@ export class TelegramService extends Service {
       serverId: chatId,
       metadata: {
         source: 'telegram',
-        ownership: { ownerId: chatId },
+        ownership: { ownerId },
         roles: {
-          [chatId]: Role.OWNER,
+          [ownerId]: Role.OWNER,
         },
       },
     };
