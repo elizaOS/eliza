@@ -1,18 +1,9 @@
-import {
-  type IAgentRuntime,
-  logger,
-  ChannelType,
-  createUniqueUuid,
-  HandlerCallback,
-  Content,
-  EventType,
-} from '@elizaos/core';
+import { createUniqueUuid, EventType, type IAgentRuntime, logger } from '@elizaos/core';
 import type { FarcasterClient } from '../client';
-import { lastCastCacheKey } from '../common/utils';
-import { createCastMemory } from '../memory';
-import { sendCast } from '../actions';
-import { FarcasterConfig, FarcasterEventTypes, LastCast } from '../common/types';
+import { standardCastHandlerCallback } from '../common/callbacks';
 import { FARCASTER_SOURCE } from '../common/constants';
+import { FarcasterConfig, FarcasterEventTypes, LastCast } from '../common/types';
+import { lastCastCacheKey } from '../common/utils';
 
 interface FarcasterPostParams {
   client: FarcasterClient;
@@ -85,55 +76,23 @@ export class FarcasterPostManager {
   private async generateNewCast() {
     logger.info('Generating new cast');
     try {
-      const profile = await this.client.getProfile(this.fid);
       const worldId = createUniqueUuid(this.runtime, this.fid.toString());
       const roomId = createUniqueUuid(this.runtime, `${this.fid}-home`);
 
       // callback for handling the actual posting
-      const callback: HandlerCallback = async (content: Content) => {
-        try {
-          if (this.config.FARCASTER_DRY_RUN) {
-            logger.info(`Dry run: would have cast: ${content.text}`);
-            return [];
-          }
-
-          const castsPosted = await sendCast({
-            client: this.client,
-            runtime: this.runtime,
-            roomId: roomId,
-            content,
-            profile,
-          });
-
-          if (castsPosted.length === 0) {
-            logger.warn('No casts posted');
-            return [];
-          }
-
-          const [{ cast }] = castsPosted;
-
+      const callback = standardCastHandlerCallback({
+        client: this.client,
+        runtime: this.runtime,
+        config: this.config,
+        roomId,
+        onCompletion: async (casts, _memories) => {
+          const lastCast = casts[casts.length - 1];
           await this.runtime.setCache<LastCast>(lastCastCacheKey(this.fid), {
-            hash: cast.hash,
-            timestamp: Date.now(),
+            hash: lastCast.hash,
+            timestamp: new Date(lastCast.timestamp).getTime(),
           });
-
-          logger.success(`[Farcaster] Published cast ${cast.hash}`);
-
-          const memory = createCastMemory({
-            roomId,
-            senderId: this.runtime.agentId,
-            runtime: this.runtime,
-            cast,
-          });
-
-          await this.runtime.createMemory(memory, 'messages');
-
-          return [memory];
-        } catch (error) {
-          logger.error('Error posting cast:', error);
-          return [];
-        }
-      };
+        },
+      });
 
       this.runtime.emitEvent([EventType.POST_GENERATED, FarcasterEventTypes.POST_GENERATED], {
         runtime: this.runtime,

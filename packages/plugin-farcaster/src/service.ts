@@ -1,7 +1,7 @@
 import { logger, Service, UUID, type IAgentRuntime } from '@elizaos/core';
 import { FARCASTER_SERVICE_NAME } from './common/constants';
 import { FarcasterAgentManager } from './managers/agent';
-import { hasFarcasterEnabled, validateFarcasterConfig } from './common/environment';
+import { hasFarcasterEnabled, validateFarcasterConfig } from './common/config';
 
 export class FarcasterService extends Service {
   private static instance?: FarcasterService;

@@ -1,26 +1,29 @@
 import {
-  type Memory,
-  stringToUuid,
-  elizaLogger,
-  type HandlerCallback,
-  type Content,
+  ChannelType,
+  composePrompt,
+  Content,
+  createUniqueUuid,
+  EventType,
+  HandlerCallback,
   type IAgentRuntime,
   logger,
-  createUniqueUuid,
-  ChannelType,
+  type Memory,
+  MessagePayload,
+  ModelType,
 } from '@elizaos/core';
+import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api';
 import type { FarcasterClient } from '../client';
-import { createCastMemory } from '../memory';
-import type { Cast, FarcasterConfig, Profile } from '../common/types';
-import {
-  formatCast,
-  formatTimeline,
-  messageHandlerTemplate,
-  shouldRespondTemplate,
-} from '../common/prompts';
-import { castUuid } from '../common/utils';
-import { sendCast } from '../actions';
 import { FARCASTER_SOURCE } from '../common/constants';
+import { formatCast, formatTimeline, shouldRespondTemplate } from '../common/prompts';
+import {
+  type Cast,
+  type FarcasterConfig,
+  FarcasterEventTypes,
+  FarcasterGenericCastPayload,
+  type Profile,
+} from '../common/types';
+import { castUuid, formatCastTimestamp, neynarCastToCast } from '../common/utils';
+import { standardCastHandlerCallback } from '../common/callbacks';
 
 interface FarcasterInteractionParams {
   client: FarcasterClient;
@@ -41,7 +44,7 @@ export class FarcasterInteractionManager {
     this.config = opts.config;
   }
 
-  public async start() {
+  public async start(): Promise<void> {
     if (this.isRunning) {
       return;
     }
@@ -52,7 +55,7 @@ export class FarcasterInteractionManager {
     void this.runPeriodically();
   }
 
-  public async stop() {
+  public async stop(): Promise<void> {
     if (this.timeout) clearTimeout(this.timeout);
     this.isRunning = false;
   }
@@ -71,157 +74,191 @@ export class FarcasterInteractionManager {
     }
   }
 
-  private async handleInteractions() {
-    const agentFid = this.config.FARCASTER_FID;
-    const mentions = await this.client.getMentions({
-      fid: agentFid,
-      pageSize: 30,
+  private async processThreadCast(cast: Cast): Promise<Memory> {
+    const memoryId = castUuid({ agentId: this.runtime.agentId, hash: cast.hash });
+    const conversationId = cast.threadId ?? cast.inReplyTo?.hash ?? cast.hash;
+    const entityId = createUniqueUuid(this.runtime, cast.authorFid.toString());
+    const worldId = createUniqueUuid(this.runtime, cast.authorFid.toString());
+    const serverId = cast.authorFid.toString();
+    const roomId = createUniqueUuid(this.runtime, conversationId);
+
+    await this.runtime.ensureWorldExists({
+      id: worldId,
+      name: `${cast.profile.username}'s Farcaster`,
+      agentId: this.runtime.agentId,
+      serverId,
+      metadata: {
+        ownership: { ownerId: cast.authorFid.toString() },
+        farcaster: {
+          username: cast.profile.username,
+          id: cast.authorFid.toString(),
+          name: cast.profile.name,
+        },
+      },
     });
 
-    const agent = await this.client.getProfile(agentFid);
-    for (const mention of mentions) {
-      const messageHash = mention.hash;
-      const castId = castUuid({ agentId: this.runtime.agentId, hash: mention.hash });
+    // Ensure thread room exists
+    await this.runtime.ensureRoomExists({
+      id: roomId,
+      name: `Thread with ${cast.profile.name ?? cast.profile.username}`,
+      source: FARCASTER_SOURCE,
+      type: ChannelType.THREAD,
+      channelId: conversationId,
+      serverId,
+      worldId,
+    });
 
-      const pastMemory = await this.runtime.getMemoryById(castId);
+    await this.runtime.ensureConnection({
+      entityId,
+      roomId,
+      userName: cast.profile.username,
+      name: cast.profile.name,
+      source: FARCASTER_SOURCE,
+      type: ChannelType.THREAD,
+      channelId: conversationId,
+      serverId,
+      worldId,
+    });
 
-      if (pastMemory) {
+    const memory: Memory = {
+      id: memoryId,
+      agentId: this.runtime.agentId,
+      content: {
+        text: cast.text,
+        // need to pull imageUrls
+        inReplyTo: cast.inReplyTo?.hash
+          ? castUuid({ agentId: this.runtime.agentId, hash: cast.inReplyTo.hash })
+          : undefined,
+        source: FARCASTER_SOURCE,
+        channelType: ChannelType.THREAD,
+      },
+      entityId,
+      roomId,
+      createdAt: cast.timestamp.getTime(),
+    };
+
+    return memory;
+  }
+
+  private async handleInteractions(): Promise<void> {
+    const agentFid = this.config.FARCASTER_FID;
+    const [mentions, agent] = await Promise.all([
+      this.client.getMentions({
+        fid: agentFid,
+        pageSize: 20,
+      }),
+      this.client.getProfile(agentFid),
+    ]);
+
+    for (const cast of mentions) {
+      const mention = neynarCastToCast(cast);
+      const memoryId = castUuid({ agentId: this.runtime.agentId, hash: mention.hash });
+
+      if (await this.runtime.getMemoryById(memoryId)) {
         continue;
       }
 
-      logger.log('New Cast found', messageHash);
+      logger.log('New Cast found', mention.hash);
 
-      const entityId = createUniqueUuid(
-        this.runtime,
-        mention.authorFid === agentFid ? this.runtime.agentId : mention.authorFid.toString()
-      );
-      const worldId = createUniqueUuid(this.runtime, mention.authorFid.toString());
-      const serverId = mention.authorFid.toString();
-      const roomId = createUniqueUuid(this.runtime, mention.threadId ?? mention.hash);
+      // filter out the agent mentions
+      if (mention.authorFid === agentFid) {
+        // FIXME: hish - you still want to save the memory for conversational awareness sake
+        continue;
+      }
 
-      await this.runtime.ensureWorldExists({
-        id: worldId,
-        name: `${mention.profile.username}'s Farcaster`,
-        agentId: this.runtime.agentId,
-        serverId,
-        metadata: {
-          ownership: { ownerId: mention.authorFid.toString() },
-          farcaster: {
-            username: mention.profile.username,
-            id: mention.authorFid.toString(),
-            name: mention.profile.name,
-          },
-        },
-      });
-
-      await this.runtime.ensureConnection({
-        entityId,
-        roomId,
-        userName: mention.profile.username,
-        name: mention.profile.name,
-        source: FARCASTER_SOURCE,
-        type: ChannelType.GROUP,
-        channelId: messageHash,
-        serverId,
-        worldId,
-      });
-
-      // Ensure conversation room exists
-      await this.runtime.ensureRoomExists({
-        id: roomId,
-        name: `Conversation with ${mention.profile.name ?? mention.profile.username}`,
-        source: FARCASTER_SOURCE,
-        type: ChannelType.GROUP,
-        channelId: messageHash,
-        serverId,
-        worldId,
-      });
-
-      // const thread = await buildConversationThread({
-      //   client: this.client,
-      //   runtime: this.runtime,
-      //   cast: mention,
-      // });
-
-      const memory: Memory = {
-        agentId: this.runtime.agentId,
-        content: {
-          text: mention.text,
-          // need to pull imageUrls
-          inReplyTo: mention.inReplyTo?.hash
-            ? castUuid({ agentId: this.runtime.agentId, hash: mention.inReplyTo.hash })
-            : undefined,
-          source: FARCASTER_SOURCE,
-          channelType: ChannelType.GROUP,
-        },
-        entityId,
-        roomId,
-        createdAt: mention.timestamp.getTime(),
-      };
-
-      // FIXME: emit
-
-      // await this.handleCast({
-      //   agent,
-      //   cast: mention,
-      //   memory,
-      //   thread,
-      // });
+      await this.handleMentionCast({ agent, mention, cast });
     }
   }
 
-  private async handleCast({
+  async buildThreadForCast(cast: Cast): Promise<Cast[]> {
+    const thread: Cast[] = [];
+    const visited: Set<string> = new Set();
+    const client = this.client;
+    const runtime = this.runtime;
+    const self = this;
+
+    async function processThread(currentCast: Cast) {
+      if (visited.has(currentCast.hash)) {
+        return;
+      }
+
+      visited.add(currentCast.hash);
+
+      // Check if the current cast has already been saved
+      const memoryId = castUuid({ hash: currentCast.hash, agentId: runtime.agentId });
+      const memory = await runtime.getMemoryById(memoryId);
+
+      if (!memory) {
+        logger.log('Creating memory for cast', currentCast.hash);
+        const memory = await self.processThreadCast(currentCast);
+        await runtime.createMemory(memory, 'messages');
+        runtime.emitEvent(FarcasterEventTypes.THREAD_CAST_CREATED, {
+          runtime,
+          memory,
+          cast: currentCast,
+          source: FARCASTER_SOURCE,
+        });
+      }
+
+      thread.unshift(currentCast);
+
+      if (currentCast.inReplyTo) {
+        const parentCast = await client.getCast(currentCast.inReplyTo.hash);
+        await processThread(neynarCastToCast(parentCast));
+      }
+    }
+
+    await processThread(cast);
+    return thread;
+  }
+
+  private async handleMentionCast({
     agent,
+    mention,
     cast,
-    memory,
-    thread,
   }: {
     agent: Profile;
-    cast: Cast;
-    memory: Memory;
-    thread: Cast[];
-  }) {
-    if (cast.profile.fid === agent.fid) {
-      elizaLogger.info('skipping cast from bot itself', cast.hash);
+    cast: CastWithInteractions;
+    mention: Cast;
+  }): Promise<void> {
+    if (mention.profile.fid === agent.fid) {
+      logger.log('skipping cast from bot itself', mention.hash);
       return;
     }
 
-    if (!memory.content.text) {
-      elizaLogger.info('skipping cast with no text', cast.hash);
-      return { text: '', action: 'IGNORE' };
+    const [memory, thread] = await Promise.all([
+      this.processThreadCast(mention),
+      this.buildThreadForCast(mention),
+    ]);
+
+    if (!memory.content.text || memory.content.text.trim() === '') {
+      logger.info('skipping cast with no text', mention.hash);
+      return;
     }
 
-    const currentPost = formatCast(cast);
-
-    const senderId = stringToUuid(cast.authorFid.toString());
-
-    const { timeline } = await this.client.getTimeline({
-      fid: agent.fid,
-      pageSize: 10,
-    });
-
+    // Build the state for the prompt
+    const currentPost = formatCast(mention);
+    const { timeline } = await this.client.getTimeline({ fid: agent.fid, pageSize: 20 });
     const formattedTimeline = formatTimeline(this.runtime.character, timeline);
-
     const formattedConversation = thread
-      .map(
-        (cast) => `@${cast.profile.username} (${new Date(cast.timestamp).toLocaleString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit',
-          month: 'short',
-          day: 'numeric',
-        })}):
-                ${cast.text}`
+      .map((c) =>
+        `
+        - @${c.profile.username} (${formatCastTimestamp(c.timestamp)}):
+          ${c.text}`.trim()
       )
       .join('\n\n');
 
-    const state = await this.runtime.composeState(memory, {
+    const state = await this.runtime.composeState(memory);
+    state.values = {
+      ...state.values,
       farcasterUsername: agent.username,
       timeline: formattedTimeline,
       currentPost,
       formattedConversation,
-    });
+    };
 
-    const shouldRespondContext = composeContext({
+    // Determine if we should respond to the cast
+    const shouldRespondPrompt = composePrompt({
       state,
       template:
         this.runtime.character.templates?.farcasterShouldRespondTemplate ||
@@ -229,108 +266,45 @@ export class FarcasterInteractionManager {
         shouldRespondTemplate,
     });
 
-    const memoryId = castUuid({
-      agentId: this.runtime.agentId,
-      hash: cast.hash,
+    const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: shouldRespondPrompt,
     });
 
-    const castMemory = await this.runtime.getMemoryById(memoryId);
-
-    if (!castMemory) {
-      await this.runtime.createMemory(
-        createCastMemory({
-          roomId: memory.roomId,
-          senderId,
-          runtime: this.runtime,
-          cast,
-        }),
-        'messages'
-      );
-    }
-
-    const shouldRespondResponse = await generateShouldRespond({
-      runtime: this.runtime,
-      context: shouldRespondContext,
-      modelClass: ModelClass.SMALL,
-    });
-
-    if (shouldRespondResponse === 'IGNORE' || shouldRespondResponse === 'STOP') {
-      elizaLogger.info(
-        `Not responding to cast because generated ShouldRespond was ${shouldRespondResponse}`
-      );
+    const responseActions = (response.match(/(?:RESPOND|IGNORE|STOP)/g) || ['IGNORE'])[0];
+    if (responseActions !== 'RESPOND') {
+      logger.log(`Not responding to cast based on shouldRespond decision: ${responseActions}`);
       return;
     }
 
-    const context = composeContext({
-      state,
-      template:
-        this.runtime.character.templates?.farcasterMessageHandlerTemplate ??
-        this.runtime.character?.templates?.messageHandlerTemplate ??
-        messageHandlerTemplate,
-    });
-
-    const responseContent = await generateMessageResponse({
+    // setup callback for the response
+    const callback = standardCastHandlerCallback({
+      client: this.client,
       runtime: this.runtime,
-      context,
-      modelClass: ModelClass.LARGE,
+      config: this.config,
+      roomId: memory.roomId,
     });
 
-    responseContent.inReplyTo = memoryId;
-
-    if (!responseContent.text) return;
-
-    if (this.client.farcasterConfig?.FARCASTER_DRY_RUN) {
-      elizaLogger.info(
-        `Dry run: would have responded to cast ${cast.hash} with ${responseContent.text}`
-      );
-      return;
-    }
-
-    const callback: HandlerCallback = async (content: Content, _files: any[]) => {
-      try {
-        if (memoryId && !content.inReplyTo) {
-          content.inReplyTo = memoryId;
-        }
-        const results = await sendCast({
-          runtime: this.runtime,
-          client: this.client,
-          signerUuid: this.signerUuid,
-          profile: cast.profile,
-          content: content,
-          roomId: memory.roomId,
-          inReplyTo: {
-            fid: cast.authorFid,
-            hash: cast.hash,
-          },
-        });
-
-        // no casts were sent, so we need to return an empty array
-        if (results.length === 0) {
-          return [];
-        }
-
-        // sendCast lost response action, so we need to add it back here
-        results[0].memory.content.action = content.action;
-
-        for (const { memory } of results) {
-          await this.runtime.createMemory(memory, 'messages');
-        }
-        return results.map((result) => result.memory);
-      } catch (error) {
-        elizaLogger.error('Error sending response cast:', error);
-        return [];
-      }
+    // Emit generic message received events
+    const messageReceivedPayload: MessagePayload = {
+      runtime: this.runtime,
+      message: memory,
+      source: FARCASTER_SOURCE,
+      callback,
     };
 
-    const responseMessages = await callback(responseContent);
+    this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, messageReceivedPayload);
 
-    const newState = await this.runtime.updateRecentMessageState(state);
-
-    await this.runtime.processActions(
-      { ...memory, content: { ...memory.content, cast } },
-      responseMessages,
-      newState,
-      callback
-    );
+    // Emit platform-specific MENTION_RECEIVED event
+    const mentionPayload: FarcasterGenericCastPayload = {
+      runtime: this.runtime,
+      memory,
+      cast,
+      source: FARCASTER_SOURCE,
+      callback: async (ontent: Content, _files: any[]) => {
+        logger.info('[Farcaster] mention received response:', response);
+        return [];
+      },
+    };
+    this.runtime.emitEvent(FarcasterEventTypes.MENTION_RECEIVED, mentionPayload);
   }
 }

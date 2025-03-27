@@ -1,12 +1,12 @@
 import { logger, parseBooleanFromText, type IAgentRuntime } from '@elizaos/core';
-import { z, ZodError } from 'zod';
-import { FarcasterConfig, FarcasterConfigSchema } from './types';
+import { ZodError } from 'zod';
 import {
   DEFAULT_MAX_CAST_LENGTH,
   DEFAULT_POLL_INTERVAL,
-  DEFAULT_POST_INTERVAL_MIN,
   DEFAULT_POST_INTERVAL_MAX,
+  DEFAULT_POST_INTERVAL_MIN,
 } from './constants';
+import { FarcasterConfig, FarcasterConfigSchema } from './types';
 
 function safeParseInt(value: string | undefined | null, defaultValue: number): number {
   if (!value) return defaultValue;

@@ -19,7 +19,8 @@
     "dist"
   ],
   "dependencies": {
-    "@neynar/nodejs-sdk": "^2.0.3"
+    "@neynar/nodejs-sdk": "^2.0.3",
+    "lru-cache": "^11.1.0"
   },
   "devDependencies": {
     "tsup": "^8.3.5",

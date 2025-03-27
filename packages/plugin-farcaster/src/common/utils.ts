@@ -1,6 +1,7 @@
-import { IAgentRuntime, stringToUuid, UUID } from '@elizaos/core';
-import { Cast } from './types';
+import { IAgentRuntime, Memory, stringToUuid, UUID } from '@elizaos/core';
 import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api';
+import { FARCASTER_SOURCE } from './constants';
+import { Cast } from './types';
 
 export const MAX_CAST_LENGTH = 1024; // Updated to Twitter's current character limit
 
@@ -129,14 +130,6 @@ export function lastCastCacheKey(fid: number) {
   return `farcaster/${fid}/lastCast`;
 }
 
-export function castCacheKey(hash: string) {
-  return `farcaster/cast/${hash}`;
-}
-
-export function profileCacheKey(fid: number) {
-  return `farcaster/profile/${fid}`;
-}
-
 export function neynarCastToCast(neynarCast: CastWithInteractions): Cast {
   return {
     hash: neynarCast.hash,
@@ -158,4 +151,50 @@ export function neynarCastToCast(neynarCast: CastWithInteractions): Cast {
       : {}),
     timestamp: new Date(neynarCast.timestamp),
   };
+}
+
+export function createCastMemory({
+  roomId,
+  senderId,
+  runtime,
+  cast,
+}: {
+  roomId: UUID;
+  senderId: UUID;
+  runtime: IAgentRuntime;
+  cast: Cast;
+}): Memory {
+  const inReplyTo = cast.inReplyTo
+    ? castUuid({
+        hash: cast.inReplyTo.hash,
+        agentId: runtime.agentId,
+      })
+    : undefined;
+
+  return {
+    id: castUuid({
+      hash: cast.hash,
+      agentId: runtime.agentId,
+    }),
+    agentId: runtime.agentId,
+    entityId: senderId,
+    content: {
+      text: cast.text,
+      source: FARCASTER_SOURCE,
+      url: '',
+      inReplyTo,
+      hash: cast.hash,
+      threadId: cast.threadId,
+    },
+    roomId,
+  };
+}
+
+export function formatCastTimestamp(timestamp: Date): string {
+  return timestamp.toLocaleString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    month: 'short',
+    day: 'numeric',
+  });
 }

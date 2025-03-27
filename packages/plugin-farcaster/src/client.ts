@@ -1,37 +1,66 @@
-import { type IAgentRuntime, elizaLogger } from '@elizaos/core';
+import { Content, type IAgentRuntime, elizaLogger } from '@elizaos/core';
 import { type NeynarAPIClient, isApiErrorResponse } from '@neynar/nodejs-sdk';
-import type { NeynarCastResponse, Cast, Profile, FidRequest, CastId } from './common/types';
-import type { FarcasterConfig } from './common/types';
-import { castCacheKey, neynarCastToCast, profileCacheKey } from './common/utils';
+import { CastParamType } from '@neynar/nodejs-sdk/build/api/models/cast-param-type';
+import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api/models/cast-with-interactions';
+import { LRUCache } from 'lru-cache';
+import { DEFAULT_CAST_CACHE_SIZE, DEFAULT_CAST_CACHE_TTL } from './common/constants';
+import type { Cast, CastId, FarcasterConfig, FidRequest, Profile } from './common/types';
+import { neynarCastToCast, splitPostContent } from './common/utils';
+
+// add global cast cache
+const castCache: LRUCache<string, CastWithInteractions> = new LRUCache({
+  max: DEFAULT_CAST_CACHE_SIZE,
+  ttl: DEFAULT_CAST_CACHE_TTL,
+});
+
+// add global profile cache
+const profileCache: LRUCache<number, Profile> = new LRUCache({
+  max: 1000,
+  ttl: 1000 * 60 * 15, // 15 minutes
+});
+
 export class FarcasterClient {
   private runtime: IAgentRuntime;
   private neynar: NeynarAPIClient;
   private signerUuid: string;
-  private cache: Map<string, any>;
   private farcasterConfig: FarcasterConfig;
-
   constructor(opts: {
     runtime: IAgentRuntime;
     url: string;
     ssl: boolean;
     neynar: NeynarAPIClient;
     signerUuid: string;
-    cache: Map<string, any>;
     farcasterConfig: FarcasterConfig;
   }) {
-    this.cache = opts.cache;
     this.runtime = opts.runtime;
     this.neynar = opts.neynar;
     this.signerUuid = opts.signerUuid;
     this.farcasterConfig = opts.farcasterConfig;
   }
 
-  async publishCast(
-    cast: string,
-    parentCastId: CastId | undefined,
-    // eslint-disable-next-line
-    retryTimes?: number
-  ): Promise<NeynarCastResponse | undefined> {
+  async sendCast({
+    content,
+    inReplyTo,
+  }: {
+    content: Content;
+    inReplyTo?: CastId;
+  }): Promise<CastWithInteractions[]> {
+    const text = (content.text ?? '').trim();
+    if (text.length === 0) {
+      return [];
+    }
+
+    const chunks = splitPostContent(text);
+    const sent: CastWithInteractions[] = [];
+
+    for (const chunk of chunks) {
+      const result = await this.publishCast(chunk, inReplyTo);
+      sent.push(result);
+    }
+    return sent;
+  }
+
+  private async publishCast(cast: string, parentCastId?: CastId): Promise<CastWithInteractions> {
     try {
       const result = await this.neynar.publishCast({
         signerUuid: this.signerUuid,
@@ -39,12 +68,9 @@ export class FarcasterClient {
         parent: parentCastId?.hash,
       });
       if (result.success) {
-        return {
-          hash: result.cast.hash,
-          authorFid: result.cast.author.fid,
-          text: result.cast.text,
-        };
+        return this.getCast(result.cast.hash);
       }
+      throw new Error(`[Farcaster] Error publishing [${cast}] parentCastId: [${parentCastId}]`);
     } catch (err) {
       if (isApiErrorResponse(err)) {
         elizaLogger.error('Neynar error: ', err.response.data);
@@ -56,56 +82,31 @@ export class FarcasterClient {
     }
   }
 
-  async getCast(castHash: string): Promise<Cast> {
-    const castKey = castCacheKey(castHash);
-
-    if (this.cache.has(castKey)) {
-      return this.cache.get(castKey);
+  async getCast(castHash: string): Promise<CastWithInteractions> {
+    const cachedCast = castCache.get(castHash);
+    if (cachedCast) {
+      return cachedCast;
     }
 
-    const response = await this.neynar.lookupCastByHashOrWarpcastUrl({
-      identifier: castHash,
-      type: 'hash',
-    });
+    const params = { identifier: castHash, type: CastParamType.Hash };
+    const response = await this.neynar.lookupCastByHashOrWarpcastUrl(params);
 
-    const neynarCast = response.cast;
-    const cast = neynarCastToCast(neynarCast);
+    castCache.set(castHash, response.cast);
 
-    this.cache.set(castKey, cast);
-
-    return cast;
+    return response.cast;
   }
-
-  async getCastsByFid(request: FidRequest): Promise<Cast[]> {
-    const timeline: Cast[] = [];
-
-    const response = await this.neynar.fetchCastsForUser({
-      fid: request.fid,
-      limit: request.pageSize,
-    });
-    response.casts.map((cast) => {
-      const castKey = castCacheKey(cast.hash);
-      this.cache.set(castKey, neynarCastToCast(cast));
-      timeline.push(this.cache.get(castKey));
-    });
-
-    return timeline;
-  }
-
-  async getMentions(request: FidRequest): Promise<Cast[]> {
+  async getMentions(request: FidRequest): Promise<CastWithInteractions[]> {
     const neynarMentionsResponse = await this.neynar.fetchAllNotifications({
       fid: request.fid,
       type: ['mentions', 'replies'],
       limit: request.pageSize,
     });
-    const mentions: Cast[] = [];
+    const mentions: CastWithInteractions[] = [];
 
     for (const notification of neynarMentionsResponse.notifications) {
       const neynarCast = notification.cast;
       if (neynarCast) {
-        const cast = neynarCastToCast(neynarCast);
-        mentions.push(cast);
-        this.cache.set(castCacheKey(cast.hash), cast);
+        mentions.push(neynarCast);
       }
     }
 
@@ -113,9 +114,8 @@ export class FarcasterClient {
   }
 
   async getProfile(fid: number): Promise<Profile> {
-    const profileKey = profileCacheKey(fid);
-    if (this.cache.has(profileKey)) {
-      return this.cache.get(profileKey) as Profile;
+    if (profileCache.has(fid)) {
+      return profileCache.get(fid) as Profile;
     }
 
     const result = await this.neynar.fetchBulkUsers({ fids: [fid] });
@@ -151,28 +151,32 @@ export class FarcasterClient {
     profile.bio = neynarUserProfile.profile.bio.text;
     profile.pfp = neynarUserProfile.pfp_url;
 
-    this.cache.set(profileKey, profile);
+    profileCache.set(fid, profile);
 
     return profile;
   }
 
   async getTimeline(request: FidRequest): Promise<{
     timeline: Cast[];
-    nextPageToken?: Uint8Array | undefined;
+    cursor?: string;
   }> {
     const timeline: Cast[] = [];
 
-    const results = await this.getCastsByFid(request);
+    const response = await this.neynar.fetchCastsForUser({
+      fid: request.fid,
+      limit: request.pageSize,
+    });
 
-    for (const cast of results) {
-      this.cache.set(`farcaster/cast/${cast.hash}`, cast);
-      timeline.push(cast);
+    for (const cast of response.casts) {
+      castCache.set(cast.hash, cast);
+      timeline.push(neynarCastToCast(cast));
     }
+
+    const nextCursor = response.next?.cursor ?? undefined;
 
     return {
       timeline,
-      //TODO implement paging
-      //nextPageToken: results.nextPageToken,
+      cursor: nextCursor,
     };
   }
 }

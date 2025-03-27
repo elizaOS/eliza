@@ -19,7 +19,6 @@ export class FarcasterAgentManager {
 
   constructor(runtime: IAgentRuntime, config: FarcasterConfig) {
     this.runtime = runtime;
-    const cache = new Map<string, any>();
     const signerUuid = config.FARCASTER_NEYNAR_SIGNER_UUID;
 
     const neynarConfig = new Configuration({ apiKey: config.FARCASTER_NEYNAR_API_KEY });
@@ -32,7 +31,6 @@ export class FarcasterAgentManager {
       url: config.FARCASTER_HUB_URL,
       neynar: neynarClient,
       signerUuid,
-      cache,
       farcasterConfig: config,
     });
 

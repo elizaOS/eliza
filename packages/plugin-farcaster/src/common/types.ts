@@ -1,5 +1,12 @@
-import { DEFAULT_MAX_CAST_LENGTH, DEFAULT_POLL_INTERVAL } from './constants';
+import { Memory, MessagePayload } from '@elizaos/core';
+import {
+  DEFAULT_CAST_CACHE_SIZE,
+  DEFAULT_CAST_CACHE_TTL,
+  DEFAULT_MAX_CAST_LENGTH,
+  DEFAULT_POLL_INTERVAL,
+} from './constants';
 
+import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api/models/cast-with-interactions';
 import { z } from 'zod';
 
 export type Profile = {
@@ -9,15 +16,6 @@ export type Profile = {
   pfp?: string;
   bio?: string;
   url?: string;
-  // location?: string;
-  // twitter?: string;
-  // github?: string;
-};
-
-export type NeynarCastResponse = {
-  hash: string;
-  authorFid: number;
-  text: string;
 };
 
 export type Cast = {
@@ -72,8 +70,15 @@ export type FarcasterConfig = z.infer<typeof FarcasterConfigSchema>;
 
 export enum FarcasterEventTypes {
   POST_GENERATED = 'FARCASTER_POST_GENERATED',
+  MENTION_RECEIVED = 'FARCASTER_MENTION_RECEIVED',
+  THREAD_CAST_CREATED = 'FARCASTER_THREAD_CAST_CREATED',
   // CAST_GENERATED = 'FARCASTER_CAST_GENERATED',
   // CAST_SENT = 'FARCASTER_CAST_SENT',
   // CAST_REACTION_RECEIVED = 'FARCASTER_CAST_REACTION_RECEIVED',
   // CAST_REACTION_SENT = 'FARCASTER_CAST_REACTION_SENT',
+}
+
+export interface FarcasterGenericCastPayload extends Omit<MessagePayload, 'message'> {
+  memory: Memory;
+  cast: CastWithInteractions;
 }
