@@ -183,13 +183,54 @@ const plugin: Plugin = {
   },
   models: {
     [ModelType.TEXT_SMALL]: async (
-      _runtime,
-      { prompt, stopSequences = [] }: GenerateTextParams
+      runtime,
+      { prompt, stopSequences = [], temperature = 0.7, maxTokens = 1024 }: GenerateTextParams
     ) => {
-      return 'Never gonna give you up, never gonna let you down, never gonna run around and desert you...';
+      // Implement real OpenAI fetch call without fallbacks
+      logger.info('Using OpenAI for TEXT_SMALL model');
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: runtime.character?.system || 'You are a helpful assistant.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          max_tokens: maxTokens,
+          temperature: temperature,
+          stop: stopSequences.length > 0 ? stopSequences : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        logger.error('OpenAI API error:', errorData);
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = (await response.json()) as {
+        choices: Array<{
+          message: {
+            content: string;
+          };
+        }>;
+      };
+
+      return data.choices[0].message.content;
     },
     [ModelType.TEXT_LARGE]: async (
-      _runtime,
+      runtime,
       {
         prompt,
         stopSequences = [],
@@ -199,7 +240,50 @@ const plugin: Plugin = {
         presencePenalty = 0.7,
       }: GenerateTextParams
     ) => {
-      return 'Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...';
+      // Implement real OpenAI fetch call without fallbacks
+      logger.info('Using OpenAI for TEXT_LARGE model');
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: runtime.character?.system || 'You are a helpful assistant.',
+            },
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
+          max_tokens: maxTokens,
+          temperature: temperature,
+          frequency_penalty: frequencyPenalty,
+          presence_penalty: presencePenalty,
+          stop: stopSequences.length > 0 ? stopSequences : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        logger.error('OpenAI API error:', errorData);
+        throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = (await response.json()) as {
+        choices: Array<{
+          message: {
+            content: string;
+          };
+        }>;
+      };
+
+      return data.choices[0].message.content;
     },
   },
   tests: [starterTestSuite],
