@@ -4,7 +4,6 @@ import {
   Content,
   createUniqueUuid,
   EventType,
-  HandlerCallback,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -13,6 +12,7 @@ import {
 } from '@elizaos/core';
 import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api';
 import type { FarcasterClient } from '../client';
+import { standardCastHandlerCallback } from '../common/callbacks';
 import { FARCASTER_SOURCE } from '../common/constants';
 import { formatCast, formatTimeline, shouldRespondTemplate } from '../common/prompts';
 import {
@@ -23,7 +23,6 @@ import {
   type Profile,
 } from '../common/types';
 import { castUuid, formatCastTimestamp, neynarCastToCast } from '../common/utils';
-import { standardCastHandlerCallback } from '../common/callbacks';
 
 interface FarcasterInteractionParams {
   client: FarcasterClient;
@@ -74,7 +73,7 @@ export class FarcasterInteractionManager {
     }
   }
 
-  private async processThreadCast(cast: Cast): Promise<Memory> {
+  private async ensureCast(cast: Cast): Promise<Memory> {
     const memoryId = castUuid({ agentId: this.runtime.agentId, hash: cast.hash });
     const conversationId = cast.threadId ?? cast.inReplyTo?.hash ?? cast.hash;
     const entityId = createUniqueUuid(this.runtime, cast.authorFid.toString());
@@ -108,17 +107,19 @@ export class FarcasterInteractionManager {
       worldId,
     });
 
-    await this.runtime.ensureConnection({
-      entityId,
-      roomId,
-      userName: cast.profile.username,
-      name: cast.profile.name,
-      source: FARCASTER_SOURCE,
-      type: ChannelType.THREAD,
-      channelId: conversationId,
-      serverId,
-      worldId,
-    });
+    if (entityId !== this.runtime.agentId) {
+      await this.runtime.ensureConnection({
+        entityId,
+        roomId,
+        userName: cast.profile.username,
+        name: cast.profile.name,
+        source: FARCASTER_SOURCE,
+        type: ChannelType.THREAD,
+        channelId: conversationId,
+        serverId,
+        worldId,
+      });
+    }
 
     const memory: Memory = {
       id: memoryId,
@@ -136,6 +137,8 @@ export class FarcasterInteractionManager {
       roomId,
       createdAt: cast.timestamp.getTime(),
     };
+
+    // no need to store the memory as it'll be stored in bootstrap side
 
     return memory;
   }
@@ -162,7 +165,9 @@ export class FarcasterInteractionManager {
 
       // filter out the agent mentions
       if (mention.authorFid === agentFid) {
-        // FIXME: hish - you still want to save the memory for conversational awareness sake
+        const memory = await this.ensureCast(mention);
+        await this.runtime.addEmbeddingToMemory(memory);
+        await this.runtime.createMemory(memory, 'messages');
         continue;
       }
 
@@ -190,7 +195,7 @@ export class FarcasterInteractionManager {
 
       if (!memory) {
         logger.log('Creating memory for cast', currentCast.hash);
-        const memory = await self.processThreadCast(currentCast);
+        const memory = await self.ensureCast(currentCast);
         await runtime.createMemory(memory, 'messages');
         runtime.emitEvent(FarcasterEventTypes.THREAD_CAST_CREATED, {
           runtime,
@@ -227,7 +232,7 @@ export class FarcasterInteractionManager {
     }
 
     const [memory, thread] = await Promise.all([
-      this.processThreadCast(mention),
+      this.ensureCast(mention),
       this.buildThreadForCast(mention),
     ]);
 
