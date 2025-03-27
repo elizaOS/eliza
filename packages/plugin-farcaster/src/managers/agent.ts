@@ -1,7 +1,7 @@
-import { elizaLogger, type IAgentRuntime } from '@elizaos/core';
+import { logger, type IAgentRuntime } from '@elizaos/core';
 import { Configuration, NeynarAPIClient } from '@neynar/nodejs-sdk';
 import { FarcasterClient } from '../client';
-import { type FarcasterConfig } from '../common/environment';
+import { type FarcasterConfig } from '../common/types';
 import { FarcasterInteractionManager } from './interactions';
 import { FarcasterPostManager } from './post';
 
@@ -15,36 +15,32 @@ export class FarcasterAgentManager {
   readonly client: FarcasterClient;
   readonly posts: FarcasterPostManager;
   readonly interactions: FarcasterInteractionManager;
-  private signerUuid: string;
 
-  constructor(runtime: IAgentRuntime, farcasterConfig: FarcasterConfig) {
+  constructor(runtime: IAgentRuntime, config: FarcasterConfig) {
     const cache = new Map<string, any>();
-    this.signerUuid = farcasterConfig.FARCASTER_NEYNAR_SIGNER_UUID;
+    const signerUuid = config.FARCASTER_NEYNAR_SIGNER_UUID;
 
-    const neynarConfig = new Configuration({ apiKey: farcasterConfig.FARCASTER_NEYNAR_API_KEY });
+    const neynarConfig = new Configuration({ apiKey: config.FARCASTER_NEYNAR_API_KEY });
 
     const neynarClient = new NeynarAPIClient(neynarConfig);
 
-    this.client = new FarcasterClient({
+    const client = new FarcasterClient({
       runtime,
       ssl: true,
-      url: farcasterConfig.FARCASTER_HUB_URL,
+      url: config.FARCASTER_HUB_URL,
       neynar: neynarClient,
-      signerUuid: this.signerUuid,
+      signerUuid,
       cache,
-      farcasterConfig,
+      farcasterConfig: config,
     });
 
-    elizaLogger.success('Farcaster Neynar client initialized.');
+    this.client = client;
 
-    this.posts = new FarcasterPostManager(this.client, runtime, this.signerUuid, cache);
+    logger.success('Farcaster Neynar client initialized.');
 
-    this.interactions = new FarcasterInteractionManager(
-      this.client,
-      runtime,
-      this.signerUuid,
-      cache
-    );
+    this.posts = new FarcasterPostManager({ client, runtime, config });
+
+    this.interactions = new FarcasterInteractionManager(client, runtime, signerUuid, cache);
   }
 
   async start() {

@@ -1,15 +1,15 @@
 import { type IAgentRuntime, elizaLogger } from '@elizaos/core';
 import { type NeynarAPIClient, isApiErrorResponse } from '@neynar/nodejs-sdk';
 import type { NeynarCastResponse, Cast, Profile, FidRequest, CastId } from './common/types';
-import type { FarcasterConfig } from './common/environment';
+import type { FarcasterConfig } from './common/types';
 import { castCacheKey, neynarCastToCast, profileCacheKey } from './common/utils';
 export class FarcasterClient {
-  runtime: IAgentRuntime;
-  neynar: NeynarAPIClient;
-  signerUuid: string;
-  cache: Map<string, any>;
-  lastInteractionTimestamp: Date;
-  farcasterConfig: FarcasterConfig;
+  private runtime: IAgentRuntime;
+  private neynar: NeynarAPIClient;
+  private signerUuid: string;
+  private cache: Map<string, any>;
+  private lastInteractionTimestamp: Date;
+  private farcasterConfig: FarcasterConfig;
 
   constructor(opts: {
     runtime: IAgentRuntime;

@@ -17,7 +17,6 @@ export async function sendCast({
   runtime: IAgentRuntime;
   content: Content;
   roomId: UUID;
-  signerUuid: string;
   inReplyTo?: CastId;
 }): Promise<{ memory: Memory; cast: Cast }[]> {
   const text = (content.text ?? '').trim();

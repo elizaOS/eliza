@@ -1,4 +1,4 @@
-import { parseBooleanFromText, type IAgentRuntime } from '@elizaos/core';
+import { logger, parseBooleanFromText, type IAgentRuntime } from '@elizaos/core';
 import { z, ZodError } from 'zod';
 import { FarcasterConfig, FarcasterConfigSchema } from './types';
 import {
@@ -71,7 +71,31 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
       FARCASTER_HUB_URL: runtime.getSetting('FARCASTER_HUB_URL') ?? 'hub.pinata.cloud',
     };
 
-    return FarcasterConfigSchema.parse(farcasterConfig);
+    const config = FarcasterConfigSchema.parse(farcasterConfig);
+
+    const isDryRun = config.FARCASTER_DRY_RUN;
+
+    // Log configuration on initialization
+
+    logger.log('Farcaster Client Configuration:');
+    logger.log(`- FID: ${config.FARCASTER_FID}`);
+    logger.log(`- Dry Run Mode: ${isDryRun ? 'enabled' : 'disabled'}`);
+    logger.log(`- Enable Post: ${config.ENABLE_POST ? 'enabled' : 'disabled'}`);
+
+    if (config.ENABLE_POST) {
+      logger.log(
+        `- Post Interval: ${config.POST_INTERVAL_MIN}-${config.POST_INTERVAL_MAX} minutes`
+      );
+      logger.log(`- Post Immediately: ${config.POST_IMMEDIATELY ? 'enabled' : 'disabled'}`);
+    }
+    logger.log(`- Action Processing: ${config.ENABLE_ACTION_PROCESSING ? 'enabled' : 'disabled'}`);
+    logger.log(`- Action Interval: ${config.ACTION_INTERVAL} minutes`);
+
+    if (isDryRun) {
+      logger.log('Farcaster client initialized in dry run mode - no actual casts should be posted');
+    }
+
+    return config;
   } catch (error) {
     if (error instanceof ZodError) {
       const errorMessages = error.errors

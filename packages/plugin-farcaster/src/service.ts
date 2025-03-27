@@ -1,4 +1,4 @@
-import { elizaLogger, logger, Service, UUID, type IAgentRuntime } from '@elizaos/core';
+import { logger, Service, UUID, type IAgentRuntime } from '@elizaos/core';
 import { FARCASTER_SERVICE_NAME } from './common/constants';
 import { FarcasterAgentManager } from './managers/agent';
 import { hasFarcasterEnabled, validateFarcasterConfig } from './common/environment';
@@ -36,7 +36,7 @@ export class FarcasterService extends Service {
     service.managers.set(runtime.agentId, manager);
     await manager.start();
 
-    elizaLogger.log('Farcaster client started', runtime.agentId);
+    logger.success('Farcaster client started', runtime.agentId);
     return service;
   }
 
@@ -47,15 +47,15 @@ export class FarcasterService extends Service {
     if (manager) {
       await manager.stop();
       service.managers.delete(runtime.agentId);
-      elizaLogger.log('Farcaster client stopped', runtime.agentId);
+      logger.info('Farcaster client stopped', runtime.agentId);
     } else {
-      logger.warn('Farcaster service not running', runtime.agentId);
+      logger.debug('Farcaster service not running', runtime.agentId);
     }
   }
 
   // Called to stop all Farcaster services
   async stop(): Promise<void> {
-    logger.log('Stopping ALL Farcaster services');
+    logger.debug('Stopping ALL Farcaster services');
     for (const manager of Array.from(this.managers.values())) {
       const agentId = manager.client.runtime.agentId;
       try {
