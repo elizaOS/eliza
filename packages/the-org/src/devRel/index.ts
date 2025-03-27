@@ -168,14 +168,16 @@ const character: Partial<Character> = {
     '@elizaos/plugin-sql',
     '@elizaos/plugin-anthropic',
     '@elizaos/plugin-openai',
-    '@elizaos/plugin-discord',
+    // '@elizaos/plugin-discord',
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',
+    '@elizaos/plugin-telegram',
   ],
   settings: {
     secrets: {
       DISCORD_APPLICATION_ID: process.env.DEV_REL_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.DEV_REL_DISCORD_API_TOKEN,
+      TELEGRAM_BOT_TOKEN: process.env.DEV_REL_TELEGRAM_BOT_TOKEN,
     },
     avatar,
   },

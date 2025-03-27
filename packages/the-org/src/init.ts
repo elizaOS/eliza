@@ -67,6 +67,17 @@ export const initCharacter = async ({
   runtime.registerEvent('DISCORD_SERVER_CONNECTED', async (params: { server: Guild }) => {
     await initializeAllSystems(runtime, [params.server], config);
   });
+
+  // Register runtime events
+  runtime.registerEvent(
+    'TELEGRAM_WORLD_JOINED',
+    async (params: { world: World; entities: any[] }) => {
+      console.log('HOW MANY TIMES ANS WHEN THIS TRIGGERS?');
+      await runtime.ensureWorldExists(params.world);
+      await initializeOnboarding(runtime, params.world, config);
+      await startTGOnboardingDM(runtime, params.world, params.entities);
+    }
+  );
 };
 
 /**
@@ -191,5 +202,124 @@ export async function startOnboardingDM(
   } catch (error) {
     logger.error(`Error starting DM with owner: ${error}`);
     throw error;
+  }
+}
+
+/**
+ * Starts the settings DM with the server owner
+ */
+export async function startTGOnboardingDM(
+  runtime: IAgentRuntime,
+  world: World,
+  entities: any[]
+): Promise<void> {
+  logger.info('startTGOnboardingDM - worldId', world.id);
+
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+
+  try {
+    let ownerId = null;
+    let username = null;
+    let name = null;
+
+    entities.forEach((entity) => {
+      if (entity.metadata?.telegram?.adminTitle === 'Owner') {
+        ownerId = entity?.metadata?.telegram?.id;
+        username = entity?.metadata?.telegram?.username;
+        name = entity?.metadata?.telegram?.name;
+      }
+    });
+
+    if (!ownerId) {
+      logger.warn('no ownerId found');
+    }
+
+    const onboardingMessages = [
+      'Hi! I need to collect some information to get set up. Is now a good time?',
+      'Hey there! I need to configure a few things. Do you have a moment?',
+      'Hello! Could we take a few minutes to get everything set up?',
+    ];
+    const randomMessage = onboardingMessages[Math.floor(Math.random() * onboardingMessages.length)];
+
+    const telegramClient = runtime.getService('telegram') as any;
+
+    // Okay so there is a question now:
+    // Do we have DM room for that entity?
+    // If we have room already created we can do this to dm.
+
+    // But if we don't have room for dm with that entity we need to create one.
+    // Which is kind of a problem because we construct ROOM_ID from chat.id on telegram.
+    // Is there any option to call telegram and see chat.id?
+    // We know that for DM message ownerId = chat.id on telegram!
+    const roomId = createUniqueUuid(runtime, ownerId);
+    const entityId = createUniqueUuid(runtime, ownerId);
+
+    // So as chat.id = ownerId we can create room with that id.
+    // try ensure connection with that entity.
+
+    // First check if entity exists
+    const entity = await runtime.getEntityById(runtime.agentId);
+    if (!entity) {
+      // This is the case if someone else dropped message in group chat but not owner.
+      // tho I think we should already have the owner no matter what for tg.
+      // Unless this was a DM.
+      // From that reason I don't think I should initiate onboarding for DM?
+      logger.warn('no entity found for telegram shitsfucked');
+    }
+
+    // Getting the world id for the owner not for world that sent the message.
+    const worldId = createUniqueUuid(runtime, ownerId);
+    const existingWorld = await runtime.getWorld(worldId);
+    if (!existingWorld) {
+      await runtime.createWorld({
+        id: worldId,
+        name: `Telegram World for ${username}`,
+        serverId: ownerId,
+        agentId: runtime.agentId,
+        metadata: {
+          roles: {
+            [ownerId]: Role.OWNER,
+          },
+          source: 'telegram',
+          ownership: {
+            ownerId: ownerId,
+          },
+        },
+      });
+    }
+
+    // Directly create room.
+    const room = await runtime.getRoom(roomId);
+    if (!room) {
+      await runtime.createRoom({
+        id: roomId,
+        name: `Chat with ${username}`,
+        source: 'telegram',
+        type: ChannelType.DM,
+        channelId: ownerId,
+        serverId: ownerId,
+        worldId: world.id,
+      });
+    }
+
+    await runtime.createMemory(
+      {
+        agentId: runtime.agentId,
+        entityId: runtime.agentId,
+        roomId,
+        content: {
+          text: randomMessage,
+          actions: ['BEGIN_ONBOARDING'],
+        },
+        createdAt: Date.now(),
+      },
+      'messages'
+    );
+
+    await telegramClient.messageManager.sendMessage(ownerId, { text: randomMessage });
+
+    logger.info(`Started onboarding DM with Telegram user ${ownerId} for world ${world.id}`);
+  } catch (error) {
+    logger.error(`Error starting Telegram onboarding DM:`, error);
   }
 }

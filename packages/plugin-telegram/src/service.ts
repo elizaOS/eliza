@@ -207,12 +207,31 @@ export class TelegramService extends Service {
         channelType = ChannelType.GROUP;
     }
 
-    // Ensure chatId is properly formatted for UUID creation by removing negative sign if present
-    const formattedChatId = chatId.startsWith('-') ? chatId.substring(1) : chatId;
-
     // Create standardized world data
-    const worldId = createUniqueUuid(this.runtime, formattedChatId) as UUID;
-    const roomId = createUniqueUuid(this.runtime, formattedChatId) as UUID;
+    const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
+    const userId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
+
+    const existingWorld = await this.runtime.getWorld(worldId);
+    const existingEntity = await this.runtime.getEntityById(userId);
+    const existingRoom = await this.runtime.getRoom(createUniqueUuid(this.runtime, chatId) as UUID);
+
+    if (existingEntity && existingRoom && existingWorld) {
+      logger.info('world already exists for this chat, skipping');
+      this.setupEntityTracking(chat.id);
+      return;
+    }
+
+    let admins = [];
+    let owner = null;
+    if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
+      admins = await ctx.getChatAdministrators();
+      owner = admins.find((admin) => admin.status === 'creator');
+    }
+
+    let ownerId = userId;
+    if (owner) {
+      ownerId = createUniqueUuid(this.runtime, String(owner.user.id)) as UUID;
+    }
 
     // Build world representation
     const world: World = {
@@ -222,22 +241,11 @@ export class TelegramService extends Service {
       serverId: chatId,
       metadata: {
         source: 'telegram',
-        ownership: { ownerId: chatId },
+        ownership: { ownerId },
         roles: {
-          [chatId]: Role.OWNER,
+          [ownerId]: Role.OWNER,
         },
       },
-    };
-
-    // Build room representation
-    const room: Room = {
-      id: roomId,
-      name: chatTitle,
-      source: 'telegram',
-      type: channelType,
-      channelId: chatId,
-      serverId: chatId,
-      worldId: worldId,
     };
 
     // Build users list
@@ -306,7 +314,7 @@ export class TelegramService extends Service {
     const worldPayload = {
       runtime: this.runtime,
       world,
-      rooms: [room],
+      rooms: [...(await this.buildStandardizedForumRooms(chat, worldId))],
       entities: users,
       source: 'telegram',
     };
@@ -355,6 +363,83 @@ export class TelegramService extends Service {
         logger.error('Error handling reaction:', error);
       }
     });
+  }
+
+  /**
+   * Build standardized rooms for a forum chat
+   * @param {any} chat - The forum chat object
+   * @param {UUID} worldId - The world ID
+   * @returns {Promise<any[]>} - An array of standardized room objects
+   */
+  private async buildStandardizedForumRooms(chat: any, worldId: UUID): Promise<Room[]> {
+    const rooms: Room[] = [];
+    const chatId = chat.id.toString();
+
+    try {
+      const generalRoomId = createUniqueUuid(this.runtime, chatId) as UUID;
+      console.log('GENERAL ROOM ID', generalRoomId);
+      rooms.push({
+        id: generalRoomId,
+        name: `${chat.title} (General)`,
+        source: 'telegram',
+        type: ChannelType.GROUP,
+        channelId: chatId,
+        serverId: chatId,
+        worldId: worldId,
+        metadata: {
+          isGeneral: true,
+        },
+      });
+
+      // Try to get forum topics if available
+      if (chat.type === 'supergroup' || chat.type === 'channel') {
+        try {
+          // Safely try to get forum topics with type assertion
+          const telegramApi = this.bot.telegram as any;
+          if (
+            typeof telegramApi.getForumTopicInfo === 'function' &&
+            typeof telegramApi.getForumTopics === 'function'
+          ) {
+            const forumTopics = await telegramApi.getForumTopics(parseInt(chatId));
+
+            if (forumTopics && forumTopics.topics && Array.isArray(forumTopics.topics)) {
+              for (const topic of forumTopics.topics) {
+                if (!topic.message_thread_id) continue;
+
+                const topicId = topic.message_thread_id.toString();
+                const topicRoomId = createUniqueUuid(this.runtime, topicId) as UUID;
+
+                const topicName = topic.title;
+                const topicMetadata = topic;
+
+                rooms.push({
+                  id: topicRoomId,
+                  name: topicName,
+                  source: 'telegram',
+                  type: ChannelType.GROUP,
+                  channelId: topicId,
+                  serverId: chatId,
+                  worldId: worldId,
+                  metadata: {
+                    ...topicMetadata,
+                    topicId,
+                    parentChatId: chatId,
+                    isTopic: true,
+                  },
+                });
+              }
+            }
+          }
+        } catch (error) {
+          logger.warn(`Could not get forum topics: ${error}`);
+          // Continue with just the general room if we can't get topics
+        }
+      }
+    } catch (error) {
+      logger.error(`Error building standardized forum rooms: ${error}`);
+    }
+
+    return rooms;
   }
 
   /**
