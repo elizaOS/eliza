@@ -1,10 +1,10 @@
-import { Content, type IAgentRuntime, elizaLogger } from '@elizaos/core';
+import { Content, elizaLogger } from '@elizaos/core';
 import { type NeynarAPIClient, isApiErrorResponse } from '@neynar/nodejs-sdk';
 import { CastParamType } from '@neynar/nodejs-sdk/build/api/models/cast-param-type';
 import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api/models/cast-with-interactions';
 import { LRUCache } from 'lru-cache';
 import { DEFAULT_CAST_CACHE_SIZE, DEFAULT_CAST_CACHE_TTL } from './common/constants';
-import type { Cast, CastId, FarcasterConfig, FidRequest, Profile } from './common/types';
+import type { Cast, CastId, FidRequest, Profile } from './common/types';
 import { neynarCastToCast, splitPostContent } from './common/utils';
 
 // add global cast cache
@@ -20,22 +20,11 @@ const profileCache: LRUCache<number, Profile> = new LRUCache({
 });
 
 export class FarcasterClient {
-  private runtime: IAgentRuntime;
   private neynar: NeynarAPIClient;
   private signerUuid: string;
-  private farcasterConfig: FarcasterConfig;
-  constructor(opts: {
-    runtime: IAgentRuntime;
-    url: string;
-    ssl: boolean;
-    neynar: NeynarAPIClient;
-    signerUuid: string;
-    farcasterConfig: FarcasterConfig;
-  }) {
-    this.runtime = opts.runtime;
+  constructor(opts: { neynar: NeynarAPIClient; signerUuid: string }) {
     this.neynar = opts.neynar;
     this.signerUuid = opts.signerUuid;
-    this.farcasterConfig = opts.farcasterConfig;
   }
 
   async sendCast({
@@ -118,42 +107,33 @@ export class FarcasterClient {
       return profileCache.get(fid) as Profile;
     }
 
-    const result = await this.neynar.fetchBulkUsers({ fids: [fid] });
-    if (!result.users || result.users.length < 1) {
-      elizaLogger.error('Error fetching user by fid');
+    try {
+      const result = await this.neynar.fetchBulkUsers({ fids: [fid] });
+      if (!result.users || result.users.length < 1) {
+        elizaLogger.error('Error fetching user by fid');
+        throw new Error('Profile fetch failed');
+      }
 
-      throw 'getProfile ERROR';
+      const neynarUserProfile = result.users[0];
+
+      const profile: Profile = {
+        fid,
+        name: '',
+        username: '',
+      };
+
+      profile.name = neynarUserProfile.display_name!;
+      profile.username = neynarUserProfile.username;
+      profile.bio = neynarUserProfile.profile.bio.text;
+      profile.pfp = neynarUserProfile.pfp_url;
+
+      profileCache.set(fid, profile);
+
+      return profile;
+    } catch (error) {
+      elizaLogger.error('Error fetching profile:', error);
+      throw error;
     }
-
-    const neynarUserProfile = result.users[0];
-
-    const profile: Profile = {
-      fid,
-      name: '',
-      username: '',
-    };
-
-    /*
-        const userDataBodyType = {
-            1: "pfp",
-            2: "name",
-            3: "bio",
-            5: "url",
-            6: "username",
-            // 7: "location",
-            // 8: "twitter",
-            // 9: "github",
-        } as const;
-        */
-
-    profile.name = neynarUserProfile.display_name!;
-    profile.username = neynarUserProfile.username;
-    profile.bio = neynarUserProfile.profile.bio.text;
-    profile.pfp = neynarUserProfile.pfp_url;
-
-    profileCache.set(fid, profile);
-
-    return profile;
   }
 
   async getTimeline(request: FidRequest): Promise<{
@@ -178,5 +158,10 @@ export class FarcasterClient {
       timeline,
       cursor: nextCursor,
     };
+  }
+
+  clearCache(): void {
+    profileCache.clear();
+    castCache.clear();
   }
 }

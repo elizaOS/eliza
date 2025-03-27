@@ -1,10 +1,5 @@
 import { Memory, MessagePayload } from '@elizaos/core';
-import {
-  DEFAULT_CAST_CACHE_SIZE,
-  DEFAULT_CAST_CACHE_TTL,
-  DEFAULT_MAX_CAST_LENGTH,
-  DEFAULT_POLL_INTERVAL,
-} from './constants';
+import { DEFAULT_MAX_CAST_LENGTH, DEFAULT_POLL_INTERVAL } from './constants';
 
 import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api/models/cast-with-interactions';
 import { z } from 'zod';
@@ -29,6 +24,11 @@ export type Cast = {
     fid: number;
   };
   timestamp: Date;
+  stats?: {
+    recasts: number;
+    replies: number;
+    likes: number;
+  };
 };
 
 export type CastId = {

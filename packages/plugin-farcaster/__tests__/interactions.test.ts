@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createTestInteraction, handleTestInteraction } from './test-utils';
-import { FarcasterClient } from '../src/client';
 import { NeynarAPIClient } from '@neynar/nodejs-sdk';
-import type { Cast, Profile } from '../src/types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { FarcasterClient } from '../src/client';
+import type { Cast, Profile } from '../src/common/types';
+import { createTestInteraction, handleTestInteraction } from './test-utils';
 
 // Mock dependencies
 vi.mock('@neynar/nodejs-sdk', () => ({
@@ -30,19 +30,19 @@ vi.mock('@neynar/nodejs-sdk', () => ({
         },
       });
     }),
-    fetchBulkUsers: vi.fn().mockResolvedValue({
-      users: [
-        {
-          fid: '123',
-          username: 'test.farcaster',
-          display_name: 'Test User',
-          pfp: {
-            url: 'https://example.com/pic.jpg',
-          },
-        },
-      ],
+    lookupCastByHashOrWarpcastUrl: vi.fn().mockResolvedValue({
+      cast: {
+        hash: 'cast-1',
+        author: { fid: '123' },
+        text: 'Test cast',
+        timestamp: '2025-01-20T20:00:00Z',
+      },
     }),
   })),
+  CastParamType: {
+    Hash: 'hash',
+  },
+  isApiErrorResponse: vi.fn().mockReturnValue(false),
 }));
 
 describe('Interactions', () => {

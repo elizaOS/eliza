@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos-plugins/client-farcaster",
+  "name": "@elizaos/plugin-farcaster",
   "version": "0.25.6-alpha.1",
   "type": "module",
   "main": "dist/index.js",

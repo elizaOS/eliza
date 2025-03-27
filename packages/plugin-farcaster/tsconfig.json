@@ -2,7 +2,7 @@
   "compilerOptions": {
     "jsx": "react",
     "outDir": "dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "strict": true,
     "lib": ["ESNext", "dom"],
     "module": "Preserve",
@@ -21,5 +21,5 @@
     "moduleDetection": "force",
     "allowArbitraryExtensions": true
   },
-  "include": ["src", "__tests__/test-utils.ts"]
+  "include": ["src", "__tests__"]
 }

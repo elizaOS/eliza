@@ -23,16 +23,9 @@ export class FarcasterAgentManager {
 
     const neynarConfig = new Configuration({ apiKey: config.FARCASTER_NEYNAR_API_KEY });
 
-    const neynarClient = new NeynarAPIClient(neynarConfig);
+    const neynar = new NeynarAPIClient(neynarConfig);
 
-    const client = new FarcasterClient({
-      runtime,
-      ssl: true,
-      url: config.FARCASTER_HUB_URL,
-      neynar: neynarClient,
-      signerUuid,
-      farcasterConfig: config,
-    });
+    const client = new FarcasterClient({ neynar, signerUuid });
 
     this.client = client;
 
