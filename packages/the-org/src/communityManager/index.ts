@@ -30,12 +30,12 @@ export const character: Character = {
   name: 'Eliza',
   plugins: [
     '@elizaos/plugin-sql',
-    // '@elizaos/plugin-anthropic',
+    '@elizaos/plugin-anthropic',
     '@elizaos/plugin-openai',
     '@elizaos/plugin-discord',
-    // '@elizaos/plugin-twitter',
-    // '@elizaos/plugin-pdf',
-    // '@elizaos/plugin-video-understanding',
+    '@elizaos/plugin-twitter',
+    '@elizaos/plugin-pdf',
+    '@elizaos/plugin-video-understanding',
   ],
   settings: {
     secrets: {
