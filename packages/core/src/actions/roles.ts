@@ -24,6 +24,13 @@ import dedent from 'dedent';
  * @param newRole The new role to assign
  * @returns Whether the role change is allowed
  */
+/**
+ * Determines if a user with a given current role can modify the role of another user to a new role.
+ * @param {Role} currentRole - The current role of the user attempting to modify the other user's role.
+ * @param {Role | null} targetRole - The target user's current role. Can be null if the user does not exist.
+ * @param {Role} newRole - The new role that the current user is attempting to set for the target user.
+ * @returns {boolean} Returns true if the user can modify the role, false otherwise.
+ */
 const canModifyRole = (currentRole: Role, targetRole: Role | null, newRole: Role): boolean => {
   // User's can't change their own role
   if (targetRole === currentRole) return false;

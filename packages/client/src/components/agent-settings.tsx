@@ -1,10 +1,9 @@
 import CharacterForm from '@/components/character-form';
-import { useToast } from '@/hooks/use-toast';
 import { useAgentUpdate } from '@/hooks/use-agent-update';
+import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api';
 import type { Agent, UUID } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
@@ -17,9 +16,6 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
 
   // Use our enhanced agent update hook for more intelligent handling of JSONb fields
   const agentState = useAgentUpdate(agent);
-
-  // Log whenever agent state changes
-  useEffect(() => {}, [agentState.agent]);
 
   const handleSubmit = async () => {
     try {
@@ -111,7 +107,7 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
             <SecretPanel
               characterValue={agentState.agent}
               onChange={(updatedAgent) => {
-                if (updatedAgent.settings && updatedAgent.settings.secrets) {
+                if (updatedAgent.settings?.secrets) {
                   // Create a new settings object with the updated secrets
                   const updatedSettings = {
                     ...agentState.agent.settings,

@@ -11,6 +11,10 @@ import type { Evaluator, HandlerCallback, IAgentRuntime, Memory, State } from '.
  * Array of mock evaluators.
  * @type {Evaluator[]}
  */
+/**
+ * Array of mock evaluators for testing purposes.
+ * @type {Evaluator[]}
+ */
 const mockEvaluators: Evaluator[] = [
   {
     name: 'Evaluator1',

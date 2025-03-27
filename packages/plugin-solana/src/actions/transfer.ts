@@ -49,21 +49,15 @@ function isTransferContent(content: TransferContent): boolean {
   logger.log('Content for transfer', content);
 
   // Base validation
-  if (!content.recipient || typeof content.recipient !== 'string') {
+  if (!content.recipient || typeof content.recipient !== 'string' || !content.amount) {
     return false;
   }
 
-  // SOL transfer validation
-  if (content.tokenAddress === null) {
-    return typeof content.amount === 'number';
+  if (content.tokenAddress === 'null') {
+    content.tokenAddress = null;
   }
 
-  // SPL token transfer validation
-  if (typeof content.tokenAddress === 'string') {
-    return typeof content.amount === 'string' || typeof content.amount === 'number';
-  }
-
-  return false;
+  return typeof content.amount === 'string' || typeof content.amount === 'number';
 }
 
 /**

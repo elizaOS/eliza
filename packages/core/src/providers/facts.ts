@@ -6,6 +6,12 @@ import { type IAgentRuntime, type Memory, ModelType, type Provider, type State }
  * @param {Memory[]} facts - An array of Memory objects to be formatted.
  * @returns {string} A single string containing all memory content text with new lines separating each text.
  */
+/**
+ * Formats an array of Memory objects into a string, joining them with newlines.
+ *
+ * @param {Memory[]} facts - An array of Memory objects to format.
+ * @returns {string} The formatted string with each Memory object's text joined by newlines.
+ */
 function formatFacts(facts: Memory[]) {
   return facts
     .reverse()
