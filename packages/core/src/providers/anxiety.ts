@@ -8,6 +8,12 @@ import { ChannelType } from '../types';
  *
  * @type {Provider}
  */
+/**
+ * Function that provides anxiety-related guidance for the AI based on the channel type.
+ * @param {IAgentRuntime} _runtime - The runtime environment for the AI agent
+ * @param {Memory} message - The message containing information about the channel type
+ * @returns {Object} - Object containing randomized anxiety examples, anxiety text, and formatted data
+ */
 export const anxietyProvider: Provider = {
   name: 'ANXIETY',
   description: 'Social directions for the AI to follow based on the channel type',

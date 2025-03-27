@@ -16,6 +16,11 @@ const nameConfig: Config = {
  * Each message example includes the sender's name, agent's name, and the expected response type.
  * Examples can include requests for help, questions, stories, or simple interactions like saying "marco".
  */
+/**
+ * Array of message examples to determine the agent response.
+ * Each message example includes a conversation between the user and the agent,
+ * as well as the expected response action for the agent (RESPOND, IGNORE, STOP).
+ */
 const messageExamples = [
   // Examples where agent should RESPOND
   `// {{name1}}: Hey {{agentName}}, can you help me with something

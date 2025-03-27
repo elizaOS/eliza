@@ -20,6 +20,14 @@ import {
  * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
  * @returns {Promise<Memory[]>} A promise that resolves to an array of Memory objects representing recent interactions.
  */
+/**
+ * Retrieves the recent interactions between two entities in different rooms excluding a specific room.
+ * @param {IAgentRuntime} runtime - The agent runtime object.
+ * @param {UUID} sourceEntityId - The UUID of the source entity.
+ * @param {UUID} targetEntityId - The UUID of the target entity.
+ * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
+ * @returns {Promise<Memory[]>} An array of Memory objects representing recent interactions between the two entities.
+ */
 const getRecentInteractions = async (
   runtime: IAgentRuntime,
   sourceEntityId: UUID,

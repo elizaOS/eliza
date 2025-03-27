@@ -8,11 +8,13 @@ on:
         required: true
         default: 'T'
         type: string
+        options: [T, F]
       readme:
         description: 'Generate README documentation (T/F)'
         required: true
         default: 'T'
         type: string
+        options: [T, F]
       pull_number:
         description: 'Pull Request Number (if not provided, scans root_directory) - PR must be merged to develop branch. DONT provide if `README documentation` is T from above'
         required: false
@@ -41,9 +43,14 @@ on:
 jobs:
   generate-docs:
     runs-on: ubuntu-latest
+    container: debian:bullseye # Use Debian 11 as the execution environment
+
+    permissions:
+      contents: write
+      pull-requests: write
 
     env:
-      GITHUB_ACCESS_TOKEN: ${{ secrets.AUTODOCS_GITHUB }}
+      GITHUB_ACCESS_TOKEN: ${{ secrets.GH_PAT }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
@@ -52,10 +59,31 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '23'
+      - name: Install Node.js
+        run: |
+          apt-get update
+          apt-get install -y curl
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get install -y nodejs
+          node -v
+
+      - name: Install Python
+        run: |
+          apt-get update
+          apt-get install -y curl software-properties-common
+          apt-get install -y python3 python3-dev python3-venv python3-pip
+          python3 --version
+          which python3
+
+      - name: Install system dependencies
+        run: |
+          apt-get update -y
+          apt-get install -y --no-install-recommends \
+            git \
+            make \
+            build-essential \
+            unzip
+
       - name: Install bun
         uses: oven-sh/setup-bun@v2
 
@@ -74,10 +102,10 @@ jobs:
         working-directory: packages/autodoc
         run: bun run autodoc
         env:
-          INPUT_ROOT_DIRECTORY: ${{ inputs.root_directory }}
-          INPUT_PULL_NUMBER: ${{ inputs.pull_number }}
-          INPUT_EXCLUDED_DIRECTORIES: ${{ inputs.excluded_directories }}
-          INPUT_REVIEWERS: ${{ inputs.reviewers }}
-          INPUT_BRANCH: ${{ inputs.branch }}
-          INPUT_JSDOC: ${{ inputs.jsdoc }}
-          INPUT_README: ${{ inputs.readme }}
+          INPUT_ROOT_DIRECTORY: ${{ github.event.inputs.root_directory }}
+          INPUT_PULL_NUMBER: ${{ github.event.inputs.pull_number }}
+          INPUT_EXCLUDED_DIRECTORIES: ${{ github.event.inputs.excluded_directories }}
+          INPUT_REVIEWERS: ${{ github.event.inputs.reviewers }}
+          INPUT_BRANCH: ${{ github.event.inputs.branch }}
+          INPUT_JSDOC: ${{ github.event.inputs.jsdoc }}
+          INPUT_README: ${{ github.event.inputs.readme }}

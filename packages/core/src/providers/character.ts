@@ -8,6 +8,13 @@ import { ChannelType, type IAgentRuntime, type Memory, type Provider, type State
  * @property {string} description - Description of the character information.
  * @property {Function} get - Async function to get character information.
  */
+/**
+ * Provides character information.
+ * @param {IAgentRuntime} runtime - The agent runtime.
+ * @param {Memory} message - The message memory.
+ * @param {State} state - The state of the character.
+ * @returns {Object} Object containing values, data, and text sections.
+ */
 export const characterProvider: Provider = {
   name: 'CHARACTER',
   description: 'Character information',

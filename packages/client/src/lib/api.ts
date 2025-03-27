@@ -507,4 +507,38 @@ export const apiClient = {
       method: 'DELETE',
     });
   },
+
+  getLocalEnvs: () => {
+    return fetcher({
+      url: `/envs/local`,
+      method: 'GET',
+    });
+  },
+
+  updateLocalEnvs: (envs: Record<string, string>) => {
+    return fetcher({
+      url: `/envs/local`,
+      method: 'POST',
+      body: {
+        content: envs,
+      },
+    });
+  },
+
+  getGlobalEnvs: () => {
+    return fetcher({
+      url: `/envs/global`,
+      method: 'GET',
+    });
+  },
+
+  updateGlobalEnvs: (envs: Record<string, string>) => {
+    return fetcher({
+      url: `/envs/global`,
+      method: 'POST',
+      body: {
+        content: envs,
+      },
+    });
+  },
 };
