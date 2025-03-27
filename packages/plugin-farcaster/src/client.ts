@@ -8,7 +8,6 @@ export class FarcasterClient {
   private neynar: NeynarAPIClient;
   private signerUuid: string;
   private cache: Map<string, any>;
-  private lastInteractionTimestamp: Date;
   private farcasterConfig: FarcasterConfig;
 
   constructor(opts: {
@@ -24,7 +23,6 @@ export class FarcasterClient {
     this.runtime = opts.runtime;
     this.neynar = opts.neynar;
     this.signerUuid = opts.signerUuid;
-    this.lastInteractionTimestamp = new Date();
     this.farcasterConfig = opts.farcasterConfig;
   }
 

@@ -42,7 +42,7 @@ export class FarcasterAgentManager {
 
     this.posts = new FarcasterPostManager({ client, runtime, config });
 
-    this.interactions = new FarcasterInteractionManager(client, runtime, signerUuid, cache);
+    this.interactions = new FarcasterInteractionManager({ client, runtime, config });
   }
 
   async start() {

@@ -10,9 +10,8 @@ import {
   ChannelType,
 } from '@elizaos/core';
 import type { FarcasterClient } from '../client';
-import { toHex } from 'viem';
-import { buildConversationThread, createCastMemory } from '../memory';
-import type { Cast, Profile } from '../common/types';
+import { createCastMemory } from '../memory';
+import type { Cast, FarcasterConfig, Profile } from '../common/types';
 import {
   formatCast,
   formatTimeline,
@@ -23,44 +22,57 @@ import { castUuid } from '../common/utils';
 import { sendCast } from '../actions';
 import { FARCASTER_SOURCE } from '../common/constants';
 
+interface FarcasterInteractionParams {
+  client: FarcasterClient;
+  runtime: IAgentRuntime;
+  config: FarcasterConfig;
+}
+
 export class FarcasterInteractionManager {
-  private timeout: NodeJS.Timeout | undefined;
-  constructor(
-    public client: FarcasterClient,
-    public runtime: IAgentRuntime,
-    private signerUuid: string,
-    public cache: Map<string, any>
-  ) {}
+  private timeout: ReturnType<typeof setTimeout> | undefined;
+  private isRunning: boolean = false;
+  private client: FarcasterClient;
+  private runtime: IAgentRuntime;
+  private config: FarcasterConfig;
+
+  constructor(opts: FarcasterInteractionParams) {
+    this.client = opts.client;
+    this.runtime = opts.runtime;
+    this.config = opts.config;
+  }
 
   public async start() {
-    const handleInteractionsLoop = async () => {
-      try {
-        await this.handleInteractions();
-      } catch (error) {
-        elizaLogger.error(error);
-      }
+    if (this.isRunning) {
+      return;
+    }
 
-      // Always set up next check, even if there was an error
-      this.timeout = setTimeout(
-        handleInteractionsLoop,
-        Number(this.client.farcasterConfig?.FARCASTER_POLL_INTERVAL ?? 120) * 1000 // Default to 2 minutes
-      );
-    };
+    this.isRunning = true;
 
-    handleInteractionsLoop();
+    // never await this, it will block forever
+    void this.runPeriodically();
   }
 
   public async stop() {
     if (this.timeout) clearTimeout(this.timeout);
+    this.isRunning = false;
+  }
+
+  private async runPeriodically(): Promise<void> {
+    while (this.isRunning) {
+      try {
+        await this.handleInteractions();
+
+        // now sleep for the configured interval
+        const delay = this.config.FARCASTER_POLL_INTERVAL * 1000;
+        await new Promise((resolve) => (this.timeout = setTimeout(resolve, delay)));
+      } catch (error) {
+        logger.error('[Farcaster] Error in periodic interactions:', this.runtime.agentId, error);
+      }
+    }
   }
 
   private async handleInteractions() {
-    const agentFid = this.client.farcasterConfig?.FARCASTER_FID ?? 0;
-    if (!agentFid) {
-      elizaLogger.info('No FID found, skipping interactions');
-      return;
-    }
-
+    const agentFid = this.config.FARCASTER_FID;
     const mentions = await this.client.getMentions({
       fid: agentFid,
       pageSize: 30,
@@ -156,8 +168,6 @@ export class FarcasterInteractionManager {
       //   thread,
       // });
     }
-
-    this.client.lastInteractionTimestamp = new Date();
   }
 
   private async handleCast({

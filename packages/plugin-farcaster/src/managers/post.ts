@@ -42,10 +42,6 @@ export class FarcasterPostManager {
 
     this.isRunning = true;
 
-    if (this.config.POST_IMMEDIATELY) {
-      await this.generateNewCast();
-    }
-
     // never await this, it will block forever
     void this.runPeriodically();
   }
@@ -64,6 +60,10 @@ export class FarcasterPostManager {
   }
 
   private async runPeriodically(): Promise<void> {
+    if (this.config.POST_IMMEDIATELY) {
+      await this.generateNewCast();
+    }
+
     while (this.isRunning) {
       try {
         const lastPost = await this.runtime.getCache<LastCast>(lastCastCacheKey(this.fid));
@@ -77,7 +77,7 @@ export class FarcasterPostManager {
         logger.log(`Next cast scheduled in ${randomMinutes} minutes`);
         await new Promise((resolve) => (this.timeout = setTimeout(resolve, delay)));
       } catch (error) {
-        logger.error('Error running periodically:', this.runtime.agentId, error);
+        logger.error('[Farcaster] Error in periodic post:', this.runtime.agentId, error);
       }
     }
   }
