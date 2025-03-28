@@ -4,9 +4,7 @@ import {
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
-  type InvokePayload,
   type Memory,
-  ModelType,
   type UUID,
   createUniqueUuid,
   logger,
@@ -358,7 +356,8 @@ export class TwitterPostClient {
         worldId,
         userId,
         roomId,
-      } as InvokePayload);
+        source: 'twitter',
+      });
     } catch (error) {
       logger.error('Error generating tweet:', error);
     }
