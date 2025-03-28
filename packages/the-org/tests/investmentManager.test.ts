@@ -1,147 +1,110 @@
-import { describe, expect, it } from 'vitest';
-import { v4 as uuidv4 } from 'uuid';
-import { UUID } from '@elizaos/core';
-import { investmentManager } from '../src/investmentManager';
-import { createTestMessage } from './setup';
+// tests/investmentManager.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { InvestmentManagerTestSuite } from './test_suites/investmentManagerTestSuite';
+import type { IAgentRuntime } from '@elizaos/core';
 
-describe('Investment Manager Character Verification', () => {
-  // Verify the character's expected responses to investment management scenarios
-  it('should have appropriate message examples for various investment scenarios', () => {
-    // Get all message examples from the character
-    const { messageExamples } = investmentManager.character;
-    
-    expect(messageExamples).toBeDefined();
-    if (!messageExamples) return; // Satisfy type checker
-    
-    expect(Array.isArray(messageExamples)).toBe(true);
-    
-    // Look for examples related to investments or financial analysis
-    const investmentExamples = messageExamples.filter(conversation => {
-      const text = JSON.stringify(conversation).toLowerCase();
-      return text.includes('invest') || text.includes('market') || text.includes('portfolio');
-    });
-    expect(investmentExamples.length).toBeGreaterThan(0);
-    
-    // Look for examples about risk management or decision making
-    const riskExamples = messageExamples.filter(conversation => {
-      const text = JSON.stringify(conversation).toLowerCase();
-      return text.includes('risk') || text.includes('analysis') || text.includes('decision');
-    });
-    expect(riskExamples.length).toBeGreaterThan(0);
+describe('InvestmentManagerTestSuite', () => {
+  let mockScenarioService: any;
+  let mockRuntime: IAgentRuntime;
+
+  beforeEach(() => {
+    mockScenarioService = {
+      createWorld: vi.fn().mockResolvedValue('world-id'),
+      createRoom: vi.fn().mockResolvedValue('room-id'),
+      addParticipant: vi.fn().mockResolvedValue(true),
+      sendMessage: vi.fn().mockResolvedValue(true),
+      waitForCompletion: vi.fn().mockResolvedValue(true),
+    };
+
+    mockRuntime = {
+      getService: vi.fn().mockReturnValue(mockScenarioService),
+      agentId: 'agent-id',
+    } as unknown as IAgentRuntime;
   });
-  
-  it('should focus on investment management in its bio and system description', () => {
-    const { bio, system } = investmentManager.character;
-    
-    // Verify bio contains investment focus
-    expect(bio).toBeDefined();
-    if (!bio) return; // Satisfy type checker
-    
-    expect(Array.isArray(bio) || typeof bio === 'string').toBe(true);
-    const combinedBio = typeof bio === 'string' ? bio : bio.join(' ');
-    const bioText = combinedBio.toLowerCase();
-    expect(bioText).toMatch(/invest|portfolio|market|financ|asset|analysis/);
-    
-    // Verify system description focuses on investment management
-    expect(system).toBeDefined();
-    if (!system) return; // Satisfy type checker
-    
-    const systemDescription = system.toLowerCase();
-    expect(systemDescription).toMatch(/invest|portfolio|market|financ|asset|analysis/);
-  });
-  
-  it('should have the correct plugins configured for investment management', () => {
-    const { plugins } = investmentManager.character;
-    
-    expect(plugins).toBeDefined();
-    if (!plugins) return; // Satisfy type checker
-    
-    // Verify essential plugins for investment management
-    expect(plugins.some(p => p.includes('openai') || p.includes('anthropic'))).toBe(true);
-    
-    // Should include finance-related plugins if available
-    const hasFinancePlugins = plugins.some(p => 
-      p.includes('investor') || 
-      p.includes('evm') || 
-      p.includes('solana') || 
-      p.includes('finance')
-    );
-    
-    // This expectation is conditional as the finance plugins might be under a different name
-    if (hasFinancePlugins) {
-      expect(hasFinancePlugins).toBe(true);
-    }
-  });
-  
-  it('should simulate responses to investment-related queries', () => {
-    const testRoomId = uuidv4() as UUID;
-    const userEntityId = uuidv4() as UUID;
-    
-    // Create test messages
-    const marketQuery = createTestMessage({
-      text: `@${investmentManager.character.name} What's your analysis of the current market conditions?`,
-      entityId: userEntityId,
-      roomId: testRoomId,
-      userName: 'TestUser'
+
+  describe('Core Investment Functions', () => {
+    it('should handle portfolio rebalancing', async () => {
+      const testSuite = new InvestmentManagerTestSuite();
+      const test = testSuite.tests.find(t => t.name === 'Test Portfolio Rebalancing');
+
+      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
+      expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Portfolio Test', 'Test Investor');
+      expect(mockScenarioService.createRoom).toHaveBeenCalledWith('world-id', 'trading');
+      expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
+        mockRuntime,
+        'world-id',
+        'room-id',
+        "Rebalance portfolio to 60% equities and 40% bonds"
+      );
     });
-    
-    const portfolioQuery = createTestMessage({
-      text: `@${investmentManager.character.name} How should I diversify my investment portfolio?`,
-      entityId: userEntityId,
-      roomId: testRoomId,
-      userName: 'TestUser'
+
+    it('should execute trades correctly', async () => {
+      const testSuite = new InvestmentManagerTestSuite();
+      const test = testSuite.tests.find(t => t.name === 'Test Trade Execution');
+
+      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
+      expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Trading Test', 'Test Trader');
     });
-    
-    // Verify messages are correctly formatted for the character
-    expect(marketQuery.content?.text).toContain(investmentManager.character.name);
-    expect(marketQuery.content?.text).toMatch(/analysis|market/i);
-    
-    expect(portfolioQuery.content?.text).toContain(investmentManager.character.name);
-    expect(portfolioQuery.content?.text).toMatch(/diversify|portfolio|investment/i);
   });
-  
-  it('should have investment analysis capabilities', () => {
-    // Check if the investmentManager has init function
-    expect(investmentManager.init).toBeDefined();
-    
-    // Try to access investment-related functionality
-    try {
-      // Check for investment-related settings
-      const config = investmentManager as unknown as { config?: any };
-      if (config && config.config && config.config.settings) {
-        const settings = config.config.settings;
-        // Look for investment settings
-        const hasInvestmentSettings = Object.keys(settings).some(key => 
-          key.toLowerCase().includes('invest') || 
-          key.toLowerCase().includes('portfolio') || 
-          key.toLowerCase().includes('market') ||
-          key.toLowerCase().includes('asset')
-        );
-        if (hasInvestmentSettings) {
-          expect(hasInvestmentSettings).toBe(true);
-        }
-      }
-      
-      // Look for investment-related plugins in the module
-      const plugins = investmentManager as unknown as { 
-        plugins?: any[] 
+
+  describe('Risk Management', () => {
+    it('should perform risk assessments', async () => {
+      const testSuite = new InvestmentManagerTestSuite();
+      const test = testSuite.tests.find(t => t.name === 'Test Risk Assessment');
+
+      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
+      expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
+        mockRuntime,
+        'world-id',
+        'room-id',
+        "Analyze portfolio risk exposure and suggest mitigation strategies"
+      );
+    });
+  });
+
+  describe('Compliance Checks', () => {
+    it('should verify regulatory compliance', async () => {
+      const testSuite = new InvestmentManagerTestSuite();
+      const test = testSuite.tests.find(t => t.name === 'Test Compliance Check');
+
+      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
+      expect(mockScenarioService.createRoom).toHaveBeenCalledWith('world-id', 'regulatory');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle missing scenario service', async () => {
+      const brokenRuntime = {
+        ...mockRuntime,
+        getService: vi.fn().mockReturnValue(undefined)
       };
-      
-      if (plugins && plugins.plugins && Array.isArray(plugins.plugins)) {
-        const investmentPlugins = plugins.plugins.filter(plugin => 
-          plugin && typeof plugin === 'string' && (
-            plugin.toLowerCase().includes('investor') ||
-            plugin.toLowerCase().includes('finance') ||
-            plugin.toLowerCase().includes('market')
-          )
-        );
-        if (investmentPlugins.length > 0) {
-          expect(investmentPlugins.length).toBeGreaterThan(0);
-        }
-      }
-    } catch (error) {
-      // Investment functionality may not be directly accessible, which is fine
-      console.log('Note: Investment-related configuration not directly accessible, but init function exists');
-    }
+
+      const testSuite = new InvestmentManagerTestSuite();
+      const test = testSuite.tests.find(t => t.name === 'Test Portfolio Rebalancing');
+
+      await expect(test?.fn(brokenRuntime)).rejects.toThrow('Scenario service not found');
+    });
+
+    it('should handle operation timeouts', async () => {
+      mockScenarioService.waitForCompletion.mockResolvedValue(false);
+
+      const testSuite = new InvestmentManagerTestSuite();
+      const test = testSuite.tests.find(t => t.name === 'Test Trade Execution');
+
+      await expect(test?.fn(mockRuntime)).rejects.toThrow('Trade execution timed out');
+    });
   });
-}); 
+
+  describe('Performance Metrics', () => {
+    it('should complete compliance checks within 15 seconds', async () => {
+      const testSuite = new InvestmentManagerTestSuite();
+      const test = testSuite.tests.find(t => t.name === 'Test Compliance Check');
+
+      const start = Date.now();
+      await test?.fn(mockRuntime);
+      const duration = Date.now() - start;
+
+      expect(duration).toBeLessThan(15000);
+    });
+  });
+});

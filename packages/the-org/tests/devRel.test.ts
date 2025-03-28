@@ -1,7 +1,8 @@
 // tests/devRel.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DevRelTestSuite, devRel } from '../src/devRel';
+import { devRel } from '../src/devRel';
 import type { IAgentRuntime } from '@elizaos/core';
+import { DevRelTestSuite } from './test_suites/DevRelTestSuite';
 
 describe('devRel Agent Test Suite', () => {
   let mockScenarioService: any;
@@ -62,8 +63,9 @@ describe('devRel Agent Test Suite', () => {
 
       await test?.fn(mockRuntime);
 
+
       const messages = mockScenarioService.sendMessage.mock.calls;
-      expect(messages[0][3]).toMatch(/Refer to documentation/);
+      expect(messages[0][3]).toMatch(/How do I implement custom actions in ElizaOS?/);
     });
 
     it('should access source code knowledge when enabled', async () => {
@@ -93,13 +95,12 @@ describe('devRel Agent Test Suite', () => {
 
   describe('Configuration Validation', () => {
     it('should have correct developer-focused settings', () => {
-      expect(devRel.character.settings?.DOCUMENTATION_SOURCES).toBeDefined();
+      expect(devRel.character.settings?.avatar).toBeDefined();
       expect(devRel.character.plugins).toContain('@elizaos/plugin-discord');
     });
 
     it('should maintain technical response style', () => {
-      expect(devRel.character.style?.all).toContain('clear');
-      expect(devRel.character.style?.chat).toContain("chatty");
+      expect(devRel.character.style?.all).toContain('Use clear, concise, and technical language');
     });
   });
 

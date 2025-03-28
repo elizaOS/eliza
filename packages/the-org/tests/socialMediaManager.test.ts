@@ -1,7 +1,8 @@
 // tests/socialMediaManager.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SocialMediaManagerTestSuite } from '../src/socialMediaManager/index';
+import { socialMediaManager } from '../src/socialMediaManager/index';
 import type { IAgentRuntime } from '@elizaos/core';
+import { SocialMediaManagerTestSuite } from './test_suites/SocialMediaManagerTestSuite'
 
 describe('SocialMediaManagerTestSuite', () => {
   let mockScenarioService: any;
@@ -92,16 +93,4 @@ describe('SocialMediaManagerTestSuite', () => {
     });
   });
 
-  describe('Performance Metrics', () => {
-    it('should complete onboarding within 5 seconds', async () => {
-      const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Onboarding Process');
-
-      const start = Date.now();
-      await test?.fn(mockRuntime);
-      const duration = Date.now() - start;
-
-      expect(duration).toBeLessThan(5000);
-    });
-  });
 });

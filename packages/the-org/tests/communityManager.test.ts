@@ -1,6 +1,6 @@
 // tests/communityManager.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CommunityManagerTestSuite } from '../src/communityManager/index';
+import { CommunityManagerTestSuite } from './test_suites/CommunityManagerTestSuite';
 import type { IAgentRuntime } from '@elizaos/core';
 
 describe('CommunityManagerTestSuite', () => {
