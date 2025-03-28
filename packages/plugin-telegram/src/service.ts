@@ -15,7 +15,7 @@ import { type Context, Telegraf } from 'telegraf';
 import { TELEGRAM_SERVICE_NAME } from './constants';
 import { validateTelegramConfig } from './environment';
 import { MessageManager } from './messageManager';
-import { TelegramEventTypes } from './types';
+import { TelegramEventTypes, TelegramWorldPayload } from './types';
 
 /**
  * Class representing a Telegram service that allows the agent to send and receive messages on Telegram.
@@ -141,6 +141,34 @@ export class TelegramService extends Service {
   }
 
   /**
+   * Sets up message and reaction handlers for the bot.
+   *
+   * @private
+   * @returns {void}
+   */
+  private setupMessageHandlers(): void {
+    // Regular message handler
+    this.bot.on('message', async (ctx) => {
+      try {
+        if (!(await this.isGroupAuthorized(ctx))) return;
+        await this.messageManager.handleMessage(ctx);
+      } catch (error) {
+        logger.error('Error handling message:', error);
+      }
+    });
+
+    // Reaction handler
+    this.bot.on('message_reaction', async (ctx) => {
+      try {
+        if (!(await this.isGroupAuthorized(ctx))) return;
+        await this.messageManager.handleReaction(ctx);
+      } catch (error) {
+        logger.error('Error handling reaction:', error);
+      }
+    });
+  }
+
+  /**
    * Checks if a group is authorized, based on the TELEGRAM_ALLOWED_CHATS setting.
    * @param {Context} ctx - The context of the incoming update.
    * @returns {Promise<boolean>} A Promise that resolves with a boolean indicating if the group is authorized.
@@ -154,21 +182,9 @@ export class TelegramService extends Service {
       await this.handleNewChat(ctx);
     }
 
-    // TODO: I think we should allow only owner to DM the bot.
-    // How do we check who is the bot owner on telegram?
-    // I don't think the agent should process those messages.
-    // We expose the bot to the public.
-    // Use a configuration setting:
-    //    You could add a TELEGRAM_BOT_OWNER_ID setting in your
-    //    environment variables where you specify your Telegram user ID.
-    // Or use this existing setting:
-    //    TELEGRAM_ALLOWED_CHATS
-    //    This is a comma-separated list of chat IDs that are allowed to interact with the bot.
-    //    If this setting is not set, all chats are allowed.
-    //    If this setting is set, only the chats listed in this setting are allowed to interact with the bot.
     const allowedChats = this.runtime.getSetting('TELEGRAM_ALLOWED_CHATS');
     if (!allowedChats) {
-      return true; // All chats are allowed if no restriction is set
+      return true;
     }
 
     try {
@@ -181,19 +197,11 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Handles new chat discovery and emits WORLD_JOINED event
-   * @param {Context} ctx - The context of the incoming update
+   * Gets chat title and channel type based on Telegram chat type
+   * @param {any} chat - The Telegram chat object
+   * @returns {Object} Object containing chatTitle and channelType
    */
-  private async handleNewChat(ctx: Context): Promise<void> {
-    if (!ctx.chat) return;
-
-    const chat = ctx.chat;
-    const chatId = chat.id.toString();
-
-    // Mark this chat as known
-    this.knownChats.set(chatId, chat);
-
-    // Get chat title based on type
+  private getChatTypeInfo(chat: any): { chatTitle: string; channelType: ChannelType } {
     let chatTitle: string;
     let channelType: ChannelType;
 
@@ -219,19 +227,28 @@ export class TelegramService extends Service {
         channelType = ChannelType.GROUP;
     }
 
-    // Create standardized world data
+    return { chatTitle, channelType };
+  }
+
+  /**
+   * Handles new chat discovery and emits WORLD_JOINED event
+   * @param {Context} ctx - The context of the incoming update
+   */
+  private async handleNewChat(ctx: Context): Promise<void> {
+    console.log('handleNewChat() call started');
+    if (!ctx.chat) return;
+
+    const chat = ctx.chat;
+    const chatId = chat.id.toString();
+
+    // Mark this chat as known
+    this.knownChats.set(chatId, chat);
+
+    // Get chat title and channel type
+    const { chatTitle } = this.getChatTypeInfo(chat);
+
     const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
     const userId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
-
-    const existingWorld = await this.runtime.getWorld(worldId);
-    const existingEntity = await this.runtime.getEntityById(userId);
-    const existingRoom = await this.runtime.getRoom(createUniqueUuid(this.runtime, chatId) as UUID);
-
-    if (existingEntity && existingRoom && existingWorld) {
-      logger.info('world already exists for this chat, skipping');
-      this.setupEntityTracking(chat.id);
-      return;
-    }
 
     let admins = [];
     let owner = null;
@@ -261,93 +278,34 @@ export class TelegramService extends Service {
       },
     };
 
-    // Build users list
-    const users: Entity[] = [];
-    // For private chats, add the user
-    if (chat.type === 'private' && chat.id) {
-      const userId = createUniqueUuid(this.runtime, chat.id.toString()) as UUID;
-      users.push({
-        id: userId,
-        names: [chat.first_name || 'Unknown User'],
-        agentId: this.runtime.agentId,
-        metadata: {
-          telegram: {
-            id: chat.id.toString(),
-            username: chat.username || 'unknown',
-            name: chat.first_name || 'Unknown User',
-          },
-          source: 'telegram',
-        },
-      });
-    } else if (chat.type === 'group' || chat.type === 'supergroup') {
-      // For groups and supergroups, try to get member information
-      try {
-        // Get chat administrators (this is what's available through the Bot API)
-        const admins = await this.bot.telegram.getChatAdministrators(chat.id);
+    const entities = await this.buildStandardizedEntities(chat);
 
-        if (admins && admins.length > 0) {
-          for (const admin of admins) {
-            const userId = createUniqueUuid(this.runtime, admin.user.id.toString()) as UUID;
-            users.push({
-              id: userId,
-              names: [admin.user.first_name || admin.user.username || 'Unknown Admin'],
-              agentId: this.runtime.agentId,
-              metadata: {
-                telegram: {
-                  id: admin.user.id.toString(),
-                  username: admin.user.username || 'unknown',
-                  name: admin.user.first_name || 'Unknown Admin',
-                  isAdmin: true,
-                  adminTitle:
-                    admin.custom_title || (admin.status === 'creator' ? 'Owner' : 'Admin'),
-                },
-                source: 'telegram',
-                roles: [admin.status === 'creator' ? Role.OWNER : Role.ADMIN],
-              },
-            });
-          }
-        }
-
-        // Additionally, we can estimate member count
-        try {
-          const chatInfo = await this.bot.telegram.getChat(chat.id);
-          if (chatInfo && 'member_count' in chatInfo) {
-            // Store this information in the world metadata
-            world.metadata.memberCount = chatInfo.member_count;
-          }
-        } catch (countError) {
-          logger.warn(`Could not get member count for chat ${chatId}: ${countError}`);
-        }
-      } catch (error) {
-        logger.warn(`Could not fetch administrators for chat ${chatId}: ${error}`);
-      }
-    }
-
-    const rooms = await this.buildStandardizedRooms(chat, worldId);
+    const room = {
+      id: createUniqueUuid(this.runtime, chatId) as UUID,
+      name: chatTitle,
+      source: 'telegram',
+      type: chat.type === 'private' ? ChannelType.DM : ChannelType.GROUP,
+      channelId: chatId,
+      serverId: chatId,
+      worldId,
+    };
 
     // Create payload for world events
     const worldPayload = {
       runtime: this.runtime,
       world,
-      rooms,
-      entities: users,
+      rooms: [room],
+      entities,
       source: 'telegram',
       onComplete: () => {
-        // Create Telegram-specific payload
-        const telegramWorldPayload = {
+        const telegramWorldPayload: TelegramWorldPayload = {
           ...worldPayload,
           chat,
+          botUsername: this.bot.botInfo.username,
         };
 
-        // Emit platform-specific WORLD_JOINED event
-        // TODO: if we emit this event for DM the agent is setting up onboarding for DM WORLD.
-        // Still not sure for the channel...
         if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
           this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
-        }
-
-        // Set up a handler to track new entities as they interact with the chat
-        if (chat.type === 'group' || chat.type === 'supergroup') {
           this.setupEntityTracking(chat.id);
         }
       },
@@ -358,159 +316,69 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Sets up message and reaction handlers for the bot.
-   *
-   * @private
-   * @returns {void}
-   */
-  private setupMessageHandlers(): void {
-    // Regular message handler
-    this.bot.on('message', async (ctx) => {
-      try {
-        if (!(await this.isGroupAuthorized(ctx))) return;
-        await this.messageManager.handleMessage(ctx);
-      } catch (error) {
-        logger.error('Error handling message:', error);
-      }
-    });
-
-    // Reaction handler
-    this.bot.on('message_reaction', async (ctx) => {
-      try {
-        if (!(await this.isGroupAuthorized(ctx))) return;
-        await this.messageManager.handleReaction(ctx);
-      } catch (error) {
-        logger.error('Error handling reaction:', error);
-      }
-    });
-  }
-
-  /**
-   * Builds standardized room representations from Telegram chat data
+   * Builds standardized entity representations from Telegram chat data
    * @param chat - The Telegram chat object
-   * @param worldId - The UUID of the world these rooms belong to
-   * @returns Array of standardized Room objects
+   * @returns Array of standardized Entity objects
    */
-  private async buildStandardizedRooms(chat: any, worldId: UUID): Promise<Room[]> {
-    const rooms: Room[] = [];
-    const chatId = chat.id.toString();
-    const roomId = createUniqueUuid(this.runtime, chatId) as UUID;
+  private async buildStandardizedEntities(chat: any): Promise<Entity[]> {
+    const entities: Entity[] = [];
 
     try {
-      // Handle room creation based on chat type
-      if (chat.type === 'supergroup' || chat.type === 'channel') {
-        // Add the main room for the supergroup/channel
-        rooms.push(this.createGeneralRoom(chat, roomId, chatId, worldId));
+      // For private chats, add the user
+      if (chat.type === 'private' && chat.id) {
+        const userId = createUniqueUuid(this.runtime, chat.id.toString()) as UUID;
+        entities.push({
+          id: userId,
+          names: [chat.first_name || 'Unknown User'],
+          agentId: this.runtime.agentId,
+          metadata: {
+            telegram: {
+              id: chat.id.toString(),
+              username: chat.username || 'unknown',
+              name: chat.first_name || 'Unknown User',
+            },
+            source: 'telegram',
+          },
+        });
+      } else if (chat.type === 'group' || chat.type === 'supergroup') {
+        // For groups and supergroups, try to get member information
+        try {
+          // Get chat administrators (this is what's available through the Bot API)
+          const admins = await this.bot.telegram.getChatAdministrators(chat.id);
 
-        // Add forum topic rooms if they exist
-        const topicRooms = await this.getForumTopicRooms(chat, chatId, worldId);
-        rooms.push(...topicRooms);
-      } else {
-        // Handle direct message or other chat types
-        rooms.push(this.createDirectMessageRoom(chat, roomId, chatId, worldId));
+          if (admins && admins.length > 0) {
+            for (const admin of admins) {
+              const userId = createUniqueUuid(this.runtime, admin.user.id.toString()) as UUID;
+              entities.push({
+                id: userId,
+                names: [admin.user.first_name || admin.user.username || 'Unknown Admin'],
+                agentId: this.runtime.agentId,
+                metadata: {
+                  telegram: {
+                    id: admin.user.id.toString(),
+                    username: admin.user.username || 'unknown',
+                    name: admin.user.first_name || 'Unknown Admin',
+                    isAdmin: true,
+                    adminTitle:
+                      admin.custom_title || (admin.status === 'creator' ? 'Owner' : 'Admin'),
+                  },
+                  source: 'telegram',
+                  roles: [admin.status === 'creator' ? Role.OWNER : Role.ADMIN],
+                },
+              });
+            }
+          }
+        } catch (error) {
+          logger.warn(`Could not fetch administrators for chat ${chat.id}: ${error}`);
+        }
       }
     } catch (error) {
       logger.error(
-        `Error building standardized rooms: ${error instanceof Error ? error.message : String(error)}`
+        `Error building standardized entities: ${error instanceof Error ? error.message : String(error)}`
       );
     }
 
-    return rooms;
-  }
-
-  /**
-   * Creates a general room for a supergroup or channel
-   */
-  private createGeneralRoom(chat: any, roomId: UUID, chatId: string, worldId: UUID): Room {
-    return {
-      id: roomId,
-      name: `${chat.title} (General)`,
-      source: 'telegram',
-      type: ChannelType.GROUP,
-      channelId: chatId,
-      serverId: chatId,
-      worldId: worldId,
-      metadata: {
-        isGeneral: true,
-      },
-    };
-  }
-
-  /**
-   * Creates a direct message room
-   */
-  private createDirectMessageRoom(chat: any, roomId: UUID, chatId: string, worldId: UUID): Room {
-    return {
-      id: roomId,
-      name: chat.title || `Chat with ${chat.first_name || 'Unknown'}`,
-      source: 'telegram',
-      type: ChannelType.DM,
-      channelId: chatId,
-      serverId: chatId,
-      worldId: worldId,
-    };
-  }
-
-  /**
-   * Gets rooms for forum topics if they exist
-   */
-  private async getForumTopicRooms(chat: any, chatId: string, worldId: UUID): Promise<Room[]> {
-    const topicRooms: Room[] = [];
-
-    try {
-      // Cast to any since we're checking for methods that might not be in the type definition
-      const telegramApi = this.bot.telegram as any;
-      // Check if forum topic functions are available
-      if (!this.hasForumTopicSupport(telegramApi)) {
-        return topicRooms;
-      }
-
-      const forumTopics = await telegramApi.getForumTopics(parseInt(chatId));
-
-      if (!forumTopics?.topics || !Array.isArray(forumTopics.topics)) {
-        return topicRooms;
-      }
-
-      // Create a room for each forum topic
-      for (const topic of forumTopics.topics) {
-        if (!topic.message_thread_id) continue;
-
-        const topicId = topic.message_thread_id.toString();
-        const topicRoomId = createUniqueUuid(this.runtime, topicId) as UUID;
-
-        topicRooms.push({
-          id: topicRoomId,
-          name: topic.title || `Topic ${topicId}`,
-          source: 'telegram',
-          type: ChannelType.GROUP,
-          channelId: topicId,
-          serverId: chatId,
-          worldId: worldId,
-          metadata: {
-            ...topic,
-            topicId,
-            parentChatId: chatId,
-            isTopic: true,
-          },
-        });
-      }
-    } catch (error) {
-      logger.warn(
-        `Could not retrieve forum topics: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-
-    return topicRooms;
-  }
-
-  /**
-   * Checks if the Telegram API supports forum topics
-   */
-  private hasForumTopicSupport(telegramApi: any): boolean {
-    return (
-      typeof telegramApi.getForumTopicInfo === 'function' &&
-      typeof telegramApi.getForumTopics === 'function'
-    );
+    return entities;
   }
 
   /**
