@@ -132,10 +132,10 @@ function hasRequiredEnvVars(agent: any): boolean {
 const availableAgents = [
   devRel,
   communityManager,
-  // investmentManager,
-  // liaison,
-  // projectManager,
-  // socialMediaManager,
+  investmentManager,
+  liaison,
+  projectManager,
+  socialMediaManager,
 ].filter(hasRequiredEnvVars);
 
 export const project = {
