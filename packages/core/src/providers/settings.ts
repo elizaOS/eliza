@@ -66,24 +66,44 @@ function generateStatusMessage(
 
     // Generate appropriate message
     if (isOnboarding) {
+      const settingsList = formattedSettings
+        .map((s) => {
+          const label = s.required ? '(Required)' : '(Optional)';
+          return `${s.key}: ${s.value} ${label}\n(${s.name}) ${s.usageDescription}`;
+        })
+        .join('\n\n');
+
+      const validKeys = `Valid setting keys: ${Object.keys(worldSettings).join(', ')}`;
+
+      const commonInstructions = `Instructions for ${runtime.character.name}:
+      - Only update settings if the user is clearly responding to a setting you are currently asking about.
+      - If the user's reply clearly maps to a setting and a valid value, you **must** call the UPDATE_SETTINGS action with the correct key and value. Do not just respond with a message saying it's updated — it must be an action.
+      - Never hallucinate settings or respond with values not listed above.
+      - Answer setting-related questions using only the name, description, and value from the list.`;
+
       if (requiredUnconfigured > 0) {
-        return `# PRIORITY TASK: Onboarding with ${state.senderName}\n${
-          runtime.character.name
-        } still needs to configure ${requiredUnconfigured} required settings:\n\n${formattedSettings
-          .filter((s) => s.required && !s.configured)
-          .map((s) => `${s.key}: ${s.value}\n(${s.name}) ${s.usageDescription}`)
-          .join('\n\n')}\n\nValid settings keys: ${Object.keys(worldSettings).join(
-          ', '
-        )}\n\nIf the user gives any information related to the settings, ${
-          runtime.character.name
-        } should use the UPDATE_SETTINGS action to update the settings with this new information. ${
-          runtime.character.name
-        } can update any, some or all settings.`;
+        return `# PRIORITY TASK: Onboarding with ${state.senderName}
+
+        ${runtime.character.name} needs to help the user configure ${requiredUnconfigured} required settings:
+        
+        ${settingsList}
+        
+        ${validKeys}
+        
+        ${commonInstructions}
+        
+        - Prioritize configuring required settings before optional ones.`;
       }
-      return `All required settings have been configured! Here's the current configuration:\n\n${formattedSettings
-        .map((s) => `${s.name}: ${s.description}\nValue: ${s.value}`)
-        .join('\n')}`;
+
+      return `All required settings have been configured. Here's the current configuration:
+      
+        ${settingsList}
+        
+        ${validKeys}
+        
+        ${commonInstructions}`;
     }
+
     // Non-onboarding context - list all public settings with values and descriptions
     return `## Current Configuration\n\n${
       requiredUnconfigured > 0
