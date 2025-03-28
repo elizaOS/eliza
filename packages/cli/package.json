@@ -18,6 +18,9 @@
     "url": "https://github.com/elizaOS/eliza.git",
     "directory": "packages/cli"
   },
+  "engines": {
+    "node": ">=16.0.0 <23.0.0"
+  },
   "files": [
     "dist",
     "templates",
@@ -39,9 +42,10 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "test:setup-commands": "vitest test/setup-commands.test.js",
-    "test:agent-commands": "vitest test/agent-commands.test.js",
-    "test:agent-customisations": "vitest test/agent-customisation.test.js"
+    "test:setup-commands": "vitest run test/setup-commands.test.js",
+    "test:agent-commands": "vitest run test/agent-commands.test.js",
+    "test:agent-customisations": "vitest run test/agent-customisation.test.js",
+    "test:cli": "bun run test:setup-commands && bun run test:agent-commands && bun run test:agent-customisations"
   },
   "devDependencies": {
     "@babel/core": "^7.22.1",
