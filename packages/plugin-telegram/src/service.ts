@@ -310,11 +310,15 @@ export class TelegramService extends Service {
       }
     }
 
+    const rooms = await this.buildStandardizedForumRooms(chat, worldId);
+
+    console.log('#### #BUILDED ROOMS', rooms);
+
     // Create payload for world events
     const worldPayload = {
       runtime: this.runtime,
       world,
-      rooms: [...(await this.buildStandardizedForumRooms(chat, worldId))],
+      rooms,
       entities: users,
       source: 'telegram',
     };
@@ -328,8 +332,15 @@ export class TelegramService extends Service {
     // Emit generic WORLD_JOINED event
     this.runtime.emitEvent(EventType.WORLD_JOINED, worldPayload);
 
+    // TODO: I don't know really if this is the case...
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
     // Emit platform-specific WORLD_JOINED event
-    this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
+    // TODO: if we emit this event for DM the agent is setting up onboarding for DM WORLD.
+    // Still not sure for the channel...
+    if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
+      this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
+    }
 
     // Set up a handler to track new entities as they interact with the chat
     if (chat.type === 'group' || chat.type === 'supergroup') {

@@ -73,8 +73,8 @@ export const initCharacter = async ({
     'TELEGRAM_WORLD_JOINED',
     async (params: { world: World; entities: any[] }) => {
       console.log('HOW MANY TIMES ANS WHEN THIS TRIGGERS?');
-      await runtime.ensureWorldExists(params.world);
       await initializeOnboarding(runtime, params.world, config);
+      console.log('START TG ONBOARDING DM');
       await startTGOnboardingDM(runtime, params.world, params.entities);
     }
   );
@@ -213,9 +213,7 @@ export async function startTGOnboardingDM(
   world: World,
   entities: any[]
 ): Promise<void> {
-  logger.info('startTGOnboardingDM - worldId', world.id);
-
-  await new Promise((resolve) => setTimeout(resolve, 2500));
+  console.log('startTGOnboardingDM - worldId', world.id);
 
   try {
     let ownerId = null;
@@ -234,6 +232,7 @@ export async function startTGOnboardingDM(
       logger.warn('no ownerId found');
     }
 
+    console.log('startTGOnboardingDM () () () () () ');
     const onboardingMessages = [
       'Hi! I need to collect some information to get set up. Is now a good time?',
       'Hey there! I need to configure a few things. Do you have a moment?',
@@ -255,7 +254,7 @@ export async function startTGOnboardingDM(
     const entityId = createUniqueUuid(runtime, ownerId);
 
     // So as chat.id = ownerId we can create room with that id.
-    // try ensure connection with that entity.
+    // we can't call ensure connection here... messes up the entity...
 
     // First check if entity exists
     const entity = await runtime.getEntityById(runtime.agentId);
@@ -264,13 +263,15 @@ export async function startTGOnboardingDM(
       // tho I think we should already have the owner no matter what for tg.
       // Unless this was a DM.
       // From that reason I don't think I should initiate onboarding for DM?
-      logger.warn('no entity found for telegram shitsfucked');
+      logger.warn('no entity found for telegram....');
     }
 
     // Getting the world id for the owner not for world that sent the message.
     const worldId = createUniqueUuid(runtime, ownerId);
     const existingWorld = await runtime.getWorld(worldId);
+    console.log('startTGOnboardingDM () () () () () 2 existingWorld', existingWorld);
     if (!existingWorld) {
+      console.log('startTGOnboardingDM () () () () () 3 createWorld');
       await runtime.createWorld({
         id: worldId,
         name: `Telegram World for ${username}`,
@@ -290,7 +291,9 @@ export async function startTGOnboardingDM(
 
     // Directly create room.
     const room = await runtime.getRoom(roomId);
+    console.log('startTGOnboardingDM () () () () () 4 room', room);
     if (!room) {
+      console.log('startTGOnboardingDM () () () () () 5 createRoom');
       await runtime.createRoom({
         id: roomId,
         name: `Chat with ${username}`,
@@ -298,7 +301,7 @@ export async function startTGOnboardingDM(
         type: ChannelType.DM,
         channelId: ownerId,
         serverId: ownerId,
-        worldId: world.id,
+        worldId,
       });
     }
 

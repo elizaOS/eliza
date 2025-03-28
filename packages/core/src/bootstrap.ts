@@ -553,6 +553,7 @@ const handleServerSync = async ({ runtime, world, rooms, entities, source }: Wor
   logger.debug(`Handling server sync event for server: ${world.name}`);
   try {
     // Create/ensure the world exists for this server
+    console.log('handleServerSync() () () () () () calling this?');
     await runtime.ensureWorldExists({
       id: world.id,
       name: world.name,
@@ -666,12 +667,13 @@ const events = {
   [EventType.MESSAGE_SENT]: [
     async (payload: MessagePayload) => {
       // Message sent tracking
-      logger.debug(`Message sent: ${payload.message.content.text}`);
+      // logger.debug(`Message sent: ${payload.message.content.text}`);
     },
   ],
 
   [EventType.WORLD_JOINED]: [
     async (payload: WorldPayload) => {
+      console.log('HOW MANY TIMES WR TRIGGER WORLD JOINED?');
       await handleServerSync(payload);
     },
   ],
