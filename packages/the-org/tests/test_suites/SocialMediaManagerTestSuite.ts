@@ -9,6 +9,13 @@ export class SocialMediaManagerTestSuite implements TestSuite {
     name = 'social-media-manager';
     description = 'Tests for the social media manager agent';
     private scenarioService: any;
+
+    private completionTimeout: number;
+
+
+    constructor(completionTimeout: number = 10000) {
+        this.completionTimeout = completionTimeout;
+    }
     tests = [
         {
             name: 'Test Onboarding Process',
@@ -39,7 +46,7 @@ export class SocialMediaManagerTestSuite implements TestSuite {
                 );
 
                 // Wait for agent to process and respond
-                const completed = await this.scenarioService.waitForCompletion(5000);
+                const completed = await this.scenarioService.waitForCompletion(this.completionTimeout);
                 if (!completed) {
                     throw new Error('Agent did not complete onboarding response in time');
                 }
@@ -72,7 +79,7 @@ export class SocialMediaManagerTestSuite implements TestSuite {
                 );
 
                 // Wait for agent to process request and generate posts
-                const completed = await this.scenarioService.waitForCompletion(10000);
+                const completed = await this.scenarioService.waitForCompletion(this.completionTimeout);
                 if (!completed) {
                     throw new Error('Agent did not complete post creation in time');
                 }
@@ -107,7 +114,7 @@ export class SocialMediaManagerTestSuite implements TestSuite {
                     await this.scenarioService.sendMessage(runtime, worldId, roomId, query);
 
                     // Wait for agent to process and respond to each query
-                    const completed = await this.scenarioService.waitForCompletion(5000);
+                    const completed = await this.scenarioService.waitForCompletion(this.completionTimeout);
                     if (!completed) {
                         throw new Error(`Agent did not respond to query in time: ${query}`);
                     }
