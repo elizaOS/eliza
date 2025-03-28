@@ -8,6 +8,17 @@ import type { IAgentRuntime, Memory } from '../types';
  * @param {Memory} message - The message memory object.
  * @returns {Object} The attachments values, data, and text.
  */
+/**
+ * Provides a list of attachments sent during the current conversation, including names, descriptions, and summaries.
+ * @type {Provider}
+ * @property {string} name - The name of the provider (ATTACHMENTS).
+ * @property {string} description - Description of the provider.
+ * @property {boolean} dynamic - Indicates if the provider is dynamic.
+ * @property {function} get - Asynchronous function that retrieves attachments based on the runtime and message provided.
+ * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+ * @param {Memory} message - The message object containing content and attachments.
+ * @returns {Object} An object containing values, data, and text about the attachments retrieved.
+ */
 export const attachmentsProvider: Provider = {
   name: 'ATTACHMENTS',
   description:
