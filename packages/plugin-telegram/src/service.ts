@@ -154,6 +154,18 @@ export class TelegramService extends Service {
       await this.handleNewChat(ctx);
     }
 
+    // TODO: I think we should allow only owner to DM the bot.
+    // How do we check who is the bot owner on telegram?
+    // I don't think the agent should process those messages.
+    // We expose the bot to the public.
+    // Use a configuration setting:
+    //    You could add a TELEGRAM_BOT_OWNER_ID setting in your
+    //    environment variables where you specify your Telegram user ID.
+    // Or use this existing setting:
+    //    TELEGRAM_ALLOWED_CHATS
+    //    This is a comma-separated list of chat IDs that are allowed to interact with the bot.
+    //    If this setting is not set, all chats are allowed.
+    //    If this setting is set, only the chats listed in this setting are allowed to interact with the bot.
     const allowedChats = this.runtime.getSetting('TELEGRAM_ALLOWED_CHATS');
     if (!allowedChats) {
       return true; // All chats are allowed if no restriction is set
@@ -209,11 +221,27 @@ export class TelegramService extends Service {
 
     // Create standardized world data
     const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
-    const roomId = createUniqueUuid(this.runtime, chatId) as UUID;
+    const userId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
 
-    const admins = await ctx.getChatAdministrators();
-    const owner = admins.find((admin) => admin.status === 'creator');
-    let ownerId = chatId;
+    const existingWorld = await this.runtime.getWorld(worldId);
+    const existingEntity = await this.runtime.getEntityById(userId);
+    const existingRoom = await this.runtime.getRoom(createUniqueUuid(this.runtime, chatId) as UUID);
+
+    if (existingEntity && existingRoom && existingWorld) {
+      logger.info('world already exists for this chat, skipping');
+      this.setupEntityTracking(chat.id);
+      return;
+    }
+
+    let admins = [];
+    let owner = null;
+    if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
+      admins = await ctx.getChatAdministrators();
+      owner = admins.find((admin) => admin.status === 'creator');
+    }
+
+    let ownerId = userId;
+
     if (owner) {
       ownerId = createUniqueUuid(this.runtime, String(owner.user.id)) as UUID;
     }
@@ -231,17 +259,6 @@ export class TelegramService extends Service {
           [ownerId]: Role.OWNER,
         },
       },
-    };
-
-    // Build room representation
-    const room: Room = {
-      id: roomId,
-      name: chatTitle,
-      source: 'telegram',
-      type: channelType,
-      channelId: chatId,
-      serverId: chatId,
-      worldId: worldId,
     };
 
     // Build users list
@@ -306,11 +323,13 @@ export class TelegramService extends Service {
       }
     }
 
+    const rooms = await this.buildStandardizedRooms(chat, worldId);
+
     // Create payload for world events
     const worldPayload = {
       runtime: this.runtime,
       world,
-      rooms: [room],
+      rooms,
       entities: users,
       source: 'telegram',
     };
@@ -324,8 +343,19 @@ export class TelegramService extends Service {
     // Emit generic WORLD_JOINED event
     this.runtime.emitEvent(EventType.WORLD_JOINED, worldPayload);
 
+    // TODO: I don't know really if this is the case...
+    // I just have to wait for the WORLD to be created.
+    // So after that I can fire the WORLD_JOINED event
+    // Which starts the onboarding process
+    // in the init.ts the-org.
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
     // Emit platform-specific WORLD_JOINED event
-    this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
+    // TODO: if we emit this event for DM the agent is setting up onboarding for DM WORLD.
+    // Still not sure for the channel...
+    if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
+      this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
+    }
 
     // Set up a handler to track new entities as they interact with the chat
     if (chat.type === 'group' || chat.type === 'supergroup') {
@@ -359,6 +389,134 @@ export class TelegramService extends Service {
         logger.error('Error handling reaction:', error);
       }
     });
+  }
+
+  /**
+   * Builds standardized room representations from Telegram chat data
+   * @param chat - The Telegram chat object
+   * @param worldId - The UUID of the world these rooms belong to
+   * @returns Array of standardized Room objects
+   */
+  private async buildStandardizedRooms(chat: any, worldId: UUID): Promise<Room[]> {
+    const rooms: Room[] = [];
+    const chatId = chat.id.toString();
+    const roomId = createUniqueUuid(this.runtime, chatId) as UUID;
+
+    try {
+      // Handle room creation based on chat type
+      if (chat.type === 'supergroup' || chat.type === 'channel') {
+        // Add the main room for the supergroup/channel
+        rooms.push(this.createGeneralRoom(chat, roomId, chatId, worldId));
+
+        // Add forum topic rooms if they exist
+        const topicRooms = await this.getForumTopicRooms(chat, chatId, worldId);
+        rooms.push(...topicRooms);
+      } else {
+        // Handle direct message or other chat types
+        rooms.push(this.createDirectMessageRoom(chat, roomId, chatId, worldId));
+      }
+    } catch (error) {
+      logger.error(
+        `Error building standardized rooms: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    return rooms;
+  }
+
+  /**
+   * Creates a general room for a supergroup or channel
+   */
+  private createGeneralRoom(chat: any, roomId: UUID, chatId: string, worldId: UUID): Room {
+    return {
+      id: roomId,
+      name: `${chat.title} (General)`,
+      source: 'telegram',
+      type: ChannelType.GROUP,
+      channelId: chatId,
+      serverId: chatId,
+      worldId: worldId,
+      metadata: {
+        isGeneral: true,
+      },
+    };
+  }
+
+  /**
+   * Creates a direct message room
+   */
+  private createDirectMessageRoom(chat: any, roomId: UUID, chatId: string, worldId: UUID): Room {
+    return {
+      id: roomId,
+      name: chat.title || `Chat with ${chat.first_name || 'Unknown'}`,
+      source: 'telegram',
+      type: ChannelType.DM,
+      channelId: chatId,
+      serverId: chatId,
+      worldId: worldId,
+    };
+  }
+
+  /**
+   * Gets rooms for forum topics if they exist
+   */
+  private async getForumTopicRooms(chat: any, chatId: string, worldId: UUID): Promise<Room[]> {
+    const topicRooms: Room[] = [];
+
+    try {
+      // Cast to any since we're checking for methods that might not be in the type definition
+      const telegramApi = this.bot.telegram as any;
+      // Check if forum topic functions are available
+      if (!this.hasForumTopicSupport(telegramApi)) {
+        return topicRooms;
+      }
+
+      const forumTopics = await telegramApi.getForumTopics(parseInt(chatId));
+
+      if (!forumTopics?.topics || !Array.isArray(forumTopics.topics)) {
+        return topicRooms;
+      }
+
+      // Create a room for each forum topic
+      for (const topic of forumTopics.topics) {
+        if (!topic.message_thread_id) continue;
+
+        const topicId = topic.message_thread_id.toString();
+        const topicRoomId = createUniqueUuid(this.runtime, topicId) as UUID;
+
+        topicRooms.push({
+          id: topicRoomId,
+          name: topic.title || `Topic ${topicId}`,
+          source: 'telegram',
+          type: ChannelType.GROUP,
+          channelId: topicId,
+          serverId: chatId,
+          worldId: worldId,
+          metadata: {
+            ...topic,
+            topicId,
+            parentChatId: chatId,
+            isTopic: true,
+          },
+        });
+      }
+    } catch (error) {
+      logger.warn(
+        `Could not retrieve forum topics: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    return topicRooms;
+  }
+
+  /**
+   * Checks if the Telegram API supports forum topics
+   */
+  private hasForumTopicSupport(telegramApi: any): boolean {
+    return (
+      typeof telegramApi.getForumTopicInfo === 'function' &&
+      typeof telegramApi.getForumTopics === 'function'
+    );
   }
 
   /**
