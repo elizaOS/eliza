@@ -110,7 +110,7 @@ const config = {
     [
       'docusaurus-plugin-typedoc',
       {
-        //entryPoints: ['../core/src/index.ts'],
+        entryPoints: ['../core/src/index.ts'],
         tsconfig: '../core/tsconfig.json',
         out: './api',
         skipErrorChecking: true,
@@ -118,7 +118,7 @@ const config = {
         excludePrivate: true,
         excludeProtected: false,
         excludeInternal: false,
-        excludeNotDocumented: false,
+        excludeNotDocumented: true,
         plugin: ['typedoc-plugin-markdown'],
         hideGenerator: true,
         cleanOutputDir: true,
