@@ -31,6 +31,12 @@ interface TeamMemberUpdate {
 // Define a simple interface for the Discord service
 interface IDiscordService extends Service {
   client: {
+    users: {
+      fetch: (userId: string) => Promise<{
+        username: string;
+        id: string;
+      }>;
+    };
     guilds: {
       cache: Map<
         string,
@@ -226,7 +232,39 @@ async function storeTeamMemberUpdate(
   }
 }
 
-function parseTeamMemberUpdate(runtime: IAgentRuntime, message: Memory): TeamMemberUpdate | null {
+async function getDiscordUsername(runtime: IAgentRuntime, userId: string): Promise<string> {
+  try {
+    logger.info('Attempting to get Discord username for user:', userId);
+    const discordService = runtime.getService('discord') as IDiscordService | null;
+
+    if (!discordService?.client) {
+      logger.error('Discord service or client not available');
+      return 'Unknown User';
+    }
+
+    // Remove any UUID formatting to get raw Discord ID
+    const discordId = userId.replace(/-/g, '');
+    logger.info('Fetching Discord user with ID:', discordId);
+
+    const user = await discordService.client.users.fetch(discordId);
+    logger.info('Successfully fetched Discord user:', {
+      username: user.username,
+      id: user.id,
+    });
+    return user.username;
+  } catch (error) {
+    logger.error('Error fetching Discord username:', {
+      error: error.message,
+      userId,
+    });
+    return 'Unknown User';
+  }
+}
+
+async function parseTeamMemberUpdate(
+  runtime: IAgentRuntime,
+  message: Memory
+): Promise<TeamMemberUpdate | null> {
   try {
     logger.info('=== PARSE TEAM MEMBER UPDATE START ===');
     logger.info('Parsing update from message:', {
@@ -274,18 +312,9 @@ function parseTeamMemberUpdate(runtime: IAgentRuntime, message: Memory): TeamMem
       return null;
     }
 
-    // Get the user name from the message content
-    let userName = 'Team Member';
-
-    if (message.content) {
-      if (typeof message.content.userName === 'string') {
-        userName = message.content.userName;
-      } else if (typeof message.content.name === 'string') {
-        userName = message.content.name;
-      }
-    }
-
-    logger.info('Found user name from message:', { userName });
+    // Get the user name from Discord
+    const userName = await getDiscordUsername(runtime, message.entityId.toString());
+    logger.info('Found Discord username:', userName);
 
     const update: TeamMemberUpdate = {
       type: 'team-member-update',
@@ -299,7 +328,6 @@ function parseTeamMemberUpdate(runtime: IAgentRuntime, message: Memory): TeamMem
       eta: etaMatch[1].trim(),
       timestamp: new Date().toISOString(),
       channelId: message.roomId,
-      // serverId: message.content?.serverId,
     };
 
     logger.info('Successfully parsed team member update:', {
@@ -388,7 +416,7 @@ export const recordTeamMemberUpdates: Action = {
       }
 
       // Parse the update from the message
-      const update = parseTeamMemberUpdate(runtime, message);
+      const update = await parseTeamMemberUpdate(runtime, message);
       if (!update) {
         logger.warn('Failed to parse team member update from message');
         await callback(
