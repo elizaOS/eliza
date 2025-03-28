@@ -394,14 +394,36 @@ async function extractSettingValues(
     );
 
     // Validate the extracted settings
-    if (!result || !Array.isArray(result)) {
+    if (!result) {
       return [];
     }
 
-    // Filter out any invalid settings
-    return result.filter(({ key, value }) => {
-      return Boolean(key && value && worldSettings[key]);
-    });
+    function extractValidSettings(obj: unknown, worldSettings: WorldSettings) {
+      const extracted = [];
+
+      function traverse(node: unknown): void {
+        if (Array.isArray(node)) {
+          for (const item of node) {
+            traverse(item);
+          }
+        } else if (typeof node === 'object' && node !== null) {
+          for (const [key, value] of Object.entries(node)) {
+            if (worldSettings[key] && typeof value !== 'object') {
+              extracted.push({ key, value });
+            } else {
+              traverse(value);
+            }
+          }
+        }
+      }
+
+      traverse(obj);
+      return extracted;
+    }
+
+    const extractedSettings = extractValidSettings(result, worldSettings);
+
+    return extractedSettings;
   } catch (error) {
     console.error('Error extracting settings:', error);
     return [];
@@ -734,14 +756,6 @@ const updateSettingsAction: Action = {
       if (!worldSettings) {
         logger.error(`No settings state found for server ${serverId} in handler`);
         await generateErrorResponse(runtime, state, callback);
-        return;
-      }
-
-      // Check if all required settings are already configured
-      const { requiredUnconfigured } = categorizeSettings(worldSettings);
-      if (requiredUnconfigured.length === 0) {
-        logger.info('All required settings configured, completing settings');
-        await handleOnboardingComplete(runtime, worldSettings, state, callback);
         return;
       }
 
