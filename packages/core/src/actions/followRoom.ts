@@ -20,6 +20,10 @@ import {
  * - {{agentName}} has unique insights to contribute and users seem receptive
  * Otherwise, respond with NO.
  */
+/**
+ * Template for determining if the agent should start following a room
+ * @type {string}
+ */
 export const shouldFollowTemplate = `# Task: Decide if {{agentName}} should start following this room, i.e. eagerly participating without explicit mentions.
 
 {{recentMessages}}

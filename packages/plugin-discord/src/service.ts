@@ -202,11 +202,14 @@ export class DiscordService extends Service implements IDiscordService {
       ? `${member.user.username}#${member.user.discriminator}`
       : member.user.username;
 
+    const worldId = createUniqueUuid(this.runtime, guild.id);
+    const entityId = createUniqueUuid(this.runtime, member.id);
+
     // Emit standardized ENTITY_JOINED event
     this.runtime.emitEvent([EventType.ENTITY_JOINED], {
       runtime: this.runtime,
-      entityId: createUniqueUuid(this.runtime, member.id),
-      worldId: createUniqueUuid(this.runtime, guild.id),
+      entityId,
+      worldId,
       source: 'discord',
       metadata: {
         originalId: member.id,
@@ -220,7 +223,8 @@ export class DiscordService extends Service implements IDiscordService {
     // Emit Discord-specific event
     this.runtime.emitEvent([DiscordEventTypes.ENTITY_JOINED], {
       runtime: this.runtime,
-      entityId: createUniqueUuid(this.runtime, member.id),
+      entityId,
+      worldId,
       member,
       guild,
     });

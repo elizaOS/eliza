@@ -16,6 +16,7 @@ import Room from './routes/room';
 import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
 import Settings from './routes/settings';
+import EnvSettings from './components/env-settings';
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({
@@ -88,6 +89,7 @@ function App() {
                   <Route path="/create" element={<AgentCreator />} />
                   <Route path="/logs" element={<LogViewer />} />
                   <Route path="room/:serverId" element={<Room />} />
+                  <Route path="settings/" element={<EnvSettings />} />
                 </Routes>
               </SidebarInset>
             </SidebarProvider>
