@@ -332,35 +332,29 @@ export class TelegramService extends Service {
       rooms,
       entities: users,
       source: 'telegram',
-    };
+      onComplete: () => {
+        // Create Telegram-specific payload
+        const telegramWorldPayload = {
+          ...worldPayload,
+          chat,
+        };
 
-    // Create Telegram-specific payload
-    const telegramWorldPayload = {
-      ...worldPayload,
-      chat,
+        // Emit platform-specific WORLD_JOINED event
+        // TODO: if we emit this event for DM the agent is setting up onboarding for DM WORLD.
+        // Still not sure for the channel...
+        if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
+          this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
+        }
+
+        // Set up a handler to track new entities as they interact with the chat
+        if (chat.type === 'group' || chat.type === 'supergroup') {
+          this.setupEntityTracking(chat.id);
+        }
+      },
     };
 
     // Emit generic WORLD_JOINED event
     this.runtime.emitEvent(EventType.WORLD_JOINED, worldPayload);
-
-    // TODO: I don't know really if this is the case...
-    // I just have to wait for the WORLD to be created.
-    // So after that I can fire the WORLD_JOINED event
-    // Which starts the onboarding process
-    // in the init.ts the-org.
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-
-    // Emit platform-specific WORLD_JOINED event
-    // TODO: if we emit this event for DM the agent is setting up onboarding for DM WORLD.
-    // Still not sure for the channel...
-    if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
-      this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
-    }
-
-    // Set up a handler to track new entities as they interact with the chat
-    if (chat.type === 'group' || chat.type === 'supergroup') {
-      this.setupEntityTracking(chat.id);
-    }
   }
 
   /**
