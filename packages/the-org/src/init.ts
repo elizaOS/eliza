@@ -233,6 +233,7 @@ export async function startTGOnboardingDM(
     }
 
     console.log('startTGOnboardingDM () () () () () ');
+
     const onboardingMessages = [
       'Hi! I need to collect some information to get set up. Is now a good time?',
       'Hey there! I need to configure a few things. Do you have a moment?',

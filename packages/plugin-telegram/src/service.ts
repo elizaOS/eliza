@@ -241,6 +241,7 @@ export class TelegramService extends Service {
     }
 
     let ownerId = userId;
+
     if (owner) {
       ownerId = createUniqueUuid(this.runtime, String(owner.user.id)) as UUID;
     }
