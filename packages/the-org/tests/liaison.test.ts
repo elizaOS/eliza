@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { liaison } from '../src/liaison';
 import type { IAgentRuntime } from '@elizaos/core';
-import { LiaisonTestSuite } from './test_suites/LiasionTestSuite'
+import { LiaisonTestSuite } from './test_suites/LiasionTestSuite';
 
 describe('LiaisonTestSuite', () => {
   let mockScenarioService: any;
@@ -26,7 +26,7 @@ describe('LiaisonTestSuite', () => {
   describe('Core Functionality', () => {
     it('should handle platform information requests', async () => {
       const testSuite = new LiaisonTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Platform Information Request');
+      const test = testSuite.tests.find((t) => t.name === 'Test Platform Information Request');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
       expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
@@ -39,14 +39,14 @@ describe('LiaisonTestSuite', () => {
 
     it('should provide channel recommendations', async () => {
       const testSuite = new LiaisonTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Channel Recommendation');
+      const test = testSuite.tests.find((t) => t.name === 'Test Channel Recommendation');
 
       // Mock agent response
       mockScenarioService.sendMessage.mockImplementationOnce((_, __, ___, message) => {
         return Promise.resolve({
           content: {
-            text: `${message}\nRecommended channels: Discord #deployment, Slack #elizaos-development`
-          }
+            text: `${message}\nRecommended channels: Discord #deployment, Slack #elizaos-development`,
+          },
         });
       });
 
@@ -59,7 +59,7 @@ describe('LiaisonTestSuite', () => {
   describe('Cross-Platform Coordination', () => {
     it('should handle cross-platform event setup', async () => {
       const testSuite = new LiaisonTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Cross-Platform Coordination');
+      const test = testSuite.tests.find((t) => t.name === 'Test Cross-Platform Coordination');
 
       await test?.fn(mockRuntime);
       expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
@@ -72,7 +72,7 @@ describe('LiaisonTestSuite', () => {
 
     it('should manage multi-platform announcements', async () => {
       const testSuite = new LiaisonTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Announcement Management');
+      const test = testSuite.tests.find((t) => t.name === 'Test Announcement Management');
 
       await test?.fn(mockRuntime);
       expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
@@ -87,7 +87,7 @@ describe('LiaisonTestSuite', () => {
   describe('Message Filtering', () => {
     it('should ignore off-topic messages', async () => {
       const testSuite = new LiaisonTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Ignore Off-Topic');
+      const test = testSuite.tests.find((t) => t.name === 'Test Ignore Off-Topic');
 
       // Mock no response for off-topic messages
       mockScenarioService.sendMessage.mockImplementationOnce(() => Promise.resolve(null));
@@ -112,11 +112,11 @@ describe('LiaisonTestSuite', () => {
     it('should handle missing scenario service', async () => {
       const brokenRuntime = {
         ...mockRuntime,
-        getService: vi.fn().mockReturnValue(undefined)
+        getService: vi.fn().mockReturnValue(undefined),
       };
 
       const testSuite = new LiaisonTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Platform Information Request');
+      const test = testSuite.tests.find((t) => t.name === 'Test Platform Information Request');
 
       await expect(test?.fn(brokenRuntime)).rejects.toThrow('Scenario service not found');
     });
@@ -125,7 +125,7 @@ describe('LiaisonTestSuite', () => {
       mockScenarioService.waitForCompletion.mockResolvedValue(false);
 
       const testSuite = new LiaisonTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Channel Recommendation');
+      const test = testSuite.tests.find((t) => t.name === 'Test Channel Recommendation');
 
       await expect(test?.fn(mockRuntime)).rejects.toThrow('Channel recommendation timed out');
     });
