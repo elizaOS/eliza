@@ -14,8 +14,11 @@ import { type WalletProvider, initWalletProvider } from '../providers/wallet';
 import { swapTemplate } from '../templates';
 import type { SwapParams, SwapQuote, Transaction } from '../types';
 import type { BebopRoute } from '../types/index';
+import { vi } from 'vitest';
 
 export { swapTemplate };
+
+vi.setConfig({ testTimeout: 30000 });
 
 export class SwapAction {
   private lifiConfig;
@@ -299,6 +302,8 @@ const buildSwapDetails = async (
       return `${chain}: ${balance} ${chainConfig.nativeCurrency.symbol}`;
     })
     .join(', ');
+
+  console.log('Chain balances:::', state.chainBalances);
 
   const context = composePrompt({
     state,

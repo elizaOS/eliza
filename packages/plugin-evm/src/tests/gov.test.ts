@@ -25,6 +25,8 @@ import type { Proposal } from '../types';
 import { ExecuteAction } from '../actions/gov-execute';
 import { ProposeAction } from '../actions/gov-propose';
 
+import { vi } from 'vitest';
+
 export interface ProposalParams extends Proposal {
   governor?: string;
   timelock?: string;
@@ -34,6 +36,12 @@ export interface ProposalParams extends Proposal {
 type ContractTransaction = {
   to: Address;
   data: `0x${string}`;
+};
+
+// Mock the ICacheManager
+const mockCacheManager = {
+  get: vi.fn().mockResolvedValue(null),
+  set: vi.fn(),
 };
 
 export const buildProposal = (txs: Array<ContractTransaction>, description: string): Proposal => {
@@ -71,7 +79,7 @@ describe('Vote Action', () => {
   beforeEach(async () => {
     const pk = generatePrivateKey();
     const customChains = prepareChains();
-    wp = new WalletProvider(pk, customChains);
+    wp = new WalletProvider(pk, mockCacheManager as any, customChains);
     wc = wp.getWalletClient('hardhat');
     const account = wc.account;
     tc = wp.getTestClient();

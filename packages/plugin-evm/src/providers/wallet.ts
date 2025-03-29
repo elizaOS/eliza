@@ -36,17 +36,28 @@ import type { SupportedChain, WalletBalance } from '../types';
 
 export class WalletProvider {
   private cacheKey = 'evm/wallet';
-  chains: Record<string, Chain> = { ...viemChains };
+  chains: Record<string, Chain> = {};
   account: PrivateKeyAccount;
   runtime: IAgentRuntime;
+
+  currentChain: Chain;
   constructor(
     accountOrPrivateKey: PrivateKeyAccount | `0x${string}`,
     runtime: IAgentRuntime,
     chains?: Record<string, Chain>
   ) {
     this.setAccount(accountOrPrivateKey);
-    this.setChains(chains);
     this.runtime = runtime;
+
+    // If chains are provided, set the first chain as default chain, else set 'ethereum' as default chain
+    if (chains) {
+      this.setChains(chains);
+      this.currentChain =
+        Object.keys(chains).length > 0 ? chains[Object.keys(chains)[0]] : undefined;
+    } else {
+      this.setChains({ mainnet: viemChains.mainnet });
+      this.currentChain = viemChains.mainnet;
+    }
   }
 
   getAddress(): Address {
@@ -101,6 +112,20 @@ export class WalletProvider {
     return Object.keys(this.chains) as SupportedChain[];
   }
 
+  getCurrentChain(): Chain {
+    return this.currentChain;
+  }
+
+  switchChain(chainName: SupportedChain) {
+    if (this.chains[chainName]) {
+      this.currentChain = this.chains[chainName];
+    } else {
+      const chain = WalletProvider.genChainFromName(chainName);
+      this.addChain({ chainName: chain });
+      this.currentChain = chain;
+    }
+  }
+
   async getWalletBalances(): Promise<Record<SupportedChain, string>> {
     const cacheKey = path.join(this.cacheKey, 'walletBalances');
     const cachedData = await this.runtime.getCache<Record<SupportedChain, string>>(cacheKey);
@@ -128,6 +153,11 @@ export class WalletProvider {
     await this.runtime.setCache(cacheKey, balances);
     elizaLogger.log('Wallet balances cached');
     return balances;
+  }
+
+  async getWalletBalance(): Promise<string | null> {
+    const currentChain = this.currentChain;
+    return this.getWalletBalanceForChain(currentChain.name.toLowerCase() as SupportedChain);
   }
 
   async getWalletBalanceForChain(chainName: SupportedChain): Promise<string | null> {
