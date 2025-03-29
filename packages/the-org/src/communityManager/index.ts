@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from '@elizaos/core';
+import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent, TestSuite, UUID } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { initCharacter } from '../init';
+import { v4 as uuidv4 } from 'uuid';
 import communityManagerPlugin from './plugins/communityManager';
+
 
 const imagePath = path.resolve('./src/communityManager/assets/portrait.jpg');
 
@@ -417,6 +419,7 @@ const config: OnboardingConfig = {
     },
   },
 };
+
 
 export const communityManager: ProjectAgent = {
   character,

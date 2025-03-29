@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AgentRuntime, logger } from '@elizaos/core';
+import { logger, TestSuite, IAgentRuntime, UUID } from '@elizaos/core';
 import type { Character } from '@elizaos/core/src/types';
 import dotenv from 'dotenv';
 import { initCharacter } from '../init';
+import { v4 as uuidv4 } from 'uuid';
 
 // Get the current file's directory
 const __filename = fileURLToPath(import.meta.url);
@@ -218,6 +219,8 @@ const config = {
     },
   },
 };
+
+
 
 export const devRel = {
   character,

@@ -123,7 +123,7 @@ export function decryptStringValue(value: string, salt: string): string {
     // Split the IV and encrypted value
     const parts = value.split(':');
     if (parts.length !== 2) {
-      logger.warn(
+      logger.debug(
         `Invalid encrypted value format - expected 'iv:encrypted', returning original value`
       );
       return value; // Return the original value without decryption
@@ -134,7 +134,7 @@ export function decryptStringValue(value: string, salt: string): string {
 
     // Verify IV length
     if (iv.length !== 16) {
-      logger.warn(`Invalid IV length (${iv.length}) - expected 16 bytes`);
+      logger.debug(`Invalid IV length (${iv.length}) - expected 16 bytes`);
       return value; // Return the original value without decryption
     }
 
