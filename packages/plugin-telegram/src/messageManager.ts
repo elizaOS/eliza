@@ -288,10 +288,8 @@ export class MessageManager {
       // Get world and room IDs
       // For private chats, the world is the chat itself
       // For groups/channels, the world is the supergroup/channel
-      const worldId = createUniqueUuid(
-        this.runtime,
-        chat.type === 'private' ? `private_${chat.id}` : chat.id.toString()
-      );
+      // TODO: Always use chat.id as worldId?
+      const worldId = createUniqueUuid(this.runtime, chat.id.toString());
 
       // Get world and room names
       const worldName =
@@ -315,6 +313,7 @@ export class MessageManager {
                 : 'Unknown Group';
 
       // Ensure entity connection with proper world/server ID handling
+      console.log('handleMessage() () () () () () 1', worldId);
       await this.runtime.ensureConnection({
         entityId,
         roomId,
@@ -568,16 +567,16 @@ export class MessageManager {
       // Emit both generic and platform-specific message sent events
       this.runtime.emitEvent(EventType.MESSAGE_SENT, {
         runtime: this.runtime,
-        messages: memories,
+        message: content,
         roomId,
         source: 'telegram',
       });
 
       // Also emit platform-specific event
-      this.runtime.emitEvent(TelegramEventTypes.MESSAGE_SENT, {
-        originalMessages: sentMessages,
-        chatId,
-      } as TelegramMessageSentPayload);
+      // this.runtime.emitEvent(TelegramEventTypes.MESSAGE_SENT, {
+      //   originalMessages: sentMessages,
+      //   chatId,
+      // } as TelegramMessageSentPayload);
 
       return sentMessages;
     } catch (error) {

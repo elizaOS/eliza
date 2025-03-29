@@ -565,10 +565,18 @@ const syncSingleUser = async (
 /**
  * Handles standardized server data for both WORLD_JOINED and WORLD_CONNECTED events
  */
-const handleServerSync = async ({ runtime, world, rooms, entities, source }: WorldPayload) => {
+const handleServerSync = async ({
+  runtime,
+  world,
+  rooms,
+  entities,
+  source,
+  onComplete,
+}: WorldPayload) => {
   logger.debug(`Handling server sync event for server: ${world.name}`);
   try {
     // Create/ensure the world exists for this server
+    console.log('handleServerSync() () () () () () calling this?');
     await runtime.ensureWorldExists({
       id: world.id,
       name: world.name,
@@ -633,6 +641,7 @@ const handleServerSync = async ({ runtime, world, rooms, entities, source }: Wor
     }
 
     logger.debug(`Successfully synced standardized world structure for ${world.name}`);
+    onComplete?.();
   } catch (error) {
     logger.error(
       `Error processing standardized server data: ${
@@ -682,12 +691,13 @@ const events = {
   [EventType.MESSAGE_SENT]: [
     async (payload: MessagePayload) => {
       // Message sent tracking
-      logger.debug(`Message sent: ${payload.message.content.text}`);
+      // logger.debug(`Message sent: ${payload.message.content.text}`);
     },
   ],
 
   [EventType.WORLD_JOINED]: [
     async (payload: WorldPayload) => {
+      console.log('HOW MANY TIMES WR TRIGGER WORLD JOINED?');
       await handleServerSync(payload);
     },
   ],
