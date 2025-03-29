@@ -131,7 +131,10 @@ const messageReceivedHandler = async ({
   if (!latestResponseIds.has(runtime.agentId)) {
     latestResponseIds.set(runtime.agentId, new Map<string, string>());
   }
-  const agentResponses = latestResponseIds.get(runtime.agentId)!;
+  const agentResponses = latestResponseIds.get(runtime.agentId);
+  if (!agentResponses) {
+    throw new Error('Agent responses map not found');
+  }
 
   // Set this as the latest response ID for this agent+room
   agentResponses.set(message.roomId, responseId);
@@ -220,12 +223,25 @@ const messageReceivedHandler = async ({
       });
 
       logger.debug(`*** Should Respond Response for ${runtime.character.name} ***\n`, response);
+      logger.debug(`*** Raw Response Type: ${typeof response} ***`);
 
-      const responseObject = parseJSONObjectFromText(response);
+      // Try to preprocess response by removing code blocks markers if present
+      let processedResponse = response;
+      if (typeof response === 'string' && response.includes('```')) {
+        logger.debug('*** Response contains code block markers, attempting to clean up ***');
+        processedResponse = response.replace(/```json\n|\n```|```/g, '');
+        logger.debug('*** Processed Response ***\n', processedResponse);
+      }
 
-      const providers = responseObject.providers as string[] | undefined;
+      const responseObject = parseJSONObjectFromText(processedResponse);
+      logger.debug('*** Parsed Response Object ***', responseObject);
+
+      // Safely handle the case where parsing returns null
+      const providers = responseObject?.providers as string[] | undefined;
+      logger.debug('*** Providers Value ***', providers);
 
       const shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
+      logger.debug('*** Should Respond ***', shouldRespond);
 
       state = await runtime.composeState(message, null, providers);
 
