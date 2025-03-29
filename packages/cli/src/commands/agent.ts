@@ -1,14 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { handleError } from '@/src/utils/handle-error';
+import { checkServer, handleError } from '@/src/utils/handle-error';
 import { displayAgent } from '@/src/utils/helpers';
 import { logger } from '@elizaos/core';
 import type { Agent } from '@elizaos/core';
 import { Command } from 'commander';
 
-const AGENT_RUNTIME_URL =
-  process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') || 'http://localhost:3000';
-const AGENTS_BASE_URL = `${AGENT_RUNTIME_URL}/agents`;
+export const AGENT_RUNTIME_URL =
+  process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') ||
+  `http://localhost:${process.env.SERVER_PORT ?? 3000}`;
+export const AGENTS_BASE_URL = `${AGENT_RUNTIME_URL}/api/agents`;
 
 // Define basic agent interface for type safety
 /**
@@ -109,16 +110,6 @@ interface ApiResponse<T> {
   };
 }
 
-/**
- * Interface representing the response from starting an agent.
- * @property {string} id - The unique identifier for the response.
- * @property {Partial<Agent>} character - The partial information of the Agent object associated with the response.
- */
-interface AgentStartResponse {
-  id: string;
-  character: Partial<Agent>;
-}
-
 agent
   .command('list')
   .alias('ls')
@@ -149,6 +140,7 @@ agent
 
       process.exit(0);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -189,6 +181,7 @@ agent
 
       process.exit(0);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -283,15 +276,16 @@ agent
         );
       }
 
-      const data = (await response.json()) as ApiResponse<AgentStartResponse>;
+      const data = (await response.json()) as ApiResponse<Agent>;
       const result = data.data;
 
       if (!result) {
         throw new Error('Failed to start agent: No data returned from server');
       }
 
-      logger.debug(`Successfully started agent ${result.character.name} (${result.id})`);
+      logger.debug(`Successfully started agent ${result.name} (${result.id})`);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -319,6 +313,7 @@ agent
 
       logger.success(`Successfully stopped agent ${opts.name}`);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -349,6 +344,7 @@ agent
       // Server returns 204 No Content for successful deletion, no need to parse response
       logger.success(`Successfully removed agent ${opts.name}`);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });
@@ -405,6 +401,7 @@ agent
         `Successfully updated configuration for agent ${result?.id || resolvedAgentId}`
       );
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });

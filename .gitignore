@@ -33,6 +33,7 @@ characters/**/*.key
 characters/**/private/
 
 cache/*
+models/*
 
 tsup.config.bundled_*.mjs
 
@@ -65,4 +66,55 @@ lerna-debug.log
 tsdoc_cache/
 tsdoc_comments/
 
-**/elizaDb/**
+**/elizaDb/**# -*- mode: gitignore; -*-
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Org-mode
+.org-id-locations
+*_archive
+
+# flymake-mode
+*_flymake.*
+
+# eshell files
+/eshell/history
+/eshell/lastdir
+
+# elpa packages
+/elpa/
+
+# reftex files
+*.rel
+
+# AUCTeX auto folder
+/auto/
+
+# cask packages
+.cask/
+dist/
+
+# Flycheck
+flycheck_*.el
+
+# server auth directory
+/server/
+
+# projectiles files
+.projectile
+
+# directory configuration
+.dir-locals.el
+
+# network security
+/network-security.data
+
+packages/autodoc/text_objects/*
+/env
+pglite/*

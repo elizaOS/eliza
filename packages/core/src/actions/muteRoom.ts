@@ -16,6 +16,11 @@ import {
  *
  * @type {string}
  */
+/**
+ * Template for deciding if agent should mute a room and stop responding unless explicitly mentioned.
+ * 
+ * @type {string}
+ */
 export const shouldMuteTemplate = `# Task: Decide if {{agentName}} should mute this room and stop responding unless explicitly mentioned.
 
 {{recentMessages}}

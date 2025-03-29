@@ -73,6 +73,13 @@ export class MessageManager {
       return;
     }
 
+    if (
+      this.runtime.character.settings?.discord?.shouldRespondOnlyToMentions &&
+      !message.mentions.users?.has(this.client.user?.id)
+    ) {
+      return;
+    }
+
     const entityId = createUniqueUuid(this.runtime, message.author.id);
 
     const userName = message.author.bot

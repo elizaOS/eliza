@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 process.env.NODE_OPTIONS = '--no-deprecation';
+process.env.NODE_NO_WARNINGS = '1';
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -7,18 +8,18 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
-import { agent } from './commands/agent.js';
-import { create } from './commands/create.js';
-import { dev } from './commands/dev.js';
-import { env } from './commands/env.js';
-import { plugin } from './commands/plugin.js';
-import { project } from './commands/project.js';
-import { publish } from './commands/publish.js';
-import { start } from './commands/start.js';
-import { teeCommand as tee } from './commands/tee.js';
-import { test } from './commands/test.js';
-import { update } from './commands/update.js';
-import { loadEnvironment } from './utils/get-config.js';
+import { agent } from './commands/agent';
+import { create } from './commands/create';
+import { dev } from './commands/dev';
+import { env } from './commands/env';
+import { plugin } from './commands/plugin';
+import { project } from './commands/project';
+import { publish } from './commands/publish';
+import { start } from './commands/start';
+import { teeCommand as tee } from './commands/tee';
+import { test } from './commands/test';
+import { update } from './commands/update';
+import { loadEnvironment } from './utils/get-config';
 import { displayBanner } from './displayBanner';
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
@@ -64,7 +65,7 @@ async function main() {
 
   // if no args are passed, display the banner
   if (process.argv.length === 2) {
-    displayBanner(version);
+    displayBanner();
   }
 
   await program.parseAsync();

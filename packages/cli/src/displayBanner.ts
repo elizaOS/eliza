@@ -1,9 +1,10 @@
 // Export function to display banner and version
 
 import fs from 'node:fs';
-import path from 'node:path';
+import path, { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export function displayBanner(version: string | null = null, hideBanner = false) {
+export function displayBanner() {
   // Color ANSI escape codes
   const b = '\x1b[38;5;27m';
   const lightblue = '\x1b[38;5;51m';
@@ -12,20 +13,23 @@ export function displayBanner(version: string | null = null, hideBanner = false)
   const red = '\x1b[38;5;196m';
   let versionColor = lightblue;
 
-  // assume __dirname doesnt exist
-  const __dirname = path.resolve(import.meta.dirname, '..');
+  // For ESM modules we need to use import.meta.url instead of __dirname
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
 
-  if (!version) {
-    const packageJsonPath = path.join(__dirname, 'package.json');
-    if (!fs.existsSync(packageJsonPath)) {
-    } else {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-      version = packageJson.version;
-    }
+  // Find package.json relative to the current file
+  const packageJsonPath = path.resolve(__dirname, '../package.json');
+
+  // Add a simple check in case the path is incorrect
+  let version = '0.0.0'; // Fallback version
+  if (!fs.existsSync(packageJsonPath)) {
+  } else {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    version = packageJson.version;
   }
 
   // if version includes "beta" or "alpha" then use red
-  if (version.includes('beta') || version.includes('alpha')) {
+  if (version?.includes('beta') || version?.includes('alpha')) {
     versionColor = red;
   }
   const banners = [
@@ -80,12 +84,10 @@ ${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⡃⠀⠀${w}
   // Randomly select and log one banner
   const randomBanner = banners[Math.floor(Math.random() * banners.length)];
 
-  if (!hideBanner) {
-    console.log(randomBanner);
-  } else {
-    console.log(`*** elizaOS ***`);
-  }
+  console.log(randomBanner);
 
-  // log the version
-  console.log(`${versionColor}Version: ${version}${r}`);
+  if (version) {
+    // log the version
+    console.log(`${versionColor}Version: ${version}${r}`);
+  }
 }

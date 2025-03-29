@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent } from '@elizaos/core';
+import type { Character, IAgentRuntime, OnboardingConfig, ProjectAgent, TestSuite, UUID } from '@elizaos/core';
 import dotenv from 'dotenv';
 import { initCharacter } from '../init';
+import { v4 as uuidv4 } from 'uuid';
+import communityManagerPlugin from './plugins/communityManager';
+
 
 const imagePath = path.resolve('./src/communityManager/assets/portrait.jpg');
 
@@ -400,11 +403,27 @@ const config: OnboardingConfig = {
         return `I will now greet new users in ${value}`;
       },
     },
+    GREETING_MESSAGE: {
+      name: 'Greeting Message',
+      description:
+        'What message should I use to greet new users? You can give me a few keywords or sentences.',
+      usageDescription: 'A few sentences or keywords to use when greeting new users.',
+      required: false,
+      public: false,
+      secret: false,
+      dependsOn: ['SHOULD_GREET_NEW_PERSONS'],
+      validation: (value: string) => typeof value === 'string' && value.trim().length > 0,
+      onSetAction: (value: string) => {
+        return `Got it! I’ll use this message to greet new users: "${value}"`;
+      },
+    },
   },
 };
 
+
 export const communityManager: ProjectAgent = {
   character,
+  plugins: [communityManagerPlugin],
   init: async (runtime: IAgentRuntime) => await initCharacter({ runtime, config }),
 };
 

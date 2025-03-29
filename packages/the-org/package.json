@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/the-org",
-  "version": "1.0.0-alpha.67",
+  "version": "1.0.0-beta.7",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,7 +16,14 @@
     "test": "bun ../cli/dist/index.js test",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "test:communityManager": "vitest tests/communityManager.test.ts",
+    "test:devRel": "vitest tests/devRel.test.ts",
+    "test:investmentManager": "vitest tests/investmentManager.test.ts",
+    "test:liaison": "vitest tests/liaison.test.ts",
+    "test:projectManager": "vitest tests/projectManager.test.ts",
+    "test:socialMediaManager": "vitest tests/socialMediaManager.test.ts",
+    "test:the-org": "vitest tests/communityManager.test.ts tests/devRel.test.ts tests/investmentManager.test.ts tests/liaison.test.ts tests/projectManager.test.ts tests/socialMediaManager.test.ts"
   },
   "nodemonConfig": {
     "watch": [
@@ -27,15 +34,15 @@
     "exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
   },
   "dependencies": {
-    "@elizaos/cli": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-anthropic": "workspace:*",
-    "@elizaos/plugin-discord": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
-    "@elizaos/plugin-tee": "workspace:*",
-    "@elizaos/plugin-telegram": "workspace:*",
-    "@elizaos/plugin-twitter": "workspace:*",
+    "@elizaos/cli": "^1.0.0-beta.7",
+    "@elizaos/core": "^1.0.0-beta.7",
+    "@elizaos/plugin-anthropic": "^1.0.0-beta.7",
+    "@elizaos/plugin-discord": "^1.0.0-beta.7",
+    "@elizaos/plugin-openai": "^1.0.0-beta.7",
+    "@elizaos/plugin-sql": "^1.0.0-beta.7",
+    "@elizaos/plugin-tee": "^1.0.0-beta.7",
+    "@elizaos/plugin-telegram": "^1.0.0-beta.7",
+    "@elizaos/plugin-twitter": "^1.0.0-beta.7",
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.2",
     "@solana/web3.js": "^1.87.6",
@@ -83,5 +90,5 @@
     "typescript-eslint": "^8.18.2",
     "vite": "^6.0.5"
   },
-  "gitHead": "e98c03cf7e76ba967b203fdc3fc07cb438797559"
+  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e"
 }

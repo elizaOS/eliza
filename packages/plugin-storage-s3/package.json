@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-storage-s3",
-  "version": "1.0.0-alpha.67",
+  "version": "1.0.0-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -28,7 +28,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.705.0",
     "@aws-sdk/s3-request-presigner": "^3.705.0",
-    "@elizaos/core": "^1.0.0-alpha.67",
+    "@elizaos/core": "^1.0.0-beta.7",
     "@types/uuid": "10.0.0",
     "capsolver-npm": "2.0.2",
     "fluent-ffmpeg": "2.1.3",
@@ -38,7 +38,10 @@
   "devDependencies": {
     "@types/node": "22.8.4",
     "prettier": "3.5.3",
-    "tsup": "8.4.0"
+    "tsup": "8.4.0",
+    "zod": "^3.22.4",
+    "vitest": "1.6.1",
+    "@vitest/coverage-v8": "1.1.3"
   },
   "scripts": {
     "build": "tsup",
@@ -47,7 +50,9 @@
     "lint": "prettier --write ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "test": "vitest run", 
+    "test:coverage": "vitest run --coverage"
   },
   "peerDependencies": {
     "whatwg-url": "7.1.0"
@@ -55,5 +60,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
+  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e"
 }

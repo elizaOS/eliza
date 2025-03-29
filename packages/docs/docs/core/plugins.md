@@ -1,8 +1,26 @@
 # Plugins
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 Plugins are modular extensions that enhance the capabilities of ElizaOS agents. They provide a flexible way to add new functionality, integrate external services, and customize agent behavior across different platforms.
 
-**Browse the various plugins the eliza dev community made here: [Package Showcase](/packages)**
+:::info
+Key Improvements in V2
+
+1. **Unified API**: Almost everything is accessible via `runtime.methodName()` in the agent runtime for simpler development
+2. **Enhanced Model System**: The new `useModel` approach allows for flexible model provider registration
+3. **Events System**: Formal support for event-based programming
+4. **Plugin Creation Workflow**: Simplified creation and testing via CLI
+5. **Testing Infrastructure**: Built-in support for plugin testing
+6. **No Monorepo Required**: Complete plugin development without touching the core codebase
+7. **Plugin Registry**: Manages the catalog of available plugins and handles their registration with the runtime
+8. **Bootstrap Plugin**: Initializes core functionality required for all agents to operate
+   :::
+
+The ElizaOS plugin system maintains the same basic concept as previous versions, with several new extension points (events, routes, tests, models) and features that significantly improve the developer experience.
+
+**Browse plugins the elizaOS community made here: [Package Showcase](/packages)**
 
 [![](/img/plugins.png)](/packages)
 
@@ -12,93 +30,117 @@ Plugins are modular extensions that enhance the capabilities of ElizaOS agents. 
 
 ## Quick Start
 
+The new CLI tool introduces a streamlined workflow for plugin development without ever needing to touch the ElizaOS monorepo directly:
+
+1. **Create**: `npm create eliza` - Initialize a new plugin project with proper structure
+2. **Develop**: Edit the plugin code in the generated project structure
+3. **Test**: `npx elizaos test` - Test the plugin functionality
+4. **Run**: `npx elizaos start` - Run the plugin with a default agent
+5. **Publish**: `npx elizaos publish` - Share your plugin with others
+
+> Note: at time of publishing, use `npm create eliza@beta` until main version is uploaded
+
 ### Creating a New Plugin
 
 You can create a new ElizaOS plugin using the CLI:
 
 ```bash
 # Using npm
-npm create eliza@alpha
+npm create eliza@beta
 
 # Or using npx
-npx @elizaos/cli create
+npx @elizaos/cli@beta create
 ```
 
 When prompted, select "Plugin" as the type to create. The CLI will guide you through the setup process, creating a plugin with the proper structure and dependencies.
+
+---
 
 ### Managing Plugins
 
 There are several ways to add plugins to your ElizaOS project:
 
-1. Add the plugin to your project's dependencies (`package.json`):
+<Tabs>
+  <TabItem value="package" label="Via package.json">
+    ```json
+    {
+      "dependencies": {
+        "@elizaos/plugin-solana": "github:elizaos-plugins/plugin-solana",
+        "@elizaos/plugin-twitter": "github:elizaos-plugins/plugin-twitter"
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem value="character" label="Via Character Definition">
+    ```typescript
+    // In src/index.ts
+    export const character: Character = {
+      name: 'MyAgent',
+      plugins: ['@elizaos/plugin-twitter', '@elizaos/plugin-example'],
+      // ...
+    };
+    ```
+  </TabItem>
+  <TabItem value="cli" label="Via CLI Commands">
+    ```bash
+    # Add a plugin
+    npx @elizaos/cli plugins add @elizaos/plugin-twitter
 
-```json
-{
-  "dependencies": {
-    "@elizaos/plugin-solana": "github:elizaos-plugins/plugin-solana",
-    "@elizaos/plugin-twitter": "github:elizaos-plugins/plugin-twitter"
-  }
-}
-```
+    # Remove a plugin
+    npx @elizaos/cli plugins remove @elizaos/plugin-twitter
 
-2. Configure the plugin in your project's character definition:
+    # List available plugins
+    npx @elizaos/cli plugins list
+    ```
 
-```typescript
-// In src/index.ts
-export const character: Character = {
-  name: 'MyAgent',
-  plugins: ['@elizaos/plugin-twitter', '@elizaos/plugin-example'],
-  // ...
-};
-```
+  </TabItem>
+</Tabs>
 
-3. Use the CLI tool to add or remove plugins:
-
-```bash
-# Add a plugin
-npx @elizaos/cli plugins add @elizaos/plugin-twitter
-
-# Remove a plugin
-npx @elizaos/cli plugins remove @elizaos/plugin-twitter
-
-# List available plugins
-npx @elizaos/cli plugins list
-```
-
-```bash
-# Full CLI options
-Usage: elizaos plugins [options] [command]
-
-manage elizaOS plugins
-
-Options:
-  -h, --help              display help for command
-
-Commands:
-  list|l [options]        list available plugins
-  add|install <plugin>    add a plugin
-  remove|delete <plugin>  remove a plugin
-  help [command]          display help for command
-```
+---
 
 ### Plugin Configuration
 
 Configure plugin settings in your character definition:
 
-```typescript
+```json
 {
+  "name": "MyAgent",
+  "plugins": ["@elizaos/plugin-example"],
   "settings": {
-    "twitter": {
-      "shouldRespondToMentions": true
+    "example": {
+      "enableFeatureX": true
       // Plugin-specific configuration
     }
   }
 }
 ```
 
-## Publishing Plugins
+### Plugin Loading Process
 
-If you're a plugin developer, you can publish your plugin to make it available to others:
+The AgentRuntime automatically loads the Bootstrap Plugin during initialization, before any other plugins:
+
+```typescript
+async initialize() {
+  // Register bootstrap plugin
+  await this.registerPlugin(bootstrapPlugin);
+
+  // Then register additional plugins
+  for (const plugin of this.plugins) {
+    await this.registerPlugin(plugin);
+  }
+
+  // Initialize other components
+  // ...
+}
+```
+
+---
+
+### Publishing Plugins
+
+If you're a plugin developer, you can publish your plugin to make it available to others. The ElizaOS CLI provides several options for publishing your plugin depending on your needs.
+
+First, make sure your plugin is built and ready for distribution:
 
 ```bash
 # Navigate to your plugin directory
@@ -106,31 +148,100 @@ cd my-eliza-plugin
 
 # Build your plugin
 npm run build
-
-# Publish to the registry
-npx @elizaos/cli publish
 ```
 
-The publish command supports several options:
+<Tabs>
+  <TabItem value="github" label="GitHub Publishing">
+    Publishing to GitHub is the recommended approach for sharing your plugin with the ElizaOS community:
 
-```bash
-# Publish to npm instead of GitHub
-npx @elizaos/cli publish --npm
+    ```bash
+    # Publish to GitHub
+    npx @elizaos/cli publish
+    ```
 
-# Test the publish process without making changes
-npx @elizaos/cli publish --test
+    This will:
+    1. Build and package your plugin
+    2. Create or update a GitHub repository in the elizaos-plugins organization
+    3. Add your plugin to the ElizaOS registry (if you're a registry maintainer)
 
-# Specify platform compatibility
-npx @elizaos/cli publish --platform node
-```
+    For first-time publishers, the CLI will guide you through setting up GitHub credentials for publishing.
 
-When publishing, your plugin will be:
+    GitHub publishing is ideal for open-source plugins that you want to share with the community and have listed in the official registry.
 
-1. Built and packaged
-2. Published to GitHub (or npm if specified)
-3. Added to the elizaOS registry (if you're a maintainer)
+  </TabItem>
 
-For first-time publishers, the CLI will guide you through setting up GitHub credentials for publishing.
+  <TabItem value="npm" label="npm Publishing">
+    You can also publish your plugin to npm:
+
+    ```bash
+    # Publish to npm
+    npx @elizaos/cli publish --npm
+    ```
+
+    This allows users to install your plugin using standard npm commands:
+
+    ```bash
+    npm install @your-scope/plugin-name
+    ```
+
+    npm publishing is useful when you want to:
+    - Maintain your own package namespace
+    - Integrate with existing npm workflows
+    - Set up automated versioning and releases
+
+    Make sure your package.json is properly configured with the correct name, version, and access permissions.
+
+  </TabItem>
+
+  <TabItem value="testing" label="Test Mode">
+    Before publishing, you can validate the process without making any external changes:
+
+    ```bash
+    # Test the publish process
+    npx @elizaos/cli publish --test
+    ```
+
+    This runs through all the packaging and validation steps without actually publishing anything.
+
+    Test mode is helpful for:
+    - Verifying your plugin structure is correct
+    - Ensuring all required files are present
+    - Checking that dependencies are properly configured
+    - Validating that your plugin can be built successfully
+
+    Always run in test mode before your first public release to avoid issues.
+
+  </TabItem>
+
+  <TabItem value="customizing" label="Additional Options">
+    The publish command supports several additional options to customize the publishing process:
+
+    ```bash
+    # Specify platform compatibility
+    npx @elizaos/cli publish --platform node
+
+    # Set custom version number
+    npx @elizaos/cli publish --version 1.2.3
+
+    # Provide a custom registry URL
+    npx @elizaos/cli publish --registry https://custom-registry.com
+
+    # Publish with public access
+    npx @elizaos/cli publish --access public
+    ```
+
+    These options give you fine-grained control over how and where your plugin is published. Refer to `npx @elizaos/cli publish --help` for a complete list of options.
+
+  </TabItem>
+</Tabs>
+
+:::info
+When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
+
+1. **Working Demo**: Screenshots or video of your plugin in action
+2. **Test Results**: Evidence of successful integration and error handling
+3. **Configuration Example**: Show how to properly configure your plugin
+   :::
 
 ---
 
@@ -142,13 +253,17 @@ Eliza uses a unified plugin architecture where everything is a plugin - includin
 
 Each plugin can provide one or more of the following components:
 
-| Component      | Purpose                                                                    |
-| -------------- | -------------------------------------------------------------------------- |
-| **Services**   | Platform integrations (Discord, Twitter, etc.) or specialized capabilities |
-| **Actions**    | Executable functions triggered by the agent                                |
-| **Providers**  | Context providers that supply information to the agent                     |
-| **Evaluators** | Response analyzers for quality and compliance                              |
-| **Adapters**   | Database or storage system integrations                                    |
+| Component          | Purpose                                                                         |
+| ------------------ | ------------------------------------------------------------------------------- |
+| **Services**       | Platform integrations (Discord, Twitter, etc.) or specialized capabilities      |
+| **Actions**        | Executable functions triggered by the agent (reply, generate content, etc.)     |
+| **Providers**      | Context providers that supply info to the agent during decision making          |
+| **Evaluators**     | Analyze conversations to extract insights and improve future interactions       |
+| **Adapters**       | Database or storage system integrations                                         |
+| **Model Handlers** | Register handlers for different model types (text generation, embeddings, etc.) |
+| **Event Handlers** | React to system events like messages, connections, or actions                   |
+| **API Routes**     | Add custom REST endpoints to the agent's HTTP interface                         |
+| **Tests**          | Include test suites to verify plugin functionality                              |
 
 ### Plugin Interface
 
@@ -287,7 +402,7 @@ Your plugin's `package.json` should include an `agentConfig` section:
 }
 ```
 
-## Environment Variables and Secrets
+### Environment Variables and Secrets
 
 Plugins access configuration through the runtime with the following precedence:
 
@@ -295,7 +410,7 @@ Plugins access configuration through the runtime with the following precedence:
 2. Character settings
 3. Global environment settings
 
-### Access Pattern
+#### Access Pattern
 
 ```typescript
 // In your service implementation
@@ -303,7 +418,7 @@ const apiKey = runtime.getSetting('EXAMPLE_API_KEY');
 const debugMode = runtime.getSetting('EXAMPLE_DEBUG_MODE'); // Returns boolean for "true"/"false" strings
 ```
 
-### Configuration in Character File
+#### Configuration in Character File
 
 ```json
 {
@@ -319,6 +434,133 @@ const debugMode = runtime.getSetting('EXAMPLE_DEBUG_MODE'); // Returns boolean f
   }
 }
 ```
+
+---
+
+## Bootstrap Plugin
+
+The Bootstrap Plugin is a foundational component of ElizaOS that initializes the core functionality required for agents to operate. It's automatically loaded as part of the initialization process, establishing the minimum viable capabilities that all agents need.
+
+```typescript
+export const bootstrapPlugin: Plugin = {
+  name: 'bootstrap',
+  description: 'Agent bootstrap with basic actions and evaluators',
+  actions: [...],
+  events: {...},
+  evaluators: [...],
+  providers: [...],
+  services: [TaskService, ScenarioService],
+};
+```
+
+The Bootstrap Plugin registers essential components across several categories to provide a foundation for all agents. These components can be extended by custom plugins.
+
+<Tabs>
+  <TabItem value="actions" label="Actions">
+    | Action                 | Description                                     |
+    | ---------------------- | ----------------------------------------------- |
+    | `replyAction`          | Generates and sends a response to a message     |
+    | `followRoomAction`     | Enables an agent to actively follow a room      |
+    | `unfollowRoomAction`   | Stops an agent from following a room            |
+    | `muteRoomAction`       | Mutes notifications from a room                 |
+    | `unmuteRoomAction`     | Unmutes notifications from a room               |
+    | `sendMessageAction`    | Sends a message to a specific room              |
+    | `ignoreAction`         | Explicitly ignores a message                    |
+    | `noneAction`           | Acknowledges a message without taking action    |
+    | `updateEntityAction`   | Updates properties of an entity                 |
+    | `choiceAction`         | Presents choices to users and handles responses |
+    | `updateRoleAction`     | Updates a user's role in a world                |
+    | `updateSettingsAction` | Updates agent or world settings                 |
+  </TabItem>
+  
+  <TabItem value="providers" label="Providers">
+    | Provider                 | Description                                                |
+    | ------------------------ | ---------------------------------------------------------- |
+    | `characterProvider`      | Provides the agent's personality and configuration         |
+    | `recentMessagesProvider` | Retrieves recent conversation history                      |
+    | `knowledgeProvider`      | Supplies factual information from the knowledge base       |
+    | `timeProvider`           | Provides awareness of current time and date                |
+    | `entitiesProvider`       | Supplies information about entities in the current context |
+    | `relationshipsProvider`  | Provides information about entity relationships            |
+    | `factsProvider`          | Retrieves relevant facts from memory                       |
+    | `roleProvider`           | Provides role information within worlds                    |
+    | `settingsProvider`       | Supplies configured settings                               |
+    | `anxietyProvider`        | Informs agent of potential issues to be careful about      |
+    | `attachmentsProvider`    | Handles media and file attachments                         |
+    | `providersProvider`      | Meta-provider with information about available providers   |
+    | `actionsProvider`        | Meta-provider with information about available actions     |
+    | `evaluatorsProvider`     | Meta-provider with information about available evaluators  |
+    | `choiceProvider`         | Manages choice-based interactions                          |
+    | `capabilitiesProvider`   | Provides information about agent capabilities              |
+  </TabItem>
+  
+  <TabItem value="services" label="Services & Evaluators">
+    **Services:**
+
+    | Service           | Purpose                                          |
+    | ----------------- | ------------------------------------------------ |
+    | `TaskService`     | Manages deferred, scheduled, and repeating tasks |
+    | `ScenarioService` | Handles scenario-based interactions and testing  |
+
+    **Evaluators:**
+
+    | Evaluator             | Description                                           |
+    | --------------------- | ----------------------------------------------------- |
+    | `reflectionEvaluator` | Enables self-awareness and learning from interactions |
+
+  </TabItem>
+  
+  <TabItem value="events" label="Event Handlers">
+    The Bootstrap Plugin registers handlers for key system events that enable the core message processing flow:
+
+    **Core Events:**
+    - `MESSAGE_RECEIVED` - Processes new messages and generates responses
+    - `REACTION_RECEIVED` - Tracks reactions to messages
+    - `VOICE_MESSAGE_RECEIVED` - Handles audio messages
+    - `POST_GENERATED` - Creates social media content
+    - `MESSAGE_SENT` - Logs outgoing messages
+
+    **World Events:**
+    - `WORLD_JOINED` / `WORLD_CONNECTED` - Synchronizes data when joining worlds
+    - `ENTITY_JOINED` / `ENTITY_LEFT` - Manages entity presence
+
+    **Lifecycle Events:**
+    - `ACTION_STARTED` / `ACTION_COMPLETED` - Tracks action execution
+    - `EVALUATOR_STARTED` / `EVALUATOR_COMPLETED` - Monitors evaluator processing
+    - `RUN_STARTED` / `RUN_ENDED` / `RUN_TIMEOUT` - Manages message processing lifecycle
+
+    The message processing flow follows these steps:
+    1. Receive message via `MESSAGE_RECEIVED` event
+    2. Save message to memory
+    3. Check if agent should respond
+    4. If responding, compose state from providers
+    5. Generate a response using the language model
+    6. Process any actions specified in the response
+    7. Run evaluators on the conversation
+    8. Emit lifecycle events throughout the process
+
+  </TabItem>
+</Tabs>
+
+### Extending Bootstrap Functionality
+
+While the Bootstrap Plugin provides core functionality, it's designed to be extended by other plugins. Custom plugins can:
+
+1. **Add new actions** - Extend the agent's capabilities
+2. **Register additional providers** - Supply more contextual information
+3. **Add evaluators** - Create new ways to analyze and learn from interactions
+4. **Handle additional events** - React to more system events
+5. **Initialize custom services** - Provide new functionality
+
+When working with plugins in relation to the Bootstrap Plugin:
+
+1. **Don't modify bootstrap directly** - Instead, create custom plugins to extend functionality
+2. **Understand provider contribution** - Know how each provider contributes to the agent's context
+3. **Learn the core actions** - Become familiar with the actions that all agents can perform
+4. **Leverage event handlers** - Use the event system for reactive behavior
+5. **Extend, don't replace** - Build on top of bootstrap functionality rather than replacing it
+
+---
 
 ## Developing a Plugin
 
@@ -342,7 +584,7 @@ npx @elizaos/cli start --plugin=./path/to/plugin
 npx @elizaos/cli start --character=./characters/test.character.json --plugin=./path/to/plugin
 ```
 
-## Distribution & PR Requirements
+### Distribution & PR Requirements
 
 When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-plugins/registry), include:
 
@@ -356,6 +598,8 @@ When submitting a plugin to the [elizaOS Registry](https://github.com/elizaos-pl
    - [ ] GitHub topics properly set
    - [ ] Tests are passing
    - [ ] Includes error handling
+
+---
 
 ## FAQ
 

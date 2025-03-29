@@ -389,7 +389,8 @@ export const openaiPlugin: Plugin = {
       logger.log('audioBuffer', audioBuffer);
       const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
       const formData = new FormData();
-      formData.append('file', new Blob([audioBuffer], { type: 'audio/mp3' }));
+
+      formData.append('file', new File([audioBuffer], 'recording.mp3', { type: 'audio/mp3' }));
       formData.append('model', 'whisper-1');
       const response = await fetch(`${baseURL}/audio/transcriptions`, {
         method: 'POST',

@@ -137,12 +137,13 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
   const pathsToTry = [
     characterPath,
     path.resolve(process.cwd(), '..', '..', characterPath),
-    path.resolve(process.cwd(), characterPath),
+    path.resolve(process.cwd(), '..', '..', '..', characterPath),
     path.resolve(process.cwd(), 'agent', characterPath),
     path.resolve(__dirname, characterPath),
     path.resolve(__dirname, 'characters', path.basename(characterPath)),
     path.resolve(__dirname, '../characters', path.basename(characterPath)),
     path.resolve(__dirname, '../../characters', path.basename(characterPath)),
+    path.resolve(__dirname, '../../../characters', path.basename(characterPath)),
   ];
 
   for (const tryPath of pathsToTry) {

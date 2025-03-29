@@ -5,7 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { AVATAR_IMAGE_MAX_SIZE } from '@/constants';
 import { useToast } from '@/hooks/use-toast';
+import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
 import { type FormEvent, type ReactNode, useState } from 'react';
@@ -134,7 +136,13 @@ export type CharacterFormProps = {
   isAgent?: boolean;
   customComponents?: customComponent[];
   characterValue: Agent;
-  setCharacterValue: (value: (prev: Agent) => Agent) => void;
+  setCharacterValue: {
+    updateField: <T>(path: string, value: T) => void;
+    addArrayItem?: <T>(path: string, item: T) => void;
+    removeArrayItem?: (path: string, index: number) => void;
+    updateSetting?: (path: string, value: any) => void;
+    [key: string]: any;
+  };
 };
 
 export default function CharacterForm({
@@ -155,57 +163,77 @@ export default function CharacterForm({
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
 
-    if (name.includes('.')) {
-      const parts = name.split('.');
-      setCharacterValue((prev) => {
-        const newValue = { ...prev };
-        let current: Record<string, any> = newValue;
+    if (type === 'checkbox') {
+      setCharacterValue.updateField(name, checked);
+    } else if (name.startsWith('settings.')) {
+      // Handle nested settings fields like settings.voice.model
+      const path = name.substring(9); // Remove 'settings.' prefix
 
-        for (let i = 0; i < parts.length - 1; i++) {
-          if (!current[parts[i]]) {
-            current[parts[i]] = {};
-          }
-          current = current[parts[i]];
-        }
-
-        current[parts[parts.length - 1]] = type === 'checkbox' ? checked : value;
-        return newValue;
-      });
+      if (setCharacterValue.updateSetting) {
+        // Use the specialized method if available
+        setCharacterValue.updateSetting(path, value);
+      } else {
+        // Fall back to generic updateField
+        setCharacterValue.updateField(name, value);
+      }
     } else {
-      setCharacterValue((prev) => ({
-        ...prev,
-        [name]: type === 'checkbox' ? checked : value,
-      }));
+      setCharacterValue.updateField(name, value);
     }
   };
 
   const updateArray = (path: string, newData: string[]) => {
-    setCharacterValue((prev) => {
-      const newValue = { ...prev };
-      const keys = path.split('.');
-      let current: any = newValue;
+    // If the path is a simple field name
+    if (!path.includes('.')) {
+      setCharacterValue.updateField(path, newData);
+      return;
+    }
 
-      for (let i = 0; i < keys.length - 1; i++) {
-        const key = keys[i];
-
-        if (!current[key] || typeof current[key] !== 'object') {
-          current[key] = {}; // Ensure path exists
-        }
-        current = current[key];
+    // Handle nested paths (e.g. style.all)
+    const parts = path.split('.');
+    if (parts.length === 2 && parts[0] === 'style') {
+      // For style arrays, use the setStyleArray method if available
+      if (setCharacterValue.setStyleArray) {
+        setCharacterValue.setStyleArray(parts[1] as 'all' | 'chat' | 'post', newData);
+      } else {
+        setCharacterValue.updateField(path, newData);
       }
+      return;
+    }
 
-      current[keys[keys.length - 1]] = newData; // Update array
-
-      return newValue;
-    });
+    // Default case - just update the field
+    setCharacterValue.updateField(path, newData);
   };
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const ensureAvatarSize = async (char: Agent): Promise<Agent> => {
+    if (char.settings?.avatar) {
+      const img = new Image();
+      img.src = char.settings.avatar;
+      await new Promise((resolve) => (img.onload = resolve));
+
+      if (img.width > AVATAR_IMAGE_MAX_SIZE || img.height > AVATAR_IMAGE_MAX_SIZE) {
+        const response = await fetch(char.settings.avatar);
+        const blob = await response.blob();
+        const file = new File([blob], 'avatar.jpg', { type: blob.type });
+        const compressedImage = await compressImage(file);
+        return {
+          ...char,
+          settings: {
+            ...char.settings,
+            avatar: compressedImage,
+          },
+        };
+      }
+    }
+    return char;
+  };
+
+  const handleFormSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      await onSubmit(characterValue);
+      const updatedCharacter = await ensureAvatarSize(characterValue);
+      await onSubmit(updatedCharacter);
     } catch (error) {
       toast({
         title: 'Error',
@@ -270,7 +298,7 @@ export default function CharacterForm({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleFormSubmit}>
         <Tabs defaultValue="basic" className="w-full">
           <TabsList
             className={'grid w-full mb-6'}
@@ -331,7 +359,6 @@ export default function CharacterForm({
               variant="outline"
               onClick={() => {
                 onReset?.();
-                // setCharacterValue(character)
               }}
             >
               Reset Changes

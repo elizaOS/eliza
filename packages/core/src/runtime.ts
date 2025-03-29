@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { bootstrapPlugin } from './bootstrap';
 import { createUniqueUuid } from './entities';
-import { handlePluginImporting } from './index';
+import { decryptSecret, getSalt, handlePluginImporting } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -47,6 +47,9 @@ import path from 'node:path';
 /**
  * Interface for settings object with key-value pairs.
  */
+/**
+ * Interface representing settings with string key-value pairs.
+ */
 interface Settings {
   [key: string]: string | undefined;
 }
@@ -73,9 +76,10 @@ let environmentSettings: Settings = {};
  */
 export function loadEnvConfig(): Settings {
   // For browser environments, return the configured settings
-  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-    return environmentSettings;
-  }
+  // src/runtime.ts:76:14 - error TS2304: Cannot find name 'window'.
+  // if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+  //   return environmentSettings;
+  // }
 
   // Only import dotenv in Node.js environment
   let dotenv = null;
@@ -271,11 +275,11 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
 
-    if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-      this.settings = environmentSettings;
-    } else {
-      this.settings = loadEnvConfig();
-    }
+    // if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+    //   this.settings = environmentSettings;
+    // } else {
+    this.settings = loadEnvConfig();
+    //}
 
     // Register plugins from options or empty array
     const plugins = opts?.plugins ?? [];
@@ -577,12 +581,16 @@ export class AgentRuntime implements IAgentRuntime {
 
     const uniqueSources = [
       ...new Set(
-        fragments.map((memory) => {
-          this.runtimeLogger.debug(
-            `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
-          );
-          return memory.content.source;
-        })
+        fragments
+          .map((memory) => {
+            this.runtimeLogger.debug(
+              `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
+            );
+            return memory?.metadata?.type === MemoryType.FRAGMENT
+              ? memory?.metadata?.documentId
+              : undefined;
+          })
+          .filter(Boolean)
       ),
     ];
 
@@ -610,7 +618,7 @@ export class AgentRuntime implements IAgentRuntime {
       roomId: this.agentId,
       entityId: this.agentId,
       content: item.content,
-      metadata: {
+      metadata: item.metadata || {
         type: MemoryType.DOCUMENT,
         timestamp: Date.now(),
       },
@@ -659,11 +667,37 @@ export class AgentRuntime implements IAgentRuntime {
           item.slice(0, 100)
         );
 
+        // Extract metadata from the knowledge item
+        let metadata: MemoryMetadata = {
+          type: MemoryType.DOCUMENT,
+          timestamp: Date.now(),
+        };
+
+        const pathMatch = item.match(/^Path: (.+?)(?:\n|\r\n)/);
+        if (pathMatch) {
+          const filePath = pathMatch[1].trim();
+          const extension = filePath.split('.').pop() || '';
+          const filename = filePath.split('/').pop() || '';
+          const title = filename.replace(`.${extension}`, '');
+
+          metadata = {
+            ...metadata,
+            path: filePath,
+            filename: filename,
+            fileExt: extension,
+            title: title,
+            fileType: `text/${extension || 'plain'}`,
+            fileSize: item.length,
+            source: 'character',
+          };
+        }
+
         await this.addKnowledge({
           id: knowledgeId,
           content: {
             text: item,
           },
+          metadata,
         });
       } catch (error) {
         await this.handleProcessingError(error, 'processing character knowledge');
@@ -696,9 +730,11 @@ export class AgentRuntime implements IAgentRuntime {
       this.character.settings?.secrets?.[key] ||
       this.settings[key];
 
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    return value || null;
+    const decryptedValue = decryptSecret(value, getSalt());
+
+    if (decryptedValue === 'true') return true;
+    if (decryptedValue === 'false') return false;
+    return decryptedValue || null;
   }
 
   /**
@@ -1160,7 +1196,7 @@ export class AgentRuntime implements IAgentRuntime {
    * @returns The room ID of the room between the agent and the user.
    * @throws An error if the room cannot be created.
    */
-  async ensureRoomExists({ id, name, source, type, channelId, serverId, worldId }: Room) {
+  async ensureRoomExists({ id, name, source, type, channelId, serverId, worldId, metadata }: Room) {
     const room = await this.adapter.getRoom(id);
     if (!room) {
       await this.adapter.createRoom({
@@ -1172,6 +1208,7 @@ export class AgentRuntime implements IAgentRuntime {
         channelId,
         serverId,
         worldId,
+        metadata,
       });
       this.runtimeLogger.debug(`Room ${id} created successfully.`);
     }

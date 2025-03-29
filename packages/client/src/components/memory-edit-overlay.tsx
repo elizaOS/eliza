@@ -109,11 +109,15 @@ export default function MemoryEditOverlay({
       });
     }
   };
-
   return (
     <div
       className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50"
       onClick={onClose}
+      onKeyUp={(e) => {
+        if (e.key === 'Escape') {
+          onClose();
+        }
+      }}
     >
       <Card className="w-[80%] max-w-2xl" onClick={(e) => e.stopPropagation()}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

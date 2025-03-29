@@ -8,8 +8,8 @@ const config = {
   title: 'eliza',
   tagline: 'Flexible, scalable AI agents for everyone',
   favicon: 'img/favicon.ico',
-  url: 'https://elizaos.github.io',
-  baseUrl: '/eliza/',
+  url: 'https://eliza.how',
+  baseUrl: '/',
   organizationName: 'elizaos',
   projectName: 'eliza',
   deploymentBranch: 'gh-pages',
@@ -185,7 +185,7 @@ const config = {
       {
         showReadingTime: true,
         onUntruncatedBlogPosts: 'ignore',
-        editUrl: 'https://github.com/elizaos/eliza/tree/main/docs/blog/',
+        editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/docs/blog/',
         blogSidebarTitle: 'Recent posts',
         blogSidebarCount: 'ALL',
         showLastUpdateAuthor: true,
@@ -210,7 +210,7 @@ const config = {
           blogTitle: 'AI News',
           blogDescription: 'Automated aggregating and summarization of elizaOS ecosystem updates',
           showReadingTime: true,
-          editUrl: 'https://github.com/elizaos/eliza/tree/main/docs/news',
+          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs/news',
           blogSidebarTitle: 'All posts',
           blogSidebarCount: 'ALL',
           showLastUpdateAuthor: true,
@@ -225,11 +225,11 @@ const config = {
         docs: {
           docItemComponent: '@theme/ApiItem',
           sidebarPath: require.resolve('./sidebars.ts'),
-          editUrl: 'https://github.com/elizaos/eliza/tree/main/docs/',
+          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs/',
           exclude: ['**/_media/**'],
           showLastUpdateAuthor: true,
           showLastUpdateTime: true,
-          lastVersion: '0.25.9',
+          lastVersion: 'current',
           versions: {
             current: {
               label: '1.0.0-alpha',
@@ -261,6 +261,11 @@ const config = {
     ],
   ],
   themeConfig: {
+    prism: {
+      theme: require('prism-react-renderer').themes.github,
+      darkTheme: require('prism-react-renderer').themes.dracula,
+      additionalLanguages: ['bash', 'shell-session', 'typescript', 'markdown'],
+    },
     mermaid: {
       theme: {
         light: 'default',
@@ -288,11 +293,11 @@ const config = {
       },
     },
     navbar: {
-      title: 'eliza',
+      title: 'elizaOS',
       logo: {
         alt: 'Eliza Logo',
-        src: 'img/eliza-os_dark.svg',
-        srcDark: 'img/eliza-os_light.svg',
+        src: 'img/icon.png',
+        srcDark: 'img/icon.png',
       },
       items: [
         {
@@ -320,11 +325,6 @@ const config = {
           docId: 'index',
         },
         {
-          to: 'blog',
-          label: 'Blog',
-          position: 'left',
-        },
-        {
           type: 'doc',
           docsPluginId: 'community',
           position: 'left',
@@ -332,13 +332,18 @@ const config = {
           docId: 'index',
         },
         {
+          to: 'blog',
+          label: 'Blog',
+          position: 'left',
+        },
+        {
           label: 'RSS',
           position: 'left',
-          to: '/eliza/news',
+          to: '/news',
           items: [
-            { label: 'RSS (XML)', href: '/eliza/news/rss.xml', target: '_blank' },
-            { label: 'Atom', href: '/eliza/news/atom.xml', target: '_blank' },
-            { label: 'JSON Feed', href: '/eliza/news/feed.json', target: '_blank' },
+            { label: 'RSS (XML)', href: '/news/rss.xml', target: '_blank' },
+            { label: 'Atom', href: '/news/atom.xml', target: '_blank' },
+            { label: 'JSON Feed', href: '/news/feed.json', target: '_blank' },
           ],
         },
         {
@@ -358,11 +363,23 @@ const config = {
               label: 'General',
               href: './',
             },
+            {
+              label: 'llms.txt',
+              href: 'llms.txt',
+            },
+            {
+              label: 'llms-full.txt',
+              href: 'llms-full.txt',
+            },
           ],
         },
         {
           title: 'Community',
           items: [
+            {
+              label: 'Website',
+              href: 'https://www.elizaos.ai/',
+            },
             {
               label: 'Discord',
               href: 'https://discord.gg/elizaos',
@@ -376,6 +393,10 @@ const config = {
         {
           title: 'More',
           items: [
+            {
+              label: 'Blog',
+              href: '/blog',
+            },
             {
               label: 'GitHub',
               href: 'https://github.com/elizaos/eliza',

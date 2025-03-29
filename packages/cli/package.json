@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.0.0-alpha.67",
+  "version": "1.0.0-beta.7",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -35,27 +35,21 @@
   "scripts": {
     "cli": "bun run build && node dist/index.js",
     "build": "tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts && bun run src/scripts/copy-drizzle.ts",
-    "test:dev": "REGISTRY_URL=http://localhost:3333 vitest run",
-    "test:plugin-publisher": "vitest run test/plugin-publisher.test.js",
-    "test:plugin-command": "vitest run test/plugin-command.test.js",
-    "test:publish-plugins": "vitest run test/publish-plugins.test.js",
-    "test:registry": "vitest run 'test/**/*.test.js'",
-    "test:registry-publishing": "node test/run-registry-tests.js",
-    "test:registry-e2e": "node test/run-registry-tests.js --e2e",
-    "test:registry-live": "node test/run-registry-tests.js --live",
-    "test:registry-all": "node test/run-registry-tests.js --all",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "test:setup-commands": "vitest test/setup-commands.test.js",
+    "test:agent-commands": "vitest test/agent-commands.test.js",
+    "test:agent-customisations": "vitest test/agent-customisation.test.js"
   },
   "devDependencies": {
     "@babel/core": "^7.22.1",
     "@babel/parser": "^7.22.6",
-    "@elizaos/core": "^1.0.0-alpha.67",
-    "@elizaos/plugin-anthropic": "^1.0.0-alpha.67",
-    "@elizaos/plugin-openai": "^1.0.0-alpha.67",
-    "@elizaos/plugin-sql": "^1.0.0-alpha.67",
+    "@elizaos/core": "^1.0.0-beta.7",
+    "@elizaos/plugin-anthropic": "^1.0.0-beta.7",
+    "@elizaos/plugin-openai": "^1.0.0-beta.7",
+    "@elizaos/plugin-sql": "^1.0.0-beta.7",
     "@types/babel__core": "^7.20.1",
     "@types/diff": "^5.0.3",
     "@types/fs-extra": "^11.0.1",
@@ -82,7 +76,7 @@
     "vitest": "^1.3.1",
     "yoctocolors": "^2.1.1"
   },
-  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55",
+  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e",
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
     "socket.io": "^4.8.1",

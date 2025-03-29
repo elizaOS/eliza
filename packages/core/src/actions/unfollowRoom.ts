@@ -15,6 +15,13 @@ import {
  *
  * @type {string}
  */
+/**
+ * Template for determining if an agent should stop closely following a room and only respond when mentioned.
+ * @param {string} agentName - The name of the agent to be referenced in the template.
+ * @param {string} recentMessages - The recent messages in the conversation to be included in the template.
+ * @param {string} booleanFooter - The footer for the template indicating the possible responses.
+ * @returns {string} The template with placeholders for agent name, recent messages, and response.
+ */
 const shouldUnfollowTemplate = `# Task: Decide if {{agentName}} should stop closely following this previously followed room and only respond when mentioned.
 
 {{recentMessages}}

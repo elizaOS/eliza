@@ -4,16 +4,30 @@ import {
   DatabaseAdapter,
   type Entity,
   type Memory,
+  type MemoryMetadata,
   type Participant,
   type Relationship,
   type Room,
   type Task,
   type UUID,
   type World,
+  type Log,
   logger,
 } from '@elizaos/core';
-import type { Log, MemoryMetadata } from '@elizaos/core';
-import { and, cosineDistance, count, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
+import {
+  Column,
+  and,
+  cosineDistance,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lte,
+  or,
+  sql,
+  not,
+} from 'drizzle-orm';
 import { v4 } from 'uuid';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from './schema/embedding';
 import {
@@ -247,6 +261,11 @@ export abstract class BaseDrizzleAdapter<
         }
 
         await this.db.transaction(async (tx) => {
+          // Handle settings update if present
+          if (agent.settings) {
+            agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
+          }
+
           await tx
             .update(agentTable)
             .set({
@@ -272,17 +291,149 @@ export abstract class BaseDrizzleAdapter<
   }
 
   /**
+   * Merges updated agent settings with existing settings in the database,
+   * with special handling for nested objects like secrets.
+   * @param tx - The database transaction
+   * @param agentId - The ID of the agent
+   * @param updatedSettings - The settings object with updates
+   * @returns The merged settings object
+   * @private
+   */
+  private async mergeAgentSettings(
+    tx: DrizzleOperations,
+    agentId: UUID,
+    updatedSettings: any
+  ): Promise<any> {
+    // First get the current agent data
+    const currentAgent = await tx
+      .select({ settings: agentTable.settings })
+      .from(agentTable)
+      .where(eq(agentTable.id, agentId))
+      .limit(1);
+
+    if (currentAgent.length === 0 || !currentAgent[0].settings) {
+      return updatedSettings;
+    }
+
+    const currentSettings = currentAgent[0].settings;
+
+    // Handle secrets with special null-values treatment
+    if (updatedSettings.secrets) {
+      const currentSecrets = currentSettings.secrets || {};
+      const updatedSecrets = updatedSettings.secrets;
+
+      // Create a new secrets object
+      const mergedSecrets = { ...currentSecrets };
+
+      // Process the incoming secrets updates
+      for (const [key, value] of Object.entries(updatedSecrets)) {
+        if (value === null) {
+          // If value is null, remove the key
+          delete mergedSecrets[key];
+        } else {
+          // Otherwise, update the value
+          mergedSecrets[key] = value;
+        }
+      }
+
+      // Replace the secrets in updatedSettings with our processed version
+      updatedSettings.secrets = mergedSecrets;
+    }
+
+    // Deep merge the settings objects
+    return {
+      ...currentSettings,
+      ...updatedSettings,
+    };
+  }
+
+  /**
    * Asynchronously deletes an agent with the specified UUID and all related entries.
    *
    * @param {UUID} agentId - The UUID of the agent to be deleted.
    * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
    */
   async deleteAgent(agentId: UUID): Promise<boolean> {
-    // casacade delete all related for the agent
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        const entities = await this.db
+          .select({ entityId: entityTable.id })
+          .from(entityTable)
+          .where(eq(entityTable.agentId, agentId));
+
+        const entityIds = entities.map((e) => e.entityId);
+
+        let memoryIds: UUID[] = [];
+
+        if (entityIds.length > 0) {
+          const entityMemories = await this.db
+            .select({ memoryId: memoryTable.id })
+            .from(memoryTable)
+            .where(inArray(memoryTable.entityId, entityIds));
+
+          memoryIds = entityMemories.map((m) => m.memoryId);
+        }
+
+        const agentMemories = await this.db
+          .select({ memoryId: memoryTable.id })
+          .from(memoryTable)
+          .where(eq(memoryTable.agentId, agentId));
+
+        memoryIds.push(...agentMemories.map((m) => m.memoryId));
+
+        if (memoryIds.length > 0) {
+          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, memoryIds));
+
+          await tx.delete(memoryTable).where(inArray(memoryTable.id, memoryIds));
+        }
+
+        const rooms = await this.db
+          .select({ roomId: roomTable.id })
+          .from(roomTable)
+          .where(eq(roomTable.agentId, agentId));
+
+        const roomIds = rooms.map((r) => r.roomId);
+
+        if (entityIds.length > 0) {
+          await tx.delete(logTable).where(inArray(logTable.entityId, entityIds));
+          await tx.delete(participantTable).where(inArray(participantTable.entityId, entityIds));
+        }
+
+        if (roomIds.length > 0) {
+          await tx.delete(logTable).where(inArray(logTable.roomId, roomIds));
+          await tx.delete(participantTable).where(inArray(participantTable.roomId, roomIds));
+        }
+
+        await tx.delete(participantTable).where(eq(participantTable.agentId, agentId));
+
+        if (roomIds.length > 0) {
+          await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
+        }
+
+        await tx.delete(cacheTable).where(eq(cacheTable.agentId, agentId));
+
+        await tx.delete(relationshipTable).where(eq(relationshipTable.agentId, agentId));
+
+        await tx.delete(entityTable).where(eq(entityTable.agentId, agentId));
+
+        const newAgent = await this.db
+          .select({ newAgentId: agentTable.id })
+          .from(agentTable)
+          .where(not(eq(agentTable.id, agentId)))
+          .limit(1);
+
+        if (newAgent.length > 0) {
+          await tx
+            .update(worldTable)
+            .set({ agentId: newAgent[0].newAgentId })
+            .where(eq(worldTable.agentId, agentId));
+        } else {
+          await tx.delete(worldTable).where(eq(worldTable.agentId, agentId));
+        }
+
         await tx.delete(agentTable).where(eq(agentTable.id, agentId));
       });
+
       return true;
     });
   }
@@ -706,6 +857,7 @@ export abstract class BaseDrizzleAdapter<
           agentId: memoryTable.agentId,
           roomId: memoryTable.roomId,
           unique: memoryTable.unique,
+          metadata: memoryTable.metadata,
         })
         .from(memoryTable)
         .where(and(...conditions))
@@ -721,6 +873,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.agentId as UUID,
         roomId: row.roomId as UUID,
         unique: row.unique,
+        metadata: row.metadata,
       })) as Memory[];
     });
   }
@@ -799,6 +952,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
+        metadata: row.memory.metadata,
         embedding: row.embedding ?? undefined,
       }));
     });
@@ -1072,6 +1226,7 @@ export abstract class BaseDrizzleAdapter<
         agentId: row.memory.agentId as UUID,
         roomId: row.memory.roomId as UUID,
         unique: row.memory.unique,
+        metadata: row.memory.metadata,
         embedding: row.embedding ?? undefined,
         similarity: row.similarity,
       }));
@@ -1241,15 +1396,66 @@ export abstract class BaseDrizzleAdapter<
   async deleteMemory(memoryId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        // See if there are any fragments that we need to delete
+        await this.deleteMemoryFragments(tx, memoryId);
+
+        // Then delete the embedding for the main memory
         await tx.delete(embeddingTable).where(eq(embeddingTable.memoryId, memoryId));
 
-        await tx.delete(memoryTable).where(and(eq(memoryTable.id, memoryId)));
+        // Finally delete the memory itself
+        await tx.delete(memoryTable).where(eq(memoryTable.id, memoryId));
       });
 
-      logger.debug('Memory removed successfully:', {
+      logger.debug('Memory and related fragments removed successfully:', {
         memoryId,
       });
     });
+  }
+
+  /**
+   * Deletes all memory fragments that reference a specific document memory
+   * @param tx The database transaction
+   * @param documentId The UUID of the document memory whose fragments should be deleted
+   * @private
+   */
+  private async deleteMemoryFragments(tx: DrizzleOperations, documentId: UUID): Promise<void> {
+    const fragmentsToDelete = await this.getMemoryFragments(tx, documentId);
+
+    if (fragmentsToDelete.length > 0) {
+      const fragmentIds = fragmentsToDelete.map((f) => f.id) as UUID[];
+
+      // Delete embeddings for fragments
+      await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, fragmentIds));
+
+      // Delete the fragments
+      await tx.delete(memoryTable).where(inArray(memoryTable.id, fragmentIds));
+
+      logger.debug('Deleted related fragments:', {
+        documentId,
+        fragmentCount: fragmentsToDelete.length,
+      });
+    }
+  }
+
+  /**
+   * Retrieves all memory fragments that reference a specific document memory
+   * @param tx The database transaction
+   * @param documentId The UUID of the document memory whose fragments should be retrieved
+   * @returns An array of memory fragments
+   * @private
+   */
+  private async getMemoryFragments(tx: DrizzleOperations, documentId: UUID): Promise<Memory[]> {
+    const fragments = await tx
+      .select({ id: memoryTable.id })
+      .from(memoryTable)
+      .where(
+        and(
+          eq(memoryTable.agentId, this.agentId),
+          sql`${memoryTable.metadata}->>'documentId' = ${documentId}`
+        )
+      );
+
+    return fragments;
   }
 
   /**
@@ -1369,7 +1575,16 @@ export abstract class BaseDrizzleAdapter<
    * @param {Room} room - The room object to create.
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created room.
    */
-  async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
+  async createRoom({
+    id,
+    name,
+    source,
+    type,
+    channelId,
+    serverId,
+    worldId,
+    metadata,
+  }: Room): Promise<UUID> {
     return this.withDatabase(async () => {
       const newRoomId = id || v4();
       await this.db
@@ -1383,6 +1598,7 @@ export abstract class BaseDrizzleAdapter<
           channelId,
           serverId,
           worldId,
+          metadata,
         })
         .onConflictDoNothing({ target: roomTable.id });
       return newRoomId as UUID;
@@ -1545,9 +1761,7 @@ export abstract class BaseDrizzleAdapter<
       const result = await this.db
         .select({ entityId: participantTable.entityId })
         .from(participantTable)
-        .where(
-          and(eq(participantTable.roomId, roomId), eq(participantTable.agentId, this.agentId))
-        );
+        .where(eq(participantTable.roomId, roomId));
 
       return result.map((row) => row.entityId as UUID);
     });
@@ -2118,6 +2332,102 @@ export abstract class BaseDrizzleAdapter<
         await this.db
           .delete(taskTable)
           .where(and(eq(taskTable.id, id), eq(taskTable.agentId, this.agentId)));
+      });
+    });
+  }
+
+  /**
+   * Asynchronously retrieves group chat memories from all rooms under a given server.
+   * It fetches all room IDs associated with the `serverId`, then retrieves memories
+   * from those rooms in descending order (latest to oldest), with an optional count limit.
+   *
+   * @param {Object} params - Parameters for fetching memories.
+   * @param {UUID} params.serverId - The server ID to fetch memories for.
+   * @param {number} [params.count] - The maximum number of memories to retrieve.
+   * @returns {Promise<Memory[]>} - A promise that resolves to an array of memory objects.
+   */
+  async getMemoriesByServerId(params: { serverId: UUID; count?: number }): Promise<Memory[]> {
+    return this.withDatabase(async () => {
+      // Step 1: Fetch all room IDs associated with the given serverId
+      const roomIdsResult = await this.db
+        .select({ roomId: roomTable.id })
+        .from(roomTable)
+        .where(eq(roomTable.serverId, params.serverId));
+
+      if (roomIdsResult.length === 0) return [];
+
+      const roomIds = roomIdsResult.map((row) => row.roomId);
+
+      // Step 2: Fetch all memories for these rooms, ordered from latest to oldest
+      const query = this.db
+        .select({
+          memory: memoryTable,
+          embedding: embeddingTable[this.embeddingDimension],
+        })
+        .from(memoryTable)
+        .leftJoin(embeddingTable, eq(embeddingTable.memoryId, memoryTable.id))
+        .where(inArray(memoryTable.roomId, roomIds))
+        .orderBy(desc(memoryTable.createdAt));
+
+      // Step 3: Apply the count limit if provided
+      const rows = params.count ? await query.limit(params.count) : await query;
+
+      return rows.map((row) => ({
+        id: row.memory.id as UUID,
+        type: row.memory.type,
+        createdAt: row.memory.createdAt,
+        content:
+          typeof row.memory.content === 'string'
+            ? JSON.parse(row.memory.content)
+            : row.memory.content,
+        entityId: row.memory.entityId as UUID,
+        agentId: row.memory.agentId as UUID,
+        roomId: row.memory.roomId as UUID,
+        unique: row.memory.unique,
+        embedding: row.embedding ?? undefined,
+      }));
+    });
+  }
+
+  /**
+   * Asynchronously deletes all rooms associated with a specific serverId.
+   * @param {UUID} serverId - The server ID to delete rooms for.
+   * @returns {Promise<void>} A Promise that resolves when the rooms are deleted.
+   */
+  async deleteRoomsByServerId(serverId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      await this.db.transaction(async (tx) => {
+        const roomIdsResult = await tx
+          .select({ roomId: roomTable.id })
+          .from(roomTable)
+          .where(eq(roomTable.serverId, serverId));
+
+        if (roomIdsResult.length === 0) return;
+
+        const roomIds = roomIdsResult.map((row) => row.roomId);
+
+        await tx
+          .delete(embeddingTable)
+          .where(
+            inArray(
+              embeddingTable.memoryId,
+              tx
+                .select({ id: memoryTable.id })
+                .from(memoryTable)
+                .where(inArray(memoryTable.roomId, roomIds))
+            )
+          );
+        await tx.delete(memoryTable).where(inArray(memoryTable.roomId, roomIds));
+
+        await tx.delete(participantTable).where(inArray(participantTable.roomId, roomIds));
+
+        await tx.delete(logTable).where(inArray(logTable.roomId, roomIds));
+
+        await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
+      });
+
+      logger.debug('Rooms and related logs deleted successfully for server:', {
+        serverId,
       });
     });
   }

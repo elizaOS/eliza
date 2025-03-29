@@ -65,6 +65,12 @@ import {
   asUUID,
 } from './types';
 
+/**
+ * Represents media data containing a buffer of data and the media type.
+ * @typedef {Object} MediaData
+ * @property {Buffer} data - The buffer of data.
+ * @property {string} mediaType - The type of media.
+ */
 type MediaData = {
   data: Buffer;
   mediaType: string;
@@ -77,6 +83,11 @@ const latestResponseIds = new Map<string, Map<string, string>>();
  *
  * @param attachments Array of Media objects containing URLs or file paths to fetch media from
  * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
+ */
+/**
+ * Fetches media data from given attachments.
+ * @param {Media[]} attachments - Array of Media objects to fetch data from.
+ * @returns {Promise<MediaData[]>} - A Promise that resolves with an array of MediaData objects.
  */
 export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]> {
   return Promise.all(
@@ -112,6 +123,7 @@ const messageReceivedHandler = async ({
   runtime,
   message,
   callback,
+  onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
   // Generate a new response ID
   const responseId = v4();
@@ -141,8 +153,8 @@ const messageReceivedHandler = async ({
   });
 
   // Set up timeout monitoring
-  const timeoutDuration = 5 * 60 * 1000; // 5 minutes
-  let timeoutId: NodeJS.Timer;
+  const timeoutDuration = 60 * 60 * 1000; // 1 hour
+  let timeoutId: NodeJS.Timeout;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(async () => {
@@ -156,10 +168,10 @@ const messageReceivedHandler = async ({
         status: 'timeout',
         endTime: Date.now(),
         duration: Date.now() - startTime,
-        error: 'Run exceeded 5 minute timeout',
+        error: 'Run exceeded 60 minute timeout',
         source: 'messageHandler',
       });
-      reject(new Error('Run exceeded 5 minute timeout'));
+      reject(new Error('Run exceeded 60 minute timeout'));
     }, timeoutDuration);
   });
 
@@ -266,21 +278,7 @@ const messageReceivedHandler = async ({
             },
           ];
 
-          // save the plan to a new reply memory
-          await runtime.createMemory(
-            {
-              entityId: runtime.agentId,
-              agentId: runtime.agentId,
-              content: {
-                thought: responseContent.thought,
-                actions: responseContent.actions,
-                providers: responseContent.providers,
-              },
-              roomId: message.roomId,
-              createdAt: Date.now(),
-            },
-            'messages'
-          );
+          callback(responseContent);
         }
 
         // Clean up the response ID
@@ -291,7 +289,7 @@ const messageReceivedHandler = async ({
 
         await runtime.processActions(message, responseMessages, state, callback);
       }
-
+      onComplete?.();
       await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
 
       // Emit run ended event on successful completion
@@ -308,6 +306,7 @@ const messageReceivedHandler = async ({
         source: 'messageHandler',
       });
     } catch (error) {
+      onComplete?.();
       // Emit run ended event with error
       await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
@@ -634,6 +633,7 @@ const events = {
         runtime: payload.runtime,
         message: payload.message,
         callback: payload.callback,
+        onComplete: payload.onComplete,
       });
     },
   ],

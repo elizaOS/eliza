@@ -1,7 +1,6 @@
 import type { Agent, Character, Content, IAgentRuntime, Memory, UUID } from '@elizaos/core';
 import {
   ChannelType,
-  EventType,
   ModelType,
   composePrompt,
   composePromptFromState,
@@ -9,6 +8,10 @@ import {
   logger,
   messageHandlerTemplate,
   validateUuid,
+  MemoryType,
+  encryptStringValue,
+  getSalt,
+  encryptObjectValues,
 } from '@elizaos/core';
 import express from 'express';
 import fs from 'node:fs';
@@ -21,13 +24,17 @@ import { upload } from '../loader';
  * @interface CustomRequest
  * @extends express.Request
  * @property {Express.Multer.File} [file] - Optional property representing a file uploaded with the request
+ * @property {Express.Multer.File[]} [files] - Optional property representing multiple files uploaded with the request
  * @property {Object} params - Object representing parameters included in the request
  * @property {string} params.agentId - The unique identifier for the agent associated with the request
+ * @property {string} [params.knowledgeId] - Optional knowledge ID parameter
  */
 interface CustomRequest extends express.Request {
   file?: Express.Multer.File;
+  files?: Express.Multer.File[];
   params: {
     agentId: string;
+    knowledgeId?: string;
   };
 }
 
@@ -155,6 +162,13 @@ export function agentRouter(
         throw new Error('Failed to create character configuration');
       }
 
+      // Encrypt secrets if they exist in the character
+      if (character.settings?.secrets) {
+        logger.debug('[AGENT CREATE] Encrypting secrets');
+        const salt = getSalt();
+        character.settings.secrets = encryptObjectValues(character.settings.secrets, salt);
+      }
+
       await db.ensureAgentExists(character);
 
       res.status(201).json({
@@ -194,6 +208,31 @@ export function agentRouter(
     const updates = req.body;
 
     try {
+      // Handle encryption of secrets if present in updates
+      if (updates.settings?.secrets) {
+        const salt = getSalt();
+        const encryptedSecrets: Record<string, string> = {};
+
+        // Encrypt each secret value
+        // We need to handle null values separately
+        // because they mean delete the secret
+        Object.entries(updates.settings.secrets).forEach(([key, value]) => {
+          if (value === null) {
+            // Null means delete the secret
+            encryptedSecrets[key] = null;
+          } else if (typeof value === 'string') {
+            // Only encrypt string values
+            encryptedSecrets[key] = encryptStringValue(value, salt);
+          } else {
+            // Leave other types as is
+            encryptedSecrets[key] = value as string;
+          }
+        });
+
+        // Replace with encrypted secrets
+        updates.settings.secrets = encryptedSecrets;
+      }
+
       // Handle other updates if any
       if (Object.keys(updates).length > 0) {
         await db.updateAgent(agentId, updates);
@@ -1403,9 +1442,12 @@ export function agentRouter(
       return;
     }
 
+    // Get tableName from query params, default to "messages"
+    const tableName = (req.query.tableName as string) || 'messages';
+
     const memories = await runtime.getMemories({
       agentId,
-      tableName: 'messages',
+      tableName,
     });
 
     const cleanMemories = memories.map((memory) => {
@@ -1605,6 +1647,257 @@ export function agentRouter(
         error: {
           code: 'PROCESSING_ERROR',
           message: 'Error processing message',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  // Knowledge management routes
+  router.post('/:agentId/memories/upload-knowledge', upload.array('files'), async (req, res) => {
+    const agentId = validateUuid(req.params.agentId);
+
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    const runtime = agents.get(agentId);
+
+    if (!runtime) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Agent not found',
+        },
+      });
+      return;
+    }
+
+    const files = req.files as Express.Multer.File[];
+
+    if (!files || files.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'NO_FILES',
+          message: 'No files uploaded',
+        },
+      });
+      return;
+    }
+
+    try {
+      const results = [];
+
+      for (const file of files) {
+        try {
+          // Read file content
+          const content = fs.readFileSync(file.path, 'utf8');
+
+          // Format the content with Path: prefix like in the devRel/index.ts example
+          const relativePath = file.originalname;
+          const formattedContent = `Path: ${relativePath}\n\n${content}`;
+
+          // Create knowledge item with proper metadata
+          const knowledgeId = createUniqueUuid(runtime, `knowledge-${Date.now()}`);
+          const fileExt = file.originalname.split('.').pop()?.toLowerCase() || '';
+          const filename = file.originalname;
+          const title = filename.replace(`.${fileExt}`, '');
+
+          const knowledgeItem = {
+            id: knowledgeId,
+            content: {
+              text: formattedContent,
+            },
+            metadata: {
+              type: MemoryType.DOCUMENT,
+              timestamp: Date.now(),
+              filename: filename,
+              fileExt: fileExt,
+              title: title,
+              path: relativePath,
+              fileType: file.mimetype,
+              fileSize: file.size,
+              source: 'upload',
+            },
+          };
+
+          // Add knowledge to agent
+          await runtime.addKnowledge(knowledgeItem, {
+            targetTokens: 3000,
+            overlap: 200,
+            modelContextSize: 4096,
+          });
+
+          // Clean up temp file immediately after successful processing
+          if (file.path && fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+
+          results.push({
+            id: knowledgeId,
+            filename: relativePath,
+            type: file.mimetype,
+            size: file.size,
+            uploadedAt: Date.now(),
+            preview:
+              formattedContent.length > 0
+                ? `${formattedContent.substring(0, 150)}${formattedContent.length > 150 ? '...' : ''}`
+                : 'No preview available',
+          });
+        } catch (fileError) {
+          logger.error(`[KNOWLEDGE POST] Error processing file ${file.originalname}: ${fileError}`);
+          // Clean up this file if it exists
+          if (file.path && fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+          // Continue with other files even if one fails
+        }
+      }
+
+      res.json({
+        success: true,
+        data: results,
+      });
+    } catch (error) {
+      logger.error(`[KNOWLEDGE POST] Error uploading knowledge: ${error}`);
+
+      // Clean up any remaining files
+      if (files) {
+        for (const file of files) {
+          if (file.path && fs.existsSync(file.path)) {
+            try {
+              fs.unlinkSync(file.path);
+            } catch (cleanupError) {
+              logger.error(
+                `[KNOWLEDGE POST] Error cleaning up file ${file.originalname}: ${cleanupError}`
+              );
+            }
+          }
+        }
+      }
+
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 500,
+          message: 'Failed to upload knowledge',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  router.post('/groups/:serverId', async (req, res) => {
+    const serverId = validateUuid(req.params.serverId);
+
+    const { name, worldId, source, metadata, agentIds = [] } = req.body;
+
+    if (!Array.isArray(agentIds) || agentIds.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'agentIds must be a non-empty array',
+        },
+      });
+    }
+
+    let results = [];
+    let errors = [];
+
+    for (const agentId of agentIds) {
+      const runtime = agents.get(agentId);
+
+      if (!runtime) {
+        errors.push({
+          agentId,
+          code: 'NOT_FOUND',
+          message: 'Agent not found',
+        });
+        continue;
+      }
+
+      try {
+        const roomId = createUniqueUuid(runtime, serverId);
+        const roomName = name || `Chat ${new Date().toLocaleString()}`;
+
+        await runtime.ensureWorldExists({
+          id: worldId,
+          name: source,
+          agentId: runtime.agentId,
+          serverId: serverId,
+        });
+
+        await runtime.ensureRoomExists({
+          id: roomId,
+          name: roomName,
+          source,
+          type: ChannelType.API,
+          worldId,
+          serverId,
+          metadata,
+        });
+
+        await runtime.addParticipant(runtime.agentId, roomId);
+        await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
+        await runtime.setParticipantUserState(roomId, runtime.agentId, 'FOLLOWED');
+
+        results.push({
+          id: roomId,
+          name: roomName,
+          createdAt: Date.now(),
+          source: 'client',
+          worldId,
+        });
+      } catch (error) {
+        logger.error(`[ROOM CREATE] Error creating room for agent ${agentId}:`, error);
+        errors.push({
+          agentId,
+          code: 'CREATE_ERROR',
+          message: 'Failed to create room',
+          details: error.message,
+        });
+      }
+    }
+
+    if (results.length === 0) {
+      res.status(500).json({
+        success: false,
+        error: errors.length
+          ? errors
+          : [{ code: 'UNKNOWN_ERROR', message: 'No rooms were created' }],
+      });
+    }
+
+    res.status(errors.length ? 207 : 201).json({
+      success: errors.length === 0,
+      data: results,
+      errors: errors.length ? errors : undefined,
+    });
+  });
+
+  router.delete('/groups/:serverId', async (req, res) => {
+    const serverId = validateUuid(req.params.serverId);
+    try {
+      await db.deleteRoomsByServerId(serverId);
+
+      res.status(204).send();
+    } catch (error) {
+      logger.error('[GROUP DELETE] Error deleting group:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'DELETE_ERROR',
+          message: 'Error deleting group',
           details: error.message,
         },
       });

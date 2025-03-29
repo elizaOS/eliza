@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-openai",
-  "version": "1.0.0-alpha.67",
+  "version": "1.0.0-beta.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -24,7 +24,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^1.1.9",
     "@ai-sdk/ui-utils": "1.1.9",
-    "@elizaos/core": "^1.0.0-alpha.67",
+    "@elizaos/core": "^1.0.0-beta.7",
     "ai": "^4.1.25",
     "js-tiktoken": "^1.0.18",
     "tsup": "8.4.0"
@@ -49,7 +49,7 @@
       }
     }
   },
-  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55",
+  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e",
   "devDependencies": {
     "prettier": "3.5.3"
   }

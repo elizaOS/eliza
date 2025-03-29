@@ -97,9 +97,6 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
           await runtime.deleteTask(task.id);
         }
 
-        // Set a flag to indicate we've removed these tasks
-        await runtime.setCache('twitter_tasks_removed', true);
-
         return false;
       }
       return true;
@@ -114,65 +111,9 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
     },
   });
 
-  // Create a task to check for Twitter service availability and recreate tasks if needed
-  runtime.registerTaskWorker({
-    name: 'CHECK_TWITTER_SERVICE_AVAILABILITY',
-    validate: async () => true, // Always validate
-    execute: async (runtime, _options, _task) => {
-      const twitterService = runtime.getService('twitter');
-      const tasksWereRemoved = await runtime.getCache('twitter_tasks_removed');
-
-      // If Twitter service is now available and tasks were previously removed, recreate them
-      if (twitterService && tasksWereRemoved) {
-        logger.info('Twitter service is now available, recreating Twitter-related tasks');
-
-        // Create the tasks
-        runtime.createTask({
-          name: 'INTEL_SYNC_RAW_TWEETS',
-          description: 'Sync raw tweets from Twitter',
-          worldId,
-          metadata: {
-            updatedAt: Date.now(),
-            updateInterval: 1000 * 60 * 15, // 15 minutes
-          },
-          tags: ['queue', 'repeat', 'degen_intel'],
-        });
-
-        runtime.createTask({
-          name: 'INTEL_PARSE_TWEETS',
-          description: 'Parse tweets',
-          worldId,
-          metadata: {
-            updatedAt: Date.now(),
-            updateInterval: 1000 * 60 * 60 * 24, // 24 hours
-          },
-          tags: ['queue', 'repeat', 'degen_intel'],
-        });
-
-        // Clear the removal flag
-        await runtime.setCache('twitter_tasks_removed', false);
-      }
-    },
-  });
-
-  // Always create the service checker task
-  runtime.createTask({
-    name: 'CHECK_TWITTER_SERVICE_AVAILABILITY',
-    description: 'Check if Twitter service is available and recreate tasks if needed',
-    worldId,
-    metadata: {
-      updatedAt: Date.now(),
-      updateInterval: 1000 * 60 * 5, // Check every 5 minutes
-    },
-    tags: ['queue', 'repeat', 'degen_intel'],
-  });
-
   // Only create the Twitter sync task if the Twitter service exists
   const twitterService = runtime.getService('twitter');
   if (twitterService) {
-    // Clear the removal flag since we're creating the tasks
-    await runtime.setCache('twitter_tasks_removed', false);
-
     runtime.createTask({
       name: 'INTEL_SYNC_RAW_TWEETS',
       description: 'Sync raw tweets from Twitter',
@@ -184,8 +125,6 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       tags: ['queue', 'repeat', 'degen_intel'],
     });
   } else {
-    // Set the flag to indicate tasks haven't been created
-    await runtime.setCache('twitter_tasks_removed', true);
     logger.debug(
       'WARNING: Twitter service not found, skipping creation of INTEL_SYNC_RAW_TWEETS task'
     );

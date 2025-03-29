@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useAgents } from '../hooks/use-query-hooks';
 import { apiClient } from '../lib/api';
 import PageTitle from './page-title';
 import { ScrollArea } from './ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button } from './ui/button';
 
 interface LogEntry {
   level: number;
@@ -60,9 +62,11 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
   const [selectedLevel, setSelectedLevel] = useState(level || 'all');
   const [selectedAgentName, setSelectedAgentName] = useState(agentName || 'all');
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
+  const [isClearing, setIsClearing] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const isUserScrolling = useRef(false);
   const lastLogId = useRef<string>('');
+  const queryClient = useQueryClient();
 
   const { data, error, isLoading } = useQuery<LogResponse>({
     queryKey: ['logs', selectedLevel, selectedAgentName],
@@ -78,7 +82,20 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
   const { data: agents } = useAgents();
   const agentNames = agents?.data?.agents?.map((agent) => agent.name) ?? [];
 
-  const scrollToBottom = () => {
+  const handleClearLogs = async () => {
+    try {
+      setIsClearing(true);
+      await apiClient.deleteLogs();
+      // Invalidate the logs query to trigger a refetch
+      queryClient.invalidateQueries({ queryKey: ['logs'] });
+    } catch (error) {
+      console.error('Failed to clear logs:', error);
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const scrollToBottom = useCallback(() => {
     if (!scrollAreaRef.current) return;
 
     const scrollArea = scrollAreaRef.current;
@@ -89,7 +106,7 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
       top: scrollHeight - clientHeight,
       behavior: 'instant',
     });
-  };
+  }, []);
 
   useEffect(() => {
     if (!data?.logs?.length) return;
@@ -101,7 +118,7 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
       setTimeout(scrollToBottom, 0);
       lastLogId.current = currentLastLogId;
     }
-  }, [data?.logs, shouldAutoScroll]);
+  }, [data?.logs, shouldAutoScroll, scrollToBottom]);
 
   const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
     if (isUserScrolling.current) return;
@@ -125,7 +142,7 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
 
   useEffect(() => {
     setTimeout(scrollToBottom, 100);
-  }, [data?.logs]);
+  }, [scrollToBottom]);
 
   const getLevelName = (level: number) => {
     return LOG_LEVEL_NUMBERS[level as keyof typeof LOG_LEVEL_NUMBERS] || 'UNKNOWN';
@@ -164,6 +181,10 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
       <div className="mb-4 flex items-center justify-between">
         {!hideTitle && <PageTitle title={'System Logs'} />}
         <div className="flex items-center gap-4">
+          <Button variant="destructive" size="sm" onClick={handleClearLogs} disabled={isClearing}>
+            {isClearing ? 'Clearing...' : 'Clear Logs'}
+          </Button>
+
           {!shouldAutoScroll && (
             <button
               type="button"

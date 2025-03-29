@@ -2,7 +2,6 @@ import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 import { WorldManager } from './world-manager';
 
 const API_PREFIX = '/api';
-const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}${API_PREFIX}`;
 
 /**
  * A function that handles fetching data from a specified URL with various options.
@@ -25,12 +24,9 @@ const fetcher = async ({
   headers?: HeadersInit;
 }) => {
   // Ensure URL starts with a slash if it's a relative path
-  const normalizedUrl = url.startsWith('/') ? url : `/${url}`;
+  const normalizedUrl = API_PREFIX + (url.startsWith('/') ? url : `/${url}`);
 
-  // Construct the full URL
-  const fullUrl = `${BASE_URL}${normalizedUrl}`;
-
-  console.log('API Request:', method || 'GET', fullUrl);
+  console.log('API Request:', method || 'GET', normalizedUrl);
 
   const options: RequestInit = {
     method: method ?? 'GET',
@@ -59,7 +55,7 @@ const fetcher = async ({
   }
 
   try {
-    const response = await fetch(fullUrl, options);
+    const response = await fetch(normalizedUrl, options);
     const contentType = response.headers.get('Content-Type');
 
     if (contentType === 'audio/mpeg') {
@@ -174,7 +170,7 @@ interface AgentLog {
  * 		getLogs: (level: string) => Promise<LogResponse>;
  * 		getAgentLogs: (agentId: string, options?: { roomId?: UUID; type?: string; count?: number; offset?: number }) => Promise<{ success: boolean; data: AgentLog[] }>;
  * 		deleteLog: (agentId: string, logId: string) => Promise<void>;
- * 		getAgentMemories: (agentId: UUID, roomId?: UUID) => Promise<any>;
+ * 		getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => Promise<any>;
  * 		deleteAgentMemory: (agentId: UUID, memoryId: string) => Promise<any>;
  * 		updateAgentMemory: (agentId: UUID, memoryId: string, memoryData: Partial<Memory>) => Promise<any>;
  * 	}
@@ -183,6 +179,7 @@ interface AgentLog {
 export const apiClient = {
   getAgents: () => fetcher({ url: '/agents' }),
   getAgent: (agentId: string): Promise<{ data: Agent }> => fetcher({ url: `/agents/${agentId}` }),
+  ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
   tts: (agentId: string, text: string) =>
     fetcher({
       url: `/agents/${agentId}/speech/generate`,
@@ -257,12 +254,13 @@ export const apiClient = {
   },
   deleteAgent: (agentId: string): Promise<{ success: boolean }> =>
     fetcher({ url: `/agents/${agentId}`, method: 'DELETE' }),
-  updateAgent: (agentId: string, agent: Agent) =>
-    fetcher({
+  updateAgent: async (agentId: string, agent: Agent) => {
+    return fetcher({
       url: `/agents/${agentId}`,
       method: 'PATCH',
       body: agent,
-    }),
+    });
+  },
   createAgent: (params: { characterPath?: string; characterJson?: Character }) =>
     fetcher({
       url: '/agents/',
@@ -301,7 +299,15 @@ export const apiClient = {
   },
 
   // Room-related routes
-  getRooms: (agentId: string) => {
+  getRooms: () => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/world/${worldId}/rooms`,
+      method: 'GET',
+    });
+  },
+
+  getRoomsForParticipant: (agentId: string) => {
     const worldId = WorldManager.getWorldId();
     return fetcher({
       url: `/agents/${agentId}/rooms`,
@@ -346,17 +352,33 @@ export const apiClient = {
   },
 
   // Add this new method
-  getLogs: ({ level = '', agentName = 'all', agentId = 'all' }): Promise<LogResponse> => {
+  getLogs: ({
+    level,
+    agentName,
+    agentId,
+  }: {
+    level?: string;
+    agentName?: string;
+    agentId?: string;
+  }): Promise<LogResponse> => {
     const params = new URLSearchParams();
 
-    if (level && level !== 'all') params.append('level', level);
-    if (agentName && agentName !== 'all') params.append('agentName', agentName);
-    if (agentId && agentId !== 'all') params.append('agentId', agentId);
+    if (level) params.append('level', level);
+    if (agentName) params.append('agentName', agentName);
+    if (agentId) params.append('agentId', agentId);
 
     const url = `/logs${params.toString() ? `?${params.toString()}` : ''}`;
     return fetcher({
       url,
       method: 'GET',
+    });
+  },
+
+  // Method to clear logs
+  deleteLogs: (): Promise<{ status: string; message: string }> => {
+    return fetcher({
+      url: '/logs',
+      method: 'DELETE',
     });
   },
 
@@ -396,6 +418,7 @@ export const apiClient = {
       method: 'GET',
     });
   },
+
   deleteLog: (agentId: string, logId: string): Promise<void> => {
     return fetcher({
       url: `/agents/${agentId}/logs/${logId}`,
@@ -404,10 +427,13 @@ export const apiClient = {
   },
 
   // Method to get all memories for an agent, optionally filtered by room
-  getAgentMemories: (agentId: UUID, roomId?: UUID) => {
+  getAgentMemories: (agentId: UUID, roomId?: UUID, tableName?: string) => {
+    const params = new URLSearchParams();
+    if (tableName) params.append('tableName', tableName);
+
     const url = roomId
       ? `/agents/${agentId}/rooms/${roomId}/memories`
-      : `/agents/${agentId}/memories`;
+      : `/agents/${agentId}/memories${params.toString() ? `?${params.toString()}` : ''}`;
 
     return fetcher({
       url,
@@ -428,6 +454,91 @@ export const apiClient = {
       url: `/agents/${agentId}/memories/${memoryId}`,
       method: 'PATCH',
       body: memoryData,
+    });
+  },
+
+  // Method to upload knowledge for an agent
+  uploadKnowledge: async (agentId: string, files: File[]): Promise<any> => {
+    const formData = new FormData();
+
+    for (const file of files) {
+      formData.append('files', file);
+    }
+
+    return fetcher({
+      url: `/agents/${agentId}/memories/upload-knowledge`,
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  getGroupMemories: (serverId: UUID) => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/world/${worldId}/memories/${serverId}`,
+      method: 'GET',
+    });
+  },
+
+  createGroupChat: (
+    agentIds: string[],
+    roomName: string,
+    serverId: string,
+    source: string,
+    metadata?: any
+  ) => {
+    const worldId = WorldManager.getWorldId();
+    return fetcher({
+      url: `/agents/groups/${serverId}`,
+      method: 'POST',
+      body: {
+        agentIds,
+        name: roomName,
+        worldId,
+        source,
+        metadata,
+      },
+    });
+  },
+
+  deleteGroupChat: (serverId: string) => {
+    return fetcher({
+      url: `/agents/groups/${serverId}`,
+      method: 'DELETE',
+    });
+  },
+
+  getLocalEnvs: () => {
+    return fetcher({
+      url: `/envs/local`,
+      method: 'GET',
+    });
+  },
+
+  updateLocalEnvs: (envs: Record<string, string>) => {
+    return fetcher({
+      url: `/envs/local`,
+      method: 'POST',
+      body: {
+        content: envs,
+      },
+    });
+  },
+
+  getGlobalEnvs: () => {
+    return fetcher({
+      url: `/envs/global`,
+      method: 'GET',
+    });
+  },
+
+  updateGlobalEnvs: (envs: Record<string, string>) => {
+    return fetcher({
+      url: `/envs/global`,
+      method: 'POST',
+      body: {
+        content: envs,
+      },
     });
   },
 };

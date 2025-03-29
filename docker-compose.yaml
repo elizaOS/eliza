@@ -7,7 +7,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_DB=eliza
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/root/.eliza/db
     ports:
       - '127.0.0.1:5432:5432'
     healthcheck:
@@ -15,6 +15,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - eliza-network
     restart: always
   eliza:
     build:
@@ -41,13 +43,13 @@ services:
       - LIAISON_DISCORD_API_TOKEN=${LIAISON_DISCORD_API_TOKEN}
       - PROJECT_MANAGER_DISCORD_APPLICATION_ID=${PROJECT_MANAGER_DISCORD_APPLICATION_ID}
       - PROJECT_MANAGER_DISCORD_API_TOKEN=${PROJECT_MANAGER_DISCORD_API_TOKEN}
-      - DEV_SUPPORT_DISCORD_APPLICATION_ID=${DEV_SUPPORT_DISCORD_APPLICATION_ID}
-      - DEV_SUPPORT_DISCORD_API_TOKEN=${DEV_SUPPORT_DISCORD_API_TOKEN}
+      - DEV_REL_DISCORD_APPLICATION_ID=${DEV_REL_DISCORD_APPLICATION_ID}
+      - DEV_REL_DISCORD_API_TOKEN=${DEV_REL_DISCORD_API_TOKEN}
       - INVESTMENT_MANAGER_DISCORD_APPLICATION_ID=${INVESTMENT_MANAGER_DISCORD_APPLICATION_ID}
       - INVESTMENT_MANAGER_DISCORD_API_TOKEN=${INVESTMENT_MANAGER_DISCORD_API_TOKEN}
+      - PGLITE_DATA_DIR=/root/.eliza/db
     ports:
       - '3000:3000'
-      - '5173:5173'
     depends_on:
       postgres:
         condition: service_healthy

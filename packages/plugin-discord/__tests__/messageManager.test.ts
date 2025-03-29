@@ -22,6 +22,7 @@ describe('Discord MessageManager', () => {
             allowedChannelIds: ['mock-channel-id'],
             shouldIgnoreBotMessages: true,
             shouldIgnoreDirectMessages: true,
+            shouldRespondOnlyToMentions: true,
           },
         },
       },
@@ -72,7 +73,9 @@ describe('Discord MessageManager', () => {
       },
       id: 'mock-message-id',
       createdTimestamp: Date.now(),
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: {
+        users: { has: vi.fn().mockReturnValue(true) },
+      },
       reference: null,
       attachments: new Collection(),
     };
@@ -91,6 +94,12 @@ describe('Discord MessageManager', () => {
 
   it('should ignore messages from restricted channels', async () => {
     mockMessage.channel.id = 'undefined-channel-id';
+    await messageManager.handleMessage(mockMessage);
+    expect(mockRuntime.ensureConnection).not.toHaveBeenCalled();
+  });
+
+  it('should ignore not mentioned messages', async () => {
+    mockMessage.mentions.users.has = vi.fn().mockReturnValue(false);
     await messageManager.handleMessage(mockMessage);
     expect(mockRuntime.ensureConnection).not.toHaveBeenCalled();
   });

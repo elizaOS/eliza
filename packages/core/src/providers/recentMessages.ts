@@ -2,6 +2,7 @@ import { getEntityDetails } from '../entities';
 import { addHeader, formatMessages, formatPosts } from '../prompts';
 import {
   ChannelType,
+  CustomMetadata,
   type Entity,
   type IAgentRuntime,
   type Memory,
@@ -18,6 +19,14 @@ import {
  * @param {UUID} targetEntityId - The UUID of the target entity.
  * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
  * @returns {Promise<Memory[]>} A promise that resolves to an array of Memory objects representing recent interactions.
+ */
+/**
+ * Retrieves the recent interactions between two entities in different rooms excluding a specific room.
+ * @param {IAgentRuntime} runtime - The agent runtime object.
+ * @param {UUID} sourceEntityId - The UUID of the source entity.
+ * @param {UUID} targetEntityId - The UUID of the target entity.
+ * @param {UUID} excludeRoomId - The UUID of the room to exclude from the search.
+ * @returns {Promise<Memory[]>} An array of Memory objects representing recent interactions between the two entities.
  */
 const getRecentInteractions = async (
   runtime: IAgentRuntime,
@@ -91,6 +100,12 @@ export const recentMessagesProvider: Provider = {
       formattedRecentPosts && formattedRecentPosts.length > 0
         ? addHeader('# Posts in Thread', formattedRecentPosts)
         : '';
+
+    const metaData = message.metadata as CustomMetadata;
+    const recieveMessage = addHeader(
+      '# Received Message:',
+      `${metaData?.entityName || 'unknown'}: ${message.content.text}`
+    );
 
     const recentMessages =
       formattedRecentMessages && formattedRecentMessages.length > 0
@@ -207,7 +222,9 @@ export const recentMessagesProvider: Provider = {
     };
 
     // Combine all text sections
-    const text = [isPostFormat ? recentPosts : recentMessages].filter(Boolean).join('\n\n');
+    const text = [isPostFormat ? recentPosts : recentMessages + recieveMessage]
+      .filter(Boolean)
+      .join('\n\n');
 
     return {
       data,

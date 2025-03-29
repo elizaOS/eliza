@@ -6,22 +6,21 @@ import {
   type Plugin,
   logger,
   stringToUuid,
+  encryptedCharacter,
 } from '@elizaos/core';
 import { Command } from 'commander';
-import * as dotenv from 'dotenv';
 import fs from 'node:fs';
-import os from 'node:os';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { character as defaultCharacter } from '../characters/eliza';
-import { displayBanner } from '../displayBanner';
+import { character, character as defaultCharacter } from '../characters/eliza';
 import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
 import { loadConfig, saveConfig } from '../utils/config-manager.js';
 import { promptForEnvVars } from '../utils/env-prompt.js';
+import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
-
+import { displayBanner } from '../displayBanner';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -103,6 +102,8 @@ export async function startAgent(
 ): Promise<IAgentRuntime> {
   character.id ??= stringToUuid(character.name);
 
+  const encryptedChar = encryptedCharacter(character);
+
   // For ESM modules we need to use import.meta.url instead of __dirname
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
@@ -121,7 +122,7 @@ export async function startAgent(
   const characterPlugins: Plugin[] = [];
 
   // for each plugin, check if it installed, and install if it is not
-  for (const plugin of character.plugins) {
+  for (const plugin of encryptedChar.plugins) {
     logger.debug('Checking if plugin is installed: ', plugin);
     let pluginModule: any;
 
@@ -220,7 +221,7 @@ export async function startAgent(
   }
 
   const runtime = new AgentRuntime({
-    character,
+    character: encryptedChar,
     plugins: [...plugins, ...characterPlugins],
   });
   if (init) {
@@ -257,33 +258,19 @@ async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
  * @param {Object} options - Command options
  * @returns {Promise<void>} A promise that resolves when the agents are successfully started.
  */
-const startAgents = async (options: { configure?: boolean; port?: number; character?: string }) => {
-  // Set up standard paths and load .env
-  const homeDir = os.homedir();
-  const elizaDir = path.join(homeDir, '.eliza');
-  const elizaDbDir = path.join(elizaDir, 'db');
-  const envFilePath = path.join(elizaDir, '.env');
+const startAgents = async (options: {
+  configure?: boolean;
+  port?: number;
+  characters?: Character[];
+}) => {
+  // Load environment variables from project .env or .eliza/.env
+  await loadEnvironment();
 
-  // Create .eliza directory if it doesn't exist
-  if (!fs.existsSync(elizaDir)) {
-    fs.mkdirSync(elizaDir, { recursive: true });
-    logger.info(`Created directory: ${elizaDir}`);
-  }
+  // Configure database settings - pass reconfigure option to potentially force reconfiguration
+  const postgresUrl = await configureDatabaseSettings(options.configure);
 
-  // Create db directory if it doesn't exist
-  if (!fs.existsSync(elizaDbDir)) {
-    fs.mkdirSync(elizaDbDir, { recursive: true });
-    logger.info(`Created database directory: ${elizaDbDir}`);
-  }
-
-  // Set the database directory in environment variables
-  process.env.PGLITE_DATA_DIR = elizaDbDir;
-  logger.debug(`Using database directory: ${elizaDbDir}`);
-
-  // Load environment variables from .eliza/.env if it exists
-  if (fs.existsSync(envFilePath)) {
-    dotenv.config({ path: envFilePath });
-  }
+  // Get PGLite data directory from environment (may have been set during configuration)
+  const pgliteDataDir = process.env.PGLITE_DATA_DIR;
 
   // Load existing configuration
   const existingConfig = loadConfig();
@@ -299,17 +286,16 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
     } else {
       logger.info('Reconfiguration requested.');
     }
+
     // Save the configuration AFTER user has made selections
     saveConfig({
       lastUpdated: new Date().toISOString(),
     });
   }
-  // Look for PostgreSQL URL in environment variables
-  const postgresUrl = process.env.POSTGRES_URL;
 
-  // Create server instance
+  // Create server instance with appropriate database settings
   const server = new AgentServer({
-    dataDir: elizaDbDir,
+    dataDir: pgliteDataDir,
     postgresUrl,
   });
 
@@ -462,108 +448,128 @@ const startAgents = async (options: { configure?: boolean; port?: number; charac
 
   server.start(serverPort);
 
-  console.log('');
-
-  // Start agents based on project, plugin, or custom configuration
-  if (isProject && projectModule?.default) {
-    // Load all project agents, call their init and register their plugins
-    const project = projectModule.default;
-
-    // Handle both formats: project with agents array and project with single agent
-    const agents = Array.isArray(project.agents)
-      ? project.agents
-      : project.agent
-        ? [project.agent]
-        : [];
-
-    if (agents.length > 0) {
-      logger.debug(`Found ${agents.length} agents in project`);
-
-      // Prompt for environment variables for all plugins in the project
-      try {
-        await promptForProjectPlugins(project);
-      } catch (error) {
-        logger.warn(`Failed to prompt for project environment variables: ${error}`);
+  // if characters are provided, start the agents with the characters
+  if (options.characters) {
+    for (const character of options.characters) {
+      // make sure character has sql plugin
+      if (!character.plugins.includes('@elizaos/plugin-sql')) {
+        character.plugins.push('@elizaos/plugin-sql');
       }
 
-      const startedAgents = [];
-      for (const agent of agents) {
+      // make sure character has at least one ai provider
+      if (process.env.OPENAI_API_KEY) {
+        character.plugins.push('@elizaos/plugin-openai');
+      } else if (process.env.ANTHROPIC_API_KEY) {
+        character.plugins.push('@elizaos/plugin-anthropic');
+      } else {
+        character.plugins.push('@elizaos/plugin-local-ai');
+      }
+
+      await startAgent(character, server);
+    }
+  } else {
+    // Start agents based on project, plugin, or custom configuration
+    if (isProject && projectModule?.default) {
+      // Load all project agents, call their init and register their plugins
+      const project = projectModule.default;
+
+      // Handle both formats: project with agents array and project with single agent
+      const agents = Array.isArray(project.agents)
+        ? project.agents
+        : project.agent
+          ? [project.agent]
+          : [];
+
+      if (agents.length > 0) {
+        logger.debug(`Found ${agents.length} agents in project`);
+
+        // Prompt for environment variables for all plugins in the project
         try {
-          logger.debug(`Starting agent: ${agent.character.name}`);
-          const runtime = await startAgent(
-            agent.character,
-            server,
-            agent.init,
-            agent.plugins || []
-          );
-          startedAgents.push(runtime);
-          // wait .5 seconds
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        } catch (agentError) {
-          logger.error(`Error starting agent ${agent.character.name}: ${agentError}`);
+          await promptForProjectPlugins(project);
+        } catch (error) {
+          logger.warn(`Failed to prompt for project environment variables: ${error}`);
+        }
+
+        const startedAgents = [];
+        for (const agent of agents) {
+          try {
+            logger.debug(`Starting agent: ${agent.character.name}`);
+            const runtime = await startAgent(
+              agent.character,
+              server,
+              agent.init,
+              agent.plugins || []
+            );
+            startedAgents.push(runtime);
+            // wait .5 seconds
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          } catch (agentError) {
+            logger.error(`Error starting agent ${agent.character.name}: ${agentError}`);
+          }
+        }
+
+        if (startedAgents.length === 0) {
+          logger.warn('Failed to start any agents from project, falling back to custom character');
+          await startAgent(defaultCharacter, server);
+        } else {
+          logger.debug(`Successfully started ${startedAgents.length} agents from project`);
+        }
+      } else {
+        logger.debug('Project found but no agents defined, falling back to custom character');
+        await startAgent(defaultCharacter, server);
+      }
+    } else if (isPlugin && pluginModule) {
+      // Before starting with the plugin, prompt for any environment variables it needs
+      if (pluginModule.name) {
+        try {
+          await promptForEnvVars(pluginModule.name);
+        } catch (error) {
+          logger.warn(`Failed to prompt for plugin environment variables: ${error}`);
         }
       }
 
-      if (startedAgents.length === 0) {
-        logger.warn('Failed to start any agents from project, falling back to custom character');
-        await startAgent(defaultCharacter, server);
-      } else {
-        logger.debug(`Successfully started ${startedAgents.length} agents from project`);
-      }
+      // Load the default character with all its default plugins, then add the test plugin
+      logger.info(
+        `Starting default Eliza character with plugin: ${pluginModule.name || 'unnamed plugin'}`
+      );
+
+      // Import the default character with all its plugins
+      const { character: defaultElizaCharacter } = await import('../characters/eliza');
+
+      // Create an array of plugins, including the explicitly loaded one
+      // We're using our test plugin plus all the plugins from the default character
+      const pluginsToLoad = [pluginModule];
+
+      logger.debug(
+        `Using default character with plugins: ${defaultElizaCharacter.plugins.join(', ')}`
+      );
+      logger.info(
+        "Plugin test mode: Using default character's plugins plus the plugin being tested"
+      );
+
+      // Start the agent with the default character and our test plugin
+      // We're in plugin test mode, so we should skip auto-loading embedding models
+      await startAgent(defaultElizaCharacter, server, undefined, pluginsToLoad, {
+        isPluginTestMode: true,
+      });
+      logger.info('Character started with plugin successfully');
     } else {
-      logger.debug('Project found but no agents defined, falling back to custom character');
-      await startAgent(defaultCharacter, server);
-    }
-  } else if (isPlugin && pluginModule) {
-    // Before starting with the plugin, prompt for any environment variables it needs
-    if (pluginModule.name) {
-      try {
-        await promptForEnvVars(pluginModule.name);
-      } catch (error) {
-        logger.warn(`Failed to prompt for plugin environment variables: ${error}`);
-      }
+      // When not in a project or plugin, load the default character with all plugins
+      const { character: defaultElizaCharacter } = await import('../characters/eliza');
+      logger.info('Using default Eliza character with all plugins');
+      await startAgent(defaultElizaCharacter, server);
     }
 
-    // Load the default character with all its default plugins, then add the test plugin
-    logger.info(
-      `Starting default Eliza character with plugin: ${pluginModule.name || 'unnamed plugin'}`
-    );
+    // Display link to the client UI
+    // First try to find it in the CLI package dist/client directory
+    let clientPath = path.join(__dirname, '../../client');
 
-    // Import the default character with all its plugins
-    const { character: defaultElizaCharacter } = await import('../characters/eliza');
-
-    // Create an array of plugins, including the explicitly loaded one
-    // We're using our test plugin plus all the plugins from the default character
-    const pluginsToLoad = [pluginModule];
-
-    logger.debug(
-      `Using default character with plugins: ${defaultElizaCharacter.plugins.join(', ')}`
-    );
-    logger.info("Plugin test mode: Using default character's plugins plus the plugin being tested");
-
-    // Start the agent with the default character and our test plugin
-    // We're in plugin test mode, so we should skip auto-loading embedding models
-    await startAgent(defaultElizaCharacter, server, undefined, pluginsToLoad, {
-      isPluginTestMode: true,
-    });
-    logger.info('Character started with plugin successfully');
-  } else {
-    // When not in a project or plugin, load the default character with all plugins
-    const { character: defaultElizaCharacter } = await import('../characters/eliza');
-    logger.info('Using default Eliza character with all plugins');
-    await startAgent(defaultElizaCharacter, server);
-  }
-
-  // Display link to the client UI
-  // First try to find it in the CLI package dist/client directory
-  let clientPath = path.join(__dirname, '../../client');
-
-  // If not found, fall back to the old relative path for development
-  if (!fs.existsSync(clientPath)) {
-    clientPath = path.join(__dirname, '../../../..', 'client/dist');
+    // If not found, fall back to the old relative path for development
+    if (!fs.existsSync(clientPath)) {
+      clientPath = path.join(__dirname, '../../../..', 'client/dist');
+    }
   }
 };
-
 // Create command that can be imported directly
 export const start = new Command()
   .name('start')
@@ -574,6 +580,7 @@ export const start = new Command()
   .option('--build', 'Build the project before starting')
   .action(async (options) => {
     displayBanner();
+
     try {
       // Build the project first unless skip-build is specified
       if (options.build) {
@@ -584,9 +591,18 @@ export const start = new Command()
       const characterPath = options.character;
 
       if (characterPath) {
-        logger.info(`Loading character from ${characterPath}`);
+        options.characters = [];
         try {
-          const characterData = await loadCharacterTryPath(characterPath);
+          // if character path is a comma separated list, load all characters
+          // can be remote path also
+          if (characterPath.includes(',')) {
+            const characterPaths = characterPath.split(',');
+            for (const characterPath of characterPaths) {
+              logger.info(`Loading character from ${characterPath}`);
+              const characterData = await loadCharacterTryPath(characterPath);
+              options.characters.push(characterData);
+            }
+          }
           await startAgents(options);
         } catch (error) {
           logger.error(`Failed to load character: ${error}`);

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.0.0-alpha.67",
+  "version": "1.0.0-beta.7",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -55,9 +55,14 @@
     "ts-node": "10.9.2",
     "tslib": "2.8.1",
     "tsup": "^8.4.0",
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "@hapi/shot": "^6.0.1",
+    "@types/hapi": "^18.0.14"
   },
   "dependencies": {
+    "@hapi/shot": "^6.0.1",
+    "@types/hapi": "^18.0.14",
+    "@types/hapi__shot": "^6.0.0",
     "dotenv": "16.4.5",
     "events": "^3.3.0",
     "glob": "11.0.0",
@@ -72,5 +77,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "be3a1856c64c6d1ae2ec73e9f35b83ef827b0c55"
+  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e"
 }

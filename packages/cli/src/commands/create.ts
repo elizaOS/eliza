@@ -1,17 +1,19 @@
-import { existsSync, readFileSync } from 'node:fs';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { buildProject } from '@/src/utils/build-project';
 import { copyTemplate } from '@/src/utils/copy-template';
-import { handleError } from '@/src/utils/handle-error';
+import { checkServer, handleError } from '@/src/utils/handle-error';
 import { runBunCommand } from '@/src/utils/run-bun';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { execa } from 'execa';
+import { existsSync, readFileSync } from 'node:fs';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import prompts from 'prompts';
 import colors from 'yoctocolors';
 import { z } from 'zod';
+import { displayBanner } from '../displayBanner';
+import { setupPgLite, promptAndStorePostgresUrl, getElizaDirectories } from '../utils/get-config';
 
 /**
  * This module handles creating both projects and plugins.
@@ -95,7 +97,10 @@ export const create = new Command()
   .option('-d, --dir <dir>', 'installation directory', '.')
   .option('-y, --yes', 'skip confirmation', false)
   .option('-t, --type <type>', 'type of template to use (project or plugin)', '')
-  .action(async (opts) => {
+  .argument('[name]', 'name for the project or plugin')
+  .action(async (name, opts) => {
+    displayBanner();
+
     try {
       // Parse options but use "" as the default for type to force prompting
       const initialOptions = {
@@ -126,6 +131,12 @@ export const create = new Command()
         }
 
         projectType = type;
+      } else {
+        // Validate the provided type
+        if (!['project', 'plugin'].includes(projectType)) {
+          logger.error(`Invalid type: ${projectType}. Must be either 'project' or 'plugin'`);
+          process.exit(1);
+        }
       }
 
       // Now validate with zod after we've determined the type
@@ -162,20 +173,28 @@ export const create = new Command()
         currentPath = path.join(parentDir, '.env');
         depth++;
       }
-      // Prompt for project/plugin name
-      const { name } = await prompts({
-        type: 'text',
-        name: 'name',
-        message: `What would you like to name your ${options.type}?`,
-        validate: (value) => value.length > 0 || `${options.type} name is required`,
-      });
 
-      if (!name) {
-        process.exit(0);
+      // Prompt for project/plugin name if not provided
+      let projectName = name;
+      if (!projectName) {
+        const { nameResponse } = await prompts({
+          type: 'text',
+          name: 'nameResponse',
+          message: `What would you like to name your ${options.type}?`,
+          validate: (value) => value.length > 0 || `${options.type} name is required`,
+        });
+
+        if (!nameResponse) {
+          process.exit(0);
+        }
+
+        projectName = nameResponse;
       }
 
       // Set up target directory
-      const targetDir = options.dir === '.' ? path.resolve(name) : path.resolve(options.dir);
+      // If -d is ".", create in current directory with project name
+      // If -d is specified, create project directory inside that directory
+      const targetDir = path.resolve(options.dir, projectName);
 
       // Create or check directory
       if (!existsSync(targetDir)) {
@@ -200,7 +219,9 @@ export const create = new Command()
 
       // For plugin initialization, we can simplify the process
       if (options.type === 'plugin') {
-        const pluginName = name.startsWith('@elizaos/plugin-') ? name : `@elizaos/plugin-${name}`;
+        const pluginName = projectName.startsWith('@elizaos/plugin-')
+          ? projectName
+          : `@elizaos/plugin-${projectName}`;
 
         // Copy plugin template
         await copyTemplate('plugin', targetDir, pluginName);
@@ -219,15 +240,23 @@ export const create = new Command()
           );
         }
 
-        // Change to the created directory
-        logger.info(`Changing to directory: ${targetDir}`);
-        process.chdir(targetDir);
-
         logger.success('Plugin initialized successfully!');
+
+        // Get the relative path for display
+        const cdPath =
+          options.dir === '.'
+            ? projectName // If creating in current directory, just use the name
+            : path.relative(process.cwd(), targetDir); // Otherwise use path relative to current directory
+
         logger.info(`\nYour plugin is ready! Here's what you can do next:
-1. \`${colors.cyan('npx @elizaos/cli start')}\` to start development
-2. \`${colors.cyan('npx @elizaos/cli test')}\` to test your plugin
-3. \`${colors.cyan('npx @elizaos/cli plugins publish')}\` to publish your plugin to the registry`);
+1. \`cd ${cdPath}\` to change into your plugin directory
+2. \`${colors.cyan('npx elizaos start')}\` to start development
+3. \`${colors.cyan('npx elizaos test')}\` to test your plugin
+4. \`${colors.cyan('npx elizaos plugin publish')}\` to publish your plugin to the registry`);
+
+        // Set the user's shell working directory before exiting
+        // Note: This only works if the CLI is run with shell integration
+        process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         return;
       }
 
@@ -254,47 +283,19 @@ export const create = new Command()
       }
 
       // Copy project template
-      await copyTemplate('project', targetDir, name);
+      await copyTemplate('project', targetDir, projectName);
 
-      // Create a database directory in the user's home folder, similar to start.ts
-      let dbPath = '../../pglite'; // Default fallback path
-      try {
-        // Get the user's home directory
-        const homeDir = os.homedir();
-        const elizaDir = path.join(homeDir, '.eliza');
-        const elizaDbDir = path.join(elizaDir, 'db');
+      // Database configuration
+      const { elizaDbDir, envFilePath } = getElizaDirectories();
 
-        // Check if .eliza directory exists, create if not
-        if (!existsSync(elizaDir)) {
-          logger.info(`Creating .eliza directory at: ${elizaDir}`);
-          await fs.mkdir(elizaDir, { recursive: true });
-        }
-
-        // Check if db directory exists in .eliza, create if not
-        if (!existsSync(elizaDbDir)) {
-          logger.info(`Creating db directory at: ${elizaDbDir}`);
-          await fs.mkdir(elizaDbDir, { recursive: true });
-        }
-
-        // Use the db directory path
-        dbPath = elizaDbDir;
-        logger.debug(`Using database directory: ${dbPath}`);
-      } catch (error) {
-        logger.warn(
-          'Failed to create database directory in home directory, using fallback location:',
-          error
-        );
-        // On failure, use the fallback path
-      }
-
-      if (database === 'postgres' && !postgresUrl) {
-        // prompt for postgres url
-        const reply = await prompts({
-          type: 'text',
-          name: 'postgresUrl',
-          message: 'Enter your postgres url',
-        });
-        postgresUrl = reply.postgresUrl;
+      // Only create directories and configure based on database choice
+      if (database === 'pglite') {
+        // Set up PGLite directory and configuration
+        await setupPgLite(elizaDbDir, envFilePath);
+        logger.debug(`Using PGLite database directory: ${elizaDbDir}`);
+      } else if (database === 'postgres' && !postgresUrl) {
+        // Handle Postgres configuration
+        postgresUrl = await promptAndStorePostgresUrl(envFilePath);
       }
 
       // Set up src directory
@@ -315,10 +316,15 @@ export const create = new Command()
       logger.success('Project initialized successfully!');
 
       // Show next steps with updated message
+      const cdPath =
+        options.dir === '.'
+          ? projectName // If creating in current directory, just use the name
+          : path.relative(process.cwd(), targetDir); // Otherwise use path relative to current directory
+
       logger.info(`\nYour project is ready! Here's what you can do next:
-1. \`cd ${targetDir}\` to change into your project directory
-2. Run \`npx @elizaos/cli start\` to start your project
-3. Visit \`http://localhost:3000\` to view your project in the browser`);
+1. \`cd ${cdPath}\` to change into your project directory
+2. Run \`npx elizaos start\` to start your project
+3. Visit \`http://localhost:3000\` (or your custom port) to view your project in the browser`);
 
       // exit successfully
       // Set the user's shell working directory before exiting
@@ -326,6 +332,7 @@ export const create = new Command()
       process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
       process.exit(0);
     } catch (error) {
+      await checkServer();
       handleError(error);
     }
   });

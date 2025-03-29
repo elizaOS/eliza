@@ -11,7 +11,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
   TURBO_REMOTE_ONLY: true # Enforces remote-only caching
   TURBO_CACHE: remote:rw # allow r/w to remote cache
   GH_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-latest] # , windows-latest]
+        platform: [macos-latest, ubuntu-latest, windows-latest]
         include:
           - platform: macos-latest
             target: universal-apple-darwin
@@ -114,7 +114,7 @@ jobs:
           bun run tauri build
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: tauri-artifacts-${{ matrix.platform }}
           path: packages/app/${{ matrix.output-dir }}
@@ -130,7 +130,7 @@ jobs:
 
       - name: Upload Linux artifacts
         if: matrix.platform == 'ubuntu-latest'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: linux-specific-artifacts
           path: ./release-artifacts

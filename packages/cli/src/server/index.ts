@@ -55,6 +55,7 @@ export class AgentServer {
   private agents: Map<UUID, IAgentRuntime>;
   public server: http.Server;
   public socketIO: SocketIOServer;
+  private serverPort: number = 3000; // Add property to store current port
 
   public database: any;
   public startAgent!: (character: Character) => Promise<IAgentRuntime>;
@@ -113,10 +114,7 @@ export class AgentServer {
       // wait 250 ms
       await new Promise((resolve) => setTimeout(resolve, 250));
 
-      // Move this message here to be more accurate
-      console.log(
-        `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1m${AGENT_RUNTIME_URL}\x1b[22m\x1b[0m`
-      );
+      // Success message moved to start method
     } catch (error) {
       logger.error('Failed to initialize:', error);
       throw error;
@@ -490,12 +488,19 @@ export class AgentServer {
         throw new Error(`Invalid port number: ${port}`);
       }
 
+      this.serverPort = port; // Save the port
+
       logger.debug(`Starting server on port ${port}...`);
       logger.debug(`Current agents count: ${this.agents.size}`);
       logger.debug(`Environment: ${process.env.NODE_ENV}`);
 
       // Use http server instead of app.listen
       this.server.listen(port, () => {
+        // Display the dashboard URL with the correct port after the server is actually listening
+        console.log(
+          `\x1b[32mStartup successful!\nGo to the dashboard at \x1b[1mhttp://localhost:${port}\x1b[22m\x1b[0m`
+        );
+
         logger.success(
           `REST API bound to 0.0.0.0:${port}. If running locally, access it at http://localhost:${port}.`
         );
