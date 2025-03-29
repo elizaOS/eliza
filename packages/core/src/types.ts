@@ -1549,6 +1549,7 @@ export enum PlatformPrefix {
 export interface EventPayload {
   runtime: IAgentRuntime;
   source: string;
+  onComplete?: () => void;
 }
 
 /**

@@ -15,7 +15,7 @@ import { type Context, Telegraf } from 'telegraf';
 import { TELEGRAM_SERVICE_NAME } from './constants';
 import { validateTelegramConfig } from './environment';
 import { MessageManager } from './messageManager';
-import { TelegramEventTypes } from './types';
+import { TelegramEventTypes, TelegramWorldPayload } from './types';
 
 /**
  * Class representing a Telegram service that allows the agent to send and receive messages on Telegram.
@@ -141,195 +141,6 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Checks if a group is authorized, based on the TELEGRAM_ALLOWED_CHATS setting.
-   * @param {Context} ctx - The context of the incoming update.
-   * @returns {Promise<boolean>} A Promise that resolves with a boolean indicating if the group is authorized.
-   */
-  private async isGroupAuthorized(ctx: Context): Promise<boolean> {
-    const chatId = ctx.chat?.id.toString();
-    if (!chatId) return false;
-
-    // If this is a chat we haven't seen before, emit WORLD_JOINED event
-    if (!this.knownChats.has(chatId)) {
-      await this.handleNewChat(ctx);
-    }
-
-    const allowedChats = this.runtime.getSetting('TELEGRAM_ALLOWED_CHATS');
-    if (!allowedChats) {
-      return true; // All chats are allowed if no restriction is set
-    }
-
-    try {
-      const allowedChatsList = JSON.parse(allowedChats as string);
-      return allowedChatsList.includes(chatId);
-    } catch (error) {
-      logger.error('Error parsing TELEGRAM_ALLOWED_CHATS:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Handles new chat discovery and emits WORLD_JOINED event
-   * @param {Context} ctx - The context of the incoming update
-   */
-  private async handleNewChat(ctx: Context): Promise<void> {
-    if (!ctx.chat) return;
-
-    const chat = ctx.chat;
-    const chatId = chat.id.toString();
-
-    // Mark this chat as known
-    this.knownChats.set(chatId, chat);
-
-    // Get chat title based on type
-    let chatTitle: string;
-    let channelType: ChannelType;
-
-    switch (chat.type) {
-      case 'private':
-        chatTitle = `Chat with ${chat.first_name || 'Unknown User'}`;
-        channelType = ChannelType.DM;
-        break;
-      case 'group':
-        chatTitle = chat.title || 'Unknown Group';
-        channelType = ChannelType.GROUP;
-        break;
-      case 'supergroup':
-        chatTitle = chat.title || 'Unknown Supergroup';
-        channelType = ChannelType.GROUP;
-        break;
-      case 'channel':
-        chatTitle = chat.title || 'Unknown Channel';
-        channelType = ChannelType.FEED;
-        break;
-      default:
-        chatTitle = 'Unknown Chat';
-        channelType = ChannelType.GROUP;
-    }
-
-    // Ensure chatId is properly formatted for UUID creation by removing negative sign if present
-    const formattedChatId = chatId.startsWith('-') ? chatId.substring(1) : chatId;
-
-    // Create standardized world data
-    const worldId = createUniqueUuid(this.runtime, formattedChatId) as UUID;
-    const roomId = createUniqueUuid(this.runtime, formattedChatId) as UUID;
-
-    // Build world representation
-    const world: World = {
-      id: worldId,
-      name: chatTitle,
-      agentId: this.runtime.agentId,
-      serverId: chatId,
-      metadata: {
-        source: 'telegram',
-        ownership: { ownerId: chatId },
-        roles: {
-          [chatId]: Role.OWNER,
-        },
-      },
-    };
-
-    // Build room representation
-    const room: Room = {
-      id: roomId,
-      name: chatTitle,
-      source: 'telegram',
-      type: channelType,
-      channelId: chatId,
-      serverId: chatId,
-      worldId: worldId,
-    };
-
-    // Build users list
-    const users: Entity[] = [];
-    // For private chats, add the user
-    if (chat.type === 'private' && chat.id) {
-      const userId = createUniqueUuid(this.runtime, chat.id.toString()) as UUID;
-      users.push({
-        id: userId,
-        names: [chat.first_name || 'Unknown User'],
-        agentId: this.runtime.agentId,
-        metadata: {
-          telegram: {
-            id: chat.id.toString(),
-            username: chat.username || 'unknown',
-            name: chat.first_name || 'Unknown User',
-          },
-          source: 'telegram',
-        },
-      });
-    } else if (chat.type === 'group' || chat.type === 'supergroup') {
-      // For groups and supergroups, try to get member information
-      try {
-        // Get chat administrators (this is what's available through the Bot API)
-        const admins = await this.bot.telegram.getChatAdministrators(chat.id);
-
-        if (admins && admins.length > 0) {
-          for (const admin of admins) {
-            const userId = createUniqueUuid(this.runtime, admin.user.id.toString()) as UUID;
-            users.push({
-              id: userId,
-              names: [admin.user.first_name || admin.user.username || 'Unknown Admin'],
-              agentId: this.runtime.agentId,
-              metadata: {
-                telegram: {
-                  id: admin.user.id.toString(),
-                  username: admin.user.username || 'unknown',
-                  name: admin.user.first_name || 'Unknown Admin',
-                  isAdmin: true,
-                  adminTitle:
-                    admin.custom_title || (admin.status === 'creator' ? 'Owner' : 'Admin'),
-                },
-                source: 'telegram',
-                roles: [admin.status === 'creator' ? Role.OWNER : Role.ADMIN],
-              },
-            });
-          }
-        }
-
-        // Additionally, we can estimate member count
-        try {
-          const chatInfo = await this.bot.telegram.getChat(chat.id);
-          if (chatInfo && 'member_count' in chatInfo) {
-            // Store this information in the world metadata
-            world.metadata.memberCount = chatInfo.member_count;
-          }
-        } catch (countError) {
-          logger.warn(`Could not get member count for chat ${chatId}: ${countError}`);
-        }
-      } catch (error) {
-        logger.warn(`Could not fetch administrators for chat ${chatId}: ${error}`);
-      }
-    }
-
-    // Create payload for world events
-    const worldPayload = {
-      runtime: this.runtime,
-      world,
-      rooms: [room],
-      entities: users,
-      source: 'telegram',
-    };
-
-    // Create Telegram-specific payload
-    const telegramWorldPayload = {
-      ...worldPayload,
-      chat,
-    };
-
-    // Emit generic WORLD_JOINED event
-    this.runtime.emitEvent(EventType.WORLD_JOINED, worldPayload);
-
-    // Emit platform-specific WORLD_JOINED event
-    this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
-
-    // Set up a handler to track new entities as they interact with the chat
-    if (chat.type === 'group' || chat.type === 'supergroup') {
-      this.setupEntityTracking(chat.id);
-    }
-  }
-
-  /**
    * Sets up message and reaction handlers for the bot.
    *
    * @private
@@ -355,6 +166,219 @@ export class TelegramService extends Service {
         logger.error('Error handling reaction:', error);
       }
     });
+  }
+
+  /**
+   * Checks if a group is authorized, based on the TELEGRAM_ALLOWED_CHATS setting.
+   * @param {Context} ctx - The context of the incoming update.
+   * @returns {Promise<boolean>} A Promise that resolves with a boolean indicating if the group is authorized.
+   */
+  private async isGroupAuthorized(ctx: Context): Promise<boolean> {
+    const chatId = ctx.chat?.id.toString();
+    if (!chatId) return false;
+
+    // If this is a chat we haven't seen before, emit WORLD_JOINED event
+    if (!this.knownChats.has(chatId)) {
+      await this.handleNewChat(ctx);
+    }
+
+    const allowedChats = this.runtime.getSetting('TELEGRAM_ALLOWED_CHATS');
+    if (!allowedChats) {
+      return true;
+    }
+
+    try {
+      const allowedChatsList = JSON.parse(allowedChats as string);
+      return allowedChatsList.includes(chatId);
+    } catch (error) {
+      logger.error('Error parsing TELEGRAM_ALLOWED_CHATS:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Gets chat title and channel type based on Telegram chat type
+   * @param {any} chat - The Telegram chat object
+   * @returns {Object} Object containing chatTitle and channelType
+   */
+  private getChatTypeInfo(chat: any): { chatTitle: string; channelType: ChannelType } {
+    let chatTitle: string;
+    let channelType: ChannelType;
+
+    switch (chat.type) {
+      case 'private':
+        chatTitle = `Chat with ${chat.first_name || 'Unknown User'}`;
+        channelType = ChannelType.DM;
+        break;
+      case 'group':
+        chatTitle = chat.title || 'Unknown Group';
+        channelType = ChannelType.GROUP;
+        break;
+      case 'supergroup':
+        chatTitle = chat.title || 'Unknown Supergroup';
+        channelType = ChannelType.GROUP;
+        break;
+      case 'channel':
+        chatTitle = chat.title || 'Unknown Channel';
+        channelType = ChannelType.FEED;
+        break;
+      default:
+        chatTitle = 'Unknown Chat';
+        channelType = ChannelType.GROUP;
+    }
+
+    return { chatTitle, channelType };
+  }
+
+  /**
+   * Handles new chat discovery and emits WORLD_JOINED event
+   * @param {Context} ctx - The context of the incoming update
+   */
+  private async handleNewChat(ctx: Context): Promise<void> {
+    console.log('handleNewChat() call started');
+    if (!ctx.chat) return;
+
+    const chat = ctx.chat;
+    const chatId = chat.id.toString();
+
+    // Mark this chat as known
+    this.knownChats.set(chatId, chat);
+
+    // Get chat title and channel type
+    const { chatTitle } = this.getChatTypeInfo(chat);
+
+    const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
+    const userId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
+
+    let admins = [];
+    let owner = null;
+    if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
+      admins = await ctx.getChatAdministrators();
+      owner = admins.find((admin) => admin.status === 'creator');
+    }
+
+    let ownerId = userId;
+
+    if (owner) {
+      ownerId = createUniqueUuid(this.runtime, String(owner.user.id)) as UUID;
+    }
+
+    // Build world representation
+    const world: World = {
+      id: worldId,
+      name: chatTitle,
+      agentId: this.runtime.agentId,
+      serverId: chatId,
+      metadata: {
+        source: 'telegram',
+        ownership: { ownerId },
+        roles: {
+          [ownerId]: Role.OWNER,
+        },
+      },
+    };
+
+    const entities = await this.buildStandardizedEntities(chat);
+
+    const room = {
+      id: createUniqueUuid(this.runtime, chatId) as UUID,
+      name: chatTitle,
+      source: 'telegram',
+      type: chat.type === 'private' ? ChannelType.DM : ChannelType.GROUP,
+      channelId: chatId,
+      serverId: chatId,
+      worldId,
+    };
+
+    // Create payload for world events
+    const worldPayload = {
+      runtime: this.runtime,
+      world,
+      rooms: [room],
+      entities,
+      source: 'telegram',
+      onComplete: () => {
+        const telegramWorldPayload: TelegramWorldPayload = {
+          ...worldPayload,
+          chat,
+          botUsername: this.bot.botInfo.username,
+        };
+
+        if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
+          this.runtime.emitEvent(TelegramEventTypes.WORLD_JOINED, telegramWorldPayload);
+          this.setupEntityTracking(chat.id);
+        }
+      },
+    };
+
+    // Emit generic WORLD_JOINED event
+    this.runtime.emitEvent(EventType.WORLD_JOINED, worldPayload);
+  }
+
+  /**
+   * Builds standardized entity representations from Telegram chat data
+   * @param chat - The Telegram chat object
+   * @returns Array of standardized Entity objects
+   */
+  private async buildStandardizedEntities(chat: any): Promise<Entity[]> {
+    const entities: Entity[] = [];
+
+    try {
+      // For private chats, add the user
+      if (chat.type === 'private' && chat.id) {
+        const userId = createUniqueUuid(this.runtime, chat.id.toString()) as UUID;
+        entities.push({
+          id: userId,
+          names: [chat.first_name || 'Unknown User'],
+          agentId: this.runtime.agentId,
+          metadata: {
+            telegram: {
+              id: chat.id.toString(),
+              username: chat.username || 'unknown',
+              name: chat.first_name || 'Unknown User',
+            },
+            source: 'telegram',
+          },
+        });
+      } else if (chat.type === 'group' || chat.type === 'supergroup') {
+        // For groups and supergroups, try to get member information
+        try {
+          // Get chat administrators (this is what's available through the Bot API)
+          const admins = await this.bot.telegram.getChatAdministrators(chat.id);
+
+          if (admins && admins.length > 0) {
+            for (const admin of admins) {
+              const userId = createUniqueUuid(this.runtime, admin.user.id.toString()) as UUID;
+              entities.push({
+                id: userId,
+                names: [admin.user.first_name || admin.user.username || 'Unknown Admin'],
+                agentId: this.runtime.agentId,
+                metadata: {
+                  telegram: {
+                    id: admin.user.id.toString(),
+                    username: admin.user.username || 'unknown',
+                    name: admin.user.first_name || 'Unknown Admin',
+                    isAdmin: true,
+                    adminTitle:
+                      admin.custom_title || (admin.status === 'creator' ? 'Owner' : 'Admin'),
+                  },
+                  source: 'telegram',
+                  roles: [admin.status === 'creator' ? Role.OWNER : Role.ADMIN],
+                },
+              });
+            }
+          }
+        } catch (error) {
+          logger.warn(`Could not fetch administrators for chat ${chat.id}: ${error}`);
+        }
+      }
+    } catch (error) {
+      logger.error(
+        `Error building standardized entities: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    return entities;
   }
 
   /**
