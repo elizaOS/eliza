@@ -113,9 +113,3 @@ npx @elizaos/cli env set OPENAI_API_KEY your-api-key
 # List all environment variables
 npx @elizaos/cli env list
 ```
-
-## Further Resources
-
-- [Quickstat](../quickstart.md)
-- [ElizaOS Documentation](../getting-started.md)
-- [Plugin Development Guide](../plugins/creating-plugins.md)
