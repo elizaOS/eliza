@@ -126,19 +126,19 @@ export const checkInTeamMember: Action = {
 
       logger.info(`User role: ${userRole}`);
 
-      // Define valid admin roles (case-insensitive)
-      const adminRoles = ['admin', 'owner', 'moderator', 'administrator'];
-      const isAdminUser =
-        userRole && adminRoles.some((role) => userRole.toLowerCase() === role.toLowerCase());
+      // // Define valid admin roles (case-insensitive)
+      // const adminRoles = ['admin', 'owner', 'moderator', 'administrator'];
+      // const isAdminUser =
+      //   userRole && adminRoles.some((role) => userRole.toLowerCase() === role.toLowerCase());
 
-      if (!isAdminUser) {
-        logger.info(
-          `User ${message.entityId} is not an admin, rejecting action. Role: ${userRole}`
-        );
-        // We'll handle the message in the handler
-        state.data.isAdmin = false;
-        return true; // Still return true so handler can show the error message
-      }
+      // if (!isAdminUser) {
+      //   logger.info(
+      //     `User ${message.entityId} is not an admin, rejecting action. Role: ${userRole}`
+      //   );
+      //   // We'll handle the message in the handler
+      //   state.data.isAdmin = false;
+      //   return true; // Still return true so handler can show the error message
+      // }
 
       logger.info(`User ${message.entityId} has admin privileges with role: ${userRole}`);
       state.data.isAdmin = true;

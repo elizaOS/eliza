@@ -9,6 +9,7 @@ import { listCheckInSchedules } from './actions/listCheckInSchedules';
 import { TeamUpdateTrackerService } from './services/TeamUpdateTrackerService';
 import { recordTeamMemberUpdates } from './actions/recordTeamMemberUpdates';
 import { listTeamMemberUpdates } from './actions/listTeamMemberUpdates';
+import { generateReport } from './actions/reportGenerationAction.ts';
 import { registerTasks } from './tasks';
 // import { listTeamMembers } from './actions/listTeamMembers';
 
@@ -25,6 +26,7 @@ export const teamCoordinatorPlugin: Plugin = {
     recordTeamMemberUpdates,
     listTeamMemberUpdates,
     listCheckInSchedules,
+    generateReport,
   ],
   init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
     try {
@@ -64,6 +66,7 @@ export function initialize(runtime: IAgentRuntime) {
       recordTeamMemberUpdates,
       listTeamMemberUpdates,
       listCheckInSchedules,
+      generateReport,
     ],
   };
 }

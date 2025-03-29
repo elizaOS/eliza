@@ -4,6 +4,7 @@ import { fetchCheckInSchedules } from '../actions/listCheckInSchedules';
 
 export class TeamUpdateTrackerService extends Service {
   private client: Client | null = null;
+  private isJobRunning: boolean = false;
   static serviceType = 'team-update-tracker-service';
   capabilityDescription =
     'Manages team member updates, check-ins, and coordinates communication through Discord channels';
@@ -33,7 +34,6 @@ export class TeamUpdateTrackerService extends Service {
   }
 
   private setupDiscordRetry() {
-    // Check for Discord service every 30 seconds
     logger.info('Setting up retry for Discord service connection');
     const intervalId = setInterval(async () => {
       try {
@@ -41,8 +41,6 @@ export class TeamUpdateTrackerService extends Service {
         if (discordService?.client) {
           logger.info('Discord service now available, connecting client');
           this.client = discordService.client;
-          this.checkInServiceJob();
-
           clearInterval(intervalId);
         } else {
           logger.debug('Discord service still not available, will retry');
@@ -50,7 +48,7 @@ export class TeamUpdateTrackerService extends Service {
       } catch (error) {
         logger.debug('Error checking for Discord service:', error);
       }
-    }, 15000); // Check every 30 seconds
+    }, 15000);
   }
 
   /**
@@ -183,8 +181,14 @@ export class TeamUpdateTrackerService extends Service {
   }
 
   public async checkInServiceJob(): Promise<void> {
-    logger.info('Running check-in service job');
+    if (this.isJobRunning) {
+      logger.info('Check-in service job already running, skipping this execution');
+      return;
+    }
+
+    this.isJobRunning = true;
     try {
+      logger.info('Running check-in service job');
       const discordService: any = this.runtime.getService('discord');
       if (discordService?.client) {
         logger.info('Discord service now available, connecting client');
@@ -382,8 +386,8 @@ export class TeamUpdateTrackerService extends Service {
       } else {
         logger.warn('Discord client not available for check-in service');
       }
-    } catch (error) {
-      logger.error('Error in check-in service job:', error);
+    } finally {
+      this.isJobRunning = false;
     }
   }
 
