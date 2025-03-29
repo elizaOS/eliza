@@ -25,22 +25,25 @@ describe('InvestmentManagerTestSuite', () => {
   describe('Core Investment Functions', () => {
     it('should handle portfolio rebalancing', async () => {
       const testSuite = new InvestmentManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Portfolio Rebalancing');
+      const test = testSuite.tests.find((t) => t.name === 'Test Portfolio Rebalancing');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
-      expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Portfolio Test', 'Test Investor');
+      expect(mockScenarioService.createWorld).toHaveBeenCalledWith(
+        'Portfolio Test',
+        'Test Investor'
+      );
       expect(mockScenarioService.createRoom).toHaveBeenCalledWith('world-id', 'trading');
       expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
         mockRuntime,
         'world-id',
         'room-id',
-        "Rebalance portfolio to 60% equities and 40% bonds"
+        'Rebalance portfolio to 60% equities and 40% bonds'
       );
     });
 
     it('should execute trades correctly', async () => {
       const testSuite = new InvestmentManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Trade Execution');
+      const test = testSuite.tests.find((t) => t.name === 'Test Trade Execution');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
       expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Trading Test', 'Test Trader');
@@ -50,14 +53,14 @@ describe('InvestmentManagerTestSuite', () => {
   describe('Risk Management', () => {
     it('should perform risk assessments', async () => {
       const testSuite = new InvestmentManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Risk Assessment');
+      const test = testSuite.tests.find((t) => t.name === 'Test Risk Assessment');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
       expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
         mockRuntime,
         'world-id',
         'room-id',
-        "Analyze portfolio risk exposure and suggest mitigation strategies"
+        'Analyze portfolio risk exposure and suggest mitigation strategies'
       );
     });
   });
@@ -65,7 +68,7 @@ describe('InvestmentManagerTestSuite', () => {
   describe('Compliance Checks', () => {
     it('should verify regulatory compliance', async () => {
       const testSuite = new InvestmentManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Compliance Check');
+      const test = testSuite.tests.find((t) => t.name === 'Test Compliance Check');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
       expect(mockScenarioService.createRoom).toHaveBeenCalledWith('world-id', 'regulatory');
@@ -76,11 +79,11 @@ describe('InvestmentManagerTestSuite', () => {
     it('should handle missing scenario service', async () => {
       const brokenRuntime = {
         ...mockRuntime,
-        getService: vi.fn().mockReturnValue(undefined)
+        getService: vi.fn().mockReturnValue(undefined),
       };
 
       const testSuite = new InvestmentManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Portfolio Rebalancing');
+      const test = testSuite.tests.find((t) => t.name === 'Test Portfolio Rebalancing');
 
       await expect(test?.fn(brokenRuntime)).rejects.toThrow('Scenario service not found');
     });
@@ -89,7 +92,7 @@ describe('InvestmentManagerTestSuite', () => {
       mockScenarioService.waitForCompletion.mockResolvedValue(false);
 
       const testSuite = new InvestmentManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Trade Execution');
+      const test = testSuite.tests.find((t) => t.name === 'Test Trade Execution');
 
       await expect(test?.fn(mockRuntime)).rejects.toThrow('Trade execution timed out');
     });
@@ -98,7 +101,7 @@ describe('InvestmentManagerTestSuite', () => {
   describe('Performance Metrics', () => {
     it('should complete compliance checks within 15 seconds', async () => {
       const testSuite = new InvestmentManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Compliance Check');
+      const test = testSuite.tests.find((t) => t.name === 'Test Compliance Check');
 
       const start = Date.now();
       await test?.fn(mockRuntime);
