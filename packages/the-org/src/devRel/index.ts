@@ -220,8 +220,6 @@ const config = {
   },
 };
 
-
-
 export const devRel = {
   character,
   init: async (runtime) => {

@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { socialMediaManager } from '../src/socialMediaManager/index';
 import type { IAgentRuntime } from '@elizaos/core';
-import { SocialMediaManagerTestSuite } from './test_suites/SocialMediaManagerTestSuite'
+import { SocialMediaManagerTestSuite } from './test_suites/SocialMediaManagerTestSuite';
 
 describe('SocialMediaManagerTestSuite', () => {
   let mockScenarioService: any;
@@ -28,7 +28,7 @@ describe('SocialMediaManagerTestSuite', () => {
   describe('Core Functionality', () => {
     it('should complete onboarding process successfully', async () => {
       const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Onboarding Process');
+      const test = testSuite.tests.find((t) => t.name === 'Test Onboarding Process');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
 
@@ -44,7 +44,7 @@ describe('SocialMediaManagerTestSuite', () => {
 
     it('should handle cross-platform post creation', async () => {
       const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Cross-Platform Post Creation');
+      const test = testSuite.tests.find((t) => t.name === 'Test Cross-Platform Post Creation');
 
       await test?.fn(mockRuntime);
 
@@ -59,7 +59,7 @@ describe('SocialMediaManagerTestSuite', () => {
 
     it('should manage multiple user queries', async () => {
       const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Response to User Queries');
+      const test = testSuite.tests.find((t) => t.name === 'Test Response to User Queries');
 
       await test?.fn(mockRuntime);
 
@@ -72,11 +72,11 @@ describe('SocialMediaManagerTestSuite', () => {
     it('should throw error when missing scenario service', async () => {
       const brokenRuntime = {
         ...mockRuntime,
-        getService: vi.fn().mockReturnValue(undefined)
+        getService: vi.fn().mockReturnValue(undefined),
       };
 
       const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Onboarding Process');
+      const test = testSuite.tests.find((t) => t.name === 'Test Onboarding Process');
 
       await expect(test?.fn(brokenRuntime)).rejects.toThrow('Scenario service not found');
     });
@@ -85,12 +85,11 @@ describe('SocialMediaManagerTestSuite', () => {
       mockScenarioService.waitForCompletion.mockResolvedValue(false);
 
       const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Onboarding Process');
+      const test = testSuite.tests.find((t) => t.name === 'Test Onboarding Process');
 
       await expect(test?.fn(mockRuntime)).rejects.toThrow(
         'Agent did not complete onboarding response in time'
       );
     });
   });
-
 });

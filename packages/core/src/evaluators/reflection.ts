@@ -32,12 +32,12 @@ const relationshipSchema = z.object({
  */
 /**
  * JSDoc comment for reflectionSchema object:
- * 
+ *
  * Represents a schema for an object containing 'facts' and 'relationships'.
  * 'facts' is an array of objects with properties 'claim', 'type', 'in_bio', and 'already_known'.
  * 'relationships' is an array of objects following the relationshipSchema.
  */
-		         
+
 const reflectionSchema = z.object({
   // reflection: z.string(),
   facts: z.array(

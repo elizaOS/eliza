@@ -410,7 +410,7 @@ const postGeneratedHandler = async ({
   ]);
 
   // Generate prompt for tweet content
-  const tweetPrompt = composePrompt({
+  const tweetPrompt = composePromptFromState({
     state,
     template: runtime.character.templates?.postCreationTemplate || postCreationTemplate,
   });
