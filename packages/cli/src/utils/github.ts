@@ -2,6 +2,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { logger } from '@elizaos/core';
+import { existsSync } from 'node:fs';
+import { execa } from 'execa';
 
 const GITHUB_API_URL = 'https://api.github.com';
 
@@ -727,6 +729,156 @@ export async function ensureDirectory(
     return false;
   } catch (error) {
     logger.error(`Error creating directory: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Create a new GitHub repository
+ */
+export async function createGitHubRepository(
+  token: string,
+  repoName: string,
+  description: string,
+  isPrivate = false,
+  topics: string[] = ['elizaos-plugins']
+): Promise<{ success: boolean; repoUrl?: string; message?: string }> {
+  try {
+    // Create the repository
+    const response = await fetch(`${GITHUB_API_URL}/user/repos`, {
+      method: 'POST',
+      headers: {
+        Authorization: `token ${token}`,
+        Accept: 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: repoName,
+        description,
+        private: isPrivate,
+        has_issues: true,
+        has_projects: false,
+        has_wiki: false,
+        auto_init: true, // Initialize with README
+        gitignore_template: 'Node',
+        default_branch: 'main', // Explicitly set main as default branch
+      }),
+    });
+
+    if (response.status === 201) {
+      const data = await response.json();
+      const repoUrl = data.html_url;
+
+      // Wait a moment for GitHub to initialize the repository
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Add topics to the repository
+      if (topics.length > 0) {
+        await fetch(`${GITHUB_API_URL}/repos/${data.full_name}/topics`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `token ${token}`,
+            Accept: 'application/vnd.github.mercy-preview+json', // Required for topics API
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            names: topics,
+          }),
+        });
+      }
+
+      logger.success(`Repository created: ${repoUrl}`);
+      return { success: true, repoUrl };
+    }
+
+    const errorData = await response.json();
+    return {
+      success: false,
+      message: `Failed to create repository: ${response.status} ${response.statusText} - ${errorData.message || 'Unknown error'}`,
+    };
+  } catch (error) {
+    return { success: false, message: `Error creating repository: ${error.message}` };
+  }
+}
+
+/**
+ * Push local code to GitHub repository
+ */
+export async function pushToGitHub(
+  cwd: string,
+  repoUrl: string,
+  branch = 'main'
+): Promise<boolean> {
+  try {
+    // Check if git is initialized
+    const gitDirExists = existsSync(path.join(cwd, '.git'));
+    if (!gitDirExists) {
+      await execa('git', ['init'], { cwd });
+      // Explicitly create and switch to main branch
+      await execa('git', ['checkout', '-b', 'main'], { cwd });
+      logger.info('Git repository initialized with main branch');
+    } else {
+      // Make sure we're on the main branch
+      try {
+        await execa('git', ['rev-parse', '--verify', branch], { cwd });
+      } catch (error) {
+        // Branch doesn't exist, create it
+        await execa('git', ['checkout', '-b', branch], { cwd });
+        logger.info(`Created and switched to ${branch} branch`);
+      }
+    }
+
+    // Add remote if it doesn't exist
+    try {
+      await execa('git', ['remote', 'get-url', 'origin'], { cwd });
+    } catch (error) {
+      await execa('git', ['remote', 'add', 'origin', repoUrl], { cwd });
+      logger.info(`Added remote: ${repoUrl}`);
+    }
+
+    // Add all files
+    await execa('git', ['add', '.'], { cwd });
+    logger.info('Added files to git');
+
+    // Set git user info if not already set
+    try {
+      await execa('git', ['config', 'user.email'], { cwd });
+    } catch (error) {
+      await execa('git', ['config', 'user.email', 'plugindev@elizaos.com'], { cwd });
+      await execa('git', ['config', 'user.name', 'ElizaOS Plugin Dev'], { cwd });
+      logger.info('Set git user info for commit');
+    }
+
+    // Commit if there are changes
+    try {
+      await execa('git', ['commit', '-m', 'Initial commit from ElizaOS CLI'], { cwd });
+      logger.info('Committed changes');
+    } catch (error) {
+      // If no changes to commit, that's okay
+      logger.info('No changes to commit');
+    }
+
+    // Push to GitHub
+    try {
+      await execa('git', ['push', '-u', 'origin', branch], { cwd });
+      logger.success(`Pushed to GitHub repository: ${repoUrl}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to push to GitHub: ${error.message}`);
+
+      // Try force pushing if normal push fails
+      try {
+        logger.info('Attempting force push...');
+        await execa('git', ['push', '-f', '-u', 'origin', branch], { cwd });
+        logger.success(`Force pushed to GitHub repository: ${repoUrl}`);
+        return true;
+      } catch (forcePushError) {
+        logger.error(`Force push also failed: ${forcePushError.message}`);
+        return false;
+      }
+    }
+  } catch (error) {
+    logger.error(`Error in git operations: ${error.message}`);
     return false;
   }
 }

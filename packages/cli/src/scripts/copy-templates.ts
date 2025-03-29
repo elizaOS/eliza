@@ -20,7 +20,7 @@ const TEMPLATES_DIR = path.resolve(ROOT_DIR, 'packages/cli/templates');
 /**
  * Updates package.json with the CLI version and replaces workspace references
  */
-async function updatePackageJson(packagePath, cliVersion) {
+async function updatePackageJson(packagePath, cliVersion, isPluginStarter = false) {
   const packageJsonContent = await fs.readFile(packagePath, 'utf-8');
   const packageData = JSON.parse(packageJsonContent);
 
@@ -36,6 +36,12 @@ async function updatePackageJson(packagePath, cliVersion) {
         }
       }
     }
+  }
+
+  // For plugin-starter, update repository URL to use placeholders
+  if (isPluginStarter && packageData.repository && packageData.repository.url) {
+    console.log('Setting repository URL placeholders for plugin-starter template');
+    packageData.repository.url = 'github:{{GITHUB_USERNAME}}/{{PLUGIN_NAME}}';
   }
 
   await fs.writeFile(packagePath, JSON.stringify(packageData, null, 2));
@@ -81,8 +87,10 @@ async function main() {
 
       // Update package.json with correct version
       const packageJsonPath = path.resolve(template.dest, 'package.json');
-      await updatePackageJson(packageJsonPath, cliVersion);
+      await updatePackageJson(packageJsonPath, cliVersion, template.name === 'plugin-starter');
     }
+
+    console.log('Templates have been copied and updated successfully.');
   } catch (error) {
     console.error('Error copying templates:', error);
     process.exit(1);
