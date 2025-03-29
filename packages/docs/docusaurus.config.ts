@@ -185,7 +185,7 @@ const config = {
       {
         showReadingTime: true,
         onUntruncatedBlogPosts: 'ignore',
-        editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/docs/blog/',
+        editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/docs',
         blogSidebarTitle: 'Recent posts',
         blogSidebarCount: 'ALL',
         showLastUpdateAuthor: true,
@@ -210,7 +210,7 @@ const config = {
           blogTitle: 'AI News',
           blogDescription: 'Automated aggregating and summarization of elizaOS ecosystem updates',
           showReadingTime: true,
-          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs/news',
+          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs',
           blogSidebarTitle: 'All posts',
           blogSidebarCount: 'ALL',
           showLastUpdateAuthor: true,
@@ -368,11 +368,11 @@ const config = {
             },
             {
               label: 'llms.txt',
-              href: 'llms.txt',
+              href: 'https://eliza.how/llms.txt',
             },
             {
               label: 'llms-full.txt',
-              href: 'llms-full.txt',
+              href: 'https://eliza.how/llms-full.txt',
             },
           ],
         },
