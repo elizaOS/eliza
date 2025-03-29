@@ -116,7 +116,7 @@ README.md
 ````typescript
 import fs from 'node:fs';
 import path from 'node:path';
-import { handleError } from '@/src/utils/handle-error';
+import { checkServer, handleError } from '@/src/utils/handle-error';
 import { displayAgent } from '@/src/utils/helpers';
 import { logger } from '@elizaos/core';
 import type { Agent } from '@elizaos/core';
@@ -181,7 +181,7 @@ interface ApiResponse<T> {
 ````typescript
 import { buildProject } from '@/src/utils/build-project';
 import { copyTemplate } from '@/src/utils/copy-template';
-import { handleError } from '@/src/utils/handle-error';
+import { checkServer, handleError } from '@/src/utils/handle-error';
 import { runBunCommand } from '@/src/utils/run-bun';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
@@ -223,9 +223,9 @@ import colors from 'yoctocolors';
 ⋮----
 async function getCustomEnvPath(): Promise<string | null>
 async function saveCustomEnvPath(customPath: string): Promise<void>
-async function getGlobalEnvPath(): Promise<string>
+export async function getGlobalEnvPath(): Promise<string>
 function getLocalEnvPath(): string | null
-async function parseEnvFile(filePath: string): Promise<Record<string, string>>
+export async function parseEnvFile(filePath: string): Promise<Record<string, string>>
 async function writeEnvFile(filePath: string, envVars: Record<string, string>): Promise<void>
 async function listEnvVars(): Promise<void>
 function maskedValue(value: string): string
@@ -255,13 +255,13 @@ import {
   type Plugin,
   logger,
   stringToUuid,
+  encryptedCharacter,
 } from '@elizaos/core';
 import { Command } from 'commander';
 import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { character as defaultCharacter } from '../characters/eliza';
-import { displayBanner } from '../displayBanner';
+import { character, character as defaultCharacter } from '../characters/eliza';
 import { AgentServer } from '../server/index';
 import { jsonToCharacter, loadCharacterTryPath } from '../server/loader';
 import { loadConfig, saveConfig } from '../utils/config-manager.js';
@@ -269,6 +269,7 @@ import { promptForEnvVars } from '../utils/env-prompt.js';
 import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
+import { displayBanner } from '../displayBanner';
 ⋮----
 export const wait = (minTime = 1000, maxTime = 3000) =>
 export async function promptForProjectPlugins(
@@ -305,17 +306,11 @@ export async function startAgent(
 // Find package.json relative to the current file
 ⋮----
 async function stopAgent(runtime: IAgentRuntime, server: AgentServer)
-const startAgents = async (options:
-⋮----
-// Start agents based on project, plugin, or custom configuration
-⋮----
-// Load all project agents, call their init and register their plugins
-⋮----
-// Handle both formats: project with agents array and project with single agent
-⋮----
-// Prompt for environment variables for all plugins in the project
-⋮----
-// wait .5 seconds
+const startAgents = async (options: {
+  configure?: boolean;
+  port?: number;
+  characters?: Character[];
+}) =>
 ⋮----
 export default function registerCommand(cli: Command)
 ````
@@ -611,8 +606,6 @@ function generateStatusMessage(
 ⋮----
 // Generate appropriate message
 ⋮----
-// Non-onboarding context - list all public settings with values and descriptions
-⋮----
 /**
  * Creates an settings provider with the given configuration
  * Updated to use world metadata instead of cache
@@ -724,6 +717,7 @@ const messageReceivedHandler = async ({
   runtime,
   message,
   callback,
+  onComplete,
 }: MessageReceivedHandlerParams): Promise<void> =>
 const reactionReceivedHandler = async ({
   runtime,
@@ -1054,6 +1048,8 @@ export const formatMessages = ({
   entities: Entity[];
 }) =>
 ⋮----
+// const shortId = message.entityId.slice(-5);
+⋮----
 // for each thought, action, text or attachment, add a new line, with text first, then thought, then action, then attachment
 ⋮----
 export const formatTimestamp = (messageDate: number) =>
@@ -1122,7 +1118,7 @@ export async function trimTokens(prompt: string, maxTokens: number, runtime: IAg
 import { v4 as uuidv4 } from 'uuid';
 import { bootstrapPlugin } from './bootstrap';
 import { createUniqueUuid } from './entities';
-import { handlePluginImporting } from './index';
+import { decryptSecret, getSalt, handlePluginImporting } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 import { ChannelType, MemoryType, ModelType } from './types';
@@ -2594,6 +2590,7 @@ export interface EntityPayload extends EventPayload {
 export interface MessagePayload extends EventPayload {
   message: Memory;
   callback?: HandlerCallback;
+  onComplete?: () => void;
 }
 export interface InvokePayload extends EventPayload {
   worldId: UUID;
@@ -2630,6 +2627,7 @@ export type MessageReceivedHandlerParams = {
   runtime: IAgentRuntime;
   message: Memory;
   callback: HandlerCallback;
+  onComplete?: () => void;
 };
 export interface EventPayloadMap {
   [EventType.WORLD_JOINED]: WorldPayload;
@@ -3522,7 +3520,7 @@ graph TB
     DbConnection[("Database (PGLite/PostgreSQL)")]
 
     %% Data Models in compact form
-    DataModels["Data Models:\n Entities, Components\n Memories, Relationships\n Rooms, Worlds, Tasks\n Cache"]
+    DataModels["Data Models: Entities, Components, Memories, Relationships, Rooms, Worlds, Tasks Cache"]
 
     %% Vector Search
     VectorStore[(Vector Store)]
@@ -3545,11 +3543,13 @@ graph TB
     classDef adapter fill:#9b59b6,stroke:#2c3e50,stroke-width:1px,color:#fff;
     classDef db fill:#27ae60,stroke:#2c3e50,stroke-width:1px,color:#fff;
     classDef datamodels fill:#52be80,stroke:#2c3e50,stroke-width:1px,color:#fff;
+    classDef memories fill:#2c5e1a,stroke:#2c3333,stroke-width:1px,color:#fff;
 
     class Runtime runtime;
     class DbAdapter adapter;
     class DbConnection,VectorStore db;
     class DataModels datamodels;
+    class MemoriesKnowledge memories;
 ```
 
 ElizaOS uses a unified database architecture based on Drizzle ORM with adapters that implement the [`IDatabaseAdapter`](/api/interfaces/IDatabaseAdapter) interface. The current release includes support for:
@@ -3959,7 +3959,6 @@ The adapter interface is designed to be extensible to support a wide range of st
 
 ## Further Reading
 
-- [Memory Management](../guides/memory-management.md)
 - [Entity System](./entities.md)
 - [Agent Runtime](./agents.md)
 ````
@@ -3973,6 +3972,8 @@ sidebar_position: 9
 # Entities
 
 Entities in ElizaOS represent users, agents, or any participant that can interact within the system. They form the basis of the entity-component architecture, allowing for flexible data modeling and relationships across the platform.
+
+![](/img/entities-component-architecture.svg)
 
 ## Entity Structure
 
@@ -5179,11 +5180,14 @@ interface KnowledgeItem {
 sidebar_position: 1
 title: ElizaOS Documentation
 slug: /
+description: Comprehensive framework for building AI agents with persistent personalities across multiple platforms
 ---
 
 # ElizaOS Documentation
 
 Welcome to ElizaOS - a comprehensive framework for building AI agents with persistent personalities across multiple platforms. ElizaOS provides the architecture, tools, and systems needed to create sophisticated agents that maintain consistent behavior, learn from interactions, and seamlessly integrate with a variety of services.
+
+> **New to ElizaOS?** Check out [What's new in ElizaOS V2](https://eliza.how/blog/v1-v2) to understand how it compares to previous versions.
 
 ## System Architecture
 
@@ -5349,7 +5353,7 @@ This creates a continuous cycle of interaction, reflection, and improvement that
 
 <div className="container">
   <div className="row">
-    <div className="col col--3 margin-bottom--lg">
+    <div className="col col--4 margin-bottom--lg">
       <div className="card">
         <div className="card__image">
           <img src="/img/actions.jpg?text=🔍" alt="Overview" />
@@ -5364,7 +5368,7 @@ This creates a continuous cycle of interaction, reflection, and improvement that
       </div>
     </div>
     
-    <div className="col col--3 margin-bottom--lg">
+    <div className="col col--4 margin-bottom--lg">
       <div className="card">
         <div className="card__image">
           <img src="/img/providers.jpg?text=🔍" alt="Overview" />
@@ -5379,7 +5383,7 @@ This creates a continuous cycle of interaction, reflection, and improvement that
       </div>
     </div>
     
-    <div className="col col--3 margin-bottom--lg">
+    <div className="col col--4 margin-bottom--lg">
       <div className="card">
         <div className="card__image">
           <img src="/img/evaluators.jpg?text=🔍" alt="Overview" />
@@ -5393,8 +5397,12 @@ This creates a continuous cycle of interaction, reflection, and improvement that
         </div>
       </div>
     </div>
-    
-    <div className="col col--3 margin-bottom--lg">
+  </div>
+</div>
+
+<div className="container">
+  <div className="row">
+    <div className="col col--4 margin-bottom--lg">
       <div className="card">
         <div className="card__image">
           <img src="/img/knowledge.jpg?text=🔍" alt="Overview" />
@@ -5559,40 +5567,25 @@ If you're new to ElizaOS, we recommend this learning path:
 
 ## FAQ
 
-<details>
-<summary><b>What's the difference between Actions, Evaluators, and Providers?</b></summary>
+**What's the difference between Actions, Evaluators, and Providers?**
 
-**Actions** define what an agent can do and are executed during response generation. **Evaluators** analyze conversations after they happen to extract insights and improve future responses. **Providers** supply contextual information before the agent decides how to respond.
+Actions define what an agent can do and are executed during response generation. Evaluators analyze conversations after they happen to extract insights and improve future responses. Providers supply contextual information before the agent decides how to respond.
 
-</details>
-
-<details>
-<summary><b>How does ElizaOS handle cross-platform conversation context?</b></summary>
+**How does ElizaOS handle cross-platform conversation context?**
 
 ElizaOS maintains separate conversation contexts for different platforms by default, but shares entity relationships and learned facts across platforms. This ensures agents maintain a consistent understanding of users while respecting platform-specific conversation boundaries.
 
-</details>
-
-<details>
-<summary><b>How does the memory system work?</b></summary>
+**How does the memory system work?**
 
 Memory is organized into different types (messages, facts, knowledge) and stored with vector embeddings for semantic search. This allows agents to retrieve relevant memories based on context rather than just recency, creating more natural conversations.
 
-</details>
-
-<details>
-<summary><b>What's the relationship between Worlds, Rooms, and Entities?</b></summary>
+**What's the relationship between Worlds, Rooms, and Entities?**
 
 Worlds are container spaces (like a Discord server) that can have multiple Rooms (channels, DMs). Entities (users, agents) participate in Rooms within Worlds. This hierarchical structure mirrors real-world platforms while providing a consistent abstraction.
 
-</details>
-
-<details>
-<summary><b>How extensible is ElizaOS?</b></summary>
+**How extensible is ElizaOS?**
 
 ElizaOS is highly extensible through its plugin system. You can create custom actions, providers, evaluators, services, and more to extend functionality. The architecture is designed to be modular and composable at every level.
-
-</details>
 
 ## Additional Resources
 
@@ -7000,6 +6993,8 @@ sidebar_position: 8
 
 Rooms in ElizaOS represent individual interaction spaces within a world. A room can be a conversation, a channel, a thread, or any other defined space where entities can exchange messages and interact. Rooms are typically contained within a world, though they can also exist independently.
 
+![](/img/elizaos-rooms-simplified.svg)
+
 ## Room Structure
 
 A room in ElizaOS has the following properties:
@@ -7945,6 +7940,12 @@ sidebar_position: 7
 
 Worlds in ElizaOS are collections of entities (users, agents) and rooms (conversations, channels) that form a cohesive environment for interactions. Think of a world as a virtual space, like a Discord server, Slack workspace, or 3D MMO environment, where entities can communicate across multiple channels or areas.
 
+![](/img/elizaos-worlds-cosmic-clean.svg)
+
+Within each world you can have rooms, which are akin to individual threads or channels in a server.
+
+![](/img/elizaos-worlds-simplified.svg)
+
 ## World Structure
 
 A world in ElizaOS has the following properties:
@@ -8157,22 +8158,21 @@ See the [Rooms](./rooms.md) documentation for more details on managing rooms wit
 ````markdown
 ---
 sidebar_position: 2
+title: Quickstart Guide
+description: Get started quickly with Eliza, from basic setup to advanced development
 ---
 
 # Quickstart Guide
 
----
-
-## 1. Simple Start - Get Running Quickly
+## Installing the CLI Tool
 
 The fastest way to get started with ElizaOS is using the CLI:
 
 ```bash
 # Install globally (optional but recommended)
-npm install -g @elizaos/cli
-
+npm install -g @elizaos/cli@beta
 # Or use directly with npx
-npx elizaos start
+npx @elizaos/cli@beta start
 ```
 
 This will:
@@ -8180,6 +8180,8 @@ This will:
 1. Start ElizaOS with default settings
 2. Load the default character
 3. Make the agent accessible via terminal and REST API
+
+> **Note:** If you encounter any errors on first startup, try running the start command again. The initial startup sometimes needs a second attempt to properly initialize all components.
 
 ### Chat with your agent:
 
@@ -8191,10 +8193,9 @@ If you want to create a custom ElizaOS project with your own characters and conf
 
 ```bash
 # Create a new project with the interactive wizard
-npx elizaos create
-
+elizaos create
 # Or specify project type directly
-npx elizaos create --type project
+elizaos create --type project
 ```
 
 Follow the interactive prompts to configure your project. Once created:
@@ -8202,20 +8203,49 @@ Follow the interactive prompts to configure your project. Once created:
 ```bash
 # Navigate to your project directory
 cd my-project-name
-
 # Start your project
-npx elizaos start
+elizaos start
 ```
+
+> If it fails the first time try the start command again
+
+### Project Structure
+
+A typical ElizaOS project structure looks like this:
+
+```
+my-project/
+├── src/
+│   └── index.ts      # Main entry point with character definitions
+├── knowledge/        # Knowledge files for RAG
+├── package.json      # Project configuration and dependencies
+└── tsconfig.json     # TypeScript configuration
+```
+
+The character definition is located in `src/index.ts` where you can modify the agent's personality, plugins, and settings. This is the core file for customizing your agent's behavior.
 
 ### Add plugins to your project:
 
 ```bash
 # List available plugins
-npx elizaos project list-plugins
-
+elizaos project list-plugins
 # Add a plugin
-npx elizaos project add-plugin @elizaos/plugin-discord
+elizaos project add-plugin @elizaos/plugin-discord
 ```
+
+### Working with Character Files
+
+You can import or export character files using the CLI:
+
+```bash
+# Export character to a JSON file
+elizaos character export --output my-character.json
+
+# Import character from a JSON file
+elizaos character import --file my-character.json
+```
+
+This is particularly useful for those migrating from v1 who are used to working with standalone character files.
 
 ## 3. Creating a Plugin
 
@@ -8223,32 +8253,27 @@ Want to extend ElizaOS with custom functionality?
 
 ```bash
 # Create a new plugin project
-npx elizaos create --type plugin
-
-# Follow the interactive prompts
+elizaos create --type plugin
 ```
 
 Develop your plugin following the structure in your generated project:
 
 ```bash
 # Test your plugin
-npx elizaos start
-
+elizaos start
 # Publish your plugin when ready
-npx elizaos plugin publish
+elizaos plugin publish
 ```
 
 ### Publishing options:
 
 ```bash
 # Test publish without making changes
-npx elizaos plugin publish --test
-
+elizaos plugin publish --test
 # Publish to npm
-npx elizaos plugin publish --npm
-
+elizaos plugin publish --npm
 # Specify platform compatibility
-npx elizaos plugin publish --platform node
+elizaos plugin publish --platform node
 ```
 
 ## 4. Contributing to ElizaOS
@@ -8259,38 +8284,21 @@ If you want to add features or fix bugs in the ElizaOS core:
 # Clone the repository
 git clone git@github.com:elizaOS/eliza.git
 cd eliza
-
 # Switch to development branch
-git checkout develop
-
+git checkout v2-develop
 # Install dependencies
 bun install
-
 # Build the project
-bun build
-
+bun run build
 # Start ElizaOS
 bun start
 ```
 
 Visit https://localhost:3000 to interact with your agent through a web interface.
 
-### Automated setup:
-
-```bash
-git clone git@github.com:elizaOS/eliza.git
-cd eliza
-
-# Run the start script with verbose logging
-./scripts/start.sh -v
-```
-
 ---
 
 ## Troubleshooting
-
-<details>
-<summary>Common Issues</summary>
 
 ### Node Version
 
@@ -8321,7 +8329,14 @@ docker rmi -f $(docker images -aq)
 docker builder prune -a -f
 ```
 
-</details>
+### First-time Startup Issues
+
+If your agent fails to start on the first attempt:
+
+- Run the start command again
+- Check logs for specific errors
+- Ensure all dependencies are properly installed
+- Verify that your database configuration is correct
 
 ---
 
@@ -8329,10 +8344,10 @@ docker builder prune -a -f
 
 Once you have your agent running, explore:
 
-1. 🤖 [Understand Agents](./core/agents.md)
-2. 📝 [Create Custom Characters](./core/characterfile.md)
-3. ⚡ [Add Custom Actions](./core/actions.md)
-4. 🔧 [Advanced Configuration](./guides/configuration.md)
+- 🤖 [Understand Agents](./core/agents.md)
+- ⚡ [Add Custom Actions](./core/actions.md)
+- 🧠 [Configure Knowledge](./core/knowledge.md)
+- 🔌 [Add Services](./core/services.md)
 
 Join the [Discord community](https://discord.gg/elizaOS) for support and to share what you're building!
 ````
@@ -10273,12 +10288,15 @@ COINGECKO_API_KEY=
   "scripts": {
     "preinstall": "only-allow bun",
     "start": "cd ./packages/the-org && bun run start",
+    "start-cli": "cd ./packages/cli && bun run cli start",
     "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
     "start:app": "turbo run start --filter=./packages/app",
     "dev": "turbo run dev --filter=./packages/the-org",
     "build:docs": "turbo run build --filter=@elizaos/docs",
     "build": "turbo run build --filter=@elizaos/client && turbo run build --filter=!@elizaos/docs",
     "clean": "turbo run clean --filter=./packages/* && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock*",
+    "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
+    "build:core": "turbo run build --filter=@elizaos/core --no-cache",
     "lint": "turbo run lint --filter=./packages/* && prettier --write . && prettier --check .",
     "pre-commit": "bun run scripts/pre-commit-lint.js",
     "release": "bun run build && bun lint && lerna publish --no-private --force-publish && bun lint",
@@ -10311,7 +10329,7 @@ COINGECKO_API_KEY=
     "tsup": "8.4.0",
     "turbo": "^2.4.4",
     "typedoc": "0.27.9",
-    "typescript": "5.8.2",
+    "typescript": "^5.8.2",
     "vite": "5.4.12",
     "vitest": "3.0.5"
   },
@@ -10333,7 +10351,12 @@ COINGECKO_API_KEY=
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@babel/generator": "^7.26.9",
+    "@babel/generator": "^7.26.10",
+    "@hapi/shot": "^6.0.1",
+    "@types/hapi": "^18.0.14",
+    "@types/hapi__shot": "^6.0.0",
+    "node-opus": "^0.3.3",
+    "opusscript": "^0.1.1",
     "vittest": "^1.0.2",
     "zod": "3.24.1"
   },

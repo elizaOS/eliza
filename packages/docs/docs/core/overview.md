@@ -2,11 +2,14 @@
 sidebar_position: 1
 title: ElizaOS Documentation
 slug: /
+description: Comprehensive framework for building AI agents with persistent personalities across multiple platforms
 ---
 
 # ElizaOS Documentation
 
 Welcome to ElizaOS - a comprehensive framework for building AI agents with persistent personalities across multiple platforms. ElizaOS provides the architecture, tools, and systems needed to create sophisticated agents that maintain consistent behavior, learn from interactions, and seamlessly integrate with a variety of services.
+
+> **New to ElizaOS?** Check out [What's new in ElizaOS V2](https://eliza.how/blog/v1-v2) to understand how it compares to previous versions.
 
 ## System Architecture
 
@@ -172,7 +175,7 @@ This creates a continuous cycle of interaction, reflection, and improvement that
 
 <div className="container">
   <div className="row">
-    <div className="col col--3 margin-bottom--lg">
+    <div className="col col--4 margin-bottom--lg">
       <div className="card">
         <div className="card__image">
           <img src="/img/actions.jpg?text=🔍" alt="Overview" />
@@ -187,7 +190,7 @@ This creates a continuous cycle of interaction, reflection, and improvement that
       </div>
     </div>
     
-    <div className="col col--3 margin-bottom--lg">
+    <div className="col col--4 margin-bottom--lg">
       <div className="card">
         <div className="card__image">
           <img src="/img/providers.jpg?text=🔍" alt="Overview" />
@@ -202,7 +205,7 @@ This creates a continuous cycle of interaction, reflection, and improvement that
       </div>
     </div>
     
-    <div className="col col--3 margin-bottom--lg">
+    <div className="col col--4 margin-bottom--lg">
       <div className="card">
         <div className="card__image">
           <img src="/img/evaluators.jpg?text=🔍" alt="Overview" />
@@ -216,8 +219,12 @@ This creates a continuous cycle of interaction, reflection, and improvement that
         </div>
       </div>
     </div>
-    
-    <div className="col col--3 margin-bottom--lg">
+  </div>
+</div>
+
+<div className="container">
+  <div className="row">
+    <div className="col col--4 margin-bottom--lg">
       <div className="card">
         <div className="card__image">
           <img src="/img/knowledge.jpg?text=🔍" alt="Overview" />
@@ -382,40 +389,25 @@ If you're new to ElizaOS, we recommend this learning path:
 
 ## FAQ
 
-<details>
-<summary><b>What's the difference between Actions, Evaluators, and Providers?</b></summary>
+**What's the difference between Actions, Evaluators, and Providers?**
 
-**Actions** define what an agent can do and are executed during response generation. **Evaluators** analyze conversations after they happen to extract insights and improve future responses. **Providers** supply contextual information before the agent decides how to respond.
+Actions define what an agent can do and are executed during response generation. Evaluators analyze conversations after they happen to extract insights and improve future responses. Providers supply contextual information before the agent decides how to respond.
 
-</details>
-
-<details>
-<summary><b>How does ElizaOS handle cross-platform conversation context?</b></summary>
+**How does ElizaOS handle cross-platform conversation context?**
 
 ElizaOS maintains separate conversation contexts for different platforms by default, but shares entity relationships and learned facts across platforms. This ensures agents maintain a consistent understanding of users while respecting platform-specific conversation boundaries.
 
-</details>
-
-<details>
-<summary><b>How does the memory system work?</b></summary>
+**How does the memory system work?**
 
 Memory is organized into different types (messages, facts, knowledge) and stored with vector embeddings for semantic search. This allows agents to retrieve relevant memories based on context rather than just recency, creating more natural conversations.
 
-</details>
-
-<details>
-<summary><b>What's the relationship between Worlds, Rooms, and Entities?</b></summary>
+**What's the relationship between Worlds, Rooms, and Entities?**
 
 Worlds are container spaces (like a Discord server) that can have multiple Rooms (channels, DMs). Entities (users, agents) participate in Rooms within Worlds. This hierarchical structure mirrors real-world platforms while providing a consistent abstraction.
 
-</details>
-
-<details>
-<summary><b>How extensible is ElizaOS?</b></summary>
+**How extensible is ElizaOS?**
 
 ElizaOS is highly extensible through its plugin system. You can create custom actions, providers, evaluators, services, and more to extend functionality. The architecture is designed to be modular and composable at every level.
-
-</details>
 
 ## Additional Resources
 
