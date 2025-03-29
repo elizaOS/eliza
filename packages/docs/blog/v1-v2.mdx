@@ -18,20 +18,18 @@ Source: https://www.youtube.com/watch?v=yUjScwAZsQo
 - **Evolving Intelligence**: Database-driven characters that can start minimal and grow through interactions with your crowd.
 - **Enhanced Security**: Native TEE integration provides verifiable security guarantees for sensitive operations while maintaining privacy.
 
-
 ---
 
 ## Core Architecture Redesign
 
-| V1 Limitation | V2 Solution |
-|---------------|-------------|
+| V1 Limitation                                                         | V2 Solution                                                                           |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | **Bloated Core**: Codebase overloaded with packages from rapid growth | **Package Registry**: Submit plugins independently; lean codebase, no approval delays |
-| **Fragmented Messaging**: Platform-specific I/O pipelines | **Unified Messaging**: Agents process inputs and output anywhere, seamlessly |
-| **Wallet Overlap**: Multi-chain wallet conflicts | **Unified Inventory**: One wallet with chain-agnostic actions |
-| **Rigid State**: Hardcoded goals and features | **Modular State**: Extensible, optional components for tailored agents |
-| **Basic Action Chaining**: No multi-step foresight | **Strategic Planning**: Agents map out complex, sequenced workflows |
-| **Package Manager Speed**: Lengthy installations and cold starts | **Bun Integration**: Faster installs, reduced build times |
-
+| **Fragmented Messaging**: Platform-specific I/O pipelines             | **Unified Messaging**: Agents process inputs and output anywhere, seamlessly          |
+| **Wallet Overlap**: Multi-chain wallet conflicts                      | **Unified Inventory**: One wallet with chain-agnostic actions                         |
+| **Rigid State**: Hardcoded goals and features                         | **Modular State**: Extensible, optional components for tailored agents                |
+| **Basic Action Chaining**: No multi-step foresight                    | **Strategic Planning**: Agents map out complex, sequenced workflows                   |
+| **Package Manager Speed**: Lengthy installations and cold starts      | **Bun Integration**: Faster installs, reduced build times                             |
 
 ---
 
@@ -127,15 +125,17 @@ graph TB
     classDef user fill:#ecf0f1,stroke:#2c3e50,stroke-width:2px,color:#2c3e50,font-weight:bold,border-radius:50%
 ```
 
-
 ### From Clients to Services
+
 V2 swaps Clients for Services, standardizing platform integration while centralizing message routing—agents now think once, act anywhere (Discord, Twitter, SMS, even phone calls).
 
 ### Smarter Character Evolution
+
 V2 swaps static files for dynamic personas—agents learn from your crowd in real-time while still being able to be imported / exported as JSON files (see [docs](/docs/core/project)).
 
 ### Enhanced Development Experience
-New CLI and plugin manager slashes setup time. Instead of cloning the github repo, changing to the correct branch, rebuilding, etc, it's just one command to create a new project: 
+
+New CLI and plugin manager slashes setup time. Instead of cloning the github repo, changing to the correct branch, rebuilding, etc, it's just one command to create a new project:
 
 ```bash
 npm create eliza@beta
@@ -148,24 +148,25 @@ npm create eliza@beta
 Usage: elizaos [options] [command]
 
 Options:
-  -V, --version            output the version number
-  -h, --help               display help for command
+-V, --version output the version number
+-h, --help display help for command
 
 Commands:
-  create [options] [name]  Initialize a new project or plugin
-  project                  Manage an ElizaOS project
-  plugin                   Manage ElizaOS plugins, including publishing
-  agent                    manage ElizaOS agents
-  tee                      Manage TEE deployments
-  start [options]          Start the Eliza agent with configurable plugins and services
-  update [options]         Update ElizaOS packages to the latest versions
-  test [options]           Run tests for Eliza agent plugins
-  env                      Manage environment variables and secrets
-  dev [options]            Start the project or plugin in development mode and rebuild on
-                           file changes
-  publish [options]        Publish a plugin or project to the registry
-  help [command]           display help for command
-```
+create [options] [name] Initialize a new project or plugin
+project Manage an ElizaOS project
+plugin Manage ElizaOS plugins, including publishing
+agent manage ElizaOS agents
+tee Manage TEE deployments
+start [options] Start the Eliza agent with configurable plugins and services
+update [options] Update ElizaOS packages to the latest versions
+test [options] Run tests for Eliza agent plugins
+env Manage environment variables and secrets
+dev [options] Start the project or plugin in development mode and rebuild on
+file changes
+publish [options] Publish a plugin or project to the registry
+help [command] display help for command
+
+````
 </details>
 
 Explore the plugin repository https://github.com/elizaos-plugins/ or from the [docs showcase](/packages).
@@ -175,10 +176,9 @@ Vector embeddings power richer memory; tasks now handle schedules and multi-step
 
 ```typescript
 await runtime.createTask({ ... });
-```
+````
 
 ---
-
 
 ## Timeline
 

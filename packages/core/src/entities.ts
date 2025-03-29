@@ -17,10 +17,10 @@ import {
  */
 /**
  * Entity Resolution Template for resolving entity names based on context and recent messages.
- * 
+ *
  * Contains placeholders for message sender, agent, entities in the room, and recent messages.
  * Provides instructions for analyzing the context and resolving entity references.
- * 
+ *
  * @return {string} entityResolutionTemplate - The template for resolving entity names with detailed instructions.
  */
 const entityResolutionTemplate = `# Task: Resolve Entity Name

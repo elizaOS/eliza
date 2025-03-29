@@ -311,6 +311,11 @@ export class TwitterPostClient {
             return [];
           }
 
+          if (content.text.includes('Error: Missing')) {
+            logger.error('Error: Missing some context', content);
+            return [];
+          }
+
           // Post the tweet
           const result = await this.postToTwitter(content.text, content.mediaData as MediaData[]);
 

@@ -54,7 +54,7 @@ import {
  * - {{name}}: {{description}}
  * {{/each}}
  * - ABORT: Cancel this task
- * 
+ *
  * {{/each}}
  *
  * Recent Messages:
@@ -73,7 +73,7 @@ import {
  *   "selectedOption": "OPTION_NAME" | null
  * }
  * ```
- * 
+ *
  * Make sure to include the ```json``` tags around the JSON object.
  */
 const optionExtractionTemplate = `# Task: Extract selected task and option from user message
