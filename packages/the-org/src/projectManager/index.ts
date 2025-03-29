@@ -40,8 +40,8 @@ const character: Character = {
   ],
   settings: {
     secrets: {
-      DISCORD_APPLICATION_ID: process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
-      DISCORD_API_TOKEN: process.env.PROJECT_MANAGER_DISCORD_API_TOKEN,
+      DISCORD_APPLICATION_ID: '1351476624830369792',
+      DISCORD_API_TOKEN: 'MTM1MTQ3NjYyNDgzMDM2OTc5Mg.GMSARm.Pi0yBjvm24X8Gt_eqqmqYP4WISOlGxh0JlT14Q',
     },
     avatar,
   },
