@@ -319,6 +319,12 @@ export class TwitterPostClient {
           // Post the tweet
           const result = await this.postToTwitter(content.text, content.mediaData as MediaData[]);
 
+          // If result is null, it means we detected a duplicate tweet and skipped posting
+          if (result === null) {
+            logger.info('Skipped posting duplicate tweet');
+            return [];
+          }
+
           const tweetId =
             (result as any).rest_id || (result as any).id_str || (result as any).legacy?.id_str;
 
@@ -351,7 +357,7 @@ export class TwitterPostClient {
 
           return [];
         } catch (error) {
-          logger.error('Error posting tweet:', error);
+          logger.error('Error posting tweet:', error, content);
           return [];
         }
       };
@@ -377,6 +383,19 @@ export class TwitterPostClient {
    */
   private async postToTwitter(text: string, mediaData: MediaData[] = []): Promise<any> {
     try {
+      // Check if this tweet is a duplicate of the last one
+      const lastPost = await this.runtime.getCache<any>(
+        `twitter/${this.client.profile?.username}/lastPost`
+      );
+      if (lastPost) {
+        // Fetch the last tweet to compare content
+        const lastTweet = await this.client.getTweet(lastPost.id);
+        if (lastTweet && lastTweet.text === text) {
+          logger.warn('Tweet is a duplicate of the last post. Skipping to avoid duplicate.');
+          return null;
+        }
+      }
+
       // Handle media uploads if needed
       const mediaIds: string[] = [];
 
