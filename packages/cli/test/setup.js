@@ -1,11 +1,11 @@
 // Mock process.exit to avoid test termination
-process.exit = jest.fn();
+process.exit = vi.fn();
 
 // Silence console logs during tests
-console.log = jest.fn();
-console.error = jest.fn();
-console.warn = jest.fn();
-console.info = jest.fn();
+console.log = vi.fn();
+console.error = vi.fn();
+console.warn = vi.fn();
+console.info = vi.fn();
 
 // Define a global fixtures path
 global.FIXTURES_PATH = new URL('./fixtures', import.meta.url).pathname;
