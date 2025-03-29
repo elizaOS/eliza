@@ -187,6 +187,19 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
   let postgresUrl = process.env.POSTGRES_URL;
   const pgliteDataDir = process.env.PGLITE_DATA_DIR;
 
+  // Add debug logging
+  logger.debug(`Configuration check - POSTGRES_URL: ${postgresUrl ? 'SET' : 'NOT SET'}`);
+  logger.debug(`Configuration check - PGLITE_DATA_DIR: ${pgliteDataDir ? 'SET' : 'NOT SET'}`);
+  logger.debug(`Configuration check - reconfigure: ${reconfigure}`);
+
+  // Bypass logic: If POSTGRES_URL is set, use it directly without prompting
+  if (postgresUrl) {
+    logger.info(
+      `Using existing PostgreSQL configuration from environment: ${postgresUrl.substring(0, 20)}...`
+    );
+    return postgresUrl;
+  }
+
   // If we already have a postgres URL configured and not reconfiguring, use that
   if (postgresUrl && !reconfigure) {
     logger.debug('Using existing PostgreSQL configuration');

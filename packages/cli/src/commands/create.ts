@@ -264,22 +264,40 @@ export const create = new Command()
       // Get available databases and select one
       const availableDatabases = await getLocalAvailableDatabases();
 
-      const { database } = await prompts({
-        type: 'select',
-        name: 'database',
-        message: 'Select your database:',
-        choices: availableDatabases
-          .sort((a, b) => a.localeCompare(b))
-          .map((db) => ({
-            title: db,
-            value: db,
-          })),
-        initial: availableDatabases.indexOf('pglite'),
-      });
+      // Check if POSTGRES_URL is already set in environment
+      const existingPostgresUrl = process.env.POSTGRES_URL;
+      let database = 'postgres';
 
-      if (!database) {
-        logger.error('No database selected');
-        process.exit(1);
+      // Add debug logs
+      logger.debug(`Database selection - POSTGRES_URL: ${existingPostgresUrl ? 'SET' : 'NOT SET'}`);
+
+      if (existingPostgresUrl) {
+        // If POSTGRES_URL is set, use postgres without prompting
+        logger.info(
+          `Using existing Postgres URL from environment (${existingPostgresUrl.substring(0, 20)}...)`
+        );
+        database = 'postgres';
+      } else {
+        // Only prompt if no POSTGRES_URL is set
+        const response = await prompts({
+          type: 'select',
+          name: 'database',
+          message: 'Select your database:',
+          choices: availableDatabases
+            .sort((a, b) => a.localeCompare(b))
+            .map((db) => ({
+              title: db,
+              value: db,
+            })),
+          initial: availableDatabases.indexOf('pglite'),
+        });
+
+        if (!response.database) {
+          logger.error('No database selected');
+          process.exit(1);
+        }
+
+        database = response.database;
       }
 
       // Copy project template
