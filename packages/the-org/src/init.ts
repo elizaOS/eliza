@@ -71,11 +71,15 @@ export const initCharacter = async ({
   // Register runtime events
   runtime.registerEvent(
     'TELEGRAM_WORLD_JOINED',
-    async (params: { world: World; entities: any[] }) => {
-      console.log('HOW MANY TIMES ANS WHEN THIS TRIGGERS?');
+    async (params: { world: World; entities: any[]; chat: any; botUsername: string }) => {
       await initializeOnboarding(runtime, params.world, config);
-      console.log('START TG ONBOARDING DM');
-      await startTGOnboardingDM(runtime, params.world, params.entities);
+      await startTelegramOnboarding(
+        runtime,
+        params.world,
+        params.chat,
+        params.entities,
+        params.botUsername
+      );
     }
   );
 };
@@ -206,124 +210,44 @@ export async function startOnboardingDM(
 }
 
 /**
- * Starts the settings DM with the server owner
+ * Starts onboarding for Telegram users by sending a deep link message to the group chat.
+ *
+ * @param {IAgentRuntime} runtime - The runtime instance for the agent
+ * @param {World} world - The world object containing configuration
+ * @param {any} chat - The Telegram chat object
+ * @param {any[]} entities - Array of entities to search for the owner
+ * @param {string} botUsername - Username of the Telegram bot
+ * @returns {Promise<void>} A promise that resolves when the message is sent
  */
-export async function startTGOnboardingDM(
+export async function startTelegramOnboarding(
   runtime: IAgentRuntime,
   world: World,
-  entities: any[]
+  chat: any,
+  entities: any[],
+  botUsername: string
 ): Promise<void> {
-  console.log('startTGOnboardingDM - worldId', world.id);
+  let ownerId = null;
+  let ownerUsername = null;
 
-  try {
-    let ownerId = null;
-    let username = null;
-    let name = null;
-
-    entities.forEach((entity) => {
-      if (entity.metadata?.telegram?.adminTitle === 'Owner') {
-        ownerId = entity?.metadata?.telegram?.id;
-        username = entity?.metadata?.telegram?.username;
-        name = entity?.metadata?.telegram?.name;
-      }
-    });
-
-    if (!ownerId) {
-      logger.warn('no ownerId found');
+  entities.forEach((entity) => {
+    if (entity.metadata?.telegram?.adminTitle === 'Owner') {
+      ownerId = entity?.metadata?.telegram?.id;
+      ownerUsername = entity?.metadata?.telegram?.username;
     }
+  });
 
-    console.log('startTGOnboardingDM () () () () () ');
-
-    const onboardingMessages = [
-      'Hi! I need to collect some information to get set up. Is now a good time?',
-      'Hey there! I need to configure a few things. Do you have a moment?',
-      'Hello! Could we take a few minutes to get everything set up?',
-    ];
-    const randomMessage = onboardingMessages[Math.floor(Math.random() * onboardingMessages.length)];
-
-    const telegramClient = runtime.getService('telegram') as any;
-
-    // Okay so there is a question now:
-    // Do we have DM room for that entity?
-    // If we have room already created we can do this to dm.
-
-    // But if we don't have room for dm with that entity we need to create one.
-    // Which is kind of a problem because we construct ROOM_ID from chat.id on telegram.
-    // Is there any option to call telegram and see chat.id?
-    // We know that for DM message ownerId = chat.id on telegram!
-    const roomId = createUniqueUuid(runtime, ownerId);
-    const entityId = createUniqueUuid(runtime, ownerId);
-
-    // So as chat.id = ownerId we can create room with that id.
-    // we can't call ensure connection here... messes up the entity...
-
-    // First check if entity exists
-    const entity = await runtime.getEntityById(runtime.agentId);
-    if (!entity) {
-      // This is the case if someone else dropped message in group chat but not owner.
-      // tho I think we should already have the owner no matter what for tg.
-      // Unless this was a DM.
-      // From that reason I don't think I should initiate onboarding for DM?
-      logger.warn('no entity found for telegram....');
-    }
-
-    // Getting the world id for the owner not for world that sent the message.
-    const worldId = createUniqueUuid(runtime, ownerId);
-    const existingWorld = await runtime.getWorld(worldId);
-    console.log('startTGOnboardingDM () () () () () 2 existingWorld', existingWorld);
-    if (!existingWorld) {
-      console.log('startTGOnboardingDM () () () () () 3 createWorld');
-      await runtime.createWorld({
-        id: worldId,
-        name: `Telegram World for ${username}`,
-        serverId: ownerId,
-        agentId: runtime.agentId,
-        metadata: {
-          roles: {
-            [ownerId]: Role.OWNER,
-          },
-          source: 'telegram',
-          ownership: {
-            ownerId: ownerId,
-          },
-        },
-      });
-    }
-
-    // Directly create room.
-    const room = await runtime.getRoom(roomId);
-    console.log('startTGOnboardingDM () () () () () 4 room', room);
-    if (!room) {
-      console.log('startTGOnboardingDM () () () () () 5 createRoom');
-      await runtime.createRoom({
-        id: roomId,
-        name: `Chat with ${username}`,
-        source: 'telegram',
-        type: ChannelType.DM,
-        channelId: ownerId,
-        serverId: ownerId,
-        worldId,
-      });
-    }
-
-    await runtime.createMemory(
-      {
-        agentId: runtime.agentId,
-        entityId: runtime.agentId,
-        roomId,
-        content: {
-          text: randomMessage,
-          actions: ['BEGIN_ONBOARDING'],
-        },
-        createdAt: Date.now(),
-      },
-      'messages'
-    );
-
-    await telegramClient.messageManager.sendMessage(ownerId, { text: randomMessage });
-
-    logger.info(`Started onboarding DM with Telegram user ${ownerId} for world ${world.id}`);
-  } catch (error) {
-    logger.error(`Error starting Telegram onboarding DM:`, error);
+  if (!ownerId) {
+    logger.warn('no ownerId found');
   }
+
+  const telegramClient = runtime.getService('telegram') as any;
+
+  // Fallback: send deep link to the group chat
+  const onboardingMessageDeepLink = [
+    `Hello @${ownerUsername}! Could we take a few minutes to get everything set up?`,
+    `Please click this link to start chatting with me: https://t.me/${botUsername}?start=onboarding`,
+  ].join(' ');
+
+  await telegramClient.messageManager.sendMessage(chat.id, { text: onboardingMessageDeepLink });
+  logger.info(`Sent deep link to group chat ${chat.id} for owner ${ownerId || 'unknown'}`);
 }
