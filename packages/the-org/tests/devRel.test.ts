@@ -29,7 +29,7 @@ describe('devRel Agent Test Suite', () => {
   describe('Core Developer Support Functionality', () => {
     it('should handle technical documentation requests', async () => {
       const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Documentation Query');
+      const test = testSuite.tests.find((t) => t.name === 'Test Documentation Query');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
 
@@ -38,13 +38,13 @@ describe('devRel Agent Test Suite', () => {
         mockRuntime,
         'world-id',
         'room-id',
-        "How do I implement custom actions in ElizaOS?"
+        'How do I implement custom actions in ElizaOS?'
       );
     });
 
     it('should assist with plugin integration', async () => {
       const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Plugin Integration');
+      const test = testSuite.tests.find((t) => t.name === 'Test Plugin Integration');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
       expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Plugin Test', 'Test Developer');
@@ -54,15 +54,18 @@ describe('devRel Agent Test Suite', () => {
   describe('Knowledge Base Integration', () => {
     it('should reference documentation in responses', async () => {
       const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Documentation Reference');
+      const test = testSuite.tests.find((t) => t.name === 'Test Documentation Reference');
 
       // Setup mock response
-      mockScenarioService.sendMessage.mockImplementationOnce((_: any, __: any, ___: any, msg: string) => {
-        return Promise.resolve({ content: { text: `${msg}\nRefer to documentation: https://docs.elizaos.com` } });
-      });
+      mockScenarioService.sendMessage.mockImplementationOnce(
+        (_: any, __: any, ___: any, msg: string) => {
+          return Promise.resolve({
+            content: { text: `${msg}\nRefer to documentation: https://docs.elizaos.com` },
+          });
+        }
+      );
 
       await test?.fn(mockRuntime);
-
 
       const messages = mockScenarioService.sendMessage.mock.calls;
       expect(messages[0][3]).toMatch(/How do I implement custom actions in ElizaOS?/);
@@ -71,16 +74,18 @@ describe('devRel Agent Test Suite', () => {
     it('should access source code knowledge when enabled', async () => {
       vi.stubEnv('DEVREL_IMPORT_KNOWLEDGE', 'true');
       const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Source Code Knowledge');
+      const test = testSuite.tests.find((t) => t.name === 'Test Source Code Knowledge');
 
       // Setup mock response with source code reference
-      mockScenarioService.sendMessage.mockImplementationOnce((_: any, __: any, ___: any, msg: string) => {
-        return Promise.resolve({
-          content: {
-            text: `${msg}\nSource code location: src/elizaos/core/agent-runtime.ts`
-          }
-        });
-      });
+      mockScenarioService.sendMessage.mockImplementationOnce(
+        (_: any, __: any, ___: any, msg: string) => {
+          return Promise.resolve({
+            content: {
+              text: `${msg}\nSource code location: src/elizaos/core/agent-runtime.ts`,
+            },
+          });
+        }
+      );
 
       await test?.fn(mockRuntime);
 
@@ -107,18 +112,16 @@ describe('devRel Agent Test Suite', () => {
   describe('Error Handling', () => {
     it('should handle missing documentation paths', async () => {
       const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Missing Documentation');
+      const test = testSuite.tests.find((t) => t.name === 'Test Missing Documentation');
 
-      mockScenarioService.sendMessage.mockRejectedValueOnce(
-        new Error('Documentation not found')
-      );
+      mockScenarioService.sendMessage.mockRejectedValueOnce(new Error('Documentation not found'));
 
       await expect(test?.fn(mockRuntime)).rejects.toThrow('Documentation not found');
     });
 
     it('should handle codebase navigation errors', async () => {
       const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Code Navigation');
+      const test = testSuite.tests.find((t) => t.name === 'Test Code Navigation');
 
       mockScenarioService.waitForCompletion.mockRejectedValueOnce(
         new Error('Could not locate code reference')

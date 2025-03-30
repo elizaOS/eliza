@@ -25,7 +25,7 @@ describe('CommunityManagerTestSuite', () => {
   describe('Core Functionality', () => {
     it('should resolve conflicts', async () => {
       const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Conflict Resolution');
+      const test = testSuite.tests.find((t) => t.name === 'Test Conflict Resolution');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
       expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Conflict Test', 'Test Owner');
@@ -40,7 +40,7 @@ describe('CommunityManagerTestSuite', () => {
 
     it('should handle new user onboarding', async () => {
       const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test New User Onboarding');
+      const test = testSuite.tests.find((t) => t.name === 'Test New User Onboarding');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
       expect(mockScenarioService.createRoom).toHaveBeenCalledWith('world-id', 'welcome');
@@ -54,7 +54,7 @@ describe('CommunityManagerTestSuite', () => {
 
     it('should perform moderation actions', async () => {
       const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Moderation Actions');
+      const test = testSuite.tests.find((t) => t.name === 'Test Moderation Actions');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
       expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Moderation Test', 'Test Owner');
@@ -63,7 +63,7 @@ describe('CommunityManagerTestSuite', () => {
 
     it('should drive community engagement', async () => {
       const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Community Engagement');
+      const test = testSuite.tests.find((t) => t.name === 'Test Community Engagement');
 
       await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
       expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
@@ -79,11 +79,11 @@ describe('CommunityManagerTestSuite', () => {
     it('should throw when missing scenario service', async () => {
       const brokenRuntime = {
         ...mockRuntime,
-        getService: vi.fn().mockReturnValue(undefined)
+        getService: vi.fn().mockReturnValue(undefined),
       };
 
       const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Conflict Resolution');
+      const test = testSuite.tests.find((t) => t.name === 'Test Conflict Resolution');
 
       await expect(test?.fn(brokenRuntime)).rejects.toThrow('Scenario service not found');
     });
@@ -92,7 +92,7 @@ describe('CommunityManagerTestSuite', () => {
       mockScenarioService.waitForCompletion.mockResolvedValue(false);
 
       const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test New User Onboarding');
+      const test = testSuite.tests.find((t) => t.name === 'Test New User Onboarding');
 
       await expect(test?.fn(mockRuntime)).rejects.toThrow(
         'Agent did not complete onboarding in time'
@@ -103,7 +103,7 @@ describe('CommunityManagerTestSuite', () => {
   describe('Character Compliance', () => {
     it('should ignore off-topic messages', async () => {
       const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Community Engagement');
+      const test = testSuite.tests.find((t) => t.name === 'Test Community Engagement');
 
       await test?.fn(mockRuntime);
       const messageContent = mockScenarioService.sendMessage.mock.calls[0][3];
@@ -113,7 +113,7 @@ describe('CommunityManagerTestSuite', () => {
 
     it('should maintain concise responses', async () => {
       const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find(t => t.name === 'Test Conflict Resolution');
+      const test = testSuite.tests.find((t) => t.name === 'Test Conflict Resolution');
 
       await test?.fn(mockRuntime);
       const messageCalls = mockScenarioService.sendMessage.mock.calls;

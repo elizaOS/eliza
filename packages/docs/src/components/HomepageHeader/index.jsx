@@ -56,11 +56,12 @@ function HomepageHeader() {
                   <code>
                     <span className={styles.comment}># Create your first AI agent</span>
                     <br />
-                    <span className={styles.prompt}>$</span> npm create eliza@beta
+                    <span className={styles.prompt}>$</span> npx @elizaos/cli@beta create
                     <br />
                     <span className={styles.successText}>✓ Project initialized successfully!</span>
                     <br />
-                    <span className={styles.prompt}>$</span> cd my-agent && npm run start
+                    <span className={styles.prompt}>$</span> cd my-agent && npx @elizaos/cli@beta
+                    start
                     <br />
                   </code>
                 </pre>

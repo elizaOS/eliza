@@ -14,7 +14,7 @@ import type { Action, ActionExample, IAgentRuntime, Memory } from '../types';
 /**
  * Represents an action called 'IGNORE'.
  *
- * This action is used to ignore the user in a conversation. It should be used when the user is aggressive, creepy, or when the conversation has naturally ended. 
+ * This action is used to ignore the user in a conversation. It should be used when the user is aggressive, creepy, or when the conversation has naturally ended.
  * Avoid using this action if the user has engaged directly or if there is a need to communicate with them. Use IGNORE only when the user should be ignored.
  *
  * The action includes a validation function that always returns true and a handler function that also returns true.
