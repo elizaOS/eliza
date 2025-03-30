@@ -2,7 +2,7 @@
 // Updated to use world metadata instead of cache
 
 import { logger } from '../logger';
-import { findWorldForOwner } from '../roles';
+import { findWorldsForOwner } from '../roles';
 import { getWorldSettings } from '../settings';
 import {
   ChannelType,
@@ -129,9 +129,9 @@ export const settingsProvider: Provider = {
     try {
       // Parallelize the initial database operations to improve performance
       // These operations can run simultaneously as they don't depend on each other
-      const [room, userWorld] = await Promise.all([
+      const [room, userWorlds] = await Promise.all([
         runtime.getRoom(message.roomId),
-        findWorldForOwner(runtime, message.entityId),
+        findWorldsForOwner(runtime, message.entityId),
       ]).catch((error) => {
         logger.error(`Error fetching initial data: ${error}`);
         throw new Error('Failed to retrieve room or user world information');
@@ -172,7 +172,7 @@ export const settingsProvider: Provider = {
 
       if (isOnboarding) {
         // In onboarding mode, use the user's world directly
-        world = userWorld;
+        world = userWorlds.find((world) => world.metadata.settings);
 
         if (!world) {
           logger.error('No world found for user during onboarding');
