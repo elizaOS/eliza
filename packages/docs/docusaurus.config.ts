@@ -118,7 +118,7 @@ const config = {
         excludePrivate: true,
         excludeProtected: false,
         excludeInternal: false,
-        excludeNotDocumented: false,
+        excludeNotDocumented: true,
         plugin: ['typedoc-plugin-markdown'],
         hideGenerator: true,
         cleanOutputDir: true,
@@ -128,7 +128,7 @@ const config = {
         sort: ['source-order', 'required-first', 'visibility'],
         gitRevision: 'main',
         readme: 'none',
-        commentStyle: 'all',
+        commentStyle: 'block',
         preserveAnchorCasing: true,
         hideBreadcrumbs: false,
         preserveWatchOutput: true,
@@ -185,7 +185,7 @@ const config = {
       {
         showReadingTime: true,
         onUntruncatedBlogPosts: 'ignore',
-        editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/docs/blog/',
+        editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/docs',
         blogSidebarTitle: 'Recent posts',
         blogSidebarCount: 'ALL',
         showLastUpdateAuthor: true,
@@ -210,7 +210,7 @@ const config = {
           blogTitle: 'AI News',
           blogDescription: 'Automated aggregating and summarization of elizaOS ecosystem updates',
           showReadingTime: true,
-          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs/news',
+          editUrl: 'https://github.com/elizaos/eliza/tree/v2-develop/packages/docs',
           blogSidebarTitle: 'All posts',
           blogSidebarCount: 'ALL',
           showLastUpdateAuthor: true,
@@ -232,7 +232,7 @@ const config = {
           lastVersion: 'current',
           versions: {
             current: {
-              label: '1.0.0-alpha',
+              label: '1.0.0-beta',
               path: '',
               banner: 'none',
             },
@@ -337,8 +337,10 @@ const config = {
           position: 'left',
         },
         {
-          label: 'RSS',
-          position: 'left',
+          href: '/news',
+          position: 'right',
+          className: 'header-rss-link',
+          'aria-label': 'RSS Feed',
           to: '/news',
           items: [
             { label: 'RSS (XML)', href: '/news/rss.xml', target: '_blank' },
@@ -348,7 +350,8 @@ const config = {
         },
         {
           href: 'https://github.com/elizaos/eliza',
-          label: 'GitHub',
+          className: 'header-github-link',
+          'aria-label': 'GitHub repository',
           position: 'right',
         },
       ],
@@ -365,11 +368,11 @@ const config = {
             },
             {
               label: 'llms.txt',
-              href: 'llms.txt',
+              href: 'https://eliza.how/llms.txt',
             },
             {
               label: 'llms-full.txt',
-              href: 'llms-full.txt',
+              href: 'https://eliza.how/llms-full.txt',
             },
           ],
         },
@@ -396,6 +399,10 @@ const config = {
             {
               label: 'Blog',
               href: '/blog',
+            },
+            {
+              label: 'RSS',
+              href: '/news/rss.xml',
             },
             {
               label: 'GitHub',
