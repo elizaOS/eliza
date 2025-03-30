@@ -134,9 +134,9 @@ export function loadEnvConfig(): Settings {
 
   // Attach to process.env for backward compatibility if available
   if (typeof process !== 'undefined') {
-    Object.entries(namespacedSettings).forEach(([namespace, settings]) => {
+    for (const [namespace, settings] of Object.entries(namespacedSettings)) {
       process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
-    });
+    }
   }
 
   return env as Settings;

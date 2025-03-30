@@ -317,7 +317,7 @@ Or manually:
 
 1. Convert documents to txt/md format
 2. Use the [folder2knowledge](https://github.com/elizaOS/characterfile/tree/main/scripts) tool
-3. Add to the knowledge section in your character file, [see docs](docs/core/characterfile.md) via `"ragKnowledge": true`
+3. Add to the knowledge section in your character file, [see docs](docs/core/knowledge.md) via `"ragKnowledge": true`
 
 ---
 

@@ -16,13 +16,13 @@ import type { Action, IAgentRuntime, Memory, Provider, State } from '../types';
  */
 /**
  * Provider for ACTIONS
- * 
+ *
  * @typedef {import('./Provider').Provider} Provider
  * @typedef {import('./Runtime').IAgentRuntime} IAgentRuntime
  * @typedef {import('./Memory').Memory} Memory
  * @typedef {import('./State').State} State
  * @typedef {import('./Action').Action} Action
- * 
+ *
  * @type {Provider}
  * @property {string} name - The name of the provider
  * @property {string} description - Description of the provider

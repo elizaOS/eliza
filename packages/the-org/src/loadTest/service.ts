@@ -4,11 +4,14 @@ export class LoadTestService extends Service {
   static serviceType = 'load-test';
   capabilityDescription = 'Provides load testing capabilities for agent scaling tests';
 
-  private activeTests: Map<string, {
-    startTime: number;
-    messageCount: number;
-    errors: number;
-  }> = new Map();
+  private activeTests: Map<
+    string,
+    {
+      startTime: number;
+      messageCount: number;
+      errors: number;
+    }
+  > = new Map();
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -22,7 +25,7 @@ export class LoadTestService extends Service {
     this.activeTests.set(testId, {
       startTime: Date.now(),
       messageCount: 0,
-      errors: 0
+      errors: 0,
     });
   }
 
