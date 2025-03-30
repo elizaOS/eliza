@@ -32,7 +32,6 @@ Instead of forcing everyone onto one highway early on, a better strategy would b
 - Keep people informed across different platforms
 - Accelerate onboarding for new contributors
 
-
 ---
 
 ### Case Study: AI News System
@@ -46,7 +45,7 @@ This [discord summarizer](https://github.com/elizaOS/discord-summarizer) was the
 
 ```mermaid
 flowchart TD
-    subgraph "Data Collection" 
+    subgraph "Data Collection"
         A1[Twitter API] --> B[Data Collector]
         A2[Discord Bot] --> B
         A3[GitHub API] --> B
@@ -57,7 +56,7 @@ flowchart TD
     style A3 fill:#333333,color:#FFF
     style A4 fill:#85bb65,color:#FFF
     style B fill:#9F8AF9,color:#FFF
-    
+
     subgraph "Data Wrangling & Enrichment"
         B --> C[Content Normalization]
         C --> D[Topic Extraction/LLM]
@@ -68,7 +67,7 @@ flowchart TD
     style D fill:#FF7F50,color:#333
     style E fill:#CD5C5C,color:#FFF
     style F fill:#4682B4,color:#FFF
-    
+
     subgraph "Distribution"
         F --> G1[JSON API Endpoints]
         F --> G2[Markdown Files]
@@ -77,7 +76,7 @@ flowchart TD
     style G1 fill:#7EB77F,color:#333
     style G2 fill:#86C67C,color:#333
     style G3 fill:#98FB98,color:#333
-    
+
     subgraph "Consumption"
         G1 --> H1[DAO Dashboards]
         G1 --> H2[AI Agent Knowledge Base]
@@ -90,8 +89,8 @@ flowchart TD
     style H4 fill:#9370DB,color:#FFF
 ```
 
-
 You can see the results from this tool here, which updates daily via GitHub actions:
+
 - https://m3-org.github.io/ai-news/
 - https://eliza.how/news
 
@@ -109,7 +108,7 @@ Here's an example news clip: https://x.com/elizaOS/status/1880280863210106975
 
 ## Case Study: AI Assistants
 
-Idk about you, but I hate seeing questions left hanging in tech support channels, especially when the answer can easily be found in the docs. It's a perfect opportunity to [eat our own dogfood](https://en.wikipedia.org/wiki/Eating_your_own_dog_food), experience and fix pain points firsthand,  and showcase a powerful use case of AI agents to other devs.
+Idk about you, but I hate seeing questions left hanging in tech support channels, especially when the answer can easily be found in the docs. It's a perfect opportunity to [eat our own dogfood](https://en.wikipedia.org/wiki/Eating_your_own_dog_food), experience and fix pain points firsthand, and showcase a powerful use case of AI agents to other devs.
 
 [![jintern2](/blog/jintern.jpg)](/blog/jintern.jpg)
 
@@ -126,7 +125,6 @@ You can now use [AI news](https://github.com/bozp-pzob/ai-news) to generate a su
 We retroactively reward people who provided good answers to questions (we're using tip.cc) over a time period. Later people can reuse their tips when helping or asking for help from other people.
 
 [![image](/blog/reward.jpg)](/blog/reward.jpg)
-
 
 **Main Lesson: Treat the docs as first-class citizen of your project.**
 
@@ -145,16 +143,16 @@ If you want to collaborate with us, here's a few ideas:
 - Answer people's questions in the coders / tech support channels on discord, it will get noticed :)
 - Help with docs: go through pages, verify information with code, test the steps, create issues and PRs with fixes
 - Collaborate with us on the [AI news aggregator](https://github.com/bozp-pzob/ai-news)
-    - Generate new show ideas using the [output files](https://m3-org.github.io/ai-news/) from AI-news
-    - Write a script that takes a week of daily logs and turns it into a newsletter or news show program
+  - Generate new show ideas using the [output files](https://m3-org.github.io/ai-news/) from AI-news
+  - Write a script that takes a week of daily logs and turns it into a newsletter or news show program
 - Ingest docs into your Eliza agent as knowledge to onboard them then tinker with the character file to takee on a role in the DAO
-    - Perhaps it can act as a scribe that summarizes chats
-    - Lore keeper, community moderation, or social media marketer
-
+  - Perhaps it can act as a scribe that summarizes chats
+  - Lore keeper, community moderation, or social media marketer
 
 ### Links
+
 - https://github.com/bozp-pzob/ai-news (aggregator tool)
-    - https://m3-org.github.io/ai-news/ (data for elizaOS ecosystem)
+  - https://m3-org.github.io/ai-news/ (data for elizaOS ecosystem)
 - https://github.com/elizaOS/knowledge (for eliza RAG knowledge)
 - https://www.kapa.ai/blog/optimizing-technical-documentation-for-llms
 - https://x.com/dankvr/status/1884417610420474199 (update 1/28/25)
