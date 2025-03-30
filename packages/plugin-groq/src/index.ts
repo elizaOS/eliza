@@ -1,5 +1,4 @@
 import { createGroq } from '@ai-sdk/groq';
-//import Groq from "groq-sdk";
 import type {
   ImageDescriptionParams,
   ModelTypeName,
@@ -19,12 +18,23 @@ import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import { z } from 'zod';
 
 /**
+ * Runtime interface for the Groq plugin
+ */
+interface Runtime {
+  getSetting(key: string): string | undefined;
+  character: {
+    system?: string;
+  };
+  fetch: typeof fetch;
+}
+
+/**
  * Gets the Cloudflare Gateway base URL for a specific provider if enabled
  * @param runtime The runtime environment
  * @param provider The model provider name
  * @returns The Cloudflare Gateway base URL if enabled, undefined otherwise
  */
-function getCloudflareGatewayBaseURL(runtime: any, provider: string): string | undefined {
+function getCloudflareGatewayBaseURL(runtime: Runtime, provider: string): string | undefined {
   const isCloudflareEnabled = runtime.getSetting('CLOUDFLARE_GW_ENABLED') === 'true';
   const cloudflareAccountId = runtime.getSetting('CLOUDFLARE_AI_ACCOUNT_ID');
   const cloudflareGatewayId = runtime.getSetting('CLOUDFLARE_AI_GATEWAY_ID');
@@ -63,21 +73,6 @@ function getCloudflareGatewayBaseURL(runtime: any, provider: string): string | u
   return baseURL;
 }
 
-/**
- * Asynchronously tokenizes the given text based on the specified model and prompt.
- *
- * @param {ModelTypeName} model - The type of model to use for tokenization.
- * @param {string} prompt - The text prompt to tokenize.
- * @returns {number[]} - An array of tokens representing the encoded prompt.
-
-GROQ_API_KEY=
-EMBEDDING_GROQ_MODEL=llama-3.1-8b-instant
-LARGE_GROQ_MODEL=llama-3.2-90b-vision-preview
-MEDIUM_GROQ_MODEL=llama-3.3-70b-versatile
-SMALL_GROQ_MODEL=llama-3.1-8b-instant
-
-*/
-
 function findModelName(model: ModelTypeName): TiktokenModel {
   const name =
     model === ModelType.TEXT_SMALL
@@ -85,6 +80,7 @@ function findModelName(model: ModelTypeName): TiktokenModel {
       : (process.env.LARGE_GROQ_MODEL ?? 'llama-3.2-90b-vision-preview');
   return name as TiktokenModel;
 }
+
 async function tokenizeText(model: ModelTypeName, prompt: string) {
   const encoding = encodingForModel(findModelName(model));
   const tokens = encoding.encode(prompt);
@@ -104,73 +100,6 @@ async function detokenizeText(model: ModelTypeName, tokens: number[]) {
   return encoding.decode(tokens);
 }
 
-/**
- * Defines the Groq plugin with its name, description, and configuration options.
- * @type {Plugin}
- * 
- *               logger.debug(
-                    "Initializing Groq model with Cloudflare check"
-                );
-                const baseURL = getCloudflareGatewayBaseURL(runtime, "groq");
-                logger.debug("Groq baseURL result:", { baseURL });
-                const groq = createGroq({
-                    apiKey,
-                    fetch: runtime.fetch,
-                    baseURL,
-                });
-
-                const { text: groqResponse } = await aiGenerateText({
-                    model: groq.languageModel(model),
-                    prompt: context,
-                    temperature,
-                    system:
-                        runtime.character.system ??
-                        settings.SYSTEM_PROMPT ??
-                        undefined,
-                    tools,
-                    onStepFinish: onStepFinish,
-                    maxSteps,
-                    maxTokens: max_response_length,
-                    frequencyPenalty: frequency_penalty,
-                    presencePenalty: presence_penalty,
-                    experimental_telemetry,
-                });
-
-                response = groqResponse;
-                logger.debug("Received response from Groq model.");
-
-                break;
-            }
-     async function handleGroq({
-    model,
-    apiKey,
-    schema,
-    schemaName,
-    schemaDescription,
-    mode = "json",
-    modelOptions,
-    runtime,
-}: ProviderOptions): Promise<GenerationResult> {
-    logger.debug("Handling Groq request with Cloudflare check");
-    const baseURL = getCloudflareGatewayBaseURL(runtime, "groq");
-    logger.debug("Groq handleGroq baseURL:", { baseURL });
-
-
-    const groq = createGroq({ 
-        apiKey, 
-        baseURL,
-        fetch: runtime.fetch 
-    });
-    return await aiGenerateObject({
-        model: groq.languageModel(model),
-        schema,
-        schemaName,
-        schemaDescription,
-        mode,
-        ...modelOptions,
-    });
-}           
- */
 export const groqPlugin: Plugin = {
   name: 'groq',
   description: 'Groq plugin',
@@ -181,157 +110,18 @@ export const groqPlugin: Plugin = {
     LARGE_GROQ_MODEL: process.env.LARGE_GROQ_MODEL,
   },
   async init(config: Record<string, string>) {
-    //try {
-    // const validatedConfig = await configSchema.parseAsync(config);
-
-    // // Set all environment variables at once
-    // for (const [key, value] of Object.entries(validatedConfig)) {
-    // 	if (value) process.env[key] = value;
-    // }
-
-    // If API key is not set, we'll show a warning but continue
     if (!process.env.GROQ_API_KEY) {
       throw Error('Missing GROQ_API_KEY in environment variables');
     }
-
-    //   // Verify API key only if we have one
-    //   try {
-    //     //const baseURL = process.env.GROQ_BASE_URL ?? 'https://api.openai.com/v1';
-    //     const response = await fetch(`${baseURL}/models`, {
-    //       headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-    //     //const baseURL = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
-    //     const response = await fetch(`${baseURL}/models`, {
-    //       headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-    //     //const baseURL = process.env.GROQ_BASE_URL ?? 'https://api.openai.com/v1';
-    //     const response = await fetch(`${baseURL}/models`, {
-    //       headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-    //     });
-    //     if (!response.ok) {
-    //       logger.warn(`OpenAI API key validation failed: ${response.statusText}`);
-    //       logger.warn('OpenAI functionality will be limited until a valid API key is provided');
-    //       // Continue execution instead of throwing
-    //     } else {
-    //       // logger.log("OpenAI API key validated successfully");
-    //     }
-    //   } catch (fetchError) {
-    //     logger.warn(`Error validating OpenAI API key: ${fetchError}`);
-    //     logger.warn('OpenAI functionality will be limited until a valid API key is provided');
-    //     // Continue execution instead of throwing
-    //   }
-    // } catch (error) {
-    //   // Convert to warning instead of error
-    //   logger.warn(
-    //     `OpenAI plugin configuration issue: ${error.errors
-    //       .map((e) => e.message)
-    //       .join(', ')} - You need to configure the GROQ_API_KEY in your environment variables`
-    //       .join(', ')} - You need to configure the OPENAI_API_KEY in your environment variables`
-    //       .join(', ')} - You need to configure the GROQ_API_KEY in your environment variables`
-    //   );
-    // }
   },
   models: {
     [ModelType.TEXT_EMBEDDING]: async (
       runtime,
       params: TextEmbeddingParams | string | null
     ): Promise<number[]> => {
-      // Handle null input (initialization case)
-      //if (params === null) {
-      //logger.debug('Creating test embedding for initialization');
-      // Return a consistent vector for null input
       const testVector = Array(1536).fill(0);
-      testVector[0] = 0.1; // Make it non-zero
+      testVector[0] = 0.1;
       return testVector;
-      //}
-
-      // // Get the text from whatever format was provided
-      // let text: string;
-      // if (typeof params === 'string') {
-      //   text = params; // Direct string input
-      // } else if (typeof params === 'object' && params.text) {
-      //   text = params.text; // Object with text property
-      // } else {
-      //   logger.warn('Invalid input format for embedding');
-      //   // Return a fallback for invalid input
-      //   const fallbackVector = Array(1536).fill(0);
-      //   fallbackVector[0] = 0.2; // Different value for tracking
-      //   return fallbackVector;
-      // }
-
-      // // Skip API call for empty text
-      // if (!text.trim()) {
-      //   logger.warn('Empty text for embedding');
-      //   const emptyVector = Array(1536).fill(0);
-      //   emptyVector[0] = 0.3; // Different value for tracking
-      //   return emptyVector;
-      // }
-
-      // // truncate
-      // console.log('INPUT PROMPT:', text);
-      // if (text.length > 8000) {
-      //   text = text.substring(0, 8000);
-      //   console.log('TRUNCATED PROMPT', text);
-      // }
-
-      // const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
-      // const data4 = {
-      //   method: 'GET',
-      //   headers: {
-      //     Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      //     'Content-Type': 'application/json',
-      //   }
-      // };
-      // const response2 = await fetch(`${baseURL}/models`, data4);
-      // if (!response2.ok) {
-      //   logger.error(`GROQ error: ${response2.status} - ${response2.statusText}`);
-      //   const errorVector = Array(1536).fill(0);
-      //   errorVector[0] = 0.4; // Different value for tracking
-      //   return errorVector;
-      // }
-      // const models = (await response2.json()) as { data: { id: string }[] }
-      // console.log(models);
-      // console.log('MODELS:', models);
-      // //getModels().then((models) =>
-
-      // //console.log(models);
-      // models.data.forEach(async (model) => {
-      //   console.log("MODEL", model);
-      //   console.log(model.id)
-      //   const data1 = {
-      //     method: 'POST',
-      //     headers: {
-      //       Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      //       'Content-Type': 'application/json',
-      //     },
-      //     body: JSON.stringify({
-      //       model: model.id,
-      //       input: text,
-      //     }),
-      //   };
-      //   console.log('DATA', data1);
-      //   const response = await fetch(`${baseURL}/embeddings`, data1);
-      //   if (!response.ok) {
-      //     console.log("response", response)
-      //     logger.error(`GROQ error: ${response.status} - ${response.statusText}`);
-      //     const errorVector = Array(1536).fill(0);
-      //     errorVector[0] = 0.4; // Different value for tracking
-      //     return errorVector;
-      //   }
-      //   const data = (await response.json()) as {
-      //     data: [{ embedding: number[] }];
-      //   };
-      //   if (!data?.data?.[0]?.embedding) {
-      //     logger.error('API returned invalid structure');
-      //     const errorVector = Array(1536).fill(0);
-      //     errorVector[0] = 0.5; // Different value for tracking
-      //     return errorVector;
-      //   }
-      //   const embedding = data.data[0].embedding;
-      //   logger.log(`Got valid embedding with length ${embedding.length}`);
-      //   return embedding;
-      // })
-      //const errorVector = Array(1536).fill(0);
-      //errorVector[0] = 0.6; // Different value for tracking
-      //return errorVector;
     },
     [ModelType.TEXT_TOKENIZER_ENCODE]: async (
       _runtime,
@@ -365,19 +155,58 @@ export const groqPlugin: Plugin = {
       logger.log('generating text');
       logger.log(prompt);
 
-      const { text: openaiResponse } = await generateText({
-        model: groq.languageModel(model),
-        prompt: prompt,
-        system: runtime.character.system ?? undefined,
-        temperature: temperature,
-        maxTokens: max_response_length,
-        //max_tokens: 300,
-        frequencyPenalty: frequency_penalty,
-        presencePenalty: presence_penalty,
-        stopSequences: stopSequences,
-      });
+      try {
+        const { text: openaiResponse } = await generateText({
+          model: groq.languageModel(model),
+          prompt: prompt,
+          system: runtime.character.system ?? undefined,
+          temperature: temperature,
+          maxTokens: max_response_length,
+          frequencyPenalty: frequency_penalty,
+          presencePenalty: presence_penalty,
+          stopSequences: stopSequences,
+        });
 
-      return openaiResponse;
+        return openaiResponse;
+      } catch (error: unknown) {
+        const err = error as Error;
+        // Check if this is a rate limit error
+        if (err?.message?.includes('Rate limit reached')) {
+          logger.warn(`Groq rate limit reached for model ${model}`, { error: err.message });
+
+          // Extract retry delay from error message if possible
+          let retryDelay = 10000; // Default to 10 seconds
+          const delayMatch = err.message.match(/try again in (\d+\.?\d*)s/i);
+          if (delayMatch?.[1]) {
+            // Convert to milliseconds and add a small buffer
+            retryDelay = Math.ceil(Number.parseFloat(delayMatch[1]) * 1000) + 1000;
+          }
+
+          logger.info(`Will retry after ${retryDelay}ms delay`);
+
+          // Wait for the suggested delay plus a small buffer
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+
+          // Retry the request
+          logger.info('Retrying request after rate limit delay');
+          const { text: retryResponse } = await generateText({
+            model: groq.languageModel(model),
+            prompt: prompt,
+            system: runtime.character.system ?? undefined,
+            temperature: temperature,
+            maxTokens: max_response_length,
+            frequencyPenalty: frequency_penalty,
+            presencePenalty: presence_penalty,
+            stopSequences: stopSequences,
+          });
+
+          return retryResponse;
+        }
+
+        // For other errors, log and rethrow
+        logger.error('Error generating text with Groq:', error);
+        throw error;
+      }
     },
     [ModelType.TEXT_LARGE]: async (
       runtime,
@@ -398,17 +227,58 @@ export const groqPlugin: Plugin = {
         fetch: runtime.fetch,
         baseURL,
       });
-      const { text: openaiResponse } = await generateText({
-        model: groq.languageModel(model),
-        prompt: prompt,
-        system: runtime.character.system ?? undefined,
-        temperature: temperature,
-        maxTokens: maxTokens,
-        frequencyPenalty: frequencyPenalty,
-        presencePenalty: presencePenalty,
-        stopSequences: stopSequences,
-      });
-      return openaiResponse;
+
+      try {
+        const { text: openaiResponse } = await generateText({
+          model: groq.languageModel(model),
+          prompt: prompt,
+          system: runtime.character.system ?? undefined,
+          temperature: temperature,
+          maxTokens: maxTokens,
+          frequencyPenalty: frequencyPenalty,
+          presencePenalty: presencePenalty,
+          stopSequences: stopSequences,
+        });
+        return openaiResponse;
+      } catch (error: unknown) {
+        const err = error as Error;
+        // Check if this is a rate limit error
+        if (err?.message?.includes('Rate limit reached')) {
+          logger.warn(`Groq rate limit reached for model ${model}`, { error: err.message });
+
+          // Extract retry delay from error message if possible
+          let retryDelay = 10000; // Default to 10 seconds
+          const delayMatch = err.message.match(/try again in (\d+\.?\d*)s/i);
+          if (delayMatch?.[1]) {
+            // Convert to milliseconds and add a small buffer
+            retryDelay = Math.ceil(Number.parseFloat(delayMatch[1]) * 1000) + 1000;
+          }
+
+          logger.info(`Will retry after ${retryDelay}ms delay`);
+
+          // Wait for the suggested delay plus a small buffer
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+
+          // Retry the request
+          logger.info('Retrying request after rate limit delay');
+          const { text: retryResponse } = await generateText({
+            model: groq.languageModel(model),
+            prompt: prompt,
+            system: runtime.character.system ?? undefined,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            stopSequences: stopSequences,
+          });
+
+          return retryResponse;
+        }
+
+        // For other errors, log and rethrow
+        logger.error('Error generating text with Groq:', error);
+        throw error;
+      }
     },
     [ModelType.IMAGE]: async (
       runtime,
@@ -438,106 +308,27 @@ export const groqPlugin: Plugin = {
       const typedData = data as { data: { url: string }[] };
       return typedData.data;
     },
-    // [ModelType.IMAGE_DESCRIPTION]: async (runtime, params: ImageDescriptionParams | string) => {
-    //   // Handle string case (direct URL)
-    //   let imageUrl: string;
-    //   let prompt: string | undefined;
-
-    //   if (typeof params === 'string') {
-    //     imageUrl = params;
-    //     prompt = undefined;
-    //   } else {
-    //     // Object parameter case
-    //     imageUrl = params.imageUrl;
-    //     prompt = params.prompt;
-    //   }
-
-    //   try {
-    //     const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
-
-    //     const apiKey = process.env.GROQ_API_KEY;
-
-    //     if (!apiKey) {
-    //       logger.error('Groq API key not set');
-
-    //     const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
-
-    //     const apiKey = process.env.GROQ_API_KEY;
-
-    //     if (!apiKey) {
-    //       logger.error('Groq API key not set');
-    //       return {
-    //         title: 'Failed to analyze image',
-    //         description: 'API key not configured',
-    //       };
-    //     }
-
-    //     // Call the GPT-4 Vision API
-    //     const response = await fetch(`${baseURL}/chat/completions`, {
-    //       method: 'POST',
-    //       headers: {
-    //         'Content-Type': 'application/json',
-    //         Authorization: `Bearer ${apiKey}`,
-    //       },
-    //       body: JSON.stringify({
-    //         model: 'gpt-4-vision-preview',
-    //         messages: [
-    //           {
-    //             role: 'user',
-    //             content: [
-    //               {
-    //                 type: 'text',
-    //                 text:
-    //                   prompt ||
-    //                   'Please analyze this image and provide a title and detailed description.',
-    //               },
-    //               {
-    //                 type: 'image_url',
-    //                 image_url: { url: imageUrl },
-    //               },
-    //             ],
-    //           },
-    //         ],
-    //         max_tokens: 300,
-    //       }),
-    //     });
-
-    //     if (!response.ok) {
-    //       throw new Error(`OpenAI API error: ${response.status}`);
-    //     }
-
-    //     const result: any = await response.json();
-    //     const content = result.choices?.[0]?.message?.content;
-
-    //     if (!content) {
-    //       return {
-    //         title: 'Failed to analyze image',
-    //         description: 'No response from API',
-    //       };
-    //     }
-
-    //     // Extract title and description
-    //     const titleMatch = content.match(/title[:\s]+(.+?)(?:\n|$)/i);
-    //     const title = titleMatch?.[1] || 'Image Analysis';
-
-    //     // Rest of content is the description
-    //     const description = content.replace(/title[:\s]+(.+?)(?:\n|$)/i, '').trim();
-    //     return { title, description };
-
-    //   }
-    // },
     [ModelType.TRANSCRIPTION]: async (runtime, audioBuffer: Buffer) => {
       logger.log('audioBuffer', audioBuffer);
       const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
 
+      // Create a FormData instance
       const formData = new FormData();
-      formData.append('file', new Blob([audioBuffer], { type: 'audio/mp3' }));
-      formData.append('model', 'whisper-1');
+
+      // Create a proper interface for FormData to avoid type errors
+      interface EnhancedFormData extends FormData {
+        append(name: string, value: string | Blob, fileName?: string): void;
+      }
+
+      // Cast to our enhanced interface
+      const enhancedFormData = formData as EnhancedFormData;
+      enhancedFormData.append('file', new Blob([audioBuffer], { type: 'audio/mp3' }));
+      enhancedFormData.append('model', 'whisper-1');
+
       const response = await fetch(`${baseURL}/audio/transcriptions`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${runtime.getSetting('GROQ_API_KEY')}`,
-          // Note: Do not set a Content-Type header—letting fetch set it for FormData is best
         },
         body: formData,
       });
@@ -562,7 +353,6 @@ export const groqPlugin: Plugin = {
 
       try {
         if (params.schema) {
-          // Skip zod validation and just use the generateObject without schema
           logger.info('Using OBJECT_SMALL without schema validation');
           const { object } = await generateObject({
             model: groq.languageModel(model),
@@ -589,7 +379,6 @@ export const groqPlugin: Plugin = {
       const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
       const groq = createGroq({
         apiKey: runtime.getSetting('GROQ_API_KEY'),
-        //baseURL,
       });
       const model =
         runtime.getSetting('GROQ_LARGE_MODEL') ??
@@ -598,7 +387,6 @@ export const groqPlugin: Plugin = {
 
       try {
         if (params.schema) {
-          // Skip zod validation and just use the generateObject without schema
           logger.info('Using OBJECT_LARGE without schema validation');
           const { object } = await generateObject({
             model: groq.languageModel(model),
@@ -622,170 +410,5 @@ export const groqPlugin: Plugin = {
       }
     },
   },
-  // tests: [
-  //   {
-  //     name: 'openai_plugin_tests',
-  //     tests: [
-  //       {
-  //         name: 'openai_test_url_and_api_key_validation',
-  //         fn: async (runtime) => {
-  //           const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
-  //           const response = await fetch(`${baseURL}/models`, {
-  //             headers: {
-  //               Authorization: `Bearer ${runtime.getSetting('GROQ_API_KEY')}`,
-  //             },
-  //           });
-  //           const data = await response.json();
-  //           logger.log('Models Available:', (data as any)?.data.length);
-  //           if (!response.ok) {
-  //             throw new Error(`Failed to validate OpenAI API key: ${response.statusText}`);
-  //           }
-  //         },
-  //       },
-  //       // {
-  //       //   name: 'groq_test_text_embedding',
-  //       //   fn: async (runtime) => {
-  //       //     try {
-  //       //       const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-  //       //         text: 'Hello, world!',
-  //       //       });
-  //       //       logger.log('embedding', embedding);
-  //       //     } catch (error) {
-  //       //       logger.error('Error in test_text_embedding:', error);
-  //       //       throw error;
-  //       //     }
-  //       //   },
-  //       // },
-  //       {
-  //         name: 'openai_test_text_large',
-  //         fn: async (runtime) => {
-  //           try {
-  //             const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-  //               prompt: 'What is the nature of reality in 10 words?',
-  //             });
-  //             if (text.length === 0) {
-  //               throw new Error('Failed to generate text');
-  //             }
-  //             logger.log('generated with test_text_large:', text);
-  //           } catch (error) {
-  //             logger.error('Error in test_text_large:', error);
-  //             throw error;
-  //           }
-  //         },
-  //       },
-  //       {
-  //         name: 'openai_test_text_small',
-  //         fn: async (runtime) => {
-  //           try {
-  //             const text = await runtime.useModel(ModelType.TEXT_SMALL, {
-  //               prompt: 'What is the nature of reality in 10 words?',
-  //             });
-  //             if (text.length === 0) {
-  //               throw new Error('Failed to generate text');
-  //             }
-  //             logger.log('generated with test_text_small:', text);
-  //           } catch (error) {
-  //             logger.error('Error in test_text_small:', error);
-  //             throw error;
-  //           }
-  //         },
-  //       },
-  //       {
-  //         name: 'openai_test_image_generation',
-  //         fn: async (runtime) => {
-  //           logger.log('openai_test_image_generation');
-  //           try {
-  //             const image = await runtime.useModel(ModelType.IMAGE, {
-  //               prompt: 'A beautiful sunset over a calm ocean',
-  //               n: 1,
-  //               size: '1024x1024',
-  //             });
-  //             logger.log('generated with test_image_generation:', image);
-  //           } catch (error) {
-  //             logger.error('Error in test_image_generation:', error);
-  //             throw error;
-  //           }
-  //         },
-  //       },
-  //       {
-  //         name: 'image-description',
-  //         fn: async (runtime) => {
-  //           try {
-  //             logger.log('openai_test_image_description');
-  //             try {
-  //               const result = await runtime.useModel(
-  //                 ModelType.IMAGE_DESCRIPTION,
-  //                 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/Vitalik_Buterin_TechCrunch_London_2015_%28cropped%29.jpg/537px-Vitalik_Buterin_TechCrunch_London_2015_%28cropped%29.jpg'
-  //               );
-
-  //               // Check if result has the expected structure
-  //               if (
-  //                 result &&
-  //                 typeof result === 'object' &&
-  //                 'title' in result &&
-  //                 'description' in result
-  //               ) {
-  //                 logger.log('Image description:', result);
-  //               } else {
-  //                 logger.error('Invalid image description result format:', result);
-  //               }
-  //             } catch (e) {
-  //               logger.error('Error in image description test:', e);
-  //             }
-  //           } catch (e) {
-  //             logger.error('Error in openai_test_image_description:', e);
-  //           }
-  //         },
-  //       },
-  //       {
-  //         name: 'openai_test_transcription',
-  //         fn: async (runtime) => {
-  //           logger.log('openai_test_transcription');
-  //           try {
-  //             const response = await fetch(
-  //               'https://upload.wikimedia.org/wikipedia/en/4/40/Chris_Benoit_Voice_Message.ogg'
-  //             );
-  //             const arrayBuffer = await response.arrayBuffer();
-  //             const transcription = await runtime.useModel(
-  //               ModelType.TRANSCRIPTION,
-  //               Buffer.from(new Uint8Array(arrayBuffer))
-  //             );
-  //             logger.log('generated with test_transcription:', transcription);
-  //           } catch (error) {
-  //             logger.error('Error in test_transcription:', error);
-  //             throw error;
-  //           }
-  //         },
-  //       },
-  //       {
-  //         name: 'openai_test_text_tokenizer_encode',
-  //         fn: async (runtime) => {
-  //           const prompt = 'Hello tokenizer encode!';
-  //           const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, { prompt });
-  //           if (!Array.isArray(tokens) || tokens.length === 0) {
-  //             throw new Error('Failed to tokenize text: expected non-empty array of tokens');
-  //           }
-  //           logger.log('Tokenized output:', tokens);
-  //         },
-  //       },
-  //       {
-  //         name: 'openai_test_text_tokenizer_decode',
-  //         fn: async (runtime) => {
-  //           const prompt = 'Hello tokenizer decode!';
-  //           // Encode the string into tokens first
-  //           const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, { prompt });
-  //           // Now decode tokens back into text
-  //           const decodedText = await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, { tokens });
-  //           if (decodedText !== prompt) {
-  //             throw new Error(
-  //               `Decoded text does not match original. Expected "${prompt}", got "${decodedText}"`
-  //             );
-  //           }
-  //           logger.log('Decoded text:', decodedText);
-  //         },
-  //       },
-  //     ],
-  //   },
-  // ],
 };
 export default groqPlugin;
