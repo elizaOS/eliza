@@ -567,18 +567,16 @@ export class MessageManager {
       // Emit both generic and platform-specific message sent events
       this.runtime.emitEvent(EventType.MESSAGE_SENT, {
         runtime: this.runtime,
-        message: {
-          content,
-        },
+        message: content,
         roomId,
         source: 'telegram',
       });
 
       // Also emit platform-specific event
-      this.runtime.emitEvent(TelegramEventTypes.MESSAGE_SENT, {
-        originalMessages: sentMessages,
-        chatId,
-      } as TelegramMessageSentPayload);
+      // this.runtime.emitEvent(TelegramEventTypes.MESSAGE_SENT, {
+      //   originalMessages: sentMessages,
+      //   chatId,
+      // } as TelegramMessageSentPayload);
 
       return sentMessages;
     } catch (error) {
