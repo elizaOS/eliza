@@ -1,64 +1,10 @@
-import type {
-  ModelTypeName,
-  ObjectGenerationParams,
-  Plugin,
-  TextEmbeddingParams,
-} from '@elizaos/core';
-import {
-  type DetokenizeTextParams,
-  type GenerateTextParams,
-  ModelType,
-  type TokenizeTextParams,
-  logger,
-} from '@elizaos/core';
+import type { ObjectGenerationParams, Plugin, TextEmbeddingParams } from '@elizaos/core';
+import { type GenerateTextParams, ModelType, logger } from '@elizaos/core';
 import { generateObject, generateText } from 'ai';
-import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import { createOllama } from 'ollama-ai-provider';
 
 // Default Ollama API URL
 const OLLAMA_API_URL = 'http://localhost:11434/api';
-
-function findModelName(model: ModelTypeName): TiktokenModel {
-  try {
-    const name =
-      model === ModelType.TEXT_SMALL
-        ? (process.env.OLLAMA_SMALL_MODEL ?? 'llama3')
-        : (process.env.OLLAMA_LARGE_MODEL ?? 'llama3');
-    return name as TiktokenModel;
-  } catch (error) {
-    logger.error('Error in findModelName:', error);
-    return 'llama3' as TiktokenModel;
-  }
-}
-
-async function tokenizeText(model: ModelTypeName, prompt: string) {
-  try {
-    const encoding = encodingForModel(findModelName(model));
-    const tokens = encoding.encode(prompt);
-    return tokens;
-  } catch (error) {
-    logger.error('Error in tokenizeText:', error);
-    return [];
-  }
-}
-
-/**
- * Detokenize a sequence of tokens back into text using the specified model.
- *
- * @param {ModelTypeName} model - The type of model to use for detokenization.
- * @param {number[]} tokens - The sequence of tokens to detokenize.
- * @returns {string} The detokenized text.
- */
-async function detokenizeText(model: ModelTypeName, tokens: number[]) {
-  try {
-    const modelName = findModelName(model);
-    const encoding = encodingForModel(modelName);
-    return encoding.decode(tokens);
-  } catch (error) {
-    logger.error('Error in detokenizeText:', error);
-    return '';
-  }
-}
 
 /**
  * Generate text using Ollama API
@@ -178,30 +124,6 @@ export const ollamaPlugin: Plugin = {
         return Array(1536).fill(0);
       }
     },
-    [ModelType.TEXT_TOKENIZER_ENCODE]: async (
-      _runtime,
-      { prompt, modelType = ModelType.TEXT_LARGE }: TokenizeTextParams
-    ) => {
-      try {
-        return await tokenizeText(modelType ?? ModelType.TEXT_LARGE, prompt);
-      } catch (error) {
-        logger.error('Error in TEXT_TOKENIZER_ENCODE model:', error);
-        // Return empty array instead of crashing
-        return [];
-      }
-    },
-    [ModelType.TEXT_TOKENIZER_DECODE]: async (
-      _runtime,
-      { tokens, modelType = ModelType.TEXT_LARGE }: DetokenizeTextParams
-    ) => {
-      try {
-        return await detokenizeText(modelType ?? ModelType.TEXT_LARGE, tokens);
-      } catch (error) {
-        logger.error('Error in TEXT_TOKENIZER_DECODE model:', error);
-        // Return empty string instead of crashing
-        return '';
-      }
-    },
     [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
       try {
         const temperature = 0.7;
@@ -246,7 +168,9 @@ export const ollamaPlugin: Plugin = {
     ) => {
       try {
         const model =
-          runtime.getSetting('OLLAMA_LARGE_MODEL') ?? runtime.getSetting('LARGE_MODEL') ?? 'llama3';
+          runtime.getSetting('OLLAMA_LARGE_MODEL') ??
+          runtime.getSetting('LARGE_MODEL') ??
+          'gemma3:latest';
         const ollama = createOllama({
           fetch: runtime.fetch,
           baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
@@ -273,7 +197,9 @@ export const ollamaPlugin: Plugin = {
           baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
         });
         const model =
-          runtime.getSetting('OLLAMA_SMALL_MODEL') ?? runtime.getSetting('SMALL_MODEL') ?? 'llama3';
+          runtime.getSetting('OLLAMA_SMALL_MODEL') ??
+          runtime.getSetting('SMALL_MODEL') ??
+          'gemma3:latest';
 
         if (params.schema) {
           logger.info('Using OBJECT_SMALL without schema validation');
@@ -293,7 +219,9 @@ export const ollamaPlugin: Plugin = {
           baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
         });
         const model =
-          runtime.getSetting('OLLAMA_LARGE_MODEL') ?? runtime.getSetting('LARGE_MODEL') ?? 'llama3';
+          runtime.getSetting('OLLAMA_LARGE_MODEL') ??
+          runtime.getSetting('LARGE_MODEL') ??
+          'gemma3:latest';
 
         if (params.schema) {
           logger.info('Using OBJECT_LARGE without schema validation');
@@ -372,45 +300,6 @@ export const ollamaPlugin: Plugin = {
               logger.log('generated with test_text_small:', text);
             } catch (error) {
               logger.error('Error in test_text_small:', error);
-            }
-          },
-        },
-        {
-          name: 'ollama_test_text_tokenizer_encode',
-          fn: async (runtime) => {
-            try {
-              const prompt = 'Hello tokenizer encode!';
-              const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, { prompt });
-              if (!Array.isArray(tokens) || tokens.length === 0) {
-                logger.error('Failed to tokenize text: expected non-empty array of tokens');
-                return;
-              }
-              logger.log('Tokenized output:', tokens);
-            } catch (error) {
-              logger.error('Error in test_text_tokenizer_encode:', error);
-            }
-          },
-        },
-        {
-          name: 'ollama_test_text_tokenizer_decode',
-          fn: async (runtime) => {
-            try {
-              const prompt = 'Hello tokenizer decode!';
-              // Encode the string into tokens first
-              const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, { prompt });
-              // Now decode tokens back into text
-              const decodedText = await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
-                tokens,
-              });
-              if (decodedText !== prompt) {
-                logger.error(
-                  `Decoded text does not match original. Expected "${prompt}", got "${decodedText}"`
-                );
-                return;
-              }
-              logger.log('Decoded text:', decodedText);
-            } catch (error) {
-              logger.error('Error in test_text_tokenizer_decode:', error);
             }
           },
         },

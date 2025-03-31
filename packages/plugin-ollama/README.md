@@ -1,13 +1,13 @@
-# OpenAI Plugin
+# Ollama Plugin
 
-This plugin provides integration with OpenAI's models through the ElizaOS platform.
+This plugin provides integration with Ollama's local models through the ElizaOS platform.
 
 ## Usage
 
 Add the plugin to your character configuration:
 
 ```json
-"plugins": ["@elizaos/plugin-openai"]
+"plugins": ["@elizaos/plugin-ollama"]
 ```
 
 ## Configuration
@@ -16,70 +16,88 @@ The plugin requires these environment variables (can be set in .env file or char
 
 ```json
 "settings": {
-  "OPENAI_API_KEY": "your_openai_api_key",
-  "OPENAI_BASE_URL": "optional_custom_endpoint",
-  "OPENAI_SMALL_MODEL": "gpt-4o-mini",
-  "OPENAI_LARGE_MODEL": "gpt-4o"
+  "OLLAMA_API_ENDPOINT": "http://localhost:11434/api",
+  "OLLAMA_SMALL_MODEL": "llama3",
+  "OLLAMA_MEDIUM_MODEL": "your_medium_model",
+  "OLLAMA_LARGE_MODEL": "gemma3:latest",
+  "OLLAMA_EMBEDDING_MODEL": "nomic-embed-text"
 }
 ```
 
 Or in `.env` file:
 
 ```
-OPENAI_API_KEY=your_openai_api_key
-# Optional overrides:
-OPENAI_BASE_URL=optional_custom_endpoint
-OPENAI_SMALL_MODEL=gpt-4o-mini
-OPENAI_LARGE_MODEL=gpt-4o
+OLLAMA_API_ENDPOINT=http://localhost:11434/api
+OLLAMA_SMALL_MODEL=llama3
+OLLAMA_MEDIUM_MODEL=your_medium_model
+OLLAMA_LARGE_MODEL=gemma3:latest
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 ```
 
 ### Configuration Options
 
-- `OPENAI_API_KEY` (required): Your OpenAI API credentials
-- `OPENAI_BASE_URL`: Custom API endpoint (default: https://api.openai.com/v1)
-- `OPENAI_SMALL_MODEL`: Defaults to GPT-4o Mini ("gpt-4o-mini")
-- `OPENAI_LARGE_MODEL`: Defaults to GPT-4o ("gpt-4o")
+- `OLLAMA_API_ENDPOINT`: Ollama API endpoint (default: http://localhost:11434/api)
+- `OLLAMA_SMALL_MODEL`: Model for simpler tasks (default: llama3)
+- `OLLAMA_MEDIUM_MODEL`: Medium-complexity model
+- `OLLAMA_LARGE_MODEL`: Model for complex tasks (default: gemma3:latest)
+- `OLLAMA_EMBEDDING_MODEL`: Model for text embeddings (default: nomic-embed-text)
 
 The plugin provides these model classes:
 
-- `TEXT_SMALL`: Optimized for fast, cost-effective responses
+- `TEXT_SMALL`: Optimized for fast responses with simpler prompts
 - `TEXT_LARGE`: For complex tasks requiring deeper reasoning
-- `TEXT_EMBEDDING`: Text embedding model (text-embedding-3-small)
-- `IMAGE`: DALL-E image generation
-- `IMAGE_DESCRIPTION`: GPT-4o image analysis
-- `TRANSCRIPTION`: Whisper audio transcription
-- `TEXT_TOKENIZER_ENCODE`: Text tokenization
-- `TEXT_TOKENIZER_DECODE`: Token decoding
+- `TEXT_EMBEDDING`: Text embedding model
+- `OBJECT_SMALL`: JSON object generation with simpler models
+- `OBJECT_LARGE`: JSON object generation with more complex models
 
 ## Additional Features
 
-### Image Generation
+### Text Generation (Small Model)
 
 ```js
-await runtime.useModel(ModelType.IMAGE, {
-  prompt: 'A sunset over mountains',
-  n: 1, // number of images
-  size: '1024x1024', // image resolution
+const text = await runtime.useModel(ModelType.TEXT_SMALL, {
+  prompt: 'What is the nature of reality?',
+  stopSequences: [], // optional
 });
 ```
 
-### Audio Transcription
+### Text Generation (Large Model)
 
 ```js
-const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
-```
-
-### Image Analysis
-
-```js
-const { title, description } = await runtime.useModel(
-  ModelType.IMAGE_DESCRIPTION,
-  'https://example.com/image.jpg'
-);
+const text = await runtime.useModel(ModelType.TEXT_LARGE, {
+  prompt: 'Write a detailed explanation of quantum physics',
+  stopSequences: [], // optional
+  maxTokens: 8192, // optional (default: 8192)
+  temperature: 0.7, // optional (default: 0.7)
+  frequencyPenalty: 0.7, // optional (default: 0.7)
+  presencePenalty: 0.7, // optional (default: 0.7)
+});
 ```
 
 ### Text Embeddings
 
 ```js
-const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, 'text to embed');
+const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+  text: 'Text to embed',
+});
+// or
+const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, 'Text to embed');
+```
+
+### Object Generation (Small Model)
+
+```js
+const object = await runtime.useModel(ModelType.OBJECT_SMALL, {
+  prompt: 'Generate a JSON object representing a user profile',
+  temperature: 0.7, // optional
+});
+```
+
+### Object Generation (Large Model)
+
+```js
+const object = await runtime.useModel(ModelType.OBJECT_LARGE, {
+  prompt: 'Generate a detailed JSON object representing a restaurant',
+  temperature: 0.7, // optional
+});
 ```
