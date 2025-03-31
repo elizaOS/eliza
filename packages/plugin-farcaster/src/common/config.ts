@@ -33,9 +33,9 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
 
   try {
     const farcasterConfig = {
-      FARCASTER_DRY_RUN: parseBooleanFromText(
-        runtime.getSetting('FARCASTER_DRY_RUN') || process.env.FARCASTER_DRY_RUN || 'false'
-      ),
+      FARCASTER_DRY_RUN:
+        runtime.getSetting('FARCASTER_DRY_RUN') ||
+        parseBooleanFromText(process.env.FARCASTER_DRY_RUN || 'false'),
 
       FARCASTER_FID: Number.isNaN(fid) ? undefined : fid,
 
@@ -49,9 +49,9 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
         DEFAULT_POLL_INTERVAL
       ),
 
-      ENABLE_POST: parseBooleanFromText(
-        runtime.getSetting('ENABLE_POST') || process.env.ENABLE_POST || 'true'
-      ),
+      ENABLE_POST:
+        runtime.getSetting('ENABLE_POST') ||
+        parseBooleanFromText(process.env.ENABLE_POST || 'true'),
 
       POST_INTERVAL_MIN: safeParseInt(
         runtime.getSetting('POST_INTERVAL_MIN') || process.env.POST_INTERVAL_MIN,
@@ -63,20 +63,18 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
         DEFAULT_POST_INTERVAL_MAX
       ),
 
-      ENABLE_ACTION_PROCESSING: parseBooleanFromText(
+      ENABLE_ACTION_PROCESSING:
         runtime.getSetting('ENABLE_ACTION_PROCESSING') ||
-          process.env.ENABLE_ACTION_PROCESSING ||
-          'false'
-      ),
+        parseBooleanFromText(process.env.ENABLE_ACTION_PROCESSING || 'false'),
 
       ACTION_INTERVAL: safeParseInt(
         runtime.getSetting('ACTION_INTERVAL') || process.env.ACTION_INTERVAL,
         5
       ), // 5 minutes
 
-      POST_IMMEDIATELY: parseBooleanFromText(
-        runtime.getSetting('POST_IMMEDIATELY') || process.env.POST_IMMEDIATELY || 'false'
-      ),
+      POST_IMMEDIATELY:
+        runtime.getSetting('POST_IMMEDIATELY') ||
+        parseBooleanFromText(process.env.POST_IMMEDIATELY || 'false'),
 
       MAX_ACTIONS_PROCESSING: safeParseInt(
         runtime.getSetting('MAX_ACTIONS_PROCESSING') || process.env.MAX_ACTIONS_PROCESSING,
