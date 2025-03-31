@@ -391,7 +391,7 @@ const postGeneratedHandler = async ({
   roomId,
   source,
 }: InvokePayload) => {
-  logger.info('Generating new tweet...');
+  logger.info('Generating new post...');
   // Ensure world exists first
   await runtime.ensureWorldExists({
     id: worldId,
