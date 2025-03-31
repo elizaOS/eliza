@@ -22,7 +22,6 @@ import {
 import { validateConfig } from './environment';
 import { MODEL_SPECS, type ModelSpec } from './types';
 import { DownloadManager } from './utils/downloadManager';
-import { OllamaManager } from './utils/ollamaManager';
 import { getPlatformManager } from './utils/platform';
 import { StudioLMManager } from './utils/studiolmManager';
 import { TokenizerManager } from './utils/tokenizerManager';
@@ -138,7 +137,6 @@ class LocalAIManager {
   private transcribeManager: TranscribeManager;
   private ttsManager: TTSManager;
   private studioLMManager: StudioLMManager;
-  private ollamaManager: OllamaManager;
 
   // Initialization state flags
   private ollamaInitialized = false;

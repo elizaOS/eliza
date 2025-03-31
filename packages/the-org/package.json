@@ -38,6 +38,7 @@
     "@elizaos/core": "^1.0.0-beta.7",
     "@elizaos/plugin-anthropic": "^1.0.0-beta.7",
     "@elizaos/plugin-discord": "^1.0.0-beta.7",
+    "@elizaos/plugin-local-ai": "workspace:*",
     "@elizaos/plugin-openai": "^1.0.0-beta.7",
     "@elizaos/plugin-sql": "^1.0.0-beta.7",
     "@elizaos/plugin-tee": "^1.0.0-beta.7",
