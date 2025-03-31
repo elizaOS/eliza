@@ -57,7 +57,7 @@ interface EvaluatorTracker {
 /**
  * Represents a Scenario Service that allows the agent to interact in a scenario testing environment.
  * This service can create rooms, send messages, and communicate with other agents in a live interactive testing environment.
- */  
+ */
 export class ScenarioService extends Service {
   static serviceType = 'scenario';
   capabilityDescription =

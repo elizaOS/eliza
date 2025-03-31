@@ -21,6 +21,7 @@ import { test } from './commands/test';
 import { update } from './commands/update';
 import { loadEnvironment } from './utils/get-config';
 import { displayBanner } from './displayBanner';
+import { setupMonorepo } from './commands/install';
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
@@ -74,6 +75,7 @@ async function main() {
   program
     .addCommand(create)
     .addCommand(project)
+    .addCommand(setupMonorepo)
     .addCommand(plugin)
     .addCommand(agent)
     .addCommand(tee)

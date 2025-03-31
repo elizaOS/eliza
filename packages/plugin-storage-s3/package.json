@@ -51,7 +51,7 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "test": "vitest run", 
+    "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
   "peerDependencies": {
