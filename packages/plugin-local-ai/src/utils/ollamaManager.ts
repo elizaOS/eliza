@@ -47,15 +47,15 @@ export class OllamaManager {
   private initialized = false;
   private availableModels: OllamaModel[] = [];
   private configuredModels = {
-    small: process.env.SMALL_OLLAMA_MODEL || 'deepseek-r1:1.5b',
-    medium: process.env.MEDIUM_OLLAMA_MODEL || 'deepseek-r1:7b',
+    small: process.env.OLLAMA_SMALL_MODEL || 'deepseek-r1:1.5b',
+    medium: process.env.OLLAMA_MEDIUM_MODEL || 'deepseek-r1:7b',
   };
 
   /**
    * Private constructor for initializing OllamaManager.
    */
   private constructor() {
-    this.serverUrl = process.env.OLLAMA_SERVER_URL || 'http://localhost:11434';
+    this.serverUrl = process.env.OLLAMA_API_ENDPOINT || 'http://localhost:11434';
     logger.info('OllamaManager initialized with configuration:', {
       serverUrl: this.serverUrl,
       configuredModels: this.configuredModels,
