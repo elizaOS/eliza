@@ -261,7 +261,16 @@ export class MessageManager {
       // Convert IDs to UUIDs
       const entityId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
       const userName = ctx.from.username || ctx.from.first_name || 'Unknown User';
-      const roomId = createUniqueUuid(this.runtime, ctx.chat?.id.toString());
+
+      const threadId =
+        'is_topic_message' in message && message.is_topic_message
+          ? message.message_thread_id?.toString()
+          : undefined;
+
+      const roomId = createUniqueUuid(
+        this.runtime,
+        threadId ? `${ctx.chat.id}:${threadId}` : ctx.chat.id.toString()
+      );
 
       // Get message ID
       const messageId = createUniqueUuid(this.runtime, message?.message_id?.toString());
