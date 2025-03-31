@@ -18,9 +18,6 @@
     "url": "https://github.com/elizaOS/eliza.git",
     "directory": "packages/cli"
   },
-  "engines": {
-    "node": ">=16.0.0 <23.0.0"
-  },
   "files": [
     "dist",
     "templates",
