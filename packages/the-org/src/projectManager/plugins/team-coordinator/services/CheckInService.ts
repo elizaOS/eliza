@@ -22,10 +22,12 @@ interface ReportChannelConfig {
   createdAt: string;
 }
 
-interface CheckInSchedule {
+export interface CheckInSchedule {
   type: 'team-member-checkin-schedule';
   scheduleId: string;
-  teamMemberId: string;
+  teamMemberId: string | undefined | null;
+  teamMemberName: string | undefined | null;
+  teamMemberUserName?: string;
   checkInType: string;
   channelId: string;
   frequency: 'WEEKDAYS' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
@@ -51,6 +53,14 @@ interface ExtendedInteraction {
     server_info?: string[]; // Added for server info
   };
   guildId?: string; // Added for server ID
+}
+
+interface DiscordService {
+  client: {
+    users: {
+      fetch: (userId: string) => Promise<User>;
+    };
+  };
 }
 
 export class CheckInService extends Service {
@@ -137,12 +147,64 @@ export class CheckInService extends Service {
     logger.info('CheckIn Service initialized and listening for events');
   }
 
+  public async ensureDiscordClient(runtime: IAgentRuntime): Promise<DiscordService> {
+    logger.info('Ensuring Discord client is available');
+
+    try {
+      const discordService = runtime.getService('discord');
+      logger.info(`Discord service found: ${!!discordService}`);
+
+      if (!discordService) {
+        logger.error('Discord service not found in runtime');
+        throw new Error('Discord service not found');
+      }
+
+      // Log what's in the service to see its structure
+      logger.info(`Discord service structure: ${JSON.stringify(Object.keys(discordService))}`);
+
+      // Check if client exists and is ready
+      logger.info(`Discord client exists: ${!!discordService?.client}`);
+      if (!discordService?.client) {
+        logger.error('Discord client not initialized in service');
+        throw new Error('Discord client not initialized');
+      }
+
+      logger.info('Discord client successfully validated');
+      return discordService as DiscordService;
+    } catch (error) {
+      logger.error(`Error ensuring Discord client: ${error.message}`);
+      logger.error(`Error stack: ${error.stack}`);
+      throw error;
+    }
+  }
+
   private async handleCheckInSubmission(interaction: ExtendedInteraction) {
     try {
       logger.info('=== HANDLING CHECKIN SUBMISSION ===');
 
       const selections = interaction.selections;
-      const userId = interaction.user?.id || interaction.member?.user?.id;
+      const userId = interaction.user || interaction.member?.user?.id;
+      let userDetails: any;
+
+      // TODO : get discord service cool or in start
+      const discordService = (await this.ensureDiscordClient(this.runtime)) as DiscordService;
+
+      // Fetch user details
+      try {
+        userDetails = await discordService.client.users.fetch(userId);
+        logger.info('Fetched user details:', {
+          id: userDetails.id,
+          username: userDetails.username,
+          displayName: userDetails.displayName,
+          bot: userDetails.bot,
+          createdAt: userDetails.createdAt,
+        });
+      } catch (userError) {
+        logger.error('Error fetching user details:', userError);
+        logger.error('User ID that caused error:', userId);
+      }
+
+      logger.info('Full interaction details:', JSON.stringify(interaction, null, 2));
 
       logger.info('Processing submission from user:', userId);
       logger.info('Form selections:', selections);
@@ -162,7 +224,9 @@ export class CheckInService extends Service {
       const schedule: CheckInSchedule = {
         type: 'team-member-checkin-schedule',
         scheduleId: createUniqueUuid(this.runtime, `schedule-${Date.now()}`),
-        teamMemberId: userId || 'anonymous',
+        teamMemberId: userId?.toString(),
+        teamMemberName: userDetails?.displayName?.toString(),
+        teamMemberUserName: userDetails?.username?.toString(),
         checkInType: selections.checkin_type?.[0] || 'STANDUP',
         channelId: selections.checkin_channel?.[0] || '',
         frequency: (selections.checkin_frequency?.[0] || 'WEEKLY') as CheckInSchedule['frequency'],
