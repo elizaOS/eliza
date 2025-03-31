@@ -40,10 +40,9 @@ const character: Character = {
   ],
   settings: {
     secrets: {
-      DISCORD_APPLICATION_ID: '1351476624830369792',
-      DISCORD_API_TOKEN: 'MTM1MTQ3NjYyNDgzMDM2OTc5Mg.GMSARm.Pi0yBjvm24X8Gt_eqqmqYP4WISOlGxh0JlT14Q',
-      OPENAI_API_KEY:
-        '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',
+      DISCORD_APPLICATION_ID: process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
+      DISCORD_API_TOKEN: process.env.PROJECT_MANAGER_DISCORD_API_TOKEN,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     },
     avatar,
   },
