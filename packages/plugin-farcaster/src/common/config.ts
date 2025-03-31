@@ -15,9 +15,11 @@ function safeParseInt(value: string | undefined | null, defaultValue: number): n
 }
 
 export function hasFarcasterEnabled(runtime: IAgentRuntime): boolean {
-  const fid = runtime.getSetting('FARCASTER_FID');
-  const neynarSignerUuid = runtime.getSetting('FARCASTER_NEYNAR_SIGNER_UUID');
-  const neynarApiKey = runtime.getSetting('FARCASTER_NEYNAR_API_KEY');
+  const fid = runtime.getSetting('FARCASTER_FID') || process.env.FARCASTER_FID;
+  const neynarSignerUuid =
+    runtime.getSetting('FARCASTER_NEYNAR_SIGNER_UUID') || process.env.FARCASTER_NEYNAR_SIGNER_UUID;
+  const neynarApiKey =
+    runtime.getSetting('FARCASTER_NEYNAR_API_KEY') || process.env.FARCASTER_NEYNAR_API_KEY;
 
   return fid && neynarSignerUuid && neynarApiKey;
 }
@@ -31,45 +33,70 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
 
   try {
     const farcasterConfig = {
-      FARCASTER_DRY_RUN: parseBooleanFromText(runtime.getSetting('FARCASTER_DRY_RUN') || 'false'),
+      FARCASTER_DRY_RUN: parseBooleanFromText(
+        runtime.getSetting('FARCASTER_DRY_RUN') || process.env.FARCASTER_DRY_RUN || 'false'
+      ),
 
       FARCASTER_FID: Number.isNaN(fid) ? undefined : fid,
 
-      MAX_CAST_LENGTH: safeParseInt(runtime.getSetting('MAX_CAST_LENGTH'), DEFAULT_MAX_CAST_LENGTH),
+      MAX_CAST_LENGTH: safeParseInt(
+        runtime.getSetting('MAX_CAST_LENGTH') || process.env.MAX_CAST_LENGTH,
+        DEFAULT_MAX_CAST_LENGTH
+      ),
 
       FARCASTER_POLL_INTERVAL: safeParseInt(
-        runtime.getSetting('FARCASTER_POLL_INTERVAL'),
+        runtime.getSetting('FARCASTER_POLL_INTERVAL') || process.env.FARCASTER_POLL_INTERVAL,
         DEFAULT_POLL_INTERVAL
       ),
 
-      ENABLE_POST: parseBooleanFromText(runtime.getSetting('ENABLE_POST') || 'true'),
+      ENABLE_POST: parseBooleanFromText(
+        runtime.getSetting('ENABLE_POST') || process.env.ENABLE_POST || 'true'
+      ),
 
       POST_INTERVAL_MIN: safeParseInt(
-        runtime.getSetting('POST_INTERVAL_MIN'),
+        runtime.getSetting('POST_INTERVAL_MIN') || process.env.POST_INTERVAL_MIN,
         DEFAULT_POST_INTERVAL_MIN
       ),
 
       POST_INTERVAL_MAX: safeParseInt(
-        runtime.getSetting('POST_INTERVAL_MAX'),
+        runtime.getSetting('POST_INTERVAL_MAX') || process.env.POST_INTERVAL_MAX,
         DEFAULT_POST_INTERVAL_MAX
       ),
 
       ENABLE_ACTION_PROCESSING: parseBooleanFromText(
-        runtime.getSetting('ENABLE_ACTION_PROCESSING') || 'false'
+        runtime.getSetting('ENABLE_ACTION_PROCESSING') ||
+          process.env.ENABLE_ACTION_PROCESSING ||
+          'false'
       ),
 
-      ACTION_INTERVAL: safeParseInt(runtime.getSetting('ACTION_INTERVAL'), 5), // 5 minutes
+      ACTION_INTERVAL: safeParseInt(
+        runtime.getSetting('ACTION_INTERVAL') || process.env.ACTION_INTERVAL,
+        5
+      ), // 5 minutes
 
-      POST_IMMEDIATELY: parseBooleanFromText(runtime.getSetting('POST_IMMEDIATELY') || 'false'),
+      POST_IMMEDIATELY: parseBooleanFromText(
+        runtime.getSetting('POST_IMMEDIATELY') || process.env.POST_IMMEDIATELY || 'false'
+      ),
 
-      MAX_ACTIONS_PROCESSING: safeParseInt(runtime.getSetting('MAX_ACTIONS_PROCESSING'), 1),
+      MAX_ACTIONS_PROCESSING: safeParseInt(
+        runtime.getSetting('MAX_ACTIONS_PROCESSING') || process.env.MAX_ACTIONS_PROCESSING,
+        1
+      ),
 
-      FARCASTER_NEYNAR_SIGNER_UUID: runtime.getSetting('FARCASTER_NEYNAR_SIGNER_UUID'),
+      FARCASTER_NEYNAR_SIGNER_UUID:
+        runtime.getSetting('FARCASTER_NEYNAR_SIGNER_UUID') ||
+        process.env.FARCASTER_NEYNAR_SIGNER_UUID,
 
-      FARCASTER_NEYNAR_API_KEY: runtime.getSetting('FARCASTER_NEYNAR_API_KEY'),
+      FARCASTER_NEYNAR_API_KEY:
+        runtime.getSetting('FARCASTER_NEYNAR_API_KEY') || process.env.FARCASTER_NEYNAR_API_KEY,
 
-      FARCASTER_HUB_URL: runtime.getSetting('FARCASTER_HUB_URL') ?? 'hub.pinata.cloud',
+      FARCASTER_HUB_URL:
+        runtime.getSetting('FARCASTER_HUB_URL') ||
+        process.env.FARCASTER_HUB_URL ||
+        'hub.pinata.cloud',
     };
+
+    console.log('farcasterConfig', JSON.stringify(farcasterConfig, null, 2));
 
     const config = FarcasterConfigSchema.parse(farcasterConfig);
 
