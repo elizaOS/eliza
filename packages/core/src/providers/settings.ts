@@ -79,6 +79,7 @@ function generateStatusMessage(
       - Only update settings if the user is clearly responding to a setting you are currently asking about.
       - If the user's reply clearly maps to a setting and a valid value, you **must** call the UPDATE_SETTINGS action with the correct key and value. Do not just respond with a message saying it's updated — it must be an action.
       - Never hallucinate settings or respond with values not listed above.
+      - Do not call UPDATE_SETTINGS just because the user has started onboarding or you think a setting needs to be configured. Only update when the user clearly provides a specific value for a setting you are currently asking about.
       - Answer setting-related questions using only the name, description, and value from the list.`;
 
       if (requiredUnconfigured > 0) {
