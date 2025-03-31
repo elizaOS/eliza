@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import { logger } from '@elizaos/core';
 
 // Skip in CI environments or when running automated tests without interaction
 const isCI = process.env.CI === 'true' || process.env.NODE_ENV === 'test';
@@ -51,7 +52,7 @@ describe('Project Scaffolding', () => {
 
     // Skip directory content validation if dist doesn't exist yet
     if (!fs.existsSync(distDir)) {
-      console.warn('Dist directory does not exist yet. Build the project first.');
+      logger.warn('Dist directory does not exist yet. Build the project first.');
       return;
     }
 
@@ -126,7 +127,7 @@ describe('Project Scaffolding', () => {
       expect(fs.existsSync(path.join(TEST_DIR, 'tests.ts'))).toBe(true);
       expect(fs.existsSync(path.join(TEST_DIR, 'package.json'))).toBe(true);
     } catch (error) {
-      console.error('Error in scaffolding test:', error);
+      logger.error('Error in scaffolding test:', error);
       throw error;
     }
   });

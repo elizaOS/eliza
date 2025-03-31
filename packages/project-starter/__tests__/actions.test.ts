@@ -1,9 +1,16 @@
 import { describe, expect, it, vi, beforeAll, afterAll } from 'vitest';
 import plugin from '../src/plugin';
-import { composeActionExamples, formatActionNames, formatActions, logger } from '@elizaos/core';
+import { logger } from '@elizaos/core';
 import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
+import {
+  runCoreActionTests,
+  documentTestResult,
+  createMockRuntime,
+  createMockMessage,
+  createMockState,
+} from './utils/core-test-utils';
 
 // Setup environment variables
 dotenv.config();
@@ -19,60 +26,23 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-// Helper function to document test results
-function documentTestResult(testName: string, result: any, error: Error | null = null) {
-  logger.info(`TEST: ${testName}`);
-  if (result) {
-    if (typeof result === 'string') {
-      logger.info(`RESULT: ${result.substring(0, 100)}${result.length > 100 ? '...' : ''}`);
-    } else {
-      try {
-        logger.info(`RESULT: ${JSON.stringify(result).substring(0, 100)}...`);
-      } catch (e) {
-        logger.info(`RESULT: [Complex object that couldn't be stringified]`);
-      }
-    }
-  }
-  if (error) {
-    logger.error(`ERROR: ${error.message}`);
-    if (error.stack) {
-      logger.error(`STACK: ${error.stack}`);
-    }
-  }
-}
-
-// Create a more complete runtime for all tests
-function createRealRuntime(): IAgentRuntime {
-  return {
-    character: {
-      name: 'Test Character',
-      system: 'You are a helpful assistant for testing.',
-    },
-    getSetting: (key: string) => null,
-    // Include real model functionality
-    models: plugin.models,
-    // Add real database functionality
-    db: {
-      get: async () => null,
-      set: async () => true,
-      delete: async () => true,
-      getKeys: async () => [],
-    },
-    // Add real memory functionality
-    memory: {
-      add: async () => {},
-      get: async () => null,
-      getByEntityId: async () => [],
-      getLatest: async () => null,
-      getRecentMessages: async () => [],
-      search: async () => [],
-    },
-  } as unknown as IAgentRuntime;
-}
-
 describe('Actions', () => {
   // Find the HELLO_WORLD action from the plugin
   const helloWorldAction = plugin.actions?.find((action) => action.name === 'HELLO_WORLD');
+
+  // Run core tests on all plugin actions
+  it('should pass core action tests', () => {
+    if (plugin.actions) {
+      const coreTestResults = runCoreActionTests(plugin.actions);
+      expect(coreTestResults).toBeDefined();
+      expect(coreTestResults.formattedNames).toBeDefined();
+      expect(coreTestResults.formattedActions).toBeDefined();
+      expect(coreTestResults.composedExamples).toBeDefined();
+
+      // Document the core test results
+      documentTestResult('Core Action Tests', coreTestResults);
+    }
+  });
 
   describe('HELLO_WORLD Action', () => {
     it('should exist in the plugin', () => {
@@ -125,20 +95,9 @@ describe('Actions', () => {
 
     it('should return true from validate function', async () => {
       if (helloWorldAction) {
-        const runtime = createRealRuntime();
-        const mockMessage = {
-          entityId: uuidv4(),
-          roomId: uuidv4(),
-          content: {
-            text: 'Hello!',
-            source: 'test',
-          },
-        } as Memory;
-        const mockState = {
-          values: {},
-          data: {},
-          text: '',
-        } as State;
+        const runtime = createMockRuntime();
+        const mockMessage = createMockMessage('Hello!');
+        const mockState = createMockState();
 
         let result = false;
         let error: Error | null = null;
@@ -148,7 +107,7 @@ describe('Actions', () => {
           expect(result).toBe(true);
         } catch (e) {
           error = e as Error;
-          console.error('Validate function error:', e);
+          logger.error('Validate function error:', e);
         }
 
         documentTestResult('HELLO_WORLD action validate', result, error);
@@ -157,20 +116,9 @@ describe('Actions', () => {
 
     it('should call back with hello world response from handler', async () => {
       if (helloWorldAction) {
-        const runtime = createRealRuntime();
-        const mockMessage = {
-          entityId: uuidv4(),
-          roomId: uuidv4(),
-          content: {
-            text: 'Hello!',
-            source: 'test',
-          },
-        } as Memory;
-        const mockState = {
-          values: {},
-          data: {},
-          text: '',
-        } as State;
+        const runtime = createMockRuntime();
+        const mockMessage = createMockMessage('Hello!');
+        const mockState = createMockState();
 
         let callbackResponse: any = {};
         let error: Error | null = null;
@@ -197,70 +145,10 @@ describe('Actions', () => {
           expect(callbackResponse).toHaveProperty('source', 'test');
         } catch (e) {
           error = e as Error;
-          console.error('Handler function error:', e);
+          logger.error('Handler function error:', e);
         }
 
         documentTestResult('HELLO_WORLD action handler', callbackResponse, error);
-      }
-    });
-  });
-
-  describe('Action Utils', () => {
-    // Using the core action utils with the plugin's actions
-    it('should format action names correctly', () => {
-      if (plugin.actions) {
-        let result = '';
-        let error: Error | null = null;
-
-        try {
-          result = formatActionNames(plugin.actions);
-          expect(typeof result).toBe('string');
-          expect(result).toContain('HELLO_WORLD');
-        } catch (e) {
-          error = e as Error;
-          console.error('Format action names error:', e);
-        }
-
-        documentTestResult('Format action names', result, error);
-      }
-    });
-
-    it('should format actions with descriptions', () => {
-      if (plugin.actions) {
-        let result = '';
-        let error: Error | null = null;
-
-        try {
-          result = formatActions(plugin.actions);
-          expect(typeof result).toBe('string');
-          expect(result).toContain('HELLO_WORLD');
-          expect(result).toContain('Responds with a simple hello world message');
-        } catch (e) {
-          error = e as Error;
-          console.error('Format actions error:', e);
-        }
-
-        documentTestResult('Format actions with descriptions', result, error);
-      }
-    });
-
-    it('should compose action examples', () => {
-      if (plugin.actions) {
-        let result = '';
-        let error: Error | null = null;
-
-        try {
-          result = composeActionExamples(plugin.actions, 1);
-          expect(typeof result).toBe('string');
-          expect(result.length).toBeGreaterThan(0);
-          expect(result).not.toContain('{{name1}}');
-          expect(result).not.toContain('{{name2}}');
-        } catch (e) {
-          error = e as Error;
-          console.error('Compose action examples error:', e);
-        }
-
-        documentTestResult('Compose action examples', result, error);
       }
     });
   });

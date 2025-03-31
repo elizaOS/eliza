@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import { logger } from '@elizaos/core';
 
 // Helper function to check if a file exists
 function fileExists(filePath: string): boolean {
@@ -102,7 +103,7 @@ describe('Project Structure Validation', () => {
         expect(hasJsFiles).toBe(true);
       } else {
         // Skip test if dist directory doesn't exist yet
-        console.warn('Dist directory not found, skipping build output tests');
+        logger.warn('Dist directory not found, skipping build output tests');
       }
     });
 

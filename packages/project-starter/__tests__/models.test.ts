@@ -3,6 +3,7 @@ import plugin from '../src/plugin';
 import { ModelType, logger } from '@elizaos/core';
 import type { IAgentRuntime } from '@elizaos/core';
 import dotenv from 'dotenv';
+import { documentTestResult, createMockRuntime } from './utils/core-test-utils';
 
 // Define a simplified version of the GenerateTextParams for testing
 interface TestGenerateParams {
@@ -28,19 +29,78 @@ afterAll(() => {
   vi.restoreAllMocks();
 });
 
-// Helper function to document test results
-function documentTestResult(testName: string, result: string | null, error: Error | null = null) {
-  logger.info(`TEST: ${testName}`);
-  if (result) {
-    logger.info(`RESULT: ${result.substring(0, 100)}${result.length > 100 ? '...' : ''}`);
+/**
+ * Tests a model function with core testing patterns
+ * @param modelType The type of model to test
+ * @param modelFn The model function to test
+ */
+const runCoreModelTests = async (
+  modelType: keyof typeof ModelType,
+  modelFn: (runtime: IAgentRuntime, params: TestGenerateParams) => Promise<string>
+) => {
+  // Create a mock runtime for model testing
+  const mockRuntime = createMockRuntime();
+
+  // Test with basic parameters
+  const basicParams: TestGenerateParams = {
+    prompt: `Test prompt for ${modelType}`,
+    stopSequences: ['STOP'],
+    maxTokens: 100,
+  };
+
+  let basicResponse: string | null = null;
+  let basicError: Error | null = null;
+
+  try {
+    basicResponse = await modelFn(mockRuntime, basicParams);
+    expect(basicResponse).toBeTruthy();
+    expect(typeof basicResponse).toBe('string');
+  } catch (e) {
+    basicError = e as Error;
+    logger.error(`${modelType} model call failed:`, e);
   }
-  if (error) {
-    logger.error(`ERROR: ${error.message}`);
-    if (error.stack) {
-      logger.error(`STACK: ${error.stack}`);
-    }
+
+  // Test with empty prompt
+  const emptyParams: TestGenerateParams = {
+    prompt: '',
+  };
+
+  let emptyResponse: string | null = null;
+  let emptyError: Error | null = null;
+
+  try {
+    emptyResponse = await modelFn(mockRuntime, emptyParams);
+  } catch (e) {
+    emptyError = e as Error;
+    logger.error(`${modelType} empty prompt test failed:`, e);
   }
-}
+
+  // Test with all parameters
+  const fullParams: TestGenerateParams = {
+    prompt: `Comprehensive test prompt for ${modelType}`,
+    stopSequences: ['STOP1', 'STOP2'],
+    maxTokens: 200,
+    temperature: 0.8,
+    frequencyPenalty: 0.6,
+    presencePenalty: 0.4,
+  };
+
+  let fullResponse: string | null = null;
+  let fullError: Error | null = null;
+
+  try {
+    fullResponse = await modelFn(mockRuntime, fullParams);
+  } catch (e) {
+    fullError = e as Error;
+    logger.error(`${modelType} all parameters test failed:`, e);
+  }
+
+  return {
+    basic: { response: basicResponse, error: basicError },
+    empty: { response: emptyResponse, error: emptyError },
+    full: { response: fullResponse, error: fullError },
+  };
+};
 
 describe('Plugin Models', () => {
   it('should have models defined', () => {
@@ -58,72 +118,14 @@ describe('Plugin Models', () => {
       }
     });
 
-    it('should return a real response for TEXT_SMALL model', async () => {
+    it('should run core tests for TEXT_SMALL model', async () => {
       if (plugin.models && plugin.models[ModelType.TEXT_SMALL]) {
-        // Create a more realistic runtime with character info
-        const mockRuntime = {
-          character: {
-            name: 'Test Character',
-            system: 'You are a helpful assistant for testing.',
-          },
-          getSetting: (key: string) => null,
-        } as unknown as IAgentRuntime;
+        const results = await runCoreModelTests(
+          ModelType.TEXT_SMALL,
+          plugin.models[ModelType.TEXT_SMALL]
+        );
 
-        const params: TestGenerateParams = {
-          prompt: 'Hello, how are you?',
-          stopSequences: ['stop'],
-          temperature: 0.7,
-          maxTokens: 100,
-        };
-
-        let response: string | null = null;
-        let error: Error | null = null;
-
-        try {
-          response = await plugin.models[ModelType.TEXT_SMALL](mockRuntime, params);
-          // We don't assert exact response content since it will vary with real models
-          expect(response).toBeTruthy();
-          expect(typeof response).toBe('string');
-        } catch (e) {
-          error = e as Error;
-          // Don't fail the test if the model call fails due to external reasons
-          console.error('TEXT_SMALL model call failed:', e);
-        }
-
-        // Document the test result
-        documentTestResult('TEXT_SMALL real model response', response, error);
-      }
-    });
-
-    it('should handle empty prompt for TEXT_SMALL model', async () => {
-      if (plugin.models && plugin.models[ModelType.TEXT_SMALL]) {
-        const mockRuntime = {
-          character: {
-            name: 'Test Character',
-            system: 'You are a helpful assistant for testing.',
-          },
-          getSetting: (key: string) => null,
-        } as unknown as IAgentRuntime;
-
-        const params: TestGenerateParams = {
-          prompt: '',
-          stopSequences: [],
-        };
-
-        let response: string | null = null;
-        let error: Error | null = null;
-
-        try {
-          response = await plugin.models[ModelType.TEXT_SMALL](mockRuntime, params);
-          expect(response).toBeTruthy();
-          expect(typeof response).toBe('string');
-        } catch (e) {
-          error = e as Error;
-          console.error('TEXT_SMALL empty prompt test failed:', e);
-        }
-
-        // Document the test result
-        documentTestResult('TEXT_SMALL empty prompt', response, error);
+        documentTestResult('TEXT_SMALL core model tests', results);
       }
     });
   });
@@ -136,108 +138,14 @@ describe('Plugin Models', () => {
       }
     });
 
-    it('should return a real response for TEXT_LARGE model', async () => {
+    it('should run core tests for TEXT_LARGE model', async () => {
       if (plugin.models && plugin.models[ModelType.TEXT_LARGE]) {
-        const mockRuntime = {
-          character: {
-            name: 'Test Character',
-            system: 'You are a helpful assistant for testing.',
-          },
-          getSetting: (key: string) => null,
-        } as unknown as IAgentRuntime;
+        const results = await runCoreModelTests(
+          ModelType.TEXT_LARGE,
+          plugin.models[ModelType.TEXT_LARGE]
+        );
 
-        const params: TestGenerateParams = {
-          prompt: 'Tell me a story about AI development',
-          stopSequences: [],
-          maxTokens: 100,
-          temperature: 0.7,
-          frequencyPenalty: 0.7,
-          presencePenalty: 0.7,
-        };
-
-        let response: string | null = null;
-        let error: Error | null = null;
-
-        try {
-          response = await plugin.models[ModelType.TEXT_LARGE](mockRuntime, params);
-          expect(response).toBeTruthy();
-          expect(typeof response).toBe('string');
-        } catch (e) {
-          error = e as Error;
-          console.error('TEXT_LARGE model call failed:', e);
-        }
-
-        // Document the test result
-        documentTestResult('TEXT_LARGE real model response', response, error);
-      }
-    });
-
-    it('should handle empty prompt for TEXT_LARGE model', async () => {
-      if (plugin.models && plugin.models[ModelType.TEXT_LARGE]) {
-        const mockRuntime = {
-          character: {
-            name: 'Test Character',
-            system: 'You are a helpful assistant for testing.',
-          },
-          getSetting: (key: string) => null,
-        } as unknown as IAgentRuntime;
-
-        const params: TestGenerateParams = {
-          prompt: '',
-        };
-
-        let response: string | null = null;
-        let error: Error | null = null;
-
-        try {
-          response = await plugin.models[ModelType.TEXT_LARGE](mockRuntime, params);
-          expect(response).toBeTruthy();
-          expect(typeof response).toBe('string');
-        } catch (e) {
-          error = e as Error;
-          console.error('TEXT_LARGE empty prompt test failed:', e);
-        }
-
-        // Document the test result
-        documentTestResult('TEXT_LARGE empty prompt', response, error);
-      }
-    });
-  });
-
-  describe('Model Parameter Handling', () => {
-    it('should handle all model parameters for TEXT_LARGE model', async () => {
-      if (plugin.models && plugin.models[ModelType.TEXT_LARGE]) {
-        const mockRuntime = {
-          character: {
-            name: 'Test Character',
-            system: 'You are a helpful assistant for testing.',
-          },
-          getSetting: (key: string) => null,
-        } as unknown as IAgentRuntime;
-
-        // Test with all possible parameters
-        const params: TestGenerateParams = {
-          prompt: 'Test prompt with all parameters',
-          stopSequences: ['stop1', 'stop2'],
-          maxTokens: 200,
-          temperature: 0.9,
-          frequencyPenalty: 0.5,
-          presencePenalty: 0.3,
-        };
-
-        let response: string | null = null;
-        let error: Error | null = null;
-
-        try {
-          response = await plugin.models[ModelType.TEXT_LARGE](mockRuntime, params);
-          expect(response).toBeTruthy();
-        } catch (e) {
-          error = e as Error;
-          console.error('TEXT_LARGE all parameters test failed:', e);
-        }
-
-        // Document the test result
-        documentTestResult('TEXT_LARGE with all parameters', response, error);
+        documentTestResult('TEXT_LARGE core model tests', results);
       }
     });
   });
