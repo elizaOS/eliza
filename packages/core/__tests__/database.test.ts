@@ -25,17 +25,17 @@ import type {
  */
 /**
  * Mock Database Adapter class that extends DatabaseAdapter.
- * 
+ *
  * @class
- * 
+ *
  * @method init
  * @returns {Promise<void>} Promise that resolves with void
  * @description Initializes the database adapter
- * 
+ *
  * @method close
  * @returns {Promise<void>} Promise that resolves with void
  * @description Closes the database adapter
- * 
+ *
  * @method getEntitiesForRoom
  * @param {UUID} roomId - The UUID of the room
  * @param {boolean} [includeComponents] - Optional parameter to include components

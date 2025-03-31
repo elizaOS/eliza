@@ -1,11 +1,16 @@
 import path from 'path';
 import os from 'os';
 
+// Create a unique test directory in the system temp folder
 export const cliCommand = 'elizaos'; // Assumes elizaos is in PATH
-export const testDir = path.join(os.tmpdir(), 'elizaos-test-' + Date.now());
+export const testDir = path.join(
+  os.tmpdir(),
+  'elizaos-test-' + Date.now() + Math.floor(Math.random() * 1000)
+);
 export const agentName = 'test-agent';
 export const agent1Name = 'test-agent1';
 export const agent2Name = 'test-agent2';
+
 export const commands = ['create', 'start', 'agent', 'plugin', 'env'];
 export const invalidName = '!invalid@name';
 export const characters = [

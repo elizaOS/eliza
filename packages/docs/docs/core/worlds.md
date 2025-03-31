@@ -6,9 +6,11 @@ sidebar_position: 7
 
 Worlds in ElizaOS are collections of entities (users, agents) and rooms (conversations, channels) that form a cohesive environment for interactions. Think of a world as a virtual space, like a Discord server, Slack workspace, or 3D MMO environment, where entities can communicate across multiple channels or areas.
 
-| Worlds                                    | Rooms within Worlds                     |
-| ----------------------------------------- | --------------------------------------- |
-| ![](/img/elizaos-worlds-cosmic-clean.svg) | ![](/img/elizaos-worlds-simplified.svg) |
+![](/img/elizaos-worlds-cosmic-clean.svg)
+
+Within each world you can have rooms, which are akin to individual threads or channels in a server.
+
+![](/img/elizaos-worlds-simplified.svg)
 
 ## World Structure
 
