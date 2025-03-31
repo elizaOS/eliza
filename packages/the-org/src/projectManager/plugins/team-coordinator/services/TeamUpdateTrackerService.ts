@@ -1,6 +1,14 @@
-import { IAgentRuntime, logger, EventType, Service, createUniqueUuid } from '@elizaos/core';
+import {
+  IAgentRuntime,
+  logger,
+  EventType,
+  Service,
+  createUniqueUuid,
+  ModelType,
+} from '@elizaos/core';
 import type { Channel, Client, GuildChannel, TextChannel, VoiceChannel } from 'discord.js';
 import { fetchCheckInSchedules } from '../actions/listCheckInSchedules';
+import { CheckInSchedule } from './CheckInService';
 
 export class TeamUpdateTrackerService extends Service {
   private client: Client | null = null;
@@ -41,6 +49,17 @@ export class TeamUpdateTrackerService extends Service {
         if (discordService?.client) {
           logger.info('Discord service now available, connecting client');
           this.client = discordService.client;
+
+          try {
+            const text = await this.runtime.useModel(ModelType.TEXT_LARGE, {
+              prompt: 'Discord service connected successfully', // Added default prompt
+              stopSequences: [],
+            });
+            logger.info('Discord service connection test:', text);
+          } catch (error) {
+            logger.error('Error testing Discord service connection:', error);
+          }
+
           clearInterval(intervalId);
         } else {
           logger.debug('Discord service still not available, will retry');
@@ -134,6 +153,8 @@ export class TeamUpdateTrackerService extends Service {
    */
   public async messageAllUsers(
     users: Array<{ id: string; username: string; displayName: string; channelName: string }>,
+    schedule: CheckInSchedule,
+    serverName?: string,
     message?: string
   ): Promise<string[]> {
     logger.info(`Attempting to message ${users.length} users`);
@@ -154,6 +175,8 @@ export class TeamUpdateTrackerService extends Service {
           await discordUser.send(
             `Hi ${user.displayName}! Please share your latest updates for the ${user.channelName} channel.\n\n` +
               `Please use the following format for your update:\n` +
+              `**Server-name**: ${serverName}\n\n` +
+              `**Check-in Type**: ${schedule.checkInType}\n\n` +
               `**Current Progress**: What you've accomplished recently\n` +
               `**Working On**: What you're currently focused on\n` +
               `**Next Steps**: What you plan to work on next\n` +
@@ -303,23 +326,50 @@ export class TeamUpdateTrackerService extends Service {
                   `Processing check-in schedule: ${schedule.scheduleId} for channel: ${schedule.channelId}`
                 );
 
+                // Get Discord service to fetch server info
+                const discordService = this.runtime.getService('discord') as IDiscordService | null;
+
+                // Find the server containing this channel
+                let serverName;
+
+                if (discordService?.client) {
+                  logger.info('Discord service or client not available');
+
+                  for (const [, guild] of discordService.client.guilds.cache) {
+                    const channels = await guild.channels.fetch();
+                    const channel = channels.find((ch) => {
+                      return (
+                        ch && typeof ch === 'object' && 'id' in ch && ch.id === schedule.channelId
+                      );
+                    });
+
+                    if (channel) {
+                      serverName = guild.name;
+                      logger.info(`Found channel in server: ${serverName}`);
+                      break;
+                    }
+                  }
+                }
+
                 // Fetch all users in the specified channel
                 const channelUsers = await this.fetchUsersInChannel(schedule.channelId);
-                logger.info(`Found ${channelUsers.length} users in channel ${schedule.channelId}`);
+                logger.info(
+                  `Found ${channelUsers.length} users in channel ${schedule.channelId} (${serverName})`
+                );
 
                 if (channelUsers.length === 0) {
                   logger.warn(
-                    `No users found in channel ${schedule.channelId} for schedule ${schedule.scheduleId}`
+                    `No users found in channel ${schedule.channelId} (${serverName}) for schedule ${schedule.scheduleId}`
                   );
                   continue;
                 }
 
                 logger.info(
-                  `Users in channel ${schedule.channelId}:`,
+                  `Users in channel ${schedule.channelId} (${serverName}):`,
                   JSON.stringify(channelUsers, null, 2)
                 );
 
-                await this.messageAllUsers(channelUsers);
+                await this.messageAllUsers(channelUsers, schedule, serverName);
 
                 // Update the last updated date for the schedule
                 try {
