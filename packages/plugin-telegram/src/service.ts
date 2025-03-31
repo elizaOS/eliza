@@ -261,7 +261,7 @@ export class TelegramService extends Service {
 
     const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
     const userId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
-    
+
     let admins = [];
     let owner = null;
     if (chat.type === 'group' || chat.type === 'supergroup' || chat.type === 'channel') {
@@ -289,7 +289,7 @@ export class TelegramService extends Service {
         },
       },
     };
-    
+
     const entities = await this.buildStandardizedEntities(chat);
 
     const room = {
@@ -391,134 +391,6 @@ export class TelegramService extends Service {
     }
 
     return entities;
-  }
-
-  /**
-   * Builds standardized room representations from Telegram chat data
-   * @param chat - The Telegram chat object
-   * @param worldId - The UUID of the world these rooms belong to
-   * @returns Array of standardized Room objects
-   */
-  private async buildStandardizedRooms(chat: any, worldId: UUID): Promise<Room[]> {
-    const rooms: Room[] = [];
-    const chatId = chat.id.toString();
-    const roomId = createUniqueUuid(this.runtime, chatId) as UUID;
-
-    try {
-      // Handle room creation based on chat type
-      if (chat.type === 'supergroup' || chat.type === 'channel') {
-        // Add the main room for the supergroup/channel
-        rooms.push(this.createGeneralRoom(chat, roomId, chatId, worldId));
-
-        // Add forum topic rooms if they exist
-        const topicRooms = await this.getForumTopicRooms(chat, chatId, worldId);
-        rooms.push(...topicRooms);
-      } else {
-        // Handle direct message or other chat types
-        rooms.push(this.createDirectMessageRoom(chat, roomId, chatId, worldId));
-      }
-    } catch (error) {
-      logger.error(
-        `Error building standardized rooms: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-
-    return rooms;
-  }
-
-  /**
-   * Creates a general room for a supergroup or channel
-   */
-  private createGeneralRoom(chat: any, roomId: UUID, chatId: string, worldId: UUID): Room {
-    return {
-      id: roomId,
-      name: `${chat.title} (General)`,
-      source: 'telegram',
-      type: ChannelType.GROUP,
-      channelId: chatId,
-      serverId: chatId,
-      worldId: worldId,
-      metadata: {
-        isGeneral: true,
-      },
-    };
-  }
-
-  /**
-   * Creates a direct message room
-   */
-  private createDirectMessageRoom(chat: any, roomId: UUID, chatId: string, worldId: UUID): Room {
-    return {
-      id: roomId,
-      name: chat.title || `Chat with ${chat.first_name || 'Unknown'}`,
-      source: 'telegram',
-      type: ChannelType.DM,
-      channelId: chatId,
-      serverId: chatId,
-      worldId: worldId,
-    };
-  }
-
-  /**
-   * Gets rooms for forum topics if they exist
-   */
-  private async getForumTopicRooms(chat: any, chatId: string, worldId: UUID): Promise<Room[]> {
-    const topicRooms: Room[] = [];
-
-    try {
-      // Cast to any since we're checking for methods that might not be in the type definition
-      const telegramApi = this.bot.telegram as any;
-      // Check if forum topic functions are available
-      if (!this.hasForumTopicSupport(telegramApi)) {
-        return topicRooms;
-      }
-
-      const forumTopics = await telegramApi.getForumTopics(parseInt(chatId));
-
-      if (!forumTopics?.topics || !Array.isArray(forumTopics.topics)) {
-        return topicRooms;
-      }
-
-      // Create a room for each forum topic
-      for (const topic of forumTopics.topics) {
-        if (!topic.message_thread_id) continue;
-
-        const topicId = topic.message_thread_id.toString();
-        const topicRoomId = createUniqueUuid(this.runtime, topicId) as UUID;
-
-        topicRooms.push({
-          id: topicRoomId,
-          name: topic.title || `Topic ${topicId}`,
-          source: 'telegram',
-          type: ChannelType.GROUP,
-          channelId: topicId,
-          serverId: chatId,
-          worldId: worldId,
-          metadata: {
-            ...topic,
-            topicId,
-            parentChatId: chatId,
-            isTopic: true,
-          },
-        });
-      }
-    } catch (error) {
-      logger.warn(
-        `Could not retrieve forum topics: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-
-    return topicRooms;
-  }
-
-  /**
-   * Checks if the Telegram API supports forum topics
-   */
-  private hasForumTopicSupport(telegramApi: any): boolean {
-    return (
-      typeof telegramApi.getForumTopicInfo === 'function' &&
-      typeof telegramApi.getForumTopics === 'function'
-    );
   }
 
   /**
