@@ -4,10 +4,10 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
+  ModelType,
   type UUID,
   logger,
 } from '@elizaos/core';
-import { fetchCheckInSchedules } from './listCheckInSchedules';
 
 interface TeamMemberUpdate {
   type: 'team-member-update';
@@ -22,92 +22,121 @@ interface TeamMemberUpdate {
   channelId?: UUID;
 }
 
-async function generateTeamReport(runtime: IAgentRuntime): Promise<string> {
+async function generateTeamReport(
+  runtime: IAgentRuntime,
+  standupType: string,
+  roomId: string
+): Promise<string> {
   try {
     logger.info('=== GENERATE TEAM REPORT START ===');
+    logger.info(`Generating report for standup type: ${standupType} in room: ${roomId}`);
 
-    // Fetch all check-in schedules
-    const schedules = await fetchCheckInSchedules(runtime);
-    logger.info(`Retrieved ${schedules.length} check-in schedules`);
+    // Get all messages from the room that match the standup type
+    const memories = await runtime.getMemories({
+      roomId,
+      tableName: 'messages',
+    });
 
-    // Get updates for each team member with a schedule
-    const reportData = await Promise.all(
-      schedules.map(async (schedule) => {
-        const memories = await runtime.getMemories({
-          entityId: schedule.teamMemberId as UUID,
-          tableName: 'messages',
+    logger.info(`Retrieved ${memories.length} total messages from room`);
+
+    // Filter for team member updates with matching standup type
+    const updates = memories
+      .filter((memory) => {
+        const content = memory.content as {
+          type?: string;
+          standupType?: string;
+          update?: TeamMemberUpdate;
+        };
+        const contentType = content?.type;
+        const contentStandupType = content?.standupType?.toLowerCase();
+        const requestedType = standupType.toLowerCase();
+
+        // More flexible matching for standup types
+        // const isDaily =
+        //   requestedType === 'standup' &&
+        //   (contentStandupType?.includes('daily') || contentStandupType?.includes('standup'));
+        const isStandupUpdate = contentType === 'team-member-update';
+
+        logger.info('Filtering update:', {
+          contentType,
+          contentStandupType,
+          requestedType,
+          // isDaily,
+          isStandupUpdate,
         });
 
-        const updates = memories
-          .filter(
-            (memory) =>
-              memory.content?.type === 'team-member-update' &&
-              (memory.content as { update: TeamMemberUpdate })?.update?.teamMemberId ===
-                schedule.teamMemberId
-          )
-          .map((memory) => (memory.content as { update: TeamMemberUpdate })?.update)
-          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-        logger.info(`Found ${updates.length} updates for team member ${schedule.teamMemberId}`);
-        return { schedule, updates };
+        return isStandupUpdate && contentStandupType === requestedType;
       })
-    );
+      .map((memory) => (memory.content as { update: TeamMemberUpdate })?.update)
+      .filter((update): update is TeamMemberUpdate => !!update)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    logger.info(`Found ${updates.length} updates matching standup type: ${standupType}`);
 
     // Generate the report
-    let report = '📊 **Team Progress Report**\n\n';
+    let report = `📊 **Team Progress Report - ${standupType} Standups**\n\n`;
 
-    for (const { schedule, updates } of reportData) {
-      report += `👤 **Team Member ID: ${schedule.teamMemberId}**\n`;
-      report += `📅 Check-in Schedule: ${schedule.frequency} at ${schedule.checkInTime}\n\n`;
+    if (updates.length === 0) {
+      report += `No updates found for "${standupType}" standups in this room.\n`;
+      return report;
+    }
 
-      if (updates.length === 0) {
-        report += '❗ No updates submitted\n';
-      } else {
-        // Prepare updates data for AI summarization
-        const updatesForAI = updates.map((update) => ({
-          timestamp: new Date(update.timestamp).toLocaleString(),
-          currentProgress: update.currentProgress,
-          workingOn: update.workingOn,
-          blockers: update.blockers,
-          nextSteps: update.nextSteps,
-          eta: update.eta,
-        }));
+    // Group updates by team member
+    const updatesByMember: Record<string, TeamMemberUpdate[]> = {};
+    for (const update of updates) {
+      if (!updatesByMember[update.teamMemberId]) {
+        updatesByMember[update.teamMemberId] = [];
+      }
+      updatesByMember[update.teamMemberId].push(update);
+    }
 
-        logger.info('Preparing AI prompt for updates summarization');
+    // Generate report for each team member
+    for (const [memberId, memberUpdates] of Object.entries(updatesByMember)) {
+      report += `👤 **Team Member ID: ${memberId}**\n\n`;
 
-        // Create AI prompt for summarization
-        const prompt = `Please analyze these team member updates and provide a concise summary highlighting:
-        1. Key progress points and achievements
-        2. Main ongoing work items
-        3. Common blockers or challenges
-        4. Overall timeline and next steps
-        
-        Updates data: ${JSON.stringify(updatesForAI, null, 2)}`;
+      // Create prompt for analysis
+      const prompt = `Analyze these team member updates and provide a detailed productivity report highlighting:
+      1. Overall Progress: What major tasks/milestones were completed?
+      2. Current Focus: What are they actively working on?
+      3. Productivity Analysis: Are they meeting deadlines? Any patterns in their work?
+      4. Blockers Impact: How are blockers affecting their progress?
+      5. Timeline Adherence: Are ETAs realistic and being met?
+      6. Recommendations: What could improve their productivity?
 
-        try {
-          // Call AI service for summarization
-          const aiService = runtime.getService('ai');
-          logger.info('Calling AI service for updates summarization');
+      Updates data: ${JSON.stringify(memberUpdates, null, 2)}`;
 
-          // First check if the service exists and has the required method
-          if (!aiService || typeof (aiService as any).generateText !== 'function') {
-            throw new Error('AI service not properly configured');
-          }
+      logger.info('Generating productivity analysis for team member:', memberId);
 
-          const summary = await (aiService as any).generateText(prompt);
-          report += `AI Summary:\n${summary}\n\n`;
-        } catch (aiError) {
-          logger.error('Error generating AI summary:', aiError);
-          // Fallback to regular updates if AI fails
-          report += 'All Updates:\n\n';
-          for (const update of updates) {
-            report += `Update from ${new Date(update.timestamp).toLocaleString()}:\n`;
-            report += `▫️ Current Progress: ${update.currentProgress}\n`;
-            report += `▫️ Working On: ${update.workingOn}\n`;
-            report += `▫️ Blockers: ${update.blockers}\n`;
-            report += `▫️ Next Steps: ${update.nextSteps}\n`;
-            report += `▫️ ETA: ${update.eta}\n\n`;
-          }
+      try {
+        const analysis = await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt,
+          stopSequences: [],
+        });
+
+        report += `📋 **Productivity Analysis**:\n${analysis}\n\n`;
+        report += `📅 **Recent Updates**:\n`;
+
+        // Add last 3 updates for reference
+        const recentUpdates = memberUpdates.slice(0, 3);
+        for (const update of recentUpdates) {
+          report += `\n🕒 ${new Date(update.timestamp).toLocaleString()}\n`;
+          report += `▫️ Progress: ${update.currentProgress}\n`;
+          report += `▫️ Working On: ${update.workingOn}\n`;
+          report += `▫️ Blockers: ${update.blockers}\n`;
+          report += `▫️ Next Steps: ${update.nextSteps}\n`;
+          report += `▫️ ETA: ${update.eta}\n`;
+        }
+      } catch (error) {
+        logger.error('Error generating analysis:', error);
+        report += '❌ Error generating analysis. Showing raw updates:\n\n';
+
+        for (const update of memberUpdates) {
+          report += `Update from ${new Date(update.timestamp).toLocaleString()}:\n`;
+          report += `▫️ Current Progress: ${update.currentProgress}\n`;
+          report += `▫️ Working On: ${update.workingOn}\n`;
+          report += `▫️ Blockers: ${update.blockers}\n`;
+          report += `▫️ Next Steps: ${update.nextSteps}\n`;
+          report += `▫️ ETA: ${update.eta}\n\n`;
         }
       }
       report += '\n-------------------\n\n';
@@ -128,12 +157,7 @@ export const generateReport: Action = {
   similes: ['createReport', 'teamReport', 'getTeamReport', 'showTeamReport'],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info('Validating generateReport action');
-
-    // Check if user is an admin or owner
-    const isAdmin = message.content?.role === 'admin' || message.content?.role === 'owner';
-    logger.info(`User validation - isAdmin: ${isAdmin}`);
-
-    return isAdmin;
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -149,8 +173,8 @@ export const generateReport: Action = {
         logger.warn('No callback function provided');
         return false;
       }
-
-      const report = await generateTeamReport(runtime);
+      // Generate the report
+      const report = await generateTeamReport(runtime, 'STANDUP', message.roomId);
 
       const content: Content = {
         text: report,
@@ -160,6 +184,78 @@ export const generateReport: Action = {
       await callback(content, []);
       logger.info('=== GENERATE REPORT HANDLER END ===');
       return true;
+      // Extract standup type from message text
+      const text = message.content?.text as string;
+      if (!text) {
+        logger.warn('No text content found in message');
+        return false;
+      }
+
+      // Use AI to parse the input text and extract standup type
+      try {
+        const prompt = `Extract the standup type from this text. Consider variations like "daily updates" or "daily check-in" as STANDUP type. Valid types are: STANDUP (daily), SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO. Text: "${text}"`;
+
+        const parsedType = await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt,
+          stopSequences: [],
+        });
+
+        logger.info('AI parsed standup type:', parsedType);
+
+        if (!state.standupType && !parsedType) {
+          logger.info('Asking for standup type');
+          const template = `Please select a check-in type:
+          - Daily Standup (STANDUP)
+          - Sprint Check-in (SPRINT) 
+          - Mental Health Check-in (MENTAL_HEALTH)
+          - Project Status Update (PROJECT_STATUS)
+          - Team Retrospective (RETRO)`;
+
+          const promptContent: Content = {
+            text: template,
+            source: 'discord',
+          };
+          await callback(promptContent, []);
+          return true;
+        }
+
+        const standupType = ((state.standupType as string) || parsedType)?.toLowerCase()?.trim();
+
+        logger.info('Generating report with parameters:', {
+          standupType,
+          roomId: message.roomId,
+        });
+
+        // Validate standup type with more flexible matching
+        const validTypes = ['standup', 'sprint', 'mental_health', 'project_status', 'retro'];
+        const isValidType = validTypes.some(
+          (type) =>
+            standupType === type ||
+            (type === 'standup' &&
+              (standupType.includes('daily') || standupType.includes('update')))
+        );
+
+        if (!isValidType) {
+          await callback(
+            {
+              text: 'Invalid check-in type. Please select one of: Daily Standup, Sprint Check-in, Mental Health Check-in, Project Status Update, or Team Retrospective',
+              source: 'discord',
+            },
+            []
+          );
+          return false;
+        }
+      } catch (aiError) {
+        logger.error('Error using AI to parse input:', aiError);
+        await callback(
+          {
+            text: "I couldn't understand the check-in type. Please try again with a valid type.",
+            source: 'discord',
+          },
+          []
+        );
+        return false;
+      }
     } catch (error) {
       logger.error('=== GENERATE REPORT HANDLER ERROR ===');
       logger.error('Error details:', {
@@ -168,7 +264,13 @@ export const generateReport: Action = {
         stack: error.stack,
       });
 
-      // Don't call callback again if there's an error
+      if (callback) {
+        const errorContent: Content = {
+          text: '❌ An error occurred while generating the report. Please try again.',
+          source: 'discord',
+        };
+        await callback(errorContent, []);
+      }
       return false;
     }
   },
@@ -176,12 +278,12 @@ export const generateReport: Action = {
     [
       {
         name: 'owner',
-        content: { text: 'Generate team report' },
+        content: { text: 'Generate daily standup report' },
       },
       {
         name: 'jimmy',
         content: {
-          text: "I'll generate a comprehensive team report for you",
+          text: "I'll generate a daily standup report for you",
           actions: ['generateReport'],
         },
       },
@@ -189,12 +291,12 @@ export const generateReport: Action = {
     [
       {
         name: 'owner',
-        content: { text: 'Show me the team progress report' },
+        content: { text: 'Show me the sprint check-in report' },
       },
       {
         name: 'jimmy',
         content: {
-          text: "I'll create a team progress report",
+          text: "I'll create a sprint check-in report",
           actions: ['generateReport'],
         },
       },

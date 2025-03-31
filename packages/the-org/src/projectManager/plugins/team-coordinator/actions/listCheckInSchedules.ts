@@ -8,17 +8,7 @@ import {
   createUniqueUuid,
   logger,
 } from '@elizaos/core';
-
-interface CheckInSchedule {
-  type: 'team-member-checkin-schedule';
-  scheduleId: string;
-  teamMemberId: string;
-  checkInType: string;
-  channelId: string;
-  frequency: 'WEEKDAYS' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
-  checkInTime: string;
-  createdAt: string;
-}
+import type { CheckInSchedule } from '../services/CheckInService';
 
 export async function fetchCheckInSchedules(runtime: IAgentRuntime): Promise<CheckInSchedule[]> {
   try {
@@ -96,6 +86,7 @@ export async function fetchCheckInSchedules(runtime: IAgentRuntime): Promise<Che
 function formatSchedule(schedule: CheckInSchedule): string {
   logger.info('Formatting schedule:', {
     scheduleId: schedule.scheduleId,
+    teamMemberName: schedule.teamMemberUserName || schedule.teamMemberName,
     checkInType: schedule.checkInType,
     frequency: schedule.frequency,
     checkInTime: schedule.checkInTime,
@@ -103,7 +94,7 @@ function formatSchedule(schedule: CheckInSchedule): string {
 
   const formatted = `
 📅 Schedule ID: ${schedule.scheduleId}
-👤 Team Member ID: ${schedule.teamMemberId}
+👤 Team Member: ${schedule.teamMemberUserName || schedule.teamMemberName || schedule.teamMemberId || 'Unknown'}
 📝 Type: ${schedule.checkInType}
 📺 Channel ID: ${schedule.channelId}
 ⏰ Time: ${schedule.checkInTime}
