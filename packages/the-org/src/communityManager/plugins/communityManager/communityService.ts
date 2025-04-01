@@ -197,6 +197,17 @@ export class CommunityManagerService extends Service {
       logger.warn(`World not found for worldId: ${worldId}`);
       return;
     }
+    const shouldGreetUser = world.metadata?.settings['SHOULD_GREET_NEW_PERSONS']?.value;
+
+    if (
+      !(
+        shouldGreetUser === true ||
+        String(shouldGreetUser).toLowerCase() === 'true' ||
+        String(shouldGreetUser).toLowerCase() === 'yes'
+      )
+    ) {
+      return;
+    }
 
     const greetingMsgSettings = world.metadata?.settings['GREETING_MESSAGE']?.value;
 
