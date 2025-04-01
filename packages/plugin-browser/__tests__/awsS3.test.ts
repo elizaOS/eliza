@@ -13,9 +13,9 @@ const mockS3Client = {
       protocol: 'https:',
       hostname: 'test-bucket.s3.amazonaws.com',
       port: '',
-      path: '/'
-    })
-  }
+      path: '/',
+    }),
+  },
 };
 
 // Mock fs module
@@ -23,8 +23,8 @@ vi.mock('node:fs', () => ({
   existsSync: vi.fn(),
   readFileSync: vi.fn(),
   promises: {
-    readFile: vi.fn()
-  }
+    readFile: vi.fn(),
+  },
 }));
 
 // Mock S3Client constructor
@@ -32,13 +32,15 @@ vi.mock('@aws-sdk/client-s3', async () => {
   const actual = await vi.importActual('@aws-sdk/client-s3');
   return {
     ...actual,
-    S3Client: vi.fn().mockImplementation(() => mockS3Client)
+    S3Client: vi.fn().mockImplementation(() => mockS3Client),
   };
 });
 
 // Mock getSignedUrl from s3-request-presigner
 vi.mock('@aws-sdk/s3-request-presigner', () => ({
-  getSignedUrl: vi.fn().mockResolvedValue('https://test-bucket.s3.amazonaws.com/test-key?signature=xyz')
+  getSignedUrl: vi
+    .fn()
+    .mockResolvedValue('https://test-bucket.s3.amazonaws.com/test-key?signature=xyz'),
 }));
 
 describe('AwsS3Service', () => {
@@ -47,7 +49,7 @@ describe('AwsS3Service', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Create mock runtime
     mockRuntime = {
       getSetting: vi.fn().mockImplementation((key: string) => {
@@ -58,15 +60,15 @@ describe('AwsS3Service', () => {
         if (key === 'AWS_SECRET_ACCESS_KEY') return 'test-secret';
         return null;
       }),
-      getService: vi.fn()
+      getService: vi.fn(),
     };
-    
+
     service = new AwsS3Service(mockRuntime);
-    
+
     // Set s3Client property for testing
     Object.defineProperty(service, 's3Client', {
       value: mockS3Client,
-      writable: true
+      writable: true,
     });
   });
 
@@ -76,7 +78,9 @@ describe('AwsS3Service', () => {
     });
 
     it('should set the capability description', () => {
-      expect(service.capabilityDescription).toBe('The agent is able to upload and download files from AWS S3');
+      expect(service.capabilityDescription).toBe(
+        'The agent is able to upload and download files from AWS S3'
+      );
     });
   });
 
@@ -91,9 +95,9 @@ describe('AwsS3Service', () => {
     it('should call service.stop when static stop is called', async () => {
       const mockService = { stop: vi.fn() };
       mockRuntime.getService.mockReturnValue(mockService);
-      
+
       await AwsS3Service.stop(mockRuntime);
-      
+
       expect(mockRuntime.getService).toHaveBeenCalledWith(ServiceType.REMOTE_FILES);
       expect(mockService.stop).toHaveBeenCalled();
     });
@@ -136,10 +140,10 @@ describe('AwsS3Service', () => {
     it('should generate a signed URL for an object', async () => {
       // Import getSignedUrl from mock
       const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
-      
+
       // Call method
       const result = await service.generateSignedUrl('test-key');
-      
+
       // Verify
       expect(result).toBe('https://test-bucket.s3.amazonaws.com/test-key?signature=xyz');
       expect(getSignedUrl).toHaveBeenCalled();

@@ -7,9 +7,9 @@ import { AwsS3Service, BrowserService, PdfService, VideoService } from '../src/s
 vi.mock('youtube-dl-exec', () => {
   return {
     default: vi.fn().mockImplementation(() => ({
-      exec: vi.fn().mockResolvedValue({})
+      exec: vi.fn().mockResolvedValue({}),
     })),
-    __esModule: true
+    __esModule: true,
   };
 });
 

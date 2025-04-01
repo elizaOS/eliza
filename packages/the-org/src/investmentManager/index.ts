@@ -38,6 +38,7 @@ const character: Character = {
     '@elizaos/plugin-twitter',
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',
+    '@elizaos/plugin-bootstrap',
   ],
   settings: {
     secrets: {

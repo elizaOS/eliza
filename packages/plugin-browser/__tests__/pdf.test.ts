@@ -10,10 +10,10 @@ vi.mock('pdfjs-dist', () => {
       // Handle the error case
       if (data && data.toString().includes('error')) {
         return {
-          promise: Promise.reject(new Error('PDF processing error'))
+          promise: Promise.reject(new Error('PDF processing error')),
         };
       }
-      
+
       return {
         promise: Promise.resolve({
           numPages: 2,
@@ -22,14 +22,14 @@ vi.mock('pdfjs-dist', () => {
               getTextContent: vi.fn().mockResolvedValue({
                 items: [
                   { str: 'Page ' + pageNum + ' content' },
-                  { str: 'More text on page ' + pageNum }
-                ]
-              })
+                  { str: 'More text on page ' + pageNum },
+                ],
+              }),
             });
-          })
-        })
+          }),
+        }),
       };
-    })
+    }),
   };
 });
 
@@ -60,7 +60,7 @@ vi.mock('node:fs', () => {
     promises: {
       access: vi.fn().mockResolvedValue(true),
       writeFile: mockWriteFile,
-      mkdir: mockMkdir
+      mkdir: mockMkdir,
     },
     default: {
       readFileSync: mockReadFileSync,
@@ -72,9 +72,9 @@ vi.mock('node:fs', () => {
       promises: {
         access: vi.fn().mockResolvedValue(true),
         writeFile: mockWriteFile,
-        mkdir: mockMkdir
-      }
-    }
+        mkdir: mockMkdir,
+      },
+    },
   };
 });
 
@@ -89,22 +89,22 @@ describe('PdfService', () => {
     // Mock runtime
     mockRuntime = {
       getSetting: vi.fn(),
-      getService: vi.fn()
+      getService: vi.fn(),
     };
 
     // Create service instance
     service = new PdfService(mockRuntime);
-    
+
     // Extend the service with a method that accepts a file path
     service.convertPdfToText = vi.fn().mockImplementation(async (filePath: string) => {
       try {
         const buffer = fs.readFileSync(filePath);
-        
+
         // If the buffer contains 'error', simulate a PDF processing error
         if (buffer.toString().includes('error')) {
           throw new Error('PDF processing error');
         }
-        
+
         return 'Page 1 content More text on page 1 Page 2 content More text on page 2';
       } catch (error) {
         throw error;
@@ -130,7 +130,7 @@ describe('PdfService', () => {
 
     it('should call service.stop when static stop is called', async () => {
       const mockService = {
-        stop: vi.fn()
+        stop: vi.fn(),
       };
       mockRuntime.getService.mockReturnValue(mockService);
 
@@ -154,8 +154,10 @@ describe('PdfService', () => {
     it('should convert a PDF file to text', async () => {
       // Reset the mock implementation to ensure it's not affected by other tests
       vi.mocked(service.convertPdfToText).mockReset();
-      vi.mocked(service.convertPdfToText).mockResolvedValueOnce('Page 1 content More text on page 1 Page 2 content More text on page 2');
-      
+      vi.mocked(service.convertPdfToText).mockResolvedValueOnce(
+        'Page 1 content More text on page 1 Page 2 content More text on page 2'
+      );
+
       const result = await service.convertPdfToText('/path/to/test.pdf');
 
       expect(result).toBe('Page 1 content More text on page 1 Page 2 content More text on page 2');
@@ -165,8 +167,10 @@ describe('PdfService', () => {
     it('should handle existing files correctly', async () => {
       // Reset the mock implementation to ensure it's not affected by other tests
       vi.mocked(service.convertPdfToText).mockReset();
-      vi.mocked(service.convertPdfToText).mockResolvedValueOnce('Page 1 content More text on page 1 Page 2 content More text on page 2');
-      
+      vi.mocked(service.convertPdfToText).mockResolvedValueOnce(
+        'Page 1 content More text on page 1 Page 2 content More text on page 2'
+      );
+
       const result = await service.convertPdfToText('/path/to/existing.pdf');
 
       expect(result).toBe('Page 1 content More text on page 1 Page 2 content More text on page 2');
@@ -177,8 +181,10 @@ describe('PdfService', () => {
       // Reset the mock implementation to ensure it's not affected by other tests
       vi.mocked(service.convertPdfToText).mockReset();
       vi.mocked(service.convertPdfToText).mockRejectedValueOnce(new Error('File not found'));
-      
-      await expect(() => service.convertPdfToText('/path/to/error.pdf')).rejects.toThrow('File not found');
+
+      await expect(() => service.convertPdfToText('/path/to/error.pdf')).rejects.toThrow(
+        'File not found'
+      );
       expect(service.convertPdfToText).toHaveBeenCalledWith('/path/to/error.pdf');
     });
 
@@ -186,7 +192,9 @@ describe('PdfService', () => {
       // Create a buffer that will trigger the PDF processing error
       vi.mocked(fs.readFileSync).mockReturnValueOnce(Buffer.from('error content'));
 
-      await expect(() => service.convertPdfToText('/path/to/error-processing.pdf')).rejects.toThrow('PDF processing error');
+      await expect(() => service.convertPdfToText('/path/to/error-processing.pdf')).rejects.toThrow(
+        'PDF processing error'
+      );
     });
   });
 });

@@ -1,0 +1,57 @@
+{
+  "name": "@elizaos/plugin-bootstrap",
+  "version": "1.0.0-beta.8",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-bootstrap"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "package.json",
+    "LICENSE",
+    "tsup.config.ts"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.0.0-beta.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.8.4",
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "vitest": "^1.6.1",
+    "zod": "^3.22.4"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "postinstall": "node scripts/postinstall.js",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e"
+}

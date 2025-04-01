@@ -120,7 +120,6 @@ describe('Wallet provider', () => {
       expect(bal).toEqual('0');
     });
     it('should return null if chain is not added', async () => {
-
       const bal = await walletProvider.getWalletBalanceForChain('myCustomChain');
       expect(bal).toBe(null);
     });

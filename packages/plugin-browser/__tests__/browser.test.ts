@@ -69,7 +69,7 @@ vi.mock('patchright', () => {
   return {
     chromium: {
       launch: vi.fn().mockResolvedValue(mockBrowser),
-    }
+    },
   };
 });
 
@@ -79,11 +79,11 @@ vi.mock('node-fetch', () => {
     default: vi.fn().mockResolvedValue({
       json: vi.fn().mockResolvedValue({
         solution: {
-          gRecaptchaResponse: 'captcha-token'
-        }
+          gRecaptchaResponse: 'captcha-token',
+        },
       }),
-      ok: true
-    })
+      ok: true,
+    }),
   };
 });
 
@@ -92,13 +92,13 @@ vi.mock('capsolver-npm', () => {
   return {
     default: class CaptchaSolver {
       constructor() {}
-      
+
       hCaptchaTask() {
         return Promise.resolve({
-          gRecaptchaResponse: 'captcha-token'
+          gRecaptchaResponse: 'captcha-token',
         });
       }
-    }
+    },
   };
 });
 
@@ -125,10 +125,10 @@ describe('BrowserService', () => {
 
     // Create service instance with mocked methods
     service = new BrowserService(mockRuntime);
-    
+
     // Mock the internal methods
     service.initializeBrowser = vi.fn().mockResolvedValue(undefined);
-    
+
     // Mock the fetchPageContent method which is called by getPageContent
     Object.defineProperty(service, 'fetchPageContent', {
       value: vi.fn().mockImplementation(async (url, runtime) => {
@@ -138,18 +138,18 @@ describe('BrowserService', () => {
         return {
           title: 'Test Title',
           description: 'Test Description',
-          bodyContent: '<html><body>Test content</body></html>'
+          bodyContent: '<html><body>Test content</body></html>',
         };
       }),
-      configurable: true
+      configurable: true,
     });
-    
+
     // Mock the detectAndSolveCaptcha method which is called by solveCaptcha
     Object.defineProperty(service, 'detectAndSolveCaptcha', {
       value: vi.fn().mockImplementation(async (page, selector) => {
         return 'captcha-token';
       }),
-      configurable: true
+      configurable: true,
     });
   });
 
@@ -159,7 +159,9 @@ describe('BrowserService', () => {
     });
 
     it('should set the capability description', () => {
-      expect(service.capabilityDescription).toBe('The agent is able to browse the web and fetch content');
+      expect(service.capabilityDescription).toBe(
+        'The agent is able to browse the web and fetch content'
+      );
     });
   });
 
@@ -168,17 +170,17 @@ describe('BrowserService', () => {
       // Create a mock instance that will be returned by the start method
       const mockInstance = new BrowserService(mockRuntime);
       mockInstance.initializeBrowser = vi.fn().mockResolvedValue(undefined);
-      
+
       // Save the original start method
       const originalStart = BrowserService.start;
-      
+
       // Mock the static start method to return our mock instance
       BrowserService.start = vi.fn().mockResolvedValue(mockInstance);
-      
+
       const startedService = await BrowserService.start(mockRuntime);
-      
+
       expect(startedService).toBeInstanceOf(BrowserService);
-      
+
       // Restore the original start method
       BrowserService.start = originalStart;
     });
@@ -212,13 +214,15 @@ describe('BrowserService', () => {
       expect(result).toEqual({
         title: 'Test Title',
         description: 'Test Description',
-        bodyContent: '<html><body>Test content</body></html>'
+        bodyContent: '<html><body>Test content</body></html>',
       });
       expect(service.initializeBrowser).toHaveBeenCalled();
     });
 
     it('should handle errors when fetching content', async () => {
-      await expect(() => service.getPageContent('https://example.com/error', mockRuntime)).rejects.toThrow('Browser launch failed');
+      await expect(() =>
+        service.getPageContent('https://example.com/error', mockRuntime)
+      ).rejects.toThrow('Browser launch failed');
     });
   });
 });

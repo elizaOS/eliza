@@ -4,19 +4,19 @@ import { VideoService } from '../src/services/video';
 // Mock dependencies
 vi.mock('node:fs');
 vi.mock('youtube-dl-exec', () => ({
-  default: { exec: vi.fn() }
+  default: { exec: vi.fn() },
 }));
 
 vi.mock('fluent-ffmpeg', () => ({
   default: vi.fn(() => ({
     input: vi.fn().mockReturnThis(),
     output: vi.fn().mockReturnThis(),
-    on: vi.fn().mockImplementation(function(event, callback) {
+    on: vi.fn().mockImplementation(function (event, callback) {
       if (event === 'end') callback();
       return this;
     }),
-    run: vi.fn()
-  }))
+    run: vi.fn(),
+  })),
 }));
 
 // Mock VideoService for isolation testing
@@ -26,11 +26,11 @@ vi.mock('../src/services/video', () => {
       fetchVideoInfo: vi.fn().mockResolvedValue({
         id: 'test-video-id',
         title: 'Test Video',
-        formats: [{ format_id: 'mp4', url: 'https://example.com/video.mp4' }]
+        formats: [{ format_id: 'mp4', url: 'https://example.com/video.mp4' }],
       }),
       downloadMedia: vi.fn().mockResolvedValue('cache/test-video-id.mp4'),
-      transcribeAudio: vi.fn().mockResolvedValue('This is a test transcription')
-    }))
+      transcribeAudio: vi.fn().mockResolvedValue('This is a test transcription'),
+    })),
   };
 });
 
