@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-groq",
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-alpha.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
