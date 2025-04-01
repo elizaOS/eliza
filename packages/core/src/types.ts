@@ -1932,3 +1932,13 @@ export type ModelHandler = (
 
 // Replace 'any' for service configurationa
 export type ServiceConfig = Record<string, unknown>;
+
+// Allowable vector dimensions
+export const VECTOR_DIMS = {
+  SMALL: 384,
+  MEDIUM: 512,
+  LARGE: 768,
+  XL: 1024,
+  XXL: 1536,
+  XXXL: 3072,
+} as const;
