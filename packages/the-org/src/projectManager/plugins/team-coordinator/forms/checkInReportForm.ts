@@ -100,7 +100,7 @@ export async function sendCheckInReportForm(
 
   // Create the final content object
   const content: Content = {
-    text: `Server: (ID: ${serverInfo?.serverId})\nSelect a channel where check-in updates should be sent when users submit their responses:`,
+    text: `Select a channel where check-in updates should be sent when users submit their responses after this you can create a check in schedule:`,
     source: 'discord',
     components: formComponents,
   };

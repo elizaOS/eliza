@@ -11,6 +11,7 @@ import {
   logger,
   asUUID,
   type Service,
+  ModelType,
 } from '@elizaos/core';
 import { TeamMemberUpdate } from '../../../types';
 
@@ -250,35 +251,6 @@ async function storeTeamMemberUpdate(
   }
 }
 
-async function getDiscordUsername(runtime: IAgentRuntime, entityId: string): Promise<string> {
-  try {
-    logger.info('Attempting to get Discord username for user:', entityId);
-    const discordService: any = runtime.getService('discord');
-
-    if (!discordService?.client) {
-      logger.error('Discord service or client not available');
-      return 'Unknown User';
-    }
-
-    // Remove any UUID formatting to get raw Discord ID
-    const discordId = entityId.replace(/-/g, '');
-    logger.info('Fetching Discord user with ID:', discordId);
-
-    const user = await discordService.client.users.fetch(discordId);
-    logger.info('Successfully fetched Discord user:', {
-      username: user.username,
-      id: user.id,
-    });
-    return user.username;
-  } catch (error) {
-    logger.error('Error fetching Discord username:', {
-      error: error.message,
-      entityId,
-    });
-    return 'Unknown User';
-  }
-}
-
 async function parseTeamMemberUpdate(
   runtime: IAgentRuntime,
   message: Memory
@@ -296,24 +268,66 @@ async function parseTeamMemberUpdate(
       return null;
     }
 
-    // Extract sections from the text
-    const serverNameMatch = text.match(/Server-name:(.+?)(?=Check-in Type:|$)/s);
-    const checkInTypeMatch = text.match(/Check-in Type:(.+?)(?=Current Progress:|$)/s);
-    const currentProgressMatch = text.match(/Current Progress:(.+?)(?=Working On:|$)/s);
-    const workingOnMatch = text.match(/Working On:(.+?)(?=Next Steps:|$)/s);
-    const nextStepsMatch = text.match(/Next Steps:(.+?)(?=Blockers:|$)/s);
-    const blockersMatch = text.match(/Blockers:(.+?)(?=ETA:|$)/s);
-    const etaMatch = text.match(/ETA:(.+?)(?=sending my updates|$)/is);
+    // Use AI to parse the update text
+    const prompt = `Extract the following fields from this team member update text. The text will be in a specific format with "sharing my updates" at the start and "sending my updates" at the end.
 
-    // Check for missing fields
+    Return ONLY a valid JSON object with these exact keys:
+    {
+      "serverName": "value", // Extract server name after "Server-name:" ignoring the question text 
+      "checkInType": "value", // Extract type after "Check-in Type:" ignoring the question text
+      "currentProgress": "value", // Extract the line after "Current Progress:" ignoring the question text
+      "workingOn": "value", // Extract the line after "Working On:" ignoring the question text
+      "nextSteps": "value", // Extract the line after "Next Steps:" ignoring the question text
+      "blockers": "value", // Extract the line after "Blockers:" ignoring the question text
+      "eta": "value" // Extract the line after "ETA:" ignoring the question text
+    }
+
+    Note: 
+    - checkInType must be one of: STANDUP, SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO
+    - For each field, only extract the actual update text, not the question/description
+    - Example: For "Current Progress: What you've accomplished recently\\njimmy", extract only "jimmy"
+
+    Text to parse: "${text}"`;
+
+    logger.info('Sending text to AI for parsing');
+    logger.info('Prompt:', prompt);
+
+    const parsedResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+      stopSequences: [],
+    });
+
+    logger.info('Raw AI response:', parsedResponse);
+
+    let parsedFields: Record<string, string>;
+    try {
+      // Remove any backticks or markdown formatting that might be in the response
+      const cleanedResponse = parsedResponse.replace(/```json\n?|\n?```/g, '').trim();
+      parsedFields = JSON.parse(cleanedResponse);
+      logger.info('Successfully parsed fields from AI response:', parsedFields);
+    } catch (error) {
+      logger.error('Failed to parse AI response as JSON:', error);
+      logger.error('Raw response that failed parsing:', parsedResponse);
+      throw new Error('PARSING_ERROR: AI response was not valid JSON');
+    }
+
+    // Validate required fields
     const missingFields = [];
-    if (!serverNameMatch) missingFields.push('Server-name');
-    if (!checkInTypeMatch) missingFields.push('Check-in Type');
-    if (!currentProgressMatch) missingFields.push('Current Progress');
-    if (!workingOnMatch) missingFields.push('Working On');
-    if (!nextStepsMatch) missingFields.push('Next Steps');
-    if (!blockersMatch) missingFields.push('Blockers');
-    if (!etaMatch) missingFields.push('ETA');
+    const requiredFields = [
+      'serverName',
+      'checkInType',
+      'currentProgress',
+      'workingOn',
+      'nextSteps',
+      'blockers',
+      'eta',
+    ];
+
+    for (const field of requiredFields) {
+      if (!parsedFields[field]) {
+        missingFields.push(field);
+      }
+    }
 
     if (missingFields.length > 0) {
       logger.warn('Missing required fields:', missingFields);
@@ -321,21 +335,21 @@ async function parseTeamMemberUpdate(
     }
 
     // Get the user name from Discord
-    const userName = await getDiscordUsername(runtime, message.entityId.toString());
-    logger.info('Found Discord username:', userName);
+    const entityById = await runtime.getEntityById(message.entityId);
+    const userName = entityById?.metadata?.discord?.userName;
 
     const update: TeamMemberUpdate = {
       type: 'team-member-update',
       updateId: createUniqueUuid(runtime, 'team-update'),
       teamMemberId: message.entityId || asUUID('unknown'),
       teamMemberName: userName,
-      serverName: serverNameMatch[1].trim(),
-      checkInType: checkInTypeMatch[1].trim(),
-      currentProgress: currentProgressMatch[1].trim(),
-      workingOn: workingOnMatch[1].trim(),
-      nextSteps: nextStepsMatch[1].trim(),
-      blockers: blockersMatch[1].trim(),
-      eta: etaMatch[1].trim(),
+      serverName: parsedFields.serverName,
+      checkInType: parsedFields.checkInType,
+      currentProgress: parsedFields.currentProgress,
+      workingOn: parsedFields.workingOn,
+      nextSteps: parsedFields.nextSteps,
+      blockers: parsedFields.blockers,
+      eta: parsedFields.eta,
       timestamp: new Date().toISOString(),
       channelId: message.roomId,
     };
