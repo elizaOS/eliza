@@ -3,7 +3,7 @@ import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useRooms } from '@/hooks/use-query-hooks';
 import { apiClient } from '@/lib/api';
-import { type Agent, AgentStatus } from '@elizaos/core';
+import { type Agent, AgentStatus, type UUID } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save, Trash, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -81,11 +81,6 @@ export default function GroupPanel({ onClose, agents, groupId }: GroupPanel) {
     <div
       className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50"
       onClick={onClose}
-      onKeyUp={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          onClose();
-        }
-      }}
     >
       <Card className="w-[80%] max-w-2xl" onClick={(e) => e.stopPropagation()}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
