@@ -51,7 +51,7 @@ async function checkRegistryRequirements(cwd: string) {
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
 
   return {
-    name: packageJson.name.includes('plugin-'),
+    name: packageJson.name.includes('plugin-') || packageJson.name.includes('@elizaos/plugin-'),
     imagesDir: existsSync(path.join(cwd, 'images')),
     logoImage: existsSync(path.join(cwd, 'images', 'logo.jpg')),
     bannerImage: existsSync(path.join(cwd, 'images', 'banner.jpg')),
@@ -205,7 +205,8 @@ plugin
       logger.info('\n📋 Checking Registry Requirements...');
 
       const requirements = {
-        nameCorrect: packageJson.name?.includes('plugin-'),
+        nameCorrect:
+          packageJson.name?.includes('plugin-') || packageJson.name.includes('@elizaos/plugin-'),
         hasRepoUrl: !!packageJson.repository?.url,
         correctRepoUrl:
           packageJson.repository?.url?.includes('github:') &&
@@ -549,7 +550,9 @@ These files are required for registry submission. Your plugin submission will no
             logger.info('\n📋 Rechecking requirements...');
 
             const updatedRequirements = {
-              nameCorrect: packageJson.name?.includes('plugin-'),
+              nameCorrect:
+                packageJson.name?.includes('plugin-') ||
+                packageJson.name.includes('@elizaos/plugin-'),
               hasRepoUrl: !!packageJson.repository?.url,
               correctRepoUrl:
                 packageJson.repository?.url?.includes('github:') &&
@@ -737,8 +740,7 @@ These files are required for registry submission. Your plugin submission will no
         // Push code to GitHub repository
         logger.info('\n📤 Pushing code to GitHub repository...');
 
-        // Use a more robust push approach with force by default
-        let pushResult = false;
+        // Use a more Git-friendly approach without force pushing
         try {
           // Initialize git repo if needed
           await execa('git', ['init'], { cwd });
@@ -760,30 +762,42 @@ These files are required for registry submission. Your plugin submission will no
           await execa('git', ['commit', '-m', 'Initial commit'], { cwd });
           logger.info('Committed changes');
 
-          // Push directly with force-with-lease to avoid errors
-          logger.info('Pushing to GitHub...');
-          await execa('git', ['push', '-u', 'origin', 'main', '--force-with-lease'], {
+          // Check if remote is empty before pushing
+          const remoteCheck = await execa('git', ['ls-remote', '--heads', 'origin'], {
             cwd,
             stdio: 'pipe',
+            reject: false,
           });
 
-          logger.success('✅ Successfully pushed code to GitHub repository!');
-          pushResult = true;
+          if (remoteCheck.exitCode === 0 && remoteCheck.stdout.trim() === '') {
+            // Remote exists but is empty, safe to push
+            logger.info('Remote repository is empty, pushing initial commit...');
+            await execa('git', ['push', '-u', 'origin', 'main'], { cwd });
+            logger.success('✅ Successfully pushed code to GitHub repository!');
+          } else {
+            // Remote has content, create a new branch instead of pushing to main
+            const setupBranch = `setup-${Date.now()}`;
+            logger.info(`Remote repository contains content, creating branch: ${setupBranch}`);
+            await execa('git', ['checkout', '-b', setupBranch], { cwd });
+            await execa('git', ['push', '-u', 'origin', setupBranch], { cwd });
+            logger.success(
+              `✅ Pushed code to branch '${setupBranch}'. Please merge this branch into main.`
+            );
+          }
         } catch (error) {
           logger.error('Failed to push to GitHub:', error.message);
+          logger.info('You may need to manually push your code to GitHub');
 
           const { shouldContinue } = await prompts({
             type: 'confirm',
             name: 'shouldContinue',
-            message: 'Failed to push code to GitHub. Continue with publishing to registry anyway?',
+            message: 'Continue with publishing to registry anyway?',
             initial: false,
           });
 
           if (!shouldContinue) {
             process.exit(1);
           }
-
-          pushResult = false;
         }
       } else {
         // Repository URL exists, but we should verify repo actually exists on GitHub
@@ -803,43 +817,92 @@ These files are required for registry submission. Your plugin submission will no
           });
 
           if (!response.ok) {
-            logger.warn(
-              `Repository at ${packageJson.repository.url} does not exist or is not accessible.`
-            );
-            logger.info('Creating repository and pushing code...');
+            if (response.status === 404) {
+              logger.info(
+                `Repository ${packageJson.repository.url} does not exist. Creating it now...`
+              );
 
-            // Create repository with the same name
-            const result = await createGitHubRepository(
-              credentials.token,
-              repoName,
-              packageJson.description || `${repoName} - ElizaOS plugin`,
-              false, // public repository
-              ['elizaos-plugins'] // topics
-            );
+              // Create repository with the same name
+              const result = await createGitHubRepository(
+                credentials.token,
+                repoName,
+                packageJson.description || `${repoName} - ElizaOS plugin`,
+                false, // public repository
+                ['elizaos-plugins'] // topics
+              );
 
-            if (!result.success) {
-              logger.error(`Failed to create GitHub repository: ${result.message}`);
-              process.exit(1);
-            }
-
-            // Push code to GitHub
-            logger.info('\n📤 Pushing code to GitHub repository...');
-            const pushResult = await pushToGitHub(cwd, result.repoUrl, 'main');
-
-            if (!pushResult) {
-              logger.error('Failed to push code to GitHub.');
-              const { shouldContinue } = await prompts({
-                type: 'confirm',
-                name: 'shouldContinue',
-                message: 'Continue with publishing to registry anyway?',
-                initial: false,
-              });
-
-              if (!shouldContinue) {
+              if (!result.success) {
+                logger.error(`Failed to create GitHub repository: ${result.message}`);
                 process.exit(1);
               }
+
+              // Push code to GitHub repository
+              logger.info('\n📤 Pushing code to GitHub repository...');
+
+              // Use the more Git-friendly approach
+              try {
+                // Initialize git repo if needed
+                await execa('git', ['init'], { cwd });
+                logger.info('Git repository initialized');
+
+                // Create and checkout main branch
+                await execa('git', ['checkout', '-b', 'main'], { cwd });
+                logger.info('Created main branch');
+
+                // Add remote
+                await execa('git', ['remote', 'add', 'origin', result.repoUrl], { cwd });
+                logger.info(`Added remote: ${result.repoUrl}`);
+
+                // Add all files
+                await execa('git', ['add', '.'], { cwd });
+                logger.info('Added files to git');
+
+                // Commit changes
+                await execa('git', ['commit', '-m', 'Initial commit'], { cwd });
+                logger.info('Committed changes');
+
+                // Check if remote is empty before pushing
+                const remoteCheck = await execa('git', ['ls-remote', '--heads', 'origin'], {
+                  cwd,
+                  stdio: 'pipe',
+                  reject: false,
+                });
+
+                if (remoteCheck.exitCode === 0 && remoteCheck.stdout.trim() === '') {
+                  // Remote exists but is empty, safe to push
+                  logger.info('Remote repository is empty, pushing initial commit...');
+                  await execa('git', ['push', '-u', 'origin', 'main'], { cwd });
+                  logger.success('✅ Successfully pushed code to GitHub repository!');
+                } else {
+                  // Remote has content, create a new branch instead of pushing to main
+                  const setupBranch = `setup-${Date.now()}`;
+                  logger.info(
+                    `Remote repository contains content, creating branch: ${setupBranch}`
+                  );
+                  await execa('git', ['checkout', '-b', setupBranch], { cwd });
+                  await execa('git', ['push', '-u', 'origin', setupBranch], { cwd });
+                  logger.success(
+                    `✅ Pushed code to branch '${setupBranch}'. Please merge this branch into main.`
+                  );
+                }
+              } catch (error) {
+                logger.error('Failed to push to GitHub:', error.message);
+                logger.info('You may need to manually push your code to GitHub');
+
+                const { shouldContinue } = await prompts({
+                  type: 'confirm',
+                  name: 'shouldContinue',
+                  message: 'Continue with publishing to registry anyway?',
+                  initial: false,
+                });
+
+                if (!shouldContinue) {
+                  process.exit(1);
+                }
+              }
             } else {
-              logger.success('✅ Successfully pushed code to GitHub repository!');
+              logger.error(`Error verifying repository: ${response.status} ${response.statusText}`);
+              process.exit(1);
             }
           } else {
             logger.success('✅ GitHub repository verified!');

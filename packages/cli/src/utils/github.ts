@@ -759,8 +759,7 @@ export async function createGitHubRepository(
         has_issues: true,
         has_projects: false,
         has_wiki: false,
-        auto_init: true, // Initialize with README
-        gitignore_template: 'Node',
+        auto_init: false, // Don't initialize with README to avoid conflicts
         default_branch: 'main', // Explicitly set main as default branch
       }),
     });
@@ -869,11 +868,14 @@ export async function pushToGitHub(
       // Try force pushing if normal push fails
       try {
         logger.info('Attempting force push...');
-        await execa('git', ['push', '-f', '-u', 'origin', branch], { cwd });
-        logger.success(`Force pushed to GitHub repository: ${repoUrl}`);
+        // Use force-with-lease as a slightly safer option than force
+        await execa('git', ['push', '-u', 'origin', 'main', '--force-with-lease'], {
+          cwd,
+          stdio: 'pipe',
+        });
         return true;
       } catch (forcePushError) {
-        logger.error(`Force push also failed: ${forcePushError.message}`);
+        logger.error('Force push also failed:', forcePushError.message);
         return false;
       }
     }

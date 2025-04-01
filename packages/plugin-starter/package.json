@@ -9,7 +9,7 @@
   "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "github:{{GITHUB_USERNAME}}/{{PLUGIN_NAME}}"
+    "url": "https://github.com/elizaos-plugins/plugin-starter"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -49,14 +49,5 @@
   "resolutions": {
     "zod": "3.24.2"
   },
-  "platform": "universal",
-  "agentConfig": {
-    "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "API_KEY": {
-        "type": "string",
-        "description": "API key for the service"
-      }
-    }
-  }
+  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33"
 }
