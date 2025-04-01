@@ -242,10 +242,6 @@ export async function publishToGitHub(
   username: string,
   isTest = false
 ): Promise<boolean | { success: boolean; prUrl?: string }> {
-  if (packageJson.type !== 'plugin') {
-    throw new Error('This function can only be used to publish plugins');
-  }
-
   const token = await getGitHubToken();
   if (!token) {
     logger.error('GitHub token not found. Please set it using the login command.');
