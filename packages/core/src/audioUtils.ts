@@ -1,5 +1,5 @@
-import { PassThrough } from 'stream-browserify';
-import { Readable } from 'stream-browserify';
+import pkg from 'stream-browserify';
+const { PassThrough, Readable } = pkg;
 import { Buffer } from 'buffer';
 
 /**
@@ -44,12 +44,12 @@ function getWavHeader(
  * @returns {Readable} A new readable stream with the WAV header prepended to the audio data.
  */
 function prependWavHeader(
-  readable: Readable,
+  readable: typeof Readable,
   audioLength: number,
   sampleRate: number,
   channelCount = 1,
   bitsPerSample = 16
-): Readable {
+): typeof Readable {
   const wavHeader = getWavHeader(audioLength, sampleRate, channelCount, bitsPerSample);
   let pushedHeader = false;
   const passThrough = new PassThrough();
