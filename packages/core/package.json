@@ -63,6 +63,7 @@
     "@hapi/shot": "^6.0.1",
     "@types/hapi": "^18.0.14",
     "@types/hapi__shot": "^6.0.0",
+    "buffer": "^6.0.3",
     "dotenv": "16.4.5",
     "events": "^3.3.0",
     "glob": "11.0.0",
@@ -71,6 +72,7 @@
     "langchain": "^0.3.15",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
+    "stream-browserify": "^3.0.0",
     "unique-names-generator": "4.7.1",
     "uuid": "11.0.3"
   },

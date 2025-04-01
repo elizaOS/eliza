@@ -1,5 +1,6 @@
-import { PassThrough } from 'node:stream';
-import type { Readable } from 'node:stream';
+import { PassThrough } from 'stream-browserify';
+import { Readable } from 'stream-browserify';
+import { Buffer } from 'buffer';
 
 /**
  * Generates a WAV file header based on the provided audio parameters.
@@ -9,7 +10,7 @@ import type { Readable } from 'node:stream';
  * @param {number} [bitsPerSample=16] - The number of bits per sample (default is 16).
  * @returns {Buffer} The WAV file header as a Buffer object.
  */
-export function getWavHeader(
+function getWavHeader(
   audioLength: number,
   sampleRate: number,
   channelCount = 1,
@@ -42,7 +43,7 @@ export function getWavHeader(
  * @param {number} [bitsPerSample=16] - The number of bits per sample in the audio data (default is 16).
  * @returns {Readable} A new readable stream with the WAV header prepended to the audio data.
  */
-export function prependWavHeader(
+function prependWavHeader(
   readable: Readable,
   audioLength: number,
   sampleRate: number,
@@ -64,3 +65,5 @@ export function prependWavHeader(
   });
   return passThrough;
 }
+
+export { getWavHeader, prependWavHeader };
