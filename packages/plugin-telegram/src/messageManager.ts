@@ -7,7 +7,6 @@ import {
   type Media,
   type Memory,
   ModelType,
-  Room,
   type UUID,
   createUniqueUuid,
   logger,
