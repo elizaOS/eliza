@@ -124,6 +124,177 @@ export async function copyTemplate(
       }
     }
 
+    // For plugins, add required registry configuration
+    if (templateType === 'plugin') {
+      // Fix repository URL format and replace placeholder with actual plugin name
+      if (packageJson.repository && packageJson.repository.url) {
+        // Extract the plugin name without scope for the repository URL
+        const pluginNameWithoutScope = name.replace('@elizaos/', '');
+
+        // Get the GitHub username from environment if available, or use a default
+        const githubUsername = process.env.GITHUB_USERNAME || 'elizaos-plugins';
+
+        // Replace placeholders with actual values
+        packageJson.repository.url = packageJson.repository.url
+          .replace('{{PLUGIN_NAME}}', pluginNameWithoutScope)
+          .replace('{{GITHUB_USERNAME}}', githubUsername)
+          .replace('https://github.com/', 'github:')
+          .replace('.git', '');
+      }
+
+      // Add platform if missing
+      if (!packageJson.platform) {
+        packageJson.platform = 'universal';
+      }
+
+      // Add agentConfig if missing
+      if (!packageJson.agentConfig) {
+        packageJson.agentConfig = {
+          pluginType: 'elizaos:plugin:1.0.0',
+          pluginParameters: {
+            API_KEY: {
+              type: 'string',
+              description: 'API key for the service',
+            },
+          },
+        };
+      }
+
+      // Create images directory with README
+      const imagesDir = path.join(targetDir, 'images');
+      if (!existsSync(imagesDir)) {
+        await fs.mkdir(imagesDir, { recursive: true });
+
+        // Create README.md in the images directory
+        const readmePath = path.join(imagesDir, 'README.md');
+        await fs.writeFile(
+          readmePath,
+          `# Required Images for ElizaOS Plugins
+
+Please add the following required images to this directory:
+
+## logo.jpg
+- **Size**: 400x400px square
+- **Max size**: 500KB
+- **Purpose**: Main logo for your plugin displayed in the registry and UI
+
+## banner.jpg
+- **Size**: 1280x640px (2:1 aspect ratio)
+- **Max size**: 1MB
+- **Purpose**: Banner image for your plugin displayed in the registry
+
+## Guidelines
+- Use clear, high-resolution images
+- Keep file sizes optimized
+- Follow the ElizaOS brand guidelines 
+- Include alt text in your documentation for accessibility
+
+These files are required for registry submission. Your plugin submission will not be accepted without these images.`
+        );
+      }
+
+      // Update main README.md with better guidance
+      const readmePath = path.join(targetDir, 'README.md');
+      await fs.writeFile(
+        readmePath,
+        `# ElizaOS Plugin
+
+This is an ElizaOS plugin built with the official plugin starter template.
+
+## Development
+
+\`\`\`bash
+# Start development with hot-reloading
+npm run dev
+
+# Build the plugin
+npm run build
+
+# Test the plugin
+npm run test
+\`\`\`
+
+## Publishing
+
+Before publishing your plugin to the ElizaOS registry, ensure you meet these requirements:
+
+1. **GitHub Repository**
+   - Create a public GitHub repository for this plugin
+   - Add the 'elizaos-plugins' topic to the repository
+   - Use 'main' as the default branch
+
+2. **Required Assets**
+   - Add images to the \`images/\` directory:
+     - \`logo.jpg\` (400x400px square, <500KB)
+     - \`banner.jpg\` (1280x640px, <1MB)
+
+3. **Publishing Process**
+   \`\`\`bash
+   # Check if your plugin meets all registry requirements
+   npx elizaos plugin publish --test
+   
+   # Publish to the registry
+   npx elizaos plugin publish
+   \`\`\`
+
+After publishing, your plugin will be submitted as a pull request to the ElizaOS registry for review.
+
+## Configuration
+
+The \`agentConfig\` section in \`package.json\` defines the parameters your plugin requires:
+
+\`\`\`json
+"agentConfig": {
+  "pluginType": "elizaos:plugin:1.0.0",
+  "pluginParameters": {
+    "API_KEY": {
+      "type": "string",
+      "description": "API key for the service"
+    }
+  }
+}
+\`\`\`
+
+Customize this section to match your plugin's requirements.
+
+## Documentation
+
+Provide clear documentation about:
+- What your plugin does
+- How to use it
+- Required API keys or credentials
+- Example usage
+`
+      );
+
+      // Update the index.ts file to use the plugin name from package.json
+      try {
+        const indexTsPath = path.join(targetDir, 'src', 'index.ts');
+        let indexTsContent = await fs.readFile(indexTsPath, 'utf8');
+
+        // Extract the plugin name without scope for use in the plugin definition
+        const pluginNameWithoutScope = name.replace('@elizaos/', '');
+        const description = packageJson.description || 'ElizaOS Plugin';
+
+        // Replace hardcoded plugin name in the starterPlugin export
+        indexTsContent = indexTsContent.replace(
+          /name: 'plugin-starter',/g,
+          `name: '${pluginNameWithoutScope}',`
+        );
+
+        // Replace the description if present
+        indexTsContent = indexTsContent.replace(
+          /description: 'Plugin starter for elizaOS',/g,
+          `description: '${description}',`
+        );
+
+        await fs.writeFile(indexTsPath, indexTsContent);
+        logger.success(`Updated plugin name in index.ts to ${pluginNameWithoutScope}`);
+      } catch (error) {
+        logger.error(`Error updating index.ts: ${error}`);
+      }
+    }
+
     // Write the updated package.json
     await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
     logger.success('Updated package.json with project name and latest dependencies');

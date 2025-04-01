@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { generatePrivateKey } from 'viem/accounts';
 import {
   type Address,
@@ -48,6 +48,13 @@ export const buildProposal = (txs: Array<ContractTransaction>, description: stri
   };
 };
 
+
+// Mock the ICacheManager
+const mockCacheManager = {
+  get: vi.fn().mockResolvedValue(null),
+  set: vi.fn(),
+};
+
 describe('Vote Action', () => {
   const alice: Address = '0xa1Ce000000000000000000000000000000000000';
   let wp: WalletProvider;
@@ -69,9 +76,13 @@ describe('Vote Action', () => {
   }
 
   beforeEach(async () => {
+    vi.clearAllMocks();
+    mockCacheManager.get.mockResolvedValue(null);
+
+
     const pk = generatePrivateKey();
     const customChains = prepareChains();
-    wp = new WalletProvider(pk, customChains);
+    wp = new WalletProvider(pk, mockCacheManager as any, customChains);
     wc = wp.getWalletClient('hardhat');
     const account = wc.account;
     tc = wp.getTestClient();
@@ -83,7 +94,7 @@ describe('Vote Action', () => {
       value: 10000000000000000000000n, // 10,000 ETH
     });
 
-    const voteTokenDeployHash: Hash = await tc.deployContract({
+    const voteTokenDeployHash: Hash = await wc.deployContract({
       chain: customChains['hardhat'],
       account: account,
       abi: voteTokenArtifacts.abi,
@@ -92,7 +103,7 @@ describe('Vote Action', () => {
       gas: 5000000n,
     });
 
-    const timelockDeployHash: Hash = await tc.deployContract({
+    const timelockDeployHash: Hash = await wc.deployContract({
       chain: customChains['hardhat'],
       account: account,
       abi: timelockArtifacts.abi,
@@ -104,7 +115,7 @@ describe('Vote Action', () => {
     voteTokenAddress = await getDeployedAddress(voteTokenDeployHash);
     timelockAddress = await getDeployedAddress(timelockDeployHash);
 
-    const governorDeployHash: Hash = await tc.deployContract({
+    const governorDeployHash: Hash = await wc.deployContract({
       chain: customChains['hardhat'],
       account: account,
       abi: governorArtifacts.abi,
@@ -262,7 +273,6 @@ describe('Vote Action', () => {
       });
 
       const state = await governor.read.state([proposalId]);
-      console.log('state', state);
 
       await qa.queue({
         chain: 'hardhat',
@@ -314,7 +324,6 @@ describe('Vote Action', () => {
       });
 
       const state = await governor.read.state([proposalId]);
-      console.log('state', state);
 
       await qa.queue({
         chain: 'hardhat',
