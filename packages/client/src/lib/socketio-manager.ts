@@ -1,6 +1,6 @@
 import { USER_NAME } from '@/constants';
 import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
-import EventEmitter from 'eventemitter3';
+import { EventEmitter } from 'eventemitter3';
 import { io, type Socket } from 'socket.io-client';
 import { WorldManager } from './world-manager';
 import { randomUUID } from './utils';
