@@ -108,12 +108,132 @@ const getTargetUserFromMessages = async (
   }
 };
 
-export const discordTimeoutUser: Action = {
+type PlatformHandlerParams = {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State;
+  callback: HandlerCallback;
+  responses?: Memory[];
+};
+
+const getTimeoutTarget = async ({ runtime, state, responses }) => {
+  return await getTargetUserFromMessages(runtime, state, responses);
+};
+
+const logModerationMemory = async (
+  runtime: IAgentRuntime,
+  message: Memory,
+  source: 'discord' | 'telegram',
+  thought: string
+) => {
+  await runtime.createMemory(
+    {
+      entityId: message.entityId,
+      agentId: message.agentId,
+      roomId: message.roomId,
+      content: {
+        source,
+        thought,
+        actions: ['TIMEOUT_USER'],
+      },
+      metadata: { type: 'MODERATION' },
+    },
+    'messages'
+  );
+};
+
+const handleDiscordTimeout = async (params: PlatformHandlerParams): Promise<boolean> => {
+  const { runtime, message, state, callback, responses } = params;
+  const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+  const serverId = room?.serverId;
+  if (!serverId) return false;
+
+  const client = runtime.getService('discord') as any;
+  const guild = client.client.guilds.cache.get(serverId);
+  if (!guild) return false;
+
+  if (!guild.members.me?.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+    await callback({
+      text: `Missing **Moderate Members** permission.`,
+      source: 'discord',
+    });
+    return false;
+  }
+
+  const { targetEntityId, timeoutDuration } = await getTimeoutTarget({ runtime, state, responses });
+  if (!targetEntityId || !timeoutDuration) return false;
+
+  const entity = await (runtime as any).adapter.getEntityById(targetEntityId).catch(() => null);
+  const username = entity?.metadata?.discord?.userName;
+  if (!username) return false;
+
+  const member = guild.members.cache.find(
+    (m) => m.user.username.toLowerCase() === username.toLowerCase()
+  );
+  if (!member) return false;
+
+  try {
+    await member.timeout(timeoutDuration * 1000, 'Inappropriate behavior');
+    await logModerationMemory(runtime, message, 'discord', `${member.displayName} was timed out.`);
+    return true;
+  } catch (err) {
+    await callback({ text: `Failed to timeout ${member.displayName}`, source: 'discord' });
+    return false;
+  }
+};
+
+const handleTelegramTimeout = async (params: PlatformHandlerParams): Promise<boolean> => {
+  const { runtime, message, state, callback, responses } = params;
+  const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+  const chatId = room?.serverId;
+  if (!chatId) return false;
+
+  const { targetEntityId, timeoutDuration } = await getTimeoutTarget({ runtime, state, responses });
+  if (!targetEntityId || !timeoutDuration) return false;
+
+  const entity = await (runtime as any).adapter.getEntityById(targetEntityId).catch(() => null);
+  const tgUserId = entity?.metadata?.telegram?.id;
+  if (!tgUserId) return false;
+
+  const untilDate = Math.floor(Date.now() / 1000) + timeoutDuration;
+
+  try {
+    const telegramClient = runtime.getService('telegram') as any;
+    await telegramClient.bot.telegram.restrictChatMember(chatId, tgUserId, {
+      permissions: {
+        can_send_messages: false,
+        can_send_media_messages: false,
+        can_send_polls: false,
+        can_send_other_messages: false,
+        can_add_web_page_previews: false,
+        can_change_info: false,
+        can_invite_users: false,
+        can_pin_messages: false,
+      },
+      until_date: untilDate,
+    });
+
+    await logModerationMemory(
+      runtime,
+      message,
+      'telegram',
+      `User was restricted for inappropriate behavior.`
+    );
+    return true;
+  } catch (err) {
+    await callback({ text: `Failed to restrict user`, source: 'telegram' });
+    return false;
+  }
+};
+
+export const timeoutUser: Action = {
   name: 'TIMEOUT_USER',
   similes: ['TIMEOUT_USER', 'MODERATION_TIMEOUT', 'FUD_TIMEOUT'],
   description: 'Timeout users who are spreading FUD, spamming, or using inappropriate language.',
   validate: async (runtime, message, state) => {
-    if (message.content.source !== 'discord') return false;
+    if (message.content.source !== 'discord' && message.content.source !== 'telegram') {
+      return false;
+    }
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
     return room?.type === ChannelType.GROUP;
   },
@@ -125,106 +245,11 @@ export const discordTimeoutUser: Action = {
     callback: HandlerCallback,
     responses?: Memory[]
   ): Promise<boolean> => {
-    logger.info('[TIMEOUT_USER] Checking for target user to timeout...');
-    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
-    const serverId = room?.serverId;
-    if (!serverId) {
-      logger.error('[TIMEOUT_USER] Server ID is missing from room data.');
-      return false;
-    }
+    const source = message.content.source;
+    const params = { runtime, message, state, callback, responses };
 
-    const discordClient = runtime.getService('discord') as any;
-    const guild = discordClient.client.guilds.cache.get(serverId);
-    if (!guild) return false;
-
-    const hasTimeoutPermission = guild.members.me?.permissions.has(
-      PermissionsBitField.Flags.ModerateMembers
-    );
-
-    if (!hasTimeoutPermission) {
-      logger.warn('[TIMEOUT_USER] Missing Moderate Members permission. Cannot perform timeout.');
-      await callback({
-        text: `I don't have permission to timeout members. Please give me the **Moderate Members** permission.`,
-        source: 'discord',
-      });
-      return false;
-    }
-
-    const { targetEntityId, timeoutDuration } = await getTargetUserFromMessages(
-      runtime,
-      state,
-      responses
-    );
-    logger.info(
-      `[TIMEOUT_USER] Target identified: ${targetEntityId}, Duration: ${timeoutDuration}s`
-    );
-
-    if (!targetEntityId || !timeoutDuration) {
-      logger.warn('[TIMEOUT_USER] No valid user found to timeout or invalid duration.');
-      return false;
-    }
-
-    let entity = null;
-    try {
-      entity = await (runtime as any).adapter.getEntityById(targetEntityId);
-    } catch (err) {
-      logger.error('[TIMEOUT_USER] Failed to retrieve entity by ID:', err);
-      await callback({
-        text: `I couldn't find the user to timeout due to an internal error.`,
-        source: 'discord',
-      });
-      return false;
-    }
-
-    if (!entity) {
-      logger.warn('[TIMEOUT_USER] Entity not found for given ID.');
-      return false;
-    }
-
-    const entityName = entity.metadata['discord']?.userName;
-
-    if (!entityName) {
-      logger.warn('[TIMEOUT_USER] Could not find Discord username in entity metadata.');
-      return false;
-    }
-
-    const member = guild.members.cache.find(
-      (m) => m.user.username.toLowerCase() === entityName.toLowerCase()
-    );
-
-    if (!member) {
-      logger.warn('[TIMEOUT_USER] Discord member not found in guild cache.');
-      return false;
-    }
-
-    try {
-      await member.timeout(timeoutDuration * 1000, 'Inappropriate language or spam detected');
-
-      await runtime.createMemory(
-        {
-          entityId: message.entityId,
-          agentId: message.agentId,
-          roomId: message.roomId,
-          content: {
-            source: 'discord',
-            thought: `${member.displayName} was timed out for inappropriate language.`,
-            actions: ['TIMEOUT_USER'],
-          },
-          metadata: {
-            type: 'MODERATION',
-          },
-        },
-        'messages'
-      );
-      return true;
-    } catch (err) {
-      logger.error(`[TIMEOUT_USER] Failed to timeout user ${member?.displayName}:`, err);
-      await callback({
-        text: `I tried to timeout ${member.displayName} but ran into an error.`,
-        source: 'discord',
-      });
-      return false;
-    }
+    if (source === 'discord') return await handleDiscordTimeout(params);
+    if (source === 'telegram') return await handleTelegramTimeout(params);
   },
   examples: [
     [
@@ -305,4 +330,4 @@ export const discordTimeoutUser: Action = {
   ] as ActionExample[][],
 };
 
-export default discordTimeoutUser;
+export default timeoutUser;
