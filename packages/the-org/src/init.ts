@@ -67,6 +67,21 @@ export const initCharacter = async ({
   runtime.registerEvent('DISCORD_SERVER_CONNECTED', async (params: { server: Guild }) => {
     await initializeAllSystems(runtime, [params.server], config);
   });
+
+  // Register runtime events
+  runtime.registerEvent(
+    'TELEGRAM_WORLD_JOINED',
+    async (params: { world: World; entities: any[]; chat: any; botUsername: string }) => {
+      await initializeOnboarding(runtime, params.world, config);
+      await startTelegramOnboarding(
+        runtime,
+        params.world,
+        params.chat,
+        params.entities,
+        params.botUsername
+      );
+    }
+  );
 };
 
 /**
@@ -192,4 +207,47 @@ export async function startOnboardingDM(
     logger.error(`Error starting DM with owner: ${error}`);
     throw error;
   }
+}
+
+/**
+ * Starts onboarding for Telegram users by sending a deep link message to the group chat.
+ *
+ * @param {IAgentRuntime} runtime - The runtime instance for the agent
+ * @param {World} world - The world object containing configuration
+ * @param {any} chat - The Telegram chat object
+ * @param {any[]} entities - Array of entities to search for the owner
+ * @param {string} botUsername - Username of the Telegram bot
+ * @returns {Promise<void>} A promise that resolves when the message is sent
+ */
+export async function startTelegramOnboarding(
+  runtime: IAgentRuntime,
+  world: World,
+  chat: any,
+  entities: any[],
+  botUsername: string
+): Promise<void> {
+  let ownerId = null;
+  let ownerUsername = null;
+
+  entities.forEach((entity) => {
+    if (entity.metadata?.telegram?.adminTitle === 'Owner') {
+      ownerId = entity?.metadata?.telegram?.id;
+      ownerUsername = entity?.metadata?.telegram?.username;
+    }
+  });
+
+  if (!ownerId) {
+    logger.warn('no ownerId found');
+  }
+
+  const telegramClient = runtime.getService('telegram') as any;
+
+  // Fallback: send deep link to the group chat
+  const onboardingMessageDeepLink = [
+    `Hello @${ownerUsername}! Could we take a few minutes to get everything set up?`,
+    `Please click this link to start chatting with me: https://t.me/${botUsername}?start=onboarding`,
+  ].join(' ');
+
+  await telegramClient.messageManager.sendMessage(chat.id, { text: onboardingMessageDeepLink });
+  logger.info(`Sent deep link to group chat ${chat.id} for owner ${ownerId || 'unknown'}`);
 }
