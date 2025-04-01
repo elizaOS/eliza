@@ -122,6 +122,11 @@ export async function startAgent(
 
   const characterPlugins: Plugin[] = [];
 
+  // if encryptedChar.plugins does not include @elizaos/plugin-bootstrap, add it
+  if (!encryptedChar.plugins.includes('@elizaos/plugin-bootstrap')) {
+    encryptedChar.plugins.push('@elizaos/plugin-bootstrap');
+  }
+
   // for each plugin, check if it installed, and install if it is not
   for (const plugin of encryptedChar.plugins) {
     logger.debug('Checking if plugin is installed: ', plugin);

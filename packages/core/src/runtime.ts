@@ -1,5 +1,4 @@
 import { v4 as uuidv4 } from 'uuid';
-import { bootstrapPlugin } from './bootstrap';
 import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, handlePluginImporting } from './index';
 import logger from './logger';
@@ -143,7 +142,6 @@ export class AgentRuntime implements IAgentRuntime {
     adapter?: IDatabaseAdapter;
     settings?: RuntimeSettings;
     events?: { [key: string]: ((params: any) => void)[] };
-    ignoreBootstrap?: boolean;
   }) {
     // use the character id if it exists, otherwise use the agentId if it is passed in, otherwise use the character name
     this.agentId =
@@ -174,11 +172,6 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Register plugins from options or empty array
     const plugins = opts?.plugins ?? [];
-
-    // Add bootstrap plugin if not explicitly ignored
-    if (!opts?.ignoreBootstrap) {
-      plugins.push(bootstrapPlugin);
-    }
 
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
