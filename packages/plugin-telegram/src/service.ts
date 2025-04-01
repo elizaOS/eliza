@@ -416,6 +416,12 @@ export class TelegramService extends Service {
     const { chatTitle, channelType } = this.getChatTypeInfo(chat);
 
     const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
+
+    const existingWorld = this.runtime.getWorld(worldId);
+    if (existingWorld) {
+      return;
+    }
+
     const userId = ctx.from
       ? (createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID)
       : null;
