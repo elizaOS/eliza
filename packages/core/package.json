@@ -63,6 +63,7 @@
     "@hapi/shot": "^6.0.1",
     "@types/hapi": "^18.0.14",
     "@types/hapi__shot": "^6.0.0",
+    "crypto-browserify": "^3.12.1",
     "dotenv": "16.4.5",
     "events": "^3.3.0",
     "glob": "11.0.0",

@@ -1,6 +1,3 @@
-import type { UUID } from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import { v4 } from 'uuid';
 import { choiceAction } from './actions/choice';
 import { followRoomAction } from './actions/followRoom';
@@ -18,7 +15,6 @@ import { createUniqueUuid } from './entities';
 import { reflectionEvaluator } from './evaluators/reflection';
 import { logger } from './logger';
 import {
-  composePrompt,
   composePromptFromState,
   messageHandlerTemplate,
   parseJSONObjectFromText,
@@ -44,6 +40,7 @@ import { settingsProvider } from './providers/settings';
 import { timeProvider } from './providers/time';
 import { ScenarioService } from './services/scenario';
 import { TaskService } from './services/task';
+import type { UUID } from './types';
 import {
   type ActionEventPayload,
   ChannelType,
@@ -58,8 +55,8 @@ import {
   type Media,
   type Memory,
   type MessagePayload,
-  ModelType,
   type MessageReceivedHandlerParams,
+  ModelType,
   type Plugin,
   type WorldPayload,
   asUUID,
@@ -102,12 +99,12 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
         const mediaType = attachment.contentType || 'image/png';
         return { data: mediaBuffer, mediaType };
       }
-      if (fs.existsSync(attachment.url)) {
-        // Handle local file paths
-        const mediaBuffer = await fs.promises.readFile(path.resolve(attachment.url));
-        const mediaType = attachment.contentType || 'image/png';
-        return { data: mediaBuffer, mediaType };
-      }
+      // if (fs.existsSync(attachment.url)) {
+      //   // Handle local file paths
+      //   const mediaBuffer = await fs.promises.readFile(path.resolve(attachment.url));
+      //   const mediaType = attachment.contentType || 'image/png';
+      //   return { data: mediaBuffer, mediaType };
+      // }
       throw new Error(`File not found: ${attachment.url}. Make sure the path is correct.`);
     })
   );

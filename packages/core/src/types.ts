@@ -1,5 +1,3 @@
-import type { Readable } from 'node:stream';
-
 /**
  * Type definition for a Universally Unique Identifier (UUID) using a specific format.
  * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
@@ -960,10 +958,6 @@ export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
   similarity?: number; // Clearer name than 'match_threshold'
 }
 
-export type CacheOptions = {
-  expires?: number;
-};
-
 export interface IAgentRuntime extends IDatabaseAdapter {
   // Properties
   agentId: UUID;
@@ -1090,6 +1084,16 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   stop(): Promise<void>;
 
   addEmbeddingToMemory(memory: Memory): Promise<Memory>;
+}
+
+/**
+ * Interface for settings object with key-value pairs.
+ */
+/**
+ * Interface representing settings with string key-value pairs.
+ */
+export interface RuntimeSettings {
+  [key: string]: string | undefined;
 }
 
 export type KnowledgeItem = {
@@ -1480,7 +1484,7 @@ export interface ModelResultMap {
   [ModelType.IMAGE]: { url: string }[];
   [ModelType.IMAGE_DESCRIPTION]: { title: string; description: string };
   [ModelType.TRANSCRIPTION]: string;
-  [ModelType.TEXT_TO_SPEECH]: Readable | Buffer;
+  [ModelType.TEXT_TO_SPEECH]: any | Buffer;
   [ModelType.AUDIO]: any; // Specific return type depends on processing type
   [ModelType.VIDEO]: any; // Specific return type depends on processing type
   [ModelType.OBJECT_SMALL]: any;
