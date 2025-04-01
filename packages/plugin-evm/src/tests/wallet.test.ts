@@ -147,7 +147,6 @@ describe('Wallet provider', () => {
 
     it('adds chain', () => {
       const initialChains = walletProvider.chains;
-      console.log(initialChains.customChain);
       expect(initialChains.customChain).toBeUndefined();
 
       walletProvider.addChain({ customChain });
