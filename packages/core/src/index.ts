@@ -12,3 +12,4 @@ export * from './roles';
 export * from './runtime';
 export * from './settings';
 export * from './uuid';
+export * from './audioUtils';

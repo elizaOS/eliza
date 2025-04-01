@@ -22,6 +22,7 @@ import {
   ModelType,
   type UUID,
   createUniqueUuid,
+  getWavHeader,
   logger,
 } from '@elizaos/core';
 import {
@@ -36,7 +37,6 @@ import {
 } from 'discord.js';
 import prism from 'prism-media';
 import type { DiscordService } from './service';
-import { getWavHeader } from './utils';
 
 // These values are chosen for compatibility with picovoice components
 const DECODE_FRAME_SIZE = 1024;

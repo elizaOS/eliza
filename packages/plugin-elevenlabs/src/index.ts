@@ -1,6 +1,12 @@
+import {
+  type IAgentRuntime,
+  ModelType,
+  type Plugin,
+  logger,
+  prependWavHeader,
+  parseBooleanFromText,
+} from '@elizaos/core';
 import { Readable } from 'node:stream';
-import { type IAgentRuntime, ModelType, type Plugin, logger } from '@elizaos/core';
-import { prependWavHeader } from './utils';
 
 /**
  * Function to retrieve voice settings based on runtime and environment variables.
@@ -20,7 +26,7 @@ function getVoiceSettings(runtime: IAgentRuntime) {
     outputFormat: getSetting('ELEVENLABS_OUTPUT_FORMAT', 'pcm_16000'),
     similarity: getSetting('ELEVENLABS_VOICE_SIMILARITY_BOOST', '0.75'),
     style: getSetting('ELEVENLABS_VOICE_STYLE', '0'),
-    speakerBoost: getSetting('ELEVENLABS_VOICE_USE_SPEAKER_BOOST', 'true'),
+    speakerBoost: parseBooleanFromText(getSetting('ELEVENLABS_VOICE_USE_SPEAKER_BOOST', 'true')),
   };
 }
 
