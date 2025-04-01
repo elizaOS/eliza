@@ -50,16 +50,24 @@ export interface LastCast {
  * This schema defines all required/optional environment settings for Farcaster client
  */
 export const FarcasterConfigSchema = z.object({
-  FARCASTER_DRY_RUN: z.boolean(),
+  FARCASTER_DRY_RUN: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => (typeof val === 'string' ? val.toLowerCase() === 'true' : val)),
   FARCASTER_FID: z.number().int().min(1, 'Farcaster fid is required'),
   MAX_CAST_LENGTH: z.number().int().default(DEFAULT_MAX_CAST_LENGTH),
   FARCASTER_POLL_INTERVAL: z.number().int().default(DEFAULT_POLL_INTERVAL),
-  ENABLE_POST: z.boolean(),
+  ENABLE_POST: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => (typeof val === 'string' ? val.toLowerCase() === 'true' : val)),
   POST_INTERVAL_MIN: z.number().int(),
   POST_INTERVAL_MAX: z.number().int(),
-  ENABLE_ACTION_PROCESSING: z.boolean(),
+  ENABLE_ACTION_PROCESSING: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => (typeof val === 'string' ? val.toLowerCase() === 'true' : val)),
   ACTION_INTERVAL: z.number().int(),
-  POST_IMMEDIATELY: z.boolean(),
+  POST_IMMEDIATELY: z
+    .union([z.boolean(), z.string()])
+    .transform((val) => (typeof val === 'string' ? val.toLowerCase() === 'true' : val)),
   MAX_ACTIONS_PROCESSING: z.number().int(),
   FARCASTER_NEYNAR_SIGNER_UUID: z.string().min(1, 'FARCASTER_NEYNAR_SIGNER_UUID is not set'),
   FARCASTER_NEYNAR_API_KEY: z.string().min(1, 'FARCASTER_NEYNAR_API_KEY is not set'),
