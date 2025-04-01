@@ -1162,7 +1162,6 @@ export class AgentRuntime implements IAgentRuntime {
    */
   async ensureWorldExists({ id, name, serverId, metadata }: World) {
     // try {
-    console.log('ensureWorldExists() () () () () () 1');
     const world = await this.getWorld(id);
     if (!world) {
       this.runtimeLogger.debug('Creating world:', {
@@ -1171,7 +1170,6 @@ export class AgentRuntime implements IAgentRuntime {
         serverId,
         agentId: this.agentId,
       });
-      console.log('ensureWorldExists() () () () () () 2');
       await this.adapter.createWorld({
         id,
         name,
@@ -1764,7 +1762,6 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async createWorld(world: World): Promise<UUID> {
-    console.log('createWorld() () () () () () 1');
     return await this.adapter.createWorld(world);
   }
 

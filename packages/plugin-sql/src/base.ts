@@ -606,7 +606,6 @@ export abstract class BaseDrizzleAdapter<
    * @returns Promise resolving to boolean indicating success
    */
   protected async ensureEntityExists(entity: Entity): Promise<boolean> {
-    console.log('ENSURE ENTITY EXISTS', entity);
     if (!entity.id) {
       logger.error('Entity ID is required for ensureEntityExists');
       return false;
@@ -635,7 +634,6 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<void>} A Promise that resolves when the entity is updated.
    */
   async updateEntity(entity: Entity): Promise<void> {
-    console.log('UPDATE ENTITY', entity);
     return this.withDatabase(async () => {
       await this.db
         .update(entityTable)
@@ -1260,8 +1258,6 @@ export abstract class BaseDrizzleAdapter<
       contentLength: memory.content?.text?.length,
     });
 
-    console.log('CREATE MEMORY', memory);
-
     let isUnique = true;
     if (memory.embedding && Array.isArray(memory.embedding)) {
       const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
@@ -1598,7 +1594,6 @@ export abstract class BaseDrizzleAdapter<
     worldId,
     metadata,
   }: Room): Promise<UUID> {
-    console.log('CREATE ROOM', { id, name, source, type, channelId, serverId, worldId, metadata });
     return this.withDatabase(async () => {
       const newRoomId = id || v4();
       await this.db
@@ -2103,7 +2098,6 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<UUID>} A Promise that resolves to the ID of the created world.
    */
   async createWorld(world: World): Promise<UUID> {
-    console.log('CREATE WORLD', world);
     return this.withDatabase(async () => {
       const newWorldId = world.id || v4();
       await this.db.insert(worldTable).values({
@@ -2146,7 +2140,6 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<void>} A Promise that resolves when the world is updated.
    */
   async updateWorld(world: World): Promise<void> {
-    console.log('UPDATE WORLD', world);
     return this.withDatabase(async () => {
       await this.db.update(worldTable).set(world).where(eq(worldTable.id, world.id));
     });
