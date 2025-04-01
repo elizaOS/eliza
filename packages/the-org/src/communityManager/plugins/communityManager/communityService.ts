@@ -18,6 +18,7 @@ export class CommunityManagerService extends Service {
   capabilityDescription = 'community manager';
 
   private handleDiscordUserJoined = this.onDiscordUserJoined.bind(this);
+  private handleTelegramUserJoined = this.onTelegramUserJoined.bind(this);
 
   constructor(protected runtime: IAgentRuntime) {
     super(runtime);
@@ -188,7 +189,66 @@ export class CommunityManagerService extends Service {
     }
   }
 
+  async onTelegramUserJoined(params) {
+    const { runtime, entityId, worldId, newMember, ctx } = params;
+
+    const world = await runtime.adapter.getWorld(worldId);
+    if (!world) {
+      logger.warn(`World not found for worldId: ${worldId}`);
+      return;
+    }
+
+    const greetingMsgSettings = world.metadata?.settings['GREETING_MESSAGE']?.value;
+
+    // Prefer full name or username if available
+    const userName =
+      newMember.first_name + (newMember.last_name ? ` ${newMember.last_name}` : '') ||
+      newMember.username ||
+      'friend';
+
+    const greetingMessage = await this.getGreetingMessage(runtime, userName, greetingMsgSettings);
+
+    const welcomeText =
+      greetingMessage ||
+      `Welcome ${userName}! I'm ${runtime.character.name}, your community manager. Feel free to say hi!`;
+
+    // Send message in Telegram using context
+    try {
+      await ctx.reply(welcomeText);
+    } catch (err) {
+      logger.error(`Failed to send greeting in Telegram: ${err}`);
+    }
+
+    // Create a synthetic roomId using the Telegram chat ID
+    const roomId = createUniqueUuid(runtime, ctx.chat.id.toString());
+
+    await runtime.ensureRoomExists({
+      id: roomId,
+      source: 'telegram',
+      type: ChannelType.GROUP,
+      channelId: ctx.chat.id.toString(),
+      serverId: ctx.chat.id.toString(),
+      worldId,
+    });
+
+    // Create memory of the initial greeting
+    await runtime.createMemory(
+      {
+        agentId: runtime.agentId,
+        entityId,
+        roomId,
+        content: {
+          text: welcomeText,
+          actions: ['GREET_NEW_PERSON'],
+        },
+        createdAt: Date.now(),
+      },
+      'messages'
+    );
+  }
+
   addEventListener(runtime: IAgentRuntime): void {
     runtime.registerEvent('DISCORD_USER_JOINED', this.handleDiscordUserJoined);
+    runtime.registerEvent('TELEGRAM_ENTITY_JOINED', this.handleTelegramUserJoined);
   }
 }

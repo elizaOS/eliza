@@ -296,6 +296,9 @@ export class TelegramService extends Service {
       const newMember = ctx.message.new_chat_member as any;
       const telegramId = newMember.id.toString();
       const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
+      const chat = ctx.chat;
+      const chatId = chat.id.toString();
+      const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
 
       await this.runtime.createEntity({
         id: entityId,
@@ -311,6 +314,13 @@ export class TelegramService extends Service {
       });
 
       this.syncedEntityIds.add(telegramId);
+      this.runtime.emitEvent([TelegramEventTypes.ENTITY_JOINED], {
+        runtime: this.runtime,
+        entityId,
+        worldId,
+        newMember,
+        ctx,
+      });
     }
 
     // Handle left chat member
