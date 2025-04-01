@@ -1,5 +1,5 @@
-import { PassThrough } from 'stream';
-import type { Readable } from 'stream';
+import { PassThrough } from 'stream-browserify';
+import { Readable } from 'stream-browserify';
 import { Buffer } from 'buffer';
 
 /**
