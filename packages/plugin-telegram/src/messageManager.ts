@@ -7,6 +7,7 @@ import {
   type Media,
   type Memory,
   ModelType,
+  Room,
   type UUID,
   createUniqueUuid,
   logger,
@@ -260,17 +261,17 @@ export class MessageManager {
     try {
       // Convert IDs to UUIDs
       const entityId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
-      const userName = ctx.from.username || ctx.from.first_name || 'Unknown User';
 
       const threadId =
         'is_topic_message' in message && message.is_topic_message
           ? message.message_thread_id?.toString()
           : undefined;
 
+      // Generate room ID based on whether this is in a forum topic
       const roomId = createUniqueUuid(
         this.runtime,
-        threadId ? `${ctx.chat.id}:${threadId}` : ctx.chat.id.toString()
-      );
+        threadId ? `${ctx.chat.id}-${threadId}` : ctx.chat.id.toString()
+      ) as UUID;
 
       // Get message ID
       const messageId = createUniqueUuid(this.runtime, message?.message_id?.toString());
@@ -293,60 +294,6 @@ export class MessageManager {
       // Get chat type and determine channel type
       const chat = message.chat as Chat;
       const channelType = getChannelType(chat);
-
-      // Get world and room IDs
-      // For private chats, the world is the chat itself
-      // For groups/channels, the world is the supergroup/channel
-      // TODO: Always use chat.id as worldId?
-      const worldId = createUniqueUuid(this.runtime, chat.id.toString());
-
-      // Get world and room names
-      const worldName =
-        chat.type === 'supergroup'
-          ? (chat as Chat.SupergroupChat).title
-          : chat.type === 'channel'
-            ? (chat as Chat.ChannelChat).title
-            : chat.type === 'private'
-              ? `Chat with ${(chat as Chat.PrivateChat).first_name || 'Unknown'}`
-              : 'Telegram';
-
-      const roomName =
-        chat.type === 'private'
-          ? (chat as Chat.PrivateChat).first_name
-          : chat.type === 'supergroup'
-            ? (chat as Chat.SupergroupChat).title
-            : chat.type === 'channel'
-              ? (chat as Chat.ChannelChat).title
-              : chat.type === 'group'
-                ? (chat as Chat.GroupChat).title
-                : 'Unknown Group';
-
-      // Ensure entity connection with proper world/server ID handling
-      console.log('handleMessage() () () () () () 1', worldId);
-      await this.runtime.ensureConnection({
-        entityId,
-        roomId,
-        userName,
-        name: userName,
-        source: 'telegram',
-        channelId: ctx.chat.id.toString(),
-        serverId: chat.type === 'private' ? undefined : chat.id.toString(), // Only set serverId for non-private chats
-        type: channelType,
-        worldId: worldId,
-      });
-
-      // Ensure room exists
-      const room = {
-        id: roomId,
-        name: roomName,
-        source: 'telegram',
-        type: channelType,
-        channelId: ctx.chat.id.toString(),
-        serverId: chat.type === 'private' ? undefined : chat.id.toString(),
-        worldId: worldId,
-      };
-
-      await this.runtime.ensureRoomExists(room);
 
       // Create the memory object
       const memory: Memory = {
@@ -436,7 +383,7 @@ export class MessageManager {
 
   /**
    * Handles the reaction event triggered by a user reacting to a message.
-   * * @param {NarrowedContext<Context<Update>, Update.MessageReactionUpdate>} ctx The context of the message reaction update
+   * @param {NarrowedContext<Context<Update>, Update.MessageReactionUpdate>} ctx The context of the message reaction update
    * @returns {Promise<void>} A Promise that resolves when the reaction handling is complete
    */
   public async handleReaction(
@@ -452,7 +399,6 @@ export class MessageManager {
     try {
       const entityId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
       const roomId = createUniqueUuid(this.runtime, ctx.chat.id.toString());
-      const worldId = createUniqueUuid(this.runtime, ctx.chat.id.toString());
 
       const reactionId = createUniqueUuid(
         this.runtime,
