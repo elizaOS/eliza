@@ -51,7 +51,7 @@ async function checkRegistryRequirements(cwd: string) {
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
 
   return {
-    name: packageJson.name.includes('plugin-'),
+    name: packageJson.name.includes('plugin-') || packageJson.name.includes('@elizaos/plugin-'),
     imagesDir: existsSync(path.join(cwd, 'images')),
     logoImage: existsSync(path.join(cwd, 'images', 'logo.jpg')),
     bannerImage: existsSync(path.join(cwd, 'images', 'banner.jpg')),
@@ -205,7 +205,8 @@ plugin
       logger.info('\n📋 Checking Registry Requirements...');
 
       const requirements = {
-        nameCorrect: packageJson.name?.includes('plugin-'),
+        nameCorrect:
+          packageJson.name?.includes('plugin-') || packageJson.name.includes('@elizaos/plugin-'),
         hasRepoUrl: !!packageJson.repository?.url,
         correctRepoUrl:
           packageJson.repository?.url?.includes('github:') &&
@@ -549,7 +550,9 @@ These files are required for registry submission. Your plugin submission will no
             logger.info('\n📋 Rechecking requirements...');
 
             const updatedRequirements = {
-              nameCorrect: packageJson.name?.includes('plugin-'),
+              nameCorrect:
+                packageJson.name?.includes('plugin-') ||
+                packageJson.name.includes('@elizaos/plugin-'),
               hasRepoUrl: !!packageJson.repository?.url,
               correctRepoUrl:
                 packageJson.repository?.url?.includes('github:') &&
