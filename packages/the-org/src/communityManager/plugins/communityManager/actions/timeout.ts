@@ -108,7 +108,7 @@ const getTargetUserFromMessages = async (
   }
 };
 
-export const discordTimeoutUser: Action = {
+export const timeoutUser: Action = {
   name: 'TIMEOUT_USER',
   similes: ['TIMEOUT_USER', 'MODERATION_TIMEOUT', 'FUD_TIMEOUT'],
   description: 'Timeout users who are spreading FUD, spamming, or using inappropriate language.',
@@ -396,4 +396,4 @@ export const discordTimeoutUser: Action = {
   ] as ActionExample[][],
 };
 
-export default discordTimeoutUser;
+export default timeoutUser;
