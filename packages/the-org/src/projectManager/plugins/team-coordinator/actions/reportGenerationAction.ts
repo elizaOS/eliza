@@ -6,35 +6,26 @@ import {
   type Memory,
   ModelType,
   type UUID,
+  createUniqueUuid,
   logger,
 } from '@elizaos/core';
+import type { TeamMemberUpdate } from '../../../types';
 
-interface TeamMemberUpdate {
-  type: 'team-member-update';
-  updateId: UUID;
-  teamMemberId: UUID;
-  currentProgress: string;
-  workingOn: string;
-  nextSteps: string;
-  blockers: string;
-  eta: string;
-  timestamp: string;
-  channelId?: UUID;
-}
-
-async function generateTeamReport(
+export async function generateTeamReport(
   runtime: IAgentRuntime,
   standupType: string,
-  roomId: string
+  roomId?: string
 ): Promise<string> {
   try {
     logger.info('=== GENERATE TEAM REPORT START ===');
-    logger.info(`Generating report for standup type: ${standupType} in room: ${roomId}`);
+    logger.info(`Generating report for standup type: ${standupType}`);
+
+    const roomIdLocal = createUniqueUuid(runtime, 'report-channel-config');
 
     // Get all messages from the room that match the standup type
     const memories = await runtime.getMemories({
-      roomId,
       tableName: 'messages',
+      agentId: runtime.agentId,
     });
 
     logger.info(`Retrieved ${memories.length} total messages from room`);
@@ -44,28 +35,14 @@ async function generateTeamReport(
       .filter((memory) => {
         const content = memory.content as {
           type?: string;
-          standupType?: string;
           update?: TeamMemberUpdate;
         };
         const contentType = content?.type;
-        const contentStandupType = content?.standupType?.toLowerCase();
         const requestedType = standupType.toLowerCase();
+        const checkInType = content?.update?.checkInType;
 
-        // More flexible matching for standup types
-        // const isDaily =
-        //   requestedType === 'standup' &&
-        //   (contentStandupType?.includes('daily') || contentStandupType?.includes('standup'));
-        const isStandupUpdate = contentType === 'team-member-update';
-
-        logger.info('Filtering update:', {
-          contentType,
-          contentStandupType,
-          requestedType,
-          // isDaily,
-          isStandupUpdate,
-        });
-
-        return isStandupUpdate && contentStandupType === requestedType;
+        return contentType === 'team-member-update';
+        // && checkInType === standupType
       })
       .map((memory) => (memory.content as { update: TeamMemberUpdate })?.update)
       .filter((update): update is TeamMemberUpdate => !!update)
@@ -173,17 +150,7 @@ export const generateReport: Action = {
         logger.warn('No callback function provided');
         return false;
       }
-      // Generate the report
-      const report = await generateTeamReport(runtime, 'STANDUP', message.roomId);
 
-      const content: Content = {
-        text: report,
-        source: 'discord',
-      };
-
-      await callback(content, []);
-      logger.info('=== GENERATE REPORT HANDLER END ===');
-      return true;
       // Extract standup type from message text
       const text = message.content?.text as string;
       if (!text) {
@@ -193,7 +160,8 @@ export const generateReport: Action = {
 
       // Use AI to parse the input text and extract standup type
       try {
-        const prompt = `Extract the standup type from this text. Consider variations like "daily updates" or "daily check-in" as STANDUP type. Valid types are: STANDUP (daily), SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO. Text: "${text}"`;
+        const prompt = `Extract the standup type from this text. try to understand the sentence , it's feel and after understand give output in these values: STANDUP, SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO. 
+        if you can't figure out any standup type make STANDUP as default. answer should be one word "${text}"`;
 
         const parsedType = await runtime.useModel(ModelType.TEXT_LARGE, {
           prompt,
@@ -256,6 +224,18 @@ export const generateReport: Action = {
         );
         return false;
       }
+
+      // Generate the report
+      const report = await generateTeamReport(runtime, 'STANDUP', message.roomId);
+
+      const content: Content = {
+        text: report,
+        source: 'discord',
+      };
+
+      await callback(content, []);
+      logger.info('=== GENERATE REPORT HANDLER END ===');
+      return true;
     } catch (error) {
       logger.error('=== GENERATE REPORT HANDLER ERROR ===');
       logger.error('Error details:', {

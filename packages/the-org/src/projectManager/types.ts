@@ -122,3 +122,20 @@ export interface DailyUpdate {
   notes?: string;
   timestamp: string;
 }
+
+export interface TeamMemberUpdate {
+  type: 'team-member-update';
+  updateId: UUID;
+  teamMemberId: UUID;
+  teamMemberName?: string;
+  serverName: string;
+  checkInType: string;
+  currentProgress: string;
+  workingOn: string;
+  nextSteps: string;
+  blockers: string;
+  eta: string;
+  timestamp: string;
+  channelId?: UUID;
+  serverId?: string;
+}

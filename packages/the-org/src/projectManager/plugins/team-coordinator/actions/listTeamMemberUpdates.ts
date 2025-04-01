@@ -8,19 +8,7 @@ import {
   createUniqueUuid,
   logger,
 } from '@elizaos/core';
-
-interface TeamMemberUpdate {
-  type: 'team-member-update';
-  updateId: UUID;
-  teamMemberId: UUID;
-  currentProgress: string;
-  workingOn: string;
-  nextSteps: string;
-  blockers: string;
-  eta: string;
-  timestamp: string;
-  channelId?: UUID;
-}
+import type { TeamMemberUpdate } from '../../../types';
 
 /**
  * Formats a team member update for display
