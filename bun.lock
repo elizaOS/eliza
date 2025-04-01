@@ -673,8 +673,10 @@
         "zod": "3.24.2",
       },
       "devDependencies": {
+        "@vitest/coverage-v8": "2.1.5",
         "prettier": "3.5.3",
         "tsup": "8.4.0",
+        "vitest": "2.1.5",
       },
     },
     "packages/the-org": {
