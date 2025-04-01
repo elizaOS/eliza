@@ -61,9 +61,14 @@ export default defineConfig(({ mode }): UserConfig => {
         },
       },
     },
+    optimizeDeps: {
+      include: ['stream-browserify'],
+    },
     resolve: {
       alias: {
         '@': '/src',
+        stream: 'stream-browserify',
+        'node:stream': 'stream-browserify',
       },
     },
     logLevel: 'error', // Only show errors, not warnings
