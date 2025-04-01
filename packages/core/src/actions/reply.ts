@@ -15,6 +15,11 @@ import {
  *
  * @type {string}
  */
+/**
+ * Template for generating dialog and actions for a character.
+ *
+ * @type {string}
+ */
 const replyTemplate = `# Task: Generate dialog and actions for the character {{agentName}}.
 {{providers}}
 # Instructions: Write the next message for {{agentName}}.

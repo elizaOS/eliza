@@ -8,6 +8,10 @@ import { type IAgentRuntime, Role, type World } from './types';
 /**
  * Represents the state of server ownership, including a mapping of server IDs to their respective World objects.
  */
+/**
+ * Interface representing the ownership state of servers.
+ * @property {Object.<string, World>} servers - The servers and their corresponding worlds, where the key is the server ID and the value is the World object.
+ */
 export interface ServerOwnershipState {
   servers: {
     [serverId: string]: World;
@@ -57,10 +61,10 @@ export async function getUserServerRole(
 /**
  * Finds a server where the given user is the owner
  */
-export async function findWorldForOwner(
+export async function findWorldsForOwner(
   runtime: IAgentRuntime,
   entityId: string
-): Promise<World | null> {
+): Promise<World[] | null> {
   try {
     if (!entityId) {
       logger.error('User ID is required to find server');
@@ -75,15 +79,15 @@ export async function findWorldForOwner(
       return null;
     }
 
+    const ownerWorlds = [];
     // Find world where the user is the owner
     for (const world of worlds) {
       if (world.metadata?.ownership?.ownerId === entityId) {
-        return world;
+        ownerWorlds.push(world);
       }
     }
 
-    logger.debug(`No server found for owner ${entityId}`);
-    return null;
+    return ownerWorlds.length ? ownerWorlds : null;
   } catch (error) {
     logger.error(`Error finding server for owner: ${error}`);
     return null;

@@ -30,6 +30,14 @@ const relationshipSchema = z.object({
  * @property {import("zod").array<import("zod").object<{claim: import("zod").string(), type: import("zod").string(), in_bio: import("zod").boolean(), already_known: import("zod").boolean()}>} facts Array of facts about the topic
  * @property {import("zod").array<import("zod").object>} relationships Array of relationships related to the topic
  */
+/**
+ * JSDoc comment for reflectionSchema object:
+ *
+ * Represents a schema for an object containing 'facts' and 'relationships'.
+ * 'facts' is an array of objects with properties 'claim', 'type', 'in_bio', and 'already_known'.
+ * 'relationships' is an array of objects following the relationshipSchema.
+ */
+
 const reflectionSchema = z.object({
   // reflection: z.string(),
   facts: z.array(

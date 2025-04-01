@@ -13,16 +13,6 @@ import { z } from 'zod';
 export const configSchema = z.object({
   USE_LOCAL_AI: z.boolean().default(true),
   USE_STUDIOLM_TEXT_MODELS: z.boolean().default(false),
-  USE_OLLAMA_TEXT_MODELS: z.boolean().default(false),
-
-  // Ollama Configuration
-  OLLAMA_SERVER_URL: z.string().default('http://localhost:11434'),
-  OLLAMA_MODEL: z.string().default('deepseek-r1-distill-qwen-7b'),
-  USE_OLLAMA_EMBEDDING: z.boolean().default(false),
-  OLLAMA_EMBEDDING_MODEL: z.string().default(''),
-  SMALL_OLLAMA_MODEL: z.string().default('deepseek-r1:1.5b'),
-  MEDIUM_OLLAMA_MODEL: z.string().default('deepseek-r1:7b'),
-  LARGE_OLLAMA_MODEL: z.string().default('deepseek-r1:7b'),
 
   // StudioLM Configuration
   STUDIOLM_SERVER_URL: z.string().default('http://localhost:1234'),
@@ -47,18 +37,12 @@ function validateModelConfig(config: Record<string, boolean>): void {
   logger.info('Validating model configuration with values:', {
     USE_LOCAL_AI: config.USE_LOCAL_AI,
     USE_STUDIOLM_TEXT_MODELS: config.USE_STUDIOLM_TEXT_MODELS,
-    USE_OLLAMA_TEXT_MODELS: config.USE_OLLAMA_TEXT_MODELS,
   });
 
   // Ensure USE_LOCAL_AI is always true
   if (!config.USE_LOCAL_AI) {
     config.USE_LOCAL_AI = true;
     logger.info("Setting USE_LOCAL_AI to true as it's required");
-  }
-
-  // Only validate that StudioLM and Ollama are not both enabled
-  if (config.USE_STUDIOLM_TEXT_MODELS && config.USE_OLLAMA_TEXT_MODELS) {
-    throw new Error('StudioLM and Ollama text models cannot be enabled simultaneously');
   }
 
   logger.info('Configuration is valid');
@@ -85,8 +69,6 @@ export async function validateConfig(config: Record<string, string>): Promise<Co
     const booleanConfig = {
       USE_LOCAL_AI: true, // Always true
       USE_STUDIOLM_TEXT_MODELS: config.USE_STUDIOLM_TEXT_MODELS === 'true',
-      USE_OLLAMA_TEXT_MODELS: config.USE_OLLAMA_TEXT_MODELS === 'true',
-      USE_OLLAMA_EMBEDDING: config.USE_OLLAMA_EMBEDDING === 'true',
     };
 
     // logger.info("Parsed boolean configuration:", booleanConfig);
@@ -97,12 +79,6 @@ export async function validateConfig(config: Record<string, string>): Promise<Co
     // Create full config with all values
     const fullConfig = {
       ...booleanConfig,
-      OLLAMA_SERVER_URL: config.OLLAMA_SERVER_URL || 'http://localhost:11434',
-      OLLAMA_MODEL: config.OLLAMA_MODEL || 'deepseek-r1-distill-qwen-7b',
-      OLLAMA_EMBEDDING_MODEL: config.OLLAMA_EMBEDDING_MODEL || '',
-      SMALL_OLLAMA_MODEL: config.SMALL_OLLAMA_MODEL || 'deepseek-r1:1.5b',
-      MEDIUM_OLLAMA_MODEL: config.MEDIUM_OLLAMA_MODEL || 'deepseek-r1:7b',
-      LARGE_OLLAMA_MODEL: config.LARGE_OLLAMA_MODEL || 'deepseek-r1:7b',
       STUDIOLM_SERVER_URL: config.STUDIOLM_SERVER_URL || 'http://localhost:1234',
       STUDIOLM_SMALL_MODEL:
         config.STUDIOLM_SMALL_MODEL || 'lmstudio-community/deepseek-r1-distill-qwen-1.5b',

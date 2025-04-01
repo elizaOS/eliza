@@ -236,13 +236,13 @@ export const formatMessages = ({
 
       const timestamp = formatTimestamp(message.createdAt);
 
-      const shortId = message.entityId.slice(-5);
+      // const shortId = message.entityId.slice(-5);
 
       const thoughtString = messageThought
         ? `(${formattedName}'s internal thought: ${messageThought})`
         : null;
 
-      const timestampString = `${timeString} (${timestamp}) [${shortId}]`;
+      const timestampString = `${timeString} (${timestamp}) [${message.entityId}]`;
       const textString = messageText ? `${timestampString} ${formattedName}: ${messageText}` : null;
       const actionString =
         messageActions && messageActions.length > 0

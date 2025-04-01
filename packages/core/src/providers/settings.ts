@@ -2,7 +2,7 @@
 // Updated to use world metadata instead of cache
 
 import { logger } from '../logger';
-import { findWorldForOwner } from '../roles';
+import { findWorldsForOwner } from '../roles';
 import { getWorldSettings } from '../settings';
 import {
   ChannelType,
@@ -66,24 +66,45 @@ function generateStatusMessage(
 
     // Generate appropriate message
     if (isOnboarding) {
+      const settingsList = formattedSettings
+        .map((s) => {
+          const label = s.required ? '(Required)' : '(Optional)';
+          return `${s.key}: ${s.value} ${label}\n(${s.name}) ${s.usageDescription}`;
+        })
+        .join('\n\n');
+
+      const validKeys = `Valid setting keys: ${Object.keys(worldSettings).join(', ')}`;
+
+      const commonInstructions = `Instructions for ${runtime.character.name}:
+      - Only update settings if the user is clearly responding to a setting you are currently asking about.
+      - If the user's reply clearly maps to a setting and a valid value, you **must** call the UPDATE_SETTINGS action with the correct key and value. Do not just respond with a message saying it's updated — it must be an action.
+      - Never hallucinate settings or respond with values not listed above.
+      - Do not call UPDATE_SETTINGS just because the user has started onboarding or you think a setting needs to be configured. Only update when the user clearly provides a specific value for a setting you are currently asking about.
+      - Answer setting-related questions using only the name, description, and value from the list.`;
+
       if (requiredUnconfigured > 0) {
-        return `# PRIORITY TASK: Onboarding with ${state.senderName}\n${
-          runtime.character.name
-        } still needs to configure ${requiredUnconfigured} required settings:\n\n${formattedSettings
-          .filter((s) => s.required && !s.configured)
-          .map((s) => `${s.key}: ${s.value}\n(${s.name}) ${s.usageDescription}`)
-          .join('\n\n')}\n\nValid settings keys: ${Object.keys(worldSettings).join(
-          ', '
-        )}\n\nIf the user gives any information related to the settings, ${
-          runtime.character.name
-        } should use the UPDATE_SETTINGS action to update the settings with this new information. ${
-          runtime.character.name
-        } can update any, some or all settings.`;
+        return `# PRIORITY TASK: Onboarding with ${state.senderName}
+
+        ${runtime.character.name} needs to help the user configure ${requiredUnconfigured} required settings:
+        
+        ${settingsList}
+        
+        ${validKeys}
+        
+        ${commonInstructions}
+        
+        - Prioritize configuring required settings before optional ones.`;
       }
-      return `All required settings have been configured! Here's the current configuration:\n\n${formattedSettings
-        .map((s) => `${s.name}: ${s.description}\nValue: ${s.value}`)
-        .join('\n')}`;
+
+      return `All required settings have been configured. Here's the current configuration:
+      
+        ${settingsList}
+        
+        ${validKeys}
+        
+        ${commonInstructions}`;
     }
+
     // Non-onboarding context - list all public settings with values and descriptions
     return `## Current Configuration\n\n${
       requiredUnconfigured > 0
@@ -109,9 +130,9 @@ export const settingsProvider: Provider = {
     try {
       // Parallelize the initial database operations to improve performance
       // These operations can run simultaneously as they don't depend on each other
-      const [room, userWorld] = await Promise.all([
+      const [room, userWorlds] = await Promise.all([
         runtime.getRoom(message.roomId),
-        findWorldForOwner(runtime, message.entityId),
+        findWorldsForOwner(runtime, message.entityId),
       ]).catch((error) => {
         logger.error(`Error fetching initial data: ${error}`);
         throw new Error('Failed to retrieve room or user world information');
@@ -152,7 +173,7 @@ export const settingsProvider: Provider = {
 
       if (isOnboarding) {
         // In onboarding mode, use the user's world directly
-        world = userWorld;
+        world = userWorlds.find((world) => world.metadata.settings);
 
         if (!world) {
           logger.error('No world found for user during onboarding');

@@ -16,7 +16,7 @@ export default function ConnectionStatus() {
     },
     refetchInterval: 5000,
     retry: 2,
-    staleTime: 1000,
+    staleTime: 5000,
   });
 
   const connected = query.isSuccess && !query.isError;

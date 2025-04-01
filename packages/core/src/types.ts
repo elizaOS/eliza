@@ -4,6 +4,9 @@ import type { Readable } from 'node:stream';
  * Type definition for a Universally Unique Identifier (UUID) using a specific format.
  * @typedef {`${string}-${string}-${string}-${string}-${string}`} UUID
  */
+/**
+ * Defines a custom type UUID representing a universally unique identifier
+ */
 export type UUID = `${string}-${string}-${string}-${string}-${string}`;
 
 /**
@@ -1546,6 +1549,7 @@ export enum PlatformPrefix {
 export interface EventPayload {
   runtime: IAgentRuntime;
   source: string;
+  onComplete?: () => void;
 }
 
 /**
@@ -1578,6 +1582,7 @@ export interface EntityPayload extends EventPayload {
 export interface MessagePayload extends EventPayload {
   message: Memory;
   callback?: HandlerCallback;
+  onComplete?: () => void;
 }
 
 /**
@@ -1638,6 +1643,7 @@ export type MessageReceivedHandlerParams = {
   runtime: IAgentRuntime;
   message: Memory;
   callback: HandlerCallback;
+  onComplete?: () => void;
 };
 
 /**

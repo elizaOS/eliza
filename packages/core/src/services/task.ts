@@ -29,6 +29,10 @@ import {
  * @method stop - Static method to stop the TaskService
  * @method stop - Method to stop the TaskService
  */
+/**
+ * Start the TaskService with the given runtime.
+ * @param {IAgentRuntime} runtime - The runtime for the TaskService.
+ */
 export class TaskService extends Service {
   private timer: NodeJS.Timeout | null = null;
   private readonly TICK_INTERVAL = 1000; // Check every second

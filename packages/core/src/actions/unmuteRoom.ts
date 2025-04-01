@@ -15,6 +15,11 @@ import {
  * Template for determining if an agent should unmute a previously muted room.
  * * @type { string }
  */
+/**
+ * Template for deciding if {{agentName}} should unmute a previously muted room.
+ *
+ * @type {string}
+ */
 export const shouldUnmuteTemplate = `# Task: Decide if {{agentName}} should unmute this previously muted room and start considering it for responses again.
 
 {{recentMessages}}

@@ -11,6 +11,18 @@ import type { Action, ActionExample, IAgentRuntime, Memory } from '../types';
  * @property {Function} handler - Asynchronous function that handles the action logic.
  * @property {ActionExample[][]} examples - Array of examples demonstrating the usage of the IGNORE action.
  */
+/**
+ * Represents an action called 'IGNORE'.
+ *
+ * This action is used to ignore the user in a conversation. It should be used when the user is aggressive, creepy, or when the conversation has naturally ended.
+ * Avoid using this action if the user has engaged directly or if there is a need to communicate with them. Use IGNORE only when the user should be ignored.
+ *
+ * The action includes a validation function that always returns true and a handler function that also returns true.
+ *
+ * Examples of using the IGNORE action are provided in the 'examples' array. Each example includes messages between two parties and the use of the IGNORE action.
+ *
+ * @typedef {Action} ignoreAction
+ */
 export const ignoreAction: Action = {
   name: 'IGNORE',
   similes: ['STOP_TALKING', 'STOP_CHATTING', 'STOP_CONVERSATION'],

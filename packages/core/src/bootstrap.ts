@@ -65,6 +65,12 @@ import {
   asUUID,
 } from './types';
 
+/**
+ * Represents media data containing a buffer of data and the media type.
+ * @typedef {Object} MediaData
+ * @property {Buffer} data - The buffer of data.
+ * @property {string} mediaType - The type of media.
+ */
 type MediaData = {
   data: Buffer;
   mediaType: string;
@@ -77,6 +83,11 @@ const latestResponseIds = new Map<string, Map<string, string>>();
  *
  * @param attachments Array of Media objects containing URLs or file paths to fetch media from
  * @returns Promise that resolves with an array of MediaData objects containing the fetched media data and content type
+ */
+/**
+ * Fetches media data from given attachments.
+ * @param {Media[]} attachments - Array of Media objects to fetch data from.
+ * @returns {Promise<MediaData[]>} - A Promise that resolves with an array of MediaData objects.
  */
 export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]> {
   return Promise.all(
@@ -112,6 +123,7 @@ const messageReceivedHandler = async ({
   runtime,
   message,
   callback,
+  onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
   // Generate a new response ID
   const responseId = v4();
@@ -119,7 +131,10 @@ const messageReceivedHandler = async ({
   if (!latestResponseIds.has(runtime.agentId)) {
     latestResponseIds.set(runtime.agentId, new Map<string, string>());
   }
-  const agentResponses = latestResponseIds.get(runtime.agentId)!;
+  const agentResponses = latestResponseIds.get(runtime.agentId);
+  if (!agentResponses) {
+    throw new Error('Agent responses map not found');
+  }
 
   // Set this as the latest response ID for this agent+room
   agentResponses.set(message.roomId, responseId);
@@ -208,12 +223,25 @@ const messageReceivedHandler = async ({
       });
 
       logger.debug(`*** Should Respond Response for ${runtime.character.name} ***\n`, response);
+      logger.debug(`*** Raw Response Type: ${typeof response} ***`);
 
-      const responseObject = parseJSONObjectFromText(response);
+      // Try to preprocess response by removing code blocks markers if present
+      let processedResponse = response;
+      if (typeof response === 'string' && response.includes('```')) {
+        logger.debug('*** Response contains code block markers, attempting to clean up ***');
+        processedResponse = response.replace(/```json\n|\n```|```/g, '');
+        logger.debug('*** Processed Response ***\n', processedResponse);
+      }
 
-      const providers = responseObject.providers as string[] | undefined;
+      const responseObject = parseJSONObjectFromText(processedResponse);
+      logger.debug('*** Parsed Response Object ***', responseObject);
+
+      // Safely handle the case where parsing returns null
+      const providers = responseObject?.providers as string[] | undefined;
+      logger.debug('*** Providers Value ***', providers);
 
       const shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
+      logger.debug('*** Should Respond ***', shouldRespond);
 
       state = await runtime.composeState(message, null, providers);
 
@@ -277,7 +305,7 @@ const messageReceivedHandler = async ({
 
         await runtime.processActions(message, responseMessages, state, callback);
       }
-
+      onComplete?.();
       await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
 
       // Emit run ended event on successful completion
@@ -294,6 +322,7 @@ const messageReceivedHandler = async ({
         source: 'messageHandler',
       });
     } catch (error) {
+      onComplete?.();
       // Emit run ended event with error
       await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
@@ -397,7 +426,7 @@ const postGeneratedHandler = async ({
   ]);
 
   // Generate prompt for tweet content
-  const tweetPrompt = composePrompt({
+  const tweetPrompt = composePromptFromState({
     state,
     template: runtime.character.templates?.postCreationTemplate || postCreationTemplate,
   });
@@ -536,7 +565,14 @@ const syncSingleUser = async (
 /**
  * Handles standardized server data for both WORLD_JOINED and WORLD_CONNECTED events
  */
-const handleServerSync = async ({ runtime, world, rooms, entities, source }: WorldPayload) => {
+const handleServerSync = async ({
+  runtime,
+  world,
+  rooms,
+  entities,
+  source,
+  onComplete,
+}: WorldPayload) => {
   logger.debug(`Handling server sync event for server: ${world.name}`);
   try {
     // Create/ensure the world exists for this server
@@ -604,6 +640,7 @@ const handleServerSync = async ({ runtime, world, rooms, entities, source }: Wor
     }
 
     logger.debug(`Successfully synced standardized world structure for ${world.name}`);
+    onComplete?.();
   } catch (error) {
     logger.error(
       `Error processing standardized server data: ${
@@ -620,6 +657,7 @@ const events = {
         runtime: payload.runtime,
         message: payload.message,
         callback: payload.callback,
+        onComplete: payload.onComplete,
       });
     },
   ],

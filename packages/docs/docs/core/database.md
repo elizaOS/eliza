@@ -455,6 +455,5 @@ The adapter interface is designed to be extensible to support a wide range of st
 
 ## Further Reading
 
-- [Memory Management](../guides/memory-management.md)
 - [Entity System](./entities.md)
 - [Agent Runtime](./agents.md)

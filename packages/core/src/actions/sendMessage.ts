@@ -57,6 +57,49 @@ import {
  *
  * Make sure to include the ```json``` tags around the JSON object.
  */
+/**
+ * Task: Extract Target and Source Information
+ *
+ * Recent Messages:
+ * {{recentMessages}}
+ *
+ * Instructions:
+ * Analyze the conversation to identify:
+ * 1. The target type (user or room)
+ * 2. The target platform/source (e.g. telegram, discord, etc)
+ * 3. Any identifying information about the target
+ *
+ * Return a JSON object with:
+ * {
+ *    "targetType": "user|room",
+ *    "source": "platform-name",
+ *    "identifiers": {
+ *      // Relevant identifiers for that target
+ *      // e.g. username, roomName, etc.
+ *    }
+ * }
+ *
+ * Example outputs:
+ * 1. For "send a message to @dev_guru on telegram":
+ * {
+ *    "targetType": "user",
+ *    "source": "telegram",
+ *    "identifiers": {
+ *      "username": "dev_guru"
+ *    }
+ * }
+ *
+ * 2. For "post this in #announcements":
+ * {
+ *    "targetType": "room",
+ *    "source": "discord",
+ *    "identifiers": {
+ *      "roomName": "announcements"
+ *    }
+ * }
+ *
+ * Make sure to include the `json` tags around the JSON object.
+ */
 const targetExtractionTemplate = `# Task: Extract Target and Source Information
 
 # Recent Messages:
