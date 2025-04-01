@@ -12,6 +12,7 @@ import {
 } from '@elizaos/core';
 import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api';
 import type { FarcasterClient } from '../client';
+import { AsyncQueue } from '../common/asyncqueue';
 import { standardCastHandlerCallback } from '../common/callbacks';
 import { FARCASTER_SOURCE } from '../common/constants';
 import { formatCast, formatTimeline, shouldRespondTemplate } from '../common/prompts';
@@ -23,7 +24,6 @@ import {
   type Profile,
 } from '../common/types';
 import { castUuid, formatCastTimestamp, neynarCastToCast } from '../common/utils';
-
 interface FarcasterInteractionParams {
   client: FarcasterClient;
   runtime: IAgentRuntime;
@@ -37,13 +37,17 @@ export class FarcasterInteractionManager {
   private runtime: IAgentRuntime;
   private config: FarcasterConfig;
 
+  private asyncQueue: AsyncQueue;
+
   constructor(opts: FarcasterInteractionParams) {
     this.client = opts.client;
     this.runtime = opts.runtime;
     this.config = opts.config;
+    this.asyncQueue = new AsyncQueue(1);
   }
 
   public async start(): Promise<void> {
+    logger.info('Starting Farcaster interactions');
     if (this.isRunning) {
       return;
     }
@@ -62,6 +66,7 @@ export class FarcasterInteractionManager {
   private async runPeriodically(): Promise<void> {
     while (this.isRunning) {
       try {
+        logger.info('Checking for mentions or replies');
         await this.handleInteractions();
 
         // now sleep for the configured interval
@@ -74,73 +79,75 @@ export class FarcasterInteractionManager {
   }
 
   private async ensureCast(cast: Cast): Promise<Memory> {
-    const memoryId = castUuid({ agentId: this.runtime.agentId, hash: cast.hash });
-    const conversationId = cast.threadId ?? cast.inReplyTo?.hash ?? cast.hash;
-    const entityId = createUniqueUuid(this.runtime, cast.authorFid.toString());
-    const worldId = createUniqueUuid(this.runtime, cast.authorFid.toString());
-    const serverId = cast.authorFid.toString();
-    const roomId = createUniqueUuid(this.runtime, conversationId);
+    return await this.asyncQueue.submit(async () => {
+      const memoryId = castUuid({ agentId: this.runtime.agentId, hash: cast.hash });
+      const conversationId = cast.threadId ?? cast.inReplyTo?.hash ?? cast.hash;
+      const entityId = createUniqueUuid(this.runtime, cast.authorFid.toString());
+      const worldId = createUniqueUuid(this.runtime, cast.authorFid.toString());
+      const serverId = cast.authorFid.toString();
+      const roomId = createUniqueUuid(this.runtime, conversationId);
 
-    await this.runtime.ensureWorldExists({
-      id: worldId,
-      name: `${cast.profile.username}'s Farcaster`,
-      agentId: this.runtime.agentId,
-      serverId,
-      metadata: {
-        ownership: { ownerId: cast.authorFid.toString() },
-        farcaster: {
-          username: cast.profile.username,
-          id: cast.authorFid.toString(),
-          name: cast.profile.name,
+      await this.runtime.ensureWorldExists({
+        id: worldId,
+        name: `${cast.profile.username}'s Farcaster`,
+        agentId: this.runtime.agentId,
+        serverId,
+        metadata: {
+          ownership: { ownerId: cast.authorFid.toString() },
+          farcaster: {
+            username: cast.profile.username,
+            id: cast.authorFid.toString(),
+            name: cast.profile.name,
+          },
         },
-      },
-    });
+      });
 
-    // Ensure thread room exists
-    await this.runtime.ensureRoomExists({
-      id: roomId,
-      name: `Thread with ${cast.profile.name ?? cast.profile.username}`,
-      source: FARCASTER_SOURCE,
-      type: ChannelType.THREAD,
-      channelId: conversationId,
-      serverId,
-      worldId,
-    });
-
-    if (entityId !== this.runtime.agentId) {
-      await this.runtime.ensureConnection({
-        entityId,
-        roomId,
-        userName: cast.profile.username,
-        name: cast.profile.name,
+      // Ensure thread room exists
+      await this.runtime.ensureRoomExists({
+        id: roomId,
+        name: `Thread with ${cast.profile.name ?? cast.profile.username}`,
         source: FARCASTER_SOURCE,
         type: ChannelType.THREAD,
         channelId: conversationId,
         serverId,
         worldId,
       });
-    }
 
-    const memory: Memory = {
-      id: memoryId,
-      agentId: this.runtime.agentId,
-      content: {
-        text: cast.text,
-        // need to pull imageUrls
-        inReplyTo: cast.inReplyTo?.hash
-          ? castUuid({ agentId: this.runtime.agentId, hash: cast.inReplyTo.hash })
-          : undefined,
-        source: FARCASTER_SOURCE,
-        channelType: ChannelType.THREAD,
-      },
-      entityId,
-      roomId,
-      createdAt: cast.timestamp.getTime(),
-    };
+      if (entityId !== this.runtime.agentId) {
+        await this.runtime.ensureConnection({
+          entityId,
+          roomId,
+          userName: cast.profile.username,
+          name: cast.profile.name,
+          source: FARCASTER_SOURCE,
+          type: ChannelType.THREAD,
+          channelId: conversationId,
+          serverId,
+          worldId,
+        });
+      }
 
-    // no need to store the memory as it'll be stored in bootstrap side
+      const memory: Memory = {
+        id: memoryId,
+        agentId: this.runtime.agentId,
+        content: {
+          text: cast.text,
+          // need to pull imageUrls
+          inReplyTo: cast.inReplyTo?.hash
+            ? castUuid({ agentId: this.runtime.agentId, hash: cast.inReplyTo.hash })
+            : undefined,
+          source: FARCASTER_SOURCE,
+          channelType: ChannelType.THREAD,
+        },
+        entityId,
+        roomId,
+        createdAt: cast.timestamp.getTime(),
+      };
 
-    return memory;
+      // no need to store the memory as it'll be stored in bootstrap side
+
+      return memory;
+    });
   }
 
   private async handleInteractions(): Promise<void> {
@@ -161,7 +168,7 @@ export class FarcasterInteractionManager {
         continue;
       }
 
-      logger.log('New Cast found', mention.hash);
+      logger.info('New Cast found', mention.hash);
 
       // filter out the agent mentions
       if (mention.authorFid === agentFid) {
@@ -194,7 +201,7 @@ export class FarcasterInteractionManager {
       const memory = await runtime.getMemoryById(memoryId);
 
       if (!memory) {
-        logger.log('Creating memory for cast', currentCast.hash);
+        logger.info('Creating memory for cast', currentCast.hash);
         const memory = await self.ensureCast(currentCast);
         await runtime.createMemory(memory, 'messages');
         runtime.emitEvent(FarcasterEventTypes.THREAD_CAST_CREATED, {
@@ -227,14 +234,13 @@ export class FarcasterInteractionManager {
     mention: Cast;
   }): Promise<void> {
     if (mention.profile.fid === agent.fid) {
-      logger.log('skipping cast from bot itself', mention.hash);
+      logger.info('skipping cast from bot itself', mention.hash);
       return;
     }
 
-    const [memory, thread] = await Promise.all([
-      this.ensureCast(mention),
-      this.buildThreadForCast(mention),
-    ]);
+    // Process one at a time to ensure proper sequencing
+    const memory = await this.ensureCast(mention);
+    const thread = await this.buildThreadForCast(mention);
 
     if (!memory.content.text || memory.content.text.trim() === '') {
       logger.info('skipping cast with no text', mention.hash);
@@ -276,10 +282,10 @@ export class FarcasterInteractionManager {
     });
 
     const responseActions = (response.match(/(?:RESPOND|IGNORE|STOP)/g) || ['IGNORE'])[0];
-    if (responseActions !== 'RESPOND') {
-      logger.log(`Not responding to cast based on shouldRespond decision: ${responseActions}`);
-      return;
-    }
+    // if (responseActions !== 'RESPOND') {
+    //   logger.info(`Not responding to cast based on shouldRespond decision: ${responseActions}`);
+    //   return;
+    // }
 
     // setup callback for the response
     const callback = standardCastHandlerCallback({
