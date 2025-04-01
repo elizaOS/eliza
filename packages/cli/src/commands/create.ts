@@ -191,28 +191,23 @@ export const create = new Command()
         projectName = nameResponse;
       }
 
-      // Set up target directory
-      // If -d is ".", create in current directory with project name
-      // If -d is specified, create project directory inside that directory
-      let targetDir = path.join(options.dir === '.' ? process.cwd() : options.dir, projectName);
+      // For plugin initialization, add the plugin- prefix if needed
+      if (options.type === 'plugin' && !projectName.startsWith('plugin-')) {
+        // Create a new directory name with the plugin- prefix
+        const prefixedName = `plugin-${projectName}`;
+        logger.info(
+          `Note: Using "${prefixedName}" as the directory name to match package naming convention`
+        );
+
+        // Update project name
+        projectName = prefixedName;
+      }
+
+      // Set up target directory - now calculated only once after projectName is finalized
+      const targetDir = path.join(options.dir === '.' ? process.cwd() : options.dir, projectName);
 
       // For plugin initialization, we can simplify the process
       if (options.type === 'plugin') {
-        // Check if projectName already has plugin- prefix
-        if (!projectName.startsWith('plugin-')) {
-          // Create a new directory name with the plugin- prefix
-          const prefixedName = `plugin-${projectName}`;
-          logger.info(
-            `Note: Using "${prefixedName}" as the directory name to match package naming convention`
-          );
-
-          // Update project name and target directory
-          projectName = prefixedName;
-
-          // Update targetDir to use the prefixed name
-          targetDir = path.join(options.dir === '.' ? process.cwd() : options.dir, projectName);
-        }
-
         // Now create the directory or check if it exists
         if (!existsSync(targetDir)) {
           await fs.mkdir(targetDir, { recursive: true });
