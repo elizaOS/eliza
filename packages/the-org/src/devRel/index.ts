@@ -172,6 +172,7 @@ const character: Partial<Character> = {
     '@elizaos/plugin-discord',
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',
+    '@elizaos/plugin-bootstrap',
   ],
   settings: {
     secrets: {

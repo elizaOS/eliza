@@ -45,7 +45,7 @@ export class WalletProvider {
     chains?: Record<string, Chain>
   ) {
     this.setAccount(accountOrPrivateKey);
-    this.setChains(chains);
+    this.addChains(chains);
     this.runtime = runtime;
   }
 
@@ -144,7 +144,7 @@ export class WalletProvider {
   }
 
   addChain(chain: Record<string, Chain>) {
-    this.setChains(chain);
+    this.addChains(chain);
   }
 
   private setAccount = (accountOrPrivateKey: PrivateKeyAccount | `0x${string}`) => {
@@ -155,7 +155,7 @@ export class WalletProvider {
     }
   };
 
-  private setChains = (chains?: Record<string, Chain>) => {
+  private addChains = (chains?: Record<string, Chain>) => {
     if (!chains) {
       return;
     }

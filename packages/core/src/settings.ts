@@ -1,4 +1,4 @@
-import crypto from 'node:crypto';
+import crypto from 'crypto-browserify';
 import { createUniqueUuid } from './entities';
 import { logger } from './logger';
 import type {

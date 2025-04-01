@@ -12,10 +12,10 @@ import {
   ModelType,
   type TokenizeTextParams,
   logger,
+  VECTOR_DIMS,
 } from '@elizaos/core';
 import { generateObject, generateText } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
-import { z } from 'zod';
 
 /**
  * Asynchronously tokenizes the given text based on the specified model and prompt.
@@ -64,6 +64,8 @@ export const openaiPlugin: Plugin = {
     OPENAI_LARGE_MODEL: process.env.OPENAI_LARGE_MODEL,
     SMALL_MODEL: process.env.SMALL_MODEL,
     LARGE_MODEL: process.env.LARGE_MODEL,
+    OPENAI_EMBEDDING_MODEL: process.env.OPENAI_EMBEDDING_MODEL,
+    OPENAI_EMBEDDING_DIMENSIONS: process.env.OPENAI_EMBEDDING_DIMENSIONS,
   },
   async init(config: Record<string, string>) {
     try {
@@ -113,14 +115,28 @@ export const openaiPlugin: Plugin = {
   },
   models: {
     [ModelType.TEXT_EMBEDDING]: async (
-      _runtime,
+      runtime,
       params: TextEmbeddingParams | string | null
     ): Promise<number[]> => {
+      const embeddingDimension = parseInt(
+        runtime.getSetting('OPENAI_EMBEDDING_DIMENSIONS') ?? '1536'
+      ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
+
+      // Validate embedding dimension
+      if (!Object.values(VECTOR_DIMS).includes(embeddingDimension)) {
+        logger.error(
+          `Invalid embedding dimension: ${embeddingDimension}. Must be one of: ${Object.values(VECTOR_DIMS).join(', ')}`
+        );
+        throw new Error(
+          `Invalid embedding dimension: ${embeddingDimension}. Must be one of: ${Object.values(VECTOR_DIMS).join(', ')}`
+        );
+      }
+
       // Handle null input (initialization case)
       if (params === null) {
         logger.debug('Creating test embedding for initialization');
         // Return a consistent vector for null input
-        const testVector = Array(1536).fill(0);
+        const testVector = Array(embeddingDimension).fill(0);
         testVector[0] = 0.1; // Make it non-zero
         return testVector;
       }
@@ -134,7 +150,7 @@ export const openaiPlugin: Plugin = {
       } else {
         logger.warn('Invalid input format for embedding');
         // Return a fallback for invalid input
-        const fallbackVector = Array(1536).fill(0);
+        const fallbackVector = Array(embeddingDimension).fill(0);
         fallbackVector[0] = 0.2; // Different value for tracking
         return fallbackVector;
       }
@@ -142,30 +158,30 @@ export const openaiPlugin: Plugin = {
       // Skip API call for empty text
       if (!text.trim()) {
         logger.warn('Empty text for embedding');
-        const emptyVector = Array(1536).fill(0);
+        const emptyVector = Array(embeddingDimension).fill(0);
         emptyVector[0] = 0.3; // Different value for tracking
         return emptyVector;
       }
 
       try {
-        const baseURL = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
+        const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
 
         // Call the OpenAI API
         const response = await fetch(`${baseURL}/embeddings`, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+            Authorization: `Bearer ${runtime.getSetting('OPENAI_API_KEY')}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'text-embedding-3-small',
+            model: runtime.getSetting('OPENAI_EMBEDDING_MODEL') ?? 'text-embedding-3-small',
             input: text,
           }),
         });
 
         if (!response.ok) {
           logger.error(`OpenAI API error: ${response.status} - ${response.statusText}`);
-          const errorVector = Array(1536).fill(0);
+          const errorVector = Array(embeddingDimension).fill(0);
           errorVector[0] = 0.4; // Different value for tracking
           return errorVector;
         }
@@ -176,7 +192,7 @@ export const openaiPlugin: Plugin = {
 
         if (!data?.data?.[0]?.embedding) {
           logger.error('API returned invalid structure');
-          const errorVector = Array(1536).fill(0);
+          const errorVector = Array(embeddingDimension).fill(0);
           errorVector[0] = 0.5; // Different value for tracking
           return errorVector;
         }
@@ -186,7 +202,7 @@ export const openaiPlugin: Plugin = {
         return embedding;
       } catch (error) {
         logger.error('Error generating embedding:', error);
-        const errorVector = Array(1536).fill(0);
+        const errorVector = Array(embeddingDimension).fill(0);
         errorVector[0] = 0.6; // Different value for tracking
         return errorVector;
       }

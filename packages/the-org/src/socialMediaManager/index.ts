@@ -46,6 +46,7 @@ const character: Character = {
     '@elizaos/plugin-twitter',
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',
+    '@elizaos/plugin-bootstrap',
   ],
   settings: {
     secrets: {
@@ -301,11 +302,10 @@ export const config: OnboardingConfig = {
   },
 };
 
-
 export const socialMediaManager: ProjectAgent = {
   character,
   init: async (runtime: IAgentRuntime) =>
-    await initCharacter({ runtime, config, actions: [twitterPostAction] })
+    await initCharacter({ runtime, config, actions: [twitterPostAction] }),
 };
 
 export default socialMediaManager;

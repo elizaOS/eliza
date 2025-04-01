@@ -241,7 +241,7 @@ export async function publishToGitHub(
   cliVersion: string,
   username: string,
   isTest = false
-): Promise<boolean> {
+): Promise<boolean | { success: boolean; prUrl?: string }> {
   const token = await getGitHubToken();
   if (!token) {
     logger.error('GitHub token not found. Please set it using the login command.');
@@ -273,7 +273,7 @@ export async function publishToGitHub(
   }
 
   // Create version branch - use type in branch name
-  const entityType = packageJson.type || 'plugin';
+  const entityType = 'plugin';
   const branchName = `${entityType}-${packageJson.name.replace(/^@elizaos\//, '')}-${packageJson.version}`;
   const hasBranch = await branchExists(token, username, registryRepo, branchName);
 
@@ -331,6 +331,15 @@ export async function publishToGitHub(
         metadata.installable = packageJson.type === 'plugin';
       }
 
+      // Add plugin tag if it's a plugin and doesn't already have it
+      if (
+        metadata.type === 'plugin' &&
+        Array.isArray(metadata.tags) &&
+        !metadata.tags.includes('plugin')
+      ) {
+        metadata.tags.push('plugin');
+      }
+
       // Update platform if specified
       if (packageJson.platform) {
         metadata.platform = packageJson.platform;
@@ -383,6 +392,11 @@ export async function publishToGitHub(
       type: entityType,
       installable: entityType === 'plugin', // Only plugins are installable
     };
+
+    // Add "plugin" tag if it's a plugin and doesn't already have it
+    if (entityType === 'plugin' && !metadata.tags.includes('plugin')) {
+      metadata.tags.push('plugin');
+    }
 
     // Add platform if specified
     if (packageJson.platform) {
@@ -438,13 +452,12 @@ export async function publishToGitHub(
         // Update package entry
         index.__v2.packages[packageJson.name] = packagePath;
 
-        // Update type collections
-        const type = packageJson.type || 'plugin';
-        if (!index.__v2.types[type]) {
-          index.__v2.types[type] = [];
+        // Add only the current plugin to the plugin types array
+        if (!index.__v2.types.plugin) {
+          index.__v2.types.plugin = [];
         }
-        if (!index.__v2.types[type].includes(packageJson.name)) {
-          index.__v2.types[type].push(packageJson.name);
+        if (!index.__v2.types.plugin.includes(packageJson.name)) {
+          index.__v2.types.plugin.push(packageJson.name);
         }
 
         // Update categories
@@ -477,7 +490,7 @@ export async function publishToGitHub(
     }
 
     // Create pull request
-    const prCreated = await createPullRequest(
+    const prUrl = await createPullRequest(
       token,
       registryOwner,
       registryRepo,
@@ -500,12 +513,18 @@ Submitted by: @${username}`,
       'main'
     );
 
-    if (!prCreated) {
+    if (!prUrl) {
       logger.error('Failed to create pull request.');
       return false;
     }
 
-    logger.success(`Pull request created: ${prCreated}`);
+    logger.success(`Pull request created: ${prUrl}`);
+
+    // Return success with PR URL
+    return {
+      success: true,
+      prUrl: prUrl,
+    };
   } else {
     logger.info('Test successful - all checks passed');
     logger.info('Would create:');

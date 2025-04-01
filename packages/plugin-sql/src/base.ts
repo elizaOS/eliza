@@ -570,6 +570,15 @@ export abstract class BaseDrizzleAdapter<
     return this.withDatabase(async () => {
       try {
         return await this.db.transaction(async (tx) => {
+          // try get entity by id
+          const existingEntity = await this.getEntityById(entity.id as UUID);
+          if (existingEntity) {
+            logger.debug('Entity already exists:', {
+              entity,
+            });
+            return true;
+          }
+
           await tx.insert(entityTable).values(entity);
 
           logger.debug('Entity created successfully:', {
