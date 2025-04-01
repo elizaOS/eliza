@@ -528,10 +528,10 @@ export class MessageManager {
       });
 
       // Also emit platform-specific event
-      // this.runtime.emitEvent(TelegramEventTypes.MESSAGE_SENT, {
-      //   originalMessages: sentMessages,
-      //   chatId,
-      // } as TelegramMessageSentPayload);
+      this.runtime.emitEvent(TelegramEventTypes.MESSAGE_SENT, {
+        originalMessages: sentMessages,
+        chatId,
+      } as TelegramMessageSentPayload);
 
       return sentMessages;
     } catch (error) {
