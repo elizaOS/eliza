@@ -578,6 +578,7 @@ export const start = new Command()
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
   .option('--character <character>', 'Path or URL to character file to use instead of default')
   .option('--build', 'Build the project before starting')
+  .option('--characters <paths>', 'multiple character configuration files separated by commas')
   .action(async (options) => {
     displayBanner();
 
@@ -602,10 +603,32 @@ export const start = new Command()
               const characterData = await loadCharacterTryPath(characterPath);
               options.characters.push(characterData);
             }
+          } else {
+            // Single character
+            logger.info(`Loading character from ${characterPath}`);
+            const characterData = await loadCharacterTryPath(characterPath);
+            options.characters.push(characterData);
           }
           await startAgents(options);
         } catch (error) {
           logger.error(`Failed to load character: ${error}`);
+          process.exit(1);
+        }
+      } else if (options.characters) {
+        // Handle --characters option
+        options.characters = [];
+        try {
+          const characterPaths = options.characters.split(',').map((path) => path.trim());
+          for (const charPath of characterPaths) {
+            if (charPath) {
+              logger.info(`Loading character from ${charPath}`);
+              const characterData = await loadCharacterTryPath(charPath);
+              options.characters.push(characterData);
+            }
+          }
+          await startAgents(options);
+        } catch (error) {
+          logger.error(`Failed to load multiple characters: ${error}`);
           process.exit(1);
         }
       } else {
