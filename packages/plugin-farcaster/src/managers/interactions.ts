@@ -78,7 +78,7 @@ export class FarcasterInteractionManager {
     }
   }
 
-  private async ensureCast(cast: Cast): Promise<Memory> {
+  private async ensureCastConnection(cast: Cast): Promise<Memory> {
     return await this.asyncQueue.submit(async () => {
       const memoryId = castUuid({ agentId: this.runtime.agentId, hash: cast.hash });
       const conversationId = cast.threadId ?? cast.inReplyTo?.hash ?? cast.hash;
@@ -172,7 +172,7 @@ export class FarcasterInteractionManager {
 
       // filter out the agent mentions
       if (mention.authorFid === agentFid) {
-        const memory = await this.ensureCast(mention);
+        const memory = await this.ensureCastConnection(mention);
         await this.runtime.addEmbeddingToMemory(memory);
         await this.runtime.createMemory(memory, 'messages');
         continue;
@@ -202,7 +202,7 @@ export class FarcasterInteractionManager {
 
       if (!memory) {
         logger.info('Creating memory for cast', currentCast.hash);
-        const memory = await self.ensureCast(currentCast);
+        const memory = await self.ensureCastConnection(currentCast);
         await runtime.createMemory(memory, 'messages');
         runtime.emitEvent(FarcasterEventTypes.THREAD_CAST_CREATED, {
           runtime,
@@ -239,8 +239,8 @@ export class FarcasterInteractionManager {
     }
 
     // Process one at a time to ensure proper sequencing
-    const memory = await this.ensureCast(mention);
-    const thread = await this.buildThreadForCast(mention);
+    const memory = await this.ensureCastConnection(mention);
+    const thread: Cast[] = []; // await this.buildThreadForCast(mention);
 
     if (!memory.content.text || memory.content.text.trim() === '') {
       logger.info('skipping cast with no text', mention.hash);
@@ -293,6 +293,10 @@ export class FarcasterInteractionManager {
       runtime: this.runtime,
       config: this.config,
       roomId: memory.roomId,
+      inReplyTo: {
+        hash: mention.hash,
+        fid: mention.authorFid,
+      },
     });
 
     // Emit generic message received events

@@ -1,7 +1,7 @@
 import { Content, HandlerCallback, IAgentRuntime, logger, Memory, UUID } from '@elizaos/core';
 import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api';
 import { FarcasterClient } from '../client';
-import { FarcasterConfig } from './types';
+import { CastId, FarcasterConfig } from './types';
 import { createCastMemory, neynarCastToCast } from './utils';
 
 export function standardCastHandlerCallback({
@@ -11,7 +11,9 @@ export function standardCastHandlerCallback({
   roomId,
   onCompletion,
   onError,
+  inReplyTo,
 }: {
+  inReplyTo?: CastId;
   client: FarcasterClient;
   runtime: IAgentRuntime;
   config: FarcasterConfig;
@@ -26,7 +28,7 @@ export function standardCastHandlerCallback({
         return [];
       }
 
-      const casts = await client.sendCast({ content });
+      const casts = await client.sendCast({ content, inReplyTo });
 
       if (casts.length === 0) {
         logger.warn('[Farcaster] No casts posted');
