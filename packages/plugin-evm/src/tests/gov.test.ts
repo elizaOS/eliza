@@ -48,7 +48,6 @@ export const buildProposal = (txs: Array<ContractTransaction>, description: stri
   };
 };
 
-
 // Mock the ICacheManager
 const mockCacheManager = {
   get: vi.fn().mockResolvedValue(null),
@@ -78,7 +77,6 @@ describe('Vote Action', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockCacheManager.get.mockResolvedValue(null);
-
 
     const pk = generatePrivateKey();
     const customChains = prepareChains();
