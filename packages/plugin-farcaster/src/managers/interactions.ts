@@ -9,6 +9,7 @@ import {
   type Memory,
   MessagePayload,
   ModelType,
+  UUID,
 } from '@elizaos/core';
 import { CastWithInteractions } from '@neynar/nodejs-sdk/build/api';
 import type { FarcasterClient } from '../client';
@@ -182,7 +183,7 @@ export class FarcasterInteractionManager {
     }
   }
 
-  async buildThreadForCast(cast: Cast): Promise<Cast[]> {
+  async buildThreadForCast(cast: Cast, skipMemoryId: Set<UUID>): Promise<Cast[]> {
     const thread: Cast[] = [];
     const visited: Set<string> = new Set();
     const client = this.client;
@@ -190,14 +191,15 @@ export class FarcasterInteractionManager {
     const self = this;
 
     async function processThread(currentCast: Cast) {
-      if (visited.has(currentCast.hash)) {
+      const memoryId = castUuid({ hash: currentCast.hash, agentId: runtime.agentId });
+
+      if (visited.has(currentCast.hash) || skipMemoryId.has(memoryId)) {
         return;
       }
 
       visited.add(currentCast.hash);
 
       // Check if the current cast has already been saved
-      const memoryId = castUuid({ hash: currentCast.hash, agentId: runtime.agentId });
       const memory = await runtime.getMemoryById(memoryId);
 
       if (!memory) {
@@ -240,7 +242,10 @@ export class FarcasterInteractionManager {
 
     // Process one at a time to ensure proper sequencing
     const memory = await this.ensureCastConnection(mention);
-    const thread: Cast[] = []; // await this.buildThreadForCast(mention);
+    const thread: Cast[] = await this.buildThreadForCast(
+      mention,
+      memory.id ? new Set([memory.id]) : new Set()
+    );
 
     if (!memory.content.text || memory.content.text.trim() === '') {
       logger.info('skipping cast with no text', mention.hash);
