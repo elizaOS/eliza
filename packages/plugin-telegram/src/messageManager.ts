@@ -7,7 +7,6 @@ import {
   type Media,
   type Memory,
   ModelType,
-  Room,
   type UUID,
   createUniqueUuid,
   logger,
@@ -522,7 +521,9 @@ export class MessageManager {
       // Emit both generic and platform-specific message sent events
       this.runtime.emitEvent(EventType.MESSAGE_SENT, {
         runtime: this.runtime,
-        message: content,
+        message: {
+          content: content,
+        },
         roomId,
         source: 'telegram',
       });

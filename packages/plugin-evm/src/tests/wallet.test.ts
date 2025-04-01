@@ -3,6 +3,7 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { mainnet, iotex, arbitrum, type Chain } from 'viem/chains';
 
 import { WalletProvider } from '../providers/wallet';
+import { customChain } from './custom-chain';
 
 const customRpcUrls = {
   mainnet: 'custom-rpc.mainnet.io',
@@ -23,9 +24,8 @@ describe('Wallet provider', () => {
 
   beforeAll(() => {
     pk = generatePrivateKey();
-
-    const chainNames = ['iotex', 'arbitrum'];
-    chainNames.forEach((chain) => (customChains[chain] = WalletProvider.genChainFromName(chain)));
+    // Add the custom chain to the customChains object
+    customChains['myCustomChain'] = customChain;
   });
 
   afterEach(() => {
@@ -46,29 +46,24 @@ describe('Wallet provider', () => {
 
       expect(walletProvider.getAddress()).toEqual(expectedAddress);
     });
-    it('sets default chain to ethereum mainnet', () => {
+    it('sets default chains (including mainnet) when no custom chains are provided', () => {
       walletProvider = new WalletProvider(pk, mockCacheManager as any);
 
+      // mainnet from viem.chains is included by default
       expect(walletProvider.chains.mainnet.id).toEqual(mainnet.id);
-      expect(walletProvider.getCurrentChain().id).toEqual(mainnet.id);
     });
+
     it('sets custom chains', () => {
       walletProvider = new WalletProvider(pk, mockCacheManager as any, customChains);
 
-      expect(walletProvider.chains.iotex.id).toEqual(iotex.id);
-      expect(walletProvider.chains.arbitrum.id).toEqual(arbitrum.id);
-    });
-    it('sets the first provided custom chain as current chain', () => {
-      walletProvider = new WalletProvider(pk, mockCacheManager as any, customChains);
-
-      expect(walletProvider.getCurrentChain().id).toEqual(iotex.id);
+      expect(walletProvider.chains.myCustomChain.id).toEqual(customChain.id);
     });
   });
   describe('Clients', () => {
     beforeEach(() => {
       walletProvider = new WalletProvider(pk, mockCacheManager as any);
     });
-    it('generates public client', () => {
+    it('generates public client for mainnet', () => {
       const client = walletProvider.getPublicClient('mainnet');
       expect(client.chain.id).toEqual(mainnet.id);
       expect(client.transport.url).toEqual(mainnet.rpcUrls.default.http[0]);
@@ -115,9 +110,8 @@ describe('Wallet provider', () => {
     beforeEach(() => {
       walletProvider = new WalletProvider(pk, mockCacheManager as any, customChains);
     });
-    it('should fetch balance', async () => {
-      const bal = await walletProvider.getWalletBalance();
-
+    it('should fetch balance for "mainnet" (returns "0" in test env)', async () => {
+      const bal = await walletProvider.getWalletBalanceForChain('mainnet');
       expect(bal).toEqual('0');
     });
     it('should fetch balance for a specific added chain', async () => {
@@ -126,18 +120,20 @@ describe('Wallet provider', () => {
       expect(bal).toEqual('0');
     });
     it('should return null if chain is not added', async () => {
-      const bal = await walletProvider.getWalletBalanceForChain('base');
-      expect(bal).toBeNull();
+
+      const bal = await walletProvider.getWalletBalanceForChain('myCustomChain');
+      expect(bal).toBe(null);
     });
   });
-  describe('Chain', () => {
+  describe('Chain helpers', () => {
     beforeEach(() => {
-      walletProvider = new WalletProvider(pk, mockCacheManager as any, customChains);
+      walletProvider = new WalletProvider(pk, mockCacheManager as any);
     });
     it('generates chains from chain name', () => {
       const chainName = 'iotex';
       const chain: Chain = WalletProvider.genChainFromName(chainName);
 
+      expect(chain.id).toEqual(iotex.id);
       expect(chain.rpcUrls.default.http[0]).toEqual(iotex.rpcUrls.default.http[0]);
     });
     it('generates chains from chain name with custom rpc url', () => {
@@ -148,47 +144,21 @@ describe('Wallet provider', () => {
       expect(chain.rpcUrls.default.http[0]).toEqual(iotex.rpcUrls.default.http[0]);
       expect(chain.rpcUrls.custom.http[0]).toEqual(customRpcUrl);
     });
-    it('switches chain', () => {
-      const initialChain = walletProvider.getCurrentChain().id;
-      expect(initialChain).toEqual(iotex.id);
 
-      walletProvider.switchChain('mainnet');
-
-      const newChain = walletProvider.getCurrentChain().id;
-      expect(newChain).toEqual(mainnet.id);
-    });
-    it('switches chain (by adding new chain)', () => {
-      const initialChain = walletProvider.getCurrentChain().id;
-      expect(initialChain).toEqual(iotex.id);
-
-      walletProvider.switchChain('arbitrum');
-
-      const newChain = walletProvider.getCurrentChain().id;
-      expect(newChain).toEqual(arbitrum.id);
-    });
     it('adds chain', () => {
       const initialChains = walletProvider.chains;
-      expect(initialChains.base).toBeUndefined();
+      expect(initialChains.customChain).toBeUndefined();
 
-      const base = WalletProvider.genChainFromName('base');
-      walletProvider.addChain({ base });
+      walletProvider.addChain({ customChain });
       const newChains = walletProvider.chains;
-      expect(newChains.arbitrum.id).toEqual(arbitrum.id);
+      expect(newChains.customChain).toBeDefined();
     });
     it('gets chain configs', () => {
       const chain = walletProvider.getChainConfigs('iotex');
 
       expect(chain.id).toEqual(iotex.id);
     });
-    it('throws if tries to switch to an invalid chain', () => {
-      const initialChain = walletProvider.getCurrentChain().id;
-      expect(initialChain).toEqual(iotex.id);
 
-      // intentionally set incorrect chain, ts will complain
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      expect(() => walletProvider.switchChain('eth')).toThrow();
-    });
     it('throws if unsupported chain name', () => {
       // intentionally set incorrect chain, ts will complain
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment

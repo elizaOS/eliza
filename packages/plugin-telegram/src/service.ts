@@ -29,6 +29,7 @@ export class TelegramService extends Service {
   public messageManager: MessageManager;
   private options;
   private knownChats: Map<string, any> = new Map();
+  private syncedEntityIds: Set<string> = new Set<string>();
 
   /**
    * Constructor for TelegramService class.
@@ -77,6 +78,8 @@ export class TelegramService extends Service {
 
         // Set up middlewares before message handlers to ensure proper preprocessing
         service.setupMiddlewares();
+
+        // Set up message handlers after middlewares
         service.setupMessageHandlers();
 
         // Wait for bot to be ready by testing getMe()
@@ -144,7 +147,18 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Sets up middleware for handling different types of chats and message preprocessing
+   * Sets up the middleware chain for preprocessing messages before they reach handlers.
+   * This critical method establishes a sequential processing pipeline that:
+   *
+   * 1. Authorization - Verifies if a chat is allowed to interact with the bot based on configured settings
+   * 2. Chat Discovery - Ensures chat entities and worlds exist in the runtime, creating them if needed
+   * 3. Forum Topics - Handles Telegram forum topics as separate rooms for better conversation management
+   * 4. Entity Synchronization - Ensures message senders are properly synchronized as entities
+   *
+   * The middleware chain runs in sequence for each message, with each step potentially
+   * enriching the context or stopping processing if conditions aren't met.
+   * This preprocessing is essential for maintaining consistent state before message handlers execute.
+   * @private
    */
   private setupMiddlewares(): void {
     // Authorization middleware - checks if chat is allowed to interact with the bot
@@ -249,23 +263,72 @@ export class TelegramService extends Service {
    * @returns {Promise<void>}
    */
   private async syncEntity(ctx: Context): Promise<void> {
-    if (!ctx.from || !ctx.chat) return;
+    if (!ctx.chat) return;
 
-    const entityId = createUniqueUuid(this.runtime, ctx.from.id.toString()) as UUID;
+    // Handle message sender
+    if (ctx.from) {
+      const telegramId = ctx.from.id.toString();
+      if (!this.syncedEntityIds.has(telegramId)) {
+        const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
+        const existingEntity = await this.runtime.getEntityById(entityId);
 
-    const existingEntity = await this.runtime.getEntityById(entityId);
-    if (existingEntity) return;
+        if (!existingEntity) {
+          await this.runtime.createEntity({
+            id: entityId,
+            agentId: this.runtime.agentId,
+            names: [ctx.from.first_name || ctx.from.username || 'Unknown User'],
+            metadata: {
+              telegram: ctx.from,
+              username: ctx.from.username,
+              first_name: ctx.from.first_name,
+              status: 'ACTIVE',
+              joinedAt: Date.now(),
+            },
+          });
+        }
 
-    await this.runtime.createEntity({
-      id: entityId,
-      agentId: this.runtime.agentId,
-      names: [ctx.from.first_name || ctx.from.username || 'Unknown User'],
-      metadata: {
-        telegram: ctx.from,
-        username: ctx.from.username,
-        first_name: ctx.from.first_name,
-      },
-    });
+        this.syncedEntityIds.add(telegramId);
+      }
+    }
+
+    // Handle new chat member
+    if (ctx.message && 'new_chat_member' in ctx.message) {
+      const newMember = ctx.message.new_chat_member as any;
+      const telegramId = newMember.id.toString();
+      const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
+
+      await this.runtime.createEntity({
+        id: entityId,
+        agentId: this.runtime.agentId,
+        names: [newMember.first_name || newMember.username || 'Unknown User'],
+        metadata: {
+          telegram: newMember,
+          username: newMember.username,
+          first_name: newMember.first_name,
+          status: 'ACTIVE',
+          joinedAt: Date.now(),
+        },
+      });
+
+      this.syncedEntityIds.add(telegramId);
+    }
+
+    // Handle left chat member
+    if (ctx.message && 'left_chat_member' in ctx.message) {
+      const leftMember = ctx.message.left_chat_member as any;
+      const telegramId = leftMember.id.toString();
+      const entityId = createUniqueUuid(this.runtime, telegramId) as UUID;
+
+      const existingEntity = await this.runtime.getEntityById(entityId);
+      if (existingEntity) {
+        existingEntity.metadata = {
+          ...existingEntity.metadata,
+          status: 'INACTIVE',
+          leftAt: Date.now(),
+        };
+        await this.runtime.updateEntity(existingEntity);
+      }
+    }
   }
 
   /**
