@@ -139,8 +139,8 @@ Tests use a multi-layered approach to element selection:
 ### Resilience Features
 
 - **Progressive Enhancement**: Tests adapt to different UI variations
-- **Visual Verification**: Screenshots taken at key points for debugging
-- **Diagnostic Logging**: Detailed console output for troubleshooting
+- **Error Diagnostics**: Screenshots captured only during error conditions for efficient troubleshooting
+- **Diagnostic Logging**: Detailed console output via standardized logger
 - **Multiple Selector Approaches**: Alternative selection methods when primary selectors fail
 - **Timeout Management**: Configurable timeouts for different operations
 
@@ -152,10 +152,11 @@ Tests use a multi-layered approach to element selection:
 - Added content change detection to verify UI state transitions
 - Improved error handling with detailed diagnostics and recovery strategies
 - Enhanced timing adjustments to accommodate varying response times
+- Reduced screenshot capture to error scenarios only for improved performance
 
 ### Selector Upgrades
 
-- Added support for exact CSS selectors from browser devtools
+- Added support for general CSS selectors to reduce brittleness
 - Implemented fallback mechanisms for dynamic component styling
 - Enhanced element detection with combined attribute and content matching
 - Added context-sensitive navigation based on UI state
@@ -243,10 +244,10 @@ If you prefer to run the UI server separately:
    npx playwright test --ui
    ```
 
-3. **Visual comparison**:
+3. **Error screenshots**:
 
-   - Review screenshots in the `screenshots` directory
-   - Compare against expected UI states
+   - Review error screenshots in the `screenshots` directory
+   - Screenshots are now only captured on test failures for better performance
 
 4. **Trace viewing**:
    ```bash

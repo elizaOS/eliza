@@ -1,50 +1,58 @@
 import { Page, expect } from '@playwright/test';
+import { logger } from './logger';
 
 /**
  * Wait for ElizaOS to fully initialize
  */
 export async function waitForElizaInitialization(page: Page): Promise<void> {
-  console.log('Waiting for ElizaOS to initialize...');
+  logger.info('Waiting for ElizaOS to initialize...');
 
   try {
     // Wait for any main UI element to load - using broader selectors
     await page.waitForSelector(
       [
-        // Any common UI components
-        'body > div',
-        'main',
+        // Root application containers
         '#root',
         '.app',
-        'textarea, input[type="text"]',
+        '[role="application"]',
+        // Main content containers
+        'main',
+        '[role="main"]',
+        // Any primary UI containers
+        '.main-content',
+        '.dashboard',
+        // Interactive elements
+        'textarea, input, button[role="button"]',
+        // Navigation elements
         'nav',
+        '[role="navigation"]',
         // For debugging just wait for any content
-        'body',
+        'body > div',
       ].join(', '),
       { timeout: 60000 }
-    ); // Increase timeout to 60 seconds
+    ); // 60 second timeout
 
-    // Take a screenshot to verify the page loaded
-    await page.screenshot({ path: 'screenshots/initialization-complete.png' });
-
-    // Log available elements for debugging
+    // Log available elements for assertion
     const elementCount = await page.evaluate(() => {
       const counts = {
         divs: document.querySelectorAll('div').length,
         inputs: document.querySelectorAll('input, textarea').length,
-        buttons: document.querySelectorAll('button').length,
+        buttons: document.querySelectorAll('button, [role="button"]').length,
+        navigation: document.querySelectorAll('nav, [role="navigation"], header, .sidebar, aside')
+          .length,
+        headings: document.querySelectorAll('h1, h2, h3, [role="heading"]').length,
       };
       return counts;
     });
 
-    console.log('Page elements found:', elementCount);
+    logger.info('Page elements found:', elementCount);
 
     // Small delay to ensure UI has fully rendered
     await page.waitForTimeout(2000);
 
-    console.log('ElizaOS initialization complete');
+    logger.info('ElizaOS initialization complete');
   } catch (error) {
-    console.error('Error during initialization:', error);
-    await page.screenshot({ path: 'screenshots/initialization-error.png' });
+    logger.error('Error during initialization:', error);
     throw error;
   }
 }
@@ -53,29 +61,33 @@ export async function waitForElizaInitialization(page: Page): Promise<void> {
  * Send a message in the chat interface and wait for a response
  */
 export async function sendMessageAndWaitForResponse(page: Page, message: string): Promise<string> {
-  console.log(`Attempting to send message: "${message}"`);
+  logger.info(`Attempting to send message: "${message}"`);
 
   try {
-    // Take screenshot before sending message
-    await page.screenshot({ path: 'screenshots/before-sending-message.png' });
-
     // Find the input field using broader selectors
     const inputSelectors = [
+      // Specific attribute selectors
       'textarea[name="message"]',
       'textarea[placeholder*="message"]',
       'textarea[placeholder*="type"]',
       'input[type="text"]',
+      // General element selectors
       'textarea',
+      'input:not([type="hidden"])',
+      // ARIA attributes
+      '[role="textbox"]',
       '[contenteditable="true"]',
+      // Specific class-based selectors from the UI
+      '.chat-input',
+      '.message-input',
     ].join(', ');
 
     // Log the number of input fields found
     const inputCount = await page.locator(inputSelectors).count();
-    console.log(`Found ${inputCount} possible input fields`);
+    logger.info(`Found ${inputCount} possible input fields`);
 
     if (inputCount === 0) {
-      console.error('No input field found');
-      await page.screenshot({ path: 'screenshots/no-input-field-error.png' });
+      logger.error('No input field found');
       throw new Error('No input field found for sending message');
     }
 
@@ -83,30 +95,41 @@ export async function sendMessageAndWaitForResponse(page: Page, message: string)
     const inputField = page.locator(inputSelectors).first();
     await inputField.fill(message);
 
-    // Try to find send button first
+    // Try to find send button with generalizable selectors
     const sendButtonSelectors = [
+      // Text-based selectors
       'button:has-text("Send")',
+      'button:has-text("Submit")',
+      // ARIA attributes
       'button[aria-label="Send"]',
+      'button[aria-label="Submit"]',
+      '[role="button"][aria-label="Send"]',
+      // Class-based selectors
       'button.send-button',
+      '.send-button',
+      // Form control selectors
       'button[type="submit"]',
+      'input[type="submit"]',
+      // Icon-based selectors
+      'button:has(svg)',
+      // Position-based for chat UIs (usually button is placed right after input)
+      'textarea + button',
+      '.chat-input-container > button',
     ].join(', ');
 
     const hasSendButton = (await page.locator(sendButtonSelectors).count()) > 0;
 
     // Either click send button or press Enter
     if (hasSendButton) {
-      console.log('Using send button to submit message');
+      logger.info('Using send button to submit message');
       await page.locator(sendButtonSelectors).first().click();
     } else {
-      console.log('Using Enter key to submit message');
+      logger.info('Using Enter key to submit message');
       await inputField.press('Enter');
     }
 
-    // Take screenshot after sending message
-    await page.screenshot({ path: 'screenshots/after-sending-message.png' });
-
-    // Wait for the response to appear using broader selectors
-    console.log('Waiting for response...');
+    // Wait for the response to appear
+    logger.info('Waiting for response...');
 
     // First confirm our message appeared in the chat
     const pageContentBefore = (await page.textContent('body')) || '';
@@ -115,23 +138,19 @@ export async function sendMessageAndWaitForResponse(page: Page, message: string)
       await page.waitForTimeout(2000);
       const pageContentRetry = (await page.textContent('body')) || '';
       if (!pageContentRetry.includes(message)) {
-        console.warn('Message may not have been sent properly - not found in page content');
-        await page.screenshot({ path: 'screenshots/message-not-found-error.png' });
+        logger.warn('Message may not have been sent properly - not found in page content');
       }
     }
 
     // Wait for a reasonable timeout for response
     await page.waitForTimeout(10000);
 
-    // Take a screenshot to see if response appeared
-    await page.screenshot({ path: 'screenshots/after-response-wait.png' });
-
     // Get the new content and compare with previous
     const pageContentAfter = (await page.textContent('body')) || '';
 
     // Check if there's more content (indicating a response)
     if (pageContentAfter.length <= pageContentBefore.length) {
-      console.warn('No additional content detected after waiting for response');
+      logger.warn('No additional content detected after waiting for response');
     }
 
     // Try to get specific response text if possible
@@ -139,32 +158,38 @@ export async function sendMessageAndWaitForResponse(page: Page, message: string)
     try {
       // Try various selectors to locate the response
       const responseSelectors = [
+        // Class-based selectors (from inspecting the UI components)
         '.chat-bubble[data-variant="received"]:last-child',
-        '.chat-bubble[data-from="bot"]:last-child',
         '.chat-bubble:not([data-variant="sent"]):last-child',
+        // Structure-based selectors
         '.chat-message:not(:has-text("' + message + '")):last-child',
         '.message:not(:has-text("' + message + '")):last-child',
+        // General HTML structure
+        'div > p:not(:has-text("' + message + '"))',
+        // More general fallbacks
+        '.agent-message',
+        '.bot-message',
+        '.assistant-message',
       ].join(', ');
 
       const responseElement = page.locator(responseSelectors);
       if ((await responseElement.count()) > 0) {
         responseText = (await responseElement.textContent()) || '';
-        console.log(`Found response text: "${responseText.substring(0, 30)}..."`);
+        logger.info(`Found response text: "${responseText.substring(0, 30)}..."`);
       } else {
         // Extract reasonable response by comparing before/after content
         responseText = pageContentAfter.replace(pageContentBefore, '').trim();
-        console.log('Extracted response by content difference');
+        logger.info('Extracted response by content difference');
       }
     } catch (error) {
-      console.warn('Failed to extract specific response:', error);
+      logger.warn('Failed to extract specific response:', error);
       // Return generic response indication
       return 'Response received but could not extract specific text';
     }
 
     return responseText || 'Response received';
   } catch (error) {
-    console.error('Error sending message or waiting for response:', error);
-    await page.screenshot({ path: 'screenshots/send-message-error.png' });
+    logger.error('Error sending message or receiving response:', error);
     throw error;
   }
 }
@@ -173,286 +198,363 @@ export async function sendMessageAndWaitForResponse(page: Page, message: string)
  * Open the character configuration panel
  */
 export async function openCharacterConfiguration(page: Page): Promise<void> {
-  console.log('Opening character configuration...');
+  logger.info('Opening character configuration...');
 
   try {
-    // Check if settings panel is already visible
-    const settingsPanelAlreadyVisible = await page
+    // Check if already on settings page
+    const alreadyOnSettings = await page
       .locator(
-        [
-          'div:has-text("Character Settings")',
-          'form:has([name="name"])',
-          'div[role="dialog"]:has(input[name="name"])',
-          '.character-form',
-          '.character-settings',
-        ].join(', ')
+        'div:has-text("Character Settings"), form:has([name="name"]), div[role="dialog"]:has(input[name="name"]), .character-form, .character-settings'
       )
       .isVisible()
       .catch(() => false);
 
-    if (settingsPanelAlreadyVisible) {
-      console.log('Settings panel already visible, no need to open it again');
-      await page.screenshot({ path: 'screenshots/settings-panel-already-visible.png' });
+    if (alreadyOnSettings) {
+      logger.info('Already on character settings page');
       return;
     }
 
-    // Get the current page content for comparison later
-    const contentBefore = await page.evaluate(() => document.body.innerHTML.length);
+    // Check if settings panel is already open
+    const settingsPanelAlreadyVisible = await page.evaluate(() => {
+      return document.body.innerHTML.includes('Character Settings');
+    });
 
-    // First, check if we're on the dashboard
-    const onDashboard =
-      (await page
-        .locator('.group, [role="button"], a')
-        .filter({ hasText: /Eliza|Laura/ })
-        .count()) > 0;
+    if (settingsPanelAlreadyVisible) {
+      logger.info('Settings panel already visible, no need to open it again');
+      return;
+    }
+
+    // Figure out where we are - dashboard or chat view
+    const onDashboard = await page.evaluate(() => {
+      return !window.location.pathname.includes('/chat/');
+    });
 
     if (onDashboard) {
-      console.log('On dashboard, clicking settings icon for an agent');
+      logger.info('On dashboard, clicking settings icon for an agent');
 
-      // First take a screenshot to see what we're working with
-      await page.screenshot({ path: 'screenshots/before-settings-click.png' });
+      // IMPROVED AGENT CARD SELECTOR
+      // Use more specific selectors to avoid picking sidebar elements
+      const agentCardSelector = [
+        // Main grid items - very specific to dashboard layout
+        '.grid .card',
+        '.grid-cols-1 > div',
+        '.grid-cols-2 > div',
+        '.grid-cols-3 > div',
+        // Agent cards typically have these properties
+        'div.w-full.p-4',
+        'div.relative.rounded-lg',
+        // Specifically exclude sidebar elements
+        'main div:not(nav *):not(aside *):not(header *):has(button:has-text("Message"))',
+      ].join(', ');
 
-      // Find Message buttons first as reference points
-      const messageButtons = await page.locator('button:has-text("Message")').all();
-      console.log(`Found ${messageButtons.length} Message buttons`);
+      // Get potential agent cards
+      const potentialCards = await page.locator(agentCardSelector).all();
+      logger.info(`Found ${potentialCards.length} potential agent cards on dashboard`);
 
-      let settingsButtonFound = false;
+      // Additional filter to ensure we're getting real agent cards that have the Message button
+      const agentCards = [];
+      for (const card of potentialCards) {
+        const hasMessageButton = (await card.locator('button:has-text("Message")').count()) > 0;
+        const inSidebar = await card.evaluate((node: HTMLElement) => {
+          // Check if this element is inside a sidebar, nav, or header
+          let parent = node;
+          while (parent && parent !== document.body) {
+            const tagName = parent.tagName.toLowerCase();
+            const role = parent.getAttribute('role');
+            const className = parent.className || '';
 
-      if (messageButtons.length > 0) {
-        // Get the bounding box of a Message button to find nearby buttons
-        const msgButton = messageButtons[0];
-        const msgBounds = await msgButton.boundingBox();
-        await msgButton.screenshot({ path: 'screenshots/message-button.png' });
+            if (
+              tagName === 'nav' ||
+              tagName === 'aside' ||
+              tagName === 'header' ||
+              role === 'navigation' ||
+              className.includes('sidebar') ||
+              className.includes('navigation')
+            ) {
+              return true; // It's in a sidebar
+            }
+            parent = parent.parentElement as HTMLElement;
+          }
+          return false; // Not in a sidebar
+        });
 
-        if (msgBounds) {
-          console.log(`Message button position: x=${msgBounds.x}, y=${msgBounds.y}`);
+        if (hasMessageButton && !inSidebar) {
+          agentCards.push(card);
+        }
+      }
 
-          // Get parent container of the Message button
-          const agentContainer = page.locator('div:has(button:has-text("Message"))').first();
-          await agentContainer.screenshot({ path: 'screenshots/agent-container.png' });
+      logger.info(`Found ${agentCards.length} verified agent cards on dashboard`);
 
-          // Get all buttons with SVGs in this container
-          const containerButtons = await agentContainer.locator('button:has(svg)').all();
-          console.log(`Found ${containerButtons.length} buttons with SVGs in agent container`);
+      // If no verified cards found, try a more direct approach
+      if (agentCards.length === 0) {
+        logger.info('No verified agent cards found, trying direct approach with Message buttons');
 
-          // Check for settings-related buttons
-          let settingsButton = null;
+        // Look for any Message button not in sidebar
+        const messageButtons = await page.locator('button:has-text("Message")').all();
+        logger.info(`Found ${messageButtons.length} Message buttons in total`);
 
-          if (containerButtons.length > 0) {
-            // Strategy 1: Use the button to the right of Message button if available
-            for (const btn of containerButtons) {
-              const btnBounds = await btn.boundingBox();
-              if (
-                btnBounds &&
-                msgBounds &&
-                btnBounds.x > msgBounds.x && // Button is to the right
-                Math.abs(btnBounds.y - msgBounds.y) < 50
-              ) {
-                // Similar vertical position
+        for (let i = 0; i < messageButtons.length; i++) {
+          const buttonBounds = await messageButtons[i].boundingBox();
+          if (buttonBounds) {
+            // Skip buttons that are likely in the sidebar (typically on the left side)
+            if (buttonBounds.x > 200) {
+              // Assume sidebar is less than 200px wide
+              // Get closest parent that could be a card
+              const buttonText = (await messageButtons[i].textContent()) || '';
+              const possibleCard = page
+                .locator(`div:has(button:has-text("${buttonText}"))`)
+                .first();
 
-                console.log('Found button to the right of Message button');
-                settingsButton = btn;
-                await btn.screenshot({ path: 'screenshots/settings-candidate.png' });
+              if ((await possibleCard.count()) > 0) {
+                agentCards.push(possibleCard);
+                logger.info(`Added agent card based on Message button at x=${buttonBounds.x}`);
                 break;
               }
             }
-
-            // Strategy 2: If no button found to the right, use the last button in the container
-            if (!settingsButton && containerButtons.length > 0) {
-              console.log('Using last button in container as settings button');
-              settingsButton = containerButtons[containerButtons.length - 1];
-              await settingsButton.screenshot({ path: 'screenshots/last-container-button.png' });
-            }
-          }
-
-          // If still no button found, try to find circular buttons which are often used for settings
-          if (!settingsButton) {
-            const circularButtons = await page
-              .locator('button.rounded-full, button[class*="h-10"][class*="w-10"]')
-              .filter({ hasNotText: 'Message' })
-              .all();
-            console.log(`Found ${circularButtons.length} circular buttons (excluding Message)`);
-
-            if (circularButtons.length > 0) {
-              // Find the circular button closest to the Message button
-              let closestButton = null;
-              let minDistance = Number.MAX_VALUE;
-
-              for (const btn of circularButtons) {
-                const btnBounds = await btn.boundingBox();
-                if (btnBounds && msgBounds) {
-                  const distance = Math.sqrt(
-                    Math.pow(btnBounds.x - msgBounds.x, 2) + Math.pow(btnBounds.y - msgBounds.y, 2)
-                  );
-
-                  if (distance < minDistance) {
-                    minDistance = distance;
-                    closestButton = btn;
-                  }
-                }
-              }
-
-              if (closestButton) {
-                console.log(
-                  `Found circular button ${minDistance.toFixed(2)}px from Message button`
-                );
-                settingsButton = closestButton;
-                await settingsButton.screenshot({
-                  path: 'screenshots/closest-circular-button.png',
-                });
-              }
-            }
-          }
-
-          // Click the settings button if found
-          if (settingsButton) {
-            console.log('Clicking identified settings button');
-            await settingsButton.click();
-            await page.waitForTimeout(3000);
-            settingsButtonFound = true;
-          } else {
-            console.log('No suitable settings button found using spatial analysis');
-
-            // Continue to fallbacks below
           }
         }
       }
 
-      // If spatial analysis didn't find a settings button, try fallback approaches
-      if (!settingsButtonFound) {
-        console.log('Using fallback approaches to find settings button');
+      if (agentCards.length === 0) {
+        logger.error('No agent cards found after multiple attempts');
+        throw new Error('No agent cards found on dashboard');
+      }
+
+      // Get the first agent card
+      const firstAgentCard = agentCards[0];
+
+      // Find all buttons in the card
+      const allButtons = await firstAgentCard.locator('button').all();
+      logger.info(`Found ${allButtons.length} buttons in the agent card`);
+
+      // IMPROVED SETTINGS BUTTON DETECTION
+      // First try to find by Cog icon (most reliable)
+      const cogButtons = await firstAgentCard
+        .locator('button:has(svg[data-lucide="Cog"]), button:has(svg.lucide-cog)')
+        .all();
+      logger.info(`Found ${cogButtons.length} buttons with Cog icon in the card`);
+
+      let settingsButton = null;
+
+      if (cogButtons.length > 0) {
+        // Multiple cog buttons found - need to determine which is the settings button
+        let settingsButtonIndex = 0; // Default to first one
+
+        // If we have multiple buttons, try to find the one in the card footer
+        if (cogButtons.length > 1) {
+          const messageButton = await firstAgentCard.locator('button:has-text("Message")').first();
+          const msgBounds = await messageButton.boundingBox();
+
+          if (msgBounds) {
+            logger.info(`Message button position: x=${msgBounds.x}, y=${msgBounds.y}`);
+
+            // Get positions of all cog buttons
+            const buttonPositions = [];
+            for (let i = 0; i < cogButtons.length; i++) {
+              const btnBounds = await cogButtons[i].boundingBox();
+              if (btnBounds) {
+                // Calculate horizontal and vertical distance from message button
+                const xDist = btnBounds.x - msgBounds.x;
+                const yDist = Math.abs(btnBounds.y - msgBounds.y);
+
+                buttonPositions.push({
+                  index: i,
+                  x: btnBounds.x,
+                  y: btnBounds.y,
+                  xDist,
+                  yDist,
+                });
+
+                logger.info(
+                  `Cog button ${i} position: x=${btnBounds.x}, y=${btnBounds.y}, xDist=${xDist}, yDist=${yDist}`
+                );
+              }
+            }
+
+            // Sort the buttons by how close they are to the message button horizontally
+            // (but only if they're roughly at the same vertical position)
+            const sameLevelButtons = buttonPositions.filter((btn) => btn.yDist < 50);
+            if (sameLevelButtons.length > 0) {
+              // Sort by x position (rightmost should be settings)
+              sameLevelButtons.sort((a, b) => b.x - a.x);
+              settingsButtonIndex = sameLevelButtons[0].index;
+              logger.info(
+                `Selected rightmost cog button at same level as Message button: index ${settingsButtonIndex}`
+              );
+            } else {
+              // If none at same level, use the button furthest to the right
+              buttonPositions.sort((a, b) => b.x - a.x);
+              settingsButtonIndex = buttonPositions[0].index;
+              logger.info(
+                `No cog buttons at same level, using rightmost: index ${settingsButtonIndex}`
+              );
+            }
+          }
+        }
+
+        settingsButton = cogButtons[settingsButtonIndex];
+      }
+      // If no Cog icon, try positional approaches
+      else {
+        logger.info('No Cog buttons found, trying positional approach');
+
+        // Try to use the last/rightmost button
+        const messageButton = await firstAgentCard.locator('button:has-text("Message")').first();
+        const msgBounds = await messageButton.boundingBox();
+
+        if (msgBounds) {
+          // Get all buttons with SVGs (icon buttons)
+          const iconButtons = await firstAgentCard.locator('button:has(svg)').all();
+          logger.info(`Found ${iconButtons.length} icon buttons in the card`);
+
+          // A typical agent card should have 3 buttons: Message, Info, Settings
+          // The Settings button should be the last one
+          if (iconButtons.length >= 3) {
+            const potentialSettingsButtons = iconButtons.filter(async (btn) => {
+              const text = await btn.textContent();
+              return !text?.includes('Message'); // Exclude Message button
+            });
+
+            if (potentialSettingsButtons.length >= 2) {
+              // The third button (or last button) should be settings
+              settingsButton = potentialSettingsButtons[potentialSettingsButtons.length - 1];
+              logger.info('Selected last button with icon as settings button');
+            }
+          }
+
+          // If still no button found, use button positions
+          if (!settingsButton && iconButtons.length > 0) {
+            // Collect all button positions and find the rightmost
+            const buttonPositions = [];
+
+            for (const btn of iconButtons) {
+              const btnBounds = await btn.boundingBox();
+              if (btnBounds) {
+                // Only consider buttons at similar vertical position to Message
+                const yDist = Math.abs(btnBounds.y - msgBounds.y);
+                if (yDist < 50) {
+                  buttonPositions.push({ button: btn, x: btnBounds.x });
+                }
+              }
+            }
+
+            // Sort by X position (rightmost should be settings)
+            buttonPositions.sort((a, b) => b.x - a.x);
+
+            if (buttonPositions.length > 0) {
+              settingsButton = buttonPositions[0].button;
+              logger.info('Selected rightmost button as settings button');
+            }
+          }
+        }
+      }
+
+      // Click the settings button if found
+      if (settingsButton) {
+        logger.info('Clicking identified settings button');
+        await settingsButton.click();
+        await page.waitForTimeout(2000);
+      } else {
+        logger.info('No suitable settings button found using spatial analysis');
+
+        // Continue to fallbacks below
+        logger.info('Using fallback approaches to find settings button');
 
         // We'll keep the fallback logic from our previous implementation:
-        // Look for any buttons with cog icons that are not in the top navigation
+        // 1. Look for any buttons with cog icons that are not in the top navigation
         const cogButtons = await page
           .locator('button:has(svg[data-lucide="Cog"]), button:has(svg.lucide-cog)')
           .all();
-        console.log(`Found ${cogButtons.length} buttons with cog icons`);
+        logger.info(`Found ${cogButtons.length} buttons with cog icons`);
 
         let cogButtonFound = false;
+
         for (const btn of cogButtons) {
           const btnBounds = await btn.boundingBox();
+          // Skip buttons in the top area (likely navigation)
           if (btnBounds && btnBounds.y > 150) {
             // Skip top navigation
-            console.log('Found cog button below top navigation');
-            await btn.screenshot({ path: 'screenshots/cog-button.png' });
+            logger.info('Found cog button below top navigation');
             await btn.click();
-            await page.waitForTimeout(3000);
+            await page.waitForTimeout(2000);
             cogButtonFound = true;
             break;
           }
         }
 
-        // If still no luck, try clicking Message button first, then look for settings in chat view
+        // 2. If no cog button found, try clicking Message first, then settings in chat view
         if (!cogButtonFound) {
+          logger.info('No cog button found, trying to go to chat view first');
           const messageButton = page.locator('button:has-text("Message")').first();
           if ((await messageButton.count()) > 0) {
-            console.log('Found Message button, clicking it to enter chat view');
+            logger.info('Found Message button, clicking it to enter chat view');
             await messageButton.click();
             await page.waitForTimeout(2000);
 
-            // Now look for settings in the chat interface
-            const chatSettingsButton = page
-              .locator(
-                [
-                  'button:has(svg[data-lucide="Cog"])',
-                  'button:has(svg.lucide-cog)',
-                  'button[aria-label="Settings"]',
-                  'header button:has(svg)',
-                  'nav button:has(svg):nth-last-child(1)',
-                ].join(', ')
-              )
-              .first();
+            // Now try to find settings button in chat view
+            const chatSettingsButton = page.locator('button:has(svg[data-lucide="Cog"])').first();
+            logger.info('Looking for settings button in chat view');
 
             if ((await chatSettingsButton.count()) > 0) {
-              console.log('Found settings in chat view, clicking it');
+              logger.info('Found settings in chat view, clicking it');
               await chatSettingsButton.click();
               await page.waitForTimeout(2000);
+            } else {
+              logger.info('No settings button found in chat view, trying SVG buttons');
+              // Try all buttons with SVGs
+              const svgButtons = await page.locator('button:has(svg)').all();
+
+              if (svgButtons.length > 0) {
+                // First button is likely info
+                logger.info('Clicking first button with SVG (likely info)');
+                await svgButtons[0].click();
+                await page.waitForTimeout(2000);
+              }
             }
           }
         }
       }
     } else {
       // If we're not on dashboard, try more traditional selectors
-      console.log('Not on dashboard, trying traditional navigation');
+      logger.info('Not on dashboard, trying traditional navigation');
       const configButton = page
         .locator(
-          [
-            'button:has-text("Character")',
-            'button:has-text("Configuration")',
-            '[role="tab"]:has-text("Character")',
-            '.sidebar button:has-text("Character")',
-            'nav a:has-text("Character")',
-          ].join(', ')
+          'button:has(svg[data-lucide="Cog"]), button.config-button, button:has-text("Settings"), [aria-label="Settings"]'
         )
         .first();
 
-      await configButton.click();
+      if ((await configButton.count()) > 0) {
+        logger.info('Found settings button, clicking it');
+        await configButton.click();
+        await page.waitForTimeout(2000);
+      }
     }
 
-    // Check if content has changed, which would indicate the settings panel opened
-    const contentAfter = await page.evaluate(() => document.body.innerHTML.length);
-    const contentChanged = contentAfter > contentBefore + 100; // At least 100 chars more
-
-    if (contentChanged) {
-      console.log(
-        `Page content has changed (before: ${contentBefore}, after: ${contentAfter}), likely indicating settings panel opened`
+    // Wait for panel to be confirmed visible based on content
+    try {
+      // Wait for character form elements to be visible
+      await page.waitForSelector(
+        'input[name="name"], textarea[name="system"], form:has(input[name="name"]), [role="dialog"]:has(input[name="name"])',
+        {
+          timeout: 10000,
+        }
       );
-      return; // Successfully opened the settings panel
+      logger.info('Character configuration panel confirmed visible');
+    } catch (error) {
+      // On error, take a screenshot and throw
+      await page.screenshot({ path: 'screenshots/panel-not-confirmed.png' });
+      throw new Error('Character configuration panel did not appear as expected: ' + error);
     }
 
-    // Wait for the configuration panel to be visible
-    // Using selectors that could match the CharacterForm component based on screenshots
-    console.log('Checking for character settings panel...');
+    // Add a small delay to ensure the panel is fully loaded/rendered
+    await page.waitForTimeout(1000);
 
-    const configSelectors = [
-      'div:has-text("Character Settings")',
-      'form:has([name="name"])',
-      'div[role="dialog"]:has(input[name="name"])',
-      '.character-form',
-      '.character-settings',
-      '[data-testid="character-config"]',
-      'div:has(input[name="name"])',
-      'div:has(textarea[name="system"])',
-    ];
-
-    // Instead of waiting for one selector, check each one and use the first that works
-    let found = false;
-    for (const selector of configSelectors) {
-      console.log(`Checking for selector: ${selector}`);
-      const panel = page.locator(selector);
-      const isPanelVisible = await panel.isVisible().catch(() => false);
-      if (isPanelVisible) {
-        console.log(`Found panel with selector: ${selector}`);
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
-      // Wait a bit longer and take a screenshot to debug
-      await page.waitForTimeout(3000);
-      await page.screenshot({ path: 'screenshots/waiting-for-settings-panel.png' });
-
-      // Try one more time with a broader check
-      const html = await page.content();
-      if (html.includes('Character Settings') || html.includes('character-settings')) {
-        console.log('Found Character Settings in page content');
-        found = true;
-      }
-    }
-
-    if (!found && !contentChanged) {
-      throw new Error('Could not find character settings panel');
-    }
-
-    console.log('Character configuration panel opened successfully');
-  } catch (error: unknown) {
-    console.error(
-      'Error opening character configuration:',
-      error instanceof Error ? error.message : String(error)
-    );
-    await page.screenshot({ path: 'screenshots/character-config-open-error.png' });
+    // Give a final status update
+    logger.info('Character configuration panel successfully opened');
+  } catch (error) {
+    // Capture a screenshot on error
+    await page.screenshot({ path: 'screenshots/character-config-error.png' });
+    logger.error('Error opening character configuration:', error);
     throw error;
   }
 }
@@ -463,9 +565,23 @@ export async function openCharacterConfiguration(page: Page): Promise<void> {
 export async function getCharacterInfo(
   page: Page
 ): Promise<{ name: string; bio: string; systemPrompt: string }> {
-  console.log('Getting character information...');
+  logger.info('Attempting to get character information...');
 
   try {
+    // Ensure the panel is visible
+    const confirmPanelSelector =
+      'form:has(input[name="name"]), [role="dialog"]:has(input[name="name"]), input[name="name"], textarea[name="system"]';
+    const panelVisible = await page
+      .locator(confirmPanelSelector)
+      .isVisible()
+      .catch(() => false);
+
+    if (!panelVisible) {
+      logger.error('Character configuration panel is not visible');
+      await page.screenshot({ path: 'screenshots/panel-detection-issue.png' });
+      throw new Error('Character configuration panel not detected');
+    }
+
     // First determine if we're in settings or info panel
     const inSettingsPanel = await page
       .locator('div:has-text("Character Settings")')
@@ -478,7 +594,7 @@ export async function getCharacterInfo(
       .isVisible()
       .catch(() => false);
 
-    console.log(`Current UI state: Settings panel: ${inSettingsPanel}, Info panel: ${inInfoPanel}`);
+    logger.info(`Current UI state: Settings panel: ${inSettingsPanel}, Info panel: ${inInfoPanel}`);
 
     let name = '';
     let bio = '';
@@ -486,7 +602,7 @@ export async function getCharacterInfo(
 
     if (inSettingsPanel) {
       // We're in the settings panel
-      console.log('Getting info from settings panel');
+      logger.info('Getting info from settings panel');
 
       // Get name from name field
       name = await page
@@ -551,7 +667,7 @@ export async function getCharacterInfo(
       }
     } else if (inInfoPanel) {
       // We're in the info panel
-      console.log('Getting info from info panel');
+      logger.info('Getting info from info panel');
 
       // Get name from header
       name =
@@ -587,7 +703,7 @@ export async function getCharacterInfo(
       // System prompt usually isn't shown in info panel
       systemPrompt = '';
     } else {
-      console.warn('Neither settings nor info panel detected. Taking screenshot for debugging.');
+      logger.warn('Neither settings nor info panel detected. Taking screenshot for debugging.');
       await page.screenshot({ path: 'screenshots/panel-detection-issue.png' });
     }
 
@@ -597,8 +713,9 @@ export async function getCharacterInfo(
       systemPrompt: systemPrompt || '',
     };
   } catch (error) {
-    console.error('Error getting character info:', error);
+    // Take a screenshot on error
     await page.screenshot({ path: 'screenshots/get-character-info-error.png' });
+    logger.error('Error getting character info:', error);
     throw error;
   }
 }
@@ -715,118 +832,6 @@ export async function openMemoryViewer(page: Page): Promise<void> {
 }
 
 /**
- * Opens the knowledge management panel
- */
-export async function openKnowledgeManager(page: Page): Promise<void> {
-  const knowledgeButton = page
-    .locator('button:has-text("Knowledge"), [role="tab"]:has-text("Knowledge")')
-    .first();
-  await knowledgeButton.click();
-
-  // Wait for knowledge manager to load
-  await page.waitForSelector('.knowledge-list, .knowledge-manager', { timeout: 5000 });
-}
-
-/**
- * Add a knowledge item to the knowledge base
- */
-export async function addKnowledgeItem(page: Page, text: string): Promise<void> {
-  // First ensure knowledge manager is open
-  await openKnowledgeManager(page);
-
-  // Find and click the add knowledge button
-  const addButton = page.locator(
-    'button:has-text("Add"), button:has-text("New"), [aria-label="Add knowledge"]'
-  );
-  await addButton.click();
-
-  // Wait for add knowledge dialog
-  await page.waitForSelector('textarea[placeholder*="knowledge"], [role="dialog"]', {
-    timeout: 5000,
-  });
-
-  // Enter knowledge text
-  const textArea = page.locator('textarea[placeholder*="knowledge"], [role="textbox"]');
-  await textArea.fill(text);
-
-  // Submit the knowledge
-  const submitButton = page.locator(
-    'button:has-text("Save"), button:has-text("Add"), button:has-text("Submit")'
-  );
-  await submitButton.click();
-
-  // Wait for knowledge to be added
-  await page.waitForTimeout(1000);
-}
-
-/**
- * Opens the room management panel
- */
-export async function openRoomPanel(page: Page): Promise<void> {
-  const roomButton = page
-    .locator('button:has-text("Room"), button:has-text("Rooms"), [aria-label="Rooms"]')
-    .first();
-  await roomButton.click();
-
-  // Wait for room panel to load
-  await page.waitForSelector('.room-list, .room-panel', { timeout: 5000 });
-}
-
-/**
- * Create a new room
- */
-export async function createRoom(page: Page, name: string): Promise<void> {
-  // First ensure room panel is open
-  await openRoomPanel(page);
-
-  // Find and click create room button
-  const createButton = page.locator('button:has-text("Create"), button:has-text("New Room")');
-  await createButton.click();
-
-  // Wait for room creation dialog
-  await page.waitForSelector('input[placeholder*="name"], input[name="roomName"]', {
-    timeout: 5000,
-  });
-
-  // Enter room name
-  const nameInput = page.locator('input[placeholder*="name"], input[name="roomName"]');
-  await nameInput.fill(name);
-
-  // Create the room
-  const submitButton = page.locator(
-    'button:has-text("Create"), button:has-text("Submit"), button[type="submit"]'
-  );
-  await submitButton.click();
-
-  // Wait for room to be created
-  await page.waitForTimeout(1000);
-}
-
-/**
- * Start audio recording
- */
-export async function startAudioRecording(page: Page): Promise<void> {
-  // Find and click the audio recording button
-  const recordButton = page.locator('button[aria-label="Record audio"], button:has-text("Record")');
-  await recordButton.click();
-
-  // Wait for recording indicator
-  await page.waitForSelector('.recording-indicator, [data-recording="true"]', { timeout: 5000 });
-}
-
-/**
- * Stop audio recording
- */
-export async function stopAudioRecording(page: Page): Promise<void> {
-  // Find and click the stop recording button
-  const stopButton = page.locator('button[aria-label="Stop recording"], button:has-text("Stop")');
-  await stopButton.click();
-
-  // Wait for recording to stop
-  await page.waitForSelector('.audio-preview, .recording-stopped', { timeout: 5000 });
-}
-
-/**
  * Open agent settings panel
  */
 export async function openAgentSettings(page: Page): Promise<void> {
@@ -846,265 +851,128 @@ export async function openAgentSettings(page: Page): Promise<void> {
  * Open the character info panel
  */
 export async function openCharacterInfo(page: Page): Promise<void> {
-  console.log('Opening character info panel...');
+  logger.info('Opening character info panel...');
 
   try {
-    // Check if info panel is already visible
+    // Check if info panel is already visible using more general selectors
     const infoDialogAlreadyVisible = await page
       .locator(
         [
           'div[role="dialog"]',
           '.modal',
-          '.overlay',
-          '.info-panel',
-          '.character-info',
-          '.profile-overlay',
-          'div:has-text("About Me"):has-text("Status"):has-text("Plugin")',
+          'div:has-text("About Me")',
+          'div:has(h2):has-text("Status")',
         ].join(', ')
       )
       .isVisible()
       .catch(() => false);
 
     if (infoDialogAlreadyVisible) {
-      console.log('Info panel already visible, no need to open it again');
-      await page.screenshot({ path: 'screenshots/info-panel-already-visible.png' });
+      logger.info('Info panel already visible, no need to open it again');
       return;
     }
 
-    // Get the current page content for comparison later
-    const contentBefore = await page.evaluate(() => document.body.innerHTML.length);
-
-    // First, check if we're on the dashboard
-    const onDashboard =
-      (await page
-        .locator('.group, [role="button"], a')
-        .filter({ hasText: /Eliza|Laura/ })
-        .count()) > 0;
+    // Figure out where we are - dashboard or chat view
+    const onDashboard = await page.evaluate(() => {
+      return !window.location.pathname.includes('/chat/');
+    });
 
     if (onDashboard) {
-      console.log('On dashboard, attempting to open character info');
+      logger.info('On dashboard, attempting to open character info');
 
-      // First take a screenshot to see what we're working with
-      await page.screenshot({ path: 'screenshots/before-info-click.png' });
+      // Use a more reliable way to find agent cards
+      const messageButtons = await page.locator('button:has-text("Message")').all();
+      logger.info(`Found ${messageButtons.length} Message buttons in total`);
 
-      // Based on the actual dashboard implementation, the info icon is an InfoIcon component
-      // It's in a Button with variant="outline" and className="w-10 h-10 rounded-full"
-      // Try the exact selectors from the home.tsx file first
-      const infoButton = page
-        .locator(
-          [
-            // Direct selector for the info icon based on the home.tsx implementation
-            'button:has(svg[data-lucide="InfoIcon"])',
-            // InfoIcon from Lucide
-            'button:has(svg.lucide-info)',
-            // The info button is the second-to-last button in the ProfileCard
-            'button:nth-last-child(2)',
-            // Generic selectors
-            'button[aria-label="Info"]',
-            'button.info-icon',
-            // More generic approaches
-            'button:has(svg):nth-last-child(2)',
-          ].join(', ')
-        )
-        .first();
+      if (messageButtons.length === 0) {
+        throw new Error('No Message buttons found on dashboard');
+      }
 
-      const infoButtonCount = await infoButton.count();
+      // Get the first Message button's parent container (likely an agent card)
+      const msgButton = messageButtons[0];
 
-      if (infoButtonCount > 0) {
-        console.log('Found info button directly, clicking it');
+      // Find the parent agent card using a general selector
+      const agentCard = page.locator('div:has(button:has-text("Message"))').first();
+
+      // Look for any button that isn't the message button - this is likely the info button
+      // Using very general selectors here
+      const potentialInfoButtons = await agentCard
+        .locator('button:not(:has-text("Message")), a[role="button"]:not(:has-text("Message"))')
+        .all();
+
+      logger.info(`Found ${potentialInfoButtons.length} potential info buttons in the card`);
+
+      if (potentialInfoButtons.length > 0) {
+        // Use the first non-message button found
+        const infoButton = potentialInfoButtons[0];
+        logger.info('Found potential info button, clicking it');
+
         await infoButton.click();
-        await page.waitForTimeout(3000); // Increase wait time
-      } else {
-        // Alternative: try clicking on the agent card image/content itself
-        console.log('No direct info button found, trying to click on agent card content');
+        await page.waitForTimeout(1000);
 
-        // In the home.tsx, the content of ProfileCard has an onClick handler that calls openOverlay
-        const agentCardContent = page.locator('.cursor-pointer, [role="button"], .group').first();
+        // Check if the info panel opened using general content checks
+        const infoPanel = await page
+          .locator('div:has-text("About Me"), div:has-text("Status"), div[role="dialog"]')
+          .isVisible()
+          .catch(() => false);
 
-        if ((await agentCardContent.count()) > 0) {
-          console.log('Found agent card content, clicking it');
-          await agentCardContent.click();
-          await page.waitForTimeout(3000); // Increase wait time
-        } else {
-          // If no card content found, try clicking the Message button first
-          console.log('Trying to click Message button first');
-          const messageButton = page.locator('button:has-text("Message")').first();
+        if (!infoPanel) {
+          logger.warn('Info panel not immediately visible, trying alternative approach');
 
-          if ((await messageButton.count()) > 0) {
-            console.log('Found Message button, clicking it');
-            await messageButton.click();
-            await page.waitForTimeout(2000);
-
-            // Now look for info/profile button in the chat interface
-            const chatInfoButton = page
-              .locator(
-                [
-                  'button[aria-label="Info"]',
-                  'button[aria-label="Profile"]',
-                  'button:has(svg[data-lucide="InfoIcon"])',
-                  'button:has(svg.lucide-info)',
-                  'header button:first-child',
-                  'nav button:first-child',
-                ].join(', ')
-              )
-              .first();
-
-            if ((await chatInfoButton.count()) > 0) {
-              console.log('Found info button in chat interface, clicking it');
-              await chatInfoButton.click();
-              await page.waitForTimeout(3000); // Increase wait time
-            } else {
-              console.log('No info button found in chat interface, trying SVG buttons');
-              // Try all buttons with SVGs
-              const svgButtons = await page.locator('button:has(svg)').all();
-
-              if (svgButtons.length > 0) {
-                // First button is likely info
-                console.log('Clicking first button with SVG (likely info)');
-                await svgButtons[0].click();
-                await page.waitForTimeout(3000); // Increase wait time
-              } else {
-                throw new Error('Could not find info button using any approach');
-              }
-            }
-          } else {
-            throw new Error('No viable approach found to open character info');
+          // Try clicking another potential button if available
+          if (potentialInfoButtons.length > 1) {
+            logger.info('Trying second potential info button');
+            await potentialInfoButtons[1].click();
+            await page.waitForTimeout(1000);
           }
         }
-      }
-
-      // Wait for the info panel to load
-      await page.waitForTimeout(2000);
-      await page.screenshot({ path: 'screenshots/after-clicking-info.png' });
-    } else {
-      // If we're not on dashboard, try to navigate back first
-      console.log('Not on dashboard, trying to navigate back');
-      const backButton = page
-        .locator(
-          [
-            'button[aria-label="Back"]',
-            'button:has(svg[aria-label="Back"])',
-            'a:has-text("Back")',
-            'button:has-text("Back")',
-            'svg[aria-label="Back"]',
-          ].join(', ')
-        )
-        .first();
-
-      const hasBackButton = (await backButton.count()) > 0;
-      if (hasBackButton) {
-        await backButton.click();
-        await page.waitForTimeout(2000);
-
-        // Try again after navigating back
-        await openCharacterInfo(page);
-        return;
       } else {
-        throw new Error('Could not find a way to get to the dashboard');
+        throw new Error('Could not find any potential info buttons on agent card');
       }
-    }
-
-    // First, check if content has changed, which would indicate the overlay opened
-    const contentAfter = await page.evaluate(() => document.body.innerHTML.length);
-    const contentChanged = contentAfter > contentBefore + 100; // At least 100 chars more
-
-    if (contentChanged) {
-      console.log(
-        `Page content has changed (before: ${contentBefore}, after: ${contentAfter}), likely indicating info panel opened`
-      );
-      return; // Successfully opened the info panel
-    }
-
-    // Check if info dialog is visible using multiple approaches
-    console.log('Checking for info dialog...');
-
-    // Check for various selectors that might indicate the info panel
-    const infoSelectors = [
-      'div[role="dialog"]:has-text("About Me")',
-      'div:has-text("About Me")',
-      '.character-info',
-      '.agent-profile',
-      '[data-testid="character-info"]',
-      'div:has-text("Status")',
-      'div:has-text("Plugins")',
-    ];
-
-    // Check each selector
-    let dialogFound = false;
-    for (const selector of infoSelectors) {
-      console.log(`Checking selector: ${selector}`);
-      const infoDialog = page.locator(selector);
-      const isVisible = await infoDialog.isVisible().catch(() => false);
-      if (isVisible) {
-        console.log(`Found info dialog with selector: ${selector}`);
-        dialogFound = true;
-        break;
-      }
-    }
-
-    // If standard selectors don't work, check broader patterns
-    if (!dialogFound) {
-      // Check for any dialog
-      const hasDialog = await page
-        .locator('div[role="dialog"]')
-        .isVisible()
-        .catch(() => false);
-      if (hasDialog) {
-        console.log('Found dialog element, checking its content');
-
-        // Check if dialog has relevant content
-        const dialogText = (await page.locator('div[role="dialog"]').textContent()) || '';
-
-        // Look for typical content in the info panel
-        const hasRelevantContent =
-          dialogText.includes('About') ||
-          dialogText.includes('Status') ||
-          dialogText.includes('Plugin') ||
-          dialogText.includes('Active') ||
-          dialogText.includes('Inactive');
-
-        if (hasRelevantContent) {
-          console.log('Dialog contains relevant info panel content');
-          dialogFound = true;
-        } else {
-          console.log('Dialog found but content does not match expected info panel');
-        }
-      }
-
-      // As fallback, check for changes in specific UI patterns
-      if (!dialogFound) {
-        // Count key UI elements before and after
-        const elementsCount = {
-          buttons: await page.locator('button').count(),
-          headings: await page.locator('h1, h2, h3').count(),
-          paragraphs: await page.locator('p').count(),
-          divs: await page.locator('div').count(),
-        };
-
-        console.log('Current page elements:', elementsCount);
-
-        // Consider presence of many elements as potential indication of panel
-        if (elementsCount.buttons > 3 && elementsCount.headings > 0) {
-          console.log('Page has structure suggesting info panel may be present');
-          dialogFound = true;
-        }
-      }
-    }
-
-    if (!dialogFound && !contentChanged) {
-      // Take a screenshot for debugging
-      await page.screenshot({ path: 'screenshots/info-dialog-not-found.png' });
-      console.warn('Could not definitively confirm info dialog opened, but continuing');
-      // Don't throw error here to allow the test to continue and make its own determination
     } else {
-      console.log('Character info panel opened successfully');
+      // In chat view, find any button in the header area that could be the info button
+      logger.info('In chat view, looking for info button in header');
+
+      // Look for buttons in the header area, excluding those with clear other purposes
+      const headerButtons = await page
+        .locator('header button, nav button, .header button, .navbar button')
+        .all();
+
+      logger.info(`Found ${headerButtons.length} buttons in header area`);
+
+      // Try to find a button that looks like an info button
+      let infoButton = null;
+
+      for (const button of headerButtons) {
+        const buttonText = (await button.textContent()) || '';
+        if (
+          buttonText.includes('Info') ||
+          buttonText.trim() === '' || // Empty buttons are often icon buttons
+          buttonText.length < 3
+        ) {
+          infoButton = button;
+          break;
+        }
+      }
+
+      if (infoButton) {
+        logger.info('Found potential info button in chat view, clicking it');
+        await infoButton.click();
+        await page.waitForTimeout(1000);
+      } else if (headerButtons.length > 0) {
+        // Just try the first header button if we couldn't identify a specific one
+        logger.info('Trying first header button as potential info button');
+        await headerButtons[0].click();
+        await page.waitForTimeout(1000);
+      } else {
+        throw new Error('Could not find any buttons in chat header');
+      }
     }
-  } catch (error: unknown) {
-    console.error(
+  } catch (error) {
+    logger.error(
       'Error opening character info panel:',
       error instanceof Error ? error.message : String(error)
     );
-    await page.screenshot({ path: 'screenshots/character-info-open-error.png' });
     throw error;
   }
 }

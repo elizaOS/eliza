@@ -17,5 +17,8 @@
   "devDependencies": {
     "@playwright/test": "^1.40.0",
     "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "@elizaos/core": "file:../../core"
   }
 }

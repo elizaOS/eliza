@@ -118,3 +118,35 @@ flycheck_*.el
 packages/autodoc/text_objects/*
 /env
 pglite/*
+
+# UI Test related files
+screenshots/
+packages/client/ui-tests/screenshots/
+**/ui-tests/screenshots/**
+test-results/
+**/test-results*/
+playwright-report/
+**/playwright-report/
+**/test-results/
+**/playwright/.cache/
+.playwright/
+**/tests/*.log
+**/tests/artifacts/
+**/tests/logs/
+**/tests/temp/
+**/test-report*.json
+**/.nyc_output/
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
