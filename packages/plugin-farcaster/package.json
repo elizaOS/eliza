@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-farcaster",
-  "version": "1.0.0-beta.8",
+  "version": "1.0.0-beta.9",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -104,5 +104,6 @@
         "description": "Type of action timeline, must match an ActionTimelineType enum value."
       }
     }
-  }
+  },
+  "gitHead": "601099e5940ddaee3983d34c529df623d4d64b54"
 }
