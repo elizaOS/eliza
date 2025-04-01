@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-elevenlabs",
-  "version": "1.0.0-beta.10",
+  "version": "1.0.0-beta.11",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.10",
+    "@elizaos/core": "^1.0.0-beta.11",
     "tsup": "8.4.0"
   },
   "scripts": {
@@ -77,7 +77,7 @@
       }
     }
   },
-  "gitHead": "601099e5940ddaee3983d34c529df623d4d64b54",
+  "gitHead": "adfcdb17e51472cf3ee8daf36ad395d2663a93a9",
   "devDependencies": {
     "prettier": "3.5.3"
   }

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-ollama",
-  "version": "1.0.0-beta.10",
+  "version": "1.0.0-beta.11",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -23,7 +23,7 @@
   ],
   "dependencies": {
     "@ai-sdk/ui-utils": "1.1.9",
-    "@elizaos/core": "^1.0.0-beta.10",
+    "@elizaos/core": "^1.0.0-beta.11",
     "ai": "^4.1.25",
     "js-tiktoken": "^1.0.18",
     "ollama-ai-provider": "^1.2.0",
@@ -65,7 +65,7 @@
       }
     }
   },
-  "gitHead": "601099e5940ddaee3983d34c529df623d4d64b54",
+  "gitHead": "adfcdb17e51472cf3ee8daf36ad395d2663a93a9",
   "devDependencies": {
     "prettier": "3.5.3"
   }
