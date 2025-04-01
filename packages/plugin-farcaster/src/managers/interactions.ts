@@ -67,7 +67,6 @@ export class FarcasterInteractionManager {
   private async runPeriodically(): Promise<void> {
     while (this.isRunning) {
       try {
-        logger.info('Checking for mentions or replies');
         await this.handleInteractions();
 
         // now sleep for the configured interval
