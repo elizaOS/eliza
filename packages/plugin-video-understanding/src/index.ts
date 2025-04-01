@@ -1,13 +1,11 @@
-export * from './services/index';
-
 import type { Plugin } from '@elizaos/core';
 
-import { VideoService } from './services/index';
+import { VideoService as VideoUnderstandingService } from './services/video';
 
 export const videoUnderstandingPlugin: Plugin = {
   name: 'video-understanding',
   description: 'Plugin for video understanding',
-  services: [VideoService],
+  services: [VideoUnderstandingService],
   actions: [],
 };
 

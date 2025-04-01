@@ -1,12 +1,10 @@
-export * from './services/index';
-
 import type { Plugin } from '@elizaos/core';
 
-import { AwsS3Service, BrowserService, PdfService, VideoService } from './services/index';
+import { BrowserService } from './services/browser';
 
-export const nodePlugin: Plugin = {
-  name: 'default',
-  description: 'Default plugin, with basic actions and evaluators',
-  services: [BrowserService, PdfService, VideoService, AwsS3Service],
+export const browserPlugin: Plugin = {
+  name: 'browser-plugin',
+  description: 'Plugin for browser actions',
+  services: [BrowserService],
   actions: [],
 };
