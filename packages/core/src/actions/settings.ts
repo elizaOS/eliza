@@ -2,7 +2,7 @@ import type { ZodSchema, z } from 'zod';
 import { createUniqueUuid } from '../entities';
 import { logger } from '../logger';
 import { composePrompt, composePromptFromState, parseJSONObjectFromText } from '../prompts';
-import { findWorldForOwner } from '../roles';
+import { findWorldsForOwner } from '../roles';
 import {
   type Action,
   type ActionExample,
@@ -709,10 +709,12 @@ const updateSettingsAction: Action = {
 
       // Find the server where this user is the owner
       logger.debug(`Looking for server where user ${message.entityId} is owner`);
-      const world = await findWorldForOwner(runtime, message.entityId);
-      if (!world) {
+      const worlds = await findWorldsForOwner(runtime, message.entityId);
+      if (!worlds) {
         return false;
       }
+
+      const world = worlds.find((world) => world.metadata.settings);
 
       // Check if there's an active settings state in world metadata
       const worldSettings = world.metadata.settings;
@@ -740,7 +742,8 @@ const updateSettingsAction: Action = {
     try {
       // Find the server where this user is the owner
       logger.info(`Handler looking for server for user ${message.entityId}`);
-      const serverOwnership = await findWorldForOwner(runtime, message.entityId);
+      const worlds = await findWorldsForOwner(runtime, message.entityId);
+      const serverOwnership = worlds.find((world) => world.metadata.settings);
       if (!serverOwnership) {
         logger.error(`No server found for user ${message.entityId} in handler`);
         await generateErrorResponse(runtime, state, callback);
