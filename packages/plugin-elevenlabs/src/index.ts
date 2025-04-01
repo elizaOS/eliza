@@ -1,6 +1,11 @@
 import { Readable } from 'node:stream';
-import { type IAgentRuntime, ModelType, type Plugin, logger } from '@elizaos/core';
-import { prependWavHeader } from './utils';
+import {
+  type IAgentRuntime,
+  ModelType,
+  type Plugin,
+  logger,
+  prependWavHeader,
+} from '@elizaos/core';
 
 /**
  * Function to retrieve voice settings based on runtime and environment variables.

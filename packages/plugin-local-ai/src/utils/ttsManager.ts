@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { logger } from '@elizaos/core';
+import { logger, prependWavHeader } from '@elizaos/core';
 import {
   type LlamaContext,
   type LlamaContextSequence,
@@ -10,7 +10,6 @@ import {
   getLlama,
 } from 'node-llama-cpp';
 import { MODEL_SPECS } from '../types';
-import { prependWavHeader } from './audioUtils';
 import { DownloadManager } from './downloadManager';
 
 /**
