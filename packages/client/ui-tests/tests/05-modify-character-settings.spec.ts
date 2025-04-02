@@ -9,7 +9,6 @@ import {
 import { logger } from './logger';
 
 test.describe('UI - Character Settings: Modify Character Settings', () => {
-  // Increase timeout for this test
   test.setTimeout(120000);
 
   test('should successfully modify and save character settings', async ({ page }) => {
@@ -46,7 +45,7 @@ test.describe('UI - Character Settings: Modify Character Settings', () => {
         systemPrompt: updatedSystemPrompt,
       });
 
-      // Look for save/submit button using generic selectors
+      // Look for save/submit button
       const saveButton = page
         .locator(
           [
@@ -66,8 +65,6 @@ test.describe('UI - Character Settings: Modify Character Settings', () => {
 
       // Click the save button
       await saveButton.click();
-
-      // Wait for the save operation to complete (give it a few seconds)
       await page.waitForTimeout(2000);
 
       // Check for success message
@@ -75,7 +72,6 @@ test.describe('UI - Character Settings: Modify Character Settings', () => {
       if (saveSuccess) {
         logger.info('Save operation completed successfully');
       } else {
-        // If no success message, we'll still continue and verify the changes by content check
         logger.info('No success message detected, will verify changes directly');
       }
 
@@ -92,8 +88,7 @@ test.describe('UI - Character Settings: Modify Character Settings', () => {
       expect(promptUpdated, 'System prompt should be updated').toBeTruthy();
       logger.info('System prompt was successfully updated');
 
-      // Bio verification is optional, as it might be stored in different formats
-      // and the test should still pass even if bio check doesn't work as expected
+      // Bio verification is optional
       try {
         if (updatedInfo.bio) {
           const bioUpdated = updatedInfo.bio.includes(testBio);
