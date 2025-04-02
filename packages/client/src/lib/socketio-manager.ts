@@ -1,18 +1,92 @@
 import { USER_NAME } from '@/constants';
 import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
-import { EventEmitter } from 'eventemitter3';
+import { Evt } from 'evt';
 import { io, type Socket } from 'socket.io-client';
 import { WorldManager } from './world-manager';
 import { randomUUID } from './utils';
 
-//const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
+// Define types for the events
+export type MessageBroadcastData = {
+  senderId: string;
+  senderName: string;
+  text: string;
+  roomId: string;
+  createdAt: number;
+  source: string;
+  name: string; // Required for ContentWithUser compatibility
+  [key: string]: any;
+};
+
+export type MessageCompleteData = {
+  roomId: string;
+  [key: string]: any;
+};
+
+// A simple class that provides EventEmitter-like interface using Evt internally
+class EventAdapter {
+  private events: Record<string, Evt<any>> = {};
+
+  constructor() {
+    // Initialize common events
+    this.events.messageBroadcast = Evt.create<MessageBroadcastData>();
+    this.events.messageComplete = Evt.create<MessageCompleteData>();
+  }
+
+  on(eventName: string, listener: (...args: any[]) => void) {
+    if (!this.events[eventName]) {
+      this.events[eventName] = Evt.create();
+    }
+
+    this.events[eventName].attach(listener);
+    return this;
+  }
+
+  off(eventName: string, listener: (...args: any[]) => void) {
+    if (this.events[eventName]) {
+      const handlers = this.events[eventName].getHandlers();
+      for (const handler of handlers) {
+        if (handler.callback === listener) {
+          handler.detach();
+        }
+      }
+    }
+    return this;
+  }
+
+  emit(eventName: string, ...args: any[]) {
+    if (this.events[eventName]) {
+      this.events[eventName].post(args.length === 1 ? args[0] : args);
+    }
+    return this;
+  }
+
+  once(eventName: string, listener: (...args: any[]) => void) {
+    if (!this.events[eventName]) {
+      this.events[eventName] = Evt.create();
+    }
+
+    this.events[eventName].attachOnce(listener);
+    return this;
+  }
+
+  // For checking if EventEmitter has listeners
+  listenerCount(eventName: string): number {
+    if (!this.events[eventName]) return 0;
+    return this.events[eventName].getHandlers().length;
+  }
+
+  // Used only for internal access to the Evt instances
+  _getEvt(eventName: string): Evt<any> | undefined {
+    return this.events[eventName];
+  }
+}
 
 /**
  * SocketIOManager handles real-time communication between the client and server
  * using Socket.io. It maintains a single connection to the server and allows
  * joining and messaging in multiple rooms.
  */
-class SocketIOManager extends EventEmitter {
+class SocketIOManager extends EventAdapter {
   private static instance: SocketIOManager | null = null;
   private socket: Socket | null = null;
   private isConnected = false;
@@ -21,6 +95,15 @@ class SocketIOManager extends EventEmitter {
   private activeRooms: Set<string> = new Set();
   private entityId: string | null = null;
   private agentIds: string[] | null = null;
+
+  // Public accessor for EVT instances (for advanced usage)
+  public get evtMessageBroadcast() {
+    return this._getEvt('messageBroadcast') as Evt<MessageBroadcastData>;
+  }
+
+  public get evtMessageComplete() {
+    return this._getEvt('messageComplete') as Evt<MessageCompleteData>;
+  }
 
   private constructor() {
     super();
@@ -100,7 +183,12 @@ class SocketIOManager extends EventEmitter {
       // Check if this is a message for one of our active rooms
       if (this.activeRooms.has(data.roomId)) {
         console.log(`[SocketIO] Handling message for active room ${data.roomId}`);
-        this.emit('messageBroadcast', data);
+        // Post the message to the event
+        this.emit('messageBroadcast', {
+          ...data,
+          name: data.senderName, // Required for ContentWithUser compatibility
+        });
+
         if (this.socket) {
           this.socket.emit('message', {
             type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
@@ -225,12 +313,13 @@ class SocketIOManager extends EventEmitter {
 
     // Immediately broadcast message locally so UI updates instantly
     this.emit('messageBroadcast', {
-      senderId: this.entityId,
+      senderId: this.entityId || '',
       senderName: USER_NAME,
       text: message,
       roomId,
       createdAt: Date.now(),
       source,
+      name: USER_NAME, // Required for ContentWithUser compatibility
     });
   }
 

@@ -29,6 +29,7 @@ import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 import { CHAT_SOURCE } from '@/constants';
+import { Evt } from 'evt';
 
 type ExtraContentFields = {
   name: string;
@@ -246,15 +247,22 @@ export default function Page({
 
     // Add listener for message broadcasts
     console.log('[Chat] Adding messageBroadcast listener');
-    socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
-    socketIOManager.on('messageComplete', handleMessageComplete);
+    const msgHandler = socketIOManager.evtMessageBroadcast.attach((data) => [
+      data as unknown as ContentWithUser,
+    ]);
+    const completeHandler = socketIOManager.evtMessageComplete.attach((data) => [
+      data as unknown as any,
+    ]);
+
+    msgHandler.attach(handleMessageBroadcasting);
+    completeHandler.attach(handleMessageComplete);
 
     return () => {
       // When leaving this chat, leave the room but don't disconnect
       console.log(`[Chat] Leaving room ${roomId}`);
       socketIOManager.leaveRoom(roomId);
-      socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
-      socketIOManager.off('messageComplete', handleMessageComplete);
+      msgHandler.detach();
+      completeHandler.detach();
     };
   }, [roomId, agentId, entityId, queryClient, socketIOManager]);
 

@@ -2,6 +2,9 @@ import { logger } from '@elizaos/core';
 import { config } from 'dotenv';
 import { PGliteClientManager } from './pglite/manager.js';
 import { PostgresConnectionManager } from './pg/manager.js';
+import os from 'node:os';
+import path from 'node:path';
+
 
 config({ path: '../../.env' });
 
@@ -25,9 +28,13 @@ async function runMigrations() {
       process.exit(1);
     }
   } else {
+    const homeDir = os.homedir();
+    const elizaDir = path.join(homeDir, '.eliza');
+    const elizaDbDir = path.join(elizaDir, 'db');
+
     logger.info('Using PGlite database');
     const clientManager = new PGliteClientManager({
-      dataDir: '../../pglite',
+      dataDir: elizaDbDir,
     });
 
     try {
