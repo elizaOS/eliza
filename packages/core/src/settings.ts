@@ -72,6 +72,11 @@ export function encryptStringValue(value: string, salt: string): string {
       return value; // Return the value as is (undefined or null)
     }
 
+    if (typeof value === 'boolean' || typeof value === 'number') {
+      logger.debug('Value is a boolean or number, returning as is');
+      return value;
+    }
+
     // Check if value is already encrypted (has the format "iv:encrypted")
     const parts = value.split(':');
     if (parts.length === 2) {
@@ -118,6 +123,11 @@ export function decryptStringValue(value: string, salt: string): string {
     if (value === undefined || value === null) {
       logger.debug('Attempted to decrypt undefined or null value');
       return value; // Return the value as is (undefined or null)
+    }
+
+    if (typeof value === 'boolean' || typeof value === 'number') {
+      logger.debug('Value is a boolean or number, returning as is');
+      return value;
     }
 
     // Split the IV and encrypted value
