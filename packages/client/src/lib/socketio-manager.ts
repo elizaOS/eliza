@@ -1,10 +1,11 @@
 import { USER_NAME } from '@/constants';
 import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
-import { EventEmitter } from 'eventemitter3';
+import pkg from 'eventemitter3';
 import { io, type Socket } from 'socket.io-client';
 import { WorldManager } from './world-manager';
 import { randomUUID } from './utils';
 
+const { EventEmitter } = pkg;
 //const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
 
 /**
