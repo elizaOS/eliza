@@ -119,9 +119,25 @@ export class TwitterInteractionClient {
     const twitterUsername = this.client.profile?.username;
     try {
       // Check for mentions
-      const mentionCandidates = (
-        await this.client.fetchSearchTweets(`@${twitterUsername}`, 20, SearchMode.Latest)
-      ).tweets;
+      const cursorKey = `twitter/${twitterUsername}/mention_cursor`;
+      const cachedCursor = await this.runtime.getCache<string>(cursorKey);
+
+      const searchResult = await this.client.fetchSearchTweets(
+        `@${twitterUsername}`,
+        20,
+        SearchMode.Latest,
+        cachedCursor
+      );
+
+      const mentionCandidates = searchResult.tweets;
+
+      // If we got tweets and there's a valid cursor, cache it
+      if (mentionCandidates.length > 0 && searchResult.previous) {
+        await this.runtime.setCache(cursorKey, searchResult.previous);
+      } else if (!searchResult.previous && !searchResult.next) {
+        // If both previous and next are missing, clear the outdated cursor
+        await this.runtime.setCache(cursorKey, null);
+      }
 
       logger.log('Completed checking mentioned tweets:', mentionCandidates.length);
       let uniqueTweetCandidates = [...mentionCandidates];
@@ -228,9 +244,6 @@ export class TwitterInteractionClient {
                 return [];
               },
             };
-
-            // Emit generic MESSAGE_RECEIVED event
-            this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, messagePayload);
 
             // Emit platform-specific MENTION_RECEIVED event
             const mentionPayload: TwitterMentionReceivedPayload = {
