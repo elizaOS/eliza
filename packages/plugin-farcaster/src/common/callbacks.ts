@@ -19,7 +19,7 @@ export function standardCastHandlerCallback({
   config: FarcasterConfig;
   roomId: UUID;
   onCompletion?: (casts: CastWithInteractions[], memories: Memory[]) => Promise<void>;
-  onError?: (error: Error) => Promise<void>;
+  onError?: (error: unknown) => Promise<void>;
 }): HandlerCallback {
   const callback: HandlerCallback = async (content: Content, _files?: any) => {
     try {
@@ -48,7 +48,7 @@ export function standardCastHandlerCallback({
         });
 
         if (i === 0) {
-          // sendCast lost response action, so we need to add it back here
+          // sendCast removes the response action, so we need to add it back here
           memory.content.actions = content.actions;
         }
 
@@ -65,7 +65,7 @@ export function standardCastHandlerCallback({
       logger.error('[Farcaster] Error posting cast:', error);
 
       if (onError) {
-        await onError(error as Error);
+        await onError(error);
       }
 
       return [];
