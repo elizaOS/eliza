@@ -4,136 +4,83 @@ sidebar_position: 5
 
 # Plugin Command
 
-The `plugin` command helps you manage ElizaOS plugins - modular extensions that add capabilities to your agents.
+The `plugin` command helps you manage ElizaOS plugins, including publishing them to the registry.
 
 ## Usage
 
 ```bash
-npx @elizaos/cli plugin <action> [options]
+elizaos plugin <action> [options]
 ```
 
 ## Actions
 
-| Action    | Description                    |
-| --------- | ------------------------------ |
-| `publish` | Publish a plugin to a registry |
+| Action    | Description                      |
+| --------- | -------------------------------- |
+| `publish` | Publish a plugin to the registry |
 
 ## Publishing Plugins
 
-The `publish` command allows you to publish an ElizaOS plugin to a registry:
+Publish your plugin to make it available for others to use:
 
 ```bash
-npx @elizaos/cli plugin publish [options]
+elizaos plugin publish
 ```
 
-### Options
+### Options for publish
 
-| Option                      | Description                                               |
-| --------------------------- | --------------------------------------------------------- |
-| `-r, --registry <registry>` | Target registry (default: "elizaOS/registry")             |
-| `-n, --npm`                 | Publish to npm instead of GitHub                          |
-| `-t, --test`                | Test publish process without making changes               |
-| `-p, --platform <platform>` | Specify platform compatibility (node, browser, universal) |
+| Option                      | Description                            |
+| --------------------------- | -------------------------------------- |
+| `-r, --registry <registry>` | Specify a custom registry URL          |
+| `-n, --npm`                 | Publish to npm instead of the registry |
+| `-t, --test`                | Test the publishing process            |
+| `-p, --platform <platform>` | Specify platform compatibility         |
 
 ### Publishing Process
 
-When you run the `publish` command, ElizaOS will:
+The publish command will:
 
-1. Validate that you're in a plugin directory
-2. Check for required GitHub credentials
-3. Validate the plugin package.json
-4. Build the plugin
-5. Publish to the specified registry (GitHub by default, or npm if specified)
+1. Validate your plugin directory
+2. Check your GitHub credentials
+3. Validate your package.json
+4. Build your plugin
+5. Publish to the specified registry
 
-### Examples
+## Examples
 
-#### Test Publishing
-
-Test the publishing process without actually publishing:
+### Testing the Publishing Process
 
 ```bash
-npx @elizaos/cli plugin publish --test
+elizaos plugin publish --test
 ```
 
-#### Publishing to npm
-
-Publish your plugin to npm:
+### Publishing to npm
 
 ```bash
-# First make sure you're logged in to npm
-npm login
-
-# Then publish
-npx @elizaos/cli plugin publish --npm
+elizaos plugin publish --npm
 ```
 
-#### Publishing with Platform Specification
-
-Specify platform compatibility when publishing:
+### Specifying Platform Compatibility
 
 ```bash
-npx @elizaos/cli plugin publish --platform node
+elizaos plugin publish --platform node
 ```
 
-## Creating a Plugin
+## Requirements
 
-To create a new plugin, use the general `create` command with the plugin type:
+To publish a plugin, you need:
 
-```bash
-npx @elizaos/cli create --type plugin
-```
-
-This will guide you through the process of creating a new plugin project with the proper structure.
-
-## Plugin Structure
-
-A typical ElizaOS plugin has this structure:
-
-```
-my-plugin/
-├── src/
-│   └── index.ts        # Plugin entry point
-├── dist/               # Compiled code (generated)
-├── package.json        # Plugin metadata and dependencies
-└── tsconfig.json       # TypeScript configuration
-```
-
-The main plugin definition is in `src/index.ts`:
-
-```typescript
-import type { Plugin } from '@elizaos/core';
-
-export const myPlugin: Plugin = {
-  name: 'my-plugin',
-  description: 'My custom plugin for ElizaOS',
-
-  // Plugin components
-  actions: [],
-  services: [],
-  providers: [],
-  models: {},
-
-  // Initialization function
-  async init(config) {
-    // Setup code
-  },
-};
-
-export default myPlugin;
-```
-
-## Requirements for Publishing
-
-Before publishing a plugin, ensure:
-
-1. Your plugin name should include `plugin-` (e.g., `@elizaos/plugin-discord`)
-2. A complete package.json with name, version, and description
-3. GitHub credentials if publishing to the ElizaOS registry
-4. npm login if publishing to npm
+1. A proper plugin name (e.g., `@elizaos/plugin-name`)
+2. A complete package.json with:
+   - name
+   - version
+   - description
+   - main
+   - types
+   - dependencies
+3. GitHub credentials for the registry
 
 ## Related Commands
 
 - [`create`](./create.md): Create a new plugin
-- [`project list-plugins`](./projects.md): List available plugins to install
-- [`project add-plugin`](./projects.md): Add a plugin to your project
-- [`project remove-plugin`](./projects.md): Remove a plugin from your project
+- [`project`](./projects.md): Add plugins to projects
+- [Quickstart Guide](../quickstart.md): Project and plugin structure
