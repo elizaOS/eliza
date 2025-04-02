@@ -524,9 +524,10 @@ export class TwitterInteractionClient {
       currentPost,
       formattedConversation,
     };
+
     // check if the tweet exists, save if it doesn't
-    const tweetId = createUniqueUuid(this.runtime, tweet.id);
-    const tweetExists = await this.runtime.getMemoryById(tweetId);
+    const tweetId = message.id || createUniqueUuid(this.runtime, tweet.id);
+    const tweetExists = (await this.runtime.getMemoryById(tweetId))?.id === tweetId;
 
     if (!tweetExists) {
       logger.log('tweet does not exist, saving');

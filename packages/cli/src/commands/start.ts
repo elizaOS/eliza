@@ -312,7 +312,7 @@ export async function startAgent(
 
   const runtime = new AgentRuntime({
     character: encryptedChar,
-    plugins: [...plugins, ...characterPlugins],
+    plugins: [...characterPlugins, ...plugins],
     settings: loadEnvConfig(),
   });
   if (init) {
