@@ -1258,6 +1258,16 @@ export abstract class BaseDrizzleAdapter<
       contentLength: memory.content?.text?.length,
     });
 
+    const memoryId = memory.id ?? (v4() as UUID);
+
+    const existing = await this.getMemoryById(memoryId);
+    if (existing) {
+      logger.debug('Memory already exists, skipping creation:', {
+        memoryId,
+      });
+      return memoryId;
+    }
+
     let isUnique = true;
     if (memory.embedding && Array.isArray(memory.embedding)) {
       const similarMemories = await this.searchMemoriesByEmbedding(memory.embedding, {
@@ -1271,8 +1281,6 @@ export abstract class BaseDrizzleAdapter<
 
     const contentToInsert =
       typeof memory.content === 'string' ? JSON.parse(memory.content) : memory.content;
-
-    const memoryId = memory.id ?? (v4() as UUID);
 
     await this.db.transaction(async (tx) => {
       await tx.insert(memoryTable).values([

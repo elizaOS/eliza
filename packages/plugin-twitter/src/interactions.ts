@@ -139,7 +139,7 @@ export class TwitterInteractionClient {
         await this.runtime.setCache(cursorKey, null);
       }
 
-      logger.log('Completed checking mentioned tweets:', mentionCandidates.length);
+      console.log('Completed checking mentioned tweets:', mentionCandidates.length);
       let uniqueTweetCandidates = [...mentionCandidates];
 
       // Sort tweet candidates by ID in ascending order
@@ -244,9 +244,6 @@ export class TwitterInteractionClient {
                 return [];
               },
             };
-
-            // Emit generic MESSAGE_RECEIVED event
-            this.runtime.emitEvent(EventType.MESSAGE_RECEIVED, messagePayload);
 
             // Emit platform-specific MENTION_RECEIVED event
             const mentionPayload: TwitterMentionReceivedPayload = {
