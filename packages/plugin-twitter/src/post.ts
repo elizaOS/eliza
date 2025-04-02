@@ -8,6 +8,7 @@ import {
   type UUID,
   createUniqueUuid,
   logger,
+  parseBooleanFromText,
   truncateToCompleteSentence,
 } from '@elizaos/core';
 import type { ClientBase } from './base';
@@ -45,9 +46,15 @@ export class TwitterPostClient {
     logger.log(`- Username: ${this.twitterUsername}`);
     logger.log(`- Dry Run Mode: ${this.isDryRun ? 'Enabled' : 'Disabled'}`);
 
-    logger.log(
-      `- Auto-post: ${this.state?.TWITTER_ENABLE_POST_GENERATION || this.runtime.getSetting('TWITTER_ENABLE_POST_GENERATION') ? 'disabled' : 'enabled'}`
+    this.state.isTwitterEnabled = parseBooleanFromText(
+      String(
+        this.state?.TWITTER_ENABLE_POST_GENERATION ||
+          this.runtime.getSetting('TWITTER_ENABLE_POST_GENERATION') ||
+          ''
+      )
     );
+
+    logger.log(`- Auto-post: ${this.state.isTwitterEnabled ? 'enabled' : 'disabled'}`);
 
     logger.log(
       `- Post Interval: ${this.state?.TWITTER_POST_INTERVAL_MIN || this.runtime.getSetting('TWITTER_POST_INTERVAL_MIN')}-${this.state?.TWITTER_POST_INTERVAL_MAX || this.runtime.getSetting('TWITTER_POST_INTERVAL_MAX')} minutes`
@@ -70,7 +77,7 @@ export class TwitterPostClient {
    */
   async start() {
     logger.log('Starting Twitter post client...');
-    const tweetGeneration = this.runtime.getSetting('TWITTER_ENABLE_TWEET_GENERATION');
+    const tweetGeneration = this.state.isTwitterEnabled;
     if (tweetGeneration === false) {
       logger.log('Tweet generation is disabled');
       return;
