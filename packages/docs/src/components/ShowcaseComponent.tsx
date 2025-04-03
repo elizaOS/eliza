@@ -21,6 +21,15 @@ function ShowcaseHeader() {
           Submit your plugin
         </Link>
       </div>
+      <br></br>
+      <div className="alert alert--warning" style={{ marginBottom: '2rem' }}>
+        <h4>⚠️ V2 Compatibility Notice</h4>
+        <p>
+          V2 compatibility of plugins are in progress. Please check back here later. You can also
+          join the dev discord at <a href="https://discord.gg/elizaos">discord.gg/elizaos</a> for
+          updates.
+        </p>
+      </div>
     </section>
   );
 }
