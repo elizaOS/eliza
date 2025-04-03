@@ -7,6 +7,7 @@ import {
   type State,
   logger,
   stringToUuid,
+  ServiceType,
 } from '@elizaos/core';
 import type { Tweet } from '../client';
 import { SpaceActivity } from '../spaces';
@@ -50,16 +51,14 @@ export default {
       await callback(response.content);
     }
 
-    const manager = runtime.getService(ServiceType.TWITTER);
-    if (!manager) {
-      throw new Error('Twitter client manager not found');
+    const service = runtime.getService('twitter') as any;
+    if (!service) {
+      throw new Error('Twitter service not found');
     }
 
-    const clientId = stringToUuid('default');
-    const clientKey = manager.getClientKey(clientId, runtime.agentId);
-
-    const client = manager.clients.get(clientKey).client;
-    const spaceManager = manager.clients.get(clientKey).space;
+    const manager = service.getClient(runtime.agentId, runtime.agentId);
+    const client = manager.client;
+    const spaceManager = manager.space;
 
     if (!spaceManager) {
       logger.error('space action - no space manager found');
