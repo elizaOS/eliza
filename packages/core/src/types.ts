@@ -1032,6 +1032,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     serverId,
     type,
     worldId,
+    userId,
   }: {
     entityId: UUID;
     roomId: UUID;
@@ -1042,6 +1043,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     serverId?: string;
     type: ChannelType;
     worldId?: UUID;
+    userId?: UUID;
   }): Promise<void>;
 
   ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;

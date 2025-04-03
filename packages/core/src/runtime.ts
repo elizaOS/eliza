@@ -862,6 +862,7 @@ export class AgentRuntime implements IAgentRuntime {
     channelId,
     serverId,
     worldId,
+    userId,
   }: {
     entityId: UUID;
     roomId: UUID;
@@ -872,6 +873,7 @@ export class AgentRuntime implements IAgentRuntime {
     channelId?: string;
     serverId?: string;
     worldId?: UUID;
+    userId?: UUID;
   }) {
     if (entityId === this.agentId) {
       throw new Error('Agent should not connect to itself');
@@ -884,6 +886,7 @@ export class AgentRuntime implements IAgentRuntime {
     const names = [name, userName].filter(Boolean);
     const metadata = {
       [source]: {
+        id: userId,
         name: name,
         userName: userName,
       },
