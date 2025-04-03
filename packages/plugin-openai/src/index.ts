@@ -47,7 +47,7 @@ function getBaseURL(runtime: any): string {
  * @returns The configured API key
  */
 function getApiKey(runtime: any): string | undefined {
-  return getSetting(runtime, 'OPENAI_API_KEY') ?? process.env.OPENAI_API_KEY;
+  return getSetting(runtime, 'OPENAI_API_KEY');
 }
 
 /**
