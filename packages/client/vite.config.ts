@@ -2,6 +2,7 @@ import path from 'node:path';
 import react from '@vitejs/plugin-react-swc';
 import { type Plugin, type UserConfig, defineConfig, loadEnv } from 'vite';
 import viteCompression from 'vite-plugin-compression';
+import clientElizaLogger from './src/lib/logger';
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }): UserConfig => {
@@ -22,6 +23,8 @@ export default defineConfig(({ mode }): UserConfig => {
           return; // Suppress the warning
         }
         originalLogFn(msg, options);
+        // Also log to our custom logger
+        clientElizaLogger.info(msg, options);
       };
     },
   };
@@ -58,6 +61,8 @@ export default defineConfig(({ mode }): UserConfig => {
             return;
           }
           warn(warning);
+          // Also log to our custom logger
+          clientElizaLogger.warn(warning.message || 'Unknown warning');
         },
       },
     },

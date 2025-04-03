@@ -26,6 +26,7 @@ import { useAutoScroll } from './ui/chat/hooks/useAutoScroll';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import AgentAvatarStack from './agent-avatar-stack';
 import GroupPanel from './group-panel';
+import clientLogger from '../lib/logger';
 
 type ExtraContentFields = {
   name: string;
@@ -48,7 +49,7 @@ function MessageContent({
 }) {
   // Only log message details in development mode
   if (import.meta.env.DEV) {
-    console.log(`[Chat] Rendering message from ${message.name}:`, {
+    clientLogger.debug(`[Chat] Rendering message from ${message.name}:`, {
       isUser: isUser,
       text: message.text?.substring(0, 20) + '...',
       senderId: message.senderId,
