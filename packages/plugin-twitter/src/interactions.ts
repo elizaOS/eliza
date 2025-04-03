@@ -223,6 +223,7 @@ export class TwitterInteractionClient {
                 : undefined,
               source: 'twitter',
               channelType: ChannelType.GROUP,
+              tweet,
             },
             entityId,
             roomId,
