@@ -20,8 +20,10 @@ import { teeCommand as tee } from './commands/tee';
 import { test } from './commands/test';
 import { update } from './commands/update';
 import { loadEnvironment } from './utils/get-config';
-import { displayBanner } from './displayBanner';
+import { displayBanner, getVersion } from './displayBanner';
 import { setupMonorepo } from './commands/install';
+import { updateCLI } from './commands/update-cli';
+
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
@@ -85,6 +87,7 @@ async function main() {
     .addCommand(env)
     .addCommand(dev)
     .addCommand(publish)
+    .addCommand(updateCLI)
     .addCommand(stopCommand);
 
   // if no args are passed, display the banner

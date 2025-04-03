@@ -4,15 +4,8 @@ import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export function displayBanner() {
-  // Color ANSI escape codes
-  const b = '\x1b[38;5;27m';
-  const lightblue = '\x1b[38;5;51m';
-  const w = '\x1b[38;5;255m';
-  const r = '\x1b[0m';
-  const red = '\x1b[38;5;196m';
-  let versionColor = lightblue;
-
+// Function to get the package version
+export function getVersion(): string {
   // For ESM modules we need to use import.meta.url instead of __dirname
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
@@ -23,10 +16,28 @@ export function displayBanner() {
   // Add a simple check in case the path is incorrect
   let version = '0.0.0'; // Fallback version
   if (!fs.existsSync(packageJsonPath)) {
+    console.error(`Warning: package.json not found at ${packageJsonPath}`);
   } else {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-    version = packageJson.version;
+    try {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+      version = packageJson.version || '0.0.0';
+    } catch (error) {
+      console.error(`Error reading or parsing package.json at ${packageJsonPath}:`, error);
+    }
   }
+  return version;
+}
+
+export function displayBanner() {
+  // Color ANSI escape codes
+  const b = '\x1b[38;5;27m';
+  const lightblue = '\x1b[38;5;51m';
+  const w = '\x1b[38;5;255m';
+  const r = '\x1b[0m';
+  const red = '\x1b[38;5;196m';
+  let versionColor = lightblue;
+
+  const version = getVersion();
 
   // if version includes "beta" or "alpha" then use red
   if (version?.includes('beta') || version?.includes('alpha')) {
