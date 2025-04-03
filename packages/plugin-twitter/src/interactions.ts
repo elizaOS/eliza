@@ -139,7 +139,7 @@ export class TwitterInteractionClient {
         await this.runtime.setCache(cursorKey, null);
       }
 
-      logger.log('Completed checking mentioned tweets:', mentionCandidates.length);
+      console.log('Completed checking mentioned tweets:', mentionCandidates.length);
       let uniqueTweetCandidates = [...mentionCandidates];
 
       // Sort tweet candidates by ID in ascending order
@@ -573,21 +573,6 @@ export class TwitterInteractionClient {
         createdAt: tweet.timestamp * 1000,
       };
       this.client.saveRequestMessage(memory, state);
-    }
-
-    const shouldRespondPrompt = composePrompt({
-      state,
-      template: this.runtime.character.templates?.shouldRespondTemplate || '',
-    });
-
-    const response = await this.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt: shouldRespondPrompt,
-    });
-
-    const responseActions = (response.match(/(?:RESPOND|IGNORE|STOP)/g) || ['IGNORE'])[0];
-    if (responseActions !== 'RESPOND') {
-      logger.log(`Not responding to tweet based on shouldRespond decision: ${responseActions}`);
-      return { text: '', actions: [responseActions] };
     }
 
     // Create a callback for handling the response
