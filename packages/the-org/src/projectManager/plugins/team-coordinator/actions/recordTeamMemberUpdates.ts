@@ -377,8 +377,17 @@ async function parseTeamMemberUpdate(
 
 export const recordTeamMemberUpdates: Action = {
   name: 'recordTeamMemberUpdates',
-  description: 'Records updates provided by team members for future reference',
-  similes: ['saveTeamUpdate', 'trackTeamProgress', 'logTeamUpdate'],
+  description:
+    'Records individual status updates sent by team members with their progress details, blockers, and ETAs [MEMBER-STATUS-UPDATE]',
+  similes: [
+    'logIndividualUpdate',
+    'submitMemberStatus',
+    'saveProgressUpdate',
+    'trackMemberWork',
+    'memberProgressLog',
+    'submitStatusDetails',
+    'sendPersonalUpdate',
+  ],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info('whole message ', JSON.stringify(message));
 
@@ -564,7 +573,7 @@ Remember to end your message with "sending my updates"`,
       {
         name: 'team-member',
         content: {
-          text: `
+          text: `[INDIVIDUAL STATUS UPDATE]
 Server-name: Development Server
 Check-in Type: Daily
 Current Progress: Completed the API integration
@@ -573,13 +582,13 @@ Next Steps: Deploy to staging environment
 Blockers: None at the moment
 ETA: End of day tomorrow
 
-sending my updates`,
+sending my personal updates`,
         },
       },
       {
         name: 'jimmy',
         content: {
-          text: "Thanks for your update! I've recorded your progress details.",
+          text: "✅ Thank you for your individual status update! I've recorded your progress details and will share them with the team.",
           actions: ['recordTeamMemberUpdates'],
         },
       },
@@ -588,7 +597,8 @@ sending my updates`,
       {
         name: 'developer',
         content: {
-          text: `Server-name: Project X Server
+          text: `[MEMBER PROGRESS REPORT]
+Server-name: Project X Server
 Check-in Type: SPRINT
 Current Progress: Fixed 3 critical bugs in the frontend
 Working On: Implementing the new dashboard features
@@ -596,13 +606,13 @@ Next Steps: Code review and documentation
 Blockers: Waiting on design assets from the design team
 ETA: Thursday EOD
 
-sending my updates`,
+sending my personal updates`,
         },
       },
       {
         name: 'jimmy',
         content: {
-          text: 'Got it! Your progress has been recorded.',
+          text: '✅ Your personal status has been logged successfully. I will make sure the team is aware of your progress and blockers.',
           actions: ['recordTeamMemberUpdates'],
         },
       },
@@ -611,14 +621,46 @@ sending my updates`,
       {
         name: 'developer',
         content: {
-          text: `
-sending my updates`,
+          text: `[STATUS SUBMISSION]
+Server-name: Engineering Team
+Check-in Type: STANDUP
+Current Progress: Implemented user authentication API
+Working On: Testing edge cases and error handling
+Next Steps: Begin frontend integration
+Blockers: Dependency issues with auth library
+ETA: Friday afternoon
+
+sending my personal updates`,
         },
       },
       {
         name: 'jimmy',
         content: {
-          text: 'Got it! Your progress has been recorded.',
+          text: '✅ Status recorded! Your individual work update has been saved and will be included in the next team report.',
+          actions: ['recordTeamMemberUpdates'],
+        },
+      },
+    ],
+    [
+      {
+        name: 'team-lead',
+        content: {
+          text: `[WORK TRACKING]
+Server-name: Product Development
+Check-in Type: PROJECT_STATUS
+Current Progress: Completed feature specification documents
+Working On: Coordinating with design team on mockups
+Next Steps: Schedule technical planning session
+Blockers: Resource allocation pending approval
+ETA: End of sprint
+
+sending my personal updates`,
+        },
+      },
+      {
+        name: 'jimmy',
+        content: {
+          text: "✅ Your individual status has been logged. I've noted your blockers regarding resource allocation approval.",
           actions: ['recordTeamMemberUpdates'],
         },
       },
