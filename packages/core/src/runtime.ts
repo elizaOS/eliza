@@ -368,11 +368,6 @@ export class AgentRuntime implements IAgentRuntime {
       throw error;
     }
 
-    // Register all deferred services now that agent entity is created
-    for (const service of this.servicesInitQueue) {
-      await this.registerService(service);
-    }
-
     // Create room for the agent and register all plugins in parallel
     try {
       await Promise.all([
@@ -430,6 +425,11 @@ export class AgentRuntime implements IAgentRuntime {
         (item): item is string => typeof item === 'string'
       );
       await this.processCharacterKnowledge(stringKnowledge);
+    }
+
+    // Start all deferred services now that runtime is ready
+    for (const service of this.servicesInitQueue) {
+      await this.registerService(service);
     }
   }
 
