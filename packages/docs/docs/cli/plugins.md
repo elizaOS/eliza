@@ -4,6 +4,7 @@ sidebar_position: 5
 
 # Plugin Command
 
+
 The `plugin` command helps developers manage ElizaOS plugins, focusing on the publishing process.
 
 ## Subcommands
@@ -13,7 +14,7 @@ The `plugin` command helps developers manage ElizaOS plugins, focusing on the pu
 Publishes a plugin to the ElizaOS registry or npm.
 
 ```bash
-npx elizaos plugin publish [options]
+elizaos plugin publish [options]
 ```
 
 Options:
@@ -23,14 +24,16 @@ Options:
 - `-t, --test` - Test publish process without making changes (default: false)
 - `-p, --platform <platform>` - Specify platform compatibility: node, browser, or universal (default: 'universal')
 
+
 ## Plugin Development Workflow
+
 
 ### 1. Create a Plugin
 
 Start by creating a new plugin:
 
 ```bash
-npx elizaos create -t plugin my-plugin
+elizaos create -t plugin my-plugin
 ```
 
 This creates a starter plugin with the required directory structure.
@@ -47,7 +50,7 @@ Run development mode to test your plugin:
 
 ```bash
 cd my-plugin
-npx elizaos dev
+elizaos dev
 ```
 
 ### 3. Meet Registry Requirements
@@ -75,7 +78,7 @@ Before publishing, ensure your plugin meets all registry requirements:
 Run the test publish process to check for any issues:
 
 ```bash
-npx elizaos plugin publish --test
+elizaos plugin publish --test
 ```
 
 The CLI will check all registry requirements and help you fix any issues.
@@ -85,7 +88,7 @@ The CLI will check all registry requirements and help you fix any issues.
 When your plugin is ready:
 
 ```bash
-npx elizaos plugin publish
+elizaos plugin publish
 ```
 
 This will:
@@ -100,7 +103,7 @@ Here's the complete process for developing and publishing an ElizaOS plugin:
 
 ```bash
 # Create a new plugin
-npx elizaos create -t plugin my-awesome-plugin
+elizaos create -t plugin my-awesome-plugin
 cd my-awesome-plugin
 
 # Install dependencies (if needed)
@@ -108,10 +111,10 @@ npm install
 
 # Develop your plugin
 # Edit files in src/ directory
-npx elizaos dev
+elizaos dev
 
 # Test your plugin
-npx elizaos test
+elizaos test
 
 # Prepare for publishing
 # 1. Create GitHub repository (if not already done)
@@ -119,10 +122,10 @@ npx elizaos test
 # 3. Ensure package.json has correct repository URL and agentConfig
 
 # Test the publishing process
-npx elizaos plugin publish --test
+elizaos plugin publish --test
 
 # Publish to registry
-npx elizaos plugin publish
+elizaos plugin publish
 ```
 
 After submission, your plugin will be reviewed by the ElizaOS team before being added to the registry.
@@ -174,6 +177,5 @@ These images will be displayed in the ElizaOS plugin registry and UI.
 ## Related Commands
 
 - [`create`](./create.md): Create a new plugin
-- [`project list-plugins`](./projects.md): List available plugins to install
-- [`project add-plugin`](./projects.md): Add a plugin to your project
-- [`project remove-plugin`](./projects.md): Remove a plugin from your project
+- [`project`](./projects.md): Add plugins to projects
+- [Quickstart Guide](../quickstart.md): Project and plugin structure

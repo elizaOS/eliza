@@ -6,16 +6,58 @@ description: Get started quickly with Eliza, from basic setup to advanced develo
 
 # Quickstart Guide
 
-## Installing the CLI Tool
+## Prerequisites
 
-The fastest way to get started with ElizaOS is using the CLI:
+- [Node.js 23+](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- Git for version control
+- For Windows Users: [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install-manual) is required
+
+## Installation
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="global" label="Install Globally (Recommended)" default>
 
 ```bash
-# Install globally (optional but recommended)
+# Install globally
 npm install -g @elizaos/cli@beta
-# Or use directly with npx
+# Start ElizaOS
+elizaos start
+```
+
+  </TabItem>
+  <TabItem value="npx" label="Test with NPX">
+
+```bash
+# Use directly with npx
 npx @elizaos/cli@beta start
 ```
+
+  </TabItem>
+  <TabItem value="source" label="Install from Source">
+
+```bash
+# Clone the repository
+git clone git@github.com:elizaOS/eliza.git
+cd eliza
+
+# Switch to development branch
+git checkout v2-develop
+
+# Install dependencies
+bun install
+
+# Build the project
+bun run build
+
+# Start ElizaOS
+bun start
+```
+
+  </TabItem>
+</Tabs>
 
 This will:
 
@@ -117,26 +159,6 @@ elizaos plugin publish --npm
 # Specify platform compatibility
 elizaos plugin publish --platform node
 ```
-
-## 4. Contributing to ElizaOS
-
-If you want to add features or fix bugs in the ElizaOS core:
-
-```bash
-# Clone the repository
-git clone git@github.com:elizaOS/eliza.git
-cd eliza
-# Switch to development branch
-git checkout v2-develop
-# Install dependencies
-bun install
-# Build the project
-bun run build
-# Start ElizaOS
-bun start
-```
-
-Visit https://localhost:3000 to interact with your agent through a web interface.
 
 ---
 

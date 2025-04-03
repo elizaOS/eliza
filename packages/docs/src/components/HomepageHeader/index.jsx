@@ -35,8 +35,8 @@ function HomepageHeader() {
               </div>
               <p>
                 NEW! Copy{' '}
-                <Link href="/llms.txt" target="_blank">
-                  <b>llms.txt</b>
+                <Link href="/llms-full.txt" target="_blank">
+                  <b>llms-full.txt</b>
                 </Link>{' '}
                 to chat with the docs using LLMs
               </p>
@@ -54,14 +54,11 @@ function HomepageHeader() {
                 </div>
                 <pre className={styles.codeBlock}>
                   <code>
-                    <span className={styles.comment}># Create your first AI agent</span>
+                    <span className={styles.comment}># Uses node 23+</span>
                     <br />
-                    <span className={styles.prompt}>$</span> npx @elizaos/cli@beta create
+                    <span className={styles.prompt}>$</span> npm install -g @elizaos/cli@beta
                     <br />
-                    <span className={styles.successText}>✓ Project initialized successfully!</span>
-                    <br />
-                    <span className={styles.prompt}>$</span> cd my-agent && npx @elizaos/cli@beta
-                    start
+                    <span className={styles.prompt}>$</span> elizaos create
                     <br />
                   </code>
                 </pre>

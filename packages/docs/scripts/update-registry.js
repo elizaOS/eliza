@@ -6,12 +6,50 @@ const REGISTRY_URL =
   'https://raw.githubusercontent.com/elizaos-plugins/registry/refs/heads/main/index.json';
 const OUTPUT_FILE = path.join(__dirname, '../src/data/registry-users.tsx');
 const DESCRIPTIONS_FILE = path.join(__dirname, '../src/data/plugin-descriptions.json');
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN; // Optional GitHub token for higher rate limits
 
 /**
  * Get GitHub preview URL for repository
  */
 function getGithubPreviewUrl(repoPath) {
   return `https://opengraph.githubassets.com/1/${repoPath}`;
+}
+
+/**
+ * Fix image URL by removing /eliza/ prefix if present
+ */
+function fixImageUrl(url) {
+  if (!url) return null;
+  return url.replace(/^\/eliza\//, '/');
+}
+
+/**
+ * Fetch repository description from GitHub API
+ */
+function fetchGithubDescription(repoPath) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        'User-Agent': 'ElizaOS-Registry-Update',
+        ...(GITHUB_TOKEN && { Authorization: `token ${GITHUB_TOKEN}` }),
+      },
+    };
+
+    https
+      .get(`https://api.github.com/repos/${repoPath}`, options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          try {
+            const repo = JSON.parse(data);
+            resolve(repo.description || null);
+          } catch (e) {
+            reject(e);
+          }
+        });
+      })
+      .on('error', reject);
+  });
 }
 
 /**
@@ -106,6 +144,55 @@ function fetchRegistry() {
 }
 
 /**
+ * Update descriptions with GitHub data
+ */
+async function updateDescriptions(plugins, customData) {
+  const updatedDescriptions = { ...customData };
+  let updated = false;
+
+  // Fix image URLs in existing descriptions
+  for (const pluginId in updatedDescriptions) {
+    if (updatedDescriptions[pluginId].custom_preview) {
+      updatedDescriptions[pluginId].custom_preview = fixImageUrl(
+        updatedDescriptions[pluginId].custom_preview
+      );
+      updated = true;
+    }
+  }
+
+  for (const plugin of plugins) {
+    // Skip if we already have a custom description
+    if (updatedDescriptions[plugin.id]?.description) {
+      continue;
+    }
+
+    try {
+      const githubDescription = await fetchGithubDescription(plugin.repo_path);
+      if (githubDescription) {
+        updatedDescriptions[plugin.id] = {
+          ...updatedDescriptions[plugin.id],
+          description: githubDescription,
+        };
+        updated = true;
+        console.log(`Updated description for ${plugin.id}`);
+      }
+    } catch (error) {
+      console.warn(`Failed to fetch description for ${plugin.id}:`, error);
+    }
+
+    // Add a small delay to avoid rate limiting
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  if (updated) {
+    fs.writeFileSync(DESCRIPTIONS_FILE, JSON.stringify(updatedDescriptions, null, 2));
+    console.log('Updated descriptions file with GitHub data');
+  }
+
+  return updatedDescriptions;
+}
+
+/**
  * Generate the TypeScript file with registry users
  */
 function generateUsersFile(plugins, customData) {
@@ -136,7 +223,7 @@ function generateUsersFile(plugins, customData) {
       missingPlugins.push({
         id: pluginId,
         name: pluginId,
-        // Assuming GitHub repo path is usually the same as the plugin name
+        // For missing plugins, we'll use the elizaos-plugins org as fallback
         repo_url: `github:elizaos-plugins/${pluginId.split('/').pop()}`,
         repo_path: `elizaos-plugins/${pluginId.split('/').pop()}`,
         display_name: displayName,
@@ -156,7 +243,9 @@ function generateUsersFile(plugins, customData) {
       pluginData.description ||
       `${plugin.type.charAt(0).toUpperCase() + plugin.type.slice(1)} for ${plugin.display_name}`;
 
-    const previewUrl = pluginData.custom_preview || getGithubPreviewUrl(plugin.repo_path);
+    // Use the actual repository path from the registry for GitHub preview
+    const previewUrl =
+      fixImageUrl(pluginData.custom_preview) || getGithubPreviewUrl(plugin.repo_path);
 
     // Check if this plugin is marked as featured
     const tags = [plugin.type];
@@ -208,8 +297,11 @@ async function main() {
     // Load custom descriptions from JSON
     const customData = loadCustomDescriptions();
 
+    // Update descriptions with GitHub data
+    const updatedDescriptions = await updateDescriptions(plugins, customData);
+
     // Generate the TypeScript file
-    generateUsersFile(plugins, customData);
+    generateUsersFile(plugins, updatedDescriptions);
   } catch (error) {
     console.error('Failed to update registry:', error);
     process.exit(1);
