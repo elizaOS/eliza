@@ -1,5 +1,4 @@
 import { v4 as uuidv4 } from 'uuid';
-import { bootstrapPlugin } from './bootstrap';
 import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, handlePluginImporting } from './index';
 import logger from './logger';
@@ -31,6 +30,7 @@ import type {
   Relationship,
   Room,
   Route,
+  RuntimeSettings,
   Service,
   ServiceTypeName,
   State,
@@ -41,124 +41,17 @@ import type {
 } from './types';
 import { stringToUuid } from './uuid';
 
-import fs from 'node:fs';
-import path from 'node:path';
-
-/**
- * Interface for settings object with key-value pairs.
- */
-/**
- * Interface representing settings with string key-value pairs.
- */
-interface Settings {
-  [key: string]: string | undefined;
-}
-
 /**
  * Represents a collection of settings grouped by namespace.
  *
  * @typedef {Object} NamespacedSettings
- * @property {Settings} namespace - The namespace key and corresponding Settings value.
+ * @property {RuntimeSettings} namespace - The namespace key and corresponding RuntimeSettings value.
  */
-interface NamespacedSettings {
-  [namespace: string]: Settings;
-}
 
 /**
  * Initialize an empty object for storing environment settings.
  */
-let environmentSettings: Settings = {};
-
-/**
- * Loads environment variables from the nearest .env file in Node.js
- * or returns configured settings in browser
- * @returns {Settings} Environment variables object
- */
-export function loadEnvConfig(): Settings {
-  // For browser environments, return the configured settings
-  // src/runtime.ts:76:14 - error TS2304: Cannot find name 'window'.
-  // if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-  //   return environmentSettings;
-  // }
-
-  // Only import dotenv in Node.js environment
-  let dotenv = null;
-  try {
-    // This code block will only execute in Node.js environments
-    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
-      dotenv = require('dotenv');
-    }
-  } catch (err) {
-    // Silently fail if require is not available (e.g., in browser environments)
-    logger.debug('dotenv module not available');
-  }
-
-  function findNearestEnvFile(startDir = process.cwd()) {
-    let currentDir = startDir;
-
-    // Continue searching until we reach the root directory
-    while (currentDir !== path.parse(currentDir).root) {
-      const envPath = path.join(currentDir, '.env');
-
-      if (fs.existsSync(envPath)) {
-        return envPath;
-      }
-
-      // Move up to parent directory
-      currentDir = path.dirname(currentDir);
-    }
-
-    // Check root directory as well
-    const rootEnvPath = path.join(path.parse(currentDir).root, '.env');
-    return fs.existsSync(rootEnvPath) ? rootEnvPath : null;
-  }
-
-  // Node.js environment: load from .env file
-  const envPath = findNearestEnvFile();
-
-  // Load the .env file into process.env synchronously
-  try {
-    if (dotenv) {
-      const result = dotenv.config(envPath ? { path: envPath } : {});
-      if (!result.error && envPath) {
-        logger.log(`Loaded .env file from: ${envPath}`);
-      }
-    }
-  } catch (err) {
-    logger.warn('Failed to load .env file:', err);
-  }
-
-  // Parse namespaced settings
-  const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
-  const namespacedSettings = parseNamespacedSettings(env as Settings);
-
-  // Attach to process.env for backward compatibility if available
-  if (typeof process !== 'undefined') {
-    for (const [namespace, settings] of Object.entries(namespacedSettings)) {
-      process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
-    }
-  }
-
-  return env as Settings;
-}
-
-// Add this function to parse namespaced settings
-function parseNamespacedSettings(env: Settings): NamespacedSettings {
-  const namespaced: NamespacedSettings = {};
-
-  for (const [key, value] of Object.entries(env)) {
-    if (!value) continue;
-
-    const [namespace, ...rest] = key.split('.');
-    if (!namespace || rest.length === 0) continue;
-
-    const settingKey = rest.join('.');
-    namespaced[namespace] = namespaced[namespace] || {};
-    namespaced[namespace][settingKey] = value;
-  }
-
-  return namespaced;
-}
+let environmentSettings: RuntimeSettings = {};
 
 // Semaphore implementation for controlling concurrent operations
 export class Semaphore {
@@ -238,7 +131,9 @@ export class AgentRuntime implements IAgentRuntime {
 
   private runtimeLogger;
   private knowledgeProcessingSemaphore = new Semaphore(10);
-  private settings: Settings;
+  private settings: RuntimeSettings;
+
+  private servicesInitQueue = new Set<typeof Service>();
 
   constructor(opts: {
     conversationLength?: number;
@@ -247,8 +142,8 @@ export class AgentRuntime implements IAgentRuntime {
     plugins?: Plugin[];
     fetch?: typeof fetch;
     adapter?: IDatabaseAdapter;
+    settings?: RuntimeSettings;
     events?: { [key: string]: ((params: any) => void)[] };
-    ignoreBootstrap?: boolean;
   }) {
     // use the character id if it exists, otherwise use the agentId if it is passed in, otherwise use the character name
     this.agentId =
@@ -275,19 +170,10 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.fetch = (opts.fetch as typeof fetch) ?? this.fetch;
 
-    // if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
-    //   this.settings = environmentSettings;
-    // } else {
-    this.settings = loadEnvConfig();
-    //}
+    this.settings = opts.settings ?? environmentSettings;
 
     // Register plugins from options or empty array
     const plugins = opts?.plugins ?? [];
-
-    // Add bootstrap plugin if not explicitly ignored
-    if (!opts?.ignoreBootstrap) {
-      plugins.push(bootstrapPlugin);
-    }
 
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
@@ -393,9 +279,10 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // Register plugin services
     if (plugin.services) {
-      await Promise.all(plugin.services.map((service) => this.registerService(service)));
+      plugin.services.forEach((service) => {
+        this.servicesInitQueue.add(service);
+      });
     }
   }
 
@@ -538,6 +425,11 @@ export class AgentRuntime implements IAgentRuntime {
         (item): item is string => typeof item === 'string'
       );
       await this.processCharacterKnowledge(stringKnowledge);
+    }
+
+    // Start all deferred services now that runtime is ready
+    for (const service of this.servicesInitQueue) {
+      await this.registerService(service);
     }
   }
 
@@ -970,6 +862,7 @@ export class AgentRuntime implements IAgentRuntime {
     channelId,
     serverId,
     worldId,
+    userId,
   }: {
     entityId: UUID;
     roomId: UUID;
@@ -980,6 +873,7 @@ export class AgentRuntime implements IAgentRuntime {
     channelId?: string;
     serverId?: string;
     worldId?: UUID;
+    userId?: UUID;
   }) {
     if (entityId === this.agentId) {
       throw new Error('Agent should not connect to itself');
@@ -992,6 +886,7 @@ export class AgentRuntime implements IAgentRuntime {
     const names = [name, userName].filter(Boolean);
     const metadata = {
       [source]: {
+        id: userId,
         name: name,
         userName: userName,
       },

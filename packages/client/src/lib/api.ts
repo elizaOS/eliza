@@ -279,6 +279,8 @@ export const apiClient = {
       method: 'PUT',
     });
   },
+
+  // Get memories for a specific room
   getMemories: (agentId: string, roomId: string, options?: { limit?: number; before?: number }) => {
     const worldId = WorldManager.getWorldId();
     const params: Record<string, string | number> = { worldId };
@@ -298,7 +300,7 @@ export const apiClient = {
     });
   },
 
-  // Room-related routes
+  // get all rooms in the world
   getRooms: () => {
     const worldId = WorldManager.getWorldId();
     return fetcher({
@@ -307,51 +309,6 @@ export const apiClient = {
     });
   },
 
-  getRoomsForParticipant: (agentId: string) => {
-    const worldId = WorldManager.getWorldId();
-    return fetcher({
-      url: `/agents/${agentId}/rooms`,
-      method: 'GET',
-      body: { worldId },
-    });
-  },
-
-  createRoom: (agentId: string, roomName: string) => {
-    const worldId = WorldManager.getWorldId();
-    return fetcher({
-      url: `/agents/${agentId}/rooms`,
-      method: 'POST',
-      body: {
-        name: roomName,
-        worldId,
-      },
-    });
-  },
-
-  // Room management functions
-  getRoom: (agentId: string, roomId: string) => {
-    return fetcher({
-      url: `/agents/${agentId}/rooms/${roomId}`,
-      method: 'GET',
-    });
-  },
-
-  updateRoom: (agentId: string, roomId: string, updates: { name?: string; worldId?: string }) => {
-    return fetcher({
-      url: `/agents/${agentId}/rooms/${roomId}`,
-      method: 'PATCH',
-      body: updates,
-    });
-  },
-
-  deleteRoom: (agentId: string, roomId: string) => {
-    return fetcher({
-      url: `/agents/${agentId}/rooms/${roomId}`,
-      method: 'DELETE',
-    });
-  },
-
-  // Add this new method
   getLogs: ({
     level,
     agentName,
@@ -379,25 +336,6 @@ export const apiClient = {
     return fetcher({
       url: '/logs',
       method: 'DELETE',
-    });
-  },
-
-  getAgentCompletion: (
-    agentId: string,
-    senderId: string,
-    message: string,
-    roomId: UUID,
-    source: string
-  ) => {
-    return fetcher({
-      url: `/agents/${agentId}/message`,
-      method: 'POST',
-      body: {
-        text: message,
-        roomId: roomId,
-        senderId,
-        source,
-      },
     });
   },
 

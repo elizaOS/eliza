@@ -37,7 +37,7 @@
     "cmdk": "^1.0.4",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
-    "eventemitter3": "^5.0.1",
+    "evt": "^2.5.9",
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-aiwriter": "^1.0.0",

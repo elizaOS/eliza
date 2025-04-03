@@ -60,6 +60,7 @@ export interface TelegramReactionReceivedPayload extends TelegramMessageReceived
  */
 export interface TelegramWorldPayload extends WorldPayload {
   chat: Chat;
+  botUsername?: string;
 }
 
 /**

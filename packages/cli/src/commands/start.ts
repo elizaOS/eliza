@@ -7,6 +7,7 @@ import {
   logger,
   stringToUuid,
   encryptedCharacter,
+  RuntimeSettings,
 } from '@elizaos/core';
 import { Command } from 'commander';
 import fs from 'node:fs';
@@ -121,6 +122,11 @@ export async function startAgent(
 
   const characterPlugins: Plugin[] = [];
 
+  // if encryptedChar.plugins does not include @elizaos/plugin-bootstrap, add it
+  if (!encryptedChar.plugins.includes('@elizaos/plugin-bootstrap')) {
+    encryptedChar.plugins.push('@elizaos/plugin-bootstrap');
+  }
+
   // for each plugin, check if it installed, and install if it is not
   for (const plugin of encryptedChar.plugins) {
     logger.debug('Checking if plugin is installed: ', plugin);
@@ -220,9 +226,94 @@ export async function startAgent(
     }
   }
 
+  function loadEnvConfig(): RuntimeSettings {
+    // Only import dotenv in Node.js environment
+    let dotenv = null;
+    try {
+      // This code block will only execute in Node.js environments
+      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+        dotenv = require('dotenv');
+      }
+    } catch (err) {
+      // Silently fail if require is not available (e.g., in browser environments)
+      logger.debug('dotenv module not available');
+    }
+
+    function findNearestEnvFile(startDir = process.cwd()) {
+      let currentDir = startDir;
+
+      // Continue searching until we reach the root directory
+      while (currentDir !== path.parse(currentDir).root) {
+        const envPath = path.join(currentDir, '.env');
+
+        if (fs.existsSync(envPath)) {
+          return envPath;
+        }
+
+        // Move up to parent directory
+        currentDir = path.dirname(currentDir);
+      }
+
+      // Check root directory as well
+      const rootEnvPath = path.join(path.parse(currentDir).root, '.env');
+      return fs.existsSync(rootEnvPath) ? rootEnvPath : null;
+    }
+
+    // Node.js environment: load from .env file
+    const envPath = findNearestEnvFile();
+
+    // Load the .env file into process.env synchronously
+    try {
+      if (dotenv) {
+        const result = dotenv.config(envPath ? { path: envPath } : {});
+        if (!result.error && envPath) {
+          logger.log(`Loaded .env file from: ${envPath}`);
+        }
+      }
+    } catch (err) {
+      logger.warn('Failed to load .env file:', err);
+    }
+
+    // Parse namespaced settings
+    const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+    const namespacedSettings = parseNamespacedSettings(env as RuntimeSettings);
+
+    // Attach to process.env for backward compatibility if available
+    if (typeof process !== 'undefined') {
+      for (const [namespace, settings] of Object.entries(namespacedSettings)) {
+        process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
+      }
+    }
+
+    return env as RuntimeSettings;
+  }
+
+  interface NamespacedSettings {
+    [namespace: string]: RuntimeSettings;
+  }
+
+  // Add this function to parse namespaced settings
+  function parseNamespacedSettings(env: RuntimeSettings): NamespacedSettings {
+    const namespaced: NamespacedSettings = {};
+
+    for (const [key, value] of Object.entries(env)) {
+      if (!value) continue;
+
+      const [namespace, ...rest] = key.split('.');
+      if (!namespace || rest.length === 0) continue;
+
+      const settingKey = rest.join('.');
+      namespaced[namespace] = namespaced[namespace] || {};
+      namespaced[namespace][settingKey] = value;
+    }
+
+    return namespaced;
+  }
+
   const runtime = new AgentRuntime({
     character: encryptedChar,
-    plugins: [...plugins, ...characterPlugins],
+    plugins: [...characterPlugins, ...plugins],
+    settings: loadEnvConfig(),
   });
   if (init) {
     await init(runtime);
@@ -578,6 +669,7 @@ export const start = new Command()
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
   .option('--character <character>', 'Path or URL to character file to use instead of default')
   .option('--build', 'Build the project before starting')
+  .option('--characters <paths>', 'multiple character configuration files separated by commas')
   .action(async (options) => {
     displayBanner();
 
@@ -602,10 +694,32 @@ export const start = new Command()
               const characterData = await loadCharacterTryPath(characterPath);
               options.characters.push(characterData);
             }
+          } else {
+            // Single character
+            logger.info(`Loading character from ${characterPath}`);
+            const characterData = await loadCharacterTryPath(characterPath);
+            options.characters.push(characterData);
           }
           await startAgents(options);
         } catch (error) {
           logger.error(`Failed to load character: ${error}`);
+          process.exit(1);
+        }
+      } else if (options.characters) {
+        // Handle --characters option
+        options.characters = [];
+        try {
+          const characterPaths = options.characters.split(',').map((path) => path.trim());
+          for (const charPath of characterPaths) {
+            if (charPath) {
+              logger.info(`Loading character from ${charPath}`);
+              const characterData = await loadCharacterTryPath(charPath);
+              options.characters.push(characterData);
+            }
+          }
+          await startAgents(options);
+        } catch (error) {
+          logger.error(`Failed to load multiple characters: ${error}`);
           process.exit(1);
         }
       } else {

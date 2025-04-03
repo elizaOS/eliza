@@ -267,19 +267,22 @@ export function AppSidebar() {
                           .filter(Boolean) as string[];
 
                         return (
-                          <SidebarMenuItem key={roomId}>
+                          <SidebarMenuItem key={roomId} className="h-16">
                             <NavLink to={`/room/${roomId}`}>
                               <SidebarMenuButton className="px-4 py-2 my-2 h-full rounded-md transition-colors">
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-5">
                                   <AgentAvatarStack
                                     agentIds={roomAgentIds}
                                     agentNames={roomAgentNames}
                                     agentAvatars={agentAvatars}
                                     size="md"
+                                    showExtraTooltip={true}
                                   />
-                                  <div className="flex flex-col justify-center">
-                                    <div className="text-base truncate max-w-24">{roomName}</div>
-                                    <div className="text-xs truncate max-w-24 text-muted-foreground">
+                                  <div className="flex flex-col justify-center gap-2">
+                                    <div className="text-base truncate max-w-24 leading-none">
+                                      {roomName}
+                                    </div>
+                                    <div className="text-xs truncate max-w-24 text-muted-foreground leading-none">
                                       {`${roomAgentIds.length} ${roomAgentIds.length === 1 ? 'Member' : 'Members'}`}
                                     </div>
                                   </div>

@@ -1,0 +1,24 @@
+{
+  "name": "elizaos-ui-tests",
+  "version": "1.0.0",
+  "description": "UI tests for ElizaOS",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:ci": "playwright test --reporter=list,html",
+    "test:debug": "playwright test --debug",
+    "install:browsers": "playwright install",
+    "start:and:test": "cd ../../.. && bun start & sleep 10 && cd packages/client/ui-tests && playwright test",
+    "start:and:test:headed": "cd ../../.. && bun start & sleep 10 && cd packages/client/ui-tests && playwright test --headed",
+    "start:and:test:specific": "cd ../../.. && bun start & sleep 10 && cd packages/client/ui-tests && playwright test $npm_config_test_file --project=$npm_config_project",
+    "postinstall": "echo \"\n⚠️  IMPORTANT: You must run 'npm run install:browsers' to download browser binaries required for testing ⚠️\n\""
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "@elizaos/core": "file:../../core"
+  }
+}

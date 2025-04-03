@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
-import path from 'node:path';
+import path, { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildProject } from '@/src/utils/build-project';
 import { handleError } from '@/src/utils/handle-error';
 import { runBunCommand } from '@/src/utils/run-bun';
@@ -9,35 +10,29 @@ import { Command } from 'commander';
 import prompts from 'prompts';
 import semver from 'semver';
 
-// define __dirname
-const __dirname = new URL('.', import.meta.url).pathname;
-/**
- * Get the current CLI version from package.json
- * @returns The current CLI version
- */
-function getCurrentCliVersion(): string {
-  try {
-    // Read the package.json file directly
-    const packageJsonPath = path.resolve(__dirname, '../package.json');
-    const packageJsonContent = readFileSync(packageJsonPath, 'utf8');
-    const packageJson = JSON.parse(packageJsonContent);
-    return packageJson.version || '0.0.0';
-  } catch (error) {
-    // Fallback for when running from source
-    try {
-      const packageJsonPath = path.resolve(__dirname, '../../package.json');
-      if (existsSync(packageJsonPath)) {
-        const packageJsonContent = readFileSync(packageJsonPath, 'utf8');
-        const packageJson = JSON.parse(packageJsonContent);
-        return packageJson.version || '0.0.0';
-      }
-    } catch (nestedError) {
-      // Ignore nested error
-    }
+// Function to get the package version
+function getVersion(): string {
+  // For ESM modules we need to use import.meta.url instead of __dirname
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
 
-    logger.warn(`Could not determine CLI version: ${error.message}`);
-    return '0.0.0';
+  // Find package.json relative to the current file
+  const packageJsonPath = path.resolve(__dirname, '../package.json');
+
+  // Add a simple check in case the path is incorrect
+  let version = '0.0.0'; // Fallback version
+  if (!existsSync(packageJsonPath)) {
+    logger.warn(`Warning: package.json not found at ${packageJsonPath}`);
+  } else {
+    try {
+      const packageJsonContent = readFileSync(packageJsonPath, 'utf8');
+      const packageJson = JSON.parse(packageJsonContent);
+      version = packageJson.version || '0.0.0';
+    } catch (error) {
+      logger.error(`Error reading or parsing package.json at ${packageJsonPath}:`, error);
+    }
   }
+  return version;
 }
 
 /**
@@ -61,7 +56,7 @@ function isWorkspaceVersion(versionString: string): boolean {
 async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void> {
   logger.info(`Updating ${isPlugin ? 'plugin' : 'project'} dependencies...`);
 
-  const cliVersion = getCurrentCliVersion();
+  const cliVersion = getVersion();
   logger.info(`Current CLI version: ${cliVersion}`);
 
   try {
@@ -211,7 +206,7 @@ export const update = new Command()
       if (options.check) {
         // Only check for updates without applying them
         logger.info('Checking for available updates...');
-        const cliVersion = getCurrentCliVersion();
+        const cliVersion = getVersion();
         logger.info(`Current CLI version: ${cliVersion}`);
         logger.info('To apply updates, run this command without the --check flag');
         return;
@@ -227,3 +222,78 @@ export const update = new Command()
       handleError(error);
     }
   });
+
+export function displayBanner() {
+  // Color ANSI escape codes
+  const b = '\x1b[38;5;27m';
+  const lightblue = '\x1b[38;5;51m';
+  const w = '\x1b[38;5;255m';
+  const r = '\x1b[0m';
+  const red = '\x1b[38;5;196m';
+  let versionColor = lightblue;
+
+  const version = getVersion();
+
+  // if version includes "beta" or "alpha" then use red
+  if (version?.includes('beta') || version?.includes('alpha')) {
+    versionColor = red;
+  }
+  const banners = [
+    //     // Banner 2
+    //     `
+    // ${b}          ###                                  ${w}  # ###       #######  ${r}
+    // ${b}         ###    #                            / ${w} /###     /       ###  ${r}
+    // ${b}          ##   ###                          /  ${w}/  ###   /         ##  ${r}
+    // ${b}          ##    #                          / ${w} ##   ###  ##        #   ${r}
+    // ${b}          ##                              /  ${w}###    ###  ###          ${r}
+    // ${b}   /##    ##  ###    ######      /###    ${w}##   ##     ## ## ###        ${r}
+    // ${b}  / ###   ##   ###  /#######    / ###  / ${w}##   ##     ##  ### ###      ${r}
+    // ${b} /   ###  ##    ## /      ##   /   ###/  ${w}##   ##     ##    ### ###    ${r}
+    // ${b}##    ### ##    ##        /   ##    ##   ${w}##   ##     ##      ### /##  ${r}
+    // ${b}########  ##    ##       /    ##    ##   ${w}##   ##     ##        #/ /## ${r}
+    // ${b}#######   ##    ##      ###   ##    ##   ${w} ##  ##     ##         #/ ## ${r}
+    // ${b}##        ##    ##       ###  ##    ##   ${w}  ## #      /           # /  ${r}
+    // ${b}####    / ##    ##        ### ##    /#   ${w}   ###     /  /##        /   ${r}
+    // ${b} ######/  ### / ### /      ##  ####/ ##  ${w}    ######/  /  ########/    ${r}
+    // ${b}  #####    ##/   ##/       ##   ###   ## ${w}      ###   /     #####      ${r}
+    // ${b}                           /             ${w}            |                ${r}
+    // ${b}                          /              ${w}             \)              ${r}
+    // ${b}                         /               ${w}                             ${r}
+    // ${b}                        /                ${w}                             ${r}
+    // `,
+
+    //     // Banner 3
+    //     `
+    // ${b}      :::::::::::::      ::::::::::::::::::::    ::: ${w}    ::::::::  :::::::: ${r}
+    // ${b}     :+:       :+:          :+:         :+:   :+: :+:${w}  :+:    :+::+:    :+: ${r}
+    // ${b}    +:+       +:+          +:+        +:+   +:+   +:+${w} +:+    +:++:+         ${r}
+    // ${b}   +#++:++#  +#+          +#+       +#+   +#++:++#++:${w}+#+    +:++#++:++#++   ${r}
+    // ${b}  +#+       +#+          +#+      +#+    +#+     +#+${w}+#+    +#+       +#+    ${r}
+    // ${b} #+#       #+#          #+#     #+#     #+#     #+##${w}+#    #+##+#    #+#     ${r}
+    // ${b}##########################################     #### ${w}#######  ########       ${r}`,
+
+    `
+${b}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⠀⠙⠛⠿⢤⣦⣐⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
+${b}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣐⣿⣿⢰⡀⠀⠀⠀⠈⠻⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
+${b}⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⠤⠾⠛⠛⣿⣶⣇⠀⠀⡆⠀⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
+${b}⠀⠀⢰⣋⡳⡄⠀⠀⠀⢨⣭⡀⠀⡤⠀⣀⣝⢿⣶⣿⡅⠀⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
+${b}⠀⠀⢸⣯⠀⣇⠀⠀⠀⣼⣿⣿⣆⢷⣴⣿⣿⡏⣛⡉⠀⠀⠀⠀${w}⢸⣿⣿⣿⣿⣿⣿⢸⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⣾⣿⣿⣧⠀⠀⠀⢸⠟⢀⣴⣿⣿⣿⣿⣦⡀⣠⣾⣿⣿⣿⣿⣦⡙⢿⠀${r}
+${b}⠀⠀⠀⠙⢷⣮⠀⠀⢸⣿⣿⣿⣿⣷⣯⣟⣏⣼⣷⣅⠾⡟⠀⠀${w}⢸⣿⣇⣀⣀⣀⠀⢸⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⠀⠀⠀⣠⣿⣿⠟⠁⠀⠀⣼⣿⡟⣿⣿⣆⠀⠀⠀⠀⣿⣿⠋⠀⠈⠻⣿⡇⣿⣿⣅⣀⣀⡛⠛⠃⠀⠀${r}
+${b}⠀⠀⠀⠀⠀⠁⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠋⠀⠀⠀⠀${w}⢸⣿⡿⠿⠿⠿⠀⢸⣿⣿⠀⠀⠀⠀⠀⣿⣿⡇⠀⣠⣾⣿⠟⠁⠀⠀⠀⣰⣿⣿⣁⣸⣿⣿⡄⠀⠀⠀⣿⣿⡀⠀⠀⢘⣿⣿⢈⣛⠿⠿⠿⣿⣷⡄⠀⠀${r}
+${b}⠀⠀⠀⠀⠀⠀⠀⠀⠸⣿⣿⣿⣿⣿⣿⣿⣿⣉⡟⠀⠀⠀⠀⠀${w}⢸⣿⣧⣤⣤⣤⣤⢸⣿⣿⣦⣤⣤⣤⡄⣿⣿⡇⣾⣿⣿⣧⣤⣤⣤⡄⢰⣿⣿⠟⠛⠛⠻⣿⣿⡄⢠⡀⠻⣿⣿⣦⣴⣿⣿⠇⢿⣿⣦⣤⣤⣿⣿⠇⣠⠀${r}
+${b}⠀⠀⠀⠀⠀⠀⠀⠀⢰⡈⠛⠿⣿⣿⣿⣿⣿⠋⠀⣦⣤⣄⠀⠀${w}⠘⠛⠛⠛⠛⠛⠛⠈⠛⠛⠛⠛⠛⠛⠃⠛⠛⠃⠛⠛⠛⠛⠛⠛⠛⠃⠛⠛⠃⠀⠀⠀⠀⠙⠛⠃⠘⠛⠀⠈⠛⠛⠛⠛⠁⠀⠀⠙⠛⠛⠛⠛⠁⠚⠛⠀${r}
+${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⡦⠀⠀⠉⠛⠿⠃⠀⠀⠀⠁⠉⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
+${b}⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⢾⡃⠀⠀${w}⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀${r}
+`,
+  ];
+
+  // Randomly select and log one banner
+  const randomBanner = banners[Math.floor(Math.random() * banners.length)];
+
+  console.log(randomBanner);
+
+  if (version) {
+    // log the version
+    console.log(`${versionColor}Version: ${version}${r}`);
+  }
+}

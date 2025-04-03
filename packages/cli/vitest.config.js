@@ -12,5 +12,10 @@ export default defineConfig({
     alias: {
       '@/': resolve(__dirname, './'),
     },
+    testTimeout: 180000, // Increased to 3 minutes
+    hookTimeout: 180000, // Added hook timeout
+    teardownTimeout: 30000, // Added teardown timeout
+    silent: false, // Ensure logs are visible
+    bail: 1, // Stop after first failure
   },
 });

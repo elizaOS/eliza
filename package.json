@@ -109,5 +109,6 @@
     "protobufjs",
     "sharp",
     "utf-8-validate"
-  ]
+  ],
+  "version": "0.1.0"
 }
