@@ -133,6 +133,8 @@ export class AgentRuntime implements IAgentRuntime {
   private knowledgeProcessingSemaphore = new Semaphore(10);
   private settings: RuntimeSettings;
 
+  private servicesInitQueue = new Set<typeof Service>();
+
   constructor(opts: {
     conversationLength?: number;
     agentId?: UUID;
@@ -278,8 +280,13 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Register plugin services
+    // if (plugin.services) {
+    //   await Promise.all(plugin.services.map((service) => this.registerService(service)));
+    // }
     if (plugin.services) {
-      await Promise.all(plugin.services.map((service) => this.registerService(service)));
+      plugin.services.forEach((service) => {
+        this.servicesInitQueue.add(service);
+      });
     }
   }
 
@@ -363,6 +370,11 @@ export class AgentRuntime implements IAgentRuntime {
         `Failed to create agent entity: ${error instanceof Error ? error.message : String(error)}`
       );
       throw error;
+    }
+
+    // Register all deferred services now that agent entity is created
+    for (const service of this.servicesInitQueue) {
+      await this.registerService(service);
     }
 
     // Create room for the agent and register all plugins in parallel
