@@ -11,9 +11,7 @@ const CATEGORIES = [
   { id: 'community', label: 'Community' },
 ];
 
-// Definition of videos
 const VIDEOS = [
-  // Animation section
   {
     title: 'ElizaOS Rebrand',
     description: 'Season finale with Shaw and the autonomous investor. Gauntlet thrown.',
