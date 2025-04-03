@@ -6,8 +6,6 @@ import {
   type Memory,
   type State,
   logger,
-  stringToUuid,
-  ServiceType,
 } from '@elizaos/core';
 import type { Tweet } from '../client';
 import { SpaceActivity } from '../spaces';
