@@ -417,7 +417,7 @@ export class TelegramService extends Service {
 
     const worldId = createUniqueUuid(this.runtime, chatId) as UUID;
 
-    const existingWorld = this.runtime.getWorld(worldId);
+    const existingWorld = await this.runtime.getWorld(worldId);
     if (existingWorld) {
       return;
     }
