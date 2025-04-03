@@ -139,7 +139,7 @@ export class TwitterInteractionClient {
         await this.runtime.setCache(cursorKey, null);
       }
 
-      console.log('Completed checking mentioned tweets:', mentionCandidates.length);
+      logger.log('Completed checking mentioned tweets:', mentionCandidates.length);
       let uniqueTweetCandidates = [...mentionCandidates];
 
       // Sort tweet candidates by ID in ascending order
