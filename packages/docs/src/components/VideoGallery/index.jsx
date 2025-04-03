@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import styles from './styles.module.css';
+import { useLocation, useHistory } from '@docusaurus/router';
 
 // List of video categories
 const CATEGORIES = [
@@ -52,31 +53,13 @@ const VIDEOS = [
     thumbnail: '/img/video-thumbnails/hack-thumb.jpg',
   },
   {
-    title: 'AI Agent Dev School Part 3',
+    title: 'Green Pill: AI Agents & DAOs',
     description:
-      "Form-Filling Frenzy & Eliza's Wild Ride - Learn how to build form completion features and extract user data with the Eliza framework.",
+      'Shaw and Jin discuss the intersection of AI agents, DAOs, and on-chain capital allocation. Exploring how AI agents can revolutionize DeFi access, improve DAO coordination, and enable new forms of organization.',
     category: 'streams',
     isYouTube: true,
-    src: 'https://www.youtube.com/embed/Y1DiqSVy4aU',
-    docLink: '/community/Streams/12-2024/2024-12-05',
-  },
-  {
-    title: 'AI Agent Dev School Part 4',
-    description:
-      "AI Pizza: Hacking Eliza for Domino's Delivery plus TEE Deep Dive. Learn about trusted execution environments and practical agent development.",
-    category: 'streams',
-    isYouTube: true,
-    src: 'https://www.youtube.com/embed/6I9e9pJprDI',
-    docLink: '/community/Streams/12-2024/2024-12-10',
-  },
-  {
-    title: 'AI Agent Dev School Part 2',
-    description:
-      'Building Complex AI Agents with Actions, Providers, & Evaluators. Dive deep into the core components of the Eliza framework.',
-    category: 'streams',
-    isYouTube: true,
-    src: 'https://www.youtube.com/embed/XenGeAcPAQo',
-    docLink: '/community/Streams/12-2024/2024-12-03',
+    src: 'https://www.youtube.com/embed/bnkhu4Bx9C4',
+    docLink: '/community/Streams/12-2024/2024-12-12',
   },
   {
     title: 'DegenAI Dancing',
@@ -93,11 +76,67 @@ const VIDEOS = [
     thumbnail: '/img/video-thumbnails/throne-thumb.jpg',
   },
   {
-    title: 'AI Agent School',
-    description: 'Shaw teaching AI agents about how to make AI agents',
-    category: 'animation',
-    src: 'https://arweave.net/Tguqw-tvyfVIhOh4sJC_-3LFYyMy_NURPbimnnrg2HU/dubbing_office.mp4',
-    thumbnail: '/img/video-thumbnails/dubbing-thumb.jpg',
+    title: 'Shaw + Polygon Labs Interview',
+    description:
+      'Shaw discusses the intersection of AI, cryptocurrency, and decentralized governance with hosts from Polygon, revealing practical insights about building in the space and a vision for how these technologies could reshape society.',
+    category: 'streams',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/hf7V-IHo5xk',
+    docLink: '/community/Streams/01-2025/2025-01-16',
+  },
+  {
+    title: 'Bankless: ai16z Shaw Interview',
+    description:
+      'Shaw explores the role of AI in crypto and how it will shape the future, discussing how AI agents are taking the crypto world by storm with unprecedented scale and efficiency.',
+    category: 'streams',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/5GBXS5myXz0',
+    docLink: '/community/Streams/12-2024/2024-12-11',
+  },
+  {
+    title: 'Managing Information + Rewarding Contributors',
+    description:
+      'jin presents on managing Discord information flow and rewarding contributors using LLMs for automated summarization.',
+    category: 'streams',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/-2PD3uk0Hz4',
+    docLink: '/community/Streams/12-2024/2024-12-01',
+  },
+  {
+    title: 'The Delphi Podcast: Crypto x AI Agents',
+    description:
+      'The definitive podcast with ai16z, Virtuals, MyShell, NOUS, and CENTS discussing the explosion of AI agents in crypto.',
+    category: 'streams',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/HVXxprDVMUM',
+    docLink: '/community/Streams/11-2024/2024-11-21',
+  },
+  {
+    title: 'Hats Protocol Presentation',
+    description:
+      'A presentation on how Hats Protocol solves disorganization in DAOs and its potential applications for ai16z, including AI agent integration for automated governance.',
+    category: 'streams',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/B5zJxUez2AM',
+    docLink: '/community/Streams/11-2024/2024-11-24',
+  },
+  {
+    title: 'Discord Development Stream (v1)',
+    description:
+      "(OLD) Complete technical walkthrough of Eliza's architecture, systems, and implementation details with Shaw explaining core concepts.",
+    category: 'streams',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/oqq5H0HRF_A',
+    docLink: '/community/Streams/11-2024/2024-11-06',
+  },
+  {
+    title: 'DCo Podcast: AI Traders, Swarms, and Surviving the Bear',
+    description:
+      'Episode 35 of The DCo Podcast featuring Shaw discussing AI traders, agent swarms, and strategies for navigating bear markets.',
+    category: 'streams',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/4ail0I0Om4k',
+    docLink: '/community/Streams/12-2024/2024-12-17',
   },
   {
     title: 'Beach Scene Demo',
@@ -231,7 +270,29 @@ function VideoPlayer({ video }) {
 
 // Main video gallery component
 export default function VideoGallery() {
-  const [activeCategory, setActiveCategory] = useState('all');
+  const location = useLocation();
+  const history = useHistory();
+  const searchParams = new URLSearchParams(location.search);
+  const [activeCategory, setActiveCategory] = useState(searchParams.get('category') || 'all');
+
+  // Update URL when category changes
+  useEffect(() => {
+    const newSearchParams = new URLSearchParams(location.search);
+    if (activeCategory === 'all') {
+      newSearchParams.delete('category');
+    } else {
+      newSearchParams.set('category', activeCategory);
+    }
+    history.replace(`${location.pathname}?${newSearchParams.toString()}`);
+  }, [activeCategory, location.pathname, history]);
+
+  // Update active category when URL changes
+  useEffect(() => {
+    const category = searchParams.get('category');
+    if (category && CATEGORIES.some((cat) => cat.id === category)) {
+      setActiveCategory(category);
+    }
+  }, [location.search]);
 
   // Filter videos based on selected category
   const filteredVideos = VIDEOS.filter(
