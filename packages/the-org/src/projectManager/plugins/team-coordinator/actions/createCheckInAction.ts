@@ -16,6 +16,14 @@ import {
 import { sendCheckInScheduleForm } from '../forms/checkInScheduleForm';
 import { sendCheckInReportForm } from '../forms/checkInReportForm';
 
+// TODO : remove the forms
+// TODO : make all the check in text based
+// TODO : create a seperate action to take check
+// TODO : perform like update group find from server id matching name and all details using LLMS
+// this will be good for telegram as well
+// TODO : make the bot only work when tagged not otherwise in discord or telegram
+// TODO : simplify user updates
+
 interface DiscordComponentInteraction {
   customId: string;
   componentType: number;
@@ -99,10 +107,10 @@ async function ensureDiscordClient(runtime: IAgentRuntime) {
   }
 }
 
-export const checkInTeamMember: Action = {
-  name: 'checkInTeamMember',
+export const createCheckInAction: Action = {
+  name: 'createCheckInAction',
   description: 'Creates or modifies a check-in schedule for team members',
-  similes: ['scheduleCheckIn', 'createCheckInSchedule', 'setCheckInTime'],
+  similes: ['createCheckIn', 'createCheckInSchedule'],
   validate: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     try {
       // Existing validation code...
@@ -153,7 +161,7 @@ export const checkInTeamMember: Action = {
 
       return true;
     } catch (error) {
-      logger.error('Error in checkInTeamMember validation:', error);
+      logger.error('Error in createCheckInAction validation:', error);
       return false;
     }
   },
@@ -273,20 +281,103 @@ export const checkInTeamMember: Action = {
       });
       logger.info('Found existing config:', existingConfig);
 
+      // if (!existingConfig) {
+      //   logger.info('No existing report channel config found - sending report form first');
+      //   logger.info('Using server ID:', serverId);
+      //   await sendCheckInReportForm(callback, textChannels, {
+      //     serverId,
+      //     // serverName: String(message.content.serverName),
+      //   });
+      // } else {
+      //   logger.info('Found existing report channel config:', existingConfig);
+      //   logger.info(`Sending schedule form with ${textChannels.length} channels`);
+      //   await sendCheckInScheduleForm(callback, textChannels);
+      // }
+
+      // Send message to user asking for check-in details
+      logger.info('Sending text-based check-in setup message to user');
+
       if (!existingConfig) {
-        logger.info('No existing report channel config found - sending report form first');
-        logger.info('Using server ID:', serverId);
-        await sendCheckInReportForm(callback, textChannels, {
-          serverId,
-          // serverName: String(message.content.serverName),
-        });
+        // First ask for the report channel configuration
+        logger.info('Asking user for report channel configuration');
+
+        const channelsList = textChannels
+          .map((channel) => `- #${channel.name} (${channel.id})`)
+          .join('\n');
+
+        logger.debug(`Generated channels list with ${textChannels.length} channels`);
+        await callback(
+          {
+            text:
+              `Let's set up check-ins for your team members! 📅\n\n` +
+              `First, I need to know where to send the check-in updates when team members respond.\n\n` +
+              `**Available channels:**\n${channelsList}\n\n` +
+              `1️⃣ **Channel for Updates:** Which channel from the list above should the updates be posted once collected from users?\n\n` +
+              `2️⃣ **Check-in Type:** Choose one of the following:\n` +
+              `   • Daily Standup\n` +
+              `   • Sprint Check-in\n` +
+              `   • Mental Health Check-in\n` +
+              `   • Project Status Update\n` +
+              `   • Team Retrospective\n\n` +
+              `3️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
+              `4️⃣ **Frequency:** How often should check-ins occur?\n` +
+              `   • Weekdays\n` +
+              `   • Daily\n` +
+              `   • Weekly\n` +
+              `   • Bi-weekly\n` +
+              `   • Monthly\n` +
+              `5️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC) - Please note all times will be in UTC timezone` +
+              `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
+            source: 'discord',
+          },
+          []
+        );
+
+        logger.info('Sent initial check-in configuration message');
       } else {
-        logger.info('Found existing report channel config:', existingConfig);
-        logger.info(`Sending schedule form with ${textChannels.length} channels`);
-        await sendCheckInScheduleForm(callback, textChannels);
+        // Ask for check-in schedule details
+        logger.info('Asking user for check-in schedule details');
+        logger.debug(`Using existing config: ${JSON.stringify(existingConfig)}`);
+
+        const channelsList = textChannels
+          .map((channel) => `- #${channel.name} (${channel.id})`)
+          .join('\n');
+
+        logger.debug(
+          `Generated channels list with ${textChannels.length} channels for existing config`
+        );
+
+        await callback(
+          {
+            text:
+              `Let's set up your team check-in schedule! 📅\n\n` +
+              `Please provide the following information (you can answer all at once or one by one):\n\n` +
+              `1️⃣ **Check-in Type:** Choose one of the following:\n` +
+              `   • Daily Standup\n` +
+              `   • Sprint Check-in\n` +
+              `   • Mental Health Check-in\n` +
+              `   • Project Status Update\n` +
+              `   • Team Retrospective\n\n` +
+              `2️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
+              `**Available channels:**\n${channelsList}\n\n` +
+              `3️⃣ **Frequency:** How often should check-ins occur?\n` +
+              `   • Weekdays\n` +
+              `   • Daily\n` +
+              `   • Weekly\n` +
+              `   • Bi-weekly\n` +
+              `   • Monthly\n` +
+              `   • Custom\n\n` +
+              `4️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC)` +
+              `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
+            source: 'discord',
+          },
+          []
+        );
+
+        logger.info('Sent check-in schedule configuration message with channel list');
       }
 
-      logger.info('Initial forms sent successfully');
+      logger.info('Check-in setup message sent successfully');
       return true;
     } catch (error) {
       logger.error('=== CHECK-IN HANDLER ERROR ===');
@@ -305,7 +396,7 @@ export const checkInTeamMember: Action = {
         name: 'jimmy',
         content: {
           text: "I'll help you set up check-in schedules",
-          actions: ['checkInTeamMember'],
+          actions: ['createCheckInAction'],
         },
       },
     ],
@@ -318,20 +409,7 @@ export const checkInTeamMember: Action = {
         name: 'jimmy',
         content: {
           text: "I'll set up check-in schedules for the team members",
-          actions: ['checkInTeamMember'],
-        },
-      },
-    ],
-    [
-      {
-        name: 'admin',
-        content: { text: 'lolz' },
-      },
-      {
-        name: 'jimmy',
-        content: {
-          text: "I'll set up check-in schedules for the team members",
-          actions: ['checkInTeamMember'],
+          actions: ['createCheckInAction'],
         },
       },
     ],
