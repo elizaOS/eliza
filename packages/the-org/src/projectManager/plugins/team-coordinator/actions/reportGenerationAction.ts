@@ -157,6 +157,7 @@ export const generateReport: Action = {
         logger.warn('No text content found in message');
         return false;
       }
+      let standupType: string;
 
       // Use AI to parse the input text and extract standup type
       try {
@@ -187,7 +188,7 @@ export const generateReport: Action = {
           return true;
         }
 
-        const standupType = ((state.standupType as string) || parsedType)?.toLowerCase()?.trim();
+        standupType = ((state.standupType as string) || parsedType)?.toLowerCase()?.trim();
 
         logger.info('Generating report with parameters:', {
           standupType,
@@ -196,12 +197,7 @@ export const generateReport: Action = {
 
         // Validate standup type with more flexible matching
         const validTypes = ['standup', 'sprint', 'mental_health', 'project_status', 'retro'];
-        const isValidType = validTypes.some(
-          (type) =>
-            standupType === type ||
-            (type === 'standup' &&
-              (standupType.includes('daily') || standupType.includes('update')))
-        );
+        const isValidType = validTypes.some((type) => standupType === type);
 
         if (!isValidType) {
           await callback(
@@ -226,7 +222,7 @@ export const generateReport: Action = {
       }
 
       // Generate the report
-      const report = await generateTeamReport(runtime, 'STANDUP', message.roomId);
+      const report = await generateTeamReport(runtime, standupType, message.roomId);
 
       const content: Content = {
         text: report,
