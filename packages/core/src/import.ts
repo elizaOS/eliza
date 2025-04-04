@@ -15,6 +15,27 @@ export const registerDynamicImport = (specifier: string, module: any) => {
 };
 
 /**
+ * Determines the version tag based on the core package version.
+ * @returns {string} The appropriate version tag (@latest, @beta, or @alpha)
+ */
+function getVersionTag(): string {
+  let versionTag = '@latest';
+  try {
+    // Using the version from package.json
+    const { version: coreVersion } = require('../package.json');
+
+    if (coreVersion.includes('beta')) {
+      versionTag = '@beta';
+    } else if (coreVersion.includes('alpha')) {
+      versionTag = '@alpha';
+    }
+  } catch (error) {
+    logger.warn(`Could not determine core version, using @latest tag: ${error}`);
+  }
+  return versionTag;
+}
+
+/**
  * Handles importing of plugins asynchronously.
  *
  * @param {string[]} plugins - An array of strings representing the plugins to import.
@@ -28,10 +49,19 @@ export const registerDynamicImport = (specifier: string, module: any) => {
  */
 export async function handlePluginImporting(plugins: string[]) {
   if (plugins.length > 0) {
+    // Get the core package version to determine which tag to use
+    const versionTag = getVersionTag();
+
     const importedPlugins = await Promise.all(
       plugins.map(async (plugin) => {
         try {
-          const importedPlugin = await import(plugin);
+          // Add version tag to plugin name if it doesn't already have a version specified
+          const pluginWithTag =
+            plugin.includes('@') && plugin.split('@').length > 2
+              ? plugin
+              : `${plugin}${versionTag}`;
+
+          const importedPlugin = await import(pluginWithTag);
           const functionName = `${plugin
             .replace('@elizaos/plugin-', '')
             .replace('@elizaos-plugins/', '')
@@ -44,7 +74,10 @@ export async function handlePluginImporting(plugins: string[]) {
 
           return importedPlugin.default || importedPlugin[functionName];
         } catch (importError) {
-          logger.error(`Failed to import plugin: ${plugin} during runtime dynamic import`);
+          logger.error(
+            `Failed to import plugin: ${plugin} during runtime dynamic import`,
+            `coreVersion: ${versionTag}`
+          );
           return []; // Return null for failed imports
         }
       })
