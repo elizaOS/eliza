@@ -4,7 +4,6 @@ sidebar_position: 5
 
 # Plugin Command
 
-
 The `plugin` command helps developers manage ElizaOS plugins, focusing on the publishing process.
 
 ## Subcommands
@@ -24,9 +23,7 @@ Options:
 - `-t, --test` - Test publish process without making changes (default: false)
 - `-p, --platform <platform>` - Specify platform compatibility: node, browser, or universal (default: 'universal')
 
-
 ## Plugin Development Workflow
-
 
 ### 1. Create a Plugin
 
@@ -66,8 +63,8 @@ Before publishing, ensure your plugin meets all registry requirements:
   - Repository must have 'elizaos-plugins' in topics
 - **Images**:
   - Must have an `images/` directory containing:
-    - `logo.jpg` - 400x400px square logo (<500KB)
-    - `banner.jpg` - 1280x640px banner image (<1MB)
+    - `logo.jpg` - 400x400px square logo (max 500KB)
+    - `banner.jpg` - 1280x640px banner image (max 1MB)
 - **Agent Configuration**:
   - Must include `agentConfig` in package.json defining plugin parameters
 - **Documentation**:
@@ -169,8 +166,8 @@ Your plugin's GitHub repository should:
 
 Your plugin must include:
 
-- `images/logo.jpg` - A 400x400px square logo (<500KB)
-- `images/banner.jpg` - A 1280x640px banner image (<1MB)
+- `images/logo.jpg` - A 400x400px square logo (max 500KB)
+- `images/banner.jpg` - A 1280x640px banner image (max 1MB)
 
 These images will be displayed in the ElizaOS plugin registry and UI.
 
