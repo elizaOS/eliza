@@ -1,3 +1,10 @@
+---
+sidebar_position: 3
+title: Frequently Asked Questions
+description: Common questions and answers about installing, configuring, and using ElizaOS
+keywords: [FAQ, troubleshooting, installation, setup, Twitter, Discord, models, memory]
+---
+
 # Frequently Asked Questions
 
 ### What is Eliza?

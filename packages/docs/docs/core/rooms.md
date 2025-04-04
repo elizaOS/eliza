@@ -1,5 +1,9 @@
 ---
 sidebar_position: 8
+title: Rooms System
+description: Understanding ElizaOS rooms - interaction spaces for entities to exchange messages and communicate
+keywords: [rooms, channels, conversations, participants, messages, interaction, communication]
+image: /img/elizaos-rooms-simplified.svg
 ---
 
 # Rooms

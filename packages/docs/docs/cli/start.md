@@ -1,5 +1,9 @@
 ---
 sidebar_position: 3
+title: Start Command
+description: Launch and manage ElizaOS projects and agents in production mode
+keywords: [start, production, deployment, configuration, runtime, services, agents]
+image: /img/cli.jpg
 ---
 
 # Start Command

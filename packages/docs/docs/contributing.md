@@ -1,3 +1,10 @@
+---
+sidebar_position: 4
+title: Contributing Guide
+description: How to contribute to ElizaOS - guidelines, standards, and best practices for developers
+keywords: [contributing, development, pull requests, issues, documentation, style guide]
+---
+
 # Contributing to Eliza
 
 First off, thank you for considering contributing to elizaOS! We welcome improvements and contributions.

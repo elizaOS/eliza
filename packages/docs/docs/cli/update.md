@@ -1,5 +1,9 @@
 ---
 sidebar_position: 11
+title: Update Command
+description: Keep your ElizaOS installation current with the latest features and improvements
+keywords: [CLI, update, dependencies, versions, packages, maintenance]
+image: /img/cli.jpg
 ---
 
 # Update Command

@@ -1,5 +1,9 @@
 ---
 sidebar_position: 6
+title: Actions System
+description: Learn about ElizaOS actions - the core components that define agent capabilities and responses
+keywords: [actions, responses, handlers, validation, examples, reply, implementation]
+image: /img/actions.jpg
 ---
 
 # ⚡ Actions

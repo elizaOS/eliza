@@ -1,5 +1,9 @@
 ---
 sidebar_position: 2
+title: Create Command
+description: Create new ElizaOS projects and plugins with an interactive setup process
+keywords: [create, project, plugin, setup, scaffolding, initialization, configuration]
+image: /img/cli.jpg
 ---
 
 # Create Command

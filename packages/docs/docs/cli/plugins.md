@@ -1,5 +1,9 @@
 ---
-sidebar_position: 5
+sidebar_position: 4
+title: Plugin Management
+description: Manage ElizaOS plugins - installation, configuration, and publishing
+keywords: [plugins, extensions, packages, npm, registry, installation, configuration]
+image: /img/cli.jpg
 ---
 
 # Plugin Command

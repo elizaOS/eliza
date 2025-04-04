@@ -1,3 +1,11 @@
+---
+sidebar_position: 8
+title: Plugin System
+description: Learn about ElizaOS plugins - modular extensions that enhance agent capabilities
+keywords: [plugins, extensions, modules, development, publishing, registry, npm, GitHub]
+image: /img/plugins.png
+---
+
 # Plugins
 
 import Tabs from '@theme/Tabs';

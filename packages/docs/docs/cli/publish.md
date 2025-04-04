@@ -1,5 +1,9 @@
 ---
 sidebar_position: 10
+title: Publish Command
+description: Package and publish your ElizaOS plugins and projects to make them available to others
+keywords: [CLI, publish, registry, npm, GitHub, packages, distribution]
+image: /img/cli.jpg
 ---
 
 # Publish Command

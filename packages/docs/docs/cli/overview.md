@@ -1,5 +1,9 @@
 ---
 sidebar_position: 1
+title: ElizaOS CLI Overview
+description: Comprehensive guide to the ElizaOS Command Line Interface (CLI) tools and commands
+keywords: [CLI, commands, installation, configuration, development, production, plugins, projects]
+image: /img/cli.jpg
 ---
 
 # ElizaOS CLI
