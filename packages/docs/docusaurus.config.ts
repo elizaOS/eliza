@@ -34,6 +34,31 @@ const config = {
     [
       '@docusaurus/plugin-content-docs',
       {
+        id: 'partners',
+        path: 'partners',
+        routeBasePath: 'partners',
+        sidebarItemsGenerator: async ({ defaultSidebarItemsGenerator, ...args }) => {
+          const sidebarItems = await defaultSidebarItemsGenerator(args);
+          return sidebarItems
+            .map((item) => {
+              if (item.type === 'category') {
+                item.label = '🤝 ' + item.label;
+              }
+              return item;
+            })
+            .sort((a, b) => {
+              const labelA = a.label || '';
+              const labelB = b.label || '';
+              return labelA.localeCompare(labelB, undefined, {
+                numeric: true,
+              });
+            });
+        },
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
         id: 'community',
         path: 'community',
         routeBasePath: 'community',
@@ -59,8 +84,8 @@ const config = {
               return item;
             })
             .sort((a, b) => {
-              const labelA = a.label || ''; // Ensure `label` exists
-              const labelB = b.label || ''; // Ensure `label` exists
+              const labelA = a.label || '';
+              const labelB = b.label || '';
               return labelA.localeCompare(labelB, undefined, {
                 numeric: true,
               });
@@ -220,7 +245,6 @@ const config = {
             description: 'Stay up to date with the latest from ElizaOS',
           },
           path: 'news',
-          routeBasePath: 'news',
         },
         docs: {
           docItemComponent: '@theme/ApiItem',
