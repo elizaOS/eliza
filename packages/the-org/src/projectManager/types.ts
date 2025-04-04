@@ -139,3 +139,17 @@ export interface TeamMemberUpdate {
   channelId?: UUID;
   serverId?: string;
 }
+
+export interface CheckInSchedule {
+  type: 'team-member-checkin-schedule';
+  scheduleId: string;
+  teamMemberName?: string | undefined | null;
+  teamMemberUserName?: string;
+  checkInType: string;
+  channelId: string;
+  frequency: 'WEEKDAYS' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
+  checkInTime: string; // Time in "HH:mm" format
+  createdAt: string;
+  source?: string; // Add source field to track where the message came from
+  serverId?: string;
+}

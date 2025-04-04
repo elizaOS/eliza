@@ -13,7 +13,7 @@ import {
   type Service,
   ModelType,
 } from '@elizaos/core';
-import { TeamMemberUpdate } from '../../../types';
+import type { TeamMemberUpdate } from '../../../types';
 
 // Define a simple interface for the Discord service
 interface IDiscordService extends Service {
@@ -336,7 +336,8 @@ async function parseTeamMemberUpdate(
 
     // Get the user name from Discord
     const entityById = await runtime.getEntityById(message.entityId);
-    const userName = entityById?.metadata?.discord?.userName;
+    const userName =
+      entityById?.metadata?.discord?.userName || entityById?.metadata?.telegram?.name;
 
     const update: TeamMemberUpdate = {
       type: 'team-member-update',
@@ -355,11 +356,19 @@ async function parseTeamMemberUpdate(
     };
 
     logger.info('Successfully parsed team member update:', {
-      updateId: update.updateId,
-      teamMemberId: update.teamMemberId,
-      teamMemberName: update.teamMemberName,
-      serverName: update.serverName,
-      checkInType: update.checkInType,
+      type: 'team-member-update',
+      updateId: createUniqueUuid(runtime, 'team-update'),
+      teamMemberId: message.entityId || asUUID('unknown'),
+      teamMemberName: userName,
+      serverName: parsedFields.serverName,
+      checkInType: parsedFields.checkInType,
+      currentProgress: parsedFields.currentProgress,
+      workingOn: parsedFields.workingOn,
+      nextSteps: parsedFields.nextSteps,
+      blockers: parsedFields.blockers,
+      eta: parsedFields.eta,
+      timestamp: new Date().toISOString(),
+      channelId: message.roomId,
     });
 
     logger.info('=== PARSE TEAM MEMBER UPDATE END ===');

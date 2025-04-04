@@ -15,18 +15,6 @@ import {
   logger,
 } from '@elizaos/core';
 
-export interface CheckInSchedule {
-  type: 'team-member-checkin-schedule';
-  scheduleId: string;
-  teamMemberName?: string | undefined | null;
-  teamMemberUserName?: string;
-  checkInType: string;
-  channelId: string;
-  frequency: 'WEEKDAYS' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
-  checkInTime: string; // Time in "HH:mm" format
-  createdAt: string;
-}
-
 interface DiscordComponentInteraction {
   customId: string;
   componentType: number;
@@ -35,10 +23,11 @@ interface DiscordComponentInteraction {
 }
 
 interface ReportChannelConfig {
-  serverId?: string; // Made optional
+  serverId?: string;
   serverName?: string;
   channelId: string;
   createdAt: string;
+  source?: string; // Add source field
 }
 
 // Required Discord configuration fields
@@ -206,7 +195,6 @@ export const recordCheckInAction: Action = {
           await callback(
             {
               text: '❌ Unable to connect to Discord services. Please try again later or contact support.',
-              source: 'discord',
             },
             []
           );
@@ -391,11 +379,19 @@ export const recordCheckInAction: Action = {
       if (!existingConfig) {
         logger.info('No existing report channel config found, creating new one');
         try {
+          // Extract source information
+          const messageSource = message.source || room.source || 'unknown';
+
+          logger.info(
+            `Message source for report config: ${messageSource}, sourceId: ${messageSourceId}`
+          );
+
           const config: ReportChannelConfig = {
             serverId: serverId,
             // TODO : have to fetch server name
             serverName: 'Unknown Server', // Added default server name
             channelId: checkInConfig.updateChannelId || '',
+            source: messageSource, // Add source
             createdAt: new Date().toISOString(),
           };
 
@@ -440,6 +436,12 @@ export const recordCheckInAction: Action = {
       // Store check-in schedule
       try {
         logger.info('Storing check-in schedule:', checkInConfig);
+
+        // Extract source information from the message or room
+        const messageSource = message.source || room.source || 'unknown';
+
+        logger.info(`Message source: ${messageSource}`);
+
         const schedule: CheckInSchedule = {
           type: 'team-member-checkin-schedule',
           scheduleId: createUniqueUuid(runtime, `schedule-${Date.now()}`),
@@ -448,7 +450,9 @@ export const recordCheckInAction: Action = {
           channelId: checkInConfig.checkInChannelId || '',
           frequency: (checkInConfig.frequency || 'WEEKLY') as CheckInSchedule['frequency'],
           checkInTime: checkInConfig.time || '09:00',
+          source: messageSource, // Add the source information
           createdAt: new Date().toISOString(),
+          serverId: serverId,
         };
 
         const checkInRoomId = createUniqueUuid(runtime, 'check-in-schedules');
@@ -496,7 +500,6 @@ export const recordCheckInAction: Action = {
         await callback(
           {
             text: '✅ Check-in schedule has been successfully created! Team members will be prompted according to your configured schedule.',
-            source: 'discord',
           },
           []
         );

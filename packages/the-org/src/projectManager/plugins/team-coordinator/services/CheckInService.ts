@@ -13,25 +13,13 @@ import type {
   SelectMenuInteraction,
   User,
 } from 'discord.js';
+import type { CheckInSchedule } from '../../../types';
 
 // Interface for storing report channel configuration
 interface ReportChannelConfig {
   serverId?: string; // Made optional
   serverName: string;
   channelId: string;
-  createdAt: string;
-}
-
-export interface CheckInSchedule {
-  type: 'team-member-checkin-schedule';
-  scheduleId: string;
-  teamMemberId: string | undefined | null;
-  teamMemberName: string | undefined | null;
-  teamMemberUserName?: string;
-  checkInType: string;
-  channelId: string;
-  frequency: 'WEEKDAYS' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
-  checkInTime: string; // Time in "HH:mm" format
   createdAt: string;
 }
 
