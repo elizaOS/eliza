@@ -4,15 +4,7 @@ import { ScenarioService } from '../src/services/scenario';
 import { EventType, IAgentRuntime, logger, Service } from '@elizaos/core';
 import { bootstrapPlugin } from '../src/index';
 import { UUID, ModelType, ServiceType } from '@elizaos/core';
-import { createMockRuntime, createMockService, MockRuntime } from './test-utils';
-
-// Define comprehensive mock types for better type safety
-type MockService = {
-  name: string;
-  execute: ReturnType<typeof vi.fn>;
-  serviceType?: string;
-  [key: string]: any;
-};
+import { createMockRuntime, createMockService, MockRuntime, setupActionTest } from './test-utils';
 
 // Define service interface for plugin services
 interface PluginService extends Service {
@@ -41,8 +33,9 @@ describe('TaskService', () => {
   }>;
 
   beforeEach(() => {
-    // Create mock runtime using the standardized factory
-    mockRuntime = createMockRuntime();
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
 
     // Create mock tasks
     mockTasks = [
@@ -223,8 +216,9 @@ describe('ScenarioService', () => {
   let scenarioService: ScenarioService;
 
   beforeEach(() => {
-    // Create mock runtime
-    mockRuntime = createMockRuntime();
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
 
     // Create service instance
     scenarioService = new ScenarioService(mockRuntime as IAgentRuntime);
@@ -268,8 +262,9 @@ describe('Service Registry', () => {
     vi.clearAllMocks();
     vi.spyOn(logger, 'warn').mockImplementation(() => {});
 
-    // Use the standardized mock runtime
-    mockRuntime = createMockRuntime();
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
   });
 
   afterEach(() => {

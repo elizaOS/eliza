@@ -18,7 +18,7 @@ import {
   HandlerCallback,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import { createMockMemory, createMockRuntime, createMockState, MockRuntime } from './test-utils';
+import { createMockMemory, createMockRuntime, createMockState, MockRuntime, setupActionTest } from './test-utils';
 
 // Helper to create unique mock IDs
 const createMockId = () => uuidv4() as UUID;
@@ -32,44 +32,57 @@ describe('Message Handler Logic', () => {
   beforeEach(() => {
     vi.useFakeTimers();
 
-    // Use standardized mock factories
-    mockRuntime = createMockRuntime({
-      // Override default runtime methods for testing message handlers
-      useModel: vi.fn().mockImplementation((modelType, params) => {
-        if (params?.prompt?.includes('should respond template')) {
-          return Promise.resolve(
-            JSON.stringify({
-              action: 'RESPOND',
-              providers: ['facts', 'time'],
-              reasoning: 'Message requires a response',
-            })
-          );
-        } else if (modelType === ModelType.TEXT_SMALL) {
-          return Promise.resolve(
-            JSON.stringify({
-              thought: 'I will respond to this message',
-              actions: ['reply'],
-              content: 'Hello, how can I help you today?',
-            })
-          );
-        } else if (modelType === ModelType.TEXT_EMBEDDING) {
-          return Promise.resolve([0.1, 0.2, 0.3]);
-        }
-        return Promise.resolve({});
-      }),
+    // Use shared setupActionTest instead of manually creating mocks
+    const setup = setupActionTest({
+      runtimeOverrides: {
+        // Override default runtime methods for testing message handlers
+        useModel: vi.fn().mockImplementation((modelType, params) => {
+          if (params?.prompt?.includes('should respond template')) {
+            return Promise.resolve(
+              JSON.stringify({
+                action: 'RESPOND',
+                providers: ['facts', 'time'],
+                reasoning: 'Message requires a response',
+              })
+            );
+          } else if (modelType === ModelType.TEXT_SMALL) {
+            return Promise.resolve(
+              JSON.stringify({
+                thought: 'I will respond to this message',
+                actions: ['reply'],
+                content: 'Hello, how can I help you today?',
+              })
+            );
+          } else if (modelType === ModelType.TEXT_EMBEDDING) {
+            return Promise.resolve([0.1, 0.2, 0.3]);
+          }
+          return Promise.resolve({});
+        }),
 
-      composeState: vi.fn().mockResolvedValue({
-        values: {
-          agentName: 'Test Agent',
-          recentMessages: 'User: Test message',
-        },
-        data: {
-          room: { id: 'test-room-id', type: 'group' },
-        },
-      }),
+        composeState: vi.fn().mockResolvedValue({
+          values: {
+            agentName: 'Test Agent',
+            recentMessages: 'User: Test message',
+          },
+          data: {
+            room: { id: 'test-room-id', type: 'group' },
+          },
+        }),
 
-      getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),
+        getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),
+      },
+      messageOverrides: {
+        content: {
+          text: 'Hello, bot!',
+          channelType: ChannelType.GROUP,
+        } as Content,
+      },
     });
+
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
+    mockCallback = setup.callbackFn;
 
     // Add required templates to character
     mockRuntime.character = {
@@ -80,20 +93,6 @@ describe('Message Handler Logic', () => {
         shouldRespondTemplate: 'Test should respond template {{recentMessages}}',
       },
     };
-
-    // Create a test message
-    mockMessage = createMockMemory({
-      content: {
-        text: 'Hello, bot!',
-        channelType: ChannelType.GROUP,
-      } as Content,
-    });
-
-    // Create base state
-    mockState = createMockState();
-
-    // Create a mock callback function
-    mockCallback = vi.fn();
   });
 
   afterEach(() => {
@@ -247,22 +246,24 @@ describe('Message Handler Logic', () => {
   });
 });
 
-describe('Reaction Handler Logic', () => {
+describe('Reaction Events', () => {
   let mockRuntime: MockRuntime;
   let mockReaction: Partial<Memory>;
 
   beforeEach(() => {
-    // Use standardized mock factories
-    mockRuntime = createMockRuntime();
-
-    // Create a reaction message
-    mockReaction = createMockMemory({
-      content: {
-        text: '👍',
-        reaction: true,
-        referencedMessageId: 'original-message-id',
-      } as Content,
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest({
+      messageOverrides: {
+        content: {
+          text: '👍',
+          reaction: true,
+          referencedMessageId: 'original-message-id',
+        } as Content,
+      }
     });
+    
+    mockRuntime = setup.mockRuntime;
+    mockReaction = setup.mockMessage;
   });
 
   afterEach(() => {
@@ -312,28 +313,32 @@ describe('World and Entity Events', () => {
   let mockRuntime: MockRuntime;
 
   beforeEach(() => {
-    // Use standardized mock factories
-    mockRuntime = createMockRuntime({
-      ensureConnection: vi.fn().mockResolvedValue(undefined),
-      ensureWorldExists: vi.fn().mockResolvedValue(undefined),
-      ensureRoomExists: vi.fn().mockResolvedValue(undefined),
-      getEntityById: vi.fn().mockImplementation((entityId) => {
-        return Promise.resolve({
-          id: entityId,
-          names: ['Test User'],
-          metadata: {
-            status: 'ACTIVE',
-            // Add source-specific metadata to fix the test
-            test: {
-              username: 'testuser',
-              name: 'Test User',
-              userId: 'original-id-123',
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest({
+      runtimeOverrides: {
+        ensureConnection: vi.fn().mockResolvedValue(undefined),
+        ensureWorldExists: vi.fn().mockResolvedValue(undefined),
+        ensureRoomExists: vi.fn().mockResolvedValue(undefined),
+        getEntityById: vi.fn().mockImplementation((entityId) => {
+          return Promise.resolve({
+            id: entityId,
+            names: ['Test User'],
+            metadata: {
+              status: 'ACTIVE',
+              // Add source-specific metadata to fix the test
+              test: {
+                username: 'testuser',
+                name: 'Test User',
+                userId: 'original-id-123',
+              },
             },
-          },
-        });
-      }),
-      updateEntity: vi.fn().mockResolvedValue(undefined),
+          });
+        }),
+        updateEntity: vi.fn().mockResolvedValue(undefined),
+      }
     });
+    
+    mockRuntime = setup.mockRuntime;
   });
 
   afterEach(() => {
@@ -423,8 +428,9 @@ describe('Event Lifecycle Events', () => {
   let mockRuntime: MockRuntime;
 
   beforeEach(() => {
-    // Use standardized mock factories
-    mockRuntime = createMockRuntime();
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
   });
 
   afterEach(() => {

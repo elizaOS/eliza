@@ -10,7 +10,7 @@ import {
   Content,
 } from '@elizaos/core';
 import * as entityUtils from '@elizaos/core';
-import { createMockMemory, createMockRuntime, createMockState, MockRuntime } from './test-utils';
+import { createMockMemory, createMockRuntime, createMockState, MockRuntime, setupActionTest } from './test-utils';
 
 // Mock the getEntityDetails function
 vi.mock('@elizaos/core', async (importOriginal) => {
@@ -42,10 +42,11 @@ describe('Reflection Evaluator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Use standardized mock factories
-    mockRuntime = createMockRuntime();
-    mockMessage = createMockMemory();
-    mockState = createMockState();
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
   });
 
   afterEach(() => {
@@ -282,10 +283,11 @@ describe('Multiple Prompt Evaluator Factory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Use standardized mock factories
-    mockRuntime = createMockRuntime();
-    mockMessage = createMockMemory();
-    mockState = createMockState();
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
   });
 
   afterEach(() => {
@@ -513,4 +515,26 @@ describe('Multiple Prompt Evaluator Factory', () => {
       }),
     });
   });
+});
+
+describe('Evaluator Factory Patterns', () => {
+  let mockRuntime: MockRuntime;
+  let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  // ... existing code ...
 });

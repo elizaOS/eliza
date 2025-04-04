@@ -1,23 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { bootstrapPlugin } from '../src/index';
 import { IAgentRuntime, UUID, EventType, Memory, Content, Character } from '@elizaos/core';
-
-// Create a more complete mock runtime with all the necessary properties
-type MockRuntime = {
-  agentId: UUID;
-  character: Character;
-  registerProvider: ReturnType<typeof vi.fn>;
-  registerEvaluator: ReturnType<typeof vi.fn>;
-  registerAction: ReturnType<typeof vi.fn>;
-  registerEvent: ReturnType<typeof vi.fn>;
-  registerService: ReturnType<typeof vi.fn>;
-  emitEvent: ReturnType<typeof vi.fn>;
-  addEmbeddingToMemory?: ReturnType<typeof vi.fn>;
-  createMemory?: ReturnType<typeof vi.fn>;
-  getSetting?: ReturnType<typeof vi.fn>;
-  getParticipantUserState?: ReturnType<typeof vi.fn>;
-  composeState?: ReturnType<typeof vi.fn>;
-};
+import { MockRuntime, createMockRuntime } from './test-utils';
 
 // Create a mock function for bootstrapPlugin.init since it might not actually exist on the plugin
 const mockInit = vi.fn().mockImplementation(async (config, runtime) => {
@@ -46,25 +30,11 @@ describe('Bootstrap Plugin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockRuntime = {
-      agentId: 'test-agent-id' as UUID,
-      character: {
-        name: 'Test Bot',
-        system: 'Test system prompt',
-        bio: 'A test bot',
-      },
-      registerProvider: vi.fn(),
-      registerEvaluator: vi.fn(),
-      registerAction: vi.fn(),
-      registerEvent: vi.fn(),
-      registerService: vi.fn(),
-      emitEvent: vi.fn(),
-      addEmbeddingToMemory: vi.fn(),
-      createMemory: vi.fn(),
+    mockRuntime = createMockRuntime({
       getSetting: vi.fn().mockReturnValue('medium'),
       getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),
       composeState: vi.fn().mockResolvedValue({}),
-    };
+    });
   });
 
   afterEach(() => {
@@ -176,25 +146,11 @@ describe('Message Event Handlers', () => {
 
     mockCallback = vi.fn();
 
-    mockRuntime = {
-      agentId: 'test-agent-id' as UUID,
-      character: {
-        name: 'Test Bot',
-        system: 'Test system prompt',
-        bio: 'A test bot',
-      },
-      registerProvider: vi.fn(),
-      registerEvaluator: vi.fn(),
-      registerAction: vi.fn(),
-      registerEvent: vi.fn(),
-      registerService: vi.fn(),
-      emitEvent: vi.fn(),
-      addEmbeddingToMemory: vi.fn(),
-      createMemory: vi.fn(),
+    mockRuntime = createMockRuntime({
       getSetting: vi.fn().mockReturnValue('medium'),
       getParticipantUserState: vi.fn().mockResolvedValue('ACTIVE'),
       composeState: vi.fn().mockResolvedValue({}),
-    };
+    });
 
     mockMessage = {
       id: 'msg-id' as UUID,

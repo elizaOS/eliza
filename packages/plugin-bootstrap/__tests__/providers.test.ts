@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { createMockRuntime, createMockMemory, createMockState, MockRuntime } from './test-utils';
+import { createMockRuntime, createMockMemory, createMockState, MockRuntime, setupActionTest } from './test-utils';
 import { IAgentRuntime, Memory, Provider, State, UUID, logger, ChannelType } from '@elizaos/core';
 
 // Import providers from source modules
@@ -42,14 +42,17 @@ describe('Choice Provider', () => {
   let mockState: Partial<State>;
 
   beforeEach(() => {
-    // Use standardized mock factories
-    mockRuntime = createMockRuntime();
-    mockMessage = createMockMemory();
-    mockState = createMockState({
-      values: {
-        choices: 'Option A|Option B|Option C',
-      },
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest({
+      stateOverrides: {
+        values: {
+          choices: 'Option A|Option B|Option C',
+        },
+      }
     });
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
   });
 
   afterEach(() => {
@@ -142,10 +145,11 @@ describe('Facts Provider', () => {
   let mockState: Partial<State>;
 
   beforeEach(() => {
-    // Use standardized mock factories
-    mockRuntime = createMockRuntime();
-    mockMessage = createMockMemory();
-    mockState = createMockState();
+    // Use setupActionTest for consistent test setup
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
 
     // Set up mock memories
     mockRuntime.getMemories = vi.fn().mockResolvedValue([
