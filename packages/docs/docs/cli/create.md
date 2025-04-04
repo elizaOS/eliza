@@ -20,7 +20,20 @@ npx elizaos create [options] [name]
 
 Both commands are functionally identical and support the same options.
 
-> **Note**: Due to how npm handles help flags, use `npx elizaos create --help` to view help information.
+## Getting Help
+
+Due to how npm handles flags, there are several ways to get help:
+
+```bash
+# Recommended way to view detailed help
+npx elizaos create --help
+
+# Quick help overview with npm create
+npm create eliza help
+
+# The standard --help flag with npm doesn't work as expected
+# as npm intercepts it and shows npm's own help
+```
 
 ## Options
 

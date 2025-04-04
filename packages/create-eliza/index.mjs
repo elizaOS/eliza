@@ -6,12 +6,40 @@ import fs from 'fs';
 
 const cliPath = (await import.meta.resolve('@elizaos/cli')).replace('file://', '');
 
+// Display help message
+function showHelp() {
+  console.log(`Usage: elizaos create [options] [name]
+
+Initialize a new project or plugin
+
+Arguments:
+  name               name for the project or plugin
+
+Options:
+  -d, --dir <dir>    installation directory (default: ".")
+  -y, --yes          skip confirmation (default: false)
+  -t, --type <type>  type of template to use (project or plugin) (default: "")
+  -h, --help         display help for command`);
+  process.exit(0);
+}
+
 // Get all command line arguments after the script name
 const rawArgs = process.argv.slice(2);
 let args = ['create'];
 
 // Reserved keywords that aren't paths
 const RESERVED_KEYWORDS = ['plugin', 'project', 'help'];
+
+// If first argument is "help", show help and exit
+if (rawArgs.length > 0 && rawArgs[0].toLowerCase() === 'help') {
+  showHelp();
+}
+
+// Display welcome message with version for context
+console.log(`
+ElizaOS Project Creator
+For help, run: npx elizaos create --help
+`);
 
 // Function to check if a string looks like a path or should be treated as one
 const isLikelyPath = (str) => {
