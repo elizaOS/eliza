@@ -1,32 +1,88 @@
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
 import { getPluginVersion } from './registry';
-import { isGlobalInstallation, getPackageManager, getInstallCommand } from './package-manager';
+import { isGlobalInstallation, getPackageManager, executeInstallation } from './package-manager';
+import path from 'node:path';
+import fs from 'node:fs';
 
 /**
- * Check if we're running via npx
- * @returns {boolean} - Whether we're running through npx
+ * Get the CLI's installation directory when running globally
+ * @returns {string|null} - The path to the CLI's directory or null if not found
  */
-function isRunningViaNpx(): boolean {
-  // Check if we're running from npx cache directory or if NPX_COMMAND is set
-  return (
-    process.env.npm_execpath?.includes('npx') ||
-    process.argv[1]?.includes('npx') ||
-    process.env.NPX_COMMAND !== undefined
-  );
+function getCliDirectory(): string | null {
+  try {
+    // Get the path to the running CLI script
+    const cliPath = process.argv[1];
+
+    // For global installations, this will be something like:
+    // /usr/local/lib/node_modules/@elizaos/cli/dist/index.js
+
+    if (cliPath.includes('node_modules/@elizaos/cli')) {
+      // Go up to the CLI package root
+      const cliDir = path.dirname(
+        cliPath.split('node_modules/@elizaos/cli')[0] + 'node_modules/@elizaos/cli'
+      );
+
+      // Verify this is actually the CLI directory
+      if (fs.existsSync(path.join(cliDir, 'package.json'))) {
+        return cliDir;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    logger.error('Failed to determine CLI directory:', error);
+    return null;
+  }
 }
 
 /**
- * Check if we're running via bunx
- * @returns {boolean} - Whether we're running through bunx
+ * Verifies if a plugin can be imported
+ * @param {string} repository - The plugin repository/package name to import
+ * @param {string} context - Description of the installation context for logging
+ * @returns {boolean} - Whether the import was successful
  */
-function isRunningViaBunx(): boolean {
-  // Check if we're running through bunx
-  return (
-    process.argv[1]?.includes('bunx') ||
-    process.env.BUN_INSTALL === '1' ||
-    process.argv[0]?.includes('bun')
-  );
+async function verifyPluginImport(repository: string, context: string): Promise<boolean> {
+  try {
+    await import(repository);
+    logger.info(`Successfully installed and verified plugin ${repository} ${context}`);
+    return true;
+  } catch (importError) {
+    logger.warn(`Plugin installed ${context} but cannot be imported: ${importError.message}`);
+    return false;
+  }
+}
+
+/**
+ * Attempts to install a plugin in a specific directory
+ * @param {string} repository - The plugin repository to install
+ * @param {string} repoUrl - Cleaned repository URL
+ * @param {string} versionString - Version string for installation
+ * @param {boolean} useGlobalFlag - Whether to use the global flag
+ * @param {string} directory - Directory to install in
+ * @param {string} context - Description of the installation context for logging
+ * @returns {boolean} - Whether the installation and import verification was successful
+ */
+async function attemptInstallation(
+  repository: string,
+  repoUrl: string,
+  versionString: string,
+  useGlobalFlag: boolean,
+  directory: string,
+  context: string
+): Promise<boolean> {
+  logger.info(`Attempting to install plugin ${context}...`);
+
+  try {
+    // Use centralized installation function
+    await executeInstallation(repoUrl, versionString, useGlobalFlag, directory);
+
+    // Verify the installation worked
+    return await verifyPluginImport(repository, context);
+  } catch (installError) {
+    logger.warn(`Failed to install plugin ${context}: ${installError.message}`);
+    return false;
+  }
 }
 
 /**
@@ -45,62 +101,71 @@ export async function installPlugin(
   // Mark this plugin as installed to ensure we don't get into an infinite loop
   logger.info(`Installing plugin: ${repository}`);
 
-  // Check if the CLI is running from a global installation
+  // Clean repository URL
+  let repoUrl = repository;
+  if (repoUrl.startsWith('git+')) {
+    repoUrl = repoUrl.substring(4);
+  }
+  if (repoUrl.endsWith('.git')) {
+    repoUrl = repoUrl.slice(0, -4);
+  }
+
+  // Get installation context info
   const isGlobal = isGlobalInstallation();
+  const cliDir = isGlobal ? getCliDirectory() : null;
 
-  // Decide which package manager to use
-  const packageManager = getPackageManager();
+  // Get the version string for installation
+  let versionString = '';
 
-  if (isGlobal) {
-    logger.info(`Detected global CLI installation, installing plugin globally...`);
-  }
-
-  logger.debug(`Using package manager: ${packageManager}`);
-
-  // Prepare the install command based on package manager and whether it's global
-  const installCommand = getInstallCommand(packageManager, isGlobal);
-
+  // If we have a version to look up in the registry
   if (version) {
-    try {
-      await execa(packageManager, [...installCommand, `${repository}@${version}`], {
-        cwd,
-        stdio: 'inherit',
-      });
-      return true;
-    } catch (error) {
-      logger.debug(`Plugin not found on npm, trying to install from registry...`);
-    }
-  }
-  try {
-    // Clean repository URL
-    let repoUrl = repository;
-    if (repoUrl.startsWith('git+')) {
-      repoUrl = repoUrl.substring(4);
-    }
-    if (repoUrl.endsWith('.git')) {
-      repoUrl = repoUrl.slice(0, -4);
-    }
-
-    // Get specific version if requested
-    let installVersion = '';
-    if (version) {
-      const resolvedVersion = await getPluginVersion(repoUrl, version);
-      if (!resolvedVersion) {
-        logger.error(`Version ${version} not found for plugin ${repoUrl}`);
-        return false;
+    if (version.startsWith('v')) {
+      versionString = `@${version}`;
+    } else {
+      try {
+        const resolvedVersion = await getPluginVersion(repoUrl, version);
+        if (resolvedVersion) {
+          versionString = `#${resolvedVersion}`;
+        } else {
+          versionString = `@${version}`;
+        }
+      } catch (error) {
+        // Continue with the direct version if registry lookup fails
+        versionString = `@${version}`;
       }
-      installVersion = `#${resolvedVersion}`;
     }
-
-    // Install using the appropriate package manager
-    await execa(packageManager, [...installCommand, `${repoUrl}${installVersion}`], {
-      cwd,
-      stdio: 'inherit',
-    });
-
-    return true;
-  } catch (error) {
-    logger.error(`Failed to install plugin ${repository}:`, error);
-    return false;
   }
+
+  // Attempt local installation first (preferred approach)
+  if (await attemptInstallation(repository, repoUrl, versionString, false, cwd, 'locally')) {
+    return true;
+  }
+
+  // If local installation failed and we're running globally, try CLI directory installation
+  if (
+    isGlobal &&
+    cliDir &&
+    (await attemptInstallation(
+      repository,
+      repoUrl,
+      versionString,
+      false,
+      cliDir,
+      'in CLI directory'
+    ))
+  ) {
+    return true;
+  }
+
+  // Last resort: try global installation
+  if (
+    isGlobal &&
+    (await attemptInstallation(repository, repoUrl, versionString, true, cwd, 'globally'))
+  ) {
+    return true;
+  }
+
+  // If we got here, all installation attempts failed
+  logger.error(`All installation attempts failed for plugin ${repository}`);
+  return false;
 }
