@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt, handlePluginImporting } from './index';
+import { decryptSecret, getSalt } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -306,18 +306,6 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Load and register plugins from character configuration
     const pluginRegistrationPromises = [];
-
-    if (this.character.plugins) {
-      const characterPlugins = (await handlePluginImporting(this.character.plugins)) as Plugin[];
-
-      // Register each character plugin
-      for (const plugin of characterPlugins) {
-        if (plugin && !registeredPluginNames.has(plugin.name)) {
-          registeredPluginNames.add(plugin.name);
-          pluginRegistrationPromises.push(await this.registerPlugin(plugin));
-        }
-      }
-    }
 
     // Register plugins that were provided in the constructor
     for (const plugin of [...this.plugins]) {
