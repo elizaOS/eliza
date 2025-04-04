@@ -132,51 +132,137 @@ export async function startAgent(
     logger.debug('Checking if plugin is installed: ', plugin);
     let pluginModule: any;
 
-    // Try to load the plugin
+    // Try to load the plugin using multiple strategies
     try {
-      // For local plugins, use regular import
-      pluginModule = await import(plugin);
-      logger.debug(`Successfully loaded plugin ${plugin}`);
-    } catch (error) {
-      logger.info(`Plugin ${plugin} not installed, installing into ${process.cwd()}...`);
-      await installPlugin(plugin, process.cwd(), version);
-
+      // Strategy 1: Direct import (works if Node.js can resolve it correctly)
       try {
-        // For local plugins, use regular import
         pluginModule = await import(plugin);
-        logger.debug(`Successfully loaded plugin ${plugin} after installation`);
-      } catch (importError) {
-        // Try to import from the project's node_modules directory
+        logger.debug(`Successfully loaded plugin ${plugin} via direct import`);
+      } catch (directImportError) {
+        logger.debug(`Direct import failed for plugin ${plugin}: ${directImportError.message}`);
+
+        // Strategy 2: Try explicit path in global node_modules
         try {
-          const projectNodeModulesPath = path.join(process.cwd(), 'node_modules', plugin);
-          logger.debug(`Attempting to import from project path: ${projectNodeModulesPath}`);
+          const globalNodeModulesPath = path.join('/usr/local/lib/node_modules', plugin);
+          pluginModule = await import(globalNodeModulesPath);
+          logger.debug(`Loaded plugin ${plugin} from global node_modules path`);
+        } catch (globalError) {
+          logger.debug(`Global node_modules import failed: ${globalError.message}`);
 
-          // Read the package.json to find the entry point
-          const packageJsonPath = path.join(projectNodeModulesPath, 'package.json');
-          if (fs.existsSync(packageJsonPath)) {
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-            const entryPoint = packageJson.module || packageJson.main || 'dist/index.js';
-            const fullEntryPath = path.join(projectNodeModulesPath, entryPoint);
+          // Strategy 3: Try local node_modules explicit path
+          try {
+            const localNodeModulesPath = path.join(process.cwd(), 'node_modules', plugin);
+            pluginModule = await import(localNodeModulesPath);
+            logger.debug(`Loaded plugin ${plugin} from local node_modules path`);
+          } catch (localError) {
+            logger.debug(`Local node_modules import failed: ${localError.message}`);
 
-            logger.debug(`Found entry point in package.json: ${entryPoint}`);
-            logger.debug(`Importing from: ${fullEntryPath}`);
+            // Strategy 4: Try to find package.json and load entry point
+            try {
+              const localPackageJsonPath = path.join(
+                process.cwd(),
+                'node_modules',
+                plugin,
+                'package.json'
+              );
+              if (fs.existsSync(localPackageJsonPath)) {
+                const packageJson = JSON.parse(fs.readFileSync(localPackageJsonPath, 'utf-8'));
+                const entryPoint = packageJson.module || packageJson.main || 'dist/index.js';
+                const fullEntryPath = path.join(process.cwd(), 'node_modules', plugin, entryPoint);
 
-            pluginModule = await import(fullEntryPath);
-            logger.debug(`Successfully loaded plugin from project node_modules: ${plugin}`);
-          } else {
-            // Fallback to a common pattern if package.json doesn't exist
-            const commonEntryPath = path.join(projectNodeModulesPath, 'dist/index.js');
-            logger.debug(`No package.json found, trying common entry point: ${commonEntryPath}`);
-            pluginModule = await import(commonEntryPath);
-            logger.debug(`Successfully loaded plugin from common entry point: ${plugin}`);
+                pluginModule = await import(fullEntryPath);
+                logger.debug(`Loaded plugin ${plugin} via package.json entry point: ${entryPoint}`);
+              } else {
+                throw new Error(`No package.json found for ${plugin}`);
+              }
+            } catch (packageJsonError) {
+              logger.debug(`Package.json entry point import failed: ${packageJsonError.message}`);
+
+              // Strategy 5: Last resort - try common dist pattern
+              try {
+                const commonDistPath = path.join(
+                  process.cwd(),
+                  'node_modules',
+                  plugin,
+                  'dist/index.js'
+                );
+                pluginModule = await import(commonDistPath);
+                logger.debug(`Loaded plugin ${plugin} via common dist pattern`);
+              } catch (distError) {
+                // If we got here, we need to try installing the plugin
+                throw new Error(
+                  `All import attempts failed, will try installing: ${distError.message}`
+                );
+              }
+            }
           }
-        } catch (projectImportError) {
-          logger.error(`Failed to install plugin ${plugin}: ${importError}`);
-          logger.error(
-            `Also failed to import from project node_modules: ${projectImportError.message}`
-          );
         }
       }
+    } catch (allImportError) {
+      // If all import strategies failed, try installing and then import again
+      logger.info(`Plugin ${plugin} not available, installing into ${process.cwd()}...`);
+      try {
+        await installPlugin(plugin, process.cwd(), version);
+
+        // Try importing again after installation using the same multi-strategy approach
+        try {
+          // After installation retry direct import first
+          pluginModule = await import(plugin);
+          logger.debug(`Successfully loaded plugin ${plugin} after installation via direct import`);
+        } catch (postInstallDirectError) {
+          // Try from local node_modules
+          try {
+            const localNodeModulesPath = path.join(process.cwd(), 'node_modules', plugin);
+            pluginModule = await import(localNodeModulesPath);
+            logger.debug(`Loaded plugin ${plugin} after installation from local node_modules`);
+          } catch (postInstallLocalError) {
+            // Try package.json approach
+            try {
+              const packageJsonPath = path.join(
+                process.cwd(),
+                'node_modules',
+                plugin,
+                'package.json'
+              );
+              if (fs.existsSync(packageJsonPath)) {
+                const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+                const entryPoint = packageJson.module || packageJson.main || 'dist/index.js';
+                const fullEntryPath = path.join(process.cwd(), 'node_modules', plugin, entryPoint);
+
+                pluginModule = await import(fullEntryPath);
+                logger.debug(
+                  `Loaded plugin ${plugin} after installation via package.json entry point`
+                );
+              } else {
+                // Final attempt - common dist pattern
+                const commonDistPath = path.join(
+                  process.cwd(),
+                  'node_modules',
+                  plugin,
+                  'dist/index.js'
+                );
+                pluginModule = await import(commonDistPath);
+                logger.debug(`Loaded plugin ${plugin} after installation via common dist pattern`);
+              }
+            } catch (finalError) {
+              logger.error(
+                `Failed to import plugin ${plugin} after installation: ${finalError.message}`
+              );
+              // Continue to next plugin
+              continue;
+            }
+          }
+        }
+      } catch (installError) {
+        logger.error(`Failed to install plugin ${plugin}: ${installError}`);
+        // Continue to next plugin if installation fails
+        continue;
+      }
+    }
+
+    if (!pluginModule) {
+      logger.error(`Failed to load plugin ${plugin}`);
+      continue;
     }
 
     // Process the plugin to get the actual plugin object

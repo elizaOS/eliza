@@ -44,11 +44,69 @@ function getCliDirectory(): string | null {
  */
 async function verifyPluginImport(repository: string, context: string): Promise<boolean> {
   try {
-    await import(repository);
-    logger.info(`Successfully installed and verified plugin ${repository} ${context}`);
-    return true;
-  } catch (importError) {
-    logger.warn(`Plugin installed ${context} but cannot be imported: ${importError.message}`);
+    // First try: direct import
+    let directImportError;
+    try {
+      await import(repository);
+      logger.info(`Successfully installed and verified plugin ${repository} ${context}`);
+      return true;
+    } catch (error) {
+      directImportError = error;
+      logger.debug(`Direct import failed: ${error.message}`);
+
+      // Second try: check for explicit paths in node_modules
+      try {
+        // Try global node_modules
+        const globalNodeModulesPath = path.join('/usr/local/lib/node_modules', repository);
+        await import(globalNodeModulesPath);
+        logger.info(`Successfully loaded plugin from global node_modules: ${repository}`);
+        return true;
+      } catch (globalNodeModulesError) {
+        logger.debug(`Global node_modules import failed: ${globalNodeModulesError.message}`);
+
+        // Try local node_modules
+        try {
+          const localNodeModulesPath = path.join(process.cwd(), 'node_modules', repository);
+          await import(localNodeModulesPath);
+          logger.info(`Successfully loaded plugin from local node_modules: ${repository}`);
+          return true;
+        } catch (localNodeModulesError) {
+          logger.debug(`Local node_modules import failed: ${localNodeModulesError.message}`);
+
+          // Try to find package.json and load main file
+          try {
+            const localPackageJsonPath = path.join(
+              process.cwd(),
+              'node_modules',
+              repository,
+              'package.json'
+            );
+            if (fs.existsSync(localPackageJsonPath)) {
+              const packageJson = JSON.parse(fs.readFileSync(localPackageJsonPath, 'utf-8'));
+              const entryPoint = packageJson.module || packageJson.main || 'dist/index.js';
+              const fullEntryPath = path.join(
+                process.cwd(),
+                'node_modules',
+                repository,
+                entryPoint
+              );
+
+              await import(fullEntryPath);
+              logger.info(`Successfully loaded plugin via package.json entry point: ${repository}`);
+              return true;
+            }
+          } catch (packageJsonError) {
+            logger.debug(`Package.json import failed: ${packageJsonError.message}`);
+          }
+        }
+      }
+    }
+
+    // If we got here, all import attempts failed
+    logger.warn(`Plugin installed ${context} but cannot be imported: ${directImportError.message}`);
+    return false;
+  } catch (error) {
+    logger.warn(`Plugin installed ${context} but cannot be imported: ${error.message}`);
     return false;
   }
 }
