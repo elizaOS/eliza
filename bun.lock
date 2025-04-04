@@ -6,6 +6,7 @@
       "dependencies": {
         "@anthropic-ai/sdk": "^0.39.0",
         "@babel/generator": "^7.26.10",
+        "@elizaos/plugin-local-ai": "1.0.0-beta.18",
         "@hapi/shot": "^6.0.1",
         "@types/hapi": "^18.0.14",
         "@types/hapi__shot": "^6.0.0",
@@ -88,7 +89,7 @@
     },
     "packages/cli": {
       "name": "@elizaos/cli",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "bin": {
         "elizaos": "./dist/index.js",
       },
@@ -100,10 +101,10 @@
       "devDependencies": {
         "@babel/core": "^7.22.1",
         "@babel/parser": "^7.22.6",
-        "@elizaos/core": "^1.0.0-beta.17",
-        "@elizaos/plugin-anthropic": "^1.0.0-beta.17",
-        "@elizaos/plugin-openai": "^1.0.0-beta.17",
-        "@elizaos/plugin-sql": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
+        "@elizaos/plugin-anthropic": "^1.0.0-beta.18",
+        "@elizaos/plugin-openai": "^1.0.0-beta.18",
+        "@elizaos/plugin-sql": "^1.0.0-beta.18",
         "@types/babel__core": "^7.20.1",
         "@types/diff": "^5.0.3",
         "@types/fs-extra": "^11.0.1",
@@ -200,7 +201,7 @@
     },
     "packages/core": {
       "name": "@elizaos/core",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@types/hapi__shot": "^6.0.0",
         "buffer": "^6.0.3",
@@ -244,12 +245,12 @@
     },
     "packages/create-eliza": {
       "name": "create-eliza",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "bin": {
         "create-eliza": "index.mjs",
       },
       "dependencies": {
-        "@elizaos/cli": "^1.0.0-beta.17",
+        "@elizaos/cli": "^1.0.0-beta.18",
       },
       "devDependencies": {
         "prettier": "3.5.3",
@@ -289,10 +290,10 @@
     },
     "packages/plugin-anthropic": {
       "name": "@elizaos/plugin-anthropic",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@ai-sdk/anthropic": "^1.1.6",
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "fastembed": "^1.0.0",
         "tsup": "8.4.0",
       },
@@ -302,9 +303,9 @@
     },
     "packages/plugin-bootstrap": {
       "name": "@elizaos/plugin-bootstrap",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
       },
       "devDependencies": {
         "@types/node": "22.8.4",
@@ -319,9 +320,9 @@
     },
     "packages/plugin-browser": {
       "name": "@elizaos/plugin-browser",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "@types/uuid": "10.0.0",
         "capsolver-npm": "2.0.2",
         "fluent-ffmpeg": "2.1.3",
@@ -342,7 +343,7 @@
     },
     "packages/plugin-discord": {
       "name": "@elizaos/plugin-discord",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@discordjs/opus": "^0.10.0",
         "@discordjs/rest": "2.4.0",
@@ -365,9 +366,9 @@
     },
     "packages/plugin-elevenlabs": {
       "name": "@elizaos/plugin-elevenlabs",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "tsup": "8.4.0",
       },
       "devDependencies": {
@@ -376,9 +377,9 @@
     },
     "packages/plugin-evm": {
       "name": "@elizaos/plugin-evm",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
-        "@elizaos/plugin-tee": "^1.0.0-beta.17",
+        "@elizaos/plugin-tee": "^1.0.0-beta.18",
         "@hapi/shot": "^6.0.1",
         "@lifi/data-types": "5.15.5",
         "@lifi/sdk": "3.4.1",
@@ -401,7 +402,7 @@
     },
     "packages/plugin-farcaster": {
       "name": "@elizaos/plugin-farcaster",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@neynar/nodejs-sdk": "^2.0.3",
         "lru-cache": "^11.1.0",
@@ -413,11 +414,11 @@
     },
     "packages/plugin-groq": {
       "name": "@elizaos/plugin-groq",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@ai-sdk/groq": "^1.1.9",
         "@ai-sdk/ui-utils": "1.1.9",
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "ai": "^4.1.25",
         "js-tiktoken": "^1.0.18",
         "tsup": "8.4.0",
@@ -428,9 +429,9 @@
     },
     "packages/plugin-local-ai": {
       "name": "@elizaos/plugin-local-ai",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "@huggingface/hub": "^1.0.1",
         "@huggingface/inference": "^3.3.4",
         "@huggingface/transformers": "^3.3.3",
@@ -458,10 +459,10 @@
     },
     "packages/plugin-ollama": {
       "name": "@elizaos/plugin-ollama",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@ai-sdk/ui-utils": "1.1.9",
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "ai": "^4.1.25",
         "js-tiktoken": "^1.0.18",
         "ollama-ai-provider": "^1.2.0",
@@ -473,11 +474,11 @@
     },
     "packages/plugin-openai": {
       "name": "@elizaos/plugin-openai",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@ai-sdk/openai": "^1.1.9",
         "@ai-sdk/ui-utils": "1.1.9",
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "ai": "^4.1.25",
         "js-tiktoken": "^1.0.18",
         "tsup": "8.4.0",
@@ -488,11 +489,11 @@
     },
     "packages/plugin-pdf": {
       "name": "@elizaos/plugin-pdf",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "@types/uuid": "10.0.0",
         "capsolver-npm": "2.0.2",
         "fluent-ffmpeg": "2.1.3",
@@ -513,7 +514,7 @@
     },
     "packages/plugin-redpill": {
       "name": "@elizaos/plugin-redpill",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@ai-sdk/openai": "^1.1.9",
         "@ai-sdk/ui-utils": "1.1.9",
@@ -528,7 +529,7 @@
     },
     "packages/plugin-solana": {
       "name": "@elizaos/plugin-solana",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@elizaos/core": "^1.0.0-beta.16",
         "@solana/spl-token": "0.4.9",
@@ -549,10 +550,10 @@
     },
     "packages/plugin-sql": {
       "name": "@elizaos/plugin-sql",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@electric-sql/pglite": "^0.2.17",
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "@types/pg": "8.11.10",
         "drizzle-kit": "^0.30.4",
         "drizzle-orm": "^0.39.1",
@@ -582,11 +583,11 @@
     },
     "packages/plugin-storage-s3": {
       "name": "@elizaos/plugin-storage-s3",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "@types/uuid": "10.0.0",
         "capsolver-npm": "2.0.2",
         "fluent-ffmpeg": "2.1.3",
@@ -607,9 +608,9 @@
     },
     "packages/plugin-tee": {
       "name": "@elizaos/plugin-tee",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "@phala/dstack-sdk": "0.1.11",
         "@solana/web3.js": "1.98.0",
         "viem": "2.23.11",
@@ -622,7 +623,7 @@
     },
     "packages/plugin-telegram": {
       "name": "@elizaos/plugin-telegram",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@telegraf/types": "7.1.0",
         "strip-literal": "^3.0.0",
@@ -637,7 +638,7 @@
     },
     "packages/plugin-twitter": {
       "name": "@elizaos/plugin-twitter",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@elizaos/core": "^1.0.0-beta.16",
         "@roamhq/wrtc": "^0.8.0",
@@ -665,11 +666,11 @@
     },
     "packages/plugin-video-understanding": {
       "name": "@elizaos/plugin-video-understanding",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.705.0",
         "@aws-sdk/s3-request-presigner": "^3.705.0",
-        "@elizaos/core": "^1.0.0-beta.17",
+        "@elizaos/core": "^1.0.0-beta.18",
         "@types/uuid": "10.0.0",
         "capsolver-npm": "2.0.2",
         "fluent-ffmpeg": "2.1.3",
@@ -708,7 +709,7 @@
     },
     "packages/the-org": {
       "name": "@elizaos/the-org",
-      "version": "1.0.0-beta.17",
+      "version": "1.0.0-beta.18",
       "dependencies": {
         "@elizaos/cli": "^1.0.0-beta.16",
         "@elizaos/core": "^1.0.0-beta.16",
