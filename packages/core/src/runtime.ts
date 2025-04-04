@@ -281,13 +281,13 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     if (plugin.services) {
-      plugin.services.forEach((service) => {
+      for (const service of plugin.services) {
         if (this.isInitialized) {
-          this.registerService(service);
+          await this.registerService(service);
         } else {
           this.servicesInitQueue.add(service);
         }
-      });
+      }
     }
   }
 
