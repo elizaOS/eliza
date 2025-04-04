@@ -8,9 +8,19 @@ The `create` command scaffolds new ElizaOS projects or plugins with an interacti
 
 ## Usage
 
+You can use this command in two equivalent ways:
+
 ```bash
-elizaos create [options]
+# Using npm create
+npm create eliza [options] [name]
+
+# Using npx directly
+npx elizaos create [options] [name]
 ```
+
+Both commands are functionally identical and support the same options.
+
+> **Note**: Due to how npm handles help flags, use `npx elizaos create --help` to view help information.
 
 ## Options
 
@@ -20,6 +30,29 @@ elizaos create [options]
 | `--yes`, `-y`  | Skip confirmation prompts                                              |
 | `--type`, `-t` | Type to create: `project` or `plugin`                                  |
 
+## Directory Handling
+
+When using npm create, the tool intelligently detects paths and directory names:
+
+```bash
+# All these commands create a project in the specified directory:
+
+# With -d flag (explicit)
+npm create eliza -d ./my-dir
+
+# With path-like arguments (auto-detected)
+npm create eliza ./my-dir
+
+# With regular directory names (also auto-detected)
+npm create eliza my-project-dir
+
+# With plugin type and directory
+npm create eliza plugin ./plugins-dir/my-plugin
+npm create eliza plugin my-plugin-dir
+```
+
+The CLI automatically treats arguments as directory paths unless they are recognized keywords like "plugin" or "project".
+
 ## Project Types
 
 ### Project
@@ -27,7 +60,11 @@ elizaos create [options]
 Creates a standard ElizaOS project with agent configuration and knowledge setup.
 
 ```bash
-npx @elizaos/cli create --type project
+# Using npm create
+npm create eliza -t project
+
+# Using npx
+npx elizaos create -t project
 ```
 
 Project structure:
@@ -45,7 +82,14 @@ my-agent-project/
 Creates a plugin that extends ElizaOS functionality.
 
 ```bash
-npx @elizaos/cli create --type plugin
+# Using npm create
+npm create eliza -t plugin
+
+# Using npx
+npx elizaos create -t plugin
+
+# Shorthand syntax - only with npm create
+npm create eliza plugin my-plugin-name
 ```
 
 Plugin structure:
@@ -71,27 +115,51 @@ The command launches an interactive wizard when run without all options:
 ### Creating a basic project
 
 ```bash
-npx @elizaos/cli create
+# Using npm create
+npm create eliza
+
+# Using npx
+npx elizaos create
 # Then follow the interactive prompts
 ```
 
 ### Creating a plugin
 
 ```bash
-npx @elizaos/cli create --type plugin
+# Using npm create
+npm create eliza -t plugin
+# Or with shorthand syntax
+npm create eliza plugin my-plugin-name
+
+# Using npx
+npx elizaos create -t plugin
 # Then follow the interactive prompts
 ```
 
 ### Specifying a directory
 
 ```bash
-npx @elizaos/cli create --dir ./my-projects/new-agent
+# Using npm create (standard flag format)
+npm create eliza -d ./my-projects/new-agent
+
+# Using npm create (path auto-detection)
+npm create eliza ./my-projects/new-agent
+
+# Using npm create with plugin type
+npm create eliza plugin ./my-projects/my-plugin
+
+# Using npx
+npx elizaos create --dir ./my-projects/new-agent
 ```
 
 ### Skipping confirmation prompts
 
 ```bash
-npx @elizaos/cli create --yes
+# Using npm create
+npm create eliza -y
+
+# Using npx
+npx elizaos create --yes
 ```
 
 ## Next Steps
