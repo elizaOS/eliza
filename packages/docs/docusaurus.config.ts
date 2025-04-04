@@ -248,13 +248,36 @@ const config = {
         sitemap: {
           lastmod: 'date',
           changefreq: 'weekly',
-          priority: 0.5,
           ignorePatterns: ['/tags/**'],
           filename: 'sitemap.xml',
           createSitemapItems: async (params) => {
             const { defaultCreateSitemapItems, ...rest } = params;
             const items = await defaultCreateSitemapItems(rest);
-            return items.filter((item) => !item.url.includes('/page/'));
+
+            return items
+              .filter((item) => !item.url.includes('/page/'))
+              .map((item) => {
+                let priority = 0.5;
+
+                if (item.url === '/') {
+                  priority = 1.0; // homepage
+                } else if (item.url.startsWith('/docs') || item.url.startsWith('/packages')) {
+                  priority = 0.8; // important docs
+                } else if (item.url.startsWith('/api') || item.url.startsWith('/rest')) {
+                  priority = 0.7; // API reference
+                } else if (item.url.startsWith('/blog')) {
+                  priority = 0.6; // blog updates
+                } else if (item.url.startsWith('/news')) {
+                  priority = 0.6; // news posts
+                } else if (item.url.startsWith('/community')) {
+                  priority = 0.4; // community contributions
+                }
+
+                return {
+                  ...item,
+                  priority,
+                };
+              });
           },
         },
       },

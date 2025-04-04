@@ -4,12 +4,12 @@ sidebar_position: 2
 
 # Create Command
 
-The `create` command is used to scaffold new ElizaOS projects or plugins. It guides you through an interactive setup process to generate the appropriate files and configurations.
+The `create` command scaffolds new ElizaOS projects or plugins with an interactive setup process.
 
 ## Usage
 
 ```bash
-npx @elizaos/cli create [options]
+elizaos create [options]
 ```
 
 ## Options
@@ -24,13 +24,13 @@ npx @elizaos/cli create [options]
 
 ### Project
 
-A standard ElizaOS project with agent configuration, knowledge setup, and essential components.
+Creates a standard ElizaOS project with agent configuration and knowledge setup.
 
 ```bash
 npx @elizaos/cli create --type project
 ```
 
-This creates a complete project structure:
+Project structure:
 
 ```
 my-agent-project/
@@ -42,13 +42,13 @@ my-agent-project/
 
 ### Plugin
 
-A plugin that extends ElizaOS functionality with custom actions, services, providers, or other extensions.
+Creates a plugin that extends ElizaOS functionality.
 
 ```bash
 npx @elizaos/cli create --type plugin
 ```
 
-This creates a plugin structure:
+Plugin structure:
 
 ```
 my-plugin/
@@ -59,12 +59,12 @@ my-plugin/
 
 ## Interactive Process
 
-When run without all options specified, the command launches an interactive wizard:
+The command launches an interactive wizard when run without all options:
 
-1. **Project Type**: If not specified, select between project or plugin
-2. **Project Name**: Enter a name for your project or plugin
-3. **Database Selection**: For projects, choose your database (PGLite or Postgres)
-4. **Database Configuration**: For Postgres, you'll be prompted for your database URL
+1. **Project Type**: Select between project or plugin
+2. **Project Name**: Enter a name for your project/plugin
+3. **Database Selection**: Choose database (PGLite or Postgres)
+4. **Database Configuration**: Configure Postgres if selected
 
 ## Examples
 
@@ -94,49 +94,9 @@ npx @elizaos/cli create --dir ./my-projects/new-agent
 npx @elizaos/cli create --yes
 ```
 
-## After Creation
+## Next Steps
 
-Once your project is created:
-
-1. Navigate to the project directory:
-
-   ```bash
-   cd my-project-name
-   ```
-
-2. Start your project:
-
-   ```bash
-   npx @elizaos/cli start
-   ```
-
-   Or start in development mode:
-
-   ```bash
-   npx @elizaos/cli dev
-   ```
-
-3. Visit `http://localhost:3000` to view your project in the browser
-
-For plugins, you can:
-
-1. Start development:
-
-   ```bash
-   npx @elizaos/cli start
-   ```
-
-2. Test your plugin:
-
-   ```bash
-   npx @elizaos/cli test
-   ```
-
-3. Publish your plugin:
-
-   ```bash
-   npx @elizaos/cli plugins publish
-   ```
+After creation, see the [Getting Started Guide](../getting-started.md) for next steps.
 
 ## Related Commands
 
