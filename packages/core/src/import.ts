@@ -36,9 +36,15 @@ export async function handlePluginImporting(plugins: string[]) {
             .replace('@elizaos/plugin-', '')
             .replace('@elizaos-plugins/', '')
             .replace(/-./g, (x) => x[1].toUpperCase())}Plugin`; // Assumes plugin function is camelCased with Plugin suffix
+
+          // Adding exception for local-ai
+          if (functionName === 'localAiPlugin') {
+            return importedPlugin['localAIPlugin'];
+          }
+
           return importedPlugin.default || importedPlugin[functionName];
         } catch (importError) {
-          logger.error(`Failed to import plugin: ${plugin}`, importError);
+          logger.error(`Failed to import plugin: ${plugin} during runtime dynamic import`);
           return []; // Return null for failed imports
         }
       })
