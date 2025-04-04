@@ -1,6 +1,33 @@
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
 import { getPluginVersion } from './registry';
+import { isGlobalInstallation, getPackageManager, getInstallCommand } from './package-manager';
+
+/**
+ * Check if we're running via npx
+ * @returns {boolean} - Whether we're running through npx
+ */
+function isRunningViaNpx(): boolean {
+  // Check if we're running from npx cache directory or if NPX_COMMAND is set
+  return (
+    process.env.npm_execpath?.includes('npx') ||
+    process.argv[1]?.includes('npx') ||
+    process.env.NPX_COMMAND !== undefined
+  );
+}
+
+/**
+ * Check if we're running via bunx
+ * @returns {boolean} - Whether we're running through bunx
+ */
+function isRunningViaBunx(): boolean {
+  // Check if we're running through bunx
+  return (
+    process.argv[1]?.includes('bunx') ||
+    process.env.BUN_INSTALL === '1' ||
+    process.argv[0]?.includes('bun')
+  );
+}
 
 /**
  * Asynchronously installs a plugin to a specified directory.
@@ -18,15 +45,30 @@ export async function installPlugin(
   // Mark this plugin as installed to ensure we don't get into an infinite loop
   logger.info(`Installing plugin: ${repository}`);
 
+  // Check if the CLI is running from a global installation
+  const isGlobal = isGlobalInstallation();
+
+  // Decide which package manager to use
+  const packageManager = getPackageManager();
+
+  if (isGlobal) {
+    logger.info(`Detected global CLI installation, installing plugin globally...`);
+  }
+
+  logger.debug(`Using package manager: ${packageManager}`);
+
+  // Prepare the install command based on package manager and whether it's global
+  const installCommand = getInstallCommand(packageManager, isGlobal);
+
   if (version) {
     try {
-      await execa('bun', ['add', `${repository}@${version}`], {
+      await execa(packageManager, [...installCommand, `${repository}@${version}`], {
         cwd,
         stdio: 'inherit',
       });
       return true;
     } catch (error) {
-      logger.debug('Plugin not found on npm, trying to install from registry...');
+      logger.debug(`Plugin not found on npm, trying to install from registry...`);
     }
   }
   try {
@@ -50,15 +92,15 @@ export async function installPlugin(
       installVersion = `#${resolvedVersion}`;
     }
 
-    // Install using bun
-    await execa('bun', ['add', `${repoUrl}${installVersion}`], {
+    // Install using the appropriate package manager
+    await execa(packageManager, [...installCommand, `${repoUrl}${installVersion}`], {
       cwd,
       stdio: 'inherit',
     });
 
     return true;
   } catch (error) {
-    logger.error('Failed to install plugin:', error);
+    logger.error(`Failed to install plugin ${repository}:`, error);
     return false;
   }
 }
