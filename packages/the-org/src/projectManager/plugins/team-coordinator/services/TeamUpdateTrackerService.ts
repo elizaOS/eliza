@@ -8,10 +8,12 @@ import {
 } from '@elizaos/core';
 import type { Channel, Client, GuildChannel, TextChannel, VoiceChannel } from 'discord.js';
 import { fetchCheckInSchedules } from '../actions/listCheckInSchedules';
-import { CheckInSchedule } from './CheckInService';
+import type { CheckInSchedule } from '../../../types';
 
 export class TeamUpdateTrackerService extends Service {
   private client: Client | null = null;
+
+  private telegramBot: any = null;
   private isJobRunning: boolean = false;
   static serviceType = 'team-update-tracker-service';
   capabilityDescription =
@@ -27,6 +29,8 @@ export class TeamUpdateTrackerService extends Service {
     logger.info('Starting Discord Channel Service');
     try {
       const discordService = this.runtime.getService('discord');
+      const telegramService = this.runtime.getService('telegram');
+
       if (discordService?.client) {
         logger.info('Discord service found, client available');
         this.client = discordService.client;
@@ -35,6 +39,16 @@ export class TeamUpdateTrackerService extends Service {
           'Discord service not found or client not available - will try to connect later'
         );
         this.setupDiscordRetry();
+      }
+
+      if (telegramService?.bot) {
+        logger.info('Telegram service found, client available');
+        this.telegramBot = telegramService.bot;
+      } else {
+        logger.warn(
+          'Telegram service not found or client not available - will try to connect later'
+        );
+        this.setupTelegramRetry();
       }
     } catch (error) {
       logger.error('Error initializing Discord Channel Service:', error);
@@ -50,22 +64,87 @@ export class TeamUpdateTrackerService extends Service {
           logger.info('Discord service now available, connecting client');
           this.client = discordService.client;
 
-          try {
-            const text = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-              prompt: 'Discord service connected successfully', // Added default prompt
-              stopSequences: [],
-            });
-            logger.info('Discord service connection test:', text);
-          } catch (error) {
-            logger.error('Error testing Discord service connection:', error);
-          }
-
           clearInterval(intervalId);
         } else {
           logger.debug('Discord service still not available, will retry');
         }
       } catch (error) {
         logger.debug('Error checking for Discord service:', error);
+      }
+    }, 15000);
+  }
+
+  private setupTelegramRetry() {
+    logger.info('Setting up retry for Telegram service connection');
+    const intervalId = setInterval(async () => {
+      try {
+        const telegram = this.runtime.getService('telegram') as any;
+        if (telegram?.bot) {
+          logger.info('Telegram service now available, connecting bot');
+          // this is a Telegraf instance
+          this.telegramBot = telegram.bot;
+
+          logger.info('Telegram bot found, fetching joined groups');
+
+          try {
+            const updates = await this.telegramBot.telegram.getMe();
+            logger.info('Bot info:', updates);
+
+            // Get all chats the bot is a member of
+            logger.info('Fetching all Telegram chats...');
+            // channel id : -1002524701365
+            const channelId = '-1002524701365';
+            logger.info('Fetching topics for channel:', channelId);
+            try {
+              const topics = await this.telegramBot.telegram.getChatAdministrators(channelId);
+              logger.info('Channel topics:', topics);
+              // 2. You can get the total count of members
+              const memberCount = await this.telegramBot.telegram.getChatMembersCount(channelId);
+              console.log(`Total members in channel: ${memberCount}`);
+
+              // try {
+              //   logger.info('Attempting to send message to samarth0x in channel');
+              //   try {
+              //     // To message in a channel where samarth0x is present
+              //     const sendMessage = await this.telegramBot.telegram.sendMessage(
+              //       channelId, // Using the channel ID where samarth0x is present
+              //       '@samarth0x hello can you share your updates?' // Mentioning the user in the message
+              //     );
+              //     logger.info(
+              //       'Message sent successfully in channel mentioning samarth0x:',
+              //       sendMessage
+              //     );
+              //   } catch (channelMsgError) {
+              //     logger.error('Error sending message in channel:', channelMsgError);
+
+              //     // Try direct message if channel message fails
+              //     try {
+              //       logger.info('Attempting direct message to @samarth0x');
+              //       const directMessage = await this.telegramBot.telegram.sendMessage(
+              //         '@samarth0x',
+              //         'hello can you share your updates?'
+              //       );
+              //       logger.info('Direct message sent successfully to @samarth0x:', directMessage);
+              //     } catch (directMsgError) {
+              //       logger.error('Error sending direct message to @samarth0x:', directMsgError);
+              //     }
+              //   }
+              // }
+            } catch (error) {
+              logger.error('Error sending Telegram message:', error);
+              // The error in logs shows "chat not found" which might mean we need a chat ID instead of username
+              logger.info('Note: Telegram might require a numeric chat ID instead of a username');
+            }
+          } catch (err) {
+            logger.error('Error fetching Telegram groups:', err);
+          }
+
+          clearInterval(intervalId);
+        } else {
+          logger.debug('Telegram service still not available, will retry');
+        }
+      } catch (error) {
+        logger.debug('Error checking for Telegram service:', error);
       }
     }, 15000);
   }
@@ -182,7 +261,7 @@ export class TeamUpdateTrackerService extends Service {
               `**Next Steps**: What you plan to work on next\n` +
               `**Blockers**: Any issues preventing progress\n` +
               `**ETA**: Expected completion time for current task\n\n` +
-              `Important: End your message with "sending my updates" so it can be properly tracked.`
+              `Important: End your message with "sending my personal updates" so it can be properly tracked.`
           );
           logger.info(
             `Successfully sent update request to user ${user.displayName} (${user.id}) for channel ${user.channelName}`
@@ -203,6 +282,7 @@ export class TeamUpdateTrackerService extends Service {
     return successfullyMessaged;
   }
 
+  // biome-ignore lint/complexity/noUselessLoneBlockStatements: <explanation>
   public async checkInServiceJob(): Promise<void> {
     if (this.isJobRunning) {
       logger.info('Check-in service job already running, skipping this execution');
@@ -213,10 +293,18 @@ export class TeamUpdateTrackerService extends Service {
     try {
       logger.info('Running check-in service job');
       const discordService: any = this.runtime.getService('discord');
+      const telegramService: any = this.runtime.getService('telegram');
+
       if (discordService?.client) {
         logger.info('Discord service now available, connecting client');
         this.client = discordService.client;
       }
+
+      if (telegramService?.bot) {
+        logger.info('Telegram service found, client available');
+        this.telegramBot = telegramService.bot;
+      }
+
       // Dummy function for check-in service
       if (this.client) {
         logger.info('Discord client is available for check-in service');
@@ -271,7 +359,7 @@ export class TeamUpdateTrackerService extends Service {
             const timeMatches =
               timeDifferenceInMinutes <= 30 || timeDifferenceInMinutes >= 24 * 60 - 30;
 
-            logger.debug(
+            logger.info(
               `Time comparison for schedule ${schedule.scheduleId}: Current=${currentTimeInMinutes} min, Schedule=${scheduleTimeInMinutes} min, Diff=${timeDifferenceInMinutes} min, Matches=${timeMatches}`
             );
 
@@ -306,7 +394,7 @@ export class TeamUpdateTrackerService extends Service {
                 frequencyMatches = true; // Default to true for unknown frequencies
             }
 
-            logger.debug(
+            logger.info(
               `Frequency check for schedule ${schedule.scheduleId}: Type=${schedule.frequency}, Matches=${frequencyMatches}`
             );
 
@@ -326,6 +414,8 @@ export class TeamUpdateTrackerService extends Service {
                   `Processing check-in schedule: ${schedule.scheduleId} for channel: ${schedule.channelId}`
                 );
 
+                logger.info(`Schedule source: ${schedule.source}`);
+
                 // Get Discord service to fetch server info
                 const discordService = this.runtime.getService('discord') as IDiscordService | null;
 
@@ -333,7 +423,7 @@ export class TeamUpdateTrackerService extends Service {
                 let serverName;
 
                 if (discordService?.client) {
-                  logger.info('Discord service or client not available');
+                  logger.info('Discord service client is available');
 
                   for (const [, guild] of discordService.client.guilds.cache) {
                     const channels = await guild.channels.fetch();
@@ -349,27 +439,66 @@ export class TeamUpdateTrackerService extends Service {
                       break;
                     }
                   }
+                } else {
+                  logger.info('Discord service or client not available');
                 }
 
-                // Fetch all users in the specified channel
-                const channelUsers = await this.fetchUsersInChannel(schedule.channelId);
-                logger.info(
-                  `Found ${channelUsers.length} users in channel ${schedule.channelId} (${serverName})`
-                );
+                // Check if source is Telegram
+                if (schedule?.source === 'telegram') {
+                  logger.info(`Telegram source detected for schedule ${schedule.scheduleId}`);
 
-                if (channelUsers.length === 0) {
-                  logger.warn(
-                    `No users found in channel ${schedule.channelId} (${serverName}) for schedule ${schedule.scheduleId}`
+                  if (!this.telegramBot?.telegram) {
+                    continue;
+                  }
+
+                  logger.info(
+                    `Preparing to send update request to Telegram group ${schedule.serverId}`
                   );
-                  continue;
+                  const updateRequestMessage =
+                    '📢 *Team Update Request*\n\n' +
+                    'Hello team! Please share your updates using the following format:\n\n' +
+                    'Check-in Type: [daily/weekly/sprint]\n' +
+                    "Current Progress: [what you've completed]\n" +
+                    'Working On: [current tasks]\n' +
+                    'Next Steps: [upcoming tasks]\n' +
+                    'Blockers: [any blockers or "none"]\n' +
+                    'ETA: [expected completion time]\n\n' +
+                    'Please end your message with "sending my updates"';
+
+                  await this.telegramBot.telegram.sendMessage(
+                    schedule.serverId,
+                    updateRequestMessage,
+                    { parse_mode: 'Markdown' }
+                  );
+                  logger.info(
+                    `Sent formatted update request to Telegram group ${schedule.serverId}`
+                  );
+
+                  logger.info(
+                    `Successfully sent group check-in message to Telegram channel ${schedule.channelId}`
+                  );
+                } else {
+                  // For Discord or other sources, continue with the original flow
+                  // Fetch all users in the specified channel
+                  const channelUsers = await this.fetchUsersInChannel(schedule.channelId);
+                  logger.info(
+                    `Found ${channelUsers.length} users in channel ${schedule.channelId} (${serverName})`
+                  );
+
+                  if (channelUsers.length === 0) {
+                    logger.warn(
+                      `No users found in channel ${schedule.channelId} (${serverName}) for schedule ${schedule.scheduleId}`
+                    );
+                    continue;
+                  }
+
+                  logger.info(
+                    `Users in channel ${schedule.channelId} (${serverName}):`,
+                    JSON.stringify(channelUsers, null, 2)
+                  );
+
+                  await this.messageAllUsers(channelUsers, schedule, serverName);
                 }
-
-                logger.info(
-                  `Users in channel ${schedule.channelId} (${serverName}):`,
-                  JSON.stringify(channelUsers, null, 2)
-                );
-
-                await this.messageAllUsers(channelUsers, schedule, serverName);
 
                 // Update the last updated date for the schedule
                 try {
