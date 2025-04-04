@@ -2,13 +2,14 @@
 import type { IAgentRuntime, Plugin } from '@elizaos/core';
 import { registerTeamMember } from './actions/registerTeamMember';
 import { updateTeamMember } from './actions/updateTeamMember';
-import { checkInTeamMember } from './actions/checkInTeamMember';
+import { createCheckInAction } from './actions/createCheckInAction';
 import { CheckInService } from './services/CheckInService';
 import { logger } from '@elizaos/core';
 import { listCheckInSchedules } from './actions/listCheckInSchedules';
 import { TeamUpdateTrackerService } from './services/TeamUpdateTrackerService';
 import { recordTeamMemberUpdates } from './actions/recordTeamMemberUpdates';
 import { listTeamMemberUpdates } from './actions/listTeamMemberUpdates';
+import { recordCheckInAction } from './actions/recordCheckInAction';
 import { generateReport } from './actions/reportGenerationAction.ts';
 import { registerTasks } from './tasks';
 // import { listTeamMembers } from './actions/listTeamMembers';
@@ -22,11 +23,12 @@ export const teamCoordinatorPlugin: Plugin = {
   description: 'Team Coordinator plugin for managing team activities',
   providers: [],
   actions: [
-    checkInTeamMember,
+    createCheckInAction,
     recordTeamMemberUpdates,
     listTeamMemberUpdates,
     listCheckInSchedules,
     generateReport,
+    recordCheckInAction,
   ],
   init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
     try {
@@ -62,11 +64,12 @@ export function initialize(runtime: IAgentRuntime) {
   // Return actions
   return {
     actions: [
-      checkInTeamMember,
+      createCheckInAction,
       recordTeamMemberUpdates,
       listTeamMemberUpdates,
       listCheckInSchedules,
       generateReport,
+      recordCheckInAction,
     ],
   };
 }

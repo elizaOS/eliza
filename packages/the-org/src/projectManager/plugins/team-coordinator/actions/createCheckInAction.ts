@@ -16,14 +16,6 @@ import {
 import { sendCheckInScheduleForm } from '../forms/checkInScheduleForm';
 import { sendCheckInReportForm } from '../forms/checkInReportForm';
 
-// TODO : remove the forms
-// TODO : make all the check in text based
-// TODO : create a seperate action to take check
-// TODO : perform like update group find from server id matching name and all details using LLMS
-// this will be good for telegram as well
-// TODO : make the bot only work when tagged not otherwise in discord or telegram
-// TODO : simplify user updates
-
 interface DiscordComponentInteraction {
   customId: string;
   componentType: number;
@@ -328,7 +320,7 @@ export const createCheckInAction: Action = {
               `   • Monthly\n` +
               `5️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC) - Please note all times will be in UTC timezone` +
               `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
-            source: 'discord',
+            source: message.source,
           },
           []
         );
@@ -369,7 +361,7 @@ export const createCheckInAction: Action = {
               `   • Custom\n\n` +
               `4️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC)` +
               `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
-            source: 'discord',
+            source: message.source,
           },
           []
         );

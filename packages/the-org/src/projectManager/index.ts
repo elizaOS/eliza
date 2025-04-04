@@ -37,12 +37,14 @@ const character: Character = {
     '@elizaos/plugin-discord',
     '@elizaos/plugin-pdf',
     '@elizaos/plugin-video-understanding',
+    '@elizaos/plugin-telegram',
   ],
   settings: {
     secrets: {
       DISCORD_APPLICATION_ID: process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.PROJECT_MANAGER_DISCORD_API_TOKEN,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
     },
     avatar,
   },

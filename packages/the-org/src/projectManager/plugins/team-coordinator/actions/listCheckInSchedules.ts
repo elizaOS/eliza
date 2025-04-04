@@ -8,7 +8,7 @@ import {
   createUniqueUuid,
   logger,
 } from '@elizaos/core';
-import type { CheckInSchedule } from '../services/CheckInService';
+import type { CheckInSchedule } from '../../../types';
 
 export async function fetchCheckInSchedules(runtime: IAgentRuntime): Promise<CheckInSchedule[]> {
   try {

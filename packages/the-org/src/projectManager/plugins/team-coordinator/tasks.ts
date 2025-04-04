@@ -37,7 +37,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
     worldId,
     metadata: {
       updatedAt: Date.now(),
-      updateInterval: 1000 * 30, // 30 seconds
+      updateInterval: 1000 * 60 * 5, // 5 minutes
     },
     tags: ['queue', 'repeat', 'team_coordinator'],
   });
