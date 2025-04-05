@@ -84,7 +84,7 @@ This section lists the labels we use to help us track and manage issues and pull
 
 ## Additional Resources
 
-- [Local Development Guide](docs/docs/guides/local-development.md)
+- [Local Development Guide](docs/notes/local-development.md)
 - [Configuration Guide](docs/docs/guides/configuration.md)
 - [API Documentation](docs/api)
 
