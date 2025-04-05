@@ -838,20 +838,30 @@ export class ClientBase {
       );
 
       // Process tweets directly into the expected interaction format
-      return mentionsResponse.tweets.map((tweet) => ({
-        id: tweet.id,
-        type: tweet.isQuoted ? 'quote' : tweet.retweetedStatus ? 'retweet' : 'like',
-        userId: tweet.userId,
-        username: tweet.username,
-        name: tweet.name || tweet.username,
-        targetTweetId: tweet.inReplyToStatusId || tweet.quotedStatusId,
-        targetTweet: tweet.quotedStatus || tweet,
-        quoteTweet: tweet.isQuoted ? tweet : undefined,
-        retweetId: tweet.retweetedStatus?.id,
-      }));
+      return mentionsResponse.tweets.map((tweet) => this.formatTweetToInteraction(tweet));
     } catch (error) {
       logger.error('Error fetching Twitter interactions:', error);
       return [];
     }
+  }
+
+  formatTweetToInteraction(tweet: Tweet) {
+    if (!tweet) return null;
+
+    const isQuote = tweet.isQuoted;
+    const isRetweet = !!tweet.retweetedStatus;
+    const type = isQuote ? 'quote' : isRetweet ? 'retweet' : 'like';
+
+    return {
+      id: tweet.id,
+      type,
+      userId: tweet.userId,
+      username: tweet.username,
+      name: tweet.name || tweet.username,
+      targetTweetId: tweet.inReplyToStatusId || tweet.quotedStatusId,
+      targetTweet: tweet.quotedStatus || tweet,
+      quoteTweet: isQuote ? tweet : undefined,
+      retweetId: tweet.retweetedStatus?.id,
+    };
   }
 }
