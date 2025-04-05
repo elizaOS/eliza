@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { type User, sortedUsers } from '@site/src/data/users';
 import ShowcaseSearchBar from '../pages/showcase/_components/ShowcaseSearchBar';
 import ShowcaseCards from '../pages/showcase/_components/ShowcaseCards';
 import ShowcaseFilters from '../pages/showcase/_components/ShowcaseFilters';
 import Link from '@docusaurus/Link';
 import styles from '../pages/showcase/_components/ShowcaseLayout/styles.module.css';
+import { useLocation, useHistory } from '@docusaurus/router';
 
 const TITLE = 'elizaOS Packages';
 const DESCRIPTION = 'Discover the awesome plugins in the eliza ecosystem.';
@@ -19,6 +20,15 @@ function ShowcaseHeader() {
         <Link className="button button--primary" to={GITHUB_LINK}>
           Submit your plugin
         </Link>
+      </div>
+      <br></br>
+      <div className="alert alert--warning" style={{ marginBottom: '2rem' }}>
+        <h4>⚠️ V2 Compatibility Notice</h4>
+        <p>
+          V2 compatibility of plugins are in progress. Please check back here later. You can also
+          join the dev discord at <a href="https://discord.gg/elizaos">discord.gg/elizaos</a> for
+          updates.
+        </p>
       </div>
     </section>
   );
@@ -60,9 +70,66 @@ function filterUsers(
 }
 
 export default function ShowcaseComponent(): JSX.Element {
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [operator, setOperator] = useState<'OR' | 'AND'>('OR');
-  const [searchValue, setSearchValue] = useState('');
+  const location = useLocation();
+  const history = useHistory();
+  const searchParams = new URLSearchParams(location.search);
+
+  // Initialize state from URL parameters
+  const [selectedTags, setSelectedTags] = useState<string[]>(() => {
+    const tags = searchParams.get('tags');
+    return tags ? tags.split(',') : [];
+  });
+  const [operator, setOperator] = useState<'OR' | 'AND'>(() => {
+    return (searchParams.get('operator') as 'OR' | 'AND') || 'OR';
+  });
+  const [searchValue, setSearchValue] = useState(() => {
+    return searchParams.get('search') || '';
+  });
+
+  // Update URL when filters change
+  useEffect(() => {
+    const newSearchParams = new URLSearchParams(location.search);
+
+    // Update tags parameter
+    if (selectedTags.length > 0) {
+      newSearchParams.set('tags', selectedTags.join(','));
+    } else {
+      newSearchParams.delete('tags');
+    }
+
+    // Update operator parameter
+    if (operator !== 'OR') {
+      newSearchParams.set('operator', operator);
+    } else {
+      newSearchParams.delete('operator');
+    }
+
+    // Update search parameter
+    if (searchValue) {
+      newSearchParams.set('search', searchValue);
+    } else {
+      newSearchParams.delete('search');
+    }
+
+    history.replace(`${location.pathname}?${newSearchParams.toString()}`);
+  }, [selectedTags, operator, searchValue, location.pathname, history]);
+
+  // Update filters when URL changes
+  useEffect(() => {
+    const tags = searchParams.get('tags');
+    const newOperator = searchParams.get('operator') as 'OR' | 'AND';
+    const search = searchParams.get('search');
+
+    if (tags) {
+      setSelectedTags(tags.split(','));
+    }
+    if (newOperator) {
+      setOperator(newOperator);
+    }
+    if (search !== null) {
+      setSearchValue(search);
+    }
+  }, [location.search]);
 
   const toggleTag = (tag: string) => {
     setSelectedTags((tags) =>

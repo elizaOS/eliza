@@ -8,8 +8,10 @@ The `dev` command runs your ElizaOS project or plugin in development mode with a
 
 ## Usage
 
+> Note: Assumes you have the elizaos CLI tool installed
+
 ```bash
-npx @elizaos/cli dev [options]
+elizaos dev [options]
 ```
 
 ## Options
@@ -29,6 +31,7 @@ When you run `dev`, ElizaOS provides several developer-friendly features:
 2. **Auto Restarting**: Restarts the server after rebuilds to apply changes
 3. **File Watching**: Monitors your source files for changes
 4. **TypeScript Support**: Compiles TypeScript files during rebuilds
+5. **Detailed Error Messages**: Provides comprehensive error information
 
 ## What Happens During Dev Mode
 
@@ -40,42 +43,36 @@ When you run the `dev` command, ElizaOS:
 4. Sets up file watching for .ts, .js, .tsx, and .jsx files
 5. Rebuilds and restarts when files change
 
+For more information about project detection and startup process, see the [Start Command](./start.md#project-detection).
+
 ## Examples
 
 ### Basic Development Mode
-
-Start your project in development mode:
 
 ```bash
 # Navigate to your project
 cd my-agent-project
 
 # Start development mode
-npx @elizaos/cli dev
+elizaos dev
 ```
 
 ### Custom Port
 
-Run the development server on a specific port:
-
 ```bash
-npx @elizaos/cli dev --port 8080
+elizaos dev --port 8080
 ```
 
 ### Using a Custom Character
 
-Use a specific character file:
-
 ```bash
-npx @elizaos/cli dev --character ./characters/custom-assistant.json
+elizaos dev --character ./characters/custom-assistant.json
 ```
 
 ### Force Configuration
 
-Skip using saved configuration and reconfigure services:
-
 ```bash
-npx @elizaos/cli dev --configure
+elizaos dev --configure
 ```
 
 ## Development Process
@@ -118,26 +115,6 @@ The dev mode provides information about the file watching and rebuild process:
 [success] Rebuild successful, restarting server...
 ```
 
-## Project Type Detection
-
-The dev command automatically detects whether you're working with:
-
-1. **Project**: A complete ElizaOS project with agents
-2. **Plugin**: An ElizaOS plugin that provides extensions
-
-It determines this by checking:
-
-- The package.json metadata
-- Export patterns in src/index.ts
-- Project structure
-
-## Exiting Dev Mode
-
-To stop the development server:
-
-- Press `Ctrl+C` in the terminal
-- The server and file watcher will gracefully shut down
-
 ## Troubleshooting
 
 ### Build failures
@@ -162,5 +139,5 @@ If file changes aren't being detected:
 ## Related Commands
 
 - [`start`](./start.md): Run your project in production mode
-- [`build`](./projects.md): Build your project manually
+- [`test`](./test.md): Run tests for your project
 - [`project`](./projects.md): Manage project settings

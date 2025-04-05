@@ -11,13 +11,13 @@ The ElizaOS Command Line Interface (CLI) provides a comprehensive set of tools t
 Install the ElizaOS CLI globally using npm:
 
 ```bash
-npm install -g @elizaos/cli
+npm install -g @elizaos/cli@beta
 ```
 
 Or use it directly with npx:
 
 ```bash
-npx @elizaos/cli [command]
+npx @elizaos/cli@beta [command]
 ```
 
 ## Available Commands
@@ -26,7 +26,7 @@ npx @elizaos/cli [command]
 | -------------------------- | ---------------------------------------------------- |
 | [`create`](./create.md)    | Create new projects, plugins, or agents              |
 | [`start`](./start.md)      | Start an ElizaOS project or agent                    |
-| [`dev`](./create.md)       | Run a project in development mode with hot reloading |
+| [`dev`](./dev.md)          | Run a project in development mode with hot reloading |
 | [`agent`](./agent.md)      | Manage agent configurations and state                |
 | [`plugin`](./plugins.md)   | Manage plugins in your project                       |
 | [`project`](./projects.md) | Manage project configuration and settings            |
@@ -34,35 +34,6 @@ npx @elizaos/cli [command]
 | [`publish`](./publish.md)  | Publish packages to npm registry                     |
 | [`update`](./update.md)    | Update ElizaOS components                            |
 | [`test`](./test.md)        | Run tests for your project                           |
-
-## Quick Start
-
-### Creating a new project
-
-```bash
-# Create a new project using the interactive wizard
-npx @elizaos/cli create
-
-# Or specify a name directly
-npx @elizaos/cli create my-agent-project
-```
-
-### Starting a project
-
-```bash
-# Navigate to your project directory
-cd my-agent-project
-
-# Start the project
-npx @elizaos/cli start
-```
-
-### Development mode
-
-```bash
-# Run in development mode with hot reloading
-npx @elizaos/cli dev
-```
 
 ## Global Options
 
@@ -75,6 +46,72 @@ These options apply to most commands:
 | `--debug`         | Enable debug logging          |
 | `--quiet`         | Suppress non-essential output |
 | `--json`          | Output results in JSON format |
+
+## Project Structure
+
+For detailed information about project and plugin structure, see the [Quickstart Guide](../quickstart.md).
+
+## Environment Configuration
+
+For detailed information about environment configuration, see the [Environment Command](./env.md) documentation.
+
+## Development vs Production
+
+ElizaOS supports two main modes of operation:
+
+1. **Development Mode** (`dev` command)
+
+   - Hot reloading
+   - Detailed error messages
+   - File watching
+   - See [Dev Command](./dev.md) for details
+
+2. **Production Mode** (`start` command)
+   - Optimized performance
+   - Production-ready configuration
+   - See [Start Command](./start.md) for details
+
+## Quick Start
+
+For a complete guide to getting started with ElizaOS, see the [Quickstart Guide](../quickstart.md).
+
+## Related Documentation
+
+- [Quickstart Guide](../quickstart.md): Complete workflow guide
+- [Environment Configuration](./env.md): Managing environment variables
+
+---
+
+## Quick Start
+
+> Note: This assumes you installed the CLI tool (`npm install -g @elizaos/cli@beta`)
+
+### Creating a new project
+
+```bash
+# Create a new project using the interactive wizard
+elizaos create
+
+# Or specify a name directly
+elizaos create my-agent-project
+```
+
+### Starting a project
+
+```bash
+# Navigate to your project directory
+cd my-agent-project
+
+# Start the project
+elizaos start
+```
+
+### Development mode
+
+```bash
+# Run in development mode with hot reloading
+elizaos dev
+```
 
 ## Working with Projects
 
@@ -93,13 +130,13 @@ Plugins extend the functionality of your agents. Manage them with the `plugin` c
 
 ```bash
 # Add a plugin to your project
-npx @elizaos/cli plugin add @elizaos/plugin-discord
+elizaos plugin add @elizaos/plugin-discord
 
 # Remove a plugin
-npx @elizaos/cli plugin remove @elizaos/plugin-discord
+elizaos plugin remove @elizaos/plugin-discord
 
 # List installed plugins
-npx @elizaos/cli plugin list
+elizaos plugin list
 ```
 
 ## Environment Configuration
@@ -108,8 +145,8 @@ Configure your API keys and environment variables with the `env` command:
 
 ```bash
 # Set OpenAI API key
-npx @elizaos/cli env set OPENAI_API_KEY your-api-key
+elizaos env set OPENAI_API_KEY your-api-key
 
 # List all environment variables
-npx @elizaos/cli env list
+elizaos env list
 ```

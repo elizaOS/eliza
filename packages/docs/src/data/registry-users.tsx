@@ -67,6 +67,23 @@ export const registryUsers: User[] = [
     tags: ['client'],
   },
   {
+    title: 'Clara',
+    description:
+      'Comprehensive management system for agent-to-agent interactions. It acts as a multifaceted platform, encompassing a registry, a matching engine, and a payment system.',
+    preview: 'https://opengraph.githubassets.com/1/redstone-finance/client-clara',
+    website: 'https://github.com/redstone-finance/client-clara',
+    source: 'https://github.com/redstone-finance/client-clara',
+    tags: ['client'],
+  },
+  {
+    title: 'Wechat',
+    description: 'client-wechat for ElizaOS',
+    preview: 'https://opengraph.githubassets.com/1/aiqubits/client-wechat',
+    website: 'https://github.com/aiqubits/client-wechat',
+    source: 'https://github.com/aiqubits/client-wechat',
+    tags: ['client'],
+  },
+  {
     title: 'Discord',
     description:
       'Discord integration client with messaging and community interaction capabilities.',
@@ -238,6 +255,23 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
+    title: 'Bnb',
+    description:
+      'Enables interactions with BNB Chain ecosystem including BNB Smart Chain, opBNB, and BNB Greenfield networks.',
+    preview: '/logos/BNBchain.jpg',
+    website: 'https://github.com/elizaos-plugins/plugin-bnb',
+    source: 'https://github.com/elizaos-plugins/plugin-bnb',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Bnv Me Id',
+    description: 'AI Agents need style too',
+    preview: 'https://opengraph.githubassets.com/1/brand-new-vision/plugin-bnv-me-id',
+    website: 'https://github.com/brand-new-vision/plugin-bnv-me-id',
+    source: 'https://github.com/brand-new-vision/plugin-bnv-me-id',
+    tags: ['plugin'],
+  },
+  {
     title: 'Binance',
     description:
       "Provides cryptocurrency trading and price checking capabilities through Binance's API.",
@@ -253,6 +287,15 @@ export const registryUsers: User[] = [
     preview: '/logos/ccxt.png',
     website: 'https://github.com/pranavjadhav1363/plugin-ccxt',
     source: 'https://github.com/pranavjadhav1363/plugin-ccxt',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Clara Twitter',
+    description:
+      'A plugin for Twitter/X integration, enabling automated tweet posting and context-aware content generation.',
+    preview: 'https://opengraph.githubassets.com/1/warp-contracts/plugin-clara-twitter',
+    website: 'https://github.com/warp-contracts/plugin-clara-twitter',
+    source: 'https://github.com/warp-contracts/plugin-clara-twitter',
     tags: ['plugin'],
   },
   {
@@ -286,6 +329,14 @@ export const registryUsers: User[] = [
     preview: '/logos/compass.jpg',
     website: 'https://github.com/CompassLabs/plugin-compass',
     source: 'https://github.com/CompassLabs/plugin-compass',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Computer Use',
+    description: 'Plugin for Computer Use',
+    preview: 'https://opengraph.githubassets.com/1/amit0365/plugin-computer-use',
+    website: 'https://github.com/amit0365/plugin-computer-use',
+    source: 'https://github.com/amit0365/plugin-computer-use',
     tags: ['plugin'],
   },
   {
@@ -330,12 +381,29 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
+    title: 'Debridge',
+    description: 'ElizaOS plugin allowing agents to use deBridge',
+    preview: 'https://opengraph.githubassets.com/1/gabrielantonyxaviour/eliza-plugin-debridge',
+    website: 'https://github.com/gabrielantonyxaviour/eliza-plugin-debridge',
+    source: 'https://github.com/gabrielantonyxaviour/eliza-plugin-debridge',
+    tags: ['plugin'],
+  },
+  {
     title: 'Depin',
     description:
       'Connects AI agents to physical infrastructure through Decentralized Physical Infrastructure Networks.',
     preview: '/logos/depin.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-depin',
     source: 'https://github.com/elizaos-plugins/plugin-depin',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Dexpaprika',
+    description:
+      'ElizaOS plugin for accessing real-time DeFi analytics via DexPaprika API. Get data on blockchain networks, DEXes, liquidity pools, and tokens.',
+    preview: 'https://opengraph.githubassets.com/1/donbagger/plugin-dexpaprika',
+    website: 'https://github.com/donbagger/plugin-dexpaprika',
+    source: 'https://github.com/donbagger/plugin-dexpaprika',
     tags: ['plugin'],
   },
   {
@@ -364,12 +432,28 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
+    title: 'Enso',
+    description: 'Plugin for Enso',
+    preview: 'https://opengraph.githubassets.com/1/EnsoBuild/plugin-enso',
+    website: 'https://github.com/EnsoBuild/plugin-enso',
+    source: 'https://github.com/EnsoBuild/plugin-enso',
+    tags: ['plugin'],
+  },
+  {
     title: 'Evm',
     description: 'Provides comprehensive functionality for interacting with EVM-compatible chains.',
     preview: '/logos/evm.png',
     website: 'https://github.com/elizaos-plugins/plugin-evm',
     source: 'https://github.com/elizaos-plugins/plugin-evm',
     tags: ['plugin', 'favorite'],
+  },
+  {
+    title: 'Executor',
+    description: 't3rn blockchain executor plugin for Eliza OS.',
+    preview: 'https://opengraph.githubassets.com/1/t3rn/plugin-t3rn-executor',
+    website: 'https://github.com/t3rn/plugin-t3rn-executor',
+    source: 'https://github.com/t3rn/plugin-t3rn-executor',
+    tags: ['plugin'],
   },
   {
     title: 'FerePro',
@@ -470,6 +554,14 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
+    title: 'Hedera',
+    description: 'Plugin for Hedera',
+    preview: 'https://opengraph.githubassets.com/1/hedera-dev/plugin-hedera',
+    website: 'https://github.com/hedera-dev/plugin-hedera',
+    source: 'https://github.com/hedera-dev/plugin-hedera',
+    tags: ['plugin'],
+  },
+  {
     title: 'Hyperliquid',
     description: 'Provides spot trading capabilities on the Hyperliquid DEX.',
     preview: '/logos/hyperliquid.png',
@@ -484,6 +576,14 @@ export const registryUsers: User[] = [
     preview: '/logos/ICP.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-icp',
     source: 'https://github.com/elizaos-plugins/plugin-icp',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Iexec',
+    description: 'An ElizaOS iExec Plugin',
+    preview: 'https://opengraph.githubassets.com/1/iExecBlockchainComputing/plugin-iexec',
+    website: 'https://github.com/iExecBlockchainComputing/plugin-iexec',
+    source: 'https://github.com/iExecBlockchainComputing/plugin-iexec',
     tags: ['plugin'],
   },
   {
@@ -520,6 +620,23 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
+    title: 'Kaia',
+    description: 'Kaia Plugin for ElizaOS',
+    preview: 'https://opengraph.githubassets.com/1/kaiachain/kaia-eliza-plugin',
+    website: 'https://github.com/kaiachain/kaia-eliza-plugin',
+    source: 'https://github.com/kaiachain/kaia-eliza-plugin',
+    tags: ['plugin'],
+  },
+  {
+    title: 'LensNetwork',
+    description:
+      'A plugin for seamless token transfers on the Abstract testnet within the ElizaOS ecosystem, supporting both native ETH and ERC20 tokens.',
+    preview: 'https://opengraph.githubassets.com/1/elizaos-plugins/plugin-lensNetwork',
+    website: 'https://github.com/elizaos-plugins/plugin-lensNetwork',
+    source: 'https://github.com/elizaos-plugins/plugin-lensNetwork',
+    tags: ['plugin'],
+  },
+  {
     title: 'Letzai',
     description: "Enables image generation using LetzAI's API and models.",
     preview: '/logos/letzai.jpg',
@@ -541,6 +658,30 @@ export const registryUsers: User[] = [
     preview: '/logos/massa.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-massa',
     source: 'https://github.com/elizaos-plugins/plugin-massa',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Mbd Farcaster',
+    description: 'Eliza Plugin MBD Farcaster ',
+    preview: 'https://opengraph.githubassets.com/1/developerfred/mbd-farcaster',
+    website: 'https://github.com/developerfred/mbd-farcaster',
+    source: 'https://github.com/developerfred/mbd-farcaster',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Mcp',
+    description: 'ElizaOS plugin allowing agents to connect to MCP servers',
+    preview: 'https://opengraph.githubassets.com/1/fleek-platform/eliza-plugin-mcp',
+    website: 'https://github.com/fleek-platform/eliza-plugin-mcp',
+    source: 'https://github.com/fleek-platform/eliza-plugin-mcp',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Membase',
+    description: 'js sdk for membase in eliza',
+    preview: 'https://opengraph.githubassets.com/1/unibaseio/plugin-membase',
+    website: 'https://github.com/unibaseio/plugin-membase',
+    source: 'https://github.com/unibaseio/plugin-membase',
     tags: ['plugin'],
   },
   {
@@ -609,6 +750,14 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
+    title: 'Notion',
+    description: 'Plugin for Notion',
+    preview: 'https://opengraph.githubassets.com/1/tskoyo/plugin-notion',
+    website: 'https://github.com/tskoyo/plugin-notion',
+    source: 'https://github.com/tskoyo/plugin-notion',
+    tags: ['plugin'],
+  },
+  {
     title: 'Nkn',
     description:
       'Enables communication between multiple AI agents using the NKN protocol for decentralized messaging.',
@@ -666,6 +815,30 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
+    title: 'Orderly',
+    description: 'Plugin for Orderly',
+    preview: 'https://opengraph.githubassets.com/1/orderlynetwork/plugin-orderly',
+    website: 'https://github.com/orderlynetwork/plugin-orderly',
+    source: 'https://github.com/orderlynetwork/plugin-orderly',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Para',
+    description: 'NFT and digital collectible management platform integration.',
+    preview: '/logos/para.png',
+    website: 'https://github.com/aipop-fun/plugin-para',
+    source: 'https://github.com/aipop-fun/plugin-para',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Payai',
+    description: 'Eliza plugin for the PayAI marketplace.',
+    preview: 'https://opengraph.githubassets.com/1/notorious-d-e-v/plugin-payai',
+    website: 'https://github.com/notorious-d-e-v/plugin-payai',
+    source: 'https://github.com/notorious-d-e-v/plugin-payai',
+    tags: ['plugin'],
+  },
+  {
     title: 'Primus',
     description: "Verifies agent activities using Primus' zkTLS protocol.",
     preview: '/logos/primus.png',
@@ -690,6 +863,32 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
+    title: 'Raiinmaker',
+    description:
+      'Plugin for ElizaOS agents for validation of generated content on the Raiinmaker platform',
+    preview: 'https://opengraph.githubassets.com/1/Coiin-Blockchain/plugin-raiinmaker',
+    website: 'https://github.com/Coiin-Blockchain/plugin-raiinmaker',
+    source: 'https://github.com/Coiin-Blockchain/plugin-raiinmaker',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Recall',
+    description:
+      'This plugin integrates **Recall storage** with Eliza AI agents, providing persistent memory capabilities. ',
+    preview: 'https://opengraph.githubassets.com/1/recallnet/plugin-recall',
+    website: 'https://github.com/recallnet/plugin-recall',
+    source: 'https://github.com/recallnet/plugin-recall',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Rss3',
+    description: 'A RSS3 plugin for ElizaOS.',
+    preview: 'https://opengraph.githubassets.com/1/rss3-network/elizaos-plugin-rss3',
+    website: 'https://github.com/rss3-network/elizaos-plugin-rss3',
+    source: 'https://github.com/rss3-network/elizaos-plugin-rss3',
+    tags: ['plugin'],
+  },
+  {
     title: 'Sei',
     description: 'Enables token transfers and operations on the Sei blockchain network.',
     preview: '/logos/sei.jpg',
@@ -703,6 +902,14 @@ export const registryUsers: User[] = [
     preview: '/logos/intelsgx.png',
     website: 'https://github.com/elizaos-plugins/plugin-sgx',
     source: 'https://github.com/elizaos-plugins/plugin-sgx',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Siwe',
+    description: 'Sign-In with Ethereum (SIWE) plugin for ElizaOS',
+    preview: 'https://opengraph.githubassets.com/1/DimaKush/plugin-siwe',
+    website: 'https://github.com/DimaKush/plugin-siwe',
+    source: 'https://github.com/DimaKush/plugin-siwe',
     tags: ['plugin'],
   },
   {
@@ -720,6 +927,14 @@ export const registryUsers: User[] = [
     website: 'https://github.com/elizaos-plugins/plugin-solana-agent-kit',
     source: 'https://github.com/elizaos-plugins/plugin-solana-agent-kit',
     tags: ['plugin', 'favorite'],
+  },
+  {
+    title: 'Sonic',
+    description: 'Core Sonic blockchain plugin for Eliza OS.',
+    preview: 'https://opengraph.githubassets.com/1/thopatevijay/plugin-sonic',
+    website: 'https://github.com/thopatevijay/plugin-sonic',
+    source: 'https://github.com/thopatevijay/plugin-sonic',
+    tags: ['plugin'],
   },
   {
     title: 'Spheron',
@@ -743,6 +958,14 @@ export const registryUsers: User[] = [
     preview: '/logos/starknet.png',
     website: 'https://github.com/elizaos-plugins/plugin-starknet',
     source: 'https://github.com/elizaos-plugins/plugin-starknet',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Storacha',
+    description: '🔌 A plugin providing distributed storage functionality for ElizaOS agents.',
+    preview: 'https://opengraph.githubassets.com/1/storacha/elizaos-plugin',
+    website: 'https://github.com/storacha/elizaos-plugin',
+    source: 'https://github.com/storacha/elizaos-plugin',
     tags: ['plugin'],
   },
   {
@@ -869,11 +1092,27 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
+    title: 'Xdc',
+    description: 'Plugin for Xdc',
+    preview: 'https://opengraph.githubassets.com/1/xdc-community/plugin-xdc',
+    website: 'https://github.com/xdc-community/plugin-xdc',
+    source: 'https://github.com/xdc-community/plugin-xdc',
+    tags: ['plugin'],
+  },
+  {
     title: 'Youtube To Text',
     description: 'Converts YouTube videos to text transcripts.',
     preview: '/logos/youtube.png',
     website: 'https://github.com/wellaios/plugin-youtube-to-text',
     source: 'https://github.com/wellaios/plugin-youtube-to-text',
+    tags: ['plugin'],
+  },
+  {
+    title: 'Youtube Transcription',
+    description: 'Plugin for Youtube Transcription',
+    preview: 'https://opengraph.githubassets.com/1/prismadic/elizaos-plugin-youtube-transcription',
+    website: 'https://github.com/prismadic/elizaos-plugin-youtube-transcription',
+    source: 'https://github.com/prismadic/elizaos-plugin-youtube-transcription',
     tags: ['plugin'],
   },
   {
@@ -901,20 +1140,20 @@ export const registryUsers: User[] = [
     tags: ['plugin'],
   },
   {
-    title: 'Para',
-    description: 'NFT and digital collectible management platform integration.',
-    preview: '/logos/para.png',
-    website: 'https://github.com/aipop-fun/plugin-para',
-    source: 'https://github.com/aipop-fun/plugin-para',
+    title: 'Zytron',
+    description: 'Plugin for Zytron',
+    preview: 'https://opengraph.githubassets.com/1/zypher-network/plugin-zytron',
+    website: 'https://github.com/zypher-network/plugin-zytron',
+    source: 'https://github.com/zypher-network/plugin-zytron',
     tags: ['plugin'],
   },
   {
-    title: 'cache Redis',
+    title: 'Cache Redis',
     description:
       'Unmaintained cache plugin that originally lived in @elizaos/core and needs a maintainer.',
     preview: '/logos/redis.jpg',
-    website: 'https://github.com/elizaos-plugins/cache-redis',
-    source: 'https://github.com/elizaos-plugins/cache-redis',
+    website: 'https://github.com/elizaos-plugins/plugin-cache-redis',
+    source: 'https://github.com/elizaos-plugins/plugin-cache-redis',
     tags: ['plugin'],
   },
   {
@@ -1057,15 +1296,6 @@ export const registryUsers: User[] = [
     preview: '/logos/bittensor.jpg',
     website: 'https://github.com/elizaos-plugins/plugin-bittensor',
     source: 'https://github.com/elizaos-plugins/plugin-bittensor',
-    tags: ['plugin'],
-  },
-  {
-    title: 'Bnb',
-    description:
-      'Enables interactions with BNB Chain ecosystem including BNB Smart Chain, opBNB, and BNB Greenfield networks.',
-    preview: '/logos/BNBchain.jpg',
-    website: 'https://github.com/elizaos-plugins/plugin-bnb',
-    source: 'https://github.com/elizaos-plugins/plugin-bnb',
     tags: ['plugin'],
   },
   {

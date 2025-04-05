@@ -293,13 +293,13 @@ export default function Page({ serverId }: { serverId: UUID }) {
 
     // Add listener for message broadcasts
     console.log(`[Chat] Adding messageBroadcast listener`);
-    socketIOManager.on('messageBroadcast', handleMessageBroadcasting);
+    const msgHandler = socketIOManager.evtMessageBroadcast.attach(handleMessageBroadcasting);
 
     return () => {
       // When leaving this chat, leave the room but don't disconnect
       console.log(`[Chat] Leaving room ${serverId}`);
       socketIOManager.leaveRoom(serverId);
-      socketIOManager.off('messageBroadcast', handleMessageBroadcasting);
+      msgHandler.detach();
       prevServerIdRef.current = null;
       prevActiveAgentIdsRef.current = [];
     };

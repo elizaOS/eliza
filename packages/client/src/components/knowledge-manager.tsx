@@ -289,8 +289,8 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
   };
 
   return (
-    <div className="flex flex-col h-full w-full">
-      <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none">
+    <div className="flex flex-col h-[calc(100vh-100px)] min-h-[400px] w-full">
+      <div className="flex justify-between items-center mb-4 px-4 pt-4 flex-none border-b pb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-lg font-medium">Knowledge Library</h3>
           <Button
@@ -315,7 +315,10 @@ export function KnowledgeManager({ agentId }: { agentId: UUID }) {
         </div>
       </div>
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pb-4">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-4 pb-4 h-[calc(100vh-60px)]"
+      >
         {memories.length === 0 ? (
           <EmptyState />
         ) : (

@@ -286,10 +286,16 @@ export class FarcasterInteractionManager {
     });
 
     const responseActions = (response.match(/(?:RESPOND|IGNORE|STOP)/g) || ['IGNORE'])[0];
-    // if (responseActions !== 'RESPOND') {
-    //   logger.info(`Not responding to cast based on shouldRespond decision: ${responseActions}`);
-    //   return;
-    // }
+    if (responseActions !== 'RESPOND') {
+      logger.info(`Not responding to cast based on shouldRespond decision: ${responseActions}`);
+      try {
+        // save the memory so we don't process it again in mentions
+        await this.runtime.createMemory(memory, 'messages');
+      } catch (error) {
+        logger.error('Error creating ignoredmemory', error);
+      }
+      return;
+    }
 
     // setup callback for the response
     const callback = standardCastHandlerCallback({

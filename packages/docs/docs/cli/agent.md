@@ -8,8 +8,10 @@ The `agent` command allows you to manage, configure, and interact with ElizaOS a
 
 ## Usage
 
+Install the CLI first (`npm install -g @elizaos/cli@beta`)
+
 ```bash
-npx @elizaos/cli agent <action> [options]
+elizaos agent <action> [options]
 ```
 
 ## Actions
@@ -37,85 +39,61 @@ The available options vary by action. Here are some common options:
 | `-f, --file <path>`   | Path to configuration file (for set) or output file (for get) |
 | `-o, --output <file>` | Output to file (for get)                                      |
 
-## Managing Agents
+## Usage Examples
 
-### List Agents
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
-List all agents in the current project:
+<Tabs>
+<TabItem value="list" label="List & Get Agents">
 
 ```bash
-npx @elizaos/cli agent list
+# List all agents with their status
+elizaos agent list
 
-# With JSON output
-npx @elizaos/cli agent list --json
+# List in JSON format
+elizaos agent list --json
+
+# Get detailed information about an agent
+elizaos agent get --name customer-support
+
+# Save agent configuration to file
+elizaos agent get --name customer-support --json --output ./my-agent.json
 ```
 
-The output includes:
-
-- Agent name
-- Agent ID
-- Status
-
-### Get Agent Information
-
-Get detailed information about a specific agent:
+</TabItem>
+<TabItem value="start" label="Start & Stop Agents">
 
 ```bash
-# Get agent by name, ID, or index
-npx @elizaos/cli agent get --name customer-support
-
-# Save agent configuration to JSON file
-npx @elizaos/cli agent get --name customer-support --json
-
-# Specify output file
-npx @elizaos/cli agent get --name customer-support --json --output ./my-agent.json
-```
-
-### Start an Agent
-
-Start an agent using various methods:
-
-```bash
-# Start by name
-npx @elizaos/cli agent start --name customer-support
+# Start an agent by name
+elizaos agent start --name customer-support
 
 # Start from local JSON file
-npx @elizaos/cli agent start --path ./agents/my-agent.json
+elizaos agent start --path ./agents/my-agent.json
 
 # Start from remote URL
-npx @elizaos/cli agent start --remote https://example.com/agents/my-agent.json
+elizaos agent start --remote https://example.com/agents/my-agent.json
 
-# Start with inline JSON
-npx @elizaos/cli agent start --json '{"name":"My Agent","description":"A custom agent"}'
+# Stop a running agent
+elizaos agent stop --name customer-support
 ```
 
-### Stop an Agent
-
-Stop a running agent:
+</TabItem>
+<TabItem value="config" label="Update & Remove Agents">
 
 ```bash
-npx @elizaos/cli agent stop --name customer-support
+# Update agent configuration using JSON string
+elizaos agent set --name customer-support --config '{"name":"Customer Care Bot"}'
+
+# Update configuration from file
+elizaos agent set --name customer-support --file ./updated-config.json
+
+# Remove an agent
+elizaos agent remove --name old-agent
 ```
 
-### Remove an Agent
-
-Remove an agent from the system:
-
-```bash
-npx @elizaos/cli agent remove --name customer-support
-```
-
-### Update Agent Configuration
-
-Modify an existing agent's configuration:
-
-```bash
-# Update using JSON string
-npx @elizaos/cli agent set --name customer-support --config '{"name":"Customer Care Bot"}'
-
-# Update using JSON file
-npx @elizaos/cli agent set --name customer-support --file ./updated-config.json
-```
+</TabItem>
+</Tabs>
 
 ## Agent Configuration
 
@@ -157,82 +135,19 @@ A typical agent definition looks like:
 }
 ```
 
-## Examples
+## FAQ
 
-### Basic Agent Management
+### How do I fix "Agent not found" errors?
 
-```bash
-# List all available agents
-npx @elizaos/cli agent list
+Check available agents using `elizaos agent list` and try using the agent ID directly with `elizaos agent get --name agent_123456`.
 
-# Get information about a specific agent
-npx @elizaos/cli agent get --name support-bot
+### What should I do if I encounter configuration errors?
 
-# Stop a running agent
-npx @elizaos/cli agent stop --name support-bot
+Validate your JSON syntax using a proper JSON validator and check the structure against the expected schema in the agent configuration example.
 
-# Remove an agent
-npx @elizaos/cli agent remove --name old-agent
-```
+### How do I resolve connection issues with the agent runtime?
 
-### Starting Agents
-
-```bash
-# Start an agent by name
-npx @elizaos/cli agent start --name customer-support
-
-# Start an agent from a local file
-npx @elizaos/cli agent start --path ./agents/sales-bot.json
-```
-
-### Updating Configuration
-
-```bash
-# Update an agent's name and description
-npx @elizaos/cli agent set --name tech-support --config '{"name":"Technical Support","description":"Technical help desk support"}'
-
-# Update configuration from a file
-npx @elizaos/cli agent set --name tech-support --file ./updated-config.json
-```
-
-## Troubleshooting
-
-### Agent not found
-
-If you get an "Agent not found" error:
-
-```bash
-# Check available agents
-npx @elizaos/cli agent list
-
-# Try using the agent ID directly
-npx @elizaos/cli agent get --name agent_123456
-```
-
-### Configuration errors
-
-If you encounter errors when updating configuration:
-
-```bash
-# Validate your JSON syntax
-# Use a proper JSON validator
-
-# Check the structure against the expected schema
-# Refer to the agent configuration example
-```
-
-### Connection issues
-
-If you can't connect to the agent runtime:
-
-```bash
-# Check if the runtime is running
-npx @elizaos/cli start
-
-# By default, the CLI connects to http://localhost:3000
-# If using a different address, set the AGENT_RUNTIME_URL environment variable
-AGENT_RUNTIME_URL=http://my-server:3000 npx @elizaos/cli agent list
-```
+First check if the runtime is running with `elizaos start`. If using a different address than the default (http://localhost:3000), set the AGENT_RUNTIME_URL environment variable: `AGENT_RUNTIME_URL=http://my-server:3000 elizaos agent list`.
 
 ## Related Commands
 

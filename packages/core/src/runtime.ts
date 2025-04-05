@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt, handlePluginImporting } from './index';
+import { decryptSecret, getSalt } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -132,6 +132,8 @@ export class AgentRuntime implements IAgentRuntime {
   private runtimeLogger;
   private knowledgeProcessingSemaphore = new Semaphore(10);
   private settings: RuntimeSettings;
+
+  private servicesInitQueue = new Set<typeof Service>();
 
   constructor(opts: {
     conversationLength?: number;
@@ -277,9 +279,10 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    // Register plugin services
     if (plugin.services) {
-      await Promise.all(plugin.services.map((service) => this.registerService(service)));
+      plugin.services.forEach((service) => {
+        this.servicesInitQueue.add(service);
+      });
     }
   }
 
@@ -303,18 +306,6 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Load and register plugins from character configuration
     const pluginRegistrationPromises = [];
-
-    if (this.character.plugins) {
-      const characterPlugins = (await handlePluginImporting(this.character.plugins)) as Plugin[];
-
-      // Register each character plugin
-      for (const plugin of characterPlugins) {
-        if (plugin && !registeredPluginNames.has(plugin.name)) {
-          registeredPluginNames.add(plugin.name);
-          pluginRegistrationPromises.push(await this.registerPlugin(plugin));
-        }
-      }
-    }
 
     // Register plugins that were provided in the constructor
     for (const plugin of [...this.plugins]) {
@@ -422,6 +413,11 @@ export class AgentRuntime implements IAgentRuntime {
         (item): item is string => typeof item === 'string'
       );
       await this.processCharacterKnowledge(stringKnowledge);
+    }
+
+    // Start all deferred services now that runtime is ready
+    for (const service of this.servicesInitQueue) {
+      await this.registerService(service);
     }
   }
 
@@ -854,6 +850,7 @@ export class AgentRuntime implements IAgentRuntime {
     channelId,
     serverId,
     worldId,
+    userId,
   }: {
     entityId: UUID;
     roomId: UUID;
@@ -864,6 +861,7 @@ export class AgentRuntime implements IAgentRuntime {
     channelId?: string;
     serverId?: string;
     worldId?: UUID;
+    userId?: UUID;
   }) {
     if (entityId === this.agentId) {
       throw new Error('Agent should not connect to itself');
@@ -876,6 +874,7 @@ export class AgentRuntime implements IAgentRuntime {
     const names = [name, userName].filter(Boolean);
     const metadata = {
       [source]: {
+        id: userId,
         name: name,
         userName: userName,
       },

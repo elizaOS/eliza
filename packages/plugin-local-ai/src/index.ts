@@ -92,9 +92,9 @@ const wordsToPunish = [
 
 // Add type definitions for model source selection
 /**
- * Represents the available sources for a text model: "local", "studiolm", or "ollama".
+ * Represents the available sources for a text model: "local", "studiolm".
  */
-type TextModelSource = 'local' | 'studiolm' | 'ollama';
+type TextModelSource = 'local' | 'studiolm';
 
 /**
  * Interface representing the configuration for a text model.
@@ -217,11 +217,6 @@ class LocalAIManager {
     // Initialize StudioLM manager if enabled
     if (process.env.USE_STUDIOLM_TEXT_MODELS === 'true') {
       this.studioLMManager = StudioLMManager.getInstance();
-    }
-
-    // Initialize Ollama manager if enabled
-    if (process.env.USE_OLLAMA_TEXT_MODELS === 'true') {
-      this.ollamaManager = OllamaManager.getInstance();
     }
 
     // Initialize active model config
@@ -1039,7 +1034,7 @@ const localAIManager = LocalAIManager.getInstance();
  * Plugin that provides functionality for local AI using LLaMA models.
  * @type {Plugin}
  */
-export const localAIPlugin: Plugin = {
+export const localAiPlugin: Plugin = {
   name: 'local-ai',
   description: 'Local AI plugin using LLaMA models',
 
@@ -1755,4 +1750,4 @@ export const localAIPlugin: Plugin = {
   ],
 };
 
-export default localAIPlugin;
+export default localAiPlugin;

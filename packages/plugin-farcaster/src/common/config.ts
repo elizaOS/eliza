@@ -29,7 +29,7 @@ export function hasFarcasterEnabled(runtime: IAgentRuntime): boolean {
  * taking values from the IAgentRuntime or process.env as needed.
  */
 export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig {
-  const fid = Number.parseInt(runtime.getSetting('FARCASTER_FID'));
+  const fid = Number.parseInt(runtime.getSetting('FARCASTER_FID') || process.env.FARCASTER_FID);
 
   try {
     const farcasterConfig = {
@@ -93,8 +93,6 @@ export function validateFarcasterConfig(runtime: IAgentRuntime): FarcasterConfig
         process.env.FARCASTER_HUB_URL ||
         'hub.pinata.cloud',
     };
-
-    console.log('farcasterConfig', JSON.stringify(farcasterConfig, null, 2));
 
     const config = FarcasterConfigSchema.parse(farcasterConfig);
 
