@@ -19,7 +19,8 @@ import {
   type TelegramMessageSentPayload,
   type TelegramReactionReceivedPayload,
 } from './types';
-import { escapeMarkdown } from './utils';
+import { convertToTelegramButtons, escapeMarkdown } from './utils';
+import { Markup } from 'telegraf';
 
 import fs from 'node:fs';
 
@@ -145,12 +146,15 @@ export class MessageManager {
       const chunks = this.splitMessage(content.text);
       const sentMessages: Message.TextMessage[] = [];
 
+      const telegramButtons = convertToTelegramButtons(content.buttons);
+
       for (let i = 0; i < chunks.length; i++) {
         const chunk = escapeMarkdown(chunks[i]);
         const sentMessage = (await ctx.telegram.sendMessage(ctx.chat.id, chunk, {
           reply_parameters:
             i === 0 && replyToMessageId ? { message_id: replyToMessageId } : undefined,
           parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard(telegramButtons),
         })) as Message.TextMessage;
 
         sentMessages.push(sentMessage);
