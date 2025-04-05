@@ -9,6 +9,7 @@ import {
   logger,
 } from '@elizaos/core';
 import { Client, type QueryTweetsResponse, SearchMode, type Tweet } from './client/index';
+import { TwitterInteractionPayload } from './types';
 
 interface TwitterUser {
   id_str: string;
@@ -845,7 +846,7 @@ export class ClientBase {
     }
   }
 
-  formatTweetToInteraction(tweet: Tweet) {
+  formatTweetToInteraction(tweet): TwitterInteractionPayload | null {
     if (!tweet) return null;
 
     const isQuote = tweet.isQuoted;
