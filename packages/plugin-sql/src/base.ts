@@ -354,87 +354,251 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
    */
   async deleteAgent(agentId: UUID): Promise<boolean> {
+    logger.debug(`[DB] Starting deletion of agent with ID: ${agentId}`);
+
     return this.withDatabase(async () => {
-      await this.db.transaction(async (tx) => {
-        const entities = await this.db
-          .select({ entityId: entityTable.id })
-          .from(entityTable)
-          .where(eq(entityTable.agentId, agentId));
+      try {
+        logger.debug(`[DB] Beginning database transaction for deleting agent: ${agentId}`);
 
-        const entityIds = entities.map((e) => e.entityId);
+        // Use a transaction with timeout
+        const deletePromise = new Promise<boolean>((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            logger.error(`[DB] Transaction timeout reached for agent deletion: ${agentId}`);
+            reject(new Error('Database transaction timeout'));
+          }, 30000);
 
-        let memoryIds: UUID[] = [];
+          this.db
+            .transaction(async (tx) => {
+              try {
+                // Step 1: Find all entities belonging to this agent
+                logger.debug(`[DB] Fetching entities for agent: ${agentId}`);
+                const entities = await tx
+                  .select({ entityId: entityTable.id })
+                  .from(entityTable)
+                  .where(eq(entityTable.agentId, agentId));
 
-        if (entityIds.length > 0) {
-          const entityMemories = await this.db
-            .select({ memoryId: memoryTable.id })
-            .from(memoryTable)
-            .where(inArray(memoryTable.entityId, entityIds));
+                const entityIds = entities.map((e) => e.entityId);
+                logger.debug(
+                  `[DB] Found ${entityIds.length} entities to delete for agent ${agentId}`
+                );
 
-          memoryIds = entityMemories.map((m) => m.memoryId);
+                // Step 2: Find all rooms for this agent
+                logger.debug(`[DB] Fetching rooms for agent: ${agentId}`);
+                const rooms = await tx
+                  .select({ roomId: roomTable.id })
+                  .from(roomTable)
+                  .where(eq(roomTable.agentId, agentId));
+
+                const roomIds = rooms.map((r) => r.roomId);
+                logger.debug(`[DB] Found ${roomIds.length} rooms for agent ${agentId}`);
+
+                // Delete logs first directly, addressing the foreign key constraint
+                logger.debug(
+                  `[DB] Explicitly deleting ALL logs with matching entityIds and roomIds`
+                );
+
+                // Delete logs by entity IDs
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Deleting logs for ${entityIds.length} entities (first batch)`);
+                  // Break into smaller batches if there are many entities
+                  const BATCH_SIZE = 50;
+                  for (let i = 0; i < entityIds.length; i += BATCH_SIZE) {
+                    const batch = entityIds.slice(i, i + BATCH_SIZE);
+                    logger.debug(
+                      `[DB] Processing entity logs batch ${i / BATCH_SIZE + 1} with ${batch.length} entities`
+                    );
+                    await tx.delete(logTable).where(inArray(logTable.entityId, batch));
+                  }
+                  logger.debug(`[DB] Entity logs deletion completed successfully`);
+                }
+
+                // Delete logs by room IDs
+                if (roomIds.length > 0) {
+                  logger.debug(`[DB] Deleting logs for ${roomIds.length} rooms (first batch)`);
+                  // Break into smaller batches if there are many rooms
+                  const BATCH_SIZE = 50;
+                  for (let i = 0; i < roomIds.length; i += BATCH_SIZE) {
+                    const batch = roomIds.slice(i, i + BATCH_SIZE);
+                    logger.debug(
+                      `[DB] Processing room logs batch ${i / BATCH_SIZE + 1} with ${batch.length} rooms`
+                    );
+                    await tx.delete(logTable).where(inArray(logTable.roomId, batch));
+                  }
+                  logger.debug(`[DB] Room logs deletion completed successfully`);
+                }
+
+                // Step 3: Find memories that belong to entities
+                let memoryIds: UUID[] = [];
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Finding memories belonging to entities`);
+                  const memories = await tx
+                    .select({ id: memoryTable.id })
+                    .from(memoryTable)
+                    .where(inArray(memoryTable.entityId, entityIds));
+
+                  memoryIds = memories.map((m) => m.id);
+                  logger.debug(`[DB] Found ${memoryIds.length} memories belonging to entities`);
+                }
+
+                // Step 4: Find memories that belong to the agent
+                logger.debug(`[DB] Finding memories belonging to agent directly`);
+                const agentMemories = await tx
+                  .select({ id: memoryTable.id })
+                  .from(memoryTable)
+                  .where(eq(memoryTable.agentId, agentId));
+
+                memoryIds = [...memoryIds, ...agentMemories.map((m) => m.id)];
+                logger.debug(`[DB] Found total of ${memoryIds.length} memories to delete`);
+
+                // Step 5: Find memories that belong to the rooms
+                if (roomIds.length > 0) {
+                  logger.debug(`[DB] Finding memories belonging to rooms`);
+                  const roomMemories = await tx
+                    .select({ id: memoryTable.id })
+                    .from(memoryTable)
+                    .where(inArray(memoryTable.roomId, roomIds));
+
+                  memoryIds = [...memoryIds, ...roomMemories.map((m) => m.id)];
+                  logger.debug(`[DB] Updated total to ${memoryIds.length} memories to delete`);
+                }
+
+                // Step 6: Delete embeddings for memories
+                if (memoryIds.length > 0) {
+                  logger.debug(`[DB] Deleting embeddings for ${memoryIds.length} memories`);
+                  // Delete in smaller batches if there are many memories
+                  const BATCH_SIZE = 100;
+                  for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
+                    const batch = memoryIds.slice(i, i + BATCH_SIZE);
+                    await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, batch));
+                  }
+                  logger.debug(`[DB] Embeddings deleted successfully`);
+                }
+
+                // Step 7: Delete memories
+                if (memoryIds.length > 0) {
+                  logger.debug(`[DB] Deleting ${memoryIds.length} memories`);
+                  // Delete in smaller batches if there are many memories
+                  const BATCH_SIZE = 100;
+                  for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
+                    const batch = memoryIds.slice(i, i + BATCH_SIZE);
+                    await tx.delete(memoryTable).where(inArray(memoryTable.id, batch));
+                  }
+                  logger.debug(`[DB] Memories deleted successfully`);
+                }
+
+                // Step 8: Delete components for entities
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Deleting components for entities`);
+                  await tx
+                    .delete(componentTable)
+                    .where(inArray(componentTable.entityId, entityIds));
+                  logger.debug(`[DB] Components deleted successfully`);
+                }
+
+                // Step 9: Delete source entity references in components
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Deleting source entity references in components`);
+                  await tx
+                    .delete(componentTable)
+                    .where(inArray(componentTable.sourceEntityId, entityIds));
+                  logger.debug(`[DB] Source entity references deleted successfully`);
+                }
+
+                // Step 10: Delete participations for rooms
+                if (roomIds.length > 0) {
+                  logger.debug(`[DB] Deleting participations for rooms`);
+                  await tx
+                    .delete(participantTable)
+                    .where(inArray(participantTable.roomId, roomIds));
+                  logger.debug(`[DB] Participations deleted for rooms`);
+                }
+
+                // Step 11: Delete agent-related participations
+                logger.debug(`[DB] Deleting agent participations`);
+                await tx.delete(participantTable).where(eq(participantTable.agentId, agentId));
+                logger.debug(`[DB] Agent participations deleted`);
+
+                // Step 12: Delete rooms
+                if (roomIds.length > 0) {
+                  logger.debug(`[DB] Deleting rooms`);
+                  await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
+                  logger.debug(`[DB] Rooms deleted successfully`);
+                }
+
+                // Step 13: Delete cache entries
+                logger.debug(`[DB] Deleting cache entries`);
+                await tx.delete(cacheTable).where(eq(cacheTable.agentId, agentId));
+                logger.debug(`[DB] Cache entries deleted successfully`);
+
+                // Step 14: Delete relationships
+                logger.debug(`[DB] Deleting relationships`);
+                // First delete where source entity is from this agent
+                if (entityIds.length > 0) {
+                  await tx
+                    .delete(relationshipTable)
+                    .where(inArray(relationshipTable.sourceEntityId, entityIds));
+                  // Then delete where target entity is from this agent
+                  await tx
+                    .delete(relationshipTable)
+                    .where(inArray(relationshipTable.targetEntityId, entityIds));
+                }
+                // Finally, delete by agent ID
+                await tx.delete(relationshipTable).where(eq(relationshipTable.agentId, agentId));
+                logger.debug(`[DB] Relationships deleted successfully`);
+
+                // Step 15: Delete entities
+                if (entityIds.length > 0) {
+                  logger.debug(`[DB] Deleting entities`);
+                  await tx.delete(entityTable).where(eq(entityTable.agentId, agentId));
+                  logger.debug(`[DB] Entities deleted successfully`);
+                }
+
+                // Step 16: Handle world references
+                logger.debug(`[DB] Checking for world references`);
+                const worlds = await tx
+                  .select({ id: worldTable.id })
+                  .from(worldTable)
+                  .where(eq(worldTable.agentId, agentId));
+
+                if (worlds.length > 0) {
+                  const worldIds = worlds.map((w) => w.id);
+                  logger.debug(`[DB] Found ${worldIds.length} worlds to delete`);
+
+                  // Step 17: Delete worlds
+                  await tx.delete(worldTable).where(inArray(worldTable.id, worldIds));
+                  logger.debug(`[DB] Worlds deleted successfully`);
+                } else {
+                  logger.debug(`[DB] No worlds found for this agent`);
+                }
+
+                // Step 18: Finally, delete the agent
+                logger.debug(`[DB] Deleting agent ${agentId}`);
+                await tx.delete(agentTable).where(eq(agentTable.id, agentId));
+                logger.debug(`[DB] Agent deleted successfully`);
+
+                resolve(true);
+              } catch (error) {
+                logger.error(`[DB] Error in transaction:`, error);
+                reject(error);
+              }
+            })
+            .catch((transactionError) => {
+              clearTimeout(timeoutId);
+              reject(transactionError);
+            });
+        });
+
+        await deletePromise;
+        logger.success(`[DB] Agent ${agentId} successfully deleted`);
+        return true;
+      } catch (error) {
+        logger.error(`[DB] Error in database transaction for agent deletion ${agentId}:`, error);
+        if (error instanceof Error) {
+          logger.error(`[DB] Error name: ${error.name}, message: ${error.message}`);
+          logger.error(`[DB] Error stack: ${error.stack}`);
         }
-
-        const agentMemories = await this.db
-          .select({ memoryId: memoryTable.id })
-          .from(memoryTable)
-          .where(eq(memoryTable.agentId, agentId));
-
-        memoryIds.push(...agentMemories.map((m) => m.memoryId));
-
-        if (memoryIds.length > 0) {
-          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, memoryIds));
-
-          await tx.delete(memoryTable).where(inArray(memoryTable.id, memoryIds));
-        }
-
-        const rooms = await this.db
-          .select({ roomId: roomTable.id })
-          .from(roomTable)
-          .where(eq(roomTable.agentId, agentId));
-
-        const roomIds = rooms.map((r) => r.roomId);
-
-        if (entityIds.length > 0) {
-          await tx.delete(logTable).where(inArray(logTable.entityId, entityIds));
-          await tx.delete(participantTable).where(inArray(participantTable.entityId, entityIds));
-        }
-
-        if (roomIds.length > 0) {
-          await tx.delete(logTable).where(inArray(logTable.roomId, roomIds));
-          await tx.delete(participantTable).where(inArray(participantTable.roomId, roomIds));
-        }
-
-        await tx.delete(participantTable).where(eq(participantTable.agentId, agentId));
-
-        if (roomIds.length > 0) {
-          await tx.delete(roomTable).where(inArray(roomTable.id, roomIds));
-        }
-
-        await tx.delete(cacheTable).where(eq(cacheTable.agentId, agentId));
-
-        await tx.delete(relationshipTable).where(eq(relationshipTable.agentId, agentId));
-
-        await tx.delete(entityTable).where(eq(entityTable.agentId, agentId));
-
-        const newAgent = await this.db
-          .select({ newAgentId: agentTable.id })
-          .from(agentTable)
-          .where(not(eq(agentTable.id, agentId)))
-          .limit(1);
-
-        if (newAgent.length > 0) {
-          await tx
-            .update(worldTable)
-            .set({ agentId: newAgent[0].newAgentId })
-            .where(eq(worldTable.agentId, agentId));
-        } else {
-          await tx.delete(worldTable).where(eq(worldTable.agentId, agentId));
-        }
-
-        await tx.delete(agentTable).where(eq(agentTable.id, agentId));
-      });
-
-      return true;
+        throw error;
+      }
     });
   }
 

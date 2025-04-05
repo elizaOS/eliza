@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api';
 import type { Agent, UUID } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
@@ -13,6 +14,7 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Use our enhanced agent update hook for more intelligent handling of JSONb fields
   const agentState = useAgentUpdate(agent);
@@ -66,21 +68,139 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
   };
 
   const handleDelete = async () => {
-    try {
-      await apiClient.deleteAgent(agentId);
-      queryClient.invalidateQueries({ queryKey: ['agents'] });
-      navigate('/');
+    if (isDeleting) return; // Prevent multiple clicks
 
+    try {
+      // Add confirmation dialog
+      const confirmDelete = window.confirm(
+        `Are you sure you want to delete the agent "${agent.name}"? This action cannot be undone.`
+      );
+
+      if (!confirmDelete) {
+        return;
+      }
+
+      // Set deleting state
+      setIsDeleting(true);
+
+      // Show a toast to indicate deletion is in progress
       toast({
-        title: 'Success',
-        description: 'Agent deleted successfully',
+        title: 'Deleting...',
+        description: `Deleting agent "${agent.name}"`,
       });
+
+      let responseReceived = false;
+      let navigationTimer = null;
+
+      try {
+        // Set a timeout to navigate away if the deletion takes too long
+        navigationTimer = setTimeout(() => {
+          if (!responseReceived) {
+            queryClient.invalidateQueries({ queryKey: ['agents'] });
+            navigate('/');
+            toast({
+              title: 'Note',
+              description: 'Deletion is still processing in the background.',
+            });
+          }
+        }, 8000);
+
+        const response = await apiClient.deleteAgent(agentId);
+        responseReceived = true;
+
+        if (navigationTimer) {
+          clearTimeout(navigationTimer);
+          navigationTimer = null;
+        }
+
+        // Handle partial success response
+        if (response && 'partial' in response && response.partial === true) {
+          toast({
+            title: 'Processing',
+            description: 'Deletion is still in progress and will complete in the background.',
+          });
+        } else {
+          toast({
+            title: 'Success',
+            description: 'Agent deleted successfully',
+          });
+        }
+
+        // Invalidate queries and navigate away regardless
+        queryClient.invalidateQueries({ queryKey: ['agents'] });
+        navigate('/');
+      } catch (deleteError) {
+        responseReceived = true;
+
+        if (navigationTimer) {
+          clearTimeout(navigationTimer);
+          navigationTimer = null;
+        }
+
+        // Handle specific error codes
+        if (deleteError instanceof Error) {
+          const errorMessage = deleteError.message;
+          const statusCode = (deleteError as any).statusCode;
+
+          if (
+            statusCode === 409 ||
+            errorMessage.includes('409') ||
+            errorMessage.includes('Conflict') ||
+            errorMessage.includes('foreign key constraint') ||
+            errorMessage.includes('active references')
+          ) {
+            // Conflict - agent has references that prevent deletion
+            toast({
+              title: 'Cannot Delete',
+              description:
+                'This agent cannot be deleted because it has active references. Try stopping the agent first.',
+              variant: 'destructive',
+            });
+          } else if (
+            statusCode === 408 ||
+            statusCode === 504 ||
+            errorMessage.includes('408') ||
+            errorMessage.includes('504') ||
+            errorMessage.includes('timeout') ||
+            errorMessage.includes('timed out')
+          ) {
+            // Timeout - operation is still running in background
+            toast({
+              title: 'Operation Timeout',
+              description:
+                'The deletion is taking longer than expected and will continue in the background.',
+              variant: 'destructive',
+            });
+
+            // Still navigate away
+            queryClient.invalidateQueries({ queryKey: ['agents'] });
+            navigate('/');
+          } else {
+            // Generic error
+            toast({
+              title: 'Error',
+              description: errorMessage || 'Failed to delete agent',
+              variant: 'destructive',
+            });
+          }
+        } else {
+          // Unknown error
+          toast({
+            title: 'Error',
+            description: 'An unknown error occurred while deleting the agent',
+            variant: 'destructive',
+          });
+        }
+      }
     } catch (error) {
+      // Outer try/catch fallback
       toast({
         title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to delete agent',
         variant: 'destructive',
       });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -94,6 +214,7 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
       onReset={agentState.reset}
       onDelete={handleDelete}
       isAgent={true}
+      isDeleting={isDeleting}
       customComponents={[
         {
           name: 'Plugins',
