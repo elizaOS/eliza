@@ -990,7 +990,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   getAllServices(): Map<ServiceTypeName, Service>;
 
-  registerService(service: typeof Service): void;
+  registerService(service: typeof Service): Promise<void>;
 
   // Keep these methods for backward compatibility
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
