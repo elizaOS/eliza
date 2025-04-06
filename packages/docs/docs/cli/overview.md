@@ -130,13 +130,14 @@ Plugins extend the functionality of your agents. Manage them with the `plugin` c
 
 ```bash
 # Add a plugin to your project
-elizaos plugin add @elizaos/plugin-discord
+elizaos project add-plugin @elizaos/plugin-discord
+
 
 # Remove a plugin
-elizaos plugin remove @elizaos/plugin-discord
+elizaos project remove-plugin @elizaos/plugin-discord
 
 # List installed plugins
-elizaos plugin list
+elizaos project list-plugins
 ```
 
 ## Environment Configuration
