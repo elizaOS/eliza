@@ -138,7 +138,7 @@ const runAgentTests = async (options: {
     // Wait for database initialization
     logger.info('Waiting for database initialization...');
 
-        // Initialize the server explicitly before starting
+    // Initialize the server explicitly before starting
     logger.info('Initializing server...');
     try {
       await server.initialize(); // <-- Add this line

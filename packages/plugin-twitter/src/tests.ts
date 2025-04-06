@@ -49,7 +49,10 @@ export class ClientBaseTestSuite implements TestSuite {
   }
 
   tests = [
-    { name: 'Create instance with correct configuration', fn: this.testInstanceCreation.bind(this) },
+    {
+      name: 'Create instance with correct configuration',
+      fn: this.testInstanceCreation.bind(this),
+    },
     { name: 'Initialize with correct post intervals', fn: this.testPostIntervals.bind(this) },
   ];
 
