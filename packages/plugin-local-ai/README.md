@@ -18,15 +18,6 @@ The plugin requires these environment variables (can be set in .env file or char
 "settings": {
   "USE_LOCAL_AI": true,
   "USE_STUDIOLM_TEXT_MODELS": false,
-  "USE_OLLAMA_TEXT_MODELS": false,
-
-  "OLLAMA_API_ENDPOINT": "http://localhost:11434",
-  "OLLAMA_MODEL": "deepseek-r1-distill-qwen-7b",
-  "USE_OLLAMA_EMBEDDING": false,
-  "OLLAMA_EMBEDDING_MODEL": "",
-  "OLLAMA_SMALL_MODEL": "deepseek-r1:1.5b",
-  "OLLAMA_MEDIUM_MODEL": "deepseek-r1:7b",
-  "OLLAMA_LARGE_MODEL": "deepseek-r1:7b",
 
   "STUDIOLM_SERVER_URL": "http://localhost:1234",
   "STUDIOLM_SMALL_MODEL": "lmstudio-community/deepseek-r1-distill-qwen-1.5b",
@@ -41,16 +32,6 @@ Or in `.env` file:
 # Local AI Configuration
 USE_LOCAL_AI=true
 USE_STUDIOLM_TEXT_MODELS=false
-USE_OLLAMA_TEXT_MODELS=false
-
-# Ollama Configuration
-OLLAMA_API_ENDPOINT=http://localhost:11434
-OLLAMA_MODEL=deepseek-r1-distill-qwen-7b
-USE_OLLAMA_EMBEDDING=false
-OLLAMA_EMBEDDING_MODEL=
-OLLAMA_SMALL_MODEL=deepseek-r1:1.5b
-OLLAMA_MEDIUM_MODEL=deepseek-r1:7b
-OLLAMA_LARGE_MODEL=deepseek-r1:7b
 
 # StudioLM Configuration
 STUDIOLM_SERVER_URL=http://localhost:1234
@@ -64,18 +45,6 @@ STUDIOLM_EMBEDDING_MODEL=false
 #### Text Model Source (Choose One)
 
 - `USE_STUDIOLM_TEXT_MODELS`: Enable StudioLM text models
-- `USE_OLLAMA_TEXT_MODELS`: Enable Ollama text models
-  Note: Only one text model source can be enabled at a time
-
-#### Ollama Settings
-
-- `OLLAMA_API_ENDPOINT`: Ollama API endpoint (default: http://localhost:11434)
-- `OLLAMA_MODEL`: Default model for general use
-- `USE_OLLAMA_EMBEDDING`: Enable Ollama for embeddings
-- `OLLAMA_EMBEDDING_MODEL`: Model for embeddings when enabled
-- `OLLAMA_SMALL_MODEL`: Model for lighter tasks
-- `OLLAMA_MEDIUM_MODEL`: Model for standard tasks
-- `OLLAMA_LARGE_MODEL`: Model for complex tasks
 
 #### StudioLM Settings
 
@@ -139,14 +108,6 @@ const largeResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
 - Supports chat completion API similar to OpenAI
 - Configure with `USE_STUDIOLM_TEXT_MODELS=true`
 - Supports both small and medium-sized models
-- Optional embedding model support
-
-### 2. Ollama
-
-- Local model server with optimized inference
-- Supports various open models in GGUF format
-- Configure with `USE_OLLAMA_TEXT_MODELS=true`
-- Supports small, medium, and large models
 - Optional embedding model support
 
 Note: The plugin validates that only one text model source is enabled at a time to prevent conflicts.
