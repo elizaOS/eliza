@@ -16,6 +16,8 @@ export default defineConfig({
     'http',
     'events',
     '@elizaos/core',
+    'fastembed',
     'zod',
+    'node-llama-cpp',
   ],
 });
