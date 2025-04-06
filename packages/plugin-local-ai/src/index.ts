@@ -10,7 +10,8 @@ import type {
   ObjectGenerationParams,
 } from '@elizaos/core';
 import { type IAgentRuntime, ModelType, type Plugin, logger } from '@elizaos/core';
-import { EmbeddingModel, FlagEmbedding } from 'fastembed';
+import pkg from 'fastembed';
+const { EmbeddingModel, FlagEmbedding } = pkg;
 import {
   type Llama,
   LlamaChatSession,
@@ -129,7 +130,7 @@ class LocalAIManager {
   private modelPath: string;
   private mediumModelPath: string;
   private cacheDir: string;
-  private embeddingModel: FlagEmbedding | null = null;
+  private embeddingModel = null;
   private tokenizerManager: TokenizerManager;
   private downloadManager: DownloadManager;
   private visionManager: VisionManager;
@@ -138,8 +139,7 @@ class LocalAIManager {
   private ttsManager: TTSManager;
   private studioLMManager: StudioLMManager;
 
-  // Initialization state flags
-  private ollamaInitialized = false;
+  // Initialization state flag
   private studioLMInitialized = false;
   private smallModelInitialized = false;
   private mediumModelInitialized = false;
@@ -155,7 +155,6 @@ class LocalAIManager {
   private visionInitializingPromise: Promise<void> | null = null;
   private transcriptionInitializingPromise: Promise<void> | null = null;
   private ttsInitializingPromise: Promise<void> | null = null;
-  private ollamaInitializingPromise: Promise<void> | null = null;
   private studioLMInitializingPromise: Promise<void> | null = null;
 
   private modelsDir: string;
@@ -247,7 +246,6 @@ class LocalAIManager {
       const config = {
         USE_LOCAL_AI: process.env.USE_LOCAL_AI,
         USE_STUDIOLM_TEXT_MODELS: process.env.USE_STUDIOLM_TEXT_MODELS,
-        USE_OLLAMA_TEXT_MODELS: process.env.USE_OLLAMA_TEXT_MODELS,
       };
 
       // Validate configuration
@@ -260,52 +258,12 @@ class LocalAIManager {
       // Ensure environment variables are set with validated values
       process.env.USE_LOCAL_AI = String(validatedConfig.USE_LOCAL_AI);
       process.env.USE_STUDIOLM_TEXT_MODELS = String(validatedConfig.USE_STUDIOLM_TEXT_MODELS);
-      process.env.USE_OLLAMA_TEXT_MODELS = String(validatedConfig.USE_OLLAMA_TEXT_MODELS);
-
-      // logger.info("Environment variables updated with validated values:", {
-      //   USE_LOCAL_AI: process.env.USE_LOCAL_AI,
-      //   USE_STUDIOLM_TEXT_MODELS: process.env.USE_STUDIOLM_TEXT_MODELS,
-      //   USE_OLLAMA_TEXT_MODELS: process.env.USE_OLLAMA_TEXT_MODELS
-      // });
 
       logger.success('Environment initialization complete');
     } catch (error) {
       logger.error('Environment validation failed:', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Asynchronously initializes the Ollama model.
-   *
-   * @returns {Promise<void>} A Promise that resolves when the initialization is complete.
-   * @throws {Error} If the Ollama manager is not created, or if initialization of Ollama models fails.
-   */
-  private async initializeOllama(): Promise<void> {
-    try {
-      logger.info('Initializing Ollama models...');
-
-      // Check if Ollama manager exists
-      if (!this.ollamaManager) {
-        throw new Error('Ollama manager not created - cannot initialize');
-      }
-
-      // Initialize and test models
-      await this.ollamaManager.initialize();
-
-      if (!this.ollamaManager.isInitialized()) {
-        throw new Error('Ollama initialization failed - models not properly loaded');
-      }
-
-      logger.success('Ollama initialization complete');
-    } catch (error) {
-      logger.error('Ollama initialization failed:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        timestamp: new Date().toISOString(),
       });
       throw error;
     }
@@ -455,21 +413,19 @@ class LocalAIManager {
   }
 
   /**
-   * Asynchronously generates text using either StudioLM or Ollama models based on the specified parameters.
+   * Asynchronously generates text using StudioLM models based on the specified parameters.
    *
    * @param {GenerateTextParams} params - The parameters for generating the text.
    * @returns {Promise<string>} - A promise that resolves to the generated text.
    */
-  async generateTextOllamaStudio(params: GenerateTextParams): Promise<string> {
+  async generateTextLMStudio(params: GenerateTextParams): Promise<string> {
     try {
       const modelConfig = this.getTextModelSource();
-      logger.info('generateTextOllamaStudio called with:', {
+      logger.info('generateTextLMStudio called with:', {
         modelSource: modelConfig.source,
         modelType: params.modelType,
         studioLMInitialized: this.studioLMInitialized,
-        ollamaInitialized: this.ollamaInitialized,
         studioLMEnabled: process.env.USE_STUDIOLM_TEXT_MODELS === 'true',
-        ollamaEnabled: process.env.USE_OLLAMA_TEXT_MODELS === 'true',
       });
 
       if (modelConfig.source === 'studiolm') {
@@ -497,34 +453,10 @@ class LocalAIManager {
         return await this.studioLMManager.generateText(params, this.studioLMInitialized);
       }
 
-      if (modelConfig.source === 'ollama') {
-        // Check if Ollama is enabled in environment
-        if (process.env.USE_OLLAMA_TEXT_MODELS !== 'true') {
-          logger.warn('Ollama requested but disabled in environment, falling back to local models');
-          return this.generateText(params);
-        }
-
-        // Check if Ollama manager exists
-        if (!this.ollamaManager) {
-          logger.warn('Ollama manager not initialized, falling back to local models');
-          return this.generateText(params);
-        }
-
-        // Only initialize if not already initialized
-        if (!this.ollamaInitialized && !this.ollamaManager.isInitialized()) {
-          logger.info('Initializing Ollama in generateTextOllamaStudio');
-          await this.ollamaManager.initialize();
-          this.ollamaInitialized = true;
-        }
-
-        // Pass initialization flag to generateText
-        return await this.ollamaManager.generateText(params, this.ollamaInitialized);
-      }
-
       // Fallback to local models if something goes wrong
       return this.generateText(params);
     } catch (error) {
-      logger.error('Text generation with Ollama/StudioLM failed:', {
+      logger.error('Text generation with StudioLM failed:', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         modelSource: this.getTextModelSource().source,
@@ -760,8 +692,6 @@ class LocalAIManager {
       // Check environment configuration and manager existence
       if (process.env.USE_STUDIOLM_TEXT_MODELS === 'true' && this.studioLMManager) {
         config.source = 'studiolm';
-      } else if (process.env.USE_OLLAMA_TEXT_MODELS === 'true' && this.ollamaManager) {
-        config.source = 'ollama';
       }
 
       logger.info('Selected text model source:', config);
@@ -981,29 +911,6 @@ class LocalAIManager {
   }
 
   /**
-   * Lazy initialize the Ollama integration
-   */
-  private async lazyInitOllama(): Promise<void> {
-    if (this.ollamaInitialized) return;
-
-    if (!this.ollamaInitializingPromise) {
-      this.ollamaInitializingPromise = (async () => {
-        try {
-          await this.initializeOllama();
-          this.ollamaInitialized = true;
-          logger.info('Ollama initialized successfully');
-        } catch (error) {
-          logger.error('Failed to initialize Ollama:', error);
-          this.ollamaInitializingPromise = null;
-          throw error;
-        }
-      })();
-    }
-
-    await this.ollamaInitializingPromise;
-  }
-
-  /**
    * Lazy initialize the StudioLM integration
    */
   private async lazyInitStudioLM(): Promise<void> {
@@ -1060,7 +967,7 @@ export const localAiPlugin: Plugin = {
         const modelConfig = localAIManager.getTextModelSource();
 
         if (modelConfig.source !== 'local') {
-          return await localAIManager.generateTextOllamaStudio({
+          return await localAIManager.generateTextLMStudio({
             prompt,
             stopSequences,
             runtime,
@@ -1088,7 +995,7 @@ export const localAiPlugin: Plugin = {
         const modelConfig = localAIManager.getTextModelSource();
 
         if (modelConfig.source !== 'local') {
-          return await localAIManager.generateTextOllamaStudio({
+          return await localAIManager.generateTextLMStudio({
             prompt,
             stopSequences,
             runtime,
@@ -1150,7 +1057,7 @@ export const localAiPlugin: Plugin = {
         // Generate text based on the configured model source
         let textResponse: string;
         if (modelConfig.source !== 'local') {
-          textResponse = await localAIManager.generateTextOllamaStudio({
+          textResponse = await localAIManager.generateTextLMStudio({
             prompt: jsonPrompt,
             stopSequences: params.stopSequences,
             runtime,
@@ -1264,7 +1171,7 @@ export const localAiPlugin: Plugin = {
         // Generate text based on the configured model source
         let textResponse: string;
         if (modelConfig.source !== 'local') {
-          textResponse = await localAIManager.generateTextOllamaStudio({
+          textResponse = await localAIManager.generateTextLMStudio({
             prompt: jsonPrompt,
             stopSequences: params.stopSequences,
             runtime,
