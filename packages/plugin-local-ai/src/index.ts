@@ -435,7 +435,7 @@ class LocalAIManager {
           cacheDir: this.modelsDir,
           model: EmbeddingModel.BGESmallENV15,
           maxLength: 512,
-          showDownloadProgress: false,
+          showDownloadProgress: true,
         });
 
         // Display completed progress bar
