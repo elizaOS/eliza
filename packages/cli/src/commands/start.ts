@@ -22,6 +22,7 @@ import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config'
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
 import { displayBanner } from '../displayBanner';
+import { findNextAvailablePort } from '../utils/port-handling';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -487,7 +488,11 @@ const startAgents = async (options: {
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
 
-  const serverPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+    // Inside your startAgents function
+    const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+    const serverPort = await findNextAvailablePort(desiredPort);
+  
+    process.env.SERVER_PORT = serverPort.toString();  
 
   // Try to find a project or plugin in the current directory
   let isProject = false;
