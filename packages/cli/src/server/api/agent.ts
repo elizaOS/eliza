@@ -1289,7 +1289,7 @@ export function agentRouter(
 
           // Add knowledge to agent
           await runtime.addKnowledge(knowledgeItem, {
-            targetTokens: 3000,
+            targetTokens: 1500,
             overlap: 200,
             modelContextSize: 4096,
           });
