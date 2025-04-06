@@ -1,11 +1,11 @@
 {
   "name": "@elizaos/plugin-tee",
-  "version": "1.0.0-beta.25",
+  "version": "1.0.0-beta.26",
   "main": "dist/index.js",
   "type": "module",
   "types": "dist/index.d.ts",
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.25",
+    "@elizaos/core": "^1.0.0-beta.26",
     "@phala/dstack-sdk": "0.1.11",
     "@solana/web3.js": "1.98.0",
     "viem": "2.23.11"
