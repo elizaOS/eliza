@@ -686,13 +686,15 @@ const startAgents = async (options: {
         }
 
         if (startedAgents.length === 0) {
-          logger.warn('Failed to start any agents from project, falling back to custom character');
+          logger.info('No project agents started - falling back to default Eliza character');
           await startAgent(defaultCharacter, server);
         } else {
           logger.debug(`Successfully started ${startedAgents.length} agents from project`);
         }
       } else {
-        logger.debug('Project found but no agents defined, falling back to custom character');
+        logger.debug(
+          'Project found but no agents defined, falling back to default Eliza character'
+        );
         await startAgent(defaultCharacter, server);
       }
     } else if (isPlugin && pluginModule) {
@@ -786,37 +788,14 @@ export const start = new Command()
             const characterData = await loadCharacterTryPath(characterPath);
             options.characters.push(characterData);
           }
-          await startAgents(options);
         } catch (error) {
-          logger.error(`Failed to load character: ${error}`);
-          process.exit(1);
+          logger.error(`Error loading character: ${error}`);
+          return;
         }
-      } else if (options.characters) {
-        // Handle --characters option
-        options.characters = [];
-        try {
-          const characterPaths = options.characters.split(',').map((path) => path.trim());
-          for (const charPath of characterPaths) {
-            if (charPath) {
-              logger.info(`Loading character from ${charPath}`);
-              const characterData = await loadCharacterTryPath(charPath);
-              options.characters.push(characterData);
-            }
-          }
-          await startAgents(options);
-        } catch (error) {
-          logger.error(`Failed to load multiple characters: ${error}`);
-          process.exit(1);
-        }
-      } else {
-        await startAgents(options);
       }
+
+      await startAgents(options);
     } catch (error) {
       handleError(error);
     }
   });
-
-// This is the function that registers the command with the CLI
-export default function registerCommand(cli: Command) {
-  return cli.addCommand(start);
-}
