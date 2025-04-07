@@ -207,7 +207,9 @@ const messageReceivedHandler = async ({
       // Skip shouldRespond check for DM and VOICE_DM channels
       const room = await runtime.getRoom(message.roomId);
       const shouldSkipShouldRespond =
-        room?.type === ChannelType.DM || room?.type === ChannelType.VOICE_DM;
+        room?.type === ChannelType.DM ||
+        room?.type === ChannelType.VOICE_DM ||
+        room?.type === ChannelType.SELF;
 
       let shouldRespond = true;
       let providers: string[] = [];
