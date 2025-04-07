@@ -233,6 +233,11 @@ export class AgentRuntime implements IAgentRuntime {
     if (plugin.adapter) {
       this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
       this.registerDatabaseAdapter(plugin.adapter);
+      this.runtimeLogger.debug(
+        `Database adapter registered successfully for plugin ${plugin.name}`
+      );
+    } else {
+      this.runtimeLogger.debug(`Plugin ${plugin.name} does not provide a database adapter`);
     }
 
     // Register plugin actions
@@ -317,8 +322,11 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Ensure adapter is initialized
     if (!this.adapter) {
-      throw new Error(
+      this.runtimeLogger.error(
         'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
+      );
+      throw new Error(
+        'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
       );
     }
 

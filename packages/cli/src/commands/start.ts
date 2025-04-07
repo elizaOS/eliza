@@ -104,6 +104,11 @@ export async function startAgent(
 ): Promise<IAgentRuntime> {
   character.id ??= stringToUuid(character.name);
 
+  // Ensure character has a plugins array
+  if (!character.plugins) {
+    character.plugins = [];
+  }
+
   const encryptedChar = encryptedCharacter(character);
 
   // For ESM modules we need to use import.meta.url instead of __dirname
@@ -123,11 +128,6 @@ export async function startAgent(
 
   const characterPlugins: Plugin[] = [];
 
-  // if encryptedChar.plugins does not include @elizaos/plugin-bootstrap, add it
-  if (!encryptedChar.plugins.includes('@elizaos/plugin-bootstrap')) {
-    encryptedChar.plugins.push('@elizaos/plugin-bootstrap');
-  }
-
   // Ensure plugin-sql is included
   if (!encryptedChar.plugins.includes('@elizaos/plugin-sql')) {
     encryptedChar.plugins.push('@elizaos/plugin-sql');
@@ -140,6 +140,11 @@ export async function startAgent(
     !encryptedChar.plugins.includes('@elizaos/plugin-anthropic')
   ) {
     encryptedChar.plugins.push('@elizaos/plugin-local-ai');
+  }
+
+  // if encryptedChar.plugins does not include @elizaos/plugin-bootstrap, add it
+  if (!encryptedChar.plugins.includes('@elizaos/plugin-bootstrap')) {
+    encryptedChar.plugins.push('@elizaos/plugin-bootstrap');
   }
 
   // for each plugin, check if it installed, and install if it is not
