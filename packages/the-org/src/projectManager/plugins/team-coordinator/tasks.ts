@@ -2,6 +2,8 @@ import { type IAgentRuntime, type UUID, logger } from '@elizaos/core';
 import { TeamUpdateTrackerService } from './services/TeamUpdateTrackerService';
 
 export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
+  const teamUpdateService = new TeamUpdateTrackerService(runtime);
+
   worldId = runtime.agentId;
 
   // Clear existing tasks
@@ -21,7 +23,6 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
     },
     execute: async (runtime, _options, task) => {
       try {
-        const teamUpdateService = new TeamUpdateTrackerService(runtime);
         logger.info('Running team check-in service job');
         await teamUpdateService.checkInServiceJob();
       } catch (error) {
@@ -37,7 +38,7 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
     worldId,
     metadata: {
       updatedAt: Date.now(),
-      updateInterval: 1000 * 60 * 5, // 5 minutes
+      updateInterval: 1000 * 60, // 5 minutes
     },
     tags: ['queue', 'repeat', 'team_coordinator'],
   });

@@ -289,7 +289,7 @@ export const recordCheckInAction: Action = {
           "checkInType": "value", // One of: STANDUP, SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO
           "channelForCheckIns": "value", // The channel ID where check-ins should happen
           "frequency": "value", // One of: WEEKDAYS, DAILY, WEEKLY, BI-WEEKLY, MONTHLY
-          "time": "value" // The time for check-ins in UTC format
+          "time": "value" // The time for check-ins in UTC format , AM PM time if given to be recorded in 24 hour format
         }
 
          Note: 
