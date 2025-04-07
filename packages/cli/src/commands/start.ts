@@ -128,6 +128,20 @@ export async function startAgent(
     encryptedChar.plugins.push('@elizaos/plugin-bootstrap');
   }
 
+  // Ensure plugin-sql is included
+  if (!encryptedChar.plugins.includes('@elizaos/plugin-sql')) {
+    encryptedChar.plugins.push('@elizaos/plugin-sql');
+  }
+
+  // Ensure plugin-local-ai is included if no other AI provider is specified
+  if (
+    !encryptedChar.plugins.includes('@elizaos/plugin-local-ai') &&
+    !encryptedChar.plugins.includes('@elizaos/plugin-openai') &&
+    !encryptedChar.plugins.includes('@elizaos/plugin-anthropic')
+  ) {
+    encryptedChar.plugins.push('@elizaos/plugin-local-ai');
+  }
+
   // for each plugin, check if it installed, and install if it is not
   for (const plugin of encryptedChar.plugins) {
     logger.debug('Checking if plugin is installed: ', plugin);
