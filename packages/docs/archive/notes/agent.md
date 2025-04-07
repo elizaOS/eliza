@@ -104,33 +104,16 @@ export async function loadCharacters(charactersArg: string): Promise<Character[]
 
 ```typescript
 export async function createAgent(character: Character, db: IDatabaseAdapter, token: string) {
-  // Ensure default plugins are included
-  const plugins = [
-    bootstrapPlugin,
-    nodePlugin,
-    character.settings.secrets.WALLET_PUBLIC_KEY ? solanaPlugin : null,
-  ].filter(Boolean);
-
-  // Add SQL plugin if not already included
-  if (!plugins.some((p) => p.name === 'sql')) {
-    plugins.push(sqlPlugin);
-  }
-
-  // Add local-ai plugin if no other AI provider is specified
-  if (
-    !plugins.some((p) => p.name === 'local-ai') &&
-    !plugins.some((p) => p.name === 'openai') &&
-    !plugins.some((p) => p.name === 'anthropic')
-  ) {
-    plugins.push(localAiPlugin);
-  }
-
   return new AgentRuntime({
     databaseAdapter: db,
     token,
     modelProvider: character.modelProvider,
     character,
-    plugins,
+    plugins: [
+      bootstrapPlugin,
+      nodePlugin,
+      character.settings.secrets.WALLET_PUBLIC_KEY ? solanaPlugin : null,
+    ].filter(Boolean),
     providers: [],
     actions: [],
     services: [],
@@ -138,3 +121,105 @@ export async function createAgent(character: Character, db: IDatabaseAdapter, to
   });
 }
 ```
+
+### Client Initialization
+
+```typescript
+export async function initializeClients(character: Character, runtime: IAgentRuntime) {
+  const clients = [];
+  const clientTypes = character.clients?.map((str) => str.toLowerCase()) || [];
+
+  if (clientTypes.includes(Clients.DISCORD)) {
+    clients.push(await DiscordClientInterface.start(runtime));
+  }
+  if (clientTypes.includes(Clients.TELEGRAM)) {
+    clients.push(await TelegramClientInterface.start(runtime));
+  }
+  if (clientTypes.includes(Clients.TWITTER)) {
+    clients.push(await TwitterClientInterface.start(runtime));
+  }
+  if (clientTypes.includes(Clients.DIRECT)) {
+    clients.push(await AutoClientInterface.start(runtime));
+  }
+  if (clientTypes.includes(Clients.XMTP)) {
+    const xmtpClient = await XmtpClientInterface.start(runtime);
+    if (xmtpClient) clients.xmtp = xmtpClient;
+  }
+
+  return clients;
+}
+```
+
+## Best Practices
+
+### Token Management
+
+Tokens can be configured in two ways:
+
+1. Using namespaced environment variables:
+
+```env
+CHARACTER.YOUR_CHARACTER_NAME.OPENAI_API_KEY=sk-...
+CHARACTER.YOUR_CHARACTER_NAME.ANTHROPIC_API_KEY=sk-...
+```
+
+2. Using character settings:
+
+```typescript
+export function getTokenForProvider(provider: ModelProviderName, character: Character) {
+  switch (provider) {
+    case ModelProviderName.OPENAI:
+      return character.settings?.secrets?.OPENAI_API_KEY || settings.OPENAI_API_KEY;
+    case ModelProviderName.ANTHROPIC:
+      return character.settings?.secrets?.ANTHROPIC_API_KEY || settings.ANTHROPIC_API_KEY;
+    // Handle other providers...
+  }
+}
+```
+
+The system will check for tokens in the following order:
+
+1. Character-specific namespaced env variables
+2. Character settings from JSON
+3. Global environment variables
+
+### Database Selection
+
+```typescript
+function initializeDatabase() {
+  if (process.env.POSTGRES_URL) {
+    return new PostgresDatabaseAdapter({
+      connectionString: process.env.POSTGRES_URL,
+    });
+  }
+  return new SqliteDatabaseAdapter(new Database('./db.sqlite'));
+}
+```
+
+## Common Issues & Solutions
+
+1. **Character Loading**
+
+```typescript
+// Handle missing character files
+if (!characters || characters.length === 0) {
+  console.log('No characters found, using default character');
+  characters = [defaultCharacter];
+}
+```
+
+2. **Plugin Loading**
+
+```typescript
+// Handle plugin import errors
+try {
+  character.plugins = await Promise.all(character.plugins.map((plugin) => import(plugin)));
+} catch (error) {
+  console.error(`Error loading plugin: ${error.message}`);
+  character.plugins = [];
+}
+```
+
+## Related Resources
+
+- [Plugin System](../../packages/plugins)
