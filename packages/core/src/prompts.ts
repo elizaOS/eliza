@@ -304,6 +304,22 @@ Response format should be formatted in a valid JSON block like this:
 \`\`\`
 Your response should include the valid JSON block and nothing else.`;
 
+export const providersTemplate = `# Task: Determine which providers would be most relevant for {{agentName}} to use in responding to this message.
+{{providers}}
+# Instructions: Based on the context and message, select the providers that would give {{agentName}} the most relevant information for crafting a response.
+Consider the following when selecting providers:
+- What information would help {{agentName}} understand the context better?
+- What data would help {{agentName}} provide a more informed response?
+- What providers might have relevant historical or contextual information?
+
+Response format should be formatted in a valid JSON block like this:
+\`\`\`json
+{
+    "providers": ["<string>", "<string>", ...]
+}
+\`\`\`
+Your response should include the valid JSON block and nothing else.`;
+
 export const messageHandlerTemplate = `# Task: Generate dialog and actions for the character {{agentName}}.
 {{providers}}
 # Instructions: Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
