@@ -1,5 +1,6 @@
 import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 import { WorldManager } from './world-manager';
+import clientLogger from './logger';
 
 const API_PREFIX = '/api';
 
@@ -26,7 +27,7 @@ const fetcher = async ({
   // Ensure URL starts with a slash if it's a relative path
   const normalizedUrl = API_PREFIX + (url.startsWith('/') ? url : `/${url}`);
 
-  console.log('API Request:', method || 'GET', normalizedUrl);
+  clientLogger.info('API Request:', method || 'GET', normalizedUrl);
 
   const options: RequestInit = {
     method: method ?? 'GET',
@@ -64,8 +65,8 @@ const fetcher = async ({
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('API Error:', response.status, response.statusText);
-      console.error('Response:', errorText);
+      clientLogger.error('API Error:', response.status, response.statusText);
+      clientLogger.error('Response:', errorText);
 
       let errorMessage = `Error ${response.status}: ${response.statusText}`;
       try {
@@ -88,9 +89,12 @@ const fetcher = async ({
       try {
         return await response.json();
       } catch (error) {
-        console.error('JSON Parse Error:', error);
+        clientLogger.error('JSON Parse Error:', error);
         const text = await response.text();
-        console.error('Response text:', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
+        clientLogger.error(
+          'Response text:',
+          text.substring(0, 500) + (text.length > 500 ? '...' : '')
+        );
         throw new Error('Failed to parse JSON response');
       }
     } else {
@@ -98,7 +102,7 @@ const fetcher = async ({
       return await response.text();
     }
   } catch (error) {
-    console.error('Fetch error:', error);
+    clientLogger.error('Fetch error:', error);
     throw error;
   }
 };

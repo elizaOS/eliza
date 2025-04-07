@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-twitter",
-  "version": "1.0.0-beta.23",
+  "version": "1.0.0-beta.27",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -18,7 +18,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.23",
+    "@elizaos/core": "^1.0.0-beta.27",
     "@roamhq/wrtc": "^0.8.0",
     "@sinclair/typebox": "^0.32.20",
     "glob": "11.0.0",

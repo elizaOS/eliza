@@ -17,5 +17,6 @@ export default defineConfig({
     'events',
     '@elizaos/core',
     'zod',
+    'node-llama-cpp',
   ],
 });

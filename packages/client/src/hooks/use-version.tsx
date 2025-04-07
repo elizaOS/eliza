@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { NavLink } from 'react-router';
 import semver from 'semver';
 import { useToast } from './use-toast';
+import clientLogger from '../lib/logger';
 
 export default function useVersion() {
   const { toast } = useToast();
@@ -50,7 +51,7 @@ export default function useVersion() {
         }
       }
     } catch (e) {
-      console.error(`Unable to retrieve latest version from GitHub: ${e}`);
+      clientLogger.error(`Unable to retrieve latest version from GitHub: ${e}`);
     }
   };
 

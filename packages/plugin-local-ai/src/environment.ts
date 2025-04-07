@@ -1,4 +1,3 @@
-import type { IAgentRuntime } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import { z } from 'zod';
 
@@ -18,7 +17,7 @@ export const configSchema = z.object({
   STUDIOLM_SERVER_URL: z.string().default('http://localhost:1234'),
   STUDIOLM_SMALL_MODEL: z.string().default('lmstudio-community/deepseek-r1-distill-qwen-1.5b'),
   STUDIOLM_MEDIUM_MODEL: z.string().default('deepseek-r1-distill-qwen-7b'),
-  STUDIOLM_EMBEDDING_MODEL: z.union([z.boolean(), z.string()]).default(false),
+  STUDIOLM_EMBEDDING_MODEL: z.string().default('BAAI/bge-small-en-v1.5'),
 });
 
 /**
@@ -83,7 +82,7 @@ export async function validateConfig(config: Record<string, string>): Promise<Co
       STUDIOLM_SMALL_MODEL:
         config.STUDIOLM_SMALL_MODEL || 'lmstudio-community/deepseek-r1-distill-qwen-1.5b',
       STUDIOLM_MEDIUM_MODEL: config.STUDIOLM_MEDIUM_MODEL || 'deepseek-r1-distill-qwen-7b',
-      STUDIOLM_EMBEDDING_MODEL: config.STUDIOLM_EMBEDDING_MODEL || false,
+      STUDIOLM_EMBEDDING_MODEL: config.STUDIOLM_EMBEDDING_MODEL || 'BAAI/bge-small-en-v1.5',
     };
 
     const validatedConfig = configSchema.parse(fullConfig);
