@@ -1,18 +1,14 @@
 // biome-ignore lint/style/useImportType: <explanation>
 import type { IAgentRuntime, Plugin } from '@elizaos/core';
-import { registerTeamMember } from './actions/registerTeamMember';
-import { updateTeamMember } from './actions/updateTeamMember';
 import { createCheckInAction } from './actions/createCheckInAction';
 import { CheckInService } from './services/CheckInService';
 import { logger } from '@elizaos/core';
 import { listCheckInSchedules } from './actions/listCheckInSchedules';
 import { TeamUpdateTrackerService } from './services/TeamUpdateTrackerService';
 import { recordTeamMemberUpdates } from './actions/recordTeamMemberUpdates';
-import { listTeamMemberUpdates } from './actions/listTeamMemberUpdates';
 import { recordCheckInAction } from './actions/recordCheckInAction';
-import { generateReport } from './actions/reportGenerationAction.ts';
+import { generateReport } from './actions/reportGenerationAction';
 import { registerTasks } from './tasks';
-// import { listTeamMembers } from './actions/listTeamMembers';
 
 /**
  * Plugin for team coordination functionality
@@ -25,7 +21,6 @@ export const teamCoordinatorPlugin: Plugin = {
   actions: [
     createCheckInAction,
     recordTeamMemberUpdates,
-    listTeamMemberUpdates,
     listCheckInSchedules,
     generateReport,
     recordCheckInAction,
@@ -66,7 +61,6 @@ export function initialize(runtime: IAgentRuntime) {
     actions: [
       createCheckInAction,
       recordTeamMemberUpdates,
-      listTeamMemberUpdates,
       listCheckInSchedules,
       generateReport,
       recordCheckInAction,
