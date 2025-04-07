@@ -109,6 +109,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
+  private isInitialized = false;
   events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
   stateCache = new Map<
     UUID,
@@ -280,9 +281,13 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     if (plugin.services) {
-      plugin.services.forEach((service) => {
-        this.servicesInitQueue.add(service);
-      });
+      for (const service of plugin.services) {
+        if (this.isInitialized) {
+          await this.registerService(service);
+        } else {
+          this.servicesInitQueue.add(service);
+        }
+      }
     }
   }
 
@@ -301,6 +306,12 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize() {
+    if (this.isInitialized) {
+      this.runtimeLogger.warn('Agent already initialized');
+      return;
+    }
+    this.isInitialized = true;
+
     // Track registered plugins to avoid duplicates
     const registeredPluginNames = new Set<string>();
 
