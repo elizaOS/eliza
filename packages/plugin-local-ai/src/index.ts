@@ -10,18 +10,17 @@ import type {
   ObjectGenerationParams,
 } from '@elizaos/core';
 import { type IAgentRuntime, ModelType, type Plugin, logger } from '@elizaos/core';
-import pkg from 'fastembed';
-const { EmbeddingModel, FlagEmbedding } = pkg;
 import {
   type Llama,
   LlamaChatSession,
   type LlamaContext,
   type LlamaContextSequence,
+  LlamaEmbeddingContext,
   type LlamaModel,
   getLlama,
 } from 'node-llama-cpp';
 import { validateConfig } from './environment';
-import { MODEL_SPECS, type ModelSpec } from './types';
+import { MODEL_SPECS, type ModelSpec, type EmbeddingModelSpec } from './types';
 import { DownloadManager } from './utils/downloadManager';
 import { getPlatformManager } from './utils/platform';
 import { StudioLMManager } from './utils/studiolmManager';
@@ -124,17 +123,20 @@ class LocalAIManager {
   private llama: Llama | undefined;
   private smallModel: LlamaModel | undefined;
   private mediumModel: LlamaModel | undefined;
+  private embeddingModel: LlamaModel | undefined;
+  private embeddingContext: LlamaEmbeddingContext | undefined;
   private ctx: LlamaContext | undefined;
   private sequence: LlamaContextSequence | undefined;
   private chatSession: LlamaChatSession | undefined;
   private modelPath: string;
   private mediumModelPath: string;
+  private embeddingModelPath: string;
   private cacheDir: string;
-  private embeddingModel = null;
   private tokenizerManager: TokenizerManager;
   private downloadManager: DownloadManager;
   private visionManager: VisionManager;
   private activeModelConfig: ModelSpec;
+  private embeddingModelConfig: EmbeddingModelSpec;
   private transcribeManager: TranscribeManager;
   private ttsManager: TTSManager;
   private studioLMManager: StudioLMManager;
@@ -184,6 +186,9 @@ class LocalAIManager {
 
     this.mediumModelPath = path.join(this.modelsDir, 'DeepHermes-3-Llama-3-8B-q4.gguf');
 
+    // Set embedding model path
+    this.embeddingModelPath = path.join(this.modelsDir, 'bge-small-en-v1.5.Q4_K_M.gguf');
+
     // Set up cache directory
     const cacheDirEnv = process.env.CACHE_DIR?.trim();
     if (cacheDirEnv) {
@@ -220,6 +225,9 @@ class LocalAIManager {
 
     // Initialize active model config
     this.activeModelConfig = MODEL_SPECS.small;
+
+    // Initialize embedding model config
+    this.embeddingModelConfig = MODEL_SPECS.embedding;
   }
 
   /**
@@ -304,18 +312,42 @@ class LocalAIManager {
 
   /**
    * Downloads the model based on the modelPath provided.
-   * Determines whether to download a large or small model based on the current modelPath.
+   * Determines the model spec and path based on the model type.
    *
+   * @param {ModelTypeName} modelType - The type of model to download
+   * @param {ModelSpec} [customModelSpec] - Optional custom model spec to use instead of the default
    * @returns A Promise that resolves to a boolean indicating whether the model download was successful.
    */
-  private async downloadModel(modelType: ModelTypeName): Promise<boolean> {
-    const modelSpec = modelType === ModelType.TEXT_LARGE ? MODEL_SPECS.medium : MODEL_SPECS.small;
-    const modelPath = modelType === ModelType.TEXT_LARGE ? this.mediumModelPath : this.modelPath;
+  private async downloadModel(
+    modelType: ModelTypeName,
+    customModelSpec?: ModelSpec
+  ): Promise<boolean> {
+    let modelSpec: ModelSpec;
+    let modelPath: string;
+
+    if (customModelSpec) {
+      modelSpec = customModelSpec;
+      // Use embedding model path for embedding model spec, otherwise use appropriate text model path
+      modelPath =
+        modelType === ModelType.TEXT_EMBEDDING
+          ? this.embeddingModelPath
+          : modelType === ModelType.TEXT_LARGE
+            ? this.mediumModelPath
+            : this.modelPath;
+    } else if (modelType === ModelType.TEXT_EMBEDDING) {
+      modelSpec = MODEL_SPECS.embedding;
+      modelPath = this.embeddingModelPath;
+    } else {
+      modelSpec = modelType === ModelType.TEXT_LARGE ? MODEL_SPECS.medium : MODEL_SPECS.small;
+      modelPath = modelType === ModelType.TEXT_LARGE ? this.mediumModelPath : this.modelPath;
+    }
+
     try {
       return await this.downloadManager.downloadModel(modelSpec, modelPath);
     } catch (error) {
       logger.error('Model download failed:', {
         error: error instanceof Error ? error.message : String(error),
+        modelType,
         modelPath,
       });
       throw error;
@@ -374,42 +406,148 @@ class LocalAIManager {
         fs.mkdirSync(this.modelsDir, { recursive: true });
       }
 
+      // Download the embedding model using the common downloadModel function
+      await this.downloadModel(ModelType.TEXT_EMBEDDING);
+
+      // Initialize the llama instance if not already done
+      if (!this.llama) {
+        this.llama = await getLlama();
+      }
+
+      // Load the embedding model
       if (!this.embeddingModel) {
-        logger.info('Creating new FlagEmbedding instance with BGESmallENV15 model');
-        // logger.info("Embedding model download details:", {
-        //   model: EmbeddingModel.BGESmallENV15,
-        //   modelsDir: this.modelsDir,
-        //   maxLength: 512,
-        //   timestamp: new Date().toISOString()
-        // });
+        logger.info('Loading embedding model:', this.embeddingModelPath);
 
-        // Display initial progress bar
-        const barLength = 30;
-        const emptyBar = '▱'.repeat(barLength);
-        logger.info(`Downloading embedding model: ${emptyBar} 0%`);
-
-        // Disable built-in progress bar and initialize the model
-        this.embeddingModel = await FlagEmbedding.init({
-          cacheDir: this.modelsDir,
-          model: EmbeddingModel.BGESmallENV15,
-          maxLength: 512,
-          showDownloadProgress: true,
+        this.embeddingModel = await this.llama.loadModel({
+          modelPath: this.embeddingModelPath,
+          gpuLayers: 0, // Embedding models are typically small enough to run on CPU
+          vocabOnly: false,
         });
 
-        // Display completed progress bar
-        const completedBar = '▰'.repeat(barLength);
-        logger.info(`Downloading embedding model: ${completedBar} 100%`);
-        logger.success('FlagEmbedding instance created successfully');
+        // Create context for embeddings
+        this.embeddingContext = await this.embeddingModel.createEmbeddingContext({
+          contextSize: this.embeddingModelConfig.contextSize,
+          batchSize: 512,
+        });
+
+        logger.success('Embedding model initialized successfully');
       }
     } catch (error) {
       logger.error('Embedding initialization failed with details:', {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
         modelsDir: this.modelsDir,
-        model: EmbeddingModel.BGESmallENV15,
+        embeddingModelPath: this.embeddingModelPath,
       });
       throw error;
     }
+  }
+
+  /**
+   * Generate embeddings using the proper LlamaContext.getEmbedding method.
+   */
+  async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      // Lazy initialize embedding model
+      await this.lazyInitEmbedding();
+
+      if (!this.embeddingModel || !this.embeddingContext) {
+        throw new Error('Failed to initialize embedding model');
+      }
+
+      logger.info('Generating embedding for text', { textLength: text.length });
+
+      // Use the native getEmbedding method
+      const embeddingResult = await this.embeddingContext.getEmbeddingFor(text);
+
+      // Convert readonly array to mutable array
+      const mutableEmbedding = [...embeddingResult.vector];
+
+      // Normalize the embedding if needed (may already be normalized)
+      const normalizedEmbedding = this.normalizeEmbedding(mutableEmbedding);
+
+      logger.info('Embedding generation complete', { dimensions: normalizedEmbedding.length });
+      return normalizedEmbedding;
+    } catch (error) {
+      logger.error('Embedding generation failed:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        textLength: text?.length ?? 'text is null',
+      });
+
+      // Return zero vector with correct dimensions as fallback
+      const zeroDimensions = process.env.LOCAL_EMBEDDING_DIMENSIONS
+        ? parseInt(process.env.LOCAL_EMBEDDING_DIMENSIONS, 10)
+        : this.embeddingModelConfig.dimensions;
+
+      return new Array(zeroDimensions).fill(0);
+    }
+  }
+
+  /**
+   * Normalizes an embedding vector using L2 normalization
+   *
+   * @param {number[]} embedding - The embedding vector to normalize
+   * @returns {number[]} - The normalized embedding vector
+   */
+  private normalizeEmbedding(embedding: number[]): number[] {
+    // Calculate the L2 norm (Euclidean norm)
+    const squareSum = embedding.reduce((sum, val) => sum + val * val, 0);
+    const norm = Math.sqrt(squareSum);
+
+    // Avoid division by zero
+    if (norm === 0) {
+      return embedding;
+    }
+
+    // Normalize each component
+    return embedding.map((val) => val / norm);
+  }
+
+  /**
+   * Lazy initialize the embedding model
+   */
+  private async lazyInitEmbedding(): Promise<void> {
+    if (this.embeddingInitialized) return;
+
+    if (!this.embeddingInitializingPromise) {
+      this.embeddingInitializingPromise = (async () => {
+        try {
+          // Follow the same pattern as lazyInitSmallModel
+          await this.initializeEnvironment();
+
+          // Download model if needed
+          await this.downloadModel(ModelType.TEXT_EMBEDDING);
+
+          // Initialize the llama instance if not already done
+          if (!this.llama) {
+            this.llama = await getLlama();
+          }
+
+          // Load the embedding model
+          this.embeddingModel = await this.llama.loadModel({
+            modelPath: this.embeddingModelPath,
+            gpuLayers: 0, // Embedding models are typically small enough to run on CPU
+            vocabOnly: false,
+          });
+
+          // Create context for embeddings
+          this.embeddingContext = await this.embeddingModel.createEmbeddingContext({
+            contextSize: this.embeddingModelConfig.contextSize,
+            batchSize: 512,
+          });
+
+          this.embeddingInitialized = true;
+          logger.info('Embedding model initialized successfully');
+        } catch (error) {
+          logger.error('Failed to initialize embedding model:', error);
+          this.embeddingInitializingPromise = null;
+          throw error;
+        }
+      })();
+    }
+
+    await this.embeddingInitializingPromise;
   }
 
   /**
@@ -568,35 +706,6 @@ class LocalAIManager {
       return response;
     } catch (error) {
       logger.error('Text generation failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Generate embeddings - now with lazy initialization
-   */
-  async generateEmbedding(text: string): Promise<number[]> {
-    try {
-      // Lazy initialize embedding model
-      await this.lazyInitEmbedding();
-
-      if (!this.embeddingModel) {
-        throw new Error('Failed to initialize embedding model');
-      }
-
-      logger.info('Generating query embedding...');
-      const embedding = await this.embeddingModel.queryEmbed(text);
-      const dimensions = embedding.length;
-      logger.info('Embedding generation complete', { dimensions });
-
-      return Array.from(embedding);
-    } catch (error) {
-      logger.error('Embedding generation failed:', {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        // Only access text.length if text exists
-        textLength: text?.length ?? 'text is null',
-      });
       throw error;
     }
   }
@@ -810,29 +919,6 @@ class LocalAIManager {
     }
 
     await this.mediumModelInitializingPromise;
-  }
-
-  /**
-   * Lazy initialize the embedding model
-   */
-  private async lazyInitEmbedding(): Promise<void> {
-    if (this.embeddingInitialized) return;
-
-    if (!this.embeddingInitializingPromise) {
-      this.embeddingInitializingPromise = (async () => {
-        try {
-          await this.initializeEmbedding();
-          this.embeddingInitialized = true;
-          logger.info('Embedding model initialized successfully');
-        } catch (error) {
-          logger.error('Failed to initialize embedding model:', error);
-          this.embeddingInitializingPromise = null;
-          throw error;
-        }
-      })();
-    }
-
-    await this.embeddingInitializingPromise;
   }
 
   /**
