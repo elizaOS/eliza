@@ -543,6 +543,11 @@ export class TwitterInteractionClient {
     // Create a callback for handling the response
     const callback: HandlerCallback = async (response: Content, tweetId?: string) => {
       try {
+        if (!response.text) {
+          logger.warn('No text content in response, skipping tweet reply');
+          return [];
+        }
+
         const tweetToReplyTo = tweetId || tweet.id;
 
         if (this.isDryRun) {
@@ -553,27 +558,24 @@ export class TwitterInteractionClient {
         logger.info(`Replying to tweet ${tweetToReplyTo}`);
 
         // Create the actual tweet using the Twitter API through the client
-        // Type assertion is needed because the Twitter API client doesn't have proper typings
         const replyTweetResult = await this.client.requestQueue.add(() =>
-          (this.client.twitterClient as any).post('statuses/update', {
-            status: response.text.substring(0, 280),
-            in_reply_to_status_id: tweetToReplyTo,
-            auto_populate_reply_metadata: true,
-          })
+          this.client.twitterClient.sendTweet(response.text.substring(0, 280), tweetToReplyTo)
         );
 
         if (!replyTweetResult) {
           throw new Error('Failed to create tweet response');
         }
 
+        // Parse the response to get the tweet ID
+        const responseBody = await (replyTweetResult as Response).json();
+        const tweetResult = responseBody?.data?.create_tweet?.tweet_results?.result;
+
+        if (!tweetResult) {
+          throw new Error('Failed to get tweet result from response');
+        }
+
         // Create memory for our response
-        const responseId = createUniqueUuid(
-          this.runtime,
-          (replyTweetResult as any).id_str ||
-            (replyTweetResult as any).rest_id ||
-            (replyTweetResult as any).legacy.id_str ||
-            (replyTweetResult as any).id
-        );
+        const responseId = createUniqueUuid(this.runtime, tweetResult.rest_id);
         const responseMemory: Memory = {
           id: responseId,
           entityId: this.runtime.agentId,
