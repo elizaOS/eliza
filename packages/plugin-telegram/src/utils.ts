@@ -1,6 +1,6 @@
 import { Markup } from 'telegraf';
-import { Button } from '@elizaos/core';
 import { InlineKeyboardButton } from '@telegraf/types';
+import { Button } from './types';
 
 /**
  * Escapes Markdown special characters in the given text, excluding code blocks.
