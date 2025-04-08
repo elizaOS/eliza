@@ -6,6 +6,12 @@ sidebar_position: 7
 
 The `agent` command allows you to manage, configure, and interact with ElizaOS agents. Use this command to list, get information, start, stop, and update your agents.
 
+## Global Options
+
+These options can be used with any `agent` subcommand:
+
+- `-r, --remote-url <url>`: Specify the URL of the remote agent runtime. Overrides the `AGENT_RUNTIME_URL` environment variable.
+
 ## Usage
 
 Install the CLI first (`npm install -g @elizaos/cli@beta`)
