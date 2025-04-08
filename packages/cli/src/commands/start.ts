@@ -394,11 +394,11 @@ const startAgents = async (options: {
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
 
-    // Inside your startAgents function
-    const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
-    const serverPort = await findNextAvailablePort(desiredPort);
-  
-    process.env.SERVER_PORT = serverPort.toString();  
+  // Inside your startAgents function
+  const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+  const serverPort = await findNextAvailablePort(desiredPort);
+
+  process.env.SERVER_PORT = serverPort.toString();
 
   // Try to find a project or plugin in the current directory
   let isProject = false;
@@ -666,9 +666,15 @@ export const start = new Command()
   .description('Start the Eliza agent with configurable plugins and services')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
-  .option('--character <character>', 'Path or URL to character file to use instead of default')
-  .option('--build', 'Build the project before starting')
-  .option('--characters <paths>', 'multiple character configuration files separated by commas')
+  .option(
+    '-char, --character <character>',
+    'Path or URL to character file to use instead of default'
+  )
+  .option('-b, --build', 'Build the project before starting')
+  .option(
+    '-chars, --characters <paths>',
+    'multiple character configuration files separated by commas'
+  )
   .action(async (options) => {
     displayBanner();
 

@@ -48,7 +48,7 @@ project
   .command('add-plugin')
   .description('Add a plugin to the project')
   .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
-  .option('--no-env-prompt', 'Skip prompting for environment variables')
+  .option('-n, --no-env-prompt', 'Skip prompting for environment variables')
   .action(async (plugin, opts) => {
     try {
       const cwd = process.cwd();
