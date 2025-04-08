@@ -192,7 +192,7 @@ export class TwitterInteractionClient {
    * Note: MENTION_RECEIVED is currently disabled (see TODO below)
    */
   async processMentionTweets(mentionCandidates: ClientTweet[]) {
-    console.log('Completed checking mentioned tweets:', mentionCandidates.length);
+    logger.log('Completed checking mentioned tweets:', mentionCandidates.length);
     let uniqueTweetCandidates = [...mentionCandidates];
 
     // Sort tweet candidates by ID in ascending order
