@@ -1398,7 +1398,7 @@ export function agentRouter(
           id: roomId,
           name: roomName,
           source,
-          type: ChannelType.API,
+          type: ChannelType.GROUP,
           worldId,
           serverId,
           metadata,
