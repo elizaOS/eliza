@@ -331,15 +331,7 @@ export class AgentRuntime implements IAgentRuntime {
     // First create the agent entity directly
     try {
       // Ensure agent exists first (this is critical for test mode)
-      const agentExists = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
-
-      // Verify agent exists before proceeding
-      const agent = await this.adapter.getAgent(this.agentId);
-      if (!agent) {
-        throw new Error(
-          `Agent ${this.agentId} does not exist in database after ensureAgentExists call`
-        );
-      }
+      await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
 
       // No need to transform agent's own ID
       const agentEntity = await this.adapter.getEntityById(this.agentId);
