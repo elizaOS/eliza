@@ -60,7 +60,7 @@ async function main() {
 
   // Create a stop command for testing purposes
   const stopCommand = new Command('stop')
-    .description('Stop all running ElizaOS agents')
+    .description('Stop all running ElizaOS agents running locally')
     .action(async () => {
       logger.info('Stopping all ElizaOS agents...');
       // Use pkill to terminate all ElizaOS processes
