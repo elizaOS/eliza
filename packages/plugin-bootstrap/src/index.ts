@@ -279,7 +279,7 @@ const messageReceivedHandler = async ({
         let retries = 0;
         const maxRetries = 3;
         while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-          const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          const response = await runtime.useModel(ModelType.TEXT_LARGE, {
             prompt,
           });
 
@@ -314,6 +314,7 @@ const messageReceivedHandler = async ({
             },
           ];
 
+          // First callback without text - this is for the planning stage to show thought messages in GUI
           callback(responseContent);
         }
 
