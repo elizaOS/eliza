@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type {
+  AgentRuntime,
   ImageDescriptionParams,
   ModelTypeName,
   ObjectGenerationParams,
@@ -14,7 +15,7 @@ import {
   logger,
   VECTOR_DIMS,
 } from '@elizaos/core';
-import { generateObject, generateText } from 'ai';
+import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import { FormData as NodeFormData, File as NodeFile } from 'formdata-node';
 
@@ -116,6 +117,60 @@ async function detokenizeText(model: ModelTypeName, tokens: number[]) {
       : (process.env.OPENAI_LARGE_MODEL ?? process.env.LARGE_MODEL ?? 'gpt-4o');
   const encoding = encodingForModel(modelName as TiktokenModel);
   return encoding.decode(tokens);
+}
+
+/**
+ * Helper function to generate objects using specified model type
+ */
+async function generateObjectByModelType(
+  runtime: AgentRuntime,
+  params: ObjectGenerationParams,
+  modelType: string,
+  getModelFn: (runtime: AgentRuntime) => string
+): Promise<JSONValue> {
+  const openai = createOpenAIClient(runtime);
+  const model = getModelFn(runtime);
+
+  try {
+    if (params.schema) {
+      // Skip zod validation and just use the generateObject without schema
+      logger.info(`Using ${modelType} without schema validation`);
+    }
+
+    const { object } = await generateObject({
+      model: openai.languageModel(model),
+      output: 'no-schema',
+      prompt: params.prompt,
+      temperature: params.temperature,
+      experimental_repairText: getJsonRepairFunction(),
+    });
+    return object;
+  } catch (error) {
+    logger.error(`Error generating object with ${modelType}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Returns a function to repair JSON text
+ */
+function getJsonRepairFunction(): (params: {
+  text: string;
+  error: unknown;
+}) => Promise<string | null> {
+  return async ({ text, error }: { text: string; error: unknown }) => {
+    try {
+      if (error instanceof JSONParseError) {
+        const cleanedText = text.replace(/```json\n|\n```|```/g, '');
+
+        JSON.parse(cleanedText);
+        return cleanedText;
+      }
+    } catch (jsonError) {
+      logger.warn('Failed to repair JSON text:', jsonError);
+      return null;
+    }
+  };
 }
 
 /**
@@ -478,62 +533,10 @@ export const openaiPlugin: Plugin = {
       return data.text;
     },
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
-      const openai = createOpenAIClient(runtime);
-      const model = getSmallModel(runtime);
-
-      try {
-        if (params.schema) {
-          // Skip zod validation and just use the generateObject without schema
-          logger.info('Using OBJECT_SMALL without schema validation');
-          const { object } = await generateObject({
-            model: openai.languageModel(model),
-            output: 'no-schema',
-            prompt: params.prompt,
-            temperature: params.temperature,
-          });
-          return object;
-        }
-
-        const { object } = await generateObject({
-          model: openai.languageModel(model),
-          output: 'no-schema',
-          prompt: params.prompt,
-          temperature: params.temperature,
-        });
-        return object;
-      } catch (error) {
-        logger.error('Error generating object:', error);
-        throw error;
-      }
+      return generateObjectByModelType(runtime, params, ModelType.OBJECT_SMALL, getSmallModel);
     },
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
-      const openai = createOpenAIClient(runtime);
-      const model = getLargeModel(runtime);
-
-      try {
-        if (params.schema) {
-          // Skip zod validation and just use the generateObject without schema
-          logger.info('Using OBJECT_LARGE without schema validation');
-          const { object } = await generateObject({
-            model: openai.languageModel(model),
-            output: 'no-schema',
-            prompt: params.prompt,
-            temperature: params.temperature,
-          });
-          return object;
-        }
-
-        const { object } = await generateObject({
-          model: openai.languageModel(model),
-          output: 'no-schema',
-          prompt: params.prompt,
-          temperature: params.temperature,
-        });
-        return object;
-      } catch (error) {
-        logger.error('Error generating object:', error);
-        throw error;
-      }
+      return generateObjectByModelType(runtime, params, ModelType.OBJECT_LARGE, getLargeModel);
     },
   },
   tests: [
