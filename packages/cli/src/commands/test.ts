@@ -137,6 +137,17 @@ const runAgentTests = async (options: {
 
     // Wait for database initialization
     logger.info('Waiting for database initialization...');
+
+    // Initialize the server explicitly before starting
+    logger.info('Initializing server...');
+    try {
+      await server.initialize(); // <-- Add this line
+      logger.info('Server initialized successfully');
+    } catch (initError) {
+      logger.error('Server initialization failed:', initError);
+      throw initError;
+    }
+
     try {
       await new Promise<void>((resolve, reject) => {
         let initializationAttempts = 0;

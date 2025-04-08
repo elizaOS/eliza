@@ -4,6 +4,7 @@ import { Evt } from 'evt';
 import { io, type Socket } from 'socket.io-client';
 import { WorldManager } from './world-manager';
 import { randomUUID } from './utils';
+import clientLogger from './logger';
 
 // Define types for the events
 export type MessageBroadcastData = {
@@ -125,13 +126,13 @@ class SocketIOManager extends EventAdapter {
     this.agentIds = agentIds;
 
     if (this.socket) {
-      console.warn('[SocketIO] Socket already initialized');
+      clientLogger.warn('[SocketIO] Socket already initialized');
       return;
     }
 
     // Create a single socket connection
     const fullURL = window.location.origin + '/';
-    console.log('connecting to', fullURL);
+    clientLogger.info('connecting to', fullURL);
     this.socket = io(fullURL, {
       autoConnect: true,
       reconnection: true,
@@ -143,7 +144,7 @@ class SocketIOManager extends EventAdapter {
     });
 
     this.socket.on('connect', () => {
-      console.log('[SocketIO] Connected to server');
+      clientLogger.info('[SocketIO] Connected to server');
       this.isConnected = true;
       this.resolveConnect?.();
 
@@ -154,10 +155,10 @@ class SocketIOManager extends EventAdapter {
     });
 
     this.socket.on('messageBroadcast', (data) => {
-      console.log(`[SocketIO] Message broadcast received:`, data);
+      clientLogger.info(`[SocketIO] Message broadcast received:`, data);
 
       // Log the full data structure to understand formats
-      console.log('[SocketIO] Message broadcast data structure:', {
+      clientLogger.debug('[SocketIO] Message broadcast data structure:', {
         keys: Object.keys(data),
         senderId: data.senderId,
         senderNameType: typeof data.senderName,
@@ -182,7 +183,7 @@ class SocketIOManager extends EventAdapter {
 
       // Check if this is a message for one of our active rooms
       if (this.activeRooms.has(data.roomId)) {
-        console.log(`[SocketIO] Handling message for active room ${data.roomId}`);
+        clientLogger.info(`[SocketIO] Handling message for active room ${data.roomId}`);
         // Post the message to the event
         this.emit('messageBroadcast', {
           ...data,
@@ -203,7 +204,7 @@ class SocketIOManager extends EventAdapter {
           });
         }
       } else {
-        console.warn(
+        clientLogger.warn(
           `[SocketIO] Received message for inactive room ${data.roomId}, active rooms:`,
           Array.from(this.activeRooms)
         );
@@ -215,7 +216,7 @@ class SocketIOManager extends EventAdapter {
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log(`[SocketIO] Disconnected. Reason: ${reason}`);
+      clientLogger.info(`[SocketIO] Disconnected. Reason: ${reason}`);
       this.isConnected = false;
 
       // Reset connect promise for next connection
@@ -229,7 +230,7 @@ class SocketIOManager extends EventAdapter {
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('[SocketIO] Connection error:', error);
+      clientLogger.error('[SocketIO] Connection error:', error);
     });
   }
 
@@ -239,7 +240,7 @@ class SocketIOManager extends EventAdapter {
    */
   public async joinRoom(roomId: string): Promise<void> {
     if (!this.socket) {
-      console.error('[SocketIO] Cannot join room: socket not initialized');
+      clientLogger.error('[SocketIO] Cannot join room: socket not initialized');
       return;
     }
 
@@ -258,7 +259,7 @@ class SocketIOManager extends EventAdapter {
       },
     });
 
-    console.log(`[SocketIO] Joined room ${roomId}`);
+    clientLogger.info(`[SocketIO] Joined room ${roomId}`);
   }
 
   /**
@@ -267,12 +268,12 @@ class SocketIOManager extends EventAdapter {
    */
   public leaveRoom(roomId: string): void {
     if (!this.socket || !this.isConnected) {
-      console.warn(`[SocketIO] Cannot leave room ${roomId}: not connected`);
+      clientLogger.warn(`[SocketIO] Cannot leave room ${roomId}: not connected`);
       return;
     }
 
     this.activeRooms.delete(roomId);
-    console.log(`[SocketIO] Left room ${roomId}`);
+    clientLogger.info(`[SocketIO] Left room ${roomId}`);
   }
 
   /**
@@ -283,7 +284,7 @@ class SocketIOManager extends EventAdapter {
    */
   public async sendMessage(message: string, roomId: string, source: string): Promise<void> {
     if (!this.socket) {
-      console.error('[SocketIO] Cannot send message: socket not initialized');
+      clientLogger.error('[SocketIO] Cannot send message: socket not initialized');
       return;
     }
 
@@ -295,7 +296,7 @@ class SocketIOManager extends EventAdapter {
     const messageId = randomUUID();
     const worldId = WorldManager.getWorldId();
 
-    console.log(`[SocketIO] Sending message to room ${roomId}`);
+    clientLogger.info(`[SocketIO] Sending message to room ${roomId}`);
 
     // Emit message to server
     this.socket.emit('message', {
@@ -332,7 +333,7 @@ class SocketIOManager extends EventAdapter {
       this.socket = null;
       this.isConnected = false;
       this.activeRooms.clear();
-      console.log('[SocketIO] Disconnected from server');
+      clientLogger.info('[SocketIO] Disconnected from server');
     }
   }
 }

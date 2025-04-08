@@ -22,6 +22,7 @@ import {
   parseJSONObjectFromText,
   type Plugin,
   postCreationTemplate,
+  providersTemplate,
   shouldRespondTemplate,
   truncateToCompleteSentence,
   type UUID,
@@ -203,40 +204,64 @@ const messageReceivedHandler = async ({
         'ENTITIES',
       ]);
 
-      const shouldRespondPrompt = composePromptFromState({
-        state,
-        template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
-      });
+      // Skip shouldRespond check for DM and VOICE_DM channels
+      const room = await runtime.getRoom(message.roomId);
+      const shouldSkipShouldRespond =
+        room?.type === ChannelType.DM ||
+        room?.type === ChannelType.VOICE_DM ||
+        room?.type === ChannelType.SELF;
 
-      logger.debug(
-        `*** Should Respond Prompt for ${runtime.character.name} ***\n`,
-        shouldRespondPrompt
-      );
+      let shouldRespond = true;
+      let providers: string[] = [];
 
-      const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: shouldRespondPrompt,
-      });
+      if (!shouldSkipShouldRespond) {
+        const shouldRespondPrompt = composePromptFromState({
+          state,
+          template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+        });
 
-      logger.debug(`*** Should Respond Response for ${runtime.character.name} ***\n`, response);
-      logger.debug(`*** Raw Response Type: ${typeof response} ***`);
+        logger.debug(
+          `*** Should Respond Prompt for ${runtime.character.name} ***\n`,
+          shouldRespondPrompt
+        );
 
-      // Try to preprocess response by removing code blocks markers if present
-      let processedResponse = response;
-      if (typeof response === 'string' && response.includes('```')) {
-        logger.debug('*** Response contains code block markers, attempting to clean up ***');
-        processedResponse = response.replace(/```json\n|\n```|```/g, '');
-        logger.debug('*** Processed Response ***\n', processedResponse);
+        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: shouldRespondPrompt,
+        });
+
+        logger.debug(`*** Should Respond Response for ${runtime.character.name} ***\n`, response);
+        logger.debug(`*** Raw Response Type: ${typeof response} ***`);
+
+        // Try to preprocess response by removing code blocks markers if present
+        let processedResponse = response;
+        if (typeof response === 'string' && response.includes('```')) {
+          logger.debug('*** Response contains code block markers, attempting to clean up ***');
+          processedResponse = response.replace(/```json\n|\n```|```/g, '');
+          logger.debug('*** Processed Response ***\n', processedResponse);
+        }
+
+        const responseObject = parseJSONObjectFromText(processedResponse);
+        logger.debug('*** Parsed Response Object ***', responseObject);
+
+        shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
+        providers = (responseObject?.providers as string[]) || [];
+      } else {
+        // Use providersTemplate for DM and VOICE_DM channels
+        const providersPrompt = composePromptFromState({
+          state,
+          template: runtime.character.templates?.providersTemplate || providersTemplate,
+        });
+
+        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: providersPrompt,
+        });
+
+        const responseObject = parseJSONObjectFromText(response);
+        providers = (responseObject?.providers as string[]) || [];
       }
 
-      const responseObject = parseJSONObjectFromText(processedResponse);
-      logger.debug('*** Parsed Response Object ***', responseObject);
-
-      // Safely handle the case where parsing returns null
-      const providers = responseObject?.providers as string[] | undefined;
-      logger.debug('*** Providers Value ***', providers);
-
-      const shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
       logger.debug('*** Should Respond ***', shouldRespond);
+      logger.debug('*** Providers Value ***', providers);
 
       state = await runtime.composeState(message, null, providers);
 
@@ -254,7 +279,7 @@ const messageReceivedHandler = async ({
         let retries = 0;
         const maxRetries = 3;
         while (retries < maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-          const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+          const response = await runtime.useModel(ModelType.TEXT_LARGE, {
             prompt,
           });
 
@@ -289,6 +314,7 @@ const messageReceivedHandler = async ({
             },
           ];
 
+          // First callback without text - this is for the planning stage to show thought messages in GUI
           callback(responseContent);
         }
 

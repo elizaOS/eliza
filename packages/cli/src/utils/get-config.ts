@@ -182,6 +182,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
   // Set up directories and env file
   const { elizaDbDir, envFilePath } = await ensureElizaDir();
   await ensureEnvFile(envFilePath);
+  await loadEnvironment(elizaDbDir);
 
   // Check if we already have database configuration in env
   let postgresUrl = process.env.POSTGRES_URL;

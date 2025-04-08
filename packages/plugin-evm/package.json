@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-evm",
-  "version": "1.0.0-beta.21",
+  "version": "1.0.0-beta.27",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -22,7 +22,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/plugin-tee": "^1.0.0-beta.21",
+    "@elizaos/plugin-tee": "^1.0.0-beta.27",
     "@hapi/shot": "^6.0.1",
     "@lifi/data-types": "5.15.5",
     "@lifi/sdk": "3.4.1",
@@ -32,12 +32,15 @@
   },
   "devDependencies": {
     "@hapi/shot": "^6.0.1",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@types/hapi": "^18.0.14",
+    "hardhat": "^2.22.19",
     "prettier": "3.5.3",
     "ts-node": "10.9.2",
     "tslib": "2.8.1",
     "tsup": "^8.4.0",
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "vitest": "^3.1.1"
   },
   "scripts": {
     "build": "tsup --format esm --dts",
