@@ -387,16 +387,8 @@ async function parseTeamMemberUpdate(
 export const recordTeamMemberUpdates: Action = {
   name: 'recordTeamMemberUpdates',
   description:
-    'Records individual status updates sent by team members with their progress details, blockers, and ETAs [MEMBER-STATUS-UPDATE]',
-  similes: [
-    'logIndividualUpdate',
-    'submitMemberStatus',
-    'saveProgressUpdate',
-    'trackMemberWork',
-    'memberProgressLog',
-    'submitStatusDetails',
-    'sendPersonalUpdate',
-  ],
+    'Records person individual status updates sent by team members with their progress details, blockers, and ETAs',
+  similes: ['sendPersonalUpdate'],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info('whole message ', JSON.stringify(message));
 
@@ -583,15 +575,15 @@ Remember to end your message with "sending my updates"`,
         name: 'team-member',
         content: {
           text: `[INDIVIDUAL STATUS UPDATE]
-Server-name: Development Server
-Check-in Type: Daily
-Current Progress: Completed the API integration
-Working On: Testing the authentication flow
-Next Steps: Deploy to staging environment
-Blockers: None at the moment
-ETA: End of day tomorrow
+    Server-name: Development Server
+    Check-in Type: Daily
+    Current Progress: Completed the API integration
+    Working On: Testing the authentication flow
+    Next Steps: Deploy to staging environment
+    Blockers: None at the moment
+    ETA: End of day tomorrow
 
-sending my personal updates`,
+    sending my personal updates`,
         },
       },
       {
@@ -607,15 +599,15 @@ sending my personal updates`,
         name: 'developer',
         content: {
           text: `[MEMBER PROGRESS REPORT]
-Server-name: Project X Server
-Check-in Type: SPRINT
-Current Progress: Fixed 3 critical bugs in the frontend
-Working On: Implementing the new dashboard features
-Next Steps: Code review and documentation
-Blockers: Waiting on design assets from the design team
-ETA: Thursday EOD
+    Server-name: Project X Server
+    Check-in Type: SPRINT
+    Current Progress: Fixed 3 critical bugs in the frontend
+    Working On: Implementing the new dashboard features
+    Next Steps: Code review and documentation
+    Blockers: Waiting on design assets from the design team
+    ETA: Thursday EOD
 
-sending my personal updates`,
+    sending my personal updates`,
         },
       },
       {
@@ -631,15 +623,15 @@ sending my personal updates`,
         name: 'developer',
         content: {
           text: `[STATUS SUBMISSION]
-Server-name: Engineering Team
-Check-in Type: STANDUP
-Current Progress: Implemented user authentication API
-Working On: Testing edge cases and error handling
-Next Steps: Begin frontend integration
-Blockers: Dependency issues with auth library
-ETA: Friday afternoon
+    Server-name: Engineering Team
+    Check-in Type: STANDUP
+    Current Progress: Implemented user authentication API
+    Working On: Testing edge cases and error handling
+    Next Steps: Begin frontend integration
+    Blockers: Dependency issues with auth library
+    ETA: Friday afternoon
 
-sending my personal updates`,
+    sending my personal updates`,
         },
       },
       {
@@ -655,15 +647,30 @@ sending my personal updates`,
         name: 'team-lead',
         content: {
           text: `[WORK TRACKING]
-Server-name: Product Development
-Check-in Type: PROJECT_STATUS
-Current Progress: Completed feature specification documents
-Working On: Coordinating with design team on mockups
-Next Steps: Schedule technical planning session
-Blockers: Resource allocation pending approval
-ETA: End of sprint
+    Server-name: Product Development
+    Check-in Type: PROJECT_STATUS
+    Current Progress: Completed feature specification documents
+    Working On: Coordinating with design team on mockups
+    Next Steps: Schedule technical planning session
+    Blockers: Resource allocation pending approval
+    ETA: End of sprint
 
-sending my personal updates`,
+    sending my personal updates`,
+        },
+      },
+      {
+        name: 'jimmy',
+        content: {
+          text: "✅ Your individual status has been logged. I've noted your blockers regarding resource allocation approval.",
+          actions: ['recordTeamMemberUpdates'],
+        },
+      },
+    ],
+    [
+      {
+        name: 'team-member',
+        content: {
+          text: 'sending my personal updates',
         },
       },
       {

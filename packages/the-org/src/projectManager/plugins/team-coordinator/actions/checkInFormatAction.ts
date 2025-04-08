@@ -99,11 +99,13 @@ async function ensureDiscordClient(runtime: IAgentRuntime) {
   }
 }
 
-export const createCheckInAction: Action = {
-  name: 'createCheckInAction',
-  description: 'Creates or modifies a check-in schedule for team members',
-  similes: ['createCheckIn', 'createCheckInSchedule'],
+export const checkInFormatAction: Action = {
+  name: 'checkInFormatAction',
+  description: 'returns a check-in schedule format for team members',
+  similes: ['checkInFormat'],
   validate: async (runtime: IAgentRuntime, message: Memory, state: State) => {
+    logger.info('whole message ', JSON.stringify(message));
+
     try {
       // Existing validation code...
       const room = state.data.room ?? (await runtime.getRoom(message.roomId));
@@ -153,7 +155,7 @@ export const createCheckInAction: Action = {
 
       return true;
     } catch (error) {
-      logger.error('Error in createCheckInAction validation:', error);
+      logger.error('Error in checkInFormatAction validation:', error);
       return false;
     }
   },
@@ -388,20 +390,20 @@ export const createCheckInAction: Action = {
         name: 'jimmy',
         content: {
           text: "I'll help you set up check-in schedules",
-          actions: ['createCheckInAction'],
+          actions: ['checkInFormatAction'],
         },
       },
     ],
     [
       {
         name: 'admin',
-        content: { text: "let's create a checkin on team members" },
+        content: { text: 'create a check in schedule' },
       },
       {
         name: 'jimmy',
         content: {
           text: "I'll set up check-in schedules for the team members",
-          actions: ['createCheckInAction'],
+          actions: ['checkInFormatAction'],
         },
       },
     ],

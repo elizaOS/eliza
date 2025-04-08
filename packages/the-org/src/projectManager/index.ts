@@ -32,7 +32,7 @@ const character: Character = {
   name: 'Jimmy',
   plugins: [
     '@elizaos/plugin-sql',
-    // '@elizaos/plugin-anthropic',
+    '@elizaos/plugin-anthropic',
     '@elizaos/plugin-openai',
     '@elizaos/plugin-discord',
     '@elizaos/plugin-pdf',

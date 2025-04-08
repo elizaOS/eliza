@@ -108,16 +108,8 @@ async function ensureDiscordClient(runtime: IAgentRuntime) {
 
 export const recordCheckInAction: Action = {
   name: 'recordCheckInAction',
-  description:
-    'Records a team member check-in with updates on progress, blockers, and next steps [CHECK-IN-SUBMISSION]',
-  similes: [
-    'recordCheckIn',
-    'submitCheckIn',
-    'logCheckIn',
-    'enterCheckInData',
-    'checkInSubmission',
-    'provideCheckInInfo',
-  ],
+  description: 'create and record Check-in schedule details',
+  similes: ['recordCheckIn'],
   validate: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     try {
       // Existing validation code...
@@ -518,7 +510,7 @@ export const recordCheckInAction: Action = {
       {
         name: 'admin',
         content: {
-          text: 'Channel for Updates: updates\nCheck-in Type: Daily Standup\nChannel for Check-ins: testing4\nFrequency: Daily\nTime: 12 PM\n\nRecord Check-in details',
+          text: 'Check-in Type: Daily Standup\nChannel for Check-ins: testing4\nFrequency: Daily\nTime: 12 PM\n\nRecord Check-in details',
         },
       },
       {
@@ -533,7 +525,7 @@ export const recordCheckInAction: Action = {
       {
         name: 'admin',
         content: {
-          text: 'Channel for Updates: general\nCheck-in Type: Daily Standup\nChannel for Check-ins: standup-channel\nFrequency: Daily\nTime: 9 AM\n\nRecord Check-in details',
+          text: 'Check-in Type: Daily Standup\nChannel for Check-ins: standup-channel\nFrequency: Daily\nTime: 9 AM\n\nRecord Check-in details',
         },
       },
       {
@@ -548,7 +540,7 @@ export const recordCheckInAction: Action = {
       {
         name: 'admin',
         content: {
-          text: 'Channel for Updates: project-updates\nCheck-in Type: Daily Standup\nChannel for Check-ins: team-chat\nFrequency: Daily\nTime: 3 PM\n\nRecord Check-in details',
+          text: 'Check-in Type: Daily Standup\nChannel for Check-ins: team-chat\nFrequency: Daily\nTime: 3 PM\n\nRecord Check-in details',
         },
       },
       {

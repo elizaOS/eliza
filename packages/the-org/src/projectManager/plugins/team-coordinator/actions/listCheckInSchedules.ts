@@ -108,7 +108,7 @@ function formatSchedule(schedule: CheckInSchedule): string {
 
 export const listCheckInSchedules: Action = {
   name: 'listCheckInSchedules',
-  description: 'Lists all check-in schedules for team members',
+  description: 'Lists all schedules for team members',
   similes: ['showCheckIns', 'getCheckInSchedules', 'viewCheckInSchedules'],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info('Validating listCheckInSchedules action:', {
@@ -195,7 +195,7 @@ export const listCheckInSchedules: Action = {
     [
       {
         name: 'admin',
-        content: { text: 'Show me all check-in schedules' },
+        content: { text: 'Show me all check in schedules' },
       },
       {
         name: 'jimmy',
@@ -205,31 +205,31 @@ export const listCheckInSchedules: Action = {
         },
       },
     ],
-    [
-      {
-        name: 'admin',
-        content: { text: 'List team check-ins' },
-      },
-      {
-        name: 'jimmy',
-        content: {
-          text: "I'll show you all active check-in schedules",
-          actions: ['listCheckInSchedules'],
-        },
-      },
-    ],
-    [
-      {
-        name: 'admin',
-        content: { text: 'list of checkins' },
-      },
-      {
-        name: 'jimmy',
-        content: {
-          text: "I'll show you all active check-in schedules",
-          actions: ['listCheckInSchedules'],
-        },
-      },
-    ],
+    // [
+    //   {
+    //     name: 'admin',
+    //     content: { text: 'List team check-ins' },
+    //   },
+    //   {
+    //     name: 'jimmy',
+    //     content: {
+    //       text: "I'll show you all active check-in schedules",
+    //       actions: ['listCheckInSchedules'],
+    //     },
+    //   },
+    // ],
+    // [
+    //   {
+    //     name: 'admin',
+    //     content: { text: 'list of checkins' },
+    //   },
+    //   {
+    //     name: 'jimmy',
+    //     content: {
+    //       text: "I'll show you all active check-in schedules",
+    //       actions: ['listCheckInSchedules'],
+    //     },
+    //   },
+    // ],
   ],
 };

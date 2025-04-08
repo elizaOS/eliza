@@ -130,7 +130,7 @@ export async function generateTeamReport(
 
 export const generateReport: Action = {
   name: 'generateReport',
-  description: 'Generates a comprehensive report of team member updates and check-in schedules',
+  description: 'Generates a comprehensive report',
   similes: ['createReport', 'teamReport', 'getTeamReport', 'showTeamReport'],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info('Validating generateReport action');
@@ -251,23 +251,23 @@ export const generateReport: Action = {
     }
   },
   examples: [
+    // [
+    //   {
+    //     name: 'owner',
+    //     content: { text: 'Generate report' },
+    //   },
+    //   {
+    //     name: 'jimmy',
+    //     content: {
+    //       text: "I'll generate a daily standup report for you",
+    //       actions: ['generateReport'],
+    //     },
+    //   },
+    // ],
     [
       {
         name: 'owner',
-        content: { text: 'Generate daily standup report' },
-      },
-      {
-        name: 'jimmy',
-        content: {
-          text: "I'll generate a daily standup report for you",
-          actions: ['generateReport'],
-        },
-      },
-    ],
-    [
-      {
-        name: 'owner',
-        content: { text: 'Show me the sprint check-in report' },
+        content: { text: 'generate a report' },
       },
       {
         name: 'jimmy',
