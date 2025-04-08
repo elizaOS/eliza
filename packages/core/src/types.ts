@@ -47,9 +47,6 @@ export interface Content {
   /** Array of media attachments */
   attachments?: Media[];
 
-  /** Array of buttons */
-  buttons?: Button[];
-
   /**
    * Additional dynamic properties
    * Use specific properties above instead of this when possible
@@ -498,18 +495,6 @@ export type Media = {
 
   /** Content type */
   contentType?: string;
-};
-
-/**
- * Represents a flexible button configuration
- */
-export type Button = {
-  /** The type of button */
-  kind: 'login' | 'url';
-  /** The text to display on the button */
-  text: string;
-  /** The URL or endpoint the button should link to */
-  url: string;
 };
 
 export enum ChannelType {

@@ -14,6 +14,7 @@ import {
 import type { Chat, Message, ReactionType, Update } from '@telegraf/types';
 import type { Context, NarrowedContext, Telegraf } from 'telegraf';
 import {
+  TelegramContent,
   TelegramEventTypes,
   type TelegramMessageReceivedPayload,
   type TelegramMessageSentPayload,
@@ -106,13 +107,13 @@ export class MessageManager {
    * Sends a message in chunks, handling attachments and splitting the message if necessary
    *
    * @param {Context} ctx - The context object representing the current state of the bot
-   * @param {Content} content - The content of the message to be sent
+   * @param {TelegramContent} content - The content of the message to be sent
    * @param {number} [replyToMessageId] - The ID of the message to reply to, if any
    * @returns {Promise<Message.TextMessage[]>} - An array of TextMessage objects representing the messages sent
    */
   async sendMessageInChunks(
     ctx: Context,
-    content: Content,
+    content: TelegramContent,
     replyToMessageId?: number
   ): Promise<Message.TextMessage[]> {
     if (content.attachments && content.attachments.length > 0) {
