@@ -109,6 +109,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
+  private isInitialized = false;
   events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
   stateCache = new Map<
     UUID,
@@ -280,9 +281,13 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     if (plugin.services) {
-      plugin.services.forEach((service) => {
-        this.servicesInitQueue.add(service);
-      });
+      for (const service of plugin.services) {
+        if (this.isInitialized) {
+          await this.registerService(service);
+        } else {
+          this.servicesInitQueue.add(service);
+        }
+      }
     }
   }
 
@@ -301,6 +306,12 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize() {
+    if (this.isInitialized) {
+      this.runtimeLogger.warn('Agent already initialized');
+      return;
+    }
+    this.isInitialized = true;
+
     // Track registered plugins to avoid duplicates
     const registeredPluginNames = new Set<string>();
 
@@ -459,34 +470,20 @@ export class AgentRuntime implements IAgentRuntime {
       match_threshold: 0.1,
     });
 
-    const uniqueSources = [
-      ...new Set(
-        fragments
-          .map((memory) => {
-            this.runtimeLogger.debug(
-              `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
-            );
-            return memory?.metadata?.type === MemoryType.FRAGMENT
-              ? memory?.metadata?.documentId
-              : undefined;
-          })
-          .filter(Boolean)
-      ),
-    ];
-
-    const knowledgeDocuments = await Promise.all(
-      uniqueSources.map((source) => this.getMemoryById(source as UUID))
-    );
-
-    return knowledgeDocuments
-      .filter((memory) => memory !== null)
-      .map((memory) => ({ id: memory.id, content: memory.content }));
+    // Return the fragments directly as this is used from prompts.
+    // Example usage in prompts: # provider KNOWLEDGE
+    return fragments.map((fragment) => ({
+      id: fragment.id,
+      content: fragment.content,
+      similarity: fragment.similarity,
+      metadata: fragment.metadata,
+    }));
   }
 
   async addKnowledge(
     item: KnowledgeItem,
     options = {
-      targetTokens: 3000,
+      targetTokens: 1500,
       overlap: 200,
       modelContextSize: 4096,
     }

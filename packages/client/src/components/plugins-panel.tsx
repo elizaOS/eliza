@@ -20,13 +20,17 @@ interface PluginsPanelProps {
     updateField?: <T>(path: string, value: T) => void;
     [key: string]: any;
   };
+  initialPlugins?: string[];
 }
 
-export default function PluginsPanel({ characterValue, setCharacterValue }: PluginsPanelProps) {
+export default function PluginsPanel({
+  characterValue,
+  setCharacterValue,
+  initialPlugins,
+}: PluginsPanelProps) {
   const { data: plugins, error } = usePlugins();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [hasChanged, setHasChanged] = useState(false);
 
   // Ensure we always have arrays and normalize plugin names
   const safeCharacterPlugins = useMemo(() => {
@@ -46,10 +50,11 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
     ];
   }, [plugins]);
 
-  // Reset change tracking when character changes
-  useEffect(() => {
-    setHasChanged(false);
-  }, [characterValue.id]);
+  const hasChanged = useMemo(() => {
+    if (!initialPlugins) return false;
+    if (initialPlugins.length !== safeCharacterPlugins.length) return true;
+    return !initialPlugins?.every((plugin) => safeCharacterPlugins.includes(plugin));
+  }, [safeCharacterPlugins, initialPlugins]);
 
   const filteredPlugins = useMemo(() => {
     return pluginNames
@@ -59,8 +64,6 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
 
   const handlePluginAdd = (plugin: string) => {
     if (safeCharacterPlugins.includes(plugin)) return;
-
-    setHasChanged(true);
 
     if (setCharacterValue.addPlugin) {
       setCharacterValue.addPlugin(plugin);
@@ -75,8 +78,6 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
   const handlePluginRemove = (plugin: string) => {
     const index = safeCharacterPlugins.indexOf(plugin);
     if (index !== -1) {
-      setHasChanged(true);
-
       if (setCharacterValue.removePlugin) {
         setCharacterValue.removePlugin(index);
       } else if (setCharacterValue.updateField) {
@@ -160,7 +161,7 @@ export default function PluginsPanel({ characterValue, setCharacterValue }: Plug
                 </Dialog>
               </div>
               {hasChanged && (
-                <p className="text-xs text-blue-500">Plugins configuration has been updated</p>
+                <p className="text-xs text-yellow-500">Plugins configuration has been changed</p>
               )}
             </div>
           )}

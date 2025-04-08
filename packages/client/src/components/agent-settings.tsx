@@ -219,7 +219,11 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
         {
           name: 'Plugins',
           component: (
-            <PluginsPanel characterValue={agentState.agent} setCharacterValue={agentState} />
+            <PluginsPanel
+              characterValue={agentState.agent}
+              setCharacterValue={agentState}
+              initialPlugins={agent.plugins}
+            />
           ),
         },
         {

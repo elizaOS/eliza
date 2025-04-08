@@ -22,6 +22,9 @@ import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config'
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
 import { displayBanner } from '../displayBanner';
+import { findNextAvailablePort } from '../utils/port-handling';
+import { loadPluginModule } from '../utils/load-plugin';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -134,134 +137,38 @@ export async function startAgent(
 
     // Try to load the plugin using multiple strategies
     try {
-      // Strategy 1: Direct import (works if Node.js can resolve it correctly)
-      try {
-        pluginModule = await import(plugin);
-        logger.debug(`Successfully loaded plugin ${plugin} via direct import`);
-      } catch (directImportError) {
-        logger.debug(`Direct import failed for plugin ${plugin}: ${directImportError.message}`);
+      // Use the new centralized loader
+      pluginModule = await loadPluginModule(plugin);
 
-        // Strategy 2: Try explicit path in global node_modules
+      if (!pluginModule) {
+        // If loading failed, try installing and then loading again
+        logger.info(`Plugin ${plugin} not available, installing into ${process.cwd()}...`);
         try {
-          const globalNodeModulesPath = path.join('/usr/local/lib/node_modules', plugin);
-          pluginModule = await import(globalNodeModulesPath);
-          logger.debug(`Loaded plugin ${plugin} from global node_modules path`);
-        } catch (globalError) {
-          logger.debug(`Global node_modules import failed: ${globalError.message}`);
+          await installPlugin(plugin, process.cwd(), version);
+          // Try loading again after installation using the centralized loader
+          pluginModule = await loadPluginModule(plugin);
+        } catch (installError) {
+          logger.error(`Failed to install plugin ${plugin}: ${installError}`);
+          // Continue to next plugin if installation fails
+          continue;
+        }
 
-          // Strategy 3: Try local node_modules explicit path
-          try {
-            const localNodeModulesPath = path.join(process.cwd(), 'node_modules', plugin);
-            pluginModule = await import(localNodeModulesPath);
-            logger.debug(`Loaded plugin ${plugin} from local node_modules path`);
-          } catch (localError) {
-            logger.debug(`Local node_modules import failed: ${localError.message}`);
-
-            // Strategy 4: Try to find package.json and load entry point
-            try {
-              const localPackageJsonPath = path.join(
-                process.cwd(),
-                'node_modules',
-                plugin,
-                'package.json'
-              );
-              if (fs.existsSync(localPackageJsonPath)) {
-                const packageJson = JSON.parse(fs.readFileSync(localPackageJsonPath, 'utf-8'));
-                const entryPoint = packageJson.module || packageJson.main || 'dist/index.js';
-                const fullEntryPath = path.join(process.cwd(), 'node_modules', plugin, entryPoint);
-
-                pluginModule = await import(fullEntryPath);
-                logger.debug(`Loaded plugin ${plugin} via package.json entry point: ${entryPoint}`);
-              } else {
-                throw new Error(`No package.json found for ${plugin}`);
-              }
-            } catch (packageJsonError) {
-              logger.debug(`Package.json entry point import failed: ${packageJsonError.message}`);
-
-              // Strategy 5: Last resort - try common dist pattern
-              try {
-                const commonDistPath = path.join(
-                  process.cwd(),
-                  'node_modules',
-                  plugin,
-                  'dist/index.js'
-                );
-                pluginModule = await import(commonDistPath);
-                logger.debug(`Loaded plugin ${plugin} via common dist pattern`);
-              } catch (distError) {
-                // If we got here, we need to try installing the plugin
-                throw new Error(
-                  `All import attempts failed, will try installing: ${distError.message}`
-                );
-              }
-            }
-          }
+        if (!pluginModule) {
+          logger.error(`Failed to load plugin ${plugin} even after installation.`);
+          // Continue to next plugin if loading fails post-installation
+          continue;
         }
       }
-    } catch (allImportError) {
-      // If all import strategies failed, try installing and then import again
-      logger.info(`Plugin ${plugin} not available, installing into ${process.cwd()}...`);
-      try {
-        await installPlugin(plugin, process.cwd(), version);
-
-        // Try importing again after installation using the same multi-strategy approach
-        try {
-          // After installation retry direct import first
-          pluginModule = await import(plugin);
-          logger.debug(`Successfully loaded plugin ${plugin} after installation via direct import`);
-        } catch (postInstallDirectError) {
-          // Try from local node_modules
-          try {
-            const localNodeModulesPath = path.join(process.cwd(), 'node_modules', plugin);
-            pluginModule = await import(localNodeModulesPath);
-            logger.debug(`Loaded plugin ${plugin} after installation from local node_modules`);
-          } catch (postInstallLocalError) {
-            // Try package.json approach
-            try {
-              const packageJsonPath = path.join(
-                process.cwd(),
-                'node_modules',
-                plugin,
-                'package.json'
-              );
-              if (fs.existsSync(packageJsonPath)) {
-                const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-                const entryPoint = packageJson.module || packageJson.main || 'dist/index.js';
-                const fullEntryPath = path.join(process.cwd(), 'node_modules', plugin, entryPoint);
-
-                pluginModule = await import(fullEntryPath);
-                logger.debug(
-                  `Loaded plugin ${plugin} after installation via package.json entry point`
-                );
-              } else {
-                // Final attempt - common dist pattern
-                const commonDistPath = path.join(
-                  process.cwd(),
-                  'node_modules',
-                  plugin,
-                  'dist/index.js'
-                );
-                pluginModule = await import(commonDistPath);
-                logger.debug(`Loaded plugin ${plugin} after installation via common dist pattern`);
-              }
-            } catch (finalError) {
-              logger.error(
-                `Failed to import plugin ${plugin} after installation: ${finalError.message}`
-              );
-              // Continue to next plugin
-              continue;
-            }
-          }
-        }
-      } catch (installError) {
-        logger.error(`Failed to install plugin ${plugin}: ${installError}`);
-        // Continue to next plugin if installation fails
-        continue;
-      }
+    } catch (error) {
+      // Catch any unexpected error during the combined load/install/load process
+      logger.error(`An unexpected error occurred while processing plugin ${plugin}: ${error}`);
+      continue;
     }
 
     if (!pluginModule) {
-      logger.error(`Failed to load plugin ${plugin}`);
+      // This check might be redundant now, but kept for safety.
+      // Should theoretically not be reached if the logic above is correct.
+      logger.error(`Failed to process plugin ${plugin} (module is null/undefined unexpectedly)`);
       continue;
     }
 
@@ -487,7 +394,11 @@ const startAgents = async (options: {
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
 
-  const serverPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+    // Inside your startAgents function
+    const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+    const serverPort = await findNextAvailablePort(desiredPort);
+  
+    process.env.SERVER_PORT = serverPort.toString();  
 
   // Try to find a project or plugin in the current directory
   let isProject = false;
@@ -686,13 +597,15 @@ const startAgents = async (options: {
         }
 
         if (startedAgents.length === 0) {
-          logger.warn('Failed to start any agents from project, falling back to custom character');
+          logger.info('No project agents started - falling back to default Eliza character');
           await startAgent(defaultCharacter, server);
         } else {
           logger.debug(`Successfully started ${startedAgents.length} agents from project`);
         }
       } else {
-        logger.debug('Project found but no agents defined, falling back to custom character');
+        logger.debug(
+          'Project found but no agents defined, falling back to default Eliza character'
+        );
         await startAgent(defaultCharacter, server);
       }
     } else if (isPlugin && pluginModule) {
@@ -786,37 +699,14 @@ export const start = new Command()
             const characterData = await loadCharacterTryPath(characterPath);
             options.characters.push(characterData);
           }
-          await startAgents(options);
         } catch (error) {
-          logger.error(`Failed to load character: ${error}`);
-          process.exit(1);
+          logger.error(`Error loading character: ${error}`);
+          return;
         }
-      } else if (options.characters) {
-        // Handle --characters option
-        options.characters = [];
-        try {
-          const characterPaths = options.characters.split(',').map((path) => path.trim());
-          for (const charPath of characterPaths) {
-            if (charPath) {
-              logger.info(`Loading character from ${charPath}`);
-              const characterData = await loadCharacterTryPath(charPath);
-              options.characters.push(characterData);
-            }
-          }
-          await startAgents(options);
-        } catch (error) {
-          logger.error(`Failed to load multiple characters: ${error}`);
-          process.exit(1);
-        }
-      } else {
-        await startAgents(options);
       }
+
+      await startAgents(options);
     } catch (error) {
       handleError(error);
     }
   });
-
-// This is the function that registers the command with the CLI
-export default function registerCommand(cli: Command) {
-  return cli.addCommand(start);
-}

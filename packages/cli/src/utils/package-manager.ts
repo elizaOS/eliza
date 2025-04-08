@@ -92,7 +92,7 @@ export function executeInstallation(
   const packageManager = getPackageManager();
 
   // Get the appropriate install command
-  const installCommand = getInstallCommand(packageManager, isGlobal);
+  const installCommand = getInstallCommand(packageManager, false); // hardcoded to install locally for now
 
   // Format the package name with version if provided
   const packageWithVersion = versionOrTag

@@ -138,6 +138,22 @@ const availableAgents = [
   socialMediaManager,
 ].filter(hasRequiredEnvVars);
 
+// Log the filtering results for clarity
+const totalAgents = 6; // Total number of agents defined
+const filteredOutCount = totalAgents - availableAgents.length;
+if (filteredOutCount > 0) {
+  if (filteredOutCount === totalAgents) {
+    console.log('NO AGENTS AVAILABLE - INITIALIZING DEFAULT ELIZA CHARACTER');
+    logger.info(
+      `To enable agents, configure the required platform integrations in your .env file.`
+    );
+  } else {
+    logger.warn(
+      `${filteredOutCount} out of ${totalAgents} agents were filtered out due to missing platform requirements.`
+    );
+  }
+}
+
 export const project = {
   agents: availableAgents,
 };

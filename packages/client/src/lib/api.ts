@@ -1,5 +1,6 @@
 import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 import { WorldManager } from './world-manager';
+import clientLogger from './logger';
 
 const API_PREFIX = '/api';
 
@@ -25,6 +26,9 @@ const fetcher = async ({
 }) => {
   // Ensure URL starts with a slash if it's a relative path
   const normalizedUrl = API_PREFIX + (url.startsWith('/') ? url : `/${url}`);
+
+  clientLogger.info('API Request:', method || 'GET', normalizedUrl);
+
 
   const options: RequestInit = {
     method: method ?? 'GET',
@@ -65,6 +69,10 @@ const fetcher = async ({
     if (!response.ok) {
       const errorText = await response.text();
 
+      clientLogger.error('API Error:', response.status, response.statusText);
+      clientLogger.error('Response:', errorText);
+
+
       let errorMessage = `${response.status}: ${response.statusText}`;
       try {
         const errorObj = JSON.parse(errorText);
@@ -95,7 +103,16 @@ const fetcher = async ({
         const jsonData = await response.json();
         return jsonData;
       } catch (error) {
+
         const text = await response.text();
+
+        clientLogger.error('JSON Parse Error:', error);
+        const text = await response.text();
+        clientLogger.error(
+          'Response text:',
+          text.substring(0, 500) + (text.length > 500 ? '...' : '')
+        );
+
         throw new Error('Failed to parse JSON response');
       }
     } else {
@@ -104,6 +121,9 @@ const fetcher = async ({
       return textResponse;
     }
   } catch (error) {
+
+    clientLogger.error('Fetch error:', error);
+
     throw error;
   }
 };
