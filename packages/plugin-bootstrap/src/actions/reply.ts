@@ -19,14 +19,11 @@ import {
  *
  * @type {string}
  */
-const replyTemplate = `# Task: Generate dialog and actions for the character {{agentName}}.
+const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.
 {{providers}}
 # Instructions: Write the next message for {{agentName}}.
-First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 "thought" should be a short description of what the agent is thinking about and planning.
 "message" should be the next message for {{agentName}} which they will send to the conversation.
-
-These are the available valid actions: {{actionNames}}
 
 Response format should be formatted in a valid JSON block like this:
 \`\`\`json
