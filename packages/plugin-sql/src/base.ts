@@ -146,7 +146,7 @@ export abstract class BaseDrizzleAdapter<
    * @returns {Promise<void>} - A promise that resolves when the agent is successfully ensured.
    * @throws {Error} - If the agent name is not provided or if there is an issue creating the agent.
    */
-  async ensureAgentExists(agent: Partial<Agent>): Promise<void> {
+  async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
     if (!agent.name) {
       throw new Error('Agent name is required');
     }
@@ -156,9 +156,14 @@ export abstract class BaseDrizzleAdapter<
       (a: Partial<Agent & { status: string }>) => a.name === agent.name
     );
 
-    if (!existingAgent) {
-      await this.createAgent(agent);
+    if (existingAgent) {
+      return existingAgent;
     }
+
+    agent.id = v4() as UUID;
+    await this.createAgent(agent);
+
+    return agent as Agent;
   }
 
   /**

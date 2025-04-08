@@ -331,7 +331,7 @@ export class AgentRuntime implements IAgentRuntime {
     // First create the agent entity directly
     try {
       // Ensure agent exists first (this is critical for test mode)
-      await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
+      const existingAgent = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
 
       // No need to transform agent's own ID
       const agentEntity = await this.adapter.getEntityById(this.agentId);
@@ -339,7 +339,7 @@ export class AgentRuntime implements IAgentRuntime {
       if (!agentEntity) {
         const created = await this.createEntity({
           id: this.agentId,
-          agentId: this.agentId,
+          agentId: existingAgent.id,
           names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
           metadata: {},
         });
@@ -1462,8 +1462,8 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.deleteAgent(agentId);
   }
 
-  async ensureAgentExists(agent: Partial<Agent>): Promise<void> {
-    await this.adapter.ensureAgentExists(agent);
+  async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
+    return await this.adapter.ensureAgentExists(agent);
   }
 
   async getEntityById(entityId: UUID): Promise<Entity | null> {
