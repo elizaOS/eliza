@@ -160,7 +160,7 @@ export abstract class BaseDrizzleAdapter<
       return existingAgent;
     }
 
-    agent.id = v4() as UUID;
+    agent.id = agent.id || (v4() as UUID);
     await this.createAgent(agent);
 
     return agent as Agent;
