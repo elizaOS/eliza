@@ -540,15 +540,6 @@ export class TwitterInteractionClient {
       logger.error('Error Occured during describing image: ', error);
     }
 
-    const state = await this.runtime.composeState(message);
-
-    state.values = {
-      ...state.values,
-      twitterUserName: this.state?.TWITTER_USERNAME || this.runtime.getSetting('TWITTER_USERNAME'),
-      currentPost,
-      formattedConversation,
-    };
-
     // Create a callback for handling the response
     const callback: HandlerCallback = async (response: Content, tweetId?: string) => {
       try {
