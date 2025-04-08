@@ -67,7 +67,8 @@ export function splitMessage(text: string, maxLength = 4096): string[] {
  * @param {Button[]} buttons - The buttons from Eliza content
  * @returns {InlineKeyboardButton[]} Array of Telegram buttons
  */
-export function convertToTelegramButtons(buttons: Button[]): InlineKeyboardButton[] {
+export function convertToTelegramButtons(buttons?: Button[] | null): InlineKeyboardButton[] {
+  if (!buttons) return [];
   return buttons.map((button: Button) => {
     switch (button.kind) {
       case 'login':
