@@ -19,6 +19,10 @@ import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import { FormData as NodeFormData, File as NodeFile } from 'formdata-node';
 
+export enum EventType {
+  MODEL_USAGE = 'MODEL_USAGE',
+}
+
 /**
  * Helper function to get settings with fallback to process.env
  *
@@ -171,6 +175,21 @@ function getJsonRepairFunction(): (params: {
       return null;
     }
   };
+}
+
+/**
+ * Emits a model usage event
+ * @param runtime The runtime context
+ * @param usage The LLM usage data
+ */
+function emitModelUsageEvent(runtime: AgentRuntime, usage: LanguageModelUsage) {
+  runtime.emitEvent(EventType.MODEL_USAGE, {
+    tokens: {
+      prompt: usage.promptTokens,
+      completion: usage.completionTokens,
+      total: usage.totalTokens,
+    },
+  });
 }
 
 /**
@@ -354,7 +373,7 @@ export const openaiPlugin: Plugin = {
       logger.log('generating text');
       logger.log(prompt);
 
-      const { text: openaiResponse } = await generateText({
+      const { text: openaiResponse, usage } = await generateText({
         model: openai.languageModel(model),
         prompt: prompt,
         system: runtime.character.system ?? undefined,
@@ -364,6 +383,8 @@ export const openaiPlugin: Plugin = {
         presencePenalty: presence_penalty,
         stopSequences: stopSequences,
       });
+
+      emitModelUsageEvent(runtime, usage);
 
       return openaiResponse;
     },
@@ -381,7 +402,7 @@ export const openaiPlugin: Plugin = {
       const openai = createOpenAIClient(runtime);
       const model = getLargeModel(runtime);
 
-      const { text: openaiResponse } = await generateText({
+      const { text: openaiResponse, usage } = await generateText({
         model: openai.languageModel(model),
         prompt: prompt,
         system: runtime.character.system ?? undefined,
@@ -391,6 +412,8 @@ export const openaiPlugin: Plugin = {
         presencePenalty: presencePenalty,
         stopSequences: stopSequences,
       });
+
+      emitModelUsageEvent(runtime, usage);
 
       return openaiResponse;
     },
