@@ -16,7 +16,7 @@ export const project = new Command().name('project').description('Manage an Eliz
 
 project
   .command('list-plugins')
-  .description('list available plugins to install into the project')
+  .description('List available plugins to install into the project')
   .option('-t, --type <type>', 'filter by type (adapter, client, plugin)')
   .action(async (opts) => {
     try {
@@ -46,7 +46,7 @@ project
 
 project
   .command('add-plugin')
-  .description('add a plugin to the project')
+  .description('Add a plugin to the project')
   .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('--no-env-prompt', 'Skip prompting for environment variables')
   .action(async (plugin, opts) => {
@@ -127,7 +127,7 @@ project
 
 project
   .command('remove-plugin')
-  .description('remove a plugin from the project')
+  .description('Remove a plugin from the project')
   .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .action(async (plugin, _opts) => {
     try {

@@ -51,7 +51,7 @@ async function main() {
     version = packageJson.version;
   }
 
-  const program = new Command().name('elizaos').version(version);
+  const program = new Command().name('elizaos').version(version).alias('-v');
 
   // Create a stop command for testing purposes
   const stopCommand = new Command('stop')

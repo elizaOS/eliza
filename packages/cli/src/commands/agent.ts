@@ -77,7 +77,7 @@ async function resolveAgentId(idOrNameOrIndex: string): Promise<string> {
   throw new Error(`Agent not found: ${idOrNameOrIndex}`);
 }
 
-export const agent = new Command().name('agent').description('manage ElizaOS agents');
+export const agent = new Command().name('agent').description('Manage ElizaOS agents');
 
 /**
  * Interface representing the payload sent when starting an agent.
@@ -113,7 +113,7 @@ interface ApiResponse<T> {
 agent
   .command('list')
   .alias('ls')
-  .description('list available agents')
+  .description('List available agents')
   .option('-j, --json', 'output as JSON')
   .action(async (opts) => {
     try {
@@ -148,7 +148,7 @@ agent
 agent
   .command('get')
   .alias('g')
-  .description('get agent details')
+  .description('Get agent details')
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-j, --json', 'output as JSON')
   .option('-o, --output <file>', 'output to file (default: {name}.json)')
@@ -189,7 +189,7 @@ agent
 agent
   .command('start')
   .alias('s')
-  .description('start an agent')
+  .description('Start an agent')
   .option('-n, --name <name>', 'character name to start the agent with')
   .option('-j, --json <json>', 'character JSON string')
   .option('-p, --path <path>', 'local path to character JSON file')
@@ -293,7 +293,7 @@ agent
 agent
   .command('stop')
   .alias('st')
-  .description('stop an agent')
+  .description('Stop an agent')
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .action(async (opts) => {
     try {
@@ -321,7 +321,7 @@ agent
 agent
   .command('remove')
   .alias('rm')
-  .description('remove an agent')
+  .description('Remove an agent')
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .action(async (opts) => {
     try {
@@ -351,7 +351,7 @@ agent
 
 agent
   .command('set')
-  .description('update agent configuration')
+  .description('Update agent configuration')
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
   .option('-c, --config <json>', 'configuration as JSON string')
   .option('-f, --file <path>', 'path to configuration JSON file')
