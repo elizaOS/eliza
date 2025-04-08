@@ -12,7 +12,7 @@ You can use this command in two equivalent ways:
 
 ```bash
 # Using npm create
-npm create eliza [options] [name]
+npm create-eliza [options] [name]
 
 # Using npx directly
 npx elizaos create [options] [name]
@@ -29,7 +29,7 @@ Due to how npm handles flags, there are several ways to get help:
 npx elizaos create --help
 
 # Quick help overview with npm create
-npm create eliza help
+npm create-eliza help
 
 # The standard --help flag with npm doesn't work as expected
 # as npm intercepts it and shows npm's own help
