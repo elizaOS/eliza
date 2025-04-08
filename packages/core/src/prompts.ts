@@ -328,6 +328,7 @@ First, think about what you want to do next and plan your actions. Then, write t
 "actions" should be an array of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY)
 "providers" should be an optional array of the providers that {{agentName}} will use to have the right context for responding and acting
 "evaluators" should be an optional array of the evaluators that {{agentName}} will use to evaluate the conversation after responding
+"message" should be the next message for {{agentName}} which they will send to the conversation.
 These are the available valid actions: {{actionNames}}
 
 Response format should be formatted in a valid JSON block like this:
@@ -335,7 +336,8 @@ Response format should be formatted in a valid JSON block like this:
 {
     "thought": "<string>",
     "actions": ["<string>", "<string>", ...],
-    "providers": ["<string>", "<string>", ...]
+    "providers": ["<string>", "<string>", ...],
+    "message": "<string>"
 }
 \`\`\`
 
