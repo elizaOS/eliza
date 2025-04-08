@@ -192,7 +192,7 @@ export class TwitterInteractionClient {
    * Note: MENTION_RECEIVED is currently disabled (see TODO below)
    */
   async processMentionTweets(mentionCandidates: ClientTweet[]) {
-    logger.log('Completed checking mentioned tweets:', mentionCandidates.length);
+    console.log('Completed checking mentioned tweets:', mentionCandidates.length);
     let uniqueTweetCandidates = [...mentionCandidates];
 
     // Sort tweet candidates by ID in ascending order
@@ -539,15 +539,6 @@ export class TwitterInteractionClient {
       // Handle the error
       logger.error('Error Occured during describing image: ', error);
     }
-
-    const state = await this.runtime.composeState(message);
-
-    state.values = {
-      ...state.values,
-      twitterUserName: this.state?.TWITTER_USERNAME || this.runtime.getSetting('TWITTER_USERNAME'),
-      currentPost,
-      formattedConversation,
-    };
 
     // Create a callback for handling the response
     const callback: HandlerCallback = async (response: Content, tweetId?: string) => {
