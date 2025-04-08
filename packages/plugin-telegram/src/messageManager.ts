@@ -147,7 +147,7 @@ export class MessageManager {
       const chunks = this.splitMessage(content.text);
       const sentMessages: Message.TextMessage[] = [];
 
-      const telegramButtons = convertToTelegramButtons(content.buttons);
+      const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = escapeMarkdown(chunks[i]);
