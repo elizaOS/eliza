@@ -364,6 +364,7 @@ agent
 
       // Server returns 204 No Content for successful deletion, no need to parse response
       logger.success(`Successfully removed agent ${opts.name}`);
+      process.exit(0);
     } catch (error) {
       await checkServer(opts);
       handleError(error);
@@ -405,7 +406,7 @@ agent
       const response = await fetch(`${getAgentsBaseUrl(opts)}/${resolvedAgentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updates: config }),
+        body: JSON.stringify(config),
       });
 
       if (!response.ok) {
