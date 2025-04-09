@@ -88,7 +88,7 @@ bun start --character="characters/your-character.json"
 
 ## Utilizing Telegram Buttons
 
-Send a message with native Telegram buttons by adding an array of buttons in the message content. Here is an example of adding a button for authenticating a users' Telegram account.
+To send a message with native Telegram buttons, include an array of buttons in the message content. The following action demonstrates how to initiate a login flow using a Telegram button.
 
 ```typescript
 export const initAuthHandshakeAction: Action = {
