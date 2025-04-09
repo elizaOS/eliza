@@ -1,21 +1,12 @@
 import {
   type Connection,
-  LAMPORTS_PER_SOL,
   PublicKey,
-  SystemProgram,
   Transaction,
   type TransactionInstruction,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 
-/**
- * Interface representing the parameters for a token swap.
- * @typedef {object} SwapParams
- * @property {string} fromToken - The token to swap from.
- * @property {string} toToken - The token to swap to.
- * @property {number} amount - The amount of tokens to swap.
- * @property {number} slippage - The allowable slippage percentage.
- * @property {("ExactIn" | "ExactOut")} [swapMode="ExactIn"] - The swap mode, either "ExactIn" or "ExactOut".
- */
 export interface SwapParams {
   fromToken: string;
   toToken: string;
@@ -24,14 +15,6 @@ export interface SwapParams {
   swapMode?: 'ExactIn' | 'ExactOut';
 }
 
-/**
- * Executes a swap transaction on the blockchain.
- *
- * @param {Connection} connection - Connection object for interacting with the blockchain.
- * @param {PublicKey} walletPubkey - Public key of the wallet initiating the swap.
- * @param {SwapParams} params - Parameters for the swap transaction.
- * @returns {Promise<{ signature: string }>} A Promise that resolves to an object containing the signature of the transaction.
- */
 export async function executeSwap(
   connection: Connection,
   walletPubkey: PublicKey,
@@ -56,13 +39,6 @@ export async function executeSwap(
   return { signature };
 }
 
-/**
- * Create a swap instruction for a token transfer.
- * @param {_connection} Connection - The connection object used to interact with the Solana blockchain
- * @param {walletPubkey} PublicKey - The public key of the wallet initiating the swap
- * @param {params} SwapParams - The parameters for the swap including the destination token and amount
- * @returns {Promise<TransactionInstruction>} - A promise that resolves to a transaction instruction for the swap
- */
 export async function createSwapInstruction(
   _connection: Connection,
   walletPubkey: PublicKey,
@@ -76,13 +52,6 @@ export async function createSwapInstruction(
   });
 }
 
-/**
- * Retrieves the token account associated with a wallet for a given mint.
- * @param {Connection} _connection - The connection to the Solana blockchain.
- * @param {PublicKey} walletPubkey - The public key of the wallet.
- * @param {PublicKey} _mint - The public key of the mint.
- * @returns {Promise<PublicKey>} - The public key of the token account.
- */
 export async function getTokenAccount(
   _connection: Connection,
   walletPubkey: PublicKey,

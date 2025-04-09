@@ -210,6 +210,14 @@ export class TaskService extends Service {
           continue;
         }
 
+        if (task.metadata.updatedAt === task.metadata.createdAt) {
+          if (task.tags?.includes('immediate')) {
+            console.log('immediately running task', task.name);
+            await this.executeTask(task);
+            continue;
+          }
+        }
+
         // Check if enough time has passed since last update
         if (now - taskStartTime >= updateIntervalMs) {
           logger.debug(

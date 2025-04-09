@@ -44,6 +44,9 @@ const character: Character = {
     secrets: {
       DISCORD_APPLICATION_ID: process.env.INVESTMENT_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.INVESTMENT_MANAGER_DISCORD_API_TOKEN,
+      TWITTER_EMAIL: process.env.INVESTMENT_MANAGER_TWITTER_EMAIL,
+      TWITTER_USERNAME: process.env.INVESTMENT_MANAGER_TWITTER_USERNAME,
+      TWITTER_PASSWORD: process.env.INVESTMENT_MANAGER_TWITTER_PASSWORD,
     },
     avatar,
   },
@@ -244,7 +247,7 @@ const config: OnboardingConfig = {
 export const investmentManager: ProjectAgent = {
   plugins: [
     degenIntelPlugin,
-    // degenTraderPlugin,
+    degenTraderPlugin,
     // communityInvestorPlugin,
   ],
   character,

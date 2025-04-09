@@ -1,13 +1,8 @@
-import { type IAgentRuntime, logger } from '@elizaos/core';
+import { logger, type IAgentRuntime } from '@elizaos/core';
 import { PublicKey } from '@solana/web3.js';
 
 /**
  * Validates a Solana address format
- */
-/**
- * Checks if a given string is a valid Solana address.
- * * @param { string } address - The Solana address to validate.
- * @returns { boolean } - Returns true if the address is valid, false otherwise.
  */
 export function isValidSolanaAddress(address: string): boolean {
   try {
@@ -101,4 +96,74 @@ export function decodeBase58(str: string): Uint8Array {
   }
 
   return new Uint8Array(bytes);
+}
+
+/**
+ * Tracks analyzed tokens with timestamps
+ */
+export interface AnalyzedToken {
+  address: string;
+  timestamp: number;
+  symbol: string;
+}
+
+/**
+ * Manages analyzed token history
+ */
+export async function manageAnalyzedTokens(
+  runtime: IAgentRuntime,
+  state: any,
+  newToken?: AnalyzedToken
+): Promise<AnalyzedToken[]> {
+  try {
+    const historyKey = 'analyzed_tokens_history';
+    let history: AnalyzedToken[] = [];
+
+    if (state?.[historyKey]) {
+      try {
+        const parsed = JSON.parse(state[historyKey]);
+        if (Array.isArray(parsed)) {
+          history = parsed;
+        }
+      } catch (e) {
+        logger.warn('Failed to parse token history:', e);
+      }
+    }
+
+    const now = Date.now();
+    history = history.filter(
+      (token) => token?.timestamp && now - token.timestamp < 24 * 60 * 60 * 1000 // 24 hours
+    );
+
+    if (newToken) {
+      history.push(newToken);
+      logger.log('Added new token to analysis history:', {
+        address: newToken.address,
+        symbol: newToken.symbol,
+        historySize: history.length,
+      });
+    }
+
+    // Update state
+    if (runtime) {
+      await runtime.updateRecentMessageState({
+        ...state,
+        userId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId: runtime.agentId,
+        content: {
+          ...state?.content,
+          [historyKey]: JSON.stringify(history),
+        },
+      });
+    }
+
+    return history;
+  } catch (error) {
+    logger.error('Failed to manage token history:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      errorStack: error instanceof Error ? error.stack : undefined,
+    });
+    return [];
+  }
 }

@@ -1,5 +1,5 @@
-import { type IAgentRuntime, logger } from '@elizaos/core';
-import { Connection, Keypair, PublicKey, VersionedTransaction } from '@solana/web3.js';
+import { logger, type IAgentRuntime } from '@elizaos/core';
+import { Connection, Keypair, VersionedTransaction, PublicKey } from '@solana/web3.js';
 import { decodeBase58 } from './utils';
 
 /**
@@ -7,12 +7,6 @@ import { decodeBase58 } from './utils';
  * @param runtime Agent runtime environment
  * @returns Solana keypair for transactions
  * @throws Error if private key is missing or invalid
- */
-/**
- * Retrieves the wallet keypair based on the private key stored in the runtime settings.
- * @param {IAgentRuntime} [runtime] - Optional parameter representing the runtime environment (e.g., browser, server).
- * @returns {Keypair} - The Keypair object generated from the stored private key.
- * @throws {Error} - If no wallet private key is configured or if an error occurs during keypair creation.
  */
 export function getWalletKeypair(runtime?: IAgentRuntime): Keypair {
   const privateKeyString = runtime?.getSetting('SOLANA_PRIVATE_KEY');
@@ -35,7 +29,6 @@ export function getWalletKeypair(runtime?: IAgentRuntime): Keypair {
  * @returns Balance in SOL
  */
 export async function getWalletBalance(runtime: IAgentRuntime): Promise<number> {
-  return 0;
   try {
     const walletKeypair = getWalletKeypair(runtime);
     const connection = new Connection(runtime.getSetting('RPC_URL'));
@@ -94,25 +87,25 @@ function calculateDynamicSlippage(amount: string, quoteData: any): number {
  */
 export async function executeTrade(
   runtime: IAgentRuntime,
-  {
-    tokenAddress,
-    amount,
-    slippage,
-    dex,
-    action,
-  }: {
+  params: {
     tokenAddress: string;
-    amount: string | number;
+    amount: string;
     slippage: number;
     dex: string;
-    action?: 'BUY' | 'SELL';
+    action: string;
   }
-): Promise<{ success: boolean; signature?: string; error?: string }> {
-  const actionStr = action === 'SELL' ? 'sell' : 'buy';
-  logger.info(`Executing ${actionStr} trade using ${dex}:`, {
-    tokenAddress,
-    amount,
-    slippage,
+): Promise<{
+  success: boolean;
+  signature?: string;
+  error?: string;
+  receivedAmount?: string;
+  receivedValue?: string;
+}> {
+  const actionStr = params.action === 'SELL' ? 'sell' : 'buy';
+  logger.info(`Executing ${actionStr} trade using ${params.dex}:`, {
+    tokenAddress: params.tokenAddress,
+    amount: params.amount,
+    slippage: params.slippage,
   });
 
   try {
@@ -121,18 +114,18 @@ export async function executeTrade(
 
     // Setup swap parameters
     const SOL_ADDRESS = 'So11111111111111111111111111111111111111112';
-    const inputTokenCA = action === 'SELL' ? tokenAddress : SOL_ADDRESS;
-    const outputTokenCA = action === 'SELL' ? SOL_ADDRESS : tokenAddress;
+    const inputTokenCA = params.action === 'SELL' ? params.tokenAddress : SOL_ADDRESS;
+    const outputTokenCA = params.action === 'SELL' ? SOL_ADDRESS : params.tokenAddress;
 
     // Convert amount to lamports for the API
     const swapAmount =
-      action === 'SELL'
-        ? Number(amount) // For selling, amount is already in lamports
-        : Math.floor(Number(amount) * 1e9); // For buying, convert to lamports
+      params.action === 'SELL'
+        ? Number(params.amount) // For selling, amount is already in lamports
+        : Math.floor(Number(params.amount) * 1e9); // For buying, convert to lamports
 
     // Get quote using Jupiter API
     const quoteResponse = await fetch(
-      `https://public.jupiterapi.com/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${swapAmount}&slippageBps=${Math.floor(slippage * 10000)}`
+      `https://public.jupiterapi.com/quote?inputMint=${inputTokenCA}&outputMint=${outputTokenCA}&amount=${swapAmount}&slippageBps=${Math.floor(params.slippage * 10000)}`
     );
 
     if (!quoteResponse.ok) {
@@ -151,9 +144,9 @@ export async function executeTrade(
     logger.log('Quote received:', quoteData);
 
     // Calculate dynamic slippage based on market conditions
-    const dynamicSlippage = calculateDynamicSlippage(amount.toString(), quoteData);
+    const dynamicSlippage = calculateDynamicSlippage(params.amount.toString(), quoteData);
     logger.info('Using dynamic slippage:', {
-      baseSlippage: slippage,
+      baseSlippage: params.slippage,
       dynamicSlippage,
       priceImpact: quoteData?.priceImpactPct,
     });
@@ -255,9 +248,9 @@ export async function executeTrade(
     }
 
     logger.log('Trade executed successfully:', {
-      type: action === 'SELL' ? 'sell' : 'buy',
-      tokenAddress,
-      amount,
+      type: params.action === 'SELL' ? 'sell' : 'buy',
+      tokenAddress: params.tokenAddress,
+      amount: params.amount,
       signature,
       explorer: `https://solscan.io/tx/${signature}`,
     });
@@ -265,11 +258,19 @@ export async function executeTrade(
     return {
       success: true,
       signature,
+      receivedAmount: params.amount,
+      receivedValue: params.amount,
     };
   } catch (error) {
     logger.error('Trade execution failed:', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      params: { tokenAddress, amount, slippage, dex, action },
+      params: {
+        tokenAddress: params.tokenAddress,
+        amount: params.amount,
+        slippage: params.slippage,
+        dex: params.dex,
+        action: params.action,
+      },
       errorStack: error instanceof Error ? error.stack : undefined,
     });
 
@@ -474,8 +475,21 @@ export async function getTokenBalance(
   runtime: IAgentRuntime,
   tokenMint: string
 ): Promise<TokenBalance | null> {
-  const balances = await getWalletBalances(runtime);
-  return balances.tokens.find((token) => token.mint === tokenMint) || null;
+  try {
+    const balances = await getWalletBalances(runtime);
+    const token = balances.tokens.find((t) => t.mint.toLowerCase() === tokenMint.toLowerCase());
+
+    if (!token) {
+      logger.warn(`No balance found for token ${tokenMint}`, {
+        availableTokens: balances.tokens.map((t) => t.mint),
+      });
+    }
+
+    return token;
+  } catch (error) {
+    logger.error('Failed to get token balance:', error);
+    return null;
+  }
 }
 
 /**

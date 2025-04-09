@@ -1,20 +1,13 @@
 import { logger } from '@elizaos/core';
 import { PublicKey } from '@solana/web3.js';
 
-/**
- * Function to validate a Solana address.
- * @param {string | undefined} address - The Solana address to validate.
- * @returns {boolean} - Returns true if the address is valid, false otherwise.
- */
 export function validateSolanaAddress(address: string | undefined): boolean {
   if (!address) return false;
   try {
     // Handle Base (0x) addresses
     if (address.startsWith('0x')) {
       const isValidBase = /^0x[a-fA-F0-9]{40}$/.test(address);
-      logger.log(`Base address validation: ${address}`, {
-        isValid: isValidBase,
-      });
+      logger.log(`Base address validation: ${address}`, { isValid: isValidBase });
       return isValidBase;
     }
 

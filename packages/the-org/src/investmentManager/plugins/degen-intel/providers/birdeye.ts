@@ -118,51 +118,66 @@ export default class Birdeye {
   }
 
   private async syncWalletHistory() {
-    /** Get entire transaction history */
-    const options = {
-      method: 'GET',
-      headers: {
-        accept: 'application/json',
-        'x-chain': 'solana',
-        'X-API-KEY': this.apiKey,
-      },
-    };
-
-    const publicKey =
-      this.runtime.getSetting('SOLANA_PUBLIC_KEY') ||
-      'BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq';
-
-    const res = await fetch(
-      `https://public-api.birdeye.so/v1/wallet/tx_list?wallet=${publicKey}&limit=100`,
-      options
-    );
-
-    const resp = await res.json();
-    const data = resp?.data?.solana;
-
-    // Get existing transactions
-    const cachedTxs = await this.runtime.getCache<TransactionHistory[]>('transaction_history');
-    const transactions: TransactionHistory[] = cachedTxs ? cachedTxs : [];
-
-    // Update transactions
-    for (const tx of data) {
-      const existingIndex = transactions.findIndex((t) => t.txHash === tx.txHash);
-      const newTx = {
-        txHash: tx.txHash,
-        blockTime: new Date(tx.blockTime),
-        data: tx,
+    try {
+      /** Get entire transaction history */
+      const options = {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+          'x-chain': 'solana',
+          'X-API-KEY': this.apiKey,
+        },
       };
 
-      if (existingIndex >= 0) {
-        transactions[existingIndex] = newTx;
-      } else {
-        transactions.push(newTx);
+      const publicKey =
+        this.runtime.getSetting('SOLANA_PUBLIC_KEY') ||
+        'BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq';
+
+      const res = await fetch(
+        `https://public-api.birdeye.so/v1/wallet/tx_list?wallet=${publicKey}&limit=100`,
+        options
+      );
+
+      const resp = await res.json();
+      const data = resp?.data?.solana;
+
+      // Get existing transactions with error handling
+      let transactions: TransactionHistory[] = [];
+      try {
+        const cachedTxs = await this.runtime.getCache<TransactionHistory[]>('transaction_history');
+        transactions = cachedTxs || [];
+      } catch (error) {
+        logger.warn('Failed to get cached transactions, starting with empty array', error);
       }
+
+      // Update transactions
+      for (const tx of data) {
+        const existingIndex = transactions.findIndex((t) => t.txHash === tx.txHash);
+        const newTx = {
+          txHash: tx.txHash,
+          blockTime: new Date(tx.blockTime),
+          data: tx,
+        };
+
+        if (existingIndex >= 0) {
+          transactions[existingIndex] = newTx;
+        } else {
+          transactions.push(newTx);
+        }
+      }
+
+      // Set cache with error handling
+      try {
+        await this.runtime.setCache<TransactionHistory[]>('transaction_history', transactions);
+        logger.debug(`Updated transaction history with ${data.length} transactions`);
+      } catch (error) {
+        logger.error('Failed to set transaction cache', error);
+        throw error;
+      }
+    } catch (error) {
+      logger.error('Failed to sync wallet history', error);
+      throw error;
     }
-
-    await this.runtime.setCache<TransactionHistory[]>('transaction_history', transactions);
-
-    logger.debug(`Updated transaction history with ${data.length} transactions`);
   }
 
   private async syncWalletPortfolio() {
