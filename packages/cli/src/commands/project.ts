@@ -20,17 +20,28 @@ project
   .option('-t, --type <type>', 'filter by type (adapter, client, plugin)')
   .action(async (opts) => {
     try {
-      // Try to get registry without GitHub credentials first
-      let registry;
-      try {
-        registry = await getLocalRegistryIndex();
-      } catch (error) {
-        // If that fails, try with credentials as a backup
-        logger.debug('Failed to fetch registry without credentials, trying authenticated method');
-        registry = await getRegistryIndex();
-      }
+      // Temporarily return hardcoded plugins as an array
+      const hardcodedPlugins = [
+        '@elizaos/plugin-sql',
+        '@elizaos/plugin-twitter',
+        '@elizaos/plugin-telegram',
+        '@elizaos/plugin-discord',
+        '@elizaos/plugin-farcaster',
+        '@elizaos/plugin-redpill',
+        '@elizaos/plugin-groq',
+        '@elizaos/plugin-local-ai',
+        '@elizaos/plugin-anthropic',
+        '@elizaos/plugin-openai',
+        '@elizaos/plugin-solana',
+        '@elizaos/plugin-evm',
+        '@elizaos/plugin-pdf',
+        '@elizaos/plugin-browser',
+        '@elizaos/plugin-s3-storage',
+        '@elizaos/plugin-video-understanding',
+        '@elizaos/plugin-venice',
+      ];
 
-      const plugins = Object.keys(registry)
+      const plugins = hardcodedPlugins
         .filter((name) => !opts.type || name.includes(opts.type))
         .sort();
 
