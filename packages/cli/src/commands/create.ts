@@ -374,7 +374,6 @@ export const create = new Command()
         process.exit(0);
       }
     } catch (error) {
-      await checkServer();
       handleError(error);
     }
   });

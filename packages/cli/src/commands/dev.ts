@@ -309,8 +309,11 @@ export const dev = new Command()
   .description('Start the project or plugin in development mode and rebuild on file changes')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
-  .option('--character <character>', 'Path or URL to character file to use instead of default')
-  .option('--build', 'Build the project before starting')
+  .option(
+    '-char, --character <character>',
+    'Path or URL to character file to use instead of default'
+  )
+  .option('-b, --build', 'Build the project before starting')
   .action(async (options) => {
     try {
       const cwd = process.cwd();
@@ -321,6 +324,7 @@ export const dev = new Command()
       if (options.port) cliArgs.push('--port', options.port.toString());
       if (options.configure) cliArgs.push('--configure');
       if (options.character) cliArgs.push('--character', options.character);
+      if (options.build) cliArgs.push('--build');
 
       // Function to rebuild and restart the server
       const rebuildAndRestart = async () => {
