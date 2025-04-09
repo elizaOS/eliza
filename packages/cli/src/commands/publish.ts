@@ -383,8 +383,8 @@ export const publish = new Command()
     'specify platform compatibility (node, browser, universal)',
     'universal'
   )
-  .option('--dry-run', 'generate registry files locally without publishing', false)
-  .option('--skip-registry', 'skip publishing to the registry', false)
+  .option('-d, --dry-run', 'generate registry files locally without publishing', false)
+  .option('-sr, --skip-registry', 'skip publishing to the registry', false)
   .action(async (opts) => {
     try {
       const cwd = process.cwd();

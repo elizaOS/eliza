@@ -436,10 +436,10 @@ export const test = new Command()
   .name('test')
   .description('Run tests for Eliza agent plugins')
   .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
-  .option('-P, --plugin <name>', 'Name of plugin to test')
-  .option('--skip-plugins', 'Skip plugin tests')
-  .option('--skip-project-tests', 'Skip project tests')
-  .option('--skip-build', 'Skip building before running tests')
+  .option('-pl, --plugin <name>', 'Name of plugin to test')
+  .option('-sp, --skip-plugins', 'Skip plugin tests')
+  .option('-spt, --skip-project-tests', 'Skip project tests')
+  .option('-sb, --skip-build', 'Skip building before running tests')
   .action(async (options) => {
     logger.info('Starting test command...');
     logger.info('Command options:', options);
