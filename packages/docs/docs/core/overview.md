@@ -2,11 +2,14 @@
 sidebar_position: 1
 title: ElizaOS Documentation
 slug: /
+description: Comprehensive framework for building AI agents with persistent personalities across multiple platforms
 ---
 
 # ElizaOS Documentation
 
 Welcome to ElizaOS - a comprehensive framework for building AI agents with persistent personalities across multiple platforms. ElizaOS provides the architecture, tools, and systems needed to create sophisticated agents that maintain consistent behavior, learn from interactions, and seamlessly integrate with a variety of services.
+
+> **New to ElizaOS?** Check out [What's new in ElizaOS V2](https://eliza.how/blog/v1-v2) to understand how it compares to previous versions.
 
 ## System Architecture
 
@@ -117,224 +120,35 @@ When a user message is received:
 
 This creates a continuous cycle of interaction, reflection, and improvement that allows agents to maintain consistent personalities while adapting to new information.
 
-## Core Components
+### Core Components
 
-<div className="container">
-  <div className="row">
-    <div className="col col--4 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/agentruntime.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>🤖 Agent Runtime</h3>
-          <p>The central system that orchestrates agent behavior, processes messages, manages state, and coordinates all other components.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/agents">Agent Runtime</a>
-        </div>
-      </div>
-    </div>
-    
-    <div className="col col--4 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/services.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>📚 Services</h3>
-          <p>Platform-specific integrations that enable agents to communicate across Discord, Twitter, Telegram, and other channels.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/services">Services</a>
-        </div>
-      </div>
-    </div>
-    
-    <div className="col col--4 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/database.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>💾 Database</h3>
-          <p>Persistent storage for memories, entity data, relationships, and configuration using vector search capabilities.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/database">Database</a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+| [![Agent Runtime](/img/agentruntime.jpg)](/docs/core/agents)                                                        | [![Services](/img/services.jpg)](/docs/core/services)                                                                          | [![Database](/img/database.jpg)](/docs/core/database)                                                                        |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| **[🤖 Agent Runtime](/docs/core/agents)** — Orchestrates agent behavior, manages state, and coordinates components. | **[📚 Services](/docs/core/services)** — Enables agents to communicate across Discord, Twitter, Telegram, and other platforms. | **[💾 Database](/docs/core/database)** — Stores memories, entity data, relationships, and configuration using vector search. |
 
-## Intelligence & Behavior
+---
 
-<div className="container">
-  <div className="row">
-    <div className="col col--3 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/actions.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>⚡ Actions</h3>
-          <p>Executable capabilities that define how agents respond to messages and interact with external systems.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/actions">Actions</a>
-        </div>
-      </div>
-    </div>
-    
-    <div className="col col--3 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/providers.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>🔌 Providers</h3>
-          <p>Data sources that supply contextual information to inform agent decision-making in real-time.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/providers">Providers</a>
-        </div>
-      </div>
-    </div>
-    
-    <div className="col col--3 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/evaluators.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>📊 Evaluators</h3>
-          <p>Analytical systems that process conversations to extract insights, learn facts, and improve future responses.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/evaluators">Evaluators</a>
-        </div>
-      </div>
-    </div>
-    
-    <div className="col col--3 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/knowledge.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>🧠 Knowledge</h3>
-          <p>RAG system for document processing, semantic search, and context-aware memory retrieval.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/knowledge">Knowledge</a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+### Intelligence & Behavior
 
-## Structure & Organization
+| [![Actions](/img/actions.jpg)](/docs/core/actions)                                                              | [![Providers](/img/providers.jpg)](/docs/core/providers)                                            | [![Evaluators](/img/evaluators.jpg)](/docs/core/evaluators)                                                           | [![Knowledge](/img/knowledge.jpg)](/docs/core/knowledge)                                           |
+| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **[⚡ Actions](/docs/core/actions)** — Executable capabilities for agents to respond and interact with systems. | **[🔌 Providers](/docs/core/providers)** — Supplies context to inform agent decisions in real time. | **[📊 Evaluators](/docs/core/evaluators)** — Analyzes conversations to extract insights and improve future responses. | **[🧠 Knowledge](/docs/core/knowledge)** — RAG system for document processing and semantic memory. |
 
-<div className="container">
-  <div className="row">
-    <div className="col col--4 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/worlds.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>🌐 Worlds</h3>
-          <p>Collection spaces that organize entities and rooms into coherent environments (like a Discord server).</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/worlds">Worlds</a>
-        </div>
-      </div>
-    </div>
-    
-    <div className="col col--4 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/rooms.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>💬 Rooms</h3>
-          <p>Conversation spaces where entities interact through messages (channels, DMs, threads).</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/rooms">Rooms</a>
-        </div>
-      </div>
-    </div>
-    
-    <div className="col col--4 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/entities.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>👤 Entities</h3>
-          <p>Representation of users, agents, and other participants using a flexible entity-component architecture.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/entities">Entities</a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+---
 
-## Development & Integration
+### Structure & Organization
 
-<div className="container">
-  <div className="row">
-    <div className="col col--4 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/plugins.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>🧩 Plugins</h3>
-          <p>Modular extensions that add new capabilities, integrations, and behaviors to agents.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/plugins">Plugins</a>
-        </div>
-      </div>
-    </div>
-    
-    <div className="col col--4 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/project.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>📝 Projects</h3>
-          <p>Organizational structure for defining and deploying one or more agents with their configuration.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/project">Projects</a>
-        </div>
-      </div>
-    </div>
-    
-    <div className="col col--4 margin-bottom--lg">
-      <div className="card">
-        <div className="card__image">
-          <img src="/img/tasks.jpg?text=🔍" alt="Overview" />
-        </div>      
-        <div className="card__body">
-          <h3>📋 Tasks</h3>
-          <p>System for managing deferred, scheduled, and repeating operations across conversations.</p>
-        </div>
-        <div className="card__footer">
-          <a className="button button--primary button--block" href="/docs/core/tasks">Tasks</a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+| [![Worlds](/img/worlds.jpg)](/docs/core/worlds)                                       | [![Rooms](/img/rooms.jpg)](/docs/core/rooms)                                      | [![Entities](/img/entities.jpg)](/docs/core/entities)                                    |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **[🌐 Worlds](/docs/core/worlds)** — Organizes environments like servers or projects. | **[💬 Rooms](/docs/core/rooms)** — Spaces for conversation, like channels or DMs. | **[👤 Entities](/docs/core/entities)** — Represents users, bots, and other participants. |
+
+---
+
+### Development & Integration
+
+| [![Plugins](/img/plugins.jpg)](/docs/core/plugins)                                   | [![Projects](/img/project.jpg)](/docs/core/project)                                     | [![Tasks](/img/tasks.jpg)](/docs/core/tasks)                                  |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **[🧩 Plugins](/docs/core/plugins)** — Modular extensions that add new capabilities. | **[📝 Projects](/docs/core/project)** — Defines and deploys agents with configurations. | **[📋 Tasks](/docs/core/tasks)** — Manages scheduled and deferred operations. |
 
 ---
 
@@ -382,40 +196,25 @@ If you're new to ElizaOS, we recommend this learning path:
 
 ## FAQ
 
-<details>
-<summary><b>What's the difference between Actions, Evaluators, and Providers?</b></summary>
+**What's the difference between Actions, Evaluators, and Providers?**
 
-**Actions** define what an agent can do and are executed during response generation. **Evaluators** analyze conversations after they happen to extract insights and improve future responses. **Providers** supply contextual information before the agent decides how to respond.
+Actions define what an agent can do and are executed during response generation. Evaluators analyze conversations after they happen to extract insights and improve future responses. Providers supply contextual information before the agent decides how to respond.
 
-</details>
-
-<details>
-<summary><b>How does ElizaOS handle cross-platform conversation context?</b></summary>
+**How does ElizaOS handle cross-platform conversation context?**
 
 ElizaOS maintains separate conversation contexts for different platforms by default, but shares entity relationships and learned facts across platforms. This ensures agents maintain a consistent understanding of users while respecting platform-specific conversation boundaries.
 
-</details>
-
-<details>
-<summary><b>How does the memory system work?</b></summary>
+**How does the memory system work?**
 
 Memory is organized into different types (messages, facts, knowledge) and stored with vector embeddings for semantic search. This allows agents to retrieve relevant memories based on context rather than just recency, creating more natural conversations.
 
-</details>
-
-<details>
-<summary><b>What's the relationship between Worlds, Rooms, and Entities?</b></summary>
+**What's the relationship between Worlds, Rooms, and Entities?**
 
 Worlds are container spaces (like a Discord server) that can have multiple Rooms (channels, DMs). Entities (users, agents) participate in Rooms within Worlds. This hierarchical structure mirrors real-world platforms while providing a consistent abstraction.
 
-</details>
-
-<details>
-<summary><b>How extensible is ElizaOS?</b></summary>
+**How extensible is ElizaOS?**
 
 ElizaOS is highly extensible through its plugin system. You can create custom actions, providers, evaluators, services, and more to extend functionality. The architecture is designed to be modular and composable at every level.
-
-</details>
 
 ## Additional Resources
 

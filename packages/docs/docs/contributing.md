@@ -87,5 +87,4 @@ This section lists the labels we use to help us track and manage issues and pull
 
 ## Additional Resources
 
-- [Configuration Guide](guides/configuration.md)
 - [API Documentation](api)

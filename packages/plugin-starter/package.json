@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "tsup": "8.4.0",
+    "typescript": "5.8.2",
     "prettier": "3.5.3"
   },
   "scripts": {

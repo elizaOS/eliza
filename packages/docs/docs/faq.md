@@ -2,48 +2,19 @@
 
 ### What is Eliza?
 
-Eliza is an open-source framework for building AI agents that can interact on platforms like Twitter, Discord, and Telegram. It was created by Shaw and is maintained by the community.
+Eliza is an extensible open-source framework for building autonomous AI agents that can engage in natural conversations, learn from interactions, and maintain consistent personalities across platforms like Twitter, Discord, and Telegram.
 
 ### What's the difference between v1 and v2?
 
-Note: It's recommended for devs to keep working with v1, v2 will be mostly backwards compatible
+V2 is a major upgrade that makes Eliza more powerful and easier to use. The main changes are:
 
-**What's Wrong with V1:**
+- Plugin store for easy extensions
+- Unified messaging across platforms
+- One wallet for all blockchains
+- Smarter, learning characters
+- Better planning capabilities
 
-1. Cluttered: Too many packages directly in the core codebase
-2. Message Handling: Isolated and limited message routing between platforms
-3. Wallet Confusion: Separate wallets for different chains adds friction
-4. Limited Planning: Limited action planning abilities
-
-**What's New in V2:**
-
-1. Better Organization
-
-- New package registry system to submit packages without core code changes
-- More modular and maintainable architecture
-- CLI tool for package management
-
-2. Smarter Communication
-
-- Agents can more easily route messages across different platforms
-- Better support for autonomous actions
-
-3. Simplified Wallet System
-
-- One unified wallet system (like a video game inventory)
-- Better at handling transactions across different blockchains
-- Each "inventory provider" can have its own unique actions
-
-4. Character Improvements
-
-- Characters can now evolve and learn over time
-- All character data stored in a database instead of static files
-- Can grow and change based on community interactions
-
-5. Advanced Planning
-
-- Agents can now plan out a series of actions in advance
-- More strategic and autonomous behavior
+For a detailed comparison, see our [V2 announcement blog post](/blog/v1-v2).
 
 ---
 
@@ -52,76 +23,8 @@ Note: It's recommended for devs to keep working with v1, v2 will be mostly backw
 ### What are the system requirements for running Eliza?
 
 - Node.js version 23+ (specifically 23.3.0 is recommended)
-- At least 2GB RAM
+- At least 4GB RAM
 - For Windows users: WSL2 (Windows Subsystem for Linux)
-
-### How do I get started with Eliza?
-
-You have several paths to get started:
-
-1. **Simple Start**: Use the ElizaOS CLI:
-
-   ```bash
-   # Install globally (optional but recommended)
-   npm install -g @elizaos/cli
-
-   # Start with default settings
-   npx elizaos start
-   ```
-
-   To chat with your agent using the web interface:
-
-   ```bash
-   # Start the client for a web interface
-   npx elizaos start:client
-
-   # Then visit http://localhost:5173/
-   ```
-
-2. **Creating a Project**: Build a custom ElizaOS project:
-
-   ```bash
-   # Create a new project with the interactive wizard
-   npx elizaos create
-
-   # Navigate to your project directory
-   cd my-project-name
-
-   # Start your project
-   npx elizaos start
-   ```
-
-   Add plugins to your project:
-
-   ```bash
-   # List available plugins
-   npx elizaos project list-plugins
-
-   # Add a plugin
-   npx elizaos project add-plugin @elizaos/plugin-discord
-   ```
-
-3. **Creating a Plugin**: Extend ElizaOS functionality:
-
-   ```bash
-   # Create a new plugin project
-   npx elizaos create --type plugin
-
-   # Test your plugin
-   npx elizaos start
-
-   # Publish your plugin when ready
-   npx elizaos plugin publish
-   ```
-
-4. **Contributing to Core**: Work with the monorepo:
-   ```bash
-   git clone git@github.com:elizaOS/eliza.git
-   cd eliza
-   bun install
-   bun build
-   bun start
-   ```
 
 ### How do I fix common installation issues?
 
@@ -317,7 +220,7 @@ Or manually:
 
 1. Convert documents to txt/md format
 2. Use the [folder2knowledge](https://github.com/elizaOS/characterfile/tree/main/scripts) tool
-3. Add to the knowledge section in your character file, [see docs](docs/core/characterfile.md) via `"ragKnowledge": true`
+3. Add to the knowledge section in your character file, [see docs](docs/core/knowledge.md) via `"ragKnowledge": true`
 
 ---
 

@@ -45,16 +45,16 @@ export function AgentSidebar({ agentId, agentName }: AgentSidebarProps) {
       </div>
 
       <TabsContent value="actions" className="overflow-y-scroll">
-        <AgentActionViewer agentId={agentId} />
+        {detailsTab === 'actions' && <AgentActionViewer agentId={agentId} />}
       </TabsContent>
       <TabsContent value="logs">
-        <LogViewer agentName={agentName} level="all" hideTitle />
+        {detailsTab === 'logs' && <LogViewer agentName={agentName} level="all" hideTitle />}
       </TabsContent>
       <TabsContent value="memories">
-        <AgentMemoryViewer agentId={agentId} agentName={agentName} />
+        {detailsTab === 'memories' && <AgentMemoryViewer agentId={agentId} agentName={agentName} />}
       </TabsContent>
-      <TabsContent value="knowledge">
-        <KnowledgeManager agentId={agentId} />
+      <TabsContent value="knowledge" className="h-full overflow-hidden">
+        {detailsTab === 'knowledge' && <KnowledgeManager agentId={agentId} />}
       </TabsContent>
     </Tabs>
   );

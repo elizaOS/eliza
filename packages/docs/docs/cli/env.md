@@ -9,7 +9,7 @@ The `env` command helps you manage environment variables and API keys for your E
 ## Usage
 
 ```bash
-npx @elizaos/cli env [command] [options]
+elizaos env [command] [options]
 ```
 
 ## Commands
@@ -23,9 +23,7 @@ npx @elizaos/cli env [command] [options]
 | `set-path <path>` | Set a custom path for the global environment file         |
 | `interactive`     | Start interactive environment variable manager            |
 
-If no command is provided, a help message will be shown with available commands.
-
-## Global vs Local Environment Variables
+## Environment Levels
 
 ElizaOS maintains two levels of environment variables:
 
@@ -39,7 +37,7 @@ Global variables are applied to all projects, while local variables are specific
 The interactive mode provides a user-friendly way to manage environment variables:
 
 ```bash
-npx @elizaos/cli env interactive
+elizaos env interactive
 ```
 
 This opens a menu with options to:
@@ -57,7 +55,7 @@ This opens a menu with options to:
 View all configured environment variables:
 
 ```bash
-npx @elizaos/cli env list
+elizaos env list
 ```
 
 This will display both global and local variables (if available).
@@ -67,7 +65,7 @@ This will display both global and local variables (if available).
 Edit the global environment variables interactively:
 
 ```bash
-npx @elizaos/cli env edit-global
+elizaos env edit-global
 ```
 
 This provides an interactive interface to:
@@ -82,7 +80,7 @@ This provides an interactive interface to:
 Edit the local environment variables in the current project:
 
 ```bash
-npx @elizaos/cli env edit-local
+elizaos env edit-local
 ```
 
 If no local `.env` file exists, you will be prompted to create one.
@@ -92,7 +90,7 @@ If no local `.env` file exists, you will be prompted to create one.
 Set a custom location for the global environment file:
 
 ```bash
-npx @elizaos/cli env set-path /path/to/custom/location
+elizaos env set-path /path/to/custom/location
 ```
 
 If the specified path is a directory, the command will use `/path/to/custom/location/.env`.
@@ -102,7 +100,7 @@ If the specified path is a directory, the command will use `/path/to/custom/loca
 Reset all environment variables and clear the cache:
 
 ```bash
-npx @elizaos/cli env reset
+elizaos env reset
 ```
 
 This will:
@@ -111,47 +109,6 @@ This will:
 2. Clear any custom environment path setting
 3. Wipe the cache folder
 4. Optionally reset the database folder (you'll be prompted)
-
-## Examples
-
-### Viewing Environment Variables
-
-```bash
-# List all variables
-npx @elizaos/cli env list
-```
-
-Output example:
-
-```
-Global environment variables (.eliza/.env):
-  OPENAI_API_KEY: sk-1234...5678
-  MODEL_PROVIDER: openai
-
-Local environment variables (.env):
-  PORT: 8080
-  LOG_LEVEL: debug
-```
-
-### Setting Custom Environment Path
-
-```bash
-# Set a custom path for global environment variables
-npx @elizaos/cli env set-path ~/projects/eliza-config/.env
-```
-
-### Interactive Editing
-
-```bash
-# Start interactive mode
-npx @elizaos/cli env interactive
-
-# Edit only global variables
-npx @elizaos/cli env edit-global
-
-# Edit only local variables
-npx @elizaos/cli env edit-local
-```
 
 ## Key Variables
 
@@ -174,6 +131,47 @@ ElizaOS commonly uses these environment variables:
 2. **Use separate environments** for development, testing, and production
 3. **Set up global variables** for commonly used API keys
 4. **Regularly rotate API keys** for security
+
+## Examples
+
+### Viewing Environment Variables
+
+```bash
+# List all variables
+elizaos env list
+```
+
+Output example:
+
+```
+Global environment variables (.eliza/.env):
+  OPENAI_API_KEY: sk-1234...5678
+  MODEL_PROVIDER: openai
+
+Local environment variables (.env):
+  PORT: 8080
+  LOG_LEVEL: debug
+```
+
+### Setting Custom Environment Path
+
+```bash
+# Set a custom path for global environment variables
+elizaos env set-path ~/projects/eliza-config/.env
+```
+
+### Interactive Editing
+
+```bash
+# Start interactive mode
+elizaos env interactive
+
+# Edit only global variables
+elizaos env edit-global
+
+# Edit only local variables
+elizaos env edit-local
+```
 
 ## Related Commands
 

@@ -20,7 +20,10 @@ import { teeCommand as tee } from './commands/tee';
 import { test } from './commands/test';
 import { update } from './commands/update';
 import { loadEnvironment } from './utils/get-config';
-import { displayBanner } from './displayBanner';
+import { displayBanner, getVersion } from './displayBanner';
+import { setupMonorepo } from './commands/install';
+import { updateCLI } from './commands/update-cli';
+
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
@@ -50,9 +53,31 @@ async function main() {
 
   const program = new Command().name('elizaos').version(version);
 
+  // Create a stop command for testing purposes
+  const stopCommand = new Command('stop')
+    .description('Stop all running ElizaOS agents')
+    .action(async () => {
+      logger.info('Stopping all ElizaOS agents...');
+      // Use pkill to terminate all ElizaOS processes
+      try {
+        await import('child_process').then(({ exec }) => {
+          exec('pkill -f "node.*elizaos" || true', (error) => {
+            if (error) {
+              logger.error(`Error stopping processes: ${error.message}`);
+            } else {
+              logger.success('Server shutdown complete');
+            }
+          });
+        });
+      } catch (error) {
+        logger.error(`Failed to stop processes: ${error.message}`);
+      }
+    });
+
   program
     .addCommand(create)
     .addCommand(project)
+    .addCommand(setupMonorepo)
     .addCommand(plugin)
     .addCommand(agent)
     .addCommand(tee)
@@ -61,7 +86,9 @@ async function main() {
     .addCommand(test)
     .addCommand(env)
     .addCommand(dev)
-    .addCommand(publish);
+    .addCommand(publish)
+    .addCommand(updateCLI)
+    .addCommand(stopCommand);
 
   // if no args are passed, display the banner
   if (process.argv.length === 2) {

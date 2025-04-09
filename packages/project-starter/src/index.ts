@@ -7,7 +7,6 @@ import {
 } from '@elizaos/core';
 import dotenv from 'dotenv';
 import starterPlugin from './plugin';
-dotenv.config({ path: '../../.env' });
 
 /**
  * Represents the default character (Eliza) with her specific attributes and behaviors.
@@ -27,6 +26,7 @@ export const character: Character = {
     ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
     ...(process.env.TWITTER_USERNAME ? ['@elizaos/plugin-twitter'] : []),
     ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
+    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
   ],
   settings: {
     secrets: {},

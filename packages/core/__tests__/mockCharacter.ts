@@ -7,7 +7,7 @@ import type { Character } from '@elizaos/core';
  */
 /**
  * Mock character object for testing purposes.
- * 
+ *
  * @type {Character}
  * @property {string} name - The name of the character.
  * @property {string} username - The username of the character.

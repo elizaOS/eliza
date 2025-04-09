@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-pdf",
-  "version": "1.0.0-beta.7",
+  "version": "1.0.0-beta.28",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -28,7 +28,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.705.0",
     "@aws-sdk/s3-request-presigner": "^3.705.0",
-    "@elizaos/core": "^1.0.0-beta.7",
+    "@elizaos/core": "^1.0.0-beta.28",
     "@types/uuid": "10.0.0",
     "capsolver-npm": "2.0.2",
     "fluent-ffmpeg": "2.1.3",
@@ -61,5 +61,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e"
+  "gitHead": "7b01ea21f51671371e738134c80c958483b7b709"
 }

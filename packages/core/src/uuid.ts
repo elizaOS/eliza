@@ -12,7 +12,7 @@ export const uuidSchema = z.string().uuid() as z.ZodType<UUID>;
  */
 /**
  * Validate if the given value is a valid UUID.
- * 
+ *
  * @param {unknown} value - The value to be validated.
  * @returns {UUID | null} The validated UUID value or null if validation fails.
  */

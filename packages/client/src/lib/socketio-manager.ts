@@ -1,18 +1,93 @@
 import { USER_NAME } from '@/constants';
 import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
-import EventEmitter from 'eventemitter3';
+import { Evt } from 'evt';
 import { io, type Socket } from 'socket.io-client';
 import { WorldManager } from './world-manager';
 import { randomUUID } from './utils';
+import clientLogger from './logger';
 
-//const BASE_URL = `http://localhost:${import.meta.env.VITE_SERVER_PORT}`;
+// Define types for the events
+export type MessageBroadcastData = {
+  senderId: string;
+  senderName: string;
+  text: string;
+  roomId: string;
+  createdAt: number;
+  source: string;
+  name: string; // Required for ContentWithUser compatibility
+  [key: string]: any;
+};
+
+export type MessageCompleteData = {
+  roomId: string;
+  [key: string]: any;
+};
+
+// A simple class that provides EventEmitter-like interface using Evt internally
+class EventAdapter {
+  private events: Record<string, Evt<any>> = {};
+
+  constructor() {
+    // Initialize common events
+    this.events.messageBroadcast = Evt.create<MessageBroadcastData>();
+    this.events.messageComplete = Evt.create<MessageCompleteData>();
+  }
+
+  on(eventName: string, listener: (...args: any[]) => void) {
+    if (!this.events[eventName]) {
+      this.events[eventName] = Evt.create();
+    }
+
+    this.events[eventName].attach(listener);
+    return this;
+  }
+
+  off(eventName: string, listener: (...args: any[]) => void) {
+    if (this.events[eventName]) {
+      const handlers = this.events[eventName].getHandlers();
+      for (const handler of handlers) {
+        if (handler.callback === listener) {
+          handler.detach();
+        }
+      }
+    }
+    return this;
+  }
+
+  emit(eventName: string, ...args: any[]) {
+    if (this.events[eventName]) {
+      this.events[eventName].post(args.length === 1 ? args[0] : args);
+    }
+    return this;
+  }
+
+  once(eventName: string, listener: (...args: any[]) => void) {
+    if (!this.events[eventName]) {
+      this.events[eventName] = Evt.create();
+    }
+
+    this.events[eventName].attachOnce(listener);
+    return this;
+  }
+
+  // For checking if EventEmitter has listeners
+  listenerCount(eventName: string): number {
+    if (!this.events[eventName]) return 0;
+    return this.events[eventName].getHandlers().length;
+  }
+
+  // Used only for internal access to the Evt instances
+  _getEvt(eventName: string): Evt<any> | undefined {
+    return this.events[eventName];
+  }
+}
 
 /**
  * SocketIOManager handles real-time communication between the client and server
  * using Socket.io. It maintains a single connection to the server and allows
  * joining and messaging in multiple rooms.
  */
-class SocketIOManager extends EventEmitter {
+class SocketIOManager extends EventAdapter {
   private static instance: SocketIOManager | null = null;
   private socket: Socket | null = null;
   private isConnected = false;
@@ -21,6 +96,15 @@ class SocketIOManager extends EventEmitter {
   private activeRooms: Set<string> = new Set();
   private entityId: string | null = null;
   private agentIds: string[] | null = null;
+
+  // Public accessor for EVT instances (for advanced usage)
+  public get evtMessageBroadcast() {
+    return this._getEvt('messageBroadcast') as Evt<MessageBroadcastData>;
+  }
+
+  public get evtMessageComplete() {
+    return this._getEvt('messageComplete') as Evt<MessageCompleteData>;
+  }
 
   private constructor() {
     super();
@@ -42,13 +126,13 @@ class SocketIOManager extends EventEmitter {
     this.agentIds = agentIds;
 
     if (this.socket) {
-      console.warn('[SocketIO] Socket already initialized');
+      clientLogger.warn('[SocketIO] Socket already initialized');
       return;
     }
 
     // Create a single socket connection
     const fullURL = window.location.origin + '/';
-    console.log('connecting to', fullURL);
+    clientLogger.info('connecting to', fullURL);
     this.socket = io(fullURL, {
       autoConnect: true,
       reconnection: true,
@@ -60,7 +144,7 @@ class SocketIOManager extends EventEmitter {
     });
 
     this.socket.on('connect', () => {
-      console.log('[SocketIO] Connected to server');
+      clientLogger.info('[SocketIO] Connected to server');
       this.isConnected = true;
       this.resolveConnect?.();
 
@@ -71,10 +155,10 @@ class SocketIOManager extends EventEmitter {
     });
 
     this.socket.on('messageBroadcast', (data) => {
-      console.log(`[SocketIO] Message broadcast received:`, data);
+      clientLogger.info(`[SocketIO] Message broadcast received:`, data);
 
       // Log the full data structure to understand formats
-      console.log('[SocketIO] Message broadcast data structure:', {
+      clientLogger.debug('[SocketIO] Message broadcast data structure:', {
         keys: Object.keys(data),
         senderId: data.senderId,
         senderNameType: typeof data.senderName,
@@ -99,8 +183,13 @@ class SocketIOManager extends EventEmitter {
 
       // Check if this is a message for one of our active rooms
       if (this.activeRooms.has(data.roomId)) {
-        console.log(`[SocketIO] Handling message for active room ${data.roomId}`);
-        this.emit('messageBroadcast', data);
+        clientLogger.info(`[SocketIO] Handling message for active room ${data.roomId}`);
+        // Post the message to the event
+        this.emit('messageBroadcast', {
+          ...data,
+          name: data.senderName, // Required for ContentWithUser compatibility
+        });
+
         if (this.socket) {
           this.socket.emit('message', {
             type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE,
@@ -115,7 +204,7 @@ class SocketIOManager extends EventEmitter {
           });
         }
       } else {
-        console.warn(
+        clientLogger.warn(
           `[SocketIO] Received message for inactive room ${data.roomId}, active rooms:`,
           Array.from(this.activeRooms)
         );
@@ -127,7 +216,7 @@ class SocketIOManager extends EventEmitter {
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log(`[SocketIO] Disconnected. Reason: ${reason}`);
+      clientLogger.info(`[SocketIO] Disconnected. Reason: ${reason}`);
       this.isConnected = false;
 
       // Reset connect promise for next connection
@@ -141,7 +230,7 @@ class SocketIOManager extends EventEmitter {
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('[SocketIO] Connection error:', error);
+      clientLogger.error('[SocketIO] Connection error:', error);
     });
   }
 
@@ -151,7 +240,7 @@ class SocketIOManager extends EventEmitter {
    */
   public async joinRoom(roomId: string): Promise<void> {
     if (!this.socket) {
-      console.error('[SocketIO] Cannot join room: socket not initialized');
+      clientLogger.error('[SocketIO] Cannot join room: socket not initialized');
       return;
     }
 
@@ -170,7 +259,7 @@ class SocketIOManager extends EventEmitter {
       },
     });
 
-    console.log(`[SocketIO] Joined room ${roomId}`);
+    clientLogger.info(`[SocketIO] Joined room ${roomId}`);
   }
 
   /**
@@ -179,12 +268,12 @@ class SocketIOManager extends EventEmitter {
    */
   public leaveRoom(roomId: string): void {
     if (!this.socket || !this.isConnected) {
-      console.warn(`[SocketIO] Cannot leave room ${roomId}: not connected`);
+      clientLogger.warn(`[SocketIO] Cannot leave room ${roomId}: not connected`);
       return;
     }
 
     this.activeRooms.delete(roomId);
-    console.log(`[SocketIO] Left room ${roomId}`);
+    clientLogger.info(`[SocketIO] Left room ${roomId}`);
   }
 
   /**
@@ -195,7 +284,7 @@ class SocketIOManager extends EventEmitter {
    */
   public async sendMessage(message: string, roomId: string, source: string): Promise<void> {
     if (!this.socket) {
-      console.error('[SocketIO] Cannot send message: socket not initialized');
+      clientLogger.error('[SocketIO] Cannot send message: socket not initialized');
       return;
     }
 
@@ -207,7 +296,7 @@ class SocketIOManager extends EventEmitter {
     const messageId = randomUUID();
     const worldId = WorldManager.getWorldId();
 
-    console.log(`[SocketIO] Sending message to room ${roomId}`);
+    clientLogger.info(`[SocketIO] Sending message to room ${roomId}`);
 
     // Emit message to server
     this.socket.emit('message', {
@@ -225,12 +314,13 @@ class SocketIOManager extends EventEmitter {
 
     // Immediately broadcast message locally so UI updates instantly
     this.emit('messageBroadcast', {
-      senderId: this.entityId,
+      senderId: this.entityId || '',
       senderName: USER_NAME,
       text: message,
       roomId,
       createdAt: Date.now(),
       source,
+      name: USER_NAME, // Required for ContentWithUser compatibility
     });
   }
 
@@ -243,7 +333,7 @@ class SocketIOManager extends EventEmitter {
       this.socket = null;
       this.isConnected = false;
       this.activeRooms.clear();
-      console.log('[SocketIO] Disconnected from server');
+      clientLogger.info('[SocketIO] Disconnected from server');
     }
   }
 }

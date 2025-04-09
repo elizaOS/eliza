@@ -9,7 +9,7 @@ The `project` command helps you manage ElizaOS projects, including their plugins
 ## Usage
 
 ```bash
-npx @elizaos/cli project <action> [options]
+elizaos project <action> [options]
 ```
 
 ## Actions
@@ -27,13 +27,13 @@ npx @elizaos/cli project <action> [options]
 View all plugins that are available to install:
 
 ```bash
-npx @elizaos/cli project list-plugins
+elizaos project list-plugins
 ```
 
 You can filter the results by type:
 
 ```bash
-npx @elizaos/cli project list-plugins --type adapter
+elizaos project list-plugins --type adapter
 ```
 
 ### Options for list-plugins
@@ -47,7 +47,7 @@ npx @elizaos/cli project list-plugins --type adapter
 Add a plugin to your project:
 
 ```bash
-npx @elizaos/cli project add-plugin @elizaos/plugin-discord
+elizaos project add-plugin @elizaos/plugin-discord
 ```
 
 This will:
@@ -67,7 +67,7 @@ This will:
 Remove a plugin from your project:
 
 ```bash
-npx @elizaos/cli project remove-plugin @elizaos/plugin-discord
+elizaos project remove-plugin @elizaos/plugin-discord
 ```
 
 This will:
@@ -81,21 +81,21 @@ This will:
 
 ```bash
 # List all available plugins
-npx @elizaos/cli project list-plugins
+elizaos project list-plugins
 
 # Install a specific plugin
-npx @elizaos/cli project add-plugin @elizaos/plugin-telegram
+elizaos project add-plugin @elizaos/plugin-telegram
 ```
 
 ### Managing multiple plugins
 
 ```bash
 # Add multiple plugins
-npx @elizaos/cli project add-plugin @elizaos/plugin-discord
-npx @elizaos/cli project add-plugin @elizaos/plugin-pdf
+elizaos project add-plugin @elizaos/plugin-discord
+elizaos project add-plugin @elizaos/plugin-pdf
 
 # Remove a plugin you no longer need
-npx @elizaos/cli project remove-plugin @elizaos/plugin-pdf
+elizaos project remove-plugin @elizaos/plugin-pdf
 ```
 
 ## Plugin Configuration
@@ -121,6 +121,12 @@ const project = createProject({
 
 export default project;
 ```
+
+For more information about plugin development and structure, see:
+
+- [Plugin Command](./plugins.md): Managing plugin publishing
+- [Quickstart Guide](../quickstart.md): Project and plugin structure
+- [Dev Command](./dev.md): Running projects with plugins
 
 ## Troubleshooting
 

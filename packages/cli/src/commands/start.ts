@@ -7,6 +7,7 @@ import {
   logger,
   stringToUuid,
   encryptedCharacter,
+  RuntimeSettings,
 } from '@elizaos/core';
 import { Command } from 'commander';
 import fs from 'node:fs';
@@ -21,6 +22,9 @@ import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config'
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
 import { displayBanner } from '../displayBanner';
+import { findNextAvailablePort } from '../utils/port-handling';
+import { loadPluginModule } from '../utils/load-plugin';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -121,56 +125,51 @@ export async function startAgent(
 
   const characterPlugins: Plugin[] = [];
 
+  // if encryptedChar.plugins does not include @elizaos/plugin-bootstrap, add it
+  if (!encryptedChar.plugins.includes('@elizaos/plugin-bootstrap')) {
+    encryptedChar.plugins.push('@elizaos/plugin-bootstrap');
+  }
+
   // for each plugin, check if it installed, and install if it is not
   for (const plugin of encryptedChar.plugins) {
     logger.debug('Checking if plugin is installed: ', plugin);
     let pluginModule: any;
 
-    // Try to load the plugin
+    // Try to load the plugin using multiple strategies
     try {
-      // For local plugins, use regular import
-      pluginModule = await import(plugin);
-      logger.debug(`Successfully loaded plugin ${plugin}`);
-    } catch (error) {
-      logger.info(`Plugin ${plugin} not installed, installing into ${process.cwd()}...`);
-      await installPlugin(plugin, process.cwd(), version);
+      // Use the new centralized loader
+      pluginModule = await loadPluginModule(plugin);
 
-      try {
-        // For local plugins, use regular import
-        pluginModule = await import(plugin);
-        logger.debug(`Successfully loaded plugin ${plugin} after installation`);
-      } catch (importError) {
-        // Try to import from the project's node_modules directory
+      if (!pluginModule) {
+        // If loading failed, try installing and then loading again
+        logger.info(`Plugin ${plugin} not available, installing into ${process.cwd()}...`);
         try {
-          const projectNodeModulesPath = path.join(process.cwd(), 'node_modules', plugin);
-          logger.debug(`Attempting to import from project path: ${projectNodeModulesPath}`);
+          await installPlugin(plugin, process.cwd(), version);
+          // Try loading again after installation using the centralized loader
+          pluginModule = await loadPluginModule(plugin);
+        } catch (installError) {
+          logger.error(`Failed to install plugin ${plugin}: ${installError}`);
+          // Continue to next plugin if installation fails
+          continue;
+        }
 
-          // Read the package.json to find the entry point
-          const packageJsonPath = path.join(projectNodeModulesPath, 'package.json');
-          if (fs.existsSync(packageJsonPath)) {
-            const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-            const entryPoint = packageJson.module || packageJson.main || 'dist/index.js';
-            const fullEntryPath = path.join(projectNodeModulesPath, entryPoint);
-
-            logger.debug(`Found entry point in package.json: ${entryPoint}`);
-            logger.debug(`Importing from: ${fullEntryPath}`);
-
-            pluginModule = await import(fullEntryPath);
-            logger.debug(`Successfully loaded plugin from project node_modules: ${plugin}`);
-          } else {
-            // Fallback to a common pattern if package.json doesn't exist
-            const commonEntryPath = path.join(projectNodeModulesPath, 'dist/index.js');
-            logger.debug(`No package.json found, trying common entry point: ${commonEntryPath}`);
-            pluginModule = await import(commonEntryPath);
-            logger.debug(`Successfully loaded plugin from common entry point: ${plugin}`);
-          }
-        } catch (projectImportError) {
-          logger.error(`Failed to install plugin ${plugin}: ${importError}`);
-          logger.error(
-            `Also failed to import from project node_modules: ${projectImportError.message}`
-          );
+        if (!pluginModule) {
+          logger.error(`Failed to load plugin ${plugin} even after installation.`);
+          // Continue to next plugin if loading fails post-installation
+          continue;
         }
       }
+    } catch (error) {
+      // Catch any unexpected error during the combined load/install/load process
+      logger.error(`An unexpected error occurred while processing plugin ${plugin}: ${error}`);
+      continue;
+    }
+
+    if (!pluginModule) {
+      // This check might be redundant now, but kept for safety.
+      // Should theoretically not be reached if the logic above is correct.
+      logger.error(`Failed to process plugin ${plugin} (module is null/undefined unexpectedly)`);
+      continue;
     }
 
     // Process the plugin to get the actual plugin object
@@ -220,9 +219,94 @@ export async function startAgent(
     }
   }
 
+  function loadEnvConfig(): RuntimeSettings {
+    // Only import dotenv in Node.js environment
+    let dotenv = null;
+    try {
+      // This code block will only execute in Node.js environments
+      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+        dotenv = require('dotenv');
+      }
+    } catch (err) {
+      // Silently fail if require is not available (e.g., in browser environments)
+      logger.debug('dotenv module not available');
+    }
+
+    function findNearestEnvFile(startDir = process.cwd()) {
+      let currentDir = startDir;
+
+      // Continue searching until we reach the root directory
+      while (currentDir !== path.parse(currentDir).root) {
+        const envPath = path.join(currentDir, '.env');
+
+        if (fs.existsSync(envPath)) {
+          return envPath;
+        }
+
+        // Move up to parent directory
+        currentDir = path.dirname(currentDir);
+      }
+
+      // Check root directory as well
+      const rootEnvPath = path.join(path.parse(currentDir).root, '.env');
+      return fs.existsSync(rootEnvPath) ? rootEnvPath : null;
+    }
+
+    // Node.js environment: load from .env file
+    const envPath = findNearestEnvFile();
+
+    // Load the .env file into process.env synchronously
+    try {
+      if (dotenv) {
+        const result = dotenv.config(envPath ? { path: envPath } : {});
+        if (!result.error && envPath) {
+          logger.log(`Loaded .env file from: ${envPath}`);
+        }
+      }
+    } catch (err) {
+      logger.warn('Failed to load .env file:', err);
+    }
+
+    // Parse namespaced settings
+    const env = typeof process !== 'undefined' ? process.env : (import.meta as any).env;
+    const namespacedSettings = parseNamespacedSettings(env as RuntimeSettings);
+
+    // Attach to process.env for backward compatibility if available
+    if (typeof process !== 'undefined') {
+      for (const [namespace, settings] of Object.entries(namespacedSettings)) {
+        process.env[`__namespaced_${namespace}`] = JSON.stringify(settings);
+      }
+    }
+
+    return env as RuntimeSettings;
+  }
+
+  interface NamespacedSettings {
+    [namespace: string]: RuntimeSettings;
+  }
+
+  // Add this function to parse namespaced settings
+  function parseNamespacedSettings(env: RuntimeSettings): NamespacedSettings {
+    const namespaced: NamespacedSettings = {};
+
+    for (const [key, value] of Object.entries(env)) {
+      if (!value) continue;
+
+      const [namespace, ...rest] = key.split('.');
+      if (!namespace || rest.length === 0) continue;
+
+      const settingKey = rest.join('.');
+      namespaced[namespace] = namespaced[namespace] || {};
+      namespaced[namespace][settingKey] = value;
+    }
+
+    return namespaced;
+  }
+
   const runtime = new AgentRuntime({
     character: encryptedChar,
-    plugins: [...plugins, ...characterPlugins],
+    plugins: [...characterPlugins, ...plugins],
+    settings: loadEnvConfig(),
   });
   if (init) {
     await init(runtime);
@@ -310,7 +394,11 @@ const startAgents = async (options: {
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
 
-  const serverPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+  // Inside your startAgents function
+  const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
+  const serverPort = await findNextAvailablePort(desiredPort);
+
+  process.env.SERVER_PORT = serverPort.toString();
 
   // Try to find a project or plugin in the current directory
   let isProject = false;
@@ -509,13 +597,15 @@ const startAgents = async (options: {
         }
 
         if (startedAgents.length === 0) {
-          logger.warn('Failed to start any agents from project, falling back to custom character');
+          logger.info('No project agents started - falling back to default Eliza character');
           await startAgent(defaultCharacter, server);
         } else {
           logger.debug(`Successfully started ${startedAgents.length} agents from project`);
         }
       } else {
-        logger.debug('Project found but no agents defined, falling back to custom character');
+        logger.debug(
+          'Project found but no agents defined, falling back to default Eliza character'
+        );
         await startAgent(defaultCharacter, server);
       }
     } else if (isPlugin && pluginModule) {
@@ -578,6 +668,7 @@ export const start = new Command()
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
   .option('--character <character>', 'Path or URL to character file to use instead of default')
   .option('--build', 'Build the project before starting')
+  .option('--characters <paths>', 'multiple character configuration files separated by commas')
   .action(async (options) => {
     displayBanner();
 
@@ -602,21 +693,20 @@ export const start = new Command()
               const characterData = await loadCharacterTryPath(characterPath);
               options.characters.push(characterData);
             }
+          } else {
+            // Single character
+            logger.info(`Loading character from ${characterPath}`);
+            const characterData = await loadCharacterTryPath(characterPath);
+            options.characters.push(characterData);
           }
-          await startAgents(options);
         } catch (error) {
-          logger.error(`Failed to load character: ${error}`);
-          process.exit(1);
+          logger.error(`Error loading character: ${error}`);
+          return;
         }
-      } else {
-        await startAgents(options);
       }
+
+      await startAgents(options);
     } catch (error) {
       handleError(error);
     }
   });
-
-// This is the function that registers the command with the CLI
-export default function registerCommand(cli: Command) {
-  return cli.addCommand(start);
-}

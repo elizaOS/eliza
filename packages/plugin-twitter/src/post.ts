@@ -4,12 +4,11 @@ import {
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
-  type InvokePayload,
   type Memory,
-  ModelType,
   type UUID,
   createUniqueUuid,
   logger,
+  parseBooleanFromText,
   truncateToCompleteSentence,
 } from '@elizaos/core';
 import type { ClientBase } from './base';
@@ -47,9 +46,15 @@ export class TwitterPostClient {
     logger.log(`- Username: ${this.twitterUsername}`);
     logger.log(`- Dry Run Mode: ${this.isDryRun ? 'Enabled' : 'Disabled'}`);
 
-    logger.log(
-      `- Auto-post: ${this.state?.TWITTER_ENABLE_POST_GENERATION || this.runtime.getSetting('TWITTER_ENABLE_POST_GENERATION') ? 'disabled' : 'enabled'}`
+    this.state.isTwitterEnabled = parseBooleanFromText(
+      String(
+        this.state?.TWITTER_ENABLE_POST_GENERATION ||
+          this.runtime.getSetting('TWITTER_ENABLE_POST_GENERATION') ||
+          ''
+      )
     );
+
+    logger.log(`- Auto-post: ${this.state.isTwitterEnabled ? 'enabled' : 'disabled'}`);
 
     logger.log(
       `- Post Interval: ${this.state?.TWITTER_POST_INTERVAL_MIN || this.runtime.getSetting('TWITTER_POST_INTERVAL_MIN')}-${this.state?.TWITTER_POST_INTERVAL_MAX || this.runtime.getSetting('TWITTER_POST_INTERVAL_MAX')} minutes`
@@ -72,7 +77,7 @@ export class TwitterPostClient {
    */
   async start() {
     logger.log('Starting Twitter post client...');
-    const tweetGeneration = this.runtime.getSetting('TWITTER_ENABLE_TWEET_GENERATION');
+    const tweetGeneration = this.state.isTwitterEnabled;
     if (tweetGeneration === false) {
       logger.log('Tweet generation is disabled');
       return;
@@ -311,8 +316,19 @@ export class TwitterPostClient {
             return [];
           }
 
+          if (content.text.includes('Error: Missing')) {
+            logger.error('Error: Missing some context', content);
+            return [];
+          }
+
           // Post the tweet
           const result = await this.postToTwitter(content.text, content.mediaData as MediaData[]);
+
+          // If result is null, it means we detected a duplicate tweet and skipped posting
+          if (result === null) {
+            logger.info('Skipped posting duplicate tweet');
+            return [];
+          }
 
           const tweetId =
             (result as any).rest_id || (result as any).id_str || (result as any).legacy?.id_str;
@@ -346,7 +362,7 @@ export class TwitterPostClient {
 
           return [];
         } catch (error) {
-          logger.error('Error posting tweet:', error);
+          logger.error('Error posting tweet:', error, content);
           return [];
         }
       };
@@ -358,7 +374,8 @@ export class TwitterPostClient {
         worldId,
         userId,
         roomId,
-      } as InvokePayload);
+        source: 'twitter',
+      });
     } catch (error) {
       logger.error('Error generating tweet:', error);
     }
@@ -372,6 +389,19 @@ export class TwitterPostClient {
    */
   private async postToTwitter(text: string, mediaData: MediaData[] = []): Promise<any> {
     try {
+      // Check if this tweet is a duplicate of the last one
+      const lastPost = await this.runtime.getCache<any>(
+        `twitter/${this.client.profile?.username}/lastPost`
+      );
+      if (lastPost) {
+        // Fetch the last tweet to compare content
+        const lastTweet = await this.client.getTweet(lastPost.id);
+        if (lastTweet && lastTweet.text === text) {
+          logger.warn('Tweet is a duplicate of the last post. Skipping to avoid duplicate.');
+          return null;
+        }
+      }
+
       // Handle media uploads if needed
       const mediaIds: string[] = [];
 

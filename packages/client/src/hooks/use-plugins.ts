@@ -17,12 +17,22 @@ export function usePlugins() {
       // Temporarily return hardcoded plugins as an array
       return [
         '@elizaos/plugin-sql',
+        '@elizaos/plugin-twitter',
+        '@elizaos/plugin-telegram',
+        '@elizaos/plugin-discord',
+        '@elizaos/plugin-farcaster',
+        '@elizaos/plugin-redpill',
+        '@elizaos/plugin-groq',
         '@elizaos/plugin-local-ai',
         '@elizaos/plugin-anthropic',
         '@elizaos/plugin-openai',
-        '@elizaos/plugin-discord',
+        '@elizaos/plugin-solana',
+        '@elizaos/plugin-evm',
         '@elizaos/plugin-pdf',
+        '@elizaos/plugin-browser',
+        '@elizaos/plugin-s3-storage',
         '@elizaos/plugin-video-understanding',
+        '@elizaos/plugin-venice',
       ];
     },
   });

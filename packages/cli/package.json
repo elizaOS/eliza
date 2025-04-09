@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.0.0-beta.7",
+  "version": "1.0.0-beta.28",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -39,17 +39,18 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "test:setup-commands": "vitest test/setup-commands.test.js",
-    "test:agent-commands": "vitest test/agent-commands.test.js",
-    "test:agent-customisations": "vitest test/agent-customisation.test.js"
+    "test:setup-commands": "vitest run test/setup-commands.test.js",
+    "test:agent-commands": "vitest run test/agent-commands.test.js",
+    "test:agent-customisations": "vitest run test/agent-customisation.test.js",
+    "test:cli": "bun run test:setup-commands && bun run test:agent-commands && bun run test:agent-customisations"
   },
   "devDependencies": {
     "@babel/core": "^7.22.1",
     "@babel/parser": "^7.22.6",
-    "@elizaos/core": "^1.0.0-beta.7",
-    "@elizaos/plugin-anthropic": "^1.0.0-beta.7",
-    "@elizaos/plugin-openai": "^1.0.0-beta.7",
-    "@elizaos/plugin-sql": "^1.0.0-beta.7",
+    "@elizaos/core": "^1.0.0-beta.28",
+    "@elizaos/plugin-anthropic": "^1.0.0-beta.28",
+    "@elizaos/plugin-openai": "^1.0.0-beta.28",
+    "@elizaos/plugin-sql": "^1.0.0-beta.28",
     "@types/babel__core": "^7.20.1",
     "@types/diff": "^5.0.3",
     "@types/fs-extra": "^11.0.1",
@@ -76,7 +77,7 @@
     "vitest": "^1.3.1",
     "yoctocolors": "^2.1.1"
   },
-  "gitHead": "9834bbd06128356b44b091f022fc2a2d024a875e",
+  "gitHead": "7b01ea21f51671371e738134c80c958483b7b709",
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
     "socket.io": "^4.8.1",
