@@ -7,7 +7,7 @@ import type { Agent } from '@elizaos/core';
 import { Command, OptionValues } from 'commander';
 
 // Helper function to determine the agent runtime URL
-function getAgentRuntimeUrl(opts: OptionValues): string {
+export function getAgentRuntimeUrl(opts: OptionValues): string {
   return (
     opts.remoteUrl?.replace(/\/$/, '') || // Use the flag if provided
     process.env.AGENT_RUNTIME_URL?.replace(/\/$/, '') || // Fallback to env var
@@ -16,7 +16,7 @@ function getAgentRuntimeUrl(opts: OptionValues): string {
 }
 
 // Helper function to get the agents base API URL
-function getAgentsBaseUrl(opts: OptionValues): string {
+export function getAgentsBaseUrl(opts: OptionValues): string {
   return `${getAgentRuntimeUrl(opts)}/api/agents`;
 }
 
@@ -41,7 +41,7 @@ interface AgentBasic {
  * @returns {Promise<AgentBasic[]>} A promise that resolves to an array of AgentBasic objects.
  * @throws {Error} If the fetch request fails.
  */
-async function getAgents(opts: OptionValues): Promise<AgentBasic[]> {
+export async function getAgents(opts: OptionValues): Promise<AgentBasic[]> {
   const baseUrl = getAgentsBaseUrl(opts);
   const response = await fetch(baseUrl);
   if (!response.ok) {
@@ -155,7 +155,7 @@ agent
 
       process.exit(0);
     } catch (error) {
-      await checkServer();
+      await checkServer(opts);
       handleError(error);
     }
   });
@@ -197,7 +197,7 @@ agent
 
       process.exit(0);
     } catch (error) {
-      await checkServer();
+      await checkServer(opts);
       handleError(error);
     }
   });
@@ -306,7 +306,7 @@ agent
 
       logger.debug(`Successfully started agent ${result.name} (${result.id})`);
     } catch (error) {
-      await checkServer();
+      await checkServer(opts);
       handleError(error);
     }
   });
@@ -333,7 +333,7 @@ agent
 
       logger.success(`Successfully stopped agent ${opts.name}`);
     } catch (error) {
-      await checkServer();
+      await checkServer(opts);
       handleError(error);
     }
   });
@@ -365,7 +365,7 @@ agent
       // Server returns 204 No Content for successful deletion, no need to parse response
       logger.success(`Successfully removed agent ${opts.name}`);
     } catch (error) {
-      await checkServer();
+      await checkServer(opts);
       handleError(error);
     }
   });
@@ -374,8 +374,8 @@ agent
   .command('set')
   .description('Update agent configuration')
   .requiredOption('-n, --name <name>', 'agent id, name, or index number from list')
-  .option('-c, --config <json>', 'configuration as JSON string')
-  .option('-f, --file <path>', 'path to configuration JSON file')
+  .option('-c, --config <json>', 'agent configuration as JSON string')
+  .option('-f, --file <path>', 'path to agent configuration JSON file')
   .action(async (opts) => {
     try {
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
@@ -422,7 +422,7 @@ agent
         `Successfully updated configuration for agent ${result?.id || resolvedAgentId}`
       );
     } catch (error) {
-      await checkServer();
+      await checkServer(opts);
       handleError(error);
     }
   });

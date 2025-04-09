@@ -126,6 +126,54 @@ project
   });
 
 project
+  .command('show-plugins')
+  .description('List plugins found in the project dependencies')
+  .action(async () => {
+    try {
+      const cwd = process.cwd();
+      const packageJsonPath = path.join(cwd, 'package.json');
+
+      if (!fs.existsSync(packageJsonPath)) {
+        logger.error('No package.json found in the current directory.');
+        logger.info('Please run this command from the root of an Eliza project.');
+        process.exit(1);
+      }
+
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+
+      // Combine dependencies and devDependencies
+      const dependencies = {
+        ...(packageJson.dependencies || {}),
+        ...(packageJson.devDependencies || {}),
+      };
+
+      const pluginNames = Object.keys(dependencies).filter((depName) => {
+        // Regex to match typical Eliza plugin names
+        // Matches: @elizaos/plugin-*, @elizaos-plugins/plugin-*, plugin-*
+        return /^(@elizaos(-plugins)?\/)?plugin-.+/.test(depName);
+      });
+
+      if (pluginNames.length === 0) {
+        logger.info('No Eliza plugins found in the project dependencies (package.json).');
+      } else {
+        logger.info('\nEliza plugins found in project dependencies:');
+        pluginNames.sort().forEach((pluginName) => {
+          logger.info(`  ${pluginName}`);
+        });
+        logger.info('');
+      }
+    } catch (error) {
+      // Add specific error handling for JSON parsing
+      if (error instanceof SyntaxError) {
+        logger.error(`Error parsing package.json: ${error.message}`);
+      } else {
+        handleError(error);
+      }
+      process.exit(1);
+    }
+  });
+
+project
   .command('remove-plugin')
   .description('Remove a plugin from the project')
   .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
