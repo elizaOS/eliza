@@ -256,13 +256,13 @@ export abstract class BaseDrizzleAdapter<
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        if (!agent.id) {
+        if (!agentId) {
           throw new Error('Agent ID is required for update');
         }
 
         await this.db.transaction(async (tx) => {
           // Handle settings update if present
-          if (agent.settings) {
+          if (agent?.settings) {
             agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
           }
 
@@ -352,8 +352,7 @@ export abstract class BaseDrizzleAdapter<
    *
    * @param {UUID} agentId - The UUID of the agent to be deleted.
    * @returns {Promise<boolean>} - A boolean indicating if the deletion was successful.
-   */
-  async deleteAgent(agentId: UUID): Promise<boolean> {
+   */  async deleteAgent(agentId: UUID): Promise<boolean> {
     logger.debug(`[DB] Starting deletion of agent with ID: ${agentId}`);
 
     return this.withDatabase(async () => {

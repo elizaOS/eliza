@@ -261,19 +261,19 @@ export const create = new Command()
 
         logger.info(`\nYour plugin is ready! Here's your development workflow:
 
-1️⃣ Development
+[1] Development
    cd ${cdPath}
    ${colors.cyan('npx elizaos dev')}              # Start development with hot-reloading
 
-2️⃣ Testing
+[2] Testing
    ${colors.cyan('npx elizaos test')}             # Run automated tests
    ${colors.cyan('npx elizaos start')}            # Test in a live agent environment
 
-3️⃣ Publishing
+[3] Publishing
    ${colors.cyan('npx elizaos plugin publish --test')}    # Check registry requirements
    ${colors.cyan('npx elizaos plugin publish')}           # Submit to registry
 
-📚 Learn more: https://eliza.how/docs/cli/plugins`);
+[?] Learn more: https://eliza.how/docs/cli/plugins`);
 
         // Set the user's shell working directory before exiting
         // Note: This only works if the CLI is run with shell integration
@@ -374,7 +374,6 @@ export const create = new Command()
         process.exit(0);
       }
     } catch (error) {
-      await checkServer();
       handleError(error);
     }
   });

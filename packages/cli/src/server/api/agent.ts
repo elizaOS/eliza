@@ -413,7 +413,7 @@ export function agentRouter(
         res.status(404).json({
           success: false,
           error: {
-            code: 'AGENT_NOT_FOUND',
+            code: 'NOT_FOUND',
             message: 'Agent not found',
           },
         });
@@ -846,7 +846,15 @@ export function agentRouter(
       const audioBuffer = Buffer.isBuffer(speechResponse)
         ? speechResponse
         : await new Promise<Buffer>((resolve, reject) => {
-            if (!(speechResponse instanceof Readable)) {
+            if (
+              !(speechResponse instanceof Readable) &&
+              !(
+                speechResponse &&
+                speechResponse.readable === true &&
+                typeof speechResponse.pipe === 'function' &&
+                typeof speechResponse.on === 'function'
+              )
+            ) {
               return reject(new Error('Unexpected response type from TEXT_TO_SPEECH model'));
             }
 
@@ -1506,7 +1514,7 @@ export function agentRouter(
           id: roomId,
           name: roomName,
           source,
-          type: ChannelType.GROUP,
+          type: ChannelType.API,
           worldId,
           serverId,
           metadata,
