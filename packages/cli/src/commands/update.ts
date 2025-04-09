@@ -193,8 +193,8 @@ function checkIfPluginDir(dir: string): boolean {
 export const update = new Command()
   .name('update')
   .description('Update ElizaOS packages to the latest versions')
-  .option('--check', 'Check for available updates without applying them')
-  .option('--skip-build', 'Skip building after updating')
+  .option('-c, --check', 'Check for available updates without applying them')
+  .option('-sb, --skip-build', 'Skip building after updating')
   .action(async (options) => {
     try {
       const cwd = process.cwd();

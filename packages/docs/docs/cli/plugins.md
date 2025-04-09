@@ -4,7 +4,6 @@ sidebar_position: 5
 
 # Plugin Command
 
-
 The `plugin` command helps developers manage ElizaOS plugins, focusing on the publishing process.
 
 ## Subcommands
@@ -24,9 +23,20 @@ Options:
 - `-t, --test` - Test publish process without making changes (default: false)
 - `-p, --platform <platform>` - Specify platform compatibility: node, browser, or universal (default: 'universal')
 
+## GitHub Authentication
+
+The plugin command requires GitHub authentication to publish plugins. You can set your GitHub token in one of two ways:
+
+1. Set the `GITHUB_TOKEN` environment variable
+2. When prompted, enter your GitHub Personal Access Token (PAT)
+
+Your GitHub PAT should have these scopes:
+
+- `repo` (for repository access)
+- `read:org` (for organization access)
+- `workflow` (for workflow access)
 
 ## Plugin Development Workflow
-
 
 ### 1. Create a Plugin
 
@@ -59,19 +69,20 @@ Before publishing, ensure your plugin meets all registry requirements:
 
 #### Registry Requirements Checklist
 
-- **Name**: Must include 'plugin-' (e.g., '@elizaos/plugin-example')
-- **GitHub Repository**:
-  - Repository URL in package.json must use `github:` format (e.g., `github:username/repo-name`)
-  - Repository must be public
-  - Repository must have 'elizaos-plugins' in topics
-- **Images**:
-  - Must have an `images/` directory containing:
-    - `logo.jpg` - 400x400px square logo (<500KB)
-    - `banner.jpg` - 1280x640px banner image (<1MB)
-- **Agent Configuration**:
-  - Must include `agentConfig` in package.json defining plugin parameters
-- **Documentation**:
-  - Proper README.md with description and usage instructions
+| Requirement               | Description                                                       | Status                             |
+| ------------------------- | ----------------------------------------------------------------- | ---------------------------------- |
+| **Name**                  | Must include 'plugin-' (e.g., '@elizaos/plugin-example')          | Auto-checked                       |
+| **GitHub Repository**     | URL must use `github:` format (e.g., `github:username/repo-name`) | Auto-checked & can be auto-fixed   |
+| **Repository Visibility** | Repository must be public                                         | Manual check                       |
+| **Repository Topics**     | Should have 'elizaos-plugins' in topics                           | Manual check                       |
+| **Images Directory**      | Must have an `images/` directory                                  | Auto-checked & can be auto-created |
+| **Logo Image**            | `logo.jpg` - 400x400px square logo (<500KB)                       | Auto-checked                       |
+| **Banner Image**          | `banner.jpg` - 1280x640px banner image (<1MB)                     | Auto-checked                       |
+| **Agent Configuration**   | Must include `agentConfig` in package.json                        | Auto-checked & can be auto-fixed   |
+| **Description**           | Meaningful description in package.json (10+ chars)                | Auto-checked & prompted            |
+| **Directory Structure**   | Standard plugin directory structure                               | Auto-checked                       |
+
+The CLI will check all of these requirements and help you fix issues where possible. For requirements that cannot be automatically fixed, the CLI will provide clear instructions.
 
 ### 4. Test Publishing Process
 

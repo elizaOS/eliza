@@ -256,13 +256,13 @@ export abstract class BaseDrizzleAdapter<
   async updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        if (!agent.id) {
+        if (!agentId) {
           throw new Error('Agent ID is required for update');
         }
 
         await this.db.transaction(async (tx) => {
           // Handle settings update if present
-          if (agent.settings) {
+          if (agent?.settings) {
             agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
           }
 
@@ -356,7 +356,7 @@ export abstract class BaseDrizzleAdapter<
   async deleteAgent(agentId: UUID): Promise<boolean> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
-        const entities = await this.db
+        const entities = await tx
           .select({ entityId: entityTable.id })
           .from(entityTable)
           .where(eq(entityTable.agentId, agentId));
@@ -366,7 +366,7 @@ export abstract class BaseDrizzleAdapter<
         let memoryIds: UUID[] = [];
 
         if (entityIds.length > 0) {
-          const entityMemories = await this.db
+          const entityMemories = await tx
             .select({ memoryId: memoryTable.id })
             .from(memoryTable)
             .where(inArray(memoryTable.entityId, entityIds));
@@ -374,7 +374,7 @@ export abstract class BaseDrizzleAdapter<
           memoryIds = entityMemories.map((m) => m.memoryId);
         }
 
-        const agentMemories = await this.db
+        const agentMemories = await tx
           .select({ memoryId: memoryTable.id })
           .from(memoryTable)
           .where(eq(memoryTable.agentId, agentId));
@@ -387,7 +387,7 @@ export abstract class BaseDrizzleAdapter<
           await tx.delete(memoryTable).where(inArray(memoryTable.id, memoryIds));
         }
 
-        const rooms = await this.db
+        const rooms = await tx
           .select({ roomId: roomTable.id })
           .from(roomTable)
           .where(eq(roomTable.agentId, agentId));
@@ -416,7 +416,7 @@ export abstract class BaseDrizzleAdapter<
 
         await tx.delete(entityTable).where(eq(entityTable.agentId, agentId));
 
-        const newAgent = await this.db
+        const newAgent = await tx
           .select({ newAgentId: agentTable.id })
           .from(agentTable)
           .where(not(eq(agentTable.id, agentId)))
