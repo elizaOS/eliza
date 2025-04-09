@@ -401,14 +401,30 @@ export function agentRouter(
     }
 
     try {
+      // First check if agent exists
+      const agent = await db.getAgent(agentId);
+      if (!agent) {
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Agent not found',
+          },
+        });
+        return;
+      }
+
+      // If agent is running, stop it first
+      const runtime = agents.get(agentId);
+      if (runtime) {
+        logger.debug(`[AGENT DELETE] Stopping agent runtime: ${agentId}`);
+        server?.unregisterAgent(agentId);
+        logger.debug(`[AGENT DELETE] Stopping agent runtime complete: ${agentId}`);
+      }
+
+      // Now delete the agent from the database
       await db.deleteAgent(agentId);
 
-      const runtime = agents.get(agentId);
-
-      // if agent is running, stop it
-      if (runtime) {
-        server?.unregisterAgent(agentId);
-      }
       res.status(204).send();
     } catch (error) {
       logger.error('[AGENT DELETE] Error deleting agent:', error);
@@ -1398,7 +1414,7 @@ export function agentRouter(
           id: roomId,
           name: roomName,
           source,
-          type: ChannelType.GROUP,
+          type: ChannelType.API,
           worldId,
           serverId,
           metadata,
