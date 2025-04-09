@@ -105,13 +105,17 @@ export async function installPlugin(
   // Mark this plugin as installed to ensure we don't get into an infinite loop
   logger.info(`Installing plugin: ${repository}`);
 
-  // Clean repository URL
+  // Clean repository URL - only if it looks like a GitHub URL
   let repoUrl = repository;
-  if (repoUrl.startsWith('git+')) {
-    repoUrl = repoUrl.substring(4);
-  }
-  if (repoUrl.endsWith('.git')) {
-    repoUrl = repoUrl.slice(0, -4);
+
+  // Leave scoped packages as-is to prioritize npm registry
+  if (!repository.startsWith('@')) {
+    if (repoUrl.startsWith('git+')) {
+      repoUrl = repoUrl.substring(4);
+    }
+    if (repoUrl.endsWith('.git')) {
+      repoUrl = repoUrl.slice(0, -4);
+    }
   }
 
   // Get installation context info
