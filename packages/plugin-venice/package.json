@@ -1,29 +1,29 @@
 {
-    "name": "@elizaos/plugin-venice",
-    "version": "1.0.0-beta.14",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "publishConfig": {
-        "access": "public"
-    },
-    "files": [
-        "dist",
-        "README.md"
-    ],
-    "dependencies": {
-        "@ai-sdk/openai": "^1.1.9",
-        "@ai-sdk/ui-utils": "1.1.9",
-        "@elizaos/core": "^1.0.0-beta.14",
-        "ai": "^4.1.25",
-        "js-tiktoken": "^1.0.18",
-        "tsup": "8.4.0",
-        "formdata-node": "^5.0.1"
-    },
-    "scripts": {
-        "build": "tsup",
-        "dev": "tsup --watch",
-        "typecheck": "tsc --noEmit"
-    }
+  "name": "@elizaos/plugin-venice",
+  "version": "1.0.0-beta.28",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "dependencies": {
+    "@ai-sdk/openai": "^1.1.9",
+    "@ai-sdk/ui-utils": "1.1.9",
+    "@elizaos/core": "^1.0.0-beta.28",
+    "ai": "^4.1.25",
+    "formdata-node": "^5.0.1",
+    "js-tiktoken": "^1.0.18",
+    "tsup": "8.4.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  }
 }
