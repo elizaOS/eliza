@@ -85,7 +85,7 @@ async function resolveAgentId(idOrNameOrIndex: string, opts: OptionValues): Prom
   }
 
   // If no agent is found, throw an error
-  throw new Error(`Agent not found: ${idOrNameOrIndex}`);
+  console.error(`Agent not found: ${idOrNameOrIndex}`);
 }
 
 export const agent = new Command().name('agent').description('Manage ElizaOS agents');
@@ -139,11 +139,11 @@ agent
       }));
 
       if (opts.json) {
-        logger.info(JSON.stringify(agentData, null, 2));
+        console.info(JSON.stringify(agentData, null, 2));
       } else {
-        logger.info('\nAvailable agents:');
+        console.info('\nAvailable agents:');
         if (agentData.length === 0) {
-          logger.info('No agents found');
+          console.info('No agents found');
         } else {
           console.table(agentData);
         }
@@ -168,13 +168,14 @@ agent
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
       const baseUrl = getAgentsBaseUrl(opts);
 
-      logger.info(`Getting agent ${resolvedAgentId}`);
+      console.info(`Getting agent ${resolvedAgentId}`);
 
       // API Endpoint: GET /agents/:agentId
       const response = await fetch(`${baseUrl}/${resolvedAgentId}`);
       if (!response.ok) {
         const errorData = (await response.json()) as ApiResponse<unknown>;
-        throw new Error(errorData.error?.message || `Failed to get agent: ${response.statusText}`);
+        logger.error(`Failed to get agent`);
+        process.exit(1);
       }
 
       const { data: agent } = (await response.json()) as ApiResponse<Agent>;
@@ -188,7 +189,7 @@ agent
         // exclude id and status fields from the json
         const { id, createdAt, updatedAt, enabled, ...agentConfig } = agent;
         fs.writeFileSync(jsonPath, JSON.stringify(agentConfig, null, 2));
-        logger.success(`Saved agent configuration to ${jsonPath}`);
+        console.log(`Saved agent configuration to ${jsonPath}`);
       }
 
       process.exit(0);
@@ -270,10 +271,10 @@ agent
             const agents = await getAgents(opts);
             const agent = agents.find((agent) => agent.id === agentId);
             if (!agent) {
-              throw new Error(`Agent not found: ${agentId}`);
+              console.error(`Agent not found: ${agentId}`);
             }
             if (!agent.character) {
-              throw new Error(`No character data found for agent: ${agentId}`);
+              console.error(`No character data found for agent: ${agentId}`);
             }
             payload.characterJson =
               typeof agent.character === 'string'
@@ -315,7 +316,7 @@ agent
         throw new Error('Failed to start agent: No data returned from server');
       }
 
-      logger.debug(`Successfully started agent ${result.name} (${result.id})`);
+      console.debug(`Successfully started agent ${result.name} (${result.id})`);
     } catch (error) {
       await checkServer(opts);
       handleError(error);
@@ -332,7 +333,7 @@ agent
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
       const baseUrl = getAgentsBaseUrl(opts);
 
-      logger.info(`Stopping agent ${resolvedAgentId}`);
+      console.info(`Stopping agent ${resolvedAgentId}`);
 
       // API Endpoint: POST /agents/:agentId/stop
       const response = await fetch(`${baseUrl}/${resolvedAgentId}/stop`, { method: 'POST' });
@@ -342,7 +343,7 @@ agent
         throw new Error(errorData.error?.message || `Failed to stop agent: ${response.statusText}`);
       }
 
-      logger.success(`Successfully stopped agent ${opts.name}`);
+      console.log(`Successfully stopped agent ${opts.name}`);
     } catch (error) {
       await checkServer(opts);
       handleError(error);
@@ -359,7 +360,7 @@ agent
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
       const baseUrl = getAgentsBaseUrl(opts);
 
-      logger.info(`Removing agent ${resolvedAgentId}`);
+      console.info(`Removing agent ${resolvedAgentId}`);
 
       // API Endpoint: DELETE /agents/:agentId
       const response = await fetch(`${baseUrl}/${resolvedAgentId}`, {
@@ -374,7 +375,7 @@ agent
       }
 
       // Server returns 204 No Content for successful deletion, no need to parse response
-      logger.success(`Successfully removed agent ${opts.name}`);
+      console.log(`Successfully removed agent ${opts.name}`);
       process.exit(0);
     } catch (error) {
       await checkServer(opts);
@@ -392,7 +393,7 @@ agent
     try {
       const resolvedAgentId = await resolveAgentId(opts.name, opts);
 
-      logger.info(`Updating configuration for agent ${resolvedAgentId}`);
+      console.info(`Updating configuration for agent ${resolvedAgentId}`);
 
       let config: Record<string, unknown>;
       if (opts.config) {
@@ -430,9 +431,7 @@ agent
       const data = (await response.json()) as ApiResponse<{ id: string }>;
       const result = data.data;
 
-      logger.success(
-        `Successfully updated configuration for agent ${result?.id || resolvedAgentId}`
-      );
+      console.log(`Successfully updated configuration for agent ${result?.id || resolvedAgentId}`);
     } catch (error) {
       await checkServer(opts);
       handleError(error);

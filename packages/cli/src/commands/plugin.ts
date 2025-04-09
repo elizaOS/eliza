@@ -75,17 +75,17 @@ async function authenticateWithGitHub(): Promise<{ token: string; username: stri
   let token = process.env.GITHUB_TOKEN || null;
 
   if (!token) {
-    logger.info('\nGitHub credentials required for publishing.');
-    logger.info("You'll need a GitHub Personal Access Token with these scopes:");
-    logger.info('  * repo (for repository access)');
-    logger.info('  * read:org (for organization access)');
-    logger.info('  * workflow (for workflow access)\n');
+    console.info('\nGitHub credentials required for publishing.');
+    console.info("You'll need a GitHub Personal Access Token with these scopes:");
+    console.info('  * repo (for repository access)');
+    console.info('  * read:org (for organization access)');
+    console.info('  * workflow (for workflow access)\n');
 
     await initializeDataDir();
 
     const credentials = await getGitHubCredentials();
     if (!credentials) {
-      logger.error('GitHub credentials setup cancelled.');
+      console.error('GitHub credentials setup cancelled.');
       process.exit(1);
     }
 
@@ -101,7 +101,7 @@ async function authenticateWithGitHub(): Promise<{ token: string; username: stri
     });
 
     if (!response.ok) {
-      logger.error('Invalid GitHub token. Please enter a valid token.');
+      console.error('Invalid GitHub token. Please enter a valid token.');
       process.exit(1);
     }
 
@@ -114,7 +114,7 @@ async function authenticateWithGitHub(): Promise<{ token: string; username: stri
 
     return { token, username };
   } catch (error) {
-    logger.error('Error authenticating with GitHub. Please try again later.');
+    console.error('Error authenticating with GitHub. Please try again later.');
     process.exit(1);
   }
 }
@@ -140,11 +140,11 @@ plugin
       // Validate data directory and settings
       const isValid = await validateDataDir();
       if (!isValid) {
-        logger.info('\nGitHub credentials required for publishing.');
-        logger.info("You'll need a GitHub Personal Access Token with these scopes:");
-        logger.info('  * repo (for repository access)');
-        logger.info('  * read:org (for organization access)');
-        logger.info('  * workflow (for workflow access)\n');
+        console.info('\nGitHub credentials required for publishing.');
+        console.info("You'll need a GitHub Personal Access Token with these scopes:");
+        console.info('  * repo (for repository access)');
+        console.info('  * read:org (for organization access)');
+        console.info('  * workflow (for workflow access)\n');
 
         // Initialize data directory first
         await initializeDataDir();
@@ -152,14 +152,14 @@ plugin
         // Use the built-in credentials function
         const credentials = await getGitHubCredentials();
         if (!credentials) {
-          logger.error('GitHub credentials setup cancelled.');
+          console.error('GitHub credentials setup cancelled.');
           process.exit(1);
         }
 
         // Revalidate after saving credentials
         const revalidated = await validateDataDir();
         if (!revalidated) {
-          logger.error('Failed to validate credentials after saving.');
+          console.error('Failed to validate credentials after saving.');
           process.exit(1);
         }
       }
@@ -167,7 +167,7 @@ plugin
       // Check if this is a plugin directory
       const packageJsonPath = path.join(cwd, 'package.json');
       if (!existsSync(packageJsonPath)) {
-        logger.error('No package.json found in current directory.');
+        console.error('No package.json found in current directory.');
         process.exit(1);
       }
 
@@ -176,14 +176,14 @@ plugin
       const packageJson = JSON.parse(packageJsonContent);
 
       if (!packageJson.name || !packageJson.version) {
-        logger.error('Invalid package.json: missing name or version.');
+        console.error('Invalid package.json: missing name or version.');
         process.exit(1);
       }
 
       // Validate platform option
       const validPlatforms = ['node', 'browser', 'universal'];
       if (opts.platform && !validPlatforms.includes(opts.platform)) {
-        logger.error(
+        console.error(
           `Invalid platform: ${opts.platform}. Valid options are: ${validPlatforms.join(', ')}`
         );
         process.exit(1);
@@ -197,12 +197,12 @@ plugin
       // Validate GitHub credentials
       let credentials = await getGitHubCredentials();
       if (!credentials) {
-        logger.error('GitHub credentials are required for publishing plugins.');
+        console.error('GitHub credentials are required for publishing plugins.');
         return;
       }
 
       // Check registry requirements
-      logger.info('\n📋 Checking Registry Requirements...');
+      console.info('\n📋 Checking Registry Requirements...');
 
       const requirements = {
         nameCorrect:
@@ -234,7 +234,7 @@ plugin
           output: process.stdout,
         });
 
-        logger.info('\n📝 Enter a meaningful description for your plugin:');
+        console.info('\n📝 Enter a meaningful description for your plugin:');
 
         const newDescription = await new Promise<string>((resolve) => {
           rl.question('', (answer) => {
@@ -246,10 +246,10 @@ plugin
         if (newDescription && newDescription.length >= 10) {
           packageJson.description = newDescription;
           await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
-          logger.success('Updated description in package.json');
+          console.log('Updated description in package.json');
           isGenericDescription = false;
         } else {
-          logger.warn(
+          console.warn(
             'Description must be at least 10 characters. Please update your package.json before publishing.'
           );
         }
@@ -273,52 +273,52 @@ plugin
       ].some((req) => !req);
 
       // First display all the requirements status
-      logger.info('\n🔍 Registry Requirements Status:');
+      console.info('\n🔍 Registry Requirements Status:');
 
       // Core requirements (should automatically pass due to template)
-      logger.info(
+      console.info(
         `${requirements.nameCorrect ? '✅' : '❓'} Plugin name format (${packageJson.name})`
       );
-      logger.info(
+      console.info(
         `${requirements.hasRepoUrl && requirements.correctRepoUrl ? '✅' : '❓'} Repository URL format is correct`
       );
-      logger.info(`${requirements.hasAgentConfig ? '✅' : '❓'} AgentConfig in package.json`);
-      logger.info(
+      console.info(`${requirements.hasAgentConfig ? '✅' : '❓'} AgentConfig in package.json`);
+      console.info(
         `${requirements.hasCorrectStructure ? '✅' : '❓'} Directory structure is correct`
       );
 
       // User-provided assets and configuration
-      logger.info(`${requirements.hasLogoImage ? '✅' : '❌'} Images/logo.jpg (400x400px)`);
-      logger.info(`${requirements.hasBannerImage ? '✅' : '❌'} Images/banner.jpg (1280x640px)`);
-      logger.info(`${isGenericDescription ? '❌' : '✅'} Meaningful description in package.json`);
+      console.info(`${requirements.hasLogoImage ? '✅' : '❌'} Images/logo.jpg (400x400px)`);
+      console.info(`${requirements.hasBannerImage ? '✅' : '❌'} Images/banner.jpg (1280x640px)`);
+      console.info(`${isGenericDescription ? '❌' : '✅'} Meaningful description in package.json`);
 
       // Now show warnings for missing items
       if (userProvidedMissing) {
-        logger.warn('\n⚠️ Please add the following:');
+        console.warn('\n⚠️ Please add the following:');
 
         if (!requirements.hasLogoImage) {
-          logger.warn('• Missing images/logo.jpg (400x400px, max 500KB)');
+          console.warn('• Missing images/logo.jpg (400x400px, max 500KB)');
         }
         if (!requirements.hasBannerImage) {
-          logger.warn('• Missing images/banner.jpg (1280x640px, max 1MB)');
+          console.warn('• Missing images/banner.jpg (1280x640px, max 1MB)');
         }
 
         // Only show this warning if we didn't already update it
         if (isGenericDescription) {
-          logger.warn(
+          console.warn(
             '• Add a meaningful description to package.json - explain what your plugin does'
           );
         }
 
         if (opts.test) {
-          logger.info(
+          console.info(
             '\n📝 Please add these files/information and run "elizaos plugin publish --test" again.'
           );
           return;
         } else {
           // If not in test mode, use readline directly instead of prompts to avoid the issue
-          logger.warn('\n⚠️ Your plugin is missing required files and may be rejected.');
-          logger.warn('Do you want to continue anyway? (y/N)');
+          console.warn('\n⚠️ Your plugin is missing required files and may be rejected.');
+          console.warn('Do you want to continue anyway? (y/N)');
 
           const rl = readline.createInterface({
             input: process.stdin,
@@ -334,31 +334,31 @@ plugin
           });
 
           if (!shouldContinue) {
-            logger.info('\n📝 Please add the missing files and try again when ready.');
+            console.info('\n📝 Please add the missing files and try again when ready.');
             process.exit(0);
           }
 
-          logger.warn('\n⚠️ Proceeding with incomplete requirements. Your PR may be rejected.');
+          console.warn('\n⚠️ Proceeding with incomplete requirements. Your PR may be rejected.');
         }
       }
 
       if (templateProvidedMissing) {
-        logger.warn('\n⚠️ Some template-provided requirements are missing:');
+        console.warn('\n⚠️ Some template-provided requirements are missing:');
 
         if (!requirements.nameCorrect) {
-          logger.warn('• Plugin name should include "plugin-" prefix');
+          console.warn('• Plugin name should include "plugin-" prefix');
         }
         if (!requirements.hasRepoUrl || !requirements.correctRepoUrl) {
-          logger.warn('• Repository URL should use "github:" prefix format');
+          console.warn('• Repository URL should use "github:" prefix format');
         }
         if (!requirements.hasImagesDir) {
-          logger.warn('• Images directory is missing');
+          console.warn('• Images directory is missing');
         }
         if (!requirements.hasAgentConfig) {
-          logger.warn('• Missing agentConfig in package.json');
+          console.warn('• Missing agentConfig in package.json');
         }
         if (!requirements.hasCorrectStructure) {
-          logger.warn('• Incorrect directory structure');
+          console.warn('• Incorrect directory structure');
         }
 
         if (!opts.test) {
@@ -375,7 +375,7 @@ plugin
             // Create images directory if it doesn't exist
             if (!requirements.hasImagesDir) {
               await fs.mkdir(path.join(cwd, 'images'), { recursive: true });
-              logger.success('Created images/ directory.');
+              console.log('Created images/ directory.');
             }
 
             // Create README.md in images directory with guidelines
@@ -409,19 +409,19 @@ Please add the following required images to this directory:
 These files are required for registry submission. Your plugin submission will not be accepted without these images.
 `
               );
-              logger.success('Created images/README.md with guidelines.');
+              console.log('Created images/README.md with guidelines.');
             }
 
             // Placeholder image warning
             if (!requirements.hasLogoImage || !requirements.hasBannerImage) {
-              logger.warn('Missing required images:');
+              console.warn('Missing required images:');
               if (!requirements.hasLogoImage) {
-                logger.warn('- images/logo.jpg (400x400px, max 500KB)');
+                console.warn('- images/logo.jpg (400x400px, max 500KB)');
               }
               if (!requirements.hasBannerImage) {
-                logger.warn('- images/banner.jpg (1280x640px, max 1MB)');
+                console.warn('- images/banner.jpg (1280x640px, max 1MB)');
               }
-              logger.warn('Please create these images before publishing.');
+              console.warn('Please create these images before publishing.');
             }
 
             // Fix package.json
@@ -439,7 +439,7 @@ These files are required for registry submission. Your plugin submission will no
                 },
               };
               packageUpdated = true;
-              logger.success('Added agentConfig to package.json.');
+              console.log('Added agentConfig to package.json.');
             }
 
             // Fix repository URL format
@@ -453,7 +453,7 @@ These files are required for registry submission. Your plugin submission will no
                   .replace(/\.git$/, '');
                 packageJson.repository.url = newUrl;
                 packageUpdated = true;
-                logger.success(`Fixed repository URL format: ${newUrl}`);
+                console.log(`Fixed repository URL format: ${newUrl}`);
               }
             }
 
@@ -463,7 +463,7 @@ These files are required for registry submission. Your plugin submission will no
                 path.join(cwd, 'package.json'),
                 JSON.stringify(packageJson, null, 2)
               );
-              logger.success('Updated package.json with required changes.');
+              console.log('Updated package.json with required changes.');
             }
 
             // Check and possibly create GitHub repository
@@ -471,14 +471,14 @@ These files are required for registry submission. Your plugin submission will no
               const credentials = await getGitHubCredentials();
 
               if (!credentials) {
-                logger.error('GitHub credentials required to create repository.');
+                console.error('GitHub credentials required to create repository.');
                 return;
               }
 
               const pluginName = packageJson.name.replace('@elizaos/', '');
               const repoName = pluginName;
 
-              logger.info(`\n📝 Creating GitHub repository for ${pluginName}...`);
+              console.info(`\n📝 Creating GitHub repository for ${pluginName}...`);
 
               const result = await createGitHubRepository(
                 credentials.token,
@@ -505,49 +505,49 @@ These files are required for registry submission. Your plugin submission will no
                   JSON.stringify(packageJson, null, 2)
                 );
 
-                logger.success(`Updated package.json with GitHub repository: ${githubUrl}`);
+                console.log(`Updated package.json with GitHub repository: ${githubUrl}`);
 
                 // Push code to GitHub
-                logger.info('\n🚀 Pushing code to GitHub...');
+                console.info('\n🚀 Pushing code to GitHub...');
                 const pushResult = await pushToGitHub(cwd, result.repoUrl, 'main');
 
                 if (pushResult) {
-                  logger.success('Successfully pushed code to GitHub!');
-                  logger.info('\n✨ Please make sure to:');
-                  logger.info('1. Verify your repository is public');
-                  logger.info('2. Confirm "main" is the default branch');
-                  logger.info('3. Add "elizaos-plugins" to repository topics');
-                  logger.info(
+                  console.log('Successfully pushed code to GitHub!');
+                  console.info('\n✨ Please make sure to:');
+                  console.info('1. Verify your repository is public');
+                  console.info('2. Confirm "main" is the default branch');
+                  console.info('3. Add "elizaos-plugins" to repository topics');
+                  console.info(
                     '4. Create required logo.jpg and banner.jpg in the images/ directory'
                   );
                 } else {
-                  logger.error('Failed to push code to GitHub. Please push manually.');
+                  console.error('Failed to push code to GitHub. Please push manually.');
                 }
               } else {
-                logger.error(`Failed to create GitHub repository: ${result.message}`);
+                console.error(`Failed to create GitHub repository: ${result.message}`);
               }
             }
 
             // Remind about missing directory structure
             if (!requirements.hasCorrectStructure) {
-              logger.warn('Your plugin should have this directory structure:');
-              logger.warn('plugin-name/');
-              logger.warn('├── images/');
-              logger.warn('│   ├── logo.jpg');
-              logger.warn('│   ├── banner.jpg');
-              logger.warn('├── src/');
-              logger.warn('│   ├── index.ts');
-              logger.warn('│   ├── actions/');
-              logger.warn('│   ├── clients/');
-              logger.warn('│   ├── adapters/');
-              logger.warn('│   └── types.ts');
-              logger.warn('│   └── environment.ts');
-              logger.warn('├── package.json');
-              logger.warn('└── README.md');
+              console.warn('Your plugin should have this directory structure:');
+              console.warn('plugin-name/');
+              console.warn('├── images/');
+              console.warn('│   ├── logo.jpg');
+              console.warn('│   ├── banner.jpg');
+              console.warn('├── src/');
+              console.warn('│   ├── index.ts');
+              console.warn('│   ├── actions/');
+              console.warn('│   ├── clients/');
+              console.warn('│   ├── adapters/');
+              console.warn('│   └── types.ts');
+              console.warn('│   └── environment.ts');
+              console.warn('├── package.json');
+              console.warn('└── README.md');
             }
 
             // Check again after fixes
-            logger.info('\n📋 Rechecking requirements...');
+            console.info('\n📋 Rechecking requirements...');
 
             const updatedRequirements = {
               nameCorrect:
@@ -571,40 +571,38 @@ These files are required for registry submission. Your plugin submission will no
             );
 
             if (stillHasMissingRequirements) {
-              logger.warn('\n⚠️ Some requirements still need to be fixed manually:');
+              console.warn('\n⚠️ Some requirements still need to be fixed manually:');
 
               if (!updatedRequirements.hasLogoImage || !updatedRequirements.hasBannerImage) {
-                logger.warn('- Create the required images:');
+                console.warn('- Create the required images:');
                 if (!updatedRequirements.hasLogoImage) {
-                  logger.warn('  * images/logo.jpg (400x400px, max 500KB)');
+                  console.warn('  * images/logo.jpg (400x400px, max 500KB)');
                 }
                 if (!updatedRequirements.hasBannerImage) {
-                  logger.warn('  * images/banner.jpg (1280x640px, max 1MB)');
+                  console.warn('  * images/banner.jpg (1280x640px, max 1MB)');
                 }
               }
 
               if (!updatedRequirements.hasDescription) {
-                logger.warn('- Add a description in package.json');
+                console.warn('- Add a description in package.json');
               }
 
               if (!updatedRequirements.hasCorrectStructure) {
-                logger.warn('- Ensure your src directory has the correct structure');
+                console.warn('- Ensure your src directory has the correct structure');
               }
 
-              logger.info('\nPlease fix these issues before publishing.');
+              console.info('\nPlease fix these issues before publishing.');
               return;
             }
 
-            logger.success(
-              '\n✅ All registry requirements are now met! You can publish your plugin.'
-            );
+            console.log('\n✅ All registry requirements are now met! You can publish your plugin.');
           } else {
-            logger.info('Please fix the missing requirements before publishing.');
+            console.info('Please fix the missing requirements before publishing.');
             return;
           }
         }
       } else {
-        logger.success('\n✅ All registry requirements are met!');
+        console.log('\n✅ All registry requirements are met!');
       }
 
       // Get CLI version for runtime compatibility
@@ -619,13 +617,13 @@ These files are required for registry submission. Your plugin submission will no
         const cliPackageJson = JSON.parse(cliPackageJsonContent);
         cliVersion = cliPackageJson.version || '0.0.0';
       } catch (error) {
-        logger.warn('Could not determine CLI version, using 0.0.0');
+        console.warn('Could not determine CLI version, using 0.0.0');
       }
 
       // Refresh GitHub credentials if needed
       if (!credentials.token) {
-        logger.info('\nGitHub credentials required for publishing.');
-        logger.info('Please enter your GitHub credentials:\n');
+        console.info('\nGitHub credentials required for publishing.');
+        console.info('Please enter your GitHub credentials:\n');
 
         await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -663,49 +661,49 @@ These files are required for registry submission. Your plugin submission will no
 
           // Write the updated package.json back to disk
           await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
-          logger.info(`Updated repository URL to use your GitHub username (${username})`);
+          console.info(`Updated repository URL to use your GitHub username (${username})`);
         }
       }
 
       if (opts.test) {
         // Only run the tests if all user-provided requirements are met
-        logger.info('\n🧪 Running publish tests...');
+        console.info('\n🧪 Running publish tests...');
 
         if (opts.npm) {
-          logger.info('\nTesting npm publishing:');
+          console.info('\nTesting npm publishing:');
           const npmTestSuccess = await testPublishToNpm(cwd);
           if (!npmTestSuccess) {
-            logger.error('npm publishing test failed');
+            console.error('npm publishing test failed');
             process.exit(1);
           }
         }
 
-        logger.info('\nTesting GitHub publishing:');
+        console.info('\nTesting GitHub publishing:');
         const githubTestSuccess = await testPublishToGitHub(cwd, packageJson, credentials.username);
 
         if (!githubTestSuccess) {
-          logger.error('GitHub publishing test failed');
+          console.error('GitHub publishing test failed');
           process.exit(1);
         }
 
-        logger.success('\n✅ All tests passed successfully!');
-        logger.info('\n📝 Your plugin is ready to be published!');
-        logger.info('Run "npx elizaos plugin publish" to publish your plugin to the registry.');
+        console.log('\n✅ All tests passed successfully!');
+        console.info('\n📝 Your plugin is ready to be published!');
+        console.info('Run "npx elizaos plugin publish" to publish your plugin to the registry.');
         return;
       }
 
       // For the actual publish, we first run the checks with --test to ensure everything's in order
-      logger.info('\n🔍 Running final checks before publishing...');
+      console.info('\n🔍 Running final checks before publishing...');
       const checkResult = await testPublishToGitHub(cwd, packageJson, credentials.username);
       if (!checkResult) {
-        logger.error('Final checks failed. Please run with --test flag to debug');
+        console.error('Final checks failed. Please run with --test flag to debug');
         process.exit(1);
       }
-      logger.success('✅ Final checks passed!');
+      console.log('✅ Final checks passed!');
 
       // Check if the plugin has a GitHub repository already, if not create one
       if (!packageJson.repository?.url || !packageJson.repository.url.startsWith('github:')) {
-        logger.info('\n🚀 Setting up GitHub repository for plugin...');
+        console.info('\n🚀 Setting up GitHub repository for plugin...');
 
         // Extract plugin name for repository creation
         const pluginName = packageJson.name.replace('@elizaos/', '');
@@ -720,7 +718,7 @@ These files are required for registry submission. Your plugin submission will no
         );
 
         if (!result.success) {
-          logger.error(`Failed to create GitHub repository: ${result.message}`);
+          console.error(`Failed to create GitHub repository: ${result.message}`);
           process.exit(1);
         }
 
@@ -735,32 +733,32 @@ These files are required for registry submission. Your plugin submission will no
         };
 
         await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
-        logger.success(`Updated package.json with GitHub repository: ${githubUrl}`);
+        console.log(`Updated package.json with GitHub repository: ${githubUrl}`);
 
         // Push code to GitHub repository
-        logger.info('\n📤 Pushing code to GitHub repository...');
+        console.info('\n📤 Pushing code to GitHub repository...');
 
         // Use a more Git-friendly approach without force pushing
         try {
           // Initialize git repo if needed
           await execa('git', ['init'], { cwd });
-          logger.info('Git repository initialized');
+          console.info('Git repository initialized');
 
           // Create and checkout main branch
           await execa('git', ['checkout', '-b', 'main'], { cwd });
-          logger.info('Created main branch');
+          console.info('Created main branch');
 
           // Add remote
           await execa('git', ['remote', 'add', 'origin', result.repoUrl], { cwd });
-          logger.info(`Added remote: ${result.repoUrl}`);
+          console.info(`Added remote: ${result.repoUrl}`);
 
           // Add all files
           await execa('git', ['add', '.'], { cwd });
-          logger.info('Added files to git');
+          console.info('Added files to git');
 
           // Commit changes
           await execa('git', ['commit', '-m', 'Initial commit'], { cwd });
-          logger.info('Committed changes');
+          console.info('Committed changes');
 
           // Check if remote is empty before pushing
           const remoteCheck = await execa('git', ['ls-remote', '--heads', 'origin'], {
@@ -771,22 +769,22 @@ These files are required for registry submission. Your plugin submission will no
 
           if (remoteCheck.exitCode === 0 && remoteCheck.stdout.trim() === '') {
             // Remote exists but is empty, safe to push
-            logger.info('Remote repository is empty, pushing initial commit...');
+            console.info('Remote repository is empty, pushing initial commit...');
             await execa('git', ['push', '-u', 'origin', 'main'], { cwd });
-            logger.success('✅ Successfully pushed code to GitHub repository!');
+            console.log('✅ Successfully pushed code to GitHub repository!');
           } else {
             // Remote has content, create a new branch instead of pushing to main
             const setupBranch = `setup-${Date.now()}`;
-            logger.info(`Remote repository contains content, creating branch: ${setupBranch}`);
+            console.info(`Remote repository contains content, creating branch: ${setupBranch}`);
             await execa('git', ['checkout', '-b', setupBranch], { cwd });
             await execa('git', ['push', '-u', 'origin', setupBranch], { cwd });
-            logger.success(
+            console.log(
               `✅ Pushed code to branch '${setupBranch}'. Please merge this branch into main.`
             );
           }
         } catch (error) {
-          logger.error('Failed to push to GitHub:', error.message);
-          logger.info('You may need to manually push your code to GitHub');
+          console.error('Failed to push to GitHub:', error.message);
+          console.info('You may need to manually push your code to GitHub');
 
           const { shouldContinue } = await prompts({
             type: 'confirm',
@@ -801,7 +799,7 @@ These files are required for registry submission. Your plugin submission will no
         }
       } else {
         // Repository URL exists, but we should verify repo actually exists on GitHub
-        logger.info('\n🔍 Verifying GitHub repository exists...');
+        console.info('\n🔍 Verifying GitHub repository exists...');
 
         try {
           // Convert github:username/repo to https://github.com/username/repo
@@ -818,7 +816,7 @@ These files are required for registry submission. Your plugin submission will no
 
           if (!response.ok) {
             if (response.status === 404) {
-              logger.info(
+              console.info(
                 `Repository ${packageJson.repository.url} does not exist. Creating it now...`
               );
 
@@ -832,34 +830,34 @@ These files are required for registry submission. Your plugin submission will no
               );
 
               if (!result.success) {
-                logger.error(`Failed to create GitHub repository: ${result.message}`);
+                console.error(`Failed to create GitHub repository: ${result.message}`);
                 process.exit(1);
               }
 
               // Push code to GitHub repository
-              logger.info('\n📤 Pushing code to GitHub repository...');
+              console.info('\n📤 Pushing code to GitHub repository...');
 
               // Use the more Git-friendly approach
               try {
                 // Initialize git repo if needed
                 await execa('git', ['init'], { cwd });
-                logger.info('Git repository initialized');
+                console.info('Git repository initialized');
 
                 // Create and checkout main branch
                 await execa('git', ['checkout', '-b', 'main'], { cwd });
-                logger.info('Created main branch');
+                console.info('Created main branch');
 
                 // Add remote
                 await execa('git', ['remote', 'add', 'origin', result.repoUrl], { cwd });
-                logger.info(`Added remote: ${result.repoUrl}`);
+                console.info(`Added remote: ${result.repoUrl}`);
 
                 // Add all files
                 await execa('git', ['add', '.'], { cwd });
-                logger.info('Added files to git');
+                console.info('Added files to git');
 
                 // Commit changes
                 await execa('git', ['commit', '-m', 'Initial commit'], { cwd });
-                logger.info('Committed changes');
+                console.info('Committed changes');
 
                 // Check if remote is empty before pushing
                 const remoteCheck = await execa('git', ['ls-remote', '--heads', 'origin'], {
@@ -870,24 +868,24 @@ These files are required for registry submission. Your plugin submission will no
 
                 if (remoteCheck.exitCode === 0 && remoteCheck.stdout.trim() === '') {
                   // Remote exists but is empty, safe to push
-                  logger.info('Remote repository is empty, pushing initial commit...');
+                  console.info('Remote repository is empty, pushing initial commit...');
                   await execa('git', ['push', '-u', 'origin', 'main'], { cwd });
-                  logger.success('✅ Successfully pushed code to GitHub repository!');
+                  console.log('✅ Successfully pushed code to GitHub repository!');
                 } else {
                   // Remote has content, create a new branch instead of pushing to main
                   const setupBranch = `setup-${Date.now()}`;
-                  logger.info(
+                  console.info(
                     `Remote repository contains content, creating branch: ${setupBranch}`
                   );
                   await execa('git', ['checkout', '-b', setupBranch], { cwd });
                   await execa('git', ['push', '-u', 'origin', setupBranch], { cwd });
-                  logger.success(
+                  console.log(
                     `✅ Pushed code to branch '${setupBranch}'. Please merge this branch into main.`
                   );
                 }
               } catch (error) {
-                logger.error('Failed to push to GitHub:', error.message);
-                logger.info('You may need to manually push your code to GitHub');
+                console.error('Failed to push to GitHub:', error.message);
+                console.info('You may need to manually push your code to GitHub');
 
                 const { shouldContinue } = await prompts({
                   type: 'confirm',
@@ -901,47 +899,49 @@ These files are required for registry submission. Your plugin submission will no
                 }
               }
             } else {
-              logger.error(`Error verifying repository: ${response.status} ${response.statusText}`);
+              console.error(
+                `Error verifying repository: ${response.status} ${response.statusText}`
+              );
               process.exit(1);
             }
           } else {
-            logger.success('✅ GitHub repository verified!');
+            console.log('✅ GitHub repository verified!');
           }
         } catch (error) {
-          logger.error('Error verifying GitHub repository:', error);
+          console.error('Error verifying GitHub repository:', error);
           process.exit(1);
         }
       }
 
       // Handle npm publishing
       if (opts.npm) {
-        logger.info('Publishing to npm...');
+        console.info('Publishing to npm...');
 
         // Check if logged in to npm
         try {
           await execa('npm', ['whoami'], { stdio: 'inherit' });
         } catch (error) {
-          logger.error("Not logged in to npm. Please run 'npm login' first.");
+          console.error("Not logged in to npm. Please run 'npm login' first.");
           process.exit(1);
         }
 
         // Build the package
-        logger.info('Building package...');
+        console.info('Building package...');
         await execa('npm', ['run', 'build'], { cwd, stdio: 'inherit' });
 
         // Publish to npm
-        logger.info('Publishing to npm...');
+        console.info('Publishing to npm...');
         await execa('npm', ['publish'], { cwd, stdio: 'inherit' });
 
-        logger.success(`Successfully published ${packageJson.name}@${packageJson.version} to npm`);
+        console.log(`Successfully published ${packageJson.name}@${packageJson.version} to npm`);
       } else {
         // Even if not explicitly publishing to npm, we should build the package
-        logger.info('Building package...');
+        console.info('Building package...');
         try {
           await execa('npm', ['run', 'build'], { cwd, stdio: 'inherit' });
-          logger.success('Build completed successfully');
+          console.log('Build completed successfully');
         } catch (error) {
-          logger.error('Failed to build package. Please check your build script.');
+          console.error('Failed to build package. Please check your build script.');
           const { shouldContinue } = await prompts({
             type: 'confirm',
             name: 'shouldContinue',
@@ -956,7 +956,7 @@ These files are required for registry submission. Your plugin submission will no
       }
 
       // Now publish to the ElizaOS registry
-      logger.info('\n🚀 Publishing to ElizaOS registry...');
+      console.info('\n🚀 Publishing to ElizaOS registry...');
       const result = await publishToGitHub(
         cwd,
         packageJson,
@@ -966,26 +966,26 @@ These files are required for registry submission. Your plugin submission will no
       );
 
       if (!result || (typeof result === 'boolean' && !result)) {
-        logger.error('Failed to publish to ElizaOS registry.');
+        console.error('Failed to publish to ElizaOS registry.');
         process.exit(1);
       }
 
-      logger.success(
+      console.log(
         `\n🎉 Successfully published ${packageJson.name}@${packageJson.version} to the registry!`
       );
 
       // Show PR URL if available
       if (result && typeof result === 'object' && result.prUrl) {
-        logger.info(`\n📝 Pull request created: ${result.prUrl}`);
-        logger.info('Please visit this URL to track your plugin submission.');
+        console.info(`\n📝 Pull request created: ${result.prUrl}`);
+        console.info('Please visit this URL to track your plugin submission.');
       } else {
-        logger.info('\nA pull request has been created to add your plugin to the registry.');
+        console.info('\nA pull request has been created to add your plugin to the registry.');
       }
 
-      logger.info(
+      console.info(
         'The ElizaOS team will review your plugin and merge it if it meets all requirements.'
       );
-      logger.info('\nThank you for contributing to the ElizaOS ecosystem! 🙌');
+      console.info('\nThank you for contributing to the ElizaOS ecosystem! 🙌');
     } catch (error) {
       handleError(error);
     }

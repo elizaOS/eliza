@@ -28,7 +28,9 @@ export async function checkServer(opts: OptionValues) {
     await fetch(`${getAgentRuntimeUrl(opts)}/api/ping`);
     logger.success('ElizaOS server is running');
   } catch (error) {
-    logger.error(`${red}Unable to connect to ElizaOS server, likely not running!${r}`);
+    logger.error(
+      `${red}Unable to connect to ElizaOS server, likely not running or not accessible!${r}`
+    );
     process.exit(1);
   }
 }
