@@ -90,10 +90,6 @@ async function resolveAgentId(idOrNameOrIndex: string, opts: OptionValues): Prom
 
 export const agent = new Command().name('agent').description('Manage ElizaOS agents');
 
-// Add the global option here
-// agent.option('-r, --remote-url <url>', 'URL of the remote agent runtime');
-// agent.option('-p, --port <port>', 'Port of the local agent runtime');
-
 /**
  * Interface representing the payload sent when starting an agent.
  * @typedef {Object} AgentStartPayload
@@ -209,7 +205,7 @@ agent
   .option('-n, --name <name>', 'character name to start the agent with')
   .option('-j, --json <json>', 'character JSON string')
   .option('-p, --path <path>', 'local path to character JSON file')
-  .option('-r, --remote <url>', 'remote URL to character JSON file')
+  .option('-rc, --remote-character <url>', 'remote URL to character JSON file')
   .action(async (opts) => {
     try {
       // API Endpoint: POST /agents
@@ -221,8 +217,8 @@ agent
         // Determine which start option to use
         const startOption = opts.json
           ? 'json'
-          : opts.remote
-            ? 'remote'
+          : opts.remoteCharacter
+            ? 'remoteCharacter'
             : opts.path
               ? 'path'
               : opts.name
@@ -242,11 +238,14 @@ agent
               throw new Error(`Failed to parse JSON string: ${error.message}`);
             }
 
-          case 'remote':
-            if (!opts.remote.startsWith('http://') && !opts.remote.startsWith('https://')) {
+          case 'remoteCharacter':
+            if (
+              !opts.remoteCharacter.startsWith('http://') &&
+              !opts.remoteCharacter.startsWith('https://')
+            ) {
               throw new Error('Remote URL must start with http:// or https://');
             }
-            payload.characterPath = opts.remote;
+            payload.characterPath = opts.remoteCharacter;
             return await fetch(baseUrl, {
               method: 'POST',
               headers,
@@ -268,6 +267,18 @@ agent
 
           case 'name': {
             const agentId = await resolveAgentId(opts.name, opts);
+            const agents = await getAgents(opts);
+            const agent = agents.find((agent) => agent.id === agentId);
+            if (!agent) {
+              throw new Error(`Agent not found: ${agentId}`);
+            }
+            if (!agent.character) {
+              throw new Error(`No character data found for agent: ${agentId}`);
+            }
+            payload.characterJson =
+              typeof agent.character === 'string'
+                ? JSON.parse(agent.character as string)
+                : (agent.character as Record<string, unknown>);
             try {
               return await fetch(baseUrl, {
                 method: 'POST',
