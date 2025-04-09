@@ -9,7 +9,7 @@ The `start` command launches an ElizaOS project or agent in production mode. It 
 ## Usage
 
 ```bash
-npx @elizaos/cli start [options]
+elizaos start [options]
 ```
 
 ## Options
@@ -61,7 +61,7 @@ The `start` command will look for an `.env` file in the project directory and lo
 
 ```bash
 # Set environment variables directly
-OPENAI_API_KEY=your-api-key npx @elizaos/cli start
+OPENAI_API_KEY=your-api-key elizaos start
 ```
 
 For detailed information about environment configuration, see the [Environment Command](./env.md).
@@ -72,25 +72,25 @@ For detailed information about environment configuration, see the [Environment C
 
 ```bash
 cd my-agent-project
-npx @elizaos/cli start
+elizaos start
 ```
 
 ### Starting with configuration
 
 ```bash
-npx @elizaos/cli start --configure
+elizaos start --configure
 ```
 
 ### Starting with a custom port
 
 ```bash
-npx @elizaos/cli start --port 8080
+elizaos start --port 8080
 ```
 
 ### Starting with a custom character
 
 ```bash
-npx @elizaos/cli start --character path/to/character.json
+elizaos start --character path/to/character.json
 ```
 
 ## Building Before Starting
@@ -98,7 +98,7 @@ npx @elizaos/cli start --character path/to/character.json
 To build your project before starting it:
 
 ```bash
-npx @elizaos/cli start --build
+elizaos start --build
 ```
 
 This will compile your TypeScript files and prepare the project for execution.
@@ -107,5 +107,4 @@ This will compile your TypeScript files and prepare the project for execution.
 
 - [`dev`](./dev.md): Run in development mode with hot reloading
 - [`env`](./env.md): Configure environment variables
-- [`plugin`](./plugins.md): Manage plugins
-- [`project`](./projects.md): Manage projects
+- [`

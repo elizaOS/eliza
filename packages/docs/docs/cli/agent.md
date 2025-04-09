@@ -24,26 +24,28 @@ elizaos agent <action> [options]
 
 | Action         | Description                                      |
 | -------------- | ------------------------------------------------ |
-| `list`, `ls`   | List all agents in the project                   |
+| `list`, `ls`   | List all agents                                  |
 | `get`, `g`     | Show detailed information about a specific agent |
-| `start`, `s`   | Start an agent                                   |
-| `stop`, `st`   | Stop an agent                                    |
-| `remove`, `rm` | Remove an agent                                  |
+| `start`, `s`   | Start an agent using a character definition      |
+| `stop`, `st`   | Stop a running agent                             |
+| `remove`, `rm` | Remove an agent definition                       |
 | `set`          | Update agent configuration                       |
 
 ## Options
 
-The available options vary by action. Here are some common options:
+The available options vary by action:
 
-| Option                | Description                                                   |
-| --------------------- | ------------------------------------------------------------- |
-| `-n, --name <name>`   | Agent id, name, or index number from list                     |
-| `-j, --json`          | Output in JSON format                                         |
-| `-p, --path <path>`   | Local path to character JSON file (for start)                 |
-| `-r, --remote <url>`  | Remote URL to character JSON file (for start)                 |
-| `-c, --config <json>` | Configuration as JSON string (for set)                        |
-| `-f, --file <path>`   | Path to configuration file (for set) or output file (for get) |
-| `-o, --output <file>` | Output to file (for get)                                      |
+| Option                          | Action(s)               | Description                                                                    | Required |
+| ------------------------------- | ----------------------- | ------------------------------------------------------------------------------ | -------- |
+| `-n, --name <name>`             | `get`,`stop`,`rm`,`set` | Agent ID, name, or index number from list                                      | Yes      |
+| `-n, --name <name>`             | `start`                 | Character name to start the agent with                                         | No       |
+| `-j, --json`                    | `list`, `get`           | Output in JSON format                                                          | No       |
+| `-j, --json <json>`             | `start`                 | Character configuration as a JSON string                                       | No       |
+| `-p, --path <path>`             | `start`                 | Local path to character JSON file                                              | No       |
+| `-rc, --remote-character <url>` | `start`                 | Remote URL to character JSON file                                              | No       |
+| `-c, --config <json>`           | `set`                   | Agent configuration as JSON string                                             | No       |
+| `-f, --file <path>`             | `set`                   | Path to agent configuration JSON file                                          | No       |
+| `-o, --output <file>`           | `get`                   | Output agent configuration to file (requires `--json`, default: `{name}.json`) | No       |
 
 ## Usage Examples
 
@@ -78,7 +80,7 @@ elizaos agent start --name customer-support
 elizaos agent start --path ./agents/my-agent.json
 
 # Start from remote URL
-elizaos agent start --remote https://example.com/agents/my-agent.json
+elizaos agent start --remote-character https://example.com/agents/my-agent.json
 
 # Stop a running agent
 elizaos agent stop --name customer-support
@@ -89,7 +91,7 @@ elizaos agent stop --name customer-support
 
 ```bash
 # Update agent configuration using JSON string
-elizaos agent set --name customer-support --config '{"name":"Customer Care Bot"}'
+elizaos agent set --name customer-support --config '{"llm": {"model": "gpt-4-turbo"}}'
 
 # Update configuration from file
 elizaos agent set --name customer-support --file ./updated-config.json
