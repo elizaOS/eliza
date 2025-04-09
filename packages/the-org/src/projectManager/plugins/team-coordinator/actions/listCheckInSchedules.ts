@@ -91,10 +91,10 @@ function formatSchedule(schedule: CheckInSchedule): string {
     frequency: schedule.frequency,
     checkInTime: schedule.checkInTime,
   });
+  // 👤 Team Member: ${schedule.teamMemberUserName || schedule.teamMemberName || schedule.teamMemberId || 'Unknown'}
 
   const formatted = `
 📅 Schedule ID: ${schedule.scheduleId}
-👤 Team Member: ${schedule.teamMemberUserName || schedule.teamMemberName || schedule.teamMemberId || 'Unknown'}
 📝 Type: ${schedule.checkInType}
 📺 Channel ID: ${schedule.channelId}
 ⏰ Time: ${schedule.checkInTime}
@@ -107,9 +107,9 @@ function formatSchedule(schedule: CheckInSchedule): string {
 }
 
 export const listCheckInSchedules: Action = {
-  name: 'listCheckInSchedules',
+  name: 'LIST_CHECK_IN_SCHEDULES',
   description: 'Lists all schedules for team members',
-  similes: ['showCheckIns', 'getCheckInSchedules', 'viewCheckInSchedules'],
+  similes: ['SHOW_CHECK_INS', 'GET_CHECK_IN_SCHEDULES', 'VIEW_CHECK_IN_SCHEDULES'],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info('Validating listCheckInSchedules action:', {
       messageId: message.id,
@@ -201,35 +201,35 @@ export const listCheckInSchedules: Action = {
         name: 'jimmy',
         content: {
           text: "Here are all the check-in schedules I've found",
-          actions: ['listCheckInSchedules'],
+          actions: ['LIST_CHECK_IN_SCHEDULES'],
         },
       },
     ],
-    // [
-    //   {
-    //     name: 'admin',
-    //     content: { text: 'List team check-ins' },
-    //   },
-    //   {
-    //     name: 'jimmy',
-    //     content: {
-    //       text: "I'll show you all active check-in schedules",
-    //       actions: ['listCheckInSchedules'],
-    //     },
-    //   },
-    // ],
-    // [
-    //   {
-    //     name: 'admin',
-    //     content: { text: 'list of checkins' },
-    //   },
-    //   {
-    //     name: 'jimmy',
-    //     content: {
-    //       text: "I'll show you all active check-in schedules",
-    //       actions: ['listCheckInSchedules'],
-    //     },
-    //   },
-    // ],
+    [
+      {
+        name: 'admin',
+        content: { text: 'List team check-ins' },
+      },
+      {
+        name: 'jimmy',
+        content: {
+          text: "I'll show you all active check-in schedules",
+          actions: ['LIST_CHECK_IN_SCHEDULES'],
+        },
+      },
+    ],
+    [
+      {
+        name: 'admin',
+        content: { text: 'list of checkins' },
+      },
+      {
+        name: 'jimmy',
+        content: {
+          text: "I'll show you all active check-in schedules",
+          actions: ['LIST_CHECK_IN_SCHEDULES'],
+        },
+      },
+    ],
   ],
 };

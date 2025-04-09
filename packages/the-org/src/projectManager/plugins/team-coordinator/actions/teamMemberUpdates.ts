@@ -384,43 +384,19 @@ async function parseTeamMemberUpdate(
   }
 }
 
-export const recordTeamMemberUpdates: Action = {
-  name: 'recordTeamMemberUpdates',
+export const teamMemberUpdatesAction: Action = {
+  name: 'TEAM_MEMBER_UPDATES',
   description:
-    'Records person individual status updates sent by team members with their progress details, blockers, and ETAs',
-  similes: ['sendPersonalUpdate'],
+    'Records individual status updates from team members including progress details, blockers, and estimated completion times',
+  similes: [
+    'SEND_PERSONAL_UPDATE',
+    'SUBMIT_UPDATE',
+    'SHARE_PROGRESS',
+    'REPORT_STATUS',
+    'LOG_TEAM_UPDATE',
+  ],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
-    logger.info('whole message ', JSON.stringify(message));
-
-    logger.info('Validating recordTeamMemberUpdates action:', {
-      messageId: message.id,
-      entityId: message.entityId,
-    });
-
-    const text = message.content?.text as string;
-    if (!text) {
-      logger.warn('No text content found in message');
-      return false;
-    }
-
-    // Check if the message contains the required format and marker
-    const hasRequiredSections =
-      text.includes('Server-name:') &&
-      text.includes('Check-in Type:') &&
-      text.includes('Current Progress:') &&
-      text.includes('Working On:') &&
-      text.includes('Next Steps:') &&
-      text.includes('Blockers:') &&
-      text.includes('ETA:');
-
-    const hasMarker = text.toLowerCase().includes('sending my updates');
-
-    logger.info('Validation results:', {
-      hasRequiredSections,
-      hasMarker,
-    });
-
-    return hasRequiredSections && hasMarker;
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -572,7 +548,7 @@ Remember to end your message with "sending my updates"`,
   examples: [
     [
       {
-        name: 'team-member',
+        name: '{{name1}}',
         content: {
           text: `[INDIVIDUAL STATUS UPDATE]
     Server-name: Development Server
@@ -587,16 +563,16 @@ Remember to end your message with "sending my updates"`,
         },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
           text: "✅ Thank you for your individual status update! I've recorded your progress details and will share them with the team.",
-          actions: ['recordTeamMemberUpdates'],
+          actions: ['TEAM_MEMBER_UPDATES'],
         },
       },
     ],
     [
       {
-        name: 'developer',
+        name: '{{name1}}',
         content: {
           text: `[MEMBER PROGRESS REPORT]
     Server-name: Project X Server
@@ -611,16 +587,16 @@ Remember to end your message with "sending my updates"`,
         },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
           text: '✅ Your personal status has been logged successfully. I will make sure the team is aware of your progress and blockers.',
-          actions: ['recordTeamMemberUpdates'],
+          actions: ['TEAM_MEMBER_UPDATES'],
         },
       },
     ],
     [
       {
-        name: 'developer',
+        name: '{{name1}}',
         content: {
           text: `[STATUS SUBMISSION]
     Server-name: Engineering Team
@@ -635,16 +611,16 @@ Remember to end your message with "sending my updates"`,
         },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
           text: '✅ Status recorded! Your individual work update has been saved and will be included in the next team report.',
-          actions: ['recordTeamMemberUpdates'],
+          actions: ['TEAM_MEMBER_UPDATES'],
         },
       },
     ],
     [
       {
-        name: 'team-lead',
+        name: '{{name1}}',
         content: {
           text: `[WORK TRACKING]
     Server-name: Product Development
@@ -659,25 +635,25 @@ Remember to end your message with "sending my updates"`,
         },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
           text: "✅ Your individual status has been logged. I've noted your blockers regarding resource allocation approval.",
-          actions: ['recordTeamMemberUpdates'],
+          actions: ['TEAM_MEMBER_UPDATES'],
         },
       },
     ],
     [
       {
-        name: 'team-member',
+        name: '{{name1}}',
         content: {
           text: 'sending my personal updates',
         },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
           text: "✅ Your individual status has been logged. I've noted your blockers regarding resource allocation approval.",
-          actions: ['recordTeamMemberUpdates'],
+          actions: ['TEAM_MEMBER_UPDATES'],
         },
       },
     ],

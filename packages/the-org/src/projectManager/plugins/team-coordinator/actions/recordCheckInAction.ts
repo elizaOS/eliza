@@ -107,9 +107,16 @@ async function ensureDiscordClient(runtime: IAgentRuntime) {
 }
 
 export const recordCheckInAction: Action = {
-  name: 'recordCheckInAction',
-  description: 'create and record Check-in schedule details',
-  similes: ['recordCheckIn'],
+  name: 'RECORD_CHECK_IN',
+  description:
+    'Set up, create, configure, or manage team check-in schedules for various types including daily standups, sprint check-ins, mental health check-ins, project status updates, and retrospectives. Handles both inquiry about setting up check-ins and actual configuration of check-in schedules.',
+  similes: [
+    'SEND_PERSONAL_UPDATE',
+    'SUBMIT_UPDATE',
+    'SHARE_PROGRESS',
+    'REPORT_STATUS',
+    'LOG_TEAM_UPDATE',
+  ],
   validate: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     try {
       // Existing validation code...
@@ -265,6 +272,149 @@ export const recordCheckInAction: Action = {
         logger.warn('No text content found in message');
         return false;
       }
+
+      // Check if report channel config exists for this server
+      logger.info('Checking for existing report channel configuration');
+      const roomId = createUniqueUuid(runtime, 'report-channel-config');
+      logger.info('Generated roomId:', roomId);
+
+      // Add table name to getMemories call
+      const memories = await runtime.getMemories({
+        roomId: roomId as UUID,
+        tableName: 'messages',
+      });
+      logger.info('Retrieved memories:', JSON.stringify(memories, null, 2));
+      logger.debug('Raw memories object:', memories);
+
+      logger.info('Looking for existing config with serverId:', serverId);
+      const existingConfig = memories.find((memory) => {
+        logger.info('Checking memory:', memory);
+        const isReportConfig = memory.content.type === 'report-channel-config';
+
+        return isReportConfig;
+      });
+      logger.info('Found existing config:', existingConfig);
+
+      const questionPrompt = `
+        Determine if the user is asking a question about setting up a check-in schedule.
+        
+        Examples of questions:
+        - "let's setup a check in schedule?"
+        - "how do I create a check-in?"
+        - "can you help me with check-ins?"
+        
+        Return TRUE if the user is asking a question about setting up check-ins.
+        
+        Return FALSE if the user is providing specific check-in configuration with fields like:
+        - channelForUpdates
+        - checkInType (STANDUP, SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO)
+        - channelForCheckIns
+        - frequency (WEEKDAYS, DAILY, WEEKLY, BI-WEEKLY, MONTHLY)
+        - time
+        
+        Analyze this text and respond with ONLY the word "true" or "false" (lowercase):
+        "${userText}"`;
+
+      logger.debug('Generated question prompt for LLM:', questionPrompt);
+
+      logger.info('Question check prompt:', questionPrompt);
+
+      const parsedQuestionResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: questionPrompt,
+        stopSequences: [],
+      });
+
+      logger.info('Raw AI response for question check:', parsedQuestionResponse);
+
+      // Check if user is asking a question rather than providing check-in details
+      if (parsedQuestionResponse.trim().toLowerCase() === 'true') {
+        logger.info('User is asking a question about check-ins, not providing configuration');
+
+        if (!existingConfig) {
+          // First ask for the report channel configuration
+          logger.info('Asking user for report channel configuration');
+
+          const channelsList = textChannels
+            .map((channel) => `- #${channel.name} (${channel.id})`)
+            .join('\n');
+
+          logger.debug(`Generated channels list with ${textChannels.length} channels`);
+          await callback(
+            {
+              text:
+                `Let's set up check-ins for your team members! 📅\n\n` +
+                `First, I need to know where to send the check-in updates when team members respond.\n\n` +
+                `**Available channels:**\n${channelsList}\n\n` +
+                `1️⃣ **Channel for Updates:** Which channel from the list above should the updates be posted once collected from users?\n\n` +
+                `2️⃣ **Check-in Type:** Choose one of the following:\n` +
+                `   • Daily Standup\n` +
+                `   • Sprint Check-in\n` +
+                `   • Mental Health Check-in\n` +
+                `   • Project Status Update\n` +
+                `   • Team Retrospective\n\n` +
+                `3️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
+                `4️⃣ **Frequency:** How often should check-ins occur?\n` +
+                `   • Weekdays\n` +
+                `   • Daily\n` +
+                `   • Weekly\n` +
+                `   • Bi-weekly\n` +
+                `   • Monthly\n` +
+                `5️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC) - Please note all times will be in UTC timezone` +
+                `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
+              source: message.source,
+            },
+            []
+          );
+
+          logger.info('Sent initial check-in configuration message');
+        } else {
+          // Ask for check-in schedule details
+          logger.info('Asking user for check-in schedule details');
+          logger.debug(`Using existing config: ${JSON.stringify(existingConfig)}`);
+
+          const channelsList = textChannels
+            .map((channel) => `- #${channel.name} (${channel.id})`)
+            .join('\n');
+
+          logger.debug(
+            `Generated channels list with ${textChannels.length} channels for existing config`
+          );
+
+          await callback(
+            {
+              text:
+                `Let's set up your team check-in schedule! 📅\n\n` +
+                `Please provide the following information (you can answer all at once or one by one):\n\n` +
+                `1️⃣ **Check-in Type:** Choose one of the following:\n` +
+                `   • Daily Standup\n` +
+                `   • Sprint Check-in\n` +
+                `   • Mental Health Check-in\n` +
+                `   • Project Status Update\n` +
+                `   • Team Retrospective\n\n` +
+                `2️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
+                `**Available channels:**\n${channelsList}\n\n` +
+                `3️⃣ **Frequency:** How often should check-ins occur?\n` +
+                `   • Weekdays\n` +
+                `   • Daily\n` +
+                `   • Weekly\n` +
+                `   • Bi-weekly\n` +
+                `   • Monthly\n` +
+                `   • Custom\n\n` +
+                `4️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC)` +
+                `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
+              source: message.source,
+            },
+            []
+          );
+
+          logger.info('Sent check-in schedule configuration message with channel list');
+        }
+        return true;
+      }
+
+      // Continue with parsing check-in details
+      logger.info('User is providing check-in configuration, proceeding to parse');
+
       let checkInConfig: any;
 
       try {
@@ -345,28 +495,6 @@ export const recordCheckInAction: Action = {
 
       // TODO : after things are parsed now store the check in form for group
       // TODO : store the check in storage
-
-      // Check if report channel config exists for this server
-      logger.info('Checking for existing report channel configuration');
-      const roomId = createUniqueUuid(runtime, 'report-channel-config');
-      logger.info('Generated roomId:', roomId);
-
-      // Add table name to getMemories call
-      const memories = await runtime.getMemories({
-        roomId: roomId as UUID,
-        tableName: 'messages',
-      });
-      logger.info('Retrieved memories:', JSON.stringify(memories, null, 2));
-      logger.debug('Raw memories object:', memories);
-
-      logger.info('Looking for existing config with serverId:', serverId);
-      const existingConfig = memories.find((memory) => {
-        logger.info('Checking memory:', memory);
-        const isReportConfig = memory.content.type === 'report-channel-config';
-
-        return isReportConfig;
-      });
-      logger.info('Found existing config:', existingConfig);
 
       if (!existingConfig) {
         logger.info('No existing report channel config found, creating new one');
@@ -508,61 +636,76 @@ export const recordCheckInAction: Action = {
   examples: [
     [
       {
-        name: 'admin',
+        name: '{{name1}}',
         content: {
-          text: 'Check-in Type: Daily Standup\nChannel for Check-ins: testing4\nFrequency: Daily\nTime: 12 PM\n\nRecord Check-in details',
+          text: 'Can you help me set up check-ins for my team?',
         },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
-          text: "I'll help you set up check-in schedules for your team",
-          actions: ['recordCheckInAction'],
+          text: "I'll help you set up check-in schedules for your team members",
+          actions: ['RECORD_CHECK_IN'],
         },
       },
     ],
     [
       {
-        name: 'admin',
+        name: '{{name1}}',
         content: {
           text: 'Check-in Type: Daily Standup\nChannel for Check-ins: standup-channel\nFrequency: Daily\nTime: 9 AM\n\nRecord Check-in details',
         },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
           text: "I'll set up the daily standup check-in schedule as requested",
-          actions: ['recordCheckInAction'],
+          actions: ['RECORD_CHECK_IN'],
         },
       },
     ],
     [
       {
-        name: 'admin',
+        name: '{{name1}}',
         content: {
-          text: 'Check-in Type: Daily Standup\nChannel for Check-ins: team-chat\nFrequency: Daily\nTime: 3 PM\n\nRecord Check-in details',
+          text: 'Check-in Type: Mental Health Check-in\nChannel for Check-ins: team-channel\nFrequency: Weekly\nTime: 2 PM\n\nRecord Check-in details',
         },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
-          text: "I'll configure the daily standup check-ins for your team at 3 PM",
-          actions: ['recordCheckInAction'],
+          text: "I'll configure the weekly mental health check-ins for your team",
+          actions: ['RECORD_CHECK_IN'],
         },
       },
     ],
     [
       {
-        name: 'admin',
+        name: '{{name1}}',
         content: {
-          text: 'Record Check-in details',
+          text: 'Create a sprint check-in for my team that runs every Monday at 10 AM',
         },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
-          text: "I'll configure the daily standup check-ins for your team at 3 PM",
-          actions: ['recordCheckInAction'],
+          text: "I'll help you set up a sprint check-in schedule. Let me guide you through the process.",
+          actions: ['RECORD_CHECK_IN'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
+        content: {
+          text: 'How do I create a check-in for my team?',
+        },
+      },
+      {
+        name: '{{botName}}',
+        content: {
+          text: "I'll walk you through setting up team check-ins step by step",
+          actions: ['RECORD_CHECK_IN'],
         },
       },
     ],

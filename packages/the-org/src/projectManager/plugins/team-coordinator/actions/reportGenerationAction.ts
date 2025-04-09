@@ -61,6 +61,9 @@ export async function generateTeamReport(
     // Group updates by team member
     const updatesByMember: Record<string, TeamMemberUpdate[]> = {};
     for (const update of updates) {
+      logger.info(
+        `Processing update for team member: ${update.teamMemberName || 'Unknown'} (${update.teamMemberId})`
+      );
       if (!updatesByMember[update.teamMemberId]) {
         updatesByMember[update.teamMemberId] = [];
       }
@@ -68,8 +71,10 @@ export async function generateTeamReport(
     }
 
     // Generate report for each team member
-    for (const [memberId, memberUpdates] of Object.entries(updatesByMember)) {
-      report += `👤 **Team Member ID: ${memberId}**\n\n`;
+    for (const [teamMemberId, memberUpdates] of Object.entries(updatesByMember)) {
+      const teamMemberName = memberUpdates[0]?.teamMemberName || 'Unknown';
+      logger.info(`Generating report section for: ${teamMemberName} (${teamMemberId})`);
+      report += `👤 **${teamMemberName}** (ID: ${teamMemberId})\n\n`;
 
       // Create prompt for analysis
       const prompt = `Analyze these team member updates and provide a detailed productivity report highlighting:
@@ -82,7 +87,7 @@ export async function generateTeamReport(
 
       Updates data: ${JSON.stringify(memberUpdates, null, 2)}`;
 
-      logger.info('Generating productivity analysis for team member:', memberId);
+      logger.info('Generating productivity analysis for team member:', teamMemberName);
 
       try {
         const analysis = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -129,9 +134,15 @@ export async function generateTeamReport(
 }
 
 export const generateReport: Action = {
-  name: 'generateReport',
-  description: 'Generates a comprehensive report',
-  similes: ['createReport', 'teamReport', 'getTeamReport', 'showTeamReport'],
+  name: 'GENERATE_REPORT',
+  description: 'Generates a comprehensive report of team member updates and productivity analysis',
+  similes: [
+    'CREATE_REPORT',
+    'TEAM_REPORT',
+    'GET_TEAM_REPORT',
+    'SHOW_TEAM_REPORT',
+    'PRODUCE_TEAM_ANALYSIS',
+  ],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     logger.info('Validating generateReport action');
     return true;
@@ -251,29 +262,29 @@ export const generateReport: Action = {
     }
   },
   examples: [
-    // [
-    //   {
-    //     name: 'owner',
-    //     content: { text: 'Generate report' },
-    //   },
-    //   {
-    //     name: 'jimmy',
-    //     content: {
-    //       text: "I'll generate a daily standup report for you",
-    //       actions: ['generateReport'],
-    //     },
-    //   },
-    // ],
     [
       {
-        name: 'owner',
+        name: '{{name1}}',
+        content: { text: 'Generate report' },
+      },
+      {
+        name: '{{botName}}',
+        content: {
+          text: "I'll generate a daily standup report for you",
+          actions: ['GENERATE_REPORT'],
+        },
+      },
+    ],
+    [
+      {
+        name: '{{name1}}',
         content: { text: 'generate a report' },
       },
       {
-        name: 'jimmy',
+        name: '{{botName}}',
         content: {
           text: "I'll create a sprint check-in report",
-          actions: ['generateReport'],
+          actions: ['GENERATE_REPORT'],
         },
       },
     ],
