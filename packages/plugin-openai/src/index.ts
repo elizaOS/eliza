@@ -17,7 +17,8 @@ import {
 } from '@elizaos/core';
 import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
-import { FormData as NodeFormData, File as NodeFile } from 'formdata-node';
+import FormData from 'form-data';
+import fetch from 'node-fetch';
 
 /**
  * Helper function to get settings with fallback to process.env
@@ -512,8 +513,11 @@ export const openaiPlugin: Plugin = {
       logger.log('audioBuffer', audioBuffer);
       const baseURL = getBaseURL(runtime);
 
-      const formData = new NodeFormData();
-      formData.append('file', new NodeFile([audioBuffer], 'recording.mp3', { type: 'audio/mp3' }));
+      const formData = new FormData();
+      formData.append('file', audioBuffer, {
+        filename: 'recording.mp3',
+        contentType: 'audio/mp3',
+      });
       formData.append('model', 'whisper-1');
 
       const response = await fetch(`${baseURL}/audio/transcriptions`, {
