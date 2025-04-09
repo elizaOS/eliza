@@ -23,10 +23,7 @@
   },
   "files": [
     "dist",
-    "scripts",
-    "package.json",
-    "LICENSE",
-    "tsup.config.ts"
+    "drizzle"
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",

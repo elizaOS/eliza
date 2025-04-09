@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { BaseDrizzleAdapter } from '../src/base';
-import { logger } from '@elizaos/core';
+import { logger, type UUID } from '@elizaos/core';
 import {
   agentTable,
   entityTable,
@@ -35,7 +35,10 @@ vi.mock('@elizaos/core', () => ({
     constructor() {}
     async init() {}
     async close() {}
-    async deleteAgent() {}
+    async deleteAgent(agentId: UUID) {
+      // Default implementation that will be replaced in tests
+      return true;
+    }
   },
 }));
 
@@ -45,7 +48,7 @@ class TestDrizzleAdapter extends BaseDrizzleAdapter<DrizzleDatabase> {
 
   constructor() {
     // Use a fixed UUID that matches the required format
-    super('12345678-1234-1234-1234-123456789012');
+    super('12345678-1234-1234-1234-123456789012' as UUID);
     // Mock the database methods
     this.db = {
       transaction: vi.fn().mockImplementation(async (callback) => {
@@ -79,59 +82,14 @@ class TestDrizzleAdapter extends BaseDrizzleAdapter<DrizzleDatabase> {
     // No-op for tests
   }
 
-  // Implement deleteAgent method
-  async deleteAgent(agentId: string): Promise<boolean> {
-    return this.withDatabase(async () => {
-      await this.db.transaction(async (tx) => {
-        // First, delete related data
-        // Delete logs associated with the agent's entities
-        const agentEntities = await tx
-          .select({ id: entityTable.id })
-          .from(entityTable)
-          .where(eq(entityTable.agentId, agentId));
-
-        const entityIds = agentEntities.map((e) => e.id);
-        if (entityIds.length > 0) {
-          await tx.delete(logTable).where(inArray(logTable.entityId, entityIds));
-        }
-
-        // Delete memories associated with the agent's entities
-        if (entityIds.length > 0) {
-          await tx.delete(memoryTable).where(inArray(memoryTable.entityId, entityIds));
-        }
-
-        // Delete components associated with the agent's entities
-        if (entityIds.length > 0) {
-          await tx.delete(componentTable).where(inArray(componentTable.entityId, entityIds));
-        }
-
-        // Delete relationships where agent's entities are involved
-        if (entityIds.length > 0) {
-          await tx
-            .delete(relationshipTable)
-            .where(inArray(relationshipTable.sourceEntityId, entityIds));
-          await tx
-            .delete(relationshipTable)
-            .where(inArray(relationshipTable.targetEntityId, entityIds));
-        }
-
-        // Delete cache entries associated with the agent
-        await tx.delete(cacheTable).where(eq(cacheTable.agentId, agentId));
-
-        // Delete the agent's entities
-        await tx.delete(entityTable).where(eq(entityTable.agentId, agentId));
-
-        // Finally, delete the agent itself
-        await tx.delete(agentTable).where(eq(agentTable.id, agentId));
-      });
-      return true;
-    });
-  }
+  // DeleteAgent method is inherited from BaseDrizzleAdapter
+  // and doesn't need to be reimplemented here
 }
 
 describe('deleteAgent', () => {
   let adapter: TestDrizzleAdapter;
-  const testAgentId = uuidv4();
+  const testAgentId = uuidv4() as UUID;
+  const mockEntityIds = [uuidv4() as UUID, uuidv4() as UUID];
 
   beforeEach(() => {
     adapter = new TestDrizzleAdapter();
@@ -143,16 +101,28 @@ describe('deleteAgent', () => {
   });
 
   it('should successfully delete an agent with no related data', async () => {
-    // Mock the database to return empty arrays for all queries
+    // Create a more sophisticated mock for select
+    const mockSelect = vi.fn().mockImplementation(() => {
+      return {
+        from: vi.fn().mockImplementation(() => {
+          return {
+            where: vi.fn().mockResolvedValue([]),
+          };
+        }),
+      };
+    });
+
+    // Fix the mockDelete to support where method correctly
+    const whereImpl = vi.fn().mockReturnThis();
+    const mockDelete = vi.fn().mockImplementation(() => {
+      return {
+        where: whereImpl,
+      };
+    });
+
     const mockTx = {
-      select: vi.fn().mockImplementation(() => ({
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([]),
-      })),
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
+      select: mockSelect,
+      delete: mockDelete,
     };
 
     (adapter.db.transaction as any).mockImplementation(async (callback) => {
@@ -162,23 +132,37 @@ describe('deleteAgent', () => {
     const result = await adapter.deleteAgent(testAgentId);
 
     // Verify that the method attempted to delete the agent
-    expect(mockTx.delete).toHaveBeenCalledWith(agentTable);
+    expect(mockDelete).toHaveBeenCalledWith(agentTable);
+    expect(whereImpl).toHaveBeenCalled();
     expect(result).toBe(true);
   });
 
   it('should handle foreign key constraint violations gracefully', async () => {
-    // Mock the database to return empty arrays for all queries
+    // Create a more sophisticated mock for select
+    const mockSelect = vi.fn().mockImplementation(() => {
+      return {
+        from: vi.fn().mockImplementation(() => {
+          return {
+            where: vi.fn().mockResolvedValue([]),
+          };
+        }),
+      };
+    });
+
+    // Mock to throw an error on where
+    const whereImpl = vi.fn().mockImplementation(() => {
+      throw new Error('foreign key constraint violation');
+    });
+
+    const mockDelete = vi.fn().mockImplementation(() => {
+      return {
+        where: whereImpl,
+      };
+    });
+
     const mockTx = {
-      select: vi.fn().mockImplementation(() => ({
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue([]),
-      })),
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockImplementation(() => {
-        throw new Error('foreign key constraint violation');
-      }),
-      limit: vi.fn().mockReturnThis(),
+      select: mockSelect,
+      delete: mockDelete,
     };
 
     (adapter.db.transaction as any).mockImplementation(async (callback) => {
@@ -206,18 +190,61 @@ describe('deleteAgent', () => {
   });
 
   it('should delete an agent and all related data', async () => {
-    // Mock the database to return some entities
-    const mockEntities = [{ id: uuidv4() }, { id: uuidv4() }];
+    // Create mock entities result
+    const mockEntitiesResult = mockEntityIds.map((id) => ({ entityId: id }));
+    const mockRoomIds = [uuidv4() as UUID];
+    const mockMemoryIds = [uuidv4() as UUID];
+    const mockWorldIds = [uuidv4() as UUID];
+
+    // Track which tables have been deleted to verify order
+    const deletedTables: any[] = [];
+
+    // Create a more sophisticated mock for select
+    const mockSelect = vi.fn().mockImplementation((fields) => {
+      return {
+        from: vi.fn().mockImplementation((table) => {
+          return {
+            where: vi.fn().mockImplementation(() => {
+              // Return entity IDs only for entity table queries
+              if (table === entityTable) {
+                return Promise.resolve(mockEntitiesResult);
+              }
+              // For memory table queries, return some mock memory IDs
+              if (table === memoryTable) {
+                // This will ensure that we have a non-empty array of memory IDs,
+                // which should cause the memoryTable deletion to be called
+                return Promise.resolve(mockMemoryIds.map((id) => ({ id })));
+              }
+              // Return room IDs for room queries
+              if (table === roomTable) {
+                return Promise.resolve(mockRoomIds.map((id) => ({ roomId: id })));
+              }
+              // Return world IDs for world queries
+              if (table === worldTable) {
+                return Promise.resolve(mockWorldIds.map((id) => ({ id })));
+              }
+              return Promise.resolve([]);
+            }),
+          };
+        }),
+      };
+    });
+
+    // Fix the mockDelete to support where method correctly
+    const whereImpl = vi.fn().mockImplementation(() => {
+      return Promise.resolve();
+    });
+
+    const mockDelete = vi.fn().mockImplementation((table: any) => {
+      deletedTables.push(table);
+      return {
+        where: whereImpl,
+      };
+    });
 
     const mockTx = {
-      select: vi.fn().mockImplementation(() => ({
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockResolvedValue(mockEntities),
-      })),
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockReturnThis(),
-      delete: vi.fn().mockReturnThis(),
-      limit: vi.fn().mockReturnThis(),
+      select: mockSelect,
+      delete: mockDelete,
     };
 
     (adapter.db.transaction as any).mockImplementation(async (callback) => {
@@ -226,15 +253,21 @@ describe('deleteAgent', () => {
 
     const result = await adapter.deleteAgent(testAgentId);
 
-    // Verify that the method attempted to delete all related data
-    expect(mockTx.select).toHaveBeenCalledWith({ id: entityTable.id });
-    expect(mockTx.delete).toHaveBeenCalledWith(logTable);
-    expect(mockTx.delete).toHaveBeenCalledWith(memoryTable);
-    expect(mockTx.delete).toHaveBeenCalledWith(componentTable);
-    expect(mockTx.delete).toHaveBeenCalledWith(relationshipTable);
-    expect(mockTx.delete).toHaveBeenCalledWith(cacheTable);
-    expect(mockTx.delete).toHaveBeenCalledWith(entityTable);
-    expect(mockTx.delete).toHaveBeenCalledWith(agentTable);
+    // Verify the deletion of related data was called in the correct order
+    expect(deletedTables).toContain(logTable);
+    expect(deletedTables).toContain(embeddingTable);
+    expect(deletedTables).toContain(memoryTable);
+    expect(deletedTables).toContain(componentTable);
+    expect(deletedTables).toContain(participantTable);
+    expect(deletedTables).toContain(roomTable);
+    expect(deletedTables).toContain(cacheTable);
+    expect(deletedTables).toContain(relationshipTable);
+    expect(deletedTables).toContain(entityTable);
+    expect(deletedTables).toContain(worldTable);
+    expect(deletedTables).toContain(agentTable);
+
+    // Verify the agent table was deleted last
+    expect(deletedTables.indexOf(agentTable)).toBeGreaterThan(deletedTables.indexOf(entityTable));
     expect(result).toBe(true);
   });
 });
