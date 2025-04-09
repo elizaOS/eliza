@@ -92,19 +92,58 @@ export function executeInstallation(
   const packageManager = getPackageManager();
 
   // Get the appropriate install command
-  const installCommand = getInstallCommand(packageManager, false); // hardcoded to install locally for now
+  const installCommand = getInstallCommand(packageManager, isGlobal);
 
-  // Format the package name with version if provided
-  const packageWithVersion = versionOrTag
-    ? `${packageName}${versionOrTag.startsWith('@') || versionOrTag.startsWith('#') ? versionOrTag : `@${versionOrTag}`}`
-    : packageName;
+  // Check if the package name looks like a GitHub repo URL
+  const isGitHubUrl = packageName.includes('/') && !packageName.startsWith('@');
 
-  logger.debug(
-    `Installing ${packageWithVersion} using ${packageManager} in ${directory}${isGlobal ? ' globally' : ''}`
-  );
+  // If it's a scoped package or potentially an npm package, try npm registry first
+  if (!isGitHubUrl || packageName.startsWith('@')) {
+    // Try to get just the package name without GitHub org prefix if it exists
+    const npmPackageName = packageName.startsWith('@')
+      ? packageName // Already a scoped package
+      : packageName.includes('/')
+        ? `@elizaos/${packageName.split('/').pop()}` // Convert github org/repo to @org/name
+        : `@elizaos/${packageName}`; // Add @elizaos scope to bare names
 
-  // Execute the installation
-  return execa(packageManager, [...installCommand, packageWithVersion], {
+    // Format the package name with version if provided
+    const packageWithVersion = versionOrTag
+      ? `${npmPackageName}${versionOrTag.startsWith('@') || versionOrTag.startsWith('#') ? versionOrTag : `@${versionOrTag}`}`
+      : npmPackageName;
+
+    logger.debug(
+      `Installing ${packageWithVersion} from npm registry using ${packageManager} in ${directory}${isGlobal ? ' globally' : ''}`
+    );
+
+    // Try to install from npm first (won't require GitHub auth)
+    try {
+      return execa(packageManager, [...installCommand, packageWithVersion], {
+        cwd: directory,
+        stdio: 'inherit',
+      });
+    } catch (error) {
+      logger.warn(`Failed to install from npm registry: ${npmPackageName}`);
+    }
+  }
+
+  // For GitHub URLs, ONLY use the auth-free GitHub shorthand syntax
+  if (packageName.includes('/') && !packageName.startsWith('@')) {
+    // Always use the npm GitHub shorthand syntax which doesn't require auth
+    const githubPackage = `${packageManager === 'npm' ? 'github:' : ''}${packageName}${versionOrTag || ''}`;
+
+    logger.debug(`Using GitHub shorthand syntax: ${githubPackage} (no auth required)`);
+
+    // Execute the installation with GitHub shorthand
+    return execa(packageManager, [...installCommand, githubPackage], {
+      cwd: directory,
+      stdio: 'inherit',
+    });
+  }
+
+  // If we got here and it's not a GitHub URL or npm package, just try the direct name as last resort
+  // But this should never trigger auth either
+  logger.debug(`Using direct package name as last resort: ${packageName}`);
+  return execa(packageManager, [...installCommand, packageName + (versionOrTag || '')], {
     cwd: directory,
     stdio: 'inherit',
   });

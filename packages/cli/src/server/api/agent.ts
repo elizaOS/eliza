@@ -388,8 +388,11 @@ export function agentRouter(
 
   // Delete agent
   router.delete('/:agentId', async (req, res) => {
+    logger.debug(`[AGENT DELETE] Received request to delete agent with ID: ${req.params.agentId}`);
+
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
+      logger.error(`[AGENT DELETE] Invalid agent ID format: ${req.params.agentId}`);
       res.status(400).json({
         success: false,
         error: {
@@ -400,10 +403,13 @@ export function agentRouter(
       return;
     }
 
+    logger.debug(`[AGENT DELETE] Validated agent ID: ${agentId}, proceeding with deletion`);
+
+    // First, check if agent exists
     try {
-      // First check if agent exists
       const agent = await db.getAgent(agentId);
       if (!agent) {
+        logger.warn(`[AGENT DELETE] Agent not found: ${agentId}`);
         res.status(404).json({
           success: false,
           error: {
@@ -414,26 +420,112 @@ export function agentRouter(
         return;
       }
 
-      // If agent is running, stop it first
-      const runtime = agents.get(agentId);
-      if (runtime) {
-        logger.debug(`[AGENT DELETE] Stopping agent runtime: ${agentId}`);
-        server?.unregisterAgent(agentId);
-        logger.debug(`[AGENT DELETE] Stopping agent runtime complete: ${agentId}`);
+      logger.debug(`[AGENT DELETE] Agent found: ${agent.name} (${agentId})`);
+    } catch (checkError) {
+      logger.error(`[AGENT DELETE] Error checking if agent exists: ${agentId}`, checkError);
+      // Continue with deletion attempt anyway
+    }
+
+    // Set a timeout to send a response if the operation takes too long
+    const timeoutId = setTimeout(() => {
+      logger.warn(`[AGENT DELETE] Operation taking longer than expected for agent: ${agentId}`);
+      res.status(202).json({
+        success: true,
+        partial: true,
+        message:
+          'Agent deletion initiated but taking longer than expected. The operation will continue in the background.',
+      });
+    }, 10000);
+
+    const MAX_RETRIES = 2;
+    let retryCount = 0;
+    let lastError = null;
+
+    // Retry loop for database operations
+    while (retryCount <= MAX_RETRIES) {
+      try {
+        // First, if the agent is running, stop it immediately to prevent ongoing operations
+        const runtime = agents.get(agentId);
+        if (runtime) {
+          logger.debug(`[AGENT DELETE] Agent ${agentId} is running, unregistering from server`);
+          try {
+            server?.unregisterAgent(agentId);
+            logger.debug(`[AGENT DELETE] Agent ${agentId} unregistered successfully`);
+          } catch (stopError) {
+            logger.error(`[AGENT DELETE] Error stopping agent ${agentId}:`, stopError);
+            // Continue with deletion even if stopping fails
+          }
+        } else {
+          logger.debug(`[AGENT DELETE] Agent ${agentId} was not running, no need to unregister`);
+        }
+
+        logger.debug(`[AGENT DELETE] Calling database deleteAgent method for agent: ${agentId}`);
+
+        // Perform the deletion operation
+        const deleteResult = await db.deleteAgent(agentId);
+        logger.debug(`[AGENT DELETE] Database deleteAgent result: ${JSON.stringify(deleteResult)}`);
+
+        // Clear the response timeout since we completed before it triggered
+        clearTimeout(timeoutId);
+
+        logger.success(`[AGENT DELETE] Successfully deleted agent: ${agentId}`);
+
+        // Only send response if one hasn't been sent already
+        if (!res.headersSent) {
+          res.status(204).send();
+        }
+
+        // Successfully deleted, break out of retry loop
+        return;
+      } catch (error) {
+        lastError = error;
+        retryCount++;
+
+        logger.error(
+          `[AGENT DELETE] Error deleting agent ${agentId} (attempt ${retryCount}/${MAX_RETRIES + 1}):`,
+          error
+        );
+
+        // If we've reached max retries, break out of the loop
+        if (retryCount > MAX_RETRIES) {
+          break;
+        }
+
+        // Wait a bit before retrying
+        const delay = 1000 * Math.pow(2, retryCount - 1); // Exponential backoff
+        logger.debug(`[AGENT DELETE] Waiting ${delay}ms before retry ${retryCount}`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    // Clear the response timeout
+    clearTimeout(timeoutId);
+
+    // If we reach here, all retries failed
+    // Check if headers have already been sent (from the timeout handler)
+    if (!res.headersSent) {
+      let statusCode = 500;
+      let errorMessage = 'Error deleting agent';
+
+      // Special handling for different error types
+      if (lastError instanceof Error) {
+        const message = lastError.message;
+
+        if (message.includes('foreign key constraint')) {
+          errorMessage = 'Cannot delete agent because it has active references in the system';
+          statusCode = 409; // Conflict
+        } else if (message.includes('timed out')) {
+          errorMessage = 'Agent deletion operation timed out';
+          statusCode = 408; // Request Timeout
+        }
       }
 
-      // Now delete the agent from the database
-      await db.deleteAgent(agentId);
-
-      res.status(204).send();
-    } catch (error) {
-      logger.error('[AGENT DELETE] Error deleting agent:', error);
-      res.status(500).json({
+      res.status(statusCode).json({
         success: false,
         error: {
           code: 'DELETE_ERROR',
-          message: 'Error deleting agent',
-          details: error.message,
+          message: errorMessage,
+          details: lastError instanceof Error ? lastError.message : String(lastError),
         },
       });
     }
