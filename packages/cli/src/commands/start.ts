@@ -78,7 +78,7 @@ export async function promptForProjectPlugins(
     try {
       await promptForEnvVars(pluginName);
     } catch (error) {
-      logger.warn(`Failed to prompt for ${pluginName} environment variables: ${error}`);
+      console.warn(`Failed to prompt for ${pluginName} environment variables: ${error}`);
     }
   }
 }
@@ -132,7 +132,7 @@ export async function startAgent(
 
   // for each plugin, check if it installed, and install if it is not
   for (const plugin of encryptedChar.plugins) {
-    logger.debug('Checking if plugin is installed: ', plugin);
+    console.debug('Checking if plugin is installed: ', plugin);
     let pluginModule: any;
 
     // Try to load the plugin using multiple strategies
@@ -142,33 +142,33 @@ export async function startAgent(
 
       if (!pluginModule) {
         // If loading failed, try installing and then loading again
-        logger.info(`Plugin ${plugin} not available, installing into ${process.cwd()}...`);
+        console.info(`Plugin ${plugin} not available, installing into ${process.cwd()}...`);
         try {
           await installPlugin(plugin, process.cwd(), version);
           // Try loading again after installation using the centralized loader
           pluginModule = await loadPluginModule(plugin);
         } catch (installError) {
-          logger.error(`Failed to install plugin ${plugin}: ${installError}`);
+          console.error(`Failed to install plugin ${plugin}: ${installError}`);
           // Continue to next plugin if installation fails
           continue;
         }
 
         if (!pluginModule) {
-          logger.error(`Failed to load plugin ${plugin} even after installation.`);
+          console.error(`Failed to load plugin ${plugin} even after installation.`);
           // Continue to next plugin if loading fails post-installation
           continue;
         }
       }
     } catch (error) {
       // Catch any unexpected error during the combined load/install/load process
-      logger.error(`An unexpected error occurred while processing plugin ${plugin}: ${error}`);
+      console.error(`An unexpected error occurred while processing plugin ${plugin}: ${error}`);
       continue;
     }
 
     if (!pluginModule) {
       // This check might be redundant now, but kept for safety.
       // Should theoretically not be reached if the logic above is correct.
-      logger.error(`Failed to process plugin ${plugin} (module is null/undefined unexpectedly)`);
+      console.error(`Failed to process plugin ${plugin} (module is null/undefined unexpectedly)`);
       continue;
     }
 
@@ -179,15 +179,15 @@ export async function startAgent(
       .replace(/-./g, (x) => x[1].toUpperCase())}Plugin`; // Assumes plugin function is camelCased with Plugin suffix
 
     // Add detailed logging to debug plugin loading
-    logger.debug(`Looking for plugin export: ${functionName}`);
-    logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
-    logger.debug(`Has default export: ${!!pluginModule.default}`);
+    console.debug(`Looking for plugin export: ${functionName}`);
+    console.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
+    console.debug(`Has default export: ${!!pluginModule.default}`);
 
     // Check if the plugin is available as a default export or named export
     const importedPlugin = pluginModule.default || pluginModule[functionName];
 
     if (importedPlugin) {
-      logger.debug(`Found plugin: ${importedPlugin.name}`);
+      console.debug(`Found plugin: ${importedPlugin.name}`);
       characterPlugins.push(importedPlugin);
     } else {
       // Try more aggressively to find a suitable plugin export
@@ -202,17 +202,17 @@ export async function startAgent(
           potentialPlugin.name &&
           typeof potentialPlugin.init === 'function'
         ) {
-          logger.debug(`Found alternative plugin export under key: ${key}`);
+          console.debug(`Found alternative plugin export under key: ${key}`);
           foundPlugin = potentialPlugin;
           break;
         }
       }
 
       if (foundPlugin) {
-        logger.debug(`Using alternative plugin: ${foundPlugin.name}`);
+        console.debug(`Using alternative plugin: ${foundPlugin.name}`);
         characterPlugins.push(foundPlugin);
       } else {
-        logger.warn(
+        console.warn(
           `Could not find plugin export in ${plugin}. Available exports: ${Object.keys(pluginModule).join(', ')}`
         );
       }
@@ -229,7 +229,7 @@ export async function startAgent(
       }
     } catch (err) {
       // Silently fail if require is not available (e.g., in browser environments)
-      logger.debug('dotenv module not available');
+      console.debug('dotenv module not available');
     }
 
     function findNearestEnvFile(startDir = process.cwd()) {
@@ -260,11 +260,11 @@ export async function startAgent(
       if (dotenv) {
         const result = dotenv.config(envPath ? { path: envPath } : {});
         if (!result.error && envPath) {
-          logger.log(`Loaded .env file from: ${envPath}`);
+          console.log(`Loaded .env file from: ${envPath}`);
         }
       }
     } catch (err) {
-      logger.warn('Failed to load .env file:', err);
+      console.warn('Failed to load .env file:', err);
     }
 
     // Parse namespaced settings
@@ -319,7 +319,7 @@ export async function startAgent(
   server.registerAgent(runtime);
 
   // report to console
-  logger.debug(`Started ${runtime.character.name} as ${runtime.agentId}`);
+  console.debug(`Started ${runtime.character.name} as ${runtime.agentId}`);
 
   return runtime;
 }
@@ -366,9 +366,9 @@ const startAgents = async (options: {
   if (shouldConfigure) {
     // First-time setup or reconfiguration requested
     if (existingConfig.isDefault) {
-      logger.info("First time setup. Let's configure your Eliza agent.");
+      console.info("First time setup. Let's configure your Eliza agent.");
     } else {
-      logger.info('Reconfiguration requested.');
+      console.info('Reconfiguration requested.');
     }
 
     // Save the configuration AFTER user has made selections
@@ -385,7 +385,7 @@ const startAgents = async (options: {
 
   // Set up server properties
   server.startAgent = async (character) => {
-    logger.info(`Starting agent for character ${character.name}`);
+    console.info(`Starting agent for character ${character.name}`);
     return startAgent(character, server);
   };
   server.stopAgent = (runtime: IAgentRuntime) => {
@@ -410,23 +410,23 @@ const startAgents = async (options: {
   try {
     // Check if we're in a project with a package.json
     const packageJsonPath = path.join(process.cwd(), 'package.json');
-    logger.debug(`Checking for package.json at: ${packageJsonPath}`);
+    console.debug(`Checking for package.json at: ${packageJsonPath}`);
 
     if (fs.existsSync(packageJsonPath)) {
       // Read and parse package.json to check if it's a project or plugin
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-      logger.debug(`Found package.json with name: ${packageJson.name || 'unnamed'}`);
+      console.debug(`Found package.json with name: ${packageJson.name || 'unnamed'}`);
 
       // Check if this is a plugin (package.json contains 'eliza' section with type='plugin')
       if (packageJson.eliza?.type && packageJson.eliza.type === 'plugin') {
         isPlugin = true;
-        logger.info('Found Eliza plugin in current directory');
+        console.info('Found Eliza plugin in current directory');
       }
 
       // Check if this is a project (package.json contains 'eliza' section with type='project')
       if (packageJson.eliza?.type && packageJson.eliza.type === 'project') {
         isProject = true;
-        logger.info('Found Eliza project in current directory');
+        console.info('Found Eliza project in current directory');
       }
 
       // Also check for project indicators like a Project type export
@@ -434,7 +434,7 @@ const startAgents = async (options: {
       if (!isProject && !isPlugin) {
         if (packageJson.description?.toLowerCase().includes('project')) {
           isProject = true;
-          logger.info('Found project by description in package.json');
+          console.info('Found project by description in package.json');
         }
       }
 
@@ -458,10 +458,12 @@ const startAgents = async (options: {
             ) {
               isPlugin = true;
               pluginModule = importedModule.default;
-              logger.info(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
+              console.info(`Loaded plugin: ${pluginModule?.name || 'unnamed'}`);
 
               if (!pluginModule) {
-                logger.warn('Plugin loaded but no default export found, looking for other exports');
+                console.warn(
+                  'Plugin loaded but no default export found, looking for other exports'
+                );
 
                 // Try to find any exported plugin object
                 for (const key in importedModule) {
@@ -472,7 +474,7 @@ const startAgents = async (options: {
                     typeof importedModule[key].init === 'function'
                   ) {
                     pluginModule = importedModule[key];
-                    logger.info(`Found plugin export under key: ${key}`);
+                    console.info(`Found plugin export under key: ${key}`);
                     break;
                   }
                 }
@@ -487,24 +489,24 @@ const startAgents = async (options: {
             ) {
               isProject = true;
               projectModule = importedModule;
-              logger.debug(
+              console.debug(
                 `Loaded project with ${projectModule.default?.agents?.length || 0} agents`
               );
             }
           } catch (importError) {
-            logger.error(`Error importing module: ${importError}`);
+            console.error(`Error importing module: ${importError}`);
           }
         } else {
-          logger.error(`Main entry point ${mainPath} does not exist`);
+          console.error(`Main entry point ${mainPath} does not exist`);
         }
       }
     }
   } catch (error) {
-    logger.error(`Error checking for project/plugin: ${error}`);
+    console.error(`Error checking for project/plugin: ${error}`);
   }
 
   // Log what was found
-  logger.debug(`Classification results - isProject: ${isProject}, isPlugin: ${isPlugin}`);
+  console.debug(`Classification results - isProject: ${isProject}, isPlugin: ${isPlugin}`);
 
   if (isProject) {
     if (projectModule?.default) {
@@ -514,20 +516,20 @@ const startAgents = async (options: {
         : project.agent
           ? [project.agent]
           : [];
-      logger.debug(`Project contains ${agents.length} agent(s)`);
+      console.debug(`Project contains ${agents.length} agent(s)`);
 
       // Log agent names
       if (agents.length > 0) {
-        logger.debug(`Agents: ${agents.map((a) => a.character?.name || 'unnamed').join(', ')}`);
+        console.debug(`Agents: ${agents.map((a) => a.character?.name || 'unnamed').join(', ')}`);
       }
     } else {
-      logger.warn("Project module doesn't contain a valid default export");
+      console.warn("Project module doesn't contain a valid default export");
     }
   } else if (isPlugin) {
-    logger.debug(`Found plugin: ${pluginModule?.name || 'unnamed'}`);
+    console.debug(`Found plugin: ${pluginModule?.name || 'unnamed'}`);
   } else {
     // Change the log message to be clearer about what we're doing
-    logger.debug(
+    console.debug(
       'Running in standalone mode - using default Eliza character from ../characters/eliza'
     );
   }
@@ -569,19 +571,19 @@ const startAgents = async (options: {
           : [];
 
       if (agents.length > 0) {
-        logger.debug(`Found ${agents.length} agents in project`);
+        console.debug(`Found ${agents.length} agents in project`);
 
         // Prompt for environment variables for all plugins in the project
         try {
           await promptForProjectPlugins(project);
         } catch (error) {
-          logger.warn(`Failed to prompt for project environment variables: ${error}`);
+          console.warn(`Failed to prompt for project environment variables: ${error}`);
         }
 
         const startedAgents = [];
         for (const agent of agents) {
           try {
-            logger.debug(`Starting agent: ${agent.character.name}`);
+            console.debug(`Starting agent: ${agent.character.name}`);
             const runtime = await startAgent(
               agent.character,
               server,
@@ -592,18 +594,18 @@ const startAgents = async (options: {
             // wait .5 seconds
             await new Promise((resolve) => setTimeout(resolve, 500));
           } catch (agentError) {
-            logger.error(`Error starting agent ${agent.character.name}: ${agentError}`);
+            console.error(`Error starting agent ${agent.character.name}: ${agentError}`);
           }
         }
 
         if (startedAgents.length === 0) {
-          logger.info('No project agents started - falling back to default Eliza character');
+          console.info('No project agents started - falling back to default Eliza character');
           await startAgent(defaultCharacter, server);
         } else {
-          logger.debug(`Successfully started ${startedAgents.length} agents from project`);
+          console.debug(`Successfully started ${startedAgents.length} agents from project`);
         }
       } else {
-        logger.debug(
+        console.debug(
           'Project found but no agents defined, falling back to default Eliza character'
         );
         await startAgent(defaultCharacter, server);
@@ -614,12 +616,12 @@ const startAgents = async (options: {
         try {
           await promptForEnvVars(pluginModule.name);
         } catch (error) {
-          logger.warn(`Failed to prompt for plugin environment variables: ${error}`);
+          console.warn(`Failed to prompt for plugin environment variables: ${error}`);
         }
       }
 
       // Load the default character with all its default plugins, then add the test plugin
-      logger.info(
+      console.info(
         `Starting default Eliza character with plugin: ${pluginModule.name || 'unnamed plugin'}`
       );
 
@@ -630,10 +632,10 @@ const startAgents = async (options: {
       // We're using our test plugin plus all the plugins from the default character
       const pluginsToLoad = [pluginModule];
 
-      logger.debug(
+      console.debug(
         `Using default character with plugins: ${defaultElizaCharacter.plugins.join(', ')}`
       );
-      logger.info(
+      console.info(
         "Plugin test mode: Using default character's plugins plus the plugin being tested"
       );
 
@@ -642,11 +644,11 @@ const startAgents = async (options: {
       await startAgent(defaultElizaCharacter, server, undefined, pluginsToLoad, {
         isPluginTestMode: true,
       });
-      logger.info('Character started with plugin successfully');
+      console.info('Character started with plugin successfully');
     } else {
       // When not in a project or plugin, load the default character with all plugins
       const { character: defaultElizaCharacter } = await import('../characters/eliza');
-      logger.info('Using default Eliza character with all plugins');
+      console.info('Using default Eliza character with all plugins');
       await startAgent(defaultElizaCharacter, server);
     }
 
@@ -695,18 +697,18 @@ export const start = new Command()
           if (characterPath.includes(',')) {
             const characterPaths = characterPath.split(',');
             for (const characterPath of characterPaths) {
-              logger.info(`Loading character from ${characterPath}`);
+              console.info(`Loading character from ${characterPath}`);
               const characterData = await loadCharacterTryPath(characterPath);
               options.characters.push(characterData);
             }
           } else {
             // Single character
-            logger.info(`Loading character from ${characterPath}`);
+            console.info(`Loading character from ${characterPath}`);
             const characterData = await loadCharacterTryPath(characterPath);
             options.characters.push(characterData);
           }
         } catch (error) {
-          logger.error(`Error loading character: ${error}`);
+          console.error(`Error loading character: ${error}`);
           return;
         }
       }

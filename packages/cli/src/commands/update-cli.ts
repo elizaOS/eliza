@@ -37,20 +37,20 @@ async function performCliUpdate(): Promise<boolean> {
 
     if (cleanCurrentVersion === latestVersion) {
       displayBanner();
-      logger.info('ElizaOS CLI is already up to date!');
+      console.info('ElizaOS CLI is already up to date!');
       return true;
     }
 
-    logger.info(`Updating ElizaOS CLI from ${cleanCurrentVersion} to ${latestVersion}...`);
+    console.info(`Updating ElizaOS CLI from ${cleanCurrentVersion} to ${latestVersion}...`);
 
     // Always install globally for CLI updates
     await executeInstallation('@elizaos/cli', versionStream, true);
 
     displayBanner();
-    logger.info('ElizaOS CLI has been successfully updated!');
+    console.info('ElizaOS CLI has been successfully updated!');
     return true;
   } catch (error) {
-    logger.error('Failed to update ElizaOS CLI:', error);
+    console.error('Failed to update ElizaOS CLI:', error);
     return false;
   }
 }
@@ -60,19 +60,19 @@ export const updateCLI = new Command('update-cli')
   .action(async () => {
     // Don't run update-cli when using npx or bunx - doesn't make sense to update a temporary CLI
     if (isRunningViaNpx() || isRunningViaBunx()) {
-      logger.warn('Update command is not available when running via npx or bunx.');
-      logger.info('To install the latest version, run: npm install -g @elizaos/cli');
+      console.warn('Update command is not available when running via npx or bunx.');
+      console.info('To install the latest version, run: npm install -g @elizaos/cli');
       return;
     }
 
     // Only allow updates when installed as a global package
     if (!isGlobalInstallation()) {
-      logger.warn('The update command is only available for globally installed CLI.');
-      logger.info('To update a local installation, use your package manager manually.');
+      console.warn('The update command is only available for globally installed CLI.');
+      console.info('To update a local installation, use your package manager manually.');
       return;
     }
 
-    logger.info('Checking for ElizaOS CLI updates...');
+    console.info('Checking for ElizaOS CLI updates...');
 
     try {
       await performCliUpdate();

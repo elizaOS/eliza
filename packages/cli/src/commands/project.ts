@@ -11,6 +11,7 @@ import { Command } from 'commander';
 import { execa } from 'execa';
 import path from 'path';
 import fs from 'fs';
+import { logHeader } from '@/src/utils/helpers';
 
 export const project = new Command().name('project').description('Manage an ElizaOS project');
 
@@ -45,11 +46,11 @@ project
         .filter((name) => !opts.type || name.includes(opts.type))
         .sort();
 
-      logger.info('\nAvailable plugins:');
+      logHeader('Available plugins');
       for (const plugin of plugins) {
-        logger.info(`  ${plugin}`);
+        console.log(`${plugin}`);
       }
-      logger.info('');
+      console.log('');
     } catch (error) {
       handleError(error);
     }
@@ -115,22 +116,22 @@ project
       const repo = await getPluginRepository(plugin);
 
       if (!repo) {
-        logger.error(`Plugin "${plugin}" not found in registry`);
-        logger.info('\nYou can specify plugins in multiple formats:');
-        logger.info('  - Just the name: ton');
-        logger.info('  - With plugin- prefix: plugin-abc');
-        logger.info('  - With organization: elizaos/plugin-abc');
-        logger.info('  - Full package name: @elizaos-plugins/plugin-abc');
-        logger.info('\nTry listing available plugins with:');
-        logger.info('  npx elizaos project list-plugins');
+        console.error(`Plugin "${plugin}" not found in registry`);
+        console.info('\nYou can specify plugins in multiple formats:');
+        console.info('  - Just the name: ton');
+        console.info('  - With plugin- prefix: plugin-abc');
+        console.info('  - With organization: elizaos/plugin-abc');
+        console.info('  - Full package name: @elizaos-plugins/plugin-abc');
+        console.info('\nTry listing available plugins with:');
+        console.info('  npx elizaos project list-plugins');
         process.exit(1);
       }
 
       // Install from GitHub
-      logger.info(`Installing ${plugin}...`);
+      console.info(`Installing ${plugin}...`);
       await installPlugin(repo, cwd);
 
-      logger.success(`Successfully installed ${plugin}`);
+      console.log(`Successfully installed ${plugin}`);
     } catch (error) {
       handleError(error);
     }
@@ -145,8 +146,8 @@ project
       const packageJsonPath = path.join(cwd, 'package.json');
 
       if (!fs.existsSync(packageJsonPath)) {
-        logger.error('No package.json found in the current directory.');
-        logger.info('Please run this command from the root of an Eliza project.');
+        console.error('No package.json found in the current directory.');
+        console.info('Please run this command from the root of an Eliza project.');
         process.exit(1);
       }
 
@@ -165,18 +166,18 @@ project
       });
 
       if (pluginNames.length === 0) {
-        logger.info('No Eliza plugins found in the project dependencies (package.json).');
+        console.log('No Eliza plugins found in the project dependencies (package.json).');
       } else {
-        logger.info('\nEliza plugins found in project dependencies:');
+        logHeader('Plugins Added:');
         pluginNames.sort().forEach((pluginName) => {
-          logger.info(`  ${pluginName}`);
+          console.log(`${pluginName}`);
         });
-        logger.info('');
+        console.log('');
       }
     } catch (error) {
       // Add specific error handling for JSON parsing
       if (error instanceof SyntaxError) {
-        logger.error(`Error parsing package.json: ${error.message}`);
+        console.error(`Error parsing package.json: ${error.message}`);
       } else {
         handleError(error);
       }
@@ -242,7 +243,7 @@ project
       }
 
       // Uninstall package
-      logger.info(`Removing ${plugin}...`);
+      console.info(`Removing ${plugin}...`);
       await execa('bun', ['remove', plugin], {
         cwd,
         stdio: 'inherit',
@@ -251,11 +252,11 @@ project
       // Remove plugin directory if it exists
       const pluginDir = path.join(cwd, plugin.replace(/^@elizaos\//, '').replace(/^plugin-/, ''));
       if (fs.existsSync(pluginDir)) {
-        logger.info(`Removing plugin directory ${pluginDir}...`);
+        console.info(`Removing plugin directory ${pluginDir}...`);
         fs.rmSync(pluginDir, { recursive: true, force: true });
       }
 
-      logger.success(`Successfully removed ${plugin}`);
+      console.log(`Successfully removed ${plugin}`);
     } catch (error) {
       handleError(error);
     }
