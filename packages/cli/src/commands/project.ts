@@ -61,6 +61,11 @@ project
   .description('Add a plugin to the project')
   .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('-n, --no-env-prompt', 'Skip prompting for environment variables')
+  .option(
+    '-b, --branch <branchName>',
+    'Branch to install from when using monorepo source',
+    'v2-develop'
+  )
   .action(async (plugin, opts) => {
     try {
       const cwd = process.cwd();
@@ -96,7 +101,10 @@ project
         baseName = baseName.replace(/^plugin-/, '');
         const pluginName = `plugin-${baseName}`;
 
-        const installCommand = `bun add github:elizaos-plugins/${pluginName}`;
+        // Show installation instructions for all approaches, including branch for monorepo
+        const npmCommand = `bun add @elizaos/${pluginName}`;
+        const gitCommand = `bun add git+https://github.com/elizaos/${pluginName}.git`;
+        const monorepoCommand = `bun add git+https://github.com/elizaos/eliza.git#${opts.branch}&subdirectory=packages/${pluginName}`;
 
         // Use ANSI color codes
         const boldCyan = '\x1b[1;36m'; // Bold cyan for command
@@ -104,11 +112,12 @@ project
         const reset = '\x1b[0m'; // Reset formatting
 
         // Print entire message with console.log to avoid timestamps and prefixes
+        console.log(`\n📦 ${bold}To install ${pluginName}, try one of these commands:${reset}\n`);
+        console.log(`Option 1 (npm registry):\n  ${boldCyan}${npmCommand}${reset}\n`);
+        console.log(`Option 2 (dedicated GitHub repo):\n  ${boldCyan}${gitCommand}${reset}\n`);
         console.log(
-          `\n📦 ${bold}To install ${pluginName}, you need to manually run this command:${reset}\n`
+          `Option 3 (monorepo subdirectory, branch: ${opts.branch}):\n  ${boldCyan}${monorepoCommand}${reset}\n`
         );
-        console.log(`  ${boldCyan}${installCommand}${reset}\n`);
-        console.log(`Copy and paste the above command into your terminal to install the plugin.\n`);
 
         process.exit(0);
       }
@@ -127,11 +136,16 @@ project
         process.exit(1);
       }
 
-      // Install from GitHub
+      // Install plugin using our centralized function, passing the branch option
       console.info(`Installing ${plugin}...`);
-      await installPlugin(repo, cwd);
+      const success = await installPlugin(repo, cwd, undefined, opts.branch);
 
-      console.log(`Successfully installed ${plugin}`);
+      if (success) {
+        console.log(`Successfully installed ${plugin}`);
+      } else {
+        console.error(`Failed to install ${plugin}`);
+        process.exit(1);
+      }
     } catch (error) {
       handleError(error);
     }
