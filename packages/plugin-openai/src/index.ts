@@ -175,7 +175,7 @@ function getJsonRepairFunction(): (params: {
 }
 
 /**
- * Add a reusable function for text-to-speech
+ * function for text-to-speech
  */
 async function fetchTextToSpeech(runtime: AgentRuntime, text: string) {
   const apiKey = getApiKey(runtime);
