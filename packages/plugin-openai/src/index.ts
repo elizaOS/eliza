@@ -1,6 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type {
-  AgentRuntime,
   ImageDescriptionParams,
   ModelTypeName,
   ObjectGenerationParams,
@@ -10,15 +9,22 @@ import type {
 import {
   type DetokenizeTextParams,
   type GenerateTextParams,
-  ModelType,
   type TokenizeTextParams,
-  logger,
-  VECTOR_DIMS,
 } from '@elizaos/core';
 import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import FormData from 'form-data';
 import fetch from 'node-fetch';
+import {
+  AgentRuntime,
+  IInstrumentationService,
+  InstrumentationService,
+  ServiceType,
+  ModelType,
+  logger,
+  VECTOR_DIMS,
+} from '@elizaos/core';
+
 
 /**
  * Helper function to get settings with fallback to process.env
@@ -172,42 +178,6 @@ function getJsonRepairFunction(): (params: {
       return null;
     }
   };
-}
-
-/**
- * function for text-to-speech
- */
-async function fetchTextToSpeech(runtime: AgentRuntime, text: string) {
-  const apiKey = getApiKey(runtime);
-  const model = getSetting(runtime, 'OPENAI_TTS_MODEL', 'gpt-4o-mini-tts');
-  const voice = getSetting(runtime, 'OPENAI_TTS_VOICE', 'nova');
-  const instructions = getSetting(runtime, 'OPENAI_TTS_INSTRUCTIONS', '');
-  const baseURL = getBaseURL(runtime);
-
-  try {
-    const res = await fetch(`${baseURL}/audio/speech`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        voice,
-        input: text,
-        ...(instructions && { instructions }),
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`OpenAI TTS error ${res.status}: ${err}`);
-    }
-
-    return res.body;
-  } catch (err: any) {
-    throw new Error(`Failed to fetch speech from OpenAI TTS: ${err.message || err}`);
-  }
 }
 
 /**
@@ -405,7 +375,7 @@ export const openaiPlugin: Plugin = {
       return openaiResponse;
     },
     [ModelType.TEXT_LARGE]: async (
-      runtime,
+      runtime: AgentRuntime,
       {
         prompt,
         stopSequences = [],
@@ -415,21 +385,57 @@ export const openaiPlugin: Plugin = {
         presencePenalty = 0.7,
       }: GenerateTextParams
     ) => {
+      // --- Instrumentation Start ---
+      const instrumentationService = runtime.getService<InstrumentationService>(ServiceType.INSTRUMENTATION);
+      const tracer = instrumentationService?.getTracer('eliza.plugin.openai', '0.1.0'); // Plugin name and version
+      const span = tracer?.startSpan('openai.generateText.large');
+      // --- Instrumentation End ---
+
       const openai = createOpenAIClient(runtime);
       const model = getLargeModel(runtime);
 
-      const { text: openaiResponse } = await generateText({
-        model: openai.languageModel(model),
-        prompt: prompt,
-        system: runtime.character.system ?? undefined,
-        temperature: temperature,
-        maxTokens: maxTokens,
-        frequencyPenalty: frequencyPenalty,
-        presencePenalty: presencePenalty,
-        stopSequences: stopSequences,
+      // --- Instrumentation: Add Attributes ---
+      span?.setAttributes({
+        'llm.model': model,
+        'llm.temperature': temperature,
+        'llm.max_tokens': maxTokens,
+        'llm.frequency_penalty': frequencyPenalty,
+        'llm.presence_penalty': presencePenalty,
+        'llm.stop_sequences': JSON.stringify(stopSequences), // Stringify arrays
+        // Add prompt length for context, but not the full prompt for privacy/cost
+        'llm.prompt.length': prompt.length
       });
+      // --- Instrumentation End ---
 
-      return openaiResponse;
+      try {
+        const { text: openaiResponse } = await generateText({
+          model: openai.languageModel(model),
+          prompt: prompt,
+          system: runtime.character.system ?? undefined,
+          temperature: temperature,
+          maxTokens: maxTokens,
+          frequencyPenalty: frequencyPenalty,
+          presencePenalty: presencePenalty,
+          stopSequences: stopSequences,
+        });
+
+        // --- Instrumentation: Record Success ---
+        span?.setAttribute('llm.response.length', openaiResponse?.length ?? 0);
+        span?.setStatus({ code: 1 }); // Using numeric code for OK
+        // --- Instrumentation End ---
+
+        return openaiResponse;
+      } catch (error) {
+        // --- Instrumentation: Record Error ---
+        span?.recordException(error as Error);
+        span?.setStatus({ code: 2, message: (error as Error).message }); // Using numeric code for ERROR
+        // --- Instrumentation End ---
+        throw error; // Re-throw the error after recording it
+      } finally {
+        // --- Instrumentation: End Span ---
+        span?.end();
+        // --- Instrumentation End ---
+      }
     },
     [ModelType.IMAGE]: async (
       runtime,
@@ -493,7 +499,7 @@ export const openaiPlugin: Plugin = {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: 'gpt-4-vision-preview',
             messages: [
               {
                 role: 'user',
@@ -572,10 +578,6 @@ export const openaiPlugin: Plugin = {
       const data = (await response.json()) as { text: string };
       return data.text;
     },
-    [ModelType.TEXT_TO_SPEECH]: async (runtime: AgentRuntime, text: string) => {
-      return await fetchTextToSpeech(runtime, text);
-    },
-
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
       return generateObjectByModelType(runtime, params, ModelType.OBJECT_SMALL, getSmallModel);
     },
@@ -743,22 +745,6 @@ export const openaiPlugin: Plugin = {
               );
             }
             logger.log('Decoded text:', decodedText);
-          },
-        },
-        {
-          name: 'openai_test_text_to_speech',
-          fn: async (runtime: AgentRuntime) => {
-            try {
-              const text = 'Hello, this is a test for text-to-speech.';
-              const response = await fetchTextToSpeech(runtime, text);
-              if (!response) {
-                throw new Error('Failed to generate speech');
-              }
-              logger.log('Generated speech successfully');
-            } catch (error) {
-              logger.error('Error in openai_test_text_to_speech:', error);
-              throw error;
-            }
           },
         },
       ],

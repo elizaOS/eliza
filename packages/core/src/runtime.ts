@@ -3,8 +3,15 @@ import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
-// Import enums and values that are used as values
-import { ChannelType, MemoryType, ModelType } from './types';
+// Import OTel API types needed here
+import { SpanStatusCode, trace, Tracer as OtelTracer } from '@opentelemetry/api';
+import { ChannelType, MemoryType, ModelType, ServiceType, EventType } from './types'; // Added ServiceType
+// Import Instrumentation Service & Types
+import {
+  InstrumentationService,
+  IInstrumentationService,
+  InstrumentationConfig,
+} from './instrumentation';
 
 // Import types with the 'type' keyword
 import type {
@@ -136,6 +143,9 @@ export class AgentRuntime implements IAgentRuntime {
 
   private servicesInitQueue = new Set<typeof Service>();
 
+  // Instrumentation Service instance
+  private instrumentationService: IInstrumentationService;
+
   constructor(opts: {
     conversationLength?: number;
     agentId?: UUID;
@@ -145,6 +155,7 @@ export class AgentRuntime implements IAgentRuntime {
     adapter?: IDatabaseAdapter;
     settings?: RuntimeSettings;
     events?: { [key: string]: ((params: any) => void)[] };
+    instrumentationConfig?: InstrumentationConfig;
   }) {
     // use the character id if it exists, otherwise use the agentId if it is passed in, otherwise use the character name
     this.agentId =
@@ -164,6 +175,14 @@ export class AgentRuntime implements IAgentRuntime {
     this.runtimeLogger.debug(`[AgentRuntime] Process working directory: ${process.cwd()}`);
 
     this.#conversationLength = opts.conversationLength ?? this.#conversationLength;
+
+    this.instrumentationService = new InstrumentationService(opts.instrumentationConfig);
+    if (ServiceType.INSTRUMENTATION) {
+      this.services.set(ServiceType.INSTRUMENTATION, this.instrumentationService as unknown as Service);
+    } else {
+      this.runtimeLogger.warn("ServiceType.INSTRUMENTATION is not defined. Instrumentation service might not be registered correctly.");
+      this.services.set("INSTRUMENTATION" as any, this.instrumentationService as unknown as Service);
+    }
 
     if (opts.adapter) {
       this.registerDatabaseAdapter(opts.adapter);
@@ -187,6 +206,10 @@ export class AgentRuntime implements IAgentRuntime {
    * @param plugin The plugin to register
    */
   async registerPlugin(plugin: Plugin): Promise<void> {
+    const tracer = this.instrumentationService?.getTracer();
+    const span = tracer?.startSpan('AgentRuntime.registerPlugin', { attributes: { 'plugin.name': plugin?.name ?? 'undefined' } });
+
+
     if (!plugin) {
       this.runtimeLogger.error('*** registerPlugin plugin is undefined');
       throw new Error('*** registerPlugin plugin is undefined');
@@ -306,131 +329,180 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize() {
-    if (this.isInitialized) {
-      this.runtimeLogger.warn('Agent already initialized');
-      return;
-    }
+    const tracer = this.instrumentationService?.getTracer();
+    const span = tracer?.startSpan('AgentRuntime.initialize', {
+      attributes: {
+        'agent.id': this.agentId,
+        'character.name': this.character?.name,
+      },
+    });
 
-    // Track registered plugins to avoid duplicates
-    const registeredPluginNames = new Set<string>();
+    this.runtimeLogger.debug(`Tracer: ${tracer ? 'available' : 'unavailable'}, Span: ${span ? `(active: )` : 'unavailable'}`);
+    span?.addEvent('test');
 
-    // Load and register plugins from character configuration
-    const pluginRegistrationPromises = [];
-
-    // Register plugins that were provided in the constructor
-    for (const plugin of [...this.plugins]) {
-      if (plugin && !registeredPluginNames.has(plugin.name)) {
-        registeredPluginNames.add(plugin.name);
-        pluginRegistrationPromises.push(await this.registerPlugin(plugin));
-      }
-    }
-
-    await this.adapter.init();
-
-    // First create the agent entity directly
     try {
-      // Ensure agent exists first (this is critical for test mode)
-      const agentExists = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
+      this.runtimeLogger.info(`Initializing agent ${this.character?.name ?? this.agentId}...`);
 
-      // Verify agent exists before proceeding
-      const agent = await this.adapter.getAgent(this.agentId);
-      if (!agent) {
-        throw new Error(
-          `Agent ${this.agentId} does not exist in database after ensureAgentExists call`
-        );
+      if (this.isInitialized) {
+        this.runtimeLogger.warn('Agent already initialized');
+        span?.addEvent('Already initialized');
+        span?.setStatus({ code: SpanStatusCode.OK });
+        return;
+      }
+      this.isInitialized = true;
+
+      // Track registered plugins to avoid duplicates
+      const registeredPluginNames = new Set<string>();
+
+      // Load and register plugins from character configuration
+      const pluginRegistrationPromises = [];
+
+      // Register plugins that were provided in the constructor
+      for (const plugin of [...this.plugins]) {
+        if (plugin && !registeredPluginNames.has(plugin.name)) {
+          registeredPluginNames.add(plugin.name);
+          pluginRegistrationPromises.push(await this.registerPlugin(plugin));
+        }
       }
 
-      // No need to transform agent's own ID
-      const agentEntity = await this.adapter.getEntityById(this.agentId);
+      await this.adapter.init();
+      span?.addEvent('Adapter initialized');
+      this.runtimeLogger.debug('Adapter initialized');
 
-      if (!agentEntity) {
-        const created = await this.createEntity({
-          id: this.agentId,
-          agentId: this.agentId,
-          names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
-          metadata: {},
-        });
 
-        if (!created) {
-          throw new Error(`Failed to create entity for agent ${this.agentId}`);
+      // First create the agent entity directly
+      try {
+        // Ensure agent exists first (this is critical for test mode)
+        const agentExists = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
+
+        // Verify agent exists before proceeding
+        const agent = await this.adapter.getAgent(this.agentId);
+        if (!agent) {
+          throw new Error(
+            `Agent ${this.agentId} does not exist in database after ensureAgentExists call`
+          );
         }
 
-        this.runtimeLogger.debug(
-          `Success: Agent entity created successfully for ${this.character.name}`
-        );
-      }
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to create agent entity: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
+        // No need to transform agent's own ID
+        const agentEntity = await this.adapter.getEntityById(this.agentId);
 
-    // Create room for the agent and register all plugins in parallel
-    try {
-      await Promise.all([
-        this.ensureRoomExists({
-          id: this.agentId,
-          name: this.character.name,
-          source: 'self',
-          type: ChannelType.SELF,
-        }),
-        ...pluginRegistrationPromises,
-      ]);
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to initialize: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
+        this.runtimeLogger.debug(`agentEntity: ${JSON.stringify(agentEntity)}`);
 
-    // Add agent as participant in its own room
-    try {
-      // No need to transform agent ID
-      const participants = await this.adapter.getParticipantsForRoom(this.agentId);
-      if (!participants.includes(this.agentId)) {
-        const added = await this.adapter.addParticipant(this.agentId, this.agentId);
-        if (!added) {
-          throw new Error(`Failed to add agent ${this.agentId} as participant to its own room`);
+        if (!agentEntity) {
+          const created = await this.createEntity({
+            id: this.agentId,
+            agentId: this.agentId,
+            names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
+            metadata: {},
+          });
+
+
+          if (!created) {
+            throw new Error(`Failed to create entity for agent ${this.agentId}`);
+          }
+
+          this.runtimeLogger.debug(
+            `Success: Agent entity created successfully for ${this.character.name}`
+          );
         }
-        this.runtimeLogger.debug(
-          `Agent ${this.character.name} linked to its own room successfully`
+      } catch (error) {
+        this.runtimeLogger.error(
+          `Failed to create agent entity: ${error instanceof Error ? error.message : String(error)}`
         );
+        throw error;
       }
+
+      this.runtimeLogger.debug(`agentEntity: exists`);
+      // Create room for the agent and register all plugins in parallel
+      try {
+        await Promise.all([
+          this.ensureRoomExists({
+            id: this.agentId,
+            name: this.character.name,
+            source: 'self',
+            type: ChannelType.SELF,
+          }),
+          ...pluginRegistrationPromises,
+        ]);
+      } catch (error) {
+        this.runtimeLogger.error(
+          `Failed to initialize room: ${error instanceof Error ? error.message : String(error)}`
+        );
+        throw error;
+      }
+
+      // Add agent as participant in its own room
+      try {
+        // No need to transform agent ID
+        const participants = await this.adapter.getParticipantsForRoom(this.agentId);
+        if (!participants.includes(this.agentId)) {
+          const added = await this.adapter.addParticipant(this.agentId, this.agentId);
+          if (!added) {
+            throw new Error(`Failed to add agent ${this.agentId} as participant to its own room`);
+          }
+          this.runtimeLogger.debug(
+            `Agent ${this.character.name} linked to its own room successfully`
+          );
+        }
+      } catch (error) {
+        this.runtimeLogger.error(
+          `Failed to add agent as participant: ${error instanceof Error ? error.message : String(error)
+          }`
+        );
+        throw error;
+      }
+
+      // Check if TEXT_EMBEDDING model is registered
+      const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
+      if (!embeddingModel) {
+        this.runtimeLogger.warn(
+          `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
+        );
+      } else {
+        // Only run ensureEmbeddingDimension if we have an embedding model
+        await this.ensureEmbeddingDimension();
+      }
+
+      // Process character knowledge
+      if (this.character?.knowledge?.length) {
+        const knowledgeSpan = tracer?.startSpan('processCharacterKnowledge');
+        try {
+          const stringKnowledge = this.character.knowledge.filter(
+            (item): item is string => typeof item === 'string'
+          );
+          const pathKnowledge = this.character.knowledge.filter(
+            (item): item is { path: string; shared?: boolean } => typeof item === 'object' && item !== null && 'path' in item
+          );
+
+          await this.processCharacterKnowledge(stringKnowledge);
+          knowledgeSpan?.setStatus({ code: SpanStatusCode.OK });
+        } catch (error) {
+          const errorMsg = 'Failed to process character knowledge';
+          this.runtimeLogger.error(errorMsg, error);
+          knowledgeSpan?.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+          knowledgeSpan?.recordException(error as Error);
+        } finally {
+          knowledgeSpan?.end();
+        }
+      }
+
+      // Start all deferred services now that runtime is ready
+      for (const service of this.servicesInitQueue) {
+        await this.registerService(service);
+      }
+
+      this.runtimeLogger.info(`Agent ${this.character.name} initialized successfully.`);
+      this.emitEvent(EventType.RUN_STARTED, { runtime: this });
+      span?.setStatus({ code: SpanStatusCode.OK });
     } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to add agent as participant: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      throw error;
+      const errorMsg = 'Agent initialization failed';
+      this.runtimeLogger.error(errorMsg, error);
+      span?.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message || errorMsg });
+      span?.recordException(error as Error);
+      throw error; // Re-throw the error to indicate initialization failure
+    } finally {
+      span?.end();
     }
-
-    // Check if TEXT_EMBEDDING model is registered
-    const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
-    if (!embeddingModel) {
-      this.runtimeLogger.warn(
-        `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
-      );
-    } else {
-      // Only run ensureEmbeddingDimension if we have an embedding model
-      await this.ensureEmbeddingDimension();
-    }
-
-    // Process character knowledge
-    if (this.character?.knowledge && this.character.knowledge.length > 0) {
-      const stringKnowledge = this.character.knowledge.filter(
-        (item): item is string => typeof item === 'string'
-      );
-      await this.processCharacterKnowledge(stringKnowledge);
-    }
-
-    // Start all deferred services now that runtime is ready
-    for (const service of this.servicesInitQueue) {
-      await this.registerService(service);
-    }
-
-    this.isInitialized = true;
   }
 
   private async handleProcessingError(error: any, context: string) {
@@ -882,6 +954,10 @@ export class AgentRuntime implements IAgentRuntime {
     try {
       // First check if the entity exists
       let entity = await this.adapter.getEntityById(entityId);
+      this.runtimeLogger.debug(
+        `Created new entity ${entity}`
+      );
+
 
       if (!entity) {
         // Try to create the entity
@@ -892,6 +968,7 @@ export class AgentRuntime implements IAgentRuntime {
             metadata,
             agentId: this.agentId,
           });
+
 
           if (success) {
             this.runtimeLogger.debug(
@@ -1328,8 +1405,8 @@ export class AgentRuntime implements IAgentRuntime {
       // if response is an array, should the first and last 5 items with a "..." in the middle, and a (x items) at the end
       Array.isArray(response)
         ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(
-            response.slice(-5)
-          )} (${response.length} items)`
+          response.slice(-5)
+        )} (${response.length} items)`
         : JSON.stringify(response)
     );
 
@@ -1796,4 +1873,22 @@ export class AgentRuntime implements IAgentRuntime {
       handler(data);
     }
   }
+
+  // Helper method to register plugin components (actions, providers, etc.)
+  private registerPluginComponents(plugin: Plugin) {
+    plugin.actions?.forEach((action) => this.registerAction(action));
+    plugin.providers?.forEach((provider) => this.registerProvider(provider));
+    plugin.evaluators?.forEach((evaluator) => this.registerEvaluator(evaluator));
+    // Register other plugin components if needed (e.g., services from plugin)
+    // Note: Services might need special handling depending on lifecycle requirements
+    if (plugin.services) {
+      plugin.services.forEach(serviceClass => {
+        // Decide how to handle plugin services - defer init or init immediately?
+        // Using servicesInitQueue as an example of deferral
+        this.servicesInitQueue.add(serviceClass);
+      });
+    }
+  }
+
+
 }

@@ -12,3 +12,7 @@ export * from './runtime';
 export * from './settings';
 export * from './uuid';
 export * from './audioUtils';
+
+// Export instrumentation types and service
+export * from './instrumentation/types';
+export * from './instrumentation/service';
