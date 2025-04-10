@@ -425,12 +425,12 @@ export class AgentRuntime implements IAgentRuntime {
       await this.processCharacterKnowledge(stringKnowledge);
     }
 
-    this.isInitialized = true;
-
     // Start all deferred services now that runtime is ready
     for (const service of this.servicesInitQueue) {
       await this.registerService(service);
     }
+
+    this.isInitialized = true;
   }
 
   private async handleProcessingError(error: any, context: string) {
