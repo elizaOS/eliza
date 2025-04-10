@@ -310,7 +310,6 @@ export class AgentRuntime implements IAgentRuntime {
       this.runtimeLogger.warn('Agent already initialized');
       return;
     }
-    this.isInitialized = true;
 
     // Track registered plugins to avoid duplicates
     const registeredPluginNames = new Set<string>();
@@ -327,6 +326,8 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     await this.adapter.init();
+
+    this.isInitialized = true;
 
     // First create the agent entity directly
     try {
