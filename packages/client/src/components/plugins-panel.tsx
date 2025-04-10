@@ -7,9 +7,15 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { usePlugins } from '@/hooks/use-plugins';
+import { useToast } from '@/hooks/use-toast';
 import type { Agent } from '@elizaos/core';
 import { useMemo, useState, useEffect } from 'react';
 import { Button } from './ui/button';
+import {
+  getVoiceModelByValue,
+  providerPluginMap,
+  getAllRequiredPlugins,
+} from '../config/voice-models';
 
 interface PluginsPanelProps {
   characterValue: Agent;
@@ -29,6 +35,7 @@ export default function PluginsPanel({
   initialPlugins,
 }: PluginsPanelProps) {
   const { data: plugins, error } = usePlugins();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -49,6 +56,31 @@ export default function PluginsPanel({
         .filter((name) => !defaultPlugins.includes(name)),
     ];
   }, [plugins]);
+
+  // Check if the selected voice model requires specific plugins
+  const voiceModelPluginInfo = useMemo(() => {
+    const voiceModelValue = characterValue?.settings?.voice?.model;
+    if (!voiceModelValue) return null;
+
+    const voiceModel = getVoiceModelByValue(voiceModelValue);
+    if (!voiceModel) return null;
+
+    // Get required plugin from configuration
+    const requiredPlugin = providerPluginMap[voiceModel.provider];
+    const isPluginEnabled = safeCharacterPlugins.includes(requiredPlugin);
+
+    return {
+      provider: voiceModel.provider,
+      requiredPlugin,
+      isPluginEnabled,
+    };
+  }, [characterValue?.settings?.voice?.model, safeCharacterPlugins]);
+
+  // Get all voice-related plugins that are currently enabled
+  const enabledVoicePlugins = useMemo(() => {
+    const voicePlugins = getAllRequiredPlugins();
+    return safeCharacterPlugins.filter((plugin) => voicePlugins.includes(plugin));
+  }, [safeCharacterPlugins]);
 
   const hasChanged = useMemo(() => {
     if (!initialPlugins) return false;
@@ -97,22 +129,58 @@ export default function PluginsPanel({
             <p className="text-destructive">Failed to load plugins: {error.message}</p>
           ) : (
             <div className="space-y-4">
+              {voiceModelPluginInfo && (
+                <div className="rounded-md bg-blue-50 p-4 mb-4">
+                  <p className="text-xs text-blue-700">
+                    {voiceModelPluginInfo.provider === 'elevenlabs'
+                      ? 'ElevenLabs plugin is required for the selected voice model.'
+                      : 'Local AI plugin is required for the selected voice model.'}
+                  </p>
+                  {enabledVoicePlugins.length > 1 && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      Multiple voice plugins detected. This may cause conflicts. Consider removing
+                      unused voice plugins.
+                    </p>
+                  )}
+                </div>
+              )}
               {safeCharacterPlugins.length > 0 && (
                 <div className="rounded-md bg-muted p-4">
                   <h4 className="text-sm font-medium mb-2">Currently Enabled</h4>
                   <div className="flex flex-wrap gap-2">
-                    {safeCharacterPlugins.map((plugin) => (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        key={plugin}
-                        className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary hover:bg-primary/20 h-auto"
-                        onClick={() => handlePluginRemove(plugin)}
-                      >
-                        {plugin} ×
-                      </Button>
-                    ))}
+                    {safeCharacterPlugins.map((plugin) => {
+                      // Check if this plugin is required by the current voice model
+                      const isRequiredByVoice = voiceModelPluginInfo?.requiredPlugin === plugin;
+
+                      return (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          key={plugin}
+                          className={`inline-flex items-center rounded-full ${
+                            isRequiredByVoice
+                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                              : 'bg-primary/10 text-primary hover:bg-primary/20'
+                          } px-2.5 py-0.5 text-xs font-medium h-auto`}
+                          onClick={() => {
+                            // Don't allow removing if it's required by the voice model
+                            if (isRequiredByVoice) {
+                              toast({
+                                title: "Can't Remove Plugin",
+                                description: 'This plugin is required by the selected voice model.',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
+                            handlePluginRemove(plugin);
+                          }}
+                          title={isRequiredByVoice ? 'Required by voice model' : 'Click to remove'}
+                        >
+                          {plugin} {!isRequiredByVoice && '×'}
+                        </Button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -161,7 +229,7 @@ export default function PluginsPanel({
                 </Dialog>
               </div>
               {hasChanged && (
-                <p className="text-xs text-yellow-500">Plugins configuration has been changed</p>
+                <p className="text-xs text-blue-500">Plugins configuration has been updated</p>
               )}
             </div>
           )}

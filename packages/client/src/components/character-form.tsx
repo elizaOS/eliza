@@ -11,6 +11,19 @@ import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
 import { type FormEvent, type ReactNode, useState } from 'react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  getAllVoiceModels,
+  getVoiceModelByValue,
+  providerPluginMap,
+  getAllRequiredPlugins,
+} from '../config/voice-models';
 
 type FieldType = 'text' | 'textarea' | 'number' | 'checkbox' | 'select';
 
@@ -20,6 +33,7 @@ type InputField = {
   description?: string;
   getValue: (char: Agent) => string;
   fieldType: FieldType;
+  options?: { value: string; label: string }[];
 };
 
 type ArrayField = {
@@ -65,8 +79,12 @@ const CHARACTER_FORM_SCHEMA = [
         title: 'Voice Model',
         name: 'settings.voice.model',
         description: 'Voice model used for speech synthesis',
-        fieldType: 'text',
+        fieldType: 'select',
         getValue: (char) => char.settings?.voice?.model || '',
+        options: getAllVoiceModels().map((model) => ({
+          value: model.value,
+          label: model.label,
+        })),
       },
     ] as InputField[],
   },
@@ -183,6 +201,65 @@ export default function CharacterForm({
     }
   };
 
+  const handleVoiceModelChange = (value: string, name: string) => {
+    if (name.startsWith('settings.')) {
+      const path = name.substring(9); // Remove 'settings.' prefix
+
+      if (setCharacterValue.updateSetting) {
+        // Use the specialized method if available
+        setCharacterValue.updateSetting(path, value);
+
+        // Handle voice model change and required plugins
+        if (path === 'voice.model' && value) {
+          const voiceModel = getVoiceModelByValue(value);
+          if (voiceModel) {
+            const currentPlugins = Array.isArray(characterValue.plugins)
+              ? [...characterValue.plugins]
+              : [];
+            const previousVoiceModel = getVoiceModelByValue(characterValue.settings?.voice?.model);
+
+            // Get all voice-related plugins
+            const voicePlugins = getAllRequiredPlugins();
+
+            // Get the required plugin for the new voice model
+            const requiredPlugin = providerPluginMap[voiceModel.provider];
+
+            // Filter out all voice-related plugins
+            const filteredPlugins = currentPlugins.filter(
+              (plugin) => !voicePlugins.includes(plugin)
+            );
+
+            // Add the required plugin for the selected voice model
+            const newPlugins = [...filteredPlugins];
+            if (requiredPlugin && !filteredPlugins.includes(requiredPlugin)) {
+              newPlugins.push(requiredPlugin);
+            }
+
+            // Update the plugins
+            if (setCharacterValue.setPlugins) {
+              setCharacterValue.setPlugins(newPlugins);
+            } else if (setCharacterValue.updateField) {
+              setCharacterValue.updateField('plugins', newPlugins);
+            }
+
+            // Show toast notification
+            if (previousVoiceModel?.provider !== voiceModel.provider) {
+              toast({
+                title: 'Plugin Updated',
+                description: `${requiredPlugin} plugin has been set for the selected voice model.`,
+              });
+            }
+          }
+        }
+      } else {
+        // Fall back to generic updateField
+        setCharacterValue.updateField(name, value);
+      }
+    } else {
+      setCharacterValue.updateField(name, value);
+    }
+  };
+
   const updateArray = (path: string, newData: string[]) => {
     // If the path is a simple field name
     if (!path.includes('.')) {
@@ -268,6 +345,23 @@ export default function CharacterForm({
           checked={(characterValue as Record<string, any>)[field.name] === 'true'}
           onChange={handleChange}
         />
+      ) : field.fieldType === 'select' ? (
+        <Select
+          name={field.name}
+          value={field.getValue(characterValue)}
+          onValueChange={(value) => handleVoiceModelChange(value, field.name)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select a voice model" />
+          </SelectTrigger>
+          <SelectContent>
+            {field.options?.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : (
         <Input
           id={field.name}
