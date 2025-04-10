@@ -536,6 +536,42 @@ export const openaiPlugin: Plugin = {
       const data = (await response.json()) as { text: string };
       return data.text;
     },
+    [ModelType.TEXT_TO_SPEECH]: async (runtime: AgentRuntime, text: string) => {
+      const getSetting = (key: string, fallback = '') =>
+        process.env[key] || runtime.getSetting(key) || fallback;
+
+      const apiKey = getApiKey(runtime);
+      const model = getSetting('OPENAI_TTS_MODEL', 'gpt-4o-mini-tts');
+      const voice = getSetting('OPENAI_TTS_VOICE', 'nova');
+      const instructions = getSetting('OPENAI_TTS_INSTRUCTIONS', '');
+      const baseURL = getBaseURL(runtime);
+
+      try {
+        const res = await fetch(`${baseURL}/audio/speech`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            voice,
+            input: text,
+            ...(instructions && { instructions }),
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`OpenAI TTS error ${res.status}: ${err}`);
+        }
+
+        return res.body;
+      } catch (err: any) {
+        throw new Error(`Failed to fetch speech from OpenAI TTS: ${err.message || err}`);
+      }
+    },
+
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
       return generateObjectByModelType(runtime, params, ModelType.OBJECT_SMALL, getSmallModel);
     },
