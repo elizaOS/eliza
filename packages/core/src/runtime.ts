@@ -327,8 +327,6 @@ export class AgentRuntime implements IAgentRuntime {
 
     await this.adapter.init();
 
-    this.isInitialized = true;
-
     // First create the agent entity directly
     try {
       // Ensure agent exists first (this is critical for test mode)
@@ -426,6 +424,8 @@ export class AgentRuntime implements IAgentRuntime {
       );
       await this.processCharacterKnowledge(stringKnowledge);
     }
+
+    this.isInitialized = true;
 
     // Start all deferred services now that runtime is ready
     for (const service of this.servicesInitQueue) {
