@@ -126,7 +126,7 @@ plugin
   .option('-n, --npm', 'publish to npm instead of GitHub', false)
   .option('-t, --test', 'test publish process without making changes', false)
   .option(
-    '-p, --platform <platform>',
+    '-px, --platform <platform>',
     'specify platform compatibility (node, browser, universal)',
     'universal'
   )

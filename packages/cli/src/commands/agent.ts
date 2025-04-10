@@ -205,7 +205,7 @@ agent
   .description('Start an agent')
   .option('-n, --name <name>', 'character name to start the agent with')
   .option('-j, --json <json>', 'character JSON string')
-  .option('-p, --path <path>', 'local path to character JSON file')
+  .option('-pt, --path <path>', 'local path to character JSON file')
   .option('-rc, --remote-character <url>', 'remote URL to character JSON file')
   .action(async (opts) => {
     try {

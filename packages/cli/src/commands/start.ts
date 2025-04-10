@@ -666,7 +666,6 @@ const startAgents = async (options: {
 export const start = new Command()
   .name('start')
   .description('Start the Eliza agent with configurable plugins and services')
-  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
   .option(
     '-char, --character <character>',
