@@ -134,6 +134,7 @@ export type CharacterFormProps = {
   onDelete?: () => void;
   onReset?: () => void;
   isAgent?: boolean;
+  isDeleting?: boolean;
   customComponents?: customComponent[];
   characterValue: Agent;
   setCharacterValue: {
@@ -153,6 +154,7 @@ export default function CharacterForm({
   onSubmit,
   onDelete,
   onReset,
+  isDeleting = false,
   customComponents = [],
 }: CharacterFormProps) {
   const { toast } = useToast();
@@ -348,8 +350,9 @@ export default function CharacterForm({
               onClick={() => {
                 onDelete?.();
               }}
+              disabled={isDeleting}
             >
-              Delete Character
+              {isDeleting ? 'Deleting...' : 'Delete Character'}
             </Button>
           </div>
 
