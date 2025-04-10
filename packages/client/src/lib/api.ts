@@ -29,7 +29,6 @@ const fetcher = async ({
 
   clientLogger.info('API Request:', method || 'GET', normalizedUrl);
 
-
   const options: RequestInit = {
     method: method ?? 'GET',
     headers: headers
@@ -72,7 +71,6 @@ const fetcher = async ({
       clientLogger.error('API Error:', response.status, response.statusText);
       clientLogger.error('Response:', errorText);
 
-
       let errorMessage = `${response.status}: ${response.statusText}`;
       try {
         const errorObj = JSON.parse(errorText);
@@ -103,11 +101,9 @@ const fetcher = async ({
         const jsonData = await response.json();
         return jsonData;
       } catch (error) {
-
         const text = await response.text();
 
         clientLogger.error('JSON Parse Error:', error);
-        const text = await response.text();
         clientLogger.error(
           'Response text:',
           text.substring(0, 500) + (text.length > 500 ? '...' : '')
@@ -121,7 +117,6 @@ const fetcher = async ({
       return textResponse;
     }
   } catch (error) {
-
     clientLogger.error('Fetch error:', error);
 
     throw error;
