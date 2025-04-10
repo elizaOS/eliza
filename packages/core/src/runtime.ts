@@ -310,7 +310,6 @@ export class AgentRuntime implements IAgentRuntime {
       this.runtimeLogger.warn('Agent already initialized');
       return;
     }
-    this.isInitialized = true;
 
     // Track registered plugins to avoid duplicates
     const registeredPluginNames = new Set<string>();
@@ -430,6 +429,8 @@ export class AgentRuntime implements IAgentRuntime {
     for (const service of this.servicesInitQueue) {
       await this.registerService(service);
     }
+
+    this.isInitialized = true;
   }
 
   private async handleProcessingError(error: any, context: string) {
