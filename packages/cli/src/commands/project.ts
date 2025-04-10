@@ -138,7 +138,7 @@ project
   });
 
 project
-  .command('show-plugins')
+  .command('installed-plugins')
   .description('List plugins found in the project dependencies')
   .action(async () => {
     try {
@@ -234,7 +234,7 @@ project
 
         // Print entire message with console.log to avoid timestamps and prefixes
         console.log(
-          `\n🗑️ ${bold}To remove ${pluginName}, you need to manually run this command:${reset}\n`
+          `\n[x] ${bold}To remove ${pluginName}, you need to manually run this command:${reset}\n`
         );
         console.log(`  ${boldCyan}${removeCommand}${reset}\n`);
         console.log(`Copy and paste the above command into your terminal to remove the plugin.\n`);
