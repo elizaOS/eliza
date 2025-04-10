@@ -79,13 +79,23 @@ async function attemptInstallation(
   logger.info(`Attempting to install plugin ${context}...`);
 
   try {
-    // Use centralized installation function with all approaches
-    await executeInstallation(repository, versionString, directory, options);
+    // Use centralized installation function which now returns success status and identifier
+    const installResult = await executeInstallation(repository, versionString, directory, options);
 
-    // Verify the installation worked
-    return await verifyPluginImport(repository, context);
+    // If installation failed, return false immediately
+    if (!installResult.success || !installResult.installedIdentifier) {
+      logger.warn(`Installation failed for plugin ${context}`);
+      return false;
+    }
+
+    // Installation succeeded, now verify the import using the correct identifier
+    logger.info(
+      `Installation successful for ${installResult.installedIdentifier}, verifying import...`
+    );
+    return await verifyPluginImport(installResult.installedIdentifier, context);
   } catch (installError) {
-    logger.warn(`Failed to install plugin ${context}: ${installError.message}`);
+    // Catch any unexpected errors during the process
+    logger.warn(`Error during installation attempt ${context}: ${installError.message}`);
     return false;
   }
 }
@@ -127,46 +137,57 @@ export async function installPlugin(
   // Get the version string for installation
   let versionString = '';
 
-  // If we have a version to look up in the registry
+  // If we have a version (tag or specific version)
   if (version) {
-    if (version.startsWith('v')) {
-      versionString = `@${version}`;
+    // Basic check if it looks like a git commit hash (e.g., 7+ hex characters)
+    const looksLikeGitHash = /^[a-f0-9]{7,}$/i.test(version);
+
+    if (looksLikeGitHash) {
+      // If the input itself looks like a hash, use #
+      versionString = `#${version}`;
     } else {
-      try {
-        const resolvedVersion = await getPluginVersion(repoUrl, version);
-        if (resolvedVersion) {
-          versionString = `#${resolvedVersion}`;
-        } else {
-          versionString = `@${version}`;
-        }
-      } catch (error) {
-        // Continue with the direct version if registry lookup fails
-        versionString = `@${version}`;
-      }
+      // Otherwise, assume it's an npm tag/version range and use @
+      // No need to call getPluginVersion here, just use the tag directly.
+      // The package manager will resolve the tag (@beta, @latest, @1.2.3)
+      versionString = `@${version}`;
     }
+    logger.debug(`Using version string: ${versionString} for package manager.`);
   }
 
-  // Try installation in the current directory with all approaches
-  if (
-    await attemptInstallation(repository, versionString, cwd, 'with all installation methods', {
+  // Determine installation options based on input
+  let installOptions = {
+    tryNpm: true,
+    tryGithub: true,
+    tryMonorepo: true,
+    monorepoBranch,
+  };
+
+  // If installing a specific scoped package version/tag, prioritize npm ONLY
+  if (repository.startsWith('@') && version) {
+    installOptions = {
+      ...installOptions, // Keep monorepoBranch if passed
       tryNpm: true,
-      tryGithub: true,
-      tryMonorepo: true,
-      monorepoBranch,
-    })
-  ) {
+      tryGithub: false,
+      tryMonorepo: false,
+    };
+    logger.info(`Prioritizing npm install for ${repository}@${version}`);
+  }
+
+  // Try installation in the current directory with determined approaches
+  if (await attemptInstallation(repository, versionString, cwd, ':', installOptions)) {
     return true;
   }
 
   // If all local installations failed and we're running globally, try CLI directory installation
   if (cliDir) {
     if (
-      await attemptInstallation(repository, versionString, cliDir, 'in CLI directory', {
-        tryNpm: true,
-        tryGithub: true,
-        tryMonorepo: true,
-        monorepoBranch,
-      })
+      await attemptInstallation(
+        repository,
+        versionString,
+        cliDir,
+        'in CLI directory',
+        installOptions
+      )
     ) {
       return true;
     }

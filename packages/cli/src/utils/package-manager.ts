@@ -81,7 +81,7 @@ export function getInstallCommand(packageManager: string, isGlobal: boolean): st
  * @param {string} versionOrTag - Version or tag to install (optional)
  * @param {string} directory - Directory to install in
  * @param {Object} options - Additional installation options
- * @returns {Promise<ExecaReturnValue<string>>} - The execa result
+ * @returns {Promise<{ success: boolean; installedIdentifier: string | null }>} - The result of the installation
  */
 export async function executeInstallation(
   packageName: string,
@@ -94,7 +94,7 @@ export async function executeInstallation(
     subdirectory?: string;
     monorepoBranch?: string;
   } = { tryNpm: true, tryGithub: true, tryMonorepo: false }
-) {
+): Promise<{ success: boolean; installedIdentifier: string | null }> {
   // Determine which package manager to use
   const packageManager = getPackageManager();
   const installCommand = getInstallCommand(packageManager, false);
@@ -119,18 +119,27 @@ export async function executeInstallation(
   // Remove plugin- prefix if present and ensure proper format
   baseName = baseName.replace(/^plugin-/, '');
   const pluginName = baseName.startsWith('plugin-') ? baseName : `plugin-${baseName}`;
+  const npmStylePackageName = `@elizaos/${pluginName}`;
 
   // 1. Try npm registry (if enabled)
   if (options.tryNpm !== false) {
-    // If it's a scoped package or potentially an npm package
-    const npmPackageName = packageName.startsWith('@')
-      ? packageName // Already a scoped package
-      : packageName.includes('/')
-        ? `@elizaos/${packageName
-            .split('/')
-            .pop()
-            ?.replace(/^plugin-/, '')}` // Convert github org/repo to @org/name
-        : `@elizaos/${baseName}`; // Add @elizaos scope to bare names
+    // Determine the correct base name (without scope or plugin- prefix)
+    let finalBaseName = baseName; // baseName was already derived and had 'plugin-' prefix removed earlier
+    if (packageName.startsWith('@')) {
+      const parts = packageName.split('/');
+      if (parts.length > 1) {
+        finalBaseName = parts[1].replace(/^plugin-/, ''); // Ensure prefix removed if input was @elizaos/plugin-foo
+      }
+    } else if (packageName.includes('/')) {
+      finalBaseName =
+        packageName
+          .split('/')
+          .pop()
+          ?.replace(/^plugin-/, '') || baseName; // Ensure prefix removed if input was org/plugin-foo
+    }
+
+    // Construct the final npm package name with the correct scope and prefix
+    const npmPackageName = `@elizaos/plugin-${finalBaseName}`;
 
     // Format the package name with version if provided
     const packageWithVersion = versionOrTag
@@ -143,10 +152,12 @@ export async function executeInstallation(
 
     // Try to install from npm
     try {
-      return await execa(packageManager, [...installCommand, packageWithVersion], {
+      await execa(packageManager, [...installCommand, packageWithVersion], {
         cwd: directory,
         stdio: 'inherit',
       });
+      logger.info(`Successfully installed ${npmPackageName} from npm registry.`);
+      return { success: true, installedIdentifier: npmPackageName };
     } catch (error) {
       logger.warn(`Failed to install from npm registry: ${npmPackageName}`);
       // Continue to next installation method
@@ -165,10 +176,13 @@ export async function executeInstallation(
       logger.debug(`Installing from GitHub using git+https format: ${gitUrl}`);
 
       try {
-        return await execa(packageManager, [...installCommand, gitUrl], {
+        await execa(packageManager, [...installCommand, gitUrl], {
           cwd: directory,
           stdio: 'inherit',
         });
+        logger.info(`Successfully installed ${pluginName} from GitHub ${org}.`);
+        // For verification, we'll use the standard npm package name structure
+        return { success: true, installedIdentifier: npmStylePackageName };
       } catch (error) {
         logger.warn(`Failed to install from GitHub ${org} organization: ${gitUrl}`);
         // Continue to next organization or method
@@ -185,20 +199,20 @@ export async function executeInstallation(
     logger.debug(`Installing from monorepo subdirectory: ${monorepoUrl}`);
 
     try {
-      return await execa(packageManager, [...installCommand, monorepoUrl], {
+      await execa(packageManager, [...installCommand, monorepoUrl], {
         cwd: directory,
         stdio: 'inherit',
       });
+      logger.info(`Successfully installed ${pluginName} from monorepo.`);
+      // For verification, we'll use the standard npm package name structure
+      return { success: true, installedIdentifier: npmStylePackageName };
     } catch (error) {
       logger.warn(`Failed to install from monorepo: ${monorepoUrl}`);
       // Continue to last resort
     }
   }
 
-  // 4. Last resort - direct package name
-  logger.debug(`Using direct package name as last resort: ${packageName}`);
-  return execa(packageManager, [...installCommand, packageName + (versionOrTag || '')], {
-    cwd: directory,
-    stdio: 'inherit',
-  });
+  // If we reached here, all preferred methods failed.
+  logger.error('All installation methods (npm, GitHub, monorepo) failed.');
+  return { success: false, installedIdentifier: null };
 }
