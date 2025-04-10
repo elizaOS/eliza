@@ -1,23 +1,25 @@
 import { type IAgentRuntime, logger } from '@elizaos/core';
 import { getTokenBalance } from '../utils/wallet';
 import { DataService } from './dataService';
-import { TradeExecutionService } from './tradeExecutionService';
+import { TradeExecutionService } from './execution/tradeExecutionService';
 import { WalletService } from './walletService';
 import { AnalyticsService } from './analyticsService';
 import { v4 as uuidv4 } from 'uuid';
 import { DEFAULT_CONFIG } from '../config/config';
 
-export class MonitoringService implements TradeExecutionService {
+export class MonitoringService extends TradeExecutionService {
   private isInitialized = false;
   private monitoringIntervals: NodeJS.Timeout[] = [];
   private tradingConfig = DEFAULT_CONFIG;
 
   constructor(
-    private runtime: IAgentRuntime,
-    private dataService: DataService,
-    private walletService: WalletService,
-    private analyticsService: AnalyticsService
-  ) {}
+    runtime: IAgentRuntime,
+    dataService: DataService,
+    walletService: WalletService,
+    analyticsService: AnalyticsService
+  ) {
+    super(runtime, walletService, dataService, analyticsService);
+  }
 
   // Implement TradeExecutionService interface methods
   async executeBuyTrade({

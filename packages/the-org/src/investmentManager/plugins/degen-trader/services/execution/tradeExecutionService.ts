@@ -1,4 +1,4 @@
-import { type AgentRuntime, logger } from '@elizaos/core';
+import { type AgentRuntime, IAgentRuntime, logger } from '@elizaos/core';
 import { executeTrade } from '../../utils/wallet';
 import { WalletService } from '../walletService';
 import { DataService } from '../dataService';
@@ -6,10 +6,10 @@ import { AnalyticsService } from '../analyticsService';
 
 export class TradeExecutionService {
   constructor(
-    private runtime: AgentRuntime,
-    private walletService: WalletService,
-    private dataService: DataService,
-    private analyticsService: AnalyticsService
+    protected runtime: IAgentRuntime,
+    protected walletService: WalletService,
+    protected dataService: DataService,
+    protected analyticsService: AnalyticsService
   ) {}
 
   async initialize(): Promise<void> {
@@ -37,7 +37,7 @@ export class TradeExecutionService {
     try {
       const result = await executeTrade(this.runtime, {
         tokenAddress,
-        amount,
+        amount: amount.toString(),
         slippage,
         dex: 'raydium',
         action: 'BUY',
@@ -79,7 +79,7 @@ export class TradeExecutionService {
     try {
       const result = await executeTrade(this.runtime, {
         tokenAddress,
-        amount,
+        amount: amount.toString(),
         slippage,
         dex: 'raydium',
         action: 'SELL',

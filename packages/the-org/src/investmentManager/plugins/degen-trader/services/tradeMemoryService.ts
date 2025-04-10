@@ -1,6 +1,9 @@
 import { type IAgentRuntime, type Memory, type UUID, logger, ModelType } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseTradeService } from './base/BaseTradeService';
+import { WalletService } from './walletService';
+import { DataService } from './dataService';
+import { AnalyticsService } from './analyticsService';
 
 export interface TradeMemory {
   id: UUID;
@@ -20,8 +23,13 @@ export interface TradeMemory {
 }
 
 export class TradeMemoryService extends BaseTradeService {
-  constructor(runtime: IAgentRuntime, ...services: any[]) {
-    super(runtime, ...services);
+  constructor(
+    runtime: IAgentRuntime,
+    walletService: WalletService,
+    dataService: DataService,
+    analyticsService: AnalyticsService
+  ) {
+    super(runtime, walletService, dataService, analyticsService);
   }
 
   async initialize(): Promise<void> {

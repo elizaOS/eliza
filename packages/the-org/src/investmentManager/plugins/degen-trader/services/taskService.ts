@@ -1,17 +1,17 @@
-import { type AgentRuntime as IAgentRuntime, logger } from '@elizaos/core';
+import { type IAgentRuntime, logger } from '@elizaos/core';
 import { BuyService } from './execution/buyService';
 import { SellService } from './execution/sellService';
 import { v4 as uuidv4 } from 'uuid';
 import { ServiceTypes } from '../types';
 import { TradeExecutionService } from './execution/tradeExecutionService';
 import { type SellSignalMessage } from '../types';
-import type { AgentRuntime } from '@elizaos/core';
+import { Task } from '@elizaos/core';
 
 export class TaskService extends TradeExecutionService {
   private scheduledTasks: NodeJS.Timeout[] = [];
 
   constructor(
-    protected override runtime: AgentRuntime,
+    protected override runtime: IAgentRuntime,
     private buyService: BuyService,
     private sellService: SellService
   ) {
@@ -37,9 +37,9 @@ export class TaskService extends TradeExecutionService {
   private registerSellTasks(): void {
     this.runtime.registerTaskWorker({
       name: 'EXECUTE_SELL',
-      execute: async (_runtime: typeof IAgentRuntime, options: any) => {
+      execute: async (runtime: IAgentRuntime, options: { [key: string]: unknown }, task: Task) => {
         logger.info('Executing sell task');
-        return await this.executeSellTask(options);
+        await this.executeSellTask(options);
       },
       validate: async () => true,
     });
@@ -80,8 +80,8 @@ export class TaskService extends TradeExecutionService {
       );
 
       const taskId = uuidv4();
-      await this.runtime.databaseAdapter.createTask({
-        id: taskId,
+      await this.runtime.createTask({
+        id: taskId as `${string}-${string}-${string}-${string}-${string}`,
         name: 'EXECUTE_SELL',
         description: `Execute sell for ${signal.tokenAddress}`,
         tags: ['queue', 'repeat', ServiceTypes.DEGEN_TRADING],
@@ -107,7 +107,7 @@ export class TaskService extends TradeExecutionService {
         throw new Error('No signal data in sell task');
       }
 
-      const result = await this.sellService.handleSellSignal(signal);
+      const result = await this.sellService.executeSell(signal);
 
       if (result.success) {
         logger.info('Sell task executed successfully', {
@@ -117,11 +117,8 @@ export class TaskService extends TradeExecutionService {
       } else {
         logger.error('Sell task failed', { error: result.error });
       }
-
-      return result;
     } catch (error) {
       console.log('Error executing sell task:', error);
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 }

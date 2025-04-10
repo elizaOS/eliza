@@ -115,10 +115,15 @@ export class DegenTradingService extends Service {
     this.processId = `sol-process-${Date.now()}`;
 
     // Initialize services
-    this.dataService = new DataService(runtime);
-    this.analyticsService = new AnalyticsService(runtime);
     this.walletService = new WalletService(runtime);
-    this.tradeMemoryService = new TradeMemoryService(runtime);
+    this.dataService = new DataService(runtime, this.walletService);
+    this.analyticsService = new AnalyticsService(runtime);
+    this.tradeMemoryService = new TradeMemoryService(
+      runtime,
+      this.walletService,
+      this.dataService,
+      this.analyticsService
+    );
     this.tradeExecutionService = new TradeExecutionService(
       runtime,
       this.walletService,

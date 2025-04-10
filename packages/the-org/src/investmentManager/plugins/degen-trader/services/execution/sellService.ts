@@ -51,7 +51,7 @@ export class SellService extends BaseTradeService {
     this.pendingSells = {};
   }
 
-  private async handleSellSignal(params: any): Promise<void> {
+  public async handleSellSignal(params: any): Promise<void> {
     const TRADER_SELL_KUMA = this.runtime.getSetting('TRADER_SELL_KUMA');
     if (TRADER_SELL_KUMA) {
       fetch(TRADER_SELL_KUMA).catch((e) => {
@@ -97,7 +97,7 @@ export class SellService extends BaseTradeService {
     }
   }
 
-  private async executeSell(signal: SellSignalMessage & { expectedOutAmount?: string }): Promise<{
+  public async executeSell(signal: SellSignalMessage & { expectedOutAmount?: string }): Promise<{
     success: boolean;
     signature?: string;
     error?: string;

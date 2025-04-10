@@ -457,7 +457,7 @@ export async function getWalletBalances(runtime: IAgentRuntime) {
       })),
     };
 
-    logger.log('Fetched wallet balances:', balances);
+    //logger.log('Fetched wallet balances:', balances);
     return balances;
   } catch (error) {
     logger.error('Failed to get wallet balances:', error);

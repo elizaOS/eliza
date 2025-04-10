@@ -119,7 +119,11 @@ export default class Birdeye {
 
   private async syncWalletHistory() {
     try {
-      /** Get entire transaction history */
+      const publicKey =
+        this.runtime.getSetting('SOLANA_PUBLIC_KEY') ||
+        'BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq';
+
+      // First get data from Birdeye
       const options = {
         method: 'GET',
         headers: {
@@ -129,54 +133,53 @@ export default class Birdeye {
         },
       };
 
-      const publicKey =
-        this.runtime.getSetting('SOLANA_PUBLIC_KEY') ||
-        'BzsJQeZ7cvk3pTHmKeuvdhNDkDxcZ6uCXxW2rjwC7RTq';
-
       const res = await fetch(
         `https://public-api.birdeye.so/v1/wallet/tx_list?wallet=${publicKey}&limit=100`,
         options
       );
 
       const resp = await res.json();
-      const data = resp?.data?.solana;
+      const birdeyeData = resp?.data?.solana || [];
 
-      // Get existing transactions with error handling
-      let transactions: TransactionHistory[] = [];
+      // Convert Birdeye data to our transaction format
+      let transactions: TransactionHistory[] = birdeyeData.map((tx: any) => ({
+        txHash: tx.txHash,
+        blockTime: new Date(tx.blockTime),
+        data: tx,
+      }));
+
+      // Then try to get cached transactions
       try {
         const cachedTxs = await this.runtime.getCache<TransactionHistory[]>('transaction_history');
-        transactions = cachedTxs || [];
-      } catch (error) {
-        logger.warn('Failed to get cached transactions, starting with empty array', error);
-      }
-
-      // Update transactions
-      for (const tx of data) {
-        const existingIndex = transactions.findIndex((t) => t.txHash === tx.txHash);
-        const newTx = {
-          txHash: tx.txHash,
-          blockTime: new Date(tx.blockTime),
-          data: tx,
-        };
-
-        if (existingIndex >= 0) {
-          transactions[existingIndex] = newTx;
-        } else {
-          transactions.push(newTx);
+        if (cachedTxs && Array.isArray(cachedTxs)) {
+          // Add cached transactions that don't exist in Birdeye data
+          for (const cachedTx of cachedTxs) {
+            if (!transactions.some((tx) => tx.txHash === cachedTx.txHash)) {
+              transactions.push(cachedTx);
+            }
+          }
         }
+      } catch (error) {
+        // If cache fails, continue with just Birdeye data
+        logger.debug('Failed to get cached transactions, continuing with Birdeye data only');
       }
 
-      // Set cache with error handling
+      // Sort transactions by blockTime descending (newest first)
+      transactions.sort((a, b) => b.blockTime.getTime() - a.blockTime.getTime());
+
+      // Try to update cache, but don't fail if it doesn't work
       try {
         await this.runtime.setCache<TransactionHistory[]>('transaction_history', transactions);
-        logger.debug(`Updated transaction history with ${data.length} transactions`);
+        logger.debug(`Updated transaction history with ${transactions.length} transactions`);
       } catch (error) {
-        logger.error('Failed to set transaction cache', error);
-        throw error;
+        logger.debug('Failed to set transaction cache, continuing without caching', error);
       }
+
+      return transactions;
     } catch (error) {
-      logger.error('Failed to sync wallet history', error);
-      throw error;
+      logger.error('Failed to sync wallet history from Birdeye', error);
+      // Return empty array if everything fails
+      return [];
     }
   }
 

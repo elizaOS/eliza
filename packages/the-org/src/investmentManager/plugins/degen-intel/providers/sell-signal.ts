@@ -51,7 +51,7 @@ export default class SellSignal {
 
   async generateSignal(): Promise<boolean> {
     try {
-      logger.info('sell-signal::generateSignal - Updating latest sell signal');
+      logger.info('sell-signal::generateSignal - Generating sell signal');
 
       // First refresh wallet data
       await this.runtime.emitEvent('INTEL_SYNC_WALLET', {});
@@ -63,11 +63,15 @@ export default class SellSignal {
         balance: token.uiAmount,
       }));
 
+      if (!walletData.length) {
+        logger.warn('No wallet tokens found');
+        return false;
+      }
+
       const portfolioData = (await this.runtime.getCache<WalletPortfolio>('PORTFOLIO')) || [];
       const txHistoryData =
         (await this.runtime.getCache<WalletPortfolio>('transaction_history')) || [];
 
-      console.log('portfolioData', portfolioData);
       // collect CA
       let walletProviderStr = 'Your wallet contents: ';
       const tokensHeld = [];
@@ -93,21 +97,21 @@ export default class SellSignal {
       }
       let prompt = template.replace('{{walletData}}', walletProviderStr);
 
-      // might be best to move this out of this function
+      // Get token market data
       const tradeService = this.runtime.getService(
         ServiceTypes.DEGEN_TRADING
       ) as unknown as ITradeService;
       const tokenData = await tradeService.dataService.getTokensMarketData(tokensHeld);
       prompt = prompt.replace('{{walletData2}}', JSON.stringify(tokenData));
 
-      // here's your wallet should we sell anything
-      // FIXME: update prompt
-
-      // Get all sentiments (TwitterParser fillTimeframe)
+      // Get all sentiments
       const sentimentData = (await this.runtime.getCache<Sentiment[]>('sentiments')) || [];
-      //console.log('sentimentsData', sentimentData)
-      let sentiments = '';
+      if (!sentimentData.length) {
+        logger.warn('No sentiment data found');
+        return false;
+      }
 
+      let sentiments = '';
       let idx = 1;
       for (const sentiment of sentimentData) {
         if (!sentiment?.occuringTokens?.length) continue;
@@ -115,129 +119,139 @@ export default class SellSignal {
         for (const token of sentiment.occuringTokens) {
           sentiments += `${token.token} - Sentiment: ${token.sentiment}\n${token.reason}\n`;
         }
-
         sentiments += '\n-------------------\n';
         idx++;
       }
       prompt = prompt.replace('{{sentiment}}', sentiments);
 
-      // Get all trending tokens
-      /*
-      // FIXME: nothing sets this
-      const trendingData = await this.runtime.databaseAdapter.getCache<IToken[]>("tokens_solana") || [];
-      console.log('trendingData', trendingData)
-      let tokens = "";
-      let index = 1;
-      for (const token of trendingData) {
-        tokens += `ENTRY ${index}\n\nTOKEN SYMBOL: ${token.name}\nTOKEN ADDRESS: ${token.address}\nPRICE: ${token.price}\n24H CHANGE: ${token.price24hChangePercent}\nLIQUIDITY: ${token.liquidity}`;
-        tokens += "\n-------------------\n";
-        index++;
-      }
-      */
-
       const solanaBalance = await this.getBalance();
-
-      // prompt.replace("{{trending_tokens}}", tokens).
       const finalPrompt = prompt.replace('{{solana_balance}}', String(solanaBalance));
 
-      //console.log('sell rolePrompt', rolePrompt)
-      console.log('sell context', finalPrompt);
-
+      // Get sell recommendation from model
       let responseContent: ISellSignalOutput | null = null;
-      // Retry if missing required fields
       let retries = 0;
       const maxRetries = 3;
-      // recommended_sell, recommend_sell_address, reason, sell_amount
+
       while (
         retries < maxRetries &&
         (!responseContent?.recommended_sell ||
           !responseContent?.reason ||
           !responseContent?.recommend_sell_address)
       ) {
-        // could use OBJECT_LARGE but this expects a string return type rn
-        // not sure where OBJECT_LARGE does it's parsing...
         const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-          context: finalPrompt,
+          prompt: finalPrompt,
           system: rolePrompt,
           temperature: 0.2,
           maxTokens: 4096,
           object: true,
         });
 
-        //console.log('intel:sell-signal - response', response);
         responseContent = parseJSONObjectFromText(response) as ISellSignalOutput;
-
         retries++;
+
         if (
           !responseContent?.recommended_sell &&
           !responseContent?.reason &&
           !responseContent?.recommend_sell_address
         ) {
-          logger.warn('*** Missing required fields, retrying... shouldRespondPrompt ***');
+          logger.warn('*** Missing required fields, retrying... generateSignal ***');
         }
       }
 
-      //console.log('sell-signal::generateSignal - have response')
-
       if (!responseContent?.recommend_sell_address) {
-        console.warn('sell-signal::generateSignal - no sell recommendation');
+        logger.warn('sell-signal::generateSignal - no sell recommendation');
         return false;
       }
 
-      //console.log('sell-signal::generateSignal - birdeye time')
+      // Validate token address format
+      if (!responseContent?.recommend_sell_address?.match(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/)) {
+        logger.error('Invalid Solana token address', {
+          address: responseContent?.recommend_sell_address,
+        });
+        return false;
+      }
 
-      // Fetch the recommended sells current marketcap
+      // Fetch marketcap data
+      const apiKey = this.runtime.getSetting('BIRDEYE_API_KEY');
+      if (!apiKey) {
+        logger.error('BIRDEYE_API_KEY not found in runtime settings');
+        return false;
+      }
+
+      const BIRDEYE_API = 'https://public-api.birdeye.so';
+      const endpoint = `${BIRDEYE_API}/defi/token_overview`;
+      const url = `${endpoint}?address=${responseContent.recommend_sell_address}`;
+
+      logger.debug('Making Birdeye API request', {
+        url,
+        address: responseContent.recommend_sell_address,
+      });
+
       const options = {
         method: 'GET',
         headers: {
           accept: 'application/json',
           'x-chain': 'solana',
-          'X-API-KEY': this.runtime.getSetting('BIRDEYE_API_KEY'),
+          'X-API-KEY': apiKey,
         },
       };
 
-      const res = await fetch(
-        `https://public-api.birdeye.so/defi/token_overview?address=${responseContent.recommend_sell_address}`,
-        options
-      );
-      if (!res.ok) throw new Error('Birdeye marketcap request failed');
+      try {
+        const res = await fetch(url, options);
+        if (!res.ok) {
+          const errorText = await res.text();
+          logger.error('Birdeye API request failed', {
+            status: res.status,
+            statusText: res.statusText,
+            error: errorText,
+            address: responseContent.recommend_sell_address,
+          });
+          throw new Error(`Birdeye marketcap request failed: ${res.status} ${res.statusText}`);
+        }
 
-      const resJson = await res.json();
-      console.log('sell-signal birdeye check', resJson);
+        const resJson = await res.json();
+        const marketcap = resJson?.data?.realMc;
 
-      // lots of good info
+        if (!marketcap) {
+          logger.warn('No marketcap data returned from Birdeye', {
+            response: resJson,
+            address: responseContent.recommend_sell_address,
+          });
+        }
 
-      const marketcap = resJson?.data?.realMc;
+        responseContent.marketcap = Number(marketcap || 0);
+      } catch (error) {
+        logger.error('Error fetching marketcap data:', error);
+        // Continue without marketcap data rather than failing completely
+        responseContent.marketcap = 0;
+      }
 
-      responseContent.marketcap = Number(marketcap);
+      // Add logging before emitting
+      logger.info('Emitting sell signal', {
+        token: responseContent.recommended_sell,
+        address: responseContent.recommend_sell_address,
+        amount: responseContent.sell_amount,
+      });
 
-      console.log('sell-signal::generateSignal - sending signal');
+      // Emit sell signal event
+      await this.runtime.emitEvent('SPARTAN_TRADE_SELL_SIGNAL', {
+        recommend_sell_address: responseContent.recommend_sell_address,
+        sell_amount: responseContent.sell_amount,
+        reason: responseContent.reason,
+      });
 
-      /*
-      const signal: SellSignalMessage = {
-        positionId: uuidv4() as UUID,
-        tokenAddress: params.recommend_sell_address,
-        // pairId
-        amount: params.sell_amount,
-        // currentBalance
-        // sellRecommenderId
-        // walletAddress
-        // isSimulation
-        // reason
-        entityId: "default",
-      };
-      */
+      logger.info('Sell signal emitted successfully');
 
-      this.runtime.emitEvent('SPARTAN_TRADE_SELL_SIGNAL', responseContent);
-
+      // Cache the signal
       await this.runtime.setCache<any>('sell_signals', {
         key: 'SELL_SIGNAL',
         data: responseContent,
       });
 
       return true;
-    } catch (e) {
-      console.error('sell-signal::generateSignal - err', e);
+    } catch (error) {
+      logger.error('Error generating sell signal:', error);
+      return false;
     }
   }
 

@@ -1,4 +1,4 @@
-import { type AgentRuntime, logger } from '@elizaos/core';
+import { type AgentRuntime, IAgentRuntime, logger } from '@elizaos/core';
 import { CacheManager } from '../utils/cacheManager';
 import { PortfolioStatus, TokenSignal } from '../types/trading';
 import { getTokenBalance, getWalletBalance } from '../utils/wallet';
@@ -8,6 +8,7 @@ import { TechnicalAnalysisService } from './calculation/technicalAnalysis';
 import { ScoringService } from './calculation/scoring';
 import { TokenSecurityService } from './validation/tokenSecurity';
 import { TradeCalculationService } from './calculation/tradeCalculation';
+import { WalletService } from './walletService';
 
 export class DataService {
   private cacheManager: CacheManager;
@@ -18,13 +19,31 @@ export class DataService {
   private tokenSecurityService: TokenSecurityService;
   private tradeCalculationService: TradeCalculationService;
 
-  constructor(private runtime: AgentRuntime) {
+  constructor(
+    private runtime: IAgentRuntime,
+    private walletService: WalletService
+  ) {
     this.cacheManager = new CacheManager();
     this.analyticsService = new AnalyticsService(runtime);
-    this.technicalAnalysisService = new TechnicalAnalysisService(runtime, this);
-    this.scoringService = new ScoringService(runtime, this);
-    this.tokenSecurityService = new TokenSecurityService(runtime, this);
-    this.tradeCalculationService = new TradeCalculationService(runtime, this);
+    this.technicalAnalysisService = new TechnicalAnalysisService(
+      runtime,
+      walletService,
+      this,
+      this.analyticsService
+    );
+    this.scoringService = new ScoringService(runtime, walletService, this, this.analyticsService);
+    this.tokenSecurityService = new TokenSecurityService(
+      runtime,
+      walletService,
+      this,
+      this.analyticsService
+    );
+    this.tradeCalculationService = new TradeCalculationService(
+      runtime,
+      walletService,
+      this,
+      this.analyticsService
+    );
   }
 
   async initialize(): Promise<void> {
