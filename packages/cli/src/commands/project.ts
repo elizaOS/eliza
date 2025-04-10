@@ -242,21 +242,66 @@ project
         process.exit(0);
       }
 
+      // Normalize the plugin name and check for its existence in package.json
+      const packageJsonPath = path.join(cwd, 'package.json');
+      if (!fs.existsSync(packageJsonPath)) {
+        console.error('No package.json found in the current directory.');
+        process.exit(1);
+      }
+
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+
+      // Combine dependencies and devDependencies
+      const dependencies = {
+        ...(packageJson.dependencies || {}),
+        ...(packageJson.devDependencies || {}),
+      };
+
+      // Normalize plugin name to check against different formats
+      let normalizedName = plugin;
+      let packageNameToRemove = plugin;
+
+      // Check for the plugin in different formats in dependencies
+      const possibleNames = [
+        plugin,
+        `@elizaos/${plugin}`,
+        `@elizaos/plugin-${plugin.replace(/^plugin-/, '')}`,
+        `plugin-${plugin.replace(/^plugin-/, '')}`,
+      ];
+
+      for (const name of possibleNames) {
+        if (dependencies[name]) {
+          packageNameToRemove = name;
+          break;
+        }
+      }
+
       // Uninstall package
-      console.info(`Removing ${plugin}...`);
-      await execa('bun', ['remove', plugin], {
+      console.info(`Removing ${packageNameToRemove}...`);
+      await execa('bun', ['remove', packageNameToRemove], {
         cwd,
         stdio: 'inherit',
       });
 
-      // Remove plugin directory if it exists
-      const pluginDir = path.join(cwd, plugin.replace(/^@elizaos\//, '').replace(/^plugin-/, ''));
-      if (fs.existsSync(pluginDir)) {
-        console.info(`Removing plugin directory ${pluginDir}...`);
-        fs.rmSync(pluginDir, { recursive: true, force: true });
+      // Get base name for directory removal
+      let baseName = packageNameToRemove;
+      if (packageNameToRemove.includes('/')) {
+        const parts = packageNameToRemove.split('/');
+        baseName = parts[parts.length - 1];
+      }
+      baseName = baseName.replace(/^plugin-/, '');
+
+      // Check both with and without plugin- prefix
+      const possibleDirs = [path.join(cwd, baseName), path.join(cwd, `plugin-${baseName}`)];
+
+      for (const pluginDir of possibleDirs) {
+        if (fs.existsSync(pluginDir)) {
+          console.info(`Removing plugin directory ${pluginDir}...`);
+          fs.rmSync(pluginDir, { recursive: true, force: true });
+        }
       }
 
-      console.log(`Successfully removed ${plugin}`);
+      console.log(`Successfully removed ${packageNameToRemove}`);
     } catch (error) {
       handleError(error);
     }
