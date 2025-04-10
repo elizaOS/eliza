@@ -61,6 +61,11 @@ project
   .description('Add a plugin to the project')
   .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('-n, --no-env-prompt', 'Skip prompting for environment variables')
+  .option(
+    '-b, --branch <branchName>',
+    'Branch to install from when using monorepo source',
+    'v2-develop'
+  )
   .action(async (plugin, opts) => {
     try {
       const cwd = process.cwd();
@@ -96,7 +101,10 @@ project
         baseName = baseName.replace(/^plugin-/, '');
         const pluginName = `plugin-${baseName}`;
 
-        const installCommand = `bun add github:elizaos-plugins/${pluginName}`;
+        // Show installation instructions for all approaches, including branch for monorepo
+        const npmCommand = `bun add @elizaos/${pluginName}`;
+        const gitCommand = `bun add git+https://github.com/elizaos/${pluginName}.git`;
+        const monorepoCommand = `bun add git+https://github.com/elizaos/eliza.git#${opts.branch}&subdirectory=packages/${pluginName}`;
 
         // Use ANSI color codes
         const boldCyan = '\x1b[1;36m'; // Bold cyan for command
@@ -104,11 +112,12 @@ project
         const reset = '\x1b[0m'; // Reset formatting
 
         // Print entire message with console.log to avoid timestamps and prefixes
+        console.log(`\n📦 ${bold}To install ${pluginName}, try one of these commands:${reset}\n`);
+        console.log(`Option 1 (npm registry):\n  ${boldCyan}${npmCommand}${reset}\n`);
+        console.log(`Option 2 (dedicated GitHub repo):\n  ${boldCyan}${gitCommand}${reset}\n`);
         console.log(
-          `\n📦 ${bold}To install ${pluginName}, you need to manually run this command:${reset}\n`
+          `Option 3 (monorepo subdirectory, branch: ${opts.branch}):\n  ${boldCyan}${monorepoCommand}${reset}\n`
         );
-        console.log(`  ${boldCyan}${installCommand}${reset}\n`);
-        console.log(`Copy and paste the above command into your terminal to install the plugin.\n`);
 
         process.exit(0);
       }
@@ -127,18 +136,23 @@ project
         process.exit(1);
       }
 
-      // Install from GitHub
+      // Install plugin using our centralized function, passing the branch option
       console.info(`Installing ${plugin}...`);
-      await installPlugin(repo, cwd);
+      const success = await installPlugin(repo, cwd, undefined, opts.branch);
 
-      console.log(`Successfully installed ${plugin}`);
+      if (success) {
+        console.log(`Successfully installed ${plugin}`);
+      } else {
+        console.error(`Failed to install ${plugin}`);
+        process.exit(1);
+      }
     } catch (error) {
       handleError(error);
     }
   });
 
 project
-  .command('show-plugins')
+  .command('installed-plugins')
   .description('List plugins found in the project dependencies')
   .action(async () => {
     try {
@@ -234,7 +248,7 @@ project
 
         // Print entire message with console.log to avoid timestamps and prefixes
         console.log(
-          `\n🗑️ ${bold}To remove ${pluginName}, you need to manually run this command:${reset}\n`
+          `\n[x] ${bold}To remove ${pluginName}, you need to manually run this command:${reset}\n`
         );
         console.log(`  ${boldCyan}${removeCommand}${reset}\n`);
         console.log(`Copy and paste the above command into your terminal to remove the plugin.\n`);
@@ -242,21 +256,66 @@ project
         process.exit(0);
       }
 
+      // Normalize the plugin name and check for its existence in package.json
+      const packageJsonPath = path.join(cwd, 'package.json');
+      if (!fs.existsSync(packageJsonPath)) {
+        console.error('No package.json found in the current directory.');
+        process.exit(1);
+      }
+
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+
+      // Combine dependencies and devDependencies
+      const dependencies = {
+        ...(packageJson.dependencies || {}),
+        ...(packageJson.devDependencies || {}),
+      };
+
+      // Normalize plugin name to check against different formats
+      let normalizedName = plugin;
+      let packageNameToRemove = plugin;
+
+      // Check for the plugin in different formats in dependencies
+      const possibleNames = [
+        plugin,
+        `@elizaos/${plugin}`,
+        `@elizaos/plugin-${plugin.replace(/^plugin-/, '')}`,
+        `plugin-${plugin.replace(/^plugin-/, '')}`,
+      ];
+
+      for (const name of possibleNames) {
+        if (dependencies[name]) {
+          packageNameToRemove = name;
+          break;
+        }
+      }
+
       // Uninstall package
-      console.info(`Removing ${plugin}...`);
-      await execa('bun', ['remove', plugin], {
+      console.info(`Removing ${packageNameToRemove}...`);
+      await execa('bun', ['remove', packageNameToRemove], {
         cwd,
         stdio: 'inherit',
       });
 
-      // Remove plugin directory if it exists
-      const pluginDir = path.join(cwd, plugin.replace(/^@elizaos\//, '').replace(/^plugin-/, ''));
-      if (fs.existsSync(pluginDir)) {
-        console.info(`Removing plugin directory ${pluginDir}...`);
-        fs.rmSync(pluginDir, { recursive: true, force: true });
+      // Get base name for directory removal
+      let baseName = packageNameToRemove;
+      if (packageNameToRemove.includes('/')) {
+        const parts = packageNameToRemove.split('/');
+        baseName = parts[parts.length - 1];
+      }
+      baseName = baseName.replace(/^plugin-/, '');
+
+      // Check both with and without plugin- prefix
+      const possibleDirs = [path.join(cwd, baseName), path.join(cwd, `plugin-${baseName}`)];
+
+      for (const pluginDir of possibleDirs) {
+        if (fs.existsSync(pluginDir)) {
+          console.info(`Removing plugin directory ${pluginDir}...`);
+          fs.rmSync(pluginDir, { recursive: true, force: true });
+        }
       }
 
-      console.log(`Successfully removed ${plugin}`);
+      console.log(`Successfully removed ${packageNameToRemove}`);
     } catch (error) {
       handleError(error);
     }

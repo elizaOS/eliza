@@ -102,7 +102,6 @@ const fetcher = async ({
         return jsonData;
       } catch (error) {
         const text = await response.text();
-
         clientLogger.error('JSON Parse Error:', error);
         clientLogger.error(
           'Response text:',

@@ -4,6 +4,7 @@ import { execa } from 'execa';
 import type { ExecaChildProcess, ExecaReturnValue } from 'execa';
 import { logger } from '@elizaos/core';
 
+// DO NOT USE IT FOR PLUGIN INSTALLATION
 /**
  * Check if the CLI is running from a global installation
  * @returns {boolean} - Whether the CLI is globally installed
@@ -78,33 +79,58 @@ export function getInstallCommand(packageManager: string, isGlobal: boolean): st
  * Execute a package installation using the appropriate package manager and settings
  * @param {string} packageName - The package to install
  * @param {string} versionOrTag - Version or tag to install (optional)
- * @param {boolean} isGlobal - Whether to install globally
  * @param {string} directory - Directory to install in
+ * @param {Object} options - Additional installation options
  * @returns {Promise<ExecaReturnValue<string>>} - The execa result
  */
-export function executeInstallation(
+export async function executeInstallation(
   packageName: string,
   versionOrTag: string = '',
-  isGlobal: boolean = false,
-  directory: string = process.cwd()
+  directory: string = process.cwd(),
+  options: {
+    tryNpm?: boolean;
+    tryGithub?: boolean;
+    tryMonorepo?: boolean;
+    subdirectory?: string;
+    monorepoBranch?: string;
+  } = { tryNpm: true, tryGithub: true, tryMonorepo: false }
 ) {
   // Determine which package manager to use
   const packageManager = getPackageManager();
+  const installCommand = getInstallCommand(packageManager, false);
 
-  // Get the appropriate install command
-  const installCommand = getInstallCommand(packageManager, isGlobal);
+  logger.info(`Attempting to install package: ${packageName} using ${packageManager}`);
 
-  // Check if the package name looks like a GitHub repo URL
-  const isGitHubUrl = packageName.includes('/') && !packageName.startsWith('@');
+  // Extract and normalize the plugin name
+  let baseName = packageName;
 
-  // If it's a scoped package or potentially an npm package, try npm registry first
-  if (!isGitHubUrl || packageName.startsWith('@')) {
-    // Try to get just the package name without GitHub org prefix if it exists
+  // Handle organization/repo format
+  if (packageName.includes('/') && !packageName.startsWith('@')) {
+    const parts = packageName.split('/');
+    baseName = parts[parts.length - 1];
+  } else if (packageName.startsWith('@')) {
+    // Handle scoped package format
+    const parts = packageName.split('/');
+    if (parts.length > 1) {
+      baseName = parts[1];
+    }
+  }
+
+  // Remove plugin- prefix if present and ensure proper format
+  baseName = baseName.replace(/^plugin-/, '');
+  const pluginName = baseName.startsWith('plugin-') ? baseName : `plugin-${baseName}`;
+
+  // 1. Try npm registry (if enabled)
+  if (options.tryNpm !== false) {
+    // If it's a scoped package or potentially an npm package
     const npmPackageName = packageName.startsWith('@')
       ? packageName // Already a scoped package
       : packageName.includes('/')
-        ? `@elizaos/${packageName.split('/').pop()}` // Convert github org/repo to @org/name
-        : `@elizaos/${packageName}`; // Add @elizaos scope to bare names
+        ? `@elizaos/${packageName
+            .split('/')
+            .pop()
+            ?.replace(/^plugin-/, '')}` // Convert github org/repo to @org/name
+        : `@elizaos/${baseName}`; // Add @elizaos scope to bare names
 
     // Format the package name with version if provided
     const packageWithVersion = versionOrTag
@@ -112,36 +138,64 @@ export function executeInstallation(
       : npmPackageName;
 
     logger.debug(
-      `Installing ${packageWithVersion} from npm registry using ${packageManager} in ${directory}${isGlobal ? ' globally' : ''}`
+      `Installing ${packageWithVersion} from npm registry using ${packageManager} in ${directory}`
     );
 
-    // Try to install from npm first (won't require GitHub auth)
+    // Try to install from npm
     try {
-      return execa(packageManager, [...installCommand, packageWithVersion], {
+      return await execa(packageManager, [...installCommand, packageWithVersion], {
         cwd: directory,
         stdio: 'inherit',
       });
     } catch (error) {
       logger.warn(`Failed to install from npm registry: ${npmPackageName}`);
+      // Continue to next installation method
     }
   }
 
-  // For GitHub URLs, ONLY use the auth-free GitHub shorthand syntax
-  if (packageName.includes('/') && !packageName.startsWith('@')) {
-    // Always use the npm GitHub shorthand syntax which doesn't require auth
-    const githubPackage = `${packageManager === 'npm' ? 'github:' : ''}${packageName}${versionOrTag || ''}`;
+  // 2. Try GitHub URL installation (if enabled)
+  if (options.tryGithub !== false) {
+    // Define GitHub organizations to try, in priority order
+    const githubOrgs = ['elizaos', 'elizaos-plugins'];
 
-    logger.debug(`Using GitHub shorthand syntax: ${githubPackage} (no auth required)`);
+    // Try each GitHub organization with git+https format
+    for (const org of githubOrgs) {
+      const gitUrl = `git+https://github.com/${org}/${pluginName}.git${versionOrTag || ''}`;
 
-    // Execute the installation with GitHub shorthand
-    return execa(packageManager, [...installCommand, githubPackage], {
-      cwd: directory,
-      stdio: 'inherit',
-    });
+      logger.debug(`Installing from GitHub using git+https format: ${gitUrl}`);
+
+      try {
+        return await execa(packageManager, [...installCommand, gitUrl], {
+          cwd: directory,
+          stdio: 'inherit',
+        });
+      } catch (error) {
+        logger.warn(`Failed to install from GitHub ${org} organization: ${gitUrl}`);
+        // Continue to next organization or method
+      }
+    }
   }
 
-  // If we got here and it's not a GitHub URL or npm package, just try the direct name as last resort
-  // But this should never trigger auth either
+  // 3. Try monorepo approach (if enabled)
+  if (options.tryMonorepo !== false) {
+    const branch = options.monorepoBranch || 'v2-develop';
+    const subdirectory = options.subdirectory || `packages/${pluginName}`;
+    const monorepoUrl = `git+https://github.com/elizaos/eliza.git#${branch}&subdirectory=${subdirectory}`;
+
+    logger.debug(`Installing from monorepo subdirectory: ${monorepoUrl}`);
+
+    try {
+      return await execa(packageManager, [...installCommand, monorepoUrl], {
+        cwd: directory,
+        stdio: 'inherit',
+      });
+    } catch (error) {
+      logger.warn(`Failed to install from monorepo: ${monorepoUrl}`);
+      // Continue to last resort
+    }
+  }
+
+  // 4. Last resort - direct package name
   logger.debug(`Using direct package name as last resort: ${packageName}`);
   return execa(packageManager, [...installCommand, packageName + (versionOrTag || '')], {
     cwd: directory,
