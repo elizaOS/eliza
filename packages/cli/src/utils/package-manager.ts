@@ -99,6 +99,8 @@ export async function executeInstallation(
   const packageManager = getPackageManager();
   const installCommand = getInstallCommand(packageManager, false);
 
+  logger.info(`Attempting to install package: ${packageName} using ${packageManager}`);
+
   // Extract and normalize the plugin name
   let baseName = packageName;
 
