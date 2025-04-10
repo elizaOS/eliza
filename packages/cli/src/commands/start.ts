@@ -78,7 +78,6 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
     return null;
   }
 
-  // Process the plugin module to find the actual plugin object
   // Construct the expected camelCase export name (e.g., @elizaos/plugin-foo-bar -> fooBarPlugin)
   const expectedFunctionName = `${pluginName
     .replace(/^@elizaos\/plugin-/, '') // Remove prefix
@@ -89,43 +88,77 @@ async function loadAndPreparePlugin(pluginName: string, version: string): Promis
   logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
   logger.debug(`Has default export: ${!!pluginModule.default}`);
 
-  // Check default export first, then the expected named export
-  let resolvedPlugin = pluginModule.default || pluginModule[expectedFunctionName];
+  // --- Improved Export Resolution Logic ---
 
-  // Basic validation: check if it looks like a Plugin object
-  if (
-    resolvedPlugin &&
-    typeof resolvedPlugin === 'object' &&
-    resolvedPlugin.name &&
-    typeof resolvedPlugin.init === 'function'
-  ) {
-    logger.debug(
-      `Found plugin export: ${resolvedPlugin.name} (using default or ${expectedFunctionName})`
-    );
-    return resolvedPlugin as Plugin;
+  // 1. Prioritize the expected named export if it exists
+  const expectedExport = pluginModule[expectedFunctionName];
+  if (isValidPluginShape(expectedExport)) {
+    logger.debug(`Found valid plugin export using expected name: ${expectedFunctionName}`);
+    return expectedExport as Plugin;
   }
 
-  // If not found or invalid, try more aggressively to find *any* suitable plugin export
-  logger.debug(`Primary export not found or invalid, searching all exports...`);
-  for (const key of Object.keys(pluginModule)) {
-    const potentialPlugin = pluginModule[key];
-    if (
-      potentialPlugin &&
-      typeof potentialPlugin === 'object' &&
-      potentialPlugin.name &&
-      typeof potentialPlugin.init === 'function'
-    ) {
-      logger.debug(
-        `Found alternative plugin export under key: ${key}, Name: ${potentialPlugin.name}`
-      );
-      return potentialPlugin as Plugin; // Return the first valid plugin object found
+  // 2. Check the default export if the named one wasn't found or valid
+  const defaultExport = pluginModule.default;
+  if (isValidPluginShape(defaultExport)) {
+    // Ensure it's not the same invalid object we might have checked above
+    if (expectedExport !== defaultExport) {
+      logger.debug('Found valid plugin export using default export');
+      return defaultExport as Plugin;
     }
   }
 
+  // 3. If neither primary method worked, search all exports aggressively
+  logger.debug(
+    `Primary exports (named: ${expectedFunctionName}, default) not found or invalid, searching all exports...`
+  );
+  for (const key of Object.keys(pluginModule)) {
+    // Skip keys we already checked (or might be checking)
+    if (key === expectedFunctionName || key === 'default') {
+      continue;
+    }
+
+    const potentialPlugin = pluginModule[key];
+    if (isValidPluginShape(potentialPlugin)) {
+      logger.debug(
+        `Found alternative valid plugin export under key: ${key}, Name: ${potentialPlugin.name}`
+      );
+      return potentialPlugin as Plugin;
+    }
+  }
+  // --- End of Improved Logic ---
+
   logger.warn(
-    `Could not find a valid plugin export in ${pluginName}. Available exports: ${Object.keys(pluginModule).join(', ')}`
+    `Could not find a valid plugin export in ${pluginName}. Checked exports: ${expectedFunctionName} (if exists), default (if exists), and others. Available exports: ${Object.keys(pluginModule).join(', ')}`
   );
   return null; // No suitable plugin export found
+}
+
+/**
+ * Checks if an object has the basic shape of a Plugin (name + at least one functional property).
+ * @param obj The object to check.
+ * @returns True if the object has a valid plugin shape, false otherwise.
+ */
+function isValidPluginShape(obj: any): obj is Plugin {
+  if (!obj || typeof obj !== 'object' || !obj.name) {
+    return false;
+  }
+  // Check for the presence of at least one key functional property
+  return !!(
+    obj.init ||
+    obj.services ||
+    obj.providers ||
+    obj.actions ||
+    obj.memoryManagers ||
+    obj.componentTypes ||
+    obj.evaluators ||
+    obj.adapter ||
+    obj.models ||
+    obj.events ||
+    obj.routes ||
+    obj.tests ||
+    obj.config ||
+    obj.description // description is also mandatory technically
+  );
 }
 
 /**
@@ -218,13 +251,18 @@ export async function startAgent(
 
   // Pre-load plugins passed directly to the function (these can be Plugin objects)
   for (const plugin of plugins) {
-    if (plugin && typeof plugin === 'object' && plugin.name && typeof plugin.init === 'function') {
+    if (isValidPluginShape(plugin)) {
+      // Use isValidPluginShape for broader validation
       if (!loadedPluginsMap.has(plugin.name)) {
         logger.debug(`Using pre-provided plugin object: ${plugin.name}`);
         loadedPluginsMap.set(plugin.name, plugin);
+      } else {
+        logger.debug(`Plugin ${plugin.name} was already pre-loaded, skipping duplicate.`);
       }
     } else {
-      logger.warn(`Invalid or non-object plugin skipped in pre-load: ${JSON.stringify(plugin)}`);
+      logger.warn(
+        `Invalid or non-object plugin skipped in pre-load: ${plugin ? JSON.stringify(plugin) : plugin}`
+      ); // Stringify only if not null/undefined
     }
   }
 
