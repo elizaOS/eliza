@@ -101,8 +101,8 @@ const fetcher = async ({
         const jsonData = await response.json();
         return jsonData;
       } catch (error) {
-        clientLogger.error('JSON Parse Error:', error);
         const text = await response.text();
+        clientLogger.error('JSON Parse Error:', error);
         clientLogger.error(
           'Response text:',
           text.substring(0, 500) + (text.length > 500 ? '...' : '')
