@@ -175,6 +175,42 @@ function getJsonRepairFunction(): (params: {
 }
 
 /**
+ * Add a reusable function for text-to-speech
+ */
+async function fetchTextToSpeech(runtime: AgentRuntime, text: string) {
+  const apiKey = getApiKey(runtime);
+  const model = getSetting(runtime, 'OPENAI_TTS_MODEL', 'gpt-4o-mini-tts');
+  const voice = getSetting(runtime, 'OPENAI_TTS_VOICE', 'nova');
+  const instructions = getSetting(runtime, 'OPENAI_TTS_INSTRUCTIONS', '');
+  const baseURL = getBaseURL(runtime);
+
+  try {
+    const res = await fetch(`${baseURL}/audio/speech`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        voice,
+        input: text,
+        ...(instructions && { instructions }),
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenAI TTS error ${res.status}: ${err}`);
+    }
+
+    return res.body;
+  } catch (err: any) {
+    throw new Error(`Failed to fetch speech from OpenAI TTS: ${err.message || err}`);
+  }
+}
+
+/**
  * Defines the OpenAI plugin with its name, description, and configuration options.
  * @type {Plugin}
  */
@@ -537,39 +573,7 @@ export const openaiPlugin: Plugin = {
       return data.text;
     },
     [ModelType.TEXT_TO_SPEECH]: async (runtime: AgentRuntime, text: string) => {
-      const getSetting = (key: string, fallback = '') =>
-        process.env[key] || runtime.getSetting(key) || fallback;
-
-      const apiKey = getApiKey(runtime);
-      const model = getSetting('OPENAI_TTS_MODEL', 'gpt-4o-mini-tts');
-      const voice = getSetting('OPENAI_TTS_VOICE', 'nova');
-      const instructions = getSetting('OPENAI_TTS_INSTRUCTIONS', '');
-      const baseURL = getBaseURL(runtime);
-
-      try {
-        const res = await fetch(`${baseURL}/audio/speech`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            voice,
-            input: text,
-            ...(instructions && { instructions }),
-          }),
-        });
-
-        if (!res.ok) {
-          const err = await res.text();
-          throw new Error(`OpenAI TTS error ${res.status}: ${err}`);
-        }
-
-        return res.body;
-      } catch (err: any) {
-        throw new Error(`Failed to fetch speech from OpenAI TTS: ${err.message || err}`);
-      }
+      return await fetchTextToSpeech(runtime, text);
     },
 
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
@@ -739,6 +743,22 @@ export const openaiPlugin: Plugin = {
               );
             }
             logger.log('Decoded text:', decodedText);
+          },
+        },
+        {
+          name: 'openai_test_text_to_speech',
+          fn: async (runtime: AgentRuntime) => {
+            try {
+              const text = 'Hello, this is a test for text-to-speech.';
+              const response = await fetchTextToSpeech(runtime, text);
+              if (!response) {
+                throw new Error('Failed to generate speech');
+              }
+              logger.log('Generated speech successfully');
+            } catch (error) {
+              logger.error('Error in openai_test_text_to_speech:', error);
+              throw error;
+            }
           },
         },
       ],
