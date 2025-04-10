@@ -457,7 +457,7 @@ export const openaiPlugin: Plugin = {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4-vision-preview',
+            model: 'gpt-4o-mini',
             messages: [
               {
                 role: 'user',
