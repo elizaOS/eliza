@@ -379,15 +379,15 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
       }
     }
 
-    // Direct GitHub shorthand (github:org/repo) - NO AUTH REQUIRED
-    if (!pluginName.includes(':') && !pluginName.startsWith('@')) {
-      const baseName = pluginName.replace(/^plugin-/, '');
-      return `github:elizaos-plugins/plugin-${baseName}`;
-    }
-
     // For scoped packages, try npm directly - NO AUTH REQUIRED
     if (pluginName.startsWith('@')) {
       return pluginName; // Return as-is for npm to handle
+    }
+
+    // Direct GitHub shorthand (github:org/repo) - NO AUTH REQUIRED
+    if (!pluginName.includes(':') && !pluginName.startsWith('@')) {
+      const baseName = pluginName.replace(/^plugin-/, '');
+      return `@elizaos/plugin-${baseName}`;
     }
 
     return null;

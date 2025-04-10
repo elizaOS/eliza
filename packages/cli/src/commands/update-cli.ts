@@ -43,8 +43,32 @@ async function performCliUpdate(): Promise<boolean> {
 
     console.info(`Updating ElizaOS CLI from ${cleanCurrentVersion} to ${latestVersion}...`);
 
-    // Always install globally for CLI updates
-    await executeInstallation('@elizaos/cli', versionStream, true);
+    // Install the specified version globally
+    logger.info(`Updating Eliza CLI to version: ${versionStream}`);
+    try {
+      // Use executeInstallation to install the CLI package
+      const installResult = await executeInstallation(
+        '@elizaos/cli',
+        versionStream, // The specific version or tag to install
+        process.cwd(), // Specify CWD, actual install location depends on PM/global flag
+        { tryNpm: true, tryGithub: false, tryMonorepo: false } // Prioritize npm
+      );
+
+      // Check the success flag from the returned object
+      if (!installResult.success) {
+        // Throw an error if the installation wasn't successful
+        throw new Error(
+          `Installation of @elizaos/cli version ${versionStream} failed. Check logs.`
+        );
+      }
+
+      logger.info(`Successfully updated Eliza CLI to ${versionStream}`);
+      logger.info('Please restart your terminal for the changes to take effect.');
+    } catch (error) {
+      logger.error('Failed to update Eliza CLI:', error.message);
+      // logger.debug('Error details:', error);
+      process.exit(1);
+    }
 
     displayBanner();
     console.info('ElizaOS CLI has been successfully updated!');
