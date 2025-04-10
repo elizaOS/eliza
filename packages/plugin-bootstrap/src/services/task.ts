@@ -4,6 +4,7 @@ import {
   logger,
   Service,
   ServiceType,
+  type UUID,
   type IAgentRuntime,
   type Memory,
   type ServiceTypeName,
@@ -183,6 +184,12 @@ export class TaskService extends Service {
       // validate the tasks and sort them
       const tasks = await this.validateTasks(allTasks);
 
+      /*
+      if (tasks.length > 0) {
+        logger.debug(`Found ${tasks.length} queued tasks`);
+      }
+      */
+
       const now = Date.now();
 
       for (const task of tasks) {
@@ -190,6 +197,13 @@ export class TaskService extends Service {
         // Then fall back to task.metadata.updatedAt (for older tasks)
         // Finally default to 0 if neither exists
         let taskStartTime: number;
+
+        // if tags does not contain "repeat", execute immediately
+        if (!task.tags?.includes('repeat')) {
+          // does not contain repeat
+          await this.executeTask(task);
+          continue;
+        }
 
         if (typeof task.updatedAt === 'number') {
           taskStartTime = task.updatedAt;
