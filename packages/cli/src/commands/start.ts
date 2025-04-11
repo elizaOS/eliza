@@ -21,7 +21,7 @@ import { promptForEnvVars } from '../utils/env-prompt.js';
 import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
-import { displayBanner } from '../displayBanner';
+import { displayBanner, getVersion } from '../displayBanner';
 import { findNextAvailablePort } from '../utils/port-handling';
 import { loadPluginModule } from '../utils/load-plugin';
 
@@ -240,12 +240,7 @@ export async function startAgent(
   const packageJsonPath = path.resolve(__dirname, '../../package.json');
 
   // Add a simple check in case the path is incorrect
-  let version = '0.0.0'; // Fallback version
-  if (!fs.existsSync(packageJsonPath)) {
-  } else {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-    version = packageJson.version;
-  }
+  let version = getVersion();
 
   const loadedPluginsMap = new Map<string, Plugin>();
 
