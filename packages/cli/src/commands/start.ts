@@ -337,6 +337,7 @@ export async function startAgent(
 
   // report to console
   logger.debug(`Started ${runtime.character.name} as ${runtime.agentId}`);
+  logger.success(`Agent ${runtime.character.name} started successfully!`);
 
   return runtime;
 }
@@ -351,6 +352,7 @@ export async function startAgent(
 async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
   await runtime.close();
   server.unregisterAgent(runtime.agentId);
+  logger.success(`Agent ${runtime.character.name} stopped successfully!`);
 }
 
 /**
@@ -403,10 +405,17 @@ const startAgents = async (options: {
   // Set up server properties
   server.startAgent = async (character) => {
     logger.info(`Starting agent for character ${character.name}`);
-    return startAgent(character, server);
+    const runtime = await startAgent(character, server);
+    logger.success(`Agent ${character.name} has been successfully started!`);
+    // Add direct console log for higher visibility
+    console.log(`\x1b[32m✓ Agent ${character.name} started successfully!\x1b[0m`);
+    return runtime;
   };
   server.stopAgent = (runtime: IAgentRuntime) => {
+    logger.info(`Stopping agent ${runtime.character.name}`);
     stopAgent(runtime, server);
+    // Add direct console log for higher visibility
+    console.log(`\x1b[32m✓ Agent ${runtime.character.name} stopped successfully!\x1b[0m`);
   };
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;

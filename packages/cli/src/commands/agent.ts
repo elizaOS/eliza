@@ -312,6 +312,8 @@ agent
       }
 
       logger.success(`Successfully stopped agent ${opts.name}`);
+      // Add direct console log for higher visibility
+      console.log(`\x1b[32m✓ Agent ${opts.name} stopped successfully!\x1b[0m`);
     } catch (error) {
       await checkServer();
       handleError(error);
