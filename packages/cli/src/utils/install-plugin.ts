@@ -65,7 +65,7 @@ async function verifyPluginImport(repository: string, context: string): Promise<
  * @returns {boolean} - Whether the installation and import verification was successful
  */
 async function attemptInstallation(
-  repository: string,
+  packageName: string,
   versionString: string,
   directory: string,
   context: string,
@@ -80,7 +80,7 @@ async function attemptInstallation(
 
   try {
     // Use centralized installation function which now returns success status and identifier
-    const installResult = await executeInstallation(repository, versionString, directory, options);
+    const installResult = await executeInstallation(packageName, versionString, directory, options);
 
     // If installation failed, return false immediately
     if (!installResult.success || !installResult.installedIdentifier) {
@@ -103,33 +103,20 @@ async function attemptInstallation(
 /**
  * Asynchronously installs a plugin to a specified directory.
  *
- * @param {string} repository - The repository URL of the plugin to install.
+ * @param {string} packageName - The repository URL of the plugin to install.
  * @param {string} cwd - The current working directory where the plugin will be installed.
- * @param {string} version - The specific version of the plugin to install.
+ * @param {string} versionSpecifier - The specific version of the plugin to install.
  * @param {string} monorepoBranch - The specific branch to use for monorepo installation.
  * @returns {Promise<boolean>} - A Promise that resolves to true if the plugin is successfully installed, or false otherwise.
  */
 export async function installPlugin(
-  repository: string,
+  packageName: string,
   cwd: string,
-  version?: string,
+  versionSpecifier?: string,
   monorepoBranch?: string
 ): Promise<boolean> {
   // Mark this plugin as installed to ensure we don't get into an infinite loop
-  logger.info(`Installing plugin: ${repository}`);
-
-  // Clean repository URL - only if it looks like a GitHub URL
-  let repoUrl = repository;
-
-  // Leave scoped packages as-is to prioritize npm registry
-  if (!repository.startsWith('@')) {
-    if (repoUrl.startsWith('git+')) {
-      repoUrl = repoUrl.substring(4);
-    }
-    if (repoUrl.endsWith('.git')) {
-      repoUrl = repoUrl.slice(0, -4);
-    }
-  }
+  logger.info(`Installing plugin: ${packageName}`);
 
   // Get installation context info
   const cliDir = getCliDirectory();
@@ -138,18 +125,18 @@ export async function installPlugin(
   let versionString = '';
 
   // If we have a version (tag or specific version)
-  if (version) {
+  if (versionSpecifier) {
     // Basic check if it looks like a git commit hash (e.g., 7+ hex characters)
-    const looksLikeGitHash = /^[a-f0-9]{7,}$/i.test(version);
+    const looksLikeGitHash = /^[a-f0-9]{7,}$/i.test(versionSpecifier);
 
     if (looksLikeGitHash) {
       // If the input itself looks like a hash, use #
-      versionString = `#${version}`;
+      versionString = `#${versionSpecifier}`;
     } else {
       // Otherwise, assume it's an npm tag/version range and use @
       // No need to call getPluginVersion here, just use the tag directly.
       // The package manager will resolve the tag (@beta, @latest, @1.2.3)
-      versionString = `@${version}`;
+      versionString = `@${versionSpecifier}`;
     }
     logger.debug(`Using version string: ${versionString} for package manager.`);
   }
@@ -163,18 +150,18 @@ export async function installPlugin(
   };
 
   // If installing a specific scoped package version/tag, prioritize npm ONLY
-  if (repository.startsWith('@') && version) {
+  if (packageName.startsWith('@') && versionSpecifier) {
     installOptions = {
       ...installOptions, // Keep monorepoBranch if passed
       tryNpm: true,
       tryGithub: false,
       tryMonorepo: false,
     };
-    logger.info(`Prioritizing npm install for ${repository}@${version}`);
+    logger.info(`Prioritizing npm install for ${packageName}@${versionSpecifier}`);
   }
 
   // Try installation in the current directory with determined approaches
-  if (await attemptInstallation(repository, versionString, cwd, ':', installOptions)) {
+  if (await attemptInstallation(packageName, versionString, cwd, ':', installOptions)) {
     return true;
   }
 
@@ -182,7 +169,7 @@ export async function installPlugin(
   if (cliDir) {
     if (
       await attemptInstallation(
-        repository,
+        packageName,
         versionString,
         cliDir,
         'in CLI directory',
@@ -194,6 +181,6 @@ export async function installPlugin(
   }
 
   // If we got here, all installation attempts failed
-  logger.error(`All installation attempts failed for plugin ${repository}`);
+  logger.error(`All installation attempts failed for plugin ${packageName}`);
   return false;
 }
