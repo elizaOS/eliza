@@ -10,7 +10,21 @@ import { useToast } from '@/hooks/use-toast';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
-import { type FormEvent, type ReactNode, useState } from 'react';
+import { type FormEvent, type ReactNode, useState, useMemo } from 'react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  getAllVoiceModels,
+  getVoiceModelByValue,
+  providerPluginMap,
+  getAllRequiredPlugins,
+} from '../config/voice-models';
+import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
 
 type FieldType = 'text' | 'textarea' | 'number' | 'checkbox' | 'select';
 
@@ -20,6 +34,7 @@ type InputField = {
   description?: string;
   getValue: (char: Agent) => string;
   fieldType: FieldType;
+  options?: { value: string; label: string }[];
 };
 
 type ArrayField = {
@@ -33,94 +48,6 @@ enum SECTION_TYPE {
   INPUT = 'input',
   ARRAY = 'array',
 }
-
-const CHARACTER_FORM_SCHEMA = [
-  {
-    sectionTitle: 'Basic Info',
-    sectionValue: 'basic',
-    sectionType: SECTION_TYPE.INPUT,
-    fields: [
-      {
-        title: 'Name',
-        name: 'name',
-        description: 'The display name of your character',
-        fieldType: 'text',
-        getValue: (char) => char.name || '',
-      },
-      {
-        title: 'Username',
-        name: 'username',
-        description: 'Unique identifier for your character',
-        fieldType: 'text',
-        getValue: (char) => char.username || '',
-      },
-      {
-        title: 'System',
-        name: 'system',
-        description: 'System prompt for character behavior',
-        fieldType: 'textarea',
-        getValue: (char) => char.system || '',
-      },
-      {
-        title: 'Voice Model',
-        name: 'settings.voice.model',
-        description: 'Voice model used for speech synthesis',
-        fieldType: 'text',
-        getValue: (char) => char.settings?.voice?.model || '',
-      },
-    ] as InputField[],
-  },
-  {
-    sectionTitle: 'Content',
-    sectionValue: 'content',
-    sectionType: SECTION_TYPE.ARRAY,
-    fields: [
-      {
-        title: 'Bio',
-        description: 'Key information about your character',
-        path: 'bio',
-        getData: (char) => (Array.isArray(char.bio) ? char.bio : []),
-      },
-      {
-        title: 'Topics',
-        description: 'Topics your character is knowledgeable about',
-        path: 'topics',
-        getData: (char) => char.topics || [],
-      },
-      {
-        title: 'Adjectives',
-        description: "Words that describe your character's personality",
-        path: 'adjectives',
-        getData: (char) => char.adjectives || [],
-      },
-    ] as ArrayField[],
-  },
-  {
-    sectionTitle: 'Style',
-    sectionValue: 'style',
-    sectionType: SECTION_TYPE.ARRAY,
-    fields: [
-      {
-        title: 'All',
-        description: 'Style rules applied to all interactions',
-        path: 'style.all',
-        getData: (char) => char.style?.all || [],
-      },
-      {
-        title: 'Chat',
-        description: 'Style rules for chat interactions',
-        path: 'style.chat',
-        getData: (char) => char.style?.chat || [],
-      },
-      {
-        title: 'Post',
-        description: 'Style rules for social media posts',
-        path: 'style.post',
-        getData: (char) => char.style?.post || [],
-      },
-    ] as ArrayField[],
-  },
-];
 
 type customComponent = {
   name: string;
@@ -158,8 +85,120 @@ export default function CharacterForm({
   customComponents = [],
 }: CharacterFormProps) {
   const { toast } = useToast();
-
+  const { data: elevenlabsVoices, isLoading: isLoadingVoices } = useElevenLabsVoices();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Get all voice models, using the dynamic ElevenLabs voices when available
+  const allVoiceModels = useMemo(() => {
+    const staticModels = getAllVoiceModels();
+
+    // If we have dynamically loaded ElevenLabs voices, replace the static ones
+    if (elevenlabsVoices && !isLoadingVoices) {
+      // Filter out the static ElevenLabs voices
+      const nonElevenLabsModels = staticModels.filter((model) => model.provider !== 'elevenlabs');
+      // Return combined models with dynamic ElevenLabs voices
+      return [...nonElevenLabsModels, ...elevenlabsVoices];
+    }
+
+    // Otherwise return the static models
+    return staticModels;
+  }, [elevenlabsVoices, isLoadingVoices]);
+
+  // Define form schema with dynamic voice model options
+  const CHARACTER_FORM_SCHEMA = useMemo(
+    () => [
+      {
+        sectionTitle: 'Basic Info',
+        sectionValue: 'basic',
+        sectionType: SECTION_TYPE.INPUT,
+        fields: [
+          {
+            title: 'Name',
+            name: 'name',
+            description: 'The display name of your character',
+            fieldType: 'text',
+            getValue: (char) => char.name || '',
+          },
+          {
+            title: 'Username',
+            name: 'username',
+            description: 'Unique identifier for your character',
+            fieldType: 'text',
+            getValue: (char) => char.username || '',
+          },
+          {
+            title: 'System',
+            name: 'system',
+            description: 'System prompt for character behavior',
+            fieldType: 'textarea',
+            getValue: (char) => char.system || '',
+          },
+          {
+            title: 'Voice Model',
+            name: 'settings.voice.model',
+            description: 'Voice model used for speech synthesis',
+            fieldType: 'select',
+            getValue: (char) => char.settings?.voice?.model || '',
+            options: allVoiceModels.map((model) => ({
+              value: model.value,
+              label: model.label,
+            })),
+          },
+        ] as InputField[],
+      },
+      {
+        sectionTitle: 'Content',
+        sectionValue: 'content',
+        sectionType: SECTION_TYPE.ARRAY,
+        fields: [
+          {
+            title: 'Bio',
+            description: 'Key information about your character',
+            path: 'bio',
+            getData: (char) => (Array.isArray(char.bio) ? char.bio : []),
+          },
+          {
+            title: 'Topics',
+            description: 'Topics your character is knowledgeable about',
+            path: 'topics',
+            getData: (char) => char.topics || [],
+          },
+          {
+            title: 'Adjectives',
+            description: "Words that describe your character's personality",
+            path: 'adjectives',
+            getData: (char) => char.adjectives || [],
+          },
+        ] as ArrayField[],
+      },
+      {
+        sectionTitle: 'Style',
+        sectionValue: 'style',
+        sectionType: SECTION_TYPE.ARRAY,
+        fields: [
+          {
+            title: 'All',
+            description: 'Style rules applied to all interactions',
+            path: 'style.all',
+            getData: (char) => char.style?.all || [],
+          },
+          {
+            title: 'Chat',
+            description: 'Style rules for chat interactions',
+            path: 'style.chat',
+            getData: (char) => char.style?.chat || [],
+          },
+          {
+            title: 'Post',
+            description: 'Style rules for social media posts',
+            path: 'style.post',
+            getData: (char) => char.style?.post || [],
+          },
+        ] as ArrayField[],
+      },
+    ],
+    [allVoiceModels]
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -174,6 +213,65 @@ export default function CharacterForm({
       if (setCharacterValue.updateSetting) {
         // Use the specialized method if available
         setCharacterValue.updateSetting(path, value);
+      } else {
+        // Fall back to generic updateField
+        setCharacterValue.updateField(name, value);
+      }
+    } else {
+      setCharacterValue.updateField(name, value);
+    }
+  };
+
+  const handleVoiceModelChange = (value: string, name: string) => {
+    if (name.startsWith('settings.')) {
+      const path = name.substring(9); // Remove 'settings.' prefix
+
+      if (setCharacterValue.updateSetting) {
+        // Use the specialized method if available
+        setCharacterValue.updateSetting(path, value);
+
+        // Handle voice model change and required plugins
+        if (path === 'voice.model' && value) {
+          const voiceModel = getVoiceModelByValue(value);
+          if (voiceModel) {
+            const currentPlugins = Array.isArray(characterValue.plugins)
+              ? [...characterValue.plugins]
+              : [];
+            const previousVoiceModel = getVoiceModelByValue(characterValue.settings?.voice?.model);
+
+            // Get all voice-related plugins
+            const voicePlugins = getAllRequiredPlugins();
+
+            // Get the required plugin for the new voice model
+            const requiredPlugin = providerPluginMap[voiceModel.provider];
+
+            // Filter out all voice-related plugins
+            const filteredPlugins = currentPlugins.filter(
+              (plugin) => !voicePlugins.includes(plugin)
+            );
+
+            // Add the required plugin for the selected voice model
+            const newPlugins = [...filteredPlugins];
+            if (requiredPlugin && !filteredPlugins.includes(requiredPlugin)) {
+              newPlugins.push(requiredPlugin);
+            }
+
+            // Update the plugins
+            if (setCharacterValue.setPlugins) {
+              setCharacterValue.setPlugins(newPlugins);
+            } else if (setCharacterValue.updateField) {
+              setCharacterValue.updateField('plugins', newPlugins);
+            }
+
+            // Show toast notification
+            if (previousVoiceModel?.provider !== voiceModel.provider) {
+              toast({
+                title: 'Plugin Updated',
+                description: `${requiredPlugin} plugin has been set for the selected voice model.`,
+              });
+            }
+          }
+        }
       } else {
         // Fall back to generic updateField
         setCharacterValue.updateField(name, value);
@@ -268,6 +366,29 @@ export default function CharacterForm({
           checked={(characterValue as Record<string, any>)[field.name] === 'true'}
           onChange={handleChange}
         />
+      ) : field.fieldType === 'select' ? (
+        <Select
+          name={field.name}
+          value={field.getValue(characterValue)}
+          onValueChange={(value) => handleVoiceModelChange(value, field.name)}
+        >
+          <SelectTrigger>
+            <SelectValue
+              placeholder={
+                field.name.includes('voice.model') && isLoadingVoices
+                  ? 'Loading voice models...'
+                  : 'Select a voice model'
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {field.options?.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : (
         <Input
           id={field.name}
