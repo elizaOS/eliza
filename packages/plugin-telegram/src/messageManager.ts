@@ -24,6 +24,7 @@ import { convertToTelegramButtons, escapeMarkdown } from './utils';
 import { Markup } from 'telegraf';
 
 import fs from 'node:fs';
+import { convertMarkdownToTelegram } from './markdown';
 
 /**
  * Enum representing different types of media.
@@ -150,7 +151,7 @@ export class MessageManager {
       const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
 
       for (let i = 0; i < chunks.length; i++) {
-        const chunk = escapeMarkdown(chunks[i]);
+        const chunk = convertMarkdownToTelegram(chunks[i]);
         const sentMessage = (await ctx.telegram.sendMessage(ctx.chat.id, chunk, {
           reply_parameters:
             i === 0 && replyToMessageId ? { message_id: replyToMessageId } : undefined,
