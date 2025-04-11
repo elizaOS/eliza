@@ -132,9 +132,20 @@ export default function PluginsPanel({
               {voiceModelPluginInfo && (
                 <div className="rounded-md bg-blue-50 p-4 mb-4">
                   <p className="text-xs text-blue-700">
-                    {voiceModelPluginInfo.provider === 'elevenlabs'
-                      ? 'ElevenLabs plugin is required for the selected voice model.'
-                      : 'Local AI plugin is required for the selected voice model.'}
+                    {(() => {
+                      switch (voiceModelPluginInfo.provider) {
+                        case 'elevenlabs':
+                          return 'ElevenLabs plugin is required for the selected voice model.';
+                        case 'openai':
+                          return 'OpenAI plugin is required for the selected voice model.';
+                        case 'local':
+                          return 'Local AI plugin is required for the selected voice model.';
+                        case 'none':
+                          return 'No voice plugin required for "No Voice" option.';
+                        default:
+                          return `${voiceModelPluginInfo.provider} plugin is required for the selected voice model.`;
+                      }
+                    })()}
                   </p>
                   {enabledVoicePlugins.length > 1 && (
                     <p className="text-xs text-amber-600 mt-2">
@@ -229,7 +240,7 @@ export default function PluginsPanel({
                 </Dialog>
               </div>
               {hasChanged && (
-                <p className="text-xs text-blue-500">Plugins configuration has been updated</p>
+                <p className="text-xs text-yellow-500">Plugins configuration has been changed</p>
               )}
             </div>
           )}
