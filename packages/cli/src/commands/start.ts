@@ -129,21 +129,28 @@ export async function startAgent(
   const characterPlugins: Plugin[] = [];
 
   // Ensure plugin-sql is included
-  if (!encryptedChar.plugins.includes('@elizaos/plugin-sql')) {
+  const hasSqlPlugin = encryptedChar.plugins.some((plugin) => plugin.includes('plugin-sql'));
+  if (!hasSqlPlugin) {
     encryptedChar.plugins.push('@elizaos/plugin-sql');
   }
 
   // Ensure plugin-local-ai is included if no other AI provider is specified
-  if (
-    !encryptedChar.plugins.includes('@elizaos/plugin-local-ai') &&
-    !encryptedChar.plugins.includes('@elizaos/plugin-openai') &&
-    !encryptedChar.plugins.includes('@elizaos/plugin-anthropic')
-  ) {
+  const hasAiProvider = encryptedChar.plugins.some(
+    (plugin) =>
+      plugin.includes('plugin-local-ai') ||
+      plugin.includes('plugin-openai') ||
+      plugin.includes('plugin-anthropic')
+  );
+
+  if (!hasAiProvider) {
     encryptedChar.plugins.push('@elizaos/plugin-local-ai');
   }
 
-  // if encryptedChar.plugins does not include @elizaos/plugin-bootstrap, add it
-  if (!encryptedChar.plugins.includes('@elizaos/plugin-bootstrap')) {
+  // Ensure plugin-bootstrap is included
+  const hasBootstrapPlugin = encryptedChar.plugins.some((plugin) =>
+    plugin.includes('plugin-bootstrap')
+  );
+  if (!hasBootstrapPlugin) {
     encryptedChar.plugins.push('@elizaos/plugin-bootstrap');
   }
 
@@ -562,17 +569,33 @@ const startAgents = async (options: {
   if (options.characters) {
     for (const character of options.characters) {
       // make sure character has sql plugin
-      if (!character.plugins.includes('@elizaos/plugin-sql')) {
+      const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql'));
+      if (!hasSqlPlugin) {
         character.plugins.push('@elizaos/plugin-sql');
       }
 
       // make sure character has at least one ai provider
       if (process.env.OPENAI_API_KEY) {
-        character.plugins.push('@elizaos/plugin-openai');
+        const hasOpenAiPlugin = character.plugins.some((plugin) =>
+          plugin.includes('plugin-openai')
+        );
+        if (!hasOpenAiPlugin) {
+          character.plugins.push('@elizaos/plugin-openai');
+        }
       } else if (process.env.ANTHROPIC_API_KEY) {
-        character.plugins.push('@elizaos/plugin-anthropic');
+        const hasAnthropicPlugin = character.plugins.some((plugin) =>
+          plugin.includes('plugin-anthropic')
+        );
+        if (!hasAnthropicPlugin) {
+          character.plugins.push('@elizaos/plugin-anthropic');
+        }
       } else {
-        character.plugins.push('@elizaos/plugin-local-ai');
+        const hasLocalAiPlugin = character.plugins.some((plugin) =>
+          plugin.includes('plugin-local-ai')
+        );
+        if (!hasLocalAiPlugin) {
+          character.plugins.push('@elizaos/plugin-local-ai');
+        }
       }
 
       await startAgent(character, server);
