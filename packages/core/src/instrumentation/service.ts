@@ -1,35 +1,334 @@
 import { Tracer, Meter, diag, DiagConsoleLogger, DiagLogLevel, metrics, trace } from "@opentelemetry/api";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-// import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http"; // Removed import
 import { Resource } from "@opentelemetry/resources";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
-import { MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
-import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { MeterProvider } from "@opentelemetry/sdk-metrics";
+import { SimpleSpanProcessor, ReadableSpan, SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { registerInstrumentations } from "@opentelemetry/instrumentation";
+import { PgInstrumentation } from "@opentelemetry/instrumentation-pg";
 import { IInstrumentationService, InstrumentationConfig } from "./types";
-import { elizaLogger } from "../logger"; // Assuming logger is in ../logger
-import { Service, ServiceType, IAgentRuntime } from "../types"; // Assuming Service definition location
+import { elizaLogger } from "../logger";
+import { Service, ServiceType, IAgentRuntime } from "../types";
+import pg from "pg";
 
 const DEFAULT_SERVICE_NAME = "eliza-agent";
 
-// Enable OpenTelemetry diagnostics
-diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+// Get PostgreSQL connection string from environment variables
+const POSTGRES_URL_INSTRUMENTATION = process.env.POSTGRES_URL_INSTRUMENTATION || "postgresql://postgres:postgres@localhost:5432/eliza_tracing";
+
+/**
+ * Custom span processor that writes spans to a PostgreSQL database
+ */
+class PostgresSpanProcessor implements SpanProcessor {
+    private pgClient: pg.Client | null = null;
+    private isInitialized = false;
+    private isConnected = false;
+
+    constructor() {
+        elizaLogger.info(`🔄 Initializing PostgreSQL Span Processor with URL: ${POSTGRES_URL_INSTRUMENTATION}`);
+
+        try {
+            // Create the PostgreSQL client synchronously
+            this.pgClient = new pg.Client({
+                connectionString: POSTGRES_URL_INSTRUMENTATION,
+            });
+
+            // Connect synchronously using a direct .connect() call with a callback
+            elizaLogger.info(`🔄 Connecting to PostgreSQL (synchronous)...`);
+            this.pgClient.connect((err) => {
+                if (err) {
+                    elizaLogger.error(`❌ Failed to connect to PostgreSQL in constructor: ${err}`);
+                    this.pgClient = null;
+                    return;
+                }
+
+                this.isConnected = true;
+                elizaLogger.info(`✅ Connected to PostgreSQL database`);
+
+                // Create the traces table
+                const createTableQuery = `
+                    CREATE TABLE IF NOT EXISTS traces (
+                        id SERIAL PRIMARY KEY,
+                        trace_id TEXT NOT NULL,
+                        span_id TEXT NOT NULL,
+                        parent_span_id TEXT,
+                        trace_state TEXT,
+                        span_name TEXT NOT NULL,
+                        span_kind INTEGER,
+                        start_time TIMESTAMP NOT NULL,
+                        end_time TIMESTAMP NOT NULL,
+                        duration_ms INTEGER NOT NULL,
+                        status_code INTEGER,
+                        status_message TEXT,
+                        attributes JSONB,
+                        events JSONB,
+                        links JSONB,
+                        resource JSONB,
+                        agent_id TEXT,
+                        session_id TEXT,
+                        environment TEXT,
+                        room_id TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(trace_id, span_id)
+                    );
+                `;
+
+                this.pgClient.query(createTableQuery, (err, result) => {
+                    if (err) {
+                        elizaLogger.error(`❌ Failed to create traces table: ${err}`);
+                        return;
+                    }
+
+                    this.isInitialized = true;
+                    elizaLogger.info(`✅ Traces table created or verified.`);
+
+                    // Insert a test record to verify connection
+                    const testQuery = `
+                        INSERT INTO traces (
+                            trace_id, span_id, span_name, start_time, end_time, duration_ms,
+                            agent_id, session_id, environment, room_id
+                        ) VALUES (
+                            'test-connection', 'test-connection', 'Connection Test', 
+                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0,
+                            'test', 'test', 'test', 'test'
+                        ) ON CONFLICT (trace_id, span_id) DO NOTHING;
+                    `;
+
+                    this.pgClient.query(testQuery, (err, result) => {
+                        if (err) {
+                            elizaLogger.error(`❌ Failed to insert test record: ${err}`);
+                        } else {
+                            elizaLogger.info(`✅ Test record inserted or verified.`);
+                        }
+                    });
+                });
+            });
+        } catch (error) {
+            elizaLogger.error(`❌ Failed to initialize PostgreSQL client: ${error}`);
+            if (error instanceof Error && error.stack) {
+                elizaLogger.error(`Stack trace: ${error.stack}`);
+            }
+            this.pgClient = null;
+        }
+    }
+
+    // Remove the initialize method as we're doing it in the constructor
+    // We'll keep the createTracesTable method for reference but won't call it
+    private async createTracesTable(): Promise<void> {
+        // Method retained for reference but no longer used
+    }
+
+    onStart(span: ReadableSpan): void {
+        // Optional: Log span start for debugging
+        elizaLogger.debug("🟢 Span started:", span.name);
+    }
+
+    onEnd(span: ReadableSpan): void {
+        if (!this.pgClient || !this.isConnected || !this.isInitialized) {
+            elizaLogger.warn(`⚠️ Cannot record span ${span.name} - PostgreSQL processor is not fully initialized (Connected: ${this.isConnected}, Initialized: ${this.isInitialized})`);
+            return;
+        }
+
+        elizaLogger.debug(`🔄 Processing span: ${span.name}`);
+
+        const spanContext = span.spanContext();
+
+        // Convert [seconds, nanoseconds] to milliseconds
+        const startTimeMs = span.startTime[0] * 1000 + span.startTime[1] / 1e6;
+        const endTimeMs = span.endTime[0] * 1000 + span.endTime[1] / 1e6;
+        const durationMs = Math.floor(endTimeMs - startTimeMs);
+
+        // Extract fields from attributes
+        const attributes = span.attributes || {};
+        const resource = span.resource?.attributes || {};
+
+        const safeTrim = (value: unknown): string | null => {
+            if (typeof value !== "string") return null;
+            const trimmed = value.trim();
+            return trimmed.length > 0 ? trimmed : null;
+        };
+
+        const spanData = {
+            trace_id: spanContext.traceId,
+            span_id: spanContext.spanId,
+            parent_span_id: span.parentSpanId || null,
+            trace_state: spanContext.traceState?.toString() || null,
+            span_name: span.name,
+            span_kind: span.kind,
+            start_time: new Date(startTimeMs).toISOString(),
+            end_time: new Date(endTimeMs).toISOString(),
+            duration_ms: durationMs,
+            status_code: span.status.code,
+            status_message: span.status.message || null,
+            attributes: attributes,
+            events: span.events || [],
+            links: span.links || [],
+            resource: resource,
+            agent_id:
+                safeTrim(attributes["agent.id"]) ||
+                safeTrim(attributes.agentId) ||
+                safeTrim(resource["service.instance.id"]) ||
+                "unknown",
+            session_id:
+                safeTrim(attributes["session.id"]) ||
+                safeTrim(attributes.sessionId) ||
+                safeTrim(resource["session.id"]) ||
+                "unknown",
+            environment:
+                safeTrim(attributes.environment) ||
+                safeTrim(resource["deployment.environment"]) ||
+                process.env.NODE_ENV ||
+                "development",
+            room_id:
+                safeTrim(attributes["room.id"]) ||
+                safeTrim(attributes.roomId) ||
+                "unknown",
+        };
+
+        // No longer skipping spans without context IDs
+        elizaLogger.debug(`🔄 Inserting span into PostgreSQL: ${span.name}`);
+        this.insertTrace(spanData);
+    }
+
+    private async insertTrace(spanData: any): Promise<void> {
+        if (!this.pgClient || !this.isConnected) return;
+
+        elizaLogger.debug(`🔄 Begin insertTrace for span: ${spanData.span_name}`);
+
+        // This table name should be hardcoded to avoid any variable issues
+        const tableName = 'traces';
+
+        const query = `
+            INSERT INTO ${tableName} (
+                trace_id,
+                span_id,
+                parent_span_id,
+                trace_state,
+                span_name,
+                span_kind,
+                start_time,
+                end_time,
+                duration_ms,
+                status_code,
+                status_message,
+                attributes,
+                events,
+                links,
+                resource,
+                agent_id,
+                session_id,
+                environment,
+                room_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+            ON CONFLICT (trace_id, span_id) DO NOTHING
+            RETURNING id;
+        `;
+
+        const values = [
+            spanData.trace_id,
+            spanData.span_id,
+            spanData.parent_span_id,
+            spanData.trace_state,
+            spanData.span_name,
+            spanData.span_kind,
+            spanData.start_time,
+            spanData.end_time,
+            spanData.duration_ms,
+            spanData.status_code,
+            spanData.status_message,
+            JSON.stringify(spanData.attributes || {}),
+            JSON.stringify(spanData.events || []),
+            JSON.stringify(spanData.links || []),
+            JSON.stringify(spanData.resource || {}),
+            spanData.agent_id,
+            spanData.session_id,
+            spanData.environment,
+            spanData.room_id,
+        ];
+
+        try {
+            // Direct approach without explicit transaction
+            elizaLogger.debug(`Executing direct insert for span: ${spanData.span_name}`);
+            elizaLogger.debug(`Span trace_id: ${spanData.trace_id}, span_id: ${spanData.span_id}`);
+
+            // Use a direct query without explicit transaction
+            const result = await this.pgClient.query(query, values);
+
+            // Check if we got a result
+            if (result.rows && result.rows.length > 0) {
+                const id = result.rows[0].id;
+                elizaLogger.info(`✅ Span inserted with ID ${id}: ${spanData.span_name}`);
+            } else if (result.rowCount > 0) {
+                elizaLogger.info(`✅ Span inserted (rowCount=${result.rowCount}): ${spanData.span_name}`);
+            } else {
+                elizaLogger.warn(`⚠️ No row inserted for span (likely conflict): ${spanData.span_name}`);
+            }
+
+            // For verification, execute a separate query to check if the span was inserted
+            try {
+                const verifyQuery = `SELECT id FROM ${tableName} WHERE trace_id = $1 AND span_id = $2`;
+                const verifyResult = await this.pgClient.query(verifyQuery, [spanData.trace_id, spanData.span_id]);
+
+                if (verifyResult.rows.length > 0) {
+                    elizaLogger.info(`✅ Verified span in database with ID ${verifyResult.rows[0].id}`);
+                } else {
+                    elizaLogger.warn(`⚠️ Verification failed: Span not found in database after insert`);
+                }
+            } catch (verifyError) {
+                elizaLogger.error(`❌ Error verifying span insertion: ${verifyError}`);
+            }
+        } catch (error) {
+            elizaLogger.error(`❌ Error inserting span into PostgreSQL DB:`, error);
+
+            // Log detailed error information
+            if (error instanceof Error) {
+                elizaLogger.error(`Error message: ${error.message}`);
+                elizaLogger.error(`Error stack: ${error.stack}`);
+            }
+
+            // Log the data that failed to insert
+            elizaLogger.error(`Failed span data: ${JSON.stringify({
+                span_name: spanData.span_name,
+                trace_id: spanData.trace_id,
+                span_id: spanData.span_id,
+                agent_id: spanData.agent_id,
+                session_id: spanData.session_id,
+                room_id: spanData.room_id
+            })}`);
+        }
+    }
+
+    shutdown(): Promise<void> {
+        if (this.pgClient && this.isConnected) {
+            this.pgClient.end();
+            this.isConnected = false;
+            elizaLogger.info("PostgreSQL database connection closed");
+        }
+        return Promise.resolve();
+    }
+
+    forceFlush(): Promise<void> {
+        return Promise.resolve();
+    }
+}
 
 export class InstrumentationService extends Service implements IInstrumentationService {
     readonly name = "INSTRUMENTATION"; // Or ServiceType.INSTRUMENTATION if defined
     readonly capabilityDescription = "Provides OpenTelemetry tracing and metrics capabilities.";
-    public instrumentationConfig: InstrumentationConfig; // Renamed to avoid conflict with base Service class
+    public instrumentationConfig: InstrumentationConfig;
     private resource: Resource;
     private tracerProvider: NodeTracerProvider | null = null;
     private meterProvider: MeterProvider | null = null;
+    private postgresSpanProcessor: PostgresSpanProcessor | null = null;
     private isShutdown = false;
 
     constructor(config?: InstrumentationConfig) {
-        super(); // Pass runtime if needed by base Service constructor
+        super();
         this.instrumentationConfig = {
             serviceName: config?.serviceName || process.env.OTEL_SERVICE_NAME || DEFAULT_SERVICE_NAME,
-            otlpEndpoint: config?.otlpEndpoint || process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-            enabled: config?.enabled ?? (process.env.OTEL_INSTRUMENTATION_ENABLED === 'true' || !!process.env.OTEL_EXPORTER_OTLP_ENDPOINT)
+            // We don't need otlpEndpoint anymore since we're using PostgreSQL
+            enabled: config?.enabled ?? (process.env.OTEL_INSTRUMENTATION_ENABLED === 'true' || !!process.env.POSTGRES_URL_INSTRUMENTATION)
         };
 
         this.resource = new Resource({
@@ -39,7 +338,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
 
         if (this.isEnabled()) {
             this.initializeProviders();
-            elizaLogger.info(`📊 Instrumentation Service enabled for '${this.instrumentationConfig.serviceName}'. Endpoint: ${this.instrumentationConfig.otlpEndpoint || 'Console/None'}`);
+            elizaLogger.info(`📊 Instrumentation Service enabled for '${this.instrumentationConfig.serviceName}'. Using PostgreSQL for storage.`);
         } else {
             elizaLogger.info("📊 Instrumentation Service disabled.");
         }
@@ -51,52 +350,40 @@ export class InstrumentationService extends Service implements IInstrumentationS
         // --- Tracer Provider Setup ---
         this.tracerProvider = new NodeTracerProvider({ resource: this.resource });
 
-        // Add Span Processors (e.g., Batch + OTLP/Console)
-        if (this.instrumentationConfig.otlpEndpoint) {
-            try {
-                // Ensure no trailing slash in the URL
-                const cleanUrl = this.instrumentationConfig.otlpEndpoint.replace(/\/$/, '');
-                const exporter = new OTLPTraceExporter();
-                this.tracerProvider.addSpanProcessor(new BatchSpanProcessor(exporter));
-            } catch (e) {
-                elizaLogger.error("Failed to initialize OTLP Trace Exporter:", e)
-                this.instrumentationConfig.enabled = false; // Disable if exporter fails
-                return; // Stop further initialization
-            }
-        } else {
-            // Potentially add a ConsoleSpanExporter for local dev if no endpoint is set
-            elizaLogger.warn("OTLP endpoint not configured for traces. Spans will not be exported.");
-            // const { ConsoleSpanExporter } = await import("@opentelemetry/sdk-trace-node");
-            // this.tracerProvider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
+        // Add PostgreSQL Span Processor
+        try {
+            this.postgresSpanProcessor = new PostgresSpanProcessor();
+            this.tracerProvider.addSpanProcessor(this.postgresSpanProcessor);
+            elizaLogger.info("📊 Added PostgreSQL span processor for telemetry data storage");
+        } catch (e) {
+            elizaLogger.error("Failed to initialize PostgreSQL Span Processor:", e);
+            this.instrumentationConfig.enabled = false; // Disable if processor fails
+            return; // Stop further initialization
         }
 
         this.tracerProvider.register();
 
-        // --- Meter Provider Setup (Metrics Export Disabled for now) ---
-        this.meterProvider = new MeterProvider({ resource: this.resource });
-        elizaLogger.warn("Metrics export is currently disabled pending dependency check.");
-        // TODO: Re-enable metrics export when dependency is confirmed
-        /*
-        let metricReader;
-        if (this.instrumentationConfig.otlpEndpoint) {
-           try {
-             // Assume OTLPMetricExporter exists and is imported if dependency added back
-             metricReader = new PeriodicExportingMetricReader({
-               exporter: new OTLPMetricExporter({ url: this.instrumentationConfig.otlpEndpoint }),
-               exportIntervalMillis: 10000,
-             });
-           } catch(e) {
-             elizaLogger.error("Failed to initialize OTLP Metric Exporter:", e)
-           }
-        } else {
-          elizaLogger.warn("OTLP endpoint not configured for metrics. Metrics will not be exported.");
+        // --- Register Instrumentations ---
+        try {
+            elizaLogger.info("Attempting to register PostgreSQL instrumentation...");
+            registerInstrumentations({
+                tracerProvider: this.tracerProvider,
+                instrumentations: [
+                    new PgInstrumentation({
+                        enhancedDatabaseReporting: true,
+                    }),
+                ],
+            });
+            elizaLogger.info("✅ Successfully registered OpenTelemetry instrumentations (pg).");
+        } catch (e) {
+            elizaLogger.error("❌ Failed to register instrumentations:", e);
         }
 
-        if (metricReader) {
-          this.meterProvider.addMetricReader(metricReader);
-        }
-        */
-        metrics.setGlobalMeterProvider(this.meterProvider); // Register MeterProvider even if no exporter
+        // --- Meter Provider Setup ---
+        this.meterProvider = new MeterProvider({ resource: this.resource });
+        elizaLogger.warn("Metrics export is currently disabled.");
+
+        metrics.setGlobalMeterProvider(this.meterProvider);
     }
 
     public isEnabled(): boolean {
@@ -125,7 +412,7 @@ export class InstrumentationService extends Service implements IInstrumentationS
             // Use Promise.allSettled to ensure both attempt flush even if one fails
             const results = await Promise.allSettled([
                 this.tracerProvider?.forceFlush(),
-                this.meterProvider?.forceFlush(), // Added Meter flush for consistency
+                this.meterProvider?.forceFlush(),
             ]);
             results.forEach((result, index) => {
                 if (result.status === 'rejected') {
@@ -164,12 +451,12 @@ export class InstrumentationService extends Service implements IInstrumentationS
         }
     }
 
-    // Implement the static start method required by Service base class (if applicable)
-    // This assumes the Service base class or the runtime handles registration
+    // Implement the static start method required by Service base class
     static async start(runtime: IAgentRuntime, config?: InstrumentationConfig): Promise<InstrumentationService> {
+        // Enable OpenTelemetry diagnostics early in the start process
+        diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
+
         const service = new InstrumentationService(config);
-        // If runtime needs explicit registration:
-        // runtime.registerServiceInstance(service); // Hypothetical method
         return service;
     }
 } 

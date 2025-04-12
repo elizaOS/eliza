@@ -3,15 +3,11 @@ import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
-// Import OTel API types needed here
-import { SpanStatusCode, trace, Tracer as OtelTracer } from '@opentelemetry/api';
-import { ChannelType, MemoryType, ModelType, ServiceType, EventType } from './types'; // Added ServiceType
-// Import Instrumentation Service & Types
-import {
-  InstrumentationService,
-  IInstrumentationService,
-  InstrumentationConfig,
-} from './instrumentation';
+// Import enums and values that are used as values
+import { ChannelType, MemoryType, ModelType } from './types';
+// Import for instrumentation
+import { InstrumentationService } from './instrumentation/service';
+import { Context, SpanStatusCode, trace, SpanStatus, Span } from '@opentelemetry/api';
 
 // Import types with the 'type' keyword
 import type {
@@ -143,8 +139,9 @@ export class AgentRuntime implements IAgentRuntime {
 
   private servicesInitQueue = new Set<typeof Service>();
 
-  // Instrumentation Service instance
-  private instrumentationService: IInstrumentationService;
+  // Add instrumentation properties
+  instrumentationService: InstrumentationService;
+  tracer: any;
 
   constructor(opts: {
     conversationLength?: number;
@@ -155,7 +152,6 @@ export class AgentRuntime implements IAgentRuntime {
     adapter?: IDatabaseAdapter;
     settings?: RuntimeSettings;
     events?: { [key: string]: ((params: any) => void)[] };
-    instrumentationConfig?: InstrumentationConfig;
   }) {
     // use the character id if it exists, otherwise use the agentId if it is passed in, otherwise use the character name
     this.agentId =
@@ -176,14 +172,6 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.#conversationLength = opts.conversationLength ?? this.#conversationLength;
 
-    this.instrumentationService = new InstrumentationService(opts.instrumentationConfig);
-    if (ServiceType.INSTRUMENTATION) {
-      this.services.set(ServiceType.INSTRUMENTATION, this.instrumentationService as unknown as Service);
-    } else {
-      this.runtimeLogger.warn("ServiceType.INSTRUMENTATION is not defined. Instrumentation service might not be registered correctly.");
-      this.services.set("INSTRUMENTATION" as any, this.instrumentationService as unknown as Service);
-    }
-
     if (opts.adapter) {
       this.registerDatabaseAdapter(opts.adapter);
     }
@@ -198,7 +186,133 @@ export class AgentRuntime implements IAgentRuntime {
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
 
+    // Initialize instrumentation service with appropriate configuration
+    try {
+      // Create instrumentation service with agent info
+      this.instrumentationService = new InstrumentationService({
+        serviceName: `agent-${this.character?.name || 'unknown'}-${this.agentId}`,
+        enabled: process.env.OTEL_INSTRUMENTATION_ENABLED === 'true'
+      });
+
+      // Get a tracer for the runtime
+      this.tracer = this.instrumentationService.getTracer('agent-runtime');
+
+      this.runtimeLogger.debug(`Instrumentation service initialized for agent ${this.agentId}`);
+    } catch (error) {
+      // If instrumentation fails, provide a fallback implementation
+      this.runtimeLogger.warn(`Failed to initialize instrumentation: ${error.message}`);
+      // Create a no-op implementation
+      this.instrumentationService = {
+        getTracer: () => null,
+        start: async () => { },
+        stop: async () => { },
+        isStarted: () => false,
+        isEnabled: () => false,
+        name: 'INSTRUMENTATION',
+        capabilityDescription: 'Disabled instrumentation service (fallback)',
+        instrumentationConfig: { enabled: false },
+        getMeter: () => null,
+        flush: async () => { }
+      } as any;
+      this.tracer = null;
+    }
+
     this.runtimeLogger.debug(`Success: Agent ID: ${this.agentId}`);
+  }
+
+  /**
+   * Starts a span for the given operation and executes the provided function with the span.
+   * @param name The name of the span to create
+   * @param fn The function to execute with the span
+   * @param parentContext Optional parent context for the span
+   * @returns The result of the provided function
+   */
+  async startSpan<T>(name: string, fn: (span: Span) => Promise<T>, parentContext?: Context): Promise<T> {
+    // If instrumentation is disabled, create a mock span with no-op methods
+    if (!this.instrumentationService?.isEnabled?.() || !this.tracer) {
+      const mockSpan = {
+        setStatus: () => { },
+        setAttribute: () => { },
+        setAttributes: () => { },
+        recordException: () => { },
+        addEvent: () => { },
+        end: () => { },
+        isRecording: () => false,
+        spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
+        updateName: () => { },
+        addLink: () => { },
+        addLinks: () => { }
+      } as unknown as Span;
+      return fn(mockSpan);
+    }
+
+    // Otherwise, use the real tracer to create a span
+    return this.tracer.startActiveSpan(name, parentContext, undefined, async (span: Span) => {
+      try {
+        // Set default attributes for all spans
+        span.setAttributes({
+          'agent.id': this.agentId,
+          'agent.name': this.character?.name || 'unknown',
+        });
+
+        // Call the function with the span
+        const result = await fn(span);
+
+        // End the span with successful status
+        span.setStatus({ code: SpanStatusCode.OK });
+        span.end();
+
+        return result;
+      } catch (error) {
+        // If an error occurs, record it and set error status
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: (error as Error).message
+        });
+        span.end();
+
+        // Rethrow the error
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Ends a span with the provided name in the given context
+   * @param ctx Context containing the span to end
+   * @param name Name to record in the end event
+   */
+  endSpan(ctx: Context | undefined, name: string): void {
+    // This is a no-op method for compatibility
+    // Actual span ending is handled in startSpan
+  }
+
+  /**
+   * Start an active span that can be used as a parent for other spans
+   * @param name Name of the span
+   * @param options Span options
+   */
+  startActiveSpan(name: string, options: any = {}): Span {
+    if (!this.instrumentationService?.isEnabled?.() || !this.tracer) {
+      // Return mock span if instrumentation is disabled
+      return {
+        setStatus: () => { },
+        setAttribute: () => { },
+        setAttributes: () => { },
+        recordException: () => { },
+        addEvent: () => { },
+        end: () => { },
+        isRecording: () => false,
+        spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
+        updateName: () => { },
+        addLink: () => { },
+        addLinks: () => { }
+      } as unknown as Span;
+    }
+
+    // Create real span if instrumentation is enabled
+    return this.tracer.startSpan(name, options);
   }
 
   /**
@@ -206,112 +320,134 @@ export class AgentRuntime implements IAgentRuntime {
    * @param plugin The plugin to register
    */
   async registerPlugin(plugin: Plugin): Promise<void> {
-    const tracer = this.instrumentationService?.getTracer();
-    const span = tracer?.startSpan('AgentRuntime.registerPlugin', { attributes: { 'plugin.name': plugin?.name ?? 'undefined' } });
+    return this.startSpan('AgentRuntime.registerPlugin', async (span) => {
+      span.setAttributes({
+        'plugin.name': plugin?.name || 'unknown',
+        'agent.id': this.agentId
+      });
 
+      if (!plugin) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Plugin is undefined' });
+        this.runtimeLogger.error('*** registerPlugin plugin is undefined');
+        throw new Error('*** registerPlugin plugin is undefined');
+      }
 
-    if (!plugin) {
-      this.runtimeLogger.error('*** registerPlugin plugin is undefined');
-      throw new Error('*** registerPlugin plugin is undefined');
-    }
+      // Add to plugins array if not already present - but only if it was not passed there initially
+      // (otherwise we can't add to readonly array)
+      if (!this.plugins.some((p) => p.name === plugin.name)) {
+        // Push to plugins array - this works because we're modifying the array, not reassigning it
+        this.plugins.push(plugin);
+        span.addEvent('plugin_added_to_array');
+        this.runtimeLogger.debug(`Success: Plugin ${plugin.name} registered successfully`);
+      }
 
-    // Add to plugins array if not already present - but only if it was not passed there initially
-    // (otherwise we can't add to readonly array)
-    if (!this.plugins.some((p) => p.name === plugin.name)) {
-      // Push to plugins array - this works because we're modifying the array, not reassigning it
-      this.plugins.push(plugin);
-      this.runtimeLogger.debug(`Success: Plugin ${plugin.name} registered successfully`);
-    }
+      // Initialize the plugin if it has an init function
+      if (plugin.init) {
+        try {
+          span.addEvent('initializing_plugin');
+          await plugin.init(plugin.config || {}, this);
+          span.addEvent('plugin_initialized');
+          this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
+        } catch (error) {
+          // Check if the error is related to missing API keys
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          span.setAttributes({
+            'error.message': errorMessage,
+            'error.type': error instanceof Error ? error.constructor.name : 'Unknown'
+          });
 
-    // Initialize the plugin if it has an init function
-    if (plugin.init) {
-      try {
-        await plugin.init(plugin.config || {}, this);
-        this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
-      } catch (error) {
-        // Check if the error is related to missing API keys
-        const errorMessage = error instanceof Error ? error.message : String(error);
-
-        if (
-          errorMessage.includes('API key') ||
-          errorMessage.includes('environment variables') ||
-          errorMessage.includes('Invalid plugin configuration')
-        ) {
-          // Instead of throwing an error, log a friendly message
-          console.warn(`Plugin ${plugin.name} requires configuration. ${errorMessage}`);
-          console.warn(
-            'Please check your environment variables and ensure all required API keys are set.'
-          );
-          console.warn('You can set these in your .eliza/.env file.');
-
-          // We don't throw here, allowing the application to continue
-          // with reduced functionality
-        } else {
-          // For other types of errors, rethrow
-          throw error;
+          if (
+            errorMessage.includes('API key') ||
+            errorMessage.includes('environment variables') ||
+            errorMessage.includes('Invalid plugin configuration')
+          ) {
+            // Instead of throwing an error, log a friendly message
+            console.warn(`Plugin ${plugin.name} requires configuration. ${errorMessage}`);
+            console.warn(
+              'Please check your environment variables and ensure all required API keys are set.'
+            );
+            console.warn('You can set these in your .eliza/.env file.');
+            span.addEvent('plugin_configuration_warning');
+            // We don't throw here, allowing the application to continue
+            // with reduced functionality
+          } else {
+            // For other types of errors, rethrow
+            span.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage });
+            throw error;
+          }
         }
       }
-    }
 
-    // Register plugin adapter
-    if (plugin.adapter) {
-      this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
-      this.registerDatabaseAdapter(plugin.adapter);
-    }
-
-    // Register plugin actions
-    if (plugin.actions) {
-      for (const action of plugin.actions) {
-        this.registerAction(action);
+      // Register plugin adapter
+      if (plugin.adapter) {
+        span.addEvent('registering_adapter');
+        this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
+        this.registerDatabaseAdapter(plugin.adapter);
       }
-    }
 
-    // Register plugin evaluators
-    if (plugin.evaluators) {
-      for (const evaluator of plugin.evaluators) {
-        this.registerEvaluator(evaluator);
-      }
-    }
-
-    // Register plugin providers
-    if (plugin.providers) {
-      for (const provider of plugin.providers) {
-        this.registerContextProvider(provider);
-      }
-    }
-
-    // Register plugin models
-    if (plugin.models) {
-      for (const [modelType, handler] of Object.entries(plugin.models)) {
-        this.registerModel(modelType as ModelTypeName, handler as (params: any) => Promise<any>);
-      }
-    }
-
-    // Register plugin routes
-    if (plugin.routes) {
-      for (const route of plugin.routes) {
-        this.routes.push(route);
-      }
-    }
-
-    // Register plugin events
-    if (plugin.events) {
-      for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
-        for (const eventHandler of eventHandlers) {
-          this.registerEvent(eventName, eventHandler);
+      // Register plugin actions
+      if (plugin.actions) {
+        span.addEvent('registering_actions');
+        for (const action of plugin.actions) {
+          this.registerAction(action);
         }
       }
-    }
 
-    if (plugin.services) {
-      for (const service of plugin.services) {
-        if (this.isInitialized) {
-          await this.registerService(service);
-        } else {
-          this.servicesInitQueue.add(service);
+      // Register plugin evaluators
+      if (plugin.evaluators) {
+        span.addEvent('registering_evaluators');
+        for (const evaluator of plugin.evaluators) {
+          this.registerEvaluator(evaluator);
         }
       }
-    }
+
+      // Register plugin providers
+      if (plugin.providers) {
+        span.addEvent('registering_providers');
+        for (const provider of plugin.providers) {
+          this.registerContextProvider(provider);
+        }
+      }
+
+      // Register plugin models
+      if (plugin.models) {
+        span.addEvent('registering_models');
+        for (const [modelType, handler] of Object.entries(plugin.models)) {
+          this.registerModel(modelType as ModelTypeName, handler as (params: any) => Promise<any>);
+        }
+      }
+
+      // Register plugin routes
+      if (plugin.routes) {
+        span.addEvent('registering_routes');
+        for (const route of plugin.routes) {
+          this.routes.push(route);
+        }
+      }
+
+      // Register plugin events
+      if (plugin.events) {
+        span.addEvent('registering_events');
+        for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
+          for (const eventHandler of eventHandlers) {
+            this.registerEvent(eventName, eventHandler);
+          }
+        }
+      }
+
+      if (plugin.services) {
+        span.addEvent('registering_services');
+        for (const service of plugin.services) {
+          if (this.isInitialized) {
+            await this.registerService(service);
+          } else {
+            this.servicesInitQueue.add(service);
+          }
+        }
+      }
+
+      span.addEvent('plugin_registration_complete');
+    });
   }
 
   getAllServices(): Map<ServiceTypeName, Service> {
@@ -319,37 +455,42 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async stop() {
-    this.runtimeLogger.debug(`runtime::stop - character ${this.character.name}`);
+    return this.startSpan('AgentRuntime.stop', async (span) => {
+      span.setAttributes({
+        'agent.id': this.agentId,
+        'agent.name': this.character?.name || 'unknown'
+      });
 
-    // Stop all registered clients
-    for (const [serviceName, service] of this.services) {
-      this.runtimeLogger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
-      await service.stop();
-    }
+      this.runtimeLogger.debug(`runtime::stop - character ${this.character.name}`);
+      span.addEvent('stopping_services');
+
+      // Stop all registered clients
+      for (const [serviceName, service] of this.services) {
+        this.runtimeLogger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
+        span.addEvent(`stopping_service_${serviceName}`);
+        await service.stop();
+      }
+
+      span.addEvent('all_services_stopped');
+    });
   }
 
-  async initialize() {
-    const tracer = this.instrumentationService?.getTracer();
-    const span = tracer?.startSpan('AgentRuntime.initialize', {
-      attributes: {
+  async initialize(): Promise<void> {
+    return this.startSpan('AgentRuntime.initialize', async (span) => {
+      span.setAttributes({
         'agent.id': this.agentId,
-        'character.name': this.character?.name,
-      },
-    });
-
-    this.runtimeLogger.debug(`Tracer: ${tracer ? 'available' : 'unavailable'}, Span: ${span ? `(active: )` : 'unavailable'}`);
-    span?.addEvent('test');
-
-    try {
-      this.runtimeLogger.info(`Initializing agent ${this.character?.name ?? this.agentId}...`);
+        'agent.name': this.character?.name || 'unknown',
+        'plugins.count': this.plugins.length
+      });
 
       if (this.isInitialized) {
+        span.addEvent('agent_already_initialized');
         this.runtimeLogger.warn('Agent already initialized');
-        span?.addEvent('Already initialized');
-        span?.setStatus({ code: SpanStatusCode.OK });
         return;
       }
+
       this.isInitialized = true;
+      span.addEvent('initialization_started');
 
       // Track registered plugins to avoid duplicates
       const registeredPluginNames = new Set<string>();
@@ -365,30 +506,33 @@ export class AgentRuntime implements IAgentRuntime {
         }
       }
 
-      await this.adapter.init();
-      span?.addEvent('Adapter initialized');
-      this.runtimeLogger.debug('Adapter initialized');
+      span.addEvent('plugins_setup');
+      span.setAttributes({
+        'registered_plugins': Array.from(registeredPluginNames).join(',')
+      });
 
-
-      // First create the agent entity directly
       try {
+        await this.adapter.init();
+        span.addEvent('adapter_initialized');
+
+        // First create the agent entity directly
         // Ensure agent exists first (this is critical for test mode)
         const agentExists = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
+        span.addEvent('agent_exists_verified');
 
         // Verify agent exists before proceeding
         const agent = await this.adapter.getAgent(this.agentId);
         if (!agent) {
-          throw new Error(
-            `Agent ${this.agentId} does not exist in database after ensureAgentExists call`
-          );
+          const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
+          span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+          throw new Error(errorMsg);
         }
 
         // No need to transform agent's own ID
         const agentEntity = await this.adapter.getEntityById(this.agentId);
 
-        this.runtimeLogger.debug(`agentEntity: ${JSON.stringify(agentEntity)}`);
-
         if (!agentEntity) {
+          span.addEvent('creating_agent_entity');
           const created = await this.createEntity({
             id: this.agentId,
             agentId: this.agentId,
@@ -396,25 +540,30 @@ export class AgentRuntime implements IAgentRuntime {
             metadata: {},
           });
 
-
           if (!created) {
-            throw new Error(`Failed to create entity for agent ${this.agentId}`);
+            const errorMsg = `Failed to create entity for agent ${this.agentId}`;
+            span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+            throw new Error(errorMsg);
           }
 
           this.runtimeLogger.debug(
             `Success: Agent entity created successfully for ${this.character.name}`
           );
+          span.addEvent('agent_entity_created');
+        } else {
+          span.addEvent('agent_entity_exists');
         }
       } catch (error) {
-        this.runtimeLogger.error(
-          `Failed to create agent entity: ${error instanceof Error ? error.message : String(error)}`
-        );
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        this.runtimeLogger.error(`Failed to create agent entity: ${errorMsg}`);
         throw error;
       }
 
-      this.runtimeLogger.debug(`agentEntity: exists`);
       // Create room for the agent and register all plugins in parallel
       try {
+        span.addEvent('creating_room_and_registering_plugins');
         await Promise.all([
           this.ensureRoomExists({
             id: this.agentId,
@@ -424,85 +573,82 @@ export class AgentRuntime implements IAgentRuntime {
           }),
           ...pluginRegistrationPromises,
         ]);
+        span.addEvent('room_created_and_plugins_registered');
       } catch (error) {
-        this.runtimeLogger.error(
-          `Failed to initialize room: ${error instanceof Error ? error.message : String(error)}`
-        );
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        this.runtimeLogger.error(`Failed to initialize: ${errorMsg}`);
         throw error;
       }
 
       // Add agent as participant in its own room
       try {
+        span.addEvent('adding_agent_as_participant');
         // No need to transform agent ID
         const participants = await this.adapter.getParticipantsForRoom(this.agentId);
         if (!participants.includes(this.agentId)) {
           const added = await this.adapter.addParticipant(this.agentId, this.agentId);
           if (!added) {
-            throw new Error(`Failed to add agent ${this.agentId} as participant to its own room`);
+            const errorMsg = `Failed to add agent ${this.agentId} as participant to its own room`;
+            span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+            throw new Error(errorMsg);
           }
           this.runtimeLogger.debug(
             `Agent ${this.character.name} linked to its own room successfully`
           );
+          span.addEvent('agent_added_as_participant');
+        } else {
+          span.addEvent('agent_already_participant');
         }
       } catch (error) {
-        this.runtimeLogger.error(
-          `Failed to add agent as participant: ${error instanceof Error ? error.message : String(error)
-          }`
-        );
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        this.runtimeLogger.error(`Failed to add agent as participant: ${errorMsg}`);
         throw error;
       }
 
       // Check if TEXT_EMBEDDING model is registered
       const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
       if (!embeddingModel) {
+        span.addEvent('embedding_model_missing');
         this.runtimeLogger.warn(
           `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
         );
       } else {
         // Only run ensureEmbeddingDimension if we have an embedding model
+        span.addEvent('setting_up_embedding_dimension');
         await this.ensureEmbeddingDimension();
+        span.addEvent('embedding_dimension_setup_complete');
       }
 
       // Process character knowledge
-      if (this.character?.knowledge?.length) {
-        const knowledgeSpan = tracer?.startSpan('processCharacterKnowledge');
-        try {
-          const stringKnowledge = this.character.knowledge.filter(
-            (item): item is string => typeof item === 'string'
-          );
-          const pathKnowledge = this.character.knowledge.filter(
-            (item): item is { path: string; shared?: boolean } => typeof item === 'object' && item !== null && 'path' in item
-          );
+      if (this.character?.knowledge && this.character.knowledge.length > 0) {
+        span.addEvent('processing_character_knowledge');
+        span.setAttributes({
+          'knowledge.count': this.character.knowledge.length
+        });
 
-          await this.processCharacterKnowledge(stringKnowledge);
-          knowledgeSpan?.setStatus({ code: SpanStatusCode.OK });
-        } catch (error) {
-          const errorMsg = 'Failed to process character knowledge';
-          this.runtimeLogger.error(errorMsg, error);
-          knowledgeSpan?.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
-          knowledgeSpan?.recordException(error as Error);
-        } finally {
-          knowledgeSpan?.end();
-        }
+        const stringKnowledge = this.character.knowledge.filter(
+          (item): item is string => typeof item === 'string'
+        );
+        await this.processCharacterKnowledge(stringKnowledge);
+        span.addEvent('character_knowledge_processed');
       }
 
       // Start all deferred services now that runtime is ready
+      span.addEvent('starting_deferred_services');
+      span.setAttributes({
+        'deferred_services.count': this.servicesInitQueue.size
+      });
+
       for (const service of this.servicesInitQueue) {
         await this.registerService(service);
       }
 
-      this.runtimeLogger.info(`Agent ${this.character.name} initialized successfully.`);
-      this.emitEvent(EventType.RUN_STARTED, { runtime: this });
-      span?.setStatus({ code: SpanStatusCode.OK });
-    } catch (error) {
-      const errorMsg = 'Agent initialization failed';
-      this.runtimeLogger.error(errorMsg, error);
-      span?.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message || errorMsg });
-      span?.recordException(error as Error);
-      throw error; // Re-throw the error to indicate initialization failure
-    } finally {
-      span?.end();
-    }
+      span.addEvent('initialization_completed');
+    });
   }
 
   private async handleProcessingError(error: any, context: string) {
@@ -516,41 +662,71 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async getKnowledge(message: Memory): Promise<KnowledgeItem[]> {
-    // Add validation for message
-    if (!message?.content?.text) {
-      this.runtimeLogger.warn('Invalid message for knowledge query:', {
-        message,
-        content: message?.content,
+    return this.startSpan('AgentRuntime.getKnowledge', async (span) => {
+      // Add validation for message
+      if (!message?.content?.text) {
+        span.addEvent('invalid_message');
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: 'Invalid message for knowledge query'
+        });
+        this.runtimeLogger.warn('Invalid message for knowledge query:', {
+          message,
+          content: message?.content,
+          text: message?.content?.text,
+        });
+        return [];
+      }
+
+      // Validate processed text
+      if (!message?.content?.text || message?.content?.text.trim().length === 0) {
+        span.addEvent('empty_text');
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: 'Empty text for knowledge query'
+        });
+        this.runtimeLogger.warn('Empty text for knowledge query');
+        return [];
+      }
+
+      span.setAttributes({
+        'message.id': message.id,
+        'query.length': message.content.text.length,
+        'agent.id': this.agentId
+      });
+
+      span.addEvent('generating_embedding');
+      const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
         text: message?.content?.text,
       });
-      return [];
-    }
 
-    // Validate processed text
-    if (!message?.content?.text || message?.content?.text.trim().length === 0) {
-      this.runtimeLogger.warn('Empty text for knowledge query');
-      return [];
-    }
+      span.addEvent('searching_memories');
+      span.setAttributes({
+        'embedding.length': embedding.length
+      });
 
-    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
-      text: message?.content?.text,
+      const fragments = await this.searchMemories({
+        tableName: 'knowledge',
+        embedding,
+        roomId: message.agentId,
+        count: 5,
+        match_threshold: 0.1,
+      });
+
+      span.addEvent('knowledge_retrieved');
+      span.setAttributes({
+        'fragments.count': fragments.length
+      });
+
+      // Return the fragments directly as this is used from prompts.
+      // Example usage in prompts: # provider KNOWLEDGE
+      return fragments.map((fragment) => ({
+        id: fragment.id,
+        content: fragment.content,
+        similarity: fragment.similarity,
+        metadata: fragment.metadata,
+      }));
     });
-    const fragments = await this.searchMemories({
-      tableName: 'knowledge',
-      embedding,
-      roomId: message.agentId,
-      count: 5,
-      match_threshold: 0.1,
-    });
-
-    // Return the fragments directly as this is used from prompts.
-    // Example usage in prompts: # provider KNOWLEDGE
-    return fragments.map((fragment) => ({
-      id: fragment.id,
-      content: fragment.content,
-      similarity: fragment.similarity,
-      metadata: fragment.metadata,
-    }));
   }
 
   async addKnowledge(
@@ -561,44 +737,83 @@ export class AgentRuntime implements IAgentRuntime {
       modelContextSize: 4096,
     }
   ) {
-    // First store the document
-    const documentMemory: Memory = {
-      id: item.id,
-      agentId: this.agentId,
-      roomId: this.agentId,
-      entityId: this.agentId,
-      content: item.content,
-      metadata: item.metadata || {
-        type: MemoryType.DOCUMENT,
-        timestamp: Date.now(),
-      },
-    };
+    return this.startSpan('AgentRuntime.addKnowledge', async (span) => {
+      span.setAttributes({
+        'item.id': item.id,
+        'agent.id': this.agentId,
+        'options.targetTokens': options.targetTokens,
+        'options.overlap': options.overlap
+      });
 
-    await this.createMemory(documentMemory, 'documents');
-
-    // Create fragments using splitChunks
-    const fragments = await splitChunks(item.content.text, options.targetTokens, options.overlap);
-
-    // Store each fragment with link to source document
-    for (let i = 0; i < fragments.length; i++) {
-      const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, fragments[i]);
-      const fragmentMemory: Memory = {
-        id: createUniqueUuid(this, `${item.id}-fragment-${i}`),
+      // First store the document
+      const documentMemory: Memory = {
+        id: item.id,
         agentId: this.agentId,
         roomId: this.agentId,
         entityId: this.agentId,
-        embedding,
-        content: { text: fragments[i] },
-        metadata: {
-          type: MemoryType.FRAGMENT,
-          documentId: item.id, // Link to source document
-          position: i, // Keep track of order
+        content: item.content,
+        metadata: item.metadata || {
+          type: MemoryType.DOCUMENT,
           timestamp: Date.now(),
         },
       };
 
-      await this.createMemory(fragmentMemory, 'knowledge');
-    }
+      span.addEvent('storing_document');
+      await this.createMemory(documentMemory, 'documents');
+      span.addEvent('document_stored');
+
+      // Create fragments using splitChunks
+      span.addEvent('splitting_chunks');
+      const fragments = await splitChunks(item.content.text, options.targetTokens, options.overlap);
+      span.setAttributes({
+        'fragments.count': fragments.length
+      });
+      span.addEvent('chunks_split');
+
+      // Track progress
+      let fragmentsProcessed = 0;
+
+      // Store each fragment with link to source document
+      span.addEvent('storing_fragments');
+      for (let i = 0; i < fragments.length; i++) {
+        try {
+          span.addEvent(`generating_embedding_${i}`);
+          const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, fragments[i]);
+
+          const fragmentMemory: Memory = {
+            id: createUniqueUuid(this, `${item.id}-fragment-${i}`),
+            agentId: this.agentId,
+            roomId: this.agentId,
+            entityId: this.agentId,
+            embedding,
+            content: { text: fragments[i] },
+            metadata: {
+              type: MemoryType.FRAGMENT,
+              documentId: item.id, // Link to source document
+              position: i, // Keep track of order
+              timestamp: Date.now(),
+            },
+          };
+
+          await this.createMemory(fragmentMemory, 'knowledge');
+          fragmentsProcessed++;
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          span.recordException(error as Error);
+          span.setAttributes({
+            'error.fragment': i,
+            'error.message': errorMsg
+          });
+          this.runtimeLogger.error(`Error processing fragment ${i}: ${errorMsg}`);
+        }
+      }
+
+      span.setAttributes({
+        'fragments.processed': fragmentsProcessed,
+        'fragments.success_rate': fragmentsProcessed / fragments.length
+      });
+      span.addEvent('knowledge_processing_complete');
+    });
   }
 
   async processCharacterKnowledge(items: string[]) {
@@ -765,86 +980,124 @@ export class AgentRuntime implements IAgentRuntime {
     state?: State,
     callback?: HandlerCallback
   ): Promise<void> {
-    for (const response of responses) {
-      if (!response.content?.actions || response.content.actions.length === 0) {
-        this.runtimeLogger.warn('No action found in the response content.');
-        continue;
-      }
+    return this.startSpan('AgentRuntime.processActions', async (span) => {
+      span.setAttributes({
+        'message.id': message.id,
+        'responses.count': responses.length,
+        'agent.id': this.agentId
+      });
 
-      const actions = response.content.actions;
+      for (const response of responses) {
+        if (!response.content?.actions || response.content.actions.length === 0) {
+          span.addEvent('no_actions_in_response');
+          this.runtimeLogger.warn('No action found in the response content.');
+          continue;
+        }
 
-      function normalizeAction(action: string) {
-        return action.toLowerCase().replace('_', '');
-      }
-      this.runtimeLogger.debug(
-        `Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`
-      );
+        const actions = response.content.actions;
+        span.setAttributes({
+          'actions.count': actions.length,
+          'actions.names': JSON.stringify(actions)
+        });
 
-      for (const responseAction of actions) {
-        state = await this.composeState(message, ['RECENT_MESSAGES']);
-
-        this.runtimeLogger.debug(`Success: Calling action: ${responseAction}`);
-        const normalizedResponseAction = normalizeAction(responseAction);
-        let action = this.actions.find(
-          (a: { name: string }) =>
-            normalizeAction(a.name).includes(normalizedResponseAction) || // the || is kind of a fuzzy match
-            normalizedResponseAction.includes(normalizeAction(a.name)) //
+        function normalizeAction(action: string) {
+          return action.toLowerCase().replace('_', '');
+        }
+        this.runtimeLogger.debug(
+          `Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`
         );
 
-        if (action) {
-          this.runtimeLogger.debug(`Success: Found action: ${action?.name}`);
-        } else {
-          this.runtimeLogger.debug('Attempting to find action in similes.');
-          for (const _action of this.actions) {
-            const simileAction = _action.similes?.find(
-              (simile) =>
-                simile.toLowerCase().replace('_', '').includes(normalizedResponseAction) ||
-                normalizedResponseAction.includes(simile.toLowerCase().replace('_', ''))
-            );
-            if (simileAction) {
-              action = _action;
-              this.runtimeLogger.debug(`Success: Action found in similes: ${action.name}`);
-              break;
+        for (const responseAction of actions) {
+          span.addEvent(`processing_action_${responseAction}`);
+          state = await this.composeState(message, ['RECENT_MESSAGES']);
+
+          this.runtimeLogger.debug(`Success: Calling action: ${responseAction}`);
+          const normalizedResponseAction = normalizeAction(responseAction);
+          let action = this.actions.find(
+            (a: { name: string }) =>
+              normalizeAction(a.name).includes(normalizedResponseAction) || // the || is kind of a fuzzy match
+              normalizedResponseAction.includes(normalizeAction(a.name)) //
+          );
+
+          if (action) {
+            span.addEvent(`found_exact_action_${action.name}`);
+            this.runtimeLogger.debug(`Success: Found action: ${action?.name}`);
+          } else {
+            span.addEvent('looking_for_similar_action');
+            this.runtimeLogger.debug('Attempting to find action in similes.');
+            for (const _action of this.actions) {
+              const simileAction = _action.similes?.find(
+                (simile) =>
+                  simile.toLowerCase().replace('_', '').includes(normalizedResponseAction) ||
+                  normalizedResponseAction.includes(simile.toLowerCase().replace('_', ''))
+              );
+              if (simileAction) {
+                action = _action;
+                span.addEvent(`found_similar_action_${action.name}`);
+                this.runtimeLogger.debug(`Success: Action found in similes: ${action.name}`);
+                break;
+              }
             }
           }
-        }
 
-        if (!action) {
-          this.runtimeLogger.error(`No action found for: ${responseAction}`);
-          continue;
-        }
+          if (!action) {
+            const errorMsg = `No action found for: ${responseAction}`;
+            span.addEvent('action_not_found');
+            span.setAttributes({
+              'error.action': responseAction
+            });
+            this.runtimeLogger.error(errorMsg);
+            continue;
+          }
 
-        if (!action.handler) {
-          this.runtimeLogger.error(`Action ${action.name} has no handler.`);
-          continue;
-        }
+          if (!action.handler) {
+            span.addEvent('action_has_no_handler');
+            span.setAttributes({
+              'error.action': action.name
+            });
+            this.runtimeLogger.error(`Action ${action.name} has no handler.`);
+            continue;
+          }
 
-        try {
-          this.runtimeLogger.debug(`Executing handler for action: ${action.name}`);
+          try {
+            span.addEvent(`executing_action_${action.name}`);
+            this.runtimeLogger.debug(`Executing handler for action: ${action.name}`);
 
-          await action.handler(this, message, state, {}, callback, responses);
+            await action.handler(this, message, state, {}, callback, responses);
 
-          this.runtimeLogger.debug(`Success: Action ${action.name} executed successfully.`);
+            span.addEvent(`action_executed_successfully_${action.name}`);
+            this.runtimeLogger.debug(`Success: Action ${action.name} executed successfully.`);
 
-          // log to database
-          this.adapter.log({
-            entityId: message.entityId,
-            roomId: message.roomId,
-            type: 'action',
-            body: {
-              action: action.name,
-              message: message.content.text,
-              messageId: message.id,
-              state,
-              responses,
-            },
-          });
-        } catch (error) {
-          this.runtimeLogger.error(error);
-          throw error;
+            // log to database
+            this.adapter.log({
+              entityId: message.entityId,
+              roomId: message.roomId,
+              type: 'action',
+              body: {
+                action: action.name,
+                message: message.content.text,
+                messageId: message.id,
+                state,
+                responses,
+              },
+            });
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            span.recordException(error as Error);
+            span.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: errorMessage
+            });
+            span.setAttributes({
+              'error.action': action.name,
+              'error.message': errorMessage
+            });
+            this.runtimeLogger.error(error);
+            throw error;
+          }
         }
       }
-    }
+    });
   }
 
   /**
@@ -954,10 +1207,6 @@ export class AgentRuntime implements IAgentRuntime {
     try {
       // First check if the entity exists
       let entity = await this.adapter.getEntityById(entityId);
-      this.runtimeLogger.debug(
-        `Created new entity ${entity}`
-      );
-
 
       if (!entity) {
         // Try to create the entity
@@ -968,7 +1217,6 @@ export class AgentRuntime implements IAgentRuntime {
             metadata,
             agentId: this.agentId,
           });
-
 
           if (success) {
             this.runtimeLogger.debug(
@@ -1184,112 +1432,163 @@ export class AgentRuntime implements IAgentRuntime {
     filterList: string[] | null = null, // only get providers that are in the filterList
     includeList: string[] | null = null // include providers that are private, dynamic or otherwise not included by default
   ): Promise<State> {
-    // Get cached state for this message ID first
-    const cachedState = (await this.stateCache.get(message.id)) || {
-      values: {},
-      data: {},
-      text: '',
-    };
+    return this.startSpan('AgentRuntime.composeState', async (span) => {
+      span.setAttributes({
+        'message.id': message.id,
+        'agent.id': this.agentId,
+        'filter_list': filterList ? JSON.stringify(filterList) : null,
+        'include_list': includeList ? JSON.stringify(includeList) : null
+      });
 
-    // Get existing provider names from cache (if any)
-    const existingProviderNames = cachedState.data.providers
-      ? Object.keys(cachedState.data.providers)
-      : [];
+      // Get cached state for this message ID first
+      const cachedState = (await this.stateCache.get(message.id)) || {
+        values: {},
+        data: {},
+        text: '',
+      };
 
-    // Step 1: Determine base set of providers to fetch
-    const providerNames = new Set<string>();
+      // Get existing provider names from cache (if any)
+      const existingProviderNames = cachedState.data.providers
+        ? Object.keys(cachedState.data.providers)
+        : [];
 
-    if (filterList && filterList.length > 0) {
-      // If filter list provided, start with just those providers
-      filterList.forEach((name) => providerNames.add(name));
-    } else {
-      // Otherwise, start with all non-private, non-dynamic providers that aren't cached
-      this.providers
-        .filter((p) => !p.private && !p.dynamic && !existingProviderNames.includes(p.name))
-        .forEach((p) => providerNames.add(p.name));
-    }
+      span.setAttributes({
+        'cached_state_exists': !!cachedState,
+        'existing_providers_count': existingProviderNames.length
+      });
 
-    // Step 2: Always add providers from include list
-    if (includeList && includeList.length > 0) {
-      includeList.forEach((name) => providerNames.add(name));
-    }
+      // Step 1: Determine base set of providers to fetch
+      const providerNames = new Set<string>();
 
-    // Get the actual provider objects and sort by position
-    const providersToGet = Array.from(
-      new Set(this.providers.filter((p) => providerNames.has(p.name)))
-    ).sort((a, b) => (a.position || 0) - (b.position || 0));
-
-    // Fetch data from selected providers
-    const providerData = await Promise.all(
-      providersToGet.map(async (provider) => {
-        const start = Date.now();
-        const result = await provider.get(this, message, cachedState);
-        const duration = Date.now() - start;
-        this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
-        return {
-          ...result,
-          providerName: provider.name,
-        };
-      })
-    );
-
-    // Extract existing provider data from cache
-    const existingProviderData = cachedState.data.providers || {};
-
-    // Create a combined provider values structure that preserves all cached data
-    // but updates with any newly fetched provider data
-    const combinedValues = { ...existingProviderData };
-
-    // Update with newly fetched provider data
-    for (const result of providerData) {
-      combinedValues[result.providerName] = result.values || {};
-    }
-
-    // Collect provider text from newly fetched providers
-    const newProvidersText = providerData
-      .map((result) => result.text)
-      .filter((text) => text !== '')
-      .join('\n');
-
-    // Combine with existing text if available
-    let providersText = '';
-    if (cachedState.text && newProvidersText) {
-      providersText = `${cachedState.text}\n${newProvidersText}`;
-    } else if (newProvidersText) {
-      providersText = newProvidersText;
-    } else if (cachedState.text) {
-      providersText = cachedState.text;
-    }
-
-    // Prepare final values
-    const values = {
-      ...(cachedState.values || {}),
-    };
-
-    // Safely merge all provider values
-    for (const providerName in combinedValues) {
-      const providerValues = combinedValues[providerName];
-      if (providerValues && typeof providerValues === 'object') {
-        Object.assign(values, providerValues);
+      if (filterList && filterList.length > 0) {
+        // If filter list provided, start with just those providers
+        filterList.forEach((name) => providerNames.add(name));
+      } else {
+        // Otherwise, start with all non-private, non-dynamic providers that aren't cached
+        this.providers
+          .filter((p) => !p.private && !p.dynamic && !existingProviderNames.includes(p.name))
+          .forEach((p) => providerNames.add(p.name));
       }
-    }
 
-    // Assemble and cache the new state
-    const newState = {
-      values: {
-        ...values,
-        providers: providersText,
-      },
-      data: {
-        ...(cachedState.data || {}),
-        providers: combinedValues,
-      },
-      text: providersText,
-    } as State;
+      // Step 2: Always add providers from include list
+      if (includeList && includeList.length > 0) {
+        includeList.forEach((name) => providerNames.add(name));
+      }
 
-    // Cache the result for future use
-    this.stateCache.set(message.id, newState);
-    return newState;
+      // Get the actual provider objects and sort by position
+      const providersToGet = Array.from(
+        new Set(this.providers.filter((p) => providerNames.has(p.name)))
+      ).sort((a, b) => (a.position || 0) - (b.position || 0));
+
+      span.setAttributes({
+        'providers_to_get_count': providersToGet.length,
+        'providers_to_get': providersToGet.map(p => p.name).join(',')
+      });
+      span.addEvent('starting_provider_fetch');
+
+      // Fetch data from selected providers
+      const providerData = await Promise.all(
+        providersToGet.map(async (provider) => {
+          const providerSpan = this.startActiveSpan(`provider.${provider.name}`);
+          const start = Date.now();
+          try {
+            const result = await provider.get(this, message, cachedState);
+            const duration = Date.now() - start;
+
+            providerSpan.setAttributes({
+              'provider.name': provider.name,
+              'provider.duration_ms': duration
+            });
+
+            this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
+            return {
+              ...result,
+              providerName: provider.name,
+            };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            providerSpan.recordException(error as Error);
+            providerSpan.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: errorMessage
+            });
+            // Return empty result on error
+            return {
+              values: {},
+              text: '',
+              providerName: provider.name
+            };
+          } finally {
+            providerSpan.end();
+          }
+        })
+      );
+
+      // Extract existing provider data from cache
+      const existingProviderData = cachedState.data.providers || {};
+
+      // Create a combined provider values structure that preserves all cached data
+      // but updates with any newly fetched provider data
+      const combinedValues = { ...existingProviderData };
+
+      // Update with newly fetched provider data
+      for (const result of providerData) {
+        combinedValues[result.providerName] = result.values || {};
+      }
+
+      // Collect provider text from newly fetched providers
+      const newProvidersText = providerData
+        .map((result) => result.text)
+        .filter((text) => text !== '')
+        .join('\n');
+
+      // Combine with existing text if available
+      let providersText = '';
+      if (cachedState.text && newProvidersText) {
+        providersText = `${cachedState.text}\n${newProvidersText}`;
+      } else if (newProvidersText) {
+        providersText = newProvidersText;
+      } else if (cachedState.text) {
+        providersText = cachedState.text;
+      }
+
+      // Prepare final values
+      const values = {
+        ...(cachedState.values || {}),
+      };
+
+      // Safely merge all provider values
+      for (const providerName in combinedValues) {
+        const providerValues = combinedValues[providerName];
+        if (providerValues && typeof providerValues === 'object') {
+          Object.assign(values, providerValues);
+        }
+      }
+
+      // Assemble and cache the new state
+      const newState = {
+        values: {
+          ...values,
+          providers: providersText,
+        },
+        data: {
+          ...(cachedState.data || {}),
+          providers: combinedValues,
+        },
+        text: providersText,
+      } as State;
+
+      // Cache the result for future use
+      this.stateCache.set(message.id, newState);
+
+      span.setAttributes({
+        'final_state_text_length': providersText.length,
+        'provider_count_final': Object.keys(combinedValues).length
+      });
+      span.addEvent('state_composition_complete');
+
+      return newState;
+    });
   }
 
   getService<T extends Service>(service: ServiceTypeName): T | null {
@@ -1302,29 +1601,53 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async registerService(service: typeof Service): Promise<void> {
-    const serviceType = service.serviceType as ServiceTypeName;
-    if (!serviceType) {
-      return;
-    }
-    this.runtimeLogger.debug(
-      `${this.character.name}(${this.agentId}) - Registering service:`,
-      serviceType
-    );
+    return this.startSpan('AgentRuntime.registerService', async (span) => {
+      const serviceType = service.serviceType as ServiceTypeName;
+      span.setAttributes({
+        'service.type': serviceType || 'unknown',
+        'agent.id': this.agentId
+      });
 
-    if (this.services.has(serviceType)) {
-      this.runtimeLogger.warn(
-        `${this.character.name}(${this.agentId}) - Service ${serviceType} is already registered. Skipping registration.`
+      if (!serviceType) {
+        span.addEvent('service_missing_type');
+        return;
+      }
+      this.runtimeLogger.debug(
+        `${this.character.name}(${this.agentId}) - Registering service:`,
+        serviceType
       );
-      return;
-    }
 
-    const serviceInstance = await service.start(this);
+      if (this.services.has(serviceType)) {
+        span.addEvent('service_already_registered');
+        this.runtimeLogger.warn(
+          `${this.character.name}(${this.agentId}) - Service ${serviceType} is already registered. Skipping registration.`
+        );
+        return;
+      }
 
-    // Add the service to the services map
-    this.services.set(serviceType, serviceInstance);
-    this.runtimeLogger.debug(
-      `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
-    );
+      try {
+        span.addEvent('starting_service');
+        const serviceInstance = await service.start(this);
+
+        // Add the service to the services map
+        this.services.set(serviceType, serviceInstance);
+        span.addEvent('service_registered');
+        this.runtimeLogger.debug(
+          `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
+        );
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: errorMessage
+        });
+        this.runtimeLogger.error(
+          `${this.character.name}(${this.agentId}) - Failed to register service ${serviceType}: ${errorMessage}`
+        );
+        throw error;
+      }
+    });
   }
 
   registerModel(modelType: ModelTypeName, handler: (params: any) => Promise<any>) {
@@ -1358,75 +1681,111 @@ export class AgentRuntime implements IAgentRuntime {
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'> | any
   ): Promise<R> {
-    const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
-    const model = this.getModel(modelKey);
-    if (!model) {
-      throw new Error(`No handler found for delegate type: ${modelKey}`);
-    }
+    return this.startSpan(`AgentRuntime.useModel.${modelType}`, async (span) => {
+      const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
 
-    // Log input parameters
-    this.runtimeLogger.debug(`[useModel] ${modelKey} input:`, JSON.stringify(params, null, 2));
+      span.setAttributes({
+        'model.type': modelKey,
+        'agent.id': this.agentId,
+        'has_params': params !== null && params !== undefined
+      });
 
-    // Handle different parameter formats
-    let paramsWithRuntime: any;
+      const model = this.getModel(modelKey);
+      if (!model) {
+        const errorMsg = `No handler found for delegate type: ${modelKey}`;
+        span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
+        throw new Error(errorMsg);
+      }
 
-    // If params is a simple value (string, number, etc.), pass it directly
-    if (
-      params === null ||
-      params === undefined ||
-      typeof params !== 'object' ||
-      Array.isArray(params) ||
-      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
-    ) {
-      paramsWithRuntime = params;
-    } else {
-      // Otherwise inject the runtime
-      paramsWithRuntime = {
-        ...params,
-        runtime: this,
-      };
-    }
+      // Log input parameters
+      this.runtimeLogger.debug(`[useModel] ${modelKey} input:`, JSON.stringify(params, null, 2));
 
-    // Start timer
-    const startTime = performance.now();
+      // Handle different parameter formats
+      let paramsWithRuntime: any;
 
-    // Call the model
-    const response = await model(this, paramsWithRuntime);
+      // If params is a simple value (string, number, etc.), pass it directly
+      if (
+        params === null ||
+        params === undefined ||
+        typeof params !== 'object' ||
+        Array.isArray(params) ||
+        (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
+      ) {
+        paramsWithRuntime = params;
+      } else {
+        // Otherwise inject the runtime
+        paramsWithRuntime = {
+          ...params,
+          runtime: this,
+        };
+      }
 
-    // Calculate elapsed time
-    const elapsedTime = performance.now() - startTime;
+      // Start timer
+      const startTime = performance.now();
+      span.addEvent('model_execution_start');
 
-    // Log timing
-    this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`);
+      try {
+        // Call the model
+        const response = await model(this, paramsWithRuntime);
 
-    // Log response
-    this.runtimeLogger.debug(
-      `[useModel] ${modelKey} output:`,
-      // if response is an array, should the first and last 5 items with a "..." in the middle, and a (x items) at the end
-      Array.isArray(response)
-        ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(
-          response.slice(-5)
-        )} (${response.length} items)`
-        : JSON.stringify(response)
-    );
+        // Calculate elapsed time
+        const elapsedTime = performance.now() - startTime;
+        span.setAttributes({
+          'model.execution_time_ms': elapsedTime
+        });
 
-    // Log the model usage
-    this.adapter.log({
-      entityId: this.agentId,
-      roomId: this.agentId,
-      body: {
-        modelType,
-        modelKey,
-        params: params ? (typeof params === 'object' ? Object.keys(params) : typeof params) : null,
-        response:
-          Array.isArray(response) && response.every((x) => typeof x === 'number')
-            ? '[array]'
-            : response,
-      },
-      type: `useModel:${modelKey}`,
+        // Log timing
+        this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`);
+
+        // Log response
+        this.runtimeLogger.debug(
+          `[useModel] ${modelKey} output:`,
+          // if response is an array, should the first and last 5 items with a "..." in the middle, and a (x items) at the end
+          Array.isArray(response)
+            ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(
+              response.slice(-5)
+            )} (${response.length} items)`
+            : JSON.stringify(response)
+        );
+
+        // Log the model usage
+        this.adapter.log({
+          entityId: this.agentId,
+          roomId: this.agentId,
+          body: {
+            modelType,
+            modelKey,
+            params: params ? (typeof params === 'object' ? Object.keys(params) : typeof params) : null,
+            response:
+              Array.isArray(response) && response.every((x) => typeof x === 'number')
+                ? '[array]'
+                : response,
+          },
+          type: `useModel:${modelKey}`,
+        });
+
+        span.addEvent('model_execution_complete');
+        return response as R;
+      } catch (error) {
+        // Calculate time to error
+        const errorTime = performance.now() - startTime;
+
+        // Record error details
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: errorMessage
+        });
+        span.setAttributes({
+          'error.time_ms': errorTime,
+          'error.message': errorMessage
+        });
+
+        // Rethrow the error
+        throw error;
+      }
     });
-
-    return response as R;
   }
 
   registerEvent(event: string, handler: (params: any) => Promise<void>) {
@@ -1873,22 +2232,4 @@ export class AgentRuntime implements IAgentRuntime {
       handler(data);
     }
   }
-
-  // Helper method to register plugin components (actions, providers, etc.)
-  private registerPluginComponents(plugin: Plugin) {
-    plugin.actions?.forEach((action) => this.registerAction(action));
-    plugin.providers?.forEach((provider) => this.registerProvider(provider));
-    plugin.evaluators?.forEach((evaluator) => this.registerEvaluator(evaluator));
-    // Register other plugin components if needed (e.g., services from plugin)
-    // Note: Services might need special handling depending on lifecycle requirements
-    if (plugin.services) {
-      plugin.services.forEach(serviceClass => {
-        // Decide how to handle plugin services - defer init or init immediately?
-        // Using servicesInitQueue as an example of deferral
-        this.servicesInitQueue.add(serviceClass);
-      });
-    }
-  }
-
-
 }
