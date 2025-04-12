@@ -32,7 +32,6 @@ type FieldType = 'text' | 'textarea' | 'number' | 'checkbox' | 'select';
 
 export enum FIELD_REQUIREMENT {
   REQUIRED = 'required',
-  SUGGESTED = 'suggested',
   OPTIONAL = 'optional',
 }
 
@@ -164,7 +163,7 @@ export default function CharacterForm({
               value: model.value,
               label: model.label,
             })),
-            requirement: FIELD_REQUIREMENT.SUGGESTED,
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: "Select a voice that aligns with the agent's intended persona.",
           },
         ] as InputField[],
@@ -179,7 +178,7 @@ export default function CharacterForm({
             description: 'Bio data for this agent',
             path: 'bio',
             getData: (char) => (Array.isArray(char.bio) ? char.bio : []),
-            requirement: FIELD_REQUIREMENT.SUGGESTED,
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: "Biographical details that establish the agent's background and context.",
           },
           {
@@ -187,7 +186,7 @@ export default function CharacterForm({
             description: 'Topics this agent can talk about',
             path: 'topics',
             getData: (char) => char.topics || [],
-            requirement: FIELD_REQUIREMENT.SUGGESTED,
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: 'Subject domains the agent can discuss with confidence.',
           },
           {
@@ -195,7 +194,7 @@ export default function CharacterForm({
             description: 'Descriptive personality traits',
             path: 'adjectives',
             getData: (char) => char.adjectives || [],
-            requirement: FIELD_REQUIREMENT.SUGGESTED,
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: "Key personality attributes that define the agent's character.",
           },
         ] as ArrayField[],
@@ -386,17 +385,26 @@ export default function CharacterForm({
         <Label htmlFor={field.name} className="flex items-center gap-1">
           {field.title}
           {field.requirement && (
-            <span className="ml-1">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${
-                  field.requirement === FIELD_REQUIREMENT.REQUIRED
-                    ? 'bg-red-500'
-                    : field.requirement === FIELD_REQUIREMENT.SUGGESTED
-                      ? 'bg-yellow-500'
-                      : 'bg-gray-400'
-                }`}
-              ></span>
-            </span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="ml-1">
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${
+                        field.requirement === FIELD_REQUIREMENT.REQUIRED
+                          ? 'bg-red-500'
+                          : 'bg-gray-400'
+                      }`}
+                    ></span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="right" align="start">
+                  <p>
+                    {field.requirement === FIELD_REQUIREMENT.REQUIRED ? 'Required' : 'Optional'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </Label>
         {field.tooltip && (
@@ -471,17 +479,26 @@ export default function CharacterForm({
         <Label htmlFor={field.path} className="flex items-center gap-1">
           {field.title}
           {field.requirement && (
-            <span className="ml-1">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${
-                  field.requirement === FIELD_REQUIREMENT.REQUIRED
-                    ? 'bg-red-500'
-                    : field.requirement === FIELD_REQUIREMENT.SUGGESTED
-                      ? 'bg-yellow-500'
-                      : 'bg-gray-400'
-                }`}
-              ></span>
-            </span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="ml-1">
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${
+                        field.requirement === FIELD_REQUIREMENT.REQUIRED
+                          ? 'bg-red-500'
+                          : 'bg-gray-400'
+                      }`}
+                    ></span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="right" align="start">
+                  <p>
+                    {field.requirement === FIELD_REQUIREMENT.REQUIRED ? 'Required' : 'Optional'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </Label>
         {field.tooltip && (
@@ -567,20 +584,6 @@ export default function CharacterForm({
 
           <Card>
             <CardContent className="p-6">
-              <div className="flex items-center gap-6 mb-6 pb-3 border-b">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-3 h-3 rounded-full bg-red-500"></span>
-                  <span className="text-sm font-medium">Required</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-3 h-3 rounded-full bg-yellow-500"></span>
-                  <span className="text-sm font-medium">Suggested</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-3 h-3 rounded-full bg-gray-400"></span>
-                  <span className="text-sm font-medium">Optional</span>
-                </div>
-              </div>
               {AGENT_FORM_SCHEMA.map((section) => (
                 <TabsContent
                   key={section.sectionValue}
