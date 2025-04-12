@@ -362,7 +362,13 @@ export function useAgentUpdate(initialAgent: Agent) {
     return changedFields;
   }, [agent]);
 
-  const replaceAgent = useCallback(
+  /**
+   * Imports a complete Agent object and updates all relevant fields.
+   * This is useful when switching between agents or resetting to a known state.
+   *
+   * @param newAgent The Agent object to import
+   */
+  const importAgent = useCallback(
     (newAgent: Agent) => {
       const newSettings = newAgent.settings || {};
       const currentAvatar = agent.settings?.avatar;
@@ -424,6 +430,6 @@ export function useAgentUpdate(initialAgent: Agent) {
     // Avatar Tab
     updateAvatar,
 
-    replaceAgent,
+    importAgent,
   };
 }
