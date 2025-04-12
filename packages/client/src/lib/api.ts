@@ -81,6 +81,19 @@ const fetcher = async ({
         }
       }
 
+      // Add more context to specific HTTP status codes
+      if (response.status === 404) {
+        errorMessage = `${errorMessage} - API endpoint not found`;
+      } else if (response.status === 403) {
+        errorMessage = `${errorMessage} - Access denied`;
+      } else if (response.status === 401) {
+        errorMessage = `${errorMessage} - Authentication required`;
+      } else if (response.status === 429) {
+        errorMessage = `${errorMessage} - Too many requests, please try again later`;
+      } else if (response.status >= 500) {
+        errorMessage = `${errorMessage} - Server error, please check server logs`;
+      }
+
       throw new Error(errorMessage);
     }
 
@@ -102,8 +115,24 @@ const fetcher = async ({
       return await response.text();
     }
   } catch (error) {
-    clientLogger.error('Fetch error:', error);
-    throw error;
+    // Enhanced error handling with more specific messages
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      clientLogger.error('Network Error:', error);
+      throw new Error(
+        'NetworkError: Unable to connect to the server. Please check if the server is running.'
+      );
+    } else if (error instanceof Error && error.name === 'AbortError') {
+      clientLogger.error('Request Timeout:', error);
+      throw new Error('RequestTimeout: The request took too long to complete.');
+    } else if (error instanceof DOMException && error.name === 'NetworkError') {
+      clientLogger.error('Cross-Origin Error:', error);
+      throw new Error(
+        'NetworkError: Cross-origin request failed. Please check server CORS settings.'
+      );
+    } else {
+      clientLogger.error('Fetch error:', error);
+      throw error;
+    }
   }
 };
 
@@ -184,6 +213,7 @@ export const apiClient = {
   getAgents: () => fetcher({ url: '/agents' }),
   getAgent: (agentId: string): Promise<{ data: Agent }> => fetcher({ url: `/agents/${agentId}` }),
   ping: (): Promise<{ pong: boolean; timestamp: number }> => fetcher({ url: '/ping' }),
+  testEndpoint: (endpoint: string): Promise<any> => fetcher({ url: endpoint }),
   tts: (agentId: string, text: string) =>
     fetcher({
       url: `/agents/${agentId}/speech/generate`,
