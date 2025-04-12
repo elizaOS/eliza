@@ -362,6 +362,22 @@ export function useAgentUpdate(initialAgent: Agent) {
     return changedFields;
   }, [agent]);
 
+  const replaceAgent = useCallback(
+    (newAgent: Agent) => {
+      updateSettings(newAgent.settings || {});
+      updateField('name', newAgent.name || '');
+      updateField('username', newAgent.username || '');
+      updateField('system', newAgent.system || '');
+
+      updateField('bio', newAgent.bio || []);
+      updateField('topics', newAgent.topics || []);
+      updateField('adjectives', newAgent.adjectives || []);
+      updateField('style', newAgent.style || { all: [], chat: [], post: [] });
+      updateField('plugins', newAgent.plugins || []);
+    },
+    [updateField, updateSettings]
+  );
+
   return {
     agent,
     updateField,
@@ -398,5 +414,7 @@ export function useAgentUpdate(initialAgent: Agent) {
 
     // Avatar Tab
     updateAvatar,
+
+    replaceAgent,
   };
 }
