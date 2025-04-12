@@ -370,16 +370,7 @@ export function useAgentUpdate(initialAgent: Agent) {
    */
   const importAgent = useCallback(
     (newAgent: Agent) => {
-      const newSettings = newAgent.settings || {};
-      const currentAvatar = agent.settings?.avatar;
-
-      const safeAvatar =
-        typeof newSettings.avatar === 'string' ? newSettings.avatar : currentAvatar;
-
-      updateSettings({
-        ...newSettings,
-        avatar: safeAvatar,
-      });
+      updateSettings(newAgent.settings || {});
       updateField('name', newAgent.name || '');
       updateField('username', newAgent.username || '');
       updateField('system', newAgent.system || '');
