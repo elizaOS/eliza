@@ -517,26 +517,22 @@ export default function CharacterForm({
             >
               Reset Changes
             </Button>
+            <div className="relative">
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportJSON}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <Button type="button" variant="outline">
+                Import JSON
+              </Button>
+            </div>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => document.getElementById('import-json-input')?.click()}
-        >
-          Import JSON
-        </Button>
-        <input
-          type="file"
-          id="import-json-input"
-          accept="application/json"
-          style={{ display: 'none' }}
-          onChange={handleImportJSON}
-        />
       </form>
     </div>
   );
