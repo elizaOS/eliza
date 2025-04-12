@@ -20,12 +20,12 @@ let serverProcess: ChildProcess | null = null;
  */
 async function stopServer(): Promise<void> {
   if (serverProcess) {
-    logger.info('Stopping current server process...');
+    console.info('Stopping current server process...');
 
     // Send SIGTERM to the process group
     const killed = serverProcess.kill('SIGTERM');
     if (!killed) {
-      logger.warn('Failed to kill server process, trying force kill...');
+      console.warn('Failed to kill server process, trying force kill...');
       serverProcess.kill('SIGKILL');
     }
 
@@ -42,7 +42,7 @@ async function stopServer(): Promise<void> {
 async function startServer(args: string[] = []): Promise<void> {
   await stopServer();
 
-  logger.info('Starting server...');
+  console.info('Starting server...');
 
   // We'll use the same executable that's currently running, with 'start' command
   const nodeExecutable = process.execPath;
@@ -58,19 +58,19 @@ async function startServer(args: string[] = []): Promise<void> {
   serverProcess.on('exit', (code, signal) => {
     if (code !== null) {
       if (code !== 0) {
-        logger.warn(`Server process exited with code ${code}`);
+        console.warn(`Server process exited with code ${code}`);
       } else {
-        logger.info('Server process exited normally');
+        console.info('Server process exited normally');
       }
     } else if (signal) {
-      logger.info(`Server process was killed with signal ${signal}`);
+      console.info(`Server process was killed with signal ${signal}`);
     }
     serverProcess = null;
   });
 
   // Handle process errors
   serverProcess.on('error', (err) => {
-    logger.error(`Server process error: ${err.message}`);
+    console.error(`Server process error: ${err.message}`);
     serverProcess = null;
   });
 }
@@ -90,8 +90,8 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
 
       // Log package info for debugging
-      logger.info(`Package name: ${packageJson.name}`);
-      logger.info(
+      console.info(`Package name: ${packageJson.name}`);
+      console.info(
         `Package type check: ${JSON.stringify({
           'eliza.type': packageJson.eliza?.type,
           'name.includes(plugin)': packageJson.name?.includes('plugin-'),
@@ -113,7 +113,7 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
           packageJson.keywords.some((k: string) => k === 'elizaos-plugin' || k === 'eliza-plugin'))
       ) {
         isPlugin = true;
-        logger.info('Identified as a plugin package');
+        console.info('Identified as a plugin package');
       }
 
       // More specific check for projects
@@ -128,7 +128,7 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
           ))
       ) {
         isProject = true;
-        logger.info('Identified as a project package');
+        console.info('Identified as a project package');
       }
 
       // If still not identified, check if it has src/index.ts with a Project export
@@ -141,12 +141,12 @@ async function determineProjectType(): Promise<{ isProject: boolean; isPlugin: b
             (indexContent.includes('export default') && indexContent.includes('Project'))
           ) {
             isProject = true;
-            logger.info('Identified as a project by src/index.ts export');
+            console.info('Identified as a project by src/index.ts export');
           }
         }
       }
     } catch (error) {
-      logger.warn(`Error parsing package.json: ${error}`);
+      console.warn(`Error parsing package.json: ${error}`);
     }
   }
 
@@ -162,11 +162,11 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
     await execa('npm', ['list', 'chokidar'], { stdio: 'ignore', reject: false });
   } catch (error) {
     // If chokidar isn't installed, install it
-    logger.info('Installing chokidar dependency for file watching...');
+    console.info('Installing chokidar dependency for file watching...');
     try {
       await execa('npm', ['install', 'chokidar', '--no-save'], { stdio: 'inherit' });
     } catch (installError) {
-      logger.error(`Failed to install chokidar: ${installError.message}`);
+      console.error(`Failed to install chokidar: ${installError.message}`);
       return;
     }
   }
@@ -177,13 +177,13 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
 
     // Get the absolute path of the directory
     const absoluteDir = path.resolve(dir);
-    logger.info(`Setting up file watching for directory: ${absoluteDir}`);
+    console.info(`Setting up file watching for directory: ${absoluteDir}`);
 
     // Use a simpler approach - watch the src directory directly
     const srcDir = path.join(absoluteDir, 'src');
     const dirToWatch = fs.existsSync(srcDir) ? srcDir : absoluteDir;
 
-    logger.info(`Actually watching directory: ${dirToWatch}`);
+    console.info(`Actually watching directory: ${dirToWatch}`);
 
     // Define watch options with fewer exclusions to ensure we catch all changes
     const watchOptions = {
@@ -197,7 +197,7 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
     };
 
     // Log file extensions we're watching
-    logger.info('Will watch files with extensions: .ts, .js, .tsx, .jsx');
+    console.info('Will watch files with extensions: .ts, .js, .tsx, .jsx');
 
     // Create a more direct and simple watcher pattern
     const watcher = chokidar.watch(dirToWatch, {
@@ -233,9 +233,9 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
 
     const tsFiles = findTsFiles(dirToWatch);
 
-    logger.info(`Found ${tsFiles.length} TypeScript/JavaScript files in the watched directory`);
+    console.info(`Found ${tsFiles.length} TypeScript/JavaScript files in the watched directory`);
     if (tsFiles.length > 0) {
-      logger.info(
+      console.info(
         `Sample files: ${tsFiles.slice(0, 3).join(', ')}${tsFiles.length > 3 ? '...' : ''}`
       );
     }
@@ -247,20 +247,20 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
       const watchedPaths = watcher.getWatched();
       const pathsCount = Object.keys(watchedPaths).length;
 
-      logger.info(`Chokidar is watching ${pathsCount} directories`);
+      console.info(`Chokidar is watching ${pathsCount} directories`);
       if (pathsCount === 0) {
-        logger.warn('No directories are being watched! File watching may not be working.');
+        console.warn('No directories are being watched! File watching may not be working.');
 
         // Try an alternative approach with explicit file patterns
-        logger.info('Attempting to set up alternative file watching...');
+        console.info('Attempting to set up alternative file watching...');
         watcher.add(`${dirToWatch}/**/*.{ts,js,tsx,jsx}`);
       } else {
-        logger.info(
+        console.info(
           `Top-level watched directories: ${Object.keys(watchedPaths).slice(0, 5).join(', ')}${Object.keys(watchedPaths).length > 5 ? '...' : ''}`
         );
       }
 
-      logger.success(`File watching initialized in: ${dirToWatch}`);
+      console.log(`File watching initialized in: ${dirToWatch}`);
     });
 
     // Set up file change handler
@@ -270,7 +270,7 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
         return;
       }
 
-      logger.info(`File event: ${event} - ${filePath}`);
+      console.info(`File event: ${event} - ${filePath}`);
 
       // Debounce the onChange handler to avoid multiple rapid rebuilds
       if (debounceTimer) {
@@ -278,7 +278,7 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
       }
 
       debounceTimer = setTimeout(() => {
-        logger.info(`Triggering rebuild for file change: ${filePath}`);
+        console.info(`Triggering rebuild for file change: ${filePath}`);
         onChange();
         debounceTimer = null;
       }, 300);
@@ -286,7 +286,7 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
 
     // Add an error handler
     watcher.on('error', (error) => {
-      logger.error(`Chokidar watcher error: ${error}`);
+      console.error(`Chokidar watcher error: ${error}`);
     });
 
     // Ensure proper cleanup on process exit
@@ -294,10 +294,10 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
       watcher.close().then(() => process.exit(0));
     });
 
-    logger.success(`Watching for file changes in ${dirToWatch}`);
+    console.log(`Watching for file changes in ${dirToWatch}`);
   } catch (error: any) {
-    logger.error(`Error setting up file watcher: ${error.message}`);
-    logger.error(error.stack);
+    console.error(`Error setting up file watcher: ${error.message}`);
+    console.error(error.stack);
   }
 }
 
@@ -307,10 +307,12 @@ async function watchDirectory(dir: string, onChange: () => void): Promise<void> 
 export const dev = new Command()
   .name('dev')
   .description('Start the project or plugin in development mode and rebuild on file changes')
-  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
-  .option('--character <character>', 'Path or URL to character file to use instead of default')
-  .option('--build', 'Build the project before starting')
+  .option(
+    '-char, --character <character>',
+    'Path or URL to character file to use instead of default'
+  )
+  .option('-b, --build', 'Build the project before starting')
   .action(async (options) => {
     try {
       const cwd = process.cwd();
@@ -321,6 +323,7 @@ export const dev = new Command()
       if (options.port) cliArgs.push('--port', options.port.toString());
       if (options.configure) cliArgs.push('--configure');
       if (options.character) cliArgs.push('--character', options.character);
+      if (options.build) cliArgs.push('--build');
 
       // Function to rebuild and restart the server
       const rebuildAndRestart = async () => {
@@ -328,37 +331,39 @@ export const dev = new Command()
           // Ensure the server is stopped first
           await stopServer();
 
-          logger.info('Rebuilding project after file change...');
+          console.info('Rebuilding project after file change...');
 
           // Run the build process
           await buildProject(cwd, isPlugin);
 
-          logger.success('Rebuild successful, restarting server...');
+          console.log('Rebuild successful, restarting server...');
 
           // Start the server with the args
           await startServer(cliArgs);
         } catch (error) {
-          logger.error(`Error during rebuild and restart: ${error.message}`);
+          console.error(`Error during rebuild and restart: ${error.message}`);
           // Try to restart the server even if build fails
           if (!serverProcess) {
-            logger.info('Attempting to restart server regardless of build failure...');
+            console.info('Attempting to restart server regardless of build failure...');
             await startServer(cliArgs);
           }
         }
       };
 
       if (!isProject && !isPlugin) {
-        logger.warn('Not in a recognized project or plugin directory. Running in standalone mode.');
+        console.warn(
+          'Not in a recognized project or plugin directory. Running in standalone mode.'
+        );
       } else {
-        logger.info(`Running in ${isProject ? 'project' : 'plugin'} mode`);
+        console.info(`Running in ${isProject ? 'project' : 'plugin'} mode`);
 
         // Ensure initial build is performed
-        logger.info('Building project...');
+        console.info('Building project...');
         try {
           await buildProject(cwd, isPlugin);
         } catch (error) {
-          logger.error(`Initial build failed: ${error.message}`);
-          logger.info('Continuing with dev mode anyway...');
+          console.error(`Initial build failed: ${error.message}`);
+          console.info('Continuing with dev mode anyway...');
         }
       }
 
@@ -370,10 +375,10 @@ export const dev = new Command()
         // Pass the rebuildAndRestart function as the onChange callback
         await watchDirectory(cwd, rebuildAndRestart);
 
-        logger.success('Dev mode is active! The server will restart when files change.');
-        logger.success('Press Ctrl+C to exit');
+        console.log('Dev mode is active! The server will restart when files change.');
+        console.log('Press Ctrl+C to exit');
       } else {
-        logger.debug('Running in standalone mode without file watching.');
+        console.debug('Running in standalone mode without file watching.');
       }
     } catch (error) {
       handleError(error);

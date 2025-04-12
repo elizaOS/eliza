@@ -37,20 +37,44 @@ async function performCliUpdate(): Promise<boolean> {
 
     if (cleanCurrentVersion === latestVersion) {
       displayBanner();
-      logger.info('ElizaOS CLI is already up to date!');
+      console.info('ElizaOS CLI is already up to date!');
       return true;
     }
 
-    logger.info(`Updating ElizaOS CLI from ${cleanCurrentVersion} to ${latestVersion}...`);
+    console.info(`Updating ElizaOS CLI from ${cleanCurrentVersion} to ${latestVersion}...`);
 
-    // Always install globally for CLI updates
-    await executeInstallation('@elizaos/cli', versionStream, true);
+    // Install the specified version globally
+    logger.info(`Updating Eliza CLI to version: ${versionStream}`);
+    try {
+      // Use executeInstallation to install the CLI package
+      const installResult = await executeInstallation(
+        '@elizaos/cli',
+        versionStream, // The specific version or tag to install
+        process.cwd(), // Specify CWD, actual install location depends on PM/global flag
+        { tryNpm: true, tryGithub: false, tryMonorepo: false } // Prioritize npm
+      );
+
+      // Check the success flag from the returned object
+      if (!installResult.success) {
+        // Throw an error if the installation wasn't successful
+        throw new Error(
+          `Installation of @elizaos/cli version ${versionStream} failed. Check logs.`
+        );
+      }
+
+      logger.info(`Successfully updated Eliza CLI to ${versionStream}`);
+      logger.info('Please restart your terminal for the changes to take effect.');
+    } catch (error) {
+      logger.error('Failed to update Eliza CLI:', error.message);
+      // logger.debug('Error details:', error);
+      process.exit(1);
+    }
 
     displayBanner();
-    logger.info('ElizaOS CLI has been successfully updated!');
+    console.info('ElizaOS CLI has been successfully updated!');
     return true;
   } catch (error) {
-    logger.error('Failed to update ElizaOS CLI:', error);
+    console.error('Failed to update ElizaOS CLI:', error);
     return false;
   }
 }
@@ -60,19 +84,19 @@ export const updateCLI = new Command('update-cli')
   .action(async () => {
     // Don't run update-cli when using npx or bunx - doesn't make sense to update a temporary CLI
     if (isRunningViaNpx() || isRunningViaBunx()) {
-      logger.warn('Update command is not available when running via npx or bunx.');
-      logger.info('To install the latest version, run: npm install -g @elizaos/cli');
+      console.warn('Update command is not available when running via npx or bunx.');
+      console.info('To install the latest version, run: npm install -g @elizaos/cli');
       return;
     }
 
     // Only allow updates when installed as a global package
     if (!isGlobalInstallation()) {
-      logger.warn('The update command is only available for globally installed CLI.');
-      logger.info('To update a local installation, use your package manager manually.');
+      console.warn('The update command is only available for globally installed CLI.');
+      console.info('To update a local installation, use your package manager manually.');
       return;
     }
 
-    logger.info('Checking for ElizaOS CLI updates...');
+    console.info('Checking for ElizaOS CLI updates...');
 
     try {
       await performCliUpdate();

@@ -29,6 +29,21 @@ export interface ModelSpec {
 }
 
 /**
+ * Interface representing the specification of an embedding model.
+ * @typedef {Object} EmbeddingModelSpec
+ * @property {string} name - The name of the embedding model.
+ * @property {string} repo - The repository of the embedding model.
+ * @property {string} size - The size of the embedding model.
+ * @property {string} quantization - The quantization of the embedding model.
+ * @property {number} contextSize - The context size of the embedding model.
+ * @property {number} dimensions - The embedding dimensions.
+ * @property {TokenizerConfig} tokenizer - The configuration for the tokenizer used by the model.
+ */
+export interface EmbeddingModelSpec extends ModelSpec {
+  dimensions: number;
+}
+
+/**
  * Interface representing a specification for a vision model.
  * @typedef {object} VisionModelSpec
  * @property {string} name - The name of the vision model.
@@ -84,6 +99,7 @@ export interface TTSModelSpec {
  * @interface ModelSpecs
  * @property {ModelSpec} small - Specifications for a small model
  * @property {ModelSpec} medium - Specifications for a medium model
+ * @property {EmbeddingModelSpec} embedding - Specifications for an embedding model
  * @property {VisionModelSpec} vision - Specifications for a vision model
  * @property {VisionModelSpec} visionvl - Specifications for a vision model with vision loss
  * @property {Object} tts - Specifications for text-to-speech models
@@ -94,6 +110,7 @@ export interface TTSModelSpec {
 export interface ModelSpecs {
   small: ModelSpec;
   medium: ModelSpec;
+  embedding: EmbeddingModelSpec;
   vision: VisionModelSpec;
   visionvl: VisionModelSpec;
   tts: {
@@ -127,6 +144,18 @@ export const MODEL_SPECS: ModelSpecs = {
     contextSize: 8192,
     tokenizer: {
       name: 'NousResearch/DeepHermes-3-Llama-3-8B-Preview',
+      type: 'llama',
+    },
+  },
+  embedding: {
+    name: 'bge-small-en-v1.5.Q4_K_M.gguf',
+    repo: 'ChristianAzinn/bge-small-en-v1.5-gguf',
+    size: '133 MB',
+    quantization: 'Q4_K_M',
+    contextSize: 512,
+    dimensions: 384,
+    tokenizer: {
+      name: 'ChristianAzinn/bge-small-en-v1.5-gguf',
       type: 'llama',
     },
   },

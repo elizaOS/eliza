@@ -20,7 +20,7 @@ The Node plugin serves as a foundational component of Eliza OS, bridging core No
 ## Installation
 
 ```bash
-npx elizaos plugin add @elizaos/plugin-browser
+npx elizaos project add-plugin @elizaos/plugin-browser
 ```
 
 ## Configuration

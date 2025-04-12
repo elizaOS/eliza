@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type {
+  AgentRuntime,
   ImageDescriptionParams,
   ModelTypeName,
   ObjectGenerationParams,
@@ -14,9 +15,10 @@ import {
   logger,
   VECTOR_DIMS,
 } from '@elizaos/core';
-import { generateObject, generateText } from 'ai';
+import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
-import { FormData as NodeFormData, File as NodeFile } from 'formdata-node';
+import FormData from 'form-data';
+import fetch from 'node-fetch';
 
 /**
  * Helper function to get settings with fallback to process.env
@@ -116,6 +118,96 @@ async function detokenizeText(model: ModelTypeName, tokens: number[]) {
       : (process.env.OPENAI_LARGE_MODEL ?? process.env.LARGE_MODEL ?? 'gpt-4o');
   const encoding = encodingForModel(modelName as TiktokenModel);
   return encoding.decode(tokens);
+}
+
+/**
+ * Helper function to generate objects using specified model type
+ */
+async function generateObjectByModelType(
+  runtime: AgentRuntime,
+  params: ObjectGenerationParams,
+  modelType: string,
+  getModelFn: (runtime: AgentRuntime) => string
+): Promise<JSONValue> {
+  const openai = createOpenAIClient(runtime);
+  const model = getModelFn(runtime);
+
+  try {
+    if (params.schema) {
+      // Skip zod validation and just use the generateObject without schema
+      logger.info(`Using ${modelType} without schema validation`);
+    }
+
+    const { object } = await generateObject({
+      model: openai.languageModel(model),
+      output: 'no-schema',
+      prompt: params.prompt,
+      temperature: params.temperature,
+      experimental_repairText: getJsonRepairFunction(),
+    });
+    return object;
+  } catch (error) {
+    logger.error(`Error generating object with ${modelType}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Returns a function to repair JSON text
+ */
+function getJsonRepairFunction(): (params: {
+  text: string;
+  error: unknown;
+}) => Promise<string | null> {
+  return async ({ text, error }: { text: string; error: unknown }) => {
+    try {
+      if (error instanceof JSONParseError) {
+        const cleanedText = text.replace(/```json\n|\n```|```/g, '');
+
+        JSON.parse(cleanedText);
+        return cleanedText;
+      }
+    } catch (jsonError) {
+      logger.warn('Failed to repair JSON text:', jsonError);
+      return null;
+    }
+  };
+}
+
+/**
+ * function for text-to-speech
+ */
+async function fetchTextToSpeech(runtime: AgentRuntime, text: string) {
+  const apiKey = getApiKey(runtime);
+  const model = getSetting(runtime, 'OPENAI_TTS_MODEL', 'gpt-4o-mini-tts');
+  const voice = getSetting(runtime, 'OPENAI_TTS_VOICE', 'nova');
+  const instructions = getSetting(runtime, 'OPENAI_TTS_INSTRUCTIONS', '');
+  const baseURL = getBaseURL(runtime);
+
+  try {
+    const res = await fetch(`${baseURL}/audio/speech`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        voice,
+        input: text,
+        ...(instructions && { instructions }),
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenAI TTS error ${res.status}: ${err}`);
+    }
+
+    return res.body;
+  } catch (err: any) {
+    throw new Error(`Failed to fetch speech from OpenAI TTS: ${err.message || err}`);
+  }
 }
 
 /**
@@ -401,7 +493,7 @@ export const openaiPlugin: Plugin = {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4-vision-preview',
+            model: 'gpt-4o-mini',
             messages: [
               {
                 role: 'user',
@@ -457,8 +549,11 @@ export const openaiPlugin: Plugin = {
       logger.log('audioBuffer', audioBuffer);
       const baseURL = getBaseURL(runtime);
 
-      const formData = new NodeFormData();
-      formData.append('file', new NodeFile([audioBuffer], 'recording.mp3', { type: 'audio/mp3' }));
+      const formData = new FormData();
+      formData.append('file', audioBuffer, {
+        filename: 'recording.mp3',
+        contentType: 'audio/mp3',
+      });
       formData.append('model', 'whisper-1');
 
       const response = await fetch(`${baseURL}/audio/transcriptions`, {
@@ -477,63 +572,15 @@ export const openaiPlugin: Plugin = {
       const data = (await response.json()) as { text: string };
       return data.text;
     },
+    [ModelType.TEXT_TO_SPEECH]: async (runtime: AgentRuntime, text: string) => {
+      return await fetchTextToSpeech(runtime, text);
+    },
+
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
-      const openai = createOpenAIClient(runtime);
-      const model = getSmallModel(runtime);
-
-      try {
-        if (params.schema) {
-          // Skip zod validation and just use the generateObject without schema
-          logger.info('Using OBJECT_SMALL without schema validation');
-          const { object } = await generateObject({
-            model: openai.languageModel(model),
-            output: 'no-schema',
-            prompt: params.prompt,
-            temperature: params.temperature,
-          });
-          return object;
-        }
-
-        const { object } = await generateObject({
-          model: openai.languageModel(model),
-          output: 'no-schema',
-          prompt: params.prompt,
-          temperature: params.temperature,
-        });
-        return object;
-      } catch (error) {
-        logger.error('Error generating object:', error);
-        throw error;
-      }
+      return generateObjectByModelType(runtime, params, ModelType.OBJECT_SMALL, getSmallModel);
     },
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
-      const openai = createOpenAIClient(runtime);
-      const model = getLargeModel(runtime);
-
-      try {
-        if (params.schema) {
-          // Skip zod validation and just use the generateObject without schema
-          logger.info('Using OBJECT_LARGE without schema validation');
-          const { object } = await generateObject({
-            model: openai.languageModel(model),
-            output: 'no-schema',
-            prompt: params.prompt,
-            temperature: params.temperature,
-          });
-          return object;
-        }
-
-        const { object } = await generateObject({
-          model: openai.languageModel(model),
-          output: 'no-schema',
-          prompt: params.prompt,
-          temperature: params.temperature,
-        });
-        return object;
-      } catch (error) {
-        logger.error('Error generating object:', error);
-        throw error;
-      }
+      return generateObjectByModelType(runtime, params, ModelType.OBJECT_LARGE, getLargeModel);
     },
   },
   tests: [
@@ -696,6 +743,22 @@ export const openaiPlugin: Plugin = {
               );
             }
             logger.log('Decoded text:', decodedText);
+          },
+        },
+        {
+          name: 'openai_test_text_to_speech',
+          fn: async (runtime: AgentRuntime) => {
+            try {
+              const text = 'Hello, this is a test for text-to-speech.';
+              const response = await fetchTextToSpeech(runtime, text);
+              if (!response) {
+                throw new Error('Failed to generate speech');
+              }
+              logger.log('Generated speech successfully');
+            } catch (error) {
+              logger.error('Error in openai_test_text_to_speech:', error);
+              throw error;
+            }
           },
         },
       ],

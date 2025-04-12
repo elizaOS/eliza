@@ -27,7 +27,7 @@ async function getCustomEnvPath(): Promise<string | null> {
     const config = JSON.parse(content);
     return config.envPath || null;
   } catch (error) {
-    logger.error(`Error reading custom env path: ${error.message}`);
+    console.error(`Error reading custom env path: ${error.message}`);
     return null;
   }
 }
@@ -50,7 +50,7 @@ async function saveCustomEnvPath(customPath: string): Promise<void> {
         const content = await fs.readFile(CONFIG_FILE, 'utf-8');
         config = JSON.parse(content);
       } catch (e) {
-        logger.warn(`Could not parse existing config file: ${e.message}`);
+        console.warn(`Could not parse existing config file: ${e.message}`);
       }
     }
 
@@ -61,9 +61,9 @@ async function saveCustomEnvPath(customPath: string): Promise<void> {
     };
 
     await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
-    logger.success(`Custom environment path set to: ${customPath}`);
+    console.log(`Custom environment path set to: ${customPath}`);
   } catch (error) {
-    logger.error(`Error saving custom env path: ${error.message}`);
+    console.error(`Error saving custom env path: ${error.message}`);
   }
 }
 
@@ -105,7 +105,7 @@ export async function parseEnvFile(filePath: string): Promise<Record<string, str
     const content = await fs.readFile(filePath, 'utf-8');
     return dotenv.parse(content);
   } catch (error) {
-    logger.error(`Error parsing .env file at ${filePath}: ${error.message}`);
+    console.error(`Error parsing .env file at ${filePath}: ${error.message}`);
     return {};
   }
 }
@@ -127,9 +127,9 @@ async function writeEnvFile(filePath: string, envVars: Record<string, string>): 
       .join('\n');
 
     await fs.writeFile(filePath, content);
-    logger.success(`Environment variables updated at ${filePath}`);
+    console.log(`Environment variables updated at ${filePath}`);
   } catch (error) {
-    logger.error(`Error writing .env file at ${filePath}: ${error.message}`);
+    console.error(`Error writing .env file at ${filePath}: ${error.message}`);
   }
 }
 
@@ -148,30 +148,30 @@ async function listEnvVars(): Promise<void> {
     ? `Global environment variables (custom path: ${customPath})`
     : 'Global environment variables (.eliza/.env)';
 
-  logger.info(colors.bold(`\n${globalEnvLabel}:`));
+  console.info(colors.bold(`\n${globalEnvLabel}:`));
   if (Object.keys(globalEnvVars).length === 0) {
-    logger.info('  No global environment variables set');
+    console.info('  No global environment variables set');
   } else {
     for (const [key, value] of Object.entries(globalEnvVars)) {
-      logger.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
+      console.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
     }
   }
 
   if (localEnvPath) {
-    logger.info(colors.bold('\nLocal environment variables (.env):'));
+    console.info(colors.bold('\nLocal environment variables (.env):'));
     if (Object.keys(localEnvVars).length === 0) {
-      logger.info('  No local environment variables set');
+      console.info('  No local environment variables set');
     } else {
       for (const [key, value] of Object.entries(localEnvVars)) {
-        logger.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
+        console.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
       }
     }
   } else {
-    logger.info(colors.bold('\nNo local .env file found in the current directory'));
+    console.info(colors.bold('\nNo local .env file found in the current directory'));
   }
 
-  logger.info('\n');
-  logger.info(
+  console.info('\n');
+  console.info(
     colors.cyan(
       'You can also edit environment variables in the web UI: http://localhost:3000/settings'
     )
@@ -216,16 +216,16 @@ async function editEnvVars(scope: 'global' | 'local', fromMainMenu = false): Pro
 
     // Create an empty local .env file
     await writeEnvFile(path.join(process.cwd(), '.env'), {});
-    logger.success('Created empty local .env file');
+    console.log('Created empty local .env file');
     return fromMainMenu; // Return to main menu if we came from there
   }
 
   const envVars = await parseEnvFile(envPath);
 
   // List current variables first
-  logger.info(colors.bold(`\nCurrent ${scope} environment variables:`));
+  console.info(colors.bold(`\nCurrent ${scope} environment variables:`));
   if (Object.keys(envVars).length === 0) {
-    logger.info(`  No ${scope} environment variables set`);
+    console.info(`  No ${scope} environment variables set`);
 
     // If no variables exist, offer to add new ones
     const { addNew } = await prompts({
@@ -311,7 +311,7 @@ async function editEnvVars(scope: 'global' | 'local', fromMainMenu = false): Pro
       if (value !== undefined) {
         envVars[selection] = value;
         await writeEnvFile(envPath, envVars);
-        logger.success(`Updated ${scope} environment variable: ${selection}`);
+        console.log(`Updated ${scope} environment variable: ${selection}`);
       }
     } else if (action === 'delete') {
       const { confirm } = await prompts({
@@ -324,7 +324,7 @@ async function editEnvVars(scope: 'global' | 'local', fromMainMenu = false): Pro
       if (confirm) {
         delete envVars[selection];
         await writeEnvFile(envPath, envVars);
-        logger.success(`Removed ${scope} environment variable: ${selection}`);
+        console.log(`Removed ${scope} environment variable: ${selection}`);
       }
     }
   }
@@ -356,7 +356,7 @@ async function addNewVariable(envPath: string, envVars: Record<string, string>):
   if (value !== undefined) {
     envVars[key] = value;
     await writeEnvFile(envPath, envVars);
-    logger.success(`Added environment variable: ${key}`);
+    console.log(`Added environment variable: ${key}`);
   }
 }
 
@@ -372,7 +372,7 @@ async function resetEnv(): Promise<void> {
   });
 
   if (!confirm) {
-    logger.info('Reset canceled');
+    console.info('Reset canceled');
     return;
   }
 
@@ -386,7 +386,7 @@ async function resetEnv(): Promise<void> {
   // Remove global .env file
   if (existsSync(globalEnvPath)) {
     await fs.unlink(globalEnvPath);
-    logger.success('Removed global .env file');
+    console.log('Removed global .env file');
   }
 
   // Clear custom env path if set
@@ -398,17 +398,17 @@ async function resetEnv(): Promise<void> {
       if (config.envPath) {
         delete config.envPath;
         await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
-        logger.success('Cleared custom environment path setting');
+        console.log('Cleared custom environment path setting');
       }
     } catch (error) {
-      logger.error(`Error clearing custom env path: ${error.message}`);
+      console.error(`Error clearing custom env path: ${error.message}`);
     }
   }
 
   // Wipe cache folder
   if (existsSync(cacheDir)) {
     await rimraf(cacheDir);
-    logger.success('Wiped cache folder');
+    console.log('Wiped cache folder');
   }
 
   // Ask if user wants to reset database too
@@ -421,10 +421,10 @@ async function resetEnv(): Promise<void> {
 
   if (resetDb && existsSync(dbDir)) {
     await rimraf(dbDir);
-    logger.success('Wiped database folder');
+    console.log('Wiped database folder');
   }
 
-  logger.success('Environment reset complete');
+  console.log('Environment reset complete');
 }
 
 /**
@@ -439,7 +439,7 @@ async function setEnvPath(customPath: string): Promise<void> {
   let finalPath = resolvedPath;
   if (isDirectory) {
     finalPath = path.join(resolvedPath, '.env');
-    logger.info(`Path is a directory. Will use ${finalPath} for environment variables.`);
+    console.info(`Path is a directory. Will use ${finalPath} for environment variables.`);
   }
 
   // Check if parent directory exists
@@ -454,9 +454,9 @@ async function setEnvPath(customPath: string): Promise<void> {
 
     if (createDir) {
       await fs.mkdir(parentDir, { recursive: true });
-      logger.success(`Created directory: ${parentDir}`);
+      console.log(`Created directory: ${parentDir}`);
     } else {
-      logger.info('Custom path not set');
+      console.info('Custom path not set');
       return;
     }
   }
@@ -472,7 +472,7 @@ async function setEnvPath(customPath: string): Promise<void> {
 
     if (createFile) {
       await writeEnvFile(finalPath, {});
-      logger.success(`Created empty .env file at ${finalPath}`);
+      console.log(`Created empty .env file at ${finalPath}`);
     }
   }
 
@@ -612,7 +612,7 @@ async function showMainMenu(): Promise<void> {
         break;
       }
       case 'set_path':
-        logger.info(colors.yellow('\nTo set a custom path, run: eliza env set-path <path>'));
+        console.info(colors.yellow('\nTo set a custom path, run: eliza env set-path <path>'));
         break;
       case 'reset':
         await resetEnv();

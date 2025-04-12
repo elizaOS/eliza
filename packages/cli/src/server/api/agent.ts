@@ -391,8 +391,11 @@ export function agentRouter(
 
   // Delete agent
   router.delete('/:agentId', async (req, res) => {
+    logger.debug(`[AGENT DELETE] Received request to delete agent with ID: ${req.params.agentId}`);
+
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
+      logger.error(`[AGENT DELETE] Invalid agent ID format: ${req.params.agentId}`);
       res.status(400).json({
         success: false,
         error: {
@@ -403,24 +406,129 @@ export function agentRouter(
       return;
     }
 
+    logger.debug(`[AGENT DELETE] Validated agent ID: ${agentId}, proceeding with deletion`);
+
+    // First, check if agent exists
     try {
-      await db.deleteAgent(agentId);
-
-      const runtime = agents.get(agentId);
-
-      // if agent is running, stop it
-      if (runtime) {
-        server?.unregisterAgent(agentId);
+      const agent = await db.getAgent(agentId);
+      if (!agent) {
+        logger.warn(`[AGENT DELETE] Agent not found: ${agentId}`);
+        res.status(404).json({
+          success: false,
+          error: {
+            code: 'NOT_FOUND',
+            message: 'Agent not found',
+          },
+        });
+        return;
       }
-      res.status(204).send();
-    } catch (error) {
-      logger.error('[AGENT DELETE] Error deleting agent:', error);
-      res.status(500).json({
+
+      logger.debug(`[AGENT DELETE] Agent found: ${agent.name} (${agentId})`);
+    } catch (checkError) {
+      logger.error(`[AGENT DELETE] Error checking if agent exists: ${agentId}`, checkError);
+      // Continue with deletion attempt anyway
+    }
+
+    // Set a timeout to send a response if the operation takes too long
+    const timeoutId = setTimeout(() => {
+      logger.warn(`[AGENT DELETE] Operation taking longer than expected for agent: ${agentId}`);
+      res.status(202).json({
+        success: true,
+        partial: true,
+        message:
+          'Agent deletion initiated but taking longer than expected. The operation will continue in the background.',
+      });
+    }, 10000);
+
+    const MAX_RETRIES = 2;
+    let retryCount = 0;
+    let lastError = null;
+
+    // Retry loop for database operations
+    while (retryCount <= MAX_RETRIES) {
+      try {
+        // First, if the agent is running, stop it immediately to prevent ongoing operations
+        const runtime = agents.get(agentId);
+        if (runtime) {
+          logger.debug(`[AGENT DELETE] Agent ${agentId} is running, unregistering from server`);
+          try {
+            server?.unregisterAgent(agentId);
+            logger.debug(`[AGENT DELETE] Agent ${agentId} unregistered successfully`);
+          } catch (stopError) {
+            logger.error(`[AGENT DELETE] Error stopping agent ${agentId}:`, stopError);
+            // Continue with deletion even if stopping fails
+          }
+        } else {
+          logger.debug(`[AGENT DELETE] Agent ${agentId} was not running, no need to unregister`);
+        }
+
+        logger.debug(`[AGENT DELETE] Calling database deleteAgent method for agent: ${agentId}`);
+
+        // Perform the deletion operation
+        const deleteResult = await db.deleteAgent(agentId);
+        logger.debug(`[AGENT DELETE] Database deleteAgent result: ${JSON.stringify(deleteResult)}`);
+
+        // Clear the response timeout since we completed before it triggered
+        clearTimeout(timeoutId);
+
+        logger.success(`[AGENT DELETE] Successfully deleted agent: ${agentId}`);
+
+        // Only send response if one hasn't been sent already
+        if (!res.headersSent) {
+          res.status(204).send();
+        }
+
+        // Successfully deleted, break out of retry loop
+        return;
+      } catch (error) {
+        lastError = error;
+        retryCount++;
+
+        logger.error(
+          `[AGENT DELETE] Error deleting agent ${agentId} (attempt ${retryCount}/${MAX_RETRIES + 1}):`,
+          error
+        );
+
+        // If we've reached max retries, break out of the loop
+        if (retryCount > MAX_RETRIES) {
+          break;
+        }
+
+        // Wait a bit before retrying
+        const delay = 1000 * Math.pow(2, retryCount - 1); // Exponential backoff
+        logger.debug(`[AGENT DELETE] Waiting ${delay}ms before retry ${retryCount}`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    // Clear the response timeout
+    clearTimeout(timeoutId);
+
+    // If we reach here, all retries failed
+    // Check if headers have already been sent (from the timeout handler)
+    if (!res.headersSent) {
+      let statusCode = 500;
+      let errorMessage = 'Error deleting agent';
+
+      // Special handling for different error types
+      if (lastError instanceof Error) {
+        const message = lastError.message;
+
+        if (message.includes('foreign key constraint')) {
+          errorMessage = 'Cannot delete agent because it has active references in the system';
+          statusCode = 409; // Conflict
+        } else if (message.includes('timed out')) {
+          errorMessage = 'Agent deletion operation timed out';
+          statusCode = 408; // Request Timeout
+        }
+      }
+
+      res.status(statusCode).json({
         success: false,
         error: {
           code: 'DELETE_ERROR',
-          message: 'Error deleting agent',
-          details: error.message,
+          message: errorMessage,
+          details: lastError instanceof Error ? lastError.message : String(lastError),
         },
       });
     }
@@ -741,7 +849,15 @@ export function agentRouter(
       const audioBuffer = Buffer.isBuffer(speechResponse)
         ? speechResponse
         : await new Promise<Buffer>((resolve, reject) => {
-            if (!(speechResponse instanceof Readable)) {
+            if (
+              !(speechResponse instanceof Readable) &&
+              !(
+                speechResponse &&
+                speechResponse.readable === true &&
+                typeof speechResponse.pipe === 'function' &&
+                typeof speechResponse.on === 'function'
+              )
+            ) {
               return reject(new Error('Unexpected response type from TEXT_TO_SPEECH model'));
             }
 
@@ -1099,6 +1215,136 @@ export function agentRouter(
         error: {
           code: 500,
           message: 'Failed to retrieve memories',
+          details: error.message,
+        },
+      });
+    }
+  });
+
+  router.post('/:agentId/message', async (req: CustomRequest, res) => {
+    logger.debug('[MESSAGES CREATE] Creating new message');
+    const agentId = validateUuid(req.params.agentId);
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid agent ID format',
+        },
+      });
+      return;
+    }
+
+    // get runtime
+    const runtime = agents.get(agentId);
+    if (!runtime) {
+      res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Agent not found',
+        },
+      });
+      return;
+    }
+
+    const entityId = req.body.entityId;
+    const roomId = req.body.roomId;
+
+    const source = req.body.source;
+    const text = req.body.text.trim();
+
+    const channelType = req.body.channelType;
+
+    try {
+      const messageId = createUniqueUuid(runtime, Date.now().toString());
+
+      const content: Content = {
+        text,
+        attachments: [],
+        source,
+        inReplyTo: undefined,
+        channelType: channelType || ChannelType.API,
+      };
+
+      const userMessage = {
+        content,
+        entityId,
+        roomId,
+        agentId: runtime.agentId,
+      };
+
+      const memory: Memory = {
+        id: createUniqueUuid(runtime, messageId),
+        ...userMessage,
+        agentId: runtime.agentId,
+        entityId,
+        roomId,
+        content,
+        createdAt: Date.now(),
+      };
+
+      // save message
+      await runtime.createMemory(memory, 'messages');
+
+      let state = await runtime.composeState(memory);
+
+      const prompt = composePromptFromState({
+        state,
+        template: messageHandlerTemplate,
+      });
+
+      const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
+        prompt,
+      });
+
+      if (!response) {
+        res.status(500).json({
+          success: false,
+          error: {
+            code: 'MODEL_ERROR',
+            message: 'No response from model',
+          },
+        });
+        return;
+      }
+
+      const responseMessage: Memory = {
+        id: createUniqueUuid(runtime, messageId),
+        ...userMessage,
+        entityId: runtime.agentId,
+        content: response,
+        createdAt: Date.now(),
+      };
+
+      const replyHandler = async (message: Content) => {
+        res.status(201).json({
+          success: true,
+          data: {
+            message,
+            messageId,
+            name: runtime.character.name,
+            roomId: req.body.roomId,
+            source,
+          },
+        });
+        return [memory];
+      };
+
+      await runtime.processActions(memory, [responseMessage], state, replyHandler);
+
+      await runtime.evaluate(memory, state);
+
+      if (!res.headersSent) {
+        res.status(202).json();
+      }
+    } catch (error) {
+      logger.error('Error processing message:', error.message);
+      res.status(500).json({
+        success: false,
+        error: {
+          code: 'PROCESSING_ERROR',
+          message: 'Error processing message',
           details: error.message,
         },
       });

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt } from './index';
+import { decryptSecret, getSalt, safeReplacer } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -109,6 +109,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
+  private isInitialized = false;
   events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
   stateCache = new Map<
     UUID,
@@ -285,9 +286,13 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     if (plugin.services) {
-      plugin.services.forEach((service) => {
-        this.servicesInitQueue.add(service);
-      });
+      for (const service of plugin.services) {
+        if (this.isInitialized) {
+          await this.registerService(service);
+        } else {
+          this.servicesInitQueue.add(service);
+        }
+      }
     }
   }
 
@@ -306,6 +311,11 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize() {
+    if (this.isInitialized) {
+      this.runtimeLogger.warn('Agent already initialized');
+      return;
+    }
+
     // Track registered plugins to avoid duplicates
     const registeredPluginNames = new Set<string>();
 
@@ -441,6 +451,8 @@ export class AgentRuntime implements IAgentRuntime {
     for (const service of this.servicesInitQueue) {
       await this.registerService(service);
     }
+
+    this.isInitialized = true;
   }
 
   private async handleProcessingError(error: any, context: string) {
@@ -1298,7 +1310,10 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Log input parameters
-    this.runtimeLogger.debug(`[useModel] ${modelKey} input:`, JSON.stringify(params, null, 2));
+    this.runtimeLogger.debug(
+      `[useModel] ${modelKey} input:`,
+      JSON.stringify(params, safeReplacer(), 2)
+    );
 
     // Handle different parameter formats
     let paramsWithRuntime: any;
