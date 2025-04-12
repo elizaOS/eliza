@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
-import { type FormEvent, type ReactNode, useState, useMemo, useEffect } from 'react';
+import { type FormEvent, type ReactNode, useState, useMemo } from 'react';
 import {
   Select,
   SelectContent,
