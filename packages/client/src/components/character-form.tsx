@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import type React from 'react';
-import { type FormEvent, type ReactNode, useState, useMemo } from 'react';
+import { type FormEvent, type ReactNode, useState, useMemo, useEffect } from 'react';
 import {
   Select,
   SelectContent,
@@ -69,6 +69,7 @@ export type CharacterFormProps = {
     addArrayItem?: <T>(path: string, item: T) => void;
     removeArrayItem?: (path: string, index: number) => void;
     updateSetting?: (path: string, value: any) => void;
+    importAgent?: (value: Agent) => void;
     [key: string]: any;
   };
 };
@@ -412,6 +413,35 @@ export default function CharacterForm({
     </div>
   );
 
+  const handleImportJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const json: Agent = JSON.parse(text);
+
+      if (setCharacterValue.importAgent) {
+        setCharacterValue.importAgent(json);
+      } else {
+        console.warn('Missing importAgent method');
+      }
+
+      toast({
+        title: 'Character Imported',
+        description: 'Character data has been successfully loaded.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Import Failed',
+        description: error instanceof Error ? error.message : 'Invalid JSON file',
+        variant: 'destructive',
+      });
+    } finally {
+      event.target.value = '';
+    }
+  };
+
   return (
     <div className="container max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -492,6 +522,21 @@ export default function CharacterForm({
             </Button>
           </div>
         </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => document.getElementById('import-json-input')?.click()}
+        >
+          Import JSON
+        </Button>
+        <input
+          type="file"
+          id="import-json-input"
+          accept="application/json"
+          style={{ display: 'none' }}
+          onChange={handleImportJSON}
+        />
       </form>
     </div>
   );
