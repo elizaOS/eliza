@@ -69,6 +69,7 @@ export type CharacterFormProps = {
     addArrayItem?: <T>(path: string, item: T) => void;
     removeArrayItem?: (path: string, index: number) => void;
     updateSetting?: (path: string, value: any) => void;
+    importAgent?: (value: Agent) => void;
     [key: string]: any;
   };
 };
@@ -412,6 +413,35 @@ export default function CharacterForm({
     </div>
   );
 
+  const handleImportJSON = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const json: Agent = JSON.parse(text);
+
+      if (setCharacterValue.importAgent) {
+        setCharacterValue.importAgent(json);
+      } else {
+        console.warn('Missing importAgent method');
+      }
+
+      toast({
+        title: 'Character Imported',
+        description: 'Character data has been successfully loaded.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Import Failed',
+        description: error instanceof Error ? error.message : 'Invalid JSON file',
+        variant: 'destructive',
+      });
+    } finally {
+      event.target.value = '';
+    }
+  };
+
   return (
     <div className="container max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
@@ -487,6 +517,17 @@ export default function CharacterForm({
             >
               Reset Changes
             </Button>
+            <div className="relative">
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportJSON}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              <Button type="button" variant="outline">
+                Import JSON
+              </Button>
+            </div>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>
