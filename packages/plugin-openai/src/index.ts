@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type {
+  AgentRuntime,
   ImageDescriptionParams,
   ModelTypeName,
   ObjectGenerationParams,
@@ -9,22 +10,15 @@ import type {
 import {
   type DetokenizeTextParams,
   type GenerateTextParams,
+  ModelType,
   type TokenizeTextParams,
+  logger,
+  VECTOR_DIMS,
 } from '@elizaos/core';
 import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import FormData from 'form-data';
 import fetch from 'node-fetch';
-import {
-  AgentRuntime,
-  IInstrumentationService,
-  InstrumentationService,
-  ServiceType,
-  ModelType,
-  logger,
-  VECTOR_DIMS,
-} from '@elizaos/core';
-
 
 /**
  * Helper function to get settings with fallback to process.env
@@ -375,7 +369,7 @@ export const openaiPlugin: Plugin = {
       return openaiResponse;
     },
     [ModelType.TEXT_LARGE]: async (
-      runtime: AgentRuntime,
+      runtime,
       {
         prompt,
         stopSequences = [],
@@ -385,57 +379,21 @@ export const openaiPlugin: Plugin = {
         presencePenalty = 0.7,
       }: GenerateTextParams
     ) => {
-      // --- Instrumentation Start ---
-      const instrumentationService = runtime.getService<InstrumentationService>(ServiceType.INSTRUMENTATION);
-      const tracer = instrumentationService?.getTracer('eliza.plugin.openai', '0.1.0'); // Plugin name and version
-      const span = tracer?.startSpan('openai.generateText.large');
-      // --- Instrumentation End ---
-
       const openai = createOpenAIClient(runtime);
       const model = getLargeModel(runtime);
 
-      // --- Instrumentation: Add Attributes ---
-      span?.setAttributes({
-        'llm.model': model,
-        'llm.temperature': temperature,
-        'llm.max_tokens': maxTokens,
-        'llm.frequency_penalty': frequencyPenalty,
-        'llm.presence_penalty': presencePenalty,
-        'llm.stop_sequences': JSON.stringify(stopSequences), // Stringify arrays
-        // Add prompt length for context, but not the full prompt for privacy/cost
-        'llm.prompt.length': prompt.length
+      const { text: openaiResponse } = await generateText({
+        model: openai.languageModel(model),
+        prompt: prompt,
+        system: runtime.character.system ?? undefined,
+        temperature: temperature,
+        maxTokens: maxTokens,
+        frequencyPenalty: frequencyPenalty,
+        presencePenalty: presencePenalty,
+        stopSequences: stopSequences,
       });
-      // --- Instrumentation End ---
 
-      try {
-        const { text: openaiResponse } = await generateText({
-          model: openai.languageModel(model),
-          prompt: prompt,
-          system: runtime.character.system ?? undefined,
-          temperature: temperature,
-          maxTokens: maxTokens,
-          frequencyPenalty: frequencyPenalty,
-          presencePenalty: presencePenalty,
-          stopSequences: stopSequences,
-        });
-
-        // --- Instrumentation: Record Success ---
-        span?.setAttribute('llm.response.length', openaiResponse?.length ?? 0);
-        span?.setStatus({ code: 1 }); // Using numeric code for OK
-        // --- Instrumentation End ---
-
-        return openaiResponse;
-      } catch (error) {
-        // --- Instrumentation: Record Error ---
-        span?.recordException(error as Error);
-        span?.setStatus({ code: 2, message: (error as Error).message }); // Using numeric code for ERROR
-        // --- Instrumentation End ---
-        throw error; // Re-throw the error after recording it
-      } finally {
-        // --- Instrumentation: End Span ---
-        span?.end();
-        // --- Instrumentation End ---
-      }
+      return openaiResponse;
     },
     [ModelType.IMAGE]: async (
       runtime,
