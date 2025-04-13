@@ -1,0 +1,189 @@
+---
+title: Adding Plugins in V2
+authors: jin
+date: 2025-04-13
+tags: [plugins, registry, elizaos, announcement, v2]
+---
+
+
+V2 introduces significant upgrades to improve how developers build, share, and integrate functionality into their agents:
+
+
+| V1 Approach | V2 Approach |
+|-------------|-------------|
+| Central monorepo | Independent repositories |
+| PR approval workflow | Self-published plugins |
+| Tightly coupled components | Clean, standardized interfaces |
+| Manual dependency management | Automated plugin resolution |
+| Limited extensibility | Comprehensive plugin ecosystem |
+
+Here's a guide on how to add your own:
+
+{/* truncate */}
+
+## What's New
+
+- **No central repo needed**: Host your plugin in your own GitHub repo.
+- **One-line integration**: Add plugins to your `package.json` and `agent.json`.
+- **Open registry**: Submit a PR to get listed on the [Plugin Registry](https://elizaos.github.io/registry).
+- **Dynamic loading**: Load plugins from external repositories
+
+
+## 🧩 How to Add a Plugin in V2
+
+The ElizaOS V2 ecosystem already includes plugins for:
+
+- Blockchain integration (Solana, Ethereum)
+- Social media (Twitter, Discord, Telegram)
+- Data processing (PDF, Image, Video)
+- External APIs (Browser, Web Search)
+- Local LLM deployment (Llama)
+
+> See the plugin showcase here: https://eliza.how/packages
+
+![](/img/montage-plugins.jpg)
+
+Here are steps on how to add your plugin:
+
+### 1. Package.json Integration
+
+```bash
+# Install plugin directly from GitHub
+npm install @elizaos/plugin-example@github:your-org/plugin-example
+
+# Or update package.json manually
+"dependencies": {
+  "@elizaos/plugin-example": "github:your-org/plugin-example"
+}
+```
+
+### 2. Agent Configuration
+
+```json
+{
+  "name": "MyAgent",
+  "plugins": ["@elizaos/plugin-example"]
+}
+```
+
+The plugin will be automatically loaded when your agent starts.
+
+## 🛠 Plugin Architecture
+
+ElizaOS V2 uses a unified plugin architecture where everything is a plugin:
+
+```typescript
+type Plugin = {
+  name: string;
+  description: string;
+  clients?: Client[];
+  adapters?: Adapter[];
+  actions?: Action[];
+  services?: Service[];
+  providers?: Provider[];
+  evaluators?: Evaluator[];
+};
+```
+
+This means you can extend virtually any aspect of your agent's functionality:
+- Platform connections (Discord, Twitter, Telegram)
+- Storage options (PostgreSQL, MongoDB, Redis)
+- Action capabilities (what your agent can do)
+- Service providers (background processes and specialized capabilities)
+- Evaluation components (how your agent makes decisions)
+
+## 📂 Creating Your Own Plugin
+
+The minimal structure for a V2 plugin repository:
+
+```
+plugin-example/
+├── assets/
+│   ├── logo.png       # 400x400 branding
+│   ├── banner.png     # 1280x640 banner
+│   └── screenshots/   # Usage examples
+├── src/
+│   ├── index.ts       # Plugin entry point
+│   └── ... (plugin code)
+├── package.json       # With agentConfig section
+└── README.md          # Documentation
+```
+
+Your `package.json` should include plugin metadata:
+
+```json
+"agentConfig": {
+  "pluginType": "elizaos:plugin:1.0.0",
+  "pluginParameters": {
+    "API_KEY": {
+      "type": "string",
+      "description": "API key for the service"
+    }
+  }
+}
+```
+
+## ⚙️ Configuration Access
+
+Access plugin settings and secrets using the runtime API:
+
+```typescript
+// In your plugin code
+const apiKey = runtime.getSetting("PLUGIN_API_KEY");
+```
+
+Define settings in your agent configuration:
+
+```json
+{
+  "name": "MyAgent",
+  "plugins": ["@elizaos/plugin-example"],
+  "settings": {
+    "secrets": {
+      "PLUGIN_API_KEY": "your-secret-key"
+    }
+  }
+}
+```
+
+## 🖥️ CLI Plugin Commands
+
+The ElizaOS CLI, assuming you have it installed already, offers several commands to manage plugins:
+
+:::tip
+Install the CLI via this command:
+```bash
+npm install -g @elizaos/cli@beta
+```
+:::
+
+```bash
+# List available plugins
+elizaos plugins list
+
+# Add a plugin to your project
+elizaos plugins add @elizaos/plugin-example
+
+# Remove a plugin
+elizaos plugins remove @elizaos/plugin-example
+
+# Publish your own plugin
+elizaos plugins publish
+```
+
+These commands streamline plugin discovery, installation, and distribution.
+
+## 📬 Submit to the Registry
+
+To get your plugin listed:
+1. Host your plugin on GitHub
+2. Add branding, docs, and working examples
+3. Submit a [PR to the registry](https://github.com/elizaos-plugins/registry)
+
+Since the plugin lives in your repo you can start using it right away. The registry mainly helps with discovery, just know the review process typically takes up to a week so be prepared for that.
+
+### More Links
+
+- [elizaos-plugins.github.io/registry](https://elizaos-plugins.github.io/registry)
+- [Packages explorer](packages)
+- [Plugin Guide](https://eliza.how/docs/plugins)
