@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt } from './index';
+import { decryptSecret, getSalt, safeReplacer } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -191,7 +191,7 @@ export class AgentRuntime implements IAgentRuntime {
       // Create instrumentation service with agent info
       this.instrumentationService = new InstrumentationService({
         serviceName: `agent-${this.character?.name || 'unknown'}-${this.agentId}`,
-        enabled: process.env.OTEL_INSTRUMENTATION_ENABLED === 'true'
+        enabled: process.env.INSTRUMENTATION_ENABLED === 'true'
       });
 
       // Get a tracer for the runtime
@@ -378,17 +378,11 @@ export class AgentRuntime implements IAgentRuntime {
         }
       }
 
-
       // Register plugin adapter
       if (plugin.adapter) {
         span.addEvent('registering_adapter');
         this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
         this.registerDatabaseAdapter(plugin.adapter);
-        this.runtimeLogger.debug(
-          `Database adapter registered successfully for plugin ${plugin.name}`
-        );
-      } else {
-        this.runtimeLogger.debug(`Plugin ${plugin.name} does not provide a database adapter`);
       }
 
       // Register plugin actions
@@ -495,17 +489,7 @@ export class AgentRuntime implements IAgentRuntime {
         return;
       }
 
-
       span.addEvent('initialization_started');
-      // Ensure adapter is initialized
-      if (!this.adapter) {
-        this.runtimeLogger.error(
-          'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
-        );
-        throw new Error(
-          'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
-        );
-      }
 
       // Track registered plugins to avoid duplicates
       const registeredPluginNames = new Set<string>();
@@ -525,6 +509,16 @@ export class AgentRuntime implements IAgentRuntime {
       span.setAttributes({
         'registered_plugins': Array.from(registeredPluginNames).join(',')
       });
+
+      // Ensure adapter is initialized
+      if (!this.adapter) {
+        this.runtimeLogger.error(
+          'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
+        );
+        throw new Error(
+          'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
+        );
+      }
 
       try {
         await this.adapter.init();
@@ -662,7 +656,6 @@ export class AgentRuntime implements IAgentRuntime {
         await this.registerService(service);
       }
 
-      this.isInitialized = true;
       span.addEvent('initialization_completed');
     });
   }
@@ -1079,7 +1072,40 @@ export class AgentRuntime implements IAgentRuntime {
             span.addEvent(`executing_action_${action.name}`);
             this.runtimeLogger.debug(`Executing handler for action: ${action.name}`);
 
-            await action.handler(this, message, state, {}, callback, responses);
+            // Wrap individual action handler invocation in its own span
+            await this.startSpan(`Action.${action.name}`, async (actionSpan) => {
+              actionSpan.setAttributes({
+                'action.name': action.name,
+                'parent_span.id': span.spanContext().spanId, // Link to parent processActions span
+              });
+
+              // Log input parameters (avoid logging potentially large state)
+              actionSpan.addEvent('action.input', {
+                'message.id': message.id,
+                'state.keys': state ? JSON.stringify(Object.keys(state.values)) : 'none',
+                // Log other relevant context if needed
+              });
+
+              try {
+                // Execute the action handler
+                await action.handler(this, message, state, {}, callback, responses);
+
+                // Output/return value logging would depend on handler structure/convention.
+                // For now, we mark success.
+                actionSpan.addEvent('action.output', { 'status': 'success' });
+                actionSpan.setStatus({ code: SpanStatusCode.OK });
+              } catch (handlerError) {
+                const handlerErrorMessage = handlerError instanceof Error ? handlerError.message : String(handlerError);
+                actionSpan.recordException(handlerError as Error);
+                actionSpan.setStatus({ code: SpanStatusCode.ERROR, message: handlerErrorMessage });
+                actionSpan.setAttributes({
+                  'error.message': handlerErrorMessage,
+                });
+                actionSpan.addEvent('action.output', { 'status': 'error', 'error': handlerErrorMessage });
+                // Re-throw the error to be caught by the outer try/catch
+                throw handlerError;
+              }
+            }); // End of Action.${action.name} span
 
             span.addEvent(`action_executed_successfully_${action.name}`);
             this.runtimeLogger.debug(`Success: Action ${action.name} executed successfully.`);
@@ -1131,52 +1157,75 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[]
   ) {
-    const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
-      if (!evaluator.handler) {
-        return null;
-      }
-      if (!didRespond && !evaluator.alwaysRun) {
-        return null;
-      }
-      const result = await evaluator.validate(this, message, state);
+    // Start root span for evaluation
+    return this.startSpan('AgentRuntime.evaluate', async (span) => {
+      span.setAttributes({
+        'agent.id': this.agentId,
+        'character.name': this.character?.name,
+        'message.id': message?.id,
+        'room.id': message?.roomId,
+        'entity.id': message?.entityId,
+        'did_respond': didRespond,
+        'responses_count': responses?.length || 0,
+      });
+      span.addEvent('evaluation_started');
 
-      if (result) {
-        return evaluator;
-      }
-      return null;
-    });
-
-    const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
-
-    // get the evaluators that were chosen by the response handler
-
-    if (evaluators.length === 0) {
-      return [];
-    }
-
-    state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
-
-    await Promise.all(
-      evaluators.map(async (evaluator) => {
-        if (evaluator.handler) {
-          await evaluator.handler(this, message, state, {}, callback, responses);
-          // log to database
-          this.adapter.log({
-            entityId: message.entityId,
-            roomId: message.roomId,
-            type: 'evaluator',
-            body: {
-              evaluator: evaluator.name,
-              messageId: message.id,
-              message: message.content.text,
-              state,
-            },
-          });
+      const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
+        if (!evaluator.handler) {
+          return null;
         }
-      })
-    );
+        if (!didRespond && !evaluator.alwaysRun) {
+          return null;
+        }
+        const result = await evaluator.validate(this, message, state);
 
-    return evaluators;
+        if (result) {
+          return evaluator;
+        }
+        return null;
+      });
+
+      const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
+      span.setAttribute('selected_evaluators_count', evaluators.length);
+      span.addEvent('evaluator_selection_complete', { 'evaluator.names': JSON.stringify(evaluators.map(e => e.name)) });
+
+
+      // get the evaluators that were chosen by the response handler
+
+      if (evaluators.length === 0) {
+        span.addEvent('no_evaluators_selected');
+        return [];
+      }
+
+      // Note: composeState is already instrumented, will be nested automatically
+      state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
+
+      span.addEvent('evaluator_execution_start');
+      await Promise.all(
+        evaluators.map(async (evaluator) => {
+          if (evaluator.handler) {
+            // TODO: Instrument individual evaluator handlers if needed (potentially in plugins)
+            await evaluator.handler(this, message, state, {}, callback, responses);
+            // log to database
+            this.adapter.log({
+              entityId: message.entityId,
+              roomId: message.roomId,
+              type: 'evaluator',
+              body: {
+                evaluator: evaluator.name,
+                messageId: message.id,
+                message: message.content.text,
+                state, // Consider if state should be logged here, can be large
+              },
+            });
+          }
+        })
+      );
+      span.addEvent('evaluator_execution_complete');
+      span.addEvent('evaluation_complete');
+
+      return evaluators;
+    });
   }
 
   async ensureConnection({
@@ -1452,9 +1501,10 @@ export class AgentRuntime implements IAgentRuntime {
       span.setAttributes({
         'message.id': message.id,
         'agent.id': this.agentId,
-        'filter_list': filterList ? JSON.stringify(filterList) : null,
-        'include_list': includeList ? JSON.stringify(includeList) : null
+        'filter_list': filterList ? JSON.stringify(filterList) : 'none', // Use 'none' for clarity
+        'include_list': includeList ? JSON.stringify(includeList) : 'none', // Use 'none' for clarity
       });
+      span.addEvent('state_composition_started');
 
       // Get cached state for this message ID first
       const cachedState = (await this.stateCache.get(message.id)) || {
@@ -1469,8 +1519,9 @@ export class AgentRuntime implements IAgentRuntime {
         : [];
 
       span.setAttributes({
-        'cached_state_exists': !!cachedState,
-        'existing_providers_count': existingProviderNames.length
+        'cached_state_exists': !!cachedState.data.providers, // More specific check
+        'existing_providers_count': existingProviderNames.length,
+        'existing_providers': JSON.stringify(existingProviderNames), // Add list of existing providers
       });
 
       // Step 1: Determine base set of providers to fetch
@@ -1496,47 +1547,52 @@ export class AgentRuntime implements IAgentRuntime {
         new Set(this.providers.filter((p) => providerNames.has(p.name)))
       ).sort((a, b) => (a.position || 0) - (b.position || 0));
 
+      const providerNamesToGet = providersToGet.map(p => p.name);
       span.setAttributes({
         'providers_to_get_count': providersToGet.length,
-        'providers_to_get': providersToGet.map(p => p.name).join(',')
+        'providers_to_get': JSON.stringify(providerNamesToGet), // Log names as JSON array
       });
       span.addEvent('starting_provider_fetch');
 
       // Fetch data from selected providers
       const providerData = await Promise.all(
         providersToGet.map(async (provider) => {
-          const providerSpan = this.startActiveSpan(`provider.${provider.name}`);
-          const start = Date.now();
-          try {
-            const result = await provider.get(this, message, cachedState);
-            const duration = Date.now() - start;
+          // This creates nested spans for each provider call automatically
+          return this.startSpan(`provider.${provider.name}`, async (providerSpan) => {
+            const start = Date.now();
+            try {
+              const result = await provider.get(this, message, cachedState);
+              const duration = Date.now() - start;
 
-            providerSpan.setAttributes({
-              'provider.name': provider.name,
-              'provider.duration_ms': duration
-            });
+              providerSpan.setAttributes({
+                'provider.name': provider.name,
+                'provider.duration_ms': duration,
+                'result.has_text': !!result.text,
+                'result.values_keys': result.values ? JSON.stringify(Object.keys(result.values)) : '[]',
+              });
+              providerSpan.addEvent('provider_fetch_complete');
 
-            this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
-            return {
-              ...result,
-              providerName: provider.name,
-            };
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            providerSpan.recordException(error as Error);
-            providerSpan.setStatus({
-              code: SpanStatusCode.ERROR,
-              message: errorMessage
-            });
-            // Return empty result on error
-            return {
-              values: {},
-              text: '',
-              providerName: provider.name
-            };
-          } finally {
-            providerSpan.end();
-          }
+              this.runtimeLogger.debug(`${provider.name} Provider took ${duration}ms to respond`);
+              return {
+                ...result,
+                providerName: provider.name,
+              };
+            } catch (error) {
+              const duration = Date.now() - start;
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              providerSpan.recordException(error as Error);
+              providerSpan.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage });
+              providerSpan.setAttributes({
+                'provider.name': provider.name,
+                'provider.duration_ms': duration,
+                'error.message': errorMessage,
+              });
+              providerSpan.addEvent('provider_fetch_error');
+
+              // Return empty result on error
+              return { values: {}, text: '', providerName: provider.name };
+            }
+          });
         })
       );
 
@@ -1556,12 +1612,12 @@ export class AgentRuntime implements IAgentRuntime {
       const newProvidersText = providerData
         .map((result) => result.text)
         .filter((text) => text !== '')
-        .join('\n');
+        .join('\\n');
 
       // Combine with existing text if available
       let providersText = '';
       if (cachedState.text && newProvidersText) {
-        providersText = `${cachedState.text}\n${newProvidersText}`;
+        providersText = `${cachedState.text}\\n${newProvidersText}`;
       } else if (newProvidersText) {
         providersText = newProvidersText;
       } else if (cachedState.text) {
@@ -1597,9 +1653,16 @@ export class AgentRuntime implements IAgentRuntime {
       // Cache the result for future use
       this.stateCache.set(message.id, newState);
 
+      const finalProviderCount = Object.keys(combinedValues).length;
       span.setAttributes({
         'final_state_text_length': providersText.length,
-        'provider_count_final': Object.keys(combinedValues).length
+        'provider_count_final': finalProviderCount,
+        'provider_names_final': JSON.stringify(Object.keys(combinedValues)), // Add final list
+      });
+      // Log final text as event
+      span.addEvent('state_composed', {
+        'final_text': providersText.length > 1000 ? providersText.substring(0, 997) + '...' : providersText, // Truncate if needed
+        'final_text_length': providersText.length,
       });
       span.addEvent('state_composition_complete');
 
@@ -1697,14 +1760,26 @@ export class AgentRuntime implements IAgentRuntime {
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'> | any
   ): Promise<R> {
+    // Use modelType directly in span name for better granularity
     return this.startSpan(`AgentRuntime.useModel.${modelType}`, async (span) => {
       const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
 
+      // Try to extract prompt content from params (common patterns)
+      const promptContent = params?.prompt || params?.input || (Array.isArray(params?.messages) ? JSON.stringify(params.messages) : null);
+
+      // Add essential attributes and params/prompt as events
       span.setAttributes({
-        'model.type': modelKey,
+        'llm.request.model': modelKey, // Semantic convention
         'agent.id': this.agentId,
-        'has_params': params !== null && params !== undefined
+        'llm.request.temperature': params?.temperature,
+        'llm.request.top_p': params?.top_p,
+        'llm.request.max_tokens': params?.max_tokens || params?.max_tokens_to_sample, // Handle variations
       });
+      span.addEvent('model_parameters', { 'params': JSON.stringify(params, safeReplacer()) }); // Log full params
+      if (promptContent) {
+        span.addEvent('llm.prompt', { 'prompt.content': promptContent }); // Log extracted prompt
+      }
+      // Note: Logging raw API response is not feasible here as the call happens within the model handler.
 
       const model = this.getModel(modelKey);
       if (!model) {
@@ -1713,11 +1788,8 @@ export class AgentRuntime implements IAgentRuntime {
         throw new Error(errorMsg);
       }
 
-      // Log input parameters
-      this.runtimeLogger.debug(
-        `[useModel] ${modelKey} input:`,
-        JSON.stringify(params, null, 2)
-      );
+      // Log input parameters (keep debug log if useful)
+      this.runtimeLogger.debug(`[useModel] ${model} input:`, JSON.stringify(params, safeReplacer(), 2));
 
       // Handle different parameter formats
       let paramsWithRuntime: any;
@@ -1750,16 +1822,23 @@ export class AgentRuntime implements IAgentRuntime {
         // Calculate elapsed time
         const elapsedTime = performance.now() - startTime;
         span.setAttributes({
-          'model.execution_time_ms': elapsedTime
+          'llm.duration_ms': elapsedTime, // Consider llm.duration semantic convention
+          // Attempt to extract token counts if response structure is known/standardized
+          // Example (adjust based on actual response structure):
+          'llm.usage.prompt_tokens': (response as any)?.usage?.prompt_tokens,
+          'llm.usage.completion_tokens': (response as any)?.usage?.completion_tokens,
+          'llm.usage.total_tokens': (response as any)?.usage?.total_tokens,
         });
 
-        // Log timing
+        // Log response as event
+        span.addEvent('model_response', { 'response': JSON.stringify(response, safeReplacer()) }); // Log processed response
+
+        // Log timing (keep debug log if useful)
         this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`);
 
-        // Log response
+        // Log response (keep debug log if useful)
         this.runtimeLogger.debug(
           `[useModel] ${modelKey} output:`,
-          // if response is an array, should the first and last 5 items with a "..." in the middle, and a (x items) at the end
           Array.isArray(response)
             ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(
               response.slice(-5)
@@ -1767,7 +1846,7 @@ export class AgentRuntime implements IAgentRuntime {
             : JSON.stringify(response)
         );
 
-        // Log the model usage
+        // Log the model usage (keep adapter log if useful)
         this.adapter.log({
           entityId: this.agentId,
           roomId: this.agentId,
@@ -1784,6 +1863,7 @@ export class AgentRuntime implements IAgentRuntime {
         });
 
         span.addEvent('model_execution_complete');
+        span.setStatus({ code: SpanStatusCode.OK }); // Explicitly set OK status
         return response as R;
       } catch (error) {
         // Calculate time to error
@@ -1798,8 +1878,9 @@ export class AgentRuntime implements IAgentRuntime {
         });
         span.setAttributes({
           'error.time_ms': errorTime,
-          'error.message': errorMessage
+          'error.message': errorMessage,
         });
+        span.addEvent('model_execution_error'); // Add specific error event
 
         // Rethrow the error
         throw error;

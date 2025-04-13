@@ -1,7 +1,7 @@
 // packages/core/__tests__/runtime.test.ts
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 // **Import the NON-INSTRUMENTED version for baseline tests**
-import { AgentRuntime } from '../src/runtime';
+import { AgentRuntime } from '../src/temp';
 // Import necessary values (enums) directly
 import { MemoryType, ModelType } from '../src/types';
 // Import types separately
