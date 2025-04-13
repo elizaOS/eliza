@@ -16,6 +16,16 @@ import {
   providerPluginMap,
   getAllRequiredPlugins,
 } from '../config/voice-models';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface PluginsPanelProps {
   characterValue: Agent;
@@ -29,6 +39,26 @@ interface PluginsPanelProps {
   initialPlugins?: string[];
 }
 
+// Define a type for the essential plugin information
+type EssentialPluginInfo = {
+  title: string;
+  description: string;
+};
+
+// Map of essential plugins that require confirmation when removing
+const ESSENTIAL_PLUGINS: Record<string, EssentialPluginInfo> = {
+  '@elizaos/plugin-sql': {
+    title: 'Essential Plugin: SQL',
+    description:
+      'This plugin provides memory and state storage for your agent. Removing it may cause the agent to lose conversation context and memory capabilities.',
+  },
+  '@elizaos/plugin-openai': {
+    title: 'Essential Plugin: OpenAI',
+    description:
+      'This plugin provides core language model access. Removing it without configuring a suitable alternative may cause the agent to malfunction or fail to start.',
+  },
+};
+
 export default function PluginsPanel({
   characterValue,
   setCharacterValue,
@@ -38,6 +68,8 @@ export default function PluginsPanel({
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<string | null>(null);
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
 
   // Ensure we always have arrays and normalize plugin names
   const safeCharacterPlugins = useMemo(() => {
@@ -108,6 +140,19 @@ export default function PluginsPanel({
   };
 
   const handlePluginRemove = (plugin: string) => {
+    // Check if it's an essential plugin that needs confirmation
+    if (Object.keys(ESSENTIAL_PLUGINS).includes(plugin)) {
+      setPendingRemoval(plugin);
+      setIsConfirmDialogOpen(true);
+      return;
+    }
+
+    // If not essential, proceed with removal immediately
+    removePlugin(plugin);
+  };
+
+  // Actual plugin removal after confirmation (if required)
+  const removePlugin = (plugin: string) => {
     const index = safeCharacterPlugins.indexOf(plugin);
     if (index !== -1) {
       if (setCharacterValue.removePlugin) {
@@ -120,6 +165,21 @@ export default function PluginsPanel({
     }
   };
 
+  // Function to handle confirmation dialog acceptance
+  const handleConfirmRemoval = () => {
+    if (pendingRemoval) {
+      removePlugin(pendingRemoval);
+      setPendingRemoval(null);
+    }
+    setIsConfirmDialogOpen(false);
+  };
+
+  // Function to handle confirmation dialog cancellation
+  const handleCancelRemoval = () => {
+    setPendingRemoval(null);
+    setIsConfirmDialogOpen(false);
+  };
+
   return (
     <div className="space-y-6">
       <div className="space-y-4">
@@ -129,6 +189,30 @@ export default function PluginsPanel({
             <p className="text-destructive">Failed to load plugins: {error.message}</p>
           ) : (
             <div className="space-y-4">
+              {/* Alert Dialog for Essential Plugin Removal */}
+              <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {pendingRemoval && Object.keys(ESSENTIAL_PLUGINS).includes(pendingRemoval)
+                        ? ESSENTIAL_PLUGINS[pendingRemoval].title
+                        : 'Warning: Essential Plugin'}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {pendingRemoval && Object.keys(ESSENTIAL_PLUGINS).includes(pendingRemoval)
+                        ? ESSENTIAL_PLUGINS[pendingRemoval].description
+                        : 'This plugin provides essential functionality for your agent.'}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel onClick={handleCancelRemoval}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleConfirmRemoval}>
+                      Confirm Removal
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
               {voiceModelPluginInfo && (
                 <div className="rounded-md bg-blue-50 p-4 mb-4">
                   <p className="text-xs text-blue-700">
@@ -162,6 +246,8 @@ export default function PluginsPanel({
                     {safeCharacterPlugins.map((plugin) => {
                       // Check if this plugin is required by the current voice model
                       const isRequiredByVoice = voiceModelPluginInfo?.requiredPlugin === plugin;
+                      // Check if this is an essential plugin (SQL or OpenAI)
+                      const isEssential = Object.keys(ESSENTIAL_PLUGINS).includes(plugin);
 
                       return (
                         <Button
@@ -172,7 +258,9 @@ export default function PluginsPanel({
                           className={`inline-flex items-center rounded-full ${
                             isRequiredByVoice
                               ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : 'bg-primary/10 text-primary hover:bg-primary/20'
+                              : isEssential
+                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                : 'bg-primary/10 text-primary hover:bg-primary/20'
                           } px-2.5 py-0.5 text-xs font-medium h-auto`}
                           onClick={() => {
                             // Don't allow removing if it's required by the voice model
@@ -186,12 +274,25 @@ export default function PluginsPanel({
                             }
                             handlePluginRemove(plugin);
                           }}
-                          title={isRequiredByVoice ? 'Required by voice model' : 'Click to remove'}
+                          title={
+                            isRequiredByVoice
+                              ? 'Required by voice model'
+                              : isEssential
+                                ? 'Essential plugin for agent functionality (click to remove)'
+                                : 'Click to remove'
+                          }
                         >
-                          {plugin} {!isRequiredByVoice && '×'}
+                          {plugin} {isEssential && <span className="ml-1 text-blue-700">•</span>}
+                          <span className="ml-1 opacity-70 hover:opacity-100">×</span>
                         </Button>
                       );
                     })}
+                  </div>
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center">
+                      <span className="w-2 h-2 rounded-full bg-blue-500 mr-1"></span>
+                      Essential plugins provide core functionality
+                    </span>
                   </div>
                 </div>
               )}
