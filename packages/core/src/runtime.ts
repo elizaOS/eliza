@@ -201,7 +201,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Initialize the plugin if it has an init function
-    if (plugin.init) {
+    if (plugin && 'init' in plugin && plugin.init !== null && typeof plugin.init === 'function') {
       try {
         await plugin.init(plugin.config || {}, this);
         this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
