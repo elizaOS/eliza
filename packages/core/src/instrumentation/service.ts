@@ -112,11 +112,6 @@ class PostgresSpanProcessor implements SpanProcessor {
         }
     }
 
-    // Remove the initialize method as we're doing it in the constructor
-    // We'll keep the createTracesTable method for reference but won't call it
-    private async createTracesTable(): Promise<void> {
-        // Method retained for reference but no longer used
-    }
 
     onStart(span: ReadableSpan): void {
         // Optional: Log span start for debugging
@@ -327,13 +322,11 @@ export class InstrumentationService extends Service implements IInstrumentationS
         super();
         this.instrumentationConfig = {
             serviceName: config?.serviceName || process.env.OTEL_SERVICE_NAME || DEFAULT_SERVICE_NAME,
-            // We don't need otlpEndpoint anymore since we're using PostgreSQL
-            enabled: config?.enabled ?? (process.env.OTEL_INSTRUMENTATION_ENABLED === 'true' || !!process.env.POSTGRES_URL_INSTRUMENTATION)
+            enabled: config?.enabled ?? (process.env.INSTRUMENTATION_ENABLED === 'true' || !!process.env.POSTGRES_URL_INSTRUMENTATION)
         };
 
         this.resource = new Resource({
             [SemanticResourceAttributes.SERVICE_NAME]: this.instrumentationConfig.serviceName,
-            // Add other relevant resource attributes (e.g., version, instance ID)
         });
 
         if (this.isEnabled()) {
