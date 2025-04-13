@@ -365,18 +365,41 @@ const config = {
           docId: 'index',
         },
         {
-          type: 'doc',
-          docsPluginId: 'packages',
-          position: 'left',
+          type: 'dropdown',
           label: 'Packages',
-          docId: 'index',
+          position: 'left',
+          to: '/packages',
+          items: [
+            {
+              label: 'Adapters',
+              to: '/packages?tags=adapter',
+            },
+            {
+              label: 'Clients',
+              to: '/packages?tags=client',
+            },
+            {
+              label: 'Plugins',
+              to: '/packages?tags=plugin',
+            },
+          ],
         },
         {
-          type: 'doc',
-          docsPluginId: 'community',
-          position: 'left',
+          type: 'dropdown',
           label: 'Community',
-          docId: 'index',
+          position: 'left',
+          to: '/community',
+          items: [
+            {
+              label: 'Calendar',
+              to: 'https://calendar.google.com/calendar/embed?src=c_ed31cea342d3e2236f549161e6446c3e407e5625ee7a355c0153befc7a602e7f%40group.calendar.google.com&ctz=America%2FToronto',
+              target: '_blank',
+            },
+            {
+              label: 'Video Gallery',
+              to: '/community/videos',
+            },
+          ],
         },
         {
           to: 'blog',
