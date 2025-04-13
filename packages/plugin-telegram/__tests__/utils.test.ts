@@ -22,6 +22,15 @@ describe('Telegram Utils', () => {
   });
 
   describe('convertMarkdownToTelegram', () => {
+    it('should handle text without special characters', () => {
+      const input = 'Hello World 123';
+      expect(convertMarkdownToTelegram(input)).toBe(input);
+    });
+
+    it('should handle empty string', () => {
+      expect(convertMarkdownToTelegram('')).toBe('');
+    });
+
     it('should convert headers to bold text', () => {
       const result = convertMarkdownToTelegram('# Header 1\n## Header 2');
       expect(result).toContain('*Header 1*');
