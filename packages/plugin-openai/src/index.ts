@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type {
+  AgentRuntime,
   ImageDescriptionParams,
   ModelTypeName,
   ObjectGenerationParams,
@@ -14,8 +15,77 @@ import {
   logger,
   VECTOR_DIMS,
 } from '@elizaos/core';
-import { generateObject, generateText } from 'ai';
+import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
+import FormData from 'form-data';
+import fetch from 'node-fetch';
+
+/**
+ * Helper function to get settings with fallback to process.env
+ *
+ * @param runtime The runtime context
+ * @param key The setting key to retrieve
+ * @param defaultValue Optional default value if not found
+ * @returns The setting value with proper fallbacks
+ */
+function getSetting(runtime: any, key: string, defaultValue?: string): string | undefined {
+  return runtime.getSetting(key) ?? process.env[key] ?? defaultValue;
+}
+
+/**
+ * Helper function to get the base URL for OpenAI API
+ *
+ * @param runtime The runtime context
+ * @returns The configured base URL or default
+ */
+function getBaseURL(runtime: any): string {
+  return getSetting(runtime, 'OPENAI_BASE_URL', 'https://api.openai.com/v1');
+}
+
+/**
+ * Helper function to get the API key for OpenAI
+ *
+ * @param runtime The runtime context
+ * @returns The configured API key
+ */
+function getApiKey(runtime: any): string | undefined {
+  return getSetting(runtime, 'OPENAI_API_KEY');
+}
+
+/**
+ * Helper function to get the small model name with fallbacks
+ *
+ * @param runtime The runtime context
+ * @returns The configured small model name
+ */
+function getSmallModel(runtime: any): string {
+  return (
+    getSetting(runtime, 'OPENAI_SMALL_MODEL') ?? getSetting(runtime, 'SMALL_MODEL', 'gpt-4o-mini')
+  );
+}
+
+/**
+ * Helper function to get the large model name with fallbacks
+ *
+ * @param runtime The runtime context
+ * @returns The configured large model name
+ */
+function getLargeModel(runtime: any): string {
+  return getSetting(runtime, 'OPENAI_LARGE_MODEL') ?? getSetting(runtime, 'LARGE_MODEL', 'gpt-4o');
+}
+
+/**
+ * Create an OpenAI client with proper configuration
+ *
+ * @param runtime The runtime context
+ * @returns Configured OpenAI client
+ */
+function createOpenAIClient(runtime: any) {
+  return createOpenAI({
+    apiKey: getApiKey(runtime),
+    baseURL: getBaseURL(runtime),
+  });
+}
 
 /**
  * Asynchronously tokenizes the given text based on the specified model and prompt.
@@ -51,6 +121,96 @@ async function detokenizeText(model: ModelTypeName, tokens: number[]) {
 }
 
 /**
+ * Helper function to generate objects using specified model type
+ */
+async function generateObjectByModelType(
+  runtime: AgentRuntime,
+  params: ObjectGenerationParams,
+  modelType: string,
+  getModelFn: (runtime: AgentRuntime) => string
+): Promise<JSONValue> {
+  const openai = createOpenAIClient(runtime);
+  const model = getModelFn(runtime);
+
+  try {
+    if (params.schema) {
+      // Skip zod validation and just use the generateObject without schema
+      logger.info(`Using ${modelType} without schema validation`);
+    }
+
+    const { object } = await generateObject({
+      model: openai.languageModel(model),
+      output: 'no-schema',
+      prompt: params.prompt,
+      temperature: params.temperature,
+      experimental_repairText: getJsonRepairFunction(),
+    });
+    return object;
+  } catch (error) {
+    logger.error(`Error generating object with ${modelType}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Returns a function to repair JSON text
+ */
+function getJsonRepairFunction(): (params: {
+  text: string;
+  error: unknown;
+}) => Promise<string | null> {
+  return async ({ text, error }: { text: string; error: unknown }) => {
+    try {
+      if (error instanceof JSONParseError) {
+        const cleanedText = text.replace(/```json\n|\n```|```/g, '');
+
+        JSON.parse(cleanedText);
+        return cleanedText;
+      }
+    } catch (jsonError) {
+      logger.warn('Failed to repair JSON text:', jsonError);
+      return null;
+    }
+  };
+}
+
+/**
+ * function for text-to-speech
+ */
+async function fetchTextToSpeech(runtime: AgentRuntime, text: string) {
+  const apiKey = getApiKey(runtime);
+  const model = getSetting(runtime, 'OPENAI_TTS_MODEL', 'gpt-4o-mini-tts');
+  const voice = getSetting(runtime, 'OPENAI_TTS_VOICE', 'nova');
+  const instructions = getSetting(runtime, 'OPENAI_TTS_INSTRUCTIONS', '');
+  const baseURL = getBaseURL(runtime);
+
+  try {
+    const res = await fetch(`${baseURL}/audio/speech`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        voice,
+        input: text,
+        ...(instructions && { instructions }),
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`OpenAI TTS error ${res.status}: ${err}`);
+    }
+
+    return res.body;
+  } catch (err: any) {
+    throw new Error(`Failed to fetch speech from OpenAI TTS: ${err.message || err}`);
+  }
+}
+
+/**
  * Defines the OpenAI plugin with its name, description, and configuration options.
  * @type {Plugin}
  */
@@ -67,7 +227,7 @@ export const openaiPlugin: Plugin = {
     OPENAI_EMBEDDING_MODEL: process.env.OPENAI_EMBEDDING_MODEL,
     OPENAI_EMBEDDING_DIMENSIONS: process.env.OPENAI_EMBEDDING_DIMENSIONS,
   },
-  async init(config: Record<string, string>) {
+  async init(_config, runtime) {
     try {
       // const validatedConfig = await configSchema.parseAsync(config);
 
@@ -77,7 +237,7 @@ export const openaiPlugin: Plugin = {
       // }
 
       // If API key is not set, we'll show a warning but continue
-      if (!process.env.OPENAI_API_KEY) {
+      if (!getApiKey(runtime)) {
         logger.warn(
           'OPENAI_API_KEY is not set in environment - OpenAI functionality will be limited'
         );
@@ -87,9 +247,9 @@ export const openaiPlugin: Plugin = {
 
       // Verify API key only if we have one
       try {
-        const baseURL = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
+        const baseURL = getBaseURL(runtime);
         const response = await fetch(`${baseURL}/models`, {
-          headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+          headers: { Authorization: `Bearer ${getApiKey(runtime)}` },
         });
 
         if (!response.ok) {
@@ -119,7 +279,7 @@ export const openaiPlugin: Plugin = {
       params: TextEmbeddingParams | string | null
     ): Promise<number[]> => {
       const embeddingDimension = parseInt(
-        runtime.getSetting('OPENAI_EMBEDDING_DIMENSIONS') ?? '1536'
+        getSetting(runtime, 'OPENAI_EMBEDDING_DIMENSIONS', '1536')
       ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
 
       // Validate embedding dimension
@@ -164,17 +324,17 @@ export const openaiPlugin: Plugin = {
       }
 
       try {
-        const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
+        const baseURL = getBaseURL(runtime);
 
         // Call the OpenAI API
         const response = await fetch(`${baseURL}/embeddings`, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${runtime.getSetting('OPENAI_API_KEY')}`,
+            Authorization: `Bearer ${getApiKey(runtime)}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: runtime.getSetting('OPENAI_EMBEDDING_MODEL') ?? 'text-embedding-3-small',
+            model: getSetting(runtime, 'OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small'),
             input: text,
           }),
         });
@@ -225,17 +385,8 @@ export const openaiPlugin: Plugin = {
       const presence_penalty = 0.7;
       const max_response_length = 8192;
 
-      const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
-
-      const openai = createOpenAI({
-        apiKey: runtime.getSetting('OPENAI_API_KEY'),
-        baseURL,
-      });
-
-      const model =
-        runtime.getSetting('OPENAI_SMALL_MODEL') ??
-        runtime.getSetting('SMALL_MODEL') ??
-        'gpt-4o-mini';
+      const openai = createOpenAIClient(runtime);
+      const model = getSmallModel(runtime);
 
       logger.log('generating text');
       logger.log(prompt);
@@ -264,15 +415,8 @@ export const openaiPlugin: Plugin = {
         presencePenalty = 0.7,
       }: GenerateTextParams
     ) => {
-      const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
-
-      const openai = createOpenAI({
-        apiKey: runtime.getSetting('OPENAI_API_KEY'),
-        baseURL,
-      });
-
-      const model =
-        runtime.getSetting('OPENAI_LARGE_MODEL') ?? runtime.getSetting('LARGE_MODEL') ?? 'gpt-4o';
+      const openai = createOpenAIClient(runtime);
+      const model = getLargeModel(runtime);
 
       const { text: openaiResponse } = await generateText({
         model: openai.languageModel(model),
@@ -295,11 +439,11 @@ export const openaiPlugin: Plugin = {
         size?: string;
       }
     ) => {
-      const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
+      const baseURL = getBaseURL(runtime);
       const response = await fetch(`${baseURL}/images/generations`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${runtime.getSetting('OPENAI_API_KEY')}`,
+          Authorization: `Bearer ${getApiKey(runtime)}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -330,8 +474,8 @@ export const openaiPlugin: Plugin = {
       }
 
       try {
-        const baseURL = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
-        const apiKey = process.env.OPENAI_API_KEY;
+        const baseURL = getBaseURL(runtime);
+        const apiKey = getApiKey(runtime);
 
         if (!apiKey) {
           logger.error('OpenAI API key not set');
@@ -349,7 +493,7 @@ export const openaiPlugin: Plugin = {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: 'gpt-4-vision-preview',
+            model: 'gpt-4o-mini',
             messages: [
               {
                 role: 'user',
@@ -403,16 +547,19 @@ export const openaiPlugin: Plugin = {
     },
     [ModelType.TRANSCRIPTION]: async (runtime, audioBuffer: Buffer) => {
       logger.log('audioBuffer', audioBuffer);
-      const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
-      const formData = new FormData();
+      const baseURL = getBaseURL(runtime);
 
-      formData.append('file', new File([audioBuffer], 'recording.mp3', { type: 'audio/mp3' }));
+      const formData = new FormData();
+      formData.append('file', audioBuffer, {
+        filename: 'recording.mp3',
+        contentType: 'audio/mp3',
+      });
       formData.append('model', 'whisper-1');
+
       const response = await fetch(`${baseURL}/audio/transcriptions`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${runtime.getSetting('OPENAI_API_KEY')}`,
-          // Note: Do not set a Content-Type header—letting fetch set it for FormData is best
+          Authorization: `Bearer ${getApiKey(runtime)}`,
         },
         body: formData,
       });
@@ -421,78 +568,19 @@ export const openaiPlugin: Plugin = {
       if (!response.ok) {
         throw new Error(`Failed to transcribe audio: ${response.statusText}`);
       }
+
       const data = (await response.json()) as { text: string };
       return data.text;
     },
+    [ModelType.TEXT_TO_SPEECH]: async (runtime: AgentRuntime, text: string) => {
+      return await fetchTextToSpeech(runtime, text);
+    },
+
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
-      const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
-      const openai = createOpenAI({
-        apiKey: runtime.getSetting('OPENAI_API_KEY'),
-        baseURL,
-      });
-      const model =
-        runtime.getSetting('OPENAI_SMALL_MODEL') ??
-        runtime.getSetting('SMALL_MODEL') ??
-        'gpt-4o-mini';
-
-      try {
-        if (params.schema) {
-          // Skip zod validation and just use the generateObject without schema
-          logger.info('Using OBJECT_SMALL without schema validation');
-          const { object } = await generateObject({
-            model: openai.languageModel(model),
-            output: 'no-schema',
-            prompt: params.prompt,
-            temperature: params.temperature,
-          });
-          return object;
-        }
-
-        const { object } = await generateObject({
-          model: openai.languageModel(model),
-          output: 'no-schema',
-          prompt: params.prompt,
-          temperature: params.temperature,
-        });
-        return object;
-      } catch (error) {
-        logger.error('Error generating object:', error);
-        throw error;
-      }
+      return generateObjectByModelType(runtime, params, ModelType.OBJECT_SMALL, getSmallModel);
     },
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
-      const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
-      const openai = createOpenAI({
-        apiKey: runtime.getSetting('OPENAI_API_KEY'),
-        baseURL,
-      });
-      const model =
-        runtime.getSetting('OPENAI_LARGE_MODEL') ?? runtime.getSetting('LARGE_MODEL') ?? 'gpt-4o';
-
-      try {
-        if (params.schema) {
-          // Skip zod validation and just use the generateObject without schema
-          logger.info('Using OBJECT_LARGE without schema validation');
-          const { object } = await generateObject({
-            model: openai.languageModel(model),
-            output: 'no-schema',
-            prompt: params.prompt,
-            temperature: params.temperature,
-          });
-          return object;
-        }
-
-        const { object } = await generateObject({
-          model: openai.languageModel(model),
-          output: 'no-schema',
-          prompt: params.prompt,
-          temperature: params.temperature,
-        });
-        return object;
-      } catch (error) {
-        logger.error('Error generating object:', error);
-        throw error;
-      }
+      return generateObjectByModelType(runtime, params, ModelType.OBJECT_LARGE, getLargeModel);
     },
   },
   tests: [
@@ -502,10 +590,10 @@ export const openaiPlugin: Plugin = {
         {
           name: 'openai_test_url_and_api_key_validation',
           fn: async (runtime) => {
-            const baseURL = runtime.getSetting('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1';
+            const baseURL = getBaseURL(runtime);
             const response = await fetch(`${baseURL}/models`, {
               headers: {
-                Authorization: `Bearer ${runtime.getSetting('OPENAI_API_KEY')}`,
+                Authorization: `Bearer ${getApiKey(runtime)}`,
               },
             });
             const data = await response.json();
@@ -655,6 +743,22 @@ export const openaiPlugin: Plugin = {
               );
             }
             logger.log('Decoded text:', decodedText);
+          },
+        },
+        {
+          name: 'openai_test_text_to_speech',
+          fn: async (runtime: AgentRuntime) => {
+            try {
+              const text = 'Hello, this is a test for text-to-speech.';
+              const response = await fetchTextToSpeech(runtime, text);
+              if (!response) {
+                throw new Error('Failed to generate speech');
+              }
+              logger.log('Generated speech successfully');
+            } catch (error) {
+              logger.error('Error in openai_test_text_to_speech:', error);
+              throw error;
+            }
           },
         },
       ],

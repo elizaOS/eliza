@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-groq",
-  "version": "1.0.0-beta.16",
+  "version": "1.0.0-beta.32",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -24,7 +24,7 @@
   "dependencies": {
     "@ai-sdk/groq": "^1.1.9",
     "@ai-sdk/ui-utils": "1.1.9",
-    "@elizaos/core": "^1.0.0-beta.16",
+    "@elizaos/core": "^1.0.0-beta.32",
     "ai": "^4.1.25",
     "js-tiktoken": "^1.0.18",
     "tsup": "8.4.0"
@@ -49,7 +49,7 @@
       }
     }
   },
-  "gitHead": "7b01ea21f51671371e738134c80c958483b7b709",
+  "gitHead": "917e8b28d02cc09316dd61d1fb29c683f29689ef",
   "devDependencies": {
     "prettier": "3.5.3"
   }

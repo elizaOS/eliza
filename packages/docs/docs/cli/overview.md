@@ -26,18 +26,20 @@ npx @elizaos/cli@beta [command]
 
 ## Available Commands
 
-| Command                    | Description                                          |
-| -------------------------- | ---------------------------------------------------- |
-| [`create`](./create.md)    | Create new projects, plugins, or agents              |
-| [`start`](./start.md)      | Start an ElizaOS project or agent                    |
-| [`dev`](./dev.md)          | Run a project in development mode with hot reloading |
-| [`agent`](./agent.md)      | Manage agent configurations and state                |
-| [`plugin`](./plugins.md)   | Manage plugins in your project                       |
-| [`project`](./projects.md) | Manage project configuration and settings            |
-| [`env`](./env.md)          | Configure environment variables and API keys         |
-| [`publish`](./publish.md)  | Publish packages to npm registry                     |
-| [`update`](./update.md)    | Update ElizaOS components                            |
-| [`test`](./test.md)        | Run tests for your project                           |
+| Command                         | Description                                            |
+| ------------------------------- | ------------------------------------------------------ |
+| [`create`](./create.md)         | Create new projects, plugins, or agents                |
+| [`start`](./start.md)           | Start an ElizaOS project or agent                      |
+| [`dev`](./dev.md)               | Run a project in development mode with hot reloading   |
+| [`agent`](./agent.md)           | Manage agent configurations and state                  |
+| [`plugin`](./plugins.md)        | Develop and publish plugins                            |
+| [`project`](./projects.md)      | Manage project configuration and settings              |
+| [`env`](./env.md)               | Configure environment variables and API keys           |
+| [`publish`](./publish.md)       | Publish packages to npm registry                       |
+| [`update`](./update.md)         | Update ElizaOS components                              |
+| [`update-cli`](./update-cli.md) | Update the ElizaOS CLI itself                          |
+| [`test`](./test.md)             | Run tests for your project                             |
+| [`tee`](./tee.md)               | Manage TEE (Trusted Execution Environment) deployments |
 
 ## Global Options
 
@@ -130,17 +132,16 @@ ElizaOS organizes work into projects, which can contain one or more agents along
 
 ## Working with Plugins
 
-Plugins extend the functionality of your agents. Manage them with the `plugin` command:
+Plugins extend the functionality of your agents. Use the `plugin` command for development tasks like publishing your own plugins.
+
+To add or remove plugins from your _project_, use the `project` command (see [`project` command documentation](./projects.md)).
 
 ```bash
-# Add a plugin to your project
-elizaos plugin add @elizaos/plugin-discord
+# Example: Publish the plugin in the current directory (requires setup)
+elizaos plugin publish
 
-# Remove a plugin
-elizaos plugin remove @elizaos/plugin-discord
-
-# List installed plugins
-elizaos plugin list
+# Example: Test publishing the plugin to npm
+elizaos plugin publish --npm --test
 ```
 
 ## Environment Configuration

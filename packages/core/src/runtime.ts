@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt, handlePluginImporting } from './index';
+import { decryptSecret, getSalt, safeReplacer } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -109,6 +109,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
+  private isInitialized = false;
   events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
   stateCache = new Map<
     UUID,
@@ -233,6 +234,11 @@ export class AgentRuntime implements IAgentRuntime {
     if (plugin.adapter) {
       this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
       this.registerDatabaseAdapter(plugin.adapter);
+      this.runtimeLogger.debug(
+        `Database adapter registered successfully for plugin ${plugin.name}`
+      );
+    } else {
+      this.runtimeLogger.debug(`Plugin ${plugin.name} does not provide a database adapter`);
     }
 
     // Register plugin actions
@@ -280,9 +286,13 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     if (plugin.services) {
-      plugin.services.forEach((service) => {
-        this.servicesInitQueue.add(service);
-      });
+      for (const service of plugin.services) {
+        if (this.isInitialized) {
+          await this.registerService(service);
+        } else {
+          this.servicesInitQueue.add(service);
+        }
+      }
     }
   }
 
@@ -301,23 +311,16 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize() {
+    if (this.isInitialized) {
+      this.runtimeLogger.warn('Agent already initialized');
+      return;
+    }
+
     // Track registered plugins to avoid duplicates
     const registeredPluginNames = new Set<string>();
 
     // Load and register plugins from character configuration
     const pluginRegistrationPromises = [];
-
-    if (this.character.plugins) {
-      const characterPlugins = (await handlePluginImporting(this.character.plugins)) as Plugin[];
-
-      // Register each character plugin
-      for (const plugin of characterPlugins) {
-        if (plugin && !registeredPluginNames.has(plugin.name)) {
-          registeredPluginNames.add(plugin.name);
-          pluginRegistrationPromises.push(await this.registerPlugin(plugin));
-        }
-      }
-    }
 
     // Register plugins that were provided in the constructor
     for (const plugin of [...this.plugins]) {
@@ -327,7 +330,24 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    await this.adapter.init();
+    // Ensure adapter is initialized
+    if (!this.adapter) {
+      this.runtimeLogger.error(
+        'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
+      );
+      throw new Error(
+        'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
+      );
+    }
+
+    try {
+      await this.adapter.init();
+    } catch (error) {
+      this.runtimeLogger.error(
+        `Failed to initialize database adapter: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
 
     // First create the agent entity directly
     try {
@@ -431,6 +451,8 @@ export class AgentRuntime implements IAgentRuntime {
     for (const service of this.servicesInitQueue) {
       await this.registerService(service);
     }
+
+    this.isInitialized = true;
   }
 
   private async handleProcessingError(error: any, context: string) {
@@ -471,34 +493,20 @@ export class AgentRuntime implements IAgentRuntime {
       match_threshold: 0.1,
     });
 
-    const uniqueSources = [
-      ...new Set(
-        fragments
-          .map((memory) => {
-            this.runtimeLogger.debug(
-              `Matched fragment: ${memory.content.text} with similarity: ${memory.similarity}`
-            );
-            return memory?.metadata?.type === MemoryType.FRAGMENT
-              ? memory?.metadata?.documentId
-              : undefined;
-          })
-          .filter(Boolean)
-      ),
-    ];
-
-    const knowledgeDocuments = await Promise.all(
-      uniqueSources.map((source) => this.getMemoryById(source as UUID))
-    );
-
-    return knowledgeDocuments
-      .filter((memory) => memory !== null)
-      .map((memory) => ({ id: memory.id, content: memory.content }));
+    // Return the fragments directly as this is used from prompts.
+    // Example usage in prompts: # provider KNOWLEDGE
+    return fragments.map((fragment) => ({
+      id: fragment.id,
+      content: fragment.content,
+      similarity: fragment.similarity,
+      metadata: fragment.metadata,
+    }));
   }
 
   async addKnowledge(
     item: KnowledgeItem,
     options = {
-      targetTokens: 3000,
+      targetTokens: 1500,
       overlap: 200,
       modelContextSize: 4096,
     }
@@ -1302,7 +1310,10 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Log input parameters
-    this.runtimeLogger.debug(`[useModel] ${modelKey} input:`, JSON.stringify(params, null, 2));
+    this.runtimeLogger.debug(
+      `[useModel] ${modelKey} input:`,
+      JSON.stringify(params, safeReplacer(), 2)
+    );
 
     // Handle different parameter formats
     let paramsWithRuntime: any;

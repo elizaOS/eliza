@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.0.0-beta.16",
+  "version": "1.0.0-beta.32",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -27,16 +27,19 @@
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
-    "@elizaos/core": "^1.0.0-beta.16",
+    "@elizaos/core": "^1.0.0-beta.32",
     "@types/pg": "8.11.10",
     "drizzle-kit": "^0.30.4",
     "drizzle-orm": "^0.39.1",
     "pg": "^8.13.3"
   },
   "devDependencies": {
+    "@types/node": "22.8.4",
     "dockerode": "^4.0.4",
     "prettier": "3.5.3",
-    "tsup": "8.4.0"
+    "tsup": "8.4.0",
+    "vitest": "^1.6.1",
+    "zod": "^3.22.4"
   },
   "scripts": {
     "build": "tsup",
@@ -46,10 +49,14 @@
     "lint": "prettier --write ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "peerDependencies": {
-    "typescript": "5.8.2"
+    "typescript": "5.8.2",
+    "whatwg-url": "7.1.0"
   },
-  "gitHead": "7b01ea21f51671371e738134c80c958483b7b709"
+  "gitHead": "917e8b28d02cc09316dd61d1fb29c683f29689ef"
 }

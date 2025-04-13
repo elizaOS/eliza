@@ -19,7 +19,7 @@ import type { TwitterConfig } from './environment';
 import { TwitterInteractionClient } from './interactions';
 import { TwitterPostClient } from './post';
 import { TwitterSpaceClient } from './spaces';
-import { TwitterTestSuite } from './tests';
+import { ClientBaseTestSuite } from './tests';
 import { type ITwitterClient, TwitterEventTypes } from './types';
 
 /**
@@ -312,7 +312,7 @@ const twitterPlugin: Plugin = {
   description: 'Twitter client with per-server instance management',
   services: [TwitterService],
   actions: [spaceJoin],
-  tests: [new TwitterTestSuite()],
+  tests: [new ClientBaseTestSuite()],
 };
 
 export default twitterPlugin;

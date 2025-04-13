@@ -1,5 +1,6 @@
 import type { Agent, Character, UUID, Memory } from '@elizaos/core';
 import { WorldManager } from './world-manager';
+import clientLogger from './logger';
 
 const API_PREFIX = '/api';
 
@@ -26,7 +27,7 @@ const fetcher = async ({
   // Ensure URL starts with a slash if it's a relative path
   const normalizedUrl = API_PREFIX + (url.startsWith('/') ? url : `/${url}`);
 
-  console.log('API Request:', method || 'GET', normalizedUrl);
+  clientLogger.info('API Request:', method || 'GET', normalizedUrl);
 
   const options: RequestInit = {
     method: method ?? 'GET',
@@ -36,6 +37,8 @@ const fetcher = async ({
           Accept: 'application/json',
           'Content-Type': 'application/json',
         },
+    // Add timeout signal for DELETE operations to prevent hanging
+    signal: method === 'DELETE' ? AbortSignal.timeout(30000) : undefined,
   };
 
   if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
@@ -64,41 +67,57 @@ const fetcher = async ({
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('API Error:', response.status, response.statusText);
-      console.error('Response:', errorText);
 
-      let errorMessage = `Error ${response.status}: ${response.statusText}`;
+      clientLogger.error('API Error:', response.status, response.statusText);
+      clientLogger.error('Response:', errorText);
+
+      let errorMessage = `${response.status}: ${response.statusText}`;
       try {
         const errorObj = JSON.parse(errorText);
-        errorMessage = errorObj.message || errorMessage;
+        errorMessage = errorObj.error?.message || errorObj.message || errorMessage;
+
+        // Include the status code explicitly in the error message
+        if (!errorMessage.includes(response.status.toString())) {
+          errorMessage = `${response.status}: ${errorMessage}`;
+        }
       } catch {
         // If we can't parse as JSON, use the raw text
         if (errorText.includes('<!DOCTYPE html>')) {
-          errorMessage = 'Received HTML instead of JSON. API endpoint may be incorrect.';
+          errorMessage = `${response.status}: Received HTML instead of JSON. API endpoint may be incorrect.`;
         } else {
-          errorMessage = errorText || errorMessage;
+          errorMessage = errorText ? `${response.status}: ${errorText}` : errorMessage;
         }
       }
 
-      throw new Error(errorMessage);
+      const error = new Error(errorMessage);
+      // Add status code to the error object for easier checking
+      (error as any).statusCode = response.status;
+      throw error;
     }
 
     // For successful responses, try to parse as JSON
     if (contentType?.includes('application/json')) {
       try {
-        return await response.json();
+        const jsonData = await response.json();
+        return jsonData;
       } catch (error) {
-        console.error('JSON Parse Error:', error);
         const text = await response.text();
-        console.error('Response text:', text.substring(0, 500) + (text.length > 500 ? '...' : ''));
+        clientLogger.error('JSON Parse Error:', error);
+        clientLogger.error(
+          'Response text:',
+          text.substring(0, 500) + (text.length > 500 ? '...' : '')
+        );
+
         throw new Error('Failed to parse JSON response');
       }
     } else {
       // For non-JSON responses, return text
-      return await response.text();
+      const textResponse = await response.text();
+      return textResponse;
     }
   } catch (error) {
-    console.error('Fetch error:', error);
+    clientLogger.error('Fetch error:', error);
+
     throw error;
   }
 };

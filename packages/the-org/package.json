@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/the-org",
-  "version": "1.0.0-beta.16",
+  "version": "1.0.0-beta.32",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -34,16 +34,16 @@
     "exec": "node --enable-source-maps --loader ts-node/esm src/index.ts"
   },
   "dependencies": {
-    "@elizaos/cli": "^1.0.0-beta.16",
-    "@elizaos/core": "^1.0.0-beta.16",
-    "@elizaos/plugin-anthropic": "^1.0.0-beta.16",
-    "@elizaos/plugin-discord": "^1.0.0-beta.16",
-    "@elizaos/plugin-local-ai": "^1.0.0-beta.16",
-    "@elizaos/plugin-openai": "^1.0.0-beta.16",
-    "@elizaos/plugin-sql": "^1.0.0-beta.16",
-    "@elizaos/plugin-tee": "^1.0.0-beta.16",
-    "@elizaos/plugin-telegram": "^1.0.0-beta.16",
-    "@elizaos/plugin-twitter": "^1.0.0-beta.16",
+    "@elizaos/cli": "^1.0.0-beta.32",
+    "@elizaos/core": "^1.0.0-beta.32",
+    "@elizaos/plugin-anthropic": "^1.0.0-beta.32",
+    "@elizaos/plugin-discord": "^1.0.0-beta.32",
+    "@elizaos/plugin-local-ai": "^1.0.0-beta.32",
+    "@elizaos/plugin-openai": "^1.0.0-beta.32",
+    "@elizaos/plugin-sql": "^1.0.0-beta.32",
+    "@elizaos/plugin-tee": "^1.0.0-beta.32",
+    "@elizaos/plugin-telegram": "^1.0.0-beta.32",
+    "@elizaos/plugin-twitter": "^1.0.0-beta.32",
     "@radix-ui/react-slot": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.2",
     "@solana/web3.js": "^1.87.6",
@@ -91,5 +91,5 @@
     "typescript-eslint": "^8.18.2",
     "vite": "^6.0.5"
   },
-  "gitHead": "7b01ea21f51671371e738134c80c958483b7b709"
+  "gitHead": "917e8b28d02cc09316dd61d1fb29c683f29689ef"
 }

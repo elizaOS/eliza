@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-twitter",
-  "version": "1.0.0-beta.16",
+  "version": "1.0.0-beta.32",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -18,7 +18,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "^1.0.0-beta.16",
+    "@elizaos/core": "^1.0.0-beta.32",
     "@roamhq/wrtc": "^0.8.0",
     "@sinclair/typebox": "^0.32.20",
     "glob": "11.0.0",
@@ -54,5 +54,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "7b01ea21f51671371e738134c80c958483b7b709"
+  "gitHead": "917e8b28d02cc09316dd61d1fb29c683f29689ef"
 }
