@@ -50,12 +50,12 @@ const ESSENTIAL_PLUGINS: Record<string, EssentialPluginInfo> = {
   '@elizaos/plugin-sql': {
     title: 'Essential Plugin: SQL',
     description:
-      'This plugin provides memory and state storage for your agent. Removing it may cause the agent to lose conversation context and memory capabilities.',
+      'Provides memory and state storage. If removed, replace with an adapter plugin or your agent may lose conversation history and memory capabilities.',
   },
   '@elizaos/plugin-openai': {
     title: 'Essential Plugin: OpenAI',
     description:
-      'This plugin provides core language model access. Removing it without configuring a suitable alternative may cause the agent to malfunction or fail to start.',
+      'Provides language model access. If removed, replace with another LLM plugin or your agent may fail to function properly.',
   },
 };
 
