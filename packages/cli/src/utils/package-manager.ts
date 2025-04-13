@@ -123,28 +123,10 @@ export async function executeInstallation(
 
   // 1. Try npm registry (if enabled)
   if (options.tryNpm !== false) {
-    // Determine the correct base name (without scope or plugin- prefix)
-    let finalBaseName = baseName; // baseName was already derived and had 'plugin-' prefix removed earlier
-    if (packageName.startsWith('@')) {
-      const parts = packageName.split('/');
-      if (parts.length > 1) {
-        finalBaseName = parts[1].replace(/^plugin-/, ''); // Ensure prefix removed if input was @elizaos/plugin-foo
-      }
-    } else if (packageName.includes('/')) {
-      finalBaseName =
-        packageName
-          .split('/')
-          .pop()
-          ?.replace(/^plugin-/, '') || baseName; // Ensure prefix removed if input was org/plugin-foo
-    }
-
-    // Construct the final npm package name with the correct scope and prefix
-    const npmPackageName = `@elizaos/plugin-${finalBaseName}`;
-
     // Format the package name with version if provided
     const packageWithVersion = versionOrTag
-      ? `${npmPackageName}${versionOrTag.startsWith('@') || versionOrTag.startsWith('#') ? versionOrTag : `@${versionOrTag}`}`
-      : npmPackageName;
+      ? `${npmStylePackageName}${versionOrTag.startsWith('@') || versionOrTag.startsWith('#') ? versionOrTag : `@${versionOrTag}`}`
+      : npmStylePackageName;
 
     logger.debug(
       `Installing ${packageWithVersion} from npm registry using ${packageManager} in ${directory}`
@@ -156,10 +138,10 @@ export async function executeInstallation(
         cwd: directory,
         stdio: 'inherit',
       });
-      logger.info(`Successfully installed ${npmPackageName} from npm registry.`);
-      return { success: true, installedIdentifier: npmPackageName };
+      logger.info(`Successfully installed ${npmStylePackageName} from npm registry.`);
+      return { success: true, installedIdentifier: npmStylePackageName };
     } catch (error) {
-      logger.warn(`Failed to install from npm registry: ${npmPackageName}`);
+      logger.warn(`Failed to install from npm registry: ${npmStylePackageName}`);
       // Continue to next installation method
     }
   }

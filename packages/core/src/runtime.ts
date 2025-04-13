@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt } from './index';
+import { decryptSecret, getSalt, safeReplacer } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -378,12 +378,18 @@ export class AgentRuntime implements IAgentRuntime {
         }
       }
 
-      // Register plugin adapter
-      if (plugin.adapter) {
-        span.addEvent('registering_adapter');
-        this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
-        this.registerDatabaseAdapter(plugin.adapter);
-      }
+
+    // Register plugin adapter
+    if (plugin.adapter) {
+      span.addEvent('registering_adapter');
+      this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
+      this.registerDatabaseAdapter(plugin.adapter);
+      this.runtimeLogger.debug(
+        `Database adapter registered successfully for plugin ${plugin.name}`
+      );
+    } else {
+      this.runtimeLogger.debug(`Plugin ${plugin.name} does not provide a database adapter`);
+    }
 
       // Register plugin actions
       if (plugin.actions) {
@@ -489,8 +495,26 @@ export class AgentRuntime implements IAgentRuntime {
         return;
       }
 
-      this.isInitialized = true;
-      span.addEvent('initialization_started');
+
+    span.addEvent('initialization_started');
+    // Ensure adapter is initialized
+    if (!this.adapter) {
+      this.runtimeLogger.error(
+        'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
+      );
+      throw new Error(
+        'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
+      );
+    }
+
+    try {
+      await this.adapter.init();
+    } catch (error) {
+      this.runtimeLogger.error(
+        `Failed to initialize database adapter: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
 
       // Track registered plugins to avoid duplicates
       const registeredPluginNames = new Set<string>();
@@ -1684,7 +1708,7 @@ export class AgentRuntime implements IAgentRuntime {
     return this.startSpan(`AgentRuntime.useModel.${modelType}`, async (span) => {
       const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
 
-      span.setAttributes({
+    span.setAttributes({
         'model.type': modelKey,
         'agent.id': this.agentId,
         'has_params': params !== null && params !== undefined
@@ -1696,29 +1720,32 @@ export class AgentRuntime implements IAgentRuntime {
         span.setStatus({ code: SpanStatusCode.ERROR, message: errorMsg });
         throw new Error(errorMsg);
       }
+      
+    // Log input parameters
+    this.runtimeLogger.debug(
+      `[useModel] ${modelKey} input:`,
+      JSON.stringify(params, safeReplacer(), 2)
+    );
 
-      // Log input parameters
-      this.runtimeLogger.debug(`[useModel] ${modelKey} input:`, JSON.stringify(params, null, 2));
+    // Handle different parameter formats
+    let paramsWithRuntime: any;
 
-      // Handle different parameter formats
-      let paramsWithRuntime: any;
-
-      // If params is a simple value (string, number, etc.), pass it directly
-      if (
-        params === null ||
-        params === undefined ||
-        typeof params !== 'object' ||
-        Array.isArray(params) ||
-        (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
-      ) {
-        paramsWithRuntime = params;
-      } else {
-        // Otherwise inject the runtime
-        paramsWithRuntime = {
-          ...params,
-          runtime: this,
-        };
-      }
+    // If params is a simple value (string, number, etc.), pass it directly
+    if (
+      params === null ||
+      params === undefined ||
+      typeof params !== 'object' ||
+      Array.isArray(params) ||
+      (typeof Buffer !== 'undefined' && Buffer.isBuffer(params))
+    ) {
+      paramsWithRuntime = params;
+    } else {
+      // Otherwise inject the runtime
+      paramsWithRuntime = {
+        ...params,
+        runtime: this,
+      };
+    }
 
       // Start timer
       const startTime = performance.now();

@@ -21,7 +21,7 @@ import { promptForEnvVars } from '../utils/env-prompt.js';
 import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
-import { displayBanner } from '../displayBanner';
+import { displayBanner, getVersion } from '../displayBanner';
 import { findNextAvailablePort } from '../utils/port-handling';
 import { loadPluginModule } from '../utils/load-plugin';
 
@@ -234,18 +234,18 @@ export async function startAgent(
 ): Promise<IAgentRuntime> {
   character.id ??= stringToUuid(character.name);
 
+  // Ensure character has a plugins array
+  if (!character.plugins) {
+    character.plugins = [];
+  }
+
   const encryptedChar = encryptedCharacter(character);
 
   // Find package.json relative to the current file (__dirname is defined at top level)
   const packageJsonPath = path.resolve(__dirname, '../../package.json');
 
   // Add a simple check in case the path is incorrect
-  let version = '0.0.0'; // Fallback version
-  if (!fs.existsSync(packageJsonPath)) {
-  } else {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-    version = packageJson.version;
-  }
+  let version = getVersion();
 
   const loadedPluginsMap = new Map<string, Plugin>();
 
@@ -434,6 +434,7 @@ export async function startAgent(
 async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
   await runtime.close();
   server.unregisterAgent(runtime.agentId);
+  logger.success(`Agent ${runtime.character.name} stopped successfully!`);
 }
 
 /**
@@ -486,10 +487,17 @@ const startAgents = async (options: {
   // Set up server properties
   server.startAgent = async (character) => {
     logger.info(`Starting agent for character ${character.name}`);
-    return startAgent(character, server);
+    const runtime = await startAgent(character, server);
+    logger.success(`Agent ${character.name} has been successfully started!`);
+    // Add direct console log for higher visibility
+    console.log(`\x1b[32m✓ Agent ${character.name} started successfully!\x1b[0m`);
+    return runtime;
   };
   server.stopAgent = (runtime: IAgentRuntime) => {
+    logger.info(`Stopping agent ${runtime.character.name}`);
     stopAgent(runtime, server);
+    // Add direct console log for higher visibility
+    console.log(`\x1b[32m✓ Agent ${runtime.character.name} stopped successfully!\x1b[0m`);
   };
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
@@ -640,17 +648,33 @@ const startAgents = async (options: {
   if (options.characters) {
     for (const character of options.characters) {
       // make sure character has sql plugin
-      if (!character.plugins.includes('@elizaos/plugin-sql')) {
+      const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql'));
+      if (!hasSqlPlugin) {
         character.plugins.push('@elizaos/plugin-sql');
       }
 
       // make sure character has at least one ai provider
       if (process.env.OPENAI_API_KEY) {
-        character.plugins.push('@elizaos/plugin-openai');
+        const hasOpenAiPlugin = character.plugins.some((plugin) =>
+          plugin.includes('plugin-openai')
+        );
+        if (!hasOpenAiPlugin) {
+          character.plugins.push('@elizaos/plugin-openai');
+        }
       } else if (process.env.ANTHROPIC_API_KEY) {
-        character.plugins.push('@elizaos/plugin-anthropic');
+        const hasAnthropicPlugin = character.plugins.some((plugin) =>
+          plugin.includes('plugin-anthropic')
+        );
+        if (!hasAnthropicPlugin) {
+          character.plugins.push('@elizaos/plugin-anthropic');
+        }
       } else {
-        character.plugins.push('@elizaos/plugin-local-ai');
+        const hasLocalAiPlugin = character.plugins.some((plugin) =>
+          plugin.includes('plugin-local-ai')
+        );
+        if (!hasLocalAiPlugin) {
+          character.plugins.push('@elizaos/plugin-local-ai');
+        }
       }
 
       await startAgent(character, server);
