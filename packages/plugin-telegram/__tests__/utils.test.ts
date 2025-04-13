@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitMessage } from '../src/utils';
-import { convertMarkdownToTelegram } from '../src/markdown';
+import { convertMarkdownToTelegram, splitMessage } from '../src/utils';
 
 describe('Telegram Utils', () => {
   describe('splitMessage', () => {
