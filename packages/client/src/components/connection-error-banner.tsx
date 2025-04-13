@@ -18,59 +18,26 @@ export function ConnectionErrorBanner({ className, testEndpoint }: ConnectionErr
   const [showBanner, setShowBanner] = useState(false);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
   const [wasInErrorState, setWasInErrorState] = useState(false);
-  const [autoDetectedEndpoint, setAutoDetectedEndpoint] = useState<string | null>(null);
-
-  // Auto-detect if the current URL path looks like an API endpoint
-  useEffect(() => {
-    const path = location.pathname;
-
-    // Check if this looks like a mistyped API endpoint in the browser URL
-    const isLikelyApiEndpoint =
-      path.startsWith('/api/') ||
-      (path.includes('/agents/') && path.includes('/speech/')) ||
-      (path.includes('/agents/') && path.includes('/memories/')) ||
-      path.includes('/transcriptions/') ||
-      path.includes('/ping/');
-
-    if (isLikelyApiEndpoint) {
-      // Convert browser URL to API endpoint format by stripping leading slash
-      const endpoint = path.startsWith('/api/') ? path.substring(4) : path;
-      setAutoDetectedEndpoint(endpoint);
-    } else {
-      setAutoDetectedEndpoint(null);
-    }
-  }, [location.pathname]);
-
-  // Use the detected endpoint or the provided one
-  const endpointToTest = autoDetectedEndpoint || testEndpoint;
 
   // Use the query to check connection status - either ping or a custom endpoint
   const query = useQuery({
-    queryKey: ['connection-test', endpointToTest],
+    queryKey: ['connection-test', testEndpoint],
     queryFn: async () => {
-      if (endpointToTest) {
-        return await apiClient.testEndpoint(endpointToTest);
+      if (testEndpoint) {
+        return await apiClient.testEndpoint(testEndpoint);
       }
       return await apiClient.ping();
     },
-    refetchInterval: autoDetectedEndpoint ? false : 10000, // Only poll for standard connection checks
+    refetchInterval: 10000,
     retry: 1,
     staleTime: 5000,
-    // Don't run this query if we're just displaying the regular connection status
-    enabled: !!endpointToTest || !autoDetectedEndpoint,
   });
 
   // Only show the banner after multiple consecutive failures to avoid disrupting the UI for brief network blips
-  // But if we auto-detected an endpoint, show errors immediately
   useEffect(() => {
     if (query.isError) {
       setErrorCount((prev) => prev + 1);
       setWasInErrorState(true);
-
-      // Show banner immediately for auto-detected endpoints
-      if (autoDetectedEndpoint) {
-        setShowBanner(true);
-      }
     } else if (query.isSuccess) {
       // If we were in an error state and now we're successful, show the success banner
       if (wasInErrorState && errorCount >= 2) {
@@ -90,11 +57,10 @@ export function ConnectionErrorBanner({ className, testEndpoint }: ConnectionErr
     }
 
     // Show banner after 2 consecutive errors (indicating a persistent issue)
-    // or immediately for auto-detected endpoints
-    if ((errorCount >= 2 || autoDetectedEndpoint) && !dismissed && query.isError) {
+    if (errorCount >= 2 && !dismissed && query.isError) {
       setShowBanner(true);
     }
-  }, [query.status, dismissed, errorCount, wasInErrorState, autoDetectedEndpoint]);
+  }, [query.status, dismissed, errorCount, wasInErrorState]);
 
   // Reset dismissed state when connection is reestablished
   useEffect(() => {
@@ -160,9 +126,8 @@ export function ConnectionErrorBanner({ className, testEndpoint }: ConnectionErr
       errorMsg.includes('API endpoint not found')
     ) {
       errorTitle = 'Endpoint Not Found';
-      const endpoint = autoDetectedEndpoint || testEndpoint;
-      if (endpoint) {
-        errorDescription = `The requested endpoint "${endpoint}" does not exist on the server.`;
+      if (testEndpoint) {
+        errorDescription = `The requested endpoint "${testEndpoint}" does not exist on the server.`;
       } else {
         errorDescription = 'The requested API endpoint does not exist.';
       }
@@ -206,7 +171,7 @@ export function ConnectionErrorBanner({ className, testEndpoint }: ConnectionErr
         variant="ghost"
         size="sm"
         onClick={handleDismiss}
-        className="h-8 text-red-400 hover:text-red-300 hover:bg-red-900/30"
+        className="text-red-300 hover:text-red-100 hover:bg-red-800/50"
       >
         Dismiss
       </Button>

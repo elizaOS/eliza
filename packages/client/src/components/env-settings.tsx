@@ -58,6 +58,7 @@ export default function EnvSettings() {
     } else if (activeTab === EnvType.LOCAL) {
       await fetchLocalEnvs();
     }
+    // No other EnvType values exist as per the enum definition
 
     setEditingIndex(null);
     setOpenIndex(null);

@@ -18,7 +18,7 @@ export default function ConnectionStatus({ testEndpoint }: ConnectionStatusProps
   const [wasDisconnected, setWasDisconnected] = useState(false);
 
   const query = useQuery({
-    queryKey: ['connection-status', testEndpoint],
+    queryKey: ['ping'],
     queryFn: async () => {
       if (testEndpoint) {
         return await apiClient.testEndpoint(testEndpoint);
@@ -36,10 +36,6 @@ export default function ConnectionStatus({ testEndpoint }: ConnectionStatusProps
 
   // Track connection state changes and show appropriate toast notifications
   useEffect(() => {
-    // Handle transition from connected to disconnected
-    // Removed the connection error toast as it's redundant with the banner
-
-    // Handle transition from disconnected to connected (connection restored)
     if (wasDisconnected && connected && !isLoading) {
       toast({
         title: 'Connection Restored',
@@ -64,7 +60,7 @@ export default function ConnectionStatus({ testEndpoint }: ConnectionStatusProps
 
   const getStatusText = () => {
     if (isLoading) return 'Connecting...';
-    return connected ? 'Connected' : 'Connection Failed';
+    return connected ? 'Connected' : 'Disconnected';
   };
 
   const getTextColor = () => {
