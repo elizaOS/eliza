@@ -26,20 +26,20 @@ npx @elizaos/cli@beta [command]
 
 ## Available Commands
 
-| Command                         | Description                                            |
-| ------------------------------- | ------------------------------------------------------ |
-| [`create`](./create.md)         | Create new projects, plugins, or agents                |
-| [`start`](./start.md)           | Start an ElizaOS project or agent                      |
-| [`dev`](./dev.md)               | Run a project in development mode with hot reloading   |
-| [`agent`](./agent.md)           | Manage agent configurations and state                  |
-| [`plugin`](./plugins.md)        | Develop and publish plugins                            |
-| [`project`](./projects.md)      | Manage project configuration and settings              |
-| [`env`](./env.md)               | Configure environment variables and API keys           |
-| [`publish`](./publish.md)       | Publish packages to npm registry                       |
-| [`update`](./update.md)         | Update ElizaOS components                              |
-| [`update-cli`](./update-cli.md) | Update the ElizaOS CLI itself                          |
-| [`test`](./test.md)             | Run tests for your project                             |
-| [`tee`](./tee.md)               | Manage TEE (Trusted Execution Environment) deployments |
+| Command                     | Description                                            |
+| --------------------------- | ------------------------------------------------------ |
+| [`create`](./create.md)     | Create new projects, plugins, or agents                |
+| [`start`](./start.md)       | Start an ElizaOS project or agent                      |
+| [`dev`](./dev.md)           | Run a project in development mode with hot reloading   |
+| [`agent`](./agent.md)       | Manage agent configurations and state                  |
+| [`plugin`](./plugins.md)    | Develop and publish plugins                            |
+| [`project`](./projects.md)  | Manage project configuration and settings              |
+| [`env`](./env.md)           | Configure environment variables and API keys           |
+| [`publish`](./publish.md)   | Publish packages to npm registry                       |
+| [`update`](./update.md)     | Update ElizaOS components                              |
+| [`update-cli`](./update.md) | Update the ElizaOS CLI itself                          |
+| [`test`](./test.md)         | Run tests for your project                             |
+| [`tee`](./test.md)          | Manage TEE (Trusted Execution Environment) deployments |
 
 ## Global Options
 

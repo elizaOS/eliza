@@ -150,6 +150,6 @@ bun install @elizaos/core@1.2.3
 
 ## Related Commands
 
-- [`build`](./build.md): Build your project manually
+- [Build](./start.md): Build your project manually
 - [`start`](./start.md): Start your project with updated dependencies
 - [`dev`](./dev.md): Run your project in development mode

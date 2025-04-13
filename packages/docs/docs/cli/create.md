@@ -181,7 +181,7 @@ npx elizaos create --yes
 
 ## Next Steps
 
-After creation, see the [Getting Started Guide](../getting-started.md) for next steps.
+After creation, see the [Getting Started](../quickstart.md) for next steps.
 
 ## Related Commands
 

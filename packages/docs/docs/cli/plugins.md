@@ -22,10 +22,10 @@ elizaos plugin publish [options]
 
 Options:
 
-- `-r, --registry <registry>` - Target registry (default: 'elizaOS/registry')
+- `-r, --registry` - Target registry (default: 'elizaOS/registry')
 - `-n, --npm` - Publish to npm instead of GitHub (default: false)
 - `-t, --test` - Test publish process without making changes (default: false)
-- `-p, --platform <platform>` - Specify platform compatibility: node, browser, or universal (default: 'universal')
+- `-p, --platform` - Specify platform compatibility: node, browser, or universal (default: 'universal')
 
 ## GitHub Authentication
 
@@ -73,15 +73,15 @@ Before publishing, ensure your plugin meets all registry requirements:
 
 #### Registry Requirements Checklist
 
-| Requirement               | Description                                                       | Status                             |
+| Name                      | Requirement                                                       | Validation                         |
 | ------------------------- | ----------------------------------------------------------------- | ---------------------------------- |
 | **Name**                  | Must include 'plugin-' (e.g., '@elizaos/plugin-example')          | Auto-checked                       |
 | **GitHub Repository**     | URL must use `github:` format (e.g., `github:username/repo-name`) | Auto-checked & can be auto-fixed   |
 | **Repository Visibility** | Repository must be public                                         | Manual check                       |
 | **Repository Topics**     | Should have 'elizaos-plugins' in topics                           | Manual check                       |
 | **Images Directory**      | Must have an `images/` directory                                  | Auto-checked & can be auto-created |
-| **Logo Image**            | `logo.jpg` - 400x400px square logo (<500KB)                       | Auto-checked                       |
-| **Banner Image**          | `banner.jpg` - 1280x640px banner image (<1MB)                     | Auto-checked                       |
+| **Logo Image**            | `logo.jpg` - 400x400px square logo (max 500KB)                    | Auto-checked                       |
+| **Banner Image**          | `banner.jpg` - 1280x640px banner image (max 1MB)                  | Auto-checked                       |
 | **Agent Configuration**   | Must include `agentConfig` in package.json                        | Auto-checked & can be auto-fixed   |
 | **Description**           | Meaningful description in package.json (10+ chars)                | Auto-checked & prompted            |
 | **Directory Structure**   | Standard plugin directory structure                               | Auto-checked                       |
