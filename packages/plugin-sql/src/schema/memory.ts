@@ -61,7 +61,7 @@ export const memoryTable = pgTable(
     foreignKey({
       name: 'fk_agent',
       columns: [table.agentId],
-      foreignColumns: [entityTable.id],
+      foreignColumns: [agentTable.id],
     }).onDelete('cascade'),
     index('idx_memories_metadata_type').on(sql`((metadata->>'type'))`),
     index('idx_memories_document_id').on(sql`((metadata->>'documentId'))`),
