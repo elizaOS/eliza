@@ -25,23 +25,34 @@ import {
   getAllRequiredPlugins,
 } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
+import { HelpCircle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type FieldType = 'text' | 'textarea' | 'number' | 'checkbox' | 'select';
 
-type InputField = {
-  title: string;
+export enum FIELD_REQUIREMENT {
+  REQUIRED = 'required',
+  OPTIONAL = 'optional',
+}
+
+export type InputField = {
   name: string;
+  title: string;
   description?: string;
-  getValue: (char: Agent) => string;
-  fieldType: FieldType;
+  fieldType: 'text' | 'textarea' | 'email' | 'url' | 'checkbox' | 'select';
+  getValue: (agent: Agent) => string;
   options?: { value: string; label: string }[];
+  tooltip?: string;
+  requirement?: FIELD_REQUIREMENT;
 };
 
-type ArrayField = {
+export type ArrayField = {
+  path: string;
   title: string;
   description?: string;
-  path: string;
-  getData: (char: Agent) => string[];
+  getData: (agent: Agent) => string[];
+  tooltip?: string;
+  requirement?: FIELD_REQUIREMENT;
 };
 
 enum SECTION_TYPE {
@@ -106,7 +117,7 @@ export default function CharacterForm({
   }, [elevenlabsVoices, isLoadingVoices]);
 
   // Define form schema with dynamic voice model options
-  const CHARACTER_FORM_SCHEMA = useMemo(
+  const AGENT_FORM_SCHEMA = useMemo(
     () => [
       {
         sectionTitle: 'Basic Info',
@@ -116,34 +127,44 @@ export default function CharacterForm({
           {
             title: 'Name',
             name: 'name',
-            description: 'The display name of your character',
+            description: 'The primary identifier for this agent',
             fieldType: 'text',
             getValue: (char) => char.name || '',
+            requirement: FIELD_REQUIREMENT.REQUIRED,
+            tooltip:
+              'Display name that will be visible to users. Required for identification purposes.',
           },
           {
             title: 'Username',
             name: 'username',
-            description: 'Unique identifier for your character',
+            description: 'Used in URLs and API endpoints',
             fieldType: 'text',
             getValue: (char) => char.username || '',
+            requirement: FIELD_REQUIREMENT.REQUIRED,
+            tooltip: 'Unique identifier for your agent. Used in APIs/URLs and Rooms.',
           },
           {
             title: 'System',
             name: 'system',
-            description: 'System prompt for character behavior',
+            description: 'System prompt defining agent behavior',
             fieldType: 'textarea',
             getValue: (char) => char.system || '',
+            requirement: FIELD_REQUIREMENT.REQUIRED,
+            tooltip:
+              'Instructions for the AI model that establish core behavior patterns and personality traits.',
           },
           {
             title: 'Voice Model',
             name: 'settings.voice.model',
-            description: 'Voice model used for speech synthesis',
+            description: 'Voice model for audio synthesis',
             fieldType: 'select',
             getValue: (char) => char.settings?.voice?.model || '',
             options: allVoiceModels.map((model) => ({
               value: model.value,
               label: model.label,
             })),
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
+            tooltip: "Select a voice that aligns with the agent's intended persona.",
           },
         ] as InputField[],
       },
@@ -154,21 +175,27 @@ export default function CharacterForm({
         fields: [
           {
             title: 'Bio',
-            description: 'Key information about your character',
+            description: 'Bio data for this agent',
             path: 'bio',
             getData: (char) => (Array.isArray(char.bio) ? char.bio : []),
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
+            tooltip: "Biographical details that establish the agent's background and context.",
           },
           {
             title: 'Topics',
-            description: 'Topics your character is knowledgeable about',
+            description: 'Topics this agent can talk about',
             path: 'topics',
             getData: (char) => char.topics || [],
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
+            tooltip: 'Subject domains the agent can discuss with confidence.',
           },
           {
             title: 'Adjectives',
-            description: "Words that describe your character's personality",
+            description: 'Descriptive personality traits',
             path: 'adjectives',
             getData: (char) => char.adjectives || [],
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
+            tooltip: "Key personality attributes that define the agent's character.",
           },
         ] as ArrayField[],
       },
@@ -178,22 +205,28 @@ export default function CharacterForm({
         sectionType: SECTION_TYPE.ARRAY,
         fields: [
           {
-            title: 'All',
-            description: 'Style rules applied to all interactions',
+            title: 'All Styles',
+            description: 'Writing style for all content types',
             path: 'style.all',
             getData: (char) => char.style?.all || [],
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
+            tooltip: 'Core writing style guidelines applied across all content formats.',
           },
           {
-            title: 'Chat',
-            description: 'Style rules for chat interactions',
+            title: 'Chat Style',
+            description: 'Style specific to chat interactions',
             path: 'style.chat',
             getData: (char) => char.style?.chat || [],
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
+            tooltip: 'Writing style specific to conversational exchanges.',
           },
           {
-            title: 'Post',
-            description: 'Style rules for social media posts',
+            title: 'Post Style',
+            description: 'Style for long-form content',
             path: 'style.post',
             getData: (char) => char.style?.post || [],
+            requirement: FIELD_REQUIREMENT.OPTIONAL,
+            tooltip: 'Writing style for structured content such as articles or posts.',
           },
         ] as ArrayField[],
       },
@@ -338,7 +371,7 @@ export default function CharacterForm({
     } catch (error) {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to update',
+        description: error instanceof Error ? error.message : 'Failed to update agent',
         variant: 'destructive',
       });
     } finally {
@@ -348,7 +381,45 @@ export default function CharacterForm({
 
   const renderInputField = (field: InputField) => (
     <div key={field.name} className="space-y-2">
-      <Label htmlFor={field.name}>{field.title}</Label>
+      <div className="flex items-center gap-2">
+        <Label htmlFor={field.name} className="flex items-center gap-1">
+          {field.title}
+          {field.requirement && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="ml-1">
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${
+                        field.requirement === FIELD_REQUIREMENT.REQUIRED
+                          ? 'bg-red-500'
+                          : 'bg-gray-400'
+                      }`}
+                    ></span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="right" align="start">
+                  <p>
+                    {field.requirement === FIELD_REQUIREMENT.REQUIRED ? 'Required' : 'Optional'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </Label>
+        {field.tooltip && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{field.tooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
 
       {field.fieldType === 'textarea' ? (
@@ -404,7 +475,45 @@ export default function CharacterForm({
 
   const renderArrayField = (field: ArrayField) => (
     <div key={field.path} className="space-y-2">
-      <Label htmlFor={field.path}>{field.title}</Label>
+      <div className="flex items-center gap-2">
+        <Label htmlFor={field.path} className="flex items-center gap-1">
+          {field.title}
+          {field.requirement && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="ml-1">
+                    <span
+                      className={`inline-block w-2 h-2 rounded-full ${
+                        field.requirement === FIELD_REQUIREMENT.REQUIRED
+                          ? 'bg-red-500'
+                          : 'bg-gray-400'
+                      }`}
+                    ></span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="right" align="start">
+                  <p>
+                    {field.requirement === FIELD_REQUIREMENT.REQUIRED ? 'Required' : 'Optional'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </Label>
+        {field.tooltip && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{field.tooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
       <ArrayInput
         data={field.getData(characterValue)}
@@ -428,8 +537,8 @@ export default function CharacterForm({
       }
 
       toast({
-        title: 'Character Imported',
-        description: 'Character data has been successfully loaded.',
+        title: 'Agent Imported',
+        description: 'Agent data has been successfully loaded.',
       });
     } catch (error) {
       toast({
@@ -446,8 +555,10 @@ export default function CharacterForm({
     <div className="container max-w-4xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold">{title}</h1>
-          <p className="text-muted-foreground mt-1">{description}</p>
+          <h1 className="text-3xl font-bold">{title || 'Agent Settings'}</h1>
+          <p className="text-muted-foreground mt-1">
+            {description || 'Configure your agent settings'}
+          </p>
         </div>
       </div>
 
@@ -459,7 +570,7 @@ export default function CharacterForm({
               gridTemplateColumns: `repeat(${customComponents.length + 3}, minmax(0, 1fr))`,
             }}
           >
-            {CHARACTER_FORM_SCHEMA.map((section) => (
+            {AGENT_FORM_SCHEMA.map((section) => (
               <TabsTrigger key={section.sectionValue} value={section.sectionValue}>
                 {section.sectionTitle}
               </TabsTrigger>
@@ -473,7 +584,7 @@ export default function CharacterForm({
 
           <Card>
             <CardContent className="p-6">
-              {CHARACTER_FORM_SCHEMA.map((section) => (
+              {AGENT_FORM_SCHEMA.map((section) => (
                 <TabsContent
                   key={section.sectionValue}
                   value={section.sectionValue}
@@ -503,7 +614,7 @@ export default function CharacterForm({
               }}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Deleting...' : 'Delete Character'}
+              {isDeleting ? 'Deleting...' : 'Delete Agent'}
             </Button>
           </div>
 
