@@ -6,28 +6,20 @@ tags: [plugins, registry, elizaos, announcement, v2]
 ---
 
 
-V2 introduces significant upgrades to improve how developers build, share, and integrate functionality into their agents:
-
-
-| V1 Approach | V2 Approach |
-|-------------|-------------|
-| Central monorepo | Independent repositories |
-| PR approval workflow | Self-published plugins |
-| Tightly coupled components | Clean, standardized interfaces |
-| Manual dependency management | Automated plugin resolution |
-| Limited extensibility | Comprehensive plugin ecosystem |
-
-Here's a guide on how to add your own:
+V2 introduces significant upgrades to improve how developers build, share, and integrate functionality into their agents. This guide will walk through updates as they relate to plugins (hint: everything is a plugin).
 
 {/* truncate */}
 
 ## What's New
 
-- **No central repo needed**: Host your plugin in your own GitHub repo.
+The codebase is more compact in order to be easier to work with. V2 also features a formal API specification for better definition and compatibility. When it comes to plugins, here's what's new:
+
+- **No central repo needed**: Host your plugin in your own GitHub repo
 - **One-line integration**: Add plugins to your `package.json` and `agent.json`.
 - **Open registry**: Submit a PR to get listed on the [Plugin Registry](https://elizaos.github.io/registry).
 - **Dynamic loading**: Load plugins from external repositories
 
+Many of these improvements were already being adopted in V1 toward the end of its lifecycle in order to create a natural evolution path for developers already familiar with the platform.
 
 ## 🧩 How to Add a Plugin in V2
 
