@@ -343,7 +343,9 @@ agent
         throw new Error(errorData.error?.message || `Failed to stop agent: ${response.statusText}`);
       }
 
-      console.log(`Successfully stopped agent ${opts.name}`);
+      logger.success(`Successfully stopped agent ${opts.name}`);
+      // Add direct console log for higher visibility
+      console.log(`\x1b[32m✓ Agent ${opts.name} stopped successfully!\x1b[0m`);
     } catch (error) {
       await checkServer(opts);
       handleError(error);

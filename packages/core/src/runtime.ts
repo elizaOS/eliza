@@ -234,6 +234,11 @@ export class AgentRuntime implements IAgentRuntime {
     if (plugin.adapter) {
       this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
       this.registerDatabaseAdapter(plugin.adapter);
+      this.runtimeLogger.debug(
+        `Database adapter registered successfully for plugin ${plugin.name}`
+      );
+    } else {
+      this.runtimeLogger.debug(`Plugin ${plugin.name} does not provide a database adapter`);
     }
 
     // Register plugin actions
@@ -325,7 +330,24 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    await this.adapter.init();
+    // Ensure adapter is initialized
+    if (!this.adapter) {
+      this.runtimeLogger.error(
+        'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
+      );
+      throw new Error(
+        'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
+      );
+    }
+
+    try {
+      await this.adapter.init();
+    } catch (error) {
+      this.runtimeLogger.error(
+        `Failed to initialize database adapter: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
 
     // First create the agent entity directly
     try {
@@ -1343,7 +1365,27 @@ export class AgentRuntime implements IAgentRuntime {
       body: {
         modelType,
         modelKey,
-        params: params ? (typeof params === 'object' ? Object.keys(params) : typeof params) : null,
+        params: (() => {
+          if (params === null || params === undefined) {
+            return null;
+          }
+          // Handle Node.js Buffer
+          if (typeof Buffer !== 'undefined' && Buffer.isBuffer(params)) {
+            return `[Audio Buffer (${params.length} bytes)]`;
+          }
+          // Handle TypedArrays (Uint8Array, Float32Array, etc.)
+          if (ArrayBuffer.isView(params)) {
+            // Use constructor name for TypedArray type (e.g., 'Uint8Array')
+            // Use 'length' for element count in TypedArrays
+            return `[Audio ${params.constructor.name} (${(params as any).length})]`;
+          }
+          // Handle other objects
+          if (typeof params === 'object') {
+            return Object.keys(params);
+          }
+          // Handle primitives
+          return typeof params;
+        })(),
         response:
           Array.isArray(response) && response.every((x) => typeof x === 'number')
             ? '[array]'

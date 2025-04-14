@@ -300,6 +300,9 @@ export function agentRouter(
     // stop existing runtime
     server?.unregisterAgent(agentId);
 
+    // Log success
+    logger.debug(`[AGENT STOP] Successfully stopped agent: ${runtime.character.name} (${agentId})`);
+
     // return success
     res.json({
       success: true,
