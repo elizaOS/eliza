@@ -16,5 +16,12 @@ export default defineConfig({
     'http',
     '@elizaos/core',
     'zod',
+    '@ai-sdk/openai',
+    'ai',
+    '@ai-sdk/ui-utils',
+    'js-tiktoken',
+    'combined-stream',
+    'form-data',
+    'node-fetch',
   ],
 });

@@ -203,122 +203,139 @@ agent
   .command('start')
   .alias('s')
   .description('Start an agent')
-  .option('-n, --name <name>', 'character name to start the agent with')
+  .option('-n, --name <n>', 'character name to start the agent with')
   .option('-j, --json <json>', 'character JSON string')
-  .option('-pt, --path <path>', 'local path to character JSON file')
-  .option('-rc, --remote-character <url>', 'remote URL to character JSON file')
-  .action(async (opts) => {
+  .option('--path <path>', 'local path to character JSON file')
+  .option('--remote-character <url>', 'remote URL to character JSON file')
+  .action(async (options) => {
     try {
+      console.debug('Starting agent start command action handler');
+      console.debug('Options object:', JSON.stringify(options));
+      console.debug('path option value:', options.path);
+      console.debug('name option value:', options.name);
+      console.debug('json option value:', options.json ? '[JSON string present]' : undefined);
+      console.debug('remoteCharacter option value:', options.remoteCharacter);
+
       // API Endpoint: POST /agents
       const response: Response = await (async () => {
         const payload: AgentStartPayload = {};
         const headers = { 'Content-Type': 'application/json' };
-        const baseUrl = getAgentsBaseUrl(opts);
+        const baseUrl = getAgentsBaseUrl(options);
+        console.debug(`Base URL determined: ${baseUrl}`);
 
-        // Determine which start option to use
-        const startOption = opts.json
-          ? 'json'
-          : opts.remoteCharacter
-            ? 'remoteCharacter'
-            : opts.path
-              ? 'path'
-              : opts.name
-                ? 'name'
-                : 'none';
-
-        switch (startOption) {
-          case 'json':
-            try {
-              payload.characterJson = JSON.parse(opts.json);
-              return await fetch(baseUrl, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(payload),
-              });
-            } catch (error) {
-              throw new Error(`Failed to parse JSON string: ${error.message}`);
+        // Handle the path option first
+        if (options.path) {
+          console.debug('Using local path option:', options.path);
+          try {
+            const filePath = path.resolve(process.cwd(), options.path);
+            console.debug(`Resolved file path: ${filePath}`);
+            if (!fs.existsSync(filePath)) {
+              throw new Error(`File not found at path: ${filePath}`);
             }
-
-          case 'remoteCharacter':
-            if (
-              !opts.remoteCharacter.startsWith('http://') &&
-              !opts.remoteCharacter.startsWith('https://')
-            ) {
-              throw new Error('Remote URL must start with http:// or https://');
-            }
-            payload.characterPath = opts.remoteCharacter;
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            console.debug(`Read file content, size: ${fileContent.length} bytes`);
+            payload.characterJson = JSON.parse(fileContent);
+            console.debug('Parsed character JSON from file');
             return await fetch(baseUrl, {
               method: 'POST',
               headers,
               body: JSON.stringify(payload),
             });
-
-          case 'path':
-            try {
-              const fileContent = fs.readFileSync(opts.path, 'utf8');
-              payload.characterJson = JSON.parse(fileContent);
-              return await fetch(baseUrl, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(payload),
-              });
-            } catch (error) {
-              throw new Error(`Failed to read or parse local JSON file: ${error.message}`);
-            }
-
-          case 'name': {
-            const agentId = await resolveAgentId(opts.name, opts);
-            const agents = await getAgents(opts);
-            const agent = agents.find((agent) => agent.id === agentId);
-            if (!agent) {
-              console.error(`Agent not found: ${agentId}`);
-            }
-            if (!agent.character) {
-              console.error(`No character data found for agent: ${agentId}`);
-            }
-            payload.characterJson =
-              typeof agent.character === 'string'
-                ? JSON.parse(agent.character as string)
-                : (agent.character as Record<string, unknown>);
-            try {
-              return await fetch(baseUrl, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(payload),
-              });
-            } catch (error) {
-              throw new Error(`Failed to start agent by name: ${error.message}`);
-            }
+          } catch (error) {
+            console.error('Error reading or parsing local JSON file:', error);
+            throw new Error(`Failed to read or parse local JSON file: ${error.message}`);
           }
+        }
 
-          case 'none':
-          default:
-            // Default behavior: Start a default agent if no specific option is provided
+        // Then handle other options
+        if (options.json) {
+          console.debug('Using JSON string option');
+          try {
+            payload.characterJson = JSON.parse(options.json);
+            console.debug('Parsed character JSON string');
             return await fetch(baseUrl, {
               method: 'POST',
               headers,
-              body: JSON.stringify({}), // Empty body for default agent start
+              body: JSON.stringify(payload),
             });
+          } catch (error) {
+            console.error('Error parsing JSON string:', error);
+            throw new Error(`Failed to parse JSON string: ${error.message}`);
+          }
         }
+
+        if (options.remoteCharacter) {
+          console.debug('Using remote character URL option');
+          if (
+            !options.remoteCharacter.startsWith('http://') &&
+            !options.remoteCharacter.startsWith('https://')
+          ) {
+            console.error('Invalid remote URL:', options.remoteCharacter);
+            throw new Error('Remote URL must start with http:// or https://');
+          }
+          payload.characterPath = options.remoteCharacter;
+          console.debug('Using remote character URL:', payload.characterPath);
+          return await fetch(baseUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload),
+          });
+        }
+
+        if (options.name) {
+          console.debug('Using name option:', options.name);
+          const agentId = await resolveAgentId(options.name, options);
+          console.debug(`Resolved agent ID: ${agentId} for name: ${options.name}`);
+          return await fetch(`${baseUrl}/${agentId}`, {
+            method: 'POST',
+            headers,
+          });
+        }
+
+        console.debug('No specific start option provided, starting default agent');
+        // Default behavior: Start a default agent if no specific option is provided
+        return await fetch(baseUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({}), // Empty body for default agent start
+        });
       })();
 
+      console.debug(`Response status: ${response.status} ${response.statusText}`);
       if (!response.ok) {
-        const errorData = (await response.json()) as ApiResponse<unknown>;
+        let errorData: ApiResponse<unknown> | null = null;
+        try {
+          errorData = (await response.json()) as ApiResponse<unknown>;
+          console.debug('Received error data from server:', errorData);
+        } catch (jsonError) {
+          console.error('Failed to parse error response as JSON:', jsonError);
+          // Use status text if JSON parsing fails
+          throw new Error(`Failed to start agent: ${response.statusText}`);
+        }
         throw new Error(
-          errorData.error?.message || `Failed to start agent: ${response.statusText}`
+          errorData?.error?.message || `Failed to start agent: ${response.statusText}`
         );
       }
 
-      const data = (await response.json()) as ApiResponse<Agent>;
+      // Type assertion to handle the specific structure returned by the start endpoint
+      const data = (await response.json()) as ApiResponse<any>;
+      console.debug('Received successful response data:', data);
       const result = data.data;
 
       if (!result) {
+        console.error('Server responded OK, but no agent data was returned');
         throw new Error('Failed to start agent: No data returned from server');
       }
+      console.debug('Agent start successful, result:', result);
 
-      console.debug(`Successfully started agent ${result.name} (${result.id})`);
+      // Correctly access the agent name from the nested character object
+      const agentName = result?.character?.name || 'unknown';
+      console.debug(`Successfully started agent ${agentName}`);
+      logger.success(`Agent ${agentName} started successfully!`);
+      console.log(`\x1b[32m✓ Agent ${agentName} started successfully!\x1b[0m`);
     } catch (error) {
-      await checkServer(opts);
+      console.error('Error in agent start command:', error);
+      await checkServer(options);
       handleError(error);
     }
   });
@@ -335,8 +352,8 @@ agent
 
       console.info(`Stopping agent ${resolvedAgentId}`);
 
-      // API Endpoint: POST /agents/:agentId/stop
-      const response = await fetch(`${baseUrl}/${resolvedAgentId}/stop`, { method: 'POST' });
+      // API Endpoint: PUT /agents/:agentId (not /agents/:agentId/stop)
+      const response = await fetch(`${baseUrl}/${resolvedAgentId}`, { method: 'PUT' });
 
       if (!response.ok) {
         const errorData = (await response.json()) as ApiResponse<unknown>;

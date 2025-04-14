@@ -34,7 +34,7 @@
   },
   "scripts": {
     "cli": "bun run build && node dist/index.js",
-    "build": "tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts && bun run src/scripts/copy-drizzle.ts",
+    "build": "npx tsup && bun run src/scripts/copy-client-dist.ts && bun run src/scripts/copy-templates.ts && bun run src/scripts/copy-drizzle.ts",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
@@ -49,7 +49,7 @@
     "@babel/parser": "^7.22.6",
     "@elizaos/core": "^1.0.0-beta.32",
     "@elizaos/plugin-anthropic": "^1.0.0-beta.32",
-    "@elizaos/plugin-openai": "^1.0.0-beta.32",
+    "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "^1.0.0-beta.32",
     "@types/babel__core": "^7.20.1",
     "@types/diff": "^5.0.3",
