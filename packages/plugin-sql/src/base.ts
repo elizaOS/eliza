@@ -499,7 +499,7 @@ export abstract class BaseDrizzleAdapter<
         })
         .from(entityTable)
         .leftJoin(componentTable, eq(componentTable.entityId, entityTable.id))
-        .where(and(eq(entityTable.id, entityId), eq(entityTable.agentId, this.agentId)));
+        .where(eq(entityTable.id, entityId));
 
       if (result.length === 0) return null;
 
@@ -1591,6 +1591,7 @@ export abstract class BaseDrizzleAdapter<
   async createRoom({
     id,
     name,
+    agentId,
     source,
     type,
     channelId,
@@ -1605,7 +1606,7 @@ export abstract class BaseDrizzleAdapter<
         .values({
           id: newRoomId,
           name,
-          agentId: this.agentId,
+          agentId,
           source,
           type,
           channelId,

@@ -334,7 +334,7 @@ export class AgentRuntime implements IAgentRuntime {
       const existingAgent = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
 
       // No need to transform agent's own ID
-      const agentEntity = await this.adapter.getEntityById(this.agentId);
+      let agentEntity = await this.adapter.getEntityById(this.agentId);
 
       if (!agentEntity) {
         const created = await this.createEntity({
@@ -348,19 +348,15 @@ export class AgentRuntime implements IAgentRuntime {
           throw new Error(`Failed to create entity for agent ${this.agentId}`);
         }
 
+        agentEntity = await this.adapter.getEntityById(this.agentId);
+
         this.runtimeLogger.debug(
           `Success: Agent entity created successfully for ${this.character.name}`
         );
       }
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to create agent entity: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
 
-    // Create room for the agent and register all plugins in parallel
-    try {
+      if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
+
       await Promise.all([
         this.ensureRoomExists({
           id: this.agentId,
