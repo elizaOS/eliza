@@ -11,6 +11,7 @@ import {
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
+  type IInstrumentationService,
   type InvokePayload,
   logger,
   type Media,
@@ -28,6 +29,7 @@ import {
   type UUID,
   type WorldPayload,
 } from '@elizaos/core';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { v4 } from 'uuid';
 import { choiceAction } from './actions/choice';
 import { followRoomAction } from './actions/followRoom';
@@ -121,6 +123,60 @@ const messageReceivedHandler = async ({
   callback,
   onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
+  // --- OTel Instrumentation Start ---
+  const instrumentationService = runtime.getService<IInstrumentationService>(ServiceType.INSTRUMENTATION);
+  const tracer = instrumentationService?.getTracer('eliza.core.runtime');
+
+  if (!tracer || !instrumentationService?.isEnabled()) {
+    // Instrumentation disabled, run original logic directly
+    await _messageReceivedHandlerLogic({ runtime, message, callback, onComplete });
+    return;
+  }
+
+  // Wrap the main logic in a root span
+  await tracer.startActiveSpan('AgentRuntime.handleMessage', async (rootSpan) => {
+    try {
+      // Set essential attributes
+      rootSpan.setAttributes({
+        'agent.id': runtime.agentId,
+        'character.name': runtime.character?.name || 'unknown',
+        'room.id': message?.roomId || 'unknown',
+        'user.id': message?.entityId || 'unknown', // Assuming entityId is the user ID
+        'message.id': message?.id || 'unknown',
+        'run.id': message?.metadata?.runId || 'unknown', // Add runId if available
+        'operation.name': 'AgentRuntime.handleMessage', // Explicit operation name
+      });
+      rootSpan.addEvent('processing_started');
+
+      // Execute the original handler logic within the span context
+      await _messageReceivedHandlerLogic({ runtime, message, callback, onComplete }, rootSpan); // Pass span down
+
+      // Set success status
+      rootSpan.setStatus({ code: SpanStatusCode.OK });
+      rootSpan.addEvent('processing_succeeded');
+
+    } catch (error) {
+      // Record exception and set error status
+      rootSpan.recordException(error as Error);
+      rootSpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+      rootSpan.addEvent('processing_failed');
+      // Re-throw the error to maintain original application flow
+      throw error;
+    } finally {
+      // Ensure the span is always ended
+      rootSpan.end();
+    }
+  });
+  // --- OTel Instrumentation End ---
+};
+
+// Extracted original logic to be called within the span
+const _messageReceivedHandlerLogic = async ({
+  runtime,
+  message,
+  callback,
+  onComplete,
+}: MessageReceivedHandlerParams, rootSpan?: any /* opentelemetry Span */): Promise<void> => {
   // Generate a new response ID
   const responseId = v4();
   // Get or create the agent-specific map
@@ -139,7 +195,18 @@ const messageReceivedHandler = async ({
   const runId = asUUID(v4());
   const startTime = Date.now();
 
-  // Emit run started event
+  // Add runId to message metadata if not already present
+  if (message.metadata) {
+    message.metadata.runId = runId;
+  } else {
+    message.metadata = { runId };
+  }
+
+  // Add run ID to span if available
+  rootSpan?.setAttribute('run.id', runId);
+
+  // Emit run started event - Add event to span as well
+  rootSpan?.addEvent('run_started', { 'run.id': runId, 'start.time': startTime });
   await runtime.emitEvent(EventType.RUN_STARTED, {
     runtime,
     runId,
@@ -177,14 +244,17 @@ const messageReceivedHandler = async ({
   const processingPromise = (async () => {
     try {
       if (message.entityId === runtime.agentId) {
+        rootSpan?.addEvent('error_message_from_agent_itself');
         throw new Error('Message is from the agent itself');
       }
 
       // First, save the incoming message
+      rootSpan?.addEvent('saving_incoming_message');
       await Promise.all([
         runtime.addEmbeddingToMemory(message),
         runtime.createMemory(message, 'messages'),
       ]);
+      rootSpan?.addEvent('incoming_message_saved');
 
       const agentUserState = await runtime.getParticipantUserState(message.roomId, runtime.agentId);
 
@@ -193,9 +263,11 @@ const messageReceivedHandler = async ({
         !message.content.text?.toLowerCase().includes(runtime.character.name.toLowerCase())
       ) {
         logger.debug('Ignoring muted room');
+        rootSpan?.addEvent('ignored_muted_room');
         return;
       }
 
+      rootSpan?.addEvent('composing_initial_state');
       let state = await runtime.composeState(message, [
         'PROVIDERS',
         'SHOULD_RESPOND',
@@ -215,6 +287,7 @@ const messageReceivedHandler = async ({
       let providers: string[] = [];
 
       if (!shouldSkipShouldRespond) {
+        rootSpan?.addEvent('checking_should_respond');
         const shouldRespondPrompt = composePromptFromState({
           state,
           template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
@@ -245,7 +318,9 @@ const messageReceivedHandler = async ({
 
         shouldRespond = responseObject?.action && responseObject.action === 'RESPOND';
         providers = (responseObject?.providers as string[]) || [];
+        rootSpan?.addEvent('should_respond_check_complete', { 'should.respond': shouldRespond });
       } else {
+        rootSpan?.addEvent('skipped_should_respond_check');
         // Use providersTemplate for DM and VOICE_DM channels
         const providersPrompt = composePromptFromState({
           state,
@@ -258,6 +333,7 @@ const messageReceivedHandler = async ({
 
         const responseObject = parseJSONObjectFromText(response);
         providers = (responseObject?.providers as string[]) || [];
+        rootSpan?.addEvent('providers_determined_for_dm', { 'providers.count': providers.length });
       }
 
       logger.debug('*** Should Respond ***', shouldRespond);
@@ -324,12 +400,18 @@ const messageReceivedHandler = async ({
           latestResponseIds.delete(runtime.agentId);
         }
 
+        rootSpan?.addEvent('generating_response_content');
         await runtime.processActions(message, responseMessages, state, callback);
+        rootSpan?.addEvent('actions_processed');
       }
       onComplete?.();
       await runtime.evaluate(message, state, shouldRespond, callback, responseMessages);
+      rootSpan?.addEvent('evaluating_response');
 
       // Emit run ended event on successful completion
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      rootSpan?.addEvent('run_ended', { 'run.id': runId, 'end.time': endTime, 'duration.ms': duration, 'status': 'completed' });
       await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
         runId,
@@ -338,8 +420,8 @@ const messageReceivedHandler = async ({
         entityId: message.entityId,
         startTime,
         status: 'completed',
-        endTime: Date.now(),
-        duration: Date.now() - startTime,
+        endTime,
+        duration,
         source: 'messageHandler',
       });
     } catch (error) {
@@ -665,8 +747,7 @@ const handleServerSync = async ({
     onComplete?.();
   } catch (error) {
     logger.error(
-      `Error processing standardized server data: ${
-        error instanceof Error ? error.message : String(error)
+      `Error processing standardized server data: ${error instanceof Error ? error.message : String(error)
       }`
     );
   }

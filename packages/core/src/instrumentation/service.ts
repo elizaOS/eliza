@@ -9,32 +9,33 @@ import { PgInstrumentation } from "@opentelemetry/instrumentation-pg";
 import { IInstrumentationService, InstrumentationConfig } from "./types";
 import { elizaLogger } from "../logger";
 import { Service, ServiceType, IAgentRuntime } from "../types";
-import pg from "pg";
+import * as pg from "pg";
+
 
 const DEFAULT_SERVICE_NAME = "eliza-agent";
-
-// Get PostgreSQL connection string from environment variables
-const POSTGRES_URL_INSTRUMENTATION = process.env.POSTGRES_URL_INSTRUMENTATION || "postgresql://postgres:postgres@localhost:5432/eliza_tracing";
 
 /**
  * Custom span processor that writes spans to a PostgreSQL database
  */
 class PostgresSpanProcessor implements SpanProcessor {
-    private pgClient: pg.Client | null = null;
+    private pgClient: import("pg").Client | null = null;
     private isInitialized = false;
     private isConnected = false;
 
-    constructor() {
-        elizaLogger.info(`🔄 Initializing PostgreSQL Span Processor with URL: ${POSTGRES_URL_INSTRUMENTATION}`);
+    constructor(connectionString: string) {
+        elizaLogger.info(`🔄 Initializing PostgreSQL Span Processor with provided URL.`);
+
+        if (!connectionString) {
+            elizaLogger.error(`❌ Cannot initialize PostgreSQL Span Processor: Connection string is empty.`);
+            return;
+        }
 
         try {
-            // Create the PostgreSQL client synchronously
             this.pgClient = new pg.Client({
-                connectionString: POSTGRES_URL_INSTRUMENTATION,
+                connectionString: connectionString,
             });
 
-            // Connect synchronously using a direct .connect() call with a callback
-            elizaLogger.info(`🔄 Connecting to PostgreSQL (synchronous)...`);
+            elizaLogger.info(`🔄 Connecting to PostgreSQL...`);
             this.pgClient.connect((err) => {
                 if (err) {
                     elizaLogger.error(`❌ Failed to connect to PostgreSQL in constructor: ${err}`);
@@ -45,7 +46,6 @@ class PostgresSpanProcessor implements SpanProcessor {
                 this.isConnected = true;
                 elizaLogger.info(`✅ Connected to PostgreSQL database`);
 
-                // Create the traces table
                 const createTableQuery = `
                     CREATE TABLE IF NOT EXISTS traces (
                         id SERIAL PRIMARY KEY,
@@ -82,13 +82,12 @@ class PostgresSpanProcessor implements SpanProcessor {
                     this.isInitialized = true;
                     elizaLogger.info(`✅ Traces table created or verified.`);
 
-                    // Insert a test record to verify connection
                     const testQuery = `
                         INSERT INTO traces (
                             trace_id, span_id, span_name, start_time, end_time, duration_ms,
                             agent_id, session_id, environment, room_id
                         ) VALUES (
-                            'test-connection', 'test-connection', 'Connection Test', 
+                            'test-connection', 'test-connection', 'Connection Test',
                             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0,
                             'test', 'test', 'test', 'test'
                         ) ON CONFLICT (trace_id, span_id) DO NOTHING;
@@ -114,7 +113,6 @@ class PostgresSpanProcessor implements SpanProcessor {
 
 
     onStart(span: ReadableSpan): void {
-        // Optional: Log span start for debugging
         elizaLogger.debug("🟢 Span started:", span.name);
     }
 
@@ -128,12 +126,10 @@ class PostgresSpanProcessor implements SpanProcessor {
 
         const spanContext = span.spanContext();
 
-        // Convert [seconds, nanoseconds] to milliseconds
         const startTimeMs = span.startTime[0] * 1000 + span.startTime[1] / 1e6;
         const endTimeMs = span.endTime[0] * 1000 + span.endTime[1] / 1e6;
         const durationMs = Math.floor(endTimeMs - startTimeMs);
 
-        // Extract fields from attributes
         const attributes = span.attributes || {};
         const resource = span.resource?.attributes || {};
 
@@ -180,7 +176,6 @@ class PostgresSpanProcessor implements SpanProcessor {
                 "unknown",
         };
 
-        // No longer skipping spans without context IDs
         elizaLogger.debug(`🔄 Inserting span into PostgreSQL: ${span.name}`);
         this.insertTrace(spanData);
     }
@@ -190,7 +185,6 @@ class PostgresSpanProcessor implements SpanProcessor {
 
         elizaLogger.debug(`🔄 Begin insertTrace for span: ${spanData.span_name}`);
 
-        // This table name should be hardcoded to avoid any variable issues
         const tableName = 'traces';
 
         const query = `
@@ -243,14 +237,11 @@ class PostgresSpanProcessor implements SpanProcessor {
         ];
 
         try {
-            // Direct approach without explicit transaction
             elizaLogger.debug(`Executing direct insert for span: ${spanData.span_name}`);
             elizaLogger.debug(`Span trace_id: ${spanData.trace_id}, span_id: ${spanData.span_id}`);
 
-            // Use a direct query without explicit transaction
             const result = await this.pgClient.query(query, values);
 
-            // Check if we got a result
             if (result.rows && result.rows.length > 0) {
                 const id = result.rows[0].id;
                 elizaLogger.info(`✅ Span inserted with ID ${id}: ${spanData.span_name}`);
@@ -260,7 +251,6 @@ class PostgresSpanProcessor implements SpanProcessor {
                 elizaLogger.warn(`⚠️ No row inserted for span (likely conflict): ${spanData.span_name}`);
             }
 
-            // For verification, execute a separate query to check if the span was inserted
             try {
                 const verifyQuery = `SELECT id FROM ${tableName} WHERE trace_id = $1 AND span_id = $2`;
                 const verifyResult = await this.pgClient.query(verifyQuery, [spanData.trace_id, spanData.span_id]);
@@ -276,13 +266,11 @@ class PostgresSpanProcessor implements SpanProcessor {
         } catch (error) {
             elizaLogger.error(`❌ Error inserting span into PostgreSQL DB:`, error);
 
-            // Log detailed error information
             if (error instanceof Error) {
                 elizaLogger.error(`Error message: ${error.message}`);
                 elizaLogger.error(`Error stack: ${error.stack}`);
             }
 
-            // Log the data that failed to insert
             elizaLogger.error(`Failed span data: ${JSON.stringify({
                 span_name: spanData.span_name,
                 trace_id: spanData.trace_id,
@@ -309,7 +297,7 @@ class PostgresSpanProcessor implements SpanProcessor {
 }
 
 export class InstrumentationService extends Service implements IInstrumentationService {
-    readonly name = "INSTRUMENTATION"; // Or ServiceType.INSTRUMENTATION if defined
+    readonly name = "INSTRUMENTATION";
     readonly capabilityDescription = "Provides OpenTelemetry tracing and metrics capabilities.";
     public instrumentationConfig: InstrumentationConfig;
     private resource: Resource;
@@ -320,9 +308,11 @@ export class InstrumentationService extends Service implements IInstrumentationS
 
     constructor(config?: InstrumentationConfig) {
         super();
+        const isEnabled = config?.enabled || false;
+
         this.instrumentationConfig = {
             serviceName: config?.serviceName || process.env.OTEL_SERVICE_NAME || DEFAULT_SERVICE_NAME,
-            enabled: config?.enabled ?? (process.env.INSTRUMENTATION_ENABLED === 'true' || !!process.env.POSTGRES_URL_INSTRUMENTATION)
+            enabled: isEnabled
         };
 
         this.resource = new Resource({
@@ -331,32 +321,37 @@ export class InstrumentationService extends Service implements IInstrumentationS
 
         if (this.isEnabled()) {
             this.initializeProviders();
-            elizaLogger.info(`📊 Instrumentation Service enabled for '${this.instrumentationConfig.serviceName}'. Using PostgreSQL for storage.`);
+            elizaLogger.info(`📊 Instrumentation Service configured as enabled for '${this.instrumentationConfig.serviceName}'.`);
         } else {
-            elizaLogger.info("📊 Instrumentation Service disabled.");
+            elizaLogger.info("📊 Instrumentation Service configured as disabled.");
         }
     }
 
     private initializeProviders(): void {
         if (!this.isEnabled()) return;
 
-        // --- Tracer Provider Setup ---
         this.tracerProvider = new NodeTracerProvider({ resource: this.resource });
 
-        // Add PostgreSQL Span Processor
-        try {
-            this.postgresSpanProcessor = new PostgresSpanProcessor();
-            this.tracerProvider.addSpanProcessor(this.postgresSpanProcessor);
-            elizaLogger.info("📊 Added PostgreSQL span processor for telemetry data storage");
-        } catch (e) {
-            elizaLogger.error("Failed to initialize PostgreSQL Span Processor:", e);
-            this.instrumentationConfig.enabled = false; // Disable if processor fails
-            return; // Stop further initialization
+        const postgresConnectionString = process.env.POSTGRES_URL_INSTRUMENTATION;
+
+        if (!postgresConnectionString) {
+            elizaLogger.error("Cannot initialize PostgreSQL Span Processor: POSTGRES_URL_INSTRUMENTATION is not set.");
+        } else {
+            try {
+                this.postgresSpanProcessor = new PostgresSpanProcessor(postgresConnectionString);
+                if (this.postgresSpanProcessor && (this.postgresSpanProcessor as any).pgClient) {
+                    this.tracerProvider.addSpanProcessor(this.postgresSpanProcessor);
+                    elizaLogger.info("📊 Added PostgreSQL span processor for telemetry data storage.");
+                } else {
+                    elizaLogger.error("Failed to add PostgreSQL span processor likely due to initialization errors.");
+                }
+            } catch (e) {
+                elizaLogger.error("Error creating PostgreSQL Span Processor instance:", e);
+            }
         }
 
         this.tracerProvider.register();
 
-        // --- Register Instrumentations ---
         try {
             elizaLogger.info("Attempting to register PostgreSQL instrumentation...");
             registerInstrumentations({
@@ -372,7 +367,6 @@ export class InstrumentationService extends Service implements IInstrumentationS
             elizaLogger.error("❌ Failed to register instrumentations:", e);
         }
 
-        // --- Meter Provider Setup ---
         this.meterProvider = new MeterProvider({ resource: this.resource });
         elizaLogger.warn("Metrics export is currently disabled.");
 
@@ -385,14 +379,12 @@ export class InstrumentationService extends Service implements IInstrumentationS
 
     public getTracer(name?: string, version?: string): Tracer | null {
         if (!this.isEnabled() || !this.tracerProvider) {
-            // Return a NoOpTracer if disabled
             return trace.getTracer(name || this.instrumentationConfig.serviceName!, version);
         }
         return this.tracerProvider.getTracer(name || this.instrumentationConfig.serviceName!, version);
     }
 
     public getMeter(name?: string, version?: string): Meter | null {
-        // Always return a meter (could be NoOp if disabled)
         return metrics.getMeter(name || this.instrumentationConfig.serviceName!, version);
     }
 
@@ -402,7 +394,6 @@ export class InstrumentationService extends Service implements IInstrumentationS
         }
         elizaLogger.debug("📊 Flushing OpenTelemetry providers...");
         try {
-            // Use Promise.allSettled to ensure both attempt flush even if one fails
             const results = await Promise.allSettled([
                 this.tracerProvider?.forceFlush(),
                 this.meterProvider?.forceFlush(),
@@ -426,7 +417,6 @@ export class InstrumentationService extends Service implements IInstrumentationS
         this.isShutdown = true;
         elizaLogger.info("📊 Shutting down Instrumentation Service...");
         try {
-            // Use Promise.allSettled to ensure both attempt shutdown even if one fails
             const results = await Promise.allSettled([
                 this.tracerProvider?.shutdown(),
                 this.meterProvider?.shutdown(),
@@ -439,14 +429,11 @@ export class InstrumentationService extends Service implements IInstrumentationS
             });
             elizaLogger.info("📊 Instrumentation Service shutdown attempt complete.");
         } catch (error) {
-            // Catch any unexpected errors during shutdown orchestration
             elizaLogger.error("Unexpected error during instrumentation shutdown: ", error);
         }
     }
 
-    // Implement the static start method required by Service base class
     static async start(runtime: IAgentRuntime, config?: InstrumentationConfig): Promise<InstrumentationService> {
-        // Enable OpenTelemetry diagnostics early in the start process
         diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
         const service = new InstrumentationService(config);
