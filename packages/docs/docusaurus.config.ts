@@ -391,6 +391,10 @@ const config = {
           to: '/community',
           items: [
             {
+              label: 'Partners',
+              to: '/partners',
+            },
+            {
               label: 'Calendar',
               to: 'https://calendar.google.com/calendar/embed?src=c_ed31cea342d3e2236f549161e6446c3e407e5625ee7a355c0153befc7a602e7f%40group.calendar.google.com&ctz=America%2FToronto',
               target: '_blank',
