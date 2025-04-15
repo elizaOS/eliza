@@ -418,19 +418,20 @@ export class TwitterPostClient {
         }
       }
 
-      // Use the modern sendTweet method instead of the old post method
-      const result = await this.client.requestQueue.add(() =>
-        this.client.twitterClient.sendTweet(text.substring(0, TWEET_CHAR_LIMIT))
-      );
+      let result;
 
-      // Handle response based on the new API format
-      const body = await result.json();
-      if (!body?.data?.create_tweet?.tweet_results?.result) {
-        logger.error('Error sending tweet; Bad response:', body);
+      if (text.length > TWEET_CHAR_LIMIT - 1) {
+        result = await this.handleNoteTweet(this.client, text, undefined, mediaData);
+      } else {
+        result = await this.sendStandardTweet(this.client, text, undefined, mediaData);
+      }
+
+      if (!result) {
+        logger.error('Error sending tweet; Bad response:');
         return null;
       }
 
-      return body.data.create_tweet.tweet_results.result;
+      return result;
     } catch (error) {
       logger.error('Error posting to Twitter:', error);
       throw error;
