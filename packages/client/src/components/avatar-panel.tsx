@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import type { Agent } from '@elizaos/core';
-import { Image as ImageIcon, Upload, X } from 'lucide-react';
+import { Image as ImageIcon, Upload, X, Info } from 'lucide-react';
 import { useRef, useState, useEffect } from 'react';
 import { compressImage } from '@/lib/utils';
 
@@ -67,36 +67,63 @@ export default function AvatarPanel({ characterValue, setCharacterValue }: Avata
     <div className="rounded-lg w-full">
       <h2 className="text-xl font-bold mb-4 pb-5 ml-1">Avatar Settings</h2>
 
-      <div className="flex flex-col items-center gap-4 pb-4">
+      <div className="flex flex-col items-center gap-4 pb-4 max-w-sm mx-auto">
+        {/* Image preview area */}
         {avatar ? (
-          <div className="relative w-64 h-64">
-            <img src={avatar} alt="Character Avatar" className="object-cover rounded-lg border" />
-            <button
-              className="absolute -top-2 -right-2 bg-white p-1 rounded-full shadow-md"
-              onClick={handleRemoveAvatar}
-              type="button"
-            >
-              <X className="w-5 h-5 text-card" />
-            </button>
+          <div className="w-64 h-64 mb-2">
+            <img
+              src={avatar}
+              alt="Agent Avatar"
+              className="object-cover w-full h-full rounded-lg border"
+            />
           </div>
         ) : (
-          <div className="w-64 h-64 flex items-center justify-center border border-dashed rounded-lg text-gray-500">
-            <ImageIcon className="w-10 h-10" />
+          <div
+            className="w-64 h-64 flex items-center justify-center border border-dashed rounded-lg text-gray-500 mb-2 cursor-pointer hover:bg-gray-50 transition-colors"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <div className="flex flex-col items-center gap-2">
+              <ImageIcon className="w-10 h-10" />
+              <span className="text-sm">Click to upload</span>
+            </div>
           </div>
         )}
 
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          ref={fileInputRef}
-          onChange={handleFileUpload}
-        />
-        <Button className="flex items-center gap-2" onClick={() => fileInputRef.current?.click()}>
-          <Upload className="w-5 h-5" /> Upload Avatar
-        </Button>
+        {/* Controls area */}
+        <div className="flex flex-col gap-3 w-64">
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+          />
 
-        {hasChanged && <p className="text-xs text-blue-500">Avatar has been updated</p>}
+          <div className="flex gap-2">
+            <Button
+              className="flex items-center gap-2 flex-1"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="w-5 h-5" />
+              {avatar ? 'Replace' : 'Upload'}
+            </Button>
+
+            {avatar && (
+              <Button variant="outline" className="flex items-center" onClick={handleRemoveAvatar}>
+                <X className="w-5 h-5" />
+              </Button>
+            )}
+          </div>
+
+          {hasChanged && (
+            <div className="text-sm text-blue-500 mt-1 text-center">Avatar has been updated</div>
+          )}
+
+          <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground mt-1">
+            <Info className="w-3.5 h-3.5" />
+            <span>Images greater than 300x300 will be resized</span>
+          </div>
+        </div>
       </div>
     </div>
   );

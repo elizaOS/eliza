@@ -41,7 +41,7 @@ export const leaveVoice: Action = {
 
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-    if (room?.type !== ChannelType.GROUP) {
+    if (room?.type !== ChannelType.GROUP && room?.type !== ChannelType.VOICE_GROUP) {
       return false;
     }
 
@@ -62,8 +62,7 @@ export const leaveVoice: Action = {
       throw new Error('No room found');
     }
 
-    if (room.type !== ChannelType.GROUP) {
-      // only handle in a group scenario for now
+    if (room?.type !== ChannelType.GROUP && room?.type !== ChannelType.VOICE_GROUP) {
       throw new Error('Not a group');
     }
 

@@ -208,8 +208,8 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
     <CharacterForm
       characterValue={agentState.agent}
       setCharacterValue={agentState}
-      title="Character Settings"
-      description="Configure your AI character's behavior and capabilities"
+      title="Agent Settings"
+      description="Configure your AI agent's behavior and capabilities"
       onSubmit={handleSubmit}
       onReset={agentState.reset}
       onDelete={handleDelete}

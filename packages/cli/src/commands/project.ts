@@ -112,6 +112,7 @@ project
     try {
       // Temporarily return hardcoded plugins as an array
       const hardcodedPlugins = [
+        '@elizaos/plugin-bootstrap',
         '@elizaos/plugin-sql',
         '@elizaos/plugin-twitter',
         '@elizaos/plugin-telegram',
