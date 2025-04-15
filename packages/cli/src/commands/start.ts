@@ -647,6 +647,8 @@ const startAgents = async (options: {
   // if characters are provided, start the agents with the characters
   if (options.characters) {
     for (const character of options.characters) {
+      // Initialize plugins as an empty array if undefined
+      character.plugins = character.plugins || [];
       // make sure character has sql plugin
       const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql'));
       if (!hasSqlPlugin) {
