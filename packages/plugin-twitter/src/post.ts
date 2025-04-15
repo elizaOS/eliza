@@ -9,13 +9,11 @@ import {
   createUniqueUuid,
   logger,
   parseBooleanFromText,
-  truncateToCompleteSentence,
 } from '@elizaos/core';
 import type { ClientBase } from './base';
-import type { Tweet } from './client/index';
 import type { MediaData } from './types';
 import { TwitterEventTypes } from './types';
-import { TWEET_CHAR_LIMIT } from './constants';
+import { sendTweet } from './utils';
 /**
  * Class representing a Twitter post client for generating and posting tweets.
  */
@@ -103,69 +101,6 @@ export class TwitterPostClient {
       // await 1 second
       await new Promise((resolve) => setTimeout(resolve, 1000));
       this.generateNewTweet();
-    }
-  }
-
-  /**
-   * Handles sending a note tweet with optional media data.
-   *
-   * @param {ClientBase} client - The client object used for sending the note tweet.
-   * @param {string} content - The content of the note tweet.
-   * @param {string} [tweetId] - Optional Tweet ID to reply to.
-   * @param {MediaData[]} [mediaData] - Optional media data to attach to the note tweet.
-   * @returns {Promise<Object>} - The result of the note tweet operation.
-   * @throws {Error} - If the note tweet operation fails.
-   */
-  async handleNoteTweet(
-    client: ClientBase,
-    content: string,
-    tweetId?: string,
-    mediaData?: MediaData[]
-  ) {
-    try {
-      const noteTweetResult = await client.requestQueue.add(
-        async () => await client.twitterClient.sendNoteTweet(content, tweetId, mediaData)
-      );
-
-      if (noteTweetResult.errors && noteTweetResult.errors.length > 0) {
-        // Note Tweet failed due to authorization. Falling back to standard Tweet.
-        const truncateContent = truncateToCompleteSentence(content, TWEET_CHAR_LIMIT - 1);
-        return await this.sendStandardTweet(client, truncateContent, tweetId);
-      }
-      return noteTweetResult.data.notetweet_create.tweet_results.result;
-    } catch (error) {
-      throw new Error(`Note Tweet failed: ${error}`);
-    }
-  }
-
-  /**
-   * Asynchronously sends a standard tweet using the provided Twitter client.
-   *
-   * @param {ClientBase} client - The client used to make the request.
-   * @param {string} content - The content of the tweet.
-   * @param {string} [tweetId] - Optional tweet ID to reply to.
-   * @param {MediaData[]} [mediaData] - Optional array of media data to attach to the tweet.
-   * @returns {Promise<string>} The result of sending the tweet.
-   */
-  async sendStandardTweet(
-    client: ClientBase,
-    content: string,
-    tweetId?: string,
-    mediaData?: MediaData[]
-  ) {
-    try {
-      const standardTweetResult = await client.requestQueue.add(
-        async () => await client.twitterClient.sendTweet(content, tweetId, mediaData)
-      );
-      const body = await standardTweetResult.json();
-      if (!body?.data?.create_tweet?.tweet_results?.result) {
-        logger.error('Error sending tweet; Bad response:', body);
-        return;
-      }
-      return body.data.create_tweet.tweet_results.result;
-    } catch (error) {
-      logger.error('Error sending standard Tweet:', error);
-      throw error;
     }
   }
 
@@ -294,13 +229,7 @@ export class TwitterPostClient {
         }
       }
 
-      let result;
-
-      if (text.length > TWEET_CHAR_LIMIT - 1) {
-        result = await this.handleNoteTweet(this.client, text, undefined, mediaData);
-      } else {
-        result = await this.sendStandardTweet(this.client, text, undefined, mediaData);
-      }
+      const result = await sendTweet(this.client, text, mediaData);
 
       if (!result) {
         logger.error('Error sending tweet; Bad response:');
