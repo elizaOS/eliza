@@ -25,7 +25,7 @@ import {
   getAllRequiredPlugins,
 } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, Trash, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type FieldType = 'text' | 'textarea' | 'number' | 'checkbox' | 'select';
@@ -71,6 +71,7 @@ export type CharacterFormProps = {
   onSubmit: (character: Agent) => Promise<void>;
   onDelete?: () => void;
   onReset?: () => void;
+  stopAgentButton?: React.ReactNode;
   isAgent?: boolean;
   isDeleting?: boolean;
   customComponents?: customComponent[];
@@ -93,6 +94,7 @@ export default function CharacterForm({
   onSubmit,
   onDelete,
   onReset,
+  stopAgentButton,
   isDeleting = false,
   customComponents = [],
 }: CharacterFormProps) {
@@ -605,17 +607,30 @@ export default function CharacterForm({
         </Tabs>
 
         <div className="flex justify-between gap-4 mt-6">
-          <div className="flex gap-4 text-red-500">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                onDelete?.();
-              }}
-              disabled={isDeleting}
-            >
-              {isDeleting ? 'Deleting...' : 'Delete Agent'}
-            </Button>
+          <div className="flex gap-4">
+            {onDelete && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  onDelete?.();
+                }}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash className="mr-2 h-4 w-4" />
+                    Delete Agent
+                  </>
+                )}
+              </Button>
+            )}
+            {stopAgentButton}
           </div>
 
           <div className="flex gap-4">
