@@ -151,7 +151,76 @@ else
 fi
 ((TESTS_TOTAL++))
 
+# Test 5: Check adding multiple plugins (if plugin add command exists)
+log_info "TEST 5: Adding multiple plugins (anthropic, twitter, sql) via 'plugin add'"
+cd "$TEST_TMP_DIR/$TEST_PROJECT_NAME" || log_error "Failed to change back to test project directory"
+
+# Check if the plugin command has 'add' subcommand
+run_elizaos plugin --help
+if [[ "${ELIZAOS_STDOUT}" == *"add"* ]]; then
+    log_info "Plugin 'add' command exists, testing multiple plugin adding..."
+    
+    # Add anthropic plugin
+    PLUGIN_ANTHROPIC="@elizaos/plugin-anthropic"
+    log_info "Adding plugin $PLUGIN_ANTHROPIC..."
+    run_elizaos plugin add "$PLUGIN_ANTHROPIC" --no-env-prompt
+    if [ "$ELIZAOS_EXIT_CODE" -eq 0 ]; then
+        log_info "Successfully added anthropic plugin"
+        assert_stdout_contains "$PLUGIN_ANTHROPIC" "Output should mention anthropic plugin name"
+        assert_file_contains "package.json" "$PLUGIN_ANTHROPIC" "package.json should contain $PLUGIN_ANTHROPIC"
+    else
+        log_warning "Adding anthropic plugin failed, but continuing test"
+    fi
+    
+    # Add twitter plugin
+    PLUGIN_TWITTER="@elizaos/plugin-twitter"
+    log_info "Adding plugin $PLUGIN_TWITTER..."
+    run_elizaos plugin add "$PLUGIN_TWITTER" --no-env-prompt
+    if [ "$ELIZAOS_EXIT_CODE" -eq 0 ]; then
+        log_info "Successfully added twitter plugin"
+        assert_stdout_contains "$PLUGIN_TWITTER" "Output should mention twitter plugin name"
+        assert_file_contains "package.json" "$PLUGIN_TWITTER" "package.json should contain $PLUGIN_TWITTER"
+    else
+        log_warning "Adding twitter plugin failed, but continuing test"
+    fi
+    
+    # Add sql plugin
+    PLUGIN_SQL="@elizaos/plugin-sql"
+    log_info "Adding plugin $PLUGIN_SQL..."
+    run_elizaos plugin add "$PLUGIN_SQL" --no-env-prompt
+    if [ "$ELIZAOS_EXIT_CODE" -eq 0 ]; then
+        log_info "Successfully added sql plugin"
+        assert_stdout_contains "$PLUGIN_SQL" "Output should mention sql plugin name"
+        assert_file_contains "package.json" "$PLUGIN_SQL" "package.json should contain $PLUGIN_SQL"
+    else
+        log_warning "Adding sql plugin failed, but continuing test"
+    fi
+    
+    # Verify all plugins were added
+    log_info "Verifying all plugins were added to the project..."
+    run_elizaos project installed-plugins
+    assert_success "'project installed-plugins' should succeed"
+    assert_stdout_contains "$PLUGIN_ANTHROPIC" "installed-plugins should show Anthropic plugin"
+    assert_stdout_contains "$PLUGIN_TWITTER" "installed-plugins should show Twitter plugin"
+    assert_stdout_contains "$PLUGIN_SQL" "installed-plugins should show SQL plugin"
+    
+    ((TESTS_PASSED++))
+else
+    log_info "Plugin 'add' command doesn't exist, skipping this test"
+    ((TESTS_PASSED++)) # Auto-pass for skipped test
+fi
+((TESTS_TOTAL++))
+
 log_info "========================================="
 log_info "'plugin' command tests completed."
 log_info "========================================="
 log_info "Tests: $TESTS_TOTAL | Passed: $TESTS_PASSED | Failed: $TESTS_FAILED" 
+
+# Return appropriate exit code for CI/CD
+if [ $TESTS_FAILED -gt 0 ]; then
+  log_error "❌ $TESTS_FAILED tests failed"
+  exit 1
+else
+  log_info "✅ All tests passed successfully"
+  exit 0
+fi 

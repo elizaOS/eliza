@@ -104,9 +104,44 @@ stop_test_server() {
     # find "$TEST_TMP_DIR_BASE" -maxdepth 0 -empty -delete &> /dev/null
 }
 
+# --- Cleanup Function ---
+# Function to clean up all test directories
+cleanup_test_directories() {
+    log_info "Cleaning up all test project directories..."
+    
+    # Find all directories in the test tmp base directory that match the expected format
+    # (date format + process ID) and clean them up
+    if [ -d "$TEST_TMP_DIR_BASE" ]; then
+        log_info "Removing all test directories in $TEST_TMP_DIR_BASE"
+        
+        # Count how many directories were found
+        local test_dirs
+        test_dirs=$(find "$TEST_TMP_DIR_BASE" -mindepth 1 -maxdepth 1 -type d -name "[0-9]*_[0-9]*" 2>/dev/null || echo "")
+        local dir_count
+        dir_count=$(echo "$test_dirs" | grep -v '^$' | wc -l)
+        
+        if [ "$dir_count" -gt 0 ]; then
+            log_info "Found $dir_count test directories to clean up"
+            # Use xargs to efficiently process each directory with rm -rf
+            echo "$test_dirs" | grep -v '^$' | xargs -I{} sh -c 'log_info "Removing {}"; rm -rf {}'
+            log_info "All test directories removed"
+        else
+            log_info "No test directories found to clean up"
+        fi
+    else
+        log_info "Test base directory $TEST_TMP_DIR_BASE does not exist, nothing to clean up"
+    fi
+    
+    # Also clean up the server data directory if it exists
+    if [ -d "$TEST_SERVER_ELIZA_DIR" ]; then
+        log_info "Removing server data directory: $TEST_SERVER_ELIZA_DIR"
+        rm -rf "$TEST_SERVER_ELIZA_DIR"
+    fi
+}
+
 # --- Trap for Cleanup ---
 # Ensure server is stopped even if script exits unexpectedly
-trap 'stop_test_server' EXIT SIGINT SIGTERM
+trap 'stop_test_server; cleanup_test_directories' EXIT SIGINT SIGTERM
 
 # --- Test Execution ---
 
@@ -228,8 +263,11 @@ done
 TOTAL_END_TIME=$(date +%s)
 TOTAL_ELAPSED=$((TOTAL_END_TIME - TOTAL_START_TIME))
 
-# Explicitly stop the server after all tests (trap is a safety net)
-# Moved cleanup to trap EXIT
+# Make sure we clean up all test directories created during this run
+cleanup_test_directories
+
+# Explicitly stop the server after all tests and before the final exit
+stop_test_server
 
 log_info "==========================================================================================="
 log_info "                               TEST SUITE SUMMARY"

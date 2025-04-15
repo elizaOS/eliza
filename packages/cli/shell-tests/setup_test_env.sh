@@ -107,6 +107,50 @@ cleanup() {
   fi
 }
 
+# Enhanced cleanup function that can be called at the end of test scripts
+# to ensure all project directories are properly cleaned up
+cleanup_test_projects() {
+  local test_dir="${1:-$TEST_TMP_DIR}"
+  
+  if [ ! -d "$test_dir" ]; then
+    log_info "Directory for cleanup doesn't exist: $test_dir"
+    return 0
+  fi
+  
+  log_info "Performing deep cleanup of all project directories in: $test_dir"
+  
+  # Find and list all project directories created during tests
+  local projects=()
+  
+  # Look for directories with package.json - these are likely projects
+  # Use a more sophisticated find command to locate package.json files
+  projects=($(find "$test_dir" -type f -name "package.json" -not -path "*/node_modules/*" | xargs -n1 dirname 2>/dev/null || true))
+  
+  local count="${#projects[@]}"
+  if [ "$count" -gt 0 ]; then
+    log_info "Found $count project directories to clean up"
+    
+    # Clean up node_modules first (they're large and can cause removal to be slow)
+    for proj in "${projects[@]}"; do
+      if [ -d "$proj/node_modules" ]; then
+        log_info "Removing node_modules in: $proj"
+        rm -rf "$proj/node_modules"
+      fi
+    done
+    
+    # Now delete the project directories themselves if they are subdirectories of our test dir
+    # but not the test dir itself (we still need it for the main cleanup function)
+    for proj in "${projects[@]}"; do
+      if [[ "$proj" != "$test_dir" && "$proj" == "$test_dir"* ]]; then
+        log_info "Removing project directory: $proj"
+        rm -rf "$proj"
+      fi
+    done
+  else
+    log_info "No project directories found for cleanup"
+  fi
+}
+
 # --- Helper Functions ---
 
 # Execute elizaos command, capture output and exit code

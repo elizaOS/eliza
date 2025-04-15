@@ -203,3 +203,7 @@ log_info "========================================="
 log_info "'agent' command tests completed."
 log_info "========================================="
 log_info "Tests: $TESTS_TOTAL | Passed: $TESTS_PASSED | Failed: $TESTS_FAILED" 
+
+# Clean up all created projects
+log_info "Cleaning up all project directories created during the test..."
+cleanup_test_projects "$TEST_TMP_DIR" 
