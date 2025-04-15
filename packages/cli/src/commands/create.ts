@@ -107,17 +107,7 @@ export const create = new Command()
     // Convert to a proper boolean (if not already)
     opts.yes = opts.yes === true || opts.yes === 'true';
 
-    // Debug logs
-    console.log(`DEBUG: opts.yes = ${opts.yes}, typeof = ${typeof opts.yes}`);
-    console.log(`DEBUG: process.argv = ${process.argv.join(' ')}`);
-
-    // Only display banner in interactive mode
-    if (!opts.yes) {
-      console.log('DEBUG: Displaying banner (interactive mode)');
-      displayBanner();
-    } else {
-      console.log('DEBUG: Skipping banner (non-interactive mode)');
-    }
+    displayBanner();
 
     try {
       // Parse options but use "" as the default for type to force prompting
