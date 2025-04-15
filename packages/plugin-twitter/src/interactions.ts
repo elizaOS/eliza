@@ -28,6 +28,7 @@ import type {
 } from './types';
 import { TwitterEventTypes } from './types';
 import { buildConversationThread } from './utils';
+import { TWEET_CHAR_LIMIT } from './constants';
 
 /**
  * Template for generating dialog and actions for a Twitter message handler.
@@ -559,7 +560,10 @@ export class TwitterInteractionClient {
 
         // Create the actual tweet using the Twitter API through the client
         const replyTweetResult = await this.client.requestQueue.add(() =>
-          this.client.twitterClient.sendTweet(response.text.substring(0, 280), tweetToReplyTo)
+          this.client.twitterClient.sendTweet(
+            response.text.substring(0, TWEET_CHAR_LIMIT),
+            tweetToReplyTo
+          )
         );
 
         if (!replyTweetResult) {

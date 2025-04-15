@@ -18,6 +18,7 @@ import type { Tweet as ClientTweet } from './client/tweets';
 import type { SttTtsPlugin } from './sttTtsSpaces';
 import type { ActionResponse, MediaData } from './types';
 import type { Tweet as CoreTweet } from './types';
+import { TWEET_CHAR_LIMIT } from './constants';
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
   const waitTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
@@ -208,9 +209,9 @@ export async function sendTweet(
   twitterUsername: string,
   inReplyTo: string
 ): Promise<Memory[]> {
-  const isLongTweet = content.text.length > 280 - 1;
+  const isLongTweet = content.text.length > TWEET_CHAR_LIMIT - 1;
 
-  const tweetChunks = splitTweetContent(content.text, 280 - 1);
+  const tweetChunks = splitTweetContent(content.text, TWEET_CHAR_LIMIT - 1);
   const sentTweets: Tweet[] = [];
   let previousTweetId = inReplyTo;
 

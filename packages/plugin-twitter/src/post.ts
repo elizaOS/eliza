@@ -15,6 +15,7 @@ import type { ClientBase } from './base';
 import type { Tweet } from './client/index';
 import type { MediaData } from './types';
 import { TwitterEventTypes } from './types';
+import { TWEET_CHAR_LIMIT } from './constants';
 /**
  * Class representing a Twitter post client for generating and posting tweets.
  */
@@ -212,7 +213,7 @@ export class TwitterPostClient {
 
       if (noteTweetResult.errors && noteTweetResult.errors.length > 0) {
         // Note Tweet failed due to authorization. Falling back to standard Tweet.
-        const truncateContent = truncateToCompleteSentence(content, 280 - 1);
+        const truncateContent = truncateToCompleteSentence(content, TWEET_CHAR_LIMIT - 1);
         return await this.sendStandardTweet(client, truncateContent, tweetId);
       }
       return noteTweetResult.data.notetweet_create.tweet_results.result;
@@ -278,7 +279,7 @@ export class TwitterPostClient {
 
       let result;
 
-      if (tweetTextForPosting.length > 280 - 1) {
+      if (tweetTextForPosting.length > TWEET_CHAR_LIMIT - 1) {
         result = await this.handleNoteTweet(client, tweetTextForPosting, undefined, mediaData);
       } else {
         result = await this.sendStandardTweet(client, tweetTextForPosting, undefined, mediaData);
@@ -419,7 +420,7 @@ export class TwitterPostClient {
 
       // Use the modern sendTweet method instead of the old post method
       const result = await this.client.requestQueue.add(() =>
-        this.client.twitterClient.sendTweet(text.substring(0, 280))
+        this.client.twitterClient.sendTweet(text.substring(0, TWEET_CHAR_LIMIT))
       );
 
       // Handle response based on the new API format
