@@ -1,5 +1,5 @@
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { createUniqueUuid, logger as Logger, logger } from '@elizaos/core';
+import { AgentRuntime, createUniqueUuid, logger as Logger, logger } from '@elizaos/core';
 import * as bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
@@ -13,6 +13,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { worldRouter } from './world';
 import { envRouter } from './env';
+import { SpanStatusCode } from '@opentelemetry/api';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -104,161 +105,187 @@ export function setupSocketIO(
             continue;
           }
           const entityId = createUniqueUuid(agentRuntime, senderId);
-
           const uniqueRoomId = createUniqueUuid(agentRuntime, socketRoomId);
           const source = payload.source;
-          try {
-            // Ensure connection between entity and room (just like Discord)
-            await agentRuntime.ensureConnection({
-              entityId: entityId,
-              roomId: uniqueRoomId,
-              userName: payload.senderName || 'User',
-              name: payload.senderName || 'User',
-              source: 'client_chat',
-              channelId: uniqueRoomId,
-              serverId: 'client-chat',
-              type: ChannelType.DM,
-              worldId: worldId,
-            });
 
-            // Create unique message ID
-            const messageId = crypto.randomUUID() as UUID;
+          // Cast to AgentRuntime to access instrumentation properties
+          const concreteRuntime = agentRuntime as AgentRuntime;
 
-            // Create message object for the agent
-            const newMessage = {
-              id: messageId,
-              entityId: entityId,
-              agentId: agentRuntime.agentId,
-              roomId: uniqueRoomId,
-              content: {
-                text: payload.message,
-                source: `${source}:${payload.senderName}`,
-              },
-              metadata: {
-                entityName: payload.senderName,
-              },
-              createdAt: Date.now(),
-            };
-
-            // No need to save the message here, the bootstrap handler will do it
-            // Let the messageReceivedHandler in bootstrap.ts handle the memory creation
-
-            // Define callback for agent responses (pattern matching Discord's approach)
-            const callback = async (content) => {
-              try {
-                // Log the content object we received
-                logger.debug('Callback received content:', {
-                  contentType: typeof content,
-                  contentKeys: content ? Object.keys(content) : 'null',
-                  content: JSON.stringify(content),
-                });
-
-                // Make sure we have inReplyTo set correctly
-                if (messageId && !content.inReplyTo) {
-                  content.inReplyTo = messageId;
-                }
-
-                // Prepare broadcast data - more direct and explicit
-                // Only include required fields to avoid schema validation issues
-                const broadcastData: Record<string, any> = {
-                  senderId: agentRuntime.agentId,
-                  senderName: agentRuntime.character.name,
-                  text: content.text || '',
-                  roomId: socketRoomId,
-                  createdAt: Date.now(),
-                  source,
-                };
-
-                // Add optional fields only if they exist in the original content
-                if (content.thought) broadcastData.thought = content.thought;
-                if (content.actions) broadcastData.actions = content.actions;
-
-                // Log exact broadcast data
-                logger.debug(`Broadcasting message to room ${socketRoomId}`, {
-                  room: socketRoomId,
-                  clients: io.sockets.adapter.rooms.get(socketRoomId)?.size || 0,
-                  messageText: broadcastData.text?.substring(0, 50),
-                });
-
-                logger.debug('Broadcasting data:', JSON.stringify(broadcastData));
-
-                // Send to specific room first
-                io.to(socketRoomId).emit('messageBroadcast', broadcastData);
-
-                // Also send to all connected clients as a fallback
-                logger.debug('Also broadcasting to all clients as fallback');
-                io.emit('messageBroadcast', broadcastData);
-
-                // Create memory for the response message (matching Discord's pattern)
-                const memory = {
-                  id: crypto.randomUUID() as UUID,
-                  entityId: agentRuntime.agentId,
-                  agentId: agentRuntime.agentId,
-                  content: {
-                    ...content,
-                    inReplyTo: messageId,
-                    channelType: ChannelType.DM,
-                    source: `${source}:agent`,
-                  },
-                  roomId: uniqueRoomId,
-                  createdAt: Date.now(),
-                };
-
-                // Log the memory object we're creating
-                logger.debug('Memory object for response:', {
-                  memoryId: memory.id,
-                  contentKeys: Object.keys(memory.content),
-                });
-
-                // Save the memory for the response
-                await agentRuntime.createMemory(memory, 'messages');
-
-                // Return content for bootstrap's processing
-                logger.debug('Returning content directly');
-                return [content];
-              } catch (error) {
-                logger.error('Error in socket message callback:', error);
-                return [];
-              }
-            };
-
-            // Log the message and runtime details before calling emitEvent
-            logger.debug('Emitting MESSAGE_RECEIVED with:', {
-              messageId: newMessage.id,
-              entityId: newMessage.entityId,
-              agentId: newMessage.agentId,
-              text: newMessage.content.text,
-              callbackType: typeof callback,
-            });
-
-            // Monkey-patch the emitEvent method to log its arguments
-            const originalEmitEvent = agentRuntime.emitEvent;
-            agentRuntime.emitEvent = function (eventType, payload) {
-              logger.debug('emitEvent called with eventType:', eventType);
-              logger.debug('emitEvent payload structure:', {
-                hasRuntime: !!payload.runtime,
-                hasMessage: !!payload.message,
-                hasCallback: !!payload.callback,
-                callbackType: typeof payload.callback,
+          // Check if instrumentation is enabled and tracer exists on the concrete runtime
+          if (concreteRuntime.instrumentationService?.isEnabled?.() && concreteRuntime.tracer) {
+            logger.debug('[SOCKET MESSAGE] Instrumentation enabled. Starting span.', { agentId, entityId, roomId: uniqueRoomId });
+            await concreteRuntime.tracer.startActiveSpan('socket.message.received', async (span) => {
+              span.setAttributes({
+                'eliza.agent.id': agentId,
+                'eliza.room.id': uniqueRoomId,
+                'eliza.entity.id': entityId,
+                'eliza.channel.type': ChannelType.DM, // Assuming DM for socket for now
+                'eliza.message.source': source,
+                'eliza.socket.id': socket.id,
               });
-              return originalEmitEvent.call(this, eventType, payload);
-            };
 
-            // Emit message received event to trigger agent's message handler
-            agentRuntime.emitEvent(EventType.MESSAGE_RECEIVED, {
-              runtime: agentRuntime,
-              message: newMessage,
-              callback,
-              onComplete: () => {
-                io.emit('messageComplete', {
-                  roomId: socketRoomId,
-                  agentId,
-                  senderId,
+              try {
+                // Ensure connection between entity and room
+                await agentRuntime.ensureConnection({
+                  entityId: entityId,
+                  roomId: uniqueRoomId,
+                  userName: payload.senderName || 'User',
+                  name: payload.senderName || 'User',
+                  source: 'client_chat',
+                  channelId: uniqueRoomId,
+                  serverId: 'client-chat',
+                  type: ChannelType.DM,
+                  worldId: worldId,
                 });
-              },
+
+                // Create unique message ID
+                const messageId = crypto.randomUUID() as UUID;
+
+                // Create message object for the agent
+                const newMessage = {
+                  id: messageId,
+                  entityId: entityId,
+                  agentId: agentRuntime.agentId,
+                  roomId: uniqueRoomId,
+                  content: {
+                    text: payload.message,
+                    source: `${source}:${payload.senderName}`,
+                  },
+                  metadata: {
+                    entityName: payload.senderName,
+                  },
+                  createdAt: Date.now(),
+                };
+
+                // Define callback for agent responses
+                const callback = async (content) => {
+                  // NOTE: This callback runs *after* the main span might have ended.
+                  // If detailed tracing of the callback is needed, a new linked span could be created here.
+                  try {
+                    logger.debug('Callback received content:', { contentType: typeof content, contentKeys: content ? Object.keys(content) : 'null' });
+                    if (messageId && !content.inReplyTo) content.inReplyTo = messageId;
+
+                    const broadcastData: Record<string, any> = { senderId: agentRuntime.agentId, senderName: agentRuntime.character.name, text: content.text || '', roomId: socketRoomId, createdAt: Date.now(), source };
+                    if (content.thought) broadcastData.thought = content.thought;
+                    if (content.actions) broadcastData.actions = content.actions;
+
+                    logger.debug(`Broadcasting message to room ${socketRoomId}`, { room: socketRoomId });
+                    io.to(socketRoomId).emit('messageBroadcast', broadcastData);
+                    io.emit('messageBroadcast', broadcastData); // Fallback broadcast
+
+                    const memory = { id: crypto.randomUUID() as UUID, entityId: agentRuntime.agentId, agentId: agentRuntime.agentId, content: { ...content, inReplyTo: messageId, channelType: ChannelType.DM, source: `${source}:agent` }, roomId: uniqueRoomId, createdAt: Date.now() };
+                    logger.debug('Memory object for response:', { memoryId: memory.id });
+                    await agentRuntime.createMemory(memory, 'messages');
+                    return [content];
+                  } catch (error) {
+                    logger.error('Error in socket message callback:', error);
+                    return [];
+                  }
+                };
+
+                logger.debug('Emitting MESSAGE_RECEIVED', { messageId: newMessage.id });
+
+                // Emit message received event to trigger agent's message handler (which has its own spans)
+                agentRuntime.emitEvent(EventType.MESSAGE_RECEIVED, {
+                  runtime: agentRuntime,
+                  message: newMessage,
+                  callback,
+                  onComplete: () => {
+                    io.emit('messageComplete', {
+                      roomId: socketRoomId,
+                      agentId,
+                      senderId,
+                    });
+                  },
+                });
+                span.setStatus({ code: SpanStatusCode.OK });
+              } catch (error) {
+                logger.error('Error processing socket message:', error);
+                span.recordException(error);
+                span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+              } finally {
+                span.end();
+                logger.debug('[SOCKET MESSAGE] Ending instrumentation span.', { agentId, entityId, roomId: uniqueRoomId });
+              }
             });
-          } catch (error) {
-            logger.error('Error processing message:', error);
+          } else {
+            // Execute original logic without instrumentation if disabled
+            logger.debug('[SOCKET MESSAGE] Instrumentation disabled or unavailable, skipping span.', { agentId, entityId, roomId: uniqueRoomId });
+            try {
+              // Ensure connection between entity and room
+              await agentRuntime.ensureConnection({
+                entityId: entityId,
+                roomId: uniqueRoomId,
+                userName: payload.senderName || 'User',
+                name: payload.senderName || 'User',
+                source: 'client_chat',
+                channelId: uniqueRoomId,
+                serverId: 'client-chat',
+                type: ChannelType.DM,
+                worldId: worldId,
+              });
+
+              // Create unique message ID
+              const messageId = crypto.randomUUID() as UUID;
+
+              // Create message object for the agent
+              const newMessage = {
+                id: messageId,
+                entityId: entityId,
+                agentId: agentRuntime.agentId,
+                roomId: uniqueRoomId,
+                content: {
+                  text: payload.message,
+                  source: `${source}:${payload.senderName}`,
+                },
+                metadata: {
+                  entityName: payload.senderName,
+                },
+                createdAt: Date.now(),
+              };
+
+              // Define callback for agent responses
+              const callback = async (content) => {
+                try {
+                  logger.debug('Callback received content:', { contentType: typeof content, contentKeys: content ? Object.keys(content) : 'null' });
+                  if (messageId && !content.inReplyTo) content.inReplyTo = messageId;
+
+                  const broadcastData: Record<string, any> = { senderId: agentRuntime.agentId, senderName: agentRuntime.character.name, text: content.text || '', roomId: socketRoomId, createdAt: Date.now(), source };
+                  if (content.thought) broadcastData.thought = content.thought;
+                  if (content.actions) broadcastData.actions = content.actions;
+
+                  logger.debug(`Broadcasting message to room ${socketRoomId}`, { room: socketRoomId });
+                  io.to(socketRoomId).emit('messageBroadcast', broadcastData);
+                  io.emit('messageBroadcast', broadcastData); // Fallback broadcast
+
+                  const memory = { id: crypto.randomUUID() as UUID, entityId: agentRuntime.agentId, agentId: agentRuntime.agentId, content: { ...content, inReplyTo: messageId, channelType: ChannelType.DM, source: `${source}:agent` }, roomId: uniqueRoomId, createdAt: Date.now() };
+                  logger.debug('Memory object for response:', { memoryId: memory.id });
+                  await agentRuntime.createMemory(memory, 'messages');
+                  return [content];
+                } catch (error) {
+                  logger.error('Error in socket message callback:', error);
+                  return [];
+                }
+              };
+
+              logger.debug('Emitting MESSAGE_RECEIVED', { messageId: newMessage.id });
+
+              // Emit message received event to trigger agent's message handler
+              agentRuntime.emitEvent(EventType.MESSAGE_RECEIVED, {
+                runtime: agentRuntime,
+                message: newMessage,
+                callback,
+                onComplete: () => {
+                  io.emit('messageComplete', {
+                    roomId: socketRoomId,
+                    agentId,
+                    senderId,
+                  });
+                },
+              });
+            } catch (error) {
+              logger.error('Error processing socket message (no instrumentation):', error);
+            }
           }
         }
       } else if (messageData.type === SOCKET_MESSAGE_TYPE.ROOM_JOINING) {

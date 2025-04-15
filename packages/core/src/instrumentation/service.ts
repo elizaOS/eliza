@@ -9,7 +9,7 @@ import { PgInstrumentation } from "@opentelemetry/instrumentation-pg";
 import { IInstrumentationService, InstrumentationConfig } from "./types";
 import { elizaLogger } from "../logger";
 import { Service, ServiceType, IAgentRuntime } from "../types";
-import * as pg from "pg";
+let pg: typeof import("pg");
 
 
 const DEFAULT_SERVICE_NAME = "eliza-agent";
@@ -17,12 +17,19 @@ const DEFAULT_SERVICE_NAME = "eliza-agent";
 /**
  * Custom span processor that writes spans to a PostgreSQL database
  */
+
 class PostgresSpanProcessor implements SpanProcessor {
     private pgClient: import("pg").Client | null = null;
     private isInitialized = false;
     private isConnected = false;
 
     constructor(connectionString: string) {
+        try {
+            pg = require("pg"); // CommonJS require to avoid bundlers evaluating it during build
+        } catch (err) {
+            elizaLogger.error("❌ Failed to dynamically require 'pg'. Are you running in a non-Node environment?");
+            return;
+        }
         elizaLogger.info(`🔄 Initializing PostgreSQL Span Processor with provided URL.`);
 
         if (!connectionString) {

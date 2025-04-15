@@ -7,7 +7,7 @@ import { splitChunks } from './prompts';
 import { ChannelType, MemoryType, ModelType } from './types';
 // Import for instrumentation
 import { InstrumentationService } from './instrumentation/service';
-import { Context, SpanStatusCode, trace, SpanStatus, Span } from '@opentelemetry/api';
+import { Context, SpanStatusCode, trace, SpanStatus, Span, context } from '@opentelemetry/api';
 
 // Import types with the 'type' keyword
 import type {
@@ -43,6 +43,7 @@ import type {
   World,
 } from './types';
 import { stringToUuid } from './uuid';
+import { EventType, type MessagePayload } from './types'; // Added EventType and MessagePayload
 
 /**
  * Represents a collection of settings grouped by namespace.
@@ -185,6 +186,8 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
+
+
 
     // Initialize instrumentation service with appropriate configuration
     try {
@@ -1083,16 +1086,21 @@ export class AgentRuntime implements IAgentRuntime {
               actionSpan.addEvent('action.input', {
                 'message.id': message.id,
                 'state.keys': state ? JSON.stringify(Object.keys(state.values)) : 'none',
-                // Log other relevant context if needed
+
+                'options': JSON.stringify({}), // Hardcoded empty options for now
+                'responses.count': responses?.length ?? 0,
+                'responses.ids': JSON.stringify(responses?.map(r => r.id) ?? []),
               });
 
               try {
-                // Execute the action handler
-                await action.handler(this, message, state, {}, callback, responses);
+                // Execute the action handler and capture the result
+                const result = await action.handler(this, message, state, {}, callback, responses);
 
-                // Output/return value logging would depend on handler structure/convention.
-                // For now, we mark success.
-                actionSpan.addEvent('action.output', { 'status': 'success' });
+                // Log the result in the output event
+                actionSpan.addEvent('action.output', {
+                  'status': 'success',
+                  'result': JSON.stringify(result, safeReplacer()) // Log stringified result
+                });
                 actionSpan.setStatus({ code: SpanStatusCode.OK });
               } catch (handlerError) {
                 const handlerErrorMessage = handlerError instanceof Error ? handlerError.message : String(handlerError);
@@ -1654,15 +1662,32 @@ export class AgentRuntime implements IAgentRuntime {
       this.stateCache.set(message.id, newState);
 
       const finalProviderCount = Object.keys(combinedValues).length;
+      const finalProviderNames = Object.keys(combinedValues);
+      const finalValueKeys = Object.keys(newState.values); // Get keys from the merged state values
+
       span.setAttributes({
-        'final_state_text_length': providersText.length,
-        'provider_count_final': finalProviderCount,
-        'provider_names_final': JSON.stringify(Object.keys(combinedValues)), // Add final list
+        // Remove original/redundant attributes
+        // 'final_state_text_length': providersText.length,
+        // 'provider_count_final': finalProviderCount,
+        // 'provider_names_final': JSON.stringify(finalProviderNames),
+
+        // Context-specific attributes
+        'context.sources.provider_count': finalProviderCount,
+        'context.sources.provider_names': JSON.stringify(finalProviderNames),
+        'context.state.value_keys': JSON.stringify(finalValueKeys),
+        'context.state.text_length': providersText.length,
+        // Flags for common providers
+        'context.sources.used_memory': finalProviderNames.includes('RECENT_MESSAGES'),
+        'context.sources.used_knowledge': finalProviderNames.includes('KNOWLEDGE'),
+        'context.sources.used_character': finalProviderNames.includes('CHARACTER'),
+        'context.sources.used_actions': finalProviderNames.includes('ACTIONS'),
+        'context.sources.used_facts': finalProviderNames.includes('FACTS'), // Example, adjust if needed
       });
-      // Log final text as event
-      span.addEvent('state_composed', {
-        'final_text': providersText.length > 1000 ? providersText.substring(0, 997) + '...' : providersText, // Truncate if needed
-        'final_text_length': providersText.length,
+
+      // Log final text as event, using updated event name
+      span.addEvent('context.composed', {
+        'context.final_string': providersText.length > 1000 ? providersText.substring(0, 997) + '...' : providersText, // Truncate if needed
+        'context.final_length': providersText.length,
       });
       span.addEvent('state_composition_complete');
 
@@ -1889,6 +1914,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerEvent(event: string, handler: (params: any) => Promise<void>) {
+    // --- Reverted: Original simple registration logic ---
     if (!this.events.has(event)) {
       this.events.set(event, []);
     }
@@ -1900,15 +1926,63 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async emitEvent(event: string | string[], params: any) {
-    // Handle both single event string and array of event strings
     const events = Array.isArray(event) ? event : [event];
 
-    // Call handlers for each event
     for (const eventName of events) {
+      const isMessageReceivedEvent = eventName === EventType.MESSAGE_RECEIVED;
+      const instrumentationEnabled = this.instrumentationService?.isEnabled?.() && this.tracer;
       const eventHandlers = this.events.get(eventName);
 
-      if (eventHandlers) {
-        await Promise.all(eventHandlers.map((handler) => handler(params)));
+      if (!eventHandlers) {
+        continue; // No handlers for this event
+      }
+
+      if (isMessageReceivedEvent && instrumentationEnabled) {
+        // --- Instrument with startSpan + context.with ---
+        const message = (params as MessagePayload)?.message;
+        const rootSpan = this.tracer.startSpan('AgentRuntime.handleMessageEvent', {
+          attributes: {
+            'agent.id': this.agentId,
+            'character.name': this.character?.name,
+            'room.id': message?.roomId || 'unknown',
+            'user.id': message?.entityId || 'unknown',
+            'message.id': message?.id || 'unknown',
+            'event.name': eventName,
+          },
+        });
+
+        // Create a new context with the rootSpan as active
+        const spanContext = trace.setSpan(context.active(), rootSpan);
+
+        try {
+          rootSpan.addEvent('processing_started');
+          // Execute handlers within the new context
+          await context.with(spanContext, async () => {
+            await Promise.all(eventHandlers.map((handler) => {
+              // Explicitly capture the active context for each handler
+              const ctx = context.active();
+              return context.with(ctx, () => handler(params));
+            }));
+          });
+          rootSpan.setStatus({ code: SpanStatusCode.OK });
+        } catch (error) {
+          this.runtimeLogger.error(`Error during instrumented handler execution for event ${eventName}:`, error);
+          rootSpan.recordException(error as Error);
+          rootSpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
+          // throw error; // Re-throw if needed
+        } finally {
+          rootSpan.addEvent('processing_ended');
+          rootSpan.end();
+        }
+        // --- End Instrumentation ---
+      } else {
+        // --- No Instrumentation: Execute directly ---
+        try {
+          await Promise.all(eventHandlers.map((handler) => handler(params)));
+        } catch (error) {
+          this.runtimeLogger.error(`Error during emitEvent for ${eventName} (handler execution):`, error);
+          // throw error; // Re-throw if necessary
+        }
       }
     }
   }
