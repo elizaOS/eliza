@@ -107,90 +107,6 @@ export class TwitterPostClient {
   }
 
   /**
-   * Creates a Tweet object based on the tweet result, client information, and Twitter username.
-   *
-   * @param {any} tweetResult - The result object from the Twitter API representing a tweet.
-   * @param {any} client - The client object containing profile information.
-   * @param {string} twitterUsername - The Twitter username of the user.
-   * @returns {Tweet} A Tweet object with specific properties extracted from the tweet result and client information.
-   */
-  createTweetObject(tweetResult: any, client: any, twitterUsername: string): Tweet {
-    return {
-      id: tweetResult.rest_id,
-      name: client.profile.screenName,
-      username: client.profile.username,
-      text: tweetResult.legacy.full_text,
-      conversationId: tweetResult.legacy.conversation_id_str,
-      createdAt: tweetResult.legacy.created_at,
-      timestamp: new Date(tweetResult.legacy.created_at).getTime(),
-      userId: client.profile.id,
-      inReplyToStatusId: tweetResult.legacy.in_reply_to_status_id_str,
-      permanentUrl: `https://twitter.com/${twitterUsername}/status/${tweetResult.rest_id}`,
-      hashtags: [],
-      mentions: [],
-      photos: [],
-      thread: [],
-      urls: [],
-      videos: [],
-    } as Tweet;
-  }
-
-  /**
-   * Processes and caches a tweet.
-   *
-   * @param {IAgentRuntime} runtime - The agent runtime.
-   * @param {ClientBase} client - The client object.
-   * @param {Tweet} tweet - The tweet to be processed and cached.
-   * @param {UUID} roomId - The ID of the room where the tweet will be stored.
-   * @param {string} rawTweetContent - The raw content of the tweet.
-   */
-  async processAndCacheTweet(
-    runtime: IAgentRuntime,
-    client: ClientBase,
-    tweet: Tweet,
-    roomId: UUID,
-    rawTweetContent: string
-  ) {
-    // Cache the last post details
-    await runtime.setCache<any>(`twitter/${client.profile.username}/lastPost`, {
-      id: tweet.id,
-      timestamp: Date.now(),
-    });
-
-    // Cache the tweet
-    await client.cacheTweet(tweet);
-
-    // Log the posted tweet
-    logger.log(`Tweet posted:\n ${tweet.permanentUrl}`);
-
-    // Ensure the room and participant exist
-    await runtime.ensureRoomExists({
-      id: roomId,
-      name: 'Twitter Feed',
-      source: 'twitter',
-      type: ChannelType.FEED,
-    });
-    await runtime.ensureParticipantInRoom(runtime.agentId, roomId);
-
-    // Create a memory for the tweet
-    await runtime.createMemory(
-      {
-        id: createUniqueUuid(this.runtime, tweet.id),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: {
-          text: rawTweetContent.trim(),
-          url: tweet.permanentUrl,
-          source: 'twitter',
-        },
-        roomId,
-        createdAt: tweet.timestamp,
-      },
-      'messages'
-    );
-  }
-
-  /**
    * Handles sending a note tweet with optional media data.
    *
    * @param {ClientBase} client - The client object used for sending the note tweet.
@@ -249,46 +165,6 @@ export class TwitterPostClient {
       return body.data.create_tweet.tweet_results.result;
     } catch (error) {
       logger.error('Error sending standard Tweet:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Posts a new tweet with the provided tweet content and optional media data.
-   *
-   * @param {IAgentRuntime} runtime - The runtime environment for the agent.
-   * @param {ClientBase} client - The Twitter client used to post the tweet.
-   * @param {string} tweetTextForPosting - The text content of the tweet.
-   * @param {UUID} roomId - The ID of the room where the tweet will be posted.
-   * @param {string} rawTweetContent - The raw content of the tweet.
-   * @param {string} twitterUsername - The username associated with the Twitter account.
-   * @param {MediaData[]} [mediaData] - Optional media data to be included in the tweet.
-   * @returns {Promise<void>} - A Promise that resolves when the tweet is successfully posted.
-   */
-  async postTweet(
-    runtime: IAgentRuntime,
-    client: ClientBase,
-    tweetTextForPosting: string,
-    roomId: UUID,
-    rawTweetContent: string,
-    twitterUsername: string,
-    mediaData?: MediaData[]
-  ) {
-    try {
-      logger.log('Posting new tweet:\n');
-
-      let result;
-
-      if (tweetTextForPosting.length > TWEET_CHAR_LIMIT - 1) {
-        result = await this.handleNoteTweet(client, tweetTextForPosting, undefined, mediaData);
-      } else {
-        result = await this.sendStandardTweet(client, tweetTextForPosting, undefined, mediaData);
-      }
-      const tweet = this.createTweetObject(result, client, twitterUsername);
-
-      await this.processAndCacheTweet(runtime, client, tweet, roomId, rawTweetContent);
-    } catch (error) {
-      logger.error('Error sending tweet:');
       throw error;
     }
   }
