@@ -1,5 +1,5 @@
 import CharacterForm from '@/components/character-form';
-import { useAgentManagement } from '@/hooks/use-agent-management';
+import StopAgentButton from '@/components/stop-agent-button';
 import { useAgentUpdate } from '@/hooks/use-agent-update';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api';
@@ -17,9 +17,7 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isDeleting, setIsDeleting] = useState(false);
-  const { stopAgent, isAgentStopping } = useAgentManagement();
   const isActive = agent?.status === AgentStatus.ACTIVE;
-  const isStoppingAgent = isAgentStopping(agentId);
 
   // Use our enhanced agent update hook for more intelligent handling of JSONb fields
   const agentState = useAgentUpdate(agent);
@@ -209,21 +207,6 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
     }
   };
 
-  const handleStopAgent = async () => {
-    // Add confirmation dialog
-    const confirmStop = window.confirm(`Are you sure you want to stop "${agent.name}"?`);
-    if (confirmStop) {
-      try {
-        await stopAgent(agent);
-        // Navigate to homepage after agent is stopped
-        navigate('/');
-      } catch (error) {
-        // If error occurs, don't navigate
-        console.error('Error stopping agent:', error);
-      }
-    }
-  };
-
   return (
     <CharacterForm
       characterValue={agentState.agent}
@@ -233,11 +216,11 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
       onSubmit={handleSubmit}
       onReset={agentState.reset}
       onDelete={handleDelete}
-      onStop={isActive ? handleStopAgent : undefined}
+      stopAgentButton={
+        isActive ? <StopAgentButton agent={agent} redirectToHome={true} /> : undefined
+      }
       isAgent={true}
       isDeleting={isDeleting}
-      isStopping={isStoppingAgent}
-      isActive={isActive}
       customComponents={[
         {
           name: 'Plugins',
