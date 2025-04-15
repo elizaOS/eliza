@@ -201,7 +201,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Initialize the plugin if it has an init function
-    if (plugin.init) {
+    if (plugin && 'init' in plugin && plugin.init !== null && typeof plugin.init === 'function') {
       try {
         await plugin.init(plugin.config || {}, this);
         this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
@@ -1365,7 +1365,27 @@ export class AgentRuntime implements IAgentRuntime {
       body: {
         modelType,
         modelKey,
-        params: params ? (typeof params === 'object' ? Object.keys(params) : typeof params) : null,
+        params: (() => {
+          if (params === null || params === undefined) {
+            return null;
+          }
+          // Handle Node.js Buffer
+          if (typeof Buffer !== 'undefined' && Buffer.isBuffer(params)) {
+            return `[Audio Buffer (${params.length} bytes)]`;
+          }
+          // Handle TypedArrays (Uint8Array, Float32Array, etc.)
+          if (ArrayBuffer.isView(params)) {
+            // Use constructor name for TypedArray type (e.g., 'Uint8Array')
+            // Use 'length' for element count in TypedArrays
+            return `[Audio ${params.constructor.name} (${(params as any).length})]`;
+          }
+          // Handle other objects
+          if (typeof params === 'object') {
+            return Object.keys(params);
+          }
+          // Handle primitives
+          return typeof params;
+        })(),
         response:
           Array.isArray(response) && response.every((x) => typeof x === 'number')
             ? '[array]'
