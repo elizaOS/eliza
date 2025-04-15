@@ -4,20 +4,20 @@ This directory contains Bash test scripts that verify the functionality of the `
 
 ## Test Coverage
 
-| Test File            | Command(s) Tested                                  | Functionality Covered                                                                    |
-| -------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `test_agent.sh`      | `elizaos agent`                                    | Creating agents, configuring agent settings, and verifying agent behavior                |
-| `test_create.sh`     | `elizaos create`                                   | Creating new projects and plugins with various options and templates                     |
-| `test_dev.sh`        | `elizaos dev`                                      | Starting development servers, watching for changes, testing hot reload                   |
-| `test_env.sh`        | `elizaos env`                                      | Setting, getting, listing, and removing environment variables at different scopes        |
-| `test_install.sh`    | `elizaos install`                                  | Installing dependencies and verifying installation                                       |
-| `test_plugin.sh`     | `elizaos plugin` /<br>`elizaos project add-plugin` | Plugin command help, plugin project creation, adding single/multiple plugins to projects |
-| `test_project.sh`    | `elizaos project`                                  | Project commands (installed-plugins, add-plugin, remove-plugin, etc.)                    |
-| `test_publish.sh`    | `elizaos plugin publish`                           | Plugin publication validation, testing publication workflow                              |
-| `test_start.sh`      | `elizaos start`                                    | Starting Eliza apps in various modes                                                     |
-| `test_test.sh`       | `elizaos test`                                     | Running test suites, verifying test results                                              |
-| `test_update.sh`     | `elizaos update`                                   | Updating plugins and projects                                                            |
-| `test_update-cli.sh` | `elizaos update-cli`                               | Updating the Eliza CLI itself                                                            |
+| Test File            | Command(s) Tested                                  | Test Conditions & Options                                                                                                                                                                                                      |
+| -------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `test_agent.sh`      | `elizaos agent`                                    | • `agent --help`<br>• `agent list`<br>• `agent start --path <character_file>`<br>• `agent stop <agent_name>`<br>• Character file loading & lifecycle management                                                                |
+| `test_create.sh`     | `elizaos create`                                   | • `create --help`<br>• `create <name> --yes` (default project)<br>• `create <name> --yes --type plugin`<br>• `create .` (create in current directory)<br>• Edge cases: existing directories, invalid names, non-existent types |
+| `test_dev.sh`        | `elizaos dev`                                      | • `dev --help`<br>• `dev --port <port>` (background process)<br>• Server accessibility & API responsiveness<br>• Integration with agent commands against dev server                                                            |
+| `test_env.sh`        | `elizaos env`                                      | • `env --help`<br>• `env list`<br>• Environment variable operations against server API                                                                                                                                         |
+| `test_install.sh`    | `elizaos install`                                  | • Package dependency installation<br>• Various package manager integration                                                                                                                                                     |
+| `test_plugin.sh`     | `elizaos plugin` /<br>`elizaos project add-plugin` | • `plugin --help`<br>• `plugin publish --help`<br>• `project add-plugin <plugin-name> --no-env-prompt`<br>• Multiple plugin installation<br>• Plugin detection in package.json                                                 |
+| `test_project.sh`    | `elizaos project`                                  | • `project --help`<br>• `project create`<br>• `project installed-plugins`<br>• `project add-plugin`<br>• `project remove-plugin`<br>• Package.json modifications                                                               |
+| `test_publish.sh`    | `elizaos plugin publish`                           | • Plugin validation<br>• Plugin packaging<br>• Publication workflow verification                                                                                                                                               |
+| `test_start.sh`      | `elizaos start`                                    | • `start --help`<br>• Various runtime modes<br>• Configuration validation                                                                                                                                                      |
+| `test_test.sh`       | `elizaos test`                                     | • `test --help`<br>• Test suite execution<br>• Test result validation                                                                                                                                                          |
+| `test_update.sh`     | `elizaos update`                                   | • `update --help`<br>• Plugin updates<br>• Project dependency updates                                                                                                                                                          |
+| `test_update-cli.sh` | `elizaos update-cli`                               | • `update-cli --help`<br>• CLI self-update process<br>• Version checking                                                                                                                                                       |
 
 ## Running Tests
 
