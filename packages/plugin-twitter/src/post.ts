@@ -56,7 +56,7 @@ export class TwitterPostClient {
     logger.log(`- Auto-post: ${this.state.isTwitterEnabled ? 'enabled' : 'disabled'}`);
 
     logger.log(
-      `- Post Interval: ${this.state?.TWITTER_POST_INTERVAL_MIN || this.runtime.getSetting('TWITTER_POST_INTERVAL_MIN')}-${this.state?.TWITTER_POST_INTERVAL_MAX || this.runtime.getSetting('TWITTER_POST_INTERVAL_MAX')} minutes`
+      `- Post Interval: ${this.state?.TWITTER_POST_INTERVAL_MIN || this.runtime.getSetting('TWITTER_POST_INTERVAL_MIN') || 90}-${this.state?.TWITTER_POST_INTERVAL_MAX || this.runtime.getSetting('TWITTER_POST_INTERVAL_MAX') || 180} minutes`
     );
     logger.log(
       `- Post Immediately: ${
@@ -83,24 +83,31 @@ export class TwitterPostClient {
     }
 
     const generateNewTweetLoop = async () => {
-      // Defaults to 30 minutes
-      const interval =
-        (this.state?.TWITTER_POST_INTERVAL ||
-          (this.runtime.getSetting('TWITTER_POST_INTERVAL') as unknown as number) ||
-          30) *
-        60 *
-        1000;
+      const minPostMinutes =
+        this.state?.TWITTER_POST_INTERVAL_MIN ||
+        this.runtime.getSetting('TWITTER_POST_INTERVAL_MIN') ||
+        90;
+      const maxPostMinutes =
+        this.state?.TWITTER_POST_INTERVAL_MAX ||
+        this.runtime.getSetting('TWITTER_POST_INTERVAL_MAX') ||
+        180;
+      const randomMinutes =
+        Math.floor(Math.random() * (maxPostMinutes - minPostMinutes + 1)) + minPostMinutes;
+      const interval = randomMinutes * 60 * 1000;
 
-      this.generateNewTweet();
+      await this.generateNewTweet();
       setTimeout(generateNewTweetLoop, interval);
     };
 
     // Start the loop after a 1 minute delay to allow other services to initialize
     setTimeout(generateNewTweetLoop, 60 * 1000);
-    if (this.runtime.getSetting('TWITTER_POST_IMMEDIATELY')) {
+    if (
+      this.state?.TWITTER_POST_IMMEDIATELY ||
+      this.runtime.getSetting('TWITTER_POST_IMMEDIATELY')
+    ) {
       // await 1 second
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      this.generateNewTweet();
+      await this.generateNewTweet();
     }
   }
 
