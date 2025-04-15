@@ -61,7 +61,7 @@ async function getLocalAvailableDatabases(): Promise<string[]> {
  * @returns {Promise<void>} A promise that resolves once all dependencies are installed.
  */
 async function installDependencies(targetDir: string) {
-  logger.info('Installing dependencies...');
+  console.info('Installing dependencies...');
 
   // Install bun if not already installed
   try {
@@ -69,15 +69,17 @@ async function installDependencies(targetDir: string) {
       stdio: 'inherit',
     });
   } catch (_error) {
-    logger.warn('Failed to install bun globally. Continuing with installation...');
+    console.warn('Failed to install bun globally. Continuing with installation...');
   }
 
   // First just install basic dependencies
   try {
     await runBunCommand(['install', '--no-optional'], targetDir);
-    logger.success('Installed base dependencies');
+    console.log('Installed base dependencies');
   } catch (error) {
-    logger.warn("Failed to install dependencies automatically. Please run 'bun install' manually.");
+    console.warn(
+      "Failed to install dependencies automatically. Please run 'bun install' manually."
+    );
   }
 }
 
@@ -134,7 +136,7 @@ export const create = new Command()
       } else {
         // Validate the provided type
         if (!['project', 'plugin'].includes(projectType)) {
-          logger.error(`Invalid type: ${projectType}. Must be either 'project' or 'plugin'`);
+          console.error(`Invalid type: ${projectType}. Must be either 'project' or 'plugin'`);
           process.exit(1);
         }
       }
@@ -195,7 +197,7 @@ export const create = new Command()
       if (options.type === 'plugin' && !projectName.startsWith('plugin-')) {
         // Create a new directory name with the plugin- prefix
         const prefixedName = `plugin-${projectName}`;
-        logger.info(
+        console.info(
           `Note: Using "${prefixedName}" as the directory name to match package naming convention`
         );
 
@@ -238,20 +240,20 @@ export const create = new Command()
         await copyTemplateUtil('plugin', targetDir, pluginName);
 
         // Install dependencies
-        logger.info('Installing dependencies...');
+        console.info('Installing dependencies...');
         try {
           await runBunCommand(['install', '--no-optional'], targetDir);
-          logger.success('Dependencies installed successfully!');
+          console.log('Dependencies installed successfully!');
 
           // Build the plugin after installing dependencies
           await buildProject(targetDir, true);
         } catch (_error) {
-          logger.warn(
+          console.warn(
             "Failed to install dependencies automatically. Please run 'bun install' manually."
           );
         }
 
-        logger.success('Plugin initialized successfully!');
+        console.log('Plugin initialized successfully!');
 
         // Get the relative path for display
         const cdPath =
@@ -259,21 +261,21 @@ export const create = new Command()
             ? projectName // If creating in current directory, just use the name
             : path.relative(process.cwd(), targetDir); // Otherwise use path relative to current directory
 
-        logger.info(`\nYour plugin is ready! Here's your development workflow:
+        console.info(`\nYour plugin is ready! Here's your development workflow:
 
-1️⃣ Development
+[1] Development
    cd ${cdPath}
    ${colors.cyan('npx elizaos dev')}              # Start development with hot-reloading
 
-2️⃣ Testing
+[2] Testing
    ${colors.cyan('npx elizaos test')}             # Run automated tests
    ${colors.cyan('npx elizaos start')}            # Test in a live agent environment
 
-3️⃣ Publishing
+[3] Publishing
    ${colors.cyan('npx elizaos plugin publish --test')}    # Check registry requirements
    ${colors.cyan('npx elizaos plugin publish')}           # Submit to registry
 
-📚 Learn more: https://eliza.how/docs/cli/plugins`);
+[?] Learn more: https://eliza.how/docs/cli/plugins`);
 
         // Set the user's shell working directory before exiting
         // Note: This only works if the CLI is run with shell integration
@@ -319,7 +321,7 @@ export const create = new Command()
         });
 
         if (!database) {
-          logger.error('No database selected');
+          console.error('No database selected');
           process.exit(1);
         }
 
@@ -333,7 +335,7 @@ export const create = new Command()
         if (database === 'pglite') {
           // Set up PGLite directory and configuration
           await setupPgLite(elizaDbDir, envFilePath);
-          logger.debug(`Using PGLite database directory: ${elizaDbDir}`);
+          console.debug(`Using PGLite database directory: ${elizaDbDir}`);
         } else if (database === 'postgres' && !postgresUrl) {
           // Handle Postgres configuration
           postgresUrl = await promptAndStorePostgresUrl(envFilePath);
@@ -354,7 +356,7 @@ export const create = new Command()
         // Build the project after installing dependencies
         await buildProject(targetDir);
 
-        logger.success('Project initialized successfully!');
+        console.log('Project initialized successfully!');
 
         // Show next steps with updated message
         const cdPath =
@@ -362,7 +364,7 @@ export const create = new Command()
             ? projectName // If creating in current directory, just use the name
             : path.relative(process.cwd(), targetDir); // Otherwise use path relative to current directory
 
-        logger.info(`\nYour project is ready! Here's what you can do next:
+        console.info(`\nYour project is ready! Here's what you can do next:
 1. \`cd ${cdPath}\` to change into your project directory
 2. Run \`npx elizaos start\` to start your project
 3. Visit \`http://localhost:3000\` (or your custom port) to view your project in the browser`);
@@ -374,7 +376,6 @@ export const create = new Command()
         process.exit(0);
       }
     } catch (error) {
-      await checkServer();
       handleError(error);
     }
   });

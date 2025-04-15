@@ -9,7 +9,7 @@ The `publish` command allows you to package and publish your ElizaOS plugins or 
 ## Usage
 
 ```bash
-npx @elizaos/cli publish [options]
+elizaos publish [options]
 ```
 
 ## Options
@@ -51,13 +51,13 @@ You can specify the platform compatibility of your package:
 
 ```bash
 # Specify that your plugin works in Node.js only
-npx @elizaos/cli publish -p node
+elizaos publish -p node
 
 # Specify that your plugin works in browsers only
-npx @elizaos/cli publish -p browser
+elizaos publish -p browser
 
 # Specify that your plugin works everywhere (default)
-npx @elizaos/cli publish -p universal
+elizaos publish -p universal
 ```
 
 ## Publishing Targets
@@ -67,7 +67,7 @@ npx @elizaos/cli publish -p universal
 Make your component available on the npm registry:
 
 ```bash
-npx @elizaos/cli publish -n
+elizaos publish -n
 ```
 
 Before publishing to npm, make sure you're logged in:
@@ -81,10 +81,19 @@ npm login
 By default, packages are published to GitHub:
 
 ```bash
-npx @elizaos/cli publish
+elizaos publish
 ```
 
-This requires GitHub credentials, which you'll be prompted for if not already configured.
+This requires GitHub credentials, which can be provided in two ways:
+
+1. Set the `GITHUB_TOKEN` environment variable
+2. Enter your GitHub Personal Access Token when prompted
+
+Your GitHub token needs these permissions:
+
+- `repo` (for repository access)
+- `read:org` (for organization access)
+- `workflow` (for workflow access)
 
 ## Testing Before Publishing
 
@@ -93,7 +102,7 @@ This requires GitHub credentials, which you'll be prompted for if not already co
 Run tests without actually publishing:
 
 ```bash
-npx @elizaos/cli publish -t
+elizaos publish -t
 ```
 
 This will:
@@ -108,7 +117,7 @@ This will:
 Generate registry files locally without publishing:
 
 ```bash
-npx @elizaos/cli publish --dry-run
+elizaos publish --dry-run
 ```
 
 This creates the registry metadata files locally for inspection.
@@ -120,7 +129,7 @@ By default, your package will be submitted to the ElizaOS registry when publishi
 If you don't want to publish to the registry:
 
 ```bash
-npx @elizaos/cli publish --skip-registry
+elizaos publish --skip-registry
 ```
 
 ## Examples
@@ -132,7 +141,7 @@ npx @elizaos/cli publish --skip-registry
 cd my-plugin
 
 # Publish to GitHub
-npx @elizaos/cli publish
+elizaos publish
 ```
 
 ### Publishing to npm
@@ -142,21 +151,21 @@ npx @elizaos/cli publish
 cd my-package
 
 # Publish to npm
-npx @elizaos/cli publish -n
+elizaos publish -n
 ```
 
 ### Testing the Publishing Process
 
 ```bash
 # Test the publishing process without making changes
-npx @elizaos/cli publish -t
+elizaos publish -t
 ```
 
 ### Publishing with Platform Specification
 
 ```bash
 # Publish a Node.js plugin
-npx @elizaos/cli publish -p node
+elizaos publish -p node
 ```
 
 ## Troubleshooting

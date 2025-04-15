@@ -14,11 +14,12 @@ elizaos project <action> [options]
 
 ## Actions
 
-| Action          | Description                                        |
-| --------------- | -------------------------------------------------- |
-| `list-plugins`  | List available plugins to install into the project |
-| `add-plugin`    | Add a plugin to the project                        |
-| `remove-plugin` | Remove a plugin from the project                   |
+| Action              | Description                                        |
+| ------------------- | -------------------------------------------------- |
+| `list-plugins`      | List available plugins to install into the project |
+| `add-plugin`        | Add a plugin to the project                        |
+| `remove-plugin`     | Remove a plugin from the project                   |
+| `installed-plugins` | List plugins installed in the project dependencies |
 
 ## Managing Plugins
 
@@ -74,6 +75,15 @@ This will:
 
 1. Uninstall the plugin from your project
 2. Remove it from your project's dependencies
+3. Remove the plugin directory (if it exists)
+
+### Listing Installed Plugins
+
+Show the Eliza plugins found in your project's `package.json`:
+
+```bash
+elizaos project installed-plugins
+```
 
 ## Examples
 

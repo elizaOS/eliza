@@ -69,7 +69,7 @@ function displaySection(title: string, items: string[] | undefined): void {
  * Logs a header inside a rectangular frame with extra padding.
  * @param {string} title - The header text to display.
  */
-function logHeader(title: string): void {
+export function logHeader(title: string): void {
   const padding = 2; // number of spaces on each side
   const titleStr = `=== ${title} ===`;
   const paddedTitle = ' '.repeat(padding) + titleStr + ' '.repeat(padding);

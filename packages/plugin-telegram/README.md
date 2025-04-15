@@ -107,3 +107,40 @@ npm run dev
 ```bash
 bun start --character="characters/your-character.json"
 ```
+
+## Utilizing Telegram Buttons
+
+To send a message with native Telegram buttons, include an array of buttons in the message content. The following action demonstrates how to initiate a login flow using a Telegram button.
+
+```typescript
+export const initAuthHandshakeAction: Action = {
+  name: 'INIT_AUTH_HANDSHAKE',
+  description: 'Initiates the identity linking and authentication flow for new users.',
+  validate: async (_runtime, _message, _state) => {
+    return _message.content.source === 'telegram';
+  },
+  handler: async (runtime, message, _state, _options, callback): Promise<boolean> => {
+    try {
+      const user = await getUser(message.userId);
+      if (user) return false;
+
+      callback({
+        text: "Let's get you set up with a new account",
+        buttons: [
+          {
+            text: '🔑 Authenticate with Telegram',
+            url: `${FRONTEND_URL}/integrations/telegram`,
+            kind: 'login',
+          },
+        ],
+      }).catch((error) => {
+        console.error('Error sending callback:', error);
+      });
+
+      return true;
+    } catch (error) {
+      ...
+    }
+  },
+};
+```

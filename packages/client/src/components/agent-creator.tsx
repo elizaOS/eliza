@@ -18,7 +18,7 @@ const defaultCharacter: Partial<Agent> = {
   bio: [] as string[],
   topics: [] as string[],
   adjectives: [] as string[],
-  plugins: [],
+  plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-openai'],
   settings: { secrets: {} },
 };
 
@@ -63,14 +63,14 @@ export default function AgentCreator() {
 
       toast({
         title: 'Success',
-        description: 'Character created successfully!',
+        description: 'Agent created successfully!',
       });
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       navigate('/');
     } catch (error) {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to create character',
+        description: error instanceof Error ? error.message : 'Failed to create agent',
         variant: 'destructive',
       });
     }
@@ -80,8 +80,8 @@ export default function AgentCreator() {
     <CharacterForm
       characterValue={agentState.agent}
       setCharacterValue={agentState}
-      title="Character Settings"
-      description="Configure your AI character's behavior and capabilities. Recommended default plugins: @elizaos/plugin-sql, @elizaos/plugin-local-ai"
+      title="Agent Settings"
+      description="Configure your AI agent's behavior and capabilities. Recommended default plugins: @elizaos/plugin-sql, @elizaos/plugin-local-ai"
       onSubmit={handleSubmit}
       onReset={() => agentState.reset()}
       onDelete={() => {
