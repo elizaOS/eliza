@@ -25,7 +25,7 @@ import {
   getAllRequiredPlugins,
 } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
-import { HelpCircle } from 'lucide-react';
+import { HelpCircle, Square, Loader2, Trash } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type FieldType = 'text' | 'textarea' | 'number' | 'checkbox' | 'select';
@@ -71,8 +71,11 @@ export type CharacterFormProps = {
   onSubmit: (character: Agent) => Promise<void>;
   onDelete?: () => void;
   onReset?: () => void;
+  onStop?: () => void;
   isAgent?: boolean;
   isDeleting?: boolean;
+  isStopping?: boolean;
+  isActive?: boolean;
   customComponents?: customComponent[];
   characterValue: Agent;
   setCharacterValue: {
@@ -93,7 +96,10 @@ export default function CharacterForm({
   onSubmit,
   onDelete,
   onReset,
+  onStop,
   isDeleting = false,
+  isStopping = false,
+  isActive = true,
   customComponents = [],
 }: CharacterFormProps) {
   const { toast } = useToast();
@@ -605,17 +611,51 @@ export default function CharacterForm({
         </Tabs>
 
         <div className="flex justify-between gap-4 mt-6">
-          <div className="flex gap-4 text-red-500">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                onDelete?.();
-              }}
-              disabled={isDeleting}
-            >
-              {isDeleting ? 'Deleting...' : 'Delete Agent'}
-            </Button>
+          <div className="flex gap-4">
+            {onDelete && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  onDelete?.();
+                }}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash className="mr-2 h-4 w-4" />
+                    Delete Agent
+                  </>
+                )}
+              </Button>
+            )}
+            {onStop && isActive && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  onStop?.();
+                }}
+                disabled={isStopping}
+              >
+                {isStopping ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Stopping...
+                  </>
+                ) : (
+                  <>
+                    <Square className="mr-2 h-4 w-4" />
+                    Stop Agent
+                  </>
+                )}
+              </Button>
+            )}
           </div>
 
           <div className="flex gap-4">
