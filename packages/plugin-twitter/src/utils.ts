@@ -259,12 +259,13 @@ async function sendStandardTweet(
 export async function sendTweet(
   client: ClientBase,
   text: string,
-  mediaData: MediaData[] = []
+  mediaData: MediaData[] = [],
+  tweetToReplyTo?: string
 ): Promise<any> {
   if (text.length > TWEET_CHAR_LIMIT - 1) {
-    return await handleNoteTweet(client, text, undefined, mediaData);
+    return await handleNoteTweet(client, text, tweetToReplyTo, mediaData);
   } else {
-    return await sendStandardTweet(client, text, undefined, mediaData);
+    return await sendStandardTweet(client, text, tweetToReplyTo, mediaData);
   }
 }
 
