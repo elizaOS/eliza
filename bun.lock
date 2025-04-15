@@ -6,6 +6,7 @@
       "dependencies": {
         "@anthropic-ai/sdk": "^0.39.0",
         "@babel/generator": "^7.26.10",
+        "@elizaos/plugin-openai": "workspace:*",
         "@hapi/shot": "^6.0.1",
         "@types/hapi": "^18.0.14",
         "node-opus": "^0.3.3",
@@ -101,7 +102,7 @@
         "@babel/parser": "^7.22.6",
         "@elizaos/core": "^1.0.0-beta.32",
         "@elizaos/plugin-anthropic": "^1.0.0-beta.32",
-        "@elizaos/plugin-openai": "^1.0.0-beta.32",
+        "@elizaos/plugin-openai": "1.0.0-beta.32",
         "@elizaos/plugin-sql": "^1.0.0-beta.32",
         "@types/babel__core": "^7.20.1",
         "@types/diff": "^5.0.3",
@@ -577,8 +578,8 @@
       "name": "@elizaos/plugin-starter",
       "version": "1.0.0-beta.0",
       "dependencies": {
-        "@elizaos/cli": "^1.0.0-beta.0",
-        "@elizaos/core": "^1.0.0-beta.0",
+        "@elizaos/cli": "^1.0.0-beta.32",
+        "@elizaos/core": "^1.0.0-beta.32",
         "zod": "3.24.2",
       },
       "devDependencies": {
@@ -804,18 +805,20 @@
     "node-llama-cpp",
   ],
   "overrides": {
-    "react": "19.0.0",
-    "eslint": "9.22.0",
-    "got": "12.6.1",
-    "vitest": "3.0.5",
+    "@nrwl/devkit": "19.8.13",
     "@nrwl/tao": "19.8.13",
     "zod": "3.24.1",
+    "eslint": "9.22.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "vitest": "3.0.5",
+    "@metaplex-foundation/umi": "0.9.2",
     "typedoc-plugin-markdown": "4.2.10",
     "buffer": "6.0.3",
-    "form-data": "4.0.2",
-    "@nrwl/devkit": "19.8.13",
-    "react-dom": "19.0.0",
     "@solana/spl-token": "0.4.9",
+    "solana-bankrun": "0.3.1",
+    "got": "12.6.1",
+    "form-data": "4.0.2",
   },
   "packages": {
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.10.1", "", {}, "sha512-96Z2IP3mYmF1Xg2cDm8f1gWGf/HUVedQ3FMifV4kG/PQ4yEP51xDtRAEfhVNt5f/uzpNkZHwWQuUcu6D6K+Ekw=="],
@@ -6784,8 +6787,6 @@
 
     "@elizaos/plugin-video-understanding/glob": ["glob@11.0.0", "", { "dependencies": { "foreground-child": "^3.1.0", "jackspeak": "^4.0.1", "minimatch": "^10.0.0", "minipass": "^7.1.2", "package-json-from-dist": "^1.0.0", "path-scurry": "^2.0.0" }, "bin": { "glob": "dist/esm/bin.mjs" } }, "sha512-9UiX/Bl6J2yaBbxKoEBRm4Cipxgok8kQYcOPEhScPwebu2I0HoQOuYdIO6S3hLuWoZgpDpwQZMzTFxgpkyT76g=="],
 
-    "@elizaos/the-org/@radix-ui/react-slot": ["@radix-ui/react-slot@1.1.2", "", { "dependencies": { "@radix-ui/react-compose-refs": "1.1.1" }, "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-YAKxaiGsSQJ38VzKH86/BPRC4rh+b1Jpa+JneA5LRE7skmLPNAyeG8kPJj/oo4STLvlrs8vkf/iYyc3A5stYCQ=="],
-
     "@elizaos/the-org/@types/react": ["@types/react@18.3.20", "", { "dependencies": { "@types/prop-types": "*", "csstype": "^3.0.2" } }, "sha512-IPaCZN7PShZK/3t6Q87pfTkRm6oLTd4vztyoj+cbHUF1g3FfVb2tFIL79uCRKEfv16AhqDMBywP2VW3KIZUvcg=="],
 
     "@elizaos/the-org/@types/react-dom": ["@types/react-dom@18.3.6", "", { "peerDependencies": { "@types/react": "^18.0.0" } }, "sha512-nf22//wEbKXusP6E9pfOCDwFdHAX4u172eaJI4YkDRQEZiorm6KfYnSC2SWLDMVWUOWPERmJnN0ujeAfTBLvrw=="],
@@ -8619,8 +8620,6 @@
     "@elizaos/plugin-video-understanding/@types/node/undici-types": ["undici-types@6.19.8", "", {}, "sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw=="],
 
     "@elizaos/plugin-video-understanding/glob/minimatch": ["minimatch@10.0.1", "", { "dependencies": { "brace-expansion": "^2.0.1" } }, "sha512-ethXTt3SGGR+95gudmqJ1eNhRO7eGEGIgYA9vnPatK4/etz2MEVDno5GMCibdMTuBMyElzIlgxMna3K94XDIDQ=="],
-
-    "@elizaos/the-org/@radix-ui/react-slot/@radix-ui/react-compose-refs": ["@radix-ui/react-compose-refs@1.1.1", "", { "peerDependencies": { "@types/react": "*", "react": "^16.8 || ^17.0 || ^18.0 || ^19.0 || ^19.0.0-rc" }, "optionalPeers": ["@types/react"] }, "sha512-Y9VzoRDSJtgFMUCoiZBDVo084VQ5hfpXxVE+NgkdNsjiDBByiImMZKKhxMwCbdHvhlENG6a833CbFkOQvTricw=="],
 
     "@elizaos/the-org/vite/rollup": ["rollup@4.39.0", "", { "dependencies": { "@types/estree": "1.0.7" }, "optionalDependencies": { "@rollup/rollup-android-arm-eabi": "4.39.0", "@rollup/rollup-android-arm64": "4.39.0", "@rollup/rollup-darwin-arm64": "4.39.0", "@rollup/rollup-darwin-x64": "4.39.0", "@rollup/rollup-freebsd-arm64": "4.39.0", "@rollup/rollup-freebsd-x64": "4.39.0", "@rollup/rollup-linux-arm-gnueabihf": "4.39.0", "@rollup/rollup-linux-arm-musleabihf": "4.39.0", "@rollup/rollup-linux-arm64-gnu": "4.39.0", "@rollup/rollup-linux-arm64-musl": "4.39.0", "@rollup/rollup-linux-loongarch64-gnu": "4.39.0", "@rollup/rollup-linux-powerpc64le-gnu": "4.39.0", "@rollup/rollup-linux-riscv64-gnu": "4.39.0", "@rollup/rollup-linux-riscv64-musl": "4.39.0", "@rollup/rollup-linux-s390x-gnu": "4.39.0", "@rollup/rollup-linux-x64-gnu": "4.39.0", "@rollup/rollup-linux-x64-musl": "4.39.0", "@rollup/rollup-win32-arm64-msvc": "4.39.0", "@rollup/rollup-win32-ia32-msvc": "4.39.0", "@rollup/rollup-win32-x64-msvc": "4.39.0", "fsevents": "~2.3.2" }, "bin": { "rollup": "dist/bin/rollup" } }, "sha512-thI8kNc02yNvnmJp8dr3fNWJ9tCONDhp6TV35X6HkKGGs9E6q7YWCHbe5vKiTa7TAiNcFEmXKj3X/pG2b3ci0g=="],
 

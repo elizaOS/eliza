@@ -167,7 +167,9 @@ assert_success "'project list-plugins' might work outside project directory"
 ((TESTS_TOTAL++))
 if [ $? -eq 0 ]; then ((TESTS_PASSED++)); else ((TESTS_FAILED++)); fi
 
-log_info "TEST 9: Running 'project add-plugin' outside a project directory"
+# Test 9: Verify 'project add-plugin' fails correctly when run outside a project directory.
+# It should detect the missing package.json and exit with a specific error message.
+log_info "TEST 9: Running 'project add-plugin' outside a project directory..."
 # Create a temporary directory for isolation
 OUTSIDE_DIR="$TEST_TMP_DIR/outside-project-dir"
 mkdir -p "$OUTSIDE_DIR"
@@ -182,37 +184,35 @@ fi
 
 # Run command with a short timeout to avoid hanging if it prompts for input
 log_info "Running project add-plugin command outside a project directory..."
-# Set a timeout on the command execution to prevent hanging
-timeout 10s node "$ELIZAOS_EXECUTABLE" project add-plugin "@elizaos/plugin-openai" > stdout.log 2> stderr.log
+# Temporarily disable exit on error to capture the expected failure
+set +e
+# Run command, capturing output and exit code
+node "$ELIZAOS_EXECUTABLE" project add-plugin "@elizaos/plugin-openai" > stdout.log 2> stderr.log
 ADD_PLUGIN_EXIT_CODE=$?
+# Re-enable exit on error
+set -e
 
-# NOTE: The CLI appears to succeed even when outside a project directory, this is a known bug
-# Ideally, the CLI would fail with a clear error message about needing to be run inside a project
-if [ $ADD_PLUGIN_EXIT_CODE -eq 0 ]; then
-    log_warning "Command unexpectedly succeeded outside a project directory (exit code 0)"
-    log_warning "This is a known bug in the CLI - it should fail when no package.json exists"
-    log_warning "STDOUT: $(cat stdout.log)"
-    log_warning "STDERR: $(cat stderr.log)"
-    # Mark as KNOWN BUG - don't fail the test but document the issue
-    test_pass "KNOWN BUG: 'project add-plugin' outside project directory should fail but doesn't [documented bug]"
-    ((TESTS_PASSED++))
-else
-    log_info "Command failed as expected with exit code $ADD_PLUGIN_EXIT_CODE"
-    # Either timeout (124) or normal failure is acceptable
-    if [ $ADD_PLUGIN_EXIT_CODE -eq 124 ]; then
-        log_warning "Command timed out, which suggests it may be hanging interactively"
-        test_pass "'project add-plugin' outside project directory failed with timeout"
+# Assert failure and check combined output for the specific error message
+if [ $ADD_PLUGIN_EXIT_CODE -ne 0 ]; then
+    # Check combined stdout and stderr for the specific error message we added
+    # Use grep -q (quiet) to just check for the presence of the string, allowing for log prefixes
+    if grep -q 'Command must be run inside an Eliza project directory (no package.json found)' stdout.log stderr.log; then
+        test_pass "'project add-plugin' failed correctly outside project with expected message"
+        ((TESTS_PASSED++))
     else
-        # Check stderr for error message
-        if grep -q "No package.json found\|not.*project directory" stderr.log; then
-            test_pass "'project add-plugin' outside project directory properly detected missing package.json"
-        else
-            log_warning "Command failed but with unexpected error message"
-            log_error "STDERR: $(cat stderr.log)"
-            test_pass "'project add-plugin' outside project directory failed but with unexpected error message"
-        fi
+        log_warning "Command failed outside project directory, but with unexpected message (Exit Code: $ADD_PLUGIN_EXIT_CODE)"
+        log_error "STDERR: $(cat stderr.log || echo '<stderr empty or unreadable>')"
+        log_error "STDOUT: $(cat stdout.log || echo '<stdout empty or unreadable>')"
+        test_fail "'project add-plugin' failed outside project with UNEXPECTED message"
+        ((TESTS_FAILED++))
     fi
-    ((TESTS_PASSED++))
+else
+    log_warning "Command unexpectedly SUCCEEDED outside a project directory (Exit Code: 0)"
+    log_warning "This indicates the check in project.ts is not working as expected."
+    log_error "STDOUT: $(cat stdout.log || echo '<stdout empty or unreadable>')"
+    log_error "STDERR: $(cat stderr.log || echo '<stderr empty or unreadable>')"
+    test_fail "'project add-plugin' unexpectedly SUCCEEDED outside project directory"
+    ((TESTS_FAILED++))
 fi
 ((TESTS_TOTAL++))
 

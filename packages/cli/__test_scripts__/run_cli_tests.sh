@@ -36,7 +36,7 @@ start_test_server() {
     # Run from Project Root for potentially better context, but with isolated ELIZA_DIR
     (
         cd "$PROJECT_ROOT" 
-        PORT=$SERVER_PORT ELIZA_DIR="$TEST_SERVER_ELIZA_DIR" nohup node "$ELIZAOS_EXECUTABLE" start > "$SERVER_LOG_FILE" 2>&1 &
+        PORT=$SERVER_PORT ELIZA_DIR="$TEST_SERVER_ELIZA_DIR" NODE_OPTIONS="" nohup node "$ELIZAOS_EXECUTABLE" start > "$SERVER_LOG_FILE" 2>&1 &
         echo $! > "$SERVER_PID_FILE"
     )
 

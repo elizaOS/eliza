@@ -214,7 +214,8 @@ run_elizaos() {
   # Using 'set +e' temporarily to capture non-zero exit codes without script exiting
   set +e
   # Set ELIZA_DIR for the client command execution, pointing to the script's temp dir
-  ELIZA_DIR="$TEST_TMP_DIR/.eliza_client_data" node "$ELIZAOS_EXECUTABLE" "${effective_args[@]}" > "$stdout_file" 2> "$stderr_file"
+  # Explicitly use node without any debugger flags
+  NODE_OPTIONS="" ELIZA_DIR="$TEST_TMP_DIR/.eliza_client_data" node "$ELIZAOS_EXECUTABLE" "${effective_args[@]}" > "$stdout_file" 2> "$stderr_file"
   local exit_status=$?
   echo "$exit_status" > "$exit_code_file"
   set -e # Re-enable exit on error
@@ -281,8 +282,9 @@ assert_success() {
     test_pass "$description [expected success]"
   else
     test_fail "$description [expected success, but got exit code $ELIZAOS_EXIT_CODE]"
-    log_error "Stderr: $ELIZAOS_STDERR" # Show stderr on failure
-    log_error "Stdout: $ELIZAOS_STDOUT"
+    # Ensure stdout/stderr are logged on failure
+    log_error "Stdout: ${ELIZAOS_STDOUT:-<empty>}"
+    log_error "Stderr: ${ELIZAOS_STDERR:-<empty>}"
     return 1 # Indicate failure
   fi
   return 0 # Indicate success

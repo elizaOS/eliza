@@ -55,27 +55,44 @@ log_info "PERFORMING AGGRESSIVE CLEANUP OF EXISTING AGENTS..."
 # Get list of agents from the API
 log_info "Fetching current agents from API..."
 AGENTS_JSON=$(curl -s "${TEST_SERVER_URL}/api/agents")
+# Initialize AGENT_IDS as an empty array by default
+AGENT_IDS=()
 if [[ $? -ne 0 ]]; then
     log_warning "Failed to fetch agents from API"
 else
     # Extract agent IDs using jq if available, otherwise fallback to grep/cut
     if command -v jq >/dev/null 2>&1; then
-        AGENT_IDS=($(echo "$AGENTS_JSON" | jq -r '.data.agents[] | select(.name != "Eliza") | .id'))
+        # Use a temporary file to store IDs instead of mapfile which doesn't work in zsh
+        temp_ids_file=$(mktemp)
+        echo "$AGENTS_JSON" | jq -r '.data.agents[] | select(.name != "Eliza") | .id' > "$temp_ids_file"
+        # Read the IDs from the temp file
+        while IFS= read -r line; do
+            AGENT_IDS+=("$line")
+        done < "$temp_ids_file"
+        rm "$temp_ids_file"
     else
         # Fallback to grep/sed for platforms without jq
-        AGENT_IDS=($(echo "$AGENTS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//g' | sed 's/"//g'))
+        temp_ids_file=$(mktemp)
+        echo "$AGENTS_JSON" | grep -o '"id":"[^"]*"' | sed 's/"id":"//g' | sed 's/"//g' > "$temp_ids_file"
+        # Read the IDs from the temp file
+        while IFS= read -r line; do
+            AGENT_IDS+=("$line")
+        done < "$temp_ids_file"
+        rm "$temp_ids_file"
     fi
     
     log_info "Found ${#AGENT_IDS[@]} agents to clean up"
     
     # Delete each agent by ID
-    for agent_id in "${AGENT_IDS[@]}"; do
-        if [[ -n "$agent_id" ]]; then
-            log_info "Deleting agent with ID: $agent_id"
-            curl -s -X DELETE "${TEST_SERVER_URL}/api/agents/${agent_id}" -H "Content-Type: application/json"
-            sleep 1
-        fi
-    done
+    if [ ${#AGENT_IDS[@]} -gt 0 ]; then
+        for agent_id in "${AGENT_IDS[@]}"; do
+            if [[ -n "$agent_id" ]]; then
+                log_info "Deleting agent with ID: $agent_id"
+                curl -s -X DELETE "${TEST_SERVER_URL}/api/agents/${agent_id}" -H "Content-Type: application/json"
+                sleep 1
+            fi
+        done
+    fi
 fi
 
 # Double-check by using the CLI as well
@@ -90,20 +107,14 @@ log_info "Starting fresh instances of test characters (Ada and Max only)..."
 # Start Ada
 log_info "Starting agent 'Ada'..."
 run_elizaos agent start --path "$ADA_CHARACTER_PATH"
-if [ "$ELIZAOS_EXIT_CODE" -eq 0 ]; then
-    log_info "Ada agent started successfully"
-else
-    log_warning "Failed to start Ada agent, continuing anyway"
-fi
+# Fail immediately if start command fails
+assert_success "Starting 'Ada' agent should succeed"
 
 # Start Max
 log_info "Starting agent 'Max'..."
 run_elizaos agent start --path "$MAX_CHARACTER_PATH"
-if [ "$ELIZAOS_EXIT_CODE" -eq 0 ]; then
-    log_info "Max agent started successfully"
-else
-    log_warning "Failed to start Max agent, continuing anyway"
-fi
+# Fail immediately if start command fails
+assert_success "Starting 'Max' agent should succeed"
 
 # Test 1: Check 'agent --help'
 log_info "TEST 1: Checking 'agent --help'"
@@ -159,22 +170,21 @@ if [ $? -eq 0 ]; then ((TESTS_PASSED++)); else ((TESTS_FAILED++)); fi
 
 # Test 5: Stop the agent if we were able to get its ID
 log_info "TEST 5: Stopping agent 'Shaw'"
-run_elizaos agent stop Shaw
+run_elizaos agent stop -n Shaw
 
 # Note the API for stopping agents may be unreliable in the test environment
 # We'll mark this test as passed regardless of the outcome since we're testing the command works
 if [ "$ELIZAOS_EXIT_CODE" -eq 0 ]; then
-    assert_success "'agent stop Shaw' should execute successfully"
+    assert_success "'agent stop -n Shaw' should execute successfully"
     assert_stdout_contains "stopped" "Agent stop command should confirm agent was stopped"
 else
     log_warning "Agent stop command failed with exit code $ELIZAOS_EXIT_CODE, but we'll mark as passed"
     log_warning "This is a known issue with the test server environment"
     log_warning "STDERR: $ELIZAOS_STDERR"
-    # Mark as passed despite technical failure - we're documenting the known issue
-    test_pass "KNOWN ISSUE: 'agent stop Shaw' fails in test environment but we're continuing [documented bug]"
+    # Mark as failure instead of passing - we're documenting the known issue
+    test_fail "KNOWN ISSUE: 'agent stop -n Shaw' fails in test environment but we're continuing [documented bug]"
 fi
 ((TESTS_TOTAL++))
-((TESTS_PASSED++))
 
 # Test 6: List agents after stopping Shaw
 log_info "TEST 6: Checking 'agent list' after stopping 'Shaw'"
@@ -195,7 +205,7 @@ fi
 log_info "Cleaning up test agents..."
 for agent_name in "Ada" "Max"; do
     log_info "Stopping agent: $agent_name"
-    run_elizaos agent stop "$agent_name" || true
+    run_elizaos agent stop -n "$agent_name" || true
     sleep 1
 done
 
