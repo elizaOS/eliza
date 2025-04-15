@@ -60,6 +60,7 @@ import { settingsProvider } from './providers/settings';
 import { timeProvider } from './providers/time';
 import { ScenarioService } from './services/scenario';
 import { TaskService } from './services/task';
+import { worldProvider } from './providers/world';
 
 /**
  * Represents media data containing a buffer of data and the media type.
@@ -824,6 +825,7 @@ export const bootstrapPlugin: Plugin = {
     actionsProvider,
     characterProvider,
     recentMessagesProvider,
+    worldProvider,
   ],
   services: [TaskService, ScenarioService],
 };
