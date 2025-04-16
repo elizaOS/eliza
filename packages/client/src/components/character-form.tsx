@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { AVATAR_IMAGE_MAX_SIZE } from '@/constants';
+import { AVATAR_IMAGE_MAX_SIZE, FIELD_REQUIREMENT_TYPE, FIELD_REQUIREMENTS } from '@/constants';
 import { useToast } from '@/hooks/use-toast';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
@@ -25,15 +25,8 @@ import {
   getAllRequiredPlugins,
 } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
-import { HelpCircle, Trash, Loader2 } from 'lucide-react';
+import { Trash, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-
-type FieldType = 'text' | 'textarea' | 'number' | 'checkbox' | 'select';
-
-export enum FIELD_REQUIREMENT {
-  REQUIRED = 'required',
-  OPTIONAL = 'optional',
-}
 
 export type InputField = {
   name: string;
@@ -43,7 +36,6 @@ export type InputField = {
   getValue: (agent: Agent) => string;
   options?: { value: string; label: string }[];
   tooltip?: string;
-  requirement?: FIELD_REQUIREMENT;
 };
 
 export type ArrayField = {
@@ -52,7 +44,6 @@ export type ArrayField = {
   description?: string;
   getData: (agent: Agent) => string[];
   tooltip?: string;
-  requirement?: FIELD_REQUIREMENT;
 };
 
 enum SECTION_TYPE {
@@ -132,7 +123,6 @@ export default function CharacterForm({
             description: 'The primary identifier for this agent',
             fieldType: 'text',
             getValue: (char) => char.name || '',
-            requirement: FIELD_REQUIREMENT.REQUIRED,
             tooltip:
               'Display name that will be visible to users. Required for identification purposes.',
           },
@@ -142,7 +132,6 @@ export default function CharacterForm({
             description: 'Used in URLs and API endpoints',
             fieldType: 'text',
             getValue: (char) => char.username || '',
-            requirement: FIELD_REQUIREMENT.REQUIRED,
             tooltip: 'Unique identifier for your agent. Used in APIs/URLs and Rooms.',
           },
           {
@@ -151,7 +140,6 @@ export default function CharacterForm({
             description: 'System prompt defining agent behavior',
             fieldType: 'textarea',
             getValue: (char) => char.system || '',
-            requirement: FIELD_REQUIREMENT.REQUIRED,
             tooltip:
               'Instructions for the AI model that establish core behavior patterns and personality traits.',
           },
@@ -165,7 +153,6 @@ export default function CharacterForm({
               value: model.value,
               label: model.label,
             })),
-            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: "Select a voice that aligns with the agent's intended persona.",
           },
         ] as InputField[],
@@ -180,7 +167,6 @@ export default function CharacterForm({
             description: 'Bio data for this agent',
             path: 'bio',
             getData: (char) => (Array.isArray(char.bio) ? char.bio : []),
-            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: "Biographical details that establish the agent's background and context.",
           },
           {
@@ -188,7 +174,6 @@ export default function CharacterForm({
             description: 'Topics this agent can talk about',
             path: 'topics',
             getData: (char) => char.topics || [],
-            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: 'Subject domains the agent can discuss with confidence.',
           },
           {
@@ -196,7 +181,6 @@ export default function CharacterForm({
             description: 'Descriptive personality traits',
             path: 'adjectives',
             getData: (char) => char.adjectives || [],
-            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: "Key personality attributes that define the agent's character.",
           },
         ] as ArrayField[],
@@ -211,7 +195,6 @@ export default function CharacterForm({
             description: 'Writing style for all content types',
             path: 'style.all',
             getData: (char) => char.style?.all || [],
-            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: 'Core writing style guidelines applied across all content formats.',
           },
           {
@@ -219,7 +202,6 @@ export default function CharacterForm({
             description: 'Style specific to chat interactions',
             path: 'style.chat',
             getData: (char) => char.style?.chat || [],
-            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: 'Writing style specific to conversational exchanges.',
           },
           {
@@ -227,7 +209,6 @@ export default function CharacterForm({
             description: 'Style for long-form content',
             path: 'style.post',
             getData: (char) => char.style?.post || [],
-            requirement: FIELD_REQUIREMENT.OPTIONAL,
             tooltip: 'Writing style for structured content such as articles or posts.',
           },
         ] as ArrayField[],
@@ -384,43 +365,23 @@ export default function CharacterForm({
   const renderInputField = (field: InputField) => (
     <div key={field.name} className="space-y-2">
       <div className="flex items-center gap-2">
-        <Label htmlFor={field.name} className="flex items-center gap-1">
-          {field.title}
-          {field.requirement && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="ml-1">
-                    <span
-                      className={`inline-block w-2 h-2 rounded-full ${
-                        field.requirement === FIELD_REQUIREMENT.REQUIRED
-                          ? 'bg-red-500'
-                          : 'bg-gray-400'
-                      }`}
-                    ></span>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" align="start">
-                  <p>
-                    {field.requirement === FIELD_REQUIREMENT.REQUIRED ? 'Required' : 'Optional'}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </Label>
-        {field.tooltip && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </TooltipTrigger>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Label htmlFor={field.name} className="flex items-center gap-1">
+                {field.title}
+                {field.name in FIELD_REQUIREMENTS &&
+                  (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+              </Label>
+            </TooltipTrigger>
+            {field.tooltip && (
               <TooltipContent>
                 <p>{field.tooltip}</p>
               </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
 
@@ -478,43 +439,23 @@ export default function CharacterForm({
   const renderArrayField = (field: ArrayField) => (
     <div key={field.path} className="space-y-2">
       <div className="flex items-center gap-2">
-        <Label htmlFor={field.path} className="flex items-center gap-1">
-          {field.title}
-          {field.requirement && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="ml-1">
-                    <span
-                      className={`inline-block w-2 h-2 rounded-full ${
-                        field.requirement === FIELD_REQUIREMENT.REQUIRED
-                          ? 'bg-red-500'
-                          : 'bg-gray-400'
-                      }`}
-                    ></span>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" align="start">
-                  <p>
-                    {field.requirement === FIELD_REQUIREMENT.REQUIRED ? 'Required' : 'Optional'}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-        </Label>
-        {field.tooltip && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </TooltipTrigger>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Label htmlFor={field.path} className="flex items-center gap-1">
+                {field.title}
+                {field.path in FIELD_REQUIREMENTS &&
+                  (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+              </Label>
+            </TooltipTrigger>
+            {field.tooltip && (
               <TooltipContent>
                 <p>{field.tooltip}</p>
               </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
       <ArrayInput
@@ -531,6 +472,33 @@ export default function CharacterForm({
     try {
       const text = await file.text();
       const json: Agent = JSON.parse(text);
+
+      // Check for required fields using FIELD_REQUIREMENTS
+      const missingFields = (
+        Object.keys(FIELD_REQUIREMENTS) as Array<keyof typeof FIELD_REQUIREMENTS>
+      ).filter((field) => {
+        if (FIELD_REQUIREMENTS[field] !== FIELD_REQUIREMENT_TYPE.REQUIRED) return false;
+
+        // Handle nested fields like style.all
+        const parts = field.split('.');
+        let current: any = json;
+
+        for (const part of parts) {
+          current = current?.[part];
+          if (current === undefined) return true; // field missing
+        }
+
+        return false;
+      });
+
+      if (missingFields.length > 0) {
+        toast({
+          title: 'Import Failed',
+          description: `Missing required fields: ${missingFields.join(', ')}`,
+          variant: 'destructive',
+        });
+        return;
+      }
 
       if (setCharacterValue.importAgent) {
         setCharacterValue.importAgent(json);
