@@ -28,7 +28,6 @@ teardown_file() {
 # Checks that the agent help command displays usage information.
 @test "agent help displays usage information" {
   run $ELIZAOS_CMD agent --help
-  sleep ${ELIZAOS_TEST_SLEEP:=1}
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos agent"* ]]
 }
@@ -36,7 +35,6 @@ teardown_file() {
 # Verifies that agent list returns the default agents when no agents are running.
 @test "agent list returns default agents" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list
-  sleep ${ELIZAOS_TEST_SLEEP:=1}
   [ "$status" -eq 0 ]
   [[ "$output" == *"Ada"* ]]
   [[ "$output" == *"Max"* ]]
@@ -46,7 +44,6 @@ teardown_file() {
 # Checks that agent list works with the CLI and remote URL.
 @test "agent list works with CLI remote-url" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list
-  sleep ${ELIZAOS_TEST_SLEEP:=1}
   [ "$status" -eq 0 ]
   [[ "$output" == *"Ada"* ]]
   [[ "$output" == *"Max"* ]]
@@ -56,7 +53,6 @@ teardown_file() {
 # Ensures agent start loads a character from file successfully.
 @test "agent start loads character from file" {
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start --path /Users/studio/Documents/GitHub/eliza/packages/cli/__test_scripts__/test-characters/ada.json
-  sleep ${ELIZAOS_TEST_SLEEP:=1}
   [ "$status" -eq 0 ]
   [[ "$output" == *"started successfully"* ]]
 }
@@ -65,10 +61,8 @@ teardown_file() {
 @test "agent stop works after start" {
   # Ensure Ada is running before stopping
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n Ada
-  sleep ${ELIZAOS_TEST_SLEEP:=1}
   # Ignore status, as agent may already be running
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" stop -n Ada
-  sleep ${ELIZAOS_TEST_SLEEP:=1}
   [ "$status" -eq 0 ]
   [[ "$output" == *"stopped successfully"* ]] || [[ "$error" == *"stopped successfully"* ]]
 }
@@ -77,10 +71,8 @@ teardown_file() {
 @test "agent full lifecycle management" {
   # Start agent
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" start -n Ada
-  sleep ${ELIZAOS_TEST_SLEEP:=1}
   [ "$status" -eq 0 ]
   # Stop agent
   run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" stop -n Ada
-  sleep ${ELIZAOS_TEST_SLEEP:=1}
   [ "$status" -eq 0 ]
 }
