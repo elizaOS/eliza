@@ -14,12 +14,12 @@ elizaos project <action> [options]
 
 ## Actions
 
-| Action          | Description                                        |
-| --------------- | -------------------------------------------------- |
-| `list-plugins`  | List available plugins to install into the project |
-| `add-plugin`    | Add a plugin to the project                        |
-| `remove-plugin` | Remove a plugin from the project                   |
-| `show-plugins`  | List plugins installed in the project dependencies |
+| Action              | Description                                        |
+| ------------------- | -------------------------------------------------- |
+| `list-plugins`      | List available plugins to install into the project |
+| `add-plugin`        | Add a plugin to the project                        |
+| `remove-plugin`     | Remove a plugin from the project                   |
+| `installed-plugins` | List plugins installed in the project dependencies |
 
 ## Managing Plugins
 
@@ -82,7 +82,7 @@ This will:
 Show the Eliza plugins found in your project's `package.json`:
 
 ```bash
-elizaos project show-plugins
+elizaos project installed-plugins
 ```
 
 ## Examples

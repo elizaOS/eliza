@@ -56,7 +56,7 @@ async function main() {
   // Add global options
   program
     .option('-r, --remote-url <url>', 'URL of the remote agent runtime')
-    .option('-p, --port <port>', 'Port of the local agent runtime');
+    .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val));
 
   // Create a stop command for testing purposes
   const stopCommand = new Command('stop')
