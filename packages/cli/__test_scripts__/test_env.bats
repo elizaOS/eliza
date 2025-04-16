@@ -10,6 +10,7 @@ teardown() {
   rm -rf "$TEST_TMP_DIR"
 }
 
+# Checks that the env help command displays usage information.
 @test "env --help shows usage" {
   run $ELIZAOS_CMD env --help
   [ "$status" -eq 0 ]

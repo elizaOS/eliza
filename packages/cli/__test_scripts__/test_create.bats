@@ -12,12 +12,14 @@ teardown() {
   fi
 }
 
+# Checks that the create help command displays usage information.
 @test "create --help shows usage" {
   run $ELIZAOS_CMD create --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos create"* ]]
 }
 
+# Checks that creating a default project succeeds.
 @test "create default project succeeds" {
   run $ELIZAOS_CMD create my-default-app --yes
   [ "$status" -eq 0 ]
@@ -27,6 +29,7 @@ teardown() {
   [ -d "my-default-app/src" ]
 }
 
+# Checks that creating a plugin project succeeds.
 @test "create plugin project succeeds" {
   run $ELIZAOS_CMD create my-plugin-app --yes --type plugin
   [ "$status" -eq 0 ]
@@ -41,6 +44,7 @@ teardown() {
   [ -f "$plugin_dir/src/index.ts" ]
 }
 
+# Checks that creating a project in an existing directory is rejected (expected failure or warning).
 @test "rejects creating project in existing directory (expected failure or warning)" {
   mkdir -p existing-app
   [ -d "existing-app" ] # Ensure it exists
@@ -58,6 +62,7 @@ teardown() {
   [[ "$output" == *"already exists"* ]] || [[ "$error" == *"already exists"* ]]
 }
 
+# Checks that creating a project in the current directory works.
 @test "create project in current directory" {
   mkdir create-in-place && cd create-in-place
   run $ELIZAOS_CMD create . --yes
@@ -66,12 +71,14 @@ teardown() {
   [ -f "package.json" ]
 }
 
+# Checks that invalid project names are rejected.
 @test "rejects invalid project name" {
   run $ELIZAOS_CMD create "Invalid Name" --yes
   [ "$status" -ne 0 ]
   [[ "$output" == *"Invalid"* ]] || [[ "$error" == *"Invalid"* ]]
 }
 
+# Checks that invalid project types are rejected.
 @test "rejects invalid project type" {
   run $ELIZAOS_CMD create bad-type-proj --yes --type bad-type
   [ "$status" -ne 0 ]

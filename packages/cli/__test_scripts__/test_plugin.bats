@@ -10,16 +10,14 @@ teardown() {
   rm -rf "$TEST_TMP_DIR"
 }
 
-@test "plugin --help shows usage" {
-  # Already present
-}
-
+# Checks that the plugin publish --help shows usage.
 @test "plugin publish --help shows usage" {
   run $ELIZAOS_CMD plugin publish --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos plugin publish"* ]]
 }
 
+# Checks that the plugin add-plugin official plugin.
 @test "project add-plugin official plugin" {
   run $ELIZAOS_CMD create plugin-app --yes
   [ "$status" -eq 0 ]
@@ -29,6 +27,7 @@ teardown() {
   grep '@elizaos/plugin-openai' package.json
 }
 
+# Checks that the plugin add multiple plugins at once.
 @test "project add multiple plugins at once" {
   run $ELIZAOS_CMD create multi-plugin-app --yes
   [ "$status" -eq 0 ]
@@ -39,6 +38,7 @@ teardown() {
   grep '@elizaos/plugin-sql' package.json
 }
 
+# Checks that the plugin dependency detection in package.json.
 @test "plugin dependency detection in package.json" {
   run $ELIZAOS_CMD create dep-plugin-app --yes
   [ "$status" -eq 0 ]
@@ -48,6 +48,7 @@ teardown() {
   grep '@elizaos/plugin-bootstrap' package.json
 }
 
+# Checks that the plugin install (local path simulated).
 @test "custom plugin install (local path simulated)" {
   run $ELIZAOS_CMD create local-plugin-app --yes
   [ "$status" -eq 0 ]
@@ -57,6 +58,7 @@ teardown() {
   [ "$status" -ne 127 ]
 }
 
+# Checks that the plugin via GitHub URL simulated.
 @test "custom plugin via GitHub URL simulated" {
   run $ELIZAOS_CMD create github-plugin-app --yes
   [ "$status" -eq 0 ]
@@ -66,6 +68,7 @@ teardown() {
   [ "$status" -ne 127 ]
 }
 
+# Checks that the plugin help command displays usage information.
 @test "plugin --help shows usage" {
   run $ELIZAOS_CMD plugin --help
   [ "$status" -eq 0 ]

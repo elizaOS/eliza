@@ -10,6 +10,7 @@ teardown() {
   rm -rf "$TEST_TMP_DIR"
 }
 
+# Checks that the dev help command displays usage information.
 @test "dev --help shows usage" {
   run $ELIZAOS_CMD dev --help
   [ "$status" -eq 0 ]

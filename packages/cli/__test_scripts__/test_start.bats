@@ -11,6 +11,7 @@ teardown() {
   rm -rf "$TEST_TMP_DIR"
 }
 
+# Checks that the start help command displays usage information.
 @test "start --help shows usage" {
   run $ELIZAOS_CMD start --help
   [ "$status" -eq 0 ]
