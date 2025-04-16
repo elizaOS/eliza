@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 source "$SCRIPT_DIR/setup_test_env.sh" # Source setup for logging and executable path
 
 # --- Configuration ---
-SERVER_PORT=${TEST_SERVER_PORT:-3001} # Use different port to avoid conflict with user's dev server
+SERVER_PORT=${TEST_SERVER_PORT:-3000} # Use default port 3000 for tests
 TEST_SERVER_URL="http://localhost:$SERVER_PORT"
 SERVER_STARTUP_TIMEOUT=30 # seconds to wait for server to start
 SERVER_PID_FILE="$TEST_TMP_DIR_BASE/eliza_test_server.pid" # Store PID outside individual test runs
@@ -33,21 +33,46 @@ start_test_server() {
     log_info "Using isolated server data directory: $TEST_SERVER_ELIZA_DIR"
 
     log_info "Starting Eliza server directly in background on port $SERVER_PORT..."
-    # Run from Project Root for potentially better context, but with isolated ELIZA_DIR
+    # Define paths relative to packages/cli for the --characters flag
+    local ada_char_path_relative="__test_scripts__/test-characters/ada.json"
+    local max_char_path_relative="__test_scripts__/test-characters/max.json"
+    local shaw_char_path_relative="__test_scripts__/test-characters/shaw.json"
+    # Define executable relative to packages/cli
+    local executable_relative_path="dist/index.js"
+    # Define PGLite data dir path (needs full path)
+    local pglite_data_dir_path="$TEST_SERVER_ELIZA_DIR/pglite-data"
+    
+    # ---> Run from packages/cli directory <-----
     (
-        cd "$PROJECT_ROOT" 
-        PORT=$SERVER_PORT ELIZA_DIR="$TEST_SERVER_ELIZA_DIR" NODE_OPTIONS="" nohup node "$ELIZAOS_EXECUTABLE" start > "$SERVER_LOG_FILE" 2>&1 &
+        cd "$CLI_PACKAGE_DIR" # Change to packages/cli
+        
+        mkdir -p "$pglite_data_dir_path" # Ensure the directory exists using the full path
+        
+        # ---> Prepend Env Vars, use $ELIZAOS_CMD determined by setup script <-----
+        PGLITE_DATA_DIR="$pglite_data_dir_path" \
+        PORT=$SERVER_PORT \
+        ELIZA_DIR="$TEST_SERVER_ELIZA_DIR" \
+        NODE_OPTIONS="" \
+        nohup $ELIZAOS_CMD start --characters "$ada_char_path_relative,$max_char_path_relative,$shaw_char_path_relative" > "$SERVER_LOG_FILE" 2>&1 &
+        
         echo $! > "$SERVER_PID_FILE"
     )
-
-    if [ ! -f "$SERVER_PID_FILE" ] || ! kill -0 "$(cat "$SERVER_PID_FILE")" > /dev/null 2>&1; then
-        log_error "Server process failed to start or PID file not created."
+    # Check PID file creation (outside subshell)
+    if [ ! -f "$SERVER_PID_FILE" ]; then
+        log_error "PID file not created. Server might have failed immediately."
         log_error "Check server log: $SERVER_LOG_FILE"
         exit 1
     fi
     
     local server_pid
     server_pid=$(cat "$SERVER_PID_FILE")
+    # Check if process actually started
+    if ! kill -0 "$server_pid" > /dev/null 2>&1; then
+         log_error "Server process (PID: $server_pid from file) not running. Server might have failed immediately."
+         log_error "Check server log: $SERVER_LOG_FILE"
+         cat "$SERVER_LOG_FILE" # Dump log content
+         exit 1
+    fi
     log_info "Server started with PID: $server_pid. Log: $SERVER_LOG_FILE"
 
     # Wait for server to be ready
@@ -57,9 +82,7 @@ start_test_server() {
     
     while true; do
         if curl --silent --fail "$TEST_SERVER_URL/api/status" > /dev/null 2>&1; then
-            log_info "Server is up!"
-            # Add a small delay just in case endpoints aren't immediately ready
-            sleep 1 
+            log_info "Server status is OK!"
             break
         fi
 
@@ -72,6 +95,35 @@ start_test_server() {
         fi
         sleep 1 # Wait 1 second before retrying
     done
+
+    # ---> ADDED: Wait specifically for /api/agents to be populated <-----
+    log_info "Waiting for agent list at $TEST_SERVER_URL/api/agents to be populated..."
+    start_time=$(date +%s) # Reset timer
+    local agents_ready=0
+    while true; do
+        # Use curl -f to fail on HTTP errors, -s for silent, capture output
+        agents_json=$(curl -sf "$TEST_SERVER_URL/api/agents" || echo "")
+        curl_exit_status=$?
+        # ---> Check only for Ada, Max, and Shaw (loaded via --characters) <-----
+        if [ $curl_exit_status -eq 0 ] && echo "$agents_json" | grep -q '"name":"Ada"' && echo "$agents_json" | grep -q '"name":"Max"' && echo "$agents_json" | grep -q '"name":"Shaw"'; then
+            log_info "Agent list is populated with expected agents (Ada, Max, Shaw)!"
+            agents_ready=1
+            break
+        fi
+        
+        elapsed_time=$(( $(date +%s) - start_time ))
+        # Use the same overall timeout for simplicity, or define a separate one
+        if [ "$elapsed_time" -ge "$SERVER_STARTUP_TIMEOUT" ]; then
+            log_error "Server started but agent list did not populate correctly within $SERVER_STARTUP_TIMEOUT seconds."
+            log_error "Last response from /api/agents: ${agents_json:-<empty or failed>}"
+            log_error "Check server log: $SERVER_LOG_FILE"
+            stop_test_server # Attempt cleanup
+            exit 1
+        fi
+        log_info "Agent list not ready yet, waiting... (check log: $SERVER_LOG_FILE)"
+        sleep 2 # Wait longer between agent list checks
+    done
+    # --- End of added check ---
 
     # Export URL for test scripts
     export TEST_SERVER_URL
@@ -122,8 +174,8 @@ cleanup_test_directories() {
         
         if [ "$dir_count" -gt 0 ]; then
             log_info "Found $dir_count test directories to clean up"
-            # Use xargs to efficiently process each directory with rm -rf
-            echo "$test_dirs" | grep -v '^$' | xargs -I{} sh -c 'log_info "Removing {}"; rm -rf {}'
+            # ---> Use echo instead of log_info within xargs subshell <-----
+            echo "$test_dirs" | grep -v '^$' | xargs -I{} sh -c 'echo "[Cleanup] Removing {}..."; rm -rf {}'
             log_info "All test directories removed"
         else
             log_info "No test directories found to clean up"
@@ -149,15 +201,7 @@ log_info "======================================================================
 log_info "                            ELIZA CLI SHELL TEST SUITE"
 log_info "==========================================================================================="
 
-# Check if the CLI is built before running tests
-if [ ! -f "$ELIZAOS_EXECUTABLE" ]; then
-    log_error "ElizaOS executable not found at $ELIZAOS_EXECUTABLE."
-    log_error "Please build the CLI first (cd packages/cli && bun run build)."
-    exit 1
-fi
-log_info "Found ElizaOS executable: $ELIZAOS_EXECUTABLE"
-
-# Check dependencies needed by the test setup itself
+# Check dependencies needed by the test setup itself (this calls function from setup script)
 check_dependencies
 
 # Start the test server before running any tests
@@ -203,8 +247,11 @@ for test_script in "${TEST_FILES[@]}"; do
     script_start_time=$(date +%s)
     
     log_info "==========================================================================================="
-    log_info "TEST SCRIPT: $script_name (timeout: ${TIMEOUT_DURATION}s)"
+    log_info "EXECUTING TEST SCRIPT: $script_name (timeout: ${TIMEOUT_DURATION}s)"
     log_info "==========================================================================================="
+
+    # ---> Print script name BEFORE execution <-----
+    echo "---> Now executing: $script_name <---"
 
     # Execute the test script in a subshell to isolate environment changes and traps
     # The -k option ensures that if the command doesn't terminate within 5 seconds, it will be forcefully killed

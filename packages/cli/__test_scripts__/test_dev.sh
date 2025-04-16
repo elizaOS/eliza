@@ -52,12 +52,18 @@ DEV_PID_FILE="$TEST_TMP_DIR/dev_server.pid"
 DEV_LOG_FILE="$TEST_TMP_DIR/dev_server.log"
 DEV_STARTUP_TIMEOUT=30 # seconds
 
+# Define ELIZA_TEST_DIR
+ELIZA_TEST_DIR="$TEST_TMP_DIR/.eliza_client_data_dev"
+mkdir -p "$ELIZA_TEST_DIR" # Ensure it exists
+
 log_info "TEST 2: Running 'elizaos dev' in background on port $DEV_PORT"
 
 # Start dev server in background
-NODE_OPTIONS="" nohup node "$ELIZAOS_EXECUTABLE" dev --port "$DEV_PORT" > "$DEV_LOG_FILE" 2>&1 &
-DEV_PID=$!
-echo "$DEV_PID" > "$DEV_PID_FILE"
+log_info "Starting dev server in background on port $DEV_PORT..."
+# Use bun run instead of node
+ELIZA_DIR="$ELIZA_TEST_DIR" PORT=$DEV_PORT NODE_OPTIONS="" nohup $ELIZAOS_CMD dev > "$DEV_LOG_FILE" 2>&1 &
+echo $! > "$DEV_PID_FILE"
+DEV_PID=$(cat "$DEV_PID_FILE")
 
 log_info "Dev server process started with PID: $DEV_PID. Log: $DEV_LOG_FILE"
 
@@ -100,68 +106,15 @@ if [ $server_up -eq 0 ]; then
     exit 1
 fi
 
-# Test 3: Run 'agent list' against the dev server
-log_info "TEST 3: Running 'agent list' against dev server $DEV_URL"
-
-# Give the dev server more time to fully initialize
-log_info "Waiting 10 seconds for dev server to fully initialize..."
-sleep 10
-
-# First, verify the server is responding to basic status checks
-if ! curl --silent --fail "$DEV_URL/api/status" > /dev/null 2>&1; then
-    log_warning "Dev server status endpoint not responding after wait period"
-    log_info "This can happen in test environments and is being handled gracefully"
-    test_pass "Dev server test marked as passed to continue tests (known limitation)"
-else
-    log_info "Dev server status endpoint is responding"
-
-    # Set up a separate .eliza directory for the test client to avoid conflicts
-    ELIZA_TEST_DIR="$TEST_TMP_DIR/.eliza_client_data_dev"
-    mkdir -p "$ELIZA_TEST_DIR"
-
-    # Check if the agent API endpoint is accessible
-    if ! curl --silent --fail "$DEV_URL/api/agents" > /dev/null 2>&1; then
-        log_warning "Dev server agent API is not responding yet"
-        log_info "This can happen in test environments and is being handled gracefully"
-        test_pass "Agent API test marked as passed to continue tests (known limitation)"
-    else
-        log_info "Dev server agent API endpoint is responding"
-        
-        set +e # Allow capturing non-zero exit code
-        # Run agent list directly, targeting the dev server URL and capturing output
-        log_info "Running agent list command with ELIZA_DIR=$ELIZA_TEST_DIR..."
-        AGENT_LIST_STDOUT=$(ELIZA_DIR="$ELIZA_TEST_DIR" node "$ELIZAOS_EXECUTABLE" agent list --remote-url "$DEV_URL" 2>&1)
-        AGENT_LIST_EXIT_CODE=$?
-        set -e # Re-enable exit on error
-
-        if [ $AGENT_LIST_EXIT_CODE -eq 0 ]; then
-            test_pass "'agent list --remote-url $DEV_URL' succeeded against dev server"
-            
-            # Check if the output contains the default agent
-            if [[ "${AGENT_LIST_STDOUT:-}" == *"Eliza"* ]]; then
-                test_pass "'agent list' output contains default agent 'Eliza'"
-            else
-                log_warning "'agent list' output does NOT contain expected agent 'Eliza'"
-                log_info "Command succeeded but with unexpected output:"
-                log_info "$AGENT_LIST_STDOUT"
-                
-                # Not failing the test as the command technically worked
-                test_pass "Agent list test marked as passed (no Eliza agent but command succeeded)"
-            fi
-        else
-            log_warning "'agent list --remote-url $DEV_URL' failed against dev server (exit code: $AGENT_LIST_EXIT_CODE)"
-            log_info "This is a known limitation with dev server authentication in tests"
-            log_info "Agent list output: $AGENT_LIST_STDOUT"
-            
-            # Mark as information rather than warning to make it clear this is expected
-            log_info "KNOWN LIMITATION: Agent list against dev server in tests typically fails due to authentication"
-            log_info "This is not a defect in the CLI or dev server, but a limitation of the test environment"
-            
-            # Mark the test as passed to continue
-            test_pass "Agent list test marked as passed to allow test suite to continue"
-        fi
-    fi
-fi
+# Test 5: Check if default agent is running via CLI
+log_info "TEST 5: Check if default agent is running via CLI against dev server"
+# Use run_elizaos helper instead of direct node call
+run_elizaos agent list --remote-url "$DEV_URL"
+assert_success "'agent list' against dev server should succeed"
+assert_stdout_contains "Eliza" "Default Eliza agent should be listed by dev server"
+# assert_stdout_contains "active" "Default Eliza agent should be active on dev server" # Status check might be unreliable
+((TESTS_TOTAL++))
+if [ $? -eq 0 ]; then ((TESTS_PASSED++)); else ((TESTS_FAILED++)); fi
 
 # Cleanup: Stop the dev server (trap will also try)
 log_info "Stopping dev server (PID: $DEV_PID)..."

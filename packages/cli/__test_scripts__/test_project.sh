@@ -187,7 +187,7 @@ log_info "Running project add-plugin command outside a project directory..."
 # Temporarily disable exit on error to capture the expected failure
 set +e
 # Run command, capturing output and exit code
-node "$ELIZAOS_EXECUTABLE" project add-plugin "@elizaos/plugin-openai" > stdout.log 2> stderr.log
+$ELIZAOS_CMD project add-plugin "@elizaos/plugin-openai" > stdout.log 2> stderr.log
 ADD_PLUGIN_EXIT_CODE=$?
 # Re-enable exit on error
 set -e

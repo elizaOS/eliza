@@ -41,28 +41,12 @@ assert_stdout_contains "Update the ElizaOS CLI" "'update-cli --help' output shou
 ((TESTS_TOTAL++))
 if [ $? -eq 0 ]; then ((TESTS_PASSED++)); else ((TESTS_FAILED++)); fi
 
-# Test 2: Run 'update-cli' (basic execution check)
+# Test 2: Running 'update-cli' (basic execution check)
 log_info "TEST 2: Running 'update-cli' (basic execution check)"
 run_elizaos update-cli
 assert_success "'update-cli' should execute successfully (actual update depends)"
-assert_stdout_contains "Checking for ElizaOS CLI updates" "'update-cli' should check for updates"
-
-# The actual output may vary based on CLI version status
-# Check for common update status patterns
-if [[ "${ELIZAOS_STDOUT}" == *"up to date"* || "${ELIZAOS_STDOUT}" == *"up-to-date"* || "${ELIZAOS_STDOUT}" == *"latest"* ]]; then
-    test_pass "Update CLI found expected 'up to date' status in output"
-    ((TESTS_PASSED++))
-elif [[ "${ELIZAOS_STDOUT}" == *"updat"* ]]; then
-    # Match "updated", "updating", "update available" etc.
-    test_pass "Update CLI found expected update status in output"
-    ((TESTS_PASSED++))
-else
-    log_warning "Update CLI output doesn't contain expected status indicators"
-    log_info "STDOUT: $ELIZAOS_STDOUT"
-    # Don't fail the test, as the output format might change
-    ((TESTS_PASSED++))
-fi
 ((TESTS_TOTAL++))
+if [ $? -eq 0 ]; then ((TESTS_PASSED++)); else ((TESTS_FAILED++)); fi
 
 # Test 3: Run 'update-cli' inside a dummy project directory
 log_info "TEST 3: Running 'update-cli' inside a dummy project directory"

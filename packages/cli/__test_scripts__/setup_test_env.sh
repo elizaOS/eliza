@@ -3,17 +3,31 @@
 # Exit on error, treat unset variables as errors, and propagate pipeline failures
 set -euo pipefail
 
+# --- Determine Project Root and Executable Path ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." &> /dev/null && pwd)" # Corrects to eliza repo root
+CLI_PACKAGE_DIR="$PROJECT_ROOT/packages/cli"
+LOCAL_EXECUTABLE_PATH="$CLI_PACKAGE_DIR/dist/index.js"
+
+# --- Determine Command to Run ElizaOS ---
+ELIZAOS_CMD=""
+if command -v elizaos &> /dev/null; then
+    echo "[SETUP] Found global 'elizaos' command. Using it."
+    ELIZAOS_CMD="elizaos"
+elif [ -f "$LOCAL_EXECUTABLE_PATH" ]; then
+    echo "[SETUP] Global 'elizaos' not found. Using local build: $LOCAL_EXECUTABLE_PATH"
+    # We use 'bun run' combined with the path
+    ELIZAOS_CMD="bun run $LOCAL_EXECUTABLE_PATH"
+else
+    echo "[SETUP ERROR] Cannot find global 'elizaos' or local build at $LOCAL_EXECUTABLE_PATH" >&2
+    echo "[SETUP ERROR] Please install globally or build the CLI (cd packages/cli && bun run build)." >&2
+    exit 1
+fi
+echo "[SETUP] Effective command: $ELIZAOS_CMD"
+
 # --- Configuration ---
 # Directory where test artifacts will be stored
 TEST_TMP_DIR_BASE="${TMPDIR:-/tmp}/eliza_cli_tests"
-# Path to the elizaos executable (relative to the package root)
-# Assuming this script is run from packages/cli or the repo root after building
-# We'll try to find the executable relative to this script's location
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-# Go all the way to the repo root (assuming shell-tests is in packages/cli/shell-tests)
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." &> /dev/null && pwd)" # Corrects to eliza repo root
-CLI_PACKAGE_DIR="$PROJECT_ROOT/packages/cli"
-ELIZAOS_EXECUTABLE="$CLI_PACKAGE_DIR/dist/index.js" # Changed from elizaos.js to index.js
 
 # --- Logging ---
 log_info() {
@@ -74,11 +88,11 @@ prepare_test_environment() {
   # (cd "$CLI_PACKAGE_DIR" && bun run build) || { log_error "CLI build failed"; exit 1; }
 
   # 4. Verify elizaos executable exists
-  if [ ! -f "$ELIZAOS_EXECUTABLE" ]; then
-    log_error "ElizaOS executable not found at $ELIZAOS_EXECUTABLE. Ensure the CLI is built (cd packages/cli && bun run build)."
+  if [ ! -f "$LOCAL_EXECUTABLE_PATH" ]; then
+    log_error "ElizaOS executable not found at $LOCAL_EXECUTABLE_PATH. Ensure the CLI is built (cd packages/cli && bun run build)."
     exit 1
   fi
-  log_info "Found elizaos executable: $ELIZAOS_EXECUTABLE"
+  log_info "Found elizaos executable: $LOCAL_EXECUTABLE_PATH"
 
   # 5. Set up cleanup trap
   # shellcheck disable=SC2064 # We want TEST_TMP_DIR expanded now
@@ -86,7 +100,7 @@ prepare_test_environment() {
 
   # 6. Export variables needed by test scripts
   export TEST_TMP_DIR
-  export ELIZAOS_EXECUTABLE
+  export ELIZAOS_CMD
   export PROJECT_ROOT
   # Add other exports as needed
 
@@ -179,7 +193,8 @@ run_elizaos() {
       effective_args=("${args[@]}")
   fi
 
-  log_info "Running: node $ELIZAOS_EXECUTABLE ${effective_args[*]}"
+  # ---> Use the determined ELIZAOS_CMD <-----
+  log_info "Running: $ELIZAOS_CMD ${effective_args[*]}"
   
   # Print a more descriptive message for common operations
   case "${effective_args[0]}" in
@@ -211,11 +226,10 @@ run_elizaos() {
   trap 'rm -f "$stdout_file" "$stderr_file" "$exit_code_file"' RETURN
 
   # Run the command, redirecting output and capturing exit code
-  # Using 'set +e' temporarily to capture non-zero exit codes without script exiting
   set +e
-  # Set ELIZA_DIR for the client command execution, pointing to the script's temp dir
-  # Explicitly use node without any debugger flags
-  NODE_OPTIONS="" ELIZA_DIR="$TEST_TMP_DIR/.eliza_client_data" node "$ELIZAOS_EXECUTABLE" "${effective_args[@]}" > "$stdout_file" 2> "$stderr_file"
+  # ---> Use the determined ELIZAOS_CMD <-----
+  # Pass environment vars directly for background/sub-processes
+  NODE_OPTIONS="" ELIZA_DIR="$TEST_TMP_DIR/.eliza_client_data" $ELIZAOS_CMD "${effective_args[@]}" > "$stdout_file" 2> "$stderr_file"
   local exit_status=$?
   echo "$exit_status" > "$exit_code_file"
   set -e # Re-enable exit on error

@@ -52,19 +52,10 @@ assert_stdout_contains "Usage: elizaos test [options]" "'test --help' output sho
 ((TESTS_TOTAL++))
 if [ $? -eq 0 ]; then ((TESTS_PASSED++)); else ((TESTS_FAILED++)); fi
 
-# Test 2: Run 'elizaos test' in default project
-log_info "TEST 2: Running 'elizaos test' in default project on different port"
+# Test 2: Running 'elizaos test' in default project
+log_info "TEST 2: Running 'elizaos test' in default project"
 run_elizaos test
-
-# The test command is expected to exit with code 1 when tests fail
-# Update the assertion to allow for either success or expected failure
-if [ "$ELIZAOS_EXIT_CODE" -eq 0 ]; then
-    assert_success "'elizaos test' succeeded, which means there might be tests that passed"
-    assert_stdout_contains "pass" "Test command should indicate passing tests"
-else
-    log_info "Test command completed with exit code 1, this is normal when tests fail or none exist"
-    test_pass "'elizaos test' failed as expected with exit code 1 (normal when no tests exist)"
-fi
+assert_success "'elizaos test' should run successfully in a default project"
 ((TESTS_TOTAL++))
 if [ $? -eq 0 ]; then ((TESTS_PASSED++)); else ((TESTS_FAILED++)); fi
 
