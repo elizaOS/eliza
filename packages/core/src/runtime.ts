@@ -352,23 +352,15 @@ export class AgentRuntime implements IAgentRuntime {
     // First create the agent entity directly
     try {
       // Ensure agent exists first (this is critical for test mode)
-      const agentExists = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
-
-      // Verify agent exists before proceeding
-      const agent = await this.adapter.getAgent(this.agentId);
-      if (!agent) {
-        throw new Error(
-          `Agent ${this.agentId} does not exist in database after ensureAgentExists call`
-        );
-      }
+      const existingAgent = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
 
       // No need to transform agent's own ID
-      const agentEntity = await this.adapter.getEntityById(this.agentId);
+      let agentEntity = await this.adapter.getEntityById(this.agentId);
 
       if (!agentEntity) {
         const created = await this.createEntity({
           id: this.agentId,
-          agentId: this.agentId,
+          agentId: existingAgent.id,
           names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
           metadata: {},
         });
@@ -377,19 +369,15 @@ export class AgentRuntime implements IAgentRuntime {
           throw new Error(`Failed to create entity for agent ${this.agentId}`);
         }
 
+        agentEntity = await this.adapter.getEntityById(this.agentId);
+
         this.runtimeLogger.debug(
           `Success: Agent entity created successfully for ${this.character.name}`
         );
       }
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to create agent entity: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
 
-    // Create room for the agent and register all plugins in parallel
-    try {
+      if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
+
       await Promise.all([
         this.ensureRoomExists({
           id: this.agentId,
@@ -1516,8 +1504,8 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.deleteAgent(agentId);
   }
 
-  async ensureAgentExists(agent: Partial<Agent>): Promise<void> {
-    await this.adapter.ensureAgentExists(agent);
+  async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
+    return await this.adapter.ensureAgentExists(agent);
   }
 
   async getEntityById(entityId: UUID): Promise<Entity | null> {
