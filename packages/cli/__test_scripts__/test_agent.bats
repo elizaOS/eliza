@@ -2,7 +2,7 @@
 
 setup_file() {
   # Start the test server (if needed)
-  export TEST_SERVER_PORT=3000
+  export TEST_SERVER_PORT=2412
   export TEST_SERVER_URL="http://localhost:$TEST_SERVER_PORT"
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-XXXXXX)"
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
@@ -41,11 +41,13 @@ teardown_file() {
   [[ "$output" == *"Shaw"* ]]
 }
 
-# Checks that agent list works with the API endpoint.
-@test "agent list works with API endpoint" {
-  run curl -s "$TEST_SERVER_URL/api/agents"
+# Checks that agent list works with the CLI and remote URL.
+@test "agent list works with CLI remote-url" {
+  run $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" list
   [ "$status" -eq 0 ]
   [[ "$output" == *"Ada"* ]]
+  [[ "$output" == *"Max"* ]]
+  [[ "$output" == *"Shaw"* ]]
 }
 
 # Ensures agent start loads a character from file successfully.
