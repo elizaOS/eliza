@@ -703,7 +703,7 @@ export interface IDatabaseAdapter {
 
   deleteAgent(agentId: UUID): Promise<boolean>;
 
-  ensureAgentExists(agent: Partial<Agent>): Promise<void>;
+  ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
 
   ensureEmbeddingDimension(dimension: number): Promise<void>;
 
