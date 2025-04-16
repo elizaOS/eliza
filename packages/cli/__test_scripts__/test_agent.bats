@@ -5,7 +5,7 @@ setup_file() {
   export TEST_SERVER_PORT=3000
   export TEST_SERVER_URL="http://localhost:$TEST_SERVER_PORT"
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-XXXXXX)"
-  export ELIZAOS_CMD="bun run /Users/studio/Documents/GitHub/eliza/packages/cli/dist/index.js"
+  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
 
   # Start server in background
   $ELIZAOS_CMD start --port $TEST_SERVER_PORT >"$TEST_TMP_DIR/server.log" 2>&1 &

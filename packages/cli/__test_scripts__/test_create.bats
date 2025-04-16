@@ -2,7 +2,7 @@
 
 setup() {
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-XXXXXX)"
-  export ELIZAOS_CMD="bun run /Users/studio/Documents/GitHub/eliza/packages/cli/dist/index.js"
+  export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
   cd "$TEST_TMP_DIR"
 }
 
