@@ -523,6 +523,33 @@ export default function CharacterForm({
       const text = await file.text();
       const json: Agent = JSON.parse(text);
 
+      // Check for required fields using FIELD_REQUIREMENTS
+      const missingFields = (
+        Object.keys(FIELD_REQUIREMENTS) as Array<keyof typeof FIELD_REQUIREMENTS>
+      ).filter((field) => {
+        if (FIELD_REQUIREMENTS[field] !== FIELD_REQUIREMENT_TYPE.REQUIRED) return false;
+
+        // Handle nested fields like style.all
+        const parts = field.split('.');
+        let current: any = json;
+
+        for (const part of parts) {
+          current = current?.[part];
+          if (current === undefined) return true; // field missing
+        }
+
+        return false;
+      });
+
+      if (missingFields.length > 0) {
+        toast({
+          title: 'Import Failed',
+          description: `Missing required fields: ${missingFields.join(', ')}`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
       if (setCharacterValue.importAgent) {
         setCharacterValue.importAgent(json);
       } else {
