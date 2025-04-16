@@ -367,33 +367,9 @@ export default function CharacterForm({
       <div className="flex items-center gap-2">
         <Label htmlFor={field.name} className="flex items-center gap-1">
           {field.title}
-          {field.name in FIELD_REQUIREMENTS && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="ml-1">
-                    <span
-                      className={`inline-block w-2 h-2 rounded-full ${
-                        (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[
-                          field.name
-                        ] === FIELD_REQUIREMENT_TYPE.REQUIRED
-                          ? 'bg-red-500'
-                          : 'bg-gray-400'
-                      }`}
-                    ></span>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" align="start">
-                  <p>
-                    {(FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED
-                      ? 'Required'
-                      : 'Optional'}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          {field.name in FIELD_REQUIREMENTS &&
+            (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
+              FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
         </Label>
         {field.tooltip && (
           <TooltipProvider>
@@ -466,33 +442,9 @@ export default function CharacterForm({
       <div className="flex items-center gap-2">
         <Label htmlFor={field.path} className="flex items-center gap-1">
           {field.title}
-          {field.path in FIELD_REQUIREMENTS && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="ml-1">
-                    <span
-                      className={`inline-block w-2 h-2 rounded-full ${
-                        (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[
-                          field.path
-                        ] === FIELD_REQUIREMENT_TYPE.REQUIRED
-                          ? 'bg-red-500'
-                          : 'bg-gray-400'
-                      }`}
-                    ></span>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="right" align="start">
-                  <p>
-                    {(FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED
-                      ? 'Required'
-                      : 'Optional'}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          {field.path in FIELD_REQUIREMENTS &&
+            (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
+              FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
         </Label>
         {field.tooltip && (
           <TooltipProvider>
