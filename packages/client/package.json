@@ -43,6 +43,7 @@
     "react": "^19.0.0",
     "react-aiwriter": "^1.0.0",
     "react-dom": "^19.0.0",
+    "react-joyride": "^2.9.3",
     "react-resizable-panels": "^2.1.7",
     "react-router": "^7.3.0",
     "react-router-dom": "^7.3.0",

@@ -19,6 +19,7 @@ import Home from './routes/home';
 import Settings from './routes/settings';
 import EnvSettings from './components/env-settings';
 import NotFound from './routes/not-found';
+import OnboardingTour from './components/onboarding-tour';
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({
@@ -101,6 +102,7 @@ function App() {
               </SidebarInset>
             </SidebarProvider>
             <Toaster />
+            <OnboardingTour />
           </TooltipProvider>
         </BrowserRouter>
       </div>
