@@ -28,8 +28,6 @@ import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
 import { HelpCircle, Trash, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-type FieldType = 'text' | 'textarea' | 'number' | 'checkbox' | 'select';
-
 export type InputField = {
   name: string;
   title: string;
