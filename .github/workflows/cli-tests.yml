@@ -1,0 +1,42 @@
+name: CLI Tests
+
+on:
+  push:
+    branches: [v2-develop]
+    paths:
+      - 'packages/cli/**'
+  pull_request:
+    branches: [v2-develop]
+    paths:
+      - 'packages/cli/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: packages/cli
+        run: bun install
+
+      - name: Build CLI
+        working-directory: packages/cli
+        run: bun run build
+
+      - name: Run CLI tests
+        working-directory: packages/cli/__test_scripts__
+        run: bash ./run_cli_tests.sh 
