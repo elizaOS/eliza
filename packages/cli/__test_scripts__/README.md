@@ -2,81 +2,70 @@
 
 **Test Coverage Status: Up-to-date as of 2025-04-17**
 
-_All tests use isolated temporary environments and have descriptive names for clarity and maintainability._
+_All tests use isolated temporary environments and have descriptive names for clarity._
 
-This directory contains Bash test scripts that verify the functionality of the `elizaos` CLI commands. These tests ensure that CLI commands work correctly in realistic user scenarios.
+This directory contains Bash test scripts that verify the functionality of the `elizaos` CLI commands in realistic user scenarios.
 
 ## Test Coverage
 
-| Test File          | Command(s) Tested | Test Cases Summary                                                                                                                  |
-| ------------------ | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `test_agent.bats`  | `elizaos agent`   | Help, list (default/empty), list (API endpoint), start (character from file), stop, full agent lifecycle                            |
-| `test_create.bats` | `elizaos create`  | Help, create (default project), create (plugin project), duplicate names, create in current dir, invalid names, invalid types, deps |
-| `test_dev.bats`    | `elizaos dev`     | Help, dev server (port/background), server accessibility, API endpoints, agent commands, process cleanup                            |
-| `test_env.bats`    | `elizaos env`     | Help, list environment variables from server API                                                                                    |
+| Test File              | Command(s) Tested        | Test Cases Summary                                                                |
+| ---------------------- | ------------------------ | --------------------------------------------------------------------------------- |
+| `test_agent.bats`      | `elizaos agent`          | Help, list (default/API), start/stop agent, full agent lifecycle                  |
+| `test_create.bats`     | `elizaos create`         | Help, create (project/plugin), duplicate/invalid names/types, deps                |
+| `test_dev.bats`        | `elizaos dev`            | Help, dev server (port/background), server/API endpoints, agent commands, cleanup |
+| `test_env.bats`        | `elizaos env`            | Help, list environment variables from server API                                  |
+| `test_plugin.bats`     | `elizaos plugin`         | TBD (add summary when implemented)                                                |
+| `test_project.bats`    | `elizaos project`        | Help, create/list projects, plugins, add plugin                                   |
+| `test_publish.bats`    | `elizaos plugin publish` | Help, validate, pack, publish with auth, bump-version in plugin projects          |
+| `test_start.bats`      | `elizaos start`          | Help, (add more tests as implemented)                                             |
+| `test_test.bats`       | `elizaos test`           | Help, run simple test file, fail on error                                         |
+| `test_update.bats`     | `elizaos update`         | TBD (add summary when implemented)                                                |
+| `test_update-cli.bats` | `elizaos update-cli`     | TBD (add summary when implemented)                                                |
 
-| `test_plugin.bats` | `elizaos plugin` | TBD (add summary when implemented) |
-| `test_project.bats` | `elizaos project` | Help, create project, list projects, list installed plugins, add plugin |
-| `test_publish.bats` | `elizaos plugin publish` | Help, validate, pack, publish with auth, bump-version in plugin projects |
-| `test_start.bats` | `elizaos start` | Help, (add more tests as implemented) |
-| `test_test.bats` | `elizaos test` | Help, run simple test file, fail on error |
-| `test_update.bats` | `elizaos update` | TBD (add summary when implemented) |
-| `test_update-cli.bats` | `elizaos update-cli` | TBD (add summary when implemented) |
-
-_Note: Plugin installation is now tested via `test_project.bats` using the `elizaos project add-plugin` command. If any test file is present but not yet implemented, its test cases are marked as 'TBD'._
+_Note: Plugin installation is now tested via `test_project.bats` using `elizaos project add-plugin`. If any test file is present but not yet implemented, its test cases are marked as 'TBD.'_.\_
 
 ---
 
-## Test Environment Setup Guidelines
-
-To run the Eliza CLI test suite, follow these environment setup instructions:
+## Setup & Running Tests
 
 ### Prerequisites
 
-- **Node.js** (v18 or newer recommended)
-- **bun** (for running the CLI and installing dependencies)
-- **bats-core** (Bash Automated Testing System)
-  - Install via Homebrew: `brew install bats-core`
-  - Or see: https://github.com/bats-core/bats-core
-- **git** (for project and plugin creation tests)
+- **Node.js** (v18+ recommended)
+- **bun** (for CLI and dependencies)
+- **bats-core** ([Install](https://github.com/bats-core/bats-core) or `brew install bats-core`)
+- **git** (for project/plugin tests)
 
-### Installing Project Dependencies
+### Install & Build
 
-1. From the repository root, install dependencies with bun:
-   ```bash
-   bun install
-   ```
-2. Ensure the CLI is built:
-   ```bash
-   bun run build
-   ```
+```bash
+bun install
+bun run build
+```
 
-### Environment Variables
+### Running
 
-- No special environment variables are required by default. The test scripts will set up isolated temporary directories and required variables automatically.
-- If you want to override the port for the test server, set `ELIZA_TEST_PORT` before running tests.
-
-### Running Tests
-
-- **Run all tests:**
+- **All tests:**
   ```bash
   ./run_all_bats.sh
   ```
-- **Run a specific test script:**
+- **Single test:**
   ```bash
   bats test_agent.bats
   # or
   bats test_publish.bats
   ```
 
+### Env Variables
+
+- No special env vars needed. To override test server port, set `ELIZA_TEST_PORT`.
+
 ### Troubleshooting
 
-- **bun or node not found:** Ensure both are installed and available in your `PATH`.
-- **bats: command not found:** Install `bats-core` as described above.
-- **Permission denied:** Make sure scripts are executable: `chmod +x *.bats *.sh`.
-- **Test failures due to missing build:** Run `bun run build` before testing.
-- **Port conflicts:** If the test server fails to start, another process may be using the port. Set `ELIZA_TEST_PORT` to a free port.
-- **Test pollution:** All tests should run in isolated temp directories. If you see pollution, check for accidental use of the project root in tests.
+- Ensure `bun`, `node`, and `bats-core` are installed and in `PATH`.
+- Make scripts executable: `chmod +x *.bats *.sh`.
+- If tests fail due to missing build, run `bun run build`.
+- For port conflicts, set `ELIZA_TEST_PORT` to a free port.
+- All tests run in isolated temp directories; avoid polluting the project root.
 
 ---
 
@@ -119,112 +108,10 @@ The Eliza CLI test suite is designed for reliability, reproducibility, and easy 
 - **Isolation:** Every test runs in a fresh temp directory, preventing pollution and ensuring repeatability.
 - **Descriptive Output:** Test names and comments make it easy to see what is being tested and why a failure occurred.
 - **Extensibility:** New test scripts can be added easily by following the existing structure.
-- **Troubleshooting:** Failures are reported with context, and setup issues (like missing dependencies or port conflicts) are caught early.
-
----
-
-### Improvements Summary
-
-- All test scripts now use isolated temporary directories for each test, ensuring clean environments and no cross-test pollution.
-- Test names and descriptions are explicit and descriptive, making test output easy to interpret.
-- The suite is easier to maintain and extend, with a consistent structure across all .bats files.
-- This README is kept up to date with the current state of the test suite. If you add a new test file, please update this table accordingly.
-  - Loads test character files from `test-characters/` directory
-  - Monitors server startup and availability
-  - Ensures server cleanup on test completion or failure
-
-2. **Test Execution**:
-
-   - Discovers and runs all `test_*.sh` scripts in sequence
-   - Uses timeouts to prevent hanging test scripts (60s default timeout)
-   - Captures exit codes and test results
-   - Provides detailed logging of each test's execution
-
-3. **Cleanup Operations**:
-   - Stops the test server
-   - Removes all temporary test directories
-   - Manages cleanup of individual test environments
-
-### Setup Script (`setup_test_env.sh`)
-
-This shared utility script provides common functionality for all test scripts:
-
-1. **Environment Preparation**:
-
-   - Creates isolated temporary directories for each test run
-   - Locates and validates the ElizaOS executable
-   - Sets up environment variables needed by tests
-   - Determines optimal command to run ElizaOS (`global` vs `local build`)
-
-2. **Test Utilities**:
-
-   - Logging functions (`log_info`, `log_error`, `log_warning`)
-   - Test assertion functions (`assert_success`, `assert_failure`)
-   - Output validation (`assert_stdout_contains`, `assert_stderr_contains`)
-   - File and directory checks (`assert_file_exists`, `assert_dir_exists`)
-   - Command execution wrapper (`run_elizaos`)
-
-3. **Cleanup Functions**:
-   - Trap-based cleanup to ensure test directories are removed
-   - Project-specific cleanup for node_modules and other large artifacts
-
-### Individual Test Scripts (`test_<command>.sh`)
-
-Each test script follows a consistent structure:
-
-1. **Setup Phase**:
-
-   - Sources `setup_test_env.sh` for common utilities
-   - Calls `prepare_test_environment` to create isolated test directory
-   - Sets up test-specific variables and requirements
-
-2. **Test Cases**:
-
-   - Each test is clearly labeled with descriptive log messages
-   - Commands are executed via `run_elizaos` wrapper
-   - Results are validated with various assertion functions
-   - Many tests track pass/fail counts for summary reporting
-
-3. **Cleanup and Reporting**:
-   - Cleans up test-specific artifacts
-   - Reports test summary (total, passed, failed)
-   - Returns appropriate exit code based on test results
-
-## Test Workflow
-
-When running the full test suite via `run_cli_tests.sh`:
-
-1. **Dependencies** are verified (bun, node)
-2. **Test server** is started in the background with isolated data directory
-3. **Server availability** is confirmed via health check endpoint
-4. **Test scripts** are executed sequentially with timeouts
-5. **Results** are captured and summarized
-6. **Cleanup** operations remove all temporary files and stop the server
-7. **Exit code** indicates overall test suite success or failure
-
-For individual test scripts:
-
-1. **Test environment** is prepared via `prepare_test_environment`
-2. **Test operations** are performed against either the global CLI or a local build
-3. **Assertions** verify expected behavior and outputs
-4. **Test-specific cleanup** removes artifacts before exit
-
-## Test Character Assets
-
-The `test-characters` directory contains JSON character definition files used by various tests:
-
-- `ada.json`: Ada character configuration
-- `max.json`: Max character configuration
-- `shaw.json`: Shaw character configuration
-
-These are loaded by the test server and used in agent-related tests.
 
 ## Adding New Tests
 
-When adding new tests:
-
-1. Create a new `test_<command>.sh` file based on an existing test
-2. Include proper test tracking logic
-3. Ensure idempotent execution (clean up after yourself)
-4. Add comprehensive assertions
-5. Update this README with details about the new tests
+1. Copy an existing `test_<command>.bats`.
+2. Use proper test tracking and cleanup logic.
+3. Add comprehensive assertions.
+4. Update the test coverage table above.

@@ -2,54 +2,46 @@ name: Eliza CLI Tests
 
 on:
   push:
-    branches: [v2-develop]
     paths:
       - 'packages/cli/**'
+      - '.github/workflows/cli-tests.yml'
   pull_request:
-    branches: [v2-develop]
     paths:
       - 'packages/cli/**'
+      - '.github/workflows/cli-tests.yml'
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '23'
-      
-      - name: Setup Bun
+          node-version: 23
+
+      - name: Set up Bun
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
 
-      - name: Install dependencies
-        run: bun install
-
-      - name: Setup Turbo Cache
-        uses: actions/cache@v3
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
-
-      - name: Build all packages
-        run: bun turbo run build --filter=!@elizaos/docs
-
-      - name: Install Bats (bats-core)
+      - name: Install bats-core
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats-core
 
-      - name: Run CLI tests
-        working-directory: packages/cli/__test_scripts__
+      - name: Make test scripts executable
+        run: chmod +x packages/cli/__test_scripts__/*.bats packages/cli/__test_scripts__/*.sh
+
+      - name: Install dependencies & build
         run: |
-          bash ./run_all_bats.sh
-          echo "Exit code: $?"
+          bun install
+          bun run build
+        working-directory: packages/cli
+
+      - name: Run CLI shell tests
+        run: ./run_all_bats.sh
+        working-directory: packages/cli/__test_scripts__
