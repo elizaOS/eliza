@@ -5,38 +5,14 @@
 set -e
 
 BATS_BIN="$(command -v bats || true)"
+
 if [ -z "$BATS_BIN" ]; then
-  echo "[INFO] 'bats' not found in PATH. Attempting to help you install bats-core..."
-  unameOut="$(uname -s)"
-  case "$unameOut" in
-    Darwin*)
-      echo "[INFO] Detected macOS. Installing bats-core via Homebrew..."
-      if command -v brew >/dev/null 2>&1; then
-        brew install bats-core || { echo '[ERROR] Failed to install bats-core via Homebrew.'; exit 1; }
-      else
-        echo '[ERROR] Homebrew not found. Please install Homebrew and rerun, or install bats-core manually: https://github.com/bats-core/bats-core' ; exit 1
-      fi
-      ;;
-    Linux*)
-      echo "[INFO] Detected Linux. Installing bats via apt-get (sudo required)..."
-      if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update && sudo apt-get install -y bats || { echo '[ERROR] Failed to install bats via apt-get.'; exit 1; }
-      else
-        echo '[ERROR] apt-get not found. Please install bats manually: https://github.com/bats-core/bats-core' ; exit 1
-      fi
-      ;;
-    MINGW*|MSYS*|CYGWIN*)
-      echo '[ERROR] Windows detected. Please follow manual install instructions: https://github.com/bats-core/bats-core' ; exit 1
-      ;;
-    *)
-      echo '[ERROR] Unknown OS. Please install bats-core manually: https://github.com/bats-core/bats-core' ; exit 1
-      ;;
-  esac
-  BATS_BIN="$(command -v bats || true)"
-  if [ -z "$BATS_BIN" ]; then
-    echo "[ERROR] bats still not found after attempted install. Please install bats-core manually."
-    exit 1
-  fi
+  echo "[ERROR] 'bats' not found in PATH."
+  echo "Please install bats globally using one of the following commands:"
+  echo "  npm install -g bats"
+  echo "  # or, if you use bun:"
+  echo "  bun add -g bats"
+  exit 1
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
