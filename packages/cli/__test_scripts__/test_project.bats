@@ -65,6 +65,7 @@ teardown() {
   grep '@elizaos/plugin-bootstrap' package.json
 }
 
+@test "project --help shows usage" {
   run $ELIZAOS_CMD project --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos project"* ]]

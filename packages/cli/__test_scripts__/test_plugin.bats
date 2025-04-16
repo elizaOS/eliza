@@ -66,6 +66,7 @@ teardown() {
   [ "$status" -ne 127 ]
 }
 
+@test "plugin --help shows usage" {
   run $ELIZAOS_CMD plugin --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: elizaos plugin"* ]]
