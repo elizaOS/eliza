@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { AVATAR_IMAGE_MAX_SIZE, FIELD_REQUIREMENT, FIELD_REQUIREMENTS } from '@/constants';
+import { AVATAR_IMAGE_MAX_SIZE, FIELD_REQUIREMENT_TYPE, FIELD_REQUIREMENTS } from '@/constants';
 import { useToast } from '@/hooks/use-toast';
 import { compressImage } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
@@ -376,8 +376,9 @@ export default function CharacterForm({
                   <span className="ml-1">
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
-                        (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT>)[field.name] ===
-                        FIELD_REQUIREMENT.REQUIRED
+                        (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[
+                          field.name
+                        ] === FIELD_REQUIREMENT_TYPE.REQUIRED
                           ? 'bg-red-500'
                           : 'bg-gray-400'
                       }`}
@@ -386,8 +387,8 @@ export default function CharacterForm({
                 </TooltipTrigger>
                 <TooltipContent side="right" align="start">
                   <p>
-                    {(FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT>)[field.name] ===
-                    FIELD_REQUIREMENT.REQUIRED
+                    {(FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
+                    FIELD_REQUIREMENT_TYPE.REQUIRED
                       ? 'Required'
                       : 'Optional'}
                   </p>
@@ -474,8 +475,9 @@ export default function CharacterForm({
                   <span className="ml-1">
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
-                        (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT>)[field.path] ===
-                        FIELD_REQUIREMENT.REQUIRED
+                        (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[
+                          field.path
+                        ] === FIELD_REQUIREMENT_TYPE.REQUIRED
                           ? 'bg-red-500'
                           : 'bg-gray-400'
                       }`}
@@ -484,8 +486,8 @@ export default function CharacterForm({
                 </TooltipTrigger>
                 <TooltipContent side="right" align="start">
                   <p>
-                    {(FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT>)[field.path] ===
-                    FIELD_REQUIREMENT.REQUIRED
+                    {(FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
+                    FIELD_REQUIREMENT_TYPE.REQUIRED
                       ? 'Required'
                       : 'Optional'}
                   </p>
