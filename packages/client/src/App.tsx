@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import AgentCreator from './components/agent-creator';
 import { AppSidebar } from './components/app-sidebar';
+import { ConnectionErrorBanner } from './components/connection-error-banner';
 import { LogViewer } from './components/log-viewer';
 import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
@@ -17,6 +18,7 @@ import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
 import Settings from './routes/settings';
 import EnvSettings from './components/env-settings';
+import NotFound from './routes/not-found';
 
 // Create a query client with optimized settings
 const queryClient = new QueryClient({
@@ -81,6 +83,9 @@ function App() {
             <SidebarProvider>
               <AppSidebar />
               <SidebarInset>
+                <div className="px-4 pt-4">
+                  <ConnectionErrorBanner />
+                </div>
                 <Routes>
                   <Route path="/" element={<Home />} />
                   <Route path="chat/:agentId" element={<Chat />} />
@@ -90,6 +95,8 @@ function App() {
                   <Route path="/logs" element={<LogViewer />} />
                   <Route path="room/:serverId" element={<Room />} />
                   <Route path="settings/" element={<EnvSettings />} />
+                  {/* Catch-all route for 404 errors */}
+                  <Route path="*" element={<NotFound />} />
                 </Routes>
               </SidebarInset>
             </SidebarProvider>
