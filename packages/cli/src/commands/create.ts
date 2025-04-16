@@ -207,6 +207,36 @@ export const create = new Command()
         }
       }
 
+      // Validate project name according to npm package naming rules
+      const validateProjectName = (name: string): boolean => {
+        // Special case for creating a project in the current directory
+        if (name === '.') {
+          return true;
+        }
+
+        // Check for spaces
+        if (name.includes(' ')) {
+          return false;
+        }
+
+        // Basic npm package name validation (simplified version)
+        // Only allow alphanumeric characters, hyphens, and underscores
+        // Don't start with a dot or an underscore
+        // Don't contain uppercase letters (for consistency)
+        const validNameRegex = /^[a-z0-9][-a-z0-9._]*$/;
+        return validNameRegex.test(name);
+      };
+
+      // Perform name validation
+      if (!validateProjectName(projectName)) {
+        console.error(colors.red(`Error: Invalid ${options.type} name "${projectName}".`));
+        console.error(`${options.type} names must follow npm package naming conventions:`);
+        console.error('- Cannot contain spaces');
+        console.error('- Must contain only lowercase letters, numbers, hyphens, or underscores');
+        console.error('- Cannot start with a dot or underscore');
+        process.exit(1);
+      }
+
       // For plugin initialization, add the plugin- prefix if needed
       if (options.type === 'plugin' && !projectName.startsWith('plugin-')) {
         const prefixedName = `plugin-${projectName}`;
@@ -218,25 +248,32 @@ export const create = new Command()
 
       const targetDir = path.join(options.dir === '.' ? process.cwd() : options.dir, projectName);
 
+      // Check if directory already exists and handle accordingly
+      if (existsSync(targetDir)) {
+        const files = await fs.readdir(targetDir);
+        const isEmpty = files.length === 0 || files.every((f) => f.startsWith('.'));
+
+        if (!isEmpty) {
+          // Directory exists and is not empty - this should fail
+          console.error(
+            colors.red(`Error: Directory "${projectName}" already exists and is not empty.`)
+          );
+          console.error(
+            'Please choose a different name or manually remove the directory contents first.'
+          );
+          process.exit(1);
+        } else {
+          // Directory exists but is empty - this is fine
+          console.info(
+            `Note: Directory "${projectName}" already exists but is empty. Continuing...`
+          );
+        }
+      }
+
       if (options.type === 'plugin') {
+        // Create directory if it doesn't exist
         if (!existsSync(targetDir)) {
           await fs.mkdir(targetDir, { recursive: true });
-        } else {
-          const files = await fs.readdir(targetDir);
-          const isEmpty = files.length === 0 || files.every((f) => f.startsWith('.'));
-          if (!isEmpty && !options.yes) {
-            const { proceed } = await prompts({
-              type: 'confirm',
-              name: 'proceed',
-              message: 'Directory is not empty. Continue anyway?',
-              initial: false,
-            });
-            if (!proceed) {
-              process.exit(0);
-            }
-          } else if (!isEmpty && options.yes) {
-            console.info('Directory is not empty, but continuing anyway due to -y flag');
-          }
         }
 
         const pluginName = projectName.startsWith('@elizaos/plugin-')
@@ -273,24 +310,9 @@ export const create = new Command()
         process.stdout.write(`\u001B]1337;CurrentDir=${targetDir}\u0007`);
         return;
       } else {
+        // Create directory if it doesn't exist
         if (!existsSync(targetDir)) {
           await fs.mkdir(targetDir, { recursive: true });
-        } else {
-          const files = await fs.readdir(targetDir);
-          const isEmpty = files.length === 0 || files.every((f) => f.startsWith('.'));
-          if (!isEmpty && !options.yes) {
-            const { proceed } = await prompts({
-              type: 'confirm',
-              name: 'proceed',
-              message: 'Directory is not empty. Continue anyway?',
-              initial: false,
-            });
-            if (!proceed) {
-              process.exit(0);
-            }
-          } else if (!isEmpty && options.yes) {
-            console.info('Directory is not empty, but continuing anyway due to -y flag');
-          }
         }
 
         const availableDatabases = await getLocalAvailableDatabases();

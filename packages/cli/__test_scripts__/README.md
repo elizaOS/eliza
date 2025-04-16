@@ -1,52 +1,137 @@
 # Eliza CLI Shell Tests
 
+**Test Coverage Status: Up-to-date as of 2025-04-17**
+
+_All tests use isolated temporary environments and have descriptive names for clarity and maintainability._
+
 This directory contains Bash test scripts that verify the functionality of the `elizaos` CLI commands. These tests ensure that CLI commands work correctly in realistic user scenarios.
 
 ## Test Coverage
 
-| Test File            | Command(s) Tested                                  | Test Cases                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| -------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_agent.sh`      | `elizaos agent`                                    | • **Test 1**: `agent --help` - Verifies help command displays usage info<br>• **Test 2**: `agent list` - Checks agent list with empty/default agents<br>• **Test 3**: `agent list` - Verifies server API endpoint works<br>• **Test 4**: `agent start --path <character_file>` - Tests character loading from file<br>• **Test 5**: `agent stop <agent_name>` - Tests agent stopping functionality<br>• **Test 6**: Agent lifecycle management                                                                                                  |
-| `test_create.sh`     | `elizaos create`                                   | • **Test 1**: `create --help` - Verifies help command displays usage info<br>• **Test 2**: `create <name> --yes` - Tests default project creation<br>• **Test 3**: `create <name> --yes --type plugin` - Tests plugin project creation<br>• **Test 4**: Tests handling duplicate project names<br>• **Test 5**: `create .` - Tests creation in current directory<br>• **Test 6**: Tests handling invalid project names with spaces<br>• **Test 7**: Tests handling non-existent project types<br>• **Test 8**: Verifies dependency installation |
-| `test_dev.sh`        | `elizaos dev`                                      | • **Test 1**: `dev --help` - Verifies help command displays usage info<br>• **Test 2**: `dev --port <port>` - Tests running dev server as background process<br>• **Test 3**: Tests server accessibility on specified port<br>• **Test 4**: Tests interacting with server API endpoints<br>• **Test 5**: Tests agent commands against dev server<br>• **Test 6**: Tests server process cleanup                                                                                                                                                  |
-| `test_env.sh`        | `elizaos env`                                      | • **Test 1**: `env --help` - Verifies help command displays usage info<br>• **Test 2**: `env list` - Tests listing environment variables from server API                                                                                                                                                                                                                                                                                                                                                                                        |
-| `test_install.sh`    | `elizaos install`                                  | • **Test 1**: `install --help` - Verifies help command displays usage info<br>• **Test 2**: Tests package dependency installation in projects<br>• **Test 3**: Tests package manager integration                                                                                                                                                                                                                                                                                                                                                |
-| `test_plugin.sh`     | `elizaos plugin` /<br>`elizaos project add-plugin` | • **Test 1**: `plugin --help` - Verifies help command displays usage info<br>• **Test 2**: `plugin publish --help` - Tests plugin publish help command<br>• **Test 3**: `project add-plugin <plugin-name> --no-env-prompt` - Tests adding official plugins<br>• **Test 4**: Tests adding multiple plugins at once<br>• **Test 5**: Tests plugin dependency detection in package.json<br>• **Test 6**: Tests custom plugin installation<br>• **Test 7**: Tests custom plugin via GitHub URL                                                      |
-| `test_project.sh`    | `elizaos project`                                  | • **Test 1**: `project --help` - Verifies help command displays usage info<br>• **Test 2**: `project create` - Tests project creation<br>• **Test 3**: `project installed-plugins` - Verifies listing installed plugins<br>• **Test 4**: `project add-plugin` - Tests adding plugins to existing projects<br>• **Test 5**: `project remove-plugin` - Tests removing plugins<br>• **Test 6**: Tests package.json modifications                                                                                                                   |
-| `test_publish.sh`    | `elizaos plugin publish`                           | • **Test 1**: `plugin publish --help` - Verifies help command displays usage info<br>• **Test 2**: Tests plugin validation logic<br>• **Test 3**: Tests plugin packaging<br>• **Test 4**: Tests publication workflow and authentication<br>• **Test 5**: Tests versioning logic                                                                                                                                                                                                                                                                 |
-| `test_start.sh`      | `elizaos start`                                    | • **Test 1**: `start --help` - Verifies help command displays usage info<br>• **Test 2**: Tests various runtime modes<br>• **Test 3**: Tests custom port configuration<br>• **Test 4**: Tests configuration validation<br>• **Test 5**: Tests character loading                                                                                                                                                                                                                                                                                 |
-| `test_test.sh`       | `elizaos test`                                     | • **Test 1**: `test --help` - Verifies help command displays usage info<br>• **Test 2**: Tests basic test suite execution<br>• **Test 3**: Tests test result validation<br>• **Test 4**: Tests different test filtering options<br>• **Test 5**: Tests error reporting                                                                                                                                                                                                                                                                          |
-| `test_update.sh`     | `elizaos update`                                   | • **Test 1**: `update --help` - Verifies help command displays usage info<br>• **Test 2**: Tests plugin update functionality<br>• **Test 3**: Tests project dependency updates<br>• **Test 4**: Tests update failure handling<br>• **Test 5**: Tests selective updating                                                                                                                                                                                                                                                                         |
-| `test_update-cli.sh` | `elizaos update-cli`                               | • **Test 1**: `update-cli --help` - Verifies help command displays usage info<br>• **Test 2**: Tests CLI self-update process<br>• **Test 3**: Tests version checking and comparison<br>• **Test 4**: Tests update cancellation                                                                                                                                                                                                                                                                                                                  |
+| Test File          | Command(s) Tested | Test Cases Summary                                                                                                                  |
+| ------------------ | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `test_agent.bats`  | `elizaos agent`   | Help, list (default/empty), list (API endpoint), start (character from file), stop, full agent lifecycle                            |
+| `test_create.bats` | `elizaos create`  | Help, create (default project), create (plugin project), duplicate names, create in current dir, invalid names, invalid types, deps |
+| `test_dev.bats`    | `elizaos dev`     | Help, dev server (port/background), server accessibility, API endpoints, agent commands, process cleanup                            |
+| `test_env.bats`    | `elizaos env`     | Help, list environment variables from server API                                                                                    |
 
-## Running Tests
+| `test_plugin.bats` | `elizaos plugin` | TBD (add summary when implemented) |
+| `test_project.bats` | `elizaos project` | Help, create project, list projects, list installed plugins, add plugin |
+| `test_publish.bats` | `elizaos plugin publish` | Help, validate, pack, publish with auth, bump-version in plugin projects |
+| `test_start.bats` | `elizaos start` | Help, (add more tests as implemented) |
+| `test_test.bats` | `elizaos test` | Help, run simple test file, fail on error |
+| `test_update.bats` | `elizaos update` | TBD (add summary when implemented) |
+| `test_update-cli.bats` | `elizaos update-cli` | TBD (add summary when implemented) |
 
-To run all tests, use the master test script:
+_Note: Plugin installation is now tested via `test_project.bats` using the `elizaos project add-plugin` command. If any test file is present but not yet implemented, its test cases are marked as 'TBD'._
 
-```bash
-./run_cli_tests.sh
-```
+---
 
-To run a specific test:
+## Test Environment Setup Guidelines
 
-```bash
-./test_<command>.sh
-```
+To run the Eliza CLI test suite, follow these environment setup instructions:
 
-## Test Environment and Architecture
+### Prerequisites
 
-The testing system consists of several key components:
+- **Node.js** (v18 or newer recommended)
+- **bun** (for running the CLI and installing dependencies)
+- **bats-core** (Bash Automated Testing System)
+  - Install via Homebrew: `brew install bats-core`
+  - Or see: https://github.com/bats-core/bats-core
+- **git** (for project and plugin creation tests)
 
-### Main Runner Script (`run_cli_tests.sh`)
+### Installing Project Dependencies
 
-This script orchestrates the entire test suite:
+1. From the repository root, install dependencies with bun:
+   ```bash
+   bun install
+   ```
+2. Ensure the CLI is built:
+   ```bash
+   bun run build
+   ```
 
-1. **Server Management**:
+### Environment Variables
 
-   - Starts a test server instance on a configurable port (default: 3000)
-   - Loads test character files from `test-characters/` directory
-   - Monitors server startup and availability
-   - Ensures server cleanup on test completion or failure
+- No special environment variables are required by default. The test scripts will set up isolated temporary directories and required variables automatically.
+- If you want to override the port for the test server, set `ELIZA_TEST_PORT` before running tests.
+
+### Running Tests
+
+- **Run all tests:**
+  ```bash
+  ./run_all_bats.sh
+  ```
+- **Run a specific test script:**
+  ```bash
+  bats test_agent.bats
+  # or
+  bats test_publish.bats
+  ```
+
+### Troubleshooting
+
+- **bun or node not found:** Ensure both are installed and available in your `PATH`.
+- **bats: command not found:** Install `bats-core` as described above.
+- **Permission denied:** Make sure scripts are executable: `chmod +x *.bats *.sh`.
+- **Test failures due to missing build:** Run `bun run build` before testing.
+- **Port conflicts:** If the test server fails to start, another process may be using the port. Set `ELIZA_TEST_PORT` to a free port.
+- **Test pollution:** All tests should run in isolated temp directories. If you see pollution, check for accidental use of the project root in tests.
+
+---
+
+## How the Test Suite Works
+
+The Eliza CLI test suite is designed for reliability, reproducibility, and easy debugging. Here’s how the full flow works:
+
+1. **Test Runner Script (`run_all_bats.sh`)**
+
+   - This script is the entry point for running all CLI tests.
+   - It sets up the environment, verifies dependencies, and ensures a clean start.
+   - It starts a dedicated test server (in the background) on a configurable port and waits for it to become available via a health check.
+   - It then discovers and runs each `*.bats` test file in sequence, reporting progress and results for each.
+
+2. **Test Script Execution**
+
+   - Each test script runs in its own isolated temporary directory, created at the start and cleaned up at the end.
+   - The test scripts set up any required environment variables and use helper functions for assertions and logging.
+   - Each test case is named and described for clear reporting.
+   - All commands (e.g., `elizaos create`, `elizaos agent`, etc.) are run as if by a real user, simulating actual CLI usage.
+
+3. **Server and Asset Management**
+
+   - The test server loads character assets from the `test-characters` directory for agent-related tests.
+   - Server health is checked before tests begin to avoid race conditions.
+   - Server is stopped and cleaned up after all tests complete.
+
+4. **Result Collection and Reporting**
+
+   - The runner script collects the results from each test file, showing a summary (total, passed, failed) at the end.
+   - If any test fails, it is clearly reported, and the script exits with a non-zero status code.
+   - Debug output is included for failed commands to aid troubleshooting.
+
+5. **Cleanup**
+   - All temporary directories and files created during the tests are removed.
+   - The test server and any background processes are stopped.
+
+### Key Features
+
+- **Isolation:** Every test runs in a fresh temp directory, preventing pollution and ensuring repeatability.
+- **Descriptive Output:** Test names and comments make it easy to see what is being tested and why a failure occurred.
+- **Extensibility:** New test scripts can be added easily by following the existing structure.
+- **Troubleshooting:** Failures are reported with context, and setup issues (like missing dependencies or port conflicts) are caught early.
+
+---
+
+### Improvements Summary
+
+- All test scripts now use isolated temporary directories for each test, ensuring clean environments and no cross-test pollution.
+- Test names and descriptions are explicit and descriptive, making test output easy to interpret.
+- The suite is easier to maintain and extend, with a consistent structure across all .bats files.
+- This README is kept up to date with the current state of the test suite. If you add a new test file, please update this table accordingly.
+  - Loads test character files from `test-characters/` directory
+  - Monitors server startup and availability
+  - Ensures server cleanup on test completion or failure
 
 2. **Test Execution**:
 

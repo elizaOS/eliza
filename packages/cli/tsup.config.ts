@@ -6,7 +6,7 @@ export default defineConfig({
   format: ['esm'],
   dts: false,
   sourcemap: false,
-  external: ['@electric-sql/pglite', 'zod'],
+  external: ['@electric-sql/pglite', 'zod', '@elizaos/core'],
   noExternal: [/^(?!(@electric-sql\/pglite|zod)).*/],
   platform: 'node',
   minify: false,

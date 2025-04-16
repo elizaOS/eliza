@@ -1,4 +1,4 @@
-name: CLI Tests
+name: Eliza CLI Tests
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '23'
       
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -30,13 +30,26 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        working-directory: packages/cli
         run: bun install
 
-      - name: Build CLI
-        working-directory: packages/cli
-        run: bun run build
+      - name: Setup Turbo Cache
+        uses: actions/cache@v3
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Build all packages
+        run: bun turbo run build --filter=!@elizaos/docs
+
+      - name: Install Bats (bats-core)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
 
       - name: Run CLI tests
         working-directory: packages/cli/__test_scripts__
-        run: bash ./run_cli_tests.sh 
+        run: |
+          bash ./run_all_bats.sh
+          echo "Exit code: $?"
