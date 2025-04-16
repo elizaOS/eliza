@@ -68,4 +68,13 @@ The generated traces can be exported to various backends compatible with OpenTel
 
 *   The level of detail (e.g., logging full parameters or responses) might vary based on verbosity settings or future refinements.
 *   Error handling within instrumented functions aims to record exceptions and set the span status appropriately.
-*   Instrumentation for database operations, external API calls within plugins, etc., might depend on the instrumentation within those specific plugins or libraries. 
+*   Instrumentation for database operations, external API calls within plugins, etc., might depend on the instrumentation within those specific plugins or libraries.
+
+## Instrumented Plugins
+
+While the core `AgentRuntime` provides the main instrumentation points, individual plugins might add their own specific spans. Refer to the documentation of each plugin for details.
+
+### @elizaos/plugin-openai
+
+*   **Location:** `packages/plugin-openai`
+*   **Description:** This plugin instruments calls made to the OpenAI API for various models (text generation, embeddings, image generation, transcription). Spans typically include attributes like `llm.request.model`, token counts, and duration.
