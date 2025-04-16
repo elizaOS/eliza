@@ -25,7 +25,7 @@ import {
   getAllRequiredPlugins,
 } from '../config/voice-models';
 import { useElevenLabsVoices } from '@/hooks/use-elevenlabs-voices';
-import { HelpCircle, Trash, Loader2 } from 'lucide-react';
+import { Trash, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export type InputField = {
@@ -365,24 +365,23 @@ export default function CharacterForm({
   const renderInputField = (field: InputField) => (
     <div key={field.name} className="space-y-2">
       <div className="flex items-center gap-2">
-        <Label htmlFor={field.name} className="flex items-center gap-1">
-          {field.title}
-          {field.name in FIELD_REQUIREMENTS &&
-            (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-              FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
-        </Label>
-        {field.tooltip && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </TooltipTrigger>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Label htmlFor={field.name} className="flex items-center gap-1">
+                {field.title}
+                {field.name in FIELD_REQUIREMENTS &&
+                  (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+              </Label>
+            </TooltipTrigger>
+            {field.tooltip && (
               <TooltipContent>
                 <p>{field.tooltip}</p>
               </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
 
@@ -440,24 +439,23 @@ export default function CharacterForm({
   const renderArrayField = (field: ArrayField) => (
     <div key={field.path} className="space-y-2">
       <div className="flex items-center gap-2">
-        <Label htmlFor={field.path} className="flex items-center gap-1">
-          {field.title}
-          {field.path in FIELD_REQUIREMENTS &&
-            (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-              FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
-        </Label>
-        {field.tooltip && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <HelpCircle className="h-4 w-4 text-muted-foreground" />
-              </TooltipTrigger>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Label htmlFor={field.path} className="flex items-center gap-1">
+                {field.title}
+                {field.path in FIELD_REQUIREMENTS &&
+                  (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
+                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
+              </Label>
+            </TooltipTrigger>
+            {field.tooltip && (
               <TooltipContent>
                 <p>{field.tooltip}</p>
               </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+            )}
+          </Tooltip>
+        </TooltipProvider>
       </div>
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
       <ArrayInput
