@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import clientLogger from '../lib/logger';
 
 // Key for storing onboarding state in localStorage
 const ONBOARDING_COMPLETED_KEY = 'eliza-onboarding-completed';
@@ -16,7 +17,7 @@ export const useOnboarding = () => {
       return storedValue === 'true';
     } catch (error) {
       // If there's an error (e.g. localStorage not available), assume not completed
-      console.error('Error accessing localStorage:', error);
+      clientLogger.error('Error accessing localStorage:', error);
       return false;
     }
   });
@@ -26,7 +27,7 @@ export const useOnboarding = () => {
     try {
       localStorage.setItem(ONBOARDING_COMPLETED_KEY, onboardingCompleted.toString());
     } catch (error) {
-      console.error('Error writing to localStorage:', error);
+      clientLogger.error('Error writing to localStorage:', error);
     }
   }, [onboardingCompleted]);
 

@@ -15,6 +15,7 @@ import type { IAttachment } from '@/types';
 import type { Agent, Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
+import clientLogger from '@/lib/logger';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, PanelRight, Paperclip, Send, X } from 'lucide-react';
@@ -274,21 +275,18 @@ export default function Page({
   useEffect(() => {
     // Function to handle control messages (enable/disable input)
     const handleControlMessage = (data: any) => {
-      // Type guard to ensure we have the expected structure
-      if (
-        data &&
-        typeof data === 'object' &&
-        'action' in data &&
-        'roomId' in data &&
-        (data.action === 'enable_input' || data.action === 'disable_input') &&
-        data.roomId === roomId
-      ) {
-        console.log(`[Chat] Received control message: ${data.action} for room ${data.roomId}`);
+      // Extract action and roomId with type safety
+      const { action, roomId: messageRoomId } = data || {};
+      const isInputControl = action === 'enable_input' || action === 'disable_input';
 
-        if (data.action === 'disable_input') {
+      // Check if this is a valid input control message for this room
+      if (isInputControl && messageRoomId === roomId) {
+        clientLogger.info(`[Chat] Received control message: ${action} for room ${messageRoomId}`);
+
+        if (action === 'disable_input') {
           setInputDisabled(true);
           setMessageProcessing(true);
-        } else if (data.action === 'enable_input') {
+        } else if (action === 'enable_input') {
           setInputDisabled(false);
           setMessageProcessing(false);
         }
