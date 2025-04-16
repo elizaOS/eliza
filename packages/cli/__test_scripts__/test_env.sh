@@ -49,64 +49,6 @@ assert_success "'env list' should execute successfully initially"
 # Depending on implementation, might show nothing or defaults
 # assert_stdout_contains "No environment variables set" "Initial 'env list' should be empty or show defaults"
 
-# Test 3: Set a new environment variable (COMMAND STRUCTURE UNKNOWN - COMMENTING OUT)
-# log_info "TEST 3: Setting env var '$TEST_VAR_KEY'"
-# run_elizaos env set "$TEST_VAR_KEY" "$TEST_VAR_VALUE"
-# assert_success "'env set $TEST_VAR_KEY' should succeed"
-# assert_stdout_contains "Set environment variable: $TEST_VAR_KEY" "Success message for env set"
-
-# Test 4: Get the set environment variable (COMMAND STRUCTURE UNKNOWN - COMMENTING OUT)
-# log_info "TEST 4: Getting env var '$TEST_VAR_KEY'"
-# run_elizaos env get "$TEST_VAR_KEY"
-# assert_success "'env get $TEST_VAR_KEY' should succeed"
-# # Output format might vary, adjust assertion. Assuming "KEY=VALUE"
-# assert_stdout_contains "$TEST_VAR_KEY=$TEST_VAR_VALUE" "'env get' should show the correct key=value pair"
-
-# Test 5: List environment variables and verify the new one is present (COMMAND STRUCTURE UNKNOWN - COMMENTING OUT)
-# log_info "TEST 5: Listing env vars, expecting '$TEST_VAR_KEY'"
-# run_elizaos env list
-# assert_success "'env list' should succeed after setting var"
-# assert_stdout_contains "$TEST_VAR_KEY=$TEST_VAR_VALUE" "'env list' output should contain the set variable"
-
-# Test 6: Set a second environment variable (COMMAND STRUCTURE UNKNOWN - COMMENTING OUT)
-# log_info "TEST 6: Setting second env var '$TEST_VAR_KEY_2'"
-# run_elizaos env set "$TEST_VAR_KEY_2" "$TEST_VAR_VALUE_2"
-# assert_success "'env set $TEST_VAR_KEY_2' should succeed"
-# assert_stdout_contains "Set environment variable: $TEST_VAR_KEY_2" "Success message for second env set"
-
-# Test 7: List environment variables and verify both are present (COMMAND STRUCTURE UNKNOWN - COMMENTING OUT)
-# log_info "TEST 7: Listing env vars, expecting both variables"
-# run_elizaos env list
-# assert_success "'env list' should succeed after setting second var"
-# assert_stdout_contains "$TEST_VAR_KEY=$TEST_VAR_VALUE" "'env list' output should contain the first variable"
-# assert_stdout_contains "$TEST_VAR_KEY_2=$TEST_VAR_VALUE_2" "'env list' output should contain the second variable"
-
-# Test 8: Unset the first environment variable (COMMAND STRUCTURE UNKNOWN - COMMENTING OUT)
-# log_info "TEST 8: Unsetting env var '$TEST_VAR_KEY'"
-# run_elizaos env unset "$TEST_VAR_KEY"
-# assert_success "'env unset $TEST_VAR_KEY' should succeed"
-# assert_stdout_contains "Unset environment variable: $TEST_VAR_KEY" "Success message for env unset"
-
-# Test 9: Try to get the unset environment variable (COMMAND STRUCTURE UNKNOWN - COMMENTING OUT)
-# log_info "TEST 9: Getting unset env var '$TEST_VAR_KEY'"
-# run_elizaos env get "$TEST_VAR_KEY"
-# assert_failure "'env get $TEST_VAR_KEY' after unset should fail or return nothing"
-# # Check stderr or stdout for appropriate message
-# assert_stderr_contains "not found" "Getting unset var should produce a 'not found' error/message"
-
-# Test 10: List environment variables and verify only the second one remains (COMMAND STRUCTURE UNKNOWN - COMMENTING OUT)
-# log_info "TEST 10: Listing env vars, expecting only '$TEST_VAR_KEY_2'"
-# run_elizaos env list
-# assert_success "'env list' should succeed after unsetting var"
-# assert_stdout_not_contains "$TEST_VAR_KEY=" "'env list' output should NOT contain the unset variable"
-# assert_stdout_contains "$TEST_VAR_KEY_2=$TEST_VAR_VALUE_2" "'env list' output should contain the remaining variable"
-
-# Test 11: Try to unset a non-existent variable (COMMAND STRUCTURE UNKNOWN - COMMENTING OUT)
-# log_info "TEST 11: Unsetting non-existent var 'BAD_VAR'"
-# run_elizaos env unset BAD_VAR
-# assert_failure "'env unset BAD_VAR' should fail or warn"
-# assert_stderr_contains "not found" "Unsetting non-existent var should produce a 'not found' error/message"
-
 # TODO: Add tests for different scopes if supported (e.g., --global, --project)
 
 log_info "========================================="
