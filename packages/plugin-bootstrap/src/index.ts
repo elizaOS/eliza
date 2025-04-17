@@ -673,6 +673,70 @@ const handleServerSync = async ({
   }
 };
 
+/**
+ * Handles control messages for enabling or disabling UI elements in the frontend
+ * @param {Object} params - Parameters for the handler
+ * @param {IAgentRuntime} params.runtime - The runtime instance
+ * @param {Object} params.message - The control message
+ * @param {string} params.source - Source of the message
+ */
+const controlMessageHandler = async ({
+  runtime,
+  message,
+  source,
+}: {
+  runtime: IAgentRuntime;
+  message: {
+    type: 'control';
+    payload: {
+      action: 'enable_input' | 'disable_input';
+      target?: string;
+    };
+    roomId: UUID;
+  };
+  source: string;
+}) => {
+  try {
+    logger.debug(
+      `[controlMessageHandler] Processing control message: ${message.payload.action} for room ${message.roomId}`
+    );
+
+    // Here we would use a WebSocket service to send the control message to the frontend
+    // This would typically be handled by a registered service with sendMessage capability
+
+    // Get any registered WebSocket service
+    const serviceNames = Array.from(runtime.getAllServices().keys());
+    const websocketServiceName = serviceNames.find(
+      (name) => name.toLowerCase().includes('websocket') || name.toLowerCase().includes('socket')
+    );
+
+    if (websocketServiceName) {
+      const websocketService = runtime.getService(websocketServiceName);
+      if (websocketService && 'sendMessage' in websocketService) {
+        // Send the control message through the WebSocket service
+        await (websocketService as any).sendMessage({
+          type: 'controlMessage',
+          payload: {
+            action: message.payload.action,
+            target: message.payload.target,
+            roomId: message.roomId,
+          },
+        });
+
+        logger.debug(
+          `[controlMessageHandler] Control message ${message.payload.action} sent successfully`
+        );
+      } else {
+        logger.error('[controlMessageHandler] WebSocket service does not have sendMessage method');
+      }
+    } else {
+      logger.error('[controlMessageHandler] No WebSocket service found to send control message');
+    }
+  } catch (error) {
+    logger.error(`[controlMessageHandler] Error processing control message: ${error}`);
+  }
+};
+
 const events = {
   [EventType.MESSAGE_RECEIVED]: [
     async (payload: MessagePayload) => {
@@ -787,6 +851,8 @@ const events = {
       logger.debug(`Evaluator ${status}: ${payload.evaluatorName} (${payload.evaluatorId})`);
     },
   ],
+
+  CONTROL_MESSAGE: [controlMessageHandler],
 };
 
 export const bootstrapPlugin: Plugin = {
