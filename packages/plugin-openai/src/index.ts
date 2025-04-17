@@ -36,9 +36,12 @@ function getTracer(runtime: IAgentRuntime) {
   logger.debug(`[getTracer] Attempting to get service with key: ${ServiceType.INSTRUMENTATION}`);
 
   // Use the correct ServiceType enum value for the key
-  const instrumentationService = runtime.getService<InstrumentationService>(ServiceType.INSTRUMENTATION);
+  const instrumentationService = runtime.getService<InstrumentationService>(
+    ServiceType.INSTRUMENTATION
+  );
 
-  if (!instrumentationService) { // Added explicit check for null/undefined
+  if (!instrumentationService) {
+    // Added explicit check for null/undefined
     logger.warn(`[getTracer] Service ${ServiceType.INSTRUMENTATION} not found in runtime.`);
     return null;
   }
@@ -66,12 +69,12 @@ async function startLlmSpan<T>(
     // If tracing disabled, execute function directly
     // Create a dummy span object with no-op methods
     const dummySpan = {
-      setAttribute: () => { },
-      setAttributes: () => { },
-      addEvent: () => { },
-      recordException: () => { },
-      setStatus: () => { },
-      end: () => { },
+      setAttribute: () => {},
+      setAttributes: () => {},
+      addEvent: () => {},
+      recordException: () => {},
+      setStatus: () => {},
+      end: () => {},
       spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
     } as unknown as Span;
     return fn(dummySpan);
@@ -222,7 +225,9 @@ async function generateObjectByModelType(
   return startLlmSpan(runtime, 'LLM.generateObject', attributes, async (span) => {
     span.addEvent('llm.prompt', { 'prompt.content': params.prompt });
     if (schemaPresent) {
-      span.addEvent('llm.request.schema', { 'schema': JSON.stringify(params.schema, safeReplacer()) });
+      span.addEvent('llm.request.schema', {
+        schema: JSON.stringify(params.schema, safeReplacer()),
+      });
     }
 
     try {
@@ -234,7 +239,9 @@ async function generateObjectByModelType(
       });
 
       const processedObject = result.object;
-      span.addEvent('llm.response.processed', { 'response.object': JSON.stringify(processedObject, safeReplacer()) });
+      span.addEvent('llm.response.processed', {
+        'response.object': JSON.stringify(processedObject, safeReplacer()),
+      });
 
       if (result.usage) {
         span.setAttributes({
@@ -346,7 +353,11 @@ export const openaiPlugin: Plugin = {
       runtime,
       params: TextEmbeddingParams | string | null
     ): Promise<number[]> => {
-      const embeddingModelName = getSetting(runtime, 'OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small');
+      const embeddingModelName = getSetting(
+        runtime,
+        'OPENAI_EMBEDDING_MODEL',
+        'text-embedding-3-small'
+      );
       const embeddingDimension = parseInt(
         getSetting(runtime, 'OPENAI_EMBEDDING_DIMENSIONS', '1536')
       ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
@@ -435,8 +446,13 @@ export const openaiPlugin: Plugin = {
 
         if (!response.ok) {
           span.setAttributes({ 'error.api.status': response.status });
-          span.setStatus({ code: SpanStatusCode.ERROR, message: `OpenAI API error: ${response.status} - ${response.statusText}. Response: ${rawResponseBody}` });
-          logger.error(`OpenAI API error: ${response.status} - ${response.statusText}. Raw Response: ${rawResponseBody}`);
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: `OpenAI API error: ${response.status} - ${response.statusText}. Response: ${rawResponseBody}`,
+          });
+          logger.error(
+            `OpenAI API error: ${response.status} - ${response.statusText}. Raw Response: ${rawResponseBody}`
+          );
           // Return error vector but ensure span status is ERROR
           const errorVector = Array(embeddingDimension).fill(0);
           errorVector[0] = 0.4; // Different value for tracking
@@ -526,7 +542,11 @@ export const openaiPlugin: Plugin = {
 
         const processedTextResponse = result.text;
         span.setAttribute('llm.response.processed.length', processedTextResponse.length);
-        span.addEvent('llm.response.processed', { 'response.content': processedTextResponse.substring(0, 200) + (processedTextResponse.length > 200 ? '...' : '') });
+        span.addEvent('llm.response.processed', {
+          'response.content':
+            processedTextResponse.substring(0, 200) +
+            (processedTextResponse.length > 200 ? '...' : ''),
+        });
 
         if (result.usage) {
           span.setAttributes({
@@ -588,7 +608,11 @@ export const openaiPlugin: Plugin = {
 
         const processedTextResponse = result.text;
         span.setAttribute('llm.response.processed.length', processedTextResponse.length);
-        span.addEvent('llm.response.processed', { 'response.content': processedTextResponse.substring(0, 200) + (processedTextResponse.length > 200 ? '...' : '') });
+        span.addEvent('llm.response.processed', {
+          'response.content':
+            processedTextResponse.substring(0, 200) +
+            (processedTextResponse.length > 200 ? '...' : ''),
+        });
 
         if (result.usage) {
           span.setAttributes({
@@ -657,7 +681,10 @@ export const openaiPlugin: Plugin = {
 
         if (!response.ok) {
           span.setAttributes({ 'error.api.status': response.status });
-          span.setStatus({ code: SpanStatusCode.ERROR, message: `Failed to generate image: ${response.statusText}. Response: ${rawResponseBody}` });
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: `Failed to generate image: ${response.statusText}. Response: ${rawResponseBody}`,
+          });
           throw new Error(`Failed to generate image: ${response.statusText}`);
         }
 
@@ -665,7 +692,9 @@ export const openaiPlugin: Plugin = {
         const typedData = data as { data: { url: string }[] };
 
         // Log processed response (array of URLs)
-        span.addEvent('llm.response.processed', { 'response.urls': JSON.stringify(typedData.data) });
+        span.addEvent('llm.response.processed', {
+          'response.urls': JSON.stringify(typedData.data),
+        });
 
         return typedData.data;
       });
@@ -684,7 +713,9 @@ export const openaiPlugin: Plugin = {
       } else {
         // Object parameter case
         imageUrl = params.imageUrl;
-        promptText = params.prompt || 'Please analyze this image and provide a title and detailed description.'; // Use provided or default prompt
+        promptText =
+          params.prompt ||
+          'Please analyze this image and provide a title and detailed description.'; // Use provided or default prompt
       }
 
       // --- Start Instrumentation ---
@@ -740,7 +771,10 @@ export const openaiPlugin: Plugin = {
 
         if (!response.ok) {
           span.setAttributes({ 'error.api.status': response.status });
-          span.setStatus({ code: SpanStatusCode.ERROR, message: `OpenAI API error: ${response.status}. Response: ${rawResponseBody}` });
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: `OpenAI API error: ${response.status}. Response: ${rawResponseBody}`,
+          });
           throw new Error(`OpenAI API error: ${response.status}`);
         }
 
@@ -774,10 +808,11 @@ export const openaiPlugin: Plugin = {
         const description = content.replace(/title[:\s]+(.+?)(?:\n|$)/i, '').trim();
 
         const processedResult = { title, description };
-        span.addEvent('llm.response.processed', { 'response.object': JSON.stringify(processedResult, safeReplacer()) });
+        span.addEvent('llm.response.processed', {
+          'response.object': JSON.stringify(processedResult, safeReplacer()),
+        });
 
         return processedResult;
-
       });
       // --- End Instrumentation ---
     },
@@ -805,7 +840,10 @@ export const openaiPlugin: Plugin = {
           throw new Error('OpenAI API key not configured');
         }
         if (!audioBuffer || audioBuffer.length === 0) {
-          span.setStatus({ code: SpanStatusCode.ERROR, message: 'Audio buffer is empty or invalid' });
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: 'Audio buffer is empty or invalid',
+          });
           throw new Error('Audio buffer is empty or invalid for transcription');
         }
 
@@ -834,7 +872,10 @@ export const openaiPlugin: Plugin = {
 
         if (!response.ok) {
           span.setAttributes({ 'error.api.status': response.status });
-          span.setStatus({ code: SpanStatusCode.ERROR, message: `Failed to transcribe audio: ${response.statusText}. Response: ${rawResponseBody}` });
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: `Failed to transcribe audio: ${response.statusText}. Response: ${rawResponseBody}`,
+          });
           throw new Error(`Failed to transcribe audio: ${response.statusText}`);
         }
 
