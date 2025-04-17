@@ -2,16 +2,30 @@
 
 setup_file() {
   # Start the test server (if needed)
-  export TEST_SERVER_PORT=2412
+  export TEST_SERVER_PORT=3000
   export TEST_SERVER_URL="http://localhost:$TEST_SERVER_PORT"
   export TEST_TMP_DIR="$(mktemp -d /var/tmp/eliza-test-XXXXXX)"
   export ELIZAOS_CMD="${ELIZAOS_CMD:-bun run "$(cd ../dist && pwd)/index.js"}"
 
   # Start server in background
-  $ELIZAOS_CMD start --port $TEST_SERVER_PORT >"$TEST_TMP_DIR/server.log" 2>&1 &
+  $ELIZAOS_CMD start -y --port $TEST_SERVER_PORT >"$TEST_TMP_DIR/server.log" 2>&1 &
   SERVER_PID=$!
-  # Wait for server to be up (simple sleep or poll)
-  sleep 3
+  # Wait for server to be up (poll with timeout)
+  SERVER_UP=0
+  for i in {1..15}; do
+    if curl -sf "http://localhost:$TEST_SERVER_PORT/api/agents" >/dev/null; then
+      SERVER_UP=1
+      break
+    fi
+    sleep 1
+  done
+  if [ "$SERVER_UP" -ne 1 ]; then
+    echo "[ERROR] ElizaOS server did not start within timeout!"
+    echo "--- SERVER LOG ---"
+    cat "$TEST_TMP_DIR/server.log"
+    echo "------------------"
+    exit 1
+  fi
 
   # Remove Ada, Max, Shaw if present (ignore errors)
   $ELIZAOS_CMD agent --remote-url "$TEST_SERVER_URL" remove -n Ada 2>/dev/null || true
