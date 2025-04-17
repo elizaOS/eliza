@@ -157,30 +157,30 @@ project
     'v2-develop'
   )
   .action(async (plugin, opts) => {
+    const cwd = process.cwd();
+    const isNpx = isRunningViaNpx();
+    const pkgData = readPackageJson(cwd);
+
+    if (!isNpx && !pkgData) {
+      logger.error(
+        'Command must be run inside an Eliza project directory (no package.json found).'
+      );
+      process.exit(1);
+    }
+
     try {
-      const cwd = process.cwd();
-      const isNpx = isRunningViaNpx(); // Use imported helper
-
-      // Read package.json data
-      const pkgData = readPackageJson(cwd);
-      let installedPluginName: string | null = null;
-
       if (pkgData) {
-        installedPluginName = findPluginPackageName(plugin, pkgData.allDependencies); // Use helper
+        const installedPluginName = findPluginPackageName(plugin, pkgData.allDependencies);
         if (installedPluginName) {
           logger.info(`Plugin "${installedPluginName}" is already added to this project.`);
           process.exit(0);
         }
       }
-      // If pkgData is null, readPackageJson already logged a warning
 
-      // If running under npx, provide clear instructions instead
       if (isNpx) {
-        const pluginName = normalizePluginNameForDisplay(plugin); // Use helper
-
-        // Determine the appropriate tag based on the CLI version
+        const pluginName = normalizePluginNameForDisplay(plugin);
         const cliVersion = getVersion();
-        let versionTag = '@latest'; // Default to latest
+        let versionTag = '@latest';
         if (cliVersion.includes('alpha')) {
           versionTag = '@alpha';
         } else if (cliVersion.includes('beta')) {
@@ -190,17 +190,14 @@ project
         console.log(`cliVersion: ${cliVersion}`);
         console.log(`versionTag: ${versionTag}`);
 
-        // Show installation instructions for all approaches, including branch for monorepo
         const npmCommand = `bun add @elizaos/${pluginName}${versionTag}`;
         const gitCommand = `bun add git+https://github.com/elizaos/${pluginName}.git`;
         const monorepoCommand = `bun add git+https://github.com/elizaos/eliza.git#${opts.branch}&subdirectory=packages/${pluginName}`;
 
-        // Use ANSI color codes
-        const boldCyan = '\x1b[1;36m'; // Bold cyan for command
-        const bold = '\x1b[1m'; // Bold for headers
-        const reset = '\x1b[0m'; // Reset formatting
+        const boldCyan = '\x1b[1;36m';
+        const bold = '\x1b[1m';
+        const reset = '\x1b[0m';
 
-        // Print entire message with console.log to avoid timestamps and prefixes
         console.log(`\n📦 ${bold}To install ${pluginName}, try one of these commands:${reset}\n`);
         console.log(`Option 1 (npm registry):\n  ${boldCyan}${npmCommand}${reset}\n`);
         console.log(`Option 2 (dedicated GitHub repo):\n  ${boldCyan}${gitCommand}${reset}\n`);
@@ -211,41 +208,31 @@ project
         process.exit(0);
       }
 
-      // Determine the appropriate tag based on the CLI version
       const cliVersion = getVersion();
-      let versionTag = '@latest'; // Default to latest
+      let versionTag = '@latest';
       if (cliVersion.includes('alpha')) {
         versionTag = '@alpha';
       } else if (cliVersion.includes('beta')) {
         versionTag = '@beta';
       }
 
-      // Normalize name and construct npm package identifier
-      const normalizedPluginName = normalizePluginNameForDisplay(plugin); // e.g., plugin-anthropic
-      const npmPackageName = `@elizaos/${normalizedPluginName}`; // e.g., @elizaos/plugin-anthropic
-      const npmPackageNameWithTag = `${npmPackageName}${versionTag}`; // e.g., @elizaos/plugin-anthropic@alpha
+      const normalizedPluginName = normalizePluginNameForDisplay(plugin);
+      const npmPackageName = `@elizaos/${normalizedPluginName}`;
+      const npmPackageNameWithTag = `${npmPackageName}${versionTag}`;
 
       console.info(`Attempting to install ${npmPackageNameWithTag} from npm registry...`);
 
-      // Try installing directly from npm first using the determined tag
-      let success = await installPlugin(
-        npmPackageName, // Pass base name
-        cwd,
-        versionTag.substring(1), // Pass tag without '@' as version hint
-        opts.branch // Pass branch for potential monorepo fallback within installPlugin
-      );
+      let success = await installPlugin(npmPackageName, cwd, versionTag.substring(1), opts.branch);
 
       if (success) {
         console.log(`Successfully installed ${npmPackageNameWithTag}`);
         process.exit(0);
       }
 
-      // --- Fallback Logic ---
       console.warn(
         `Failed to install ${npmPackageNameWithTag} directly from npm. Trying registry lookup...`
       );
 
-      // Proceed with installation if not running under npx and plugin not found
       const repo = await getPluginRepository(plugin);
 
       if (!repo) {
@@ -260,14 +247,13 @@ project
         process.exit(1);
       }
 
-      // Install plugin using our centralized function, passing the branch option
-      console.info(`Installing ${repo}...`); // Use repo directly
-      success = await installPlugin(repo, cwd, undefined, opts.branch); // Use 'success' variable declared above
+      console.info(`Installing ${repo}...`);
+      success = await installPlugin(repo, cwd, undefined, opts.branch);
 
       if (success) {
-        console.log(`Successfully installed ${repo}`); // Use repo directly
+        console.log(`Successfully installed ${repo}`);
       } else {
-        console.error(`Failed to install ${repo}`); // Use repo directly
+        console.error(`Failed to install ${repo}`);
         process.exit(1);
       }
     } catch (error) {
@@ -281,18 +267,15 @@ project
   .action(async () => {
     try {
       const cwd = process.cwd();
-      const pkgData = readPackageJson(cwd); // Use helper
+      const pkgData = readPackageJson(cwd);
 
       if (!pkgData) {
-        // Error handled within readPackageJson, but provide context here
         console.error('Could not read or parse package.json.');
         console.info('Please run this command from the root of an Eliza project.');
         process.exit(1);
       }
 
       const pluginNames = Object.keys(pkgData.allDependencies).filter((depName) => {
-        // Regex to match typical Eliza plugin names
-        // Matches: @elizaos/plugin-*, @elizaos-plugins/plugin-*, plugin-*
         return /^(@elizaos(-plugins)?\/)?plugin-.+/.test(depName);
       });
 
@@ -306,14 +289,11 @@ project
         console.log('');
       }
     } catch (error) {
-      // Keep specific JSON error handling here as readPackageJson only warns
       if (error instanceof SyntaxError) {
         console.error(`Error parsing package.json: ${error.message}`);
-        process.exit(1); // Exit after specific syntax error
+        process.exit(1);
       }
-      // General errors should be handled by handleError
       handleError(error);
-      // handleError might not exit, ensure we exit on other errors too
       process.exit(1);
     }
   });
@@ -325,21 +305,17 @@ project
   .action(async (plugin, _opts) => {
     try {
       const cwd = process.cwd();
-      const isNpx = isRunningViaNpx(); // Use imported helper
+      const isNpx = isRunningViaNpx();
 
-      // If running under npx, provide clear instructions instead
       if (isNpx) {
-        const pluginName = normalizePluginNameForDisplay(plugin); // Use helper
-        const packageName = `@elizaos/${pluginName}`; // Assume standard scope for removal instructions
+        const pluginName = normalizePluginNameForDisplay(plugin);
+        const packageName = `@elizaos/${pluginName}`;
 
-        // For removing, we need the package name and potentially the directory
-        // Assume directory matches pluginName for simplicity in instructions
         const removeCommand = `bun remove ${packageName} && rm -rf ${pluginName}`;
 
-        // Use ANSI color codes
-        const boldCyan = '\x1b[1;36m'; // Bold cyan for command
-        const bold = '\x1b[1m'; // Bold for headers
-        const reset = '\x1b[0m'; // Reset formatting
+        const boldCyan = '\x1b[1;36m';
+        const bold = '\x1b[1m';
+        const reset = '\x1b[0m';
 
         console.log(
           `\n[x] ${bold}To remove ${pluginName}, you need to manually run this command:${reset}\n`
@@ -350,7 +326,6 @@ project
         process.exit(0);
       }
 
-      // Read package.json data
       const pkgData = readPackageJson(cwd);
       if (!pkgData) {
         console.error(
@@ -359,18 +334,14 @@ project
         process.exit(1);
       }
 
-      // Find the exact package name to remove
-      const packageNameToRemove = findPluginPackageName(plugin, pkgData.allDependencies); // Use helper
+      const packageNameToRemove = findPluginPackageName(plugin, pkgData.allDependencies);
 
       if (!packageNameToRemove) {
         logger.warn(`Plugin matching "${plugin}" not found in project dependencies.`);
-        // Optionally list installed plugins here?
-        // await project.commands.find(cmd => cmd.name() === 'installed-plugins')?.execute([], { Help: Command}); // Might be too complex
         console.info('\nCheck installed plugins using: elizaos project installed-plugins');
-        process.exit(0); // Exit gracefully if not found
+        process.exit(0);
       }
 
-      // Uninstall package
       console.info(`Removing ${packageNameToRemove}...`);
       try {
         await execa('bun', ['remove', packageNameToRemove], {
@@ -379,29 +350,24 @@ project
         });
       } catch (execError) {
         logger.error(`Failed to run 'bun remove ${packageNameToRemove}': ${execError.message}`);
-        // Check if it might be because the package wasn't actually installed
-        // (e.g., if `findPluginPackageName` found it in package.json but `bun remove` fails)
         if (execError.stderr?.includes('not found')) {
           logger.info(
             `'bun remove' indicated package was not found. Continuing with directory removal attempt.`
           );
         } else {
-          handleError(execError); // Handle other execution errors
-          process.exit(1); // Exit on failure
+          handleError(execError);
+          process.exit(1);
         }
       }
 
-      // Get base name for directory removal (similar logic to normalization)
       let baseName = packageNameToRemove;
       if (packageNameToRemove.includes('/')) {
         const parts = packageNameToRemove.split('/');
         baseName = parts[parts.length - 1];
       }
-      // Standardize directory name check: remove potential scope and ensure 'plugin-' prefix
       baseName = baseName.replace(/^plugin-/, '');
       const dirNameToRemove = `plugin-${baseName}`;
 
-      // Check only the standard directory name convention
       const pluginDir = path.join(cwd, dirNameToRemove);
       if (fs.existsSync(pluginDir)) {
         console.info(`Removing plugin directory ${pluginDir}...`);
@@ -409,10 +375,8 @@ project
           fs.rmSync(pluginDir, { recursive: true, force: true });
         } catch (rmError) {
           logger.error(`Failed to remove directory ${pluginDir}: ${rmError.message}`);
-          // Don't necessarily exit, maybe just warn
         }
       } else {
-        // Optionally check the non-prefixed name too? Less standard.
         const nonPrefixedDir = path.join(cwd, baseName);
         if (fs.existsSync(nonPrefixedDir)) {
           console.info(`Removing non-standard plugin directory ${nonPrefixedDir}...`);
@@ -426,8 +390,7 @@ project
 
       console.log(`Successfully removed ${packageNameToRemove}`);
     } catch (error) {
-      // Catch errors not handled by specific try/catch blocks
       handleError(error);
-      process.exit(1); // Ensure exit on unhandled errors
+      process.exit(1);
     }
   });
