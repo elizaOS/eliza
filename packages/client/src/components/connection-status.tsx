@@ -9,9 +9,10 @@ import { useToast } from '@/hooks/use-toast';
 
 export interface ConnectionStatusProps {
   testEndpoint?: string; // Optional endpoint to test instead of ping
+  className?: string; // Optional className for styling
 }
 
-export default function ConnectionStatus({ testEndpoint }: ConnectionStatusProps) {
+export default function ConnectionStatus({ testEndpoint, className }: ConnectionStatusProps) {
   const [isHovered, setIsHovered] = useState(false);
   const { toast } = useToast();
   const [wasConnected, setWasConnected] = useState(false);
