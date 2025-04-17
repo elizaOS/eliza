@@ -23,6 +23,14 @@ export type MessageCompleteData = {
   [key: string]: any;
 };
 
+// Define type for control messages
+export type ControlMessageData = {
+  action: 'enable_input' | 'disable_input';
+  target?: string;
+  roomId: string;
+  [key: string]: any;
+};
+
 // A simple class that provides EventEmitter-like interface using Evt internally
 class EventAdapter {
   private events: Record<string, Evt<any>> = {};
@@ -31,6 +39,7 @@ class EventAdapter {
     // Initialize common events
     this.events.messageBroadcast = Evt.create<MessageBroadcastData>();
     this.events.messageComplete = Evt.create<MessageCompleteData>();
+    this.events.controlMessage = Evt.create<ControlMessageData>();
   }
 
   on(eventName: string, listener: (...args: any[]) => void) {
@@ -104,6 +113,10 @@ class SocketIOManager extends EventAdapter {
 
   public get evtMessageComplete() {
     return this._getEvt('messageComplete') as Evt<MessageCompleteData>;
+  }
+
+  public get evtControlMessage() {
+    return this._getEvt('controlMessage') as Evt<ControlMessageData>;
   }
 
   private constructor() {
@@ -213,6 +226,24 @@ class SocketIOManager extends EventAdapter {
 
     this.socket.on('messageComplete', (data) => {
       this.emit('messageComplete', data);
+    });
+
+    // Listen for control messages
+    this.socket.on('controlMessage', (data) => {
+      clientLogger.info(`[SocketIO] Control message received:`, data);
+
+      // Check if this is for one of our active rooms
+      if (this.activeRooms.has(data.roomId)) {
+        clientLogger.info(`[SocketIO] Handling control message for active room ${data.roomId}`);
+
+        // Emit the control message event
+        this.emit('controlMessage', data);
+      } else {
+        clientLogger.warn(
+          `[SocketIO] Received control message for inactive room ${data.roomId}, active rooms:`,
+          Array.from(this.activeRooms)
+        );
+      }
     });
 
     this.socket.on('disconnect', (reason) => {

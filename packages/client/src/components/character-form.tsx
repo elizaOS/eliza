@@ -363,26 +363,34 @@ export default function CharacterForm({
   };
 
   const renderInputField = (field: InputField) => (
-    <div key={field.name} className="space-y-2">
-      <div className="flex items-center gap-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Label htmlFor={field.name} className="flex items-center gap-1">
-                {field.title}
-                {field.name in FIELD_REQUIREMENTS &&
-                  (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-                    FIELD_REQUIREMENT_TYPE.REQUIRED && <p className="text-red-500">*</p>}
-              </Label>
-            </TooltipTrigger>
-            {field.tooltip && (
-              <TooltipContent>
-                <p>{field.tooltip}</p>
-              </TooltipContent>
-            )}
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+
+    <div
+      key={field.name}
+      className={`space-y-2 ${field.name === 'name' ? 'agent-form-name' : ''} ${field.name === 'system' ? 'agent-form-system-prompt' : ''}`}
+    >
+      <Label htmlFor={field.name}>{field.title}</Label>
+
+   
+      
+     
+         
+          
+              
+              
+              
+                  
+                  
+              
+            
+          
+          
+              
+              
+    
+         
+     
+      
+
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
 
       {field.fieldType === 'textarea' ? (
@@ -535,7 +543,7 @@ export default function CharacterForm({
       <form onSubmit={handleFormSubmit}>
         <Tabs defaultValue="basic" className="w-full">
           <TabsList
-            className={'grid w-full mb-6'}
+            className={'grid w-full mb-6 tabs-list'}
             style={{
               gridTemplateColumns: `repeat(${customComponents.length + 3}, minmax(0, 1fr))`,
             }}
@@ -622,7 +630,7 @@ export default function CharacterForm({
                 Import JSON
               </Button>
             </div>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="agent-form-submit">
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>

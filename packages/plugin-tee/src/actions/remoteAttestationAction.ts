@@ -35,7 +35,14 @@ async function uploadUint8Array(data: Uint8Array) {
  */
 export const phalaRemoteAttestationAction = {
   name: 'REMOTE_ATTESTATION',
-  similes: ['REMOTE_ATTESTATION', 'TEE_REMOTE_ATTESTATION', 'TEE_ATTESTATION'],
+  similes: [
+    'REMOTE_ATTESTATION',
+    'TEE_REMOTE_ATTESTATION',
+    'TEE_ATTESTATION',
+    'TEE_QUOTE',
+    'ATTESTATION',
+    'TEE_ATTESTATION_QUOTE',
+  ],
   description: 'Generate a remote attestation to prove that the agent is running in a TEE',
   handler: async (
     runtime: IAgentRuntime,
@@ -86,13 +93,13 @@ https://proof.t16z.com/reports/${data.checksum}`,
         name: '{{name1}}',
         content: {
           text: 'If you are running in a TEE, generate a remote attestation',
-          actions: ['REMOTE_ATTESTATION'],
         },
       },
       {
         name: '{{agentName}}',
         content: {
           text: 'Of course, one second...',
+          actions: ['REMOTE_ATTESTATION'],
         },
       },
     ],
@@ -101,13 +108,13 @@ https://proof.t16z.com/reports/${data.checksum}`,
         name: '{{name1}}',
         content: {
           text: 'Yo I wanna attest to this message, yo! Can you generate an attestatin for me, please?',
-          actions: ['REMOTE_ATTESTATION'],
         },
       },
       {
         name: '{{agentName}}',
         content: {
           text: 'I got you, fam! Lemme hit the cloud and get you a quote in a jiffy!',
+          actions: ['REMOTE_ATTESTATION'],
         },
       },
     ],
@@ -116,13 +123,13 @@ https://proof.t16z.com/reports/${data.checksum}`,
         name: '{{name1}}',
         content: {
           text: "It was a long day, I got a lot done though. I went to the creek and skipped some rocks. Then I decided to take a walk off the natural path. I ended up in a forest I was unfamiliar with. Slowly, I lost the way back and it was dark. A whisper from deep inside said something I could barely make out. The hairs on my neck stood up and then a clear high pitched voice said, 'You are not ready to leave yet! SHOW ME YOUR REMOTE ATTESTATION!'",
-          actions: ['REMOTE_ATTESTATION'],
         },
       },
       {
         name: '{{agentName}}',
         content: {
           text: 'Oh, dear...lemme find that for you',
+          actions: ['REMOTE_ATTESTATION'],
         },
       },
     ],

@@ -15,6 +15,7 @@ import type { IAttachment } from '@/types';
 import type { Agent, Content, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@radix-ui/react-collapsible';
+import clientLogger from '@/lib/logger';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, PanelRight, Paperclip, Send, X } from 'lucide-react';
@@ -156,6 +157,7 @@ export default function Page({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
   const [messageProcessing, setMessageProcessing] = useState<boolean>(false);
+  const [inputDisabled, setInputDisabled] = useState<boolean>(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -229,7 +231,10 @@ export default function Page({
             return old;
           }
 
-          animatedMessageIdRef.current = newMessage.id;
+          // Add a unique animation ID for immediate feedback
+          const newMessageId =
+            typeof newMessage.id === 'string' ? newMessage.id : String(newMessage.id);
+          animatedMessageIdRef.current = newMessageId;
 
           return [...old, newMessage];
         }
@@ -265,6 +270,37 @@ export default function Page({
       completeHandler.detach();
     };
   }, [roomId, agentId, entityId, queryClient, socketIOManager]);
+
+  // Handle control messages
+  useEffect(() => {
+    // Function to handle control messages (enable/disable input)
+    const handleControlMessage = (data: any) => {
+      // Extract action and roomId with type safety
+      const { action, roomId: messageRoomId } = data || {};
+      const isInputControl = action === 'enable_input' || action === 'disable_input';
+
+      // Check if this is a valid input control message for this room
+      if (isInputControl && messageRoomId === roomId) {
+        clientLogger.info(`[Chat] Received control message: ${action} for room ${messageRoomId}`);
+
+        if (action === 'disable_input') {
+          setInputDisabled(true);
+          setMessageProcessing(true);
+        } else if (action === 'enable_input') {
+          setInputDisabled(false);
+          setMessageProcessing(false);
+        }
+      }
+    };
+
+    // Subscribe to control messages
+    socketIOManager.on('controlMessage', handleControlMessage);
+
+    // Cleanup subscription on unmount
+    return () => {
+      socketIOManager.off('controlMessage', handleControlMessage);
+    };
+  }, [roomId]);
 
   // Use a stable ID for refs to avoid excessive updates
   const scrollRefId = useRef(`scroll-${Math.random().toString(36).substring(2, 9)}`).current;
@@ -507,8 +543,13 @@ export default function Page({
                 onKeyDown={handleKeyDown}
                 value={input}
                 onChange={({ target }) => setInput(target.value)}
-                placeholder="Type your message here..."
+                placeholder={
+                  inputDisabled
+                    ? 'Input disabled while agent is processing...'
+                    : 'Type your message here...'
+                }
                 className="min-h-12 resize-none rounded-md bg-card border-0 p-3 shadow-none focus-visible:ring-0"
+                disabled={inputDisabled || messageProcessing}
               />
               <div className="flex items-center p-3 pt-0">
                 <Tooltip>

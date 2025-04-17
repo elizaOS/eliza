@@ -1829,4 +1829,43 @@ export class AgentRuntime implements IAgentRuntime {
       handler(data);
     }
   }
+
+  /**
+   * Sends a control message to the frontend to enable or disable input
+   * @param {Object} params - Parameters for the control message
+   * @param {UUID} params.roomId - The ID of the room to send the control message to
+   * @param {'enable_input' | 'disable_input'} params.action - The action to perform
+   * @param {string} [params.target] - Optional target element identifier
+   * @returns {Promise<void>}
+   */
+  async sendControlMessage(params: {
+    roomId: UUID;
+    action: 'enable_input' | 'disable_input';
+    target?: string;
+  }): Promise<void> {
+    try {
+      const { roomId, action, target } = params;
+
+      // Create the control message
+      const controlMessage = {
+        type: 'control',
+        payload: {
+          action,
+          target,
+        },
+        roomId,
+      };
+
+      // Emit an event that can be handled by the websocket service or other handlers
+      await this.emitEvent('CONTROL_MESSAGE', {
+        runtime: this,
+        message: controlMessage,
+        source: 'agent',
+      });
+
+      this.runtimeLogger.debug(`Sent control message: ${action} to room ${roomId}`);
+    } catch (error) {
+      this.runtimeLogger.error(`Error sending control message: ${error}`);
+    }
+  }
 }
