@@ -82,8 +82,7 @@ export async function generateTeamReport(
       2. Current Focus: What are they actively working on?
       3. Productivity Analysis: Are they meeting deadlines? Any patterns in their work?
       4. Blockers Impact: How are blockers affecting their progress?
-      5. Timeline Adherence: Are ETAs realistic and being met?
-      6. Recommendations: What could improve their productivity?
+      5. Recommendations: What could improve their productivity?
 
       Updates data: ${JSON.stringify(memberUpdates, null, 2)}`;
 
@@ -103,10 +102,9 @@ export async function generateTeamReport(
         for (const update of recentUpdates) {
           report += `\n🕒 ${new Date(update.timestamp).toLocaleString()}\n`;
           report += `▫️ Progress: ${update.currentProgress}\n`;
-          report += `▫️ Working On: ${update.workingOn}\n`;
           report += `▫️ Blockers: ${update.blockers}\n`;
           report += `▫️ Next Steps: ${update.nextSteps}\n`;
-          report += `▫️ ETA: ${update.eta}\n`;
+          report += `▫️ Anticipated Launch Date: ${update.AnticipatedLaunchDate || 'Not specified'}\n`;
         }
       } catch (error) {
         logger.error('Error generating analysis:', error);
@@ -115,10 +113,9 @@ export async function generateTeamReport(
         for (const update of memberUpdates) {
           report += `Update from ${new Date(update.timestamp).toLocaleString()}:\n`;
           report += `▫️ Current Progress: ${update.currentProgress}\n`;
-          report += `▫️ Working On: ${update.workingOn}\n`;
           report += `▫️ Blockers: ${update.blockers}\n`;
           report += `▫️ Next Steps: ${update.nextSteps}\n`;
-          report += `▫️ ETA: ${update.eta}\n\n`;
+          report += `▫️ Anticipated Launch Date: ${update.AnticipatedLaunchDate || 'Not specified'}\n`;
         }
       }
       report += '\n-------------------\n\n';

@@ -252,15 +252,17 @@ export class TeamUpdateTrackerService extends Service {
         if (discordUser && !discordUser.bot) {
           logger.info(`Sending message to non-bot user ${user.displayName} (${user.id})`);
           await discordUser.send(
-            `Hi ${user.displayName}! Please share your latest updates for the ${user.channelName} channel.\n\n` +
+            `Hi ${user.displayName}! It's ${new Date().toLocaleString('en-US', { weekday: 'long' })}. Please share your latest updates for the ${user.channelName} channel.\n\n` +
               `Please use the following format for your update:\n` +
               `**Server-name**: ${serverName}\n\n` +
               `**Check-in Type**: ${schedule.checkInType}\n\n` +
-              `**Current Progress**: What you've accomplished recently\n` +
-              `**Working On**: What you're currently focused on\n` +
-              `**Next Steps**: What you plan to work on next\n` +
-              `**Blockers**: Any issues preventing progress\n` +
-              `**ETA**: Expected completion time for current task\n\n` +
+              `- **Main Priority for next week**\n` +
+              `    - Text\n` +
+              `- **What did you get done this week?**\n` +
+              `    - Text\n` +
+              `- **Blockers**\n` +
+              `    - Text\n\n` +
+              `**Anticipated Launch Date**: DD/Month/YYYY (leave empty if not applicable)\n\n` +
               `Important: End your message with "sending my personal updates" so it can be properly tracked.`
           );
           logger.info(
@@ -457,12 +459,15 @@ export class TeamUpdateTrackerService extends Service {
                   const updateRequestMessage =
                     '📢 *Team Update Request*\n\n' +
                     'Hello team! Please share your updates using the following format:\n\n' +
-                    'Check-in Type: [daily/weekly/sprint]\n' +
-                    "Current Progress: [what you've completed]\n" +
-                    'Working On: [current tasks]\n' +
-                    'Next Steps: [upcoming tasks]\n' +
-                    'Blockers: [any blockers or "none"]\n' +
-                    'ETA: [expected completion time]\n\n' +
+                    `**Server-name**: ${serverName || 'Your Server'}\n\n` +
+                    `**Check-in Type**: ${schedule.checkInType}\n\n` +
+                    '- *Main Priority for next week*\n' +
+                    '    - Text\n' +
+                    '- *What did you get done this week?*\n' +
+                    '    - Text\n' +
+                    '- *Blockers*\n' +
+                    '    - Text\n\n' +
+                    'Anticipated launch date: DD/Month/YYYY (optional)\n\n' +
                     'Please end your message with "sending my updates"';
 
                   await this.telegramBot.telegram.sendMessage(

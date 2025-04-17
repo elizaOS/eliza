@@ -138,6 +138,8 @@ export interface TeamMemberUpdate {
   timestamp: string;
   channelId?: UUID;
   serverId?: string;
+
+  AnticipatedLaunchDate?: string;
 }
 
 export interface CheckInSchedule {

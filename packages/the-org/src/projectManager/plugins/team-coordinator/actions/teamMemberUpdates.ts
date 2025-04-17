@@ -147,10 +147,8 @@ async function postUpdateToDiscordChannel(
 **Timestamp**: ${formattedDate}
 
 **Current Progress**: ${update.currentProgress}
-**Working On**: ${update.workingOn}
 **Next Steps**: ${update.nextSteps}
-**Blockers**: ${update.blockers}
-**ETA**: ${update.eta}`;
+**Blockers**: ${update.blockers}`;
 
     logger.info('Formatted update message:', { messageLength: updateMessage.length });
 
@@ -273,19 +271,20 @@ async function parseTeamMemberUpdate(
 
     Return ONLY a valid JSON object with these exact keys:
     {
-      "serverName": "value", // Extract server name after "Server-name:" ignoring the question text 
-      "checkInType": "value", // Extract type after "Check-in Type:" ignoring the question text
-      "currentProgress": "value", // Extract the line after "Current Progress:" ignoring the question text
-      "workingOn": "value", // Extract the line after "Working On:" ignoring the question text
-      "nextSteps": "value", // Extract the line after "Next Steps:" ignoring the question text
-      "blockers": "value", // Extract the line after "Blockers:" ignoring the question text
-      "eta": "value" // Extract the line after "ETA:" ignoring the question text
+      "serverName": "value", // Extract server name after "Server-name:" ignoring the question text
+      "checkInType": "value", // Extract type after "Check-in Type:" ignoring the question text 
+      "currentProgress": "value", // Extract the line after "What did you get done this week?" ignoring the question text
+      "nextSteps": "value", // Extract the line after "Main Priority for next week:" ignoring the question text
+      "blockers": "value", // Extract the line after "Blockers:" ignoring the question text,
+      "AnticipatedLaunchDate" : "value" // Extract the line after "AnticipatedLaunchDate:" ignoring the question text, 
     }
 
     Note: 
     - checkInType must be one of: STANDUP, SPRINT, MENTAL_HEALTH, PROJECT_STATUS, RETRO
     - For each field, only extract the actual update text, not the question/description
-    - Example: For "Current Progress: What you've accomplished recently\\njimmy", extract only "jimmy"
+    - currentProgress is equal to answer provided in question What did you get done this week? 
+    - nextSteps is equal to answer provided in Main Priority for next week ? 
+
 
     Text to parse: "${text}"`;
 
@@ -317,10 +316,8 @@ async function parseTeamMemberUpdate(
       'serverName',
       'checkInType',
       'currentProgress',
-      'workingOn',
       'nextSteps',
       'blockers',
-      'eta',
     ];
 
     for (const field of requiredFields) {
@@ -347,10 +344,9 @@ async function parseTeamMemberUpdate(
       serverName: parsedFields.serverName,
       checkInType: parsedFields.checkInType,
       currentProgress: parsedFields.currentProgress,
-      workingOn: parsedFields.workingOn,
+      AnticipatedLaunchDate: parsedFields?.AnticipatedLaunchDate,
       nextSteps: parsedFields.nextSteps,
       blockers: parsedFields.blockers,
-      eta: parsedFields.eta,
       timestamp: new Date().toISOString(),
       channelId: message.roomId,
     };
@@ -363,10 +359,9 @@ async function parseTeamMemberUpdate(
       serverName: parsedFields.serverName,
       checkInType: parsedFields.checkInType,
       currentProgress: parsedFields.currentProgress,
-      workingOn: parsedFields.workingOn,
+      AnticipatedLaunchDate: parsedFields?.AnticipatedLaunchDate,
       nextSteps: parsedFields.nextSteps,
       blockers: parsedFields.blockers,
-      eta: parsedFields.eta,
       timestamp: new Date().toISOString(),
       channelId: message.roomId,
     });
@@ -440,10 +435,8 @@ export const teamMemberUpdatesAction: Action = {
 Server-name: [server name]
 Check-in Type: [daily/weekly/sprint]
 Current Progress: [what you've completed]
-Working On: [current tasks]
 Next Steps: [upcoming tasks]
 Blockers: [any blockers or "none"]
-ETA: [expected completion time]
 
 End your message with "sending my updates"`;
 
@@ -501,10 +494,8 @@ End your message with "sending my updates"`;
 • Server-name
 • Check-in Type
 • Current Progress
-• Working On
 • Next Steps
 • Blockers
-• ETA
 
 Remember to end your message with "sending my updates"`,
               source: 'discord',
@@ -554,10 +545,8 @@ Remember to end your message with "sending my updates"`,
     Server-name: Development Server
     Check-in Type: Daily
     Current Progress: Completed the API integration
-    Working On: Testing the authentication flow
     Next Steps: Deploy to staging environment
     Blockers: None at the moment
-    ETA: End of day tomorrow
 
     sending my personal updates`,
         },
@@ -578,10 +567,8 @@ Remember to end your message with "sending my updates"`,
     Server-name: Project X Server
     Check-in Type: SPRINT
     Current Progress: Fixed 3 critical bugs in the frontend
-    Working On: Implementing the new dashboard features
     Next Steps: Code review and documentation
     Blockers: Waiting on design assets from the design team
-    ETA: Thursday EOD
 
     sending my personal updates`,
         },
@@ -602,10 +589,8 @@ Remember to end your message with "sending my updates"`,
     Server-name: Engineering Team
     Check-in Type: STANDUP
     Current Progress: Implemented user authentication API
-    Working On: Testing edge cases and error handling
     Next Steps: Begin frontend integration
     Blockers: Dependency issues with auth library
-    ETA: Friday afternoon
 
     sending my personal updates`,
         },
@@ -626,10 +611,8 @@ Remember to end your message with "sending my updates"`,
     Server-name: Product Development
     Check-in Type: PROJECT_STATUS
     Current Progress: Completed feature specification documents
-    Working On: Coordinating with design team on mockups
     Next Steps: Schedule technical planning session
     Blockers: Resource allocation pending approval
-    ETA: End of sprint
 
     sending my personal updates`,
         },
