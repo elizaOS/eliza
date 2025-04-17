@@ -23,11 +23,12 @@ interface ProfileCardProps {
   title: React.ReactNode;
   content: React.ReactNode;
   buttons: ButtonConfig[];
+  className?: string;
 }
 
-export default function ProfileCard({ title, content, buttons }: ProfileCardProps) {
+export default function ProfileCard({ title, content, buttons, className }: ProfileCardProps) {
   return (
-    <Card className="h-full">
+    <Card className={`h-full ${className || ''}`}>
       <CardHeader className="pb-2 pt-3">
         <CardTitle className="text-base truncate max-w-48">{title}</CardTitle>
       </CardHeader>
