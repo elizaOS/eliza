@@ -73,7 +73,7 @@ export default class BuySignal {
     logger.info('buy-signal::generateSignal - Updating latest buy signal');
     // Get all sentiments (TwitterParser fillTimeframe)
     const sentimentsData = (await this.runtime.getCache<Sentiment[]>('sentiments')) || [];
-    console.log('sentimentsData', sentimentsData);
+    //console.log('sentimentsData', sentimentsData);
     let sentiments = '';
 
     let idx = 1;

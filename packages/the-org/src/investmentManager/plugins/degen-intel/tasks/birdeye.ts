@@ -241,7 +241,10 @@ export default class Birdeye {
       const data = resp?.data;
       const last_updated = new Date(data?.updateUnixTime * 1000);
       const newTokens = data?.tokens;
-
+      if (!newTokens) {
+        logger.error('birdeye defi/token_trending failure');
+        return false;
+      }
       for (const token of newTokens) {
         const tokenData: IToken = {
           address: token?.address,
