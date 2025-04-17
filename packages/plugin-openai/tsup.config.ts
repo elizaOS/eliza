@@ -16,5 +16,7 @@ export default defineConfig({
     'http',
     '@elizaos/core',
     'zod',
+    'node-fetch',
+    'form-data',
   ],
 });
