@@ -700,11 +700,13 @@
         "pdfjs-dist": "4.7.76",
         "uuid": "11.0.3",
         "youtube-dl-exec": "3.0.15",
+        "zod": "^3.24.2",
       },
       "devDependencies": {
         "@types/node": "22.8.4",
         "prettier": "3.5.3",
         "tsup": "8.4.0",
+        "vitest": "^3.1.1",
       },
       "peerDependencies": {
         "whatwg-url": "7.1.0",
