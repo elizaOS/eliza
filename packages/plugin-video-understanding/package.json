@@ -32,7 +32,8 @@
     "patchright": "1.50.1",
     "pdfjs-dist": "4.7.76",
     "uuid": "11.0.3",
-    "youtube-dl-exec": "3.0.15"
+    "youtube-dl-exec": "3.0.15",
+    "zod": "^3.24.2"
   },
   "trustedDependencies": [
     "youtube-dl-exec"
@@ -40,7 +41,8 @@
   "devDependencies": {
     "@types/node": "22.8.4",
     "prettier": "3.5.3",
-    "tsup": "8.4.0"
+    "tsup": "8.4.0",
+    "vitest": "^3.1.1"
   },
   "scripts": {
     "build": "tsup",
@@ -49,7 +51,10 @@
     "lint": "prettier --write ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format:check": "prettier --check ./src",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "peerDependencies": {
     "whatwg-url": "7.1.0"
