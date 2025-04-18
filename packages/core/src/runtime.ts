@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createUniqueUuid } from './entities';
-import { decryptSecret, getSalt } from './index';
+import { decryptSecret, getSalt, safeReplacer } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
 // Import enums and values that are used as values
@@ -201,7 +201,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Initialize the plugin if it has an init function
-    if (plugin.init) {
+    if (plugin && 'init' in plugin && plugin.init !== null && typeof plugin.init === 'function') {
       try {
         await plugin.init(plugin.config || {}, this);
         this.runtimeLogger.debug(`Success: Plugin ${plugin.name} initialized successfully`);
@@ -234,6 +234,11 @@ export class AgentRuntime implements IAgentRuntime {
     if (plugin.adapter) {
       this.runtimeLogger.debug(`Registering database adapter for plugin ${plugin.name}`);
       this.registerDatabaseAdapter(plugin.adapter);
+      this.runtimeLogger.debug(
+        `Database adapter registered successfully for plugin ${plugin.name}`
+      );
+    } else {
+      this.runtimeLogger.debug(`Plugin ${plugin.name} does not provide a database adapter`);
     }
 
     // Register plugin actions
@@ -310,7 +315,6 @@ export class AgentRuntime implements IAgentRuntime {
       this.runtimeLogger.warn('Agent already initialized');
       return;
     }
-    this.isInitialized = true;
 
     // Track registered plugins to avoid duplicates
     const registeredPluginNames = new Set<string>();
@@ -326,28 +330,37 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
 
-    await this.adapter.init();
+    // Ensure adapter is initialized
+    if (!this.adapter) {
+      this.runtimeLogger.error(
+        'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
+      );
+      throw new Error(
+        'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
+      );
+    }
+
+    try {
+      await this.adapter.init();
+    } catch (error) {
+      this.runtimeLogger.error(
+        `Failed to initialize database adapter: ${error instanceof Error ? error.message : String(error)}`
+      );
+      throw error;
+    }
 
     // First create the agent entity directly
     try {
       // Ensure agent exists first (this is critical for test mode)
-      const agentExists = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
-
-      // Verify agent exists before proceeding
-      const agent = await this.adapter.getAgent(this.agentId);
-      if (!agent) {
-        throw new Error(
-          `Agent ${this.agentId} does not exist in database after ensureAgentExists call`
-        );
-      }
+      const existingAgent = await this.adapter.ensureAgentExists(this.character as Partial<Agent>);
 
       // No need to transform agent's own ID
-      const agentEntity = await this.adapter.getEntityById(this.agentId);
+      let agentEntity = await this.adapter.getEntityById(this.agentId);
 
       if (!agentEntity) {
         const created = await this.createEntity({
           id: this.agentId,
-          agentId: this.agentId,
+          agentId: existingAgent.id,
           names: Array.from(new Set([this.character.name].filter(Boolean))) as string[],
           metadata: {},
         });
@@ -356,19 +369,15 @@ export class AgentRuntime implements IAgentRuntime {
           throw new Error(`Failed to create entity for agent ${this.agentId}`);
         }
 
+        agentEntity = await this.adapter.getEntityById(this.agentId);
+
         this.runtimeLogger.debug(
           `Success: Agent entity created successfully for ${this.character.name}`
         );
       }
-    } catch (error) {
-      this.runtimeLogger.error(
-        `Failed to create agent entity: ${error instanceof Error ? error.message : String(error)}`
-      );
-      throw error;
-    }
 
-    // Create room for the agent and register all plugins in parallel
-    try {
+      if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
+
       await Promise.all([
         this.ensureRoomExists({
           id: this.agentId,
@@ -430,6 +439,8 @@ export class AgentRuntime implements IAgentRuntime {
     for (const service of this.servicesInitQueue) {
       await this.registerService(service);
     }
+
+    this.isInitialized = true;
   }
 
   private async handleProcessingError(error: any, context: string) {
@@ -1287,7 +1298,10 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Log input parameters
-    this.runtimeLogger.debug(`[useModel] ${modelKey} input:`, JSON.stringify(params, null, 2));
+    this.runtimeLogger.debug(
+      `[useModel] ${modelKey} input:`,
+      JSON.stringify(params, safeReplacer(), 2)
+    );
 
     // Handle different parameter formats
     let paramsWithRuntime: any;
@@ -1339,7 +1353,27 @@ export class AgentRuntime implements IAgentRuntime {
       body: {
         modelType,
         modelKey,
-        params: params ? (typeof params === 'object' ? Object.keys(params) : typeof params) : null,
+        params: (() => {
+          if (params === null || params === undefined) {
+            return null;
+          }
+          // Handle Node.js Buffer
+          if (typeof Buffer !== 'undefined' && Buffer.isBuffer(params)) {
+            return `[Audio Buffer (${params.length} bytes)]`;
+          }
+          // Handle TypedArrays (Uint8Array, Float32Array, etc.)
+          if (ArrayBuffer.isView(params)) {
+            // Use constructor name for TypedArray type (e.g., 'Uint8Array')
+            // Use 'length' for element count in TypedArrays
+            return `[Audio ${params.constructor.name} (${(params as any).length})]`;
+          }
+          // Handle other objects
+          if (typeof params === 'object') {
+            return Object.keys(params);
+          }
+          // Handle primitives
+          return typeof params;
+        })(),
         response:
           Array.isArray(response) && response.every((x) => typeof x === 'number')
             ? '[array]'
@@ -1470,8 +1504,8 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.deleteAgent(agentId);
   }
 
-  async ensureAgentExists(agent: Partial<Agent>): Promise<void> {
-    await this.adapter.ensureAgentExists(agent);
+  async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
+    return await this.adapter.ensureAgentExists(agent);
   }
 
   async getEntityById(entityId: UUID): Promise<Entity | null> {
@@ -1793,6 +1827,45 @@ export class AgentRuntime implements IAgentRuntime {
     }
     for (const handler of this.eventHandlers.get(event)!) {
       handler(data);
+    }
+  }
+
+  /**
+   * Sends a control message to the frontend to enable or disable input
+   * @param {Object} params - Parameters for the control message
+   * @param {UUID} params.roomId - The ID of the room to send the control message to
+   * @param {'enable_input' | 'disable_input'} params.action - The action to perform
+   * @param {string} [params.target] - Optional target element identifier
+   * @returns {Promise<void>}
+   */
+  async sendControlMessage(params: {
+    roomId: UUID;
+    action: 'enable_input' | 'disable_input';
+    target?: string;
+  }): Promise<void> {
+    try {
+      const { roomId, action, target } = params;
+
+      // Create the control message
+      const controlMessage = {
+        type: 'control',
+        payload: {
+          action,
+          target,
+        },
+        roomId,
+      };
+
+      // Emit an event that can be handled by the websocket service or other handlers
+      await this.emitEvent('CONTROL_MESSAGE', {
+        runtime: this,
+        message: controlMessage,
+        source: 'agent',
+      });
+
+      this.runtimeLogger.debug(`Sent control message: ${action} to room ${roomId}`);
+    } catch (error) {
+      this.runtimeLogger.error(`Error sending control message: ${error}`);
     }
   }
 }

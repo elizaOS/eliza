@@ -644,7 +644,7 @@ export interface Character {
   adjectives?: string[];
 
   /** Optional knowledge base */
-  knowledge?: (string | { path: string; shared?: boolean })[];
+  knowledge?: (string | { path: string; shared?: boolean } | { directory: string; shared?: boolean })[];
 
   /** Available plugins */
   plugins?: string[];
@@ -703,7 +703,7 @@ export interface IDatabaseAdapter {
 
   deleteAgent(agentId: UUID): Promise<boolean>;
 
-  ensureAgentExists(agent: Partial<Agent>): Promise<void>;
+  ensureAgentExists(agent: Partial<Agent>): Promise<Agent>;
 
   ensureEmbeddingDimension(dimension: number): Promise<void>;
 
@@ -1694,6 +1694,7 @@ export enum SOCKET_MESSAGE_TYPE {
   MESSAGE = 3,
   ACK = 4,
   THINKING = 5,
+  CONTROL = 6,
 }
 
 /**
@@ -1944,3 +1945,27 @@ export const VECTOR_DIMS = {
   XXL: 1536,
   XXXL: 3072,
 } as const;
+
+/**
+ * Interface for control messages sent from the backend to the frontend
+ * to manage UI state and interaction capabilities
+ */
+export interface ControlMessage {
+  /** Message type identifier */
+  type: 'control';
+
+  /** Control message payload */
+  payload: {
+    /** Action to perform */
+    action: 'disable_input' | 'enable_input';
+
+    /** Optional target element identifier */
+    target?: string;
+
+    /** Additional optional parameters */
+    [key: string]: unknown;
+  };
+
+  /** Room ID to ensure signal is directed to the correct chat window */
+  roomId: UUID;
+}

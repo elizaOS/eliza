@@ -1,3 +1,7 @@
+import { Markup } from 'telegraf';
+import { InlineKeyboardButton } from '@telegraf/types';
+import { Button } from './types';
+
 /**
  * Escapes Markdown special characters in the given text, excluding code blocks.
  * @param {string} text - The text to escape Markdown characters from.
@@ -56,4 +60,21 @@ export function splitMessage(text: string, maxLength = 4096): string[] {
 
   if (currentChunk) chunks.push(currentChunk);
   return chunks;
+}
+
+/**
+ * Converts Eliza buttons into Telegram buttons
+ * @param {Button[]} buttons - The buttons from Eliza content
+ * @returns {InlineKeyboardButton[]} Array of Telegram buttons
+ */
+export function convertToTelegramButtons(buttons?: Button[] | null): InlineKeyboardButton[] {
+  if (!buttons) return [];
+  return buttons.map((button: Button) => {
+    switch (button.kind) {
+      case 'login':
+        return Markup.button.login(button.text, button.url);
+      case 'url':
+        return Markup.button.url(button.text, button.url);
+    }
+  });
 }

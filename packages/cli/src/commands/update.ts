@@ -22,14 +22,14 @@ function getVersion(): string {
   // Add a simple check in case the path is incorrect
   let version = '0.0.0'; // Fallback version
   if (!existsSync(packageJsonPath)) {
-    logger.warn(`Warning: package.json not found at ${packageJsonPath}`);
+    console.warn(`Warning: package.json not found at ${packageJsonPath}`);
   } else {
     try {
       const packageJsonContent = readFileSync(packageJsonPath, 'utf8');
       const packageJson = JSON.parse(packageJsonContent);
       version = packageJson.version || '0.0.0';
     } catch (error) {
-      logger.error(`Error reading or parsing package.json at ${packageJsonPath}:`, error);
+      console.error(`Error reading or parsing package.json at ${packageJsonPath}:`, error);
     }
   }
   return version;
@@ -54,16 +54,16 @@ function isWorkspaceVersion(versionString: string): boolean {
  * @param isPlugin Whether this is a plugin or project
  */
 async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void> {
-  logger.info(`Updating ${isPlugin ? 'plugin' : 'project'} dependencies...`);
+  console.info(`Updating ${isPlugin ? 'plugin' : 'project'} dependencies...`);
 
   const cliVersion = getVersion();
-  logger.info(`Current CLI version: ${cliVersion}`);
+  console.info(`Current CLI version: ${cliVersion}`);
 
   try {
     // Get list of installed dependencies
     const packageJsonPath = path.join(cwd, 'package.json');
     if (!existsSync(packageJsonPath)) {
-      logger.error('package.json not found in the current directory');
+      console.error('package.json not found in the current directory');
       return;
     }
 
@@ -78,7 +78,7 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
       .map(([pkg, version]) => ({ name: pkg, version }));
 
     if (elizaPackages.length === 0) {
-      logger.info('No ElizaOS packages found to update');
+      console.info('No ElizaOS packages found to update');
       return;
     }
 
@@ -87,10 +87,10 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
       isWorkspaceVersion(pkg.version as string)
     );
     if (workspacePackages.length > 0) {
-      logger.info(
+      console.info(
         `Found ${workspacePackages.length} workspace references: ${workspacePackages.map((p) => p.name).join(', ')}`
       );
-      logger.info(
+      console.info(
         'Skipping update for workspace packages as they should be managed by the monorepo'
       );
 
@@ -99,11 +99,11 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
         (pkg) => !isWorkspaceVersion(pkg.version as string)
       );
       if (packagesToUpdate.length === 0) {
-        logger.info('No non-workspace ElizaOS packages to update');
+        console.info('No non-workspace ElizaOS packages to update');
         return;
       }
 
-      logger.info(
+      console.info(
         `Will update ${packagesToUpdate.length} non-workspace packages: ${packagesToUpdate.map((p) => p.name).join(', ')}`
       );
 
@@ -111,7 +111,7 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
       elizaPackages.length = 0;
       elizaPackages.push(...packagesToUpdate);
     } else {
-      logger.info(
+      console.info(
         `Found ${elizaPackages.length} ElizaOS packages: ${elizaPackages.map((p) => p.name).join(', ')}`
       );
     }
@@ -131,7 +131,7 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
       });
 
       if (!confirmMajor) {
-        logger.info('Update canceled');
+        console.info('Update canceled');
         return;
       }
     }
@@ -139,30 +139,30 @@ async function updateDependencies(cwd: string, isPlugin: boolean): Promise<void>
     // Update each package to the specific CLI version instead of latest
     for (const pkg of elizaPackages) {
       try {
-        logger.info(`Updating ${pkg.name} to version ${cliVersion}...`);
+        console.info(`Updating ${pkg.name} to version ${cliVersion}...`);
         await runBunCommand(['add', `${pkg.name}@${cliVersion}`], cwd);
       } catch (error) {
-        logger.error(`Failed to update ${pkg.name}: ${error.message}`);
-        logger.info('Trying to use exact version match...');
+        console.error(`Failed to update ${pkg.name}: ${error.message}`);
+        console.info('Trying to use exact version match...');
         try {
           // If the specific version isn't available, try to find the closest version
           await runBunCommand(['add', pkg.name], cwd);
         } catch (secondError) {
-          logger.error(`Failed to install ${pkg.name} after retrying: ${secondError.message}`);
+          console.error(`Failed to install ${pkg.name} after retrying: ${secondError.message}`);
         }
       }
     }
 
-    logger.success('Dependencies updated successfully');
+    console.log('Dependencies updated successfully');
 
     // Run install to ensure all dependencies are properly installed
-    logger.info('Installing updated dependencies...');
+    console.info('Installing updated dependencies...');
     await runBunCommand(['install'], cwd);
 
     // Build the project/plugin with updated dependencies
     await buildProject(cwd, isPlugin);
   } catch (error) {
-    logger.error(`Error updating dependencies: ${error.message}`);
+    console.error(`Error updating dependencies: ${error.message}`);
   }
 }
 
@@ -193,29 +193,29 @@ function checkIfPluginDir(dir: string): boolean {
 export const update = new Command()
   .name('update')
   .description('Update ElizaOS packages to the latest versions')
-  .option('--check', 'Check for available updates without applying them')
-  .option('--skip-build', 'Skip building after updating')
+  .option('-c, --check', 'Check for available updates without applying them')
+  .option('-sb, --skip-build', 'Skip building after updating')
   .action(async (options) => {
     try {
       const cwd = process.cwd();
 
       // Determine if we're in a project or plugin directory
       const isPlugin = checkIfPluginDir(cwd);
-      logger.info(`Detected ${isPlugin ? 'plugin' : 'project'} directory`);
+      console.info(`Detected ${isPlugin ? 'plugin' : 'project'} directory`);
 
       if (options.check) {
         // Only check for updates without applying them
-        logger.info('Checking for available updates...');
+        console.info('Checking for available updates...');
         const cliVersion = getVersion();
-        logger.info(`Current CLI version: ${cliVersion}`);
-        logger.info('To apply updates, run this command without the --check flag');
+        console.info(`Current CLI version: ${cliVersion}`);
+        console.info('To apply updates, run this command without the --check flag');
         return;
       }
 
       // Update dependencies
       await updateDependencies(cwd, isPlugin);
 
-      logger.success(
+      console.log(
         `${isPlugin ? 'Plugin' : 'Project'} successfully updated to the latest ElizaOS packages`
       );
     } catch (error) {

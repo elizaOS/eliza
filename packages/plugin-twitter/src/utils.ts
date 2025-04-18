@@ -11,6 +11,7 @@ import {
   composePrompt,
   createUniqueUuid,
   logger,
+  truncateToCompleteSentence,
 } from '@elizaos/core';
 import type { ClientBase } from './base';
 import type { Tweet } from './client';
@@ -18,6 +19,7 @@ import type { Tweet as ClientTweet } from './client/tweets';
 import type { SttTtsPlugin } from './sttTtsSpaces';
 import type { ActionResponse, MediaData } from './types';
 import type { Tweet as CoreTweet } from './types';
+import { TWEET_CHAR_LIMIT } from './constants';
 
 export const wait = (minTime = 1000, maxTime = 3000) => {
   const waitTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
@@ -192,6 +194,82 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
 }
 
 /**
+ * Handles sending a note tweet with optional media data.
+ *
+ * @param {ClientBase} client - The client object used for sending the note tweet.
+ * @param {string} content - The content of the note tweet.
+ * @param {string} [tweetId] - Optional Tweet ID to reply to.
+ * @param {MediaData[]} [mediaData] - Optional media data to attach to the note tweet.
+ * @returns {Promise<Object>} - The result of the note tweet operation.
+ * @throws {Error} - If the note tweet operation fails.
+ */
+async function handleNoteTweet(
+  client: ClientBase,
+  content: string,
+  tweetId?: string,
+  mediaData?: MediaData[]
+) {
+  try {
+    const noteTweetResult = await client.requestQueue.add(
+      async () => await client.twitterClient.sendNoteTweet(content, tweetId, mediaData)
+    );
+
+    if (noteTweetResult.errors && noteTweetResult.errors.length > 0) {
+      // Note Tweet failed due to authorization. Falling back to standard Tweet.
+      const truncateContent = truncateToCompleteSentence(content, TWEET_CHAR_LIMIT - 1);
+      return await this.sendStandardTweet(client, truncateContent, tweetId);
+    }
+    return noteTweetResult.data.notetweet_create.tweet_results.result;
+  } catch (error) {
+    throw new Error(`Note Tweet failed: ${error}`);
+  }
+}
+
+/**
+ * Asynchronously sends a standard tweet using the provided Twitter client.
+ *
+ * @param {ClientBase} client - The client used to make the request.
+ * @param {string} content - The content of the tweet.
+ * @param {string} [tweetId] - Optional tweet ID to reply to.
+ * @param {MediaData[]} [mediaData] - Optional array of media data to attach to the tweet.
+ * @returns {Promise<string>} The result of sending the tweet.
+ */
+async function sendStandardTweet(
+  client: ClientBase,
+  content: string,
+  tweetId?: string,
+  mediaData?: MediaData[]
+) {
+  try {
+    const standardTweetResult = await client.requestQueue.add(
+      async () => await client.twitterClient.sendTweet(content, tweetId, mediaData)
+    );
+    const body = await standardTweetResult.json();
+    if (!body?.data?.create_tweet?.tweet_results?.result) {
+      logger.error('Error sending tweet; Bad response:', body);
+      return;
+    }
+    return body.data.create_tweet.tweet_results.result;
+  } catch (error) {
+    logger.error('Error sending standard Tweet:', error);
+    throw error;
+  }
+}
+
+export async function sendTweet(
+  client: ClientBase,
+  text: string,
+  mediaData: MediaData[] = [],
+  tweetToReplyTo?: string
+): Promise<any> {
+  if (text.length > TWEET_CHAR_LIMIT - 1) {
+    return await handleNoteTweet(client, text, tweetToReplyTo, mediaData);
+  } else {
+    return await sendStandardTweet(client, text, tweetToReplyTo, mediaData);
+  }
+}
+
+/**
  * Sends a tweet on Twitter using the given client.
  *
  * @param {ClientBase} client The client used to send the tweet.
@@ -201,16 +279,16 @@ export async function fetchMediaData(attachments: Media[]): Promise<MediaData[]>
  * @param {string} inReplyTo The ID of the tweet to which the new tweet will reply.
  * @returns {Promise<Memory[]>} An array of memories representing the sent tweets.
  */
-export async function sendTweet(
+export async function sendChunkedTweet(
   client: ClientBase,
   content: Content,
   roomId: UUID,
   twitterUsername: string,
   inReplyTo: string
 ): Promise<Memory[]> {
-  const isLongTweet = content.text.length > 280 - 1;
+  const isLongTweet = content.text.length > TWEET_CHAR_LIMIT - 1;
 
-  const tweetChunks = splitTweetContent(content.text, 280 - 1);
+  const tweetChunks = splitTweetContent(content.text, TWEET_CHAR_LIMIT - 1);
   const sentTweets: Tweet[] = [];
   let previousTweetId = inReplyTo;
 
