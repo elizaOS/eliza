@@ -374,6 +374,26 @@ test('client can get a tweet with getTweetV2', async () => {
   expect(tweet?.text).toBeDefined();
 });
 
+test('scraper can delete tweet', async () => {
+  const client = await getClient();
+
+  const draftText = 'This Tweet will be deleted' + Date.now().toString();
+
+  const response = await client.sendTweet(draftText);
+  const result = await response.json();
+
+  expect(result).toBeDefined();
+
+  const tweetId = result?.data?.create_tweet?.tweet_results?.result?.rest_id;
+  expect(tweetId).toBeDefined();
+
+  await client.deleteTweet(tweetId as string);
+
+  // Verify the tweet is actually deleted
+  const deletedTweet = await client.getTweet(tweetId as string);
+  expect(deletedTweet).toBeNull();
+});
+
 test('client can get multiple tweets with getTweetsV2', async () => {
   if (shouldSkipV2Tests) {
     return console.warn("Skipping 'getTweetV2' test due to missing API keys.");
