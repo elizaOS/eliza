@@ -362,6 +362,28 @@ export function useAgentUpdate(initialAgent: Agent) {
     return changedFields;
   }, [agent]);
 
+  /**
+   * Imports a complete Agent object and updates all relevant fields.
+   * This is useful when switching between agents or resetting to a known state.
+   *
+   * @param newAgent The Agent object to import
+   */
+  const importAgent = useCallback(
+    (newAgent: Agent) => {
+      updateSettings(newAgent.settings || {});
+      updateField('name', newAgent.name || '');
+      updateField('username', newAgent.username || '');
+      updateField('system', newAgent.system || '');
+
+      updateField('bio', newAgent.bio || []);
+      updateField('topics', newAgent.topics || []);
+      updateField('adjectives', newAgent.adjectives || []);
+      updateField('style', newAgent.style || { all: [], chat: [], post: [] });
+      updateField('plugins', newAgent.plugins || []);
+    },
+    [updateField, updateSettings]
+  );
+
   return {
     agent,
     updateField,
@@ -398,5 +420,7 @@ export function useAgentUpdate(initialAgent: Agent) {
 
     // Avatar Tab
     updateAvatar,
+
+    importAgent,
   };
 }

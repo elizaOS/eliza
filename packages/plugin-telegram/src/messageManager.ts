@@ -150,6 +150,8 @@ export class MessageManager {
 
       const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
 
+      await ctx.telegram.sendChatAction(ctx.chat.id, 'typing');
+
       for (let i = 0; i < chunks.length; i++) {
         const chunk = convertMarkdownToTelegram(chunks[i]);
         const sentMessage = (await ctx.telegram.sendMessage(ctx.chat.id, chunk, {
