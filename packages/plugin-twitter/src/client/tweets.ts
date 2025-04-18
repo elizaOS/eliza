@@ -778,6 +778,58 @@ export async function fetchListTweets(
   return parseListTimelineTweets(res.value);
 }
 
+export async function deleteTweet(
+  tweetId: string,
+  auth: TwitterAuth,
+) {
+  const onboardingTaskUrl = 'https://api.twitter.com/1.1/onboarding/task.json';
+
+  // Retrieve necessary cookies and tokens
+  const cookies = await auth.cookieJar().getCookies(onboardingTaskUrl);
+  const xCsrfToken = cookies.find((cookie) => cookie.key === 'ct0');
+
+  const headers = new Headers({
+    authorization: `Bearer ${(auth as any).bearerToken}`,
+    cookie: await auth.cookieJar().getCookieString(onboardingTaskUrl),
+    'content-type': 'application/json',
+    'User-Agent':
+      'Mozilla/5.0 (Linux; Android 11; Nokia G20) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.88 Mobile Safari/537.36',
+    'x-guest-token': (auth as any).guestToken,
+    'x-twitter-auth-type': 'OAuth2Client',
+    'x-twitter-active-user': 'yes',
+    'x-csrf-token': xCsrfToken?.value as string,
+  });
+
+  // Construct variables for the GraphQL request
+  const variables: Record<string, any> = {
+    tweet_id: tweetId,
+    dark_request: false,
+  };
+
+  // Send the GraphQL request to delete a tweet
+  const response = await fetch(
+    'https://twitter.com/i/api/graphql/VaenaVgh5q5ih7kvyVjgtg/DeleteTweet',
+    {
+      headers,
+      body: JSON.stringify({
+        variables,
+        queryId: "VaenaVgh5q5ih7kvyVjgtg"
+      }),
+      method: 'POST',
+    },
+  );
+
+  // Update the cookie jar with any new cookies from the response
+  await updateCookieJar(auth.cookieJar(), response.headers);
+
+  // Check for errors in the response
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return response;
+}
+
 export function getTweets(
   user: string,
   maxTweets: number,

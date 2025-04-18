@@ -68,6 +68,7 @@ import {
   createCreateTweetRequestV2,
   createQuoteTweetRequest,
   defaultOptions,
+  deleteTweet,
   fetchListTweets,
   getAllRetweeters,
   getArticle,
@@ -795,6 +796,16 @@ export class Client {
     }
   ) {
     return await createQuoteTweetRequest(text, quotedTweetId, this.auth, options?.mediaData);
+  }
+
+  /**
+   * Delete a tweet with the given ID.
+   * @param tweetId The ID of the tweet to delete.
+   * @returns A promise that resolves when the tweet is deleted.
+   */
+  public async deleteTweet(tweetId: string): Promise<Response> {
+    // Call the deleteTweet function from tweets.ts 
+    return await deleteTweet(tweetId, this.auth);
   }
 
   /**
