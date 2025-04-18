@@ -276,10 +276,10 @@ export const addTeamMemberAction: Action = {
             return false;
           }
 
-          if (!member.format) {
-            logger.warn(`Skipping team member in section "${member.section}" missing format`);
-            return false;
-          }
+          // if (!member.format) {
+          //   logger.warn(`Skipping team member in section "${member.section}" missing format`);
+          //   return false;
+          // }
 
           const hasTgName = !!member.tgName && member.tgName.trim() !== '';
           const hasDiscordName = !!member.discordName && member.discordName.trim() !== '';
@@ -314,199 +314,244 @@ export const addTeamMemberAction: Action = {
           `Validated ${validatedTeamMembers.length} team members with proper information`
         );
 
-        // Create consistent room ID for easier retrieval
-        // Use the helper function to ensure consistency
-        const serverSpecificRoomId = getTeamMembersRoomId(runtime, serverId);
-        logger.info(`Using server-specific room ID: ${serverSpecificRoomId}`);
+        const serverHash = serverId.replace(/[^a-zA-Z0-9]/g, '');
 
-        // Fetch existing team members to check for duplicates
-        logger.info(
-          `Fetching existing team members for server ${serverId} to check for duplicates`
+        const roomIdForStoringTeamMembers = createUniqueUuid(
+          runtime,
+          `store-team-members-${serverHash}`
         );
 
         // Add table name to getMemories call
-        const memories = await runtime.getMemories({
-          roomId: serverSpecificRoomId as UUID,
+        const memoriesForStoringTeamMembers = await runtime.getMemories({
+          roomId: roomIdForStoringTeamMembers as UUID,
           tableName: 'messages',
         });
-        const existingConfig = memories.find((memory) => {
+
+        const existingConfig = memoriesForStoringTeamMembers.find((memory) => {
           logger.info('Checking memory:', memory);
-          const isReportConfig = memory.content.type === 'report-channel-config';
-
-          return isReportConfig;
+          const isTeamMembersExist = memory.content.type === 'store-team-members-memory';
+          return isTeamMembersExist;
         });
-        logger.info(`Found ${memories.length} existing team members for server ${serverId}`);
+        logger.info('Found existing config:', existingConfig);
 
-        const existingTeamMembers = await fetchTeamMembersForServer(runtime, serverSpecificRoomId);
-
-        // Store team members
-
-        try {
-          logger.info(
-            `Processing ${validatedTeamMembers.length} team members for server ${serverId}`
-          );
-
+        if (!existingConfig) {
+          logger.info('No existing store-team-members-memory found, creating new one');
           try {
-            await runtime.ensureRoomExists({
-              id: serverSpecificRoomId,
-              name: `Team Members - ${serverName}`,
-              source: 'team-coordinator',
-              type: ChannelType.GROUP,
+            // Store all the validatedTeamMembers in the config
+            const config = {
+              teamMembers: validatedTeamMembers,
+              lastUpdated: Date.now(),
               serverId: serverId,
-            });
-            logger.info(`Successfully ensured room exists with ID: ${serverSpecificRoomId}`);
-          } catch (roomError) {
-            logger.error(`Failed to ensure room exists: ${roomError.message}`);
-            logger.error(`Room error stack: ${roomError.stack}`);
-            // Continue attempting to store even if room creation fails
-          }
-
-          // Use validatedTeamMembers instead of teamMembers
-          let successfulStores = 0;
-          let skippedDuplicates = 0;
-
-          for (const member of validatedTeamMembers) {
-            // Add server information and timestamp
-            const enrichedMember = {
-              ...member,
-              serverId: serverId,
-              serverName: serverName,
-              createdAt: new Date().toISOString(),
             };
 
-            // Check if this team member already exists
-            if (isDuplicateTeamMember(existingTeamMembers, enrichedMember)) {
-              logger.info(`Skipping duplicate team member: ${member.tgName || member.discordName}`);
-              skippedDuplicates++;
-              continue;
-            }
+            logger.info('Creating store-team-members channel config:', config);
 
-            // Fix: Ensure unique IDs even with special characters in names
-            const memberIdBase = (member.tgName || member.discordName || 'unknown')
-              .replace(/[^a-zA-Z0-9]/g, '')
-              .substring(0, 12);
-
-            const teamMemberMemory = {
-              id: createUniqueUuid(
-                runtime,
-                `team-member-${serverId}-${memberIdBase}-${Date.now()}`
-              ),
-              entityId: runtime.agentId,
-              agentId: runtime.agentId,
-              content: {
-                type: 'team-member',
-                teamMember: enrichedMember,
-                serverId: serverId, // Also include server ID at the content level for easier querying
-                section: member.section, // Add section at content level for easier filtering
-              },
-              roomId: serverSpecificRoomId,
-              createdAt: Date.now(),
-            };
-
-            logger.info(`Storing team member in memory for server ${serverId}:`, teamMemberMemory);
+            // First create the room to avoid foreign key constraint error
+            logger.info(`Creating room with ID: ${roomIdForStoringTeamMembers}`);
             try {
-              await runtime.createMemory(teamMemberMemory, 'messages');
-              successfulStores++;
-              // Add to existingTeamMembers to prevent duplicates within this batch
-              existingTeamMembers.push(enrichedMember);
-            } catch (memoryError) {
-              logger.error(`Failed to store team member ${memberIdBase}:`, memoryError);
+              await runtime.ensureRoomExists({
+                id: roomIdForStoringTeamMembers as UUID,
+                name: 'Storing Members config',
+                source: 'team-coordinator',
+                type: ChannelType.GROUP,
+              });
+              logger.info(`Successfully created room with ID: ${roomIdForStoringTeamMembers}`);
+            } catch (roomError) {
+              logger.error(`Failed to create room: ${roomError.message}`);
+              logger.error(`Room error stack: ${roomError.stack}`);
             }
-          }
 
-          logger.info(
-            `Successfully stored ${successfulStores} team members in memory for server ${serverId}`
-          );
-          logger.info(`Skipped ${skippedDuplicates} duplicate team members`);
-
-          // Create an index memory for faster retrieval
-          try {
-            const indexMemory = {
-              id: createUniqueUuid(runtime, `team-members-index-${serverId}`),
+            const memory = {
+              id: createUniqueUuid(runtime, `store-team-members-${serverHash}`),
               entityId: runtime.agentId,
               agentId: runtime.agentId,
               content: {
-                type: 'team-members-index',
-                serverId: serverId,
-                serverName: serverName,
-                memberCount: existingTeamMembers.length, // Updated to include all members
-                updatedAt: new Date().toISOString(),
-                sections: [...new Set(existingTeamMembers.map((member) => member.section))], // Add list of sections
+                type: 'store-team-members-memory',
+                config,
               },
-              roomId: serverSpecificRoomId,
+              roomId: roomIdForStoringTeamMembers,
               createdAt: Date.now(),
             };
 
-            await runtime.createMemory(indexMemory, 'messages');
-            logger.info(`Created team members index for server ${serverId}`);
-          } catch (indexError) {
-            logger.error(`Failed to create team members index:`, indexError);
+            await runtime.createMemory(memory, 'messages');
+            logger.info('Successfully stored new report channel config');
+          } catch (configError) {
+            logger.error('Failed to store report channel config:', configError);
+            logger.error('Error stack:', configError.stack);
           }
+        } else {
+          logger.info('Found existing team members config, checking for new members to add');
 
-          // After storing, fetch team members to verify storage and demonstrate retrieval
-          logger.info(`Fetching team members for server ${serverId} to verify storage`);
-          const storedTeamMembers = await fetchTeamMembersForServer(runtime, serverId);
+          // Fetch existing team members from the config
+          const existingTeamMembers = existingConfig.content.config?.teamMembers || [];
+          logger.info(`Found ${existingTeamMembers.length} existing team members`);
 
-          // Fix: Handle case where no team members are retrieved
-          if (storedTeamMembers.length === 0) {
-            logger.warn(`No team members retrieved after storage for server ${serverId}`);
+          // Filter out team members that already exist
+          const newTeamMembers = validatedTeamMembers.filter(
+            (newMember) => !isDuplicateTeamMember(existingTeamMembers, newMember)
+          );
+
+          if (newTeamMembers.length === 0) {
+            logger.info('No new team members to add, all are already registered');
+
+            // Format team members into a readable list
+            const teamMembersList = existingTeamMembers
+              .map((member: TeamMember, index: number) => {
+                const section = member.section || 'Unassigned';
+                const format = member.format || 'Text';
+
+                let platformInfo = '';
+                if (member.tgName) {
+                  platformInfo = `Telegram: ${member.tgName}`;
+                } else if (member.discordName) {
+                  platformInfo = `Discord: ${member.discordName}`;
+                }
+
+                const updateFields = member.updatesConfig?.fields
+                  ? `\n   Fields: ${member.updatesConfig.fields.join(', ')}`
+                  : '';
+
+                return `${index + 1}. Section: ${section} | Format: ${format} | ${platformInfo}${updateFields}`;
+              })
+              .join('\n');
+
+            // Add a callback here to respond when no new members are added
             await callback(
               {
-                text:
-                  skippedDuplicates > 0
-                    ? `✅ Processed ${successfulStores} new team members for server "${serverName}" (skipped ${skippedDuplicates} duplicates), but could not verify storage. They should be available for future use.`
-                    : `✅ Processed ${successfulStores} team members for server "${serverName}", but could not verify storage. They should be available for future use.`,
+                text: `✅ All team members are already registered!\n\nCurrent team members:\n${teamMembersList}`,
               },
               []
             );
-            return true;
+          } else {
+            // Add new team members to the existing list
+            logger.info(`Adding ${newTeamMembers.length} new team members to existing config`);
+
+            const updatedTeamMembers = [...existingTeamMembers, ...newTeamMembers];
+
+            // Update the config with the new team members
+            const updatedConfig = {
+              ...(existingConfig.content.config as Record<string, unknown>),
+              teamMembers: updatedTeamMembers,
+              lastUpdated: Date.now(),
+            };
+
+            // Update the memory with the new config
+            await runtime.updateMemory({
+              id: existingConfig.id,
+              ...existingConfig,
+              content: {
+                ...existingConfig.content,
+                config: updatedConfig,
+              },
+            });
+
+            logger.info(
+              `Successfully updated team members config with ${newTeamMembers.length} new members`
+            );
+
+            // Format the newly added team members for the response
+            const newMembersList = newTeamMembers
+              .map((member, index) => {
+                const section = member.section || 'Unassigned';
+                const format = member.format || 'Text';
+
+                let platformInfo = '';
+                if (member.tgName) {
+                  platformInfo = `Telegram: ${member.tgName}`;
+                } else if (member.discordName) {
+                  platformInfo = `Discord: ${member.discordName}`;
+                }
+
+                return `${index + 1}. Section: ${section} | Format: ${format} | ${platformInfo}`;
+              })
+              .join('\n');
+
+            // Add a callback here to respond when new members are added
+            const allTeamMembers = updatedTeamMembers;
+            const teamMembersList = allTeamMembers
+              .map((member, index) => {
+                const section = member.section || 'Unassigned';
+                const format = member.format || 'Text';
+
+                let platformInfo = '';
+                if (member.tgName) {
+                  platformInfo = `Telegram: ${member.tgName}`;
+                } else if (member.discordName) {
+                  platformInfo = `Discord: ${member.discordName}`;
+                }
+
+                let updateFields = '';
+                if (member.updatesConfig?.fields && member.updatesConfig.fields.length > 0) {
+                  updateFields = ` | Update Fields: ${member.updatesConfig.fields.join(', ')}`;
+                }
+
+                return `${index + 1}. Section: ${section} | Format: ${format} | ${platformInfo}${updateFields}`;
+              })
+              .join('\n');
+
+            await callback(
+              {
+                text: `✅ Team members have been successfully updated!\n\nCurrent team members:\n${teamMembersList}`,
+              },
+              []
+            );
           }
 
-          // Create summary of stored team members by section
-          const sectionSummary = storedTeamMembers.reduce(
-            (acc, member) => {
-              const section = member.section || 'Uncategorized';
-              if (!acc[section]) {
-                acc[section] = [];
-              }
-              const memberName = member.tgName || member.discordName || 'Unknown';
-              if (!acc[section].includes(memberName)) {
-                acc[section].push(memberName);
-              }
-              return acc;
-            },
-            {} as Record<string, string[]>
-          );
+          // Return early since we've already sent the callback
+          return true;
+        }
 
-          logger.info(`Team members by section:`, sectionSummary);
+        logger.info('fetching updated members from memory');
 
-          // Include section summary in response
-          const sectionList = Object.entries(sectionSummary)
-            .map(([section, members]) => `**${section}**: ${members.join(', ')}`)
+        // Fetch the updated team members to include in the response
+        const updatedMemories = await runtime.getMemories({
+          roomId: roomIdForStoringTeamMembers as UUID,
+          tableName: 'messages',
+        });
+
+        const updatedConfig = updatedMemories.find(
+          (memory) => memory.content.type === 'store-team-members-memory'
+        );
+
+        if (updatedConfig && updatedConfig.content.config?.teamMembers) {
+          const allTeamMembers = updatedConfig.content.config.teamMembers;
+          logger.info(`Retrieved ${allTeamMembers.length} total team members for response`);
+
+          // Format all team members for the response
+          const teamMembersList = allTeamMembers
+            .map((member, index) => {
+              const section = member.section || 'Unassigned';
+              const format = member.format || 'Text';
+
+              let platformInfo = '';
+              if (member.tgName) {
+                platformInfo = `Telegram: ${member.tgName}`;
+              } else if (member.discordName) {
+                platformInfo = `Discord: ${member.discordName}`;
+              }
+
+              let updateFields = '';
+              if (member.updatesConfig?.fields && member.updatesConfig.fields.length > 0) {
+                updateFields = ` | Update Fields: ${member.updatesConfig.fields.join(', ')}`;
+              }
+
+              return `${index + 1}. Section: ${section} | Format: ${format} | ${platformInfo}${updateFields}`;
+            })
             .join('\n');
 
-          // Send success message to the user with section summary
-          logger.info('Sending success message to user with section summary');
           await callback(
             {
-              text:
-                skippedDuplicates > 0
-                  ? `✅ Successfully added ${successfulStores} new team members for server "${serverName}" (skipped ${skippedDuplicates} duplicates).\n\nTeam members stored by section:\n${sectionList}`
-                  : `✅ Successfully recorded ${successfulStores} team members for server "${serverName}".\n\nTeam members stored by section:\n${sectionList}`,
+              text: `✅ Team members have been successfully added!\n\nCurrent team members:\n${teamMembersList}`,
             },
             []
           );
-        } catch (storageError) {
-          logger.error(`Failed to store team members for server ${serverId}:`, storageError);
-          logger.error('Error stack:', storageError.stack);
-
+        } else {
           await callback(
             {
-              text: '❌ There was an error storing the team member information. Please try again.',
+              text: `✅ Team members have been successfully added!`,
             },
             []
           );
-          return false;
         }
       } catch (parsingError) {
         logger.error('Failed to parse team member information:', parsingError);
