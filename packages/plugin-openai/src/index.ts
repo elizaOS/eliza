@@ -10,14 +10,15 @@ import type {
 import {
   type DetokenizeTextParams,
   type GenerateTextParams,
-  ModelType,
   type TokenizeTextParams,
+  EventType,
   logger,
+  ModelType,
   VECTOR_DIMS,
 } from '@elizaos/core';
-import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
-import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
+import { generateObject, generateText, JSONParseError, JSONValue, LanguageModelUsage } from 'ai';
 import FormData from 'form-data';
+import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import fetch from 'node-fetch';
 
 /**
@@ -138,13 +139,16 @@ async function generateObjectByModelType(
       logger.info(`Using ${modelType} without schema validation`);
     }
 
-    const { object } = await generateObject({
+    const { object, usage } = await generateObject({
       model: openai.languageModel(model),
       output: 'no-schema',
       prompt: params.prompt,
       temperature: params.temperature,
       experimental_repairText: getJsonRepairFunction(),
     });
+
+    emitModelUsageEvent(runtime, modelType, params.prompt, usage);
+
     return object;
   } catch (error) {
     logger.error(`Error generating object with ${modelType}:`, error);
@@ -172,6 +176,31 @@ function getJsonRepairFunction(): (params: {
       return null;
     }
   };
+}
+
+/**
+ * Emits a model usage event
+ * @param runtime The runtime context
+ * @param type The model type
+ * @param prompt The prompt used
+ * @param usage The LLM usage data
+ */
+function emitModelUsageEvent(
+  runtime: AgentRuntime,
+  type: ModelTypeName,
+  prompt: string,
+  usage: LanguageModelUsage
+) {
+  runtime.emitEvent(EventType.MODEL_USED, {
+    provider: 'openai',
+    type,
+    prompt,
+    tokens: {
+      prompt: usage.promptTokens,
+      completion: usage.completionTokens,
+      total: usage.totalTokens,
+    },
+  });
 }
 
 /**
@@ -391,7 +420,7 @@ export const openaiPlugin: Plugin = {
       logger.log('generating text');
       logger.log(prompt);
 
-      const { text: openaiResponse } = await generateText({
+      const { text: openaiResponse, usage } = await generateText({
         model: openai.languageModel(model),
         prompt: prompt,
         system: runtime.character.system ?? undefined,
@@ -401,6 +430,8 @@ export const openaiPlugin: Plugin = {
         presencePenalty: presence_penalty,
         stopSequences: stopSequences,
       });
+
+      emitModelUsageEvent(runtime, ModelType.TEXT_SMALL, prompt, usage);
 
       return openaiResponse;
     },
@@ -418,7 +449,7 @@ export const openaiPlugin: Plugin = {
       const openai = createOpenAIClient(runtime);
       const model = getLargeModel(runtime);
 
-      const { text: openaiResponse } = await generateText({
+      const { text: openaiResponse, usage } = await generateText({
         model: openai.languageModel(model),
         prompt: prompt,
         system: runtime.character.system ?? undefined,
@@ -428,6 +459,8 @@ export const openaiPlugin: Plugin = {
         presencePenalty: presencePenalty,
         stopSequences: stopSequences,
       });
+
+      emitModelUsageEvent(runtime, ModelType.TEXT_LARGE, prompt, usage);
 
       return openaiResponse;
     },

@@ -18,7 +18,7 @@ const defaultCharacter: Partial<Agent> = {
   bio: [] as string[],
   topics: [] as string[],
   adjectives: [] as string[],
-  plugins: [],
+  plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-openai'],
   settings: { secrets: {} },
 };
 

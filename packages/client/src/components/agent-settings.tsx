@@ -1,8 +1,10 @@
 import CharacterForm from '@/components/character-form';
+import StopAgentButton from '@/components/stop-agent-button';
 import { useAgentUpdate } from '@/hooks/use-agent-update';
 import { useToast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/api';
 import type { Agent, UUID } from '@elizaos/core';
+import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +17,7 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isDeleting, setIsDeleting] = useState(false);
+  const isActive = agent?.status === AgentStatus.ACTIVE;
 
   // Use our enhanced agent update hook for more intelligent handling of JSONb fields
   const agentState = useAgentUpdate(agent);
@@ -213,6 +216,9 @@ export default function AgentSettings({ agent, agentId }: { agent: Agent; agentI
       onSubmit={handleSubmit}
       onReset={agentState.reset}
       onDelete={handleDelete}
+      stopAgentButton={
+        isActive ? <StopAgentButton agent={agent} redirectToHome={true} /> : undefined
+      }
       isAgent={true}
       isDeleting={isDeleting}
       customComponents={[

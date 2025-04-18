@@ -83,10 +83,17 @@ export function LogViewer({ agentName, level, hideTitle }: LogViewerProps = {}) 
   const agentNames = agents?.data?.agents?.map((agent) => agent.name) ?? [];
 
   const handleClearLogs = async () => {
+    const confirmClear = window.confirm(
+      'Are you sure you want to permanently delete all system logs? This action cannot be undone.'
+    );
+
+    if (!confirmClear) {
+      return;
+    }
+
     try {
       setIsClearing(true);
       await apiClient.deleteLogs();
-      // Invalidate the logs query to trigger a refetch
       queryClient.invalidateQueries({ queryKey: ['logs'] });
     } catch (error) {
       console.error('Failed to clear logs:', error);

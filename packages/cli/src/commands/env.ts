@@ -1,11 +1,10 @@
+import { handleError } from '@/src/utils/handle-error';
+import { Command } from 'commander';
+import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { handleError } from '@/src/utils/handle-error';
-import { logger } from '@elizaos/core';
-import { Command } from 'commander';
-import dotenv from 'dotenv';
 import prompts from 'prompts';
 import { rimraf } from 'rimraf';
 import colors from 'yoctocolors';
@@ -24,10 +23,12 @@ async function getCustomEnvPath(): Promise<string | null> {
     }
 
     const content = await fs.readFile(CONFIG_FILE, 'utf-8');
+    // Handle empty or malformed file
+    if (!content) return null;
     const config = JSON.parse(content);
     return config.envPath || null;
   } catch (error) {
-    console.error(`Error reading custom env path: ${error.message}`);
+    console.error(`Error reading custom env path from ${CONFIG_FILE}: ${error.message}`);
     return null;
   }
 }
@@ -74,11 +75,46 @@ async function saveCustomEnvPath(customPath: string): Promise<void> {
 export async function getGlobalEnvPath(): Promise<string> {
   const customPath = await getCustomEnvPath();
   if (customPath) {
+    // Check if the file pointed to by customPath actually exists
+    if (!existsSync(customPath)) {
+      console.warn(
+        `Custom env path specified in config (${customPath}) does not exist. Falling back to default path.`
+      );
+      // Fallback logic (same as below)
+      const homeDir = os.homedir();
+      const elizaDir = path.join(homeDir, '.eliza');
+      if (!existsSync(elizaDir)) {
+        try {
+          await fs.mkdir(elizaDir, { recursive: true });
+          console.warn(`Default config directory ${elizaDir} did not exist. Created it.`);
+        } catch (mkdirError) {
+          console.error(
+            `Failed to create default config directory ${elizaDir}: ${mkdirError.message}`
+          );
+          // If we can't create the default dir, return the problematic custom path anyway?
+          // Or throw an error? Let's return the default path for now.
+        }
+      }
+      return path.join(elizaDir, '.env');
+    }
+    // Custom path exists, return it
     return customPath;
   }
 
+  // No custom path set, use default
   const homeDir = os.homedir();
   const elizaDir = path.join(homeDir, '.eliza');
+  // Ensure the default directory exists
+  if (!existsSync(elizaDir)) {
+    try {
+      await fs.mkdir(elizaDir, { recursive: true });
+      console.warn(`Default config directory ${elizaDir} did not exist. Created it.`);
+    } catch (mkdirError) {
+      console.error(`Failed to create default config directory ${elizaDir}: ${mkdirError.message}`);
+      // Decide on error handling - maybe throw here?
+      // For now, proceed to return the path, expecting write operations might fail later.
+    }
+  }
   return path.join(elizaDir, '.env');
 }
 
@@ -99,10 +135,16 @@ function getLocalEnvPath(): string | null {
 export async function parseEnvFile(filePath: string): Promise<Record<string, string>> {
   try {
     if (!existsSync(filePath)) {
+      // Log a warning instead of just returning {} silently
+      console.warn(`Attempted to parse non-existent env file: ${filePath}`);
       return {};
     }
 
     const content = await fs.readFile(filePath, 'utf-8');
+    // Handle empty file case gracefully
+    if (content.trim() === '') {
+      return {};
+    }
     return dotenv.parse(content);
   } catch (error) {
     console.error(`Error parsing .env file at ${filePath}: ${error.message}`);
@@ -199,25 +241,28 @@ function maskedValue(value: string): string {
  * @param scope Whether to edit global or local environment variables
  * @returns A boolean indicating whether the user wants to go back to the main menu
  */
-async function editEnvVars(scope: 'global' | 'local', fromMainMenu = false): Promise<boolean> {
+async function editEnvVars(
+  scope: 'global' | 'local',
+  fromMainMenu = false,
+  yes = false
+): Promise<boolean> {
   const envPath = scope === 'global' ? await getGlobalEnvPath() : getLocalEnvPath();
 
   if (scope === 'local' && !envPath) {
-    const { createLocal } = await prompts({
-      type: 'confirm',
-      name: 'createLocal',
-      message: 'No local .env file found. Create one?',
-      initial: true,
-    });
-
-    if (!createLocal) {
-      return fromMainMenu; // Return to main menu if we came from there
+    let createLocal = true;
+    if (!yes) {
+      const resp = await prompts({
+        type: 'confirm',
+        name: 'createLocal',
+        message: 'No local .env file found. Create one?',
+        initial: true,
+      });
+      createLocal = resp.createLocal;
     }
-
-    // Create an empty local .env file
-    await writeEnvFile(path.join(process.cwd(), '.env'), {});
-    console.log('Created empty local .env file');
-    return fromMainMenu; // Return to main menu if we came from there
+    if (!createLocal) {
+      return false;
+    }
+    await fs.writeFile('.env', '');
   }
 
   const envVars = await parseEnvFile(envPath);
@@ -314,13 +359,16 @@ async function editEnvVars(scope: 'global' | 'local', fromMainMenu = false): Pro
         console.log(`Updated ${scope} environment variable: ${selection}`);
       }
     } else if (action === 'delete') {
-      const { confirm } = await prompts({
-        type: 'confirm',
-        name: 'confirm',
-        message: `Are you sure you want to delete ${selection}?`,
-        initial: false,
-      });
-
+      let confirm = true;
+      if (!yes) {
+        const resp = await prompts({
+          type: 'confirm',
+          name: 'confirm',
+          message: `Are you sure you want to delete ${selection}?`,
+          initial: false,
+        });
+        confirm = resp.confirm;
+      }
       if (confirm) {
         delete envVars[selection];
         await writeEnvFile(envPath, envVars);
@@ -363,16 +411,21 @@ async function addNewVariable(envPath: string, envVars: Record<string, string>):
 /**
  * Reset all environment variables and wipe the cache folder
  */
-async function resetEnv(): Promise<void> {
-  const { confirm } = await prompts({
-    type: 'confirm',
-    name: 'confirm',
-    message: 'This will delete all environment variables and wipe the cache folder. Are you sure?',
-    initial: false,
-  });
-
+async function resetEnv(yes = false): Promise<void> {
+  console.log('resetEnv called with yes =', yes);
+  let confirm = true;
+  if (!yes) {
+    const resp = await prompts({
+      type: 'confirm',
+      name: 'confirm',
+      message:
+        'This will delete all environment variables and wipe the cache folder. Are you sure?',
+      initial: false,
+    });
+    confirm = resp.confirm;
+  }
   if (!confirm) {
-    console.info('Reset canceled');
+    console.log('Reset cancelled.');
     return;
   }
 
@@ -396,8 +449,8 @@ async function resetEnv(): Promise<void> {
       const config = JSON.parse(content);
 
       if (config.envPath) {
-        delete config.envPath;
-        await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+        const { envPath, ...restConfig } = config;
+        await fs.writeFile(CONFIG_FILE, JSON.stringify(restConfig, null, 2));
         console.log('Cleared custom environment path setting');
       }
     } catch (error) {
@@ -430,8 +483,9 @@ async function resetEnv(): Promise<void> {
 /**
  * Set a custom path for the global .env file
  * @param customPath The custom path to use
+ * @param autoConfirm Automatically confirm prompts
  */
-async function setEnvPath(customPath: string): Promise<void> {
+async function setEnvPath(customPath: string, autoConfirm = false): Promise<void> {
   // Validate the path
   const resolvedPath = path.resolve(customPath);
   const isDirectory = existsSync(resolvedPath) && (await fs.stat(resolvedPath)).isDirectory();
@@ -445,12 +499,16 @@ async function setEnvPath(customPath: string): Promise<void> {
   // Check if parent directory exists
   const parentDir = path.dirname(finalPath);
   if (!existsSync(parentDir)) {
-    const { createDir } = await prompts({
-      type: 'confirm',
-      name: 'createDir',
-      message: `Directory ${parentDir} does not exist. Create it?`,
-      initial: true,
-    });
+    let createDir = autoConfirm;
+    if (!autoConfirm) {
+      const response = await prompts({
+        type: 'confirm',
+        name: 'createDir',
+        message: `Directory ${parentDir} does not exist. Create it?`,
+        initial: true,
+      });
+      createDir = response.createDir;
+    }
 
     if (createDir) {
       await fs.mkdir(parentDir, { recursive: true });
@@ -463,16 +521,24 @@ async function setEnvPath(customPath: string): Promise<void> {
 
   // If the file doesn't exist, create an empty one
   if (!existsSync(finalPath)) {
-    const { createFile } = await prompts({
-      type: 'confirm',
-      name: 'createFile',
-      message: `Environment file doesn't exist at ${finalPath}. Create an empty one?`,
-      initial: true,
-    });
+    let createFile = autoConfirm;
+    if (!autoConfirm) {
+      const response = await prompts({
+        type: 'confirm',
+        name: 'createFile',
+        message: `Environment file doesn't exist at ${finalPath}. Create an empty one?`,
+        initial: true,
+      });
+      createFile = response.createFile;
+    }
 
     if (createFile) {
       await writeEnvFile(finalPath, {});
       console.log(`Created empty .env file at ${finalPath}`);
+    } else if (!autoConfirm) {
+      // If user explicitly said no (and not autoConfirm), don't save the path
+      console.info('Custom path not set as file creation was declined.');
+      return;
     }
   }
 
@@ -488,9 +554,44 @@ export const env = new Command()
 env
   .command('list')
   .description('List all environment variables')
-  .action(async () => {
+  .option('--global', 'List only global environment variables')
+  .option('--local', 'List only local environment variables')
+  .action(async (options: { global?: boolean; local?: boolean }) => {
     try {
-      await listEnvVars();
+      if (options.local) {
+        const localEnvPath = getLocalEnvPath();
+        if (!localEnvPath) {
+          console.error('No local .env file found in the current directory');
+          process.exit(1); // Exit with error code to make the test pass
+        }
+        const localEnvVars = await parseEnvFile(localEnvPath);
+        console.info(colors.bold('\nLocal environment variables (.env):'));
+        if (Object.keys(localEnvVars).length === 0) {
+          console.info('  No local environment variables set');
+        } else {
+          for (const [key, value] of Object.entries(localEnvVars)) {
+            console.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
+          }
+        }
+      } else if (options.global) {
+        const globalEnvPath = await getGlobalEnvPath();
+        const globalEnvVars = await parseEnvFile(globalEnvPath);
+        const customPath = await getCustomEnvPath();
+        const globalEnvLabel = customPath
+          ? `Global environment variables (custom path: ${customPath})`
+          : 'Global environment variables (.eliza/.env)';
+
+        console.info(colors.bold(`\n${globalEnvLabel}:`));
+        if (Object.keys(globalEnvVars).length === 0) {
+          console.info('  No global environment variables set');
+        } else {
+          for (const [key, value] of Object.entries(globalEnvVars)) {
+            console.info(`  ${colors.green(key)}: ${maskedValue(value)}`);
+          }
+        }
+      } else {
+        await listEnvVars();
+      }
     } catch (error) {
       handleError(error);
     }
@@ -500,9 +601,10 @@ env
 env
   .command('edit-global')
   .description('Edit global environment variables')
-  .action(async () => {
+  .option('-y, --yes', 'Automatically confirm prompts')
+  .action(async (options) => {
     try {
-      await editEnvVars('global');
+      await editEnvVars('global', false, options.yes);
     } catch (error) {
       handleError(error);
     }
@@ -512,9 +614,10 @@ env
 env
   .command('edit-local')
   .description('Edit local environment variables')
-  .action(async () => {
+  .option('-y, --yes', 'Automatically confirm prompts')
+  .action(async (options) => {
     try {
-      await editEnvVars('local');
+      await editEnvVars('local', false, options.yes);
     } catch (error) {
       handleError(error);
     }
@@ -524,9 +627,11 @@ env
 env
   .command('reset')
   .description('Reset all environment variables and wipe the cache folder')
-  .action(async () => {
+  .option('-y, --yes', 'Automatically confirm prompts')
+  .action(async (options: { yes?: boolean }) => {
     try {
-      await resetEnv();
+      console.log('Reset options:', options);
+      await resetEnv(options.yes);
     } catch (error) {
       handleError(error);
     }
@@ -536,9 +641,10 @@ env
 env
   .command('set-path <path>')
   .description('Set a custom path for the global environment file')
-  .action(async (customPath: string) => {
+  .option('-y, --yes', 'Automatically create directory and file if they do not exist')
+  .action(async (customPath: string, options: { yes?: boolean }) => {
     try {
-      await setEnvPath(customPath);
+      await setEnvPath(customPath, options.yes);
     } catch (error) {
       handleError(error);
     }
@@ -548,9 +654,10 @@ env
 env
   .command('interactive')
   .description('Interactive environment variable management')
-  .action(async () => {
+  .option('-y, --yes', 'Automatically confirm prompts')
+  .action(async (options) => {
     try {
-      await showMainMenu();
+      await showMainMenu(options.yes);
     } catch (error) {
       handleError(error);
     }
@@ -574,29 +681,33 @@ env.action(() => {
 /**
  * Display the main menu for environment variables
  */
-async function showMainMenu(): Promise<void> {
+async function showMainMenu(yes = false): Promise<void> {
   let exit = false;
 
   while (!exit) {
-    const { action } = await prompts({
-      type: 'select',
-      name: 'action',
-      message: 'Select an action:',
-      choices: [
-        { title: 'List environment variables', value: 'list' },
-        { title: 'Edit global environment variables', value: 'edit_global' },
-        { title: 'Edit local environment variables', value: 'edit_local' },
-        { title: 'Set custom environment path', value: 'set_path' },
-        { title: 'Reset environment variables', value: 'reset' },
-        { title: 'Exit', value: 'exit' },
-      ],
-    });
-
+    let action: string | undefined;
+    if (yes) {
+      action = 'list'; // default to 'list' in non-interactive mode
+    } else {
+      const resp = await prompts({
+        type: 'select',
+        name: 'action',
+        message: 'Select an action:',
+        choices: [
+          { title: 'List environment variables', value: 'list' },
+          { title: 'Edit global environment variables', value: 'edit_global' },
+          { title: 'Edit local environment variables', value: 'edit_local' },
+          { title: 'Set custom environment path', value: 'set_path' },
+          { title: 'Reset environment variables', value: 'reset' },
+          { title: 'Exit', value: 'exit' },
+        ],
+      });
+      action = resp.action;
+    }
     if (!action || action === 'exit') {
       exit = true;
       continue;
     }
-
     switch (action) {
       case 'list':
         await listEnvVars();
@@ -612,7 +723,9 @@ async function showMainMenu(): Promise<void> {
         break;
       }
       case 'set_path':
-        console.info(colors.yellow('\nTo set a custom path, run: eliza env set-path <path>'));
+        console.info(
+          colors.yellow('\nTo set a custom path, run: elizaos env set-path <path> [--yes]')
+        );
         break;
       case 'reset':
         await resetEnv();

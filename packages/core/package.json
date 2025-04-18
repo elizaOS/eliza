@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.0.0-beta.32",
+  "version": "1.0.0-beta.34",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -58,7 +58,6 @@
     "typescript": "5.8.2"
   },
   "dependencies": {
-    "@types/hapi__shot": "^6.0.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "dotenv": "16.4.5",
