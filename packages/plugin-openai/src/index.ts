@@ -10,19 +10,16 @@ import type {
 import {
   type DetokenizeTextParams,
   type GenerateTextParams,
-  ModelType,
   type TokenizeTextParams,
+  EventType,
   logger,
+  ModelType,
   VECTOR_DIMS,
 } from '@elizaos/core';
-import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
-import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
+import { generateObject, generateText, JSONParseError, JSONValue, LanguageModelUsage } from 'ai';
 import FormData from 'form-data';
+import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import fetch from 'node-fetch';
-
-export enum EventType {
-  MODEL_USAGE = 'MODEL_USAGE',
-}
 
 /**
  * Helper function to get settings with fallback to process.env
@@ -142,13 +139,16 @@ async function generateObjectByModelType(
       logger.info(`Using ${modelType} without schema validation`);
     }
 
-    const { object } = await generateObject({
+    const { object, usage } = await generateObject({
       model: openai.languageModel(model),
       output: 'no-schema',
       prompt: params.prompt,
       temperature: params.temperature,
       experimental_repairText: getJsonRepairFunction(),
     });
+
+    emitModelUsageEvent(runtime, modelType, params.prompt, usage);
+
     return object;
   } catch (error) {
     logger.error(`Error generating object with ${modelType}:`, error);
@@ -181,16 +181,27 @@ function getJsonRepairFunction(): (params: {
 /**
  * Emits a model usage event
  * @param runtime The runtime context
+ * @param type The model type
+ * @param prompt The prompt used
  * @param usage The LLM usage data
  */
-function emitModelUsageEvent(runtime: AgentRuntime, usage: LanguageModelUsage) {
-  runtime.emitEvent(EventType.MODEL_USAGE, {
+function emitModelUsageEvent(
+  runtime: AgentRuntime,
+  type: ModelTypeName,
+  prompt: string,
+  usage: LanguageModelUsage
+) {
+  runtime.emitEvent(EventType.MODEL_USED, {
+    provider: 'openai',
+    type,
+    prompt,
     tokens: {
       prompt: usage.promptTokens,
       completion: usage.completionTokens,
       total: usage.totalTokens,
     },
   });
+}
 
 /**
  * function for text-to-speech
@@ -420,7 +431,7 @@ export const openaiPlugin: Plugin = {
         stopSequences: stopSequences,
       });
 
-      emitModelUsageEvent(runtime, usage);
+      emitModelUsageEvent(runtime, ModelType.TEXT_SMALL, prompt, usage);
 
       return openaiResponse;
     },
@@ -449,7 +460,7 @@ export const openaiPlugin: Plugin = {
         stopSequences: stopSequences,
       });
 
-      emitModelUsageEvent(runtime, usage);
+      emitModelUsageEvent(runtime, ModelType.TEXT_LARGE, prompt, usage);
 
       return openaiResponse;
     },
