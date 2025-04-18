@@ -24,8 +24,8 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/cli": "^1.0.0-beta.0",
-    "@elizaos/core": "^1.0.0-beta.0",
+    "@elizaos/cli": "^1.0.0-beta.32",
+    "@elizaos/core": "^1.0.0-beta.32",
     "zod": "3.24.2"
   },
   "devDependencies": {
@@ -34,13 +34,13 @@
     "prettier": "3.5.3"
   },
   "scripts": {
-    "start": "npx @elizaos/cli start",
+    "start": "elizaos start",
     "test-with-cli": "cd ../cli && bun run build && cd ../plugin-starter && elizaos test",
-    "dev": "npx @elizaos/cli dev",
+    "dev": "elizaos dev",
     "build": "tsup",
     "lint": "prettier --write ./src",
-    "test": "npx @elizaos/cli test",
-    "publish": "npx @elizaos/cli plugin publish",
+    "test": "elizaos test",
+    "publish": "elizaos plugin publish",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
   },

@@ -647,6 +647,10 @@ const startAgents = async (options: {
   // if characters are provided, start the agents with the characters
   if (options.characters) {
     for (const character of options.characters) {
+
+      // Initialize plugins as an empty array if undefined
+      character.plugins = character.plugins || [];
+
       // make sure character has sql plugin
       const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql'));
       if (!hasSqlPlugin) {
@@ -830,6 +834,21 @@ export const start = new Command()
           }
         } catch (error) {
           logger.error(`Error loading character: ${error}`);
+          return;
+        }
+      } else if (options.characters) {
+        // Process the -chars option (comma-separated list)
+        const charactersInput = options.characters;
+        options.characters = [];
+        try {
+          const characterPaths = charactersInput.split(',');
+          for (const characterPath of characterPaths) {
+            logger.info(`Loading character from ${characterPath}`);
+            const characterData = await loadCharacterTryPath(characterPath);
+            options.characters.push(characterData);
+          }
+        } catch (error) {
+          logger.error(`Error loading characters: ${error}`);
           return;
         }
       }

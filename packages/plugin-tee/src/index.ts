@@ -8,6 +8,7 @@ import {
 import { TeeVendorNames } from './vendors/types';
 import { getVendor } from './vendors/index';
 
+export { phalaRemoteAttestationAction } from './actions/remoteAttestationAction';
 export { PhalaDeriveKeyProvider } from './providers/deriveKeyProvider';
 export { PhalaRemoteAttestationProvider } from './providers/remoteAttestationProvider';
 export type { TeeVendorConfig };
