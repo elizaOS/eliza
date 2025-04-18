@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import Joyride, { CallBackProps, STATUS } from 'react-joyride';
+import Joyride, { CallBackProps, STATUS, ACTIONS } from 'react-joyride';
 import { useOnboarding } from '@/hooks/use-onboarding';
 import { useLocation } from 'react-router-dom';
 
@@ -137,7 +137,7 @@ export default function OnboardingTour() {
 
   // Handle tour events
   const handleJoyrideCallback = (data: CallBackProps) => {
-    const { status, index, type } = data;
+    const { status, index, type, action } = data;
 
     // If we finished the home page tour, update the tour step
     if (location.pathname === '/' && type === 'step:after' && index === homeSteps.length - 1) {
@@ -146,7 +146,7 @@ export default function OnboardingTour() {
     }
 
     // Tour is finished or skipped
-    if (status === STATUS.FINISHED || status === STATUS.SKIPPED) {
+    if (status === STATUS.FINISHED || status === STATUS.SKIPPED || action === ACTIONS.CLOSE) {
       completeOnboarding();
       setRun(false);
     }
