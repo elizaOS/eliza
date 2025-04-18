@@ -9,9 +9,10 @@ import AvatarPanel from './avatar-panel';
 import PluginsPanel from './plugins-panel';
 import { SecretPanel } from './secret-panel';
 import { useAgentUpdate } from '@/hooks/use-agent-update';
+import { getTemplateById } from '@/config/agent-templates';
 
-// Define a partial agent for initialization
-const defaultCharacter: Partial<Agent> = {
+// Define a partial agent for initialization from the "none" template
+const defaultCharacter: Partial<Agent> = getTemplateById('none')?.template || {
   name: '',
   username: '',
   system: '',
@@ -81,7 +82,7 @@ export default function AgentCreator() {
       characterValue={agentState.agent}
       setCharacterValue={agentState}
       title="Agent Settings"
-      description="Configure your AI agent's behavior and capabilities. Recommended default plugins: @elizaos/plugin-sql, @elizaos/plugin-local-ai"
+      description="Configure your AI agent's behavior and capabilities"
       onSubmit={handleSubmit}
       onReset={() => agentState.reset()}
       onDelete={() => {
