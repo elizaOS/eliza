@@ -71,14 +71,10 @@ bun build
 
 ## Running Multiple Agents
 
-### How do I run multiple agents simultaneously?
+```bash
+npx @elizaos/cli@beta start --characters="characters/agent1.json,characters/agent2.json"
+```
 
-You have several options:
-
-1. Use the CLI:
-   ```bash
-   npx elizaos start --characters="characters/agent1.json,characters/agent2.json"
-   ```
 2. Create separate projects for each agent with their own configurations
 3. For production, use separate Docker containers for each agent
 
@@ -215,7 +211,7 @@ Check your database for null memory entries and ensure proper content formatting
 Using the CLI:
 
 ```bash
-npx elizaos agent reset-memory
+npx @elizaos/cli@beta agent reset-memory
 ```
 
 Or manually:
@@ -238,7 +234,7 @@ Or manually:
 Using the CLI:
 
 ```bash
-npx elizaos project add-plugin @elizaos/plugin-name
+npx @elizaos/cli@beta project add-plugin @elizaos/plugin-name
 ```
 
 Or manually:
@@ -256,12 +252,8 @@ Or manually:
 ### How do I create custom plugins?
 
 1. Use the CLI to scaffold a plugin:
-   ```bash
-   npx elizaos create --type plugin
-   ```
 2. Implement required interfaces (actions, providers, evaluators)
-3. Test with `npx elizaos start`
-4. Publish with `npx elizaos plugin publish`
+3. Publish with `elizaos plugin publish`
 
 ---
 
@@ -282,7 +274,7 @@ Or manually:
 1. Use a process manager like PM2:
    ```bash
    npm install -g pm2
-   pm2 start "npx elizaos start" --name eliza
+   pm2 start "elizaos start" --name eliza
    pm2 save
    ```
 2. Set up monitoring and automatic restarts
@@ -315,7 +307,7 @@ Or manually:
 ### How do I resolve embedding dimension mismatch errors?
 
 1. Set `USE_OPENAI_EMBEDDING=true` in .env
-2. Reset your agent's memory with `npx elizaos agent reset-memory`
+2. Reset your agent's memory with `elizaos agent reset-memory`
 3. Ensure consistent embedding models across your setup
 
 ### Why does my agent post in JSON format sometimes?
