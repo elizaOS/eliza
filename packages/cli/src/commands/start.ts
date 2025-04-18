@@ -21,7 +21,7 @@ import { promptForEnvVars } from '../utils/env-prompt.js';
 import { configureDatabaseSettings, loadEnvironment } from '../utils/get-config';
 import { handleError } from '../utils/handle-error';
 import { installPlugin } from '../utils/install-plugin';
-import { displayBanner } from '../displayBanner';
+import { displayBanner, getVersion } from '../displayBanner';
 import { findNextAvailablePort } from '../utils/port-handling';
 import { loadPluginModule } from '../utils/load-plugin';
 
@@ -32,6 +32,134 @@ export const wait = (minTime = 1000, maxTime = 3000) => {
   const waitTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
   return new Promise((resolve) => setTimeout(resolve, waitTime));
 };
+
+/**
+ * Attempts to load a plugin module, installing it if necessary.
+ * Handles various export patterns (default, named export).
+ *
+ * @param pluginName The name or path of the plugin.
+ * @param version The CLI version, used for installing the plugin.
+ * @returns The loaded Plugin object, or null if loading/installation fails.
+ */
+async function loadAndPreparePlugin(pluginName: string, version: string): Promise<Plugin | null> {
+  logger.debug(`Processing plugin: ${pluginName}`);
+  let pluginModule: any;
+
+  try {
+    // Use the centralized loader first
+    pluginModule = await loadPluginModule(pluginName);
+
+    if (!pluginModule) {
+      // If loading failed, try installing and then loading again
+      logger.info(`Plugin ${pluginName} not available, installing into ${process.cwd()}...`);
+      try {
+        await installPlugin(pluginName, process.cwd(), version);
+        // Try loading again after installation using the centralized loader
+        pluginModule = await loadPluginModule(pluginName);
+      } catch (installError) {
+        logger.error(`Failed to install plugin ${pluginName}: ${installError}`);
+        return null; // Installation failed
+      }
+
+      if (!pluginModule) {
+        logger.error(`Failed to load plugin ${pluginName} even after installation.`);
+        return null; // Loading failed post-installation
+      }
+    }
+  } catch (error) {
+    // Catch any unexpected error during the combined load/install/load process
+    logger.error(`An unexpected error occurred while processing plugin ${pluginName}: ${error}`);
+    return null;
+  }
+
+  if (!pluginModule) {
+    // This check might be redundant now, but kept for safety.
+    logger.error(`Failed to process plugin ${pluginName} (module is null/undefined unexpectedly)`);
+    return null;
+  }
+
+  // Construct the expected camelCase export name (e.g., @elizaos/plugin-foo-bar -> fooBarPlugin)
+  const expectedFunctionName = `${pluginName
+    .replace(/^@elizaos\/plugin-/, '') // Remove prefix
+    .replace(/^@elizaos-plugins\//, '') // Remove alternative prefix
+    .replace(/-./g, (match) => match[1].toUpperCase())}Plugin`; // Convert kebab-case to camelCase and add 'Plugin' suffix
+
+  logger.debug(`Looking for plugin export: ${expectedFunctionName} or default`);
+  logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
+  logger.debug(`Has default export: ${!!pluginModule.default}`);
+
+  // --- Improved Export Resolution Logic ---
+
+  // 1. Prioritize the expected named export if it exists
+  const expectedExport = pluginModule[expectedFunctionName];
+  if (isValidPluginShape(expectedExport)) {
+    logger.debug(`Found valid plugin export using expected name: ${expectedFunctionName}`);
+    return expectedExport as Plugin;
+  }
+
+  // 2. Check the default export if the named one wasn't found or valid
+  const defaultExport = pluginModule.default;
+  if (isValidPluginShape(defaultExport)) {
+    // Ensure it's not the same invalid object we might have checked above
+    if (expectedExport !== defaultExport) {
+      logger.debug('Found valid plugin export using default export');
+      return defaultExport as Plugin;
+    }
+  }
+
+  // 3. If neither primary method worked, search all exports aggressively
+  logger.debug(
+    `Primary exports (named: ${expectedFunctionName}, default) not found or invalid, searching all exports...`
+  );
+  for (const key of Object.keys(pluginModule)) {
+    // Skip keys we already checked (or might be checking)
+    if (key === expectedFunctionName || key === 'default') {
+      continue;
+    }
+
+    const potentialPlugin = pluginModule[key];
+    if (isValidPluginShape(potentialPlugin)) {
+      logger.debug(
+        `Found alternative valid plugin export under key: ${key}, Name: ${potentialPlugin.name}`
+      );
+      return potentialPlugin as Plugin;
+    }
+  }
+  // --- End of Improved Logic ---
+
+  logger.warn(
+    `Could not find a valid plugin export in ${pluginName}. Checked exports: ${expectedFunctionName} (if exists), default (if exists), and others. Available exports: ${Object.keys(pluginModule).join(', ')}`
+  );
+  return null; // No suitable plugin export found
+}
+
+/**
+ * Checks if an object has the basic shape of a Plugin (name + at least one functional property).
+ * @param obj The object to check.
+ * @returns True if the object has a valid plugin shape, false otherwise.
+ */
+function isValidPluginShape(obj: any): obj is Plugin {
+  if (!obj || typeof obj !== 'object' || !obj.name) {
+    return false;
+  }
+  // Check for the presence of at least one key functional property
+  return !!(
+    obj.init ||
+    obj.services ||
+    obj.providers ||
+    obj.actions ||
+    obj.memoryManagers ||
+    obj.componentTypes ||
+    obj.evaluators ||
+    obj.adapter ||
+    obj.models ||
+    obj.events ||
+    obj.routes ||
+    obj.tests ||
+    obj.config ||
+    obj.description // description is also mandatory technically
+  );
+}
 
 /**
  * Analyzes project agents and their plugins to determine which environment variables to prompt for
@@ -106,118 +234,90 @@ export async function startAgent(
 ): Promise<IAgentRuntime> {
   character.id ??= stringToUuid(character.name);
 
+  // Ensure character has a plugins array
+  if (!character.plugins) {
+    character.plugins = [];
+  }
+
   const encryptedChar = encryptedCharacter(character);
 
-  // For ESM modules we need to use import.meta.url instead of __dirname
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
-
-  // Find package.json relative to the current file
-  const packageJsonPath = path.resolve(__dirname, '../package.json');
+  // Find package.json relative to the current file (__dirname is defined at top level)
+  const packageJsonPath = path.resolve(__dirname, '../../package.json');
 
   // Add a simple check in case the path is incorrect
-  let version = '0.0.0'; // Fallback version
-  if (!fs.existsSync(packageJsonPath)) {
-  } else {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-    version = packageJson.version;
-  }
+  let version = getVersion();
 
-  const characterPlugins: Plugin[] = [];
+  const loadedPluginsMap = new Map<string, Plugin>();
 
-  // if encryptedChar.plugins does not include @elizaos/plugin-bootstrap, add it
-  if (!encryptedChar.plugins.includes('@elizaos/plugin-bootstrap')) {
-    encryptedChar.plugins.push('@elizaos/plugin-bootstrap');
-  }
-
-  // for each plugin, check if it installed, and install if it is not
-  for (const plugin of encryptedChar.plugins) {
-    logger.debug('Checking if plugin is installed: ', plugin);
-    let pluginModule: any;
-
-    // Try to load the plugin using multiple strategies
-    try {
-      // Use the new centralized loader
-      pluginModule = await loadPluginModule(plugin);
-
-      if (!pluginModule) {
-        // If loading failed, try installing and then loading again
-        logger.info(`Plugin ${plugin} not available, installing into ${process.cwd()}...`);
-        try {
-          await installPlugin(plugin, process.cwd(), version);
-          // Try loading again after installation using the centralized loader
-          pluginModule = await loadPluginModule(plugin);
-        } catch (installError) {
-          logger.error(`Failed to install plugin ${plugin}: ${installError}`);
-          // Continue to next plugin if installation fails
-          continue;
-        }
-
-        if (!pluginModule) {
-          logger.error(`Failed to load plugin ${plugin} even after installation.`);
-          // Continue to next plugin if loading fails post-installation
-          continue;
-        }
-      }
-    } catch (error) {
-      // Catch any unexpected error during the combined load/install/load process
-      logger.error(`An unexpected error occurred while processing plugin ${plugin}: ${error}`);
-      continue;
-    }
-
-    if (!pluginModule) {
-      // This check might be redundant now, but kept for safety.
-      // Should theoretically not be reached if the logic above is correct.
-      logger.error(`Failed to process plugin ${plugin} (module is null/undefined unexpectedly)`);
-      continue;
-    }
-
-    // Process the plugin to get the actual plugin object
-    const functionName = `${plugin
-      .replace('@elizaos/plugin-', '')
-      .replace('@elizaos-plugins/', '')
-      .replace(/-./g, (x) => x[1].toUpperCase())}Plugin`; // Assumes plugin function is camelCased with Plugin suffix
-
-    // Add detailed logging to debug plugin loading
-    logger.debug(`Looking for plugin export: ${functionName}`);
-    logger.debug(`Available exports: ${Object.keys(pluginModule).join(', ')}`);
-    logger.debug(`Has default export: ${!!pluginModule.default}`);
-
-    // Check if the plugin is available as a default export or named export
-    const importedPlugin = pluginModule.default || pluginModule[functionName];
-
-    if (importedPlugin) {
-      logger.debug(`Found plugin: ${importedPlugin.name}`);
-      characterPlugins.push(importedPlugin);
-    } else {
-      // Try more aggressively to find a suitable plugin export
-      let foundPlugin = null;
-
-      // Look for any object with a name and init function
-      for (const key of Object.keys(pluginModule)) {
-        const potentialPlugin = pluginModule[key];
-        if (
-          potentialPlugin &&
-          typeof potentialPlugin === 'object' &&
-          potentialPlugin.name &&
-          typeof potentialPlugin.init === 'function'
-        ) {
-          logger.debug(`Found alternative plugin export under key: ${key}`);
-          foundPlugin = potentialPlugin;
-          break;
-        }
-      }
-
-      if (foundPlugin) {
-        logger.debug(`Using alternative plugin: ${foundPlugin.name}`);
-        characterPlugins.push(foundPlugin);
+  // Pre-load plugins passed directly to the function (these can be Plugin objects)
+  for (const plugin of plugins) {
+    if (isValidPluginShape(plugin)) {
+      // Use isValidPluginShape for broader validation
+      if (!loadedPluginsMap.has(plugin.name)) {
+        logger.debug(`Using pre-provided plugin object: ${plugin.name}`);
+        loadedPluginsMap.set(plugin.name, plugin);
       } else {
-        logger.warn(
-          `Could not find plugin export in ${plugin}. Available exports: ${Object.keys(pluginModule).join(', ')}`
-        );
+        logger.debug(`Plugin ${plugin.name} was already pre-loaded, skipping duplicate.`);
       }
+    } else {
+      logger.warn(
+        `Invalid or non-object plugin skipped in pre-load: ${plugin ? JSON.stringify(plugin) : plugin}`
+      ); // Stringify only if not null/undefined
     }
   }
+
+  // Initialize encryptedChar.plugins if it's undefined
+  encryptedChar.plugins = encryptedChar.plugins ?? [];
+
+  // Ensure bootstrap plugin string is present in the character's list if not already loaded
+  const bootstrapPluginName = '@elizaos/plugin-bootstrap';
+  const characterHasBootstrapString = encryptedChar.plugins.includes(bootstrapPluginName);
+  const alreadyLoadedBootstrap = loadedPluginsMap.has(bootstrapPluginName);
+
+  if (!characterHasBootstrapString && !alreadyLoadedBootstrap) {
+    logger.debug(
+      `Adding ${bootstrapPluginName} string to character's plugin list as it was missing and not pre-loaded.`
+    );
+    encryptedChar.plugins.push(bootstrapPluginName);
+  }
+
+  // Process and load plugins specified by name in the character definition
+  // encryptedChar.plugins is guaranteed to be string[] according to Character type
+  for (const pluginName of encryptedChar.plugins) {
+    if (typeof pluginName !== 'string') {
+      logger.warn(
+        `Skipping non-string plugin specifier found in character.plugins: ${JSON.stringify(pluginName)}`
+      );
+      continue; // Should not happen based on type, but good safety check
+    }
+
+    if (!loadedPluginsMap.has(pluginName)) {
+      logger.debug(`Attempting to load plugin by name from character definition: ${pluginName}`);
+      const loadedPlugin = await loadAndPreparePlugin(pluginName, version);
+      if (loadedPlugin) {
+        // Double-check name consistency and avoid duplicates
+        if (!loadedPluginsMap.has(loadedPlugin.name)) {
+          loadedPluginsMap.set(loadedPlugin.name, loadedPlugin);
+        } else {
+          logger.debug(
+            `Plugin ${loadedPlugin.name} (loaded as ${pluginName}) was already present in map, skipping.`
+          );
+        }
+      } else {
+        logger.warn(`Failed to load or prepare plugin specified by name: ${pluginName}`);
+      }
+    } else {
+      logger.debug(
+        `Plugin ${pluginName} (specified by name) was already loaded/provided, skipping.`
+      );
+    }
+  }
+
+  // Get the final array of loaded plugins
+  const characterPlugins = Array.from(loadedPluginsMap.values());
+  logger.debug(
+    `Final loaded plugins (${characterPlugins.length}): ${characterPlugins.map((p) => p.name).join(', ')}`
+  );
 
   function loadEnvConfig(): RuntimeSettings {
     // Only import dotenv in Node.js environment
@@ -305,7 +405,7 @@ export async function startAgent(
 
   const runtime = new AgentRuntime({
     character: encryptedChar,
-    plugins: [...characterPlugins, ...plugins],
+    plugins: characterPlugins, // Use the deduplicated and loaded list
     settings: loadEnvConfig(),
   });
   if (init) {
@@ -319,7 +419,7 @@ export async function startAgent(
   server.registerAgent(runtime);
 
   // report to console
-  logger.debug(`Started ${runtime.character.name} as ${runtime.agentId}`);
+  logger.log(`Started ${runtime.character.name} as ${runtime.agentId}`);
 
   return runtime;
 }
@@ -334,6 +434,7 @@ export async function startAgent(
 async function stopAgent(runtime: IAgentRuntime, server: AgentServer) {
   await runtime.close();
   server.unregisterAgent(runtime.agentId);
+  logger.success(`Agent ${runtime.character.name} stopped successfully!`);
 }
 
 /**
@@ -386,10 +487,17 @@ const startAgents = async (options: {
   // Set up server properties
   server.startAgent = async (character) => {
     logger.info(`Starting agent for character ${character.name}`);
-    return startAgent(character, server);
+    const runtime = await startAgent(character, server);
+    logger.success(`Agent ${character.name} has been successfully started!`);
+    // Add direct console log for higher visibility
+    console.log(`\x1b[32m✓ Agent ${character.name} started successfully!\x1b[0m`);
+    return runtime;
   };
   server.stopAgent = (runtime: IAgentRuntime) => {
+    logger.info(`Stopping agent ${runtime.character.name}`);
     stopAgent(runtime, server);
+    // Add direct console log for higher visibility
+    console.log(`\x1b[32m✓ Agent ${runtime.character.name} stopped successfully!\x1b[0m`);
   };
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
@@ -539,18 +647,38 @@ const startAgents = async (options: {
   // if characters are provided, start the agents with the characters
   if (options.characters) {
     for (const character of options.characters) {
+
+      // Initialize plugins as an empty array if undefined
+      character.plugins = character.plugins || [];
+
       // make sure character has sql plugin
-      if (!character.plugins.includes('@elizaos/plugin-sql')) {
+      const hasSqlPlugin = character.plugins.some((plugin) => plugin.includes('plugin-sql'));
+      if (!hasSqlPlugin) {
         character.plugins.push('@elizaos/plugin-sql');
       }
 
       // make sure character has at least one ai provider
       if (process.env.OPENAI_API_KEY) {
-        character.plugins.push('@elizaos/plugin-openai');
+        const hasOpenAiPlugin = character.plugins.some((plugin) =>
+          plugin.includes('plugin-openai')
+        );
+        if (!hasOpenAiPlugin) {
+          character.plugins.push('@elizaos/plugin-openai');
+        }
       } else if (process.env.ANTHROPIC_API_KEY) {
-        character.plugins.push('@elizaos/plugin-anthropic');
+        const hasAnthropicPlugin = character.plugins.some((plugin) =>
+          plugin.includes('plugin-anthropic')
+        );
+        if (!hasAnthropicPlugin) {
+          character.plugins.push('@elizaos/plugin-anthropic');
+        }
       } else {
-        character.plugins.push('@elizaos/plugin-local-ai');
+        const hasLocalAiPlugin = character.plugins.some((plugin) =>
+          plugin.includes('plugin-local-ai')
+        );
+        if (!hasLocalAiPlugin) {
+          character.plugins.push('@elizaos/plugin-local-ai');
+        }
       }
 
       await startAgent(character, server);
@@ -664,7 +792,6 @@ const startAgents = async (options: {
 export const start = new Command()
   .name('start')
   .description('Start the Eliza agent with configurable plugins and services')
-  .option('-p, --port <port>', 'Port to listen on', (val) => Number.parseInt(val))
   .option('-c, --configure', 'Reconfigure services and AI models (skips using saved configuration)')
   .option(
     '-char, --character <character>',
@@ -707,6 +834,21 @@ export const start = new Command()
           }
         } catch (error) {
           logger.error(`Error loading character: ${error}`);
+          return;
+        }
+      } else if (options.characters) {
+        // Process the -chars option (comma-separated list)
+        const charactersInput = options.characters;
+        options.characters = [];
+        try {
+          const characterPaths = charactersInput.split(',');
+          for (const characterPath of characterPaths) {
+            logger.info(`Loading character from ${characterPath}`);
+            const characterData = await loadCharacterTryPath(characterPath);
+            options.characters.push(characterData);
+          }
+        } catch (error) {
+          logger.error(`Error loading characters: ${error}`);
           return;
         }
       }

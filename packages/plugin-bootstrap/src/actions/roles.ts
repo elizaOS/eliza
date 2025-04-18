@@ -104,7 +104,7 @@ interface RoleAssignment {
  * @property {Function} handler - A function to handle the execution of the action.
  * @property {ActionExample[][]} examples - Examples demonstrating how the action can be used.
  */
-const updateRoleAction: Action = {
+export const updateRoleAction: Action = {
   name: 'UPDATE_ROLE',
   similes: ['CHANGE_ROLE', 'SET_PERMISSIONS', 'ASSIGN_ROLE', 'MAKE_ADMIN'],
   description: 'Assigns a role (Admin, Owner, None) to a user or list of users in a channel.',
@@ -322,5 +322,3 @@ const updateRoleAction: Action = {
     ],
   ] as ActionExample[][],
 };
-
-export default updateRoleAction;

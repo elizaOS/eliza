@@ -27,7 +27,8 @@ import type {
   TwitterUserUnfollowedPayload,
 } from './types';
 import { TwitterEventTypes } from './types';
-import { buildConversationThread } from './utils';
+import { buildConversationThread, sendTweet } from './utils';
+import { TWEET_CHAR_LIMIT } from './constants';
 
 /**
  * Template for generating dialog and actions for a Twitter message handler.
@@ -558,17 +559,7 @@ export class TwitterInteractionClient {
         logger.info(`Replying to tweet ${tweetToReplyTo}`);
 
         // Create the actual tweet using the Twitter API through the client
-        const replyTweetResult = await this.client.requestQueue.add(() =>
-          this.client.twitterClient.sendTweet(response.text.substring(0, 280), tweetToReplyTo)
-        );
-
-        if (!replyTweetResult) {
-          throw new Error('Failed to create tweet response');
-        }
-
-        // Parse the response to get the tweet ID
-        const responseBody = await (replyTweetResult as Response).json();
-        const tweetResult = responseBody?.data?.create_tweet?.tweet_results?.result;
+        const tweetResult = await sendTweet(this.client, response.text, [], tweetToReplyTo);
 
         if (!tweetResult) {
           throw new Error('Failed to get tweet result from response');
