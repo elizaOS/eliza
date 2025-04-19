@@ -1,5 +1,9 @@
 ---
-sidebar_position: 5
+sidebar_position: 7
+title: Development Mode
+description: Run ElizaOS projects in development mode with hot reloading and debugging
+keywords: [development, hot reload, debugging, watch mode, local development]
+image: /img/cli.jpg
 ---
 
 # Dev Command

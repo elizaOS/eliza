@@ -3,6 +3,20 @@ sidebar_position: 1
 title: ElizaOS Documentation
 slug: /
 description: Comprehensive framework for building AI agents with persistent personalities across multiple platforms
+keywords:
+  [
+    architecture,
+    components,
+    system design,
+    agents,
+    services,
+    database,
+    actions,
+    providers,
+    evaluators,
+    plugins,
+  ]
+image: /img/eliza_banner.jpg
 ---
 
 # ElizaOS Documentation

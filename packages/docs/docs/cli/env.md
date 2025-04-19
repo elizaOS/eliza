@@ -1,5 +1,9 @@
 ---
-sidebar_position: 4
+sidebar_position: 5
+title: Environment Configuration
+description: Configure environment variables and API keys for ElizaOS projects
+keywords: [environment, configuration, API keys, secrets, settings, .env]
+image: /img/cli.jpg
 ---
 
 # Environment Command

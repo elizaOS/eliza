@@ -1,5 +1,9 @@
 ---
-sidebar_position: 9
+sidebar_position: 6
+title: Test Command
+description: Run and manage tests for ElizaOS projects and plugins
+keywords: [testing, unit tests, integration tests, Jest, test runner, development]
+image: /img/cli.jpg
 ---
 
 # Test Command
