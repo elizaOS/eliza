@@ -1,43 +1,20 @@
 # syntax=docker/dockerfile:1
 
-# Stage 1: Base image.
-## Start with a base image containing NodeJS so we can build Docusaurus.
-FROM node:23.3.0-slim AS base
-## Disable colour output from yarn to make logs easier to read.
-ENV FORCE_COLOR=0
-## Enable corepack.
-RUN corepack enable
-## Set the working directory to `/opt/docusaurus`.
-WORKDIR /opt/docusaurus
+# Use the official Bun image
+FROM oven/bun:1 AS base
+WORKDIR /usr/src/app
 
-# Stage 2a: Development mode.
-FROM base AS dev
-## Set the working directory to `/opt/docusaurus`.
-WORKDIR /opt/docusaurus
-## Expose the port that Docusaurus will run on.
-EXPOSE 3000
-## Run the development server.
-CMD [ -d "node_modules" ] && bun start -- --host 0.0.0.0 --poll 1000 || bun install && bun start -- --host 0.0.0.0 --poll 1000
+# Copy everything needed for the docs
+COPY packages/docs/ ./
+COPY packages/core/ /usr/src/core/
+COPY .git/ ./.git/
+COPY tsconfig.json ./
 
-# Stage 2b: Production build mode.
-FROM base AS prod
-## Set the working directory to `/opt/docusaurus`.
-WORKDIR /opt/docusaurus
+# Install dependencies and build
+RUN bun install && \
+    bun run build
 
-COPY docs/ /opt/docusaurus/
-COPY packages/ /opt/packages/
-
-## Required buy docusaurus [ERROR] Loading of version failed for version current
-COPY .git/ /opt/.git/
-
-## Install dependencies
-RUN bun install
-## Build the static site.
-RUN bun run build
-
-# Stage 3a: Serve with `docusaurus serve`.
-FROM prod AS serve
-## Expose the port that Docusaurus will run on.
-EXPOSE 3000
-## Run the production server.
-CMD ["bun", "run", "serve", "--host", "0.0.0.0", "--no-open"]
+# Run the server
+USER bun
+EXPOSE 3000/tcp
+CMD ["bun", "run", "build"]
