@@ -58,6 +58,12 @@
     "typescript": "5.8.2"
   },
   "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.53.0",
+    "@opentelemetry/instrumentation-pg": "^0.52.0",
+    "@opentelemetry/sdk-metrics": "^1.26.0",
+    "@opentelemetry/sdk-node": "^0.53.0",
+    "@types/hapi__shot": "^6.0.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "dotenv": "16.4.5",
@@ -75,5 +81,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "917e8b28d02cc09316dd61d1fb29c683f29689ef"
+  "gitHead": "7b01ea21f51671371e738134c80c958483b7b709"
 }

@@ -124,6 +124,42 @@ Once the agent is running, you can visit http://localhost:3000 to interact with 
 - Plugin management
 - Memory and conversation history
 
+### OpenTelemetry Instrumentation (Optional)
+
+Eliza supports OpenTelemetry for tracing and monitoring agent behavior. This allows you to gain insights into the performance and execution flow of your agents.
+
+**Enabling Instrumentation:**
+
+Set the following environment variable:
+
+```bash
+INSTRUMENTATION_ENABLED=true
+```
+
+When enabled, Eliza will:
+
+- Initialize an OpenTelemetry tracer.
+- Automatically trace key operations within the core `AgentRuntime` and supported plugins (e.g., the `plugin-openai`).
+
+**Service Name:**
+
+The default service name for traces will be `agent-<character_name>-<agent_id>`.
+
+**PostgreSQL Exporter Setup (Example):**
+
+If you plan to export traces to a PostgreSQL database (e.g., using a compatible OpenTelemetry exporter), you can start a local instance using Docker:
+
+```bash
+docker run -d --name postgres-tracing -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=eliza_tracing postgres:15
+```
+
+You will also need to configure the connection URL via the following environment variable, adjusting it based on your database setup:
+
+```bash
+INSTRUMENTATION_ENABLED=true
+POSTGRES_URL_INSTRUMENTATION="postgresql://postgres:postgres@localhost:5432/eliza_tracing"
+```
+
 ---
 
 ### Automatically Start Eliza

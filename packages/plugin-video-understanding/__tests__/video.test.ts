@@ -18,7 +18,7 @@ vi.mock('fluent-ffmpeg', () => {
     output: vi.fn().mockReturnThis(),
     noVideo: vi.fn().mockReturnThis(),
     audioCodec: vi.fn().mockReturnThis(),
-    on: vi.fn().mockImplementation(function(event, callback) {
+    on: vi.fn().mockImplementation(function (event, callback) {
       if (event === 'end') {
         callback();
       }
@@ -39,9 +39,12 @@ vi.mock('youtube-dl-exec', () => {
 });
 
 // Mock fetch for downloading files
-vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-  arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
-}));
+vi.stubGlobal(
+  'fetch',
+  vi.fn().mockResolvedValue({
+    arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
+  })
+);
 
 // Mock IAgentRuntime
 const createMockRuntime = () => {
@@ -148,9 +151,11 @@ describe('VideoService', () => {
         title: 'Test Video',
         id: 'test-id',
       });
-      
-      const mockDownloadVideo = vi.spyOn(service as any, 'downloadVideo').mockResolvedValue('/path/to/video.mp4');
-      
+
+      const mockDownloadVideo = vi
+        .spyOn(service as any, 'downloadVideo')
+        .mockResolvedValue('/path/to/video.mp4');
+
       // Create cache mock with a spy
       const cacheSpy = vi.fn().mockResolvedValue(undefined);
       const mockCache = {
@@ -158,13 +163,13 @@ describe('VideoService', () => {
         set: cacheSpy,
       };
       vi.mocked(mockRuntime.getCache).mockReturnValue(mockCache);
-      
+
       // Override processVideo instead of processVideoFromUrl to test the whole flow
       const originalProcessVideo = service.processVideo;
       service.processVideo = vi.fn().mockImplementation(async (url, runtime) => {
         // Actually call fetchVideoInfo so the spy registers the call
         await (service as any).fetchVideoInfo(url);
-        
+
         // Create the result
         const result = {
           type: 'VIDEO',
@@ -175,16 +180,16 @@ describe('VideoService', () => {
           id: 'test-video-id',
           source: 'youtube',
           description: 'A test video description',
-          text: 'Mocked transcript content'
+          text: 'Mocked transcript content',
         } as unknown as Media;
-        
+
         // Explicitly call cache.set to trigger the spy
         const cache = runtime.getCache();
         await cache.set(`content/video/${(service as any).getVideoId(url)}`, result);
-        
+
         return result;
       });
-      
+
       const url = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
       const result = await service.processVideo(url, mockRuntime);
 
@@ -193,7 +198,7 @@ describe('VideoService', () => {
       expect(result.url).toBe(url);
       expect(mockFetchVideoInfo).toHaveBeenCalledWith(url);
       expect(cacheSpy).toHaveBeenCalled();
-      
+
       // Restore original method
       service.processVideo = originalProcessVideo;
     });
@@ -208,7 +213,7 @@ describe('VideoService', () => {
         id: 'cached-video-id',
         source: 'youtube',
         description: 'A cached video description',
-        text: 'Cached transcript'
+        text: 'Cached transcript',
       } as unknown as Media;
 
       // Override processVideo method completely
@@ -217,32 +222,34 @@ describe('VideoService', () => {
         // Simulate cache behavior
         const cache = {
           get: vi.fn().mockResolvedValue(cachedResult),
-          set: vi.fn()
+          set: vi.fn(),
         };
-        
+
         vi.mocked(runtime.getCache).mockReturnValue(cache);
         const cachedMedia = await cache.get(`content/video/${(service as any).getVideoId(url)}`);
-        
+
         return cachedMedia;
       });
 
       const result = await service.processVideo(cachedResult.url, mockRuntime);
-      
+
       expect(result).toEqual(cachedResult);
-      
+
       // Restore original method
       service.processVideo = originalProcessVideo;
     });
 
     it('should handle errors during video processing', async () => {
       const url = 'https://www.youtube.com/watch?v=invalid';
-      
+
       // Override processVideo to throw error
       const originalProcessVideo = service.processVideo;
       service.processVideo = vi.fn().mockRejectedValue(new Error('Error processing video'));
-      
-      await expect(service.processVideo(url, mockRuntime)).rejects.toThrow('Error processing video');
-      
+
+      await expect(service.processVideo(url, mockRuntime)).rejects.toThrow(
+        'Error processing video'
+      );
+
       // Restore original method
       service.processVideo = originalProcessVideo;
     });
@@ -257,11 +264,13 @@ describe('VideoService', () => {
       ];
       (service as any).processing = false;
 
-      const mockProcessVideoFromUrl = vi.spyOn(service as any, 'processVideoFromUrl').mockResolvedValue({
-        type: 'VIDEO',
-        url: 'test',
-        title: 'Test',
-      });
+      const mockProcessVideoFromUrl = vi
+        .spyOn(service as any, 'processVideoFromUrl')
+        .mockResolvedValue({
+          type: 'VIDEO',
+          url: 'test',
+          title: 'Test',
+        });
 
       await (service as any).processQueue(mockRuntime);
 
@@ -275,18 +284,18 @@ describe('VideoService', () => {
       // Setup for a URL that doesn't exist in cache
       const url = 'https://example.com/video.mp4';
       const mockId = 'mocked-video-id';
-      
+
       // Override the downloadMedia method completely
       const originalDownloadMedia = service.downloadMedia;
       service.downloadMedia = vi.fn().mockImplementation(async (inputUrl) => {
         expect(inputUrl).toBe(url);
         return `./cache/${mockId}.mp4`;
       });
-      
+
       const result = await service.downloadMedia(url);
-      
+
       expect(result).toBe(`./cache/${mockId}.mp4`);
-      
+
       // Restore original method
       service.downloadMedia = originalDownloadMedia;
     });
