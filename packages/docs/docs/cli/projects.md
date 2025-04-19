@@ -1,5 +1,9 @@
 ---
 sidebar_position: 6
+title: Project Command
+description: Manage ElizaOS projects - handle plugins, configurations, and project settings
+keywords: [CLI, projects, plugins, management, configuration, installation]
+image: /img/cli.jpg
 ---
 
 # Project Command

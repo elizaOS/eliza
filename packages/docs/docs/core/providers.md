@@ -1,3 +1,11 @@
+---
+sidebar_position: 5
+title: Providers System
+description: Understanding ElizaOS providers - components that supply real-time information and context to agents
+keywords: [providers, context, information, data, integration, dynamic, private, state]
+image: /img/providers.jpg
+---
+
 # 🔌 Providers
 
 [Providers](/packages/core/src/providers.ts) are the sources of information for the agent. They provide data or state while acting as the agent's "senses", injecting real-time information into the agent's context. They serve as the eyes, ears, and other sensory inputs that allow the agent to perceive and interact with its environment, like a bridge between the agent and various external systems such as market data, wallet information, sentiment analysis, and temporal context. Anything that the agent knows is either coming from like the built-in context or from a provider. For more info, see the [providers API page](/api/interfaces/provider).

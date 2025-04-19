@@ -92,6 +92,8 @@ export default function DailyNews() {
           ...item,
           category: category.title,
           topic: category.topic,
+          // Normalize sources to always be an array
+          sources: Array.isArray(item.sources) ? item.sources : item.sources ? [item.sources] : [],
         }))
       )
       .slice(0, 12); // Limit to 12 items total
@@ -162,7 +164,7 @@ export default function DailyNews() {
                     <div className={styles.textFade}></div>
                   </div>
 
-                  {item.sources && item.sources.length > 0 && (
+                  {Array.isArray(item.sources) && item.sources.length > 0 && (
                     <div className={styles.sourceLinks}>
                       {item.sources.slice(0, 1).map((source, sourceIdx) =>
                         source.startsWith('http') ? (

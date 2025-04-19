@@ -50,4 +50,4 @@ bun run dev
 
 ## License
 
-MIT 
+MIT

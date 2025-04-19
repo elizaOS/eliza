@@ -63,6 +63,25 @@ bun i && bun run build && bun start
 
 ### Manually Start Eliza (Only recommended if you know what you are doing)
 
+#### Prerequisites
+
+- **Node.js** (v18+ recommended)
+- **bun** (for CLI and dependencies)
+- **bats** (shell test runner, install globally via npm or bun)
+- **git** (for project/plugin tests)
+
+#### Install Bats (Test Runner)
+
+You need the [bats-core](https://github.com/bats-core/bats-core) test runner for shell tests.
+
+To install globally:
+
+```bash
+npm install -g bats
+# or, if you use bun:
+bun add -g bats
+```
+
 #### Checkout the latest release
 
 ```bash

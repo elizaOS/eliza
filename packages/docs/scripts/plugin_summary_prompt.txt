@@ -1,0 +1,27 @@
+Summarize this plugin documentation, focusing only on information explicitly provided:
+
+# [PLUGIN NAME]
+
+## Purpose
+[Core function in 1-2 sentences]
+
+## Key Features
+[Only if listed in documentation]
+
+## Installation
+[Only if provided]
+
+## Configuration
+[Only if provided]
+
+## Integration
+[How it connects with ElizaOS]
+
+## Example Usage
+[Only if provided]
+
+## Links
+[Only if provided]
+
+Skip any section without information.
+Only output the formatted summary - do not repeat these instructions or add explanatory text.
