@@ -365,10 +365,7 @@ export default function CharacterForm({
   };
 
   const renderInputField = (field: InputField) => (
-    <div
-      key={field.name}
-      className={`space-y-2 ${field.name === 'name' ? 'agent-form-name' : ''} ${field.name === 'system' ? 'agent-form-system-prompt' : ''}`}
-    >
+    <div key={field.name} className="space-y-2">
       <Label htmlFor={field.name}>{field.title}</Label>
 
       {field.description && <p className="text-sm text-muted-foreground">{field.description}</p>}
