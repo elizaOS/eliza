@@ -71,7 +71,8 @@
 .videoPlayer {
   width: 100%;
   position: relative;
-  padding-top: 56.25%; /* 16:9 Aspect Ratio */
+  padding-top: 56.25%;
+  /* 16:9 Aspect Ratio */
   overflow: hidden;
 }
 
@@ -192,4 +193,13 @@
   .filterButtons {
     justify-content: center;
   }
+}
+
+/* Remove pagination styles */
+.pagination,
+.paginationButton,
+.paginationButtonActive,
+.paginationButton:disabled,
+.paginationEllipsis {
+  display: none;
 }

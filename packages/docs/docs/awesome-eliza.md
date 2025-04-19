@@ -1,5 +1,24 @@
 ---
 hide_title: true
+title: Awesome ElizaOS
+description: A curated list of awesome ElizaOS resources, plugins, tools, and integrations
+keywords:
+  [
+    awesome,
+    resources,
+    plugins,
+    tools,
+    integrations,
+    clients,
+    adapters,
+    blockchain,
+    DeFi,
+    AI,
+    social,
+    infrastructure,
+  ]
+image: /img/banner.png
+sidebar_position: 6
 ---
 
 # Awesome elizaOS
@@ -322,9 +341,9 @@ A curated list of awesome things related to the [eliza framework](https://github
 
 - [Eliza Technical Report/Whitepaper](https://arxiv.org/pdf/2501.06781) - Academic paper on ElizaOS architecture and capabilities
 - [Exploring the Future of AI Agents in Crypto](https://www.binance.com/en/research/analysis/exploring-the-future-of-ai-agents-in-crypto) - Binance
-- [Almost all AI agents are just ‘memecoins that talk’](https://www.binance.com/en/square/post/18443194059729) - Binance
+- [Almost all AI agents are just 'memecoins that talk'](https://www.binance.com/en/square/post/18443194059729) - Binance
 - [AI16z rebrands into ElizaOS ](https://cryptoslate.com/ai16z-rebrands-into-elizaos-as-adoption-grows/) - CryptoSlate
-- [Eliza Labs and Stanford University’s FDCI Partnership](https://decrypt.co/296770/eliza-labs-and-stanford-universitys-fdci-to-explore-ai-agents-impact-on-digital-currency-systems)
+- [Eliza Labs and Stanford University's FDCI Partnership](https://decrypt.co/296770/eliza-labs-and-stanford-universitys-fdci-to-explore-ai-agents-impact-on-digital-currency-systems)
 - [The Bazaar of Agents](https://x.com/0xPrismatic/status/1872624976882512171?lang=en) - Analyzing elizaOS through lens of 'The Cathedral and the Bazaar'
 - [The Battle of the AI Agent Frameworks](https://members.delphidigital.io/reports/the-battle-of-the-ai-agent-frameworks#the-frameworks-are-dead-long-live-the-frameworks-75f9) - Delphi research report
 

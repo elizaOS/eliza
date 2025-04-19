@@ -10,7 +10,12 @@ const CATEGORIES = [
   { id: 'events', label: 'Events' },
   { id: 'streams', label: 'Streams' },
   { id: 'community', label: 'Community' },
+  { id: 'dev', label: 'ElizaOS Developers' },
+  { id: 'news', label: 'Daily News' },
 ];
+
+// Videos per page for pagination
+const VIDEOS_PER_PAGE = 12;
 
 const VIDEOS = [
   {
@@ -201,6 +206,263 @@ const VIDEOS = [
     src: 'https://arweave.net/Tguqw-tvyfVIhOh4sJC_-3LFYyMy_NURPbimnnrg2HU/shawrunner.mp4',
     thumbnail: '/img/video-thumbnails/shawrunner-thumb.jpg',
   },
+  {
+    title: 'Arcaid - Agent Launchpad',
+    description:
+      "A comprehensive look at Arcade's Agent Launchpad project, enabling communities to launch tokens backed by games with integrated prediction markets.",
+    category: 'dev',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/BRKQ9IWjM9o',
+    docLink: '/community/Streams/03-2025/arcaid',
+  },
+  {
+    title: 'Data Barista - AI Data Analysis',
+    description:
+      'A presentation of Data Barista, an AI agent that specializes in data analysis and visualization, making complex data insights accessible.',
+    category: 'dev',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/cJo3-7lfdkc',
+    docLink: '/community/Streams/03-2025/DataBarista',
+  },
+  {
+    title: 'MMAi - Mixed Martial Arts Analysis',
+    description:
+      'A showcase of MMAi, an AI agent specialized in analyzing mixed martial arts fights and providing insights for betting and strategy.',
+    category: 'dev',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/9T2uW3U6os4',
+    docLink: '/community/Streams/03-2025/MMAi',
+  },
+  {
+    title: 'Pearl Protocol - AI Agent Marketplace',
+    description:
+      "A demonstration of Pearl Protocol's AI agent marketplace, showing how agents can be listed, discovered, and monetized.",
+    category: 'dev',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/8iBqzlO95P0',
+    docLink: '/community/Streams/03-2025/PearlProtocol',
+  },
+  {
+    title: 'Automata - OneRPC Plugin',
+    description:
+      'An in-depth look at OneRPC, a verifiable RPC relay for AI agents featuring trusted execution modules and DCAP plugin.',
+    category: 'dev',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/4eqAeRyAeXc',
+    docLink: '/community/Streams/03-2025/Automata',
+  },
+  {
+    title: 'Compass Labs - AI Trading Infrastructure',
+    description:
+      "A presentation on Compass Labs' infrastructure for AI trading agents, showcasing their platform for automated trading.",
+    category: 'dev',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/-JpiqOyicQo',
+    docLink: '/community/Streams/03-2025/CompassLabs',
+  },
+  {
+    title: 'FireCrawl Plugin Tutorial',
+    description:
+      'A tutorial on building a Firecrawl plugin for ElizaOS, demonstrating how to create agents that can crawl and analyze on-chain data.',
+    category: 'dev',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/aLjq_wJNa08',
+    docLink: '/community/Streams/03-2025/FireCrawl',
+  },
+  {
+    title: 'PayAI Plugin Tutorial',
+    description:
+      'A comprehensive guide to PayAI, a community-developed plugin that enables AI agents to monetize their services through a decentralized marketplace.',
+    category: 'dev',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/8v_NAFC9nJo',
+    docLink: '/community/Streams/03-2025/PayAI',
+  },
+  {
+    title: 'Katoff Gaming Platform',
+    description:
+      "An overview of Katoff's innovative gaming platform that leverages AI agents for validating gaming data and enabling trustless wagering.",
+    category: 'dev',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/MWp82C2k-gc',
+    docLink: '/community/Streams/04-2025/catoff',
+  },
+  {
+    title: 'Daily News Update 1-7-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/ktWAS72nUXk',
+  },
+  {
+    title: 'Daily News Update 1-8-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/6NNnacByUm4',
+  },
+  {
+    title: 'Daily News Update 1-9-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/L1tG7Z43Jzk',
+  },
+  {
+    title: 'Daily News Update 1-10-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/RpW44kxAtPE',
+  },
+  {
+    title: 'Daily News Update 1-11-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/fC4voSbgbMU',
+  },
+  {
+    title: 'Daily News Update 1-12-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/IHSMsYU6W5U',
+  },
+  {
+    title: 'Daily News Update 1-13-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/aKARXoqBZt8',
+  },
+  {
+    title: 'Daily News Update 1-14-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/9NdcSDjnVLY',
+  },
+  {
+    title: 'Daily News Update 1-15-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/9459zm1VZzg',
+  },
+  {
+    title: 'Daily News Update 1-16-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/iDyy0is1KLc',
+  },
+  {
+    title: 'Daily News Update 1-17-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/z8QEt8wYrHY',
+  },
+  {
+    title: 'Daily News Update 1-18-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/ETkkJ4OjoIY',
+  },
+  {
+    title: 'Daily News Update 1-19-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/7SknjV6n264',
+  },
+  {
+    title: 'Daily News Update 1-21-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/MCEv92IrXZk',
+  },
+  {
+    title: 'Daily News Update 1-22-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/6V2uO625z1Q',
+  },
+  {
+    title: 'Daily News Update 1-28-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/F7Aqa7HMT8o',
+  },
+  {
+    title: 'Daily News Update 2-6-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/eLJt2i02mkI',
+  },
+  {
+    title: 'Daily News Update 2-7-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/E1RdlZJFl-o',
+  },
+  {
+    title: 'Daily News Update 2-9-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/Kj5ebaDbgRA',
+  },
+  {
+    title: 'Daily News Update 3-11-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/O8uTEhcBeKo',
+  },
+  {
+    title: 'Daily News Update 4-12-25 | ai16z',
+    description:
+      'Daily update covering the latest developments and contributions in the ElizaOS GitHub repository.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/DoiLBFfkxGA',
+  },
+  {
+    title: 'Daily News - Behind The Scenes | Production Breakdown',
+    description:
+      'A behind-the-scenes look at how the daily news updates are produced, showcasing the AI generation process and workflow.',
+    category: 'news',
+    isYouTube: true,
+    src: 'https://www.youtube.com/embed/fIGoyaEd0Hw',
+  },
 ];
 
 // Default thumbnail for videos
@@ -314,6 +576,8 @@ export default function VideoGallery() {
     streams: 'Live Streams',
     events: 'Event Promos',
     community: 'Community Creations',
+    dev: 'ElizaOS Developers',
+    news: 'Daily News',
   };
 
   return (

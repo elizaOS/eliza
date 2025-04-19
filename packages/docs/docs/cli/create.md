@@ -1,5 +1,9 @@
 ---
 sidebar_position: 2
+title: Create Command
+description: Create new ElizaOS projects and plugins with an interactive setup process
+keywords: [create, project, plugin, setup, scaffolding, initialization, configuration]
+image: /img/cli.jpg
 ---
 
 # Create Command
@@ -177,7 +181,7 @@ npx elizaos create --yes
 
 ## Next Steps
 
-After creation, see the [Getting Started Guide](../getting-started.md) for next steps.
+After creation, see the [Getting Started](../quickstart.md) for next steps.
 
 ## Related Commands
 

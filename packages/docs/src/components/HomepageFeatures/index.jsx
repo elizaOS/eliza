@@ -1,314 +1,239 @@
 // src/components/HomepageFeatures/index.jsx
 import React from 'react';
-import clsx from 'clsx';
-import Heading from '@theme/Heading';
 import Link from '@docusaurus/Link';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import styles from './styles.module.css';
+import clsx from 'clsx';
 
-const FeatureList = [
-  {
-    icon: '🤖',
-    title: 'Multi-Agent Framework',
-    description: (
-      <>
-        Build and deploy <strong>autonomous AI agents</strong> with consistent personalities across
-        platforms. Full support for voice, text, and media interactions.
-      </>
-    ),
-    link: '/docs/core/agents',
-  },
-  {
-    icon: '🧠',
-    title: 'Knowledge Management',
-    description: (
-      <>
-        Powerful RAG system with document processing and semantic search. Import PDFs, markdown, and
-        text files to build comprehensive knowledge bases.
-      </>
-    ),
-    link: '/docs/core/knowledge',
-  },
-  {
-    icon: '🔌',
-    title: 'Extensible Design',
-    description: (
-      <>
-        Create custom actions, add new platform integrations, and extend functionality through a{' '}
-        <b>modular plugin system</b>. Full TypeScript support.
-      </>
-    ),
-    link: '/docs/core/plugins',
-  },
-  {
-    icon: '💭',
-    title: 'Self-Reflection & Learning',
-    description: (
-      <>
-        Agents learn from interactions through built-in reflection mechanisms that extract facts,
-        build relationships, and improve responses over time.
-      </>
-    ),
-    link: '/docs/core/evaluators',
-  },
-  {
-    icon: '💬',
-    title: 'Platform Integrations',
-    description: (
-      <>
-        Connect seamlessly with Discord, Twitter, Telegram, Slack, Farcaster, and more through
-        standardized service abstractions.
-      </>
-    ),
-    link: '/docs/core/services',
-  },
-  {
-    icon: '🌐',
-    title: 'Worlds & Rooms',
-    description: (
-      <>
-        Organize interactions with flexible world and room structures. Create multi-agent
-        environments with defined relationships and contexts.
-      </>
-    ),
-    link: '/docs/core/worlds',
-  },
-  {
-    icon: '⚡',
-    title: 'Action System',
-    description: (
-      <>
-        Define agent capabilities with the actions system. From simple replies to complex
-        interactions like blockchain transactions or content generation.
-      </>
-    ),
-    link: '/docs/core/actions',
-  },
-  {
-    icon: '📅',
-    title: 'Task Management',
-    description: (
-      <>
-        Schedule activities, implement reminders, and create multi-step workflows with the built-in
-        task system for deferred and recurring operations.
-      </>
-    ),
-    link: '/docs/core/tasks',
-  },
-  {
-    icon: '👤',
-    title: 'Entity-Component Architecture',
-    description: (
-      <>
-        Flexible data modeling with entities, components, and relationships. Build rich
-        representations of users, objects, and their connections.
-      </>
-    ),
-    link: '/docs/core/entities',
-  },
-];
-
-const QuickActionsList = [
-  {
-    image: '/img/eliza_banner.jpg',
-    title: 'Create an Agent',
-    description: (
-      <>
-        Get started building your first <strong>autonomous AI agent</strong> with our step-by-step
-        quickstart.
-        <div className={styles.secondaryLinks}>
-          <a href="/docs/quickstart" className={styles.secondaryLink}>
-            <span className={styles.secondaryLinkIcon}>📋</span> View Quickstart Guide
-          </a>
-        </div>
-      </>
-    ),
-    link: '/docs/quickstart',
-  },
-  {
-    image: '/img/montage-plugins.jpg',
-    title: 'Discover Plugins',
-    description: (
-      <>
-        Explore the ecosystem of plugins that extend your agent's abilities and integrations across
-        platforms.
-        <div className={styles.secondaryLinks}>
-          <a href="/packages" className={styles.secondaryLink}>
-            <span className={styles.secondaryLinkIcon}>📋</span> See package showcase
-          </a>
-        </div>
-      </>
-    ),
-    link: '/packages',
-  },
-  {
-    image: '/img/banner2.png',
-    title: 'Get Inspired',
-    description: (
-      <>
-        Browse examples and resources from the community to spark ideas for your next AI agent
-        project.
-        <div className={styles.secondaryLinks}>
-          <a href="/docs/awesome-eliza" className={styles.secondaryLink}>
-            <span className={styles.secondaryLinkIcon}>📋</span> View awesome-eliza
-          </a>
-        </div>
-      </>
-    ),
-    link: '/docs/awesome-eliza',
-  },
-];
-
-const UseCases = [
-  {
-    title: 'Social Media Personas',
-    description:
-      'Create autonomous agents that post content, respond to mentions, and engage with followers',
-    icon: '💬',
-  },
-  {
-    title: 'Community Managers',
-    description: 'Build AI moderators that enforce rules, answer questions, and foster engagement',
-    icon: '👥',
-  },
-  {
-    title: 'Autonomous Traders',
-    description: 'Deploy agents that monitor markets, execute trades, and manage portfolios',
-    icon: '📈',
-  },
-  {
-    title: 'Content Creation',
-    description: 'Generate blog posts, newsletters, and social content with consistent voice',
-    icon: '✍️',
-  },
-];
-
-function Feature({ icon, title, description, link, image }) {
-  return (
-    <div className={styles.featureCard}>
-      <div className={styles.featureIconWrapper}>
-        {image ? (
-          <img src={image} alt={title} className={styles.featureImage} />
-        ) : (
-          <div className={styles.featureIcon}>{icon}</div>
-        )}
-      </div>
-      <div className={styles.featureContent}>
-        <Heading as="h3" className={styles.featureTitle}>
-          {title}
-        </Heading>
-        <div className={styles.featureDescription}>{description}</div>
-        {link && (
-          <Link className={styles.featureLink} to={link}>
-            Learn more <span className={styles.arrowIcon}>→</span>
-          </Link>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ClickableFeature({ icon, title, description, link, image }) {
-  return (
-    <Link to={link} className={styles.cardLink}>
-      <div className={styles.featureCard}>
-        <div className={styles.featureIconWrapper}>
-          {image ? (
-            <img src={image} alt={title} className={styles.featureImage} />
-          ) : (
-            <div className={styles.featureIcon}>{icon}</div>
-          )}
-        </div>
-        <div className={styles.featureContent}>
-          <Heading as="h3" className={styles.featureTitle}>
-            {title}
-          </Heading>
-          <div className={styles.featureDescription}>{description}</div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function UseCase({ title, description, icon }) {
-  return (
-    <div className={styles.useCaseItem}>
-      <div className={styles.useCaseIcon}>{icon}</div>
-      <div className={styles.useCaseContent}>
-        <h4 className={styles.useCaseTitle}>{title}</h4>
-        <p className={styles.useCaseDescription}>{description}</p>
-      </div>
-    </div>
-  );
-}
-
-export default function HomepageFeatures({ type = 'features', showUseCases = true }) {
-  const renderFeatures = () => (
-    <>
-      <div className={styles.sectionHeader}>
-        <Heading as="h2" className={styles.sectionTitle}>
-          Core Features
-        </Heading>
-        <p className={styles.sectionSubtitle}>
-          Everything you need to build powerful AI agents with personality and purpose
-        </p>
-      </div>
-
-      <div className={styles.featureGrid}>
-        {FeatureList.map((props, idx) => (
-          <Feature key={idx} {...props} />
-        ))}
-      </div>
-
-      {showUseCases && (
-        <>
-          <div className={styles.sectionDivider}></div>
-
-          <div className={styles.sectionHeader}>
-            <Heading as="h2" className={styles.sectionTitle}>
-              Use Cases
-            </Heading>
-            <p className={styles.sectionSubtitle}>Versatile applications across various domains</p>
-          </div>
-
-          <div className={styles.useCaseGrid}>
-            {UseCases.map((useCase, idx) => (
-              <UseCase key={idx} {...useCase} />
-            ))}
-          </div>
-
-          <div className={styles.actionSection}>
-            <Link to="/docs/quickstart" className="button button--primary button--lg">
-              Get Started with Eliza
-            </Link>
-            <Link to="/community" className={styles.communityLink}>
-              Join our Community <span className={styles.arrowIcon}>→</span>
-            </Link>
-          </div>
-        </>
-      )}
-    </>
-  );
-
-  const renderQuickActions = () => (
-    <>
-      <div className={styles.sectionHeader}>
-        <Heading as="h2" className={styles.sectionTitle}>
-          Quick Actions
-        </Heading>
-        <p className={styles.sectionSubtitle}>Everything you need to get started with elizaOS</p>
-      </div>
-      <div className={styles.featureGrid}>
-        {QuickActionsList.map((props, idx) => (
-          <ClickableFeature key={idx} {...props} />
-        ))}
-      </div>
-    </>
-  );
-
+export default function HomepageFeatures() {
+  const { siteConfig } = useDocusaurusContext();
   return (
     <section className={styles.features}>
-      <div className="container">
-        {type === 'quickactions' ? renderQuickActions() : renderFeatures()}
+      <div className={styles.container}>
+        <div className={styles.sectionHeader}>
+          <h2 className={styles.sectionTitle}>Quick Actions</h2>
+          <p className={styles.sectionSubtitle}>Get started with elizaOS in just a few clicks</p>
+          <br></br>
+        </div>
+
+        <div className={styles.quickActions}>
+          <div className={styles.actionCard}>
+            <div className={styles.actionImageContainer}>
+              <img
+                src="/img/eliza_banner.jpg"
+                alt="Create an Agent"
+                className={styles.actionImage}
+              />
+            </div>
+            <h3>🤖 Create an Agent</h3>
+            <p>
+              Get started building your first autonomous AI agent with our step-by-step quickstart.
+            </p>
+            <div className={styles.actionLinks}>
+              <Link to="/docs/quickstart" className={styles.actionLink}>
+                Start Building
+              </Link>
+              <Link to="/docs/quickstart" className={styles.secondaryLink}>
+                <span className={styles.secondaryLinkIcon}>📋</span> View Quickstart Guide
+              </Link>
+            </div>
+          </div>
+          <div className={styles.actionCard}>
+            <div className={styles.actionImageContainer}>
+              <img src="/img/plugins.jpg" alt="Discover Plugins" className={styles.actionImage} />
+            </div>
+            <h3>🧩 Discover Plugins</h3>
+            <p>
+              Explore the ecosystem of plugins that extend your agent's abilities and integrations
+              across platforms.
+            </p>
+            <div className={styles.actionLinks}>
+              <Link to="/packages" className={styles.actionLink}>
+                Browse Plugins
+              </Link>
+              <Link to="/packages" className={styles.secondaryLink}>
+                <span className={styles.secondaryLinkIcon}>📋</span> See package showcase
+              </Link>
+            </div>
+          </div>
+          <div className={styles.actionCard}>
+            <div className={styles.actionImageContainer}>
+              <img src="/img/banner2.png" alt="Get Inspired" className={styles.actionImage} />
+            </div>
+            <h3>💡 Get Inspired</h3>
+            <p>
+              Browse examples and resources from the community to spark ideas for your next AI agent
+              project.
+            </p>
+            <div className={styles.actionLinks}>
+              <Link to="/docs/awesome-eliza" className={styles.actionLink}>
+                Explore Resources
+              </Link>
+              <Link to="/docs/awesome-eliza" className={styles.secondaryLink}>
+                <span className={styles.secondaryLinkIcon}>📋</span> View awesome-eliza
+              </Link>
+            </div>
+          </div>
+        </div>
+        <br></br>
+
+        <div className={styles.sectionHeader}>
+          <h2 className={styles.sectionTitle}>Overview</h2>
+          <p className={styles.sectionSubtitle}>Explore the core components that power elizaOS</p>
+          <br></br>
+        </div>
+
+        <div className={styles.componentsOverview}>
+          <div className={styles.componentsGrid}>
+            <div className={styles.componentSection}>
+              <h3>Core Components</h3>
+              <div className={styles.componentImageGrid}>
+                <div className={styles.componentImageCard}>
+                  <img
+                    src="/img/agentruntime.jpg"
+                    alt="Agent Runtime"
+                    className={styles.componentImage}
+                  />
+                  <Link to="/docs/core/agents" className={styles.componentImageLink}>
+                    <strong>🤖 Agent Runtime</strong>
+                    <span>
+                      Orchestrates agent behavior, manages state, and coordinates components.
+                    </span>
+                  </Link>
+                </div>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/services.jpg" alt="Services" className={styles.componentImage} />
+                  <Link to="/docs/core/services" className={styles.componentImageLink}>
+                    <strong>📚 Services</strong>
+                    <span>
+                      Enables agents to communicate across Discord, Twitter, Telegram, and other
+                      platforms.
+                    </span>
+                  </Link>
+                </div>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/database.jpg" alt="Database" className={styles.componentImage} />
+                  <Link to="/docs/core/database" className={styles.componentImageLink}>
+                    <strong>💾 Database</strong>
+                    <span>
+                      Stores memories, entity data, relationships, and configuration using vector
+                      search.
+                    </span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.componentSection}>
+              <h3>Intelligence & Behavior</h3>
+              <div className={styles.componentImageGrid}>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/actions.jpg" alt="Actions" className={styles.componentImage} />
+                  <Link to="/docs/core/actions" className={styles.componentImageLink}>
+                    <strong>⚡ Actions</strong>
+                    <span>
+                      Executable capabilities for agents to respond and interact with systems.
+                    </span>
+                  </Link>
+                </div>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/providers.jpg" alt="Providers" className={styles.componentImage} />
+                  <Link to="/docs/core/providers" className={styles.componentImageLink}>
+                    <strong>🔌 Providers</strong>
+                    <span>Supplies context to inform agent decisions in real time.</span>
+                  </Link>
+                </div>
+                <div className={styles.componentImageCard}>
+                  <img
+                    src="/img/evaluators.jpg"
+                    alt="Evaluators"
+                    className={styles.componentImage}
+                  />
+                  <Link to="/docs/core/evaluators" className={styles.componentImageLink}>
+                    <strong>📊 Evaluators</strong>
+                    <span>
+                      Analyzes conversations to extract insights and improve future responses.
+                    </span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.componentSection}>
+              <h3>Structure & Organization</h3>
+              <div className={styles.componentImageGrid}>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/worlds.jpg" alt="Worlds" className={styles.componentImage} />
+                  <Link to="/docs/core/worlds" className={styles.componentImageLink}>
+                    <strong>🌐 Worlds</strong>
+                    <span>Organizes environments like servers or projects.</span>
+                  </Link>
+                </div>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/rooms.jpg" alt="Rooms" className={styles.componentImage} />
+                  <Link to="/docs/core/rooms" className={styles.componentImageLink}>
+                    <strong>💬 Rooms</strong>
+                    <span>Spaces for conversation, like channels or DMs.</span>
+                  </Link>
+                </div>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/entities.jpg" alt="Entities" className={styles.componentImage} />
+                  <Link to="/docs/core/entities" className={styles.componentImageLink}>
+                    <strong>👤 Entities</strong>
+                    <span>Represents users, bots, and other participants.</span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.componentSection}>
+              <h3>Development & Integration</h3>
+              <div className={styles.componentImageGrid}>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/knowledge.jpg" alt="Knowledge" className={styles.componentImage} />
+                  <Link to="/docs/core/knowledge" className={styles.componentImageLink}>
+                    <strong>🧠 Knowledge</strong>
+                    <span>RAG system for document processing and semantic memory.</span>
+                  </Link>
+                </div>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/project.jpg" alt="Projects" className={styles.componentImage} />
+                  <Link to="/docs/core/project" className={styles.componentImageLink}>
+                    <strong>📝 Projects</strong>
+                    <span>Defines and deploys agents with configurations.</span>
+                  </Link>
+                </div>
+                <div className={styles.componentImageCard}>
+                  <img src="/img/tasks.jpg" alt="Tasks" className={styles.componentImage} />
+                  <Link to="/docs/core/tasks" className={styles.componentImageLink}>
+                    <strong>📋 Tasks</strong>
+                    <span>Manages scheduled and deferred operations.</span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.learnMore}>
+          <h2>Learn More About ElizaOS</h2>
+          <div className={styles.buttonGroup}>
+            <Link to="/docs/intro" className={styles.learnMoreLink}>
+              Explore Documentation
+            </Link>
+            <a
+              href="https://calendar.google.com/calendar/embed?src=c_ed31cea342d3e2236f549161e6446c3e407e5625ee7a355c0153befc7a602e7f%40group.calendar.google.com&ctz=America%2FToronto"
+              className={styles.calendarLink}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <svg className={styles.calendarIcon} viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM9 14H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2zm-8 4H7v-2h2v2zm4 0h-2v-2h2v2zm4 0h-2v-2h2v2z" />
+              </svg>
+              View Calendar
+            </a>
+          </div>
+        </div>
       </div>
     </section>
   );

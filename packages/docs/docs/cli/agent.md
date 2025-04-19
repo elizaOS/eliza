@@ -1,5 +1,9 @@
 ---
 sidebar_position: 7
+title: Agent Command
+description: Managing ElizaOS agents through the CLI - list, configure, start, stop, and update agents
+keywords: [CLI, agent, management, configuration, commands, options, actions]
+image: /img/cli.jpg
 ---
 
 # Agent Command

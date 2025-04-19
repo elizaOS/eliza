@@ -10,7 +10,13 @@ import {
   Content,
 } from '@elizaos/core';
 import * as entityUtils from '@elizaos/core';
-import { createMockMemory, createMockRuntime, createMockState, MockRuntime, setupActionTest } from './test-utils';
+import {
+  createMockMemory,
+  createMockRuntime,
+  createMockState,
+  MockRuntime,
+  setupActionTest,
+} from './test-utils';
 
 // Mock the getEntityDetails function
 vi.mock('@elizaos/core', async (importOriginal) => {

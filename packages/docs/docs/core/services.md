@@ -1,5 +1,9 @@
 ---
 sidebar_position: 3
+title: Services System
+description: Understanding ElizaOS services - core components that enable AI agents to interact with external platforms
+keywords: [services, platforms, integration, Discord, Twitter, Telegram, communication, API]
+image: /img/services.jpg
 ---
 
 # 🔌 Services

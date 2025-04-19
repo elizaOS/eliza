@@ -29,38 +29,17 @@ import {
   type WorldPayload,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
-import { choiceAction } from './actions/choice';
-import { followRoomAction } from './actions/followRoom';
-import { ignoreAction } from './actions/ignore';
-import { muteRoomAction } from './actions/muteRoom';
-import { noneAction } from './actions/none';
-import { replyAction } from './actions/reply';
-import updateRoleAction from './actions/roles';
-import { sendMessageAction } from './actions/sendMessage';
-import updateSettingsAction from './actions/settings';
-import { unfollowRoomAction } from './actions/unfollowRoom';
-import { unmuteRoomAction } from './actions/unmuteRoom';
-import { updateEntityAction } from './actions/updateEntity';
-import { reflectionEvaluator } from './evaluators/reflection';
-import { actionsProvider } from './providers/actions';
-import { anxietyProvider } from './providers/anxiety';
-import { attachmentsProvider } from './providers/attachments';
-import { capabilitiesProvider } from './providers/capabilities';
-import { characterProvider } from './providers/character';
-import { choiceProvider } from './providers/choice';
-import { entitiesProvider } from './providers/entities';
-import { evaluatorsProvider } from './providers/evaluators';
-import { factsProvider } from './providers/facts';
-import { knowledgeProvider } from './providers/knowledge';
-import { providersProvider } from './providers/providers';
-import { recentMessagesProvider } from './providers/recentMessages';
-import { relationshipsProvider } from './providers/relationships';
-import { roleProvider } from './providers/roles';
-import { settingsProvider } from './providers/settings';
-import { timeProvider } from './providers/time';
+
+import * as actions from './actions';
+import * as evaluators from './evaluators';
+import * as providers from './providers';
+
 import { ScenarioService } from './services/scenario';
 import { TaskService } from './services/task';
-import { worldProvider } from './providers/world';
+
+export * from './actions';
+export * from './evaluators';
+export * from './providers';
 
 /**
  * Represents media data containing a buffer of data and the media type.
@@ -859,39 +838,39 @@ export const bootstrapPlugin: Plugin = {
   name: 'bootstrap',
   description: 'Agent bootstrap with basic actions and evaluators',
   actions: [
-    replyAction,
-    followRoomAction,
-    unfollowRoomAction,
-    ignoreAction,
-    noneAction,
-    muteRoomAction,
-    unmuteRoomAction,
-    sendMessageAction,
-    updateEntityAction,
-    choiceAction,
-    updateRoleAction,
-    updateSettingsAction,
+    actions.replyAction,
+    actions.followRoomAction,
+    actions.unfollowRoomAction,
+    actions.ignoreAction,
+    actions.noneAction,
+    actions.muteRoomAction,
+    actions.unmuteRoomAction,
+    actions.sendMessageAction,
+    actions.updateEntityAction,
+    actions.choiceAction,
+    actions.updateRoleAction,
+    actions.updateSettingsAction,
   ],
   events,
-  evaluators: [reflectionEvaluator],
+  evaluators: [evaluators.reflectionEvaluator],
   providers: [
-    evaluatorsProvider,
-    anxietyProvider,
-    knowledgeProvider,
-    timeProvider,
-    entitiesProvider,
-    relationshipsProvider,
-    choiceProvider,
-    factsProvider,
-    roleProvider,
-    settingsProvider,
-    capabilitiesProvider,
-    attachmentsProvider,
-    providersProvider,
-    actionsProvider,
-    characterProvider,
-    recentMessagesProvider,
-    worldProvider,
+    providers.evaluatorsProvider,
+    providers.anxietyProvider,
+    providers.knowledgeProvider,
+    providers.timeProvider,
+    providers.entitiesProvider,
+    providers.relationshipsProvider,
+    providers.choiceProvider,
+    providers.factsProvider,
+    providers.roleProvider,
+    providers.settingsProvider,
+    providers.capabilitiesProvider,
+    providers.attachmentsProvider,
+    providers.providersProvider,
+    providers.actionsProvider,
+    providers.characterProvider,
+    providers.recentMessagesProvider,
+    providers.worldProvider,
   ],
   services: [TaskService, ScenarioService],
 };

@@ -1,3 +1,11 @@
+---
+sidebar_position: 8
+title: Plugin System
+description: Learn about ElizaOS plugins - modular extensions that enhance agent capabilities
+keywords: [plugins, extensions, modules, development, publishing, registry, npm, GitHub]
+image: /img/plugins.png
+---
+
 # Plugins
 
 import Tabs from '@theme/Tabs';
@@ -34,9 +42,9 @@ The new CLI tool introduces a streamlined workflow for plugin development withou
 
 1. **Create**: `npm create eliza` - Initialize a new plugin project with proper structure
 2. **Develop**: Edit the plugin code in the generated project structure
-3. **Test**: `npx elizaos test` - Test the plugin functionality
-4. **Run**: `npx elizaos start` - Run the plugin with a default agent
-5. **Publish**: `npx elizaos publish` - Share your plugin with others
+3. **Test**: `elizaos test` - Test the plugin functionality
+4. **Run**: `elizaos start` - Run the plugin with a default agent
+5. **Publish**: `elizaos publish` - Share your plugin with others
 
 > Note: at time of publishing, use `npm create eliza@beta` until main version is uploaded
 

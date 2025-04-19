@@ -1,3 +1,11 @@
+---
+sidebar_position: 4
+title: Knowledge System
+description: Understanding ElizaOS knowledge management - how agents process, store, and retrieve information
+keywords: [knowledge, RAG, embeddings, documents, processing, retrieval, semantic search]
+image: /img/knowledge.jpg
+---
+
 # Knowledge Management
 
 ## Overview
