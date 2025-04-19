@@ -1,33 +1,21 @@
-// packages/core/__tests__/runtime.test.ts
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-// **Import the NON-INSTRUMENTED version for baseline tests**
-import { AgentRuntime } from '../src/temp';
-// Import necessary values (enums) directly
+import { AgentRuntime } from '../src/runtime';
 import { MemoryType, ModelType } from '../src/types';
-// Import types separately
 import type {
   Action,
   Agent,
   Character,
-  Evaluator,
-  IAgentRuntime, // Keep this if used in mocks/types
   IDatabaseAdapter,
   KnowledgeItem,
   Memory,
-  MemoryMetadata, // Import if needed for Memory mocks
-  ModelTypeName, // Keep type-specific imports here
+  ModelTypeName,
   Plugin,
   Provider,
-  Room,
-  Service,       // Import if needed for mocks
-  ServiceTypeName, // Import if needed for mocks
   State,
   UUID,
-  World
 } from '../src/types';
-// Assuming you have a way to generate/validate UUIDs if needed, otherwise use strings
 import { v4 as uuidv4 } from 'uuid';
-const stringToUuid = (id: string): UUID => id as UUID; // Simple cast for testing
+const stringToUuid = (id: string): UUID => id as UUID;
 
 // --- Mocks ---
 
@@ -36,7 +24,7 @@ const { mockSplitChunks } = vi.hoisted(() => {
   return { mockSplitChunks: vi.fn() };
 });
 vi.mock('../src/prompts', async (importOriginal) => {
-  const original = await importOriginal() as any;
+  const original = (await importOriginal()) as any;
   return {
     ...original,
     splitChunks: mockSplitChunks,
@@ -54,7 +42,7 @@ vi.mock('./index', async (importOriginal) => {
   // Note: This path might need adjustment based on the actual relative path from the test file to src/index
   // Assuming the test is in __tests__ and index is in src, './index' might not resolve correctly.
   // Let's try '../src/index' relative to the test file.
-  const original = await importOriginal() as any;
+  const original = (await importOriginal()) as any;
   return {
     ...original,
     safeReplacer: () => mockSafeReplacer, // safeReplacer() is called in the source
@@ -124,10 +112,9 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   updateTask: vi.fn().mockResolvedValue(undefined),
   deleteTask: vi.fn().mockResolvedValue(undefined),
   updateMemory: vi.fn().mockResolvedValue(true), // Added missing method from previous example
-  getLogs: vi.fn().mockResolvedValue([]),      // Added missing method from previous example
-  deleteLog: vi.fn().mockResolvedValue(undefined) // Added missing method from previous example
+  getLogs: vi.fn().mockResolvedValue([]), // Added missing method from previous example
+  deleteLog: vi.fn().mockResolvedValue(undefined), // Added missing method from previous example
 };
-
 
 // Mock action creator (matches your example)
 const createMockAction = (name: string): Action => ({
@@ -140,14 +127,20 @@ const createMockAction = (name: string): Action => ({
 });
 
 // Mock Memory creator
-const createMockMemory = (text: string, id?: UUID, entityId?: UUID, roomId?: UUID, agentId?: UUID): Memory => ({
+const createMockMemory = (
+  text: string,
+  id?: UUID,
+  entityId?: UUID,
+  roomId?: UUID,
+  agentId?: UUID
+): Memory => ({
   id: id ?? stringToUuid(uuidv4()),
   entityId: entityId ?? stringToUuid(uuidv4()),
   agentId: agentId, // Pass agentId if needed
   roomId: roomId ?? stringToUuid(uuidv4()),
   content: { text }, // Assuming simple text content
   createdAt: Date.now(),
-  metadata: { type: MemoryType.MESSAGE } // Simple metadata
+  metadata: { type: MemoryType.MESSAGE }, // Simple metadata
 });
 
 // Mock State creator
@@ -174,7 +167,6 @@ const mockCharacter: Character = {
   },
   // Add other fields if your runtime logic depends on them
 };
-
 
 // --- Test Suite ---
 
@@ -208,18 +200,21 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     expect(runtime.adapter).toEqual(mockDatabaseAdapter);
   });
 
-
   describe('Plugin Registration', () => {
     it('should register a simple plugin', async () => {
       const mockPlugin: Plugin = { name: 'TestPlugin', description: 'A test plugin' };
       await runtime.registerPlugin(mockPlugin);
       // Check if the plugin is added to the internal list
-      expect(runtime.plugins.some(p => p.name === 'TestPlugin')).toBe(true);
+      expect(runtime.plugins.some((p) => p.name === 'TestPlugin')).toBe(true);
     });
 
     it('should call plugin init function', async () => {
       const initMock = vi.fn().mockResolvedValue(undefined);
-      const mockPlugin: Plugin = { name: 'InitPlugin', description: 'Plugin with init', init: initMock };
+      const mockPlugin: Plugin = {
+        name: 'InitPlugin',
+        description: 'Plugin with init',
+        init: initMock,
+      };
       await runtime.registerPlugin(mockPlugin);
       expect(initMock).toHaveBeenCalledTimes(1);
       expect(initMock).toHaveBeenCalledWith(expect.anything(), runtime); // Check if called with config and runtime
@@ -233,9 +228,16 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       const mockPlugin: Plugin = {
         name: 'FeaturesPlugin',
         description: 'Plugin with features',
-        actions: [{ name: 'TestAction', description: 'Test action', handler: actionHandler, validate: async () => true }],
+        actions: [
+          {
+            name: 'TestAction',
+            description: 'Test action',
+            handler: actionHandler,
+            validate: async () => true,
+          },
+        ],
         providers: [{ name: 'TestProvider', get: providerGet }],
-        models: { [ModelType.TEXT_SMALL]: modelHandler }
+        models: { [ModelType.TEXT_SMALL]: modelHandler },
       };
 
       // Re-create runtime passing plugin in constructor
@@ -243,20 +245,29 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         character: mockCharacter,
         agentId: agentId,
         adapter: mockDatabaseAdapter,
-        plugins: [mockPlugin] // Pass plugin during construction
+        plugins: [mockPlugin], // Pass plugin during construction
       });
 
       // Mock adapter calls needed for initialize
       vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue(undefined);
-      vi.mocked(mockDatabaseAdapter.getAgent).mockResolvedValue({ ...mockCharacter, createdAt: Date.now(), updatedAt: Date.now(), enabled: true }); // Add required Agent fields
-      vi.mocked(mockDatabaseAdapter.getEntityById).mockResolvedValue({ id: agentId, agentId: agentId, names: [mockCharacter.name] });
+      vi.mocked(mockDatabaseAdapter.getAgent).mockResolvedValue({
+        ...mockCharacter,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        enabled: true,
+      }); // Add required Agent fields
+      vi.mocked(mockDatabaseAdapter.getEntityById).mockResolvedValue({
+        id: agentId,
+        agentId: agentId,
+        names: [mockCharacter.name],
+      });
       vi.mocked(mockDatabaseAdapter.getRoom).mockResolvedValue(null);
       vi.mocked(mockDatabaseAdapter.getParticipantsForRoom).mockResolvedValue([]);
 
       await runtime.initialize(); // Initialize to process registrations
 
-      expect(runtime.actions.some(a => a.name === 'TestAction')).toBe(true);
-      expect(runtime.providers.some(p => p.name === 'TestProvider')).toBe(true);
+      expect(runtime.actions.some((a) => a.name === 'TestAction')).toBe(true);
+      expect(runtime.providers.some((p) => p.name === 'TestProvider')).toBe(true);
       expect(runtime.models.has(ModelType.TEXT_SMALL)).toBe(true);
     });
   });
@@ -265,8 +276,17 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     beforeEach(() => {
       // Mock adapter calls needed for a successful initialize
       vi.mocked(mockDatabaseAdapter.ensureAgentExists).mockResolvedValue(undefined);
-      vi.mocked(mockDatabaseAdapter.getAgent).mockResolvedValue({ ...mockCharacter, createdAt: Date.now(), updatedAt: Date.now(), enabled: true }); // Add required Agent fields
-      vi.mocked(mockDatabaseAdapter.getEntityById).mockResolvedValue({ id: agentId, agentId: agentId, names: [mockCharacter.name] });
+      vi.mocked(mockDatabaseAdapter.getAgent).mockResolvedValue({
+        ...mockCharacter,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        enabled: true,
+      }); // Add required Agent fields
+      vi.mocked(mockDatabaseAdapter.getEntityById).mockResolvedValue({
+        id: agentId,
+        agentId: agentId,
+        names: [mockCharacter.name],
+      });
       vi.mocked(mockDatabaseAdapter.getRoom).mockResolvedValue(null);
       vi.mocked(mockDatabaseAdapter.getParticipantsForRoom).mockResolvedValue([]);
     });
@@ -289,12 +309,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         character: mockCharacter,
         agentId: agentId,
       });
-      await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(/Database adapter not initialized/);
+      await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(
+        /Database adapter not initialized/
+      );
     });
 
     // Add more tests for initialize: existing entity, existing room, knowledge processing etc.
   });
-
 
   describe('State Composition', () => {
     it('should call provider get methods', async () => {
@@ -311,9 +332,17 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       expect(provider1Get).toHaveBeenCalledTimes(1);
       // The cached state passed will be the initial empty-ish one
-      expect(provider1Get).toHaveBeenCalledWith(runtime, message, { values: {}, data: {}, text: '' });
+      expect(provider1Get).toHaveBeenCalledWith(runtime, message, {
+        values: {},
+        data: {},
+        text: '',
+      });
       expect(provider2Get).toHaveBeenCalledTimes(1);
-      expect(provider2Get).toHaveBeenCalledWith(runtime, message, { values: {}, data: {}, text: '' });
+      expect(provider2Get).toHaveBeenCalledWith(runtime, message, {
+        values: {},
+        data: {},
+        text: '',
+      });
       expect(state.text).toContain('p1_text');
       expect(state.text).toContain('p2_text');
       expect(state.values).toHaveProperty('p1_val', 1);
@@ -356,10 +385,15 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       expect(modelHandler).toHaveBeenCalledTimes(1);
       // Check that handler was called with runtime and merged params
-      expect(modelHandler).toHaveBeenCalledWith(runtime, expect.objectContaining({ ...params, runtime: runtime }));
+      expect(modelHandler).toHaveBeenCalledWith(
+        runtime,
+        expect.objectContaining({ ...params, runtime: runtime })
+      );
       expect(result).toEqual({ result: 'success' });
       // Check if log was called (part of useModel logic)
-      expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(expect.objectContaining({ type: `useModel:${modelType}` }));
+      expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
+        expect.objectContaining({ type: `useModel:${modelType}` })
+      );
     });
 
     it('should throw if model type is not registered', async () => {
@@ -383,7 +417,13 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       runtime.registerAction(testAction);
 
       message = createMockMemory('user message', undefined, undefined, undefined, agentId);
-      responseMemory = createMockMemory('agent response', undefined, undefined, message.roomId, agentId); // Same room
+      responseMemory = createMockMemory(
+        'agent response',
+        undefined,
+        undefined,
+        message.roomId,
+        agentId
+      ); // Same room
       responseMemory.content.actions = ['TestAction']; // Specify action to run
 
       // Mock composeState as it's called within processActions
@@ -400,11 +440,16 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         runtime,
         message,
         expect.objectContaining({ text: 'composed state text' }), // Check composed state
-        {},        // options
+        {}, // options
         undefined, // callback
         [responseMemory] // responses array
       );
-      expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(expect.objectContaining({ type: 'action', body: expect.objectContaining({ action: 'TestAction' }) }));
+      expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'action',
+          body: expect.objectContaining({ action: 'TestAction' }),
+        })
+      );
     });
 
     // Add tests for action not found, simile matching, handler errors
@@ -412,7 +457,9 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       responseMemory.content.actions = ['NonExistentAction'];
       await runtime.processActions(message, [responseMemory]);
       expect(mockActionHandler).not.toHaveBeenCalled();
-      expect(mockDatabaseAdapter.log).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'action' }));
+      expect(mockDatabaseAdapter.log).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'action' })
+      );
     });
   });
 
@@ -442,10 +489,10 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('addKnowledge should create document and fragment memories', async () => {
-      const knowledgeText = "Sentence one. Sentence two.";
+      const knowledgeText = 'Sentence one. Sentence two.';
       const knowledgeId = stringToUuid(uuidv4());
       const item: KnowledgeItem = { id: knowledgeId, content: { text: knowledgeText } };
-      const fragments = ["Sentence one.", "Sentence two."];
+      const fragments = ['Sentence one.', 'Sentence two.'];
 
       // Set the mock return value specifically for this test
       mockSplitChunks.mockResolvedValue(fragments);
@@ -458,13 +505,14 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(mockDatabaseAdapter.createMemory).toHaveBeenCalledTimes(1 + fragments.length); // 1 doc + N fragments
 
       // Check document creation (1st call)
-      expect(mockDatabaseAdapter.createMemory).toHaveBeenNthCalledWith(1,
+      expect(mockDatabaseAdapter.createMemory).toHaveBeenNthCalledWith(
+        1,
         expect.objectContaining({
           id: knowledgeId,
-          metadata: expect.objectContaining({ type: MemoryType.DOCUMENT })
+          metadata: expect.objectContaining({ type: MemoryType.DOCUMENT }),
         }),
         'documents', // Table name for documents
-        undefined    // Explicitly check for undefined unique flag
+        undefined // Explicitly check for undefined unique flag
       );
 
       // Check fragment creation (subsequent calls)
@@ -472,28 +520,29 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         const callIndex = i + 2; // Starts from the 2nd call
         // Verify embedding call per fragment - pass the string directly
         expect(runtime.useModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING, fragments[i]);
-        expect(mockDatabaseAdapter.createMemory).toHaveBeenNthCalledWith(callIndex,
+        expect(mockDatabaseAdapter.createMemory).toHaveBeenNthCalledWith(
+          callIndex,
           expect.objectContaining({
             content: { text: fragments[i] },
             embedding: expect.any(Array),
             metadata: expect.objectContaining({
               type: MemoryType.FRAGMENT,
               documentId: knowledgeId,
-              position: i
-            })
+              position: i,
+            }),
           }),
           'knowledge', // Table name for knowledge fragments
-          undefined    // Explicitly check for undefined unique flag
+          undefined // Explicitly check for undefined unique flag
         );
       }
     });
 
     it('getKnowledge should call useModel and searchMemories', async () => {
-      const queryText = "find knowledge";
+      const queryText = 'find knowledge';
       const message = createMockMemory(queryText, undefined, undefined, undefined, agentId);
       const mockFragments = [
-        createMockMemory("found fragment 1", undefined, undefined, undefined, agentId),
-        createMockMemory("found fragment 2", undefined, undefined, undefined, agentId)
+        createMockMemory('found fragment 1', undefined, undefined, undefined, agentId),
+        createMockMemory('found fragment 2', undefined, undefined, undefined, agentId),
       ];
 
       vi.mocked(mockDatabaseAdapter.searchMemories).mockResolvedValue(mockFragments);
@@ -503,17 +552,18 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(runtime.useModel).toHaveBeenCalledTimes(1);
       expect(runtime.useModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING, { text: queryText });
       expect(mockDatabaseAdapter.searchMemories).toHaveBeenCalledTimes(1);
-      expect(mockDatabaseAdapter.searchMemories).toHaveBeenCalledWith(expect.objectContaining({
-        tableName: 'knowledge',
-        embedding: expect.any(Array), // Check that an embedding was passed
-        roomId: agentId, // Should search in agent's own room context
-        count: 5
-      }));
+      expect(mockDatabaseAdapter.searchMemories).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tableName: 'knowledge',
+          embedding: expect.any(Array), // Check that an embedding was passed
+          roomId: agentId, // Should search in agent's own room context
+          count: 5,
+        })
+      );
       expect(results).toHaveLength(2);
-      expect(results[0].content.text).toBe("found fragment 1");
+      expect(results[0].content.text).toBe('found fragment 1');
     });
   });
-
 
   // --- Adapter Passthrough Tests ---
   describe('Adapter Passthrough', () => {
@@ -593,7 +643,6 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         const providerGet = vi.fn().mockResolvedValue({ text: 'provider text' });
         runtime.registerProvider({ name: 'TestProvider', get: providerGet });
 
-
         const state = await runtime.composeState(message);
         expect(state).toHaveProperty('values');
         expect(state).toHaveProperty('text');
@@ -621,6 +670,4 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
     });
   });
-
-
 }); // End of main describe block

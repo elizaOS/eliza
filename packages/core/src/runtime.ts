@@ -3,13 +3,17 @@ import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import logger from './logger';
 import { splitChunks } from './prompts';
-// Import enums and values that are used as values
 import { ChannelType, MemoryType, ModelType } from './types';
-// Import for instrumentation
 import { InstrumentationService } from './instrumentation/service';
-import { Context, SpanStatusCode, trace, SpanStatus, Span, context } from '@opentelemetry/api';
+import {
+  type Context,
+  SpanStatusCode,
+  trace,
+  SpanStatus,
+  type Span,
+  context,
+} from '@opentelemetry/api';
 
-// Import types with the 'type' keyword
 import type {
   Action,
   Agent,
@@ -43,7 +47,7 @@ import type {
   World,
 } from './types';
 import { stringToUuid } from './uuid';
-import { EventType, type MessagePayload } from './types'; // Added EventType and MessagePayload
+import { EventType, type MessagePayload } from './types';
 
 /**
  * Represents a collection of settings grouped by namespace.
@@ -55,7 +59,7 @@ import { EventType, type MessagePayload } from './types'; // Added EventType and
 /**
  * Initialize an empty object for storing environment settings.
  */
-let environmentSettings: RuntimeSettings = {};
+const environmentSettings: RuntimeSettings = {};
 
 // Semaphore implementation for controlling concurrent operations
 export class Semaphore {
@@ -187,14 +191,12 @@ export class AgentRuntime implements IAgentRuntime {
     // Store plugins in the array but don't initialize them yet
     this.plugins = plugins;
 
-
-
     // Initialize instrumentation service with appropriate configuration
     try {
       // Create instrumentation service with agent info
       this.instrumentationService = new InstrumentationService({
         serviceName: `agent-${this.character?.name || 'unknown'}-${this.agentId}`,
-        enabled: process.env.INSTRUMENTATION_ENABLED === 'true'
+        enabled: process.env.INSTRUMENTATION_ENABLED === 'true',
       });
 
       // Get a tracer for the runtime
@@ -207,15 +209,15 @@ export class AgentRuntime implements IAgentRuntime {
       // Create a no-op implementation
       this.instrumentationService = {
         getTracer: () => null,
-        start: async () => { },
-        stop: async () => { },
+        start: async () => {},
+        stop: async () => {},
         isStarted: () => false,
         isEnabled: () => false,
         name: 'INSTRUMENTATION',
         capabilityDescription: 'Disabled instrumentation service (fallback)',
         instrumentationConfig: { enabled: false },
         getMeter: () => null,
-        flush: async () => { }
+        flush: async () => {},
       } as any;
       this.tracer = null;
     }
@@ -230,21 +232,25 @@ export class AgentRuntime implements IAgentRuntime {
    * @param parentContext Optional parent context for the span
    * @returns The result of the provided function
    */
-  async startSpan<T>(name: string, fn: (span: Span) => Promise<T>, parentContext?: Context): Promise<T> {
+  async startSpan<T>(
+    name: string,
+    fn: (span: Span) => Promise<T>,
+    parentContext?: Context
+  ): Promise<T> {
     // If instrumentation is disabled, create a mock span with no-op methods
     if (!this.instrumentationService?.isEnabled?.() || !this.tracer) {
       const mockSpan = {
-        setStatus: () => { },
-        setAttribute: () => { },
-        setAttributes: () => { },
-        recordException: () => { },
-        addEvent: () => { },
-        end: () => { },
+        setStatus: () => {},
+        setAttribute: () => {},
+        setAttributes: () => {},
+        recordException: () => {},
+        addEvent: () => {},
+        end: () => {},
         isRecording: () => false,
         spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
-        updateName: () => { },
-        addLink: () => { },
-        addLinks: () => { }
+        updateName: () => {},
+        addLink: () => {},
+        addLinks: () => {},
       } as unknown as Span;
       return fn(mockSpan);
     }
@@ -271,7 +277,7 @@ export class AgentRuntime implements IAgentRuntime {
         span.recordException(error as Error);
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: (error as Error).message
+          message: (error as Error).message,
         });
         span.end();
 
@@ -300,17 +306,17 @@ export class AgentRuntime implements IAgentRuntime {
     if (!this.instrumentationService?.isEnabled?.() || !this.tracer) {
       // Return mock span if instrumentation is disabled
       return {
-        setStatus: () => { },
-        setAttribute: () => { },
-        setAttributes: () => { },
-        recordException: () => { },
-        addEvent: () => { },
-        end: () => { },
+        setStatus: () => {},
+        setAttribute: () => {},
+        setAttributes: () => {},
+        recordException: () => {},
+        addEvent: () => {},
+        end: () => {},
         isRecording: () => false,
         spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
-        updateName: () => { },
-        addLink: () => { },
-        addLinks: () => { }
+        updateName: () => {},
+        addLink: () => {},
+        addLinks: () => {},
       } as unknown as Span;
     }
 
@@ -326,7 +332,7 @@ export class AgentRuntime implements IAgentRuntime {
     return this.startSpan('AgentRuntime.registerPlugin', async (span) => {
       span.setAttributes({
         'plugin.name': plugin?.name || 'unknown',
-        'agent.id': this.agentId
+        'agent.id': this.agentId,
       });
 
       if (!plugin) {
@@ -356,7 +362,7 @@ export class AgentRuntime implements IAgentRuntime {
           const errorMessage = error instanceof Error ? error.message : String(error);
           span.setAttributes({
             'error.message': errorMessage,
-            'error.type': error instanceof Error ? error.constructor.name : 'Unknown'
+            'error.type': error instanceof Error ? error.constructor.name : 'Unknown',
           });
 
           if (
@@ -461,7 +467,7 @@ export class AgentRuntime implements IAgentRuntime {
     return this.startSpan('AgentRuntime.stop', async (span) => {
       span.setAttributes({
         'agent.id': this.agentId,
-        'agent.name': this.character?.name || 'unknown'
+        'agent.name': this.character?.name || 'unknown',
       });
 
       this.runtimeLogger.debug(`runtime::stop - character ${this.character.name}`);
@@ -483,7 +489,7 @@ export class AgentRuntime implements IAgentRuntime {
       span.setAttributes({
         'agent.id': this.agentId,
         'agent.name': this.character?.name || 'unknown',
-        'plugins.count': this.plugins.length
+        'plugins.count': this.plugins.length,
       });
 
       if (this.isInitialized) {
@@ -510,7 +516,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       span.addEvent('plugins_setup');
       span.setAttributes({
-        'registered_plugins': Array.from(registeredPluginNames).join(',')
+        registered_plugins: Array.from(registeredPluginNames).join(','),
       });
 
       // Ensure adapter is initialized
@@ -639,7 +645,7 @@ export class AgentRuntime implements IAgentRuntime {
       if (this.character?.knowledge && this.character.knowledge.length > 0) {
         span.addEvent('processing_character_knowledge');
         span.setAttributes({
-          'knowledge.count': this.character.knowledge.length
+          'knowledge.count': this.character.knowledge.length,
         });
 
         const stringKnowledge = this.character.knowledge.filter(
@@ -652,7 +658,7 @@ export class AgentRuntime implements IAgentRuntime {
       // Start all deferred services now that runtime is ready
       span.addEvent('starting_deferred_services');
       span.setAttributes({
-        'deferred_services.count': this.servicesInitQueue.size
+        'deferred_services.count': this.servicesInitQueue.size,
       });
 
       for (const service of this.servicesInitQueue) {
@@ -680,7 +686,7 @@ export class AgentRuntime implements IAgentRuntime {
         span.addEvent('invalid_message');
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: 'Invalid message for knowledge query'
+          message: 'Invalid message for knowledge query',
         });
         this.runtimeLogger.warn('Invalid message for knowledge query:', {
           message,
@@ -695,7 +701,7 @@ export class AgentRuntime implements IAgentRuntime {
         span.addEvent('empty_text');
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: 'Empty text for knowledge query'
+          message: 'Empty text for knowledge query',
         });
         this.runtimeLogger.warn('Empty text for knowledge query');
         return [];
@@ -704,7 +710,7 @@ export class AgentRuntime implements IAgentRuntime {
       span.setAttributes({
         'message.id': message.id,
         'query.length': message.content.text.length,
-        'agent.id': this.agentId
+        'agent.id': this.agentId,
       });
 
       span.addEvent('generating_embedding');
@@ -714,7 +720,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       span.addEvent('searching_memories');
       span.setAttributes({
-        'embedding.length': embedding.length
+        'embedding.length': embedding.length,
       });
 
       const fragments = await this.searchMemories({
@@ -727,7 +733,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       span.addEvent('knowledge_retrieved');
       span.setAttributes({
-        'fragments.count': fragments.length
+        'fragments.count': fragments.length,
       });
 
       // Return the fragments directly as this is used from prompts.
@@ -754,7 +760,7 @@ export class AgentRuntime implements IAgentRuntime {
         'item.id': item.id,
         'agent.id': this.agentId,
         'options.targetTokens': options.targetTokens,
-        'options.overlap': options.overlap
+        'options.overlap': options.overlap,
       });
 
       // First store the document
@@ -778,7 +784,7 @@ export class AgentRuntime implements IAgentRuntime {
       span.addEvent('splitting_chunks');
       const fragments = await splitChunks(item.content.text, options.targetTokens, options.overlap);
       span.setAttributes({
-        'fragments.count': fragments.length
+        'fragments.count': fragments.length,
       });
       span.addEvent('chunks_split');
 
@@ -814,7 +820,7 @@ export class AgentRuntime implements IAgentRuntime {
           span.recordException(error as Error);
           span.setAttributes({
             'error.fragment': i,
-            'error.message': errorMsg
+            'error.message': errorMsg,
           });
           this.runtimeLogger.error(`Error processing fragment ${i}: ${errorMsg}`);
         }
@@ -822,7 +828,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       span.setAttributes({
         'fragments.processed': fragmentsProcessed,
-        'fragments.success_rate': fragmentsProcessed / fragments.length
+        'fragments.success_rate': fragmentsProcessed / fragments.length,
       });
       span.addEvent('knowledge_processing_complete');
     });
@@ -996,7 +1002,7 @@ export class AgentRuntime implements IAgentRuntime {
       span.setAttributes({
         'message.id': message.id,
         'responses.count': responses.length,
-        'agent.id': this.agentId
+        'agent.id': this.agentId,
       });
 
       for (const response of responses) {
@@ -1009,7 +1015,7 @@ export class AgentRuntime implements IAgentRuntime {
         const actions = response.content.actions;
         span.setAttributes({
           'actions.count': actions.length,
-          'actions.names': JSON.stringify(actions)
+          'actions.names': JSON.stringify(actions),
         });
 
         function normalizeAction(action: string) {
@@ -1056,7 +1062,7 @@ export class AgentRuntime implements IAgentRuntime {
             const errorMsg = `No action found for: ${responseAction}`;
             span.addEvent('action_not_found');
             span.setAttributes({
-              'error.action': responseAction
+              'error.action': responseAction,
             });
             this.runtimeLogger.error(errorMsg);
             continue;
@@ -1065,7 +1071,7 @@ export class AgentRuntime implements IAgentRuntime {
           if (!action.handler) {
             span.addEvent('action_has_no_handler');
             span.setAttributes({
-              'error.action': action.name
+              'error.action': action.name,
             });
             this.runtimeLogger.error(`Action ${action.name} has no handler.`);
             continue;
@@ -1087,9 +1093,9 @@ export class AgentRuntime implements IAgentRuntime {
                 'message.id': message.id,
                 'state.keys': state ? JSON.stringify(Object.keys(state.values)) : 'none',
 
-                'options': JSON.stringify({}), // Hardcoded empty options for now
+                options: JSON.stringify({}), // Hardcoded empty options for now
                 'responses.count': responses?.length ?? 0,
-                'responses.ids': JSON.stringify(responses?.map(r => r.id) ?? []),
+                'responses.ids': JSON.stringify(responses?.map((r) => r.id) ?? []),
               });
 
               try {
@@ -1098,18 +1104,22 @@ export class AgentRuntime implements IAgentRuntime {
 
                 // Log the result in the output event
                 actionSpan.addEvent('action.output', {
-                  'status': 'success',
-                  'result': JSON.stringify(result, safeReplacer()) // Log stringified result
+                  status: 'success',
+                  result: JSON.stringify(result, safeReplacer()), // Log stringified result
                 });
                 actionSpan.setStatus({ code: SpanStatusCode.OK });
               } catch (handlerError) {
-                const handlerErrorMessage = handlerError instanceof Error ? handlerError.message : String(handlerError);
+                const handlerErrorMessage =
+                  handlerError instanceof Error ? handlerError.message : String(handlerError);
                 actionSpan.recordException(handlerError as Error);
                 actionSpan.setStatus({ code: SpanStatusCode.ERROR, message: handlerErrorMessage });
                 actionSpan.setAttributes({
                   'error.message': handlerErrorMessage,
                 });
-                actionSpan.addEvent('action.output', { 'status': 'error', 'error': handlerErrorMessage });
+                actionSpan.addEvent('action.output', {
+                  status: 'error',
+                  error: handlerErrorMessage,
+                });
                 // Re-throw the error to be caught by the outer try/catch
                 throw handlerError;
               }
@@ -1136,11 +1146,11 @@ export class AgentRuntime implements IAgentRuntime {
             span.recordException(error as Error);
             span.setStatus({
               code: SpanStatusCode.ERROR,
-              message: errorMessage
+              message: errorMessage,
             });
             span.setAttributes({
               'error.action': action.name,
-              'error.message': errorMessage
+              'error.message': errorMessage,
             });
             this.runtimeLogger.error(error);
             throw error;
@@ -1173,8 +1183,8 @@ export class AgentRuntime implements IAgentRuntime {
         'message.id': message?.id,
         'room.id': message?.roomId,
         'entity.id': message?.entityId,
-        'did_respond': didRespond,
-        'responses_count': responses?.length || 0,
+        did_respond: didRespond,
+        responses_count: responses?.length || 0,
       });
       span.addEvent('evaluation_started');
 
@@ -1195,8 +1205,9 @@ export class AgentRuntime implements IAgentRuntime {
 
       const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
       span.setAttribute('selected_evaluators_count', evaluators.length);
-      span.addEvent('evaluator_selection_complete', { 'evaluator.names': JSON.stringify(evaluators.map(e => e.name)) });
-
+      span.addEvent('evaluator_selection_complete', {
+        'evaluator.names': JSON.stringify(evaluators.map((e) => e.name)),
+      });
 
       // get the evaluators that were chosen by the response handler
 
@@ -1279,7 +1290,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Step 1: Handle entity creation/update with proper error handling
     try {
       // First check if the entity exists
-      let entity = await this.adapter.getEntityById(entityId);
+      const entity = await this.adapter.getEntityById(entityId);
 
       if (!entity) {
         // Try to create the entity
@@ -1509,8 +1520,8 @@ export class AgentRuntime implements IAgentRuntime {
       span.setAttributes({
         'message.id': message.id,
         'agent.id': this.agentId,
-        'filter_list': filterList ? JSON.stringify(filterList) : 'none', // Use 'none' for clarity
-        'include_list': includeList ? JSON.stringify(includeList) : 'none', // Use 'none' for clarity
+        filter_list: filterList ? JSON.stringify(filterList) : 'none', // Use 'none' for clarity
+        include_list: includeList ? JSON.stringify(includeList) : 'none', // Use 'none' for clarity
       });
       span.addEvent('state_composition_started');
 
@@ -1527,9 +1538,9 @@ export class AgentRuntime implements IAgentRuntime {
         : [];
 
       span.setAttributes({
-        'cached_state_exists': !!cachedState.data.providers, // More specific check
-        'existing_providers_count': existingProviderNames.length,
-        'existing_providers': JSON.stringify(existingProviderNames), // Add list of existing providers
+        cached_state_exists: !!cachedState.data.providers, // More specific check
+        existing_providers_count: existingProviderNames.length,
+        existing_providers: JSON.stringify(existingProviderNames), // Add list of existing providers
       });
 
       // Step 1: Determine base set of providers to fetch
@@ -1555,10 +1566,10 @@ export class AgentRuntime implements IAgentRuntime {
         new Set(this.providers.filter((p) => providerNames.has(p.name)))
       ).sort((a, b) => (a.position || 0) - (b.position || 0));
 
-      const providerNamesToGet = providersToGet.map(p => p.name);
+      const providerNamesToGet = providersToGet.map((p) => p.name);
       span.setAttributes({
-        'providers_to_get_count': providersToGet.length,
-        'providers_to_get': JSON.stringify(providerNamesToGet), // Log names as JSON array
+        providers_to_get_count: providersToGet.length,
+        providers_to_get: JSON.stringify(providerNamesToGet), // Log names as JSON array
       });
       span.addEvent('starting_provider_fetch');
 
@@ -1576,7 +1587,9 @@ export class AgentRuntime implements IAgentRuntime {
                 'provider.name': provider.name,
                 'provider.duration_ms': duration,
                 'result.has_text': !!result.text,
-                'result.values_keys': result.values ? JSON.stringify(Object.keys(result.values)) : '[]',
+                'result.values_keys': result.values
+                  ? JSON.stringify(Object.keys(result.values))
+                  : '[]',
               });
               providerSpan.addEvent('provider_fetch_complete');
 
@@ -1686,7 +1699,8 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Log final text as event, using updated event name
       span.addEvent('context.composed', {
-        'context.final_string': providersText.length > 1000 ? providersText.substring(0, 997) + '...' : providersText, // Truncate if needed
+        'context.final_string':
+          providersText.length > 1000 ? providersText.substring(0, 997) + '...' : providersText, // Truncate if needed
         'context.final_length': providersText.length,
       });
       span.addEvent('state_composition_complete');
@@ -1709,7 +1723,7 @@ export class AgentRuntime implements IAgentRuntime {
       const serviceType = service.serviceType as ServiceTypeName;
       span.setAttributes({
         'service.type': serviceType || 'unknown',
-        'agent.id': this.agentId
+        'agent.id': this.agentId,
       });
 
       if (!serviceType) {
@@ -1744,7 +1758,7 @@ export class AgentRuntime implements IAgentRuntime {
         span.recordException(error as Error);
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: errorMessage
+          message: errorMessage,
         });
         this.runtimeLogger.error(
           `${this.character.name}(${this.agentId}) - Failed to register service ${serviceType}: ${errorMessage}`
@@ -1790,7 +1804,10 @@ export class AgentRuntime implements IAgentRuntime {
       const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
 
       // Try to extract prompt content from params (common patterns)
-      const promptContent = params?.prompt || params?.input || (Array.isArray(params?.messages) ? JSON.stringify(params.messages) : null);
+      const promptContent =
+        params?.prompt ||
+        params?.input ||
+        (Array.isArray(params?.messages) ? JSON.stringify(params.messages) : null);
 
       // Add essential attributes and params/prompt as events
       span.setAttributes({
@@ -1800,7 +1817,7 @@ export class AgentRuntime implements IAgentRuntime {
         'llm.request.top_p': params?.top_p,
         'llm.request.max_tokens': params?.max_tokens || params?.max_tokens_to_sample, // Handle variations
       });
-      span.addEvent('model_parameters', { 'params': JSON.stringify(params, safeReplacer()) }); // Log full params
+      span.addEvent('model_parameters', { params: JSON.stringify(params, safeReplacer()) }); // Log full params
       if (promptContent) {
         span.addEvent('llm.prompt', { 'prompt.content': promptContent }); // Log extracted prompt
       }
@@ -1814,7 +1831,10 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Log input parameters (keep debug log if useful)
-      this.runtimeLogger.debug(`[useModel] ${model} input:`, JSON.stringify(params, safeReplacer(), 2));
+      this.runtimeLogger.debug(
+        `[useModel] ${model} input:`,
+        JSON.stringify(params, safeReplacer(), 2)
+      );
 
       // Handle different parameter formats
       let paramsWithRuntime: any;
@@ -1856,7 +1876,7 @@ export class AgentRuntime implements IAgentRuntime {
         });
 
         // Log response as event
-        span.addEvent('model_response', { 'response': JSON.stringify(response, safeReplacer()) }); // Log processed response
+        span.addEvent('model_response', { response: JSON.stringify(response, safeReplacer()) }); // Log processed response
 
         // Log timing (keep debug log if useful)
         this.runtimeLogger.debug(`[useModel] ${modelKey} completed in ${elapsedTime.toFixed(2)}ms`);
@@ -1866,8 +1886,8 @@ export class AgentRuntime implements IAgentRuntime {
           `[useModel] ${modelKey} output:`,
           Array.isArray(response)
             ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(
-              response.slice(-5)
-            )} (${response.length} items)`
+                response.slice(-5)
+              )} (${response.length} items)`
             : JSON.stringify(response)
         );
 
@@ -1878,7 +1898,11 @@ export class AgentRuntime implements IAgentRuntime {
           body: {
             modelType,
             modelKey,
-            params: params ? (typeof params === 'object' ? Object.keys(params) : typeof params) : null,
+            params: params
+              ? typeof params === 'object'
+                ? Object.keys(params)
+                : typeof params
+              : null,
             response:
               Array.isArray(response) && response.every((x) => typeof x === 'number')
                 ? '[array]'
@@ -1899,7 +1923,7 @@ export class AgentRuntime implements IAgentRuntime {
         span.recordException(error as Error);
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: errorMessage
+          message: errorMessage,
         });
         span.setAttributes({
           'error.time_ms': errorTime,
@@ -1958,15 +1982,20 @@ export class AgentRuntime implements IAgentRuntime {
           rootSpan.addEvent('processing_started');
           // Execute handlers within the new context
           await context.with(spanContext, async () => {
-            await Promise.all(eventHandlers.map((handler) => {
-              // Explicitly capture the active context for each handler
-              const ctx = context.active();
-              return context.with(ctx, () => handler(params));
-            }));
+            await Promise.all(
+              eventHandlers.map((handler) => {
+                // Explicitly capture the active context for each handler
+                const ctx = context.active();
+                return context.with(ctx, () => handler(params));
+              })
+            );
           });
           rootSpan.setStatus({ code: SpanStatusCode.OK });
         } catch (error) {
-          this.runtimeLogger.error(`Error during instrumented handler execution for event ${eventName}:`, error);
+          this.runtimeLogger.error(
+            `Error during instrumented handler execution for event ${eventName}:`,
+            error
+          );
           rootSpan.recordException(error as Error);
           rootSpan.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
           // throw error; // Re-throw if needed
@@ -1980,7 +2009,10 @@ export class AgentRuntime implements IAgentRuntime {
         try {
           await Promise.all(eventHandlers.map((handler) => handler(params)));
         } catch (error) {
-          this.runtimeLogger.error(`Error during emitEvent for ${eventName} (handler execution):`, error);
+          this.runtimeLogger.error(
+            `Error during emitEvent for ${eventName} (handler execution):`,
+            error
+          );
           // throw error; // Re-throw if necessary
         }
       }

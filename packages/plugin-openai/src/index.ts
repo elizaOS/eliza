@@ -17,10 +17,10 @@ import {
   logger,
   VECTOR_DIMS,
   safeReplacer,
-  InstrumentationService,
+  type InstrumentationService,
   ServiceType,
 } from '@elizaos/core';
-import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
+import { generateObject, generateText, JSONParseError, type JSONValue } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import FormData from 'form-data';
 import fetch from 'node-fetch';
@@ -30,18 +30,15 @@ import { SpanStatusCode, trace, type Span, context } from '@opentelemetry/api';
  * Helper function to get tracer if instrumentation is enabled
  */
 function getTracer(runtime: IAgentRuntime) {
-  // Log available service keys for debugging
   const availableServices = Array.from(runtime.getAllServices().keys());
   logger.debug(`[getTracer] Available services: ${JSON.stringify(availableServices)}`);
   logger.debug(`[getTracer] Attempting to get service with key: ${ServiceType.INSTRUMENTATION}`);
 
-  // Use the correct ServiceType enum value for the key
   const instrumentationService = runtime.getService<InstrumentationService>(
     ServiceType.INSTRUMENTATION
   );
 
   if (!instrumentationService) {
-    // Added explicit check for null/undefined
     logger.warn(`[getTracer] Service ${ServiceType.INSTRUMENTATION} not found in runtime.`);
     return null;
   }
@@ -250,17 +247,74 @@ async function generateObjectByModelType(
           'llm.usage.total_tokens': result.usage.totalTokens,
         });
       }
-      if (result.finishReason) {
-        span.setAttribute('llm.response.finish_reason', result.finishReason);
-      }
-
+      span.addEvent('llm.response.raw', {
+        raw: JSON.stringify(result.rawResponse, safeReplacer()),
+      });
       return processedObject;
-    } catch (error) {
-      logger.error(`Error generating object with ${modelName}:`, error);
-      throw error;
+    } catch (error: any) {
+      if (error instanceof JSONParseError) {
+        logger.error(`[generateObject] Failed to parse JSON: ${error.message}`);
+        span.recordException(error);
+        span.addEvent('llm.error.json_parse', {
+          'error.message': error.message,
+          'error.text': error.text,
+        });
+
+        // Attempt to repair JSON using a secondary LLM call
+        span.addEvent('llm.repair.attempt');
+        const repairFunction = getJsonRepairFunction();
+        const repairedJsonString = await repairFunction({
+          text: error.text,
+          error,
+        });
+
+        if (repairedJsonString) {
+          try {
+            const repairedObject = JSON.parse(repairedJsonString);
+            span.addEvent('llm.repair.success', {
+              repaired_object: JSON.stringify(repairedObject, safeReplacer()),
+            });
+            logger.info('[generateObject] Successfully repaired JSON.');
+            // Consider setting OK status if repair successful? Or keep ERROR but add event?
+            span.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: 'JSON parsing failed but was repaired',
+            });
+            return repairedObject;
+          } catch (repairParseError: any) {
+            logger.error(
+              `[generateObject] Failed to parse repaired JSON: ${repairParseError.message}`
+            );
+            span.recordException(repairParseError);
+            span.addEvent('llm.repair.parse_error', {
+              'error.message': repairParseError.message,
+            });
+            span.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: `JSON repair failed: ${repairParseError.message}`,
+            });
+            throw repairParseError; // Throw the repair error
+          }
+        } else {
+          logger.error('[generateObject] JSON repair failed.');
+          span.addEvent('llm.repair.failed');
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: `JSON repair failed: ${error.message}`,
+          });
+          throw error; // Throw original error if repair fails
+        }
+      } else {
+        logger.error(`[generateObject] Unknown error: ${error.message}`);
+        span.recordException(error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error.message,
+        });
+        throw error; // Rethrow other errors
+      }
     }
   });
-  // --- End Instrumentation ---
 }
 
 /**
@@ -278,8 +332,9 @@ function getJsonRepairFunction(): (params: {
         JSON.parse(cleanedText);
         return cleanedText;
       }
-    } catch (jsonError) {
-      logger.warn('Failed to repair JSON text:', jsonError);
+      return null;
+    } catch (e) {
+      logger.error(`[getJsonRepairFunction] Failed to repair JSON: ${e}`);
       return null;
     }
   };
@@ -332,7 +387,7 @@ export const openaiPlugin: Plugin = {
           logger.warn('OpenAI functionality will be limited until a valid API key is provided');
           // Continue execution instead of throwing
         } else {
-          // logger.log("OpenAI API key validated successfully");
+          logger.log('OpenAI API key validated successfully');
         }
       } catch (fetchError) {
         logger.warn(`Error validating OpenAI API key: ${fetchError}`);
@@ -358,7 +413,7 @@ export const openaiPlugin: Plugin = {
         'OPENAI_EMBEDDING_MODEL',
         'text-embedding-3-small'
       );
-      const embeddingDimension = parseInt(
+      const embeddingDimension = Number.parseInt(
         getSetting(runtime, 'OPENAI_EMBEDDING_DIMENSIONS', '1536')
       ) as (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
 
