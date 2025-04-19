@@ -5,6 +5,9 @@ import type {
   ObjectGenerationParams,
   Plugin,
   TextEmbeddingParams,
+  IAgentRuntime,
+  IInstrumentationService,
+  ServiceTypeName,
 } from '@elizaos/core';
 import {
   type DetokenizeTextParams,
@@ -12,10 +15,14 @@ import {
   ModelType,
   type TokenizeTextParams,
   logger,
+  safeReplacer,
+  ServiceType,
+  InstrumentationService,
 } from '@elizaos/core';
-import { generateObject, generateText } from 'ai';
+import { generateObject, generateText, JSONParseError, JSONValue } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
 import { z } from 'zod';
+import { SpanStatusCode, trace, type Span, context } from '@opentelemetry/api';
 
 /**
  * Runtime interface for the Groq plugin
@@ -26,6 +33,68 @@ interface Runtime {
     system?: string;
   };
   fetch?: typeof fetch;
+}
+
+/**
+ * Helper function to get tracer if instrumentation is enabled
+ */
+function getTracer(runtime: IAgentRuntime) {
+  const instrumentationService = runtime.getService<InstrumentationService>(ServiceType.INSTRUMENTATION);
+  if (!instrumentationService?.isEnabled()) {
+    return null;
+  }
+  return instrumentationService.getTracer('eliza.llm.groq');
+}
+
+/**
+ * Helper function to start an LLM span
+ */
+async function startLlmSpan<T>(
+  runtime: IAgentRuntime,
+  spanName: string,
+  attributes: Record<string, any>,
+  fn: (span: Span) => Promise<T>
+): Promise<T> {
+  const tracer = getTracer(runtime);
+  if (!tracer) {
+    const dummySpan = {
+      setAttribute: () => { },
+      setAttributes: () => { },
+      addEvent: () => { },
+      recordException: () => { },
+      setStatus: () => { },
+      end: () => { },
+      spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
+    } as unknown as Span;
+    return fn(dummySpan);
+  }
+
+  const activeContext = context.active();
+  return tracer.startActiveSpan(spanName, { attributes }, activeContext, async (span: Span) => {
+    try {
+      const result = await fn(span);
+      span.setStatus({ code: SpanStatusCode.OK });
+      span.end();
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      span.recordException(error as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message });
+      span.end();
+      throw error;
+    }
+  });
+}
+
+/**
+ * Helper function to get settings with fallback to process.env
+ */
+function getSetting(runtime: IAgentRuntime, key: string, defaultValue?: string): string | undefined {
+  const setting = runtime.getSetting(key);
+  if (setting !== null && setting !== undefined) {
+    return String(setting);
+  }
+  return process.env[key] ?? defaultValue;
 }
 
 /**
@@ -284,39 +353,64 @@ export const groqPlugin: Plugin = {
       }
     },
     [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
-      try {
-        const temperature = 0.7;
-        const frequency_penalty = 0.7;
-        const presence_penalty = 0.7;
-        const max_response_length = 8000;
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
-        const groq = createGroq({
-          apiKey: runtime.getSetting('GROQ_API_KEY'),
-          fetch: runtime.fetch,
-          baseURL,
-        });
+      const apiKey = getSetting(runtime, 'GROQ_API_KEY');
+      if (!apiKey) throw new Error('GROQ_API_KEY not set');
 
-        const model =
-          runtime.getSetting('GROQ_SMALL_MODEL') ??
-          runtime.getSetting('SMALL_MODEL') ??
-          'llama-3.1-8b-instant';
+      const modelName = getSetting(runtime, 'SMALL_GROQ_MODEL') ?? 'llama-3.1-8b-instant';
+      // Consistent params with OpenAI plugin where applicable
+      const temperature = 0.7;
+      const maxTokens = 8192;
 
-        logger.log('generating text');
-        logger.log(prompt);
+      // --- Start Instrumentation ---
+      const attributes = {
+        'llm.vendor': 'Groq',
+        'llm.request.type': 'chat', // Groq models are typically chat-based
+        'llm.request.model': modelName,
+        'llm.request.temperature': temperature,
+        'llm.request.max_tokens': maxTokens,
+        'llm.request.stop_sequences': JSON.stringify(stopSequences),
+      };
 
-        return await generateGroqText(groq, model, {
-          prompt,
-          system: runtime.character.system ?? undefined,
-          temperature,
-          maxTokens: max_response_length,
-          frequencyPenalty: frequency_penalty,
-          presencePenalty: presence_penalty,
-          stopSequences,
-        });
-      } catch (error) {
-        logger.error('Error in TEXT_SMALL model:', error);
-        return 'Error generating text. Please try again later.';
-      }
+      return startLlmSpan(runtime, 'LLM.generateText', attributes, async (span) => {
+        span.addEvent('llm.prompt', { 'prompt.content': prompt });
+
+        try {
+          const groq = createGroq({ apiKey });
+
+          // Note: Raw response and detailed usage/finish reason might be abstracted by ai-sdk
+          const result = await generateText({
+            model: groq(modelName),
+            prompt: prompt,
+            system: runtime.character.system ?? undefined,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            stopSequences: stopSequences,
+            // frequencyPenalty: ..., // Add if needed and supported by Groq/ai-sdk
+            // presencePenalty: ..., // Add if needed and supported by Groq/ai-sdk
+          });
+
+          const processedTextResponse = result.text;
+          span.setAttribute('llm.response.processed.length', processedTextResponse.length);
+          span.addEvent('llm.response.processed', { 'response.content': processedTextResponse.substring(0, 200) + (processedTextResponse.length > 200 ? '...' : '') });
+
+          if (result.usage) {
+            span.setAttributes({
+              'llm.usage.prompt_tokens': result.usage.promptTokens,
+              'llm.usage.completion_tokens': result.usage.completionTokens,
+              'llm.usage.total_tokens': result.usage.totalTokens,
+            });
+          }
+          if (result.finishReason) {
+            span.setAttribute('llm.response.finish_reason', result.finishReason);
+          }
+
+          return processedTextResponse;
+        } catch (error) {
+          logger.error('[Groq] Error in TEXT_SMALL model:', error);
+          throw error;
+        }
+      });
+      // --- End Instrumentation ---
     },
     [ModelType.TEXT_LARGE]: async (
       runtime,
@@ -325,35 +419,66 @@ export const groqPlugin: Plugin = {
         stopSequences = [],
         maxTokens = 8192,
         temperature = 0.7,
-        frequencyPenalty = 0.7,
-        presencePenalty = 0.7,
+        frequencyPenalty, // Log if passed
+        presencePenalty, // Log if passed
       }: GenerateTextParams
     ) => {
-      try {
-        const model =
-          runtime.getSetting('GROQ_LARGE_MODEL') ??
-          runtime.getSetting('LARGE_MODEL') ??
-          'llama-3.2-90b';
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
-        const groq = createGroq({
-          apiKey: runtime.getSetting('GROQ_API_KEY'),
-          fetch: runtime.fetch,
-          baseURL,
-        });
+      const apiKey = getSetting(runtime, 'GROQ_API_KEY');
+      if (!apiKey) throw new Error('GROQ_API_KEY not set');
 
-        return await generateGroqText(groq, model, {
-          prompt,
-          system: runtime.character.system ?? undefined,
-          temperature,
-          maxTokens,
-          frequencyPenalty,
-          presencePenalty,
-          stopSequences,
-        });
-      } catch (error) {
-        logger.error('Error in TEXT_LARGE model:', error);
-        return 'Error generating text. Please try again later.';
-      }
+      const modelName = getSetting(runtime, 'LARGE_GROQ_MODEL') ?? 'llama-3.2-90b';
+
+      // --- Start Instrumentation ---
+      const attributes = {
+        'llm.vendor': 'Groq',
+        'llm.request.type': 'chat',
+        'llm.request.model': modelName,
+        'llm.request.temperature': temperature,
+        'llm.request.max_tokens': maxTokens,
+        'llm.request.stop_sequences': JSON.stringify(stopSequences),
+        ...(frequencyPenalty !== undefined && { 'llm.request.frequency_penalty': frequencyPenalty }),
+        ...(presencePenalty !== undefined && { 'llm.request.presence_penalty': presencePenalty }),
+      };
+
+      return startLlmSpan(runtime, 'LLM.generateText', attributes, async (span) => {
+        span.addEvent('llm.prompt', { 'prompt.content': prompt });
+
+        try {
+          const groq = createGroq({ apiKey });
+
+          const result = await generateText({
+            model: groq(modelName),
+            prompt: prompt,
+            system: runtime.character.system ?? undefined,
+            temperature: temperature,
+            maxTokens: maxTokens,
+            stopSequences: stopSequences,
+            frequencyPenalty: frequencyPenalty, // Pass if supported
+            presencePenalty: presencePenalty, // Pass if supported
+          });
+
+          const processedTextResponse = result.text;
+          span.setAttribute('llm.response.processed.length', processedTextResponse.length);
+          span.addEvent('llm.response.processed', { 'response.content': processedTextResponse.substring(0, 200) + (processedTextResponse.length > 200 ? '...' : '') });
+
+          if (result.usage) {
+            span.setAttributes({
+              'llm.usage.prompt_tokens': result.usage.promptTokens,
+              'llm.usage.completion_tokens': result.usage.completionTokens,
+              'llm.usage.total_tokens': result.usage.totalTokens,
+            });
+          }
+          if (result.finishReason) {
+            span.setAttribute('llm.response.finish_reason', result.finishReason);
+          }
+
+          return processedTextResponse;
+        } catch (error) {
+          logger.error('[Groq] Error in TEXT_LARGE model:', error);
+          throw error;
+        }
+      });
+      // --- End Instrumentation ---
     },
     [ModelType.IMAGE]: async (
       runtime,
@@ -428,50 +553,114 @@ export const groqPlugin: Plugin = {
       }
     },
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
-      try {
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
-        const groq = createGroq({
-          apiKey: runtime.getSetting('GROQ_API_KEY'),
-          baseURL,
-        });
-        const model =
-          runtime.getSetting('GROQ_SMALL_MODEL') ??
-          runtime.getSetting('SMALL_MODEL') ??
-          'llama-3.1-8b-instant';
+      const apiKey = getSetting(runtime, 'GROQ_API_KEY');
+      if (!apiKey) throw new Error('GROQ_API_KEY not set');
 
-        if (params.schema) {
-          logger.info('Using OBJECT_SMALL without schema validation');
+      const modelName = getSetting(runtime, 'SMALL_GROQ_MODEL') ?? 'llama-3.1-8b-instant';
+      const temperature = params.temperature ?? 0;
+      const schemaPresent = !!params.schema;
+
+      // --- Start Instrumentation ---
+      const attributes = {
+        'llm.vendor': 'Groq',
+        'llm.request.type': 'object_generation',
+        'llm.request.model': modelName,
+        'llm.request.temperature': temperature,
+        'llm.request.schema_present': schemaPresent,
+      };
+
+      return startLlmSpan(runtime, 'LLM.generateObject', attributes, async (span) => {
+        span.addEvent('llm.prompt', { 'prompt.content': params.prompt });
+        if (schemaPresent) {
+          span.addEvent('llm.request.schema', { 'schema': JSON.stringify(params.schema, safeReplacer()) });
         }
 
-        return await generateGroqObject(groq, model, params);
-      } catch (error) {
-        logger.error('Error in OBJECT_SMALL model:', error);
-        // Return empty object instead of crashing
-        return {};
-      }
+        try {
+          const groq = createGroq({ apiKey });
+
+          const result = await generateObject({
+            model: groq(modelName),
+            output: 'no-schema',
+            prompt: params.prompt,
+            temperature: temperature,
+          });
+
+          const processedObject = result.object;
+          span.addEvent('llm.response.processed', { 'response.object': JSON.stringify(processedObject, safeReplacer()) });
+
+          if (result.usage) {
+            span.setAttributes({
+              'llm.usage.prompt_tokens': result.usage.promptTokens,
+              'llm.usage.completion_tokens': result.usage.completionTokens,
+              'llm.usage.total_tokens': result.usage.totalTokens,
+            });
+          }
+          if (result.finishReason) {
+            span.setAttribute('llm.response.finish_reason', result.finishReason);
+          }
+
+          return processedObject;
+        } catch (error) {
+          logger.error(`[Groq] Error generating object with ${modelName}:`, error);
+          throw error;
+        }
+      });
+      // --- End Instrumentation ---
     },
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
-      try {
-        const baseURL = getCloudflareGatewayBaseURL(runtime, 'groq');
-        const groq = createGroq({
-          apiKey: runtime.getSetting('GROQ_API_KEY'),
-          baseURL,
-        });
-        const model =
-          runtime.getSetting('GROQ_LARGE_MODEL') ??
-          runtime.getSetting('LARGE_MODEL') ??
-          'llama-3.2-90b-vision-preview';
+      const apiKey = getSetting(runtime, 'GROQ_API_KEY');
+      if (!apiKey) throw new Error('GROQ_API_KEY not set');
 
-        if (params.schema) {
-          logger.info('Using OBJECT_LARGE without schema validation');
+      const modelName = getSetting(runtime, 'LARGE_GROQ_MODEL') ?? 'llama-3.2-90b-vision-preview';
+      const temperature = params.temperature ?? 0;
+      const schemaPresent = !!params.schema;
+
+      // --- Start Instrumentation ---
+      const attributes = {
+        'llm.vendor': 'Groq',
+        'llm.request.type': 'object_generation',
+        'llm.request.model': modelName,
+        'llm.request.temperature': temperature,
+        'llm.request.schema_present': schemaPresent,
+      };
+
+      return startLlmSpan(runtime, 'LLM.generateObject', attributes, async (span) => {
+        span.addEvent('llm.prompt', { 'prompt.content': params.prompt });
+        if (schemaPresent) {
+          span.addEvent('llm.request.schema', { 'schema': JSON.stringify(params.schema, safeReplacer()) });
         }
 
-        return await generateGroqObject(groq, model, params);
-      } catch (error) {
-        logger.error('Error in OBJECT_LARGE model:', error);
-        // Return empty object instead of crashing
-        return {};
-      }
+        try {
+          const groq = createGroq({ apiKey });
+
+          const result = await generateObject({
+            model: groq(modelName),
+            output: 'no-schema',
+            prompt: params.prompt,
+            temperature: temperature,
+          });
+
+          const processedObject = result.object;
+          span.addEvent('llm.response.processed', { 'response.object': JSON.stringify(processedObject, safeReplacer()) });
+
+          if (result.usage) {
+            span.setAttributes({
+              'llm.usage.prompt_tokens': result.usage.promptTokens,
+              'llm.usage.completion_tokens': result.usage.completionTokens,
+              'llm.usage.total_tokens': result.usage.totalTokens,
+            });
+          }
+          if (result.finishReason) {
+            span.setAttribute('llm.response.finish_reason', result.finishReason);
+          }
+
+          return processedObject;
+        } catch (error) {
+          logger.error(`[Groq] Error generating object with ${modelName}:`, error);
+          throw error;
+        }
+      });
+      // --- End Instrumentation ---
     },
   },
   tests: [

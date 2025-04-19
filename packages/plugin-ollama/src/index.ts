@@ -1,10 +1,87 @@
-import type { ObjectGenerationParams, Plugin, TextEmbeddingParams } from '@elizaos/core';
-import { type GenerateTextParams, ModelType, logger } from '@elizaos/core';
-import { generateObject, generateText } from 'ai';
+import {
+  ModelType,
+  type GenerateTextParams,
+  type TextEmbeddingParams,
+  type ObjectGenerationParams,
+  logger,
+  safeReplacer,
+  ServiceType,
+  InstrumentationService,
+} from '@elizaos/core';
+import type {
+  Plugin,
+  IAgentRuntime,
+  IInstrumentationService,
+  ModelTypeName,
+} from '@elizaos/core';
 import { createOllama } from 'ollama-ai-provider';
+import { generateText, generateObject } from 'ai';
+import { SpanStatusCode, trace, type Span, context } from '@opentelemetry/api';
+
+/**
+ * Helper function to get tracer if instrumentation is enabled
+ */
+function getTracer(runtime: IAgentRuntime) {
+  const instrumentationService = runtime.getService<InstrumentationService>(ServiceType.INSTRUMENTATION);
+  if (!instrumentationService?.isEnabled()) {
+    return null;
+  }
+  return instrumentationService.getTracer('eliza.llm.ollama');
+}
+
+/**
+ * Helper function to start an LLM span
+ */
+async function startLlmSpan<T>(
+  runtime: IAgentRuntime,
+  spanName: string,
+  attributes: Record<string, any>,
+  fn: (span: Span) => Promise<T>
+): Promise<T> {
+  const tracer = getTracer(runtime);
+  if (!tracer) {
+    const dummySpan = {
+      setAttribute: () => { },
+      setAttributes: () => { },
+      addEvent: () => { },
+      recordException: () => { },
+      setStatus: () => { },
+      end: () => { },
+      spanContext: () => ({ traceId: '', spanId: '', traceFlags: 0 }),
+    } as unknown as Span;
+    return fn(dummySpan);
+  }
+
+  const activeContext = context.active();
+  return tracer.startActiveSpan(spanName, { attributes }, activeContext, async (span: Span) => {
+    try {
+      const result = await fn(span);
+      span.setStatus({ code: SpanStatusCode.OK });
+      span.end();
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      span.recordException(error as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message });
+      span.end();
+      throw error;
+    }
+  });
+}
 
 // Default Ollama API URL
 const OLLAMA_API_URL = 'http://localhost:11434/api';
+
+/**
+ * Helper function to get settings with fallback to process.env
+ */
+function getSetting(runtime: IAgentRuntime, key: string, defaultValue?: string): string | undefined {
+  const setting = runtime.getSetting(key);
+  if (setting !== null && setting !== undefined) {
+    return String(setting);
+  }
+  return process.env[key] ?? defaultValue;
+}
 
 /**
  * Generate text using Ollama API
@@ -62,9 +139,12 @@ async function generateOllamaObject(
   }
 }
 
+/**
+ * Defines the Ollama plugin
+ */
 export const ollamaPlugin: Plugin = {
   name: 'ollama',
-  description: 'Ollama plugin',
+  description: 'Provides integration with Ollama language models',
   config: {
     OLLAMA_API_ENDPOINT: process.env.OLLAMA_API_ENDPOINT,
     OLLAMA_SMALL_MODEL: process.env.OLLAMA_SMALL_MODEL,
@@ -73,166 +153,310 @@ export const ollamaPlugin: Plugin = {
     OLLAMA_EMBEDDING_MODEL: process.env.OLLAMA_EMBEDDING_MODEL,
   },
   models: {
-    [ModelType.TEXT_EMBEDDING]: async (
-      runtime,
-      params: TextEmbeddingParams | string | null
-    ): Promise<number[]> => {
-      try {
-        const ollama = createOllama({
-          fetch: runtime.fetch,
-          baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
-        });
+    [ModelType.TEXT_EMBEDDING]: async (runtime, params: TextEmbeddingParams | string) => {
+      const text = typeof params === 'string' ? params : params.text;
+      const modelName = getSetting(runtime, 'OLLAMA_EMBEDDING_MODEL', 'nomic-embed-text');
+      const apiUrl = getSetting(runtime, 'OLLAMA_API_URL', OLLAMA_API_URL);
 
-        const modelName = runtime.getSetting('OLLAMA_EMBEDDING_MODEL') || 'nomic-embed-text';
-        const text =
-          typeof params === 'string' ? params : (params as TextEmbeddingParams)?.text || '';
+      // --- Start Instrumentation ---
+      const attributes = {
+        'llm.vendor': 'Ollama',
+        'llm.request.type': 'embedding',
+        'llm.request.model': modelName,
+        'input.text.length': text?.length || 0,
+        'llm.api.base_url': apiUrl,
+      };
 
-        if (!text) {
-          logger.error('No text provided for embedding');
-          return Array(1536).fill(0);
+      return startLlmSpan(runtime, 'LLM.embedding', attributes, async (span) => {
+        if (!text || !text.trim()) {
+          span.addEvent('llm.prompt', { 'prompt.content': '' });
+          logger.warn('[Ollama] Empty text provided for embedding, returning zero vector.');
+          span.setStatus({ code: SpanStatusCode.OK, message: 'Empty input, returned zero vector' });
+          return Array(768).fill(0);
         }
 
-        // Generate embeddings - note we're using a simpler approach since generateEmbedding
-        // may not be available in the current version of the AI SDK
+        span.addEvent('llm.prompt', { 'prompt.content': text });
+
         try {
-          // This is simplified and may need to be adjusted based on the actual API
-          const response = await fetch(
-            `${runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL}/embeddings`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: modelName,
-                prompt: text,
-              }),
-            }
-          );
+          const response = await fetch(`${apiUrl}/embeddings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: modelName,
+              prompt: text,
+            }),
+          });
+
+          const responseClone = response.clone();
+          const rawResponseBody = await responseClone.text();
+          span.addEvent('llm.response.raw', { 'response.body': rawResponseBody });
 
           if (!response.ok) {
-            throw new Error(`Embedding request failed: ${response.statusText}`);
+            span.setAttributes({ 'error.api.status': response.status });
+            throw new Error(
+              `[Ollama] Embedding request failed: ${response.status} ${response.statusText}. Response: ${rawResponseBody}`
+            );
           }
 
           const result = (await response.json()) as { embedding?: number[] };
-          return result.embedding || Array(1536).fill(0);
-        } catch (embeddingError) {
-          logger.error('Error generating embedding:', embeddingError);
-          return Array(1536).fill(0);
+
+          if (!result.embedding) {
+            throw new Error('[Ollama] Invalid response structure: embedding field missing.');
+          }
+
+          const embedding = result.embedding;
+          span.setAttribute('llm.response.embedding.vector_length', embedding.length);
+
+          return embedding;
+        } catch (error) {
+          logger.error('[Ollama] Error generating embedding:', error);
+          throw error;
         }
-      } catch (error) {
-        logger.error('Error in TEXT_EMBEDDING model:', error);
-        // Return a fallback vector rather than crashing
-        return Array(1536).fill(0);
-      }
+      });
+      // --- End Instrumentation ---
     },
     [ModelType.TEXT_SMALL]: async (runtime, { prompt, stopSequences = [] }: GenerateTextParams) => {
-      try {
-        const temperature = 0.7;
-        const frequency_penalty = 0.7;
-        const presence_penalty = 0.7;
-        const max_response_length = 8000;
-        const ollama = createOllama({
-          fetch: runtime.fetch,
-          baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
-        });
+      const modelName = getSetting(runtime, 'OLLAMA_SMALL_MODEL', 'llama3:8b');
+      const apiUrl = getSetting(runtime, 'OLLAMA_API_URL', OLLAMA_API_URL);
+      // Note: Ollama generate endpoint might not support all these params directly via ai-sdk
+      const temperature = 0.7;
 
-        const model =
-          runtime.getSetting('OLLAMA_SMALL_MODEL') ?? runtime.getSetting('SMALL_MODEL') ?? 'llama3';
+      // --- Start Instrumentation ---
+      const attributes = {
+        'llm.vendor': 'Ollama',
+        'llm.request.type': 'completion', // Ollama generally uses completion
+        'llm.request.model': modelName,
+        'llm.request.temperature': temperature,
+        'llm.request.stop_sequences': JSON.stringify(stopSequences),
+        'llm.api.base_url': apiUrl,
+      };
 
-        logger.log('generating text');
-        logger.log(prompt);
+      return startLlmSpan(runtime, 'LLM.generateText', attributes, async (span) => {
+        span.addEvent('llm.prompt', { 'prompt.content': prompt });
 
-        return await generateOllamaText(ollama, model, {
-          prompt,
-          system: runtime.character.system ?? undefined,
-          temperature,
-          maxTokens: max_response_length,
-          frequencyPenalty: frequency_penalty,
-          presencePenalty: presence_penalty,
-          stopSequences,
-        });
-      } catch (error) {
-        logger.error('Error in TEXT_SMALL model:', error);
-        return 'Error generating text. Please try again later.';
-      }
+        try {
+          const ollama = createOllama({
+            baseURL: apiUrl,
+          });
+
+          // Note: Raw response and detailed usage/finish reason might be abstracted by ai-sdk/provider
+          const result = await generateText({
+            model: ollama.languageModel(modelName),
+            prompt: prompt,
+            // Pass other parameters if supported by the provider implementation
+            temperature: temperature,
+            stopSequences: stopSequences,
+            // maxTokens: ... // Add if needed and supported
+          });
+
+          const processedTextResponse = result.text;
+          span.setAttribute('llm.response.processed.length', processedTextResponse.length);
+          span.addEvent('llm.response.processed', { 'response.content': processedTextResponse.substring(0, 200) + (processedTextResponse.length > 200 ? '...' : '') });
+
+          // Log usage if available (often not detailed with Ollama through ai-sdk)
+          if (result.usage) {
+            span.setAttributes({
+              'llm.usage.prompt_tokens': result.usage.promptTokens,
+              'llm.usage.completion_tokens': result.usage.completionTokens,
+              'llm.usage.total_tokens': result.usage.totalTokens,
+            });
+          }
+          // Log finish reason if available
+          if (result.finishReason) {
+            span.setAttribute('llm.response.finish_reason', result.finishReason);
+          }
+
+          return processedTextResponse;
+        } catch (error) {
+          logger.error('[Ollama] Error in TEXT_SMALL model:', error);
+          throw error;
+        }
+      });
+      // --- End Instrumentation ---
     },
     [ModelType.TEXT_LARGE]: async (
       runtime,
       {
         prompt,
         stopSequences = [],
-        maxTokens = 8192,
+        maxTokens, // Keep maxTokens if passed in GenerateTextParams
         temperature = 0.7,
-        frequencyPenalty = 0.7,
-        presencePenalty = 0.7,
+        frequencyPenalty, // Ollama might not support these
+        presencePenalty, // Ollama might not support these
       }: GenerateTextParams
     ) => {
-      try {
-        const model =
-          runtime.getSetting('OLLAMA_LARGE_MODEL') ??
-          runtime.getSetting('LARGE_MODEL') ??
-          'gemma3:latest';
-        const ollama = createOllama({
-          fetch: runtime.fetch,
-          baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
-        });
+      const modelName = getSetting(runtime, 'OLLAMA_LARGE_MODEL', 'llama3:70b');
+      const apiUrl = getSetting(runtime, 'OLLAMA_API_URL', OLLAMA_API_URL);
 
-        return await generateOllamaText(ollama, model, {
-          prompt,
-          system: runtime.character.system ?? undefined,
-          temperature,
-          maxTokens,
-          frequencyPenalty,
-          presencePenalty,
-          stopSequences,
-        });
-      } catch (error) {
-        logger.error('Error in TEXT_LARGE model:', error);
-        return 'Error generating text. Please try again later.';
-      }
+      // --- Start Instrumentation ---
+      const attributes = {
+        'llm.vendor': 'Ollama',
+        'llm.request.type': 'completion',
+        'llm.request.model': modelName,
+        'llm.request.temperature': temperature,
+        'llm.request.max_tokens': maxTokens, // Log if provided
+        'llm.request.stop_sequences': JSON.stringify(stopSequences),
+        'llm.api.base_url': apiUrl,
+        // Log other penalties if they were passed and potentially used
+        ...(frequencyPenalty !== undefined && { 'llm.request.frequency_penalty': frequencyPenalty }),
+        ...(presencePenalty !== undefined && { 'llm.request.presence_penalty': presencePenalty }),
+      };
+
+      return startLlmSpan(runtime, 'LLM.generateText', attributes, async (span) => {
+        span.addEvent('llm.prompt', { 'prompt.content': prompt });
+
+        try {
+          const ollama = createOllama({
+            baseURL: apiUrl,
+          });
+
+          const result = await generateText({
+            model: ollama.languageModel(modelName),
+            prompt: prompt,
+            temperature: temperature,
+            stopSequences: stopSequences,
+            maxTokens: maxTokens, // Pass if defined
+            // frequencyPenalty: frequencyPenalty, // Pass if supported by provider
+            // presencePenalty: presencePenalty, // Pass if supported by provider
+          });
+
+          const processedTextResponse = result.text;
+          span.setAttribute('llm.response.processed.length', processedTextResponse.length);
+          span.addEvent('llm.response.processed', { 'response.content': processedTextResponse.substring(0, 200) + (processedTextResponse.length > 200 ? '...' : '') });
+
+          if (result.usage) {
+            span.setAttributes({
+              'llm.usage.prompt_tokens': result.usage.promptTokens,
+              'llm.usage.completion_tokens': result.usage.completionTokens,
+              'llm.usage.total_tokens': result.usage.totalTokens,
+            });
+          }
+          if (result.finishReason) {
+            span.setAttribute('llm.response.finish_reason', result.finishReason);
+          }
+
+          return processedTextResponse;
+        } catch (error) {
+          logger.error('[Ollama] Error in TEXT_LARGE model:', error);
+          throw error;
+        }
+      });
+      // --- End Instrumentation ---
     },
     [ModelType.OBJECT_SMALL]: async (runtime, params: ObjectGenerationParams) => {
-      try {
-        const ollama = createOllama({
-          fetch: runtime.fetch,
-          baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
-        });
-        const model =
-          runtime.getSetting('OLLAMA_SMALL_MODEL') ??
-          runtime.getSetting('SMALL_MODEL') ??
-          'gemma3:latest';
+      const modelName = getSetting(runtime, 'OLLAMA_SMALL_MODEL', 'llama3:8b');
+      const apiUrl = getSetting(runtime, 'OLLAMA_API_URL', OLLAMA_API_URL);
+      const temperature = params.temperature ?? 0;
+      const schemaPresent = !!params.schema;
 
-        if (params.schema) {
-          logger.info('Using OBJECT_SMALL without schema validation');
+      // --- Start Instrumentation ---
+      const attributes = {
+        'llm.vendor': 'Ollama',
+        'llm.request.type': 'object_generation',
+        'llm.request.model': modelName,
+        'llm.request.temperature': temperature,
+        'llm.request.schema_present': schemaPresent,
+        'llm.api.base_url': apiUrl,
+      };
+
+      return startLlmSpan(runtime, 'LLM.generateObject', attributes, async (span) => {
+        span.addEvent('llm.prompt', { 'prompt.content': params.prompt });
+        if (schemaPresent) {
+          span.addEvent('llm.request.schema', { 'schema': JSON.stringify(params.schema, safeReplacer()) });
         }
 
-        return await generateOllamaObject(ollama, model, params);
-      } catch (error) {
-        logger.error('Error in OBJECT_SMALL model:', error);
-        // Return empty object instead of crashing
-        return {};
-      }
+        try {
+          const ollama = createOllama({
+            baseURL: apiUrl,
+          });
+
+          // Note: Raw response, usage, finish reason are abstracted by ai-sdk
+          const result = await generateObject({
+            model: ollama.languageModel(modelName),
+            output: 'no-schema', // Explicitly use no-schema for broader compatibility
+            prompt: params.prompt,
+            temperature: temperature,
+          });
+
+          const processedObject = result.object;
+          span.addEvent('llm.response.processed', { 'response.object': JSON.stringify(processedObject, safeReplacer()) });
+
+          // Log usage if available
+          if (result.usage) {
+            span.setAttributes({
+              'llm.usage.prompt_tokens': result.usage.promptTokens,
+              'llm.usage.completion_tokens': result.usage.completionTokens,
+              'llm.usage.total_tokens': result.usage.totalTokens,
+            });
+          }
+          // Log finish reason if available
+          if (result.finishReason) {
+            span.setAttribute('llm.response.finish_reason', result.finishReason);
+          }
+
+          return processedObject;
+        } catch (error) {
+          logger.error(`[Ollama] Error generating object with ${modelName}:`, error);
+          throw error;
+        }
+      });
+      // --- End Instrumentation ---
     },
     [ModelType.OBJECT_LARGE]: async (runtime, params: ObjectGenerationParams) => {
-      try {
-        const ollama = createOllama({
-          fetch: runtime.fetch,
-          baseURL: runtime.getSetting('OLLAMA_API_ENDPOINT') || OLLAMA_API_URL,
-        });
-        const model =
-          runtime.getSetting('OLLAMA_LARGE_MODEL') ??
-          runtime.getSetting('LARGE_MODEL') ??
-          'gemma3:latest';
+      const modelName = getSetting(runtime, 'OLLAMA_LARGE_MODEL', 'llama3:70b');
+      const apiUrl = getSetting(runtime, 'OLLAMA_API_URL', OLLAMA_API_URL);
+      const temperature = params.temperature ?? 0;
+      const schemaPresent = !!params.schema;
 
-        if (params.schema) {
-          logger.info('Using OBJECT_LARGE without schema validation');
+      // --- Start Instrumentation ---
+      const attributes = {
+        'llm.vendor': 'Ollama',
+        'llm.request.type': 'object_generation',
+        'llm.request.model': modelName,
+        'llm.request.temperature': temperature,
+        'llm.request.schema_present': schemaPresent,
+        'llm.api.base_url': apiUrl,
+      };
+
+      return startLlmSpan(runtime, 'LLM.generateObject', attributes, async (span) => {
+        span.addEvent('llm.prompt', { 'prompt.content': params.prompt });
+        if (schemaPresent) {
+          span.addEvent('llm.request.schema', { 'schema': JSON.stringify(params.schema, safeReplacer()) });
         }
 
-        return await generateOllamaObject(ollama, model, params);
-      } catch (error) {
-        logger.error('Error in OBJECT_LARGE model:', error);
-        // Return empty object instead of crashing
-        return {};
-      }
+        try {
+          const ollama = createOllama({
+            baseURL: apiUrl,
+          });
+
+          const result = await generateObject({
+            model: ollama.languageModel(modelName),
+            output: 'no-schema',
+            prompt: params.prompt,
+            temperature: temperature,
+          });
+
+          const processedObject = result.object;
+          span.addEvent('llm.response.processed', { 'response.object': JSON.stringify(processedObject, safeReplacer()) });
+
+          if (result.usage) {
+            span.setAttributes({
+              'llm.usage.prompt_tokens': result.usage.promptTokens,
+              'llm.usage.completion_tokens': result.usage.completionTokens,
+              'llm.usage.total_tokens': result.usage.totalTokens,
+            });
+          }
+          if (result.finishReason) {
+            span.setAttribute('llm.response.finish_reason', result.finishReason);
+          }
+
+          return processedObject;
+        } catch (error) {
+          logger.error(`[Ollama] Error generating object with ${modelName}:`, error);
+          throw error;
+        }
+      });
+      // --- End Instrumentation ---
     },
   },
   tests: [
