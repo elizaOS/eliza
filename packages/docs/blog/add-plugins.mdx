@@ -87,6 +87,7 @@ npm install -g @elizaos/cli@beta
 ```
 :::
 
+
 ```bash
 # List available plugins
 elizaos plugins list
@@ -109,17 +110,17 @@ These commands streamline plugin discovery, installation, and distribution.
 
 The minimal structure for a V2 plugin repository:
 
-```
+```typescript
 plugin-example/
 ├── assets/
-│   ├── logo.png       # 400x400 branding
-│   ├── banner.png     # 1280x640 banner
-│   └── screenshots/   # Usage examples
+│   ├── logo.png       // 400x400 branding
+│   ├── banner.png     // 1280x640 banner
+│   └── screenshots/   // Usage examples
 ├── src/
-│   ├── index.ts       # Plugin entry point
+│   ├── index.ts       // Plugin entry point
 │   └── ... (plugin code)
-├── package.json       # With agentConfig section
-└── README.md          # Documentation
+├── package.json       // With agentConfig section
+└── README.md          // Documentation
 ```
 
 Your `package.json` should include plugin metadata:

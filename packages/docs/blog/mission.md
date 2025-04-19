@@ -4,7 +4,6 @@ description: Vision and product overview for ElizaOS including DegenSpartanAI, A
 authors:
   - team
 date: 2025-02-14
-slug: /mission
 sidebar_position: 1
 ---
 
