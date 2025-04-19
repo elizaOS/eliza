@@ -13,6 +13,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { worldRouter } from './world';
 import { envRouter } from './env';
+import { traceRouter } from './trace';
 
 // Custom levels from @elizaos/core logger
 const LOG_LEVELS = {
@@ -540,6 +541,9 @@ export function createApiRouter(
   router.use('/world', worldRouter(server));
   router.use('/envs', envRouter());
   router.use('/tee', teeRouter(agents));
+
+  // Register the trace router
+  router.use('/traces', traceRouter);
 
   router.get('/stop', (_req, res) => {
     server.stop();
