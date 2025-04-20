@@ -11,53 +11,52 @@ teardown() {
 }
 
 # Checks that the publish help command displays usage information (matching actual CLI output).
-@test "plugin publish help displays usage information" {
-  run $ELIZAOS_CMD plugin publish --help
+@test "plugins publish help displays usage information" {
+  run $ELIZAOS_CMD plugins publish --help
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Usage: elizaos plugin"* ]]
+  [[ "$output" == *"Usage: elizaos plugins s"* ]]
 }
 
-# Verifies that plugin validation runs in a newly created plugin project directory.
-@test "plugin publish validate runs in plugin project" {
-  run $ELIZAOS_CMD create my-plugin --yes --type plugin
+# Verifies that plugins validation runs in a newly created plugins project directory.
+@test "plugins publish validate runs in plugins project" {
+  run $ELIZAOS_CMD create my-plugins --yes --type plugins
   echo "$output"
   echo "$error"
   [ "$status" -eq 0 ]
-  cd plugin-my-plugin
-  run $ELIZAOS_CMD plugin publish --validate
+  cd plugins-my-plugins
+  run $ELIZAOS_CMD plugins publish --validate
   [ "$status" -ne 127 ]
 }
 
-# Checks that plugin packaging runs in a newly created plugin project directory.
-@test "plugin publish pack runs in plugin project" {
-  run $ELIZAOS_CMD create pkg-plugin --yes --type plugin
+# Checks that plugins packaging runs in a newly created plugins project directory.
+@test "plugins publish pack runs in plugins project" {
+  run $ELIZAOS_CMD create pkg-plugins --yes --type plugins
   echo "$output"
   echo "$error"
   [ "$status" -eq 0 ]
-  cd plugin-pkg-plugin
-  run $ELIZAOS_CMD plugin publish --pack
+  cd plugins-pkg-plugins
+  run $ELIZAOS_CMD plugins publish --pack
   [ "$status" -ne 127 ]
 }
 
-# Ensures plugin publish with authentication flag runs in a plugin project directory.
-@test "plugin publish with auth flag runs in plugin project" {
-  run $ELIZAOS_CMD create pub-plugin --yes --type plugin
+# Ensures plugins publish with authentication flag runs in a plugins project directory.
+@test "plugins publish with auth flag runs in plugins project" {
+  run $ELIZAOS_CMD create pub-plugins --yes --type plugins
   echo "$output"
   echo "$error"
   [ "$status" -eq 0 ]
-  cd plugin-pub-plugin
-  run $ELIZAOS_CMD plugin publish --auth fake-token
+  cd plugins-pub-plugins
+  run $ELIZAOS_CMD plugins publish --auth fake-token
   [ "$status" -ne 127 ]
 }
 
-# Checks that version bumping logic can be triggered in a plugin project directory.
-@test "plugin publish bump-version runs in plugin project" {
-  run $ELIZAOS_CMD create ver-plugin --yes --type plugin
+# Checks that version bumping logic can be triggered in a plugins project directory.
+@test "plugins publish bump-version runs in plugins project" {
+  run $ELIZAOS_CMD create ver-plugins --yes --type plugins
   echo "$output"
   echo "$error"
   [ "$status" -eq 0 ]
-  cd plugin-ver-plugin
-  run $ELIZAOS_CMD plugin publish --bump-version
+  cd plugins-ver-plugins
+  run $ELIZAOS_CMD plugins publish --bump-version
   [ "$status" -ne 127 ]
 }
-

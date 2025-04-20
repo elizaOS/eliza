@@ -12,7 +12,6 @@ import { agent } from './commands/agent';
 import { create } from './commands/create';
 import { dev } from './commands/dev';
 import { env } from './commands/env';
-import { plugin } from './commands/plugin';
 import { publish } from './commands/publish';
 import { start } from './commands/start';
 import { teeCommand as tee } from './commands/tee';
@@ -22,6 +21,7 @@ import { loadEnvironment } from './utils/get-config';
 import { displayBanner, getVersion } from './displayBanner';
 import { setupMonorepo } from './commands/install';
 import { updateCLI } from './commands/update-cli';
+import { plugins } from './commands/plugins';
 
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
@@ -64,7 +64,7 @@ async function main() {
       logger.info('Stopping all ElizaOS agents...');
       // Use pkill to terminate all ElizaOS processes
       try {
-        await import('child_process').then(({ exec }) => {
+        await import('node:child_process').then(({ exec }) => {
           exec('pkill -f "node.*elizaos" || true', (error) => {
             if (error) {
               logger.error(`Error stopping processes: ${error.message}`);
@@ -81,7 +81,7 @@ async function main() {
   program
     .addCommand(create)
     .addCommand(setupMonorepo)
-    .addCommand(plugin)
+    .addCommand(plugins)
     .addCommand(agent)
     .addCommand(tee)
     .addCommand(start)

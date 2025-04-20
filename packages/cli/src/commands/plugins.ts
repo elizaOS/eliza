@@ -42,7 +42,7 @@ export const readPackageJson = (
 };
 
 /**
- * Normalizes a plugin input string to a standard format, typically 'plugin-name'.
+ * Normalizes a plugins input string to a standard format, typically 'plugin-name'.
  * Used primarily for display and generating commands in npx instructions.
  */
 export const normalizePluginNameForDisplay = (pluginInput: string): string => {
@@ -102,9 +102,9 @@ export const findPluginPackageName = (
 
 // --- End Helper Functions ---
 
-export const plugin = new Command().name('plugin').description('Manage an ElizaOS plugin');
+export const plugins = new Command().name('plugins').description('Manage an ElizaOS plugin');
 
-export const pluginCommand = plugin
+export const pluginsCommand = plugins
   .command('list')
   .aliases(['l', 'ls'])
   .description('List available plugins to install into the project')
@@ -133,13 +133,13 @@ export const pluginCommand = plugin
         '@elizaos/plugin-venice',
       ];
 
-      const plugins = hardcodedPlugins
+      const availablePlugins = hardcodedPlugins
         .filter((name) => !opts.type || name.includes(opts.type))
         .sort();
 
       logHeader('Available plugins');
-      for (const plugin of plugins) {
-        console.log(`${plugin}`);
+      for (const pluginName of availablePlugins) {
+        console.log(`${pluginName}`);
       }
       console.log('');
     } catch (error) {
@@ -147,11 +147,11 @@ export const pluginCommand = plugin
     }
   });
 
-plugin
+plugins
   .command('add')
   .alias('install')
-  .description('Add a plugin to the project')
-  .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
+  .description('Add a plugins to the project')
+  .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .option('-n, --no-env-prompt', 'Skip prompting for environment variables')
   .option(
     '-b, --branch <branchName>',
@@ -263,7 +263,7 @@ plugin
     }
   });
 
-plugin
+plugins
   .command('installed-plugins')
   .description('List plugins found in the project dependencies')
   .action(async () => {
@@ -300,11 +300,11 @@ plugin
     }
   });
 
-plugin
+plugins
   .command('remove')
   .aliases(['delete', 'del', 'rm'])
-  .description('Remove a plugin from the project')
-  .argument('<plugin>', 'plugin name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
+  .description('Remove a plugins from the project')
+  .argument('<plugin>', 'plugins name (e.g., "abc", "plugin-abc", "elizaos/plugin-abc")')
   .action(async (plugin, _opts) => {
     try {
       const cwd = process.cwd();
@@ -373,7 +373,7 @@ plugin
 
       const pluginDir = path.join(cwd, dirNameToRemove);
       if (fs.existsSync(pluginDir)) {
-        console.info(`Removing plugin directory ${pluginDir}...`);
+        console.info(`Removing plugins directory ${pluginDir}...`);
         try {
           fs.rmSync(pluginDir, { recursive: true, force: true });
         } catch (rmError) {
@@ -382,7 +382,7 @@ plugin
       } else {
         const nonPrefixedDir = path.join(cwd, baseName);
         if (fs.existsSync(nonPrefixedDir)) {
-          console.info(`Removing non-standard plugin directory ${nonPrefixedDir}...`);
+          console.info(`Removing non-standard plugins directory ${nonPrefixedDir}...`);
           try {
             fs.rmSync(nonPrefixedDir, { recursive: true, force: true });
           } catch (rmError) {

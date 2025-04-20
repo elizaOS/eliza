@@ -331,7 +331,7 @@ Projects contain agent configurations and code for building agent-based applicat
    my-agent-project/
    ├── src/               # Source code
    │   ├── index.ts       # Main entry point with character definition
-   │   └── plugin.ts      # Custom project plugin implementation
+   │   └── plugins.ts      # Custom project plugin implementation
    ├── data/              # Data storage directory
    │   └── uploads/       # For uploaded files
    ├── package.json       # Package configuration

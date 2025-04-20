@@ -50,7 +50,7 @@ This creates a starter plugin with the required directory structure.
 The plugin structure includes:
 
 - `src/index.ts` - Main plugin code
-- `src/plugin.ts` - Plugin configuration and initialization
+- `src/plugins.ts` - Plugin configuration and initialization
 - `src/metadata.ts` - Plugin metadata (name, description, etc.)
 
 Run development mode to test your plugin:
