@@ -13,7 +13,9 @@
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -78,6 +80,8 @@
     "typescript": "5.8.2",
     "typescript-eslint": "^8.26.0",
     "vite": "^6.2.1",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/react-hooks": "^8.0.1"
   }
 }
