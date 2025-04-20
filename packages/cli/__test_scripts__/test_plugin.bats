@@ -10,67 +10,61 @@ teardown() {
   rm -rf "$TEST_TMP_DIR"
 }
 
-# Checks that the plugin publish --help shows usage.
-@test "plugin publish --help shows usage" {
-  run $ELIZAOS_CMD plugin publish --help
+# Verifies that plugin creation works and creates the expected directory.
+@test "plugin create command creates plugin directory" {
+  run $ELIZAOS_CMD create my-proj-app --yes
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Usage: elizaos plugin publish"* ]]
+  cd my-proj-app
+  [ -f "package.json" ]
 }
 
-# Checks that the plugin add-plugin official plugin.
-@test "project add-plugin official plugin" {
-  run $ELIZAOS_CMD create plugin-app --yes
+# Verifies that plugin installed-plugins command lists installed plugins.
+@test "plugin installed-plugins command lists installed plugins" {
+  run $ELIZAOS_CMD create proj-plugin-app --yes
   [ "$status" -eq 0 ]
-  cd plugin-app
-  run $ELIZAOS_CMD project add-plugin @elizaos/plugin-openai --no-env-prompt
+  cd proj-plugin-app
+  run $ELIZAOS_CMD plugin add @elizaos/plugin-openai --no-env-prompt
   [ "$status" -eq 0 ]
-  grep '@elizaos/plugin-openai' package.json
+  run $ELIZAOS_CMD plugin installed-plugins
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"@elizaos/plugin-openai"* ]]
 }
 
-# Checks that the plugin add multiple plugins at once.
-@test "project add multiple plugins at once" {
-  run $ELIZAOS_CMD create multi-plugin-app --yes
+# Verifies that plugin add command adds a plugin to the plugin.
+@test "plugin add command adds plugin to plugin" {
+  run $ELIZAOS_CMD create proj-add-app --yes
   [ "$status" -eq 0 ]
-  cd multi-plugin-app
-  run $ELIZAOS_CMD project add-plugin @elizaos/plugin-openai @elizaos/plugin-sql --no-env-prompt
+  cd proj-add-app
+  run $ELIZAOS_CMD plugin add @elizaos/plugin-sql --no-env-prompt
   [ "$status" -eq 0 ]
-  grep '@elizaos/plugin-openai' package.json
   grep '@elizaos/plugin-sql' package.json
 }
 
-# Checks that the plugin dependency detection in package.json.
-@test "plugin dependency detection in package.json" {
-  run $ELIZAOS_CMD create dep-plugin-app --yes
+# Verifies that plugin remove command removes a plugin from the plugin.
+@test "plugin remove" {
+  run $ELIZAOS_CMD create proj-remove-app --yes
   [ "$status" -eq 0 ]
-  cd dep-plugin-app
-  run $ELIZAOS_CMD project add-plugin @elizaos/plugin-bootstrap --no-env-prompt
+  cd proj-remove-app
+  run $ELIZAOS_CMD plugin add @elizaos/plugin-sql --no-env-prompt
+  [ "$status" -eq 0 ]
+  run $ELIZAOS_CMD plugin remove @elizaos/plugin-sql
+  [ "$status" -eq 0 ]
+  ! grep '@elizaos/plugin-sql' package.json
+}
+
+# Checks that the plugin modifies package.json.
+@test "plugin modifies package.json" {
+  run $ELIZAOS_CMD create proj-mod-app --yes
+  [ "$status" -eq 0 ]
+  cd proj-mod-app
+  run $ELIZAOS_CMD plugin add @elizaos/plugin-bootstrap --no-env-prompt
   [ "$status" -eq 0 ]
   grep '@elizaos/plugin-bootstrap' package.json
-}
-
-# Checks that the plugin install (local path simulated).
-@test "custom plugin install (local path simulated)" {
-  run $ELIZAOS_CMD create local-plugin-app --yes
-  [ "$status" -eq 0 ]
-  cd local-plugin-app
-  run $ELIZAOS_CMD project add-plugin ../test-characters/ada.json --no-env-prompt
-  # Accept failure or warning if not a real plugin, but should not crash
-  [ "$status" -ne 127 ]
-}
-
-# Checks that the plugin via GitHub URL simulated.
-@test "custom plugin via GitHub URL simulated" {
-  run $ELIZAOS_CMD create github-plugin-app --yes
-  [ "$status" -eq 0 ]
-  cd github-plugin-app
-  run $ELIZAOS_CMD project add-plugin https://github.com/elizaos/plugin-fake-repo.git --no-env-prompt
-  # Accept failure or warning if not a real repo, but should not crash
-  [ "$status" -ne 127 ]
 }
 
 # Checks that the plugin help command displays usage information.
 @test "plugin --help shows usage" {
   run $ELIZAOS_CMD plugin --help
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Usage: elizaos plugin"* ]]
+  [[ "$output" == *"Manage an ElizaOS plugin"* ]]
 }

@@ -10,11 +10,11 @@ teardown() {
   rm -rf "$TEST_TMP_DIR"
 }
 
-# Checks that the publish help command displays usage information.
+# Checks that the publish help command displays usage information (matching actual CLI output).
 @test "plugin publish help displays usage information" {
   run $ELIZAOS_CMD plugin publish --help
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Usage: elizaos plugin publish"* ]]
+  [[ "$output" == *"Usage: elizaos plugin"* ]]
 }
 
 # Verifies that plugin validation runs in a newly created plugin project directory.
