@@ -13,7 +13,6 @@ import { create } from './commands/create';
 import { dev } from './commands/dev';
 import { env } from './commands/env';
 import { plugin } from './commands/plugin';
-import { project } from './commands/project';
 import { publish } from './commands/publish';
 import { start } from './commands/start';
 import { teeCommand as tee } from './commands/tee';
@@ -81,7 +80,6 @@ async function main() {
 
   program
     .addCommand(create)
-    .addCommand(project)
     .addCommand(setupMonorepo)
     .addCommand(plugin)
     .addCommand(agent)
