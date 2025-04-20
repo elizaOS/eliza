@@ -12,20 +12,13 @@ The `plugin` command helps developers manage ElizaOS plugins, focusing on the pu
 
 ## Subcommands
 
-### `publish`
-
-Publishes a plugin to the ElizaOS registry or npm.
-
-```bash
-elizaos plugin publish [options]
-```
-
-Options:
-
-- `-r, --registry` - Target registry (default: 'elizaOS/registry')
-- `-n, --npm` - Publish to npm instead of GitHub (default: false)
-- `-t, --test` - Test publish process without making changes (default: false)
-- `-p, --platform` - Specify platform compatibility: node, browser, or universal (default: 'universal')
+- `list` (aliases: `l`, `ls`): List all available plugins
+- `add <plugin>` (alias: `install`): Add a plugin to the project
+  - Options: `-n, --no-env-prompt`, `-b, --branch <branchName>`
+- `installed-plugins`: List plugins found in the project dependencies
+- `remove <plugin>` (aliases: `delete`, `del`, `rm`): Remove a plugin from the project
+- `publish`: Publish a plugin to the ElizaOS registry or npm
+  - Options: `-t, --test`, `-n, --npm`, `-s, --skip-registry`
 
 ## GitHub Authentication
 
