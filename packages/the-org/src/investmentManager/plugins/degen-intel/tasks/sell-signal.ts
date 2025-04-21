@@ -98,11 +98,16 @@ export default class SellSignal {
       let prompt = template.replace('{{walletData}}', walletProviderStr);
 
       // Get token market data
+      // FIXME: can we just get from the cache or the local birdeye functions?
       const tradeService = this.runtime.getService(
         ServiceTypes.DEGEN_TRADING
       ) as unknown as ITradeService;
-      const tokenData = await tradeService.dataService.getTokensMarketData(tokensHeld);
-      prompt = prompt.replace('{{walletData2}}', JSON.stringify(tokenData));
+      if (tradeService) {
+        const tokenData = await tradeService.dataService.getTokensMarketData(tokensHeld);
+        prompt = prompt.replace('{{walletData2}}', JSON.stringify(tokenData));
+      } else {
+        prompt = prompt.replace('{{walletData2}}', '');
+      }
 
       // Get all sentiments
       const sentimentData = (await this.runtime.getCache<Sentiment[]>('sentiments')) || [];
