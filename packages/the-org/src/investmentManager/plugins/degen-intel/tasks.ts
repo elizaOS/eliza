@@ -202,7 +202,9 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
   }
 
   // enable trading stuff only if we need to
-  const tradeService = runtime.getService(ServiceTypes.DEGEN_TRADING) as unknown; //  as ITradeService
+  //const tradeService = runtime.getService(ServiceTypes.DEGEN_TRADING) as unknown; //  as ITradeService
+  // has to be included after degen-trader
+  const tradeService = runtime.getService('degen_trader') as unknown; //  as ITradeService
   if (tradeService) {
     runtime.registerTaskWorker({
       name: 'INTEL_GENERATE_BUY_SIGNAL',
@@ -269,5 +271,9 @@ export const registerTasks = async (runtime: IAgentRuntime, worldId?: UUID) => {
       },
       tags: ['queue', 'repeat', 'degen_intel', 'immediate'],
     });
+  } else {
+    logger.debug(
+      'WARNING: Trader service not found, skipping creation of INTEL_GENERATE_*_SIGNAL task'
+    );
   }
 };
