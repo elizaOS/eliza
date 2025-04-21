@@ -586,10 +586,10 @@ During development, you can test your plugin locally:
 
 ```bash
 # Start with your plugin
-npx @elizaos/cli start --plugin=./path/to/plugin
+npx @elizaos/cli start --plugins=./path/to/plugin
 
 # Or with a specific character
-npx @elizaos/cli start --character=./characters/test.character.json --plugin=./path/to/plugin
+npx @elizaos/cli start --character=./characters/test.character.json --plugins=./path/to/plugin
 ```
 
 ### Distribution & PR Requirements
@@ -625,10 +625,10 @@ Plugin dependencies are managed through your project's `package.json`. You can a
 
 ### Can I use a plugin in development before publishing?
 
-Yes, you can use the `--plugin` flag with the `start` command to include local plugins during development:
+Yes, you can use the `--plugins` flag with the `start` command to include local plugins during development:
 
 ```bash
-npx @elizaos/cli start --plugin=./path/to/plugin
+npx @elizaos/cli start --plugins=./path/to/plugin
 ```
 
 ### What's the difference between Actions and Services?

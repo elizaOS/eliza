@@ -26,30 +26,30 @@ elizaos agent <action> [options]
 
 ## Actions
 
-| Action         | Description                                      |
-| -------------- | ------------------------------------------------ |
-| `list`, `ls`   | List all agents                                  |
-| `get`, `g`     | Show detailed information about a specific agent |
-| `start`, `s`   | Start an agent using a character definition      |
-| `stop`, `st`   | Stop a running agent                             |
-| `remove`, `rm` | Remove an agent definition                       |
-| `set`          | Update agent configuration                       |
+| Action         | Description                                     |
+| -------------- | ----------------------------------------------- |
+| `list`, `ls`   | List available agents                           |
+| `get`, `g`     | Get detailed information about a specific agent |
+| `start`, `s`   | Start an agent using a character definition     |
+| `stop`, `st`   | Stop a running agent                            |
+| `remove`, `rm` | Remove an agent                                 |
+| `set`          | Update agent configuration                      |
 
 ## Options
 
 The available options vary by action:
 
-| Option                          | Action(s)               | Description                                                                    | Required |
-| ------------------------------- | ----------------------- | ------------------------------------------------------------------------------ | -------- |
-| `-n, --name <name>`             | `get`,`stop`,`rm`,`set` | Agent ID, name, or index number from list                                      | Yes      |
-| `-n, --name <name>`             | `start`                 | Character name to start the agent with                                         | No       |
-| `-j, --json`                    | `list`, `get`           | Output in JSON format                                                          | No       |
-| `-j, --json <json>`             | `start`                 | Character configuration as a JSON string                                       | No       |
-| `-p, --path <path>`             | `start`                 | Local path to character JSON file                                              | No       |
-| `-rc, --remote-character <url>` | `start`                 | Remote URL to character JSON file                                              | No       |
-| `-c, --config <json>`           | `set`                   | Agent configuration as JSON string                                             | No       |
-| `-f, --file <path>`             | `set`                   | Path to agent configuration JSON file                                          | No       |
-| `-o, --output <file>`           | `get`                   | Output agent configuration to file (requires `--json`, default: `{name}.json`) | No       |
+| Option                     | Action(s)                   | Description                               | Required |
+| -------------------------- | --------------------------- | ----------------------------------------- | -------- |
+| `-n, --name <name>`        | `get`,`stop`,`remove`,`set` | Agent id, name, or index number from list | Yes      |
+| `-n, --name <n>`           | `start`                     | Character name to start the agent with    | No       |
+| `-j, --json`               | `list`, `get`               | Output as JSON                            | No       |
+| `-j, --json <json>`        | `start`                     | Character JSON string                     | No       |
+| `--path <path>`            | `start`                     | Local path to character JSON file         | No       |
+| `--remote-character <url>` | `start`                     | Remote URL to character JSON file         | No       |
+| `-c, --config <json>`      | `set`                       | Agent configuration as JSON string        | No       |
+| `-f, --file <path>`        | `set`                       | Path to agent configuration JSON file     | No       |
+| `-o, --output <file>`      | `get`                       | Output to file (default: `{name}.json`)   | No       |
 
 ## Usage Examples
 

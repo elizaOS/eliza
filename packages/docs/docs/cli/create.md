@@ -41,11 +41,12 @@ npm create eliza help
 
 ## Options
 
-| Option         | Description                                                            |
-| -------------- | ---------------------------------------------------------------------- |
-| `--dir`, `-d`  | Installation directory (defaults to project name in current directory) |
-| `--yes`, `-y`  | Skip confirmation prompts                                              |
-| `--type`, `-t` | Type to create: `project` or `plugin`                                  |
+| Option              | Description                                     |
+| ------------------- | ----------------------------------------------- |
+| `-d, --dir <dir>`   | Installation directory (default: `.`)           |
+| `-y, --yes`         | Skip confirmation (default: `false`)            |
+| `-t, --type <type>` | Type of template to use (`project` or `plugin`) |
+| `[name]`            | Name for the project or plugin (optional)       |
 
 ## Directory Handling
 

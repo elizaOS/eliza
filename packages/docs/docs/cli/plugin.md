@@ -8,28 +8,21 @@ image: /img/cli.jpg
 
 # Plugin Command
 
-The `plugin` command helps developers manage ElizaOS plugins, focusing on the publishing process.
+The `plugins` command helps developers manage ElizaOS plugins, focusing on the publishing process.
 
 ## Subcommands
 
-### `publish`
-
-Publishes a plugin to the ElizaOS registry or npm.
-
-```bash
-elizaos plugin publish [options]
-```
-
-Options:
-
-- `-r, --registry` - Target registry (default: 'elizaOS/registry')
-- `-n, --npm` - Publish to npm instead of GitHub (default: false)
-- `-t, --test` - Test publish process without making changes (default: false)
-- `-p, --platform` - Specify platform compatibility: node, browser, or universal (default: 'universal')
+- `list` (aliases: `l`, `ls`): List all available plugins
+- `add <plugin>` (alias: `install`): Add a plugin to the project
+  - Options: `-n, --no-env-prompt`, `-b, --branch <branchName>`
+- `installed-plugins`: List plugins found in the project dependencies
+- `remove <plugin>` (aliases: `delete`, `del`, `rm`): Remove a plugin from the project
+- `publish`: Publish a plugin to the ElizaOS registry or npm
+  - Options: `-t, --test`, `-n, --npm`, `-s, --skip-registry`
 
 ## GitHub Authentication
 
-The plugin command requires GitHub authentication to publish plugins. You can set your GitHub token in one of two ways:
+The plugins command requires GitHub authentication to publish plugins. You can set your GitHub token in one of two ways:
 
 1. Set the `GITHUB_TOKEN` environment variable
 2. When prompted, enter your GitHub Personal Access Token (PAT)
@@ -57,7 +50,7 @@ This creates a starter plugin with the required directory structure.
 The plugin structure includes:
 
 - `src/index.ts` - Main plugin code
-- `src/plugin.ts` - Plugin configuration and initialization
+- `src/plugins.ts` - Plugin configuration and initialization
 - `src/metadata.ts` - Plugin metadata (name, description, etc.)
 
 Run development mode to test your plugin:
@@ -93,7 +86,7 @@ The CLI will check all of these requirements and help you fix issues where possi
 Run the test publish process to check for any issues:
 
 ```bash
-elizaos plugin publish --test
+elizaos plugins publish --test
 ```
 
 The CLI will check all registry requirements and help you fix any issues.
@@ -103,7 +96,7 @@ The CLI will check all registry requirements and help you fix any issues.
 When your plugin is ready:
 
 ```bash
-elizaos plugin publish
+elizaos plugins publish
 ```
 
 This will:
@@ -137,10 +130,10 @@ elizaos test
 # 3. Ensure package.json has correct repository URL and agentConfig
 
 # Test the publishing process
-elizaos plugin publish --test
+elizaos plugins publish --test
 
 # Publish to registry
-elizaos plugin publish
+elizaos plugins publish
 ```
 
 After submission, your plugin will be reviewed by the ElizaOS team before being added to the registry.
