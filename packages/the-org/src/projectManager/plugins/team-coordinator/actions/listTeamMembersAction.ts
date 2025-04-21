@@ -17,9 +17,7 @@ interface TeamMember {
   serverId: string;
   serverName?: string;
   createdAt?: string;
-  updatesConfig?: {
-    fields: string[];
-  };
+  updatesFormat?: string[];
 }
 
 /**
@@ -157,33 +155,29 @@ export const listTeamMembersAction: Action = {
       });
 
       // Format the response
-      let responseText = `📋 **Team Members for ${serverName}**\n\n`;
+      let responseText =
+        '📋 **Team Members**\n\nHere is the list of team members involved in our current projects:\n\n';
 
-      Array.from(sectionMap.entries()).forEach(([section, members]) => {
-        responseText += `**${section}** (${members.length}):\n`;
-
-        members.forEach((member, index) => {
-          let memberInfo = `${index + 1}. `;
+      // Flat list of team members in requested format
+      const formattedMembers = teamMembers
+        .map((member) => {
+          let memberLine = `Section: ${member.section}`;
 
           if (member.tgName) {
-            memberInfo += `Telegram: ${member.tgName}`;
+            memberLine += ` | Telegram: ${member.tgName}`;
           } else if (member.discordName) {
-            memberInfo += `Discord: ${member.discordName}`;
-          } else {
-            memberInfo += 'Unknown platform';
+            memberLine += ` | Discord: ${member.discordName}`;
           }
 
-          memberInfo += ` | Format: ${member.format || 'Text'}`;
-
-          if (member.updatesConfig?.fields && member.updatesConfig.fields.length > 0) {
-            memberInfo += ` | Update Fields: ${member.updatesConfig.fields.join(', ')}`;
+          if (member.updatesFormat && member.updatesFormat.length > 0) {
+            memberLine += ` | Update Fields: ${member.updatesFormat.join(', ')}`;
           }
 
-          responseText += `${memberInfo}\n`;
-        });
+          return memberLine;
+        })
+        .join('\n');
 
-        responseText += '\n';
-      });
+      responseText = responseText + formattedMembers;
 
       // Send the response
       await callback(
