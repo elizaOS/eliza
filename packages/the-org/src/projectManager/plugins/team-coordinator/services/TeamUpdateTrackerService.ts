@@ -64,6 +64,28 @@ export class TeamUpdateTrackerService extends Service {
           logger.info('Discord service now available, connecting client');
           this.client = discordService.client;
 
+          // Test the getTeamMembers function with sample server IDs
+          const testServerIds = ['922791729709613096'];
+          for (const serverId of testServerIds) {
+            logger.info(`Testing getTeamMembers with server ID: ${serverId}`);
+            this.getTeamMembers(serverId)
+              .then((members) => {
+                logger.info(`Found ${members.length} team members for server ${serverId}`);
+                // Log all users instead of just a sample
+                if (members.length > 0) {
+                  logger.info('All team members data:');
+                  members.forEach((member, index) => {
+                    logger.info(`Member ${index + 1}:`, JSON.stringify(member));
+                  });
+                } else {
+                  logger.info('No team members found for this server');
+                }
+              })
+              .catch((error) => {
+                logger.error(`Error fetching team members for server ${serverId}:`, error);
+              });
+          }
+
           clearInterval(intervalId);
         } else {
           logger.debug('Discord service still not available, will retry');
@@ -231,10 +253,15 @@ export class TeamUpdateTrackerService extends Service {
    * @returns Promise resolving to an array of user IDs that were successfully messaged
    */
   public async messageAllUsers(
-    users: Array<{ id: string; username: string; displayName: string; channelName: string }>,
+    users: Array<{
+      id: string;
+      username: string;
+      displayName: string;
+      channelName: string;
+      updatesFormat?: string[];
+    }>,
     schedule: CheckInSchedule,
-    serverName?: string,
-    message?: string
+    serverName?: string
   ): Promise<string[]> {
     logger.info(`Attempting to message ${users.length} users`);
     const successfullyMessaged: string[] = [];
@@ -251,20 +278,35 @@ export class TeamUpdateTrackerService extends Service {
 
         if (discordUser && !discordUser.bot) {
           logger.info(`Sending message to non-bot user ${user.displayName} (${user.id})`);
-          await discordUser.send(
-            `Hi ${user.displayName}! It's ${new Date().toLocaleString('en-US', { weekday: 'long' })}. Please share your latest updates for the ${user.channelName} channel.\n\n` +
-              `Please use the following format for your update:\n` +
-              `**Server-name**: ${serverName}\n\n` +
-              `**Check-in Type**: ${schedule.checkInType}\n\n` +
+
+          // Create the message format based on user's updatesFormat if available
+          let updateFormatMessage = '';
+
+          if (user.updatesFormat && user.updatesFormat.length > 0) {
+            // Use custom format from user's updatesFormat
+            updateFormatMessage = user.updatesFormat
+              .map((field) => `- **${field}**\n    - Text`)
+              .join('\n');
+          } else {
+            // Use default format
+            updateFormatMessage =
               `- **Main Priority for next week**\n` +
               `    - Text\n` +
               `- **What did you get done this week?**\n` +
               `    - Text\n` +
               `- **Blockers**\n` +
-              `    - Text\n\n` +
-              `**Anticipated Launch Date**: DD/Month/YYYY (leave empty if not applicable)\n\n` +
+              `    - Text`;
+          }
+
+          await discordUser.send(
+            `Hi ${user.displayName}! It's ${new Date().toLocaleString('en-US', { weekday: 'long' })}. Please share your latest updates for the ${user.channelName} channel.\n\n` +
+              `Please use the following format for your update:\n` +
+              `**Server-name**: ${serverName}\n\n` +
+              `**Check-in Type**: ${schedule.checkInType}\n\n` +
+              `${updateFormatMessage}\n\n` +
               `Important: End your message with "sending my personal updates" so it can be properly tracked.`
           );
+
           logger.info(
             `Successfully sent update request to user ${user.displayName} (${user.id}) for channel ${user.channelName}`
           );
@@ -282,6 +324,89 @@ export class TeamUpdateTrackerService extends Service {
 
     logger.info(`Successfully messaged ${successfullyMessaged.length}/${users.length} users`);
     return successfullyMessaged;
+  }
+
+  /**
+   * Fetches team members for a specific server from memory
+   * @param serverId The ID of the server to fetch team members for
+   * @param platform Optional platform filter ('discord' or 'telegram')
+   * @returns An array of team members with their details
+   */
+  public async getTeamMembers(
+    serverId: string,
+    platform?: 'discord' | 'telegram'
+  ): Promise<
+    Array<{
+      username: string;
+      section: string;
+      platform: string;
+      updatesFormat?: string[];
+    }>
+  > {
+    try {
+      logger.info(
+        `Fetching team members for server ${serverId}${platform ? ` on ${platform}` : ''}`
+      );
+
+      // Create the consistent room ID for storing team members
+      const serverHash = serverId.replace(/[^a-zA-Z0-9]/g, '');
+      const roomIdForStoringTeamMembers = createUniqueUuid(
+        this.runtime,
+        `store-team-members-${serverHash}`
+      );
+
+      logger.info(`Looking for team members in room: ${roomIdForStoringTeamMembers}`);
+
+      // Get memories from the team members storage room
+      const memories = await this.runtime.getMemories({
+        roomId: roomIdForStoringTeamMembers,
+        tableName: 'messages',
+      });
+
+      logger.info(`Found ${memories.length} memories in room ${roomIdForStoringTeamMembers}`);
+
+      // Find the team members config memory
+      const teamMembersConfig = memories.find(
+        (memory) => memory.content?.type === 'store-team-members-memory'
+      );
+
+      if (!teamMembersConfig || !teamMembersConfig.content?.config?.teamMembers) {
+        logger.info('No team members found for this server');
+        return [];
+      }
+
+      // Extract team members
+      const teamMembers = teamMembersConfig.content.config.teamMembers as Array<{
+        section: string;
+        tgName?: string;
+        discordName?: string;
+        updatesFormat?: string[];
+        serverId: string;
+      }>;
+
+      logger.info(`Found ${teamMembers.length} team members for server ${serverId}`);
+
+      // Filter by platform if specified
+      const filteredMembers = platform
+        ? teamMembers.filter(
+            (member) =>
+              (platform === 'discord' && member.discordName) ||
+              (platform === 'telegram' && member.tgName)
+          )
+        : teamMembers;
+
+      // Format the response
+      return filteredMembers.map((member) => ({
+        username: member.discordName || member.tgName || 'Unknown',
+        section: member.section || 'Unassigned',
+        platform: member.discordName ? 'discord' : member.tgName ? 'telegram' : 'unknown',
+        updatesFormat: member.updatesFormat || [],
+      }));
+    } catch (error) {
+      logger.error(`Error fetching team members for server ${serverId}:`, error);
+      logger.error(`Error stack: ${error.stack}`);
+      return [];
+    }
   }
 
   // biome-ignore lint/complexity/noUselessLoneBlockStatements: <explanation>
@@ -310,10 +435,6 @@ export class TeamUpdateTrackerService extends Service {
       // Dummy function for check-in service
       if (this.client) {
         logger.info('Discord client is available for check-in service');
-
-        // we have following todos now
-        // TODO: make this run every 30 mins cool
-
         // Fetch all check-in schedules
         logger.info('Fetching all check-in schedules...');
         try {
@@ -456,19 +577,28 @@ export class TeamUpdateTrackerService extends Service {
                   logger.info(
                     `Preparing to send update request to Telegram group ${schedule.serverId}`
                   );
+
+                  // Get team members for this server
+                  const teamMembers = await this.getTeamMembers(schedule.serverId, 'telegram');
+                  logger.info(
+                    `Found ${teamMembers.length} team members for Telegram server ${schedule.serverId}`
+                  );
+
+                  // Create mentions for team members
+                  let mentions = '';
+                  if (teamMembers.length > 0) {
+                    mentions = 'Tagging team members: ';
+                    for (const member of teamMembers) {
+                      if (member.username) {
+                        mentions += `${member.username} `;
+                      }
+                    }
+                    mentions += '\n\n';
+                  }
                   const updateRequestMessage =
-                    '📢 *Team Update Request*\n\n' +
-                    'Hello team! Please share your updates using the following format:\n\n' +
-                    `**Server-name**: ${serverName || 'Your Server'}\n\n` +
-                    `**Check-in Type**: ${schedule.checkInType}\n\n` +
-                    '- *Main Priority for next week*\n' +
-                    '    - Text\n' +
-                    '- *What did you get done this week?*\n' +
-                    '    - Text\n' +
-                    '- *Blockers*\n' +
-                    '    - Text\n\n' +
-                    'Anticipated launch date: DD/Month/YYYY (optional)\n\n' +
-                    'Please end your message with "sending my updates"';
+                    `📢 *Team Update Request*\n\n${mentions}Hello team! I need your updates for this check-in.\n\n` +
+                    `*Check-in Type*: ${schedule.checkInType}\n\n` +
+                    `Please send me a direct message with your updates. To get started, message me with "Can you share the format for updates?" and I will provide you with the template.\n\n`;
 
                   await this.telegramBot.telegram.sendMessage(
                     schedule.serverId,
@@ -476,7 +606,7 @@ export class TeamUpdateTrackerService extends Service {
                     { parse_mode: 'Markdown' }
                   );
                   logger.info(
-                    `Sent formatted update request to Telegram group ${schedule.serverId}`
+                    `Sent formatted update request to Telegram group ${schedule.serverId} with ${teamMembers.length} tagged members`
                   );
 
                   logger.info(
@@ -484,25 +614,90 @@ export class TeamUpdateTrackerService extends Service {
                   );
                 } else {
                   // For Discord or other sources, continue with the original flow
-                  // Fetch all users in the specified channel
-                  const channelUsers = await this.fetchUsersInChannel(schedule.channelId);
+                  // Get team members for this server from memory instead of all channel users
+                  const teamMembers = await this.getTeamMembers(schedule.serverId, 'discord');
+
                   logger.info(
-                    `Found ${channelUsers.length} users in channel ${schedule.channelId} (${serverName})`
+                    `Found ${teamMembers.length} team members for Discord server ${schedule.serverId}`
                   );
 
-                  if (channelUsers.length === 0) {
+                  if (teamMembers.length === 0) {
                     logger.warn(
-                      `No users found in channel ${schedule.channelId} (${serverName}) for schedule ${schedule.scheduleId}`
+                      `No team members found for server ${schedule.serverId} (${serverName}) for schedule ${schedule.scheduleId}`
                     );
                     continue;
                   }
 
+                  // Fetch users in the channel
+                  const channelUsers = await this.fetchUsersInChannel(schedule.channelId);
                   logger.info(
-                    `Users in channel ${schedule.channelId} (${serverName}):`,
-                    JSON.stringify(channelUsers, null, 2)
+                    `Fetched ${channelUsers.length} users from channel ${schedule.channelId}`
                   );
 
-                  await this.messageAllUsers(channelUsers, schedule, serverName);
+                  // Match channel users with team members
+                  const usersToMessage = [];
+                  for (const teamMember of teamMembers) {
+                    // Extract username from discordName (after @)
+                    const discordUsername = teamMember.username?.startsWith('@')
+                      ? teamMember.username.substring(1)
+                      : teamMember.username;
+
+                    if (!discordUsername) {
+                      logger.warn(
+                        `Team member in section ${teamMember.section} has no Discord username`
+                      );
+                      continue;
+                    }
+
+                    // Find matching user in channel
+                    const matchingUser = channelUsers.find(
+                      (user) =>
+                        user.username === discordUsername || user.displayName === discordUsername
+                    );
+
+                    if (matchingUser) {
+                      // Log the custom update format if available
+                      if (teamMember.updatesFormat && teamMember.updatesFormat.length > 0) {
+                        logger.info(
+                          `Team member ${discordUsername} has custom update format: ${JSON.stringify(
+                            teamMember.updatesFormat
+                          )}`
+                        );
+                      } else {
+                        logger.debug(`Team member ${discordUsername} using default update format`);
+                      }
+                      usersToMessage.push({
+                        ...matchingUser,
+                        updatesFormat: teamMember.updatesFormat,
+                      });
+                      logger.info(
+                        `Matched team member ${discordUsername} with channel user ${matchingUser.displayName}`
+                      );
+                    } else {
+                      logger.warn(
+                        `Could not find channel user matching team member ${discordUsername}`
+                      );
+                    }
+                  }
+
+                  logger.info(`Sending messages to ${usersToMessage.length} matched users`);
+
+                  // Send messages to matched users
+                  if (usersToMessage.length > 0) {
+                    const successfullyMessaged = await this.messageAllUsers(
+                      usersToMessage,
+                      schedule,
+                      serverName
+                    );
+
+                    logger.info(
+                      `Successfully sent messages to ${successfullyMessaged.length} users`
+                    );
+                  } else {
+                    logger.warn(
+                      `No matching users found to message for server ${schedule.serverId}`
+                    );
+                  }
                 }
 
                 // Update the last updated date for the schedule
