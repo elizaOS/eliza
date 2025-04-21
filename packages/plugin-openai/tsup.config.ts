@@ -16,6 +16,5 @@ export default defineConfig({
     'http',
     '@elizaos/core',
     'zod',
-    'form-data',
   ],
 });

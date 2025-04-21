@@ -29,8 +29,7 @@ import {
   type LanguageModelUsage,
 } from 'ai';
 import { type TiktokenModel, encodingForModel } from 'js-tiktoken';
-import FormData from 'form-data';
-import fetch from 'node-fetch';
+import { fetch, FormData } from 'undici';
 import { SpanStatusCode, trace, type Span, context } from '@opentelemetry/api';
 
 /**
@@ -997,11 +996,8 @@ export const openaiPlugin: Plugin = {
         }
 
         const formData = new FormData();
-        formData.append('file', audioBuffer, {
-          filename: 'recording.mp3',
-          contentType: 'audio/mp3',
-        });
-        formData.append('model', modelName);
+        formData.append('file', new Blob([audioBuffer]), 'recording.mp3');
+        formData.append('model', 'whisper-1');
 
         try {
           const response = await fetch(`${baseURL}/audio/transcriptions`, {
