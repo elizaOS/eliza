@@ -10,6 +10,7 @@ import { generateReport } from './actions/reportGenerationAction';
 import { teamMemberUpdatesAction } from './actions/teamMemberUpdates';
 import { addTeamMemberAction } from './actions/addTeamMemberAction';
 import { listTeamMembersAction } from './actions/listTeamMembersAction';
+import { updatesFormatAction } from './actions/updatesFormatAction';
 import { registerTasks } from './tasks';
 
 /**
@@ -28,6 +29,7 @@ export const teamCoordinatorPlugin: Plugin = {
     recordCheckInAction,
     addTeamMemberAction,
     listTeamMembersAction,
+    updatesFormatAction,
   ],
   init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
     try {
@@ -70,6 +72,7 @@ export function initialize(runtime: IAgentRuntime) {
       generateReport,
       addTeamMemberAction,
       listTeamMembersAction,
+      updatesFormatAction,
     ],
   };
 }
