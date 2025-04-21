@@ -188,6 +188,11 @@ const createPrettyConfig = () => ({
         level = inputData;
       }
 
+      // ANSI
+      const RED = '\x1b[31m';
+      const YELLOW = '\x1b[33m';
+      const RESET = '\x1b[0m';
+
       const levelNames: Record<number, string> = {
         10: 'TRACE',
         20: 'DEBUG',
@@ -195,8 +200,8 @@ const createPrettyConfig = () => ({
         28: 'PROGRESS',
         29: 'LOG',
         30: 'INFO',
-        40: 'WARN',
-        50: 'ERROR',
+        40: `${YELLOW}WARN${RESET}`,
+        50: `${RED}ERROR${RESET}`,
         60: 'FATAL',
       };
 
