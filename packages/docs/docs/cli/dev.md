@@ -20,12 +20,11 @@ elizaos dev [options]
 
 ## Options
 
-| Option         | Description                                                          |
-| -------------- | -------------------------------------------------------------------- |
-| `--port`, `-p` | Port to listen on                                                    |
-| `--configure`  | Reconfigure services and AI models (skips using saved configuration) |
-| `--character`  | Path or URL to character file to use instead of default              |
-| `--build`      | Build the project before starting                                    |
+| Option                           | Description                                             |
+| -------------------------------- | ------------------------------------------------------- |
+| `-c, --configure`                | Reconfigure services and AI models                      |
+| `-char, --character <character>` | Path or URL to character file to use instead of default |
+| `-b, --build`                    | Build the project before starting                       |
 
 ## Development Features
 
