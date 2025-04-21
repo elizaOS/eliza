@@ -20,9 +20,7 @@ interface TeamMember {
   serverId: string;
   serverName?: string;
   createdAt: string;
-  updatesConfig?: {
-    fields: string[];
-  };
+  updatesFormat?: string[];
 }
 
 /**
@@ -206,10 +204,8 @@ export const addTeamMemberAction: Action = {
           "section": "value", // The section name
           "tgName": "value", // The TG name including the @ symbol if present
           "discordName":"value", // The Discord name including the @ symbol if present
-          "format": "value", // The format type (Text or other format)
-          "updatesConfig": {
-            "fields": ["field1", "field2", ...] // Array of field names for updates
-          }
+          "updatesFormat": ["question1", "question2", ...] // Array of Questions to be asked from users
+          // questions format can be in this form Main Priority for next week , What did you get done this week? or Blockers
         }] 
 
         The text can be super randomized like this 
@@ -407,11 +403,12 @@ export const addTeamMemberAction: Action = {
                   platformInfo = `Discord: ${member.discordName}`;
                 }
 
-                const updateFields = member.updatesConfig?.fields
-                  ? `\n   Fields: ${member.updatesConfig.fields.join(', ')}`
-                  : '';
+                const updateFields =
+                  member.updatesFormat?.length > 0
+                    ? `\n   Fields: ${member.updatesFormat?.join(', ')}`
+                    : '';
 
-                return `${index + 1}. Section: ${section} | Format: ${format} | ${platformInfo}${updateFields}`;
+                return `${index + 1}. Section: ${section} | ${platformInfo}${updateFields}`;
               })
               .join('\n');
 
@@ -471,7 +468,6 @@ export const addTeamMemberAction: Action = {
             const teamMembersList = allTeamMembers
               .map((member, index) => {
                 const section = member.section || 'Unassigned';
-                const format = member.format || 'Text';
 
                 let platformInfo = '';
                 if (member.tgName) {
@@ -481,11 +477,11 @@ export const addTeamMemberAction: Action = {
                 }
 
                 let updateFields = '';
-                if (member.updatesConfig?.fields && member.updatesConfig.fields.length > 0) {
-                  updateFields = ` | Update Fields: ${member.updatesConfig.fields.join(', ')}`;
+                if (member.updatesFormat && member.updatesFormat?.length > 0) {
+                  updateFields = ` | Update Fields: ${member.updatesFormat?.join(', ')}`;
                 }
 
-                return `${index + 1}. Section: ${section} | Format: ${format} | ${platformInfo}${updateFields}`;
+                return `${index + 1}. Section: ${section} | ${platformInfo}${updateFields}`;
               })
               .join('\n');
 
@@ -531,11 +527,11 @@ export const addTeamMemberAction: Action = {
               }
 
               let updateFields = '';
-              if (member.updatesConfig?.fields && member.updatesConfig.fields.length > 0) {
-                updateFields = ` | Update Fields: ${member.updatesConfig.fields.join(', ')}`;
+              if (member.updatesFormat && member.updatesFormat?.length > 0) {
+                updateFields = ` | Update Fields: ${member.updatesFormat?.join(', ')}`;
               }
 
-              return `${index + 1}. Section: ${section} | Format: ${format} | ${platformInfo}${updateFields}`;
+              return `${index + 1}. Section: ${section} | ${platformInfo}${updateFields}`;
             })
             .join('\n');
 
