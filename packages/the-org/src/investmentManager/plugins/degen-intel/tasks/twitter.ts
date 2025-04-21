@@ -49,13 +49,10 @@ export default class Twitter {
     }
     console.log('degen-intel: Twitter manager acquired, starting sync');
 
-    const clientId = stringToUuid('default');
-    const clientKey = manager.getClientKey(clientId, this.runtime.agentId);
-    console.log('clientKey', clientKey);
-    const client = manager.clients.get(clientKey);
+    const client = manager.getClient(this.runtime.agentId, this.runtime.agentId);
 
     // Get the Twitter client directly from the manager
-    let twitterClient = client;
+    let twitterClient = client.client.twitterClient;
     if (!twitterClient) {
       logger.error('Twitter client not found');
       return false;
